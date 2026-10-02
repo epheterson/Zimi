@@ -183,17 +183,17 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             assert (
                 rows == 5
             ), "theme, font, size, spacing, margins (no layout: that is a book's)"
-            fr.locator('.zw-set-sheet [data-size="1"]').click()
+            fr.locator('.zw-set-sheet [data-size="3"]').click()  # Large
             pg.wait_for_timeout(300)
             assert (
                 _q(pg, "d.documentElement.style.getPropertyValue('--zw-size')")
-                == "21px"
+                == "22px"
             )
             assert (
                 pg.evaluate(
                     "() => JSON.parse(localStorage.getItem('zimi_wiki_prefs')).size"
                 )
-                == 21
+                == 22
             )
             assert (
                 pg.evaluate("() => localStorage.getItem('zimi_book_prefs')") is None
@@ -286,35 +286,6 @@ def test_the_header_offers_nothing_the_readers_bar_already_holds(served):
             assert pg.evaluate(shown, "library-btn")
         finally:
             br.close()
-
-
-def test_the_reader_view_size_says_what_it_is():
-    """The size step reads as a size (100 %), not a letter ("M")."""
-    import subprocess
-
-    js = open(
-        os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "zimi",
-            "static",
-            "app.js",
-        ),
-        encoding="utf-8",
-    ).read()
-    assert "_READER_SIZE_LABELS" not in js
-    out = subprocess.run(
-        [
-            "node",
-            "-e",
-            "var _currentLang='en';"
-            + js[js.index("function _readerSizeLabel") :].split("\n}\n")[0]
-            + "\n}\nconsole.log([85,100,130].map(_readerSizeLabel).join(' '))",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    assert out == "85% 100% 130%", out
 
 
 def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):

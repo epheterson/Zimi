@@ -7,6 +7,12 @@
    margins provide the flow spacing; 8px is just edge breathing for the
    footer. */
 .almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 8px; overscroll-behavior: contain; }
+/* The Almanac keeps its own content still when a section arrives late
+   (_almKeepStill in almanac.js); the browser's anchoring would add to it. */
+.almanac-content { overflow-anchor: none; }
+/* Sections that arrive late hold their margins inside them, so the height the
+   keep-still watcher sees is the height they take. */
+#almanac-place, #almanac-rosetta { display: flow-root; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
@@ -22,7 +28,7 @@
 .alm-tz-wrap { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .alm-tz-clock-side { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; justify-content: center; }
 .alm-clock-info { text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 22px; min-width: 200px; }
-.alm-clock-time { font-size: 28px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; justify-content: center; }
+.alm-clock-time { font-size: 28px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; justify-content: center; direction: ltr; }
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
 .alm-clock-date { font-size: 14px; color: var(--text2); margin-top: 8px; font-weight: 500; }
 .alm-clock-sub { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -50,7 +56,7 @@
 .alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
 .alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; }
-.alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
+.alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; direction: ltr; unicode-bidi: isolate; }
 .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
 /* Each card wears its city's hour: the grid reads as a living band of
    daylight echoing the terminator on the map above. */
@@ -94,11 +100,24 @@
    backing disc or clip (the sprite IS the sphere; a backing circle would show
    as a hard rim behind the anti-aliased limb). */
 .almanac-moon { position: relative; width: 200px; height: 200px; }
-.almanac-moon-open { position: relative; border-radius: 50%; cursor: pointer; }
+/* The hero is the 3D Moon: a tap or a sideways drag lifts it into the view,
+   an upward swipe still scrolls the page (almanac.js _almMoonLift). While
+   the view's Moon stands in its place the disc steps aside; while the view
+   gets ready for a first tap, the disc breathes. */
+.almanac-moon-open { position: relative; border-radius: 50%; cursor: grab; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.almanac-moon-open img { -webkit-user-drag: none; }
+.almanac-view.alm-moon-lifted .almanac-moon,
+.almanac-view.alm-moon-lifted .almanac-moon-anim { visibility: hidden; }
+.almanac-moon-open.alm-moon-waking { cursor: progress; }
+.almanac-moon-open.alm-moon-waking .almanac-moon { animation: alm-moon-wake 1.1s ease-in-out infinite alternate; }
+@keyframes alm-moon-wake { to { opacity: .8; } }
+@media (prefers-reduced-motion: reduce) { .almanac-moon-open.alm-moon-waking .almanac-moon { animation: none; } }
 .almanac-moon-open:focus-visible { outline: 2px solid var(--amber); outline-offset: 6px; }
 .almanac-moon-sprite { display: block; width: 100%; height: 100%; }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
+/* Said only when the disc stands celestial north up (no place chosen). */
+.almanac-moon-orient { margin-top: 2px; font-size: 11px; letter-spacing: .02em; color: var(--text3); }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
 /* Live canvas laid over the hero moon during a time-travel sweep: it draws the
    moon at successive real instants (terminator sweeping, disc rotating) over
@@ -112,6 +131,46 @@
 .alm-about[open] summary.almanac-section-title { margin-bottom: 12px; }
 .alm-about-intro { color: var(--text2); font-size: 13px; margin: 0 0 10px; }
 .alm-about-list { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; color: var(--text2); font-size: 13px; line-height: 1.5; max-width: 68ch; }
+.alm-ref-decay-link { padding: 4px 0; background: none; border: 0; color: var(--text2); font: inherit; font-size: 13px; text-align: start; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; cursor: pointer; }
+.alm-ref-decay-link:hover { color: var(--amber); text-decoration-color: var(--amber-border); }
+.alm-ref-decay-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-about .alm-ref-decay-link { margin-top: 10px; }
+/* The page's five parts, outward in time: one heading each, a rule between
+   them; inside, sections under the small capitals, the first one without
+   its own rule (the heading already parts it from what is above). */
+.alm-group { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--border); }
+.alm-group-title { margin: 0 0 16px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.alm-group > .almanac-section:first-of-type, .alm-group-title + .almanac-section { margin-top: 24px; border-top: 0; padding-top: 0; }
+/* The reader's clocks: one taken away by its corner, one added from the
+   cities through the native picker laid over a dashed card. */
+.alm-tz-remove { position: absolute; top: 0; inset-inline-end: 0; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
+.alm-tz-remove:hover, .alm-tz-remove:focus-visible { color: var(--amber); }
+.alm-tz-add { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2); font-size: 12px; cursor: pointer; }
+.alm-tz-add:hover, .alm-tz-add:focus-within { color: var(--amber); border-color: var(--amber-border); }
+.alm-tz-add select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+/* The invite to choose a place: a chip. */
+.alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-invite-btn svg { flex: none; width: 14px; height: 14px; }
+/* Tables and calculations: two rows of tiles, each a scroller that runs to
+   the screen's edges (the page itself never scrolls sideways). A tile is
+   what opens: its mark, its name, and one line of what it gives. */
+.alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
+.alm-group-title + .alm-tiles-h { margin-top: 4px; }
+.alm-tiles {
+  display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;
+}
+.alm-tile {
+  flex: 0 0 152px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 124px; padding: 14px 12px 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text);
+  font: inherit; text-align: start; cursor: pointer; scroll-snap-align: start; transition: border-color .15s, background .15s;
+}
+.alm-tile:hover, .alm-tile:focus-visible { border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-tile:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-tile-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--amber-glow); color: var(--amber); margin-bottom: 2px; }
+.alm-tile-name { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.alm-tile-sub { font-size: 12px; line-height: 1.35; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -202,8 +261,25 @@
 .orrery-twin-lbl { font-size: 10px; color: var(--text3); letter-spacing: 0.04em; }
 .orrery-twin-val { font-size: 14px; color: var(--text); }
 .orrery-twin-note { margin-top: 8px; line-height: 1.5; }
-.almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
-.almanac-sky-wrap canvas { width: 100%; display: block; }
+/* The light clock under the twins: the clock at rest beside the moving one. */
+.orrery-lc { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.orrery-lc-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.orrery-lc-canvas { display: block; width: 100%; height: 84px; margin-top: 4px; background: var(--surface2); border-radius: 8px; }
+.almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; position: relative; }
+.almanac-sky-wrap canvas { width: 100%; display: block; border-radius: 12px; touch-action: pan-y; cursor: grab; }
+.almanac-sky-wrap canvas.alm-sky-turning { cursor: grabbing; }
+/* The live sky's line: the light of the hour, the place. Under the scene, not
+   on it, so the picture is only the picture. */
+.alm-sky-cap { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; padding: 6px 10px 0; font-size: 11px; line-height: 1.35; color: var(--text2); text-align: center; }
+.alm-sky-place { color: var(--text3); }
+/* A tapped body's name: the orrery tip's look, with room for the muon's lines. */
+.alm-sky-tip { position: absolute; z-index: 10; max-width: min(260px, calc(100% - 4px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
+.alm-sky-tip[hidden] { display: none; }
+.alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }
+.alm-sky-tip-line { display: block; color: #bbb; }
+.alm-sky-tip-line + .alm-sky-tip-line { margin-top: 3px; }
+.alm-sky-tip .alm-sky-tip-src { font-size: 10px; color: #8a8a8a; }
+@media (pointer: coarse) { .alm-sky-tip { font-size: 12px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; max-width: min(320px, calc(100% - 4px)); } }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
 .almanac-location-link:hover { text-decoration: underline; }
 .almanac-eclipse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -1097,3 +1173,5 @@
   /* Month changes repaint in place — no glide (#75). */
   .alm-grid.alm-glide-next, .alm-grid.alm-glide-prev { animation: none; }
 }
+/* No place chosen yet: one line asking for it, under the sky and in the tides. */
+.alm-place-invite { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; margin: 8px 0 0; font-size: 12px; color: var(--text2); text-align: center; }

@@ -32,13 +32,20 @@ const ctx = {
   esc: s => String(s == null ? '' : s),
 };
 vm.createContext(ctx);
-vm.runInContext(extract(/async function _renderEnvSection\(\) \{[\s\S]*?\n\}/, '_renderEnvSection'), ctx);
+vm.runInContext(extract(/function _ltr\(html\) \{[^\n]*\n/, '_ltr') + extract(/async function _renderEnvSection\(\) \{[\s\S]*?\n\}/, '_renderEnvSection'), ctx);
 
 (async () => {
   const p = ctx._renderEnvSection();          // called before the pane exists
   el = { innerHTML: 'Loading…' };             // the pane is inserted
   resolveFetch({ vars: [{ name: 'ZIM_DIR', value: '/zims', description: 'Where the ZIM files are', locks: 'ZIM folder', source: 'env', path: '' }] });
   await p;
+  ok('folded by default: the names are the summary, a tap opens the rest',
+    /^<details class="net-details env-details"><summary><span class="env-names" dir="ltr">ZIM_DIR<\/span><\/summary>/.test(el.innerHTML) && !/<details[^>]* open/.test(el.innerHTML));
+  ok('a name and a value read left to right in a right-to-left page (/zims keeps its slash first in Hebrew)',
+    /<code class="env-name"><bdi dir="ltr">ZIM_DIR<\/bdi><\/code>/.test(el.innerHTML) && /<code class="env-value"><bdi dir="ltr">\/zims<\/bdi><\/code>/.test(el.innerHTML));
+  ok('so do the folder fields and the commands in Settings',
+    (src.match(/id="ms-(zim|data)-dir" dir="ltr"/g) || []).length === 4 && (src.match(/class="app-update-cmd" dir="ltr"/g) || []).length === 2 &&
+    /<code dir="ltr">ZIMI_PUBLIC_ACCESS=/.test(src) && /env_from_config', \{path: _ltr\(esc\(r\.path\)\)\}/.test(src));
   ok('the answer lands in the element that exists when it arrives', /ZIM_DIR/.test(el.innerHTML) && /\/zims/.test(el.innerHTML), el.innerHTML.slice(0, 80));
 
   el = null;

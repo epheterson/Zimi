@@ -156,8 +156,7 @@ def test_text_size_resizes_the_articles_text_not_only_its_title(served):
             fr = pg.frame_locator("#reader-frame")
             fr.locator(".zw-bar .zb-aa").click()
             pg.wait_for_timeout(300)
-            fr.locator('.zw-set-sheet [data-size="1"]').click()
-            fr.locator('.zw-set-sheet [data-size="1"]').click()
+            fr.locator('.zw-set-sheet [data-size="4"]').click()  # Larger
             fr.locator("#zb-lh").fill("4")
             fr.locator("#zb-lh").dispatch_event("input")
             fr.locator("#zb-lh").dispatch_event("change")
@@ -174,6 +173,85 @@ def test_text_size_resizes_the_articles_text_not_only_its_title(served):
             assert fs1 == size1, "Text size reaches the paragraphs"
             assert title1 > title0
             assert lh1 / fs1 > lh0 / fs0, "Line spacing reaches them too"
+        finally:
+            br.close()
+
+
+STEPS = "(sel) => [...document.querySelectorAll(sel)].map(b => b.getAttribute('aria-label') + (b.getAttribute('aria-checked') === 'true' ? '*' : '') + '|' + b.textContent).join(' ')"
+FRAME_STEPS = "() => [...document.getElementById('reader-frame').contentDocument.querySelectorAll('.zw-set-sheet .tsz-btn')].map(b => b.getAttribute('aria-label') + (b.getAttribute('aria-checked') === 'true' ? '*' : '') + '|' + b.textContent).join(' ')"
+
+
+def test_text_size_is_five_named_steps_and_an_old_size_lands_on_the_nearest(served):
+    """Eric, 2026-09-30: text size as Smaller, Small, Default, Large, Larger,
+    five A's that grow, no numbers. A size saved on the old scales (30px in
+    Zimipedia, 85% in Reader View) opens on the nearest step, not the default."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"], service_workers="block")
+        try:
+            pg = ctx.new_page()
+            pg.goto(served + "/")
+            pg.evaluate(
+                "() => { localStorage.setItem('zimi_wiki_prefs', JSON.stringify({size: 30, lh: 2, margin: 1}));"
+                " localStorage.setItem('zimi_reader_font_scale', '85'); }"
+            )
+            hit = _search_open(pg, served, "Albert Einstein", "Albert_Einstein")
+            pg.click(hit)
+            pg.wait_for_function(READY, timeout=30000)
+            pg.wait_for_timeout(500)
+            assert (
+                _q(pg, "d.documentElement.style.getPropertyValue('--zw-size')")
+                == "25px"
+            ), "30px, off the new scale, opens on Larger (25px)"
+            fr = pg.frame_locator("#reader-frame")
+            fr.locator(".zw-bar .zb-aa").click()
+            pg.wait_for_timeout(300)
+            assert pg.evaluate(FRAME_STEPS) == (
+                "Smaller|A Small|A Default|A Large|A Larger*|A"
+            )
+            assert not _q(
+                pg,
+                "/\\d/.test(d.querySelector('.zw-set-sheet .zb-sizes').closest('.zb-set').textContent)",
+            ), "no number on the size row"
+            fr.locator('.zw-set-sheet .tsz-btn[aria-label="Small"]').click()
+            pg.wait_for_timeout(300)
+            assert (
+                _q(pg, "d.documentElement.style.getPropertyValue('--zw-size')")
+                == "17px"
+            )
+            assert (
+                pg.evaluate(
+                    "() => JSON.parse(localStorage.getItem('zimi_wiki_prefs')).size"
+                )
+                == 17
+            )
+            # Reader View's own control, in the ... menu: the same five, 85%
+            # (Smaller before) still Smaller. The article outside Zimipedia.
+            pg.evaluate("() => _setOpenInApps(false)")
+            pg.goto(served + "/w/wikipedia/Albert_Einstein")
+            pg.wait_for_function(
+                "() => { try { return _readerViewAvailable(); } catch (e) { return false; } }",
+                timeout=30000,
+            )
+            pg.evaluate("() => { if (!_readerViewOn) _readerViewToggle(); }")
+            pg.wait_for_timeout(500)
+            pg.click(".topbar-more")
+            pg.wait_for_timeout(300)
+            assert pg.evaluate(STEPS, "#topbar-menu.visible .tsz-btn") == (
+                "Smaller*|A Small|A Default|A Large|A Larger|A"
+            )
+            pg.locator('#topbar-menu.visible .tsz-btn[aria-label="Large"]').click()
+            pg.wait_for_timeout(300)
+            assert (
+                pg.evaluate("() => localStorage.getItem('zimi_reader_font_scale')")
+                == "115"
+            )
+            assert (
+                pg.evaluate("() => document.documentElement.scrollWidth - innerWidth")
+                <= 1
+            )
         finally:
             br.close()
 
@@ -262,7 +340,7 @@ def test_a_long_article_from_search_shows_its_text_before_its_pictures(
 DOTS = """(sel) => { var root = document.getElementById('reader-frame').contentDocument;
   var find = function(k) { return document.querySelector(sel.replace('KEY', k)) || root.querySelector(sel.replace('KEY', k)); };
   var out = {}; ['auto', 'light', 'sepia', 'dark'].forEach(function(k) { var e = find(k); var cs = e.ownerDocument.defaultView.getComputedStyle(e);
-    out[k] = { w: cs.width, h: cs.height, bw: cs.borderTopWidth, bc: cs.borderTopColor, bs: cs.borderTopStyle, r: cs.borderRadius, bg: cs.backgroundImage, c: cs.backgroundColor }; });
+    out[k] = { w: cs.width, h: cs.height, bw: cs.borderTopWidth, bc: cs.borderTopColor, bs: cs.borderTopStyle, r: cs.borderRadius, bg: cs.backgroundImage, c: cs.backgroundColor, clip: cs.backgroundClip }; });
   return out; }"""
 
 
@@ -271,7 +349,11 @@ def _same_ring(dots):
     for k in ("light", "sepia", "dark"):
         assert ring(dots["auto"]) == ring(dots[k]), (k, dots)
     bg = dots["auto"]["bg"]
-    assert "90deg" in bg, bg
+    assert "135deg" in bg, bg  # corner to corner
+    # Painted inside the ring: under a see-through ring the two halves showed
+    # through it, and the dot read as a square cropped by a circle.
+    for k in ("auto", "light", "sepia", "dark"):
+        assert dots[k]["clip"] == "padding-box", (k, dots[k])
     # Auto paints sepia by day and dark by night, so its swatch is those two.
     assert "rgb(244, 236, 216)" in bg and "rgb(10, 10, 11)" in bg, (
         "Auto is the Sepia swatch and the Dark one: %s" % bg

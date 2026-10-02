@@ -370,11 +370,12 @@ def _chapter_body(text):
     return _SELF_CLOSED_RE.sub(_opened, body)
 
 
-def _rewrite_urls(body, base_dir, index):
+def _rewrite_urls(body, base_dir, index, outside=None, prefix="zb-c"):
     """A chapter's links, for the one page the chapters become: a link to
-    another chapter lands on it in the page, a picture or a stylesheet on the
-    member it names (relative to the book's address), anything that leaves
-    the book is kept, and ``javascript:`` is dropped."""
+    another chapter lands on it in the page (``#<prefix><n>``), a picture or
+    a stylesheet on the member it names (relative to the book's address, or
+    ``outside(member)``), anything that leaves the book is kept, and
+    ``javascript:`` is dropped. zimi.bookpages reads a ZIM's pages with it."""
 
     def one(m):
         lead, quoted = m.group(1), m.group(2)
@@ -389,7 +390,9 @@ def _rewrite_urls(body, base_dir, index):
             return m.group(0)
         frag = v.split("#", 1)[1] if "#" in v else ""
         if member in index:
-            target = "#" + (frag or f"zb-c{index[member]}")
+            target = "#" + (frag or f"{prefix}{index[member]}")
+        elif outside is not None:
+            target = outside(member, frag)
         else:
             target = urllib.parse.quote(member, safe="/")
         return f"{lead}{quote}{_html.escape(target, quote=True)}{quote}"

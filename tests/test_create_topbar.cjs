@@ -99,7 +99,7 @@ check(/bcIcon\.removeAttribute\('href'\)/.test(topbar.slice(topbar.indexOf('if (
 const ph = fn('_searchPlaceholderText');
 check(/if \(_createOpen\) \{[^}]*return t\('create_zim'\);/.test(ph) && /_updateSearchPlaceholder\(\);/.test(topbar),
       'the search box wears the page name, not the ZIM underneath');
-check(ph.indexOf("return t('create_zim')") < ph.indexOf('return _zimTitle(currentSource)'),
+check(ph.indexOf("return t('create_zim')") >= 0 && ph.indexOf("return t('create_zim')") < ph.indexOf('_searchScopeSource()'),
       'and that branch is reached before the source one');
 
 console.log('');

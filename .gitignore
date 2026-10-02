@@ -17,6 +17,7 @@ zims/
 # Build artifacts
 /build/
 /dist/
+/dist-mcp/
 /.build-venv/
 *.spec
 *.spec.bak

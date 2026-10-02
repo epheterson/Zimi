@@ -32,11 +32,11 @@ function highlights() { try { return (window.parent !== window && window.parent.
 // (zimiMarkLinks); a page open on its own, outside the shell, is left as is.
 function markLinks(root) { try { return window.parent !== window ? window.parent.zimiMarkLinks(root) : 0; } catch (e) { return 0; } }
 // The thing open in an app (a video, a question, a post, a book) has three
-// controls: Like, Save and Lists, drawn from the store and drawn again by
+// controls: Like, Save and Lists, each on its own (a like never saves), drawn from the store and drawn again by
 // savedPaint() whenever it changes (the page's window.__saved calls it).
-// item is what Saved keeps: {kind, app, zim, path, title, meta}. opts.save
-// names Save in the app's words ([off, on]: ZimiTube's "Watch later",
-// Bookshelf's "Add to my shelf"); opts.like false leaves Like out;
+// item is what Saved keeps: {kind, app, zim, path, title, meta}. Save is
+// one word and one mark in every app (Save, Saved; never an app's own verb
+// such as Watch later or Add to my shelf); opts.like false leaves Like out;
 // opts.thread keeps where you are in a long thread once it is saved
 // (threadRestore below). The page's markup holds the place:
 // <span class="svbar"></span> in its actions. savedBar(null) when the thing
@@ -53,12 +53,12 @@ function savedBar(item, opts) {
 function svButtons() {
   var S = saved(), it = _svItem, w = STR.sv || {};
   if (!S || !it) return '';
-  var on = S.has(it), liked = on && S.inList(it, S.LIKED), names = _svOpts.save || [w.save, w.saved];
+  var on = S.has(it), liked = S.inList(it, S.LIKED);
   var b = function(which, pressed, icon, label, extra) {
     return '<button type="button" class="svb' + (pressed ? ' on' : '') + '" data-sv="' + which + '"' + (extra || ' aria-pressed="' + pressed + '"') +
       ' onclick="savedDo(this, event)">' + icon + '<span>' + esc(label) + '</span></button>';
   };
-  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
+  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? w.saved : w.save) +
     b('lists', false, SV_LISTS, w.lists, ' aria-haspopup="menu" title="' + esc(w.add_to_list || '') + '"');
 }
 function savedPaint() { document.querySelectorAll('.svbar').forEach(function(bar) { bar.innerHTML = svButtons(); }); }
@@ -66,7 +66,7 @@ function savedDo(el, e) {
   var S = saved(), it = _svItem, which = el.getAttribute('data-sv');
   if (!S || !it) return;
   if (which === 'lists') { pickLists(it, el, e); return; }
-  if (which === 'save') { if (S.has(it)) S.remove(it); else { S.save(it); threadWrite(); } }
+  if (which === 'save') { if (S.has(it)) S.unsave(it); else { S.save(it); threadWrite(); } }
   else if (S.inList(it, S.LIKED)) S.removeFromList(it, S.LIKED);
   else S.addToList(it, S.LIKED);
   savedPaint();
@@ -110,7 +110,7 @@ window.addEventListener('scroll', function() {
   _threadTimer = setTimeout(threadWrite, THREAD_SETTLE_MS);
 }, { passive: true });
 // A saved item's list chips for an app's Saved view: All, Liked and each list
-// holding something of this app's, with how many. on is the list shown ('' all).
+// holding something of this app's, with how many; All is what is saved or liked. on is the list shown ('' all).
 function savedListChips(app, on, fn) {
   var S = saved(), w = STR.sv || {};
   if (!S) return '';
@@ -120,7 +120,7 @@ function savedListChips(app, on, fn) {
   };
   var lists = S.lists({ app: app }).filter(function(l) { return l.count; });
   if (!lists.length) return '';
-  return chip('', w.all, S.itemsFor({ app: app }).length) + lists.map(function(l) { return chip(l.id, l.builtin ? w.liked : l.name, l.count); }).join('');
+  return chip('', w.all, S.itemsFor({ app: app, withLiked: true }).length) + lists.map(function(l) { return chip(l.id, l.builtin ? w.liked : l.name, l.count); }).join('');
 }
 // An app's Saved view (ZimiExchange's, Reddot's): what the app keeps, the
 // latest first, or one list's in its order, with the lists as chips, drawn
@@ -134,11 +134,11 @@ function savedListChips(app, on, fn) {
 function savedView(app, toRow) {
   var v = { on: false, list: '' };
   var el = function(id) { return document.getElementById(id); };
-  v.count = function() { var S = saved(); return S ? S.itemsFor({ app: app }).length : 0; };
+  v.count = function() { var S = saved(); return S ? S.itemsFor({ app: app, withLiked: true }).length : 0; };
   v.draw = function() {
     var S = saved();
     if (!S) return;
-    var items = S.itemsFor(v.list ? { list: v.list, app: app } : { app: app });
+    var items = S.itemsFor(v.list ? { list: v.list, app: app } : { app: app, withLiked: true });
     var chips = document.querySelector('#list [data-sv-lists]');
     el('shelves').hidden = true;
     el('list').hidden = false;
@@ -239,8 +239,3 @@ var appChrome = (function() {
 var _place = 0;
 function keepPlace() { _place = window.scrollY || 0; }
 function returnToPlace() { window.scrollTo(0, _place); _place = 0; }
-// No pinch-zoom, as in the shell: iOS Safari ignores user-scalable=no for a
-// pinch, so its gesture events are cancelled.
-['gesturestart', 'gesturechange'].forEach(function(type) {
-  document.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
-});

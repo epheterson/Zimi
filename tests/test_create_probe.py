@@ -1,13 +1,11 @@
-"""The pre-flight probe, and the web doors that closed with the server-path modes.
+"""The pre-flight probe, and the web doors that read the server's disk.
 
 Round 1's Create page was, in Eric's words, "a shot in the dark": you typed a
 path you could not see and a language code you had to know, then waited. The
 probe is the cure, so the tests are about whether it actually tells the truth
-in advance. Both server-path modes left the web: folder in round 3 ("do remove
-folder I said that would be CLI only") and archive import right after ("remove
-archive as well only in cli"). So the other half of this file is about those
-doors refusing cleanly and pointing at the CLI instead of half-working, and
-about the directory picker that fed folder mode being gone entirely.
+in advance. The modes that read the server's disk (folder, import) take a
+name picked from a listing under the create root, never a typed path, and the
+old directory picker that took one stays gone.
 """
 
 import os
@@ -19,6 +17,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.manage as manage  # noqa: E402
+import zimi.server as server  # noqa: E402
 
 
 class _Handler:
@@ -60,11 +59,8 @@ def no_job():
 
 @pytest.fixture(autouse=True)
 def create_root(tmp_path, monkeypatch):
-    """ZIMI_CREATE_ROOT survives only as a fact the create page reports (the
-    status probe echoes it) — no web mode acts on it any more, since the two
-    modes that read a server path are both CLI-only now. Set to the test's own
-    tmp_path so the one test that checks the reported value has something to
-    read; harmless everywhere else."""
+    """ZIMI_CREATE_ROOT is where the import and folder pickers look. Set to
+    the test's own tmp_path so nothing here ever lists a real folder."""
     monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(tmp_path))
     return tmp_path
 
@@ -133,30 +129,40 @@ def test_language_comes_from_the_documents_own_declaration():
     assert manage._detect_html_language("<html>no claim</html>") is None
 
 
-# ── folder mode is CLI-only ─────────────────────────────────────────────────
+# ── folder mode: a picked path, through both doors ──────────────────────────
 #
-# Eric, round 2: "The folder flow feels sketchy I don't love showing the whole
-# file system there. Maybe folder is CLI only?" — and round 3: "do remove
-# folder I said that would be CLI only." So the web refuses the MODE, through
-# both doors, with the sentence that names the door still open. The refusal
-# must not depend on the root or on who asks: it is not a permissions matter,
-# the feature simply does not exist here.
+# Folder mode came back (Eric, 2026-09-30) as a tree picker under the create
+# root. Both doors (run and probe) take only a path relative to that root and
+# refuse a typed absolute path or a walk out, whoever the root is.
 
 
-def test_folder_mode_is_refused_from_the_web(tmp_path):
+def test_folder_mode_refuses_a_typed_path_through_both_doors(tmp_path, monkeypatch):
     (tmp_path / "docs").mkdir()
+    monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
     for path in ("/manage/create", "/manage/create/probe"):
-        h = _post(path, {"mode": "folder", "source": str(tmp_path / "docs")})
-        assert h.status == 400, path
-        assert "CLI-only" in h.body["error"], path
-        assert "zimi create" in h.body["error"], path
+        for source in (str(tmp_path / "docs"), "../" + tmp_path.name + "/docs"):
+            h = _post(path, {"mode": "folder", "source": source})
+            assert h.status == 400, (path, source)
+            assert "inside the folder" in h.body["error"], path
 
 
-def test_the_folder_refusal_does_not_depend_on_the_root(monkeypatch, tmp_path):
-    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
-    h = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
-    assert h.status == 400
-    assert "CLI-only" in h.body["error"]
+def test_folder_probe_counts_families_and_reads_the_sidecar(tmp_path, monkeypatch):
+    lib = tmp_path  # the create root (the create_root fixture)
+    (lib / "box").mkdir(parents=True)
+    (lib / "box" / "zimi.txt").write_text("Title: The Box\nPublisher: Me\n", encoding="utf-8")
+    (lib / "box" / "a.md").write_text("# A", encoding="utf-8")
+    (lib / "box" / "b.pdf").write_bytes(b"%PDF-1.4")
+    (lib / "box" / "b.txt").write_text("Author: Someone\n", encoding="utf-8")
+    (lib / "box" / "c.mkv").write_bytes(b"x")
+    (lib / "box" / "d.zip").write_bytes(b"x")
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
+    b = _post("/manage/create/probe", {"mode": "folder", "source": "box"}).body
+    assert b["ok"] is True
+    assert b["families"] == {"page": 1, "document": 1, "video": 1}
+    assert b["title"] == "The Box" and b["metadata"]["publisher"] == "Me"
+    assert b["described"] == 1 and b["plays_some"] == 1
+    assert b["unsupported_examples"] == [{"path": "d.zip", "reason": "archive"}]
 
 
 def test_probe_reuses_the_real_validator(tmp_path, monkeypatch):
@@ -215,20 +221,17 @@ def test_a_create_error_during_probe_reaches_the_client_verbatim(monkeypatch):
     assert "zimit" in b["detail"]
 
 
-# ── the folder picker is gone ───────────────────────────────────────────────
+# ── the old folder picker is gone ───────────────────────────────────────────
 #
-# The lister existed solely to feed folder mode's form. With the mode CLI-only
-# it would be a directory-disclosure surface serving nothing, so the route
-# refuses outright — cleanly, with the CLI pointer, and without listing so
-# much as one entry, whoever asks and whatever the root says.
+# /manage/create/browse took a server path. It stays a 410 that discloses
+# nothing; the tree picker (/manage/create/tree) replaced it.
 
 
-def test_browse_refuses_and_names_the_cli(tmp_path):
+def test_browse_refuses_and_names_its_successor(tmp_path):
     (tmp_path / "alpha").mkdir()
     h = _get("/manage/create/browse", {"path": [str(tmp_path)]})
     assert h.status == 410
-    assert "CLI-only" in h.body["error"]
-    assert "zimi create" in h.body["error"]
+    assert "/manage/create/tree" in h.body["error"]
     assert "entries" not in h.body
     assert "alpha" not in repr(h.body)  # nothing about the disk is disclosed
 

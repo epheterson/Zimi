@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.13.0] - 2026-10-01
+
+### Added
+
+- Dictionary: one word across every installed Wiktionary, spoken in its own language.
+- Create a ZIM from a folder on the server: pick any part of it, with optional `zimi.txt` metadata.
+- `zimi-mcp`: the MCP server and search as their own small package; `zimi mcp` serves three tools by default.
+- Find in page while reading.
+- Search results highlight matched words and group by source.
+- PDFs: Zimi's own reader with contents, page thumbnails, two-page spreads, rotate, About this PDF and highlights.
+- Wikisource works and textbooks open in the book reader; math renders.
+- Almanac: a live Moon and 3D view on the page's clock, a live sky, tides, the Sun with sunspots, and Tables and Calculations: sun, moon, tides, navigation and eclipse tables, and a sight reduction, sundial, calendar, time zone, distance and units calculator.
+- Back returns to where you came from: the Almanac, a search, an app.
+- The AppImage updates itself.
+
+### Changed
+
+- Save is one verb in every app; Like is separate.
+- Searches send far fewer requests, and searches from your own network are never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
+- Text size is five steps.
+- Sign-in comes before Manage opens.
+- Download names: `Zimi-<version>-<os>-<arch>`.
+- Pinch zoom works again on phones.
+- Accessibility fixes apply to every article; the setting is gone.
+- Links: "outside the ZIM" and "outside your library" ([#99](https://github.com/epheterson/Zimi/issues/99)).
+
+### Fixed
+
+- `-wiki` leaves out MediaWiki ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- Like and Save on different devices never undo each other.
+- Several timing bugs on slow devices: late searches, Manage opening unasked, apps reappearing after Back.
+- Right-to-left paths, dark-mode formulas, clipped wide pictures, the Auto swatch.
+
 ## [1.12.0] - 2026-09-30
 
 ### Added

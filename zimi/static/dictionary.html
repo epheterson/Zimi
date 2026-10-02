@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dictionary</title>
+<!--@apps.css@-->
+<style>
+  /* One word, as every installed Wiktionary describes it, a language at a
+     time. The word is set large in a book face; what it means is the body;
+     where it came from and the words around it are quieter, under it. Every
+     word on the page is a way to the next one. */
+  :root { --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif", serif;
+    --ipa: "Charis SIL", "Doulos SIL", "Gentium Plus", "Gentium", "Segoe UI", "Lucida Grande", "DejaVu Sans", system-ui, sans-serif; }
+  .page { max-width: 760px; }
+  /* A word you can follow: there, not shouting. The definitions are read
+     first; the links are found when wanted. */
+  a.w { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, currentColor 22%, transparent); text-underline-offset: 3px; cursor: pointer; }
+  a.w:hover, a.w:focus-visible { color: var(--amber); text-decoration-color: var(--amber); }
+  [lang] { unicode-bidi: isolate; }
+
+  /* Where you have been: the words that led here, each a step back. */
+  .trail { display: flex; align-items: center; gap: 2px 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; font-size: 13px; color: var(--text2); white-space: nowrap; }
+  .trail::-webkit-scrollbar { display: none; }
+  .trail button { border: 0; background: none; padding: 6px 2px; color: var(--text2); cursor: pointer; font: inherit; unicode-bidi: isolate; }
+  .trail button:hover { color: var(--amber); }
+  .trail .now { color: var(--text); font-weight: 600; padding: 6px 2px; unicode-bidi: isolate; }
+  .trail .chev { opacity: .5; }
+
+  /* The word. */
+  .hw { margin: 2px 0 18px; }
+  .hw h1 { font: 600 40px/1.1 var(--serif); margin: 0; color: var(--text); overflow-wrap: anywhere; unicode-bidi: plaintext; }
+  .hw .also { margin: 8px 0 0; font-size: 13px; color: var(--text2); }
+  .hw .actions { margin: 14px 0 0; }
+  @media (max-width: 480px) { .hw h1 { font-size: 34px; } }
+
+  /* A language the word is in: its name, how it sounds, then each
+     Wiktionary's account of it. */
+  .lang { margin: 0 0 26px; }
+  .lang > summary, .lang-h { list-style: none; display: flex; align-items: baseline; gap: 10px; padding: 10px 0 8px; border-top: 1px solid var(--border); cursor: default; }
+  .lang > summary::-webkit-details-marker { display: none; }
+  .lang-h h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+  .lang-h .peek { flex: 1; min-width: 0; font-size: 13.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+  .lang-h .peek:empty { display: none; }
+  details.lang > summary { cursor: pointer; }
+  details.lang > summary::after { content: ''; flex: none; width: 7px; height: 7px; margin-inline-start: auto; border-inline-end: 1.5px solid var(--text2); border-bottom: 1.5px solid var(--text2); transform: rotate(45deg) translateY(-3px); }
+  details.lang[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+  details.lang:not([open]) { margin-bottom: 0; }
+  details.lang:not([open]) + details.lang:not([open]) > summary { border-top-style: dotted; }
+
+  /* How it sounds: the IPA, and a way to hear it. */
+  .say { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 4px 0 14px; }
+  .spk { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; min-width: 34px; padding: 0 12px 0 10px; border-radius: 17px; border: 0; background: var(--amber); color: #fff; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12.5px; line-height: 1; }
+  .spk svg { width: 16px; height: 16px; flex: none; }
+  .spk.on { filter: brightness(1.12); box-shadow: 0 0 0 4px var(--amber-glow); }
+  .spk.sm { height: 26px; min-width: 26px; padding: 0 8px; background: var(--amber-glow); color: var(--amber); }
+  .spk.sm svg { width: 13px; height: 13px; }
+  .ipa { font-family: var(--ipa); font-size: 16px; color: var(--text); unicode-bidi: isolate; direction: ltr; }
+  .ipas { display: flex; flex-direction: column; gap: 4px; margin: 0 0 14px; }
+  .ipas .ipr { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+  .ipas .more-ipa { border: 0; background: none; padding: 2px 0; color: var(--text2); font: inherit; font-size: 12.5px; cursor: pointer; text-align: start; }
+  .ipas .acc { font-size: 12px; color: var(--text2); min-width: 0; }
+  .novoice { font-size: 12.5px; color: var(--text2); }
+  .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
+  .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
+
+  /* One Wiktionary's account. */
+  .src-h { font-size: 11.5px; color: var(--text2); margin: 16px 0 6px; display: flex; align-items: center; gap: 6px; }
+  .src-h img { width: 14px; height: 14px; border-radius: 4px; }
+  .src-h:first-child { margin-top: 0; }
+  .ety { font-size: 13.5px; line-height: 1.55; color: var(--text2); margin: -4px 0 18px; unicode-bidi: plaintext; overflow-wrap: anywhere; }
+  .ety .k, .sh { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+  .ety .k { margin-inline-end: 6px; }
+  .pos { margin: 0 0 18px; }
+  .pos-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 6px; }
+  .pos-h .p { font: italic 600 15px/1.3 var(--serif); color: var(--text); }
+  .pos-h .hl { font-size: 13px; color: var(--text2); unicode-bidi: plaintext; overflow-wrap: anywhere; }
+  ol.senses { margin: 0; padding-inline-start: 22px; }
+  ol.senses > li { margin: 0 0 10px; padding-inline-start: 4px; font-size: 15px; line-height: 1.5; unicode-bidi: plaintext; overflow-wrap: anywhere; }
+  ol.senses > li::marker { color: var(--text2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  ol.senses ol.senses { margin-top: 6px; list-style: lower-alpha; }
+  ol.senses ol.senses > li { font-size: 14px; }
+  .ex + .ex { margin-top: 0; padding-top: 4px; }
+  .ex { margin: 4px 0 0; padding-inline-start: 12px; border-inline-start: 2px solid var(--border); font: italic 14px/1.45 var(--serif); color: var(--text2); unicode-bidi: plaintext; }
+  .nym { margin: 4px 0 0; font-size: 13px; color: var(--text2); }
+  .nym .k { margin-inline-end: 4px; }
+
+  /* The words around it: synonyms, derived terms, rhymes; each a door. */
+  .words { margin: 10px 0 0; }
+  .words .sh { margin: 0 0 6px; }
+  .cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cloud a, .cloud button { font-size: 13px; padding: 4px 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; unicode-bidi: isolate; font-family: inherit; }
+  .cloud a:hover, .cloud a:focus-visible { border-color: var(--amber); color: var(--amber); }
+  .cloud button { color: var(--text2); background: none; border-style: dashed; }
+
+  /* Translations into the reader's languages, a sense at a time. */
+  .trans { margin: 12px 0 0; }
+  .trans .gl { font-size: 12.5px; color: var(--text2); margin: 8px 0 4px; unicode-bidi: plaintext; }
+  .trans dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; font-size: 14px; }
+  .trans dt { color: var(--text2); font-size: 13px; }
+  .trans dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .trans dd .tr { color: var(--text2); font-size: 12px; margin-inline-start: 3px; }
+  .trans .all { margin: 8px 0 0; border: 0; background: none; padding: 6px 0; color: var(--amber); font-family: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+
+  /* The front: today's word, then yours. */
+  .wotd { display: block; padding: 18px 18px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); cursor: pointer; color: inherit; margin: 0 0 26px; }
+  .wotd:hover, .wotd:focus-visible { border-color: var(--amber); outline: none; }
+  .wotd .k { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); }
+  .wotd .w { font: 600 32px/1.15 var(--serif); margin: 6px 0 2px; color: var(--text); overflow-wrap: anywhere; unicode-bidi: plaintext; }
+  .wotd .p { font: italic 14px/1.3 var(--serif); color: var(--text2); }
+  .wotd .b { font-size: 14.5px; line-height: 1.5; margin: 8px 0 0; unicode-bidi: plaintext; }
+  .wotd .s { font-size: 11.5px; color: var(--text2); margin: 10px 0 0; }
+  .shelf-h h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+  .dicts { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text2); }
+  .dicts div { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .dicts img { width: 16px; height: 16px; border-radius: 4px; }
+  .dicts .n { margin-inline-start: auto; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .hint { color: var(--text2); font-size: 13.5px; margin: 0 0 22px; }
+
+  /* What the box finds while you type. */
+  .sug { display: flex; flex-direction: column; }
+  .sug a { display: flex; align-items: baseline; gap: 10px; padding: 11px 4px; border-top: 1px solid var(--border); color: var(--text); text-decoration: none; cursor: pointer; }
+  .sug a:first-child { border-top: 0; }
+  .sug a:hover .t, .sug a:focus-visible .t { color: var(--amber); }
+  .sug .t { font: 600 17px/1.3 var(--serif); unicode-bidi: plaintext; overflow-wrap: anywhere; min-width: 0; }
+  .sug .in { margin-inline-start: auto; font-size: 11px; color: var(--text2); white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
+
+  .sk { height: 14px; border-radius: 7px; background: var(--surface2); margin: 10px 0; }
+  .sk.big { height: 38px; width: 46%; margin: 4px 0 22px; }
+  .note { font-size: 13px; color: var(--text2); }
+  @media (pointer: coarse) {
+    .trail button, .trail .now { padding-block: 12px; }
+    .cloud a, .cloud button { padding: 8px 12px; }
+    .spk.sm { height: 34px; min-width: 34px; }
+    .trans .all { padding-block: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="trail" id="trail" hidden></nav>
+  <div id="view"></div>
+</div>
+<!--@apps.js@-->
+<script>
+// Dictionary. A word as every installed Wiktionary describes it, grouped by
+// the language the word is in (not the language of the Wiktionary), the
+// reader's own languages first; each word on the page opens the next, and
+// the trail above says how you got here. Zimi's top bar drives
+// dictSearch(q) as you type and dictGo(q) on Enter.
+var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent: 'Recent', saved_words: 'Saved', sources: 'Your dictionaries',
+  etymology: 'Etymology', translations: 'Translations', all_translations: 'All {n} translations', fewer_translations: 'Only my languages',
+  synonyms: 'Synonyms', antonyms: 'Antonyms', homophones: 'Homophones', rhymes: 'Rhymes',
+  hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
+  recording: 'Recording', no_voice: 'No {lang} voice on this device', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
+  entries: '{n} words', retry: 'Retry', catalog: 'Browse the catalog' });
+
+// ── pure parts (tests/test_dictionary_page.cjs runs these) ───────────────
+var WORDS_SHOWN = 14;     // of a list of words, before "n more"
+var IPA_SHOWN = 3;       // accents shown before "n more"
+var RECENT_SHOWN = 16;
+var SAVED_SHOWN = 30;
+var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is given this long
+var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
+var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
+
+// A Wiktionary's code for a language as a speech engine knows it. English
+// Wiktionary names Mandarin cmn and Cantonese yue; voices are zh-CN and
+// zh-HK. Norwegian is no, nb or nn on one side and nb or no on the other.
+var SPEECH_CODES = { cmn: 'zh-CN', zh: 'zh-CN', yue: 'zh-HK', arb: 'ar', iw: 'he', 'in': 'id', tl: 'fil', nn: 'nb', no: 'nb' };
+var SAME_LANGUAGE = { nb: ['nb', 'no'], he: ['he', 'iw'], id: ['id', 'in'], fil: ['fil', 'tl'] };
+// An accent as a Wiktionary labels it, as a region: "General American" is
+// en-US, "Received Pronunciation" en-GB, French Wiktionary's "France" fr-FR,
+// "Canada" en-CA or fr-CA by the word's language. The first that matches.
+var ACCENT_REGIONS = [
+  [/\b(US|General American|American|cot.caught)/i, 'US'],
+  [/[ÉE]tats-Unis/i, 'US'],
+  [/Royaume-Uni|Angleterre|[ÉE]cosse/i, 'GB'],
+  [/\b(General Australian|Australia)/i, 'AU'],
+  [/New Zealand/i, 'NZ'],
+  [/\b(UK|Received Pronunciation|RP|Southern England|Standard Southern British|British|England|Estuary|Cockney|Scotland|Scottish|Wales|Welsh)\b/i, 'GB'],
+  [/\b(Canada|Canadian|Qu[ée]bec)/i, 'CA'],
+  [/\b(Ireland|Irish)\b/i, 'IE'],
+  [/\bIndia/i, 'IN'],
+  [/South Africa/i, 'ZA'],
+  [/\b(Brazil|Brasil|Brazilian)/i, 'BR'],
+  [/\bPortugal|European Portuguese/i, 'PT'],
+  [/\b(Spain|España|Castilian|Peninsular)/i, 'ES'],
+  [/\b(Mexico|México|Latin America|Latinoamérica)/i, 'MX'],
+  [/\b(Belgique|Belgium)/i, 'BE'],
+  [/\b(Suisse|Switzerland)/i, 'CH'],
+  [/\b(Austria|Österreich)/i, 'AT'],
+  [/\b(France|Paris)\b/i, 'FR'],
+  [/\b(Germany|Deutschland)\b/i, 'DE'],
+  [/\bTaiwan/i, 'TW'],
+  [/\bHong Kong/i, 'HK']
+];
+// Voices made to amuse, not to pronounce (macOS ships them under en-US).
+var NOVELTY_VOICES = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Pipe Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Deranged|Hysterical|Fred|Junior|Ralph|Kathy|Princess)\b/i;
+
+// Languages written right to left, among those a Wiktionary is written in
+// or a word is: Arabic and its spoken forms, Hebrew, Persian, Urdu, Yiddish...
+var RTL_LANGS = ['ar', 'arz', 'apc', 'ajp', 'ary', 'aeb', 'arq', 'acm', 'he', 'iw', 'fa', 'ur', 'yi', 'ps', 'ckb', 'sd', 'ug', 'dv', 'syc', 'arc'];
+function dirOf(code) { return RTL_LANGS.indexOf(primaryOf(code)) >= 0 ? 'rtl' : 'ltr'; }
+function primaryOf(code) { return String(code || '').split(/[-_]/)[0].toLowerCase(); }
+function regionOf(tag) { var p = String(tag || '').split(/[-_]/); return p.length > 1 ? p[p.length - 1].toUpperCase() : ''; }
+// The tag a word's language is spoken by, "" for a language no voice could
+// have (a reconstruction, a dead language's code with a hyphen: "gem-pro").
+function speechTag(code) {
+  code = String(code || '').trim();
+  if (!code) return '';
+  var low = code.toLowerCase();
+  if (SPEECH_CODES[low]) return SPEECH_CODES[low];
+  if (/-pro$/.test(low)) return '';
+  return code;
+}
+function accentRegion(accent) {
+  for (var i = 0; i < ACCENT_REGIONS.length; i++) if (ACCENT_REGIONS[i][0].test(accent || '')) return ACCENT_REGIONS[i][1];
+  return '';
+}
+function sameLanguage(a, b) {
+  if (a === b) return true;
+  var g = SAME_LANGUAGE[a] || SAME_LANGUAGE[b];
+  return !!g && g.indexOf(a) >= 0 && g.indexOf(b) >= 0;
+}
+// The voice to say a word in code, with the accent's region where one has
+// it: {voice, exact} (exact: the region matched), or null when no voice
+// speaks the language. Never another language's voice: a French word read
+// by an English voice is a wrong answer said with confidence.
+function pickVoice(voices, code, accent) {
+  var tag = speechTag(code);
+  if (!tag) return null;
+  var want = primaryOf(tag), region = accentRegion(accent) || regionOf(tag);
+  // A Chinese voice is the region's: Cantonese is not Mandarin.
+  var strictRegion = want === 'zh';
+  var best = null, bestScore = -1;
+  (voices || []).forEach(function(v) {
+    if (!v || !v.lang || NOVELTY_VOICES.test(v.name || '')) return;
+    if (!sameLanguage(primaryOf(v.lang), want)) return;
+    var exact = !!region && regionOf(v.lang) === region;
+    if (strictRegion && region && !exact) return;
+    var score = (exact ? 8 : 0) + (v.localService ? 2 : 0) + (/premium|enhanced|natural|neural/i.test(v.name || '') ? 3 : 0) + (v['default'] ? 1 : 0);
+    if (score > bestScore) { best = { voice: v, exact: exact }; bestScore = score; }
+  });
+  return best;
+}
+// The reader's languages, first the one Zimi speaks, then the browser's.
+function readerLangs(uiLang, browserLangs) {
+  var out = [];
+  [uiLang].concat(browserLangs || []).forEach(function(l) { var p = primaryOf(l); if (p && out.indexOf(p) < 0) out.push(p); });
+  return out;
+}
+// The languages a word is in, the reader's first (in their order), then as
+// the Wiktionaries gave them.
+function orderGroups(groups, langs) {
+  var rank = function(g) { var i = langs.indexOf(primaryOf(g.code)); return i < 0 ? langs.length : i; };
+  return groups.map(function(g, i) { return { g: g, i: i }; })
+    .sort(function(a, b) { return (rank(a.g) - rank(b.g)) || (a.i - b.i); })
+    .map(function(x) { return x.g; });
+}
+// "eau#French" -> {w: 'eau', sec: 'French'}.
+function parseTarget(t) {
+  t = String(t || '');
+  var i = t.indexOf('#');
+  return i < 0 ? { w: t, sec: '' } : { w: t.slice(0, i), sec: t.slice(i + 1) };
+}
+// Which language group a link's section names: by the heading's name in
+// any Wiktionary that has it, or by code (French Wiktionary's "#fr").
+function groupFor(groups, sec) {
+  if (!sec) return -1;
+  var s = sec.toLowerCase();
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i];
+    if ((g.code || '').toLowerCase() === s) return i;
+    for (var z in g.names) if (String(g.names[z]).toLowerCase() === s) return i;
+  }
+  return -1;
+}
+// What can be heard for a language: its recordings, then each IPA row.
+function soundsOf(group) {
+  // Every recording; the IPA of the first Wiktionary that writes it down
+  // (two editions transcribe one accent two ways: /ˈwɔː.tə/ and \\ˈwɔː.tə\\).
+  var ipa = [], seen = {}, audio = [];
+  group.entries.forEach(function(e) {
+    (e.pron.audio || []).forEach(function(a) { audio.push(a); });
+    if (ipa.length) return;
+    (e.pron.ipa || []).forEach(function(r) {
+      var k = r.ipa.join(' ');
+      if (!seen[k]) { seen[k] = 1; ipa.push(r); }
+    });
+  });
+  return { ipa: ipa, audio: audio };
+}
+// A word's first sense, for a language folded away.
+function firstSense(group) {
+  for (var i = 0; i < group.entries.length; i++) {
+    var gs = group.entries[i].groups;
+    for (var j = 0; j < gs.length; j++) for (var k = 0; k < gs[j].parts.length; k++) {
+      var s = gs[j].parts[k].senses[0];
+      if (s) return plain(s.d);
+    }
+  }
+  return '';
+}
+// A definition cut to fit a card ends in an ellipsis, not mid-phrase.
+function cutShort(t) { t = String(t || '').trim(); return /[.!?。।)”"]$/.test(t) ? t : t + '…'; }
+function plain(segs) { return (segs || []).map(function(s) { return typeof s === 'string' ? s : s[0]; }).join(''); }
+function fill(s, vars) { return String(s || '').replace(/\{(\w+)\}/g, function(m, k) { return vars[k] != null ? vars[k] : m; }); }
+// Today on the reader's clock, as the server asks for it.
+function dayStamp(d) { d = d || new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); }
+// The day's word: the one from a Wiktionary in the reader's language first.
+function pickToday(words, langs) {
+  if (!words || !words.length) return null;
+  for (var i = 0; i < langs.length; i++) for (var j = 0; j < words.length; j++) if (primaryOf(words[j].lang) === langs[i]) return words[j];
+  return words[0];
+}
+
+// ── views ────────────────────────────────────────────────────────────────
+var LANGS = readerLangs(STR.lang, (typeof navigator !== 'undefined' && navigator.languages) || []);
+var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null;
+function $(id) { return document.getElementById(id); }
+function cur() { return _stack[_stack.length - 1]; }
+var FAILED = { failed: true };
+function get(url) { return fetch(url).then(function(r) { return r.ok ? r.json() : FAILED; }).catch(function() { return FAILED; }); }
+function langName(code, fallback) {
+  if (code) {
+    try {
+      var n = new Intl.DisplayNames([STR.lang || 'en'], { type: 'language', fallback: 'none' }).of(code);
+      if (n && n.toLowerCase() !== code.toLowerCase()) return n;
+    } catch (e) {}
+  }
+  return fallback || code || '';
+}
+function englishName(code) {
+  try { return new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' }).of(code) || ''; } catch (e) { return ''; }
+}
+function groupName(g) {
+  var names = Object.keys(g.names || {}).map(function(z) { return g.names[z]; });
+  return langName(g.code, names[0]);
+}
+function wordUrl(w) { return '/?dictionary=' + encodeURIComponent(w); }
+function wordLink(text, target, lang) {
+  return '<a class="w" href="' + esc(wordUrl(parseTarget(target).w)) + '" data-w="' + esc(target) + '"' + (lang ? ' lang="' + esc(lang) + '"' : '') + '>' + esc(text) + '</a>';
+}
+function segHtml(segs) {
+  return (segs || []).map(function(s) { return typeof s === 'string' ? esc(s) : wordLink(s[0], s[1]); }).join('');
+}
+function failedHtml(msg, retry) {
+  return '<div class="empty failed" role="alert">' + esc(msg) + '<button type="button" class="more" onclick="' + retry + '">' + esc(STR.retry) + '</button></div>';
+}
+
+// The trail: the words this visit went through, each a step back to it.
+function renderTrail() {
+  var words = _stack.filter(function(v) { return v.v === 'word'; });
+  var t = $('trail');
+  if (words.length < 2 || cur().v !== 'word') { t.hidden = true; t.innerHTML = ''; return; }
+  t.hidden = false;
+  t.innerHTML = words.map(function(v, i) {
+    if (i === words.length - 1) return '<span class="now" aria-current="page">' + esc(v.w) + '</span>';
+    return '<button type="button" onclick="toTrail(' + i + ')">' + esc(v.w) + '</button><span class="chev" aria-hidden="true"></span>';
+  }).join('');
+  t.scrollLeft = document.documentElement.dir === 'rtl' ? -t.scrollWidth : t.scrollWidth;
+}
+function toTrail(i) {
+  var n = -1;
+  for (var k = 0; k < _stack.length; k++) if (_stack[k].v === 'word' && ++n === i) { _stack = _stack.slice(0, k + 1); break; }
+  show(true);
+}
+
+function show(told) {
+  var v = cur();
+  renderTrail();
+  if (v.v === 'home') { renderHome(); if (!told) tell({ zimi: 'dictionary-home' }); savedBar(null); return; }
+  if (v.v === 'search') return renderSearch(v);
+  if (v.v === 'word') return renderWord(v, told);
+}
+function go(view) {
+  // From the list the box found, the word replaces the list: Back is the
+  // word before it, not the list.
+  if (cur().v === 'search') _stack.pop();
+  _stack.push(view);
+  window.scrollTo(0, 0);
+  show();
+}
+function back() {
+  if (_stack.length > 1) { _stack.pop(); window.scrollTo(0, 0); show(); return true; }
+  return false;
+}
+function openWord(target) {
+  var t = parseTarget(target);
+  if (!t.w) return;
+  go({ v: 'word', w: t.w, sec: t.sec });
+}
+
+// Zimi's language changed: the word on screen, and the word that translates
+// it into that language (the first the Wiktionaries give, most-used sense
+// first), or '' when none does. The shell opens whichever it gets.
+function dictCurrent() { var v = cur(); return v.v === 'word' ? v.w : ''; }
+function dictTranslation(code) {
+  var w = dictCurrent(), want = primaryOf(code), name = englishName(want);
+  if (!w || !want) return Promise.resolve('');
+  var url = '/dictionary/word?w=' + encodeURIComponent(w) + '&langs=' + encodeURIComponent(want) + '&names=' + encodeURIComponent(name);
+  return get(url).then(function(d) {
+    if (d === FAILED || !d.found) return '';
+    for (var a = 0; a < d.langs.length; a++) for (var e = 0; e < (d.langs[a].entries || []).length; e++) {
+      var gs = d.langs[a].entries[e].groups || [];
+      for (var g = 0; g < gs.length; g++) for (var p = 0; p < gs[g].parts.length; p++) {
+        var ts = gs[g].parts[p].trans || [];
+        for (var t = 0; t < ts.length; t++) for (var i = 0; i < ts[t].items.length; i++) {
+          var it = ts[t].items[i];
+          var mine = it.lang ? primaryOf(it.lang) === want : !!name && it.name.toLowerCase() === name.toLowerCase();
+          if (mine && it.words.length) return parseTarget(it.words[0].t).w || '';
+        }
+      }
+    }
+    return '';
+  });
+}
+
+// ── the front ────────────────────────────────────────────────────────────
+function recentWords() {
+  var S = saved(), seen = {};
+  return (S ? S.continued({ app: 'dictionary' }) : []).filter(function(p) {
+    var k = p.title; if (!k || seen[k]) return false; seen[k] = 1; return true;
+  }).slice(0, RECENT_SHOWN);
+}
+function savedWords() {
+  var S = saved();
+  return (S ? S.itemsFor({ app: 'dictionary' }) : []).slice(0, SAVED_SHOWN);
+}
+function cloudOf(items, title) {
+  if (!items.length) return '';
+  return '<section class="shelf"><div class="shelf-h"><h2>' + esc(title) + '</h2></div><div class="cloud">' +
+    items.map(function(x) { return wordLink(x.title, x.title, x.meta && x.meta.lang); }).join('') + '</div></section>';
+}
+function renderHome() {
+  var h = _home;
+  if (!h) { $('view').innerHTML = '<div class="sk big"></div><div class="sk"></div><div class="sk" style="width:70%"></div>'; return; }
+  if (h === FAILED) { $('view').innerHTML = failedHtml(STR.load_failed, 'load()'); return; }
+  if (!h.wiktionaries.length) {
+    $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
+    return;
+  }
+  var html = '';
+  var w = _today && _today !== FAILED ? pickToday(_today.words, LANGS) : null;
+  if (w) {
+    var src = h.wiktionaries.filter(function(x) { return x.name === w.zim; })[0];
+    html += '<a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '"><div class="k">' + esc(STR.word_of_day) + '</div>' +
+      '<div class="w" lang="' + esc(w.lang) + '">' + esc(w.w) + '</div>' + (w.pos ? '<div class="p">' + esc(w.pos) + '</div>' : '') +
+      (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>';
+  } else {
+    html += '<p class="hint">' + esc(STR.hint) + '</p>';
+  }
+  html += cloudOf(recentWords(), STR.recent);
+  html += cloudOf(savedWords(), STR.saved_words);
+  html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.sources) + '</h2></div><div class="dicts">' + h.wiktionaries.map(function(x) {
+    return '<div>' + zimIcon(x.name) + '<span>' + esc(x.title) + '</span><span class="n">' + esc(fill(STR.entries, { n: Number(x.entries || 0).toLocaleString(STR.lang) })) + '</span></div>';
+  }).join('') + '</div></section>';
+  $('view').innerHTML = html;
+}
+function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
+
+// ── what the box finds ───────────────────────────────────────────────────
+function dictSearch(q) {
+  q = String(q || '').trim();
+  var top = cur();
+  if (!q) { if (top.v === 'search') back(); return; }
+  if (top.v === 'search') { top.q = q; show(); return; }
+  _stack.push({ v: 'search', q: q });
+  show();
+}
+function dictGo(q) {
+  q = String(q || '').trim();
+  if (q) openWord(q);
+}
+function renderSearch(v) {
+  var seq = ++_seq;
+  savedBar(null);
+  get('/dictionary/suggest?q=' + encodeURIComponent(v.q)).then(function(d) {
+    if (seq !== _seq) return;
+    if (d === FAILED) { $('view').innerHTML = failedHtml(STR.load_failed, 'show()'); return; }
+    var langOf = {};
+    (_home && _home.wiktionaries || []).forEach(function(x) { langOf[x.name] = x.lang; });
+    var rows = d.words.map(function(x) {
+      var in_ = x.zims.map(function(z) { return langOf[z] || ''; }).filter(function(l, i, a) { return l && a.indexOf(l) === i; }).join(' · ');
+      return '<a href="' + esc(wordUrl(x.w)) + '" data-w="' + esc(x.w) + '"><span class="t">' + esc(x.w) + '</span><span class="in">' + esc(in_) + '</span></a>';
+    }).join('');
+    // What was typed is a way in too, even when no index lists it yet.
+    var typed = d.words.some(function(x) { return x.w === v.q; }) ? '' :
+      '<a href="' + esc(wordUrl(v.q)) + '" data-w="' + esc(v.q) + '"><span class="t">' + esc(v.q) + '</span><span class="in chev"></span></a>';
+    $('view').innerHTML = '<div class="sug" role="list">' + typed + rows + '</div>';
+  });
+}
+
+// ── a word ───────────────────────────────────────────────────────────────
+function wordKey(w, every) { return w + '\n' + (every ? 'all' : ''); }
+function lookupUrl(w, every) {
+  var names = LANGS.map(englishName).filter(Boolean);
+  return '/dictionary/word?w=' + encodeURIComponent(w) + '&langs=' + encodeURIComponent(LANGS.join(',')) +
+    '&names=' + encodeURIComponent(names.join(',')) + (every ? '&tr=all' : '');
+}
+function renderWord(v, told) {
+  var seq = ++_seq;
+  var key = wordKey(v.w, v.every);
+  document.title = v.w;
+  if (_words[key]) return drawWord(v, _words[key], told);
+  $('view').innerHTML = '<div class="hw"><h1>' + esc(v.w) + '</h1></div><div class="sk"></div><div class="sk" style="width:82%"></div><div class="sk" style="width:64%"></div>';
+  savedBar(null);
+  get(lookupUrl(v.w, v.every)).then(function(d) {
+    if (seq !== _seq) return;
+    if (d === FAILED) { $('view').innerHTML = '<div class="hw"><h1>' + esc(v.w) + '</h1></div>' + failedHtml(STR.load_failed, 'show()'); return; }
+    _words[key] = d;
+    drawWord(v, d, told);
+  });
+}
+function wordRef(d) {
+  var s = d.sources[0], g = d.langs[0];
+  return { kind: 'word', app: 'dictionary', zim: s.zim, path: s.path, title: d.w, meta: { lang: (g && g.code) || '' } };
+}
+function drawWord(v, d, told) {
+  if (!d.found) {
+    $('view').innerHTML = '<div class="hw"><h1>' + esc(d.w) + '</h1></div><div class="empty">' + esc(fill(STR.not_found, { word: d.w })) +
+      (d.near.length ? '<div class="words" style="margin-top:18px"><div class="sh">' + esc(STR.near) + '</div><div class="cloud" style="justify-content:center">' +
+        d.near.map(function(n) { return wordLink(n, n); }).join('') + '</div></div>' : '') + '</div>';
+    savedBar(null);
+    if (!told) tell({ zimi: 'dictionary-w', w: d.w, title: d.w });
+    return;
+  }
+  var groups = orderGroups(d.langs, LANGS);
+  var open = groupFor(groups, v.sec);
+  // The reader's languages open; any other only when a link asked for it,
+  // or when the word is in no language of theirs (its first language then).
+  var anyMine = groups.some(function(g) { return LANGS.indexOf(primaryOf(g.code)) >= 0; });
+  var html = '<div class="hw"><h1 lang="' + esc(groups[0].code || '') + '" dir="' + dirOf(groups[0].code) + '">' + esc(d.w) + '</h1>' +
+    (d.also.length ? '<p class="also">' + esc(STR.also) + ': ' + d.also.map(function(a) { return wordLink(a, a); }).join(', ') + '</p>' : '') +
+    '<div class="actions"><span class="svbar"></span></div></div>';
+  var folded = false;
+  groups.forEach(function(g, i) {
+    var mine = LANGS.indexOf(primaryOf(g.code)) >= 0 || (!anyMine && i === 0);
+    if (!mine && !folded) { folded = true; html += '<div class="sh" style="margin:28px 0 6px">' + esc(STR.other_languages) + '</div>'; }
+    html += langHtml(g, i, mine || i === open, d);
+  });
+  $('view').innerHTML = html;
+  var ref = wordRef(d);
+  savedBar(ref, { like: false });
+  var S = saved();
+  if (S) S.setPosition(ref, null);
+  wireSpeech();
+  if (open >= 0) {
+    var el = document.getElementById('lg' + open);
+    if (el) { el.open = true; el.scrollIntoView({ block: 'start' }); }
+  }
+  if (!told) tell({ zimi: 'dictionary-w', w: d.w, zim: ref.zim, path: ref.path, title: d.w });
+}
+function langHtml(g, i, open, d) {
+  var name = groupName(g);
+  var body = soundHtml(g, d.w) + g.entries.map(function(e, k) { return entryHtml(e, g, k, d); }).join('');
+  if (open) return '<section class="lang" id="lg' + i + '"><div class="lang-h"><h2>' + esc(name) + '</h2></div>' + body + '</section>';
+  return '<details class="lang" id="lg' + i + '"><summary class="lang-h"><h2>' + esc(name) + '</h2><span class="peek">' + esc(firstSense(g)) + '</span></summary>' + body + '</details>';
+}
+var SPEAKER = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>';
+// How a language sounds: the word said (a recording when the ZIM has one,
+// else this device's voice for the language), then the IPA by accent, each
+// accent with its own voice where the device has one for its region.
+function soundHtml(g, word) {
+  var s = soundsOf(g), html = '', code = g.code || '';
+  var mainLabel = esc(fill(STR.say_word, { word: word }));
+  if (s.audio.length) {
+    html += '<div class="say">' + s.audio.map(function(a, i) {
+      return '<button type="button" class="spk' + (i ? ' sm' : '') + '" data-audio="' + esc(zpath(a.zim, a.path)) + '" aria-label="' + mainLabel + (a.label ? ' (' + esc(a.label) + ')' : '') + '">' + SPEAKER +
+        (a.accent ? '<span>' + esc(a.accent) + '</span>' : i ? '' : '<span>' + esc(STR.recording) + '</span>') + '</button>';
+    }).join('') + '</div>';
+  } else if (speechTag(code)) {
+    html += '<div class="say"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
+      '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span></div>';
+  }
+  if (s.ipa.length) {
+    // A few accents, the rest a tap away: English "water" has eight.
+    html += '<div class="ipas">' + s.ipa.map(function(r, n) {
+      var region = r.accent && accentRegion(r.accent);
+      return (n === IPA_SHOWN ? '<button type="button" class="more-ipa" onclick="moreIpa(this)">' + esc(fill(STR.more, { n: s.ipa.length - IPA_SHOWN })) + '</button>' : '') +
+        '<div class="ipr"' + (n >= IPA_SHOWN ? ' hidden' : '') + '>' + (region && !s.audio.length && speechTag(code) ? '<button type="button" class="spk sm" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="' + esc(r.accent) + '" data-exact="1" aria-label="' + mainLabel + ' (' + esc(r.accent) + ')" hidden>' + SPEAKER + '</button>' : '') +
+        r.ipa.map(function(x) { return '<span class="ipa">' + esc(x) + '</span>'; }).join(' ') + (r.accent ? '<span class="acc">' + esc(r.accent) + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  var facts = '', hy = '', rh = [], hom = [], rw = [];
+  g.entries.forEach(function(e) {
+    hy = hy || e.pron.hyphenation;
+    (e.pron.rhymes || []).forEach(function(r) { if (rh.indexOf(r) < 0) rh.push(r); });
+    (e.pron.homophones || []).forEach(function(w) { if (!hom.some(function(x) { return x.w === w.w; })) hom.push(w); });
+    (e.pron.rhyme_words || []).forEach(function(w) { if (!rw.some(function(x) { return x.w === w.w; })) rw.push(w); });
+  });
+  if (hy) facts += '<span><b>' + esc(STR.hyphenation) + '</b>' + esc(hy) + '</span>';
+  if (rh.length) facts += '<span><b>' + esc(STR.rhymes) + '</b><span class="ipa">' + esc(rh.join(', ')) + '</span></span>';
+  if (facts) html += '<div class="facts">' + facts + '</div>';
+  html += wordsHtml(STR.homophones, hom, g.code);
+  html += wordsHtml(STR.rhymes, rw, g.code);
+  return html;
+}
+function entryHtml(e, g, k, d) {
+  var many = g.entries.length > 1;
+  // Each account in the direction of the Wiktionary that wrote it: an English
+  // word explained in English reads left to right under a Hebrew Zimi.
+  var html = '<div class="acct" dir="' + dirOf(e.wiki_lang) + '" lang="' + esc(e.wiki_lang || '') + '">' +
+    (many || (d.sources.length > 1) ? '<div class="src-h">' + zimIcon(e.zim) + '<span>' + esc(e.zim_title) + '</span></div>' : '');
+  e.groups.forEach(function(gr) {
+    // What it means first; where it came from after, quieter.
+    gr.parts.forEach(function(p) { html += partHtml(p, g, d); });
+    if (gr.ety && gr.ety.length) html += '<p class="ety"><span class="k">' + esc(STR.etymology) + '</span>' + segHtml(gr.ety) + '</p>';
+  });
+  (e.words || []).forEach(function(w) { html += wordsHtml(w.title, w.items, g.code); });
+  return html + '</div>';
+}
+function partHtml(p, g, d) {
+  var html = '<div class="pos"><div class="pos-h"><span class="p">' + esc(p.pos) + '</span>' + (p.head && p.head.length ? '<span class="hl" lang="' + esc(g.code || '') + '">' + segHtml(p.head) + '</span>' : '') + '</div>';
+  html += '<ol class="senses">' + sensesHtml(p.senses, g.code) + '</ol>';
+  (p.words || []).forEach(function(w) { html += wordsHtml(w.title, w.items, g.code); });
+  html += transHtml(p, d);
+  return html + '</div>';
+}
+function sensesHtml(senses, code) {
+  return (senses || []).map(function(s) {
+    var h = '<li>' + segHtml(s.d);
+    (s.ex || []).forEach(function(x) { h += '<div class="ex" lang="' + esc(code || '') + '">' + esc(x) + '</div>'; });
+    if (s.syn && s.syn.length) h += '<div class="nym"><span class="k">' + esc(STR.synonyms) + ':</span>' + s.syn.map(function(w) { return wordLink(w.w, w.t, code); }).join(', ') + '</div>';
+    if (s.ant && s.ant.length) h += '<div class="nym"><span class="k">' + esc(STR.antonyms) + ':</span>' + s.ant.map(function(w) { return wordLink(w.w, w.t, code); }).join(', ') + '</div>';
+    if (s.sub && s.sub.length) h += '<ol class="senses">' + sensesHtml(s.sub, code) + '</ol>';
+    return h + '</li>';
+  }).join('');
+}
+// A list of words: the first few, and the rest a tap away.
+function wordsHtml(title, items, code) {
+  if (!items || !items.length) return '';
+  var shown = items.slice(0, WORDS_SHOWN), rest = items.length - shown.length;
+  var id = 'wl' + (++_wl);
+  _lists[id] = { items: items, code: code };
+  return '<div class="words"><div class="sh">' + esc(title) + '</div><div class="cloud" id="' + id + '">' + shown.map(function(w) { return wordLink(w.w, w.t, code); }).join('') +
+    (rest > 0 ? '<button type="button" onclick="moreWords(\'' + id + '\')">' + esc(fill(STR.more, { n: rest })) + '</button>' : '') + '</div></div>';
+}
+var _wl = 0, _lists = {};
+function moreIpa(b) { b.parentNode.querySelectorAll('.ipr[hidden]').forEach(function(r) { r.hidden = false; }); b.remove(); wireSpeech(); }
+function moreWords(id) {
+  var l = _lists[id], el = $(id);
+  if (!l || !el) return;
+  el.innerHTML = l.items.map(function(w) { return wordLink(w.w, w.t, l.code); }).join('');
+}
+function transHtml(p, d) {
+  var shown = (p.trans || []).filter(function(t) { return t.items.length; });
+  var v = cur(), every = !!v.every;
+  if (!shown.length && !(p.trans_n > 0)) return '';
+  var html = '<div class="trans"><div class="sh">' + esc(STR.translations) + '</div>';
+  html += shown.map(function(t) {
+    return (t.gloss ? '<div class="gl">' + esc(t.gloss) + '</div>' : '') + '<dl>' + t.items.map(function(i) {
+      return '<dt>' + esc(langName(i.lang, i.name)) + '</dt><dd>' + i.words.map(function(w) {
+        return wordLink(w.w, w.t, i.lang) + (w.tr ? '<span class="tr">(' + esc(w.tr) + ')</span>' : '');
+      }).join(', ') + '</dd>';
+    }).join('') + '</dl>';
+  }).join('');
+  var total = (p.trans || []).reduce(function(s, t) { return s + t.n; }, 0);
+  var have = shown.reduce(function(s, t) { return s + t.items.length; }, 0);
+  if (!every && total > have) html += '<button type="button" class="all" onclick="allTranslations(true)">' + esc(fill(STR.all_translations, { n: total.toLocaleString(STR.lang) })) + '</button>';
+  else if (every) html += '<button type="button" class="all" onclick="allTranslations(false)">' + esc(STR.fewer_translations) + '</button>';
+  return html + '</div>';
+}
+function allTranslations(on) {
+  var v = cur(), y = window.scrollY;
+  if (v.v !== 'word') return;
+  v.every = !!on;
+  renderWord(v, true);
+  window.scrollTo(0, y);
+}
+
+// ── speech ───────────────────────────────────────────────────────────────
+function synth() { try { return window.speechSynthesis || null; } catch (e) { return null; } }
+function voices() { var s = synth(); try { return s ? s.getVoices() : []; } catch (e) { return []; } }
+// Each speaker is shown only where this device can say the word in its
+// language; where it cannot, the button gives way to a line that says so.
+// An accent's own button only where its region has a voice of its own.
+function wireSpeech() {
+  var vs = voices();
+  document.querySelectorAll('[data-say]').forEach(function(b) {
+    var c = pickVoice(vs, b.getAttribute('data-code'), b.getAttribute('data-accent'));
+    var ok = !!c && (!b.hasAttribute('data-exact') || c.exact);
+    b.hidden = !ok;
+    if (!b.hasAttribute('data-exact')) {
+      var note = b.parentNode.querySelector('[data-novoice]');
+      if (note) note.hidden = ok || (!vs.length && _voiceWaiting);
+    }
+  });
+}
+var _voiceWaiting = true;
+(function() {
+  var s = synth();
+  if (s && 'onvoiceschanged' in s) s.addEventListener('voiceschanged', function() { _voiceWaiting = false; wireSpeech(); });
+  setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
+})();
+var _playing = null, _utterance = null;
+// iPhone: the ring switch on silent mutes a page's sound unless the page
+// asks for playback, as a media player does (Safari 16.4+; elsewhere a no-op).
+function wantPlayback() { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
+function say(b) {
+  var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
+  if (!s || !c) { wireSpeech(); return; }
+  wantPlayback();
+  var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
+  u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
+  b.classList.add('on');
+  u.onend = u.onerror = function() { b.classList.remove('on'); if (_utterance === u) _utterance = null; };
+  // Held until it ends: Safari lets an unreferenced utterance be collected
+  // mid-word, and its end never comes.
+  _utterance = u;
+  // iOS drops a speak() that follows cancel() in the same moment: cancel only
+  // what is still talking, and speak on the next turn when it was.
+  if (s.speaking || s.pending) { s.cancel(); setTimeout(function() { s.speak(u); }, SPEECH_AFTER_CANCEL_MS); }
+  else s.speak(u);
+}
+function play(b) {
+  wantPlayback();
+  if (_playing) { try { _playing.pause(); } catch (e) {} }
+  var a = new Audio(b.getAttribute('data-audio'));
+  _playing = a;
+  b.classList.add('on');
+  a.onended = a.onerror = a.onpause = function() { b.classList.remove('on'); };
+  a.play().catch(function() { b.classList.remove('on'); });
+}
+
+// Every word on the page opens the next; a modified click keeps the link
+// for a new tab.
+document.addEventListener('click', function(e) {
+  var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
+  if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
+  var a = e.target.closest && e.target.closest('a[data-w]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  openWord(a.getAttribute('data-w'));
+});
+
+function load() {
+  _home = null;
+  renderHome();
+  get('/dictionary/home').then(function(d) {
+    _home = d;
+    if (cur().v === 'home') renderHome();
+    if (d !== FAILED && d.wiktionaries.length) {
+      get('/dictionary/today?day=' + dayStamp()).then(function(t) { _today = t; if (cur().v === 'home') renderHome(); });
+    }
+  });
+  var w = STR.w || '';
+  if (w) { _stack.push({ v: 'word', w: w }); show(true); }
+}
+
+window.dictCurrent = dictCurrent; window.dictTranslation = dictTranslation;
+window.dictSearch = dictSearch; window.dictGo = dictGo; window.toTrail = toTrail; window.moreWords = moreWords; window.moreIpa = moreIpa;
+// A ZIM without an icon of its own: no broken picture in its place.
+document.addEventListener('error', function(e) { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);
+window.allTranslations = allTranslations; window.goCatalog = goCatalog; window.load = load; window.show = show;
+// What you keep changed: the front's lists, or the word's Save.
+window.__saved = function() { if (cur().v === 'home') renderHome(); else savedPaint(); };
+window.__top = function() { return _stack.length <= 1; };
+window.__back = back;
+window.__home = function() { _stack = [{ v: 'home' }]; window.scrollTo(0, 0); show(); };
+// Back or Forward to an address of this app: the word, or the front.
+window.__route = function(w) {
+  if (!w) { _stack = [{ v: 'home' }]; show(true); return; }
+  if (cur().v === 'word' && cur().w === w) return;
+  var at = -1;
+  _stack.forEach(function(v, i) { if (v.v === 'word' && v.w === w) at = i; });
+  if (at >= 0) _stack = _stack.slice(0, at + 1); else _stack.push({ v: 'word', w: w });
+  show(true);
+};
+// The dice: a word by chance, from one of the Wiktionaries.
+window.__random = function() {
+  var ws = (_home && _home !== FAILED && _home.wiktionaries) || [];
+  if (!ws.length) return;
+  var z = ws[Math.floor(Math.random() * ws.length)].name;
+  get('/random?zim=' + encodeURIComponent(z)).then(function(r) {
+    if (r && r.title && !/[:\/]/.test(r.title)) openWord(r.title);
+  });
+};
+load();
+</script>
+</body>
+</html>

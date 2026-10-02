@@ -4,6 +4,7 @@ Handles search caching, SQLite title indexes, full-text search via Xapian,
 suggestion search, and article content reading.
 """
 
+import collections
 import hashlib as _hashlib
 import itertools
 import json
@@ -79,11 +80,36 @@ def _ensure_server_refs():
 # Search & Suggest Caches (was section 5)
 # ---------------------------------------------------------------------------
 
-_search_cache = {}  # {key: {"result": ..., "created": float, "accesses": int}}
+# What a search found is kept by what it asks, not how it was typed (see
+# _query_key), for whoever asks it next. Bounded by count, the least recently
+# used out first. Kept an hour, two once asked again: the library changing
+# clears it all (_search_cache_clear, and the library's generation is in
+# every key besides), so the time only bounds how long a search nobody
+# repeats takes up room.
+_search_cache = collections.OrderedDict()  # {key: {"result", "created", "accesses"}}
 _search_cache_lock = threading.Lock()
-SEARCH_CACHE_MAX = 100
-SEARCH_CACHE_TTL = 900  # 15 minutes base
-SEARCH_CACHE_TTL_ACTIVE = 1800  # 30 minutes if re-accessed
+SEARCH_CACHE_MAX = 256
+SEARCH_CACHE_TTL = 3600
+SEARCH_CACHE_TTL_ACTIVE = 7200
+# Bumped by every clear: a search that began before the library changed
+# does not put its answer in the cache after it.
+_search_cache_epoch = 0
+# The same search asked again while it is still running waits for that one
+# (two tabs, two people, a Back as it lands) rather than run twice. Past
+# this wait it runs its own.
+_search_inflight = {}
+SEARCH_COALESCE_WAIT = 30.0
+_QUOTE_CHARS = str.maketrans({"“": '"', "”": '"', "„": '"'})
+
+
+def _query_key(q):
+    """The query as the cache knows it: what the grammar reads the same is one
+    entry. Case and spacing do not matter, nor which quotes a keyboard typed;
+    OR keeps its capitals, since "cats or dogs" is three words and "cats OR
+    dogs" is a choice."""
+    return " ".join(
+        w if w == "OR" else w.lower() for w in q.translate(_QUOTE_CHARS).split()
+    )
 
 
 def _search_cache_key(q, zim_scope_str, limit, fast):
@@ -96,10 +122,19 @@ def _search_cache_key(q, zim_scope_str, limit, fast):
     they just get them from their OWN partition. ``allow`` is None for
     admin/anonymous/all-access (allow_key None); a restricted allowlist becomes a
     sorted tuple, so two users with identical allowlists correctly share entries.
+    The library's generation is in it too: a library loaded again never answers
+    from the one before.
     """
     allow = _srv.current_allow()
     allow_key = None if allow is None else tuple(sorted(allow))
-    return (q.lower().strip(), zim_scope_str, limit, fast, allow_key)
+    return (
+        _query_key(q),
+        zim_scope_str,
+        limit,
+        fast,
+        getattr(_srv, "_cache_generation", 0),
+        allow_key,
+    )
 
 
 def _search_cache_get(key):
@@ -111,25 +146,181 @@ def _search_cache_get(key):
         ttl = SEARCH_CACHE_TTL_ACTIVE if entry["accesses"] > 0 else SEARCH_CACHE_TTL
         if time.time() - entry["created"] < ttl:
             entry["accesses"] += 1
+            _search_cache.move_to_end(key)
             return entry["result"]
         del _search_cache[key]
     return None
 
 
-def _search_cache_put(key, result):
-    """Store search result in cache, evicting oldest if full."""
+def _search_cache_put(key, result, epoch=None):
+    """Store a search result, the least recently used going when full.
+    ``epoch``: the cache's epoch when the search began; cleared since, the
+    answer is the old library's and is not kept."""
     now = time.time()
     with _search_cache_lock:
-        if len(_search_cache) >= SEARCH_CACHE_MAX:
-            oldest_key = min(_search_cache, key=lambda k: _search_cache[k]["created"])
-            del _search_cache[oldest_key]
+        if epoch is not None and epoch != _search_cache_epoch:
+            return
+        _search_cache.pop(key, None)
+        while len(_search_cache) >= SEARCH_CACHE_MAX:
+            _search_cache.popitem(last=False)
         _search_cache[key] = {"result": result, "created": now, "accesses": 0}
 
 
 def _search_cache_clear():
-    """Clear all cached search results (e.g. after library changes)."""
+    """Clear every kept search result and snippet (e.g. after library changes)."""
+    global _search_cache_epoch
     with _search_cache_lock:
         _search_cache.clear()
+        _search_cache_epoch += 1
+    with _snippet_cache_lock:
+        _snippet_cache.clear()
+
+
+def search_cached(key, compute):
+    """(result, from_cache): the kept answer for ``key``, the one a search
+    already running for it brings back, or ``compute()``'s, then kept."""
+    hit = _search_cache_get(key)
+    if hit is not None:
+        return hit, True
+    with _search_cache_lock:
+        epoch = _search_cache_epoch
+        slot = _search_inflight.get(key)
+        owner = slot is None
+        if owner:
+            slot = _search_inflight[key] = {"done": threading.Event(), "result": None}
+    if not owner:
+        slot["done"].wait(SEARCH_COALESCE_WAIT)
+        if slot["result"] is not None:
+            return slot["result"], True
+        return compute(), False
+    try:
+        result = compute()
+        slot["result"] = result
+        _search_cache_put(key, result, epoch)
+        return result, False
+    finally:
+        with _search_cache_lock:
+            if _search_inflight.get(key) is slot:
+                del _search_inflight[key]
+        slot["done"].set()
+
+
+# A result card's snippet and picture, by ZIM and path: the same pages come
+# back search after search. Cleared with the search cache.
+_snippet_cache = collections.OrderedDict()
+_snippet_cache_lock = threading.Lock()
+SNIPPET_CACHE_MAX = 4000
+_SNIPPET_IMG_META = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
+        r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:image["\']',
+        r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']',
+        r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']twitter:image["\']',
+    )
+]
+_SNIPPET_IMG_SKIP = re.compile(
+    r"icon|badge|logo|arrow|button|sprite|spacer|1x1|pixel|emoji|flag.*\.svg",
+    re.IGNORECASE,
+)
+
+
+def _snippet_thumbnail(archive, zim, path, text):
+    """The page's picture for its result card: og:image / twitter:image from
+    <head>, else the best-sized <img> near the top that is not an icon."""
+    for pat in _SNIPPET_IMG_META:
+        m = pat.search(text[:8000])
+        if m:
+            src = m.group(1)
+            if not src.startswith(("http", "//", "data:")) and not src.lower().endswith(
+                ".svg"
+            ):
+                resolved = _srv._resolve_img_path(archive, path, src)
+                if resolved:
+                    return f"/w/{zim}/{resolved}"
+    best_img, best_area = None, 0
+    for m in re.finditer(r"<img\b([^>]*)>", text[:15000], re.IGNORECASE):
+        attrs = m.group(1)
+        src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
+        if not src_m:
+            continue
+        src = src_m.group(1)
+        if src.startswith(("data:", "http", "//")) or src.lower().endswith(".svg"):
+            continue
+        if _SNIPPET_IMG_SKIP.search(src) or _SNIPPET_IMG_SKIP.search(attrs):
+            continue
+        w_m = re.search(r'width=["\']?(\d+)', attrs)
+        h_m = re.search(r'height=["\']?(\d+)', attrs)
+        w = int(w_m.group(1)) if w_m else 0
+        h = int(h_m.group(1)) if h_m else 0
+        if (w > 0 and w < 60) or (h > 0 and h < 40):
+            continue  # explicitly tiny
+        area = (w or 200) * (h or 150)
+        if area > best_area:
+            resolved = _srv._resolve_img_path(archive, path, src)
+            if resolved:
+                best_img, best_area = f"/w/{zim}/{resolved}", area
+                if area >= 200 * 150:
+                    break  # good enough
+    return best_img
+
+
+def result_snippet(zim, path):
+    """{"snippet", "thumbnail"?} for a result card, or None when the ZIM is not
+    there (or not this user's). Read once, then kept."""
+    from zimi.previews import lead_text
+
+    _ensure_server_refs()
+    key = (zim, path)
+    with _zim_lock:
+        archive = _srv.get_archive(zim)
+        if archive is None:
+            return None
+        with _snippet_cache_lock:
+            kept = _snippet_cache.get(key)
+            if kept is not None:
+                _snippet_cache.move_to_end(key)
+                return kept
+        out = {"snippet": ""}
+        try:
+            item = archive.get_entry_by_path(path).get_item()
+            if item.size <= _srv.MAX_CONTENT_BYTES:
+                text = lead_text(item)
+                # The page's own summary, then its meta description, then body
+                # prose, past boilerplate some ZIMs put on every page.
+                out["snippet"] = _srv.extract_snippet(text, zim)
+                thumb = _snippet_thumbnail(archive, zim, path, text)
+                if thumb:
+                    out["thumbnail"] = thumb
+        except Exception:
+            pass
+    with _snippet_cache_lock:
+        _snippet_cache[key] = out
+        while len(_snippet_cache) > SNIPPET_CACHE_MAX:
+            _snippet_cache.popitem(last=False)
+    return out
+
+
+# The cards a first screen of results draws, for their snippets to come with
+# the results: each source's first few (the grouped view) and the first page
+# (the ranked one). The client's RESULTS_PER_PAGE and SEARCH_GROUP_SIZE.
+FIRST_SCREEN_RESULTS = 20
+FIRST_SCREEN_PER_SOURCE = 3
+
+
+def first_screen(results):
+    """(zim, path) of the results a first screen shows, ranked or grouped by
+    source (sources in the order of their best result), once each."""
+    keys = [(r["zim"], r["path"]) for r in results]
+    by_source = {}
+    for k in keys:
+        by_source.setdefault(k[0], []).append(k)
+    grouped = []
+    for group in by_source.values():
+        if len(grouped) >= FIRST_SCREEN_RESULTS:
+            break
+        grouped += group[:FIRST_SCREEN_PER_SOURCE]
+    return list(dict.fromkeys(keys[:FIRST_SCREEN_RESULTS] + grouped))
 
 
 _suggest_cache = {}  # {(query_lower, zim_name): {"results": [...], "ts": float}}
@@ -557,6 +748,11 @@ def _build_title_index(zim_name, zim_path):
                     conn.executemany(
                         "INSERT OR IGNORE INTO titles VALUES (?,?,?,?)", batch
                     )
+                    # How far through, for index_status in any process.
+                    conn.execute(
+                        "INSERT OR REPLACE INTO meta VALUES ('progress', ?)",
+                        (str(i * 100 // total_entries),),
+                    )
                     conn.commit()
                     count += len(batch)
                     batch.clear()
@@ -594,6 +790,7 @@ def _build_title_index(zim_name, zim_path):
                 count,
                 _FTS5_ENTRY_THRESHOLD,
             )
+        conn.execute("DELETE FROM meta WHERE key='progress'")
         _write_index_meta(conn, archive, zim_path, _TITLE_INDEX_VERSION, count)
         conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
         conn.commit()
@@ -879,6 +1076,107 @@ def background_work():
          "seconds": int(now - j["started"])}
         for j in jobs
     ]
+
+
+# A title index's .tmp untouched this long is not a build in progress but an
+# orphan of a killed one (it is swept at the next build). Another process's
+# build (the server's, or the child it isolates a big ZIM in) is seen only
+# through its tmp, which a build commits to every 10,000 titles.
+_BUILD_FRESH_S = 900
+# Whether a ZIM ships a Xapian full-text index, by ZIM path: fixed per file.
+_fulltext_known = {}
+
+
+def _tmp_build_progress(db_path):
+    """(building, percent or None) from a build's tmp beside ``db_path``."""
+    tmp = db_path + ".tmp"
+    try:
+        touched = max(
+            os.path.getmtime(p) for p in (tmp, tmp + "-wal") if os.path.exists(p)
+        )
+    except ValueError:
+        return False, None
+    if time.time() - touched > _BUILD_FRESH_S:
+        return False, None
+    try:
+        conn = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True, timeout=0.2)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='progress'").fetchone()
+        finally:
+            conn.close()
+        return True, int(row[0]) if row else None
+    except Exception:
+        return True, None
+
+
+def _has_fulltext(name, path):
+    """True or False when this ZIM does or does not ship a full-text index,
+    None when its archive cannot be read right now."""
+    if path in _fulltext_known:
+        return _fulltext_known[path]
+    archive, lock = _get_fts_archive(name)
+    if archive is None or not lock.acquire(timeout=1):
+        return None
+    try:
+        known = bool(getattr(archive, "has_fulltext_index", True))
+    except Exception:
+        return None
+    finally:
+        lock.release()
+    _fulltext_known[path] = known
+    return known
+
+
+def index_status(names=None, check_current=False):
+    """Per installed ZIM (all, or ``names``) the state of what search reads:
+    [{"zim", "title": ready|stale|building|missing, "progress": percent or
+    None, "fulltext": bool or None}]. Reads no index unless one is building;
+    ``check_current`` also tells a stale index from a ready one (opens each)."""
+    zims = _srv.get_zim_files()
+    path_fn = getattr(_srv, "_title_index_path", _title_index_path)
+    with _title_index_status_lock:
+        here = _title_index_status["building_now"]
+    out = []
+    for name in sorted(zims) if names is None else names:
+        if name not in zims:
+            continue
+        db = path_fn(name)
+        building, progress = _tmp_build_progress(db)
+        if building or name == here:
+            title = "building"
+        elif not os.path.exists(db):
+            title = "missing"
+        elif check_current and not _title_index_is_current(name, zims[name]):
+            title = "stale"
+        else:
+            title = "ready"
+        out.append(
+            {
+                "zim": name,
+                "title": title,
+                "progress": progress,
+                "fulltext": _has_fulltext(name, zims[name]),
+            }
+        )
+    return out
+
+
+def index_gaps(names=None, hit_zims=()):
+    """What may leave a full search over ``names`` (None: all) partial:
+    [{"zim", "state": "building"|"titles_only", "progress"?}]. A title index
+    building is listed wherever it is; a source with no full-text index (it
+    only ever matches titles) when the search named it or it answered."""
+    named = set(names or ()) | set(hit_zims)
+    gaps = []
+    for s in index_status(names):
+        if s["title"] == "building":
+            gap = {"zim": s["zim"], "state": "building"}
+            if s["progress"] is not None:
+                gap["progress"] = s["progress"]
+            gaps.append(gap)
+        elif s["fulltext"] is False and s["zim"] in named:
+            gaps.append({"zim": s["zim"], "state": "titles_only"})
+    return gaps
 
 
 def _get_title_index_stats():
@@ -3008,6 +3306,27 @@ def unglue_zim_path(archive, zim_name, path):
     return path
 
 
+def _article_entry(zim_name, article_path):
+    """(archive, path, entry, item) for an article of an installed ZIM.
+
+    The path an agent sends is forgiven twice: a "<zim>/" glued in front
+    (openzim/Zimi#54), and a single-page doc's "index#anchor" (devdocs),
+    which is the entry "index". Raises KeyError when there is no such
+    entry. The caller holds the lock and has checked the ZIM is installed."""
+    archive = _srv.get_archive(zim_name) or _srv.open_archive(
+        _srv.get_zim_files()[zim_name]
+    )
+    article_path = unglue_zim_path(archive, zim_name, article_path)
+    try:
+        entry = archive.get_entry_by_path(article_path)
+    except KeyError:
+        base_path, fragment = _srv.split_entry_fragment(article_path)
+        if not fragment:
+            raise
+        entry = archive.get_entry_by_path(base_path)
+    return archive, article_path, entry, entry.get_item()
+
+
 def read_article(zim_name, article_path, max_length=None):
     """Read a specific article from a ZIM file. Returns plain text. Handles HTML and PDF."""
     if max_length is None:
@@ -3016,18 +3335,8 @@ def read_article(zim_name, article_path, max_length=None):
     if zim_name not in zims:
         return {"error": f"ZIM '{zim_name}' not found. Available: {list(zims.keys())}"}
 
-    archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
-    article_path = unglue_zim_path(archive, zim_name, article_path)
     try:
-        try:
-            entry = archive.get_entry_by_path(article_path)
-        except KeyError:
-            # Single-page docs (devdocs): 'index#anchor' → serve base entry 'index'.
-            base_path, fragment = _srv.split_entry_fragment(article_path)
-            if not fragment:
-                raise
-            entry = archive.get_entry_by_path(base_path)
-        item = entry.get_item()
+        archive, article_path, entry, item = _article_entry(zim_name, article_path)
         raw = bytes(item.content)
 
         title = entry.title
@@ -3058,6 +3367,131 @@ def read_article(zim_name, article_path, max_length=None):
         }
     except KeyError:
         return {"error": f"Article '{article_path}' not found in {zim_name}"}
+
+
+# ---------------------------------------------------------------------------
+# An article as Markdown, in sections (the MCP read and read_section tools)
+# ---------------------------------------------------------------------------
+# A read is usually followed by a read_section of the same page, so the last
+# few pages stay parsed: a long article is parsed once, not once per call.
+_MD_CACHE = {}
+_MD_CACHE_MAX = 8
+_md_cache_lock = threading.Lock()
+
+
+def _question_doc(q):
+    """A Stack Exchange question as a Document: the question is the intro,
+    each answer a section, the accepted one first (exchange's order)."""
+    from zimi import htmlmd
+
+    facts = [f"{q['votes']} votes"]
+    if q.get("author"):
+        facts.append(f"asked by {q['author']}")
+    if q.get("tags"):
+        facts.append("tags: " + ", ".join(q["tags"]))
+    parts = [(1, "", " · ".join(facts)), (1, "", htmlmd.to_markdown(q["body"]).text())]
+    for i, a in enumerate(q.get("answers") or [], 1):
+        head = f"Answer {i}: {a['score']} points"
+        if a.get("accepted"):
+            head += ", accepted"
+        if a.get("author"):
+            head += f", by {a['author']}"
+        parts.append((2, head, htmlmd.to_markdown(a["body"]).text()))
+    return htmlmd.from_blocks(q["title"], parts)
+
+
+# mwoffliner writes a redirect that lands inside another page ("Giant ant" is
+# Ant's "In culture") as a tiny page with a meta refresh, not a ZIM redirect.
+_REFRESH_RE = re.compile(
+    r"""<meta\s[^>]*http-equiv=["']?refresh["']?[^>]*content=["']?\d*\s*;\s*url=['"]?([^'">]+)""",
+    re.I,
+)
+_REFRESH_PAGE_MAX = 2048
+_REFRESH_HOPS = 3
+
+
+def refresh_target(html, path):
+    """(path, fragment) a meta-refresh stub sends its reader to, or None.
+    Only a small page counts: a real page with a refresh tag is a page."""
+    if len(html) > _REFRESH_PAGE_MAX:
+        return None
+    m = _REFRESH_RE.search(html)
+    if not m:
+        return None
+    url = m.group(1).strip()
+    if url.startswith(("http:", "https:", "//", "#")):
+        return None
+    import posixpath
+    from urllib.parse import unquote
+
+    target, _, fragment = url.partition("#")
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(path), unquote(target)))
+    return target.lstrip("/"), unquote(fragment)
+
+
+def article_markdown(zim_name, path, references=False):
+    """An article as an htmlmd.Document, in its sections.
+
+    Returns {"zim", "path", "title", "doc", "section"}, or {"error":
+    "unknown_zim" | "not_found" | "not_text"}. ``path`` comes back as the
+    entry the page really is (a redirect followed, or a refresh stub's
+    target), so a read_section after a read finds the same page; ``section``
+    is the anchor a stub pointed into, else "". The caller holds _zim_lock."""
+    from zimi import exchange, htmlmd
+
+    zims = _srv.get_zim_files()
+    if zim_name not in zims:
+        return {"error": "unknown_zim"}
+    try:
+        archive, path, entry, item = _article_entry(zim_name, path)
+    except KeyError:
+        return {"error": "not_found"}
+    section = ""
+    for _hop in range(_REFRESH_HOPS):
+        if entry.is_redirect:
+            path = item.path
+            entry = archive.get_entry_by_path(path)
+        if item.size > _REFRESH_PAGE_MAX or "html" not in (item.mimetype or ""):
+            break
+        hop = refresh_target(bytes(item.content).decode("UTF-8", "replace"), path)
+        if hop is None:
+            break
+        try:
+            entry = archive.get_entry_by_path(hop[0])
+        except KeyError:
+            break
+        path, section, item = hop[0], hop[1], entry.get_item()
+    key = (zims[zim_name], path, bool(references))
+    with _md_cache_lock:
+        got = _MD_CACHE.get(key)
+    if got is not None:
+        return dict(got, section=section)
+    mime = item.mimetype or ""
+    raw = bytes(item.content)
+    title = entry.title or path
+    if mime == "application/pdf":
+        text = extract_pdf_text(raw, max_length=CHUNK_MAX_TEXT)
+        paras = (b.strip() for b in text.split("\n\n"))
+        doc = htmlmd.from_blocks(title, [(1, "", p) for p in paras if p])
+    elif mime.startswith(("text/html", "application/xhtml")):
+        html = raw.decode("UTF-8", errors="replace")
+        q = (
+            exchange.question_from_page(html, path, zim_name)
+            if path.startswith("questions/")
+            else None
+        )
+        doc = _question_doc(q) if q else htmlmd.to_markdown(html, title, references)
+    elif mime.startswith("text/"):
+        text = raw.decode("UTF-8", errors="replace")
+        doc = htmlmd.from_blocks(title, [(1, "", text)])
+    else:
+        return {"error": "not_text", "mimetype": mime}
+    got = {"zim": zim_name, "path": path, "title": doc.title or title, "doc": doc}
+    with _md_cache_lock:
+        if len(_MD_CACHE) >= _MD_CACHE_MAX:
+            _MD_CACHE.pop(next(iter(_MD_CACHE)))
+        _MD_CACHE[key] = got
+    return dict(got, section=section)
 
 
 # ---------------------------------------------------------------------------
@@ -3142,18 +3576,8 @@ def chunk_article(
     if zim_name not in zims:
         return {"error": "not_found"}
 
-    archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
-    path = unglue_zim_path(archive, zim_name, path)
     try:
-        try:
-            entry = archive.get_entry_by_path(path)
-        except KeyError:
-            # Single-page docs (devdocs): 'index#anchor' → chunk base entry 'index'.
-            base_path, fragment = _srv.split_entry_fragment(path)
-            if not fragment:
-                raise
-            entry = archive.get_entry_by_path(base_path)
-        item = entry.get_item()
+        archive, path, entry, item = _article_entry(zim_name, path)
         raw = bytes(item.content)
         title = entry.title
         if item.mimetype == "application/pdf":

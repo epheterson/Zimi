@@ -126,7 +126,9 @@ def _clean(value):
     return " ".join(str(value or "").split())
 
 
-_ISO_DURATION_RE = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$")
+_ISO_DURATION_RE = re.compile(
+    r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$"
+)
 _SECONDS_PER = (86400, 3600, 60, 1)
 
 
@@ -150,7 +152,9 @@ def _lang_text(value):
         for v in value:
             if isinstance(v, dict) and v.get("text"):
                 by[v.get("lang") or "default"] = v["text"]
-        return by.get("en") or by.get("default") or (next(iter(by.values())) if by else "")
+        return (
+            by.get("en") or by.get("default") or (next(iter(by.values())) if by else "")
+        )
     return ""
 
 
@@ -236,7 +240,9 @@ def _ted(archive):
             "page": _page_path(archive, t["slug"]),
             "duration": None,
             "date": "",
-            "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"] if vid else [],
+            "media": (
+                [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"] if vid else []
+            ),
         }
         if not row["description"] and t.get("_lang"):
             row["_detail"] = f"assets/data_{t['_lang']}_{t['slug']}.js"
@@ -317,12 +323,16 @@ def _youtube2zim(archive):
         if not vid:
             continue
         page = v.get("slug") or f"videos/{vid}"
-        thumb = v.get("thumbnailPath") or v.get("thumbnail") or f"videos/{vid}/video.webp"
+        thumb = (
+            v.get("thumbnailPath") or v.get("thumbnail") or f"videos/{vid}/video.webp"
+        )
         out.append(
             {
                 "id": vid,
                 "title": _lang_text(v.get("title")),
-                "description": _lang_text(v.get("description"))[:_MAX_DESCRIPTION_CHARS],
+                "description": _lang_text(v.get("description"))[
+                    :_MAX_DESCRIPTION_CHARS
+                ],
                 "speaker": _yt_speaker(v),
                 "thumb": thumb,
                 "page": page,
@@ -381,7 +391,11 @@ def _zimi(archive):
                 "speaker": meta[0] if meta and meta[0] else "",
                 "thumb": _html.unescape(m.group("thumb") or ""),
                 "page": _html.unescape(m.group("page")),
-                "media": [f"media/{_media_id}.{ext}" for _media_id in [m.group("page").rsplit("/", 1)[-1]] for ext in ("mp4", "webm", "m4a", "mp3", "mkv", "opus")],
+                "media": [
+                    f"media/{_media_id}.{ext}"
+                    for _media_id in [m.group("page").rsplit("/", 1)[-1]]
+                    for ext in ("mp4", "webm", "m4a", "mp3", "mkv", "opus")
+                ],
                 "duration": meta[1] if len(meta) > 1 else None,
                 "date": meta[2] if len(meta) > 2 else "",
             }
@@ -397,7 +411,9 @@ def track_titles(paths):
     shared start dropped (``Doyle Le chien des Baskerville 01 a 03`` and
     ``... 04 et 05`` read ``01 a 03`` and ``04 et 05``), and the leading
     number youscribe gives every file (``2909454_``)."""
-    words = [_TRACK_NUMBER_RE.sub("", nautilus.title_from_name(p)).split() for p in paths]
+    words = [
+        _TRACK_NUMBER_RE.sub("", nautilus.title_from_name(p)).split() for p in paths
+    ]
     common = 0
     if len(words) > 1:
         for column in zip(*words):
@@ -452,7 +468,12 @@ def _nautilus(archive):
         # Named from the whole list, so a track is called the same whichever
         # of the others this build of the ZIM carries.
         named = dict(zip(listed, track_titles(listed)))
-        tracks = [{"path": q, "title": named[p]} for p in listed for q in [_present_path(archive, p)] if q]
+        tracks = [
+            {"path": q, "title": named[p]}
+            for p in listed
+            for q in [_present_path(archive, p)]
+            if q
+        ]
         files = [t["path"] for t in tracks]
         if not files:
             continue
@@ -486,7 +507,10 @@ def _folder_walk(archive):
         for entry, item in _srv.walk_entries(archive)
         if (item.mimetype or "").startswith(_srv._MEDIA_MIME_PREFIXES)
     ]
-    return [media_file_row(p, m, thumb_beside(p, archive.has_entry_by_path)) for p, m in found]
+    return [
+        media_file_row(p, m, thumb_beside(p, archive.has_entry_by_path))
+        for p, m in found
+    ]
 
 
 def _folder(archive):
@@ -547,7 +571,12 @@ def _rows_of(archive, feed=""):
         try:
             rows = read(archive) if read else None
         except Exception as e:
-            log.debug("tube: %s unreadable as %s: %s", getattr(archive, "filename", ""), feed, e)
+            log.debug(
+                "tube: %s unreadable as %s: %s",
+                getattr(archive, "filename", ""),
+                feed,
+                e,
+            )
             rows = None
         return _scoped(archive, rows or [])
     try:
@@ -616,7 +645,9 @@ def videos_for(name):
         if key in _cache:
             return _cache[key]
     with lock:
-        rows = _rows_of(archive, "" if entry.get("kind") == "video" else tube_reader(entry))
+        rows = _rows_of(
+            archive, "" if entry.get("kind") == "video" else tube_reader(entry)
+        )
         # A video whose file never made it into the ZIM (a talk the scrape
         # skipped) is not a video the app can offer: left out of the feed
         # (Eric: "If a zim has a video link and the source isn't there then
@@ -638,6 +669,8 @@ def videos_for(name):
         _cache[key] = served = _served(rows, details)
     if needs and details is None:
         request_details(name)
+    # The videos it offers, for the Apps page.
+    _srv.note_app_items(name, "tube", len(served))
     return served
 
 
@@ -722,19 +755,29 @@ def _resolve_path(page, ref):
     if not ref or "://" in ref or ref.startswith("/"):
         return ""
     base = posixpath.dirname(page)
-    return posixpath.normpath(posixpath.join(base, ref)) if base else posixpath.normpath(ref)
+    return (
+        posixpath.normpath(posixpath.join(base, ref))
+        if base
+        else posixpath.normpath(ref)
+    )
 
 
 # One video, several containers: the extensions a scraper writes and what
 # each is. MP4 first: every browser plays H.264 with AAC, while Safari plays
 # a WebM's picture and not its Vorbis sound.
-_SIBLINGS = (("mp4", "video/mp4"), ("m4v", "video/mp4"), ("webm", "video/webm"), ("ogv", "video/ogg"))
+_SIBLINGS = (
+    ("mp4", "video/mp4"),
+    ("m4v", "video/mp4"),
+    ("webm", "video/webm"),
+    ("ogv", "video/ogg"),
+)
 _SIBLING_TYPES = dict(_SIBLINGS)
 
 
 def siblings_of(path):
     """The same file under the other extensions, mp4 first, the path itself
-    included in that order. ``videos/1/video.webm`` → ``[..mp4, ..m4v, ..webm, ..ogv]``."""
+    included in that order. ``videos/1/video.webm`` → ``[..mp4, ..m4v, ..webm, ..ogv]``.
+    """
     stem, dot, ext = path.rpartition(".")
     if not dot or ext.lower() not in _SIBLING_TYPES:
         return [path]
@@ -752,7 +795,9 @@ def mend_media(archive, media):
         for path in found or [m["path"]]:
             if path not in [x["path"] for x in out]:
                 ext = path.rpartition(".")[2].lower()
-                out.append({"path": path, "type": _SIBLING_TYPES.get(ext) or m.get("type", "")})
+                out.append(
+                    {"path": path, "type": _SIBLING_TYPES.get(ext) or m.get("type", "")}
+                )
     return out
 
 
@@ -809,8 +854,19 @@ def mend_sources(html, name, page):
                         ext = alt.rpartition(".")[2]
                         new_src = src.rpartition(".")[0] + "." + ext
                         esc_src = _html.escape(new_src, quote=True)
-                        tag = re.sub(r"""src=(["'])[^"']*\1""", lambda q: 'src=%s%s%s' % (q.group(1), esc_src, q.group(1)), tag, count=1)
-                        tag = re.sub(r"""type=(["'])[^"']*\1""", lambda q: 'type=%s%s%s' % (q.group(1), _SIBLING_TYPES[ext], q.group(1)), tag, count=1)
+                        tag = re.sub(
+                            r"""src=(["'])[^"']*\1""",
+                            lambda q: "src=%s%s%s" % (q.group(1), esc_src, q.group(1)),
+                            tag,
+                            count=1,
+                        )
+                        tag = re.sub(
+                            r"""type=(["'])[^"']*\1""",
+                            lambda q: "type=%s%s%s"
+                            % (q.group(1), _SIBLING_TYPES[ext], q.group(1)),
+                            tag,
+                            count=1,
+                        )
                         found["playable"] += 1
                         return tag
                 return tag
@@ -842,7 +898,9 @@ _IOS_DECODER_FIRST = (
     "if(s.indexOf(%s)>=0)v[i].setAttribute('data-setup',s.split(%s).join(%s));}}"
     "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',f);else f();})()</script>"
 ) % (json.dumps(_TECH_ORDER), json.dumps(_TECH_ORDER), json.dumps(_TECH_ORDER_IOS))
-_VIDEOJS_SCRIPT = re.compile(r"<script\s[^>]*src=[\"'][^\"']*videojs/video(?:\.min)?\.js[\"']", re.IGNORECASE)
+_VIDEOJS_SCRIPT = re.compile(
+    r"<script\s[^>]*src=[\"'][^\"']*videojs/video(?:\.min)?\.js[\"']", re.IGNORECASE
+)
 
 
 def decoder_first_on_ios(html):
@@ -870,9 +928,19 @@ def _page_media(html_text, page):
         attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
         src = _resolve_path(page, attrs.get("src", ""))
         if src:
-            subs.append({"path": src, "lang": attrs.get("srclang", ""), "label": attrs.get("label", "")})
+            subs.append(
+                {
+                    "path": src,
+                    "lang": attrs.get("srclang", ""),
+                    "label": attrs.get("label", ""),
+                }
+            )
     poster = _POSTER_RE.search(html_text)
-    return media, subs, _resolve_path(page, _html.unescape(poster.group(1))) if poster else ""
+    return (
+        media,
+        subs,
+        _resolve_path(page, _html.unescape(poster.group(1))) if poster else "",
+    )
 
 
 _YT3_PAGE_PREFIX = "index/"
@@ -897,14 +965,26 @@ def _yt3_media(archive, page):
         if not code or not base:
             continue
         label, _, lang = str(t.get("name") or "").rpartition(" - ")
-        subs.append({"path": f"{base}/video.{code}.vtt", "lang": lang.strip() or code, "label": label.strip() or code})
-    return [{"path": v["videoPath"], "type": ""}], subs, str(v.get("thumbnailPath") or "")
+        subs.append(
+            {
+                "path": f"{base}/video.{code}.vtt",
+                "lang": lang.strip() or code,
+                "label": label.strip() or code,
+            }
+        )
+    return (
+        [{"path": v["videoPath"], "type": ""}],
+        subs,
+        str(v.get("thumbnailPath") or ""),
+    )
 
 
 def _is_audio(media):
     """Whether a media list is sound only, by its types or extensions."""
     return bool(media) and all(
-        (m.get("type") or "").startswith("audio/") or nautilus.ext_kind(m["path"]) == "audio" for m in media
+        (m.get("type") or "").startswith("audio/")
+        or nautilus.ext_kind(m["path"]) == "audio"
+        for m in media
     )
 
 
@@ -936,13 +1016,19 @@ def playback(name, page):
             mime = item.mimetype or ""
             is_media = mime.startswith(_srv._MEDIA_MIME_PREFIXES)
             # A media file is never read whole to look for a <video> in it.
-            html_text = "" if is_media else bytes(item.content).decode("utf-8", "replace")
+            html_text = (
+                "" if is_media else bytes(item.content).decode("utf-8", "replace")
+            )
         except Exception:
             return None
         tracks = []
         if is_media:
             tracks = row.get("_tracks") or []
-            media, subs, poster = [{"path": page, "type": mime}], [], row.get("thumb") or ""
+            media, subs, poster = (
+                [{"path": page, "type": mime}],
+                [],
+                row.get("thumb") or "",
+            )
         else:
             media, subs, poster = _page_media(html_text, page)
             if not media:
@@ -956,7 +1042,9 @@ def playback(name, page):
         # here", which blames the browser for a file that is not there.
         media = mend_media(archive, media)
         missing = not any(_present(archive, m["path"]) for m in media)
-        ogv = next((b for b in _OGV_BASES if archive.has_entry_by_path(b + "/ogv.js")), "")
+        ogv = next(
+            (b for b in _OGV_BASES if archive.has_entry_by_path(b + "/ogv.js")), ""
+        )
     out = {
         "media": media,
         "missing": missing,
@@ -1011,7 +1099,15 @@ def feed(query="", limit=60, offset=0):
         if q:
             rows = [v for v in rows if _matches(v, q)]
         if rows:
-            per_zim.append((name, z.get("title") or name, bool(z.get("has_icon")), rows, z.get("language") or ""))
+            per_zim.append(
+                (
+                    name,
+                    z.get("title") or name,
+                    bool(z.get("has_icon")),
+                    rows,
+                    z.get("language") or "",
+                )
+            )
     # One card per talk. Two TED ZIMs (a playlist, a topic) carry the same
     # talks, and a feed that shows a talk once per ZIM it is in reads as
     # broken. The first source keeps the card and lists the others.
@@ -1027,13 +1123,23 @@ def feed(query="", limit=60, offset=0):
                 # The talk's id first (TED's own number, a YouTube id): two
                 # TED builds carry talk 56901 with the speaker spelled two
                 # ways, and title + speaker made that two cards.
-                keys = [k for k in (
-                    ("id", str(v.get("id") or "").strip()),
-                    ("ts", str(v.get("title") or "").strip().lower(), str(v.get("speaker") or "").strip().lower()),
-                ) if k[1]]
+                keys = [
+                    k
+                    for k in (
+                        ("id", str(v.get("id") or "").strip()),
+                        (
+                            "ts",
+                            str(v.get("title") or "").strip().lower(),
+                            str(v.get("speaker") or "").strip().lower(),
+                        ),
+                    )
+                    if k[1]
+                ]
                 first = next((seen[k] for k in keys if k in seen), None)
                 if first is not None:
-                    first.setdefault("also", []).append({"zim": name, "zim_title": title, "page": v.get("page")})
+                    first.setdefault("also", []).append(
+                        {"zim": name, "zim_title": title, "page": v.get("page")}
+                    )
                     for k in keys:
                         seen.setdefault(k, first)
                     continue
@@ -1051,7 +1157,10 @@ def feed(query="", limit=60, offset=0):
         "items": merged[offset : offset + limit],
         "total": total,
         "sources": len(per_zim),
-        "zims": [{"name": n, "title": t, "icon": ic, "count": len(r), "language": lg} for n, t, ic, r, lg in per_zim],
+        "zims": [
+            {"name": n, "title": t, "icon": ic, "count": len(r), "language": lg}
+            for n, t, ic, r, lg in per_zim
+        ],
     }
 
 

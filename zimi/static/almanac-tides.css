@@ -1,0 +1,100 @@
+/* ── Almanac: tides (almanac-tides.js), loaded with the section ── */
+#almanac-place {
+  /* Water in its own colour; the Almanac's amber stays the mark of the
+     moment being shown. */
+  --at-water: #6fb3d6;
+  --at-water-line: #8cc7e6;
+  --at-sun: #ffcf6b;
+  --at-night: rgba(0, 0, 0, 0.28);
+}
+.at-quiet { font-size: 13px; color: var(--text2); line-height: 1.5; margin: 0 0 12px; }
+.at-far { margin-top: 24px; }
+.at-link { background: none; border: 0; padding: 0; color: var(--text2); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; text-align: start; }
+.at-link:hover, .at-link:focus-visible { color: var(--amber); text-decoration-color: var(--amber-border); }
+
+/* The answer first: which way the water is going and when it turns. */
+.at-lead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+.at-lead-dir { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+.at-lead-dir.rising::before { content: "\2197\00a0"; }
+.at-lead-dir.falling::before { content: "\2198\00a0"; }
+[dir="rtl"] .at-lead-dir.rising::before { content: "\2196\00a0"; }
+[dir="rtl"] .at-lead-dir.falling::before { content: "\2199\00a0"; }
+.at-lead-next { font-size: 22px; font-weight: 600; color: var(--text); flex-basis: 100%; font-variant-numeric: tabular-nums; }
+.at-lead-h { color: var(--at-water-line); font-weight: 500; margin-inline-start: 10px; }
+.at-lead-now { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
+
+.at-curve { margin: 0 -2px; }
+.at-curve svg { display: block; width: 100%; height: auto; overflow: visible; }
+.at-night { fill: var(--at-night); }
+.at-line { fill: none; stroke: var(--at-water-line); stroke-width: 2; stroke-linejoin: round; }
+.at-datum { stroke: var(--border); stroke-dasharray: 3 4; }
+.at-dot { stroke: var(--bg); stroke-width: 2; }
+.at-dot.hi { fill: var(--at-water-line); }
+.at-dot.lo { fill: var(--text3); }
+.at-now { stroke: var(--amber); stroke-width: 1.5; }
+.at-now-dot { fill: var(--amber); stroke: var(--bg); stroke-width: 2; }
+.at-tick { stroke: var(--text3); }
+.at-tick-l { fill: var(--text3); font-size: 10px; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.at-turn-l, .at-turn-h { text-anchor: middle; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.at-turn-l { font-size: 11px; font-weight: 600; fill: var(--text); }
+.at-turn-l.lo { fill: var(--text2); }
+.at-turn-h { font-size: 10px; fill: var(--at-water-line); }
+
+/* The month: a bar per day, its height the day's range; the Moon over it. */
+.at-sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin: 18px 0 6px; }
+.at-m-row { display: flex; gap: 1px; }
+.at-m-day { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--text3); font: inherit; }
+.at-m-moon { height: 14px; display: flex; align-items: center; justify-content: center; }
+.at-m-well { height: 56px; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.at-m-bar { width: 72%; max-width: 10px; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--at-water); opacity: 0.55; }
+.at-m-day:hover .at-m-bar, .at-m-day:focus-visible .at-m-bar { opacity: 0.9; }
+.at-m-day:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; border-radius: 3px; }
+.at-m-day.on .at-m-bar { background: var(--amber); opacity: 1; }
+.at-m-n { height: 14px; font-size: 10px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.at-m-day.on .at-m-n { color: var(--amber); }
+
+/* Why: the Earth from above, the bulges, the harbour turning through them. */
+.at-why { display: flex; align-items: flex-start; gap: 14px; margin: 18px 0 6px; }
+.at-fig { flex: none; width: 176px; }
+.at-fig svg { display: block; width: 100%; height: auto; }
+.at-fig-orbit { fill: none; stroke: var(--border); stroke-dasharray: 2 3; }
+.at-fig-sea { fill: var(--at-water); fill-opacity: 0.35; stroke: var(--at-water-line); stroke-width: 1; }
+.at-fig-earth { fill: #3b5a46; }
+.at-fig-night { fill: rgba(0, 0, 0, 0.45); }
+.at-fig-pole { fill: var(--text3); }
+.at-fig-moon-dark { fill: #3a3a3a; }
+.at-fig-moon-lit { fill: #e8e4d8; }
+.at-fig-sun { fill: var(--at-sun); }
+.at-fig-place { fill: var(--amber); stroke: var(--bg); stroke-width: 1.5; }
+.at-why-text { flex: 1; min-width: 0; padding-top: 6px; }
+.at-why-k { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.at-why-d { font-size: 13px; color: var(--text2); line-height: 1.45; margin: 0; }
+.at-why-n { font-size: 11px; color: var(--text3); line-height: 1.45; margin: 4px 0 14px; }
+@media (max-width: 420px) {
+  .at-fig { width: 150px; }
+  .at-why { gap: 10px; }
+}
+
+/* Where the numbers come from, and the way to choose another station. */
+.at-station { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; color: var(--text3); margin-top: 4px; }
+.at-station-name { font-size: 13px; color: var(--text2); min-width: 0; }
+.at-station-km { font-variant-numeric: tabular-nums; }
+.at-units { margin-inline-start: auto; display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.at-unit { background: none; border: 0; color: var(--text3); font: inherit; font-size: 11px; padding: 6px 10px; min-width: 36px; cursor: pointer; }
+.at-unit.on { background: var(--surface2); color: var(--text); }
+.at-unit:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.at-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin: 12px 0 0; }
+.at-note .at-link { font-size: 11px; color: var(--text2); }
+
+/* Search and station lists. */
+.at-search { margin: 6px 0 8px; }
+.at-input { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font: inherit; font-size: 15px; padding: 10px 12px; }
+.at-input:focus { outline: none; border-color: var(--amber-border); }
+.at-picker { margin: 10px 0 4px; }
+.at-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.at-list li + li { border-top: 1px solid var(--border); }
+.at-row { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; font-size: 14px; padding: 11px 12px; cursor: pointer; text-align: start; }
+.at-row:hover, .at-row:focus-visible { background: var(--amber-glow); }
+.at-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-row-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
+.at-row-km { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }

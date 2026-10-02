@@ -263,6 +263,11 @@ function _aeSceneAt(ms) {
   };
 }
 
+// Where the Sun is drawn (AE_SUN_SHOW_DIST): its true direction, nearer.
+function _aeSunShown(scene) {
+  return _aeScale(_aeNorm(scene.sun), AE_SUN_SHOW_DIST);
+}
+
 // ── Small vector helpers ──
 function _aeDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 function _aeSub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -536,7 +541,14 @@ var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
 var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
 var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
-var AE_TEX_MOON = '/static/earth/moon-v1.webp';
+var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
+var AE_TEX_MOON_HI = _MOON_MAP_HI_URL;
+// The 4096 map goes to the GPU as one channel (8 MB, not 32): three's
+// RedFormat, which the tree-shaken build does not export by name.
+var AE_THREE_RED_FORMAT = 1028;
+// Light added without touching the canvas's alpha (_aeAddLight): three's
+// CustomBlending, ZeroFactor and OneFactor, not exported by name either.
+var AE_THREE_CUSTOM_BLENDING = 5, AE_THREE_ZERO_FACTOR = 200, AE_THREE_ONE_FACTOR = 201;
 var AE_SATS_URL = '/almanac-satellites';
 // When the server says it is fetching fresher elements, ask again after this:
 // its refresh is two CelesTrak requests of up to 20 s each (satellites.py
@@ -569,7 +581,12 @@ var AE_DRAG_MIN_SCALE = 0.15;         // up close a drag turns the globe more ge
 var AE_WHEEL_ZOOM = 0.0015;           // log-distance per wheel unit
 var AE_KEY_TURN = _aeRad(5);
 var AE_KEY_ZOOM = 1.15;
-var AE_FLY_MS = 900;
+// A flight's length grows with how far it goes, as a multiple of the scale
+// it leaves or arrives at (log, so the Moon is not ten times the trip to the
+// GPS shell): a nudge between framings is quick, a crossing to the Sun is
+// the longest, and nothing takes longer than AE_FLY_FAR_MS.
+var AE_FLY_MIN_MS = 500;
+var AE_FLY_MS_PER_LOG = 300;
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
@@ -605,17 +622,32 @@ var AE_SAT_POINT_PX = 4;
 var AE_SAT_SELECTED_PX = 9;
 var AE_ISS_POINT_PX = 6;
 var AE_ISS_FADED_ALPHA = 0.45;
-var AE_SUN_POINT_PX = 30;
+// The Sun, drawn where it is but not at its distance or size: a disc 3,000
+// Earth radii out along its true direction (the real one is ~23,500), about
+// three times its true width, so it can be seen, and flown to, from here.
+// Its light on the Earth and the Moon comes from the real Sun (sunPos).
+var AE_SUN_SHOW_DIST = 3000;
+var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (real: 0.27)
+var AE_SUN_SEGMENTS = [48, 24];
+var AE_SUN_GLOW_SCALE = 7;            // the glow's width, in the disc's radii
+var AE_GRANULES_PER_RADIUS = 160;     // the granulation's cells (real: ~700, too fine to draw)
+var AE_GRANULE_CONTRAST = 0.3;        // bright cells against dark lanes, at the disc's centre
+var AE_GRANULE_LIFE_S = 600;          // a granule lives about ten minutes, on the page's clock
+var AE_GRANULE_CYCLE = 512;           // the pattern's time, wrapped to keep a float's precision
+var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colour: golden centre, deep orange limb
+var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
+var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
+var AE_MAX_DIST_SUN = 1400;
+var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
-var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
 var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
 var AE_SELECTED_COLOR = [1.0, 0.62, 0.04];
-var AE_SUN_COLOR = [1.0, 0.93, 0.78];
 var AE_GPS_RING_COLOR = 0x6fb8ff, AE_GPS_RING_ALPHA = 0.2;
 var AE_GPS_SHELL_RE = 4.16;           // GPS orbit radius, 26,560 km, in Earth radii
 // Orbits fade in between the view holding half of one and nearly all of it.
@@ -628,6 +660,7 @@ var AE_STAR_ALPHA0 = 1.05, AE_STAR_ALPHA_PER_MAG = 0.16, AE_STAR_ALPHA_MIN = 0.3
 var AE_HOURS_TO_RAD = Math.PI / 12;
 
 var _ae = null;          // view state, built on first open
+var _aeFadeU = { value: 1 };   // how far in from the hero the view has come: what is not the Moon fades by it
 var _aeIsOpen = false;
 
 function _aeT(key, vars) { return (typeof t === 'function') ? t(key, vars) : key; }
@@ -636,6 +669,8 @@ function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.w
 function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
 function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
+// A flight speeds up, cruises and slows to arrive: cubic in and out.
+function _aeEaseInOut(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
 // Isolated left-to-right (U+2066 ... U+2069): inside a right-to-left
 // sentence the bidi algorithm otherwise reorders its runs ("S, 48.5° W 31.3°").
 var AE_LTR_ISOLATE = '\u2066', AE_POP_ISOLATE = '\u2069';
@@ -667,6 +702,12 @@ function _aeById(id) { return document.getElementById(id); }
 var AE_CSS = [
   '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
   '.ae-view.open{display:block}',
+  '.almanac-view.ae-covered>.almanac-content{visibility:hidden}',
+  // Mid-swap with the hero: the page shows through, dimming as the view
+  // opens (_aeHandApply), and the controls come up at the end.
+  '.ae-view.ae-hand{background:transparent}',
+  '.ae-top,.ae-bottom,.ae-status,.ae-labels{opacity:var(--ae-ui,1)}',
+  '.ae-view.ae-hand .ae-top>*,.ae-view.ae-hand .ae-row,.ae-view.ae-hand .ae-note{pointer-events:none}',
   '.ae-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;outline:none}',
   '.ae-canvas.ae-dragging{cursor:grabbing}',
   '.ae-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 16px 28px;background:linear-gradient(rgba(0,0,0,.6),transparent);pointer-events:none}',
@@ -708,6 +749,8 @@ var AE_CSS = [
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
+  '.ae-orient{font-size:11px;line-height:1;color:var(--text3);letter-spacing:.02em;text-shadow:0 1px 2px #000}',
+  '.ae-orient[hidden]{display:none}',
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
   '.ae-ask-text{color:var(--text2)}',
   '.ae-fresh{font:inherit;font-size:11px;line-height:1;padding:6px 10px;min-height:26px;margin:2px 0;margin-inline-start:6px;border-radius:999px;border:1px solid var(--amber-border);background:var(--amber-glow);color:var(--amber);cursor:pointer;vertical-align:middle}',
@@ -743,7 +786,7 @@ var AE_CSS = [
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
   '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
-  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .6s}',
+  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
   '@media (prefers-reduced-motion: reduce){.ae-hint{transition:none}}',
   '@media (max-width:420px){.ae-btn{font-size:12px;padding:7px 10px;min-height:32px}.ae-status{top:60px;font-size:12px}}'
@@ -782,7 +825,7 @@ function _aeBuildDom() {
     '</div>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
     '<div class="ae-top">' +
-      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _almEsc(_aeT('alm_solar_system')) + '</button>' +
+      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> <span id="ae-back-text">' + _almEsc(_aeT('alm_solar_system')) + '</span></button>' +
       '<div class="ae-top-end">' +
         // Now stands under the date it corrects, lit, whenever the view is
         // away from now (after Next eclipse it sat at the end of a row of
@@ -806,10 +849,14 @@ function _aeBuildDom() {
     '<div class="ae-bottom">' +
       '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
       '<div class="ae-card" id="ae-card" hidden></div>' +
+      '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
+      '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
+        // Outward from home: the Earth, its satellites, the Moon, the Sun.
         '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_sats')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _almEsc(_aeT('alm_moon')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="sun" aria-pressed="false">' + _almEsc(_aeT('alm_sun')) + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
@@ -943,35 +990,360 @@ var AE_ATMO_FRAG = [
   '  vec3 V = normalize(cameraPosition - vWorld);',
   '  float edge = pow(clamp(1.0 + dot(N, V) * 1.6, 0.0, 1.0), 2.2);',
   '  float lit = smoothstep(-0.3, 0.5, dot(N, normalize(sunPos - vWorld)));',
-  '  gl_FragColor = vec4(vec3(0.32, 0.58, 1.0) * edge * lit * 0.8, 1.0);',
+  '  gl_FragColor = vec4(vec3(0.32, 0.58, 1.0) * edge * lit * 0.8, 0.0);',
   '}'
 ].join('\n');
 
-// The Moon: sunlight, the Earth's shadow (with the dim copper light the
-// Earth's atmosphere bends into it), and a little earthshine. Until its map
-// is in (or if it never comes) the Moon is a plain grey of about the map's
-// mean brightness, so it still shows its phase instead of black on black.
-var AE_MOON_PLAIN_ALBEDO = 0.5;
+// The Moon's light: app.js _moonLunarL, _moonLunarLambert and _moonDisplay,
+// the model every 2D Moon is drawn with, in GLSL from the same constants.
+function _aeGlslNum(x) { return x.toExponential(6); }
+var AE_GLSL_MOONLIGHT = [
+  'float aeLunarL(float cosA) {',
+  '  float a = degrees(acos(clamp(cosA, -1.0, 1.0)));',
+  '  return clamp(' + _aeGlslNum(_MOON_LUNAR_L[0]) + ' + a * (' + _aeGlslNum(_MOON_LUNAR_L[1]) + ' + a * (' +
+    _aeGlslNum(_MOON_LUNAR_L[2]) + ' + a * ' + _aeGlslNum(_MOON_LUNAR_L[3]) + ')), 0.0, 1.0);',
+  '}',
+  'float aeLunarLambert(float mu0, float mu, float L) {',
+  '  if (mu0 <= 0.0) return 0.0;',
+  '  return (2.0 * L * mu0 / (mu0 + max(mu, 0.0)) + (1.0 - L) * mu0) * smoothstep(0.0, ' + _aeGlslNum(_MOON_ROUGH_MU) + ', mu0);',
+  '}',
+  'vec3 aeMoonDisplay(vec3 lin) { return pow(max(lin, vec3(0.0)), vec3(' + _aeGlslNum(1 / _MOON_DISPLAY_GAMMA) + ')); }'
+].join('\n');
+
+// The Moon: the 2D Moons' picture (app.js _moonSpriteCanvas) in GLSL, from
+// the same constants: the map toned as they tone it, sunlight by lunar-
+// Lambert, earthshine (app.js _moonEarthshine, set each frame for the
+// Earth's phase) over the hemisphere facing the Earth, encoded for the
+// screen, sunlight a touch warm and earthshine cool. Seen from the Earth the
+// hero disc and this Moon are the same pixels (the handoff between them is
+// tests/test_moon_handoff_live.py). The Earth's shadow adds what the 2D Moons
+// do not draw: an eclipse, with the dim copper light the Earth's atmosphere
+// bends into it. Until its map is in (or if it never comes) the Moon is the
+// 2D Moons' plain grey, so it still shows its phase instead of black on black.
+// The umbra's copper, linear: (0.62, 0.24, 0.10) x 0.75 on the screen.
+var AE_MOON_UMBRA_LIN = [0.62, 0.24, 0.10].map(function (c) { return Math.pow(0.75 * c, _MOON_DISPLAY_GAMMA); });
+var AE_BYTE = 255;
 var AE_MOON_FRAG = [
   'precision highp float;',
   'uniform sampler2D moonMap; uniform float moonMapped;',
-  'uniform vec3 sunPos; uniform float sunR; uniform float earthR;',
+  'uniform vec3 sunPos; uniform float sunR; uniform float earthR; uniform float earthshine;',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_OVERLAP,
+  AE_GLSL_MOONLIGHT,
   'void main() {',
   '  vec3 N = normalize(vNormal);',
   '  vec3 L = normalize(sunPos - vWorld);',
-  '  float mu = max(dot(N, L), 0.0);',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  vec3 E = normalize(-vWorld);',
+  '  float mu = dot(N, V);',
   '  float light = aeSunlight(vWorld, sunPos, sunR, vec3(0.0), earthR);',
-  '  float albedo = mix(' + AE_MOON_PLAIN_ALBEDO.toFixed(2) + ', texture2D(moonMap, vUv).r, moonMapped);',
-  '  vec3 sunlit = vec3(albedo) * 1.15 * mu * light;',
-  '  vec3 umbral = vec3(albedo) * vec3(0.62, 0.24, 0.10) * 0.75 * mu * (1.0 - light);',
-  '  float earthshine = 0.025 * (1.0 - mu);',
-  '  gl_FragColor = vec4(sunlit + umbral + vec3(albedo) * earthshine, 1.0);',
+  '  float toned = min(1.0, ' + _aeGlslNum(_MOON_ALBEDO_LIFT / AE_BYTE) + ' + ' + _aeGlslNum(_MOON_ALBEDO_GAIN) + ' * texture2D(moonMap, vUv).r);',
+  '  float albedo = mix(' + _aeGlslNum(_MOON_PLAIN_GREY / AE_BYTE) + ', toned, moonMapped);',
+  '  float sun = aeLunarLambert(dot(N, L), mu, aeLunarL(dot(L, V)));',
+  // Earthshine as the 2D Moons light it: seen from the Earth, even across
+  // the disc (lunar-Lambert with the light behind the eye is 1 everywhere).
+  '  float mu0e = dot(N, E), Le = aeLunarL(dot(E, V));',
+  '  float es = mu0e > 0.0 ? earthshine * (2.0 * Le * mu0e / (mu0e + max(mu, 0.0)) + (1.0 - Le) * mu0e) : 0.0;',
+  '  float lit = sun * light;',
+  '  vec3 umbra = vec3(' + AE_MOON_UMBRA_LIN.map(_aeGlslNum).join(', ') + ');',
+  '  vec3 lin = vec3(lit + es) + umbra * sun * (1.0 - light);',
+  '  float warm = lit / max(lit + es, 1e-6);',
+  '  vec3 tint = vec3(' + _aeGlslNum(_MOON_TINT_R[0]) + ' + ' + _aeGlslNum(_MOON_TINT_R[1]) + ' * warm, 1.0, ' +
+    _aeGlslNum(_MOON_TINT_B[0]) + ' + ' + _aeGlslNum(_MOON_TINT_B[1]) + ' * warm);',
+  '  gl_FragColor = vec4(min(vec3(1.0), albedo * aeMoonDisplay(lin) * tint), 1.0);',
   '}'
 ].join('\n');
 
-// Points with their own colour, alpha and size: satellites, stars, the Sun.
+// Hash noise for the Sun's surface and corona (no texture): smooth value
+// noise in the plane, and cellular noise (the nearest and second-nearest of
+// a jittered lattice's points, and a value for the nearest cell).
+var AE_GLSL_NOISE = [
+  'vec3 aeHash3(vec3 p) {',
+  '  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));',
+  '  return fract(sin(p) * 43758.5453);',
+  '}',
+  'vec3 aeCells(vec3 p) {',
+  '  vec3 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0, id = 0.0;',
+  '  for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++) {',
+  '    vec3 o = vec3(float(x), float(y), float(z)), h = aeHash3(i + o);',
+  '    vec3 q = o + h - f; float d = dot(q, q);',
+  '    if (d < d1) { d2 = d1; d1 = d; id = h.x; } else if (d < d2) { d2 = d; }',
+  '  }',
+  '  return vec3(sqrt(d1), sqrt(d2), id);',
+  '}',
+  'float aeNoise2(vec2 p) {',
+  '  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);',
+  '  float a = fract(sin(dot(i, vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);',
+  '}'
+].join('\n');
+
+// The limb-darkening polynomials (SUN_LIMB_POLY, almanac-orrery.js) as one
+// GLSL function, by Horner's rule.
+function _aeLimbGlsl() {
+  var k = SUN_LIMB_POLY[0].length - 1;
+  var coef = function (j) { return 'vec3(' + SUN_LIMB_POLY.map(function (ch) { return _aeGlslNum(ch[j]); }).join(', ') + ')'; };
+  var expr = coef(k);
+  while (k-- > 0) expr = coef(k) + ' + mu * (' + expr + ')';
+  return 'vec3 aeLimb(float mu) { return ' + expr + '; }';
+}
+
+// ── Sunspots: illustrative spots, the real cycle ──
+// No one can say offline where a spot will be, so the spots are made up, but
+// made up by the Sun's own rules, and the same date always shows the same Sun:
+//   - how many: the sunspot number of the date's place in the solar cycle,
+//     from each cycle's minimum and peak (SILSO, sunspot number v2, cycles
+//     1 to 25) on one cycle shape; before 1755 and after Cycle 25 the cycles
+//     repeat at the mean length and peak, quiet through the Maunder minimum;
+//   - where: Sporer's law, each cycle's spots born near 30 degrees and
+//     lower as it ages (the butterfly diagram), never near the poles; a pair
+//     per group, the follower a little poleward (Joy's law);
+//   - how they move: the Sun's differential rotation (Snodgrass and Ulrich
+//     1990, sidereal), 24.5 days at the equator, slower toward the poles,
+//     from the IAU prime meridian (W = 84.176 + 14.1844 d), on the page's clock;
+//   - how long: each group grows in a day or two and fades over one to three
+//     weeks, born on a day seeded by that day, so time running shows them
+//     form, turn and decay.
+var AE_CYCLE_MINIMA = [1755.2, 1766.5, 1775.5, 1784.7, 1798.3, 1810.6, 1823.3, 1833.9, 1843.5, 1855.9, 1867.2, 1878.9, 1890.2,
+  1902.0, 1913.6, 1923.6, 1933.8, 1944.2, 1954.3, 1964.9, 1976.5, 1986.8, 1996.4, 2008.9, 2019.9];
+var AE_CYCLE_PEAKS = [144.1, 193.0, 264.3, 235.3, 82.0, 81.2, 119.2, 244.9, 219.9, 186.2, 234.0, 124.4, 146.5,
+  107.1, 175.7, 130.2, 198.6, 218.7, 285.0, 156.6, 232.9, 212.5, 180.3, 116.4, 160.9];
+var AE_CYCLE_YEARS = 11.0;           // the mean cycle, for cycles outside the record
+var AE_CYCLE_MEAN_PEAK = 179;        // the record's mean peak
+var AE_CYCLE_RISE_YEARS = 4.6;       // minimum to peak
+var AE_CYCLE_SPAN_YEARS = 16;        // a cycle's spots, from its minimum (cycles overlap)
+var AE_MAUNDER = [1645, 1715, 8];    // years, and the peak through them
+var AE_SPOT_LAT0_DEG = 30, AE_SPOT_LAT_DECAY_YEARS = 8, AE_SPOT_LAT_SPREAD_DEG = 5;
+var AE_SPOT_LAT_RANGE_DEG = [3, 42];
+var AE_SPOT_GROUP_PER_R = 0.1;       // groups on the whole Sun per unit of sunspot number
+var AE_SPOT_LIFE_DAYS = [4, 26];     // a group's life, shortest to longest
+var AE_SPOT_GROW_DAYS = 1.5;
+var AE_SPOT_R_DEG = [2.2, 5.5];      // a leader's radius (penumbra), heliographic degrees: drawn larger than life, to be seen
+var AE_SPOT_PAIR_DEG = [7, 13];       // leader to follower, in longitude
+var AE_SPOT_JOY_DEG = 32;            // Joy's law: a pair's tilt, this times sin(latitude), follower poleward
+var AE_SPOT_MAX = 40;                // spots drawn at once (the shader's array)
+var AE_SUN_POLE_RA_DEG = 286.13, AE_SUN_POLE_DEC_DEG = 63.87;   // IAU
+var AE_SUN_W0_DEG = 84.176, AE_SUN_CARRINGTON_DEG_DAY = 14.1844;
+var AE_SNODGRASS = [14.713, -2.396, -1.787];   // deg/day: A + B sin^2 + C sin^4 of latitude
+
+// Cycle j (0 is Cycle 1): its minimum and peak, the record's, else the mean's.
+function _aeCycle(j) {
+  var n = AE_CYCLE_MINIMA.length, m, peak = AE_CYCLE_MEAN_PEAK;
+  if (j < 0) m = AE_CYCLE_MINIMA[0] + j * AE_CYCLE_YEARS;
+  else if (j >= n) m = AE_CYCLE_MINIMA[n - 1] + (j - n + 1) * AE_CYCLE_YEARS;
+  else { m = AE_CYCLE_MINIMA[j]; peak = AE_CYCLE_PEAKS[j]; }
+  if (m + AE_CYCLE_RISE_YEARS > AE_MAUNDER[0] && m < AE_MAUNDER[1]) peak = AE_MAUNDER[2];
+  return { min: m, peak: peak };
+}
+// The cycles with spots in a year: the one it is in, and the one before.
+// The index of the cycle a year is in (0 is Cycle 1; negative before it).
+function _aeCycleIndex(year) {
+  var n = AE_CYCLE_MINIMA.length, j;
+  if (year < AE_CYCLE_MINIMA[0]) return Math.floor((year - AE_CYCLE_MINIMA[0]) / AE_CYCLE_YEARS);
+  if (year >= AE_CYCLE_MINIMA[n - 1]) return n - 1 + Math.floor((year - AE_CYCLE_MINIMA[n - 1]) / AE_CYCLE_YEARS);
+  j = 0;
+  while (AE_CYCLE_MINIMA[j + 1] <= year) j++;
+  return j;
+}
+function _aeCyclesNear(year) {
+  var j = _aeCycleIndex(year);
+  return [_aeCycle(j - 1), _aeCycle(j)];
+}
+// One cycle's shape, 1 at its peak: (x/tr)^4 e^(4(1 - x/tr)), x years from
+// its minimum, its tail eased out across the next minimum (real minima fall
+// to a sunspot number of a few).
+var AE_CYCLE_TAIL_YEARS = [9, 14];
+function _aeCycleShape(x) {
+  if (x <= 0 || x > AE_CYCLE_SPAN_YEARS) return 0;
+  var u = x / AE_CYCLE_RISE_YEARS, u2 = u * u;
+  var tail = Math.max(0, Math.min(1, (x - AE_CYCLE_TAIL_YEARS[0]) / (AE_CYCLE_TAIL_YEARS[1] - AE_CYCLE_TAIL_YEARS[0])));
+  return u2 * u2 * Math.exp(4 * (1 - u)) * (1 - tail * tail * (3 - 2 * tail));
+}
+// The sunspot number at a decimal year, and each cycle's share of it.
+function _aeSunspotNumber(year) {
+  var cs = _aeCyclesNear(year), total = 0, parts = [];
+  for (var i = 0; i < cs.length; i++) {
+    var x = year - cs[i].min, r = cs[i].peak * _aeCycleShape(x);
+    if (r > 0) { parts.push({ age: x, r: r }); total += r; }
+  }
+  return { r: total, parts: parts };
+}
+// The orrery's seeded generator (_lcgRand) from any number: the same day,
+// the same spots.
+function _aeSeeded(seed) {
+  return _lcgRand((Math.floor(seed) % 2147483646 + 2147483646) % 2147483646 + 1);
+}
+// Sidereal rotation (deg/day) at a heliographic latitude (degrees).
+function _aeSunRotation(latDeg) {
+  var s2 = Math.pow(Math.sin(latDeg * DEG_TO_RAD), 2);
+  return AE_SNODGRASS[0] + AE_SNODGRASS[1] * s2 + AE_SNODGRASS[2] * s2 * s2;
+}
+var AE_MS_PER_YEAR = 365.25 * MS_PER_DAY;
+function _aeDecimalYear(ms) { return 2000 + (ms - Date.UTC(2000, 0, 1, 12)) / AE_MS_PER_YEAR; }
+// The groups alive at ms: [{lat, lon (inertial, degrees from the solar
+// equator's node), r (degrees), born, life}], each a leader and a follower.
+function _aeSunSpots(ms) {
+  var day = Math.floor(ms / MS_PER_DAY), out = [];
+  for (var d = day - AE_SPOT_LIFE_DAYS[1]; d <= day; d++) {
+    var rnd = _aeSeeded(d * 7919 + 13);
+    var ssn = _aeSunspotNumber(_aeDecimalYear(d * MS_PER_DAY));
+    // Births enough to keep R x AE_SPOT_GROUP_PER_R groups alive at once
+    // (lives are min + span x u x u: a quarter of the span on average).
+    var rate = ssn.r * AE_SPOT_GROUP_PER_R / (AE_SPOT_LIFE_DAYS[0] + (AE_SPOT_LIFE_DAYS[1] - AE_SPOT_LIFE_DAYS[0]) / 4);
+    // Births that day: Poisson by Knuth's product of uniforms.
+    var L = Math.exp(-rate), p = rnd(), n = 0;
+    while (p > L && n < 12) { p *= rnd(); n++; }
+    for (var b = 0; b < n; b++) {
+      // Which cycle it belongs to, by each cycle's share that day.
+      var pick = rnd() * ssn.r, part = ssn.parts[0];
+      for (var c = 0; c < ssn.parts.length; c++) { part = ssn.parts[c]; if ((pick -= part.r) <= 0) break; }
+      var u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+      var gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      var lat = AE_SPOT_LAT0_DEG * Math.exp(-part.age / AE_SPOT_LAT_DECAY_YEARS) + AE_SPOT_LAT_SPREAD_DEG * gauss;
+      lat = Math.max(AE_SPOT_LAT_RANGE_DEG[0], Math.min(AE_SPOT_LAT_RANGE_DEG[1], Math.abs(lat))) * (rnd() < 0.5 ? -1 : 1);
+      var born = (d + rnd()) * MS_PER_DAY;
+      var life = AE_SPOT_LIFE_DAYS[0] + (AE_SPOT_LIFE_DAYS[1] - AE_SPOT_LIFE_DAYS[0]) * rnd() * rnd();
+      var carr = rnd() * 360, size = AE_SPOT_R_DEG[0] + (AE_SPOT_R_DEG[1] - AE_SPOT_R_DEG[0]) * Math.pow(rnd(), 1.5);
+      var sep = AE_SPOT_PAIR_DEG[0] + (AE_SPOT_PAIR_DEG[1] - AE_SPOT_PAIR_DEG[0]) * rnd();
+      var age = (ms - born) / MS_PER_DAY;
+      if (age < 0 || age > life) continue;
+      var grow = Math.min(1, age / AE_SPOT_GROW_DAYS) * (1 - age / life);
+      // Born at a Carrington longitude, then carried round at its own latitude's rate.
+      var bornDays = (born - Date.UTC(2000, 0, 1, 12)) / MS_PER_DAY;
+      var lon0 = AE_SUN_W0_DEG + AE_SUN_CARRINGTON_DEG_DAY * bornDays + carr;
+      out.push({ lat: lat, lon: (lon0 + _aeSunRotation(lat) * age) % 360, r: size * Math.sqrt(grow), born: born, life: life,
+        sep: sep, followerLat: lat + Math.sign(lat) * sep * Math.tan(AE_SPOT_JOY_DEG * Math.abs(Math.sin(lat * DEG_TO_RAD)) * DEG_TO_RAD) });
+    }
+  }
+  return out;
+}
+// The spots as the shader takes them: unit vectors in the scene's equatorial
+// frame and a radius (radians), leaders and followers, the largest first.
+var _aeSpotPole = null;
+function _aeSpotVectors(ms) {
+  if (!_aeSpotPole) {
+    var ra = AE_SUN_POLE_RA_DEG * DEG_TO_RAD, dec = AE_SUN_POLE_DEC_DEG * DEG_TO_RAD;
+    var P = [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)];
+    var Q = _aeNorm(_aeCross([0, 0, 1], P));                 // the solar equator's ascending node
+    _aeSpotPole = { P: P, Q: Q, R: _aeCross(P, Q) };
+  }
+  var F = _aeSpotPole, groups = _aeSunSpots(ms), spots = [];
+  function vec(latDeg, lonDeg, rDeg) {
+    var la = latDeg * DEG_TO_RAD, lo = lonDeg * DEG_TO_RAD, cl = Math.cos(la);
+    return [cl * Math.cos(lo) * F.Q[0] + cl * Math.sin(lo) * F.R[0] + Math.sin(la) * F.P[0],
+      cl * Math.cos(lo) * F.Q[1] + cl * Math.sin(lo) * F.R[1] + Math.sin(la) * F.P[1],
+      cl * Math.cos(lo) * F.Q[2] + cl * Math.sin(lo) * F.R[2] + Math.sin(la) * F.P[2], rDeg * DEG_TO_RAD];
+  }
+  groups.sort(function (a, b) { return b.r - a.r; });
+  for (var i = 0; i < groups.length && spots.length < AE_SPOT_MAX; i++) {
+    var g = groups[i];
+    if (g.r <= 0) continue;
+    spots.push(vec(g.lat, g.lon, g.r));
+    // The follower trails (rotation carries spots toward increasing longitude).
+    if (spots.length < AE_SPOT_MAX) spots.push(vec(g.followerLat, g.lon - g.sep, g.r * 0.7));
+    // Between them, a few small pores, as a group has.
+    var rnd = _aeSeeded(g.born / 1000), pores = Math.floor(rnd() * 3);
+    for (var k = 0; k < pores && spots.length < AE_SPOT_MAX; k++) {
+      var f = 0.3 + 0.4 * rnd();
+      spots.push(vec(g.lat + (g.followerLat - g.lat) * f + (rnd() - 0.5) * 2, g.lon - g.sep * f, g.r * (0.25 + 0.2 * rnd())));
+    }
+  }
+  return spots;
+}
+
+// Into the Sun's shader: again whenever the shown time has moved on by more
+// than a spot turns in a fraction of a pixel (a few minutes), so real time
+// costs nothing and an hour a second turns them smoothly.
+var AE_SPOT_STEP_MS = 5 * 60000;
+function _aeUpdateSpots(S, ms) {
+  if (S.spotsAt != null && Math.abs(ms - S.spotsAt) < AE_SPOT_STEP_MS) return;
+  S.spotsAt = ms;
+  var v = _aeSpotVectors(ms), u = S.sunSpots.value;
+  u.fill(0);
+  for (var i = 0; i < v.length; i++) u.set(v[i], i * 4);
+}
+
+// The photosphere, as a filtered camera sees it: limb darkening in each
+// colour (the same as the sky's Sun), through a soft exposure, so the centre
+// burns yellow-white and the limb falls to deep orange. Over it the
+// granulation: bright polygonal cells parted by dark lanes, each cell its own
+// brightness, faded where a cell would be smaller than a pixel (so it never
+// shimmers) and toward the limb. It turns over on the page's clock: still at
+// real time, boiling at an hour a second.
+var AE_SUN_FRAG = [
+  'precision highp float;',
+  'uniform float fade; uniform float uT;',
+  'uniform vec4 uSpots[' + AE_SPOT_MAX + '];',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_NOISE,
+  _aeLimbGlsl(),
+  'void main() {',
+  '  vec3 n = normalize(vNormal);',
+  '  float mu = max(dot(n, normalize(cameraPosition - vWorld)), 0.0);',
+  '  vec3 q = n * ' + AE_GRANULES_PER_RADIUS.toFixed(1) + ' + vec3(0.0, 0.0, uT * 0.37);',
+  '  vec3 c = aeCells(q);',
+  '  float lane = smoothstep(0.0, 0.25, c.y - c.x);',
+  '  float cell = lane * (1.2 - 0.9 * c.x) * (0.8 + 0.4 * c.z) - 0.6;',
+  '  float fine = clamp(1.6 - 0.9 * length(fwidth(q)), 0.0, 1.0);',
+  // The spots: a dark umbra in a grey penumbra, its edge frayed by noise;
+  // round them the faculae, bright only toward the limb (as they are seen).
+  '  float spot = 1.0, fac = 0.0, quiet = 1.0;',
+  '  for (int i = 0; i < ' + AE_SPOT_MAX + '; i++) {',
+  '    vec4 s = uSpots[i];',
+  '    if (s.w <= 0.0) continue;',
+  '    float d = length(n - s.xyz) / s.w;',
+  '    if (d > 3.2) continue;',
+  '    float fray = 0.12 * (aeNoise2(vec2(atan(n.y - s.y, n.x - s.x) * 3.0, float(i))) - 0.5);',
+  '    float pen = 1.0 - smoothstep(0.85, 1.0, d + fray);',
+  '    float umb = 1.0 - smoothstep(0.32, 0.42, d + fray);',
+  '    spot = min(spot, 1.0 - 0.5 * pen - 0.42 * umb);',
+  '    quiet = min(quiet, 1.0 - pen);',
+  '    fac = max(fac, (1.0 - smoothstep(1.2, 3.2, d)) * (1.0 - pen));',
+  '  }',
+  '  float gran = 1.0 + ' + AE_GRANULE_CONTRAST.toFixed(2) + ' * fine * sqrt(mu) * cell * (0.3 + 0.7 * quiet);',
+  '  gran *= spot * (1.0 + 0.9 * fac * pow(1.0 - mu, 1.5));',
+  '  vec3 e = vec3(' + AE_SUN_EXPOSURE.map(_aeGlslNum).join(', ') + ') * aeLimb(mu) * gran;',
+  '  gl_FragColor = vec4(1.0 - exp(-e), fade);',
+  '}'
+].join('\n');
+
+// The light round the Sun, the inside of a wider shell added over the sky:
+// each pixel asks how near its line of sight passes the Sun's centre, in the
+// disc's radii (r), so it is round from anywhere. Nothing over the disc; off
+// it, a warm bloom close in, then the pearl corona falling off with r,
+// streaming out where noise round the limb says, most along the solar
+// equator; and a few faint prominences, pink, standing off the limb.
+var AE_SUN_GLOW_FRAG = [
+  'precision highp float;',
+  'uniform vec3 center; uniform float radius; uniform float fade; uniform float uT;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_NOISE,
+  'void main() {',
+  '  vec3 ray = normalize(vWorld - cameraPosition);',
+  '  vec3 toC = center - cameraPosition;',
+  '  float r = length(cross(ray, toC)) / radius;',
+  '  float edge = ' + AE_SUN_GLOW_SCALE.toFixed(1) + ';',
+  '  if (r > edge || r < 0.98 || dot(ray, toC) < 0.0) discard;',
+  // Round the limb: a direction (cos, sin) in the plane of the sky, so the
+  // noise has no seam, and its height above the solar (ecliptic) equator.
+  '  vec3 off = ray * dot(ray, toC) - toC;',
+  '  vec3 side = normalize(cross(toC, vec3(0.0, 0.0, 1.0)) + vec3(1e-6));',
+  '  vec2 dir = normalize(vec2(dot(off, side), dot(off, normalize(cross(side, toC)))));',
+  '  float fall = 1.0 - r / edge;',
+  '  float bloom = 0.5 / (1.0 + 6.0 * (r - 1.0) * (r - 1.0)) * smoothstep(0.98, 1.0, r);',
+  '  float streak = aeNoise2(dir * 2.2 + 7.0) * 0.65 + aeNoise2(dir * 6.0 + 3.0) * 0.35;',
+  '  float corona = step(1.0, r) * 0.45 * pow(r, -7.0) + 0.3 * pow(r, -2.5) * mix(0.25, 1.0, streak) * mix(1.0, 0.4, dir.y * dir.y);',
+  '  float h = aeNoise2(dir * 9.0 + vec2(floor(uT * 0.05), 1.3));',
+  '  float prom = smoothstep(0.78, 0.92, h) * (1.0 - smoothstep(1.0, 1.0 + 0.05 * h, r)) * smoothstep(1.0, 1.006, r);',
+  '  vec3 col = vec3(1.0, 0.72, 0.42) * bloom + vec3(1.0, 0.95, 0.9) * corona + vec3(1.0, 0.38, 0.45) * prom * 0.6;',
+  '  gl_FragColor = vec4(col * fall * fade, 0.0);',
+  '}'
+].join('\n');
+
+// Points with their own colour, alpha and size: satellites and stars.
 var AE_POINTS_VERT = [
   'attribute vec3 aColor; attribute float aAlpha; attribute float aSize;',
   'uniform float dpr;',
@@ -984,13 +1356,13 @@ var AE_POINTS_VERT = [
 ].join('\n');
 var AE_POINTS_FRAG = [
   'precision mediump float;',
-  'uniform float glow;',
+  'uniform float glow; uniform float fade;',
   'varying vec3 vColor; varying float vAlpha;',
   'void main() {',
   '  vec2 c = gl_PointCoord - 0.5; float r = length(c) * 2.0;',
   '  if (r > 1.0) discard;',
   '  float a = glow > 0.5 ? pow(1.0 - r, 2.2) : 1.0 - smoothstep(0.65, 1.0, r);',
-  '  gl_FragColor = vec4(vColor, vAlpha * a);',
+  '  gl_FragColor = vec4(vColor, vAlpha * a * fade);',
   '}'
 ].join('\n');
 
@@ -1003,7 +1375,7 @@ function _aePointCloud(THREE, capacity, dpr, glow, opts) {
   g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(capacity), 1));
   g.setDrawRange(0, 0);
   var m = new THREE.ShaderMaterial({
-    uniforms: { dpr: { value: dpr }, glow: { value: glow ? 1 : 0 } },
+    uniforms: { dpr: { value: dpr }, glow: { value: glow ? 1 : 0 }, fade: _aeFadeU },
     vertexShader: AE_POINTS_VERT, fragmentShader: AE_POINTS_FRAG,
     transparent: true, depthWrite: false, depthTest: opts.depthTest !== false
   });
@@ -1055,16 +1427,28 @@ function _aeStarField(THREE, dpr) {
   return cloud;
 }
 
-// Build the three.js scene. Returns null when WebGL is not available.
+// Light added over what is behind it, as a glow is, leaving the canvas's
+// alpha alone: over the page (the Moon still in the hero's place) it is
+// light on the page, not a dark patch where the glow is faint.
+function _aeAddLight(m) {
+  m.blending = AE_THREE_CUSTOM_BLENDING;
+  m.blendSrc = m.blendDst = AE_THREE_ONE_FACTOR;
+  m.blendSrcAlpha = AE_THREE_ZERO_FACTOR; m.blendDstAlpha = AE_THREE_ONE_FACTOR;
+  return m;
+}
+
+// Build the three.js scene. Returns null when WebGL is not available. The
+// canvas is see-through (the view's own black is behind it), so the Moon
+// can stand over the page in the hero's place before the view grows.
 function _aeBuildGl(THREE, canvas) {
   var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR);
   try {
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
   } catch (e) {
     return null;
   }
   renderer.setPixelRatio(dpr);
-  renderer.setClearColor(0x000000, 1);
+  renderer.setClearColor(0x000000, 0);
   var scene = new THREE.Scene();
   var camera = new THREE.PerspectiveCamera(AE_FOV_DEG, 1, 0.01, AE_FAR);
   camera.up.set(0, 0, 1);
@@ -1091,17 +1475,18 @@ function _aeBuildGl(THREE, canvas) {
 
   var atmo = new THREE.Mesh(
     new THREE.SphereGeometry(AE_ATMOSPHERE_SCALE, AE_ATMO_SEGMENTS[0], AE_ATMO_SEGMENTS[1]),
-    new THREE.ShaderMaterial({
+    _aeAddLight(new THREE.ShaderMaterial({
       uniforms: { sunPos: shared.sunPos }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_ATMO_FRAG,
-      side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
-    }));
+      side: THREE.BackSide, transparent: true, depthWrite: false
+    })));
   scene.add(atmo);
 
   var moonGeo = new THREE.SphereGeometry(AE_MOON_RADIUS_RE, AE_MOON_SEGMENTS[0], AE_MOON_SEGMENTS[1]);
   moonGeo.rotateX(Math.PI / 2);
   var moonUni = {
     moonMap: { value: null }, moonMapped: { value: 0 },
-    sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE }
+    sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE },
+    earthshine: { value: 0 }
   };
   var moon = new THREE.Mesh(moonGeo, new THREE.ShaderMaterial({
     uniforms: moonUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_MOON_FRAG
@@ -1111,9 +1496,22 @@ function _aeBuildGl(THREE, canvas) {
 
   var sky = new THREE.Group();
   sky.add(_aeStarField(THREE, dpr));
-  var sunDot = _aePointCloud(THREE, 1, dpr, true, { depthTest: true });
-  sky.add(sunDot);
   scene.add(sky);
+
+  var sun = new THREE.Group();
+  var sunT = { value: 0 };   // the granulation's time (_aeUpdate)
+  var sunSpots = { value: new Float32Array(AE_SPOT_MAX * 4) };   // the spots, four floats each (_aeUpdateSpots)
+  sun.add(new THREE.Mesh(
+    new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
+    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT, uSpots: sunSpots }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
+  var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R }, fade: _aeFadeU, uT: sunT };
+  sun.add(new THREE.Mesh(
+    new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
+    _aeAddLight(new THREE.ShaderMaterial({
+      uniforms: sunGlowUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_GLOW_FRAG,
+      side: THREE.BackSide, transparent: true, depthWrite: false
+    }))));
+  scene.add(sun);
 
   var moonPathCount = Math.round(2 * AE_MOON_PATH_HALF_DAYS * 24 / AE_MOON_PATH_STEP_HOURS) + 1;
   var moonPath = _aeLine(THREE, THREE.Line, moonPathCount, AE_MOON_PATH_COLOR, AE_MOON_PATH_ALPHA);
@@ -1128,7 +1526,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, sunDot: sunDot, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -1142,10 +1540,12 @@ function _aeBuildGl(THREE, canvas) {
 // open starts over). The city lights and the Moon's face are drawn without
 // when they fail (no lights; the Moon plain grey), the note says so, and the
 // next open asks for them again.
-function _aeLoadMap(S, uni, url) {
+function _aeLoadMap(S, uni, url, format, load) {
   if (!S.maps[url]) {
-    S.maps[url] = _aeLoadTexture(S.THREE, url).then(function (tx) {
+    S.maps[url] = (load ? load() : _aeLoadTexture(S.THREE, url)).then(function (tx) {
       tx.anisotropy = S.aniso;
+      if (format) tx.format = format;
+      if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
       return true;
     }, function () {
@@ -1155,15 +1555,37 @@ function _aeLoadMap(S, uni, url) {
       S.mapFailed[url] = !ok;
       _ae.dirty = true;
       _aeKick();
+      // Ready behind the page, a map that comes later is uploaded now too.
+      if (ok && _ae.ready) _aeWarm(S);
       return ok;
     });
   }
   return S.maps[url];
 }
+// The 4096 Moon is the picture the 2D Moons already fetched and decoded
+// (app.js _moonLoadHiMap): one fetch, one decode, handed to three as a
+// texture of its own kind (the 1024 map's, the build exports no Texture).
+function _aeSharedHiMoon(S) {
+  if (typeof _moonLoadHiMap !== 'function') return null;
+  return function () {
+    return _moonLoadHiMap().then(function (img) {
+      if (!img || !S.moonUni.moonMap.value) throw new Error('moon map');
+      var tx = new S.moonUni.moonMap.value.constructor(img);
+      tx.needsUpdate = true;
+      return tx;
+    });
+  };
+}
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
   _aeLoadMap(S, S.earthUni.nightMap, AE_TEX_NIGHT);
-  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) { if (ok) S.moonUni.moonMapped.value = 1; });
+  // The Moon's 1024 map first, then the 4096 one over it (the 2D Moons have
+  // usually fetched it by now); without the first the second is not asked.
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) {
+    if (!ok) return;
+    S.moonUni.moonMapped.value = 1;
+    _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+  });
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
 }
 
@@ -1171,7 +1593,7 @@ function _aeLoadMaps(S) {
 function _aeNewState(el) {
   return {
     el: el, gl: null, loading: false, failed: false,
-    speed: 1, offset: 0,                  // this view's own clock on top of the Almanac's
+    speed: 1, clockRan: false,            // the speed, and whether it ran the page's clock
     target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
     fly: null,                            // { start, from:{target pos, dist}, to }
     pointers: {}, pinch: null, drag: null,
@@ -1188,39 +1610,99 @@ function _aeNewState(el) {
   };
 }
 
-// The instant on display: the orrery's, since this view is a close-up of its
-// Earth (almanac-orrery.js _orrerySimTime: the Almanac's time machine when it
-// is set, else now plus what the orrery's speed and rides have run up), plus
-// whatever this view's own speed has run up.
+// ── The clock ──
+// One clock: the Almanac's (almanac.js _almFocus, null for now). The hero
+// Moon, the header, the time machine and this view all read it; this view's
+// speeds and Next eclipse move it. Closing the view leaves the page at the
+// moment the view was showing, and scrubbing the page moves the view's Sun
+// and Moon in the same frame (_aeFollowClock).
 function _aeDisplayMs() {
-  var base = (typeof _orrerySimTime === 'function') ? _orrerySimTime() : Date.now();
-  return base + (_ae ? _ae.offset : 0);
+  return (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
 }
-// Live: nothing has moved the clock off now (the view's own offset may
-// cancel the orrery's scenery spin, _aeOpenOffset).
-function _aeIsLive() {
-  var focus = typeof _almFocus !== 'undefined' && _almFocus;
-  var orrery = typeof _orreryTimeOffset !== 'undefined' ? _orreryTimeOffset : 0;
-  return !focus && !!_ae && _ae.offset + orrery === 0 && _ae.speed === 1;
+function _aeFocusSet() { return typeof _almFocus !== 'undefined' && !!_almFocus; }
+// Live: the clock is now, and running at its own pace.
+function _aeIsLive() { return !_aeFocusSet() && !!_ae && _ae.speed === 1; }
+// While a faster speed runs the clock, the page's clock text and cards
+// follow at this cadence (the view covers them; landing makes them exact).
+var AE_PAGE_TICK_MS = 250;
+function _aeRunClock(dms) {
+  var next = new Date(_aeDisplayMs() + dms);
+  if (typeof _almClampInstant === 'function') next = _almClampInstant(next);
+  _almFocus = next;
+  _ae.clockRan = true;
+  if (typeof _almTravelThrottled !== 'function') return;
+  _almTravelThrottled('ae-page', AE_PAGE_TICK_MS, function () {
+    if (typeof _almScrubClock === 'function') _almScrubClock(next);
+    if (typeof _almLiveHeadCards === 'function') _almLiveHeadCards(next);
+  });
 }
-// Where the view's clock starts: the moment the Almanac or the orrery was
-// set to when someone set one (the time machine, the speed slider, a ride),
-// now otherwise. The orrery spins fast from the start as scenery, so a first
-// open landed weeks ahead and was rarely live.
-function _aeOpenOffset() {
-  if (typeof _almFocus !== 'undefined' && _almFocus) return 0;
-  return typeof _orreryAmbientOffset === 'function' ? -_orreryAmbientOffset() : 0;
+// The clock stopped running (back to real time, or the view closing): the
+// whole page lands on the moment, once, exactly.
+function _aeLandClock() {
+  if (!_ae || !_ae.clockRan) return;
+  _ae.clockRan = false;
+  _aeSettlePage(new Date(_aeDisplayMs()));
+  if (_aeIsOpen && !_ae.hand) _aePauseAlmanac();
+}
+// The orrery's own clock (its speed slider, a ride) becomes the page's when
+// the view opens on it, so the two never disagree.
+function _aeAdoptOrreryClock() {
+  if (_aeFocusSet() || typeof _orreryClockChosen === 'undefined' || !_orreryClockChosen) return;
+  if (typeof _orreryTimeOffset === 'undefined' || !_orreryTimeOffset) return;
+  _aeSettlePage(new Date(Date.now() + _orreryTimeOffset));
+}
+// The page's clock moved (a scrub step, the lever, a settle): this instant
+// is drawn now, in the same frame as the page, not at the next idle tick.
+function _aeFollowClock() {
+  if (!_aeIsOpen || !_ae || !_ae.gl || _ae.clockBusy) return;
+  _ae.dirty = true;
+  _aeDraw(performance.now());
+  _aeUpdateText(_aeDisplayMs());
 }
 
 // ── Camera ──
 function _aeFitDist(radius) {
-  var S = _ae.gl, cam = S.camera;
-  var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, cam.aspect);
+  var cam = _ae.gl.camera, aspect = _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect;
+  var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, aspect);
   return radius / (half * AE_FIT_FILL);
 }
-function _aeMinDist() { return _ae.target === 'moon' ? AE_MIN_DIST_MOON : AE_MIN_DIST_EARTH; }
+// What the camera can circle: how near and far it may go, and the surface a
+// drag's speed is measured from.
+var AE_TARGETS = {
+  earth: { min: AE_MIN_DIST_EARTH, max: AE_MAX_DIST, surface: 1 },
+  moon: { min: AE_MIN_DIST_MOON, max: AE_MAX_DIST, surface: AE_MOON_RADIUS_RE },
+  sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
+};
+function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
 function _aeTargetPos() {
-  return (_ae.target === 'moon' && _ae.scene) ? _ae.scene.moon : [0, 0, 0];
+  if (!_ae.scene || _ae.target === 'earth') return [0, 0, 0];
+  return _ae.target === 'moon' ? _ae.scene.moon : _aeSunShown(_ae.scene);
+}
+// Whose sky the Moon is shown in: the device's place once asked for (the
+// crosshair), else the place chosen for the Almanac; null for neither, and
+// then the Moon stands celestial north up and the view says so.
+function _aeObserver() {
+  if (_ae.you) return _ae.you;
+  var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
+  return loc && loc.stored ? loc : null;
+}
+// The camera's turn about its line of sight, in degrees from celestial north
+// (positive toward east): on the Moon, the parallactic angle at the observer
+// (app.js _moonLimbAngles, the same answer the hero disc turns by), so the
+// terminator lies as it does in their sky; everywhere else north is up.
+function _aeRollDeg(target, ms) {
+  var obs = target === 'moon' ? _aeObserver() : null;
+  return obs ? _moonLimbAngles(new Date(ms), obs.lat, obs.lon).q : 0;
+}
+// The camera's up for a line of sight `dir` turned `rollDeg` from celestial
+// north toward east. East on the sky, looking along dir, is north x dir.
+function _aeViewUp(dir, rollDeg) {
+  var d = _aeNorm(dir);
+  var n = _aeSub([0, 0, 1], _aeScale(d, d[2]));
+  if (_aeLen(n) < 1e-9) return [0, 0, 1];
+  n = _aeNorm(n);
+  var e = _aeCross(n, d), r = _aeRad(rollDeg);
+  return _aeNorm([n[0] * Math.cos(r) + e[0] * Math.sin(r), n[1] * Math.cos(r) + e[1] * Math.sin(r), n[2] * Math.cos(r) + e[2] * Math.sin(r)]);
 }
 function _aeCameraOffset(az, el, dist) {
   return [dist * Math.cos(el) * Math.cos(az), dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el)];
@@ -1232,24 +1714,39 @@ function _aeAzElOf(v) {
 }
 
 function _aeFlyTo(target, dist, azel) {
-  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_ };
+  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0 };
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
-  var to = { dist: _aeClamp(dist, _aeMinDist(), AE_MAX_DIST) };
+  var to = { dist: _aeClampDist(dist) };
   if (_aeReduceMotion()) { _ae.dist = to.dist; _ae.fly = null; }
   else {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
-    _ae.fly = { start: performance.now(), from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
+    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
 }
+// How long a flight takes: the camera's path, end to end, against the
+// nearer of the two distances it stands from what it looks at.
+function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
+  var a = _aeCameraOffset(from.az, from.el, from.dist), b = _aeCameraOffset(toAz, toEl, toDist);
+  var pa = [from.pos[0] + a[0], from.pos[1] + a[1], from.pos[2] + a[2]];
+  var pb = [toPos[0] + b[0], toPos[1] + b[1], toPos[2] + b[2]];
+  var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
+  return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
+}
+// How far along the flight is, eased (1 when there is none).
+function _aeFlyEase(now) {
+  var f = _ae.fly;
+  return f ? _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
+}
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var p = _aeClamp((now - f.start) / AE_FLY_MS, 0, 1), e = _aeEaseOut(p);
+  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseInOut(p);
   _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
   _ae.az = f.from.az + (f.toAz - f.from.az) * e;
   _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
@@ -1259,37 +1756,127 @@ function _aeStepFly(now) {
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
-  var e = _aeEaseOut(_aeClamp((performance.now() - f.start) / AE_FLY_MS, 0, 1));
+  var e = _aeFlyEase(performance.now());
   return [f.from.pos[0] + (to[0] - f.from.pos[0]) * e, f.from.pos[1] + (to[1] - f.from.pos[1]) * e, f.from.pos[2] + (to[2] - f.from.pos[2]) * e];
 }
 
+// Where the camera stands and how wide it sees, now: the view's own
+// (target, turn, distance, a flight between presets), or, while the Moon is
+// passing between the hero and the view, a blend of the view's camera and
+// the hero's (_aeHandCam).
+function _aeViewCam() {
+  var tp = _aeFlyTargetPos();
+  var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
+  if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeFlyEase(performance.now());
+  return { tp: tp, az: _ae.az, el: _ae.el_, dist: _ae.dist, tanHalf: Math.tan(_aeRad(AE_FOV_DEG) / 2), roll: roll, frame: null };
+}
 function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
-  var tp = _aeFlyTargetPos();
-  var off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist);
+  var c = _aeViewCam();
+  if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
+  var tp = c.tp;
+  var off = _aeCameraOffset(c.az, c.el, c.dist);
   var pos = [tp[0] + off[0], tp[1] + off[1], tp[2] + off[2]];
   cam.position.set(pos[0], pos[1], pos[2]);
+  // Up is the observer's zenith on the Moon, north elsewhere; a flight
+  // turns from one to the other on the way.
+  _ae.roll = c.roll;
+  var up = _aeViewUp(_aeSub(tp, pos), c.roll);
+  cam.up.set(up[0], up[1], up[2]);
   cam.lookAt(tp[0], tp[1], tp[2]);
+  // The frame the camera fills: the whole view, or a rectangle of it (the
+  // hero's, on the way in and out), the rest of the canvas the same camera's
+  // view beyond that rectangle's edges.
+  cam.fov = _aeDeg(2 * Math.atan(c.tanHalf));
+  var f = c.frame;
+  if (f && _ae.w && _ae.h) {
+    cam.aspect = f.w / f.h;
+    cam.setViewOffset(f.w, f.h, -f.x, -f.y, _ae.w, _ae.h);
+  } else {
+    cam.aspect = _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect;
+    if (cam.view) cam.clearViewOffset();
+  }
   // Near plane from the nearest surface, so the Earth's limb never clips
   // and depth precision stays where the eye is.
   var toEarth = _aeLen(pos) - 1;
   var toMoon = _ae.scene ? _aeLen(_aeSub(pos, _ae.scene.moon)) - AE_MOON_RADIUS_RE : Infinity;
-  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon) * AE_NEAR_FRACTION);
+  var toSun = _ae.scene ? _aeLen(_aeSub(pos, _aeSunShown(_ae.scene))) - AE_SUN_SHOW_R : Infinity;
+  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun) * AE_NEAR_FRACTION);
   cam.updateProjectionMatrix();
   S.sky.position.copy(cam.position);
   // An orbit much wider than the screen shows only as arcs through it, a web
   // of straight lines, not a ring: the GPS orbits and the Moon's path fade in
   // as the view widens to hold them.
-  var halfView = _aeLen(pos) * Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, cam.aspect);
+  var halfView = _aeLen(pos) * c.tanHalf * Math.min(1, _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect);
   _aeFadeLine(S.gpsRings, AE_GPS_RING_ALPHA, halfView / AE_GPS_SHELL_RE);
   _aeFadeLine(S.moonPath, AE_MOON_PATH_ALPHA, halfView / _aeLen(_ae.scene ? _ae.scene.moon : [AE_MOON_MEAN_DIST_KM / AE_EARTH_RADIUS_KM, 0, 0]));
 }
-// Opacity from how much of an orbit the view holds (half-view over radius).
+// Opacity from how much of an orbit the view holds (half-view over radius),
+// and from how far the view has come in from the hero (_aeFadeU).
 function _aeFadeLine(line, alpha, held) {
-  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1);
+  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1) * _aeFadeU.value;
   line.material.opacity = alpha * out;
   line.visible = out > 0;
 }
+
+// ── The hero's Moon and this one ──
+// The hero disc is the Moon as seen from the Earth, lunar north turned to
+// the observer's zenith (or celestial north), 200 CSS pixels wide. This
+// view's Moon is the same body in the same light (one clock, one ephemeris,
+// one shading model), so seen from the same place, framed the same way, it
+// is the same picture: the camera stands just above the Earth on the line to
+// the Moon, its frame the hero's rectangle, its field just wide enough that
+// the Moon fills the disc. Tapping the hero (or starting to drag it) swaps
+// the disc for this camera's first frame, then the camera flies out to the
+// Moon as the frame opens to the whole view, the page dimming behind and the
+// controls coming up. Leaving, it flies back to the Earth's side and the
+// frame closes onto the hero, now showing whatever moment the view left.
+var AE_HAND_MS = 420;
+var AE_HAND_XFADE_MS = 200;             // reduced motion: a cross-fade instead
+var AE_HAND_EARTH_GAP = 1.5;            // the hero's camera, in Earth radii from its centre: over the air and the ISS
+var AE_HAND_UI_FROM = 0.55;             // the controls come up over the last part of the way
+var AE_HERO_SEL = '#almanac-head .almanac-moon-open';
+var AE_FOCUS_MS = 1500;                 // ms the uncovered page has to take focus back
+// The hero's rectangle in the view's coordinates, or null when it is not
+// on screen (scrolled away, or the head is beyond range).
+function _aeHeroFrame() {
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (!hero || !hero.offsetWidth || !_ae || !_ae.el) return null;
+  var r = hero.getBoundingClientRect(), v = _ae.el.getBoundingClientRect();
+  if (r.bottom <= v.top || r.top >= v.bottom || !v.width) return null;
+  return { x: r.left - v.left, y: r.top - v.top, w: r.width, h: r.height };
+}
+// The hero's camera at a scene, for `hand` (its frame, and any turn a drag
+// has given the Moon since the swap).
+function _aeHandCam(sc, hand) {
+  var dist = _aeLen(sc.moon) - AE_HAND_EARTH_GAP;
+  var azel = _aeAzElOf(_aeScale(sc.moon, -1));
+  var f = hand.frame;
+  // The disc fills the frame's width: its radius is half of it.
+  var tanTheta = Math.tan(Math.asin(AE_MOON_RADIUS_RE / dist));
+  return {
+    tp: sc.moon, az: azel.az + hand.daz, el: _aeClamp(azel.el + hand.del, -AE_MAX_ELEVATION, AE_MAX_ELEVATION),
+    dist: dist, tanHalf: tanTheta * f.h / f.w, roll: _aeRollDeg('moon', sc.ms), frame: f
+  };
+}
+function _aeLerp(a, b, e) { return a + (b - a) * e; }
+function _aeLogLerp(a, b, e) { return Math.exp(_aeLerp(Math.log(a), Math.log(b), e)); }
+// The camera `e` of the way from a (the hero's) to b (the view's).
+function _aeHandBlend(a, b, e) {
+  if (e <= 0) return a;
+  var full = { x: 0, y: 0, w: _ae.w, h: _ae.h };
+  var fa = a.frame, fb = b.frame || full;
+  return {
+    tp: [_aeLerp(a.tp[0], b.tp[0], e), _aeLerp(a.tp[1], b.tp[1], e), _aeLerp(a.tp[2], b.tp[2], e)],
+    az: a.az + _aeAngleDeltaRad(a.az, b.az) * e,
+    el: _aeLerp(a.el, b.el, e),
+    dist: _aeLogLerp(a.dist, b.dist, e),
+    tanHalf: _aeLogLerp(a.tanHalf, b.tanHalf, e),
+    roll: a.roll + _angleDelta(a.roll, b.roll) * e,
+    frame: e >= 1 ? b.frame : { x: _aeLerp(fa.x, fb.x, e), y: _aeLerp(fa.y, fb.y, e), w: _aeLerp(fa.w, fb.w, e), h: _aeLerp(fa.h, fb.h, e) }
+  };
+}
+function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; }
 
 function _aePreset(name) {
   if (!_ae.gl) return;
@@ -1297,8 +1884,13 @@ function _aePreset(name) {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
     _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+  } else if (name === 'sun') {
+    // From the Earth's side too: the Sun as it stands in our sky, ahead.
+    _aeFlyTo('sun', _aeFitDist(AE_FIT_SUN), _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.sun, -1)) : null);
   } else {
-    _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), null);
+    // Back from the Sun, arrive over the day side, the Sun behind the camera.
+    var fromSun = _ae.target === 'sun' && _ae.scene ? _aeAzElOf(_ae.scene.sun) : null;
+    _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), fromSun);
   }
   _ae.preset = name;
   _aeMarkViews();
@@ -1523,7 +2115,7 @@ function _aeUpdateSats(ms, sc) {
       // that is drawn, and it is right (the orbit's shape and tilt hold), so
       // it is drawn in full: at the faded strength it all but vanished and
       // the note's "orbit only" pointed at nothing.
-      S.issRing.material.opacity = standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA;
+      S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value;
     } else if (refreshRings) {
       var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
       if (pts) {
@@ -1571,16 +2163,26 @@ function _aeUpdateMoonPath(ms) {
   _ae.moonPathAt = ms;
 }
 
-// The Moon keeps one face to the Earth: its map's longitude 0 (local +x)
-// points home, its pole along the ecliptic's (the 1.5 degree tilt and the
-// librations are left out).
+// The Moon keeps one face to the Earth, give or take its libration: its pole
+// stands 1.54 degrees from the ecliptic's, on the side opposite its orbit's
+// pole (Cassini), and the map's longitude l (app.js _moonView, the optical
+// libration the hero disc is drawn with) points home, so both show the same
+// face turned the same way.
+function _aeMoonBasis(sc) {
+  var eps = _aeRad(sc.sunEq.nut.eps);
+  var v = _moonView(new Date(sc.ms), null, null);
+  var I = _aeRad(_MOON_EQUATOR_TILT_DEG), node = _aeRad(v.node);
+  var ex = -Math.sin(I) * Math.sin(node), ey = Math.sin(I) * Math.cos(node), ez = Math.cos(I);
+  var z = [ex, ey * Math.cos(eps) - ez * Math.sin(eps), ey * Math.sin(eps) + ez * Math.cos(eps)];
+  var home = _aeNorm(_aeScale(sc.moon, -1));
+  var h = _aeNorm(_aeSub(home, _aeScale(z, _aeDot(home, z))));
+  var e = _aeCross(z, h), l = _aeRad(v.l);
+  var x = _aeSub(_aeScale(h, Math.cos(l)), _aeScale(e, Math.sin(l)));
+  return { x: x, y: _aeCross(z, x), z: z };
+}
 function _aeOrientMoon(sc) {
   var S = _ae.gl;
-  var eps = _aeRad(sc.sunEq.nut.eps);
-  var z = [0, -Math.sin(eps), Math.cos(eps)];
-  var home = _aeNorm(_aeScale(sc.moon, -1));
-  var x = _aeNorm(_aeSub(home, _aeScale(z, _aeDot(home, z))));
-  var y = _aeCross(z, x);
+  var m = _aeMoonBasis(sc), x = m.x, y = m.y, z = m.z;
   S.vx.set(x[0], x[1], x[2]); S.vy.set(y[0], y[1], y[2]); S.vz.set(z[0], z[1], z[2]);
   S.basis.makeBasis(S.vx, S.vy, S.vz);
   S.basis.setPosition(sc.moon[0], sc.moon[1], sc.moon[2]);
@@ -1595,10 +2197,14 @@ function _aeUpdate(ms) {
   S.earth.rotation.z = sc.gast;
   S.shared.sunPos.value.set(sc.sun[0], sc.sun[1], sc.sun[2]);
   S.earthUni.moonPos.value.set(sc.moon[0], sc.moon[1], sc.moon[2]);
+  // The Moon's phase angle, Sun-Moon-Earth, sets the earthshine.
+  S.moonUni.earthshine.value = _moonEarthshine(_aeDot(_aeNorm(_aeSub(sc.sun, sc.moon)), _aeNorm(_aeScale(sc.moon, -1))));
   _aeOrientMoon(sc);
-  var sd = _aeScale(_aeNorm(sc.sun), AE_STAR_RADIUS * 0.98);
-  _aeSetPoint(S.sunDot, 0, sd, AE_SUN_COLOR, 1, AE_SUN_POINT_PX);
-  _aeCommitPoints(S.sunDot, 1);
+  var sd = _aeSunShown(sc);
+  S.sun.position.set(sd[0], sd[1], sd[2]);
+  S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
+  S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
+  _aeUpdateSpots(S, ms);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   _aePlaceCamera();
@@ -1700,7 +2306,10 @@ function _aeSatShortName(s) {
 // ── Taps ──
 function _aeTap(x, y) {
   var best = null, bestD = AE_TAP_RADIUS_PX;
-  for (var i = 0; i < _ae.positions.length; i++) {
+  // Satellites are picked at the Earth; from the Moon or the Sun they are a
+  // speck on it, and a tap there means the Earth.
+  var n = _ae.target === 'earth' ? _ae.positions.length : 0;
+  for (var i = 0; i < n; i++) {
     var p = _ae.positions[i];
     if (_aeBehindEarth(p.pos)) continue;
     var s = _aeProject(p.pos);
@@ -1715,12 +2324,34 @@ function _aeTap(x, y) {
     _aeKick();
     return;
   }
-  var sc = _ae.scene;
-  if (sc && _ae.target !== 'moon' && !_aeBehindEarth(sc.moon)) {
-    var m = _aeProject(sc.moon);
-    if (m && Math.hypot(m.x - x, m.y - y) < AE_TAP_RADIUS_PX * 1.5) { _aePreset('moon'); return; }
-  }
+  // The Earth, the Moon or the Sun: fly to it, as its chip does. A tap on
+  // the one already in view falls through (it puts a satellite's card away).
+  var body = _aeBodyAt(x, y);
+  if (body && body !== _ae.target) { _aePreset(body); return; }
   if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); }
+}
+
+// The body under a point on the screen: its disc, or a finger's width
+// around a small one; the nearest to the camera where one covers another
+// (the Moon before the Sun in an eclipse). Null for none.
+var AE_TAP_BODY_PX = AE_TAP_RADIUS_PX * 1.5;
+function _aeBodyAt(x, y) {
+  var sc = _ae.scene;
+  if (!sc || !_ae.h) return null;
+  var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var bodies = [['earth', [0, 0, 0], 1], ['moon', sc.moon, AE_MOON_RADIUS_RE], ['sun', _aeSunShown(sc), AE_SUN_SHOW_R]];
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < bodies.length; i++) {
+    var b = bodies[i];
+    if (b[0] !== 'earth' && _aeBehindEarth(b[1])) continue;
+    var s = _aeProject(b[1]);
+    if (!s) continue;
+    var d = _aeLen(_aeSub(b[1], eye));
+    var reach = Math.max(b[2] / d * pxPerRad, AE_TAP_BODY_PX);
+    if (Math.hypot(s.x - x, s.y - y) <= reach && d < bestD) { bestD = d; best = b[0]; }
+  }
+  return best;
 }
 
 // ── The card for a tapped satellite ──
@@ -1867,6 +2498,21 @@ function _aeUpdateText(ms) {
     }
     if (status.textContent !== txt) status.textContent = txt;
   }
+  // On the Moon with no place to stand, up is celestial north: said, not guessed.
+  var orient = _aeById('ae-orient');
+  var northUp = _ae.target === 'moon' && !_aeObserver();
+  if (orient && orient.hidden === northUp) orient.hidden = !northUp;
+  // On the Sun, its line: the cycle's real sunspot number, the spots' honesty.
+  var sunNote = _aeById('ae-sunnote');
+  if (sunNote) {
+    var onSun = _ae.target === 'sun';
+    if (sunNote.hidden === onSun) sunNote.hidden = !onSun;
+    if (onSun) {
+      var yr = _aeDecimalYear(ms), cyc = _aeCycleIndex(yr) + 1;
+      _aeSetText(sunNote, _aeT(cyc >= 1 ? 'alm_earth_sun_spots' : 'alm_earth_sun_spots_old',
+        { n: _orrNum(Math.round(_aeSunspotNumber(yr).r), null, 0), c: _orrNum(cyc, null, 0) }));
+    }
+  }
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);
   _aeSetText(_aeById('ae-note'), note.note);
@@ -1888,26 +2534,34 @@ function _aeKick() {
   if (!_ae.raf) _ae.raf = requestAnimationFrame(_aeFrame);
 }
 function _aeBusy() {
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1);
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1 || _ae.hand);
+}
+// Draw the scene at the clock's instant when something changed, something
+// moves, or the idle interval has passed.
+function _aeDraw(now, busy) {
+  if (!_ae.gl || !(_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) return;
+  _aeUpdate(_aeDisplayMs());
+  _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
+  _aeUpdateLabels();
+  _ae.lastRender = now;
+  _ae.dirty = false;
 }
 function _aeFrame() {
   _ae.raf = 0;
   if (!_aeIsOpen || document.hidden) return;
-  if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) { _aeClose(); return; }
+  if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) { _aeFinishClose(); return; }
   var now = performance.now();
   var dt = _ae.lastTs ? Math.min(now - _ae.lastTs, 1000) : 0;
   _ae.lastTs = now;
-  if (_ae.speed > 1) _ae.offset += dt * (_ae.speed - 1);
-  var ms = _aeDisplayMs();
-  var busy = _aeStepFly(now) || _aeBusy();
-  if (_ae.gl && (_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) {
-    _aeUpdate(ms);
-    _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
-    _aeUpdateLabels();
-    _ae.lastRender = now;
-    _ae.dirty = false;
-  }
-  if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(ms); _ae.lastText = now; }
+  if (_ae.speed > 1 && dt) _aeRunClock(dt * _ae.speed);
+  var handDone = _aeStepHand(now);
+  var busy = _aeStepFly(now) || _aeBusy() || !!handDone;
+  _aeDraw(now, busy);
+  if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
+  // The last frame of a swap is drawn; what follows it (the page covered,
+  // or the view gone and the hero back) happens on it, not a frame later.
+  if (handDone) handDone();
+  if (!_aeIsOpen) return;
   if (busy) _ae.raf = requestAnimationFrame(_aeFrame);
   else {
     _ae.lastTs = 0;
@@ -1920,10 +2574,10 @@ function _aeZoomBy(factor) {
   // Mid-flight, a zoom rescales the flight and lets it finish turning.
   var f = _ae.fly;
   if (f) {
-    f.toDist = _aeClamp(f.toDist * factor, _aeMinDist(), AE_MAX_DIST);
-    f.from.dist = _aeClamp(f.from.dist * factor, _aeMinDist(), AE_MAX_DIST);
+    f.toDist = _aeClampDist(f.toDist * factor);
+    f.from.dist = _aeClampDist(f.from.dist * factor);
   }
-  _ae.dist = _aeClamp(_ae.dist * factor, _aeMinDist(), AE_MAX_DIST);
+  _ae.dist = _aeClampDist(_ae.dist * factor);
   _ae.preset = null;
   _aeMarkViews();
   _ae.dirty = true;
@@ -1933,11 +2587,34 @@ function _aeTurnBy(dAz, dEl) {
   _ae.fly = null;
   _ae.az += dAz;
   _ae.el_ = _aeClamp(_ae.el_ + dEl, -AE_MAX_ELEVATION, AE_MAX_ELEVATION);
+  // Mid-swap the turn is the Moon's at both ends of the way, so it shows at
+  // once, even while the Moon still stands in the hero's place.
+  if (_ae.hand) { _ae.hand.daz += dAz; _ae.hand.del += dEl; }
   _ae.dirty = true;
   _aeKick();
 }
+// A drag that began on the hero disc (almanac.js), carried on into the view.
+function _aeHandDrag(dx, dy) {
+  if (!_aeIsOpen || !_ae.gl) return;
+  var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
+  _aeTurnBy(-dx * k, dy * k);
+}
+// Take over a drag that began on the hero disc, once the view is up: the
+// pointer is captured by this canvas and becomes its own drag, so the same
+// finger keeps turning the Moon however the page under it is hidden or
+// redrawn (WebKit ends a capture held by an element that stops being drawn).
+// False while the view is not open yet (the disc forwards the drag till then).
+function _aeAdoptPointer(id, x, y) {
+  var canvas = _aeById('ae-canvas');
+  if (!_aeIsOpen || !_ae.gl || !canvas) return false;
+  try { canvas.setPointerCapture(id); } catch (e) { return false; }
+  _ae.pointers[id] = { x: x, y: y };
+  _ae.drag = { x: x, y: y, x0: x, y0: y, moved: true };
+  canvas.classList.add('ae-dragging');
+  return true;
+}
 function _aeDragScale() {
-  var surface = _ae.target === 'moon' ? AE_MOON_RADIUS_RE : 1;
+  var surface = AE_TARGETS[_ae.target].surface;
   return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
 }
 // The canvas's own listeners: bound again to the fresh canvas that replaces
@@ -1945,6 +2622,7 @@ function _aeDragScale() {
 function _aeBindCanvas(canvas) {
   canvas.addEventListener('pointerdown', function (e) {
     if (_ae.setOpen) _aeShowSettings(false);   // a touch on the globe puts the panel away
+    _aeHideHint();                              // and the hint has done its job
     canvas.setPointerCapture(e.pointerId);
     _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(_ae.pointers);
@@ -2004,6 +2682,7 @@ function _aeBindKeys() {
       e.preventDefault();
       e.stopPropagation();
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
+      _ae.closedByKey = true;
       _aeClose();
       return;
     }
@@ -2020,10 +2699,13 @@ function _aeBindKeys() {
   });
 }
 
+// A speed runs the page's clock (_aeRunClock); back at real time the page
+// lands on the moment it ran to.
 function _aeSetSpeed(speed) {
   _ae.speed = speed;
   var btns = document.querySelectorAll('#ae-time [data-ae-speed]');
   for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(+btns[i].getAttribute('data-ae-speed') === speed));
+  if (speed === 1) _aeLandClock();
   _ae.dirty = true;
   _aeKick();
 }
@@ -2037,21 +2719,31 @@ function _aeEclipseButton(on) {
 }
 function _aeJumped() {
   _aeEclipseButton(true);
-  _ae.offset = 0;
+  _ae.clockRan = false;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
   _aeSetSpeed(1);
 }
-// Hand a new instant to the Almanac itself, so the rest of it (the header,
-// the calendar, the orrery) reads the same moment when the view closes.
+// The page lands on `date` (null: now). Under the view its hero needs no
+// sweep from the moment before: it is covered, and when the view closes the
+// Moon flies back into it at this moment.
+function _aeSettlePage(date) {
+  if (typeof _almPrevFocusTime !== 'undefined') _almPrevFocusTime = null;
+  if (date) { if (typeof _almScrubSettle === 'function') _almScrubSettle(date); }
+  else if (_aeFocusSet() && typeof _almBackToToday === 'function') _almBackToToday();
+}
+// Hand a new instant to the Almanac itself: the header, the calendar, the
+// orrery and this view all read the one clock.
 function _aeGoTo(ms) {
-  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
+  _ae.clockRan = false;
+  _aeSettlePage(new Date(ms));
   _aeJumped();
 }
-// Now for everything the view's clock is made of: the time machine and the
-// orrery (its offset, its rides) go back to now with it.
+// Now for everything the clock is made of: the time machine and the orrery
+// (its offset, its rides) go back to now with it.
 function _aeNow() {
-  if (typeof _almFocus !== 'undefined' && _almFocus && typeof _almBackToToday === 'function') _almBackToToday();
+  _ae.clockRan = false;
+  _aeSettlePage(null);
   if (typeof _orrerySnapToNow === 'function') _orrerySnapToNow();
   _aeJumped();
 }
@@ -2113,9 +2805,16 @@ function _aePauseAlmanac() { if (typeof _cancelAllRAF === 'function') _cancelAll
 function _aeResumeAlmanac() { if (typeof _resumeAllRAF === 'function') _resumeAllRAF(); }
 // Covered by the view, the Almanac's page need not be painted at all
 // (visibility keeps its layout, so its scroll position survives).
+// A class on the Almanac, not a style on its content: the content's own
+// attributes stay as they were.
 function _aeCoverAlmanac(on) {
-  var c = _aeById('almanac-content');
-  if (c) c.style.visibility = on ? 'hidden' : '';
+  var v = _aeById('almanac-view');
+  if (v) v.classList.toggle('ae-covered', on);
+}
+// Take a style off as if it was never set: no empty style attribute left.
+function _aeStyleOff(el, prop) {
+  el.style.removeProperty(prop);
+  if (!el.getAttribute('style')) el.removeAttribute('style');
 }
 
 // A message stands in for the view (loading, no WebGL, no maps): the
@@ -2129,30 +2828,174 @@ function _aeMessage(text) {
   if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 
-// ── Open and close ──
-function _aeStartView(THREE) {
-  var S = _aeBuildGl(THREE, _aeById('ae-canvas'));
-  if (!S) {
-    _ae.failed = true;
-    // The orrery stops offering what this browser cannot draw (its glow and
-    // Earth's button go; Earth opens its article again).
-    openAlmanacEarth.unsupported = true;
-    _aeMessage(_aeT('alm_earth_nogl'));
-    return;
-  }
-  _ae.gl = S;
-  return _aeLoadMaps(S).then(function (dayMapIn) {
-    if (_ae.gl !== S) return;   // the Almanac closed while it loaded
-    if (!dayMapIn) { _aeDisposeGl(); _aeMessage(_aeT('alm_earth_unavailable')); return; }
-    _aeMessage('');
-    _aeResize();
-    _aeEnter();
+// ── Ready, before anyone asks ──
+// three.js, the scene and its maps are made ready behind the page once it
+// has painted (and gone idle), or as soon as someone points at or touches
+// the hero, so a tap on the Moon swaps it for this one in the same frame.
+// Never on the page's first paint: this file itself loads after it. Ready
+// means a context with its shaders compiled and its maps uploaded, drawing
+// to a single pixel until the view opens.
+var _aePreparing = null;
+function _aeEnsure() {
+  if (_ae) return true;
+  _aeEnsureStyles();
+  var el = _aeBuildDom();
+  if (!el) return false;
+  _ae = _aeNewState(el);
+  _aeBindControls();
+  _aeBindKeys();
+  _aeBindCanvas(_aeById('ae-canvas'));
+  return true;
+}
+function _aeReady() { return !!(_ae && _ae.gl && _ae.ready); }
+// Resolves true when the view can draw; false when it cannot (no WebGL, or
+// the day map, without which there is no view, did not load).
+function _aePrepare() {
+  if (!_aeEnsure()) return Promise.resolve(false);
+  if (_aeReady()) return Promise.resolve(true);
+  if (_ae.failed) return Promise.resolve(false);
+  if (_aePreparing) return _aePreparing;
+  _ae.loading = true;
+  _aePreparing = _aeLoadThree().then(function (THREE) {
+    var S = _ae.gl;
+    if (!S) {
+      S = _aeBuildGl(THREE, _aeById('ae-canvas'));
+      if (!S) {
+        _ae.failed = true;
+        // The orrery stops offering what this browser cannot draw (its glow
+        // and Earth's button go; Earth opens its article again).
+        openAlmanacEarth.unsupported = true;
+        return false;
+      }
+      _ae.gl = S;
+    }
+    return _aeLoadMaps(S).then(function (dayMapIn) {
+      if (_ae.gl !== S) return false;     // the Almanac closed while it loaded
+      if (!dayMapIn) { _aeDisposeGl(); return false; }
+      _ae.ready = true;
+      _aeWarm(S);
+      return true;
+    });
+  }).catch(function () { return false; }).then(function (ok) {
+    _ae.loading = false;
+    _aePreparing = null;
+    return ok;
   });
+  return _aePreparing;
+}
+// Compile every shader and upload every map now, at a pixel's cost, so the
+// first frame the view shows does neither.
+function _aeWarm(S) {
+  if (_aeIsOpen || !S || _ae.gl !== S) return;
+  _ae.scene = _aeSceneAt(_aeDisplayMs());
+  _aeUpdate(_ae.scene.ms);
+  S.renderer.compile(S.scene, S.camera);
+  S.renderer.render(S.scene, S.camera);
+}
+// Behind the page, once it has painted and the browser is idle.
+var AE_IDLE_PREPARE_TIMEOUT_MS = 4000;
+function _aePrepareWhenIdle() {
+  var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 1); };
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      idle(function () {
+        if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return;
+        _aePrepare();
+      }, { timeout: AE_IDLE_PREPARE_TIMEOUT_MS });
+    });
+  });
+}
+
+// ── Open and close ──
+// The swap's frames: e is how far the camera has come from the hero's (0)
+// to the view's (1). The page dims behind the Moon by it, what is not the
+// Moon (the stars, the Sun, orbits, satellites) comes in by it, and the
+// controls come up over its last part. Under reduced motion the view does
+// not fly: it fades in over the page, and out.
+function _aeHandApply(h, e) {
+  h.e = h.xfade ? 1 : e;
+  _aeFadeU.value = h.xfade ? 1 : e;
+  var st = _ae.el.style;
+  if (h.xfade) st.opacity = String(e);
+  st.backgroundColor = 'rgba(0,0,0,' + (h.xfade ? 1 : e).toFixed(3) + ')';
+  st.setProperty('--ae-ui', h.xfade ? '1' : String(_smoothstep(AE_HAND_UI_FROM, 1, e)));
+  _ae.dirty = true;
+}
+function _aeHandReset() {
+  _aeFadeU.value = 1;
+  ['opacity', 'background-color', '--ae-ui'].forEach(function (p) { _aeStyleOff(_ae.el, p); });
+  _ae.el.classList.remove('ae-hand');
+}
+// Advance a swap; returns what to do once this frame is drawn, on its last.
+function _aeStepHand(now) {
+  var h = _ae.hand;
+  if (!h) return null;
+  var p = _aeClamp((now - h.start) / h.ms, 0, 1), k = _aeEaseOut(p);
+  _aeHandApply(h, h.dir > 0 ? h.e0 + (1 - h.e0) * k : h.e0 * (1 - k));
+  if (p < 1) return null;
+  return function () {
+    if (_ae.hand !== h) return;
+    _ae.hand = null;
+    _aeHandReset();
+    h.done();
+  };
+}
+// The hero disc steps aside while this Moon stands in for it (a class on the
+// Almanac, so a header the clock rebuilds meanwhile stays aside too).
+function _aeLiftHero(on) {
+  var v = _aeById('almanac-view');
+  if (v) v.classList.toggle('alm-moon-lifted', on);
+}
+// In: the hero's Moon becomes this one, then the view opens around it.
+function _aeHandIn(frame) {
+  var sc = _ae.scene = _aeSceneAt(_aeDisplayMs());
+  var azel = _aeAzElOf(_aeScale(sc.moon, -1));
+  _ae.target = 'moon';
+  _ae.az = azel.az; _ae.el_ = azel.el;
+  _ae.fly = null;
+  _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_MOON));
+  _ae.preset = 'moon';
+  _aeMarkViews();
+  var xfade = _aeReduceMotion();
+  var h = _ae.hand = {
+    dir: 1, start: performance.now(), ms: xfade ? AE_HAND_XFADE_MS : AE_HAND_MS,
+    frame: frame, daz: 0, del: 0, e0: 0, e: 0, xfade: xfade,
+    done: function () {
+      _aeCoverAlmanac(true);
+      if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
+    }
+  };
+  _ae.el.classList.add('ae-hand');
+  _aeHandApply(h, 0);
+  // The first frame now, and the disc aside in the same task: the swap lands
+  // in one composite, the Moon never in two places or none.
+  _aeDraw(performance.now(), true);
+  if (!xfade) _aeLiftHero(true);
+  _aeKick();
+}
+// Out: the view closes onto the hero, the Moon flying back into its place.
+function _aeHandOut(frame) {
+  var was = _ae.hand, xfade = _aeReduceMotion();
+  _ae.hand = {
+    dir: -1, start: performance.now(), ms: xfade ? AE_HAND_XFADE_MS : AE_HAND_MS,
+    frame: frame, daz: 0, del: 0, e0: was ? was.e : 1, e: was ? was.e : 1, xfade: xfade,
+    done: _aeFinishClose
+  };
+  _ae.pointers = {}; _ae.drag = _ae.pinch = null;
+  _ae.el.classList.add('ae-hand');
+  _aeShowSettings(false);
+  _aeCoverAlmanac(false);
+  if (!xfade) _aeLiftHero(true);
+  _aeKick();
 }
 
 // Where the opening flight arrives: over the chosen place (or the Almanac's
 // stand-in for it), so the first thing seen is here, lit as it is now.
 function _aeEnter() {
+  // From the hero, its Moon becomes this one where it stands.
+  var frame = _ae.fromHero ? _aeHeroFrame() : null;
+  if (frame) { _aeHandIn(frame); return; }
+  _aeCoverAlmanac(true);
   var ms = _aeDisplayMs();
   _ae.scene = _aeSceneAt(ms);
   var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
@@ -2161,10 +3004,15 @@ function _aeEnter() {
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
-  _aePreset(_aeOpenTarget === 'moon' ? 'moon' : 'earth');
+  _aePreset(_aeOpenTarget);
   if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
 }
 
+function _aeHideHint() {
+  var hint = _aeById('ae-hint');
+  if (hint) hint.classList.remove('ae-show');
+  clearTimeout(_ae.hintTimer);
+}
 // The hint over the controls, for a moment: the first open's, or `text`.
 function _aeShowHint(text) {
   var hint = _aeById('ae-hint');
@@ -2193,6 +3041,9 @@ function _aeLocateMe() {
     var lat = pos.coords.latitude, lon = pos.coords.longitude;
     if (!_almValidLatLon(lat, lon)) { fail(); return; }
     _ae.you = { lat: lat, lon: lon };
+    // Where I am is the place the Almanac follows from now on: its tides,
+    // sky and times take it up when the view closes.
+    if (typeof _saveLocation === 'function') { _saveLocation(lat, lon, ''); _ae.placeChanged = true; }
     btn.setAttribute('aria-pressed', 'true');
     var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
     _ae.preset = 'earth';
@@ -2200,65 +3051,127 @@ function _aeLocateMe() {
   }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 
-// `opts.target` 'moon' opens on the Moon (the hero moon's way in); else Earth.
+// Open the view. `opts.target` 'moon' or 'sun' opens on that body, else the
+// Earth (the orrery's way in, flying down to it). `opts.fromHero`: the hero
+// disc was tapped or dragged, and its Moon becomes this one (_aeHandIn); if
+// the view is not ready yet the disc waits, breathing, until it is.
+// `opts.from` 'sky': the live sky's Sun or Moon was tapped; the view keeps
+// the page's clock and Back says Almanac. Otherwise it came from the orrery.
 var _aeOpenTarget = 'earth';
+var _aeFrom = 'orrery';
 function openAlmanacEarth(opts) {
-  if (_aeIsOpen) return;
-  _aeOpenTarget = opts && opts.target === 'moon' ? 'moon' : 'earth';
-  _aeEnsureStyles();
-  if (!_ae) {
-    var el = _aeBuildDom();
-    if (!el) return;
-    _ae = _aeNewState(el);
-    _aeBindControls();
-    _aeBindKeys();
-    _aeBindCanvas(_aeById('ae-canvas'));
-  }
+  if (_aeIsOpen || !_aeEnsure()) return;
+  _aeOpenTarget = opts && AE_TARGETS[opts.target] ? opts.target : 'earth';
+  var fromHero = !!(opts && opts.fromHero);
+  _aeFrom = fromHero ? 'hero' : (opts && opts.from === 'sky' ? 'sky' : 'orrery');
+  if (!fromHero || _aeReady() || _ae.failed) { _aeShow(fromHero); return; }
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (hero) hero.classList.add('alm-moon-waking');
+  _ae.wanted = true;
+  _aePrepare().then(function () {
+    if (hero) hero.classList.remove('alm-moon-waking');
+    if (!_ae.wanted) return;
+    _ae.wanted = false;
+    if (_aeIsOpen || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
+    _aeShow(true);
+  });
+}
+function _aeShow(fromHero) {
+  // From the orrery, its chosen moment; from the hero or the sky, the moment
+  // they show.
+  if (_aeFrom === 'orrery') _aeAdoptOrreryClock();
   _aeIsOpen = true;
+  _ae.fromHero = fromHero;
   _ae.el.classList.add('open');
-  _ae.offset = _aeOpenOffset();
   _ae.selected = null;
   _aeRenderCard();
   _aeShowSettings(false);
   _ae.freshFailed = false;
+  _ae.clockRan = false;
   _aeEclipseButton(true);
   _aeSetSpeed(1);
   _aePauseAlmanac();
-  _aeCoverAlmanac(true);
-  var back = _aeById('ae-back');
+  // Back goes where the view was opened from: the Almanac's page (the hero,
+  // the sky) or its solar system (the orrery).
+  var back = _aeById('ae-back'), backText = _aeById('ae-back-text');
+  if (backText) _aeSetText(backText, _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'));
   if (back) back.focus({ preventScroll: true });
   _aeLoadSats();
-  if (_ae.gl) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
+  if (_aeReady()) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
+  _aeCoverAlmanac(true);
   if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
-  if (_ae.loading) return;
-  _ae.loading = true;
   _aeMessage(_aeT('alm_earth_loading'));
-  _aeLoadThree().then(function (THREE) {
-    _ae.loading = false;
+  _aePrepare().then(function (ok) {
     if (!_aeIsOpen) return;
-    return _aeStartView(THREE);
-  }).catch(function () {
-    _ae.loading = false;
-    _aeMessage(_aeT('alm_earth_unavailable'));
+    if (!ok) { _aeMessage(_aeT(_ae.failed ? 'alm_earth_nogl' : 'alm_earth_unavailable')); return; }
+    _aeMessage('');
+    _aeResize();
+    _aeEnter();
+    _aeKick();
   });
 }
 
+// Close: back into the hero when the view came from it and it is there to
+// go back to, else at once. The page has the view's moment first, so the
+// hero it lands in shows it.
 function _aeClose() {
+  if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
+  _aeLandClock();
+  var frame = _ae.fromHero && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
+    (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
+  if (frame) _aeHandOut(frame);
+  else _aeFinishClose();
+}
+function _aeFinishClose() {
   if (!_aeIsOpen) return;
+  _aeLandClock();
   _aeIsOpen = false;
   if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
+  _ae.hand = null;
+  _aeHandReset();
   _ae.el.classList.remove('open');
   _ae.pointers = {}; _ae.drag = _ae.pinch = null;
   // The drawing buffer is the most the view holds (a screen of pixels, tens
   // of MB on a phone, where iOS ends tabs that hold too much). Closed, it
-  // shrinks to a pixel; the scene and its maps stay, so coming back from the
-  // orrery is instant, and _aeResize gives the buffer its size again.
-  if (_ae.gl) _ae.gl.renderer.setSize(1, 1, false);
+  // shrinks to a pixel; the scene and its maps stay, so coming back is
+  // instant, and _aeResize gives the buffer its size again.
+  if (_ae.gl) {
+    _ae.gl.renderer.setSize(1, 1, false);
+    if (_ae.gl.camera.view) _ae.gl.camera.clearViewOffset();
+  }
+  _aeLiftHero(false);
   _aeCoverAlmanac(false);
-  if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
-  var orr = _aeById('almanac-orrery');
-  if (orr && orr.focus) orr.focus({ preventScroll: true });
+  if (typeof _almanacOpen === 'undefined' || _almanacOpen) {
+    _aeResumeAlmanac();
+    if (_ae.placeChanged && typeof _almRepaintFocus === 'function') _almRepaintFocus();
+  }
+  _ae.placeChanged = false;
+  // Focus goes back where the view came from; its ring shows only to someone
+  // who left by the keyboard (a ring round the Moon after a tap is noise).
+  var fromHero = _ae.fromHero, from = _aeFrom;
+  var backEl = function () { return fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(from === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery'); };
+  var focusOpts = { preventScroll: true, focusVisible: !!_ae.closedByKey };
+  // Under reduced motion every property eases over 0.01 ms (app.css), the
+  // visibility each element inherits too, one level a frame: the page
+  // uncovered this instant is hidden to focus for a few frames yet. On a
+  // loaded machine that is more frames than a count covers, and the hero
+  // may be drawn again meanwhile (a new element): so it is looked up on
+  // every try, for a time rather than a number of frames, and a focus the
+  // reader has put somewhere else in the meantime is left where it is.
+  var until = performance.now() + AE_FOCUS_MS;
+  (function land() {
+    if (_aeIsOpen) return;
+    var a = document.activeElement;
+    if (a && a !== document.body && a !== document.documentElement && !_ae.el.contains(a)) {
+      var b0 = backEl();
+      if (a !== b0) return;
+    }
+    var back = backEl();
+    if (back && back.focus) back.focus(focusOpts);
+    if ((!back || document.activeElement !== back) && performance.now() < until) requestAnimationFrame(land);
+  })();
+  _ae.closedByKey = false;
   // Found unsupported, the orrery drops its Earth glow; a paused orrery
   // (1x) draws nothing by itself, so give it the frame without.
   if (openAlmanacEarth.unsupported && typeof _orrerySyncToFocus === 'function') _orrerySyncToFocus();
@@ -2273,6 +3186,7 @@ function _aeDisposeGl() {
   var S = _ae && _ae.gl;
   if (!S) return;
   _ae.gl = null;
+  _ae.ready = false;
   _ae.scene = null;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   S.scene.traverse(function (o) {
@@ -2301,10 +3215,13 @@ function _aeDisposeGl() {
 // gives the GPU back.
 function _aeRelease() {
   if (!_ae) return;
-  _aeClose();
+  _ae.wanted = false;
+  _aeFinishClose();
   _aeDisposeGl();
 }
 
 window.openAlmanacEarth = openAlmanacEarth;
 // The orrery, drawn before this file ran, can now say Earth opens in 3D.
 if (typeof _orreryRenderHint === 'function') _orreryRenderHint();
+// This file loads after the Almanac has painted; the view gets ready behind it.
+if (typeof requestAnimationFrame === 'function' && (typeof _almanacOpen === 'undefined' || _almanacOpen)) _aePrepareWhenIdle();

@@ -29,11 +29,19 @@ An app earns a place when the library already holds the data, in a shape Zimi ca
 - **Khan Academy:** "isn't an app like school or I dunno, not saying no just needs to be reframed, and picture books with academy?" Picture books are not a Khan thing: they belong on the shelf. Khan needs a frame of its own before it is built.
 - **Health and Prepared:** "Hospital or First Aid or I dunno, maaaaybe or combine health and prepared into one? Can it be done well tho?" Open: one app, and only if the sources parse into something better than their own pages.
 - **Travel:** "seems odd but maybe. Or can be built into maps like a combined view for planning trips and travel maybe flight and driving times between destinations and language at each and things to know and do and stuff I dunno. I did want turn by turn eventually." So Travel is a Maps feature, not an app: trip planning, travel times, languages, things to know and do; turn-by-turn is the long-term goal.
-- **Dictionary:** "done really well might be nice, especially if it's like a nice down the wormhole experience."
+- **Dictionary:** "done really well might be nice, especially if it's like a nice down the wormhole experience." Built 2026-10-01 (zimi/dictionary.py, static/dictionary.html). Eric that day: "Dictionary is cool seeing the same word in all is nice. Can it speak the word!? Properly!?" Kiwix's Wiktionary ZIMs carry the IPA and the labels of recordings but no recording (en maxi 2024-05: 8.2 M entries, no audio file), so a word is said by the device's voice for its language, by accent where the device has the region, and the page says so when it has none.
 - **Docs:** "maaaybe reader view could help and sorting but we might not have enough info."
 - **Nearby:** "Wikipedia on the map is interesting."
 - **Arcade:** "someday".
 - **Zimi Earth** (new): "maybe we need Zimi Earth like Google earth that has a bunch of the stuff mixed?" The Almanac's 3D Earth (1.12) is the seed: the globe you can drag, with maps, Wikipedia places, satellites, day and night, and travel on it. Nearby and Travel may belong inside it.
+
+## Eric's reactions (2026-10-01)
+
+- **Dictionary:** building in 1.13: "seeing the same word in all is nice. Can it speak the word!? Properly!?"
+- **Travel in Maps:** "interesting".
+- **Zimi Earth:** "when we get whole solar system maybe, and more features" (with 2.0's flown solar system).
+- **Labs and School:** "would be cool to like follow through lesson plans and keep track or something": lesson paths through the simulations and courses, with progress kept like Bookshelf's places.
+- **The rest:** "a lil hairy".
 
 ## Folded into existing apps (not separate apps)
 

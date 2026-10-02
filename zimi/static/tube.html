@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZimiTube</title>
 <!--@apps.css@-->
 <style>
@@ -181,7 +181,7 @@ var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
   sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen',
-  watch_later: 'Watch later', listen_later: 'Listen later', continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
+  continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 // _feed is the home's order (a source, a query, a sort); _list is what is
 // playing through (the feed, or a row of what you keep), Up next its rest.
@@ -193,9 +193,13 @@ function secs(d) { if (d == null || d === '') return 0; if (typeof d === 'string
 function fmtDur(d) { var n = secs(d); if (!(n > 0)) return ''; var h = Math.floor(n / 3600), m = Math.floor((n % 3600) / 60), sec = n % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0'); }
 function zimTitle(name) { var z = _zims.filter(function(x) { return x.name === name; })[0]; return z ? z.title : name; }
 // A source's language, only when the sources do not all share one.
+// Not when the title already says it: "English Duniya English" stuttered.
 function langOf(z) {
   var langs = {}; _zims.forEach(function(x) { if (x.language) langs[x.language] = 1; });
-  return Object.keys(langs).length > 1 && z.language ? ' <span class="n">' + esc(STR.langs[z.language] || z.language) + '</span>' : '';
+  if (!(Object.keys(langs).length > 1 && z.language)) return '';
+  var name = STR.langs[z.language] || z.language;
+  var words = String(z.title || '').toLowerCase().split(/[\s\-\u2013,.:;·()\[\]]+/);
+  return words.indexOf(String(name).toLowerCase()) >= 0 ? '' : ' <span class="n">' + esc(name) + '</span>';
 }
 
 var _HEADPHONES_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
@@ -244,7 +248,7 @@ function sorted(items) {
 
 // ── What you keep (docs/features/saving.md) ──────────────────────────────
 // Your rows first on the home: Continue watching (where you were, the
-// latest first), Watch later (every video you keep), Liked, then each of
+// latest first), Saved (every video you keep), Liked, then each of
 // your lists that holds a video. All of it from the shell's Saved, in this
 // browser: the home asks the server for nothing more.
 var CONTINUE_SHOWN = 12;
@@ -258,12 +262,6 @@ var _byKey = {}, _rows = [], _mineDirty = false, _mineOpen = '';
 function videoRef(v) {
   return { kind: 'video', app: 'tube', zim: v.zim, path: v.page, title: v.title,
     meta: { thumb: v.thumb || '', duration: v.duration || '', speaker: v.speaker || '', zim_title: v.zim_title || '', audio: !!v.audio, tracks: v.tracks || 0, icon: !!v.zim_icon } };
-}
-// What "later" means for these: an audiobook is listened to, not watched;
-// a shelf of both is what you saved.
-function laterWord(list) {
-  var n = list.filter(function(v) { return v.audio; }).length;
-  return !n ? STR.watch_later : n === list.length ? STR.listen_later : (STR.sv.saved || STR.watch_later);
 }
 function fromSaved(x) {
   var live = _byKey[x.zim + '\n' + x.path];
@@ -284,7 +282,7 @@ function savedRows() {
   var rows = [], cont = S.continued({ app: 'tube' }).filter(function(p) { return p.where.t >= POS_MIN_S || p.where.k > 0; }).slice(0, CONTINUE_SHOWN);
   if (cont.length) rows.push({ id: 'continue', title: STR.continue, items: cont.map(fromSaved), f: cont.map(function(p) { return p.where.f || 0; }) });
   var mine = S.itemsFor({ app: 'tube' });
-  if (mine.length) { var later = mine.map(fromSaved); rows.push({ id: 'later', title: laterWord(later), items: later }); }
+  if (mine.length) { var later = mine.map(fromSaved); rows.push({ id: 'later', title: STR.sv.saved, items: later }); }
   S.lists({ app: 'tube' }).forEach(function(l) {
     if (l.count) rows.push({ id: l.id, title: l.builtin ? STR.sv.liked : l.name, items: S.itemsFor({ list: l.id, app: 'tube' }).map(fromSaved), list: !l.builtin });
   });
@@ -381,7 +379,9 @@ function renderHome() {
   shelves.innerHTML = browsing ? _zims.map(function(z) {
     var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
     return '<section class="shelf"><div class="shelf-h">' + (z.icon ? zimIcon(z.name) : '') +
-      '<h2>' + esc(z.title) + langOf(z) + '</h2><button class="all" onclick="setZim(' + J(z.name) + ')">' + esc(STR.all) + ' ' + z.count + CHEV + '</button></div>' +
+      '<h2>' + esc(z.title) + langOf(z) + '</h2>' +
+      // All only when the shelf holds back some: "All 1" over the one card said nothing.
+      (z.count > mine.length ? '<button class="all" onclick="setZim(' + J(z.name) + ')">' + esc(STR.all) + ' ' + z.count + CHEV + '</button>' : '') + '</div>' +
       '<div class="strip">' + mine.map(function(v) { return card(v, _feed.indexOf(v)); }).join('') + '</div></section>';
   }).join('') : '';
   if (!browsing) {
@@ -513,7 +513,7 @@ function play(e, i) {
   document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
   document.getElementById('w-open').hidden = false;
-  savedBar(videoRef(v), { save: [laterWord([v])] });
+  savedBar(videoRef(v));
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
   var stage = document.getElementById('stage'); stage.innerHTML = ''; stage.classList.remove('audio'); _video = null;
@@ -696,7 +696,7 @@ function undock() {
   document.getElementById('dock').hidden = true;
   document.getElementById('stage').appendChild(v);
   window.scrollTo(0, 0);
-  if (w) { savedBar(videoRef(w), { save: [laterWord([w])] }); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
+  if (w) { savedBar(videoRef(w)); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
 }
 function stopDock() {
   var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }

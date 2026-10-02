@@ -134,6 +134,17 @@ _SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]。、，；：])|([
 _SNIPPET_MIN_PARAGRAPH = 60
 
 
+# How much of a page a snippet reads: the <head> meta, and far enough in to
+# reach an encyclopedia article's lead past its infobox (Einstein's is 34KB
+# in). item.content is whole already, so reading more costs nothing.
+SNIPPET_READ_BYTES = 64 * 1024
+
+
+def lead_text(item):
+    """The start of a ZIM item, decoded: what extract_snippet reads."""
+    return bytes(item.content)[:SNIPPET_READ_BYTES].decode("UTF-8", errors="replace")
+
+
 def extract_snippet(text, zim_name=""):
     """Best short text snippet for the /snippet endpoint.
 
@@ -180,6 +191,55 @@ def extract_snippet(text, zim_name=""):
             if s:
                 return s
     return strip_html(cleaned)[:300].strip()
+
+
+def jpeg_size(data):
+    """``(width, height)`` of a JPEG, or None. Reads the SOF marker; no
+    decoding, no dependency."""
+    if not data or data[:2] != b"\xff\xd8":
+        return None
+    i, n = 2, len(data)
+    try:
+        while i + 9 < n:
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            # SOF0..SOF15, excluding the four that are not frame headers.
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                height = int.from_bytes(data[i + 5 : i + 7], "big")
+                width = int.from_bytes(data[i + 7 : i + 9], "big")
+                return (width, height) if width and height else None
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                i += 2
+                continue
+            i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
+    except Exception:
+        return None
+    return None
+
+
+def image_size(data):
+    """``(width, height)`` of a JPEG, PNG, GIF or WebP from its header, or
+    None: what a page needs to give a picture its shape before it loads."""
+    data = bytes(data or b"")
+    size = None
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+        size = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    elif data[:6] in (b"GIF87a", b"GIF89a"):
+        size = int.from_bytes(data[6:8], "little"), int.from_bytes(data[8:10], "little")
+    elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        kind = data[12:16]
+        if kind == b"VP8 " and data[23:26] == b"\x9d\x01\x2a":
+            size = int.from_bytes(data[26:28], "little") & 0x3FFF, int.from_bytes(data[28:30], "little") & 0x3FFF
+        elif kind == b"VP8L" and data[20:21] == b"\x2f":
+            bits = int.from_bytes(data[21:25], "little")
+            size = (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+        elif kind == b"VP8X":
+            size = int.from_bytes(data[24:27], "little") + 1, int.from_bytes(data[27:30], "little") + 1
+    else:
+        size = jpeg_size(data)
+    return size if size and size[0] > 0 and size[1] > 0 else None
 
 
 def _resolve_img_path(archive, path, src):

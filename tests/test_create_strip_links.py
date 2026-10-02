@@ -1,4 +1,4 @@
-"""Create a ZIM: "Remove links to other sites" (#99).
+"""Create a ZIM: "Remove links that lead outside the ZIM" (#99).
 
 tripplehelix: "It can be confusing as to which links take you to the web,
 having a check box when creating the zim to just remove external links would
@@ -177,7 +177,7 @@ def test_off_the_option_changes_nothing_and_records_nothing():
     on = creator.OtherSiteLinks(True)
     on(HOME.decode(), "https://site.example/")
     assert on.count() == 3
-    assert on.phrase() == ", 3 links to other sites removed"
+    assert on.phrase() == ", 3 links leading outside the ZIM removed"
 
 
 # ── end to end ──────────────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ def test_a_site_crawl_with_the_option_writes_no_link_to_another_site(site, tmp_p
     assert 'href="mailto:someone@example.org"' in everything
     record = _history(arc)
     assert record["links_removed"] == 4
-    assert "4 links to other sites removed" in record["detail"]
+    assert "4 links leading outside the ZIM removed" in record["detail"]
 
 
 def test_without_the_option_the_links_stay(site, tmp_path):

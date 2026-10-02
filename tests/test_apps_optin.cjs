@@ -50,7 +50,7 @@ vm.runInContext([
 
 // ── the shell's stamp ────────────────────────────────────────────────────
 ok('no preview app now: Zimipedia is not held back', ctx.APPS_OPT_IN.length === 0 && ctx.APPS_DEFAULT.join() === ctx.APP_NAMES.join());
-ok('no stamp: every app, Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === 'maps,tube,exchange,reddot,wiki,books');
+ok('no stamp: every app, Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === 'maps,tube,exchange,reddot,wiki,books,dictionary');
 ok('no stamp: the apps row is still on', ctx._appsAllowedByServer() === true);
 ctx.document.body.dataset.zimiApps = 'maps,wiki';
 ok('a stamp naming wiki offers it', ctx._appsAllowedByServer('wiki') && !ctx._appsAllowedByServer('tube'));
@@ -60,7 +60,7 @@ delete ctx.document.body.dataset.zimiApps;
 
 // ── the pickers ──────────────────────────────────────────────────────────
 ok('Server settings lists every app, Zimipedia too, whatever the server offers now',
-  ctx._serverOfferable(['maps', 'tube']).join() === 'maps,tube,exchange,reddot,wiki,books');
+  ctx._serverOfferable(['maps', 'tube']).join() === 'maps,tube,exchange,reddot,wiki,books,dictionary');
 ok('and lists Zimipedia while the server offers it', ctx._serverOfferable(['wiki']).indexOf('wiki') >= 0);
 ok('the Server settings picker and its All button draw from that list, not every app',
   /return _appPicksHtml\(_serverOfferable\(shown\),/.test(src) &&

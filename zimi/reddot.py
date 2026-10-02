@@ -29,8 +29,12 @@ import threading
 import time
 
 from zimi import server as _srv
-from zimi.creator import CreateError, _finish_output, _try_register
-from zimi.importer import _run_capture, _run_stream, _venv_bin
+
+# Making a subreddit ZIM is capture. zimi-mcp only reads one, and ships
+# without the capture modules (server.bundled).
+if _srv.bundled("creator") and _srv.bundled("importer"):
+    from zimi.creator import CreateError, _finish_output, _try_register
+    from zimi.importer import _run_capture, _run_stream, _venv_bin
 
 log = logging.getLogger("zimi")
 
@@ -40,7 +44,10 @@ log = logging.getLogger("zimi")
 # subreddit build on the NAS died installing the sidecar), and a pin means
 # the same ArcticZim on every machine until Zimi moves it on purpose.
 ARCTICZIM_COMMIT = "8281389c2bc27d56702a2eecb3a568a0af3749b9"  # master, 2026-03-22
-ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/%s.zip" % ARCTICZIM_COMMIT
+ARCTICZIM_REQUIREMENT = (
+    "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/%s.zip"
+    % ARCTICZIM_COMMIT
+)
 # ArcticZim asks for any SQLAlchemy, and 2.1.0 (2026-09-24) took multi-key
 # undefer(a, b) away: every build worker died adding a subreddit's wiki and
 # rules, and the creator waited for them. Pinned below 2.1 until ArcticZim
@@ -171,10 +178,20 @@ def _provenance(sub, counts):
     ArcticZim's (``arcticzim 8281389 + Zimi 1.12.0``, the shape the warc2zim
     engines leave, ``arcticzim`` still first so the ZIM stays a Reddit one),
     and the creation record every ZIM Zimi makes carries."""
-    from zimi.zimwriter import HISTORY_METADATA_KEY, SCRAPER_METADATA_KEY, history_record
+    from zimi.zimwriter import (
+        HISTORY_METADATA_KEY,
+        SCRAPER_METADATA_KEY,
+        history_record,
+    )
 
     tool = ARCTICZIM_COMMIT[:7]
-    record = history_record("created", "reddit", f"r/{sub} from Arctic Shift", tools={"arcticzim": tool}, counts=counts)
+    record = history_record(
+        "created",
+        "reddit",
+        f"r/{sub} from Arctic Shift",
+        tools={"arcticzim": tool},
+        counts=counts,
+    )
     return {
         SCRAPER_METADATA_KEY: f"arcticzim {tool} + Zimi {_srv.ZIMI_VERSION}",
         HISTORY_METADATA_KEY: json.dumps([record], ensure_ascii=False),
@@ -195,7 +212,11 @@ def sidecar_status():
     used, online (a sidecar from before the SQLAlchemy pin cannot build)."""
     venv = sidecar_dir()
     installed = os.path.exists(_exe()) and os.path.exists(os.path.join(venv, _MARKER))
-    return {"installed": installed, "current": installed and _marker_spec(venv) == _SIDECAR_SPEC, "dir": venv}
+    return {
+        "installed": installed,
+        "current": installed and _marker_spec(venv) == _SIDECAR_SPEC,
+        "dir": venv,
+    }
 
 
 def _is_offline():
@@ -215,12 +236,18 @@ def _update_sidecar(venv, exe, say):
     Nothing is removed first, so a failed update (no network, a pip error)
     leaves the sidecar as it was rather than taking a working one away."""
     if _is_offline():
-        say("note: the Reddit maker was installed before a fix it needs; it updates the next time Zimi runs it online")
+        say(
+            "note: the Reddit maker was installed before a fix it needs; it updates the next time Zimi runs it online"
+        )
         return exe
     say("updating the ArcticZim sidecar (a library it relies on changed)")
-    rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", *ARCTICZIM_PINS], say)
+    rc = _run_stream(
+        [_venv_bin(venv, "python"), "-m", "pip", "install", *ARCTICZIM_PINS], say
+    )
     if rc != 0:
-        raise CreateError("could not update the Reddit maker (the job log has pip's output). It is still installed; try again when online.")
+        raise CreateError(
+            "could not update the Reddit maker (the job log has pip's output). It is still installed; try again when online."
+        )
     _write_marker(venv)
     say("ArcticZim updated")
     return exe
@@ -248,10 +275,23 @@ def ensure_sidecar(sink=None):
     say(f"creating the ArcticZim sidecar at {venv}")
     rc = _run_stream([sys.executable, "-m", "venv", venv], say)
     if rc == 0:
-        rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", "--upgrade", ARCTICZIM_REQUIREMENT, *ARCTICZIM_PINS], say)
+        rc = _run_stream(
+            [
+                _venv_bin(venv, "python"),
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                ARCTICZIM_REQUIREMENT,
+                *ARCTICZIM_PINS,
+            ],
+            say,
+        )
     if rc != 0 or not os.path.exists(exe):
         shutil.rmtree(venv, ignore_errors=True)
-        raise CreateError("ArcticZim sidecar install failed (the job log has pip's output). Nothing was left behind; re-run to try again.")
+        raise CreateError(
+            "ArcticZim sidecar install failed (the job log has pip's output). Nothing was left behind; re-run to try again."
+        )
     _write_marker(venv)
     say("ArcticZim ready")
     return exe
@@ -261,7 +301,9 @@ def normalize_subreddit(text):
     """``r/Kiwix``, ``/r/kiwix/``, ``https://www.reddit.com/r/kiwix`` or
     ``kiwix`` → ``kiwix``; None when it is not a subreddit name."""
     t = (text or "").strip()
-    m = re.search(r"(?:^|reddit\.com)/?r/([A-Za-z0-9_]+)/?$", t) or re.match(r"^r/([A-Za-z0-9_]+)/?$", t)
+    m = re.search(r"(?:^|reddit\.com)/?r/([A-Za-z0-9_]+)/?$", t) or re.match(
+        r"^r/([A-Za-z0-9_]+)/?$", t
+    )
     if m:
         t = m.group(1)
     t = t.strip("/")
@@ -270,7 +312,11 @@ def normalize_subreddit(text):
 
 def looks_like_subreddit(text):
     t = (text or "").strip()
-    return bool(re.match(r"^(?:(?:https?://)?(?:www\.|old\.)?reddit\.com)?/?r/[A-Za-z0-9_]+/?$", t))
+    return bool(
+        re.match(
+            r"^(?:(?:https?://)?(?:www\.|old\.)?reddit\.com)?/?r/[A-Za-z0-9_]+/?$", t
+        )
+    )
 
 
 def _stall_watch():
@@ -298,7 +344,9 @@ def _worker_death_watch(line):
     return "fail" if _WORKER_DEATH in line else False
 
 
-_TQDM_RE = re.compile(r"^Retrieving (posts|comments): (\d+)\w* \[.*?Time=(\d{4}-\d{2}-\d{2})")
+_TQDM_RE = re.compile(
+    r"^Retrieving (posts|comments): (\d+)\w* \[.*?Time=(\d{4}-\d{2}-\d{2})"
+)
 
 
 def _caption(line):
@@ -308,7 +356,11 @@ def _caption(line):
     m = _TQDM_RE.match(line)
     if not m:
         return line
-    return "%s %s fetched, up to %s" % (format(int(m.group(2)), ","), m.group(1), m.group(3))
+    return "%s %s fetched, up to %s" % (
+        format(int(m.group(2)), ","),
+        m.group(1),
+        m.group(3),
+    )
 
 
 def _throttled(say):
@@ -370,24 +422,69 @@ def _remove_part_files(out):
             log.warning("Reddit capture: could not remove %s: %s", leftover, e)
 
 
-def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, register=False, progress=None, stop=None):
+def create_reddit_zim(
+    subreddit,
+    *,
+    title=None,
+    out_dir=None,
+    out_path=None,
+    register=False,
+    progress=None,
+    stop=None,
+):
     """Build one subreddit into a ZIM. Returns ``{"path", "name", "registered",
     "title"}``; raises CreateError with a sentence for the person."""
     say = progress or (lambda _line: None)
     sub = normalize_subreddit(subreddit)
     if not sub:
-        raise CreateError("that is not a subreddit name (letters, digits and _ only, like r/kiwix)")
+        raise CreateError(
+            "that is not a subreddit name (letters, digits and _ only, like r/kiwix)"
+        )
     ensure_sidecar(say)
     zim_name = f"reddit_{sub.lower()}"
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
-    work = os.path.join(_srv.ZIMI_DATA_DIR, "staging", f"reddot-{sub.lower()}-{int(time.time())}")
+    work = os.path.join(
+        _srv.ZIMI_DATA_DIR, "staging", f"reddot-{sub.lower()}-{int(time.time())}"
+    )
     os.makedirs(work, exist_ok=True)
-    posts, comments, db, meta = (os.path.join(work, n) for n in ("posts.jsonl", "comments.jsonl", "db.sqlite", "zimi-metadata.json"))
+    posts, comments, db, meta = (
+        os.path.join(work, n)
+        for n in ("posts.jsonl", "comments.jsonl", "db.sqlite", "zimi-metadata.json")
+    )
     steps = [
-        ("fetching posts of r/%s from Arctic Shift" % sub, _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "posts", posts), posts, _stall_watch()),
-        ("fetching comments", _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "comments", comments), comments, _stall_watch()),
-        ("importing", _cmd("import", "--posts-file", posts, "--comments-file", comments, "sqlite:///" + db), None, None),
-        ("building the ZIM", _cmd("-v", "build", "sqlite:///" + db, out + ".part", metadata=meta), None, _worker_death_watch),
+        (
+            "fetching posts of r/%s from Arctic Shift" % sub,
+            _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "posts", posts),
+            posts,
+            _stall_watch(),
+        ),
+        (
+            "fetching comments",
+            _cmd(
+                "retrieve", "--subreddit", sub, "--sleep", "0.2", "comments", comments
+            ),
+            comments,
+            _stall_watch(),
+        ),
+        (
+            "importing",
+            _cmd(
+                "import",
+                "--posts-file",
+                posts,
+                "--comments-file",
+                comments,
+                "sqlite:///" + db,
+            ),
+            None,
+            None,
+        ),
+        (
+            "building the ZIM",
+            _cmd("-v", "build", "sqlite:///" + db, out + ".part", metadata=meta),
+            None,
+            _worker_death_watch,
+        ),
     ]
     counts = {}
     try:
@@ -400,7 +497,9 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
             say(label)
             rc = _run_stream(cmd, _throttled(say), watch=watch)
             if rc != 0:
-                raise CreateError(f"ArcticZim failed while {label} (the job log has its output)")
+                raise CreateError(
+                    f"ArcticZim failed while {label} (the job log has its output)"
+                )
             if fetched:
                 what = os.path.basename(fetched).split(".")[0]
                 counts[what] = _dedupe_jsonl(fetched)
@@ -413,7 +512,12 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
         _remove_part_files(out)
     registered = _try_register(out) if register else False
     say(f"ZIM written: {out}")
-    return {"path": out, "name": zim_name, "registered": registered, "title": title or f"r/{sub}"}
+    return {
+        "path": out,
+        "name": zim_name,
+        "registered": registered,
+        "title": title or f"r/{sub}",
+    }
 
 
 # ── the reader ─────────────────────────────────────────────────────────────
@@ -430,14 +534,24 @@ _UNQUOTED_RE = re.compile(r"(\s[a-zA-Z_:-]+)=([^\s\"'<>]+)")
 _SUMMARY_SPLIT_RE = re.compile(r'<div class="postsummary"', re.I)
 _ATTR_RE = re.compile(r'\b([a-zA-Z-]+)=(["\'])([^"\']*)\2')
 _SCORE_RE = re.compile(r'class="postscore">(-?\d+)<', re.I)
-_TITLE_RE = re.compile(r'<h1 class="posttitle"><a href="([^"]*)">(.*?)</a>', re.I | re.S)
+_TITLE_RE = re.compile(
+    r'<h1 class="posttitle"><a href="([^"]*)">(.*?)</a>', re.I | re.S
+)
 _FLAIR_RE = re.compile(r'class="postflair"[^>]*>([^<]*)', re.I)
-_META_RE = re.compile(r'class="postmeta">\s*Posted (.*?)\s*by <a class="authorlink"[^>]*>(.*?)</a>', re.I | re.S)
-_PAGES_RE = re.compile(r'_page_(\d+)')
-_SUBS_RE = re.compile(r'class="subredditinfo-link" href="[^"]*?r/([A-Za-z0-9_]+)/"', re.I)
+_META_RE = re.compile(
+    r'class="postmeta">\s*Posted (.*?)\s*by <a class="authorlink"[^>]*>(.*?)</a>',
+    re.I | re.S,
+)
+_PAGES_RE = re.compile(r"_page_(\d+)")
+_SUBS_RE = re.compile(
+    r'class="subredditinfo-link" href="[^"]*?r/([A-Za-z0-9_]+)/"', re.I
+)
 _PAGE_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.I | re.S)
 _POSTBODY_RE = re.compile(r'<div class="postbodytext mdbody">(.*?)</div>', re.I | re.S)
-_COMMENT_HEAD_RE = re.compile(r'<a class="authorlink"[^>]*>(.*?)</a>.*?<b>(-?\d+) points</b>\s*on ([^<]*)', re.I | re.S)
+_COMMENT_HEAD_RE = re.compile(
+    r'<a class="authorlink"[^>]*>(.*?)</a>.*?<b>(-?\d+) points</b>\s*on ([^<]*)',
+    re.I | re.S,
+)
 _COMMENT_LIST_RE = re.compile(r'<div class="commentlist"', re.I)
 _COMMENT_BODY_RE = re.compile(r'<div class="commentbody mdbody">', re.I)
 _SCRIPT_RE = re.compile(r"<script\b.*?</script>", re.S | re.I)
@@ -473,9 +587,15 @@ def _rebase(fragment, page, zim):
 
     def fix(m):
         attr, quote, url = m.group(1), m.group(2), m.group(3)
-        if not url or url.startswith(("#", "http://", "https://", "mailto:", "data:", "/w/", "javascript:")):
+        if not url or url.startswith(
+            ("#", "http://", "https://", "mailto:", "data:", "/w/", "javascript:")
+        ):
             return m.group(0)
-        target = posixpath.normpath(posixpath.join(base, url)) if base else posixpath.normpath(url)
+        target = (
+            posixpath.normpath(posixpath.join(base, url))
+            if base
+            else posixpath.normpath(url)
+        )
         target = target.lstrip("./")
         # ArcticZim's post pages end in a slash (r/<sub>/<id>/); normpath
         # eats it, and the ZIM knows the page by the slash.
@@ -512,7 +632,9 @@ def rows_from_listing(text):
                 "flair": _text(flair.group(1)) if flair else "",
                 "author": _text(meta.group(2)) if meta else "",
                 "date": _when(meta.group(1)) if meta else "",
-                "external": "" if (not href or href.endswith(local) or "/r/" in href) else href,
+                "external": (
+                    "" if (not href or href.endswith(local) or "/r/" in href) else href
+                ),
             }
         )
     return out
@@ -552,7 +674,14 @@ class _CommentTree(HTMLParser):
         a = dict(attrs)
         cls = a.get("class") or ""
         if cls.startswith("comment ") and (a.get("id") or "").startswith("comment-"):
-            node = {"id": a["id"][8:], "author": "", "score": 0, "date": "", "body": "", "children": []}
+            node = {
+                "id": a["id"][8:],
+                "author": "",
+                "score": 0,
+                "date": "",
+                "body": "",
+                "children": [],
+            }
             (self.open[-1][0]["children"] if self.open else self.roots).append(node)
             self.open.append([node, self.depth, self.getpos()])
 
@@ -577,17 +706,21 @@ def _parse_comments(text, page, zim):
     except Exception:
         return []
     for node, start, end in tree.positions:
-        chunk = text[_offset(text, start):_offset(text, end)]
+        chunk = text[_offset(text, start) : _offset(text, end)]
         # This comment's own head and body come before any child's.
         first_child = _COMMENT_LIST_RE.search(chunk)
-        own = chunk[: first_child.start()] if first_child and first_child.start() > 0 else chunk
+        own = (
+            chunk[: first_child.start()]
+            if first_child and first_child.start() > 0
+            else chunk
+        )
         head = _COMMENT_HEAD_RE.search(own)
         # The body runs from its open tag to its own close: a stray close tag
         # carried into the page shut the parent early and flattened the tree.
         body_html = ""
         bm = _COMMENT_BODY_RE.search(own)
         if bm:
-            rest = own[bm.end():]
+            rest = own[bm.end() :]
             cut = re.search(r"</div>", rest, re.I)
             body_html = rest[: cut.start()] if cut else rest
         node["author"] = _text(head.group(1)) if head else ""
@@ -624,7 +757,9 @@ def post_from_page(text, page, zim):
 def _archive(name):
     from zimi.search import _get_fts_archive
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     if not entry or entry.get("kind") != "reddit" or not _srv.zim_allowed(name):
         return None, None
     try:
@@ -654,8 +789,16 @@ def zims():
     out = []
     for z in _srv._zim_list_cache or []:
         if z.get("kind") == "reddit" and z.get("name") and _srv.zim_allowed(z["name"]):
-            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "subreddits": subreddits(z["name"]),
-                        "date": z.get("date") or "", "size_bytes": z.get("size_bytes") or 0})
+            out.append(
+                {
+                    "name": z["name"],
+                    "title": z.get("title") or z["name"],
+                    "icon": bool(z.get("has_icon")),
+                    "subreddits": subreddits(z["name"]),
+                    "date": z.get("date") or "",
+                    "size_bytes": z.get("size_bytes") or 0,
+                }
+            )
     out.sort(key=lambda s: s["title"].lower())
     return _claim_subreddits(out)
 
@@ -692,7 +835,15 @@ def subreddits(name):
 def listing(name, sub, sort="top", page=1):
     sort = sort if sort in ("top", "new") else "top"
     base = f"r/{sub}/{sort}_page_{page}"
-    got = _first_page(name, (base + "/", base), lambda t: {"rows": rows_from_listing(t), "pages": pages_in(t)} if rows_from_listing(t) else None)
+    got = _first_page(
+        name,
+        (base + "/", base),
+        lambda t: (
+            {"rows": rows_from_listing(t), "pages": pages_in(t)}
+            if rows_from_listing(t)
+            else None
+        ),
+    )
     return got or {"rows": [], "pages": 0}
 
 
@@ -700,7 +851,11 @@ def post(name, page):
     # An agent may send "<zim>/r/sub/id/" (openzim/Zimi#54's glued form).
     from zimi.search import read_unglued
 
-    return read_unglued(name, page, lambda p: _cached_page(name, p, lambda t: post_from_page(t, p, name)))
+    return read_unglued(
+        name,
+        page,
+        lambda p: _cached_page(name, p, lambda t: post_from_page(t, p, name)),
+    )
 
 
 def random_post(rng=None):
@@ -716,21 +871,54 @@ def random_post(rng=None):
         first = listing(name, sub, "top", 1)
         pages = max(1, int(first.get("pages") or 1))
         pg = rng.randint(1, pages)
-        rows = (first["rows"] if pg == 1 else listing(name, sub, "top", pg)["rows"]) or first["rows"]
+        rows = (
+            first["rows"] if pg == 1 else listing(name, sub, "top", pg)["rows"]
+        ) or first["rows"]
         rows = [r for r in rows if r.get("page")]
         if rows:
             r = rng.choice(rows)
-            return {"zim": name, "page": r["page"], "title": r.get("title") or "", "subreddit": sub}
+            return {
+                "zim": name,
+                "page": r["page"],
+                "title": r.get("title") or "",
+                "subreddit": sub,
+            }
     return None
+
+
+def note_count(z):
+    """Once per build: its posts, every subreddit's, for the Apps page."""
+    if _srv.app_items_known(z["name"], "reddot"):
+        return
+    _srv.note_app_items(
+        z["name"],
+        "reddot",
+        sum(
+            _srv.paged_count(
+                listing(z["name"], sub, "top", 1),
+                lambda p, sub=sub: listing(z["name"], sub, "top", p),
+            )
+            for sub in z["subreddits"]
+        ),
+    )
+
+
+def note_counts():
+    """Every subreddit ZIM's posts, for the Apps page (the background worker's)."""
+    for z in zims():
+        note_count(z)
 
 
 def home():
     out = []
     for z in zims():
+        note_count(z)
         subs = []
         for sub in z["subreddits"][:12]:
             first = listing(z["name"], sub, "top", 1)
-            subs.append({"subreddit": sub, "rows": first["rows"][:12], "pages": first["pages"]})
+            subs.append(
+                {"subreddit": sub, "rows": first["rows"][:12], "pages": first["pages"]}
+            )
         out.append(dict(z, shelves=subs))
     return {"zims": out}
 

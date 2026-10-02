@@ -118,4 +118,4 @@ def test_slovak_works_are_on_the_shelf(shelf_lib):  # noqa: F811
     assert set(got) == {"A čija to chyža", "Báseň", "Horská chatrč", "Hájnikova žena"}
     work = books.book(name, got["Horská chatrč"]["id"])
     assert work["author"] == "Pavol Országh Hviezdoslav"
-    assert work["path"] == "Horská_chatrč" and work["lang"] == "sk"
+    assert work["path"] == "_zimi_book_/Horská_chatrč" and work["lang"] == "sk"

@@ -4,7 +4,11 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 
 ## How it works
 
-**Search** runs across the whole library from one box. Results are ranked by title match, then by position within the source's own results, then by source authority (a bigger ZIM's hit outranks a tiny one's, on a log scale, capped so a large source cannot flood the page). A query with no hits gets a "did you mean" from a vocabulary and trigram pass rather than nothing. Search a single source by opening it first; the box narrows to it.
+**Search** runs across the whole library from one box. Results are ranked by title match, then by position within the source's own results, then by source authority (a bigger ZIM's hit outranks a tiny one's, on a log scale, capped so a large source cannot flood the page). A query with no hits gets a "did you mean" from a vocabulary and trigram pass rather than nothing; with operators in the query, only the words are corrected and every operator stays as typed. Search a single source by opening it, or by searching while you read one of its articles: the box says "Search in {source}…" (on a phone, where that does not fit, the source's chip beside the logo says where it searches) and narrows to it.
+
+**Results.** The words searched for are marked in each result's title and snippet: a phrase as the phrase, and never an excluded word, a filter's words or a common word typed alone ("the"). When results come from three or more sources and are more than a screen (20), they are grouped by source: each source's best three under its name, the sources in the order of their best result (so an exact title still leads), and "More from {source}" runs the same search in that source alone. Fewer sources or fewer results read better as one ranked list, and so does a list narrowed with the source pills. "Show more" pages through what was found; in one source, once everything found is on screen, "More results" asks that source for up to 50. The arrow keys walk the results from the search box (Enter opens one, up from the first returns to the box), and Esc clears the search. The query, operators and all, is the address (`/?q=…`, `/w/<zim>?q=…`), so a search can be shared; taking a chip off or taking a "did you mean" is a step of its own, so Back returns to the search before it.
+
+**Recent searches** show in the dropdown of the empty search box, with the articles recently opened. Each row has a × to take it away, and "Clear searches" takes every search away at once. They are kept in this browser only, with the rest of History; they go to a signed-in account only when My data is saved there (Settings > Preferences > My data), and nowhere else.
 
 **Search operators.** The library search, the catalog and `GET /search` (so MCP and the CLI too) share one grammar:
 
@@ -18,13 +22,15 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 | `lang:fr` | only sources in that language, two or three letters (`lang:fra`) |
 | `-in:ted`, `-lang:en` | a filter, the other way round |
 
-A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word, so `-ted` leaves out TED and TEDx but not United States; in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere.
+A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word or of a word part, case and accents aside, so `-wiki` leaves out Wikipedia, Wikipédia and MediaWiki, and `-ted` leaves out TED and TEDx but not United States (Wiktionary stays too: it does not contain "wiki"); in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere. The same operators filter the home page and Settings > Library.
 
 What each operator did shows as a chip above the results, in the UI's language, the same in the library and the catalog: `-ted` reads "without ted", `"solar panel"` "exact: solar panel", `lang:fr` the language's name (French, Français, צרפתית), `in:wikipedia` the source's title, `cats OR dogs` "cats or dogs". A chip's × searches again without that one operator (a phrase keeps its words, as words). The ? beside the search box lists a few examples written for each language, each a tap from a search.
 
 In the library, exclusions and phrases are checked against a result's title. libzim's own search treats `-`, quotes and `OR` as plain words, and reading every article to check its text would make these queries slow; the words themselves still match anywhere in the article. A query with only exclusions or filters (`-ted`) finds nothing in the library, since it asks for nothing; in the catalog it lists everything else. A query with no operators takes exactly the path it always did.
 
 **The reader** opens an article in place. Titles, history and the address stay in step, so Back does what a browser's Back does and a link you share reopens the same article. `?a=<zim>/<path>` is the deep link; `/w/<zim>/<path>` serves the raw article.
+
+**Find in page.** Cmd/Ctrl+F while an article is open, or Find in page in the reader's ⋯ menu, opens a find bar over the article: every match is tinted as you type, the one you are on more strongly, with "3 of 12", next and previous (Enter, Shift+Enter, the arrows in the bar) and Esc to close. Case, accents and Hebrew or Arabic vowel marks do not count ("cafe" finds "Café"); a match in a closed section opens it. It works in the article as the ZIM wrote it, in Reader View and in Zimipedia's reader, left to right or right to left. Outside an article (home, results, a map, an app, a PDF, which has its own), Cmd+F is the browser's. The find code (`static/find.js`) is fetched the first time a find is asked for, and adds nothing to the article's DOM (the CSS Custom Highlight API paints the matches; a browser without it selects the current match instead).
 
 **Reader View** re-renders an article as plain, readable prose — one column, your font and size, your theme (dark / light / sepia). It is per-article, and `zimi_reader_auto` opens every article straight into it.
 
@@ -38,7 +44,7 @@ In the library, exclusions and phrases are checked against a result's title. lib
 
 **Offline and installable.** A service worker precaches the shell, so Zimi opens with no server round trip and works as an installed PWA. The cache key is the asset-bundle hash, so every deploy invalidates it and a new version takes over immediately rather than waiting for tabs to close.
 
-**Accessibility.** Zimi scores 100/100 on Lighthouse a11y and targets WCAG 2.1 AA. Passing `?a11y=1` on a content URL additionally rewrites the article server-side: fills in a missing `<html lang>`, adds empty `alt` to unlabelled images (decorative by default, per WCAG 1.1.1), and promotes a leading title `div` to a real `<h1>` so heading navigation works.
+**Accessibility.** Zimi scores 100/100 on Lighthouse a11y and targets WCAG 2.1 AA. Every article is also fixed up server-side without changing how it looks: a missing `<html lang>` is filled in, unlabelled images get an empty `alt` (decorative by default, per WCAG 1.1.1), and a leading title `div` is marked as the page heading so heading navigation works.
 
 ### Pages captured without their JavaScript
 
@@ -61,7 +67,6 @@ A page captured by **alive** keeps its scripts and does not need this; see [Crea
 | Reader theme | reader menu | follows app theme | `dark` / `light` / `sepia` for article text |
 | Reader font + size | reader menu | system | Typeface and scale inside Reader View |
 | Auto Reader View | reader menu | off | Open every article straight into Reader View |
-| `?a11y=1` | content URL | off | Server-side accessibility rewrite of the article |
 | Word lookup | — | automatic | Active when any Wiktionary ZIM is installed; dormant otherwise |
 
 ## Troubleshoot

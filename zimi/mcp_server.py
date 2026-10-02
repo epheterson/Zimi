@@ -2,23 +2,23 @@
 """
 Zimi MCP Server — Expose offline knowledge as MCP tools for AI agents.
 
-Provides search, read, suggest, list, and random tools over ZIM files
-via the Model Context Protocol (stdio transport).
+Two tool sets over stdio. lean: search, read (a page as Markdown, a long
+one as its intro and an outline) and read_section. full: every tool,
+collections, chunks, translations and the apps included.
 
 Usage:
-  python3 -m zimi.mcp_server
+  zimi-mcp [ZIM_DIR] [--tools lean|full]     lean unless told otherwise
+  zimi mcp [ZIM_DIR] [--tools lean|full]     the same, in the full install
+  python3 -m zimi.mcp_server [--tools ...]   full unless told otherwise
 
 Configuration:
-  ZIM_DIR    Path to directory containing *.zim files (default: /zims)
+  ZIM_DIR         Path to directory containing *.zim files (default: /zims)
+  ZIMI_MCP_TOOLS  lean or full, when --tools is not given
 
 Claude Code config (local):
   {
     "mcpServers": {
-      "zimi": {
-        "command": "python3",
-        "args": ["-m", "zimi.mcp_server"],
-        "env": { "ZIM_DIR": "/path/to/zims" }
-      }
+      "zimi": { "command": "zimi-mcp", "args": ["/path/to/zims"] }
     }
   }
 
@@ -27,7 +27,7 @@ Claude Code config (Docker via SSH):
     "mcpServers": {
       "zimi": {
         "command": "ssh",
-        "args": ["your-server", "docker", "exec", "-i", "zimi", "python3", "-m", "zimi.mcp_server"]
+        "args": ["your-server", "docker", "exec", "-i", "zimi", "python3", "-m", "zimi", "mcp"]
       }
     }
   }
@@ -54,39 +54,71 @@ except ModuleNotFoundError:
             "`pip install fastmcp`."
         ) from exc
 
+import os
+import threading
+import time
+from typing import Annotated
+
+from pydantic import Field
+
 from zimi import server as zimi
 
-# Initialize: load ZIM metadata (fast — reads JSON cache from disk),
-# then warm search indexes in background so MCP transport starts immediately.
-# First search may be slightly slower; subsequent searches are instant.
-import threading
-
-zimi.load_cache()
-threading.Thread(target=zimi.warm_indexes, daemon=True).start()
-
-mcp = FastMCP(
-    "zimi", instructions="Search and read articles from offline ZIM knowledge archives."
+# Two tool sets. "lean" is three tools a 3B model can drive: search, read a
+# page as Markdown, read one of its sections. "full" is every tool Zimi has
+# (collections, chunks, translations, the apps), unchanged. `zimi mcp` serves
+# lean unless told otherwise; `python -m zimi.mcp_server` keeps serving full,
+# so a config written for it before lean existed gets what it always got.
+TOOL_SETS = ("lean", "full")
+TOOLS_ENV = "ZIMI_MCP_TOOLS"
+_INSTRUCTIONS_FULL = "Search and read articles from offline ZIM knowledge archives."
+_INSTRUCTIONS_LEAN = (
+    "An offline library. search finds pages; read returns one as Markdown; "
+    "a long page comes back as its intro and a numbered outline, and "
+    "read_section returns any part of it."
 )
-
-# Report ZIMI's version, not FastMCP's.
-#
-# The low-level server carries `version=None`, and the library then answers the
-# handshake with its OWN version — so a client asking what it just connected to
-# was told "zimi 1.26.0" while Zimi was 1.9.0. Harmless until somebody files a
-# bug report with that number in it, or an agent records which server answered.
-#
-# Set after construction because FastMCP's __init__ signature differs between
-# the vendored `mcp.server.fastmcp` and the standalone `fastmcp` distribution
-# (this file already supports both), and only one of them takes `version`.
-# Guarded: a private attribute that moves should cost us a wrong version
-# string, never a server that will not start.
-try:
-    mcp._mcp_server.version = zimi.ZIMI_VERSION
-except Exception:  # pragma: no cover - shape changed upstream
-    pass
+# How many source names the lean instructions list before "and N more".
+_SOURCES_LISTED = 30
+# Lean search's snippet, cut at a word: enough to tell two pages apart.
+_SNIPPET_CHARS = 160
+LEAN_LIMIT_MAX = 20
+# The longest a search waits for indexes still building, and how often it looks.
+WAIT_MAX_S = 60
+_WAIT_POLL_S = 0.5
 
 
-@mcp.tool()
+def _gap_text(gap):
+    if gap["state"] == "titles_only":
+        return f"{gap['zim']}: titles only (no full-text index)"
+    pct = f" {gap['progress']}%" if "progress" in gap else ""
+    return f"{gap['zim']}: title index building{pct}"
+
+
+def _gaps_note(names, items, waited=0):
+    """One line naming the searched sources whose indexes may leave the
+    answer partial, or "" when there are none (no tokens spent then)."""
+    from zimi.search import index_gaps
+
+    gaps = index_gaps(names, {r["zim"] for r in items})
+    if not gaps:
+        return ""
+    head = f"Still incomplete after {waited}s" if waited else "Incomplete"
+    return f"{head}: " + "; ".join(map(_gap_text, gaps))
+
+
+def _wait_for_indexes(names, seconds):
+    """Wait up to ``seconds`` for the title indexes of ``names`` (None: all)
+    still building to finish; True when none is left building."""
+    from zimi.search import index_status
+
+    deadline = time.monotonic() + seconds
+    while True:
+        if not any(s["title"] == "building" for s in index_status(names)):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_WAIT_POLL_S)
+
+
 def search(
     query: str, zim: str = "", collection: str = "", language: str = "", limit: int = 5
 ) -> str:
@@ -147,6 +179,10 @@ def search(
         return msg
 
     lines = [f"Found {result['total']} results in {result.get('elapsed', '?')}s:\n"]
+    scope = [filter_zim] if isinstance(filter_zim, str) else filter_zim
+    note = _gaps_note(scope, items[:limit])
+    if note:
+        lines.append(note + "\n")
     if suggestion:
         lines.append(f"Did you mean '{suggestion}'?\n")
     for r in items[:limit]:
@@ -160,7 +196,6 @@ def search(
     return "\n".join(lines)
 
 
-@mcp.tool()
 def read(zim: str, path: str, max_length: int = 8000) -> str:
     """Read an article from a ZIM source as plain text.
 
@@ -184,7 +219,6 @@ def read(zim: str, path: str, max_length: int = 8000) -> str:
     return f"{header}\n\n{result['content']}"
 
 
-@mcp.tool()
 def get_chunks(zim: str, path: str, size: int = 1200, overlap: int = 120) -> str:
     """Chunk an article into deterministic, RAG-ready text segments.
 
@@ -208,7 +242,6 @@ def get_chunks(zim: str, path: str, size: int = 1200, overlap: int = 120) -> str
     return json.dumps(result, ensure_ascii=False)
 
 
-@mcp.tool()
 def suggest(query: str, zim: str = "", collection: str = "", limit: int = 10) -> str:
     """Title autocomplete — find articles by title prefix.
 
@@ -253,7 +286,6 @@ def suggest(query: str, zim: str = "", collection: str = "", limit: int = 10) ->
     return "\n".join(lines) if lines else f"No suggestions for '{query}'."
 
 
-@mcp.tool()
 def list_sources() -> str:
     """List all available offline knowledge sources.
 
@@ -274,7 +306,6 @@ def list_sources() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def random(zim: str = "") -> str:
     """Get a random article from the knowledge base.
 
@@ -309,7 +340,6 @@ def random(zim: str = "") -> str:
     return f"**{result['title']}** [{pick_name}]\nzim: {pick_name}\npath: {result['path']}\n\nUse read(zim=\"{pick_name}\", path=\"{result['path']}\") to read the full article."
 
 
-@mcp.tool()
 def list_collections() -> str:
     """List all favorites and collections.
 
@@ -339,7 +369,6 @@ def list_collections() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def manage_collection(
     action: str, name: str = "", label: str = "", zims: str = ""
 ) -> str:
@@ -383,7 +412,6 @@ def manage_collection(
     return f"Unknown action '{action}'. Use create, update, or delete."
 
 
-@mcp.tool()
 def manage_favorites(action: str, zim: str) -> str:
     """Add or remove a ZIM source from favorites.
 
@@ -416,7 +444,6 @@ def manage_favorites(action: str, zim: str) -> str:
     return f"Unknown action '{action}'. Use add or remove."
 
 
-@mcp.tool()
 def article_languages(zim: str, path: str) -> str:
     """Find available translations for a Wikipedia/Wikimedia article.
 
@@ -450,7 +477,6 @@ def article_languages(zim: str, path: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def read_with_links(zim: str, path: str, max_length: int = 8000) -> str:
     """Read an article and show cross-ZIM links found in it.
 
@@ -507,7 +533,6 @@ def read_with_links(zim: str, path: str, max_length: int = 8000) -> str:
     return output
 
 
-@mcp.tool()
 def deep_search(
     query: str, zim: str = "", language: str = "", max_results: int = 3
 ) -> str:
@@ -598,7 +623,6 @@ def _strip_html(html):
     return re.sub(r"\n{3,}", "\n\n", _h.unescape(text)).strip()
 
 
-@mcp.tool()
 def list_videos(query: str = "", limit: int = 30, offset: int = 0) -> str:
     """List videos across every video ZIM (TED, YouTube, Zimi's own): one
     card per talk, sources interleaved in each ZIM's own order (TED's most
@@ -625,7 +649,6 @@ def list_videos(query: str = "", limit: int = 30, offset: int = 0) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def list_questions(site: str = "", tag: str = "", page: int = 1) -> str:
     """List a Stack Exchange site's questions, most voted first (the site's
     own order), or a tag's. With no site, list the installed sites.
@@ -655,7 +678,6 @@ def list_questions(site: str = "", tag: str = "", page: int = 1) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
 def read_question(site: str, path: str, max_length: int = 8000) -> str:
     """A question with its answers, the accepted one first, as text.
 
@@ -678,7 +700,6 @@ def read_question(site: str, path: str, max_length: int = 8000) -> str:
     return text[: max(200, int(max_length))]
 
 
-@mcp.tool()
 def list_posts(zim: str = "", subreddit: str = "", sort: str = "top", page: int = 1) -> str:
     """List a subreddit's posts, top or new. With no arguments, list the
     installed subreddit ZIMs and their subreddits.
@@ -707,7 +728,6 @@ def list_posts(zim: str = "", subreddit: str = "", sort: str = "top", page: int 
     return "\n".join(lines)
 
 
-@mcp.tool()
 def read_post(zim: str, path: str, max_length: int = 8000) -> str:
     """A post with its comment tree, replies indented under their parents.
 
@@ -744,5 +764,344 @@ def _each(comments):
         yield from _each(c.get("children"))
 
 
+def index_status(zim: str = "") -> str:
+    """Search index state per source: title index (ready, building N%,
+    stale or missing) and whether it has a full-text index. A source without
+    one matches titles only; Zimi cannot add one.
+
+    Args:
+        zim: Optional: source(s), comma-separated. Empty: every source.
+    """
+    from zimi.search import index_status as status
+
+    names = None
+    if zim.strip():
+        names, err = _resolve(zim)
+        if err:
+            return err
+    lines = []
+    for s in status(names, check_current=True):
+        title = s["title"]
+        if title == "building" and s["progress"] is not None:
+            title += f" {s['progress']}%"
+        text = {True: "full text", False: "titles only (no full-text index)",
+                None: "full text unknown"}[s["fulltext"]]
+        lines.append(f"- {s['zim']}: title index {title}; {text}")
+    return "\n".join(lines) or "No sources installed."
+
+
+def build_index(zim: str) -> str:
+    """Start building the title index of a source whose index is missing or
+    stale, in the background (every such source is built). Check progress
+    with index_status. Full-text indexes come inside the ZIM and cannot be built.
+
+    Args:
+        zim: Source name (e.g. "wikipedia")
+    """
+    from zimi.search import _build_all_title_lock, index_status as status
+
+    names, err = _resolve(zim)
+    if err:
+        return err
+    states = status(names, check_current=True)
+    building = [s["zim"] for s in states if s["title"] == "building"]
+    if building:
+        return f"Already building: {', '.join(building)}. Check index_status."
+    todo = [s["zim"] for s in states if s["title"] in ("missing", "stale")]
+    if not todo:
+        return f"Title index ready: {', '.join(names)}."
+    if not _build_all_title_lock.locked():
+        threading.Thread(target=zimi._build_all_title_indexes, daemon=True).start()
+    return f"Started: {', '.join(todo)}. Check index_status for progress."
+
+
+# ── lean: three tools, Markdown out ──────────────────────────────────────
+#
+# For small local models (szmcp's point: Gemma 12B, Granite 8B, even 3B):
+# few tools, short schemas, answers that are Markdown with the page's own
+# sections, and a long page that arrives as an outline instead of 60k chars.
+
+
+def _source_names():
+    names = sorted(zimi.get_zim_files())
+    if not names:
+        return "No sources installed."
+    more = len(names) - _SOURCES_LISTED
+    listed = ", ".join(names[:_SOURCES_LISTED])
+    return f"Sources: {listed}" + (f" and {more} more." if more > 0 else ".")
+
+
+def _resolve(zim):
+    """The installed sources ``zim`` names, as (names, error). A name may be
+    exact, the start of one ("wikipedia") or a part of one; a part that fits
+    several sources means all of them."""
+    installed = list(zimi.get_zim_files())
+    out = []
+    for want in (z.strip() for z in zim.split(",")):
+        if not want:
+            continue
+        if want in installed:
+            hits = [want]
+        else:
+            low = want.lower()
+            hits = [n for n in installed if n.lower().startswith(low)] or [
+                n for n in installed if low in n.lower()
+            ]
+        if not hits:
+            return None, f"No source named '{want}'. {_source_names()}"
+        out.extend(h for h in hits if h not in out)
+    return out, None
+
+
+def _cut(text, limit):
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _snippet(zim, path):
+    """A result's snippet when the search had none (most full-text hits come
+    back without one: reading every page would slow every search)."""
+    from zimi.previews import extract_snippet, lead_text
+    from zimi.search import refresh_target
+
+    archive = zimi.get_archive(zim)
+    if archive is None:
+        return ""
+    try:
+        item = archive.get_entry_by_path(path).get_item()
+    except Exception:
+        return ""
+    if item.size > zimi.MAX_CONTENT_BYTES or "html" not in (item.mimetype or ""):
+        return ""
+    lead = lead_text(item)
+    hop = refresh_target(lead, path)
+    if hop:
+        return f"(leads to {hop[0]}" + (f" § {hop[1]}" if hop[1] else "") + ")"
+    return extract_snippet(lead, zim)
+
+
+def lean_search(
+    query: Annotated[
+        str, Field(description='Words to find. Also: "exact phrase", -word, a OR b')
+    ],
+    zim: Annotated[
+        str, Field(description="Source name(s), comma-separated. Empty: all")
+    ] = "",
+    limit: Annotated[int, Field(description="Results, 1-20")] = 5,
+    wait: Annotated[int, Field(description="Seconds to wait for indexing, max 60")] = 0,
+) -> str:
+    """Search the offline library. Each hit: title, zim, path, snippet."""
+    limit = max(1, min(int(limit), LEAN_LIMIT_MAX))
+    names = None
+    if zim.strip():
+        names, err = _resolve(zim)
+        if err:
+            return err
+    wait = max(0, min(int(wait), WAIT_MAX_S))
+    if wait and _wait_for_indexes(names, wait):
+        wait = 0  # finished in time: nothing left to say about the wait
+    with zimi._zim_lock:
+        result = zimi.search_all(query, limit=limit, filter_zim=names)
+        items = result.get("results", [])[:limit]
+        for r in items:
+            if not r.get("snippet"):
+                r["snippet"] = _snippet(r["zim"], r["path"])
+    if result.get("error"):
+        return f"Search failed: {result['error']}"
+    lines = []
+    note = _gaps_note(names, items, wait)
+    if note:
+        lines.append(note)
+    if result.get("did_you_mean"):
+        lines.append(f"Did you mean: {result['did_you_mean']}")
+    if not items:
+        lines.append(f"No results for '{query}'.")
+    for r in items:
+        lines.append(f"- {r['title']} | zim: {r['zim']} | path: {r['path']}")
+        snip = _cut(zimi.strip_html(r.get("snippet") or ""), _SNIPPET_CHARS)
+        if snip:
+            lines.append(f"  {snip}")
+    return "\n".join(lines)
+
+
+def _page(zim, path, references=False):
+    """(page, error) for the lean readers. When ``zim`` names several
+    sources ("wikipedia"), the first that has the page answers."""
+    from zimi.search import article_markdown
+
+    names, err = _resolve(zim)
+    if err:
+        return None, err
+    for name in names:
+        with zimi._zim_lock:
+            got = article_markdown(name, path, references=references)
+        if got.get("error") == "not_text":
+            return None, f"'{path}' is {got['mimetype']}, not a page of text."
+        if not got.get("error"):
+            return got, None
+    where = names[0] if len(names) == 1 else ", ".join(names)
+    return None, f"No page '{path}' in {where}. Use search to find one."
+
+
+def _header(got, section=None):
+    title = got["title"]
+    if section is not None and section.index:
+        title += f" § {section.heading}"
+    return f"# {title}\nzim: {got['zim']} | path: {got['path']}\n\n"
+
+
+def lean_read(
+    zim: Annotated[str, Field(description="Source, from search")],
+    path: Annotated[str, Field(description="Page path, from search")],
+    references: Annotated[bool, Field(description="Keep the references")] = False,
+) -> str:
+    """A page as Markdown. A long page: its intro and a numbered outline."""
+    from zimi import htmlmd
+
+    got, err = _page(zim, path, references)
+    if err:
+        return err
+    # A page that is a pointer into another page's section: that section.
+    sec = got["doc"].find(got["section"]) if got["section"] else None
+    return _header(got, sec) + htmlmd.view(got["doc"], sec)
+
+
+def read_section(
+    zim: Annotated[str, Field(description="Source, from search")],
+    path: Annotated[str, Field(description="Page path, from search")],
+    section: Annotated[str, Field(description="Number or heading, from read")],
+) -> str:
+    """One section of a page (with its subsections) as Markdown."""
+    from zimi import htmlmd
+
+    got, err = _page(zim, path)
+    if err:
+        return err
+    doc = got["doc"]
+    sec = doc.find(section)
+    if sec is None:
+        return f"No section '{section}'. Sections:\n{doc.outline()}"
+    return _header(got, sec) + htmlmd.view(doc, sec)
+
+
+FULL_TOOLS = tuple(
+    (fn.__name__, fn)
+    for fn in (
+        search,
+        read,
+        get_chunks,
+        suggest,
+        list_sources,
+        random,
+        list_collections,
+        manage_collection,
+        manage_favorites,
+        article_languages,
+        read_with_links,
+        deep_search,
+        list_videos,
+        list_questions,
+        read_question,
+        list_posts,
+        read_post,
+        index_status,
+        build_index,
+    )
+)
+LEAN_TOOLS = (
+    ("search", lean_search),
+    ("read", lean_read),
+    ("read_section", read_section),
+)
+
+
+def build(tools="full"):
+    """A FastMCP server offering one tool set. Builds nothing else: no cache
+    load, no thread, no scan beyond the ZIM directory's file names (lean
+    names the sources in its instructions)."""
+    if tools not in TOOL_SETS:
+        raise ValueError(f"tools must be one of {', '.join(TOOL_SETS)}")
+    instructions = _INSTRUCTIONS_FULL
+    if tools == "lean":
+        instructions = f"{_INSTRUCTIONS_LEAN} {_source_names()}"
+    server = FastMCP("zimi", instructions=instructions)
+    # Report ZIMI's version, not FastMCP's.
+    #
+    # The low-level server carries `version=None`, and the library then answers
+    # the handshake with its OWN version — so a client asking what it just
+    # connected to was told "zimi 1.26.0" while Zimi was 1.9.0.
+    #
+    # Set after construction because FastMCP's __init__ signature differs
+    # between the vendored `mcp.server.fastmcp` and the standalone `fastmcp`
+    # distribution, and only one of them takes `version`. Guarded: a private
+    # attribute that moves should cost us a wrong version string, never a
+    # server that will not start.
+    try:
+        server._mcp_server.version = zimi.ZIMI_VERSION
+    except Exception:  # pragma: no cover - shape changed upstream
+        pass
+    if tools == "full":
+        for name, fn in FULL_TOOLS:
+            server.tool(name=name)(fn)
+        return server
+    # Lean answers are text, so no output schema rides along in tools/list:
+    # every token of it would be one a small model's context pays for twice.
+    import inspect
+
+    plain = {}
+    if "structured_output" in inspect.signature(server.tool).parameters:
+        plain["structured_output"] = False
+    for name, fn in LEAN_TOOLS:
+        server.tool(name=name, **plain)(fn)
+    return server
+
+
+# The full server, as this module has always offered it to anyone importing it.
+mcp = build("full")
+
+
+def run(tools):
+    """Serve ``tools`` over stdio until the client hangs up.
+
+    Lean starts only what it answers with: the metadata cache (read from
+    disk; a first run reads each ZIM's header once). No title-index builds,
+    BitTorrent, mDNS, catalog or web server; search uses an index already on
+    disk and libzim's own otherwise. Full also warms every index in the
+    background, as it always has, for the tools that want them."""
+    zimi.load_cache()
+    if tools == "full":
+        threading.Thread(target=zimi.warm_indexes, daemon=True).start()
+    build(tools).run(transport="stdio")
+
+
+def tools_setting(value, default):
+    """``value`` (a flag or ZIMI_MCP_TOOLS) checked, or ``default``."""
+    value = (value or "").strip().lower() or default
+    if value not in TOOL_SETS:
+        raise SystemExit(
+            f"zimi: {TOOLS_ENV} / --tools must be one of {', '.join(TOOL_SETS)}, "
+            f"not '{value}'"
+        )
+    return value
+
+
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m zimi.mcp_server",
+        description="Zimi's MCP server on stdio. `zimi mcp` is the same, lean by default.",
+    )
+    parser.add_argument(
+        "--tools",
+        default=None,
+        help=f"lean or full (default: ${TOOLS_ENV}, else full)",
+    )
+    args = parser.parse_args(argv)
+    run(tools_setting(args.tools or os.environ.get(TOOLS_ENV), "full"))
+
+
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    main()

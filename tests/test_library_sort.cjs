@@ -162,5 +162,21 @@ vm.runInContext("_setLibrarySort('nonsense')", sandbox);
 check(sandboxCalls.reordered === 0 && sandboxCalls.rebuilt === 0,
       'an order nobody offers does neither');
 
+// The order control is text the heading's size, not a box that outweighs
+// it on a phone: a sort mark and the order it is in, the native select over
+// it unseen (it still takes the tap and opens the system picker).
+{
+  const ctx = { esc: (s) => s, escAttr: (s) => s, t: (k) => ({ sort_alpha: 'Alphabetical', sort_added: 'Recently added', library_sort: 'Order' })[k] || k,
+    LIBRARY_SORTS: ['alpha', 'added'], _librarySort: () => 'added' };
+  vm.createContext(ctx);
+  vm.runInContext(grab('_LIBRARY_SORT_LABELS', 'var') + '\n' + src.match(/var _LIB_SORT_SVG = '[^\n]*';/)[0] + '\n' + grab('_libSortHtml'), ctx);
+  const html = ctx._libSortHtml();
+  check(/^<label class="lib-sort-wrap"/.test(html) && /<span class="lib-sort-now">Recently added<\/span>/.test(html) && /<select class="lib-sort"/.test(html),
+    'the order control reads as its order beside a sort mark, the select inside it');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8');
+  const wrap = (css.match(/\.lib-sort-wrap \{[^}]*\}/) || [''])[0], sel = (css.match(/\.lib-sort-wrap \.lib-sort \{[^}]*\}/) || [''])[0];
+  check(/font-size: 12px/.test(wrap) && /opacity: 0/.test(sel) && /font-size: 16px/.test(sel), 'heading-sized text; the select unseen, 16px so iOS does not zoom');
+}
+
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all library sort checks passed');

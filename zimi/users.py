@@ -613,8 +613,15 @@ _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 # a byte budget, past it the oldest tombstones go, then the oldest places, and
 # a store still over it is refused whole (the device says sync is paused).
 _SAVED_LIKED = "liked"
-_SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
-_SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
+#: The store's shape. 1: 1.12.0, where a like saved the thing too
+#: (_saved_likes_from_v1). A thing liked and not saved is an item marked
+#: likeOnly, in Liked and in nothing else. Whether an item is saved has its
+#: own time, sv (_saved_sv_of), apart from ts (its fields): a like alone makes
+#: no claim on it (sv 0), so a like never clears a save and an unsave never
+#: clears a like.
+_SAVED_VERSION = 2
+_SAVED_KINDS = ("article", "book", "video", "question", "post", "place", "word")
+_SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki", "dictionary")
 _SAVED_COLLS = (
     ("items", "i:"),
     ("lists", "l:"),
@@ -648,11 +655,12 @@ _SAVED_HL_COLORS = ("yellow", "green", "blue", "pink")
 _SAVED_HL_QUOTE_MAX = 600
 _SAVED_HL_CONTEXT_MAX = 64
 _SAVED_HL_NOTE_MAX = 2000
+_SAVED_HL_PAGE_MAX = 1_000_000
 
 
 def _saved_empty():
     return {
-        "v": 1,
+        "v": _SAVED_VERSION,
         "items": {},
         "lists": {},
         "members": {},
@@ -755,7 +763,9 @@ def _saved_highlight(r, id_):
         or not _SAVED_ID_RE.match(id_)
     ):
         return None
-    ts, pos, n, added = (_saved_num(r.get(f)) for f in ("ts", "pos", "n", "added"))
+    ts, pos, n, added, pg = (
+        _saved_num(r.get(f)) for f in ("ts", "pos", "n", "added", "pg")
+    )
     zim, path, exact = r.get("zim"), r.get("path"), r.get("exact")
     if not isinstance(zim, str) or not zim or len(zim) > _SAVED_ZIM_MAX:
         return None
@@ -799,6 +809,9 @@ def _saved_highlight(r, id_):
     note = r.get("note")
     if isinstance(note, str) and note:
         out["note"] = note[:_SAVED_HL_NOTE_MAX]
+    # In a PDF, the page of the document the highlight is on.
+    if pg is not None and 1 <= pg <= _SAVED_HL_PAGE_MAX:
+        out["pg"] = int(pg)
     return out
 
 
@@ -823,7 +836,12 @@ def _clean_saved(x):
         if it:
             added = _saved_num(r.get("added"))
             it["added"] = _saved_round(it["ts"] if added is None else added)
-            s["items"][id_] = it
+            if r.get("likeOnly") is True:
+                it["likeOnly"] = True
+            sv = _saved_num(r.get("sv"))
+            s["items"][id_] = _saved_set_sv(
+                it, _saved_sv_of(it) if sv is None else max(0, _saved_round(sv))
+            )
     for id_, r in each(x.get("lists")):
         o = _saved_order(r)
         name = r.get("name") if isinstance(r, dict) else None
@@ -869,7 +887,70 @@ def _clean_saved(x):
         ):
             s["gone"][g] = _saved_round(ts)
     s["legacy"] = x.get("legacy") is True
+    v = x.get("v")
+    if v == 1 and not isinstance(v, bool):
+        _saved_likes_from_v1(s)
     return s
+
+
+def _saved_likes_from_v1(s):
+    """1.12.0 saved whatever was liked. A thing in Liked and in no list of
+    its own was most likely kept by the heart alone: it stays liked and
+    leaves Bookmarks. Its time is left as it was, so every copy agrees."""
+    liked, listed = set(), set()
+    for mk in s["members"]:
+        i = mk.find("\t")
+        (liked if mk[:i] == _SAVED_LIKED else listed).add(mk[i + 1 :])
+    for id_ in liked - listed:
+        if id_ in s["items"]:
+            s["items"][id_]["likeOnly"] = True
+
+
+def _saved_sv_of(r):
+    """When an item's saved state was last set: sv, or before sv was kept
+    (1.12.0, and 1.12.1's first builds) ts, except a thing only liked and
+    never touched since (added is ts): the heart made it, nothing chose."""
+    if "sv" in r:
+        return r["sv"]
+    return 0 if r.get("likeOnly") and r["added"] == r["ts"] else r["ts"]
+
+
+def _saved_set_sv(r, v):
+    """sv is written only where it says more than _saved_sv_of would without it."""
+    r.pop("sv", None)
+    if v != _saved_sv_of(r):
+        r["sv"] = v
+    return r
+
+
+def _saved_let_go(s, id_):
+    """A thing only liked, its like gone: not kept. Its unsave stays as a
+    tombstone dated when it was let go (none if it never was saved), so an
+    older save elsewhere does not come back and a newer one stays saved."""
+    sv = _saved_sv_of(s["items"].pop(id_))
+    g = "i:" + id_
+    if sv > 0 and not s["gone"].get(g, -1) >= sv:
+        s["gone"][g] = sv
+
+
+def _saved_merge_item(r, x, y, gone, g):
+    """What the item is comes from the newer copy (``r``); whether it is saved
+    from the newer of the copies' sv and its tombstone (a tie keeps ``x``'s, a
+    tombstone as new wins). Not saved, it stays for its like, as likeOnly;
+    _saved_normalize lets it go when there is none."""
+    w = y if x is None else x if y is None else (y if _saved_sv_of(y) > _saved_sv_of(x) else x)
+    sv, saved = _saved_sv_of(w), not w.get("likeOnly")
+    if g in gone:
+        if gone[g] >= sv:
+            saved, sv = False, gone[g]
+        else:
+            del gone[g]
+    out = dict(r)
+    if saved:
+        out.pop("likeOnly", None)
+    else:
+        out["likeOnly"] = True
+    return _saved_set_sv(out, sv)
 
 
 def _saved_cap(m, n, ts_of):
@@ -913,15 +994,24 @@ def _saved_fit(s, budget):
 
 
 def _saved_normalize(s, now_ms, budget=None):
-    """A membership needs its item and its list; tombstones age out; each app
-    keeps its latest places; the store fits its byte budget (_saved_fit)."""
+    """A membership needs its item and its list, and a list of its own a
+    saved item; a thing only liked needs its like; tombstones age out; each
+    app keeps its latest places; the store fits its byte budget
+    (_saved_fit)."""
+    liked = set()
     for mk in list(s["members"]):
         i = mk.find("\t")
-        lid = mk[:i]
-        if mk[i + 1 :] not in s["items"] or (
-            lid != _SAVED_LIKED and lid not in s["lists"]
+        lid, id_ = mk[:i], mk[i + 1 :]
+        it = s["items"].get(id_)
+        if not it or (
+            lid != _SAVED_LIKED and (lid not in s["lists"] or it.get("likeOnly"))
         ):
             del s["members"][mk]
+        elif lid == _SAVED_LIKED:
+            liked.add(id_)
+    for id_ in [k for k, it in s["items"].items() if it.get("likeOnly")]:
+        if id_ not in liked:
+            _saved_let_go(s, id_)
     for g in [g for g, ts in s["gone"].items() if ts < now_ms - _SAVED_GONE_MS]:
         del s["gone"][g]
     _saved_cap(s["gone"], _SAVED_GONE_MAX, _saved_gone_ts)
@@ -942,6 +1032,8 @@ def _saved_clamp(s, most):
             r["ts"] = min(r["ts"], most)
             if "added" in r:
                 r["added"] = min(r["added"], most)
+            if "sv" in r:
+                r["sv"] = min(r["sv"], most)
     for g in s["gone"]:
         s["gone"][g] = min(s["gone"][g], most)
     return s
@@ -965,6 +1057,9 @@ def _merge_saved(a, b, now_ms, budget=None):
                 continue
             x, y = A.get(id_), B.get(id_)
             r = y if x is None else x if y is None else (y if y["ts"] > x["ts"] else x)
+            if name == "items":
+                out[name][id_] = _saved_merge_item(r, x, y, gone, pre + id_)
+                continue
             dead = gone.get(pre + id_)
             if dead is not None:
                 if dead >= r["ts"]:

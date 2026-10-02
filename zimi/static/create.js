@@ -69,6 +69,7 @@ var _CREATE_ICONS = {
   site: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>',
   video: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>',
   bookmarks: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>',
+  folder: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   'import': '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/></svg>',
   // The finished article. Bigger than the chip glyphs because it is the one
   // thing on the done card that is purely an image of what you just made.
@@ -90,10 +91,11 @@ var _CREATE_ICONS = {
 //                 meant to arrive with has to be a chosen option.
 //   serverPath  — the source is somewhere on the SERVER'S disk rather than out
 //                 on the web, which is why the server keeps it for the primary
-//                 admin alone. A creator account never sees it. Import is the
-//                 only one left: folder mode is CLI-only now ("do remove
-//                 folder, I said that would be CLI only"), refused by the
-//                 server and drawn nowhere here.
+//                 admin alone. A creator account never sees it: folder and
+//                 import.
+//   tree        — the source is picked in the folder tree under the create
+//                 root (never typed): a folder, or files and subfolders whose
+//                 shared folder becomes the ZIM.
 // Bookmarks is one of the six ways to make a ZIM and the only one whose source
 // is not on the server: the bookmarks live in this browser's localStorage. So it
 // is a CLIENT mode — it never reaches /manage/create, and its button hands off
@@ -141,6 +143,14 @@ var CREATE_MODE_DEFS = [
   // url Reddit.com/r/whatever and we know what to do"); the preview and the
   // run then speak of a subreddit.
   CREATE_BOOKMARKS_DEF,
+  // Folder: back on the web (2026-09-30, Eric: "show the whole tree and
+  // allow selecting any subset"), as a tree under the create root that is
+  // read one level at a time. Nothing is typed.
+  {
+    id: 'folder', network: false, tree: true, serverPath: true,
+    label: 'create_label_folder', placeholder: 'create_label_folder',
+    flags: [], advanced: ['language']
+  },
   // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
   // address field becomes a list of the archives in the library folder; no
   // path is typed, which is what took it off the web with folder capture.
@@ -357,7 +367,7 @@ var CREATE_FIELDS = {
     kind: 'bool', on: true, needsEngine: ['alive'],
     note: 'create_capture_variants_note'
   },
-  // "Remove links to other sites" (#99): links that leave the site become
+  // "Remove links that lead outside the ZIM" (#99): links that leave the site become
   // plain text in the written ZIM, for the readers that are not Zimi. Off until
   // ticked. Drawn for the engines whose pages Zimi writes itself (fast and
   // rendered); an alive capture's links are rewritten when it is replayed.
@@ -594,8 +604,141 @@ function _createBuildRequest(modeId, fields) {
   // Audio-only picks the format itself, so a quality preset alongside it would
   // describe a preference nothing reads. The server drops it too.
   if (body.audio_only) delete body.format;
+  // A folder picked as a subset: the files and subfolders, from its root.
+  if (def.tree && fields.only && fields.only.length) body.only = fields.only.slice();
   return body;
 }
+
+// What a probe answer is ABOUT: the source, and for a folder the subset too,
+// so ticking one more file asks again even though the root did not move.
+function _createBodyKey(body) {
+  if (!body) return '';
+  return body.source + (body.only && body.only.length ? '\u0000' + body.only.join('\u0000') : '');
+}
+
+// ── the folder tree (pure) ──────────────────────────────────────────────────
+//
+// A selection is a set of paths relative to the create root ('' is the root
+// itself), kept so that no path has a selected ancestor: ticking a folder
+// replaces whatever was ticked inside it, and ticking the last unticked child
+// of a fully listed folder becomes ticking the folder. Unticking something a
+// ticked folder covers splits that folder into its other children, level by
+// level, so the rest stays ticked.
+//
+// `tree` is what has been listed: kids[path] the selectable children of a
+// listed folder (paths), done[path] whether its listing is complete (a folder
+// with a "more" page still to load is not), kind[path] 'dir' or 'file'.
+
+function _createTreeParent(p) {
+  var i = p.lastIndexOf('/');
+  return i < 0 ? '' : p.slice(0, i);
+}
+
+// Whether q lies strictly inside folder p.
+function _createTreeUnder(p, q) {
+  return p === '' ? q !== '' : q.indexOf(p + '/') === 0;
+}
+
+// The selected path that covers p (p itself or an ancestor), or null.
+function _createTreeCover(sel, p) {
+  var q = p;
+  for (;;) {
+    if (sel[q]) return q;
+    if (q === '') return null;
+    q = _createTreeParent(q);
+  }
+}
+
+// 'on', 'off', or 'mixed' (a folder with something ticked inside it).
+function _createTreeState(sel, p) {
+  if (_createTreeCover(sel, p) !== null) return 'on';
+  for (var k in sel) {
+    if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k] && _createTreeUnder(p, k)) return 'mixed';
+  }
+  return 'off';
+}
+
+function _createTreeCopy(sel) {
+  var out = {};
+  for (var k in sel) if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) out[k] = true;
+  return out;
+}
+
+// The folders between a covering ancestor and p that must be fully listed
+// before p can be unticked without losing what is not on screen yet.
+function _createTreeSplitNeeds(sel, tree, p) {
+  var cover = _createTreeCover(sel, p);
+  if (cover === null || cover === p) return [];
+  var need = [];
+  for (var q = _createTreeParent(p); ; q = _createTreeParent(q)) {
+    if (!tree.done[q]) need.push(q);
+    if (q === cover) break;
+  }
+  return need;
+}
+
+// The selection after a click on p.
+function _createTreeToggle(sel, tree, p) {
+  var out = _createTreeCopy(sel);
+  var kids = tree.kids || {};
+  var cover = _createTreeCover(out, p);
+  if (cover !== null) {
+    delete out[cover];
+    // Split the covering folder down to p: at each level, its other
+    // children stay ticked.
+    var chain = [];
+    for (var q = p; q !== cover; q = _createTreeParent(q)) chain.unshift(q);
+    var level = cover;
+    for (var i = 0; i < chain.length; i++) {
+      var list = kids[level] || [];
+      for (var j = 0; j < list.length; j++) if (list[j] !== chain[i]) out[list[j]] = true;
+      level = chain[i];
+    }
+    return out;
+  }
+  for (var k in out) if (_createTreeUnder(p, k)) delete out[k];
+  out[p] = true;
+  // Every child of a fully listed folder ticked is the folder ticked.
+  var cur = p;
+  while (cur !== '') {
+    var par = _createTreeParent(cur);
+    var siblings = kids[par];
+    if (!tree.done[par] || !siblings || !siblings.length) break;
+    var all = true;
+    for (var s = 0; s < siblings.length; s++) if (!out[siblings[s]]) { all = false; break; }
+    if (!all) break;
+    for (var t2 = 0; t2 < siblings.length; t2++) delete out[siblings[t2]];
+    out[par] = true;
+    cur = par;
+  }
+  return out;
+}
+
+// The selection as a request: {source, only}. One folder ticked is that
+// folder; anything else is a subset of the folder all of it shares.
+function _createTreeRequest(sel, tree) {
+  var paths = [];
+  for (var k in sel) if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) paths.push(k);
+  if (!paths.length) return null;
+  paths.sort();
+  if (paths[0] === '') return { source: '.', only: [] };
+  if (paths.length === 1 && tree.kind[paths[0]] === 'dir') return { source: paths[0], only: [] };
+  var common = _createTreeParent(paths[0]).split('/');
+  for (var i = 1; i < paths.length; i++) {
+    var parts = _createTreeParent(paths[i]).split('/');
+    var n = 0;
+    while (n < common.length && n < parts.length && common[n] === parts[n]) n++;
+    common = common.slice(0, n);
+  }
+  var base = common.join('/');
+  return {
+    source: base || '.',
+    only: paths.map(function(p) { return base ? p.slice(base.length + 1) : p; })
+  };
+}
+
+// The families a folder's files become, in the order the preview lists them.
+var CREATE_FOLDER_FAMILIES = ['page', 'document', 'image', 'video', 'audio', 'asset'];
 
 // A probe reply as the lines the preview shows, in reading order. Pure and
 // table-driven so the .cjs test can hold every mode's shape: what the preview
@@ -622,6 +765,28 @@ function _createPreviewRows(p) {
     add('create_pv_videos', countUpTo(p.videos, CREATE_PROBE_CAP));
     add('create_pv_playlist', p.playlist);
     add('create_pv_channel', p.uploader);
+  } else if (p.mode === 'folder') {
+    // What the selection holds and what each part becomes, then what the
+    // sidecars say. "+" when the count stopped short of the whole selection.
+    var more = p.truncated ? '+' : '';
+    add('create_pv_files', (p.files || 0) + more + ' \u00b7 ' + _fmtBytes(p.bytes || 0) + more);
+    for (var f = 0; f < CREATE_FOLDER_FAMILIES.length; f++) {
+      var fam = CREATE_FOLDER_FAMILIES[f];
+      if (p.families && p.families[fam]) add('create_folder_fam_' + fam, p.families[fam] + more);
+    }
+    if (p.unsupported) add('create_pv_left_out', String(p.unsupported));
+    if (p.plays_some) add('create_pv_plays_some', String(p.plays_some));
+    var m = p.metadata || {};
+    add('create_pv_meta_file', p.metadata_file);
+    add('create_pv_title', m.title || p.title);
+    add('create_pv_description', m.description);
+    add('create_pv_creator', m.creator);
+    add('create_pv_publisher', m.publisher);
+    add('create_pv_tags', m.tags);
+    add('create_pv_icon', m.icon);
+    add('create_pv_language', m.language);
+    if (p.described) add('create_pv_described', String(p.described));
+    return rows;
   } else if (p.mode === 'import') {
     add('create_pv_size', _fmtBytes(p.bytes || 0));
     add('create_pv_helper', t(p.sidecar_ready ? 'create_pv_ready' : 'create_pv_installs'));
@@ -1525,12 +1690,20 @@ function _renderCreate() {
         // steadier anchor; the address still decides the mode when it can.
         '<div class="create-modes" id="create-modes" role="tablist"' +
           ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
+        // Why a chip is greyed out, said where a phone can read it (a
+        // tooltip is no answer on a touch screen); then what the lit mode
+        // makes, above whatever it asks for (a folder's tree, an address).
+        '<div class="create-caption create-modes-why" id="create-modes-why" hidden></div>' +
+        '<div class="create-panel-desc create-mode-desc" id="create-mode-desc"></div>' +
         '<div class="create-address" id="create-address">' +
           '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
           '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
             ' autocapitalize="none" autocorrect="off"></textarea>' +
           '<select class="create-field" id="create-archive" hidden></select>' +
+          '<div class="create-ftree" id="create-folder-tree" role="tree" hidden></div>' +
           '<div class="create-caption" id="create-address-note" hidden></div>' +
+          // Where the folder is on the server: an admin's detail, asked for.
+          '<details class="create-where" id="create-folder-where" hidden><summary></summary><div class="create-caption"></div></details>' +
         '</div>' +
         '<div id="create-panel"></div>' +
       '</div>' +
@@ -1595,6 +1768,24 @@ function _renderCreateModes() {
       '</button>';
   }
   host.innerHTML = html;
+  _renderCreateModesWhy(visible);
+}
+
+// The greyed-out chips, named, and why: "Offline mode is on: Web page, Whole
+// site, Video or playlist need an internet connection." The import helper's
+// absence is its own sentence.
+function _renderCreateModesWhy(visible) {
+  var el = document.getElementById('create-modes-why');
+  if (!el) return;
+  var net = [], helper = '';
+  visible.forEach(function(def) {
+    if (_createModeAvailable(def, _createOffline, _createImportReady)) return;
+    if (def.sidecar) helper = t('create_mode_' + def.id); else net.push(t('create_mode_' + def.id));
+  });
+  var text = net.length ? t('create_offline_modes', { modes: net.join(', ') }) : '';
+  if (helper) text += net.length ? ' ' + t('create_offline_helper', { mode: helper }) : t('create_offline_sidecar_note');
+  el.textContent = text;
+  el.hidden = !text;
 }
 
 function _createVisibleModes() {
@@ -1625,11 +1816,19 @@ function _createModeInList(list, id) {
 // The chip that is lit when the page opens. A picker with nothing picked is a
 // panel with nothing in it, so something is always selected — the first mode
 // that can actually run, which on an offline server is not "Web page".
+// Bookmarks with nothing saved is a panel that says "0": it is lit only when
+// nothing else can run.
 function _createDefaultMode(list) {
+  var empty = null;
   for (var i = 0; i < list.length; i++) {
-    if (_createModeAvailable(list[i], _createOffline, _createImportReady)) return list[i].id;
+    if (!_createModeAvailable(list[i], _createOffline, _createImportReady)) continue;
+    if (list[i].client && !_createSavedCount()) { empty = empty || list[i].id; continue; }
+    return list[i].id;
   }
-  return list.length ? list[0].id : null;
+  return empty || (list.length ? list[0].id : null);
+}
+function _createSavedCount() {
+  return (typeof Saved !== 'undefined' && Saved && Saved.all) ? Saved.all().length : 0;
 }
 
 // What the chips are drawn FROM. Re-drawing them on every poll would mean
@@ -1935,7 +2134,7 @@ var _createProbeTimer = null;
 function _createSourceIsProbed() {
   var body = _createBuildRequest(_createSelected, _createFormFields());
   if (!body) return true;  // nothing to probe
-  return !_createProbing && body.source === _createPreviewSource;
+  return !_createProbing && _createBodyKey(body) === _createPreviewSource;
 }
 
 // The address field dressed for the mode that is lit: its label, its
@@ -1953,6 +2152,28 @@ function _renderCreateAddress() {
   if (!takesAddress) return;
   if (label) label.textContent = t(def.label);
   var pick = document.getElementById('create-archive');
+  var tree = document.getElementById('create-folder-tree');
+  var where = document.getElementById('create-folder-where');
+  if (tree) tree.hidden = !def.tree;
+  if (def.tree) {
+    // The folder tree: nothing typed, nothing picked from a flat list.
+    src.hidden = true;
+    if (pick) pick.hidden = true;
+    if (label) label.removeAttribute('for');
+    _createTreeMount();
+    if (note) {
+      note.textContent = t('create_folder_note');
+      note.hidden = false;
+    }
+    if (where) {
+      where.querySelector('summary').textContent = t('create_folder_where_summary');
+      where.querySelector('.create-caption').textContent = t('create_folder_where', {dir: _createArchivesDir || t('create_import_dir_unknown')});
+      where.hidden = false;
+    }
+    return;
+  }
+  if (where) where.hidden = true;
+  if (label) label.setAttribute('for', 'create-source');
   if (def.picker) {
     // A list, not a field: the archives the server found, newest first.
     src.hidden = true;
@@ -1978,6 +2199,260 @@ function _renderCreateAddress() {
   if (note) { note.textContent = def.multiline ? t('create_pages_note') : ''; note.hidden = !def.multiline; }
 }
 
+// ── the folder tree ─────────────────────────────────────────────────────────
+//
+// The create root, one folder level per request (the server never walks a
+// share to draw this), rows drawn from what has been listed. The selection
+// logic is pure and above (_createTreeToggle); this is fetching and drawing.
+
+// kids/kind/done are what the pure selection logic reads; order is every
+// listed row of a folder (left-out files and sidecars too), in the server's
+// order, and is also how far into a folder's listing we are.
+var _createTree = { kids: {}, kind: { '': 'dir' }, done: {}, more: {}, order: {}, open: { '': true }, info: {}, rootName: '', loading: {}, error: '' };
+var _createTreeSel = {};
+var CREATE_TREE_PROBE_MS = 400;
+
+async function _createTreeLoad(path, offset) {
+  var tree = _createTree;
+  if (tree.loading[path]) return;
+  tree.loading[path] = true;
+  _renderCreateTree();
+  try {
+    var res = await authedFetch('/manage/create/tree?path=' + encodeURIComponent(path) +
+      (offset ? '&offset=' + offset : ''));
+    var data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) { tree.error = data.error || t('create_error_generic'); return; }
+    tree.error = '';
+    if (path === '' && data.root_name) tree.rootName = data.root_name;
+    var kids = offset ? (tree.kids[path] || []) : [];
+    var order = offset ? (tree.order[path] || []) : [];
+    (data.entries || []).forEach(function(e) {
+      var child = path ? path + '/' + e.name : e.name;
+      order.push(child);
+      tree.info[child] = e;
+      tree.kind[child] = e.kind;
+      // Only what a person can tick is a child for the selection's sums:
+      // a left-out file or a sidecar is shown, never selectable.
+      if (e.kind === 'dir' || (e.family !== 'unsupported' && e.family !== 'sidecar')) kids.push(child);
+    });
+    tree.kids[path] = kids;
+    tree.order[path] = order;
+    tree.more[path] = data.more || 0;
+    tree.done[path] = !data.more && !data.truncated;
+  } catch (e) {
+    tree.error = t('create_error_generic');
+  } finally {
+    tree.loading[path] = false;
+    _renderCreateTree();
+  }
+}
+
+// Every page of a folder's listing, for unticking inside a ticked folder
+// without losing the part of it not drawn yet.
+async function _createTreeLoadAll(path) {
+  while (!_createTree.done[path] && _createTree.more[path]) {
+    var before = (_createTree.order[path] || []).length;
+    await _createTreeLoad(path, before);
+    if ((_createTree.order[path] || []).length === before) break;
+  }
+}
+
+function _createTreeMount() {
+  var host = document.getElementById('create-folder-tree');
+  if (!host) return;
+  if (!host._wired) {
+    host._wired = true;
+    host.setAttribute('aria-label', t('create_label_folder'));
+    host.addEventListener('click', _createTreeClick);
+    host.addEventListener('keydown', _createTreeKey);
+    // Wherever focus lands is where a redraw puts it back, so a listing
+    // arriving late never pulls focus away from the row the person is on.
+    host.addEventListener('focusin', function(e) {
+      var row = _createTreeRowOf(e.target);
+      if (row) _createTreeFocus = row.getAttribute('data-path');
+    });
+  }
+  if (!_createTree.kids[''] && !_createTree.loading['']) _createTreeLoad('', 0);
+  else _renderCreateTree();
+}
+
+function _createTreeFamilyText(info) {
+  if (!info || info.kind !== 'file' || !info.family) return '';
+  if (info.family === 'sidecar') {
+    return info.sidecar ? t('create_folder_describes', { name: info.sidecar }) : t('create_folder_describes_folder');
+  }
+  if (info.family === 'unsupported') return t('create_folder_kind_unsupported');
+  var text = t('create_folder_kind_' + info.family);
+  if (info.plays === 'some') text += ' · ' + t('create_folder_plays_some');
+  return text;
+}
+
+function _createTreeRowHtml(path, depth) {
+  var tree = _createTree;
+  var info = tree.info[path] || {};
+  var dir = path === '' || info.kind === 'dir';
+  var name = path === '' ? (tree.rootName || t('create_folder_root')) : info.name;
+  var open = dir && !!tree.open[path];
+  var selectable = dir || (info.family !== 'unsupported' && info.family !== 'sidecar');
+  var state = _createTreeState(_createTreeSel, path);
+  var what = _createTreeFamilyText(info);
+  var why = info.family === 'unsupported' ? t('create_folder_why_' + info.reason) : '';
+  var html = '<div class="create-ftree-row' + (selectable ? '' : ' is-off') + (state !== 'off' ? ' is-on' : '') + '"' +
+    ' role="treeitem" tabindex="-1" aria-level="' + (depth + 1) + '"' +
+    (dir ? ' aria-expanded="' + (open ? 'true' : 'false') + '"' : '') +
+    (selectable ? ' aria-checked="' + (state === 'mixed' ? 'mixed' : state === 'on' ? 'true' : 'false') + '"' : '') +
+    ' data-path="' + escAttr(path) + '" style="--depth:' + depth + '"' +
+    (why ? ' title="' + escAttr(why) + '"' : '') + '>';
+  html += dir
+    ? '<button type="button" class="create-ftree-twist" data-act="open" tabindex="-1" aria-label="' +
+        escAttr(t(open ? 'create_folder_close' : 'create_folder_open', { name: name })) + '">' +
+        '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+    : '<span class="create-ftree-twist" aria-hidden="true"></span>';
+  html += selectable
+    ? '<input type="checkbox" class="create-ftree-check" data-act="tick" tabindex="-1"' +
+        (state === 'on' ? ' checked' : '') + ' aria-label="' + escAttr(name) + '">'
+    : '<span class="create-ftree-check" aria-hidden="true"></span>';
+  html += '<span class="create-ftree-name"><bdi>' + esc(name) + '</bdi></span>';
+  var meta = [];
+  if (what) meta.push(what);
+  if (info.kind === 'file' && typeof info.size === 'number') meta.push(fmtBytes(info.size));
+  if (meta.length) html += '<span class="create-ftree-what">' + esc(meta.join(' · ')) + '</span>';
+  // Left out, and why, in full under its name (a tooltip a phone never shows
+  // was the only place the reason was).
+  if (why) html += '<span class="create-ftree-why">' + esc(why) + '</span>';
+  html += '</div>';
+  if (open) {
+    // In the server's order: folders first, then by name.
+    var kids = tree.order[path] || [];
+    html += '<div role="group">';
+    for (var i = 0; i < kids.length; i++) html += _createTreeRowHtml(kids[i], depth + 1);
+    if (tree.loading[path]) {
+      html += '<div class="create-ftree-row is-note" style="--depth:' + (depth + 1) + '"><span class="spinner-inline" aria-hidden="true"></span>' + tH('create_folder_loading') + '</div>';
+    } else if (tree.more[path]) {
+      html += '<div class="create-ftree-row is-note" style="--depth:' + (depth + 1) + '">' +
+        '<button type="button" class="create-ftree-more" data-act="more" data-path="' + escAttr(path) + '">' +
+        tH('create_folder_more', { n: tree.more[path] }) + '</button></div>';
+    } else if (tree.kids[path] && !kids.length) {
+      html += '<div class="create-ftree-row is-note" style="--depth:' + (depth + 1) + '">' + tH('create_folder_empty') + '</div>';
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+// The selection in a sentence under the tree: how many things are ticked.
+function _createTreeSummary() {
+  var n = 0;
+  for (var k in _createTreeSel) if (_createTreeSel[k]) n++;
+  return n ? t('create_folder_picked', { n: n }) : t('create_folder_pick_hint');
+}
+
+var _createTreeFocus = '';
+
+function _renderCreateTree() {
+  var host = document.getElementById('create-folder-tree');
+  if (!host || host.hidden) return;
+  var hadFocus = host.contains(document.activeElement);
+  host.innerHTML = _createTreeRowHtml('', 0) +
+    (_createTree.error ? '<div class="create-error">' + esc(_createTree.error) + '</div>' : '') +
+    '<div class="create-caption create-ftree-summary" aria-live="polite">' + esc(_createTreeSummary()) + '</div>';
+  // Checkboxes cannot be indeterminate in markup; the property says "partly".
+  host.querySelectorAll('.create-ftree-row').forEach(function(row) {
+    var box = row.querySelector('input.create-ftree-check');
+    if (box) box.indeterminate = row.getAttribute('aria-checked') === 'mixed';
+  });
+  // One row is the tab stop (roving tabindex); the arrows move it.
+  var rows = host.querySelectorAll('.create-ftree-row[data-path]');
+  var current = null;
+  for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute('data-path') === _createTreeFocus) current = rows[i];
+  if (!current && rows.length) { current = rows[0]; _createTreeFocus = current.getAttribute('data-path'); }
+  if (current) {
+    current.tabIndex = 0;
+    if (hadFocus) current.focus();
+  }
+}
+
+function _createTreeRowOf(node) {
+  while (node && !(node.classList && node.classList.contains('create-ftree-row') && node.hasAttribute('data-path'))) node = node.parentNode;
+  return node;
+}
+
+function _createTreeSetOpen(path, open) {
+  _createTree.open[path] = open;
+  if (open && !_createTree.kids[path]) _createTreeLoad(path, 0);
+  else _renderCreateTree();
+}
+
+async function _createTreeTick(path) {
+  // Unticking inside a ticked folder keeps the rest of it ticked, which
+  // needs the rest of it listed first.
+  var need = _createTreeSplitNeeds(_createTreeSel, _createTree, path);
+  for (var i = 0; i < need.length; i++) await _createTreeLoadAll(need[i]);
+  _createTreeSel = _createTreeToggle(_createTreeSel, _createTree, path);
+  _createTreeFocus = path;
+  _renderCreateTree();
+  _createClearFinished();
+  clearTimeout(_createProbeTimer);
+  _createProbeTimer = setTimeout(_createProbeSource, CREATE_TREE_PROBE_MS);
+}
+
+function _createTreeClick(e) {
+  var act = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (act && act.getAttribute('data-act') === 'more') {
+    var dir = act.getAttribute('data-path') || '';
+    _createTreeLoad(dir, (_createTree.order[dir] || []).length);
+    return;
+  }
+  var row = _createTreeRowOf(e.target);
+  if (!row) return;
+  var path = row.getAttribute('data-path');
+  _createTreeFocus = path;
+  if (act && act.getAttribute('data-act') === 'open') {
+    _createTreeSetOpen(path, !_createTree.open[path]);
+    return;
+  }
+  if (row.classList.contains('is-off')) return;
+  if (act && act.getAttribute('data-act') === 'tick') e.preventDefault();
+  _createTreeTick(path);
+}
+
+// The keys a tree answers to (WAI-ARIA tree pattern): up and down move,
+// right opens (then steps in), left closes (then steps out), space ticks,
+// Home and End jump. Directions follow the reading order in RTL.
+function _createTreeKey(e) {
+  var row = _createTreeRowOf(e.target);
+  if (!row) return;
+  var host = document.getElementById('create-folder-tree');
+  var rows = Array.prototype.slice.call(host.querySelectorAll('.create-ftree-row[data-path]'));
+  var i = rows.indexOf(row);
+  var path = row.getAttribute('data-path');
+  var dir = row.hasAttribute('aria-expanded');
+  var open = row.getAttribute('aria-expanded') === 'true';
+  var rtl = getComputedStyle(host).direction === 'rtl';
+  var key = e.key;
+  if (rtl && key === 'ArrowRight') key = 'ArrowLeft';
+  else if (rtl && key === 'ArrowLeft') key = 'ArrowRight';
+  var go = function(r) { if (!r) return; _createTreeFocus = r.getAttribute('data-path'); rows.forEach(function(x) { x.tabIndex = -1; }); r.tabIndex = 0; r.focus(); };
+  if (key === 'ArrowDown') { e.preventDefault(); go(rows[i + 1]); }
+  else if (key === 'ArrowUp') { e.preventDefault(); go(rows[i - 1]); }
+  else if (key === 'Home') { e.preventDefault(); go(rows[0]); }
+  else if (key === 'End') { e.preventDefault(); go(rows[rows.length - 1]); }
+  else if (key === 'ArrowRight' && dir) { e.preventDefault(); if (!open) { _createTreeFocus = path; _createTreeSetOpen(path, true); } else go(rows[i + 1]); }
+  else if (key === 'ArrowLeft') {
+    e.preventDefault();
+    if (dir && open) { _createTreeFocus = path; _createTreeSetOpen(path, false); }
+    else if (path !== '') {
+      var up = _createTreeParent(path);
+      for (var j = 0; j < rows.length; j++) if (rows[j].getAttribute('data-path') === up) go(rows[j]);
+    }
+  } else if ((key === ' ' || key === 'Enter') && !row.classList.contains('is-off')) {
+    e.preventDefault();
+    if (key === 'Enter' && dir) _createTreeSetOpen(path, !open);
+    else _createTreeTick(path);
+  }
+}
+
 // The one panel. Everything the selected mode needs, once, in the order you
 // answer it: what am I packaging, what did the server find, what shall it be
 // called, the two flags that matter, everything else behind a disclosure — and
@@ -1991,20 +2466,20 @@ function _renderCreatePanel() {
   // (no engine, no crawl limits; the maker is ArcticZim), and says so.
   if (_createRedditPanel && (def.id === 'page' || def.id === 'site')) def = CREATE_REDDIT_DEF;
   var live = _createModeAvailable(def, _createOffline, _createImportReady);
-  var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
+  var descEl = document.getElementById('create-mode-desc');
+  if (descEl) descEl.textContent = t('create_mode_' + def.id + '_desc');
   _renderCreateAddress();
   if (!live) {
-    host.innerHTML = '<div class="create-panel">' + desc +
+    host.innerHTML = '<div class="create-panel">' +
       '<div class="create-panel-blocked">' +
         tH(def.sidecar ? 'create_offline_sidecar_note' : 'create_offline_note') +
       '</div></div>';
     return;
   }
-  if (def.client) { host.innerHTML = '<div class="create-panel">' + desc + _createBookmarksBodyHtml() + '</div>'; return; }
+  if (def.client) { host.innerHTML = '<div class="create-panel">' + _createBookmarksBodyHtml() + '</div>'; return; }
   var advanced = _createFieldsHtml(def.advanced || [], def);
   host.innerHTML =
     '<div class="create-panel">' +
-      desc +
       '<div id="create-preview"></div>' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
@@ -2128,6 +2603,11 @@ function _createFormFields() {
     source: ((def && def.picker) ? (el('create-archive') || {}) : (el('create-source') || {})).value || '',
     title: (el('create-title') || {}).value || ''
   };
+  if (def && def.tree) {
+    var picked = _createTreeRequest(_createTreeSel, _createTree);
+    fields.source = picked ? picked.source : '';
+    fields.only = picked ? picked.only : [];
+  }
   for (var key in CREATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
     var f = CREATE_FIELDS[key];
@@ -2203,6 +2683,12 @@ function _renderCreatePreview() {
   // A note is not a warning: it says something true about the source that
   // changes what to expect, and it sits under the facts rather than over them.
   var note = p.note_key ? '<div class="create-caption">' + tH(p.note_key) + '</div>' : '';
+  if (p.mode === 'folder' && p.unsupported_examples && p.unsupported_examples.length) {
+    note += '<ul class="create-left-out" aria-label="' + escAttr(t('create_pv_left_out')) + '">' +
+      p.unsupported_examples.map(function(u) {
+        return '<li><bdi>' + esc(u.path) + '</bdi> \u00b7 ' + tH('create_folder_why_' + u.reason) + '</li>';
+      }).join('') + '</ul>';
+  }
   host.innerHTML = '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' +
     warn + html + note + '</div>';
 }
@@ -2214,9 +2700,9 @@ async function _createProbeSource() {
   var fields = _createFormFields();
   var body = _createBuildRequest(mode, fields);
   if (!body) { _createPreview = null; _createPreviewSource = ''; _renderCreatePreview(); return; }
-  if (body.source === _createPreviewSource && _createPreview) return;  // already answered
+  if (_createBodyKey(body) === _createPreviewSource && _createPreview) return;  // already answered
   _createProbing = true;
-  _createPreviewSource = body.source;
+  _createPreviewSource = _createBodyKey(body);
   _renderCreatePreview();
   try {
     var res = await authedFetch('/manage/create/probe', {
@@ -2231,7 +2717,7 @@ async function _createProbeSource() {
     if (mode !== _createSelected) {
       var slot = _createStateFor(mode);
       slot.preview = res.ok ? data : null;
-      slot.previewSource = body.source;
+      slot.previewSource = _createBodyKey(body);
       return;
     }
     if (!res.ok) {
@@ -2249,7 +2735,7 @@ async function _createProbeSource() {
       _createProbing = false;
       _createSelectMode(data.mode);
       _createPreview = data;
-      _createPreviewSource = body.source;
+      _createPreviewSource = _createBodyKey(body);
       var left = _createStateFor(was);
       left.preview = null;
       left.previewSource = '';
@@ -2277,7 +2763,7 @@ async function _createProbeSource() {
         // redrawing the panel restores the mode's remembered (older) answer.
         _createPanelFlip = false;
         _renderCreateModes(); _renderCreatePanel();
-        _createPreview = data; _createPreviewSource = body.source;
+        _createPreview = data; _createPreviewSource = _createBodyKey(body);
       }
       _renderCreatePreview();
     }

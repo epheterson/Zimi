@@ -38,7 +38,53 @@ A capture is also **refused rather than packaged** when the site does not return
 
 **Subreddits.** `zimi create r/<name>` (or a reddit.com URL) fetches a subreddit's posts and comments through [ArcticZim](https://github.com/IMayBeABitShy/ArcticZim), which Zimi keeps in its own sidecar environment, and builds a ZIM that opens as a source and in the Reddot app (see [apps](apps.md)). `zimi create --setup-reddit` installs the sidecar ahead of time (needs network, about 30 s); without it the first subreddit build installs it. Retrieval runs through the Arctic Shift archive in pages of a few hundred posts; Zimi ends the fetch when the archive starts repeating its last item, which is how Arctic Shift says a subreddit is done. A large subreddit still takes a while: start with a small one. On the Create page there is no subreddit tile: paste the subreddit's reddit.com address under **Web page** and the form becomes a subreddit's (a Subreddit chip lights in the row, the capture engine and crawl limits go away, ArcticZim is named); the preview names the subreddit and the maker's state. The build's progress reads as a sentence: how many posts and comments so far, and how far back.
 
-**From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video, and a subreddit by its address — for admins and creator-role accounts, and packages bookmarks. **Import** is on the page for the primary admin only: a picker over the archives in the import directory (`ZIMI_CREATE_ROOT`, else the ZIM directory, subdirectories included), never a typed path. **Folder mode is CLI-only**: the web UI has no folder tile, and folder mode is refused from the web entirely. Run `zimi create <folder>` from a terminal on the machine.
+**From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video, and a subreddit by its address — for admins and creator-role accounts, and packages bookmarks. **Folder** and **Import** read the server's disk, so they are on the page for the primary admin only, and neither takes a typed path. Folder is a tree of the create directory (`ZIMI_CREATE_ROOT`, else the ZIM directory), read one folder at a time as you open it; see [Folders](#folders). Import is a picker over the archives in the same directory, subdirectories included.
+
+## Folders
+
+`zimi create <folder>` packages a folder of files into one ZIM, and the Create page's **Folder** tile does the same from the browser. Each file becomes what it is best at, so a mixed folder makes one ZIM whose apps each find their part:
+
+| Files | Become |
+| --- | --- |
+| `.html` `.htm` `.xhtml`, `.md` `.markdown`, `.txt` | Pages in the reader. Markdown is rendered; plain text keeps its line breaks. `index.html` (else a README) is the main page; with neither, Zimi writes an index of everything. |
+| `.pdf` `.epub` | Documents on the Bookshelf, listed in `zimi-database.js`, and readable in the reader |
+| `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.avif` `.bmp` | Pictures, gathered on a gallery page linked from the index (unless the folder is a site with its own `index.html`, whose pages show them already) |
+| `.mp4` `.webm` `.m4v` `.mov` `.mkv` `.ogv`; `.mp3` `.m4a` `.aac` `.ogg` `.oga` `.opus` `.flac` `.wav` | Videos and audio in ZimiTube, listed in `videos.json`. Nothing is transcoded: Safari and iPhones play neither `.mkv` nor `.ogv`, and a `.mov` plays where it holds H.264, so the picker and the build log mark them. |
+| Anything else (stylesheets, fonts, scripts) | Carried as is, so a site's pages keep working |
+
+Left out, with the reason in the picker and the log: ZIM files (add them to the library instead), compressed archives (unpack first), office documents (save as PDF first), video formats browsers cannot play (`.avi`, `.wmv`, `.flv`, `.mpg`; convert to MP4), unfinished downloads, programs. Hidden files and folders, system droppings (`Thumbs.db`, `@eaDir`) and symlinks are never read.
+
+**A subset.** `--only <path>...` packages just those files and subfolders (paths inside the folder), walking only what was named: `zimi create ~/Archive --only photos letters/1962.txt`. On the Create page, tick a folder to package all of it, or tick files and subfolders: the folder they share becomes the ZIM's root.
+
+### Describing a folder: sidecars
+
+Metadata lives in small text files beside what it describes. Plain `Key: value` lines, keys in any case, unknown keys ignored; or the same as a JSON object. A sidecar is folded into what it describes and is not packaged itself.
+
+**The folder**, `zimi.txt` (or `zimi.json`) at its top:
+
+```
+Title: The Family Attic
+Description: Letters, photos and films from the attic
+Language: eng
+Creator: The Lees
+Publisher: Lee Press
+Tags: family; photos
+Icon: icon.png
+```
+
+`Language` is ISO 639-3 (or a two-letter code). `Tags` are separated by `;` or `,` (a JSON list works too). `Icon` names a picture in the folder, scaled to the ZIM's 48x48 illustration (needs Pillow). Anything given on the command line (`--title`, `--description`, `--language`, `--creator`) or typed on the Create page wins over the file.
+
+**A file**, `<name>.txt` or `<name>.json` beside it. `talk.mp4` takes `talk.txt` or `talk.mp4.txt`:
+
+```
+Title: Home movie, 1962
+Author: Grandpa
+Date: 1962-07-04
+Description: The garden in summer.
+Cover: covers/home-movie.jpg
+```
+
+`Cover` is a picture path relative to the file. On the Bookshelf a document shows the sidecar's title, author, date, description and cover; in ZimiTube the author stands where a channel would, and the cover is the poster (a picture with the video's own name, `talk.jpg`, is the poster without a sidecar). A picture's sidecar captions it in the gallery. A text file is only a sidecar when it says at least one of these keys, so a `notes.txt` of prose beside `notes.pdf` stays a page of its own.
 
 ### Two pictures
 
@@ -61,7 +107,8 @@ The rendered and alive engines take them on the page they already have open. The
 | `--format` / `--audio-only` / `--limit` | flag | ~720p cap, H.264 first | Video source selection. H.264 plays in every browser; YouTube's default MP4 is AV1, which iPhones before the 15 Pro cannot decode. |
 | `--language` | flag | detected → `eng` | ISO 639-3 content language |
 | `--out` | flag | ZIM dir + register | Explicit output path |
-| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (the ZIM directory) | The directory tree the Create page's Import picker lists archives from (subdirectories included). Unset, it lists the ZIM directory. No path is ever typed in the browser; the CLI is unaffected. |
+| `--only` | flag | the whole folder | Folder only: package just these files and subfolders |
+| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (the ZIM directory) | The directory the Create page's Folder tree and Import picker read from (subdirectories included). Unset, the ZIM directory. It is where you keep what you might make a ZIM from; what you make always goes to the ZIM directory's `created/` folder, so keep the two apart. Nothing outside it is listed or read, Zimi's own data folder is never shown, and no path is ever typed in the browser; the CLI is unaffected. |
 
 ## Troubleshoot
 
@@ -74,7 +121,9 @@ The rendered and alive engines take them on the page they already have open. The
 - **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
 - **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.
 - **A page renders blank or paywalled** — it may gate on a blocked endpoint. Retry with `--no-block-ads`, or use `--engine rendered`/`alive` so scripts run.
-- **Web UI has no folder option** — by design; it is CLI-only: `zimi create <folder>`. Import is on the page for the primary admin as a picker: put the archive in the import directory (`ZIMI_CREATE_ROOT`, else the ZIM directory) and it appears.
+- **No Folder or Import tile on the Create page**: both are for the primary admin only (a creator account never sees them). Put the folder or archive under the create directory (`ZIMI_CREATE_ROOT`, else the ZIM directory) and it appears in the tree or the picker.
+- **A file is greyed out in the Folder tree**: it is left out (hover it for why: a ZIM, an archive, an office document, a video format browsers cannot play) or it is a sidecar, folded into the file it describes.
+- **The video plays on a laptop but not on an iPhone**: `.mkv` and `.ogv` do not play in Safari, and a `.mov` only does with H.264 inside. Zimi does not transcode; convert to MP4 (H.264) and package again.
 - **A subreddit build says the sidecar is missing** — run `zimi create --setup-reddit` once with network access; an air-gapped machine can be seeded the same way before it goes offline.
 - **Where is the subreddit option on the Create page?** — there is no tile. Paste the subreddit's address (`https://www.reddit.com/r/<name>`) under Web page; the preview turns into a subreddit's.
 

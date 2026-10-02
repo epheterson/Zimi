@@ -72,8 +72,6 @@ var _WIKI_CSS = [
   // easier to hit than its digits.
   'html.zw .zimi-reader sup{line-height:0}',
   'html.zw .zimi-reader :is(sup.reference,.mw-ref) a{padding:.5em .3em;margin:-.5em -.3em}',
-  // A formula is a picture of black type: in the dark, it is turned light.
-  'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math"]{filter:invert(.88)}',
   '.zw-sub{margin:0 0 1.1em;color:var(--rv-muted);font:15px/1.4 ' + _WIKI_UI_FONT + '}',
   'html.zw .zimi-reader :target{scroll-margin-top:calc(var(--zw-top) + 12px)}',
   // A section anchor lands below the bar, not under it.
@@ -466,7 +464,7 @@ function _wikiLayout(frame) {
 
   // ── how you read: the settings, laid onto the page ──
   var prefs = _wikiPrefs();
-  var insets = _bookInsets();
+  var insets = _safeInsets();
   var phone = function() { return win.innerWidth <= _WIKI_PHONE_MAX; };
   var applyVars = function() {
     var s = html.style;
@@ -602,7 +600,7 @@ function _wikiLayout(frame) {
       placeSoon();
     });
   }, { passive: true, capture: true });
-  win.addEventListener('resize', function() { insets = _bookInsets(); applyVars(); markCurrent(); });
+  win.addEventListener('resize', function() { insets = _safeInsets(); applyVars(); markCurrent(); });
 
   // ── a citation, in place ──
   var hideCard = function() { card.hidden = true; card.__zwFor = null; };
@@ -794,7 +792,7 @@ function _wikiLayout(frame) {
     if (b.classList.contains('zb-x')) { closeSheets(); return; }
     var ref = saveRef(), id = b.getAttribute('data-list'), act = b.getAttribute('data-act');
     if (act === 'new') { newList(); return; }
-    if (act === 'save') { if (Saved.has(ref)) Saved.remove(ref); else Saved.save(ref); }
+    if (act === 'save') { if (Saved.has(ref)) Saved.unsave(ref); else Saved.save(ref); }
     else if (id) { if (Saved.inList(ref, id)) Saved.removeFromList(ref, id); else Saved.addToList(ref, id); }
     renderSave();
     paintSave();

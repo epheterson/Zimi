@@ -1,12 +1,25 @@
 name: CI
 
+# Pull requests that are ready for review, main, and by hand. A draft PR runs
+# nothing: CI is run deliberately (mark it ready, or Actions > CI > Run
+# workflow on the branch) at the end or at a review, not on every push
+# (Eric, 2026-10-01: "lets stick to PR only I don't mind doing it at the end
+# or during intentional reviews").
 on:
   push:
-    branches: [main, "v*"]
+    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+# A newer push to the same PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +138,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15-intel, macos-latest, windows-latest]
 
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -224,7 +238,9 @@ jobs:
           FAKE_BROWSER_LOG: /tmp/fake-browser.log
         run: |
           ci/smoke_binary.sh "dist/Zimi/Zimi"
-          grep -q "http://127.0.0.1:" /tmp/fake-browser.log
+          cat /tmp/fake-browser.log
+          # The tab loaded the page: "<url> 200", not "<url> 000".
+          grep -qE "^http://127\.0\.0\.1:[0-9]+ 200$" /tmp/fake-browser.log
 
       # The portable zip, as a person actually gets it: every file extracted
       # from a browser download carries the mark of the web, and the .NET
@@ -249,12 +265,45 @@ jobs:
             smoke_*.log
           if-no-files-found: ignore
 
+  # zimi-mcp: the MCP server and search alone, built from this tree by
+  # packaging/zimi-mcp/build.py. tests/test_zimi_mcp_package.py checks its
+  # module list in the suite; this builds the real wheel, installs it where no
+  # zimi is, and drives `zimi-mcp` over stdio (lean and full: handshake, tools,
+  # search, read), then checks none of the dependencies it leaves out came in.
+  zimi-mcp:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build zimi-mcp
+        run: |
+          pip install build
+          python packaging/zimi-mcp/build.py --outdir dist-mcp
+
+      - name: Install it in a clean venv
+        run: |
+          python -m venv /tmp/zimi-mcp
+          /tmp/zimi-mcp/bin/pip install dist-mcp/zimi_mcp-*.whl
+          /tmp/zimi-mcp/bin/zimi-mcp --version
+
+      - name: Serve it over stdio, without the excluded dependencies
+        env:
+          ZIMI_TORRENT: "0"
+          ZIMI_OFFLINE: "1"
+        run: /tmp/zimi-mcp/bin/python packaging/zimi-mcp/smoke.py /tmp/zimi-mcp/bin/zimi-mcp --check-excluded
+
   # The same image under rootless Podman, the way a Fedora or RHEL self-hoster
   # runs it. Two things Docker never made us get right: the image's user must
   # map to the person (or every downloaded ZIM lands owned by a subordinate
   # UID they cannot read), and the Quadlet unit we ship must be one systemd
   # accepts. Both are checked here rather than promised in the README.
   podman:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -312,6 +361,7 @@ jobs:
           echo "the Quadlet unit renders to a service with the userns mapping intact"
 
   docker:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

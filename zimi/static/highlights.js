@@ -512,6 +512,13 @@ var ZimiHighlightsEngine = (function () {
     if (!this.ix || this.ix.root !== this.root()) this.ix = textIndex(this.root());
     return this.ix;
   };
+  // Where a highlight (or a passage about to be one) is looked for: the
+  // page's root, or the part of it a reader names (opts.scope: a PDF's page,
+  // null while that page is not drawn, when it is neither found nor lost).
+  Page.prototype.scopeOf = function (x) {
+    var sc = this.opts().scope;
+    return typeof sc === 'function' ? sc(x) : this.root();
+  };
   // The page's highlights as kept, each found in the text and painted.
   Page.prototype.refresh = function (quiet) {
     if (this.dead || !this.root()) return;
@@ -520,15 +527,20 @@ var ZimiHighlightsEngine = (function () {
       this.tapOn = this.root();
       this.tapOn.addEventListener('click', this.onTap, true);
     }
-    var list = Saved.highlights(this.ref());
+    var self = this, list = Saved.highlights(this.ref());
     this.painter.clear();
     this.ix = null;
-    var ix = this.index(), found = {}, lost = [], items = [];
+    var found = {}, lost = [], items = [], here = [], ixs = new Map();
     list.forEach(function (h) {
+      var el = self.scopeOf(h);
+      if (!el) return;
+      here.push(h);
+      var ix = el === self.root() ? self.index() : ixs.get(el);
+      if (!ix) { ix = textIndex(el); ixs.set(el, ix); }
       var at = ix.nodes.length ? locateIn(ix.text, h) : null;
       if (!at) { lost.push(h.id); return; }
       var r = rangeFor(ix, at.start, at.end);
-      found[h.id] = { range: r, start: at.start, end: at.end };
+      found[h.id] = { range: r, start: at.start, end: at.end, ix: ix };
       items.push({ id: h.id, range: r, color: h.color, note: !!h.note });
     });
     this.items = items;
@@ -538,7 +550,7 @@ var ZimiHighlightsEngine = (function () {
     this.found = found;
     this.lost = lost;
     this.sig = sigOf(list);
-    noteMissing(list, lost);
+    noteMissing(here, lost);
     if (!quiet && !this.told && lost.length) { this.told = true; _showToast(tPlural('hl_missing', lost.length)); }
   };
   // What is kept changed (here, in the panel, on another device): painted
@@ -562,14 +574,17 @@ var ZimiHighlightsEngine = (function () {
   // which for a long passage is its start and end).
   Page.prototype.textOf = function (id) {
     var f = this.found[id];
-    if (f && !this.painter.marks) return shownText(this.index(), f.start, f.end);
+    if (f && !this.painter.marks) return shownText(f.ix || this.index(), f.start, f.end);
     var r = this.rangeOf(id), hl = Saved.getHighlight(id);
     return r ? r.toString().replace(/\s+/g, ' ').trim() : hl ? _hlQuote(hl) : '';
   };
   Page.prototype.create = function (range, color) {
     // The text as it is now: the page may have changed since it was painted.
-    var ref = this.ref(), sel = describe(textIndex(this.root()), range);
+    var ref = this.ref(), el = this.scopeOf(range), sel = el ? describe(textIndex(el), range) : null;
     if (!sel) return '';
+    // What the reader adds to find it again (a PDF's page number).
+    var more = typeof this.opts().fields === 'function' ? this.opts().fields(range) : null;
+    for (var m in more || {}) sel[m] = more[m];
     // A highlighted page is a saved page.
     if (!Saved.has(ref)) Saved.save(ref);
     var h = { zim: ref.zim, path: ref.path, kind: ref.kind || 'article', title: ref.title || '', color: color };
@@ -626,11 +641,21 @@ var ZimiHighlightsEngine = (function () {
   };
   // Bring a highlight into view: the page's own way (a book turns to its
   // page), else scrolled a third of the way down; it stands out a moment.
-  Page.prototype.goTo = function (id) {
+  Page.prototype.goTo = function (id, reached) {
     if (this.dead) return false;
     if (!this.found[id] && !this.painter.marks) this.refresh(true);
-    var r = this.rangeOf(id);
-    if (!r) { if (Saved.getHighlight(id)) _showToast(t('hl_not_found')); return false; }
+    var r = this.rangeOf(id), self = this, hl = Saved.getHighlight(id);
+    // Not drawn yet (a PDF's page far from here), or found on text drawn
+    // since let go (a PDF page's text layer, gone with the page, leaves a
+    // range with no box): the reader brings its place in (opts.reach, a
+    // promise), then it is looked for once more.
+    var reach = this.opts().reach;
+    if (r && typeof reach === 'function' && !reached && !hasBox(r)) r = null;
+    if (!r && hl && !reached && typeof reach === 'function') {
+      Promise.resolve(reach(hl)).then(function () { self.refresh(true); self.goTo(id, true); }, function () { self.goTo(id, true); });
+      return true;
+    }
+    if (!r) { if (hl) _showToast(t('hl_not_found')); return false; }
     var show = this.opts().show || this.doc.__zbShowRange;
     if (typeof show === 'function') show(r);
     else scrollToRange(this.win, r);
@@ -663,6 +688,11 @@ var ZimiHighlightsEngine = (function () {
     try { this.painter.clear(); } catch (e) {}
     if (ui.h === this) hideBar();
   };
+  function hasBox(r) {
+    if (!r.startContainer.isConnected) return false;
+    var b = r.getBoundingClientRect();
+    return !!(b.width || b.height);
+  }
   function scrollToRange(win, r) {
     var rect = r.getBoundingClientRect(), before = win.scrollY || 0;
     win.scrollTo(0, Math.max(0, before + rect.top - win.innerHeight * SHOW_AT));

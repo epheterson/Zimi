@@ -35,8 +35,6 @@ class TestCleanQuery(unittest.TestCase):
     def test_removes_stop_words(self):
         self.assertEqual(self.clean("how to fix a memory leak"), "fix memory leak")
 
-
-
     def test_all_stop_words_returns_original(self):
         self.assertEqual(self.clean("what is the"), "what is the")
 
@@ -320,11 +318,59 @@ class TestTrustedRateTier(unittest.TestCase):
 
             return zhttp.ZimHandler._is_private_client(self)
 
+        def _was_forwarded(self):
+            import zimi.http as zhttp
+
+            self._FORWARDED_HEADERS = zhttp.ZimHandler._FORWARDED_HEADERS
+            return zhttp.ZimHandler._was_forwarded(self)
+
+        def _is_direct_private_client(self):
+            import zimi.http as zhttp
+
+            return zhttp.ZimHandler._is_direct_private_client(self)
+
     def setUp(self):
         import zimi.http as zhttp
+        from unittest.mock import patch as _patch
 
         self.zhttp = zhttp
         zhttp._authed_cache.clear()
+        # The tiers below are an operator's who set ZIMI_RATE_LIMIT; with it
+        # unset, this machine and the LAN are not limited at all (#104).
+        p = _patch.object(zhttp, "RATE_LIMIT_EXPLICIT", True)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_lan_and_this_machine_unlimited_unless_operator_set_a_limit(self):
+        from unittest.mock import patch as _patch
+
+        import zimi.manage as manage
+
+        for pw in (None, "salt$hash"):
+            with (
+                _patch.object(manage, "_get_manage_password_hash", return_value=pw),
+                _patch.object(self.zhttp, "RATE_LIMIT_EXPLICIT", False),
+            ):
+                for ip in (
+                    "127.0.0.1",
+                    "::1",
+                    "192.168.1.50",
+                    "10.0.0.14",
+                    "172.16.3.4",
+                    "169.254.1.1",
+                    "fd00::1",
+                    "100.101.102.103",
+                ):
+                    with self.subTest(ip=ip, pw=pw):
+                        self.assertEqual(self._limit_for(self._FakeHandler(ip)), 0)
+                # The internet keeps its budget; so does anything forwarded,
+                # which a same-host proxy makes look private.
+                self.assertEqual(
+                    self._limit_for(self._FakeHandler("8.8.8.8")), self.zhttp.RATE_LIMIT
+                )
+                h = self._FakeHandler("127.0.0.1")
+                h.headers["X-Forwarded-For"] = "10.0.0.5"
+                self.assertNotEqual(self._limit_for(h), 0)
 
     def _limit_for(self, handler):
         return self.zhttp.ZimHandler._rate_limit_for_request(handler)

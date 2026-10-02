@@ -154,9 +154,8 @@
      browser's white, and does not spring: no bounce either way, no sideways
      scroll. */
   html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; background: var(--bg); }
-  /* Zimi does not zoom on a phone: the viewport caps the scale at 1 and
-     _blockPinch (app.js) cancels iOS's pinch, which ignores that cap.
-     A double tap is a tap, not a zoom; the text keeps its size when the
+  /* A pinch zooms; nothing zooms on its own. A double tap is a tap, not a
+     zoom; the text keeps its size when the
      phone turns; and a field or menu gets 16px type on a touch screen,
      because iOS zooms the page into any it focuses that is smaller. The
      !important outranks the inline sizes a few controls are drawn with. */
@@ -664,6 +663,37 @@
   .create-address { display: flex; flex-direction: column; gap: 6px; }
   .create-address[hidden] { display: none; }
   .create-address textarea.create-field { resize: vertical; min-height: 40px; }
+  /* Folder mode's picker: the create root as a tree, one level per request.
+     Rows are 40px for a finger; the indent is logical (inline-start), so RTL
+     indents from the right. Not .create-tree: that is the run view's. */
+  .create-ftree { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  .create-ftree[hidden] { display: none; }
+  .create-ftree-row { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-inline: calc(6px + var(--depth, 0) * 18px) 12px; font-size: 14px; color: var(--text); cursor: pointer; }
+  .create-ftree-row:hover { background: var(--amber-glow); }
+  .create-ftree-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .create-ftree-row.is-off { color: var(--text3); cursor: default; }
+  .create-ftree-row.is-off:hover { background: none; }
+  .create-ftree-row.is-note { color: var(--text3); font-size: 13px; cursor: default; min-height: 34px; }
+  .create-ftree-row.is-note:hover { background: none; }
+  .create-ftree-twist { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: var(--text2); background: none; border: 0; border-radius: 6px; cursor: pointer; }
+  .create-ftree-twist svg { transition: transform 0.15s; }
+  .create-ftree-row[aria-expanded="true"] > .create-ftree-twist svg { transform: rotate(90deg); }
+  [dir="rtl"] .create-ftree-row[aria-expanded="false"] > .create-ftree-twist svg { transform: scaleX(-1); }
+  .create-ftree-check { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--amber); }
+  .create-ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .create-ftree-what { flex: 0 1 auto; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text3); }
+  /* A file left out says why under its name, in full: the line wraps, it is
+     never cut, and it lines up with the names (twist 24 + gap 8 + check 18 + gap 8). */
+  .create-ftree-row.is-off { flex-wrap: wrap; align-content: center; row-gap: 2px; padding-block: 6px; }
+  .create-ftree-why { flex: 1 0 100%; padding-inline-start: 58px; font-size: 12px; line-height: 1.35; color: var(--text3); white-space: normal; }
+  .create-where { font-size: 12px; color: var(--text2); }
+  .create-where[hidden] { display: none; }
+  .create-where summary { cursor: pointer; width: max-content; }
+  .create-where .create-caption { margin-top: 4px; overflow-wrap: anywhere; }
+  .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
+  .create-ftree-summary { padding: 8px 12px 4px; }
+  .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }
+  @media (prefers-reduced-motion: reduce) { .create-ftree-twist svg { transition: none; } }
   .create-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-family: inherit; font-size: 13px; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: all 0.15s; }
   .create-chip:hover { color: var(--text); border-color: var(--amber-border); background: var(--amber-glow); }
   .create-chip.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -919,13 +949,13 @@
   .rv-swatch.active { border-color: var(--amber); color: var(--text); }
   /* One ring on every swatch, readable on a light sheet and a dark one; the
      same as the reading sheets' .zb-dot (_READING_CSS in app.js). */
-  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); }
+  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); background-clip: padding-box; }
   /* Auto shows what it paints: the Sepia swatch by day, the Dark one by night,
-     a half each (READER_AUTO_SWATCH in app.js). */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #f4ecd8 50%, #0a0a0b 50%); }
-  .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
-  .rv-sw-light .rv-sw-dot { background: #fbfbf9; }
-  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; }
+     split corner to corner (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background-image: linear-gradient(135deg, #f4ecd8 calc(50% - 0.5px), #0a0a0b calc(50% + 0.5px)); }
+  .rv-sw-dark .rv-sw-dot { background-color: #0a0a0b; }
+  .rv-sw-light .rv-sw-dot { background-color: #fbfbf9; }
+  .rv-sw-sepia .rv-sw-dot { background-color: #f4ecd8; }
   .rv-swatch.active .rv-sw-dot { box-shadow: 0 0 0 2px var(--surface2), 0 0 0 3px var(--amber); }
   /* Family pills */
   .rv-pills { display: flex; gap: 6px; }
@@ -934,22 +964,17 @@
     background: var(--surface2); color: var(--text2); font-size: 14px; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
-  .rv-pill:hover { border-color: var(--amber-border); color: var(--text); }
-  .rv-pill.active { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
-  /* Text-size stepper */
-  .rv-size { display: flex; align-items: center; gap: 8px; }
-  .rv-size-btn {
-    display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;
-    width: 44px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface2); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
+  .rv-pill:hover, .rv-size .tsz-btn:hover { border-color: var(--amber-border); color: var(--text); }
+  .rv-pill.active, .rv-size .tsz-btn[aria-checked="true"] { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  /* Text size: five A's that grow, one per step, picked like a family pill.
+     Each A's size is inline (TEXT_SIZE_GLYPH_PX). */
+  .rv-size { display: flex; gap: 4px; }
+  .rv-size .tsz-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0;
+    height: 36px; padding: 0; line-height: 1; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text2); font-family: Georgia, serif; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
-  /* The ± sits smaller than the A but shares its vertical center — align-items:center
-     on the button centers both flex items, so the glyph group reads as centered. */
-  .rv-size-btn .rv-minus, .rv-size-btn .rv-plus { font-size: 10px; font-weight: 700; }
-  .rv-size-btn:hover:not([disabled]) { border-color: var(--amber-border); }
-  .rv-size-btn[disabled] { opacity: 0.35; cursor: default; }
-  .rv-size-val { flex: 1; text-align: center; font-size: 13px; color: var(--text2); }
   /* ── Compact reader controls (⋯ menu, Reader View on) ── */
   /* Label-less: theme swatches shrink to ~24px colour chips (the text label is
      hidden, aria-label carries the name), and font family + size share one row.
@@ -961,7 +986,7 @@
   .rv-compact .rv-sw-dot { width: 24px; height: 24px; }
   .rv-compact-fontrow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
   .rv-compact-fontrow .rv-pills { flex: 1 1 108px; }
-  .rv-compact-fontrow .rv-size { flex: 1 1 132px; }
+  .rv-compact-fontrow .rv-size { flex: 1 1 170px; }
   /* Full-palette swatch keeps its stacked label. */
   .rv-swatch .rv-sw-label { line-height: 1; }
   /* Reader View row rendered as a switch inside the ⋯ menu. */
@@ -974,7 +999,6 @@
   .rv-toggle-row:hover { background: var(--surface2); }
   .rv-toggle-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
   .rv-toggle-title { font-size: 13px; color: var(--text); }
-  .rv-toggle-sub { font-size: 11px; color: var(--text2); }
   .rv-switch {
     flex-shrink: 0; width: 38px; height: 22px; border-radius: 11px; background: var(--surface2);
     border: 1px solid var(--border); position: relative; transition: background 0.15s, border-color 0.15s;
@@ -1092,7 +1116,7 @@
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { direction: rtl; }
-  [dir="rtl"] .back-btn { transform: scaleX(-1); }
+  [dir="rtl"] .back-btn .back-arrow { display: inline-block; transform: scaleX(-1); }
   /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
      chrome (and vice versa) — isolate so neighboring punctuation and
      counts don't reshuffle around them. */
@@ -1217,6 +1241,8 @@
      saves what is on screen). A map's places are the map's: saved and
      listed in its own picker, Places and maps (map-source-btn). */
   body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  /* Zimi's own stand-in (an article the ZIM does not hold): nothing to save. */
+  body.own-page #library-btn { display: none !important; }
   /* An app's name and what it holds read together, beside its icon: a ZIM
      card's detail sits at the card's foot (margin-top: auto), which left a
      one-line app's name alone at the top and its detail a gap below. */
@@ -1389,6 +1415,23 @@
   .result-source .rs-name { font-size: 12px; color: var(--text2); font-weight: 500; }
   .result .title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
   .result .snippet { font-size: 12px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; transition: opacity 0.3s; }
+  /* The words searched for: underlined in amber in the title, set in the
+     text's own colour and weight in the snippet. Never a filled block, which
+     read as a selection. */
+  .result mark.hit { background: none; color: inherit; }
+  .result .title mark.hit { text-decoration: underline; text-decoration-color: var(--amber); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .result .snippet mark.hit { color: var(--text); font-weight: 600; }
+  /* Grouped by source: each source's best, under its name, and "More from". */
+  .results.grouped { gap: 20px; }
+  .result-group { display: flex; flex-direction: column; gap: 3px; }
+  .result-group-head { margin: 0 0 4px; padding-inline: 4px; font: inherit; }
+  .result-group-head .result-source { margin-bottom: 0; }
+  .result-group-head .rs-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .result-more {
+    align-self: flex-start; margin-inline-start: 8px; padding: 6px 8px; border: none; border-radius: 8px;
+    background: transparent; color: var(--amber); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .result-more:hover, .result-more:focus-visible { background: var(--amber-glow); outline: none; }
 
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(8px); }
@@ -1415,6 +1458,30 @@
   .reader-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  /* Find in page (find.js): floats over the article's top corner, the width
+     of the reader on a phone. */
+  .find-bar {
+    display: none; position: absolute; top: 8px; inset-inline-end: 12px; z-index: 5;
+    width: min(380px, calc(100% - 24px)); box-sizing: border-box;
+    align-items: center; gap: 2px; padding-block: 4px; padding-inline: 12px 4px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  }
+  .find-bar.open { display: flex; animation: fadeIn 0.12s ease; }
+  .find-input {
+    flex: 1; min-width: 0; padding: 6px 2px; border: none; outline: none; background: transparent;
+    color: var(--text); font: inherit; font-size: 15px; -webkit-appearance: none; appearance: none;
+  }
+  .find-input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+  .find-count { flex-shrink: 0; padding-inline: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .find-bar.find-none .find-count { color: var(--error); }
+  .find-bar .find-step, .find-bar .find-close { width: 32px; height: 32px; }
+  .find-bar .find-step:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--text2); }
+  /* A phone: a band over the article, not a card on it, so the first lines
+     move down rather than hide under it. */
+  @media (max-width: 600px) {
+    .find-bar { position: static; order: -1; width: auto; margin: 8px 8px 0; box-shadow: none; }
+  }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
   /* The header steps aside on a phone while an app or the Almanac is read
      (body.chrome-away, set by _chromeScroll in app.js): it slides up and
@@ -1744,16 +1811,22 @@
   .net-rows { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .net-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; }
   .net-name { font-size: 13px; color: var(--text); }
-  .net-state { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .net-state { justify-self: end; font-size: 12px; color: var(--text2); white-space: nowrap; }
   .net-state-auto { color: var(--amber); }
   .net-state-off, .net-state-unset { color: var(--text3); }
-  .net-what { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; color: var(--text2); }
+  .net-what { font-size: 12px; line-height: 1.5; color: var(--text2); }
+  /* The way to a row's switch: the state's column, under the state, on
+     every row, so the eye finds it in one place. */
+  .net-act { justify-self: end; }
   /* Where it goes on a line of its own, whole names (a host broken mid-word
-     reads as two), and the way to its switch at the far end. */
+     reads as two). */
   .net-where { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 11px; color: var(--text3); }
   .net-where code { overflow-wrap: anywhere; }
   .net-go { font-size: 12px; color: var(--amber); white-space: nowrap; }
-  .net-where .net-go { margin-inline-start: auto; }
+  /* The environment folded to the names it sets. */
+  .env-details > summary { overflow-wrap: anywhere; }
+  .env-names { font-family: monospace; font-size: 12px; }
+  .env-details[open] > summary { margin-bottom: 10px; }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */
@@ -1987,6 +2060,8 @@
   .flavor-option-check { width: 16px; color: var(--amber); font-weight: bold; text-align: center; flex-shrink: 0; }
   .flavor-popup-backdrop { position: fixed; inset: 0; z-index: 999; }
   .ci-section-label { padding: 16px 0 8px; }
+  /* The count after a label: quiet, as the apps' .n and the home's pill-count. */
+  .label-n { color: var(--text3); font-weight: 400; font-variant-numeric: tabular-nums; margin-inline-start: 2px; }
   /* min-width:0 — a grid item defaults to min-width:auto, so a wide action row
      used to stretch its column and push the whole page into horizontal scroll. */
   .dl-item { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; font-size: 13px; }
@@ -2391,7 +2466,8 @@
      and flip the ON knob to white since the deep-amber ON track needs light ink
      (#000 knob would sink to ~3.6:1). The OFF knob stays --text2, which clears
      3:1 on the grey track (4.06:1). */
-  :root[data-theme="light"] .switch-slider {
+  :root[data-theme="light"] .switch-slider,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider {
     background: #e0dacd; border-color: var(--border-strong);
   }
   :root[data-theme="light"] .switch input:checked + .switch-slider {
@@ -2400,6 +2476,13 @@
   :root[data-theme="light"] .switch input:checked + .switch-slider::before {
     background: var(--on-amber);
   }
+  /* A switch in a card that is off (BitTorrent's UPnP) keeps its place, what
+     it will be when the card is on, but not its amber: amber says "on now",
+     and nothing here is. It takes the OFF track and knob instead (the light
+     theme's track is in the rule above). */
+  .share-controls-off .switch input:checked + .switch-slider { background: var(--surface2); border-color: var(--border); }
+  .share-controls-off .switch input:checked + .switch-slider::before,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider::before { background: var(--text2); }
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
@@ -2623,12 +2706,29 @@
   }
   .search-chip.search-chip-static { padding-inline-end: 12px; }
   .search-chip-label { min-width: 0; overflow-wrap: anywhere; }
-  .search-chip-x {
+  .search-chip-x, .sg-forget, .find-step, .find-close {
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
     width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
     background: transparent; color: var(--text2); cursor: pointer; transition: color 0.12s, background 0.12s;
   }
-  .search-chip-x:hover, .search-chip-x:focus-visible { color: var(--amber); background: var(--amber-glow); }
+  .search-chip-x:hover, .search-chip-x:focus-visible, .sg-forget:hover, .sg-recent-clear:hover,
+  .find-step:hover:not(:disabled), .find-step:focus-visible, .find-close:hover, .find-close:focus-visible { color: var(--amber); background: var(--amber-glow); }
+  /* Recent in the empty search dropdown: each row a × away from gone, the
+     searches all at once from the header. */
+  .sg-recent-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding-block: 6px 2px; padding-inline: 14px 8px;
+    font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .sg-recent-clear {
+    padding: 2px 8px; border: none; border-radius: 10px; background: transparent; cursor: pointer;
+    font: inherit; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text2);
+    transition: color 0.12s, background 0.12s;
+  }
+  .suggest-item.sg-recent { display: flex; align-items: center; gap: 8px; padding-inline-end: 8px; }
+  .sg-recent-text { flex: 1; min-width: 0; }
+  .sg-forget { opacity: 0.55; }
+  .suggest-item:hover .sg-forget, .suggest-item.active .sg-forget { opacity: 1; }
   .topbar-search .search-help {
     display: none; position: absolute; inset-inline-end: 34px; top: 50%; transform: translateY(-50%);
     align-items: center; justify-content: center; box-sizing: border-box;
@@ -3580,27 +3680,33 @@
 }
 
 /* The library order control, sharing the first section header's line with the
-   view toggle. Quiet until touched: it is a preference, not an action. */
-.lib-sort {
-  font-size: 12px;
-  padding: 3px 6px;
-  margin-right: 8px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  vertical-align: middle;
-  -webkit-text-fill-color: initial;
+   view toggle. Quiet until touched: it is a preference, not an action. It
+   reads as text the heading's size (a sort mark and the order it is in); the
+   native select lies over it unseen and takes the tap. 16px on the select
+   keeps iOS from zooming when it opens. */
+.lib-sort-wrap {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  margin-inline-end: 6px; padding: 2px 4px; border-radius: 5px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--text2); -webkit-text-fill-color: initial; cursor: pointer; white-space: nowrap;
 }
-.lib-sort:hover, .lib-sort:focus-visible { color: var(--text); border-color: var(--amber-border); }
+.lib-sort-wrap:hover, .lib-sort-wrap:focus-within { color: var(--text); }
+.lib-sort-wrap:focus-within { outline: 2px solid var(--amber); outline-offset: 1px; }
+.lib-sort-wrap .lib-sort {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer; font-size: 16px; border: 0;
+}
 
 /* On a touch screen the home page's and the search's small controls take a
    finger (44px): the order and view controls grow to it, the marks that
    close or clear keep their look and gain an invisible margin. */
 @media (pointer: coarse) {
-  .lib-sort { min-height: 44px; }
+  .lib-sort-wrap { min-height: 44px; }
   .lib-view-btn { width: 44px; height: 42px; }
+  /* No hover to reveal it on a phone: the × is there in full, finger-sized. */
+  .sg-forget { width: 40px; height: 40px; opacity: 1; }
+  .sg-recent-clear, .result-more { min-height: 40px; }
+  .find-bar .find-step, .find-bar .find-close { width: 40px; height: 40px; }
   .dc-dismiss, .lang-banner-dismiss, .search-chip-x { position: relative; }
   .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
     content: ''; position: absolute; inset: -12px;

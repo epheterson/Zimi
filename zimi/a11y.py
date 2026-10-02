@@ -5,16 +5,19 @@ fine; Stack Exchange and dev-docs sometimes ship malformed heading
 structure or unlabeled images. This module fixes the most impactful
 issues so screen-reader users get a navigable document.
 
-The rewriter is opt-in. Users (or proxies) pass `?a11y=1` on the
-content URL to enable it. Three transforms in order:
+It runs on every HTML article Zimi serves (Eric, 2026-10-01: "just do this
+harmlessly and remove the toggle"): nothing it does changes how a page looks.
+Three transforms in order:
 
 1. Fill in `<html lang>` from a passed-in language hint when missing
 2. Add `alt=""` to images that lack any alt attribute (decorative by
    default per WCAG 1.1.1 — purely decorative images shouldn't speak,
    and authors who left alt off are almost never marking content)
-3. Promote the first `<div class="title">` to an `<h1>` when no `<h1>`
-   exists in the document. Screen-readers navigate by heading and
-   getting a real `<h1>` per article is the single biggest win.
+3. Mark the first `<div class="title">` as the article's heading
+   (`role="heading" aria-level="1"`) when no `<h1>` exists. Screen readers
+   navigate by heading; the tag and its contents are left as they are, so
+   the page looks the same (turning it into an `<h1>` made titles bigger,
+   and cutting at the first `</div>` broke titles with nested elements).
 
 We use stdlib `html.parser` rather than BeautifulSoup so the rewriter
 ships with no extra dependencies and has predictable behavior on
@@ -38,8 +41,11 @@ _HTML_HAS_LANG_RE = re.compile(r"\blang\s*=", re.IGNORECASE)
 # We only promote a div→h1 if there's NO existing h1 in the document.
 # Use a non-greedy class match because some divs have multiple classes.
 _H1_PRESENT_RE = re.compile(r"<h1\b", re.IGNORECASE)
+_ROLE_RE = re.compile(r"\brole\s*=", re.IGNORECASE)
+# The opening tag only: what follows is checked for text, not matched to its
+# </div> (a nested title has more than one).
 _TITLE_DIV_RE = re.compile(
-    r'<div\b([^>]*?\bclass\s*=\s*["\'][^"\']*\btitle\b[^"\']*["\'][^>]*)>([\s\S]*?)</div>',
+    r'<div\b([^>]*?\bclass\s*=\s*["\'][^"\']*\btitle\b[^"\']*["\'][^>]*)>',
     re.IGNORECASE,
 )
 
@@ -79,6 +85,9 @@ def _add_lang_attribute(text: str, lang: str) -> str:
 
 
 def _add_missing_alt(text: str) -> str:
+    if "<img" not in text and "<IMG" not in text:
+        return text
+
     def _fix(m):
         attrs = m.group(1) or ""
         if _IMG_HAS_ALT_RE.search(attrs):
@@ -91,14 +100,19 @@ def _add_missing_alt(text: str) -> str:
 
 
 def _promote_first_title_to_h1(text: str) -> str:
+    if "title" not in text and "TITLE" not in text and "Title" not in text:
+        return text
     if _H1_PRESENT_RE.search(text):
         return text
     match = _TITLE_DIV_RE.search(text)
-    if not match:
+    if not match or _ROLE_RE.search(match.group(1) or ""):
         return text
-    inner = (match.group(2) or "").strip()
-    if not inner:
+    # An empty title (its next text is its own closing tag) stays as it is.
+    ahead = text[match.end():match.end() + 400]
+    if ahead.lstrip().lower().startswith("</div>"):
         return text
-    # Replace just this match (the first one) with an h1.
-    start, end = match.span()
-    return text[:start] + f"<h1>{inner}</h1>" + text[end:]
+    # Only the opening tag changes: the title keeps its tag, its look and
+    # everything inside it.
+    start = match.start()
+    open_end = text.index(">", start)
+    return text[:open_end] + ' role="heading" aria-level="1"' + text[open_end:]

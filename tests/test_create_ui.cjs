@@ -146,24 +146,20 @@ const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 
 // Order is LIKELY USE. Capturing something off the web is why almost everyone
 // opens this page, so the URL modes lead; the one that starts from something
-// already on the server comes last. Folder is not merely never-first any
-// more — it is GONE, by decree ("do remove folder I said that would be CLI
-// only"): the server refuses the mode from the web, so a tile for it would be
-// a door drawn on a wall.
+// already on the server comes last. Folder came back (2026-09-30) as a tree
+// picker under the create root, beside import: both start on the server.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks', 'import'],
-  'tile order: the web modes first, then bookmarks, then import (folder is CLI-only; a subreddit is an address under Web page, not a tile)');
-check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
-  'folder mode is not offered at all — it is CLI-only');
+  ['page', 'site', 'video', 'bookmarks', 'folder', 'import'],
+  'tile order: the web modes first, then bookmarks, then the two that start on the server (a subreddit is an address under Web page, not a tile)');
+check(CREATE_MODE_DEFS.find(d => d.id === 'folder').tree === true,
+  'folder is picked in the tree, never typed');
 
 // Bookmarks is a CLIENT mode (its source is this browser's localStorage).
-// folder AND import are CLI-only — both read a server path, and a web door
-// onto the server's disk is what the folder retreat closed. The server tuple
-// still names them so its refusal can point at the CLI, but the web offers
-// only the URL-based server modes.
+// Folder and import read the server's disk, each from a listing under the
+// create root; the rest are URL modes.
 eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
-  ['import', 'page', 'site', 'video'],
-  'the web offers the URL server modes and import; folder is CLI-only');
+  ['folder', 'import', 'page', 'site', 'video'],
+  'the web offers the URL server modes, folder and import');
 // Import is back (2026-09-19) as a PICKER: the address field is a list of the
 // archives the server found in the library folder. No path is typed, which is
 // what took it off the web with folder capture.
@@ -218,6 +214,7 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
     'strip_links', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
+  ['folder', ['language']],
   ['import', []]
 ], 'each mode advertises its documented advanced options');
 
@@ -245,11 +242,11 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is available when the server is online`);
 }
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, true)).map(d => d.id),
-  ['bookmarks', 'import'],
-  'offline with the helper installed leaves bookmarks and import');
+  ['bookmarks', 'folder', 'import'],
+  'offline with the helper installed leaves bookmarks, folder and import');
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, false)).map(d => d.id),
-  ['bookmarks'],
-  'offline without the sidecar: still just bookmarks');
+  ['bookmarks', 'folder'],
+  'offline without the sidecar: bookmarks and folder, which needs nothing');
 
 // ── request mapping ─────────────────────────────────────────────────────────
 
@@ -265,8 +262,9 @@ check(_createBuildRequest('page', { source: '   ' }) === null,
   'an empty source refuses to build a request');
 check(_createBuildRequest('nope', { source: '/srv/docs' }) === null,
   'an unknown mode refuses to build a request');
-check(_createBuildRequest('folder', { source: '/srv/docs' }) === null,
-  'folder is an unknown mode HERE — the CLI is its only door');
+eq(_createBuildRequest('folder', { source: 'docs', only: ['a.pdf'] }),
+  { mode: 'folder', source: 'docs', only: ['a.pdf'] },
+  'folder sends the picked folder and the subset inside it');
 
 // Flags belong to the mode that declares them. A stale value left in the DOM
 // from a previously-open form must not ride along with the next submission.
@@ -411,12 +409,12 @@ check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, ''),
 check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.language, ''),
   'a field with no engine requirement applies everywhere');
 
-// ── "Remove links to other sites" (#99) ─────────────────────────────────────
+// ── "Remove links that lead outside the ZIM" (#99) ─────────────────────────────────────
 //
 // Off until ticked, and only where Zimi writes the pages: the fast and the
 // rendered engines. An alive capture's links are rewritten when it replays.
 
-check(!sandbox.CREATE_FIELDS.strip_links.on, 'removing links to other sites starts unticked');
+check(!sandbox.CREATE_FIELDS.strip_links.on, 'removing links that lead outside the ZIM starts unticked');
 eq(_createBuildRequest('site',
   { source: 'https://e.org/', engine: '', strip_links: true }),
   { mode: 'site', source: 'https://e.org/', strip_links: true },
@@ -577,11 +575,10 @@ sandbox.t = (k, vars) => {
 
 const rowMap = p => Object.fromEntries(_createPreviewRows(p).map(r => [r.k, r.v]));
 
-// Folder rows are gone with folder mode itself — a preview for a form that no
-// longer exists would be dead weight kept honest for nobody.
-check(_createPreviewRows({ mode: 'folder', files: 47, bytes: 1024 }).length === 0
-  || !rowMap({ mode: 'folder', files: 47, bytes: 1024 }).create_pv_files,
-  'no folder preview rows remain');
+// A folder's preview counts what the selection holds, and says "+" when the
+// count stopped short of all of it (the probe is bounded).
+check(rowMap({ mode: 'folder', files: 47, bytes: 1024, truncated: true }).create_pv_files.indexOf('47+') === 0,
+  'a bounded folder count says it is a lower bound');
 
 // Absent facts are absent rows. A preview line reading "Title:" with nothing
 // after it is a worse answer than not asking the question.
@@ -1009,8 +1006,7 @@ eq(_createHistoryLabel({ mode: 'site' }), 'create_mode_site', 'then the mode, bu
 // One reason a mode is not drawn, and it is the server's rule shown honestly:
 // a creator account — a signed-in user with the per-user create permission —
 // never sees the mode that reads the SERVER'S disk, because the server keeps
-// it for the primary admin. (Folder, the other server-path mode, is not
-// hidden but GONE: CLI-only, refused by the server, asserted above.)
+// them for the primary admin: folder and import.
 //
 // Hidden rather than disabled: a greyed-out chip advertises a feature, and
 // there is nothing to advertise to someone who will never be allowed it. The
@@ -1021,11 +1017,11 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is offered to an admin`);
 }
 
-// The server-path mode is exactly import — the one the server gates to the
-// primary admin. Marked in the table rather than named in an if, so adding a
-// second server-path mode cannot forget this rule.
-eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['import'],
-  'import is the one mode that reads the server disk, and it says so in the table');
+// The server-path modes are exactly folder and import, the ones the server
+// gates to the primary admin. Marked in the table rather than named in an if,
+// so a third cannot forget this rule.
+eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['folder', 'import'],
+  'folder and import read the server disk, and say so in the table');
 eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
   ['page', 'site', 'video', 'bookmarks'],
   'a creator gets the web modes and bookmarks, never the server-path one');

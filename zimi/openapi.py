@@ -46,7 +46,8 @@ _WIKI_EVENT = {"type": "object", "properties": {"event_year": {"type": "string"}
 _WIKI_PICKS = {"type": "object", "additionalProperties": {"type": "object", "properties": {
     "zim": {"type": "string"}, "role": {"type": "string", "enum": ["article", "word", "quote", "place", "book", "text", "course", "news", "species"]},
     "path": {"type": "string"}, "title": {"type": "string"}, "lang": {"type": "string"}, "blurb": {"type": "string"},
-    "thumbnail": {"type": "string"}, "kick": {"type": "string", "description": "A word's part of speech, a quote's author"}}}}
+    "thumbnail": {"type": "string"}, "width": {"type": "integer", "description": "The thumbnail's size in pixels, when it could be read"}, "height": {"type": "integer"},
+    "kick": {"type": "string", "description": "A word's part of speech, a quote's author"}}}}
 _WIKI_OTD = {"type": "object", "additionalProperties": {"type": "array", "items": _WIKI_EVENT}}
 # One book as Bookshelf's endpoints return it.
 _BOOK = {"type": "object", "properties": {
@@ -142,6 +143,29 @@ def build_openapi():
                                         "makes at most 8 searches (each alternative "
                                         "is one), and the rest are named here. "
                                         "Optional."
+                                    ),
+                                },
+                                "incomplete": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "zim": {"type": "string"},
+                                            "state": {
+                                                "type": "string",
+                                                "enum": ["building", "titles_only"],
+                                            },
+                                            "progress": {"type": "integer"},
+                                        },
+                                    },
+                                    "description": (
+                                        "Searched sources that may leave the "
+                                        "results partial: a title index still "
+                                        "building (progress in percent when "
+                                        "known), or no full-text index (matches "
+                                        "titles only; listed when the search named "
+                                        "the source or it answered). Not on "
+                                        "fast=1. Optional."
                                     ),
                                 },
                             },

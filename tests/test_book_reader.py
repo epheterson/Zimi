@@ -238,8 +238,7 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             _tap(pg, 195)
             frame.locator(".zb-aa").click()
             pg.wait_for_timeout(300)
-            frame.locator('[data-size="1"]').click()
-            frame.locator('[data-size="1"]').click()
+            frame.locator('[data-size="4"]').click()  # Larger
             frame.locator(".zb-set-sheet .zb-x").click()
             pg.wait_for_timeout(500)
             assert pg.evaluate(CHAR, c)

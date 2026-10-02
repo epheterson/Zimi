@@ -39,6 +39,8 @@ import time
 import urllib.parse
 import zlib
 
+from zimi.previews import jpeg_size
+
 # Every mimetype Zimi writes into a ZIM comes from here, and deliberately not
 # from mimetypes.guess_type. That module's table is seeded from the OS: on
 # Windows mimetypes.init() reads HKEY_CLASSES_ROOT, so the answer for .zip or
@@ -2112,7 +2114,7 @@ def history_record(
     # so and which limit, in the reader's language (Eric, 2026-09-25).
     if stopped:
         record["stopped"] = str(stopped)
-    # "Remove links to other sites" was on: how many links became plain text.
+    # "Remove links that lead outside the ZIM" was on: how many links became plain text.
     # Zero is kept (the option ran and found none); None means it was off.
     if links_removed is not None:
         record["links_removed"] = int(links_removed)
@@ -2165,32 +2167,6 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
 # catching, and it is the only claim a pair of heights can honestly support.
 SHOT_SHORT_RATIO = 0.4
 SHOT_DIMS_METADATA_KEY = "X-Zimi-Screenshot-Dims"
-
-
-def jpeg_size(data):
-    """``(width, height)`` of a JPEG, or None. Reads the SOF marker; no
-    decoding, no dependency."""
-    if not data or data[:2] != b"\xff\xd8":
-        return None
-    i, n = 2, len(data)
-    try:
-        while i + 9 < n:
-            if data[i] != 0xFF:
-                i += 1
-                continue
-            marker = data[i + 1]
-            # SOF0..SOF15, excluding the four that are not frame headers.
-            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-                height = int.from_bytes(data[i + 5 : i + 7], "big")
-                width = int.from_bytes(data[i + 7 : i + 9], "big")
-                return (width, height) if width and height else None
-            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
-                i += 2
-                continue
-            i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
-    except Exception:
-        return None
-    return None
 
 
 def shot_verdict(live, packaged):
@@ -2295,6 +2271,7 @@ def add_standard_metadata(
     long_description=None,
     license=None,
     relation=None,
+    publisher=None,
 ):
     """The full openZIM metadata block — every mandatory key, conforming — plus
     the Zimi provenance block. One chokepoint, so no engine can forget a key.
@@ -2307,7 +2284,8 @@ def add_standard_metadata(
     extras folded in beside the defaults. ``illustration`` is PNG bytes for
     the mandatory 48x48 icon — omit it and a generated identicon is used.
     ``license`` and ``relation`` are written only when the caller actually
-    knows them; nothing here invents a licence claim.
+    knows them; nothing here invents a licence claim. ``publisher`` defaults
+    to Zimi, which is who wrote the file, unless the source names one.
 
     ``source`` is where the content came from. A URL is written to BOTH the
     standard ``Source`` field (whose openZIM meaning is a URL) and
@@ -2334,7 +2312,7 @@ def add_standard_metadata(
     if len(long_text) > len(short_description):
         creator.add_metadata("LongDescription", long_text)
     creator.add_metadata("Creator", creator_name)
-    creator.add_metadata("Publisher", "Zimi")
+    creator.add_metadata("Publisher", publisher or "Zimi")
     creator.add_metadata("Date", date_str or datetime.date.today().isoformat())
     creator.add_metadata("Tags", tags_string(tags))
     if flavour:

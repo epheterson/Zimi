@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.12.0"
+version = "1.13.0"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
@@ -88,6 +88,9 @@ all = ["PyMuPDF>=1.23.0", "mcp>=1.0,<2.0", "libtorrent==2.0.*"]
 
 [project.scripts]
 zimi = "zimi.server:main"
+# `zimi mcp` under the name the zimi-mcp package gives it, so one MCP config
+# works with either install.
+zimi-mcp = "zimi.server:mcp_main"
 
 [project.urls]
 Homepage = "https://github.com/epheterson/Zimi"

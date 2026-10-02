@@ -167,6 +167,12 @@ PAGE_SHAPE = r"""() => ({ headings: Array.from(document.querySelectorAll('#outpu
 def _sort(pg, key):
     pg.select_option("#output .lib-sort", key)
     pg.wait_for_timeout(600)
+    # The control names the order it is in, at once (it kept the old name
+    # until the page was drawn again).
+    assert pg.evaluate(
+        "(k) => document.querySelector('#output .lib-sort-now').textContent === t(_LIBRARY_SORT_LABELS[k])",
+        key,
+    ), key
 
 
 @pytest.mark.parametrize(

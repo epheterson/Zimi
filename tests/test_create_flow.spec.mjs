@@ -7,7 +7,7 @@
 //   "closing and opening one clears the stuff that was there" → state survives
 //   "the tiny create button is right next to opening the next one" → geometry
 //   "a better eye on progress instead of only spinner and text logs" → the viz
-//   "the folder flow feels sketchy"                          → the tile is gone
+//   "the folder flow feels sketchy"                          → a tree, no typed path
 //
 // The crawl tests drive a REAL job against a fixture site this file serves
 // itself, so the tree, the counters and the done card are built from the
@@ -275,27 +275,22 @@ test.describe('the shared panel', () => {
   });
 });
 
-// ── D4: folder left the web ─────────────────────────────────────────────────
+// ── D4: folder is a tree, for the primary admin ─────────────────────────────
 
-test.describe('folder mode is CLI-only', () => {
+test.describe('folder mode is a tree picker', () => {
   // The service worker would answer the status poll itself, and a request the
   // browser never makes is a request page.route cannot script.
   test.use({ serviceWorkers: 'block' });
 
-  test('no folder chip, whatever the server reports', async ({ page }) => {
-    // Round 3, Eric: "do remove folder I said that would be CLI only." Even a
-    // server that names a create root gets no folder tile — the root now
-    // exists solely for import's confinement.
-    await page.route('**/manage/create/status*', async route => {
-      const res = await route.fetch();
-      const body = await res.json();
-      body.create_root = '/srv/library-sources';
-      await route.fulfill({ response: res, json: body });
-    });
+  test('the admin gets a Folder chip that opens a tree, not a path field', async ({ page }) => {
+    // Eric, 2026-09-30: "offer folder ... show the whole tree and allow
+    // selecting any subset." The tree is under the create root; nothing is typed.
     await openCreate(page);
-    const modes = await page.evaluate(() =>
-      [...document.querySelectorAll('.create-chip')].map(c => c.textContent.trim()));
-    expect(modes.join(' | ')).not.toMatch(/Folder/i);
+    const chip = page.locator('.create-chip', { hasText: /Folder/i });
+    await expect(chip).toHaveCount(1);
+    await chip.click();
+    await expect(page.locator('#create-folder-tree')).toBeVisible();
+    await expect(page.locator('#create-source')).toBeHidden();
   });
 
   test('a creator account never sees the server-path mode', async ({ page }) => {

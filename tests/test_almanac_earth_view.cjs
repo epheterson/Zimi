@@ -8,8 +8,10 @@
 // replaced (WebGLRenderer records its calls, TextureLoader answers as told).
 // The DOM is a small fake that remembers what was written to it.
 //
-//   1. The clock: the view shows the orrery's instant (a ride moves it), a
-//      clock moved off now is not Live, and Now brings the orrery back too.
+//   1. The clock: one clock, the Almanac's (its focus, or now). The view
+//      shows it, its speeds run it and land the page on the moment, a moment
+//      chosen on the orrery becomes the page's when the view opens on it,
+//      and Now brings the page and the orrery back to now.
 //   2. The orbital data: told the server is refreshing, the open view asks
 //      once more and gets the fresh elements; a failed load says so and is
 //      asked for again at the next open; no data at all is said plainly.
@@ -79,6 +81,10 @@ function fakeEl(id) {
     replaceChild(fresh, old) { fresh.parentNode = el; old.parentNode = null; if (old.id) byId.set(old.id, fresh); },
     cloneNode() { const c = fakeEl(el.id); c.className = el.className; c.attrs = Object.assign({}, el.attrs); return c; },
     focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; },
+    removeAttribute(k) { delete this.attrs[k]; },
+  };
+  el.style = {
+    setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; },
   };
   return el;
 }
@@ -93,6 +99,7 @@ const document = {
     return byId.get(id);
   },
   createElement() { return fakeEl(null); },
+  querySelector() { return null; },
   querySelectorAll() { return []; },
   addEventListener() {},
 };
@@ -107,6 +114,7 @@ class FakeRenderer {
   setClearColor() {}
   setSize(w, h, style) { this.calls.push(['setSize', w, h, style]); }
   render() { this.calls.push(['render']); }
+  compile() { this.calls.push(['compile']); }
   dispose() { this.calls.push(['dispose']); }
   forceContextLoss() { this.calls.push(['forceContextLoss']); }
   lastSize() { const s = this.calls.filter((c) => c[0] === 'setSize').pop(); return s && s.slice(1); }
@@ -154,9 +162,20 @@ vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
   'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = true; var _almFocus = null; var _currentLang = "en";' +
   'function t(k, vars) { return vars ? k + JSON.stringify(vars) : k; }' +
-  'function _tp(n) { return n; } function _cancelAllRAF() {} function _setWindowTitle() {}', S);
+  'function _tp(n) { return n; } function _cancelAllRAF() {} function _setWindowTitle() {}' +
+  // The page's side of the clock: where it settles, recorded.
+  'var _almSettled = []; function _almScrubSettle(d) { _almSettled.push(d.getTime()); _almFocus = d; }' +
+  'function _almBackToToday() { _almSettled.push(null); _almFocus = null; } function _almHeroLiveStop() {}', S);
 for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_speedToSlider', '_formatSpeed',
-                  '_almanacTeardown']) vm.runInContext(extractFn(almSrc, fn), S);
+                  '_almanacTeardown', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
+vm.runInContext(extractFn(read('app.js'), '_smoothstep'), S);
+// The shared angle and Moon-orientation helpers the view borrows from the
+// Almanac's other files (one global scope in the browser).
+vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
+vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', S);
+for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_moonPhase', '_normDeg360'])
+  vm.runInContext(extractFn(read('app.js'), fn), S);
+vm.runInContext(require('./moon_model.cjs')(), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
@@ -177,37 +196,43 @@ const run = (code) => vm.runInContext(code, S);
   // ── 1. The clock ──────────────────────────────────────────────────────
   {
     run('_ae = _aeNewState(document.createElement("div"));');
-    // A ride to Mars moves the orrery's clock 259 days on (almanac-orrery.js
-    // advances _orreryTimeOffset as the rocket flies).
-    S._orreryTimeOffset = 259 * DAY;
-    const shown = run('_aeDisplayMs()');
-    check(Math.abs(shown - (Date.now() + 259 * DAY)) < 5000,
-      'after a ride to Mars the view shows the orrery\'s date, ' + new Date(shown).toISOString().slice(0, 10));
-    check(run('_aeIsLive()') === false, 'a clock the orrery moved off now is not Live');
-    S._orreryTimeOffset = 0;
-    check(run('_aeIsLive()') === true, 'with the orrery at now, the view is Live');
+    // One clock: the Almanac's. Live, it is now.
+    check(Math.abs(run('_aeDisplayMs()') - Date.now()) < 5000 && run('_aeIsLive()') === true, 'live, the view shows now');
     S._almFocus = new Date(Date.UTC(2031, 4, 21, 12));
-    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the time machine, when set, is the orrery\'s clock and the view\'s');
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the time machine, when set, is the view\'s clock');
     check(run('_aeIsLive()') === false, 'under the time machine the view is not Live');
-    S._almFocus = null;
+    // The orrery's own clock (a ride to Mars moves it 259 days on) is not a
+    // second clock: the view shows the page's.
+    S._orreryTimeOffset = 259 * DAY;
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the orrery\'s ride does not move the view off the page\'s clock');
+    // A speed runs the page's clock: an hour a second for a second.
+    S._almFocus = null; S._orreryTimeOffset = 0; run('_almSettled = []; _ae.speed = 3600;');
+    run('_aeRunClock(3600 * 1000)');
+    check(S._almFocus && Math.abs(S._almFocus.getTime() - (Date.now() + 3600 * 1000)) < 5000 && run('_aeIsLive()') === false,
+      'an hour a second runs the page\'s clock an hour on');
+    const ran = S._almFocus.getTime();
+    run('_aeSetSpeed(1)');
+    check(run('_almSettled.length') === 1 && run('_almSettled[0]') === ran, 'back at real time the page lands on the moment it ran to');
+    run('_aeSetSpeed(1)');
+    check(run('_almSettled.length') === 1, 'and lands once');
+    // Now: the page and the orrery.
     S._orreryTimeOffset = 259 * DAY;
     run('_aeNow()');
-    check(S._orreryTimeOffset === 0 && run('_aeIsLive()') === true, 'Now brings the orrery back to now as well');
-    // The orrery spins fast from the start as scenery: a first open is at
-    // now and Live, not weeks ahead; a moment someone chose (the slider, a
-    // ride) is where it opens.
-    S._orreryTimeOffset = 40 * DAY; S._orreryClockChosen = false;
-    run('_ae.offset = _aeOpenOffset();');
-    check(Math.abs(run('_aeDisplayMs()') - Date.now()) < 5000 && run('_aeIsLive()') === true,
-      'the orrery\'s own spin: the view opens at now, Live');
+    check(S._almFocus === null && S._orreryTimeOffset === 0 && run('_aeIsLive()') === true, 'Now brings the page and the orrery back to now');
+    // The orrery spins fast from the start as scenery: opening the view from
+    // it leaves the page at now; a moment someone chose there (the slider, a
+    // ride) becomes the page's.
+    S._orreryTimeOffset = 40 * DAY; S._orreryClockChosen = false; run('_almSettled = [];');
+    run('_aeAdoptOrreryClock()');
+    check(S._almFocus === null && run('_aeIsLive()') === true, 'the orrery\'s own spin: the view opens at now, Live');
     S._orreryClockChosen = true;
-    run('_ae.offset = _aeOpenOffset();');
-    check(Math.abs(run('_aeDisplayMs()') - (Date.now() + 40 * DAY)) < 5000 && run('_aeIsLive()') === false,
-      'a moment chosen on the orrery: the view opens there');
-    S._orreryClockChosen = false; S._almFocus = new Date(Date.UTC(2031, 4, 21, 12));
-    run('_ae.offset = _aeOpenOffset();');
-    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the time machine: the view opens at its moment');
-    S._almFocus = null; S._orreryTimeOffset = 0; run('_ae.offset = 0;');
+    run('_aeAdoptOrreryClock()');
+    check(S._almFocus && Math.abs(S._almFocus.getTime() - (Date.now() + 40 * DAY)) < 5000 && run('_aeIsLive()') === false,
+      'a moment chosen on the orrery: the page and the view open there');
+    S._orreryClockChosen = false; S._almFocus = new Date(Date.UTC(2031, 4, 21, 12)); run('_almSettled = [];');
+    run('_aeAdoptOrreryClock()');
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12) && run('_almSettled.length') === 0, 'the time machine: the view opens at its moment');
+    S._almFocus = null; S._orreryTimeOffset = 0;
     check(/function _orrerySliderInput\(val\) \{\s*_orreryClockChosen = true;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')) &&
       /function _orrerySnapToNow\(\) \{[^}]*_orreryClockChosen = false;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
       'the slider chooses a moment; Now lets it go');
@@ -310,6 +335,8 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.gl') === null, 'and lets the scene go');
     check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
     check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
+    check(textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
+      'the Moon\'s 4096 map replaced its 1024 one, which was given back then');
     check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
     const fresh = document.getElementById('ae-canvas');
     check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');
@@ -462,6 +489,83 @@ const run = (code) => vm.runInContext(code, S);
     check(panel.hidden === true, 'so does a touch on the globe');
     run('_ae.el').listeners.keydown[0](escape);
     check(run('_aeIsOpen') === false, 'and the next Escape leaves the view');
+  }
+
+  // ── 7. Taps on the Earth, the Moon and the Sun ────────────────────────
+  // A tap on a body flies to it, as its chip does; on empty sky, or on the
+  // body already in view, nothing flies.
+  {
+    fetches.push(answer({}));
+    await reopen();
+    run('_aeUpdate(_aeDisplayMs())');
+    // Stand the camera somewhere the body is on screen and not behind the
+    // Earth, looking at `target`; answer where the body is drawn.
+    const viewOf = (target, body, dist) => JSON.parse(run('(function () {' +
+      ' var sc = _ae.scene, pos = { earth: [0,0,0], moon: sc.moon, sun: _aeSunShown(sc) };' +
+      ' for (var k = 0; k < 720; k++) {' +
+      '  _ae.fly = null; _ae.hand = null; _ae.target = "' + target + '"; _ae.dist = ' + dist + ';' +
+      '  _ae.az = k * Math.PI / 360 * 7.3; _ae.el_ = ((k % 9) - 4) * 0.12;' +
+      '  _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();' +
+      '  var p = pos["' + body + '"];' +
+      '  if ("' + body + '" !== "earth" && _aeBehindEarth(p)) continue;' +
+      '  var s = _aeProject(p);' +
+      '  if (s && s.x > 40 && s.y > 40 && s.x < _ae.w - 40 && s.y < _ae.h - 40 && _aeBodyAt(s.x, s.y) === "' + body + '") return JSON.stringify(s);' +
+      ' } return "null"; })()'));
+    const tapAt = (s) => run('_aeTap(' + s.x + ',' + s.y + ')');
+    check(run('_ae.w') > 0 && run('_ae.h') > 0, 'the view knows its size');
+
+    let s = viewOf('earth', 'moon', 150);
+    check(!!s, 'from the Earth the Moon can be put on screen');
+    if (s) {
+      run('_ae.preset = "earth"');
+      tapAt(s);
+      check(run('_ae.target') === 'moon' && run('_ae.preset') === 'moon' && run('!!_ae.fly'),
+        'a tap on the Moon flies to it and presses its chip');
+    }
+    s = viewOf('earth', 'sun', 400);
+    check(!!s, 'from the Earth the Sun can be put on screen');
+    if (s) {
+      tapAt(s);
+      check(run('_ae.target') === 'sun' && run('_ae.preset') === 'sun', 'a tap on the Sun flies to it');
+    }
+    s = viewOf('sun', 'earth', 900);
+    check(!!s, 'from the Sun the Earth can be put on screen');
+    if (s) {
+      tapAt(s);
+      check(run('_ae.target') === 'earth' && run('_ae.preset') === 'earth', 'a tap on the Earth flies home (' + run('_ae.target') + ')');
+    }
+    // Empty sky: a corner far from every body.
+    s = viewOf('earth', 'moon', 150);
+    run('_ae.preset = "earth"');
+    run('_aeTap(2, 2)');
+    check(run('_ae.target') === 'earth' && !run('_ae.fly'), 'a tap on empty sky flies nowhere');
+    // The body in view: puts a satellite's card away, flies nowhere.
+    s = viewOf('earth', 'earth', 4);
+    run('_ae.selected = { norad: 1, tapMs: 0 }');
+    if (s) tapAt(s);
+    check(run('_ae.target') === 'earth' && !run('_ae.fly') && run('_ae.selected') === null,
+      'a tap on the Earth while at the Earth only puts a card away');
+
+    // A flight's length follows how far it goes; reduced motion arrives at once.
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH); _ae.az = 0; _ae.el_ = 0;');
+    run('_aePreset("sats")');
+    const toSats = run('_ae.fly.ms');
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH);');
+    run('_aePreset("moon")');
+    const toMoon = run('_ae.fly.ms');
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH);');
+    run('_aePreset("sun")');
+    check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
+    check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
+      'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
+    check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
+      'a flight eases in and out');
+    run('var _almReduceMotion = function () { return true; };');
+    s = viewOf('earth', 'moon', 150);
+    if (s) tapAt(s);
+    check(run('_ae.target') === 'moon' && !run('_ae.fly') && Math.abs(run('_ae.dist') - run('_aeClampDist(_aeFitDist(AE_FIT_MOON))')) < 1e-9,
+      'with reduced motion a tap arrives at once');
+    run('_almReduceMotion = undefined;');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

@@ -23,7 +23,7 @@ See https://github.com/adobe-type-tools/cmap-resources
 <html dir="ltr" mozdisallowselectionprint>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <meta name="google" content="notranslate" />
     <title>PDF.js viewer</title>
 
@@ -32,8 +32,9 @@ See https://github.com/adobe-type-tools/cmap-resources
 <script src="../build/pdf.mjs" type="module"></script>
 
     <link rel="stylesheet" href="viewer.css" />
-    <!-- Zimi: hide "Open file" button and its trailing separator -->
-    <style>#secondaryOpenFile, #secondaryOpenFile + .visibleMediumView + .horizontalToolbarSeparator { display: none !important; }</style>
+    <!-- Zimi: its own reading chrome over pdf.js (zimi/static/pdfreader.css
+         and pdfreader.js, inlined here by the server at the two marks). -->
+    <!--@pdfreader.css@-->
 
   <script src="viewer.mjs?v=2" type="module"></script>
   </head>
@@ -1217,5 +1218,6 @@ See https://github.com/adobe-type-tools/cmap-resources
     </div>
     <!-- outerContainer -->
     <div id="printContainer"></div>
+    <!--@pdfreader.js@-->
   </body>
 </html>

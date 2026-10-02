@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bookshelf</title>
 <!--@apps.css@-->
 <style>
@@ -138,8 +138,8 @@
 // Reader View, keeps your place, and steps chapter by chapter. Zimi's top
 // bar drives booksSearch(q).
 var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subjects: 'Subjects', eras: 'Eras', languages: 'Languages',
-  popular: 'Most read', recent: 'Newest to Project Gutenberg', continue: 'Continue reading', my_shelf: 'My shelf', add_shelf: 'Add to my shelf',
-  on_shelf: 'On my shelf', all_books: 'All books', see_all: 'See all',
+  popular: 'Most read', recent: 'Newest to Project Gutenberg', continue: 'Continue reading',
+  all_books: 'All books', see_all: 'See all',
   sort_popular: 'Most read', sort_title: 'Title', sort_author: 'Author', sort_recent: 'Newest', sort_name: 'A to Z', sort_books: 'Most books',
   read: 'Read', resume: 'Continue', epub: 'Download EPUB', more_by: 'More by {name}', added: 'Added to Project Gutenberg', language: 'Language',
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
@@ -147,7 +147,7 @@ var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subj
   epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', load_failed: 'Couldn\'t load the shelf.',
   load_part: 'Couldn\'t load this.', reading: 'Reading the books in your library. They appear here in a few minutes.', retry: 'Retry', lcc: {},
   sources: 'Sources', source: 'Source', format: 'Format', chapters: 'Chapters', translator: 'Translator', publisher: 'Publisher', published: 'Published',
-  unreadable: 'Bookshelf found no books in {names}.' });
+  unreadable: 'Bookshelf found no books in {names}.', sv: { saved: 'Saved' } });
 
 // ── pure parts (tests/test_books_page.cjs runs these) ─────────────────────
 var PAGE = 60;
@@ -352,7 +352,7 @@ function renderHome() {
     }).join('') + '</div></section>';
   }
   var mine = shelf();
-  html += shelfHtml(STR.my_shelf, mine.slice(0, STRIP), mine.length > STRIP ? "go({v:'mine'})" : '');
+  html += shelfHtml(STR.sv.saved, mine.slice(0, STRIP), mine.length > STRIP ? "go({v:'mine'})" : '');
   // Gutenberg's most read; a shelf without Gutenberg opens on its books.
   html += h.ranked ? shelfHtml(STR.popular, h.popular || [], "go({v:'list',sort:'popular'})")
     : shelfHtml(STR.all_books, h.popular || [], "go({v:'list',sort:'title'})");
@@ -394,7 +394,7 @@ function erasHtml(list) {
 }
 function renderMine() {
   var mine = shelf();
-  $('view').innerHTML = '<div class="head"><h2>' + esc(STR.my_shelf) + ' <span class="n">' + esc(count(mine.length, STR.book, STR.books)) + '</span></h2></div>' +
+  $('view').innerHTML = '<div class="head"><h2>' + esc(STR.sv.saved) + ' <span class="n">' + esc(count(mine.length, STR.book, STR.books)) + '</span></h2></div>' +
     (mine.length ? booksHtml(mine) : '<div class="empty">' + esc(STR.none) + '</div>');
 }
 function renderSources() {
@@ -508,7 +508,7 @@ function renderBook(v) {
 // shares (apps.js savedBar), Save in the shelf's words and no Like.
 function showBook(b, full, after) {
   $('view').innerHTML = bookPage(b, full) + (after || '');
-  savedBar(bookRef(b), { save: [STR.add_shelf, STR.on_shelf], like: false });
+  savedBar(bookRef(b), { like: false });
 }
 function bookPage(b, full) {
   var place = placeOf(b);

@@ -119,19 +119,19 @@ S.setPosition({ kind: 'book', app: 'books', zim: 'gutenberg_la', path: 'Aeneidos
 const p = ctx.places();
 ok('Continue reading: the books you are in, the latest first, with what the shelf needs', p.length === 2 && p[0].id === 227 && p[0].title === 'Aeneidos (from the page)' && p[0].author === 'Virgil' && p[0].cover === 'covers/227_cover_image.jpg' && p[0].zim === 'gutenberg_la' && p[1].path === 'Tales.5139' && p[1].id === 5139);
 ok('a book\'s place, found by its ZIM and page', ctx.placeOf({ zim: 'gutenberg_la', path: 'Aeneidos.227' }).f === 0.34 && ctx.placeOf({ zim: 'x', path: 'y' }) === null);
-// My shelf: kept in the same store, under the same key as the reader's bookmark.
+// Saved books: kept in the same store, under the same key as the reader's bookmark.
 ctx._known[227] = { zim: 'gutenberg_la', path: 'Aeneidos.227', id: 227, title: 'Aeneidos', author: 'Virgil', cover: '' };
 const onShelf = (b) => S.has(ctx.bookRef(b));
-ok('a book not on my shelf', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
-S.save(ctx.bookRef(ctx._known[227]));  // what Add to my shelf (apps.js savedBar) saves
-ok('Add to my shelf keeps it as a book of Bookshelf\'s', onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
+ok('a book not saved', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
+S.save(ctx.bookRef(ctx._known[227]));  // what Save (apps.js savedBar) saves
+ok('Save keeps it as a book of Bookshelf\'s', onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
   S.get('gutenberg_la\nAeneidos.227').kind === 'book' && S.get('gutenberg_la\nAeneidos.227').app === 'books');
 ok('a book the reader bookmarked (no card) still has its number', ctx.card({ zim: 'g', path: 'Tales.5139', title: 'Tales' }).id === 5139);
 S.remove(ctx.bookRef(ctx._known[227]));
 ok('and taken off again', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
 ok('outside the shell (no saved()), an empty shelf, not a broken one', (ctx.saved = () => null, ctx.places().length === 0 && ctx.shelf().length === 0));
-ok('a book\'s page has the controls every app shares: Save in the shelf\'s words, Lists, no Like', /<span class="svbar"><\/span>/.test(page) &&
-  /savedBar\(bookRef\(b\), \{ save: \[STR\.add_shelf, STR\.on_shelf\], like: false \}\);/.test(page) && /else if \(v\.v === 'book'\) savedPaint\(\);/.test(page) &&
+ok('a book\'s page has the controls every app shares: Save in every app\'s word, Lists, no Like', /<span class="svbar"><\/span>/.test(page) &&
+  /savedBar\(bookRef\(b\), \{ like: false \}\);/.test(page) && !/add_shelf|on_shelf|my_shelf/.test(page) && /else if \(v\.v === 'book'\) savedPaint\(\);/.test(page) &&
   !/toggleShelf|keepHtml|listsFor/.test(page));
 ctx.saved = () => shell.Saved;
 
@@ -159,11 +159,13 @@ vm.runInContext([
 ].join('\n'), rctx);
 ok('a record\'s "Surname, Given, years" prints as a cover does', rctx._bookAuthorName('Ewald, Carl, 1856-1908') === 'Carl Ewald' && rctx._bookAuthorName('Virgil, 71 BCE-20 BCE') === 'Virgil' && rctx._bookAuthorName('') === '');
 ok('a Gutenberg page is known by its own record, an EPUB\'s chapters by theirs', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\],meta\[name="zimi-book"\]'\);/.test(src));
-ok('an EPUB\'s address is a book\'s before it loads', /if \(m && \/\\\.epub\\\/\$\/i\.test\(m\[2\]\)\) return true;/.test(src));
+ok('an EPUB\'s address, or a book of pages\' (zimi/bookpages.py), is a book\'s before it loads', /if \(m && \(\/\\\.epub\\\/\$\/i\.test\(m\[2\]\) \|\| m\[2\]\.indexOf\(_BOOK_PAGES_PREFIX\) === 0\)\) return true;/.test(src) && /var _BOOK_PAGES_PREFIX = '_zimi_book_\/';/.test(src));
 ok('a book has no <main>: Reader View reads its body', /if \(!main && _isBookDoc\(doc\)\) main = doc\.body;/.test(src) && /return !!main && \(main !== doc\.body \|\| _isBookDoc\(doc\)\);/.test(src));
 ok('a book keeps its contents list in Reader View', /_isBookDoc\(doc\) \? 'script,style,link,noscript' : _READER_VIEW_STRIP/.test(src));
 ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));
-ok('Zimi\'s header is held away for a book, known from its address before it loads', /var _bookLoading = _bookUrl\(url\);\n\s*_bookChrome\(_bookLoading\);/.test(src) && /if \(on !== _chromeHeld\) _chromeImmersive\(on\);/.test(src));
+ok('Zimi\'s header is held away for a book, known from its address before it loads', /var _bookLoading = _bookUrl\(url\);\n\s*_bookChrome\(_bookLoading\);/.test(src) && /var held = _bookReading \|\| _pdfReading;[\s\S]{0,400}_chromeImmersive\(held\);/.test(src));
+// So is it for a PDF, from the viewer's address, and given back on close.
+ok('Zimi\'s header is held away while a PDF is read in Zimi\'s PDF reader', /_pdfChrome\(url\.startsWith\('\/static\/pdfjs\/'\)\);/.test(src) && /_pdfChrome\(_isPdfPage\(\)\);/.test(src) && /_bookChrome\(false\);\n\s*_pdfChrome\(false\);/.test(src));
 ok('no jump-to-top button and no capture passes on a book', /if \(!_frameIsOurOwnPage\(frame\) && !_bookDoc && !_wikiOn\) try \{/.test(src) && /if \(_frameIsOurOwnPage\(frame\) \|\| _bookDoc \|\| _wikiOn\) return;/.test(src));
 ok('opening a book lays nothing out early: its text is counted, not measured', /return \(main === doc\.body \|\| doc\.__zimiWiki \? main\.textContent :/.test(src) && /if \(!_isBookDoc\(doc\)\) _afterPaint\(function\(\) \{ _readerBindLightbox\(shell, doc\); \}\);/.test(src));
 ok('pages are one chapter at a time, and a long run is cut again', /html\.zb-paged \.zb-sec:not\(\.zb-cur\)\{display:none\}/.test(src) && /var _BOOK_SECTION_CHARS = \d+;/.test(src));
@@ -205,15 +207,15 @@ ok('places are capped per app, the oldest dropped first (a Zimipedia article nev
 }
 
 // ── the shell ───────────────────────────────────────────────────────────
-ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml \}/.test(src));
-ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'\];/.test(src));
+ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml[,} ]/.test(src));
+ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'[^\]]*\];/.test(src));
 ok('it is the page Zimi owns, in the reader, at /#books', /_openHashApp\('books', replaceState, function\(\) \{ _booksOpen = true; return _BOOKS_PAGE \+ '#' \+ _booksStrings\(\); \}\)/.test(src) && /if \(location\.hash === '#books'\) \{ enterHome\(false\); openBooks\(true\); return; \}/.test(src));
 ok('the shell hands the page its strings and the shelves\' names', /_appStrings\('books', \['books_shelf'/.test(src) && /lcc\[c\] = t\('books_lcc_' \+ c\);/.test(src));
 ok('typing and Enter in the box search inside the page', /\(_isWikiPage\(\) \? _wikiSearch : _booksSearch\)\(val\)/.test(src) && /if \(_isBooksPage\(\)\) \{ _booksSearch\(q\.value\.trim\(\)\); return; \}/.test(src) && /_appFrameCall\('booksSearch', val\)/.test(src));
 ok('the box says what it is for', /if \(_isBooksPage\(\)\) return t\('books_search_placeholder'\);/.test(src));
-ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isBooksPage\(\);/.test(src));
-ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) \{\n\s*if \(!_appFrameRoute\(_booksOpen, ''\)\) openBooks\(true\);/.test(src) && /\|\| app\.books\);/.test(src));
-ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg' \}/.test(src));
+ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isBooksPage\(\)[^\n]*;/.test(src));
+ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) \{\n\s*if \(!_appFrameRoute\(_booksOpen, ''\)\) openBooks\(true\);/.test(src) && /\|\| app\.books[ )|]/.test(src));
+ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg'[,}]/.test(src));
 ok('its background work has a name in Manage', /books: 'bg_books'/.test(src));
 
 const need = ['books', 'books_view_unavailable', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'books_contents', 'books_settings',
@@ -232,9 +234,22 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
 ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).length === 10);
 // A finger on the reader's sheet and slider, and on any app's pill.
 ok('the reading sheet\'s choices, its close and the book\'s slider reach 44px on a finger',
-  /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-step button\{height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));
+  /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));
 ok('a pill under a book or a video is border-box, so a finger\'s 44px is its height, not 60',
   /\.actions a, \.actions button \{[^}]*box-sizing: border-box;/.test(fs.readFileSync(path.join(root, 'apps.css'), 'utf8')));
+
+// ── Read always opens the e-reader: a short book is still a book ─────────
+{
+  const rv = { READER_VIEW_MIN_CHARS: 200 };
+  vm.createContext(rv);
+  vm.runInContext(extract(src, /function _isBookDoc\(doc\) \{[\s\S]*?\n\}/, '_isBookDoc') + '\n' +
+    extract(src, /function _readerMinChars\(doc\) \{[^\n]*\}/, '_readerMinChars'), rv);
+  const gutenberg = { querySelector: (q) => (/dcterms\.isFormatOf/.test(q) ? {} : null) };
+  const article = { querySelector: () => null };
+  ok('a Gutenberg page of a few lines (the Aeneid as LIBER I, LIBER II) still reads in the e-reader, not as raw HTML',
+    rv._readerMinChars(gutenberg) === 1);
+  ok('...while a page that may not be an article keeps the floor', rv._readerMinChars(article) === 200);
+}
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall books-page checks passed');
 const css = fs.readFileSync(path.join(root, 'apps.css'), 'utf8');

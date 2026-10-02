@@ -893,7 +893,7 @@ def test_libretexts_textbooks_from_the_page_tree(shelf_lib):
         siegrist["author"] == "Siegrist" and siegrist["subject"] == "Probability Theory"
     )
     # Its 18 chapters: its front and back matter are not chapters.
-    assert siegrist["chapters"] == 18 and siegrist["path"] == "index/page_10114"
+    assert siegrist["chapters"] == 18 and siegrist["path"] == "_zimi_book_/index/page_10114"
     assert "author" not in books.book("", got[1]["id"])
     assert srv.list_zims()[0]["name"] == names["libretexts.org_en_stats_2026-01"]
 
@@ -917,7 +917,7 @@ def test_wikisource_works_are_on_the_shelf_and_stay_in_zimipedia(shelf_lib):
     adj = books.book(name, got["Adjuvilo"]["id"])
     assert adj["author"] == "Claudius Colas" and adj["translator"] == "Roy McCoy"
     assert adj["year"] == 1910 and adj["era"] == 1900 and adj["chapters"] == 3
-    assert adj["path"] == "Adjuvilo" and adj["lang"] == "eo"
+    assert adj["path"] == "_zimi_book_/Adjuvilo" and adj["lang"] == "eo"
     # The older header (ids, not classes) is read too.
     assert (
         got['Adresaro de la personoj kiuj ellernis la lingvon "Esperanto"']["year"]
@@ -938,7 +938,7 @@ def test_wikibooks_are_books_by_their_pages(shelf_lib):
         "Berimbau - en handbok för nya capoerister",
         "Poker",
     ]
-    assert got[1]["path"] == "Poker" and got[1]["lang"] == "sv"
+    assert got[1]["path"] == "_zimi_book_/Poker" and got[1]["lang"] == "sv"
     assert "author" not in got[1]
 
 
@@ -949,7 +949,7 @@ def test_a_zim_that_is_one_book(shelf_lib, tmp_path):
     htdp, water = names["htdp.org_en_all_2026-08"], names["zimgit-water_en_2024-08"]
     got = books.listing(zim=htdp)["books"]
     assert [(b["title"], b["path"]) for b in got] == [
-        ("How to Design Programs", "htdp.org/2020-8-1/Book/index.html")
+        ("How to Design Programs", "_zimi_book_/htdp.org/2020-8-1/Book/index.html")
     ]
     assert books.book(htdp, got[0]["id"])["description"].startswith("Introductory book")
     # By hand: off the shelf, and a ZIM of another family on it as one book.
@@ -1692,7 +1692,10 @@ def test_a_hostile_chapter_is_sanitized_in_linear_time(shape):
     small = _cpu_seconds(shape, 32 * 1024)
     assert small < 0.05, f"{shape}: 32 KB took {small:.2f}s"
     big = _cpu_seconds(shape, _MB)
-    assert big < (0.1 if shape == "unclosed script" else 0.5), f"{shape}: 1 MB took {big:.2f}s"
+    # Linear: 32 times the text, well under 32 squared the time. Held as a
+    # ratio as well as a ceiling, since a slow runner's ceiling moves.
+    assert big < (0.25 if shape == "unclosed script" else 1.5), f"{shape}: 1 MB took {big:.2f}s"
+    assert big < max(small, 0.01) * 100, f"{shape}: 1 MB took {big:.2f}s against {small:.3f}s for 32 KB"
 
 
 def test_an_xhtml_self_closed_script_keeps_the_rest_of_the_chapter():

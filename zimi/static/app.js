@@ -12,19 +12,10 @@ window.addEventListener('unhandledrejection', function(e) {
   if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
 });
 
-// No zooming on a phone, not even a pinch (Eric: "I can still zoom and
-// don't want to"). The viewport says maximum-scale=1, user-scalable=no, but
-// iOS Safari ignores that for pinch, so its gesture events are cancelled here,
-// and in each document the reader frame loads (a pinch over an article is
-// the article's). A map's own pinch rides touch events and still works.
-function _blockPinch(doc) {
-  if (!doc || doc.__zimiNoPinch) return;
-  doc.__zimiNoPinch = true;
-  ['gesturestart', 'gesturechange'].forEach(function(type) {
-    doc.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
-  });
-}
-_blockPinch(document);
+// A pinch zooms; nothing else does (Eric, 2026-10-01: "Maybe I still did want
+// pinch to zoom just not text or any auto"): no double-tap zoom
+// (touch-action: manipulation) and no zoom into a focused field (16px fields
+// on touch screens), both in app.css.
 
 // Storage that is always there. WebKitGTK hands a private-mode window a
 // null localStorage, and one unguarded read of it at load killed the whole
@@ -60,8 +51,9 @@ var _i18nVer = _cfg.i18nHash || '0';
 var SK = {
   UI_LANG: 'zimi_ui_lang',
   HIDE_DISCOVER: 'zimi_hide_discover',
-  // Almanac location. SESSION-scoped — the almanac is deliberately ephemeral,
-  // so read it with _getSessionJSON, never _getStorageJSON.
+  // The Almanac's chosen place, kept on this device (read with
+  // _almChosenPlace); ALMANAC_LOC is the session key older builds used.
+  ALMANAC_PLACE: 'zimi_almanac_place',
   ALMANAC_LOC: 'zimi_almanac_location',
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
@@ -77,7 +69,6 @@ var SK = {
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
   // default to keep ZIM content byte-identical for purist users.
-  A11Y_REWRITE: 'zimi_a11y_rewrite',
   LIBRARY_TAB: 'zimi_library_tab',
   // Home library layout: 'list' (default full cards) | 'tiles' (compact grid).
   LIBRARY_VIEW: 'zimi_library_view',
@@ -174,6 +165,11 @@ function _getStorageJSON(key, fallback, session) {
 // Read for keys that live in sessionStorage rather than localStorage.
 function _getSessionJSON(key, fallback) {
   return _getStorageJSON(key, fallback, true);
+}
+// The Almanac's chosen place ({lat, lon, name}) or null: kept on this device,
+// with the session copy older builds wrote as the fallback.
+function _almChosenPlace() {
+  return _getStorageJSON(SK.ALMANAC_PLACE, null) || _getSessionJSON(SK.ALMANAC_LOC, null);
 }
 function _setStorageJSON(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch(e) {}
@@ -826,6 +822,7 @@ let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
 let searchController = null;
+let _searchSeq = 0; // doSearch calls, newest last
 let searchTimer = null;
 let suggestTimer = null;
 let suggestItems = [];
@@ -1066,6 +1063,7 @@ async function setLanguage(lang) {
       }
     } catch (e) {}
   }
+  if (_isDictPage()) _dictFollowLanguage(lang);
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -1128,6 +1126,7 @@ function _applyI18nToDOM() {
 function _appPlaceholder() {
   if (_isWikiPage()) return t('wiki_search_placeholder');
   if (_isBooksPage()) return t('books_search_placeholder');
+  if (_isDictPage()) return t('dictionary_search_placeholder');
   if (_isReddotPage()) return t('reddot_search_placeholder');
   if (_isExchangePage()) return t('exchange_search_placeholder');
   if (_isTubePage()) return t('tube_search_placeholder');
@@ -1159,8 +1158,9 @@ function _searchPlaceholderText() {
   }
   if (_almanacOpen) return t('almanac');
   if (_appPlaceholder()) return _appPlaceholder();
-  if (currentSource) return _zimTitle(currentSource);
-  if (readerOpen && readerSource) return _zimTitle(readerSource);
+  // In one ZIM, or reading one: the box searches that ZIM, and says so.
+  var scoped = _searchScopeSource();
+  if (scoped) return t('search_in', {source: _zimTitle(scoped)});
   if (mode === 'manage') return _managePlaceholder();
   if (homeScope) return t('search_in', {source: homeScope.label});
   return t('search_placeholder');
@@ -1191,7 +1191,15 @@ function _fitSearchPlaceholderNow() {
   var ctx = _placeholderCanvas.getContext('2d');
   if (!ctx) { q.placeholder = full; return; }
   ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
-  q.placeholder = ctx.measureText(full).width <= room ? full : t('search');
+  var fits = function(s) { return ctx.measureText(s).width <= room; };
+  // "Search in Wikipedia…" too long for a phone's box: the ZIM's name alone,
+  // which still says where the search goes, before the bare "Search".
+  var scoped = _searchScopeSource(), name = scoped ? _zimTitle(scoped) : '';
+  q.placeholder = fits(full) ? full : (name && full.indexOf(name) >= 0 && fits(name)) ? name : t('search');
+}
+// The one ZIM the box searches: the one open, or the one being read.
+function _searchScopeSource() {
+  return currentSource || (readerOpen && readerSource && !_isAppPage() && !_isMapPage() ? readerSource : null);
 }
 function _updateSearchPlaceholder() {
   if (!q) return;
@@ -1759,6 +1767,54 @@ var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="no
 // through as if you were still in it.
 var _CREATE_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>';
 
+// Where a page was opened from, when that is a place of its own rather than
+// a step through the reader: the Almanac, a search, the home page (Discover),
+// or an app. Stamped on the page's history entry as it is pushed, so the
+// header's arrow and the browser's Back go to the same place, and named on
+// the arrow ("Almanac", "Search"). Read from the entry being left.
+var _FROM_APPS = ['tube', 'exchange', 'reddot', 'wiki', 'books'];
+function _openedFrom() {
+  var s = history.state || {};
+  if (s.mode === 'almanac' || s.mode === 'search') return s.mode;
+  if (s.mode === 'home' && !s.scope) return 'home';
+  if (s.mode === 'reader') {
+    for (var i = 0; i < _FROM_APPS.length; i++) if (s[_FROM_APPS[i]]) return _FROM_APPS[i];
+  }
+  return null;
+}
+// `st`, about to be pushed, marked with where it was opened from (not an
+// app's own step: Zimipedia to Zimipedia is the app's business).
+function _stampFrom(st) {
+  var from = _openedFrom();
+  if (from && !st[from]) st.from = from;
+  return st;
+}
+// `st`, about to replace the entry on screen with the same page (Back or
+// Forward landing on it, a reload), keeping where that page was opened from.
+function _keepFrom(st) {
+  var s = history.state || {};
+  var same = s.mode === st.mode && (st.zim ? s.zim === st.zim && s.path === st.path
+    : _FROM_APPS.some(function(k) { return st[k] && s[k]; }));
+  if (same && s.from) st.from = s.from;
+  return st;
+}
+// What the arrow returns to, named for screen readers and the tooltip (the
+// arrow itself carries no text): the place the page was opened from, or the
+// source of the page before it when that was another ZIM. null for a step
+// back through the reader's own pages.
+function _backLabel() {
+  if (!readerOpen) return null;
+  var prev = articleHistory[articleHistory.length - 1];
+  if (prev && !prev.app) {
+    return currentArticle && prev.zim !== currentArticle.zim ? _zimTitle(prev.zim) : null;
+  }
+  // Home is not named: the logo beside the arrow already is the way there,
+  // and on a phone "← Home" took the room the search box needs. Back and
+  // Escape still return to Discover as it was left (history.state.from).
+  var from = (history.state || {}).from;
+  return from && from !== 'home' ? t(from) : null;
+}
+
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
@@ -1769,8 +1825,11 @@ function updateTopbar() {
   // (back = click source icon or Escape).
   // On an app page the arrow is always there: a step back inside the app
   // (a video, a question, a post, a list), and from its home, out.
-  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
+  const backTo = _backLabel();
+  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
   backBtn.style.display = showBack ? 'flex' : 'none';
+  backBtn.setAttribute('aria-label', backTo ? t('back_to', {place: backTo}) : t('go_back'));
+  backBtn.title = backTo ? t('back_to', {place: backTo}) : '';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
   // The Almanac opens as an overlay over the home/ZIM view but is its own
@@ -1792,8 +1851,8 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
-  } else if (_isWikiPage() || _isBooksPage()) {
-    var hashApp = _isWikiPage() ? 'wiki' : 'books';
+  } else if (_isWikiPage() || _isBooksPage() || _isDictPage()) {
+    var hashApp = _isWikiPage() ? 'wiki' : _isBooksPage() ? 'books' : 'dictionary';
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t(hashApp);
@@ -2343,8 +2402,11 @@ async function _probeManageAuth() {
     // Public pre-auth endpoint — learns password state without a 401 probe.
     const hres = await serverFetch('/manage/has-password');
     if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
-    manageEnabled = true;
+    // Enabled only once the password answer is read: in between, a Manage
+    // link saw manageEnabled with no password required and opened Manage
+    // unasked (a slow CI runner caught the gap).
     const h = await hres.json();
+    manageEnabled = true;
     const saved = _readManageToken();
     if (saved) _manageToken = saved;
     if (h.has_password && !_manageToken) {
@@ -2457,8 +2519,10 @@ function route(push) {
   if (params.get('tube') !== null) { enterHome(false); openTube(true, params.get('tube') || ''); return; }
   if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
   if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
+  if (params.get('dictionary') !== null) { enterHome(false); openDictionary(true, params.get('dictionary') || ''); return; }
   if (location.hash === '#wiki') { enterHome(false); openWiki(true); return; }
   if (location.hash === '#books') { enterHome(false); openBooks(true); return; }
+  if (location.hash === '#dictionary') { enterHome(false); openDictionary(true, ''); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
     var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -2729,7 +2793,7 @@ function goHome(e) {
 }
 
 function _isAppPage() {
-  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage();
+  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage() || _isDictPage();
 }
 // The reader is on the PDF viewer: nothing to read aloud, no type size.
 function _isPdfPage() {
@@ -2740,7 +2804,7 @@ function _isPdfPage() {
 // The app's home, in place of the item a shared link landed on.
 function _appEntryHome() {
   var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')]
-    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : _booksOpen ? ['books', 'q', '/#books'] : ['reddot', 'p', _reddotUrl('')];
+    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : _booksOpen ? ['books', 'q', '/#books'] : _dictOpen ? ['dictionary', 'w', _dictUrl('')] : ['reddot', 'p', _reddotUrl('')];
   var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
   _appHome(st, app[2], app[1]);
   // "home", not a route to nothing: a route only closes the thing on
@@ -2758,7 +2822,9 @@ function goBack() {
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask
     // the page (a list goes to the app's home); at the home, leave the app.
+    // Opened from somewhere else (a search), it goes back there.
     var st = history.state;
+    if (st && st.from && !st.entry) { history.back(); return; }
     if (st && (st.play || st.q || st.p)) { if (st.entry) _appEntryHome(); else history.back(); return; }
     var f = document.getElementById('reader-frame');
     if (f && f.contentWindow) { try { f.contentWindow.postMessage({ zimi: 'back-request' }, location.origin); return; } catch (e) {} }
@@ -2769,6 +2835,12 @@ function goBack() {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
       _stepBackToArticle(articleHistory.pop(), true);
+      return;
+    }
+    // Opened from a place of its own (the Almanac, a search, Discover, an
+    // app): the entry behind this one is that place, as it was left.
+    if (history.state && history.state.from) {
+      history.back();
       return;
     }
     // Article was opened from the almanac — drive Back through history so the
@@ -3452,7 +3524,7 @@ function renderHome(filter) {
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
-      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
+      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage().then(function(ok){if(ok)switchManageTab(\'browse\')})" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
       + '</div>'
       // The apps on a fresh install too, each tile saying what it needs and
       // opening its catalog category (docs/features/apps.md). The empty
@@ -3475,12 +3547,9 @@ function renderHome(filter) {
   // Filter ZIMs by title/name/description when filter text provided
   let zims = baseZims;
   if (filter) {
-    const fl = filter.toLowerCase();
-    const words = fl.split(/\s+/).filter(Boolean);
-    zims = baseZims.filter(z => {
-      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
-      return words.every(w => t.includes(w));
-    });
+    // The search grammar, as the catalog has it: "-wiki" leaves the wikis out (#94).
+    const parsed = parseSearchQuery(filter);
+    zims = baseZims.filter(z => searchQueryMatches(parsed, _libraryFilterText(z)));
   }
 
   // The recency + language pills also make sense scoped to a section (#37) —
@@ -3499,28 +3568,22 @@ function renderHome(filter) {
   if (filter && zims.length !== baseZims.length) {
     statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
   } else {
+    // The Apps page counts what each app shows on its own cards: a sum of
+    // ZIM entries across books, videos and maps would count none of them.
     statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
-      t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ' +
+      (homeScope && homeScope.type === 'apps' ? '' : t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ') +
       fmtSize(totalGb, true);
   }
 
-  // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
 
-  // Counts sit at the BOTTOM in every discover-capable home state — the clean
-  // idle view AND while a language filter is active — so tapping a
-  // filter pill never makes the counts bar jump from bottom to top (#8). The
-  // top stats bar is used only when discover is user-hidden or the view is
-  // scoped / text-filtered.
-  var countsAtBottom = !homeScope && !filter && !discoverHidden;
+  // The counts close the unscoped home, Discover on or off: the apps lead
+  // the page, and the counts squeezed in above them (Discover off) pushed
+  // its first job down and moved the line between two places (#8). The top
+  // bar is for a scoped or text-filtered view, where the count is the answer.
+  var countsAtBottom = !homeScope && !filter;
   if (countsAtBottom) {
-    // Counts render at the bottom of the content — keep the top bar empty.
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
-  } else if (!homeScope && !filter && discoverHidden) {
-    // Discover hidden — stats clickable to re-enable
-    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="' + escAttr(t('show_discover')) + '">' + statsHtml + '</a>';
-    statsBar.style.display = '';
   } else {
     statsBar.innerHTML = statsHtml;
     statsBar.style.display = '';
@@ -3766,8 +3829,8 @@ function renderHome(filter) {
     h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
   }
 
-  // Counts at the bottom whenever the top bar is suppressed (idle discover view
-  // or an active recency/language filter) — a stable anchor, no jump (#8).
+  // Counts at the bottom whenever the top bar is suppressed: a stable anchor
+  // through Discover on/off and the recency/language pills, no jump (#8).
   if (countsAtBottom) {
     h += '<div class="stats-bar" style="padding:28px 0 0">' + statsHtml + '</div>';
   }
@@ -3873,13 +3936,30 @@ function _markZimOpened(name) {
 // Returns null, or {label:'new'|'updated'}. A ZIM is fresh when its newest
 // event (first install or last update) is more recent than the user's last open
 // of it, and within the backstop window.
+// NEW is for what came after the library's first day: on a library set up
+// this week every ZIM arrived together, and a NEW on every card and every
+// app's child said nothing. Updated is always news.
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
   if (!fresh) return null;
   if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
   if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
-  return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
+  var updated = (z.updated_at || 0) > (z.first_seen || 0);
+  if (!updated && (z.first_seen || 0) < _libraryFirstSeen() + _LIBRARY_FIRST_DAY_S) return null;
+  return { label: updated ? 'updated' : 'new' };
+}
+// When the library began: its earliest first_seen, worked out once per list.
+var _LIBRARY_FIRST_DAY_S = 86400;
+var _libStart = { list: null, at: 0 };
+function _libraryFirstSeen() {
+  var list = zimsCache || [];
+  if (_libStart.list !== list) {
+    var at = 0;
+    for (var i = 0; i < list.length; i++) { var f = list[i].first_seen || 0; if (f && (!at || f < at)) at = f; }
+    _libStart = { list: list, at: at };
+  }
+  return _libStart.at;
 }
 
 // ── #34 library filter pills: "Recently added" / "Recently updated" ──
@@ -3927,6 +4007,12 @@ function filterHomeRecent(kind) {
 // One language filter pill for the home library. Multi-select toggle; the
 // native language name matches the search-results lang pills (reusing the
 // existing _NATIVE_LANG_NAMES map, with _langDisplayName as fallback).
+// A label and how many: one form everywhere (home pills, the Library's
+// groups, the apps' chips): the label, then the number, quieter. Never
+// "(1)", never "· 1".
+function _countedLabelHtml(label, n) {
+  return esc(label) + ' <span class="label-n">' + n + '</span>';
+}
 function _homeLangPill(code, count, active) {
   var name = _NATIVE_LANG_NAMES[code] || _langDisplayName(code) || code.toUpperCase();
   return '<button class="pill' + (active ? ' active' : '') + '"' +
@@ -3980,6 +4066,9 @@ function _setLibrarySort(mode) {
   // (Eric: "don't like how it all flashes when I change the sort type, can it
   // flow to the new position nicely like in iOS"). Falls back to a full render
   // if anything about the page is not the shape this expects.
+  // The cards move in place, so the control's own label is told too: it
+  // kept naming the old order until the page was drawn again.
+  if (typeof document !== 'undefined') document.querySelectorAll('.lib-sort-now').forEach(function (el) { el.textContent = t(_LIBRARY_SORT_LABELS[mode]); });
   if (!_reorderLibraryInPlace()) renderHome();
 }
 
@@ -4139,16 +4228,21 @@ var _LIBRARY_SORT_LABELS = {
   alpha: 'sort_alpha', added: 'sort_added',
   updated: 'sort_updated', entries: 'sort_entries',
 };
+// Text-sized, the order it is in beside a sort mark: a full select box
+// outweighed the APPS heading it sits on, on a phone most of all. The native
+// select lies over it unseen, so a tap still opens the system's own picker.
+var _LIB_SORT_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>';
 function _libSortHtml() {
   var cur = _librarySort();
   var opts = LIBRARY_SORTS.map(function(k) {
     return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' +
       esc(t(_LIBRARY_SORT_LABELS[k])) + '</option>';
   }).join('');
-  return '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
-    '" title="' + escAttr(t('library_sort')) +
+  return '<label class="lib-sort-wrap" title="' + escAttr(t('library_sort')) + '" onclick="event.stopPropagation()">' + _LIB_SORT_SVG +
+    '<span class="lib-sort-now">' + esc(t(_LIBRARY_SORT_LABELS[cur] || _LIBRARY_SORT_LABELS.alpha)) + '</span>' +
+    '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
     '" onchange="event.stopPropagation();_setLibrarySort(this.value)"' +
-    ' onclick="event.stopPropagation()">' + opts + '</select>';
+    ' onclick="event.stopPropagation()">' + opts + '</select></label>';
 }
 
 // Place the segmented view toggle on the first section header (the Apps, which
@@ -4697,8 +4791,11 @@ function _shortAge(tsSec) {
   return t('just_now');
 }
 
-function renderCardGrid(items, showStars, showCategory) {
+// ``countOf(z)``: the count on a card's line, _zimCountHtml's by default (the
+// Apps page counts what each app shows, _appItemsHtml); '' leaves it out.
+function renderCardGrid(items, showStars, showCategory, countOf) {
   if (!items || !items.length) return '';
+  countOf = countOf || _zimCountHtml;
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
@@ -4742,8 +4839,7 @@ function renderCardGrid(items, showStars, showCategory) {
         // (in the list the .zt span is inline, so nothing changes there).
         '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-        '<div class="detail">' + catPrefix + _zimCountHtml(z) +
-        ' &middot; ' + fmtSize(z.size_gb) +
+        '<div class="detail">' + catPrefix + [countOf(z), fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ') +
         // Both dates carry their own separator, so either can be taken out
         // without leaving a dangling middot behind — which is what lets the
         // in-place re-sort swap them without rebuilding the card.
@@ -4759,6 +4855,8 @@ var _discoverLoading = false;
 var DISCOVER_RETRY_MS = 10000;  // a cold start's partial row asks again once, this much later
 var _discoverRetried = {};      // the day's cache keys already asked again in this page
 
+// The Moon's mean distance over the Sun's, for the phase angle (Meeus 48.3).
+var _MOON_SUN_DIST_RATIO = 385000.56 / 149597870.7;
 function _moonPhase(date) {
   // True phase from the Moon–Sun elongation (Meeus, main periodic terms).
   // The old linear-synodic model drifted the age and quarter dates up to
@@ -4767,27 +4865,20 @@ function _moonPhase(date) {
   var rad = Math.PI / 180;
   var JD = date.getTime() / 86400000 + 2440587.5;
   var T = (JD - 2451545.0) / 36525.0;
-  var D  = 297.8501921 + 445267.1114034 * T - 0.0018819 * T * T;   // elongation
-  var M  = 357.5291092 + 35999.0502909 * T - 0.0001536 * T * T;    // sun anomaly
-  var Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T * T;   // moon anomaly
-  var F  = 93.2720950 + 483202.0175233 * T - 0.0036539 * T * T;    // moon arg. of lat.
-  var Lp = 218.3164477 + 481267.88123421 * T;                      // moon mean longitude
+  var moon = _moonEcliptic(T);
+  var M = moon.Ms;
   var Ls = 280.4664567 + 36000.76982779 * T;                       // sun mean longitude
-  var lambdaMoon = Lp
-    + 6.289 * Math.sin(Mp * rad)
-    + 1.274 * Math.sin((2 * D - Mp) * rad)
-    + 0.658 * Math.sin(2 * D * rad)
-    + 0.214 * Math.sin(2 * Mp * rad)
-    - 0.186 * Math.sin(M * rad)
-    - 0.114 * Math.sin(2 * F * rad)
-    + 0.059 * Math.sin((2 * D - 2 * Mp) * rad)
-    + 0.057 * Math.sin((2 * D - M - Mp) * rad);
   var lambdaSun = Ls
     + (1.9146 - 0.004817 * T) * Math.sin(M * rad)
     + 0.019993 * Math.sin(2 * M * rad);
-  var elong = (((lambdaMoon - lambdaSun) % 360) + 360) % 360; // 0=new, 180=full
+  var elong = (((moon.lng - lambdaSun) % 360) + 360) % 360; // 0=new, 180=full
   var phase = elong / 360;
-  var illumExact = (1 - Math.cos(elong * rad)) / 2 * 100;
+  // The lit fraction is the phase angle's, Sun-Moon-Earth (Meeus 48.2-48.3):
+  // the true elongation counts the Moon's latitude, which keeps a new Moon
+  // off the Sun's line by up to 5 degrees, and the Sun's finite distance.
+  var psi = Math.acos(Math.cos(moon.lat * rad) * Math.cos(elong * rad));
+  var i = Math.atan2(Math.sin(psi), _MOON_SUN_DIST_RATIO - Math.cos(psi));
+  var illumExact = (1 + Math.cos(i)) / 2 * 100;
   var illum = Math.round(illumExact * 10) / 10;
   // Name by NARROW windows around the principal phases (±0.6 day), so the
   // crescent/gibbous ranges get their fair share and quarters read ~50%.
@@ -4853,24 +4944,96 @@ var _MOON_PHASE_I18N = {
 };
 function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I18N[name]) : name; }
 
-// ── Moon rendering — the real photo, shaded per-pixel, shared everywhere ──
-// The old renderer stacked two solid half-discs under a scaled-ellipse
-// terminator: a razor-sharp edge, a hard seam at the quarters, no limb
-// darkening. This draws the full-resolution moon photo and multiplies it by a
-// physically-shaded brightness map — normal·Sun for a soft terminator, limb
-// darkening toward the rim, and an earthshine FLOOR so the shadowed side stays
-// a visible (cool, dim) sphere rather than going black. Static per phase, so
-// it's computed once and cached.
+// ── Moon rendering — the Moon as seen, drawn from the lunar map ──
+// Every disc (the Almanac hero, the Today card, the sky scene) is an
+// orthographic view of the same equirectangular LRO map the 3D view wraps its
+// sphere in. Nothing is a rotated photo: the point of the Moon facing us is
+// the optical libration (l, b), the terminator comes from the phase angle and
+// the bright limb's direction, and the light is _moonLunarLambert's, the model
+// the 3D view's shader is written from too.
+// The sprite is drawn lunar north up; the pole's turn in the viewer's sky is
+// one whole-disc rotation, so a sprite depends only on the phase and the
+// libration and stays cacheable while the sky wheels around it.
+//
+// Two maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
+// The 4096 one (730 KB) is asked for only once the page has painted and gone
+// idle (_moonAfterFirstPaint), and from then on every disc wide enough to
+// show it is drawn from it; the Today card's disc is too small to.
+var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
+var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
 var _MOON_TEX = new Image();
+var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
   _moonTexReady = true;
-  _moonSpriteCache = {};
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
-_MOON_TEX.src = '/static/moon.webp?v=1';
+_MOON_TEX.src = _MOON_MAP_URL;
 
-var _moonSpriteCache = {};
+// The map is LRO albedo, harsher than the eye sees the Moon (its darkest
+// maria sit near a third of its brightest highlands); this lift and gain put
+// its near-side spread where a photograph of the full Moon has it.
+var _MOON_ALBEDO_LIFT = 60;
+var _MOON_ALBEDO_GAIN = 0.8;
+var _MOON_PLAIN_GREY = 184;       // the disc's grey until the map arrives
+// Sunlight a touch warm, earthshine cool: red and blue gain [base, per unit
+// of the light's sunlit share] (green is 1). The 3D Moon's shader reads the
+// same numbers, so the two Moons are one picture.
+var _MOON_TINT_R = [0.99, 0.05];
+var _MOON_TINT_B = [1.18, -0.18];
+// Map widths read back: the Today card's 48px disc needs a quarter of the
+// small map; a wider disc reads one map pixel per disc pixel at its centre
+// (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
+// the small map's width up to the 4096 one's once that is in.
+var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_HI_W = 4096;
+var _MOON_MAP_SMALL_W = 256;
+var _MOON_MAP_SMALL_UPTO_PX = 160;
+var _MOON_SPRITE_MAX_PX = 768;    // the hero's 200 CSS px at 3x is 600
+var _MOON_SPRITE_CACHE_MAX = 48;  // sprites kept; time travel makes new ones every frame
+
+// A Map that forgets its oldest entry past max (insertion order is age).
+function _moonCachePut(cache, key, val) {
+  cache.set(key, val);
+  if (cache.size > _MOON_SPRITE_CACHE_MAX) cache.delete(cache.keys().next().value);
+  return val;
+}
+var _moonSpriteCache = new Map();        // data URLs, for <img>
+var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and motion
+
+// The 4096 map, asked for once the page has painted (two frames after load,
+// then idle), so it never competes with the first paint for the network or
+// the main thread. It is decoded off the main thread (decode()), and the
+// discs it sharpens are redrawn when the page is next idle: on a phone the
+// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms. The 3D
+// Moon (almanac-earth.js) is drawn from the same decoded picture: one fetch,
+// one decode. Resolves with the Image, or null if it could not be had.
+var _MOON_IDLE_TIMEOUT_MS = 3000;
+var _moonHiLoad = null;
+function _moonIdle(fn) {
+  (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
+}
+function _moonLoadHiMap() {
+  if (_moonHiLoad) return _moonHiLoad;
+  var im = new Image();
+  im.src = _MOON_MAP_HI_URL;
+  _moonHiLoad = im.decode().then(function () {
+    _MOON_TEX_HI = im;
+    _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
+    return im;
+  }, function () { return null; });   // without it every disc keeps the 1024 map
+  return _moonHiLoad;
+}
+function _moonAfterFirstPaint(fn) {
+  var go = function () {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { _moonIdle(fn); });
+    });
+  };
+  if (document.readyState === 'complete') go();
+  else window.addEventListener('load', go, { once: true });
+}
+_moonAfterFirstPaint(_moonLoadHiMap);
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -4879,190 +5042,353 @@ function _smoothstep(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
-// Sprite for an illuminated fraction (0..1) and waxing flag → data URL.
-// Untilted (lit limb on the right when waxing); the caller rotates it.
-function _renderMoonSprite(illumFrac, waxing, sizePx) {
-  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
-    (_moonTexReady ? 't' : '');
-  if (_moonSpriteCache[key]) return _moonSpriteCache[key];
-  var url = _moonSpriteCanvas(illumFrac, waxing, sizePx).toDataURL('image/png');
-  _moonSpriteCache[key] = url;
-  return url;
+// ── The Moon's light — one model, for the 2D discs and the 3D view ──
+// The Moon is not a Lambert ball: its dusty surface scatters light back the
+// way it came, so the full Moon is a flat disc, not one darkening to its rim.
+// McEwen's lunar-Lambert function (1991) says how, between Lommel-Seeliger
+// (the full Moon's flat disc) and Lambert (the crescent's falloff), weighted
+// by L, a cubic in the phase angle fitted to the Moon's photometry:
+//   r = 2L mu0 / (mu0 + mu) + (1 - L) mu0
+// mu0, mu the cosines of the Sun's and the viewer's angle from the surface
+// normal; 1 at the disc's centre at full Moon, where the map is shown as it is.
+// Toward the terminator the ground is rough: craters and hills shadow more of
+// it the lower the Sun stands (Hapke's macroscopic roughness), too small to
+// draw but seen together as the light dying away over the last ~15 degrees of
+// sunlight, which is what turns the terminator into the gradual fade a phone
+// photo of the Moon shows rather than a line.
+// The light then goes to the screen as a camera takes it, encoded
+// (_moonDisplay), not linearly.
+var _MOON_LUNAR_L = [1, -0.019, 2.42e-4, -1.46e-6];   // L(alpha), alpha in degrees
+var _MOON_ROUGH_MU = 0.25;                            // mu0 under which the rough ground shadows itself
+var _MOON_DISPLAY_GAMMA = 2.2;
+// Earthshine: sunlight off the Earth, which from the Moon is full when the
+// Moon is new. Its strength follows the Earth's phase as seen from the Moon
+// (a Lambert sphere's phase function), as a camera sees it: a faint dark
+// side beside a crescent, gone at full Moon, where only a trace of the dark
+// limb shows against the sky.
+var _MOON_EARTHSHINE_MAX = 0.01;     // linear, against the full Moon's 1
+var _MOON_EARTHSHINE_FLOOR = 0.0015; // linear; the dark limb's outline
+
+function _moonLunarL(cosAlpha) {
+  var a = Math.acos(Math.max(-1, Math.min(1, cosAlpha))) * 180 / Math.PI;
+  var c = _MOON_LUNAR_L;
+  return Math.max(0, Math.min(1, c[0] + a * (c[1] + a * (c[2] + a * c[3]))));
 }
 
-// The unshaded source pixels for a sprite size — the moon photo (or, before it
-// loads, a neutral grey disc) rasterized at N and read back ONCE per size.
-// _moonSpriteCanvas used to drawImage + getImageData per phase bucket; the
-// readback is a GPU sync stall (WebKit measured ~6.6ms/bucket at 128px, ~100
-// buckets on a cold fast lever throw). Shading now copies these cached pixels,
-// so a new bucket costs only the JS shading loop + one putImageData.
-var _moonTexBaseCache = {};
-function _moonTexBaseData(N) {
-  var key = N + (_moonTexReady ? 't' : '');
-  if (_moonTexBaseCache[key]) return _moonTexBaseCache[key];
-  var cv = document.createElement('canvas');
-  cv.width = cv.height = N;
-  var ctx = cv.getContext('2d', { willReadFrequently: true });
-  // Same-origin photo, so getImageData won't taint.
-  if (_moonTexReady) {
-    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
-  } else {
-    ctx.fillStyle = '#b8b4aa';
-    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
+// Radiance (linear, 1 = the full Moon's centre) for mu0, mu and L.
+function _moonLunarLambert(mu0, mu, L) {
+  if (mu0 <= 0) return 0;
+  return (2 * L * mu0 / (mu0 + Math.max(mu, 0)) + (1 - L) * mu0) * _smoothstep(0, _MOON_ROUGH_MU, mu0);
+}
+
+// Earthshine (linear) for the Moon's phase angle: the Earth's phase angle
+// seen from the Moon is its supplement.
+function _moonEarthshine(cosAlpha) {
+  var beta = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
+  var phi = (Math.sin(beta) + (Math.PI - beta) * Math.cos(beta)) / Math.PI;
+  return _MOON_EARTHSHINE_FLOOR + _MOON_EARTHSHINE_MAX * Math.max(0, phi);
+}
+
+// Linear light to the screen's brightness.
+function _moonDisplay(lin) { return lin > 0 ? Math.pow(lin, 1 / _MOON_DISPLAY_GAMMA) : 0; }
+
+// _moonDisplay tabulated for the sprite loop (a pow per pixel was a third of
+// the hero's cost), indexed by the square root of the light so the steep dark
+// end, where the terminator fades out, is finely spaced.
+var _MOON_DISPLAY_LUT_N = 4096;
+var _MOON_DISPLAY_LUT_MAX = 2;     // lunar-Lambert peaks under 2, at the bright limb
+var _MOON_DISPLAY_LUT = null;
+function _moonDisplayLut() {
+  if (_MOON_DISPLAY_LUT) return _MOON_DISPLAY_LUT;
+  var t = new Float32Array(_MOON_DISPLAY_LUT_N + 1);
+  for (var i = 0; i <= _MOON_DISPLAY_LUT_N; i++) {
+    var r = i / _MOON_DISPLAY_LUT_N;
+    t[i] = _moonDisplay(r * r * _MOON_DISPLAY_LUT_MAX);
   }
-  var img = ctx.getImageData(0, 0, N, N);
-  _moonTexBaseCache[key] = img;
-  return img;
+  return (_MOON_DISPLAY_LUT = t);
 }
 
-// The shaded moon as a <canvas> (cached) — the sky scene draws it directly so
-// its dark side shows the same earthshine as the hero, not a black shadow.
-var _moonSpriteCanvasCache = {};
-function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
-  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
-    (_moonTexReady ? 't' : '');
-  if (_moonSpriteCanvasCache[key]) return _moonSpriteCanvasCache[key];
-
-  // Render at the display's device resolution (2× the CSS size on retina),
-  // capped at 512, so the per-pixel shading — terminator haze, limb darkening,
-  // the edge — stays crisp when the hero moon is zoomed. The maria come from
-  // the 256px photo, so their fine detail is bounded by that source; upscaling
-  // the shading past it still sharpens every gradient the math draws.
+// The disc's device-pixel size for a CSS size: the display's resolution, so
+// the terminator's fade and the limb stay smooth on the hero.
+function _moonSpriteN(sizePx) {
   var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
-  var N = Math.min(512, Math.max(64, Math.round(sizePx * dpr)));
+  return Math.min(_MOON_SPRITE_MAX_PX, Math.max(64, Math.round(sizePx * dpr)));
+}
+
+// The map width a disc N device pixels wide is drawn from, 0 before any map.
+function _moonMapWidthFor(N) {
+  if (!_moonTexReady) return 0;
+  if (N <= _MOON_MAP_SMALL_UPTO_PX) return _MOON_MAP_SMALL_W;
+  if (!_MOON_TEX_HI) return _MOON_MAP_FULL_W;
+  var W = _MOON_MAP_FULL_W;
+  while (W < Math.PI * N && W < _MOON_MAP_HI_W) W *= 2;
+  return W;
+}
+
+// The map as greyscale albedo at width W (W x W/2), toned, read back once per
+// width. The readback is a GPU sync, so it happens once, not per sprite.
+// Widths past the small map's come from the 4096 one.
+var _moonMapCache = {};
+function _moonMapData(W) {
+  if (_moonMapCache[W]) return _moonMapCache[W];
+  var H = W / 2;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(W > _MOON_MAP_FULL_W ? _MOON_TEX_HI : _MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
+  var src = ctx.getImageData(0, 0, W, H).data;
+  var g = new Uint8Array(W * H);
+  for (var i = 0; i < g.length; i++) g[i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
+  return (_moonMapCache[W] = { w: W, h: H, g: g });
+}
+
+// A sprite's inputs, rounded to what the eye can tell apart (1% of phase, a
+// degree of angle), and the map it is drawn from, so the key and the drawing
+// agree. A disc the 4096 map does not change keeps its key, and its sprite.
+function _moonSpriteKey(v, sizePx) {
+  return Math.round(v.k * 100) + ':' + Math.round(v.limb) + ':' + Math.round(v.l) + ':' +
+    Math.round(v.b) + 'x' + sizePx + 'm' + _moonMapWidthFor(_moonSpriteN(sizePx));
+}
+
+// Sprite for a view (see _moonView) → data URL, for an <img>.
+function _renderMoonSprite(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
+  return _moonSpriteCache.get(key) ||
+    _moonCachePut(_moonSpriteCache, key, _moonSpriteCanvas(v, sizePx).toDataURL('image/png'));
+}
+
+// The shaded Moon as a <canvas>, lunar north up: v.k the lit fraction, v.limb
+// the bright limb's direction counterclockwise from the lunar north pole
+// (degrees), v.l / v.b the selenographic point at the disc's centre.
+function _moonSpriteCanvas(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
+  var hit = _moonSpriteCanvasCache.get(key);
+  if (hit) return hit;
+
+  var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');
-  var base = _moonTexBaseData(N);
-  var img = new ImageData(new Uint8ClampedArray(base.data), N, N);
+  var img = ctx.createImageData(N, N);
   var data = img.data;
+  var mapW = _moonMapWidthFor(N);
+  var map = mapW ? _moonMapData(mapW) : null;
 
-  // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
-  var cosP = 2 * illumFrac - 1;
-  var sinP = Math.sqrt(Math.max(0, 1 - cosP * cosP));
-  var sx = (waxing ? 1 : -1) * sinP, sz = cosP;
-  var term = 0.055;                 // terminator half-width (haze) in dot units
-  // Earthshine: the shadowed side stays clearly visible (a dim, cool disc),
-  // brightest near new moon when the Earth is "full" in the Moon's sky.
-  var earth = 0.16 + 0.10 * (1 - illumFrac);
+  var D2R = Math.PI / 180;
+  // The Sun: phase angle i from the lit fraction (k = (1 + cos i) / 2), in the
+  // direction of the bright limb (up = lunar north, counterclockwise).
+  var k = Math.round(v.k * 100) / 100, a = Math.round(v.limb) * D2R;
+  var cosI = 2 * k - 1, sinI = Math.sqrt(Math.max(0, 1 - cosI * cosI));
+  var sx = -Math.sin(a) * sinI, sy = Math.cos(a) * sinI, sz = cosI;
+  // The disc's axes on the Moon (x toward longitude 0, y toward 90 E, z the
+  // north pole): screen right is east, up is north, out of the screen is the
+  // point (l, b).
+  var l = Math.round(v.l) * D2R, b = Math.round(v.b) * D2R;
+  var sl = Math.sin(l), cl = Math.cos(l), sb = Math.sin(b), cb = Math.cos(b);
+  var TWO_PI = 2 * Math.PI;
+  var L = _moonLunarL(cosI);
+  var earth = _moonEarthshine(cosI);   // the Earth is where we are: it lights the disc evenly
+  var edgeW = 2.4 / N;
+  var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
+  var r0 = _MOON_TINT_R[0], r1 = _MOON_TINT_R[1], b0 = _MOON_TINT_B[0], b1 = _MOON_TINT_B[1];
 
   for (var py = 0; py < N; py++) {
-    var y = (py + 0.5) / N * 2 - 1;              // +1 top .. -1 bottom
+    var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
     for (var px = 0; px < N; px++) {
       var x = (px + 0.5) / N * 2 - 1;
       var r2 = x * x + y * y;
       var o = (py * N + px) * 4;
-      if (r2 >= 1.0) { data[o + 3] = 0; continue; }
-      var z = Math.sqrt(1 - r2);                 // toward viewer
-      var lit = _smoothstep(-term, term, x * sx + z * sz);
-      var limb = Math.pow(z, 0.42);              // limb darkening
-      var litI = lit * limb;                     // sunlit component
-      var darkI = (1 - lit) * earth * limb;      // earthshine component
-      var m = litI + darkI;
-      var warm = m > 0 ? litI / m : 0;           // 1 = fully sunlit, 0 = earthshine
-      // Multiply the photo by brightness; sunlit side warm, earthshine cool.
-      var R = data[o] * m * (0.99 + 0.05 * warm);
-      var G = data[o + 1] * m;
-      var B = data[o + 2] * m * (1.18 - 0.18 * warm);
+      if (r2 >= 1.0) continue;                   // createImageData is transparent
+      var z = Math.sqrt(1 - r2);                 // toward the viewer: mu
+      var g = _MOON_PLAIN_GREY;
+      if (map) {
+        var bx = -x * sl - y * sb * cl + z * cb * cl;
+        var by = x * cl - y * sb * sl + z * cb * sl;
+        var bz = y * cb + z * sb;
+        var fu = (_moonFastAtan2(by, bx) / TWO_PI + 0.5) * map.w - 0.5;
+        var fv = (0.5 - _moonFastAtan2(bz, Math.sqrt(bx * bx + by * by)) / Math.PI) * map.h - 0.5;
+        g = _moonMapSample(map, fu, fv);
+      }
+      var sun = _moonLunarLambert(x * sx + y * sy + z * sz, z, L);
+      var lin = sun + earth;
+      var warm = sun / lin;                      // 1 = all sunlight, 0 = all earthshine
+      var li = Math.sqrt(lin) * lutK;
+      var gm = g * lut[li < _MOON_DISPLAY_LUT_N ? li | 0 : _MOON_DISPLAY_LUT_N];
+      // Sunlit side faintly warm, earthshine cool.
+      data[o] = Math.min(255, gm * (r0 + r1 * warm));
+      data[o + 1] = Math.min(255, gm);
+      data[o + 2] = Math.min(255, gm * (b0 + b1 * warm));
       // Antialias the limb over the outer ~1px ring.
-      var edge = _smoothstep(1.0, 1.0 - 2.4 / N, r2);
-      data[o] = Math.min(255, R);
-      data[o + 1] = Math.min(255, G);
-      data[o + 2] = Math.min(255, B);
-      data[o + 3] = 255 * edge;
+      data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }
   }
   ctx.putImageData(img, 0, 0);
-  _moonSpriteCanvasCache[key] = cv;
-  return cv;
+  return _moonCachePut(_moonSpriteCanvasCache, key, cv);
 }
 
-// Shared moon renderer — hero (almanac) + Today card. Returns HTML embedding
-// the shaded sprite as an <img>, rotated by tiltDeg (the sprite math stays
-// untilted so it's phase-cacheable; orientation is a whole-disc rotation).
-function _renderMoonHTML(m, wrapClass, tiltDeg) {
-  var illumFrac = m.illumination / 100;
-  var waxing = _moonIsWaxing(m);
+// atan2 to within 0.012 degrees (a hundredth of a map pixel) at a third of
+// Math.atan2's cost; the hero calls it twice for each of 200,000 pixels.
+function _moonFastAtan2(y, x) {
+  var ax = Math.abs(x), ay = Math.abs(y);
+  var mx = ax > ay ? ax : ay, mn = ax > ay ? ay : ax;
+  if (mx === 0) return 0;
+  var a = mn / mx, s = a * a;
+  var r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if (ay > ax) r = Math.PI / 2 - r;
+  if (x < 0) r = Math.PI - r;
+  return y < 0 ? -r : r;
+}
+
+// Bilinear sample of the map at fractional pixel (fu, fv), wrapping in
+// longitude and clamping at the poles.
+// fu lies in [-0.5, W - 0.5) and fv in [-0.5, H - 0.5], so each neighbour
+// is at most one step past an edge.
+function _moonMapSample(map, fu, fv) {
+  var W = map.w, H = map.h, G = map.g;
+  var u0 = Math.floor(fu), v0 = Math.floor(fv), du = fu - u0, dv = fv - v0;
+  var u1 = u0 + 1;
+  if (u0 < 0) u0 = W - 1;
+  if (u1 >= W) u1 = 0;
+  var r0 = (v0 < 0 ? 0 : v0) * W;
+  var r1 = (v0 + 1 >= H ? H - 1 : v0 + 1) * W;
+  var top = G[r0 + u0] + (G[r0 + u1] - G[r0 + u0]) * du;
+  var bot = G[r1 + u0] + (G[r1 + u1] - G[r1 + u0]) * du;
+  return top + (bot - top) * dv;
+}
+
+// Shared moon renderer — hero (almanac) + Today card. `v` is a _moonView: the
+// sprite carries the phase and libration, the element turns by v.tilt.
+function _renderMoonHTML(v, wrapClass) {
   var isHero = wrapClass === 'almanac-moon';
   var size = isHero ? 200 : 48;
-  var url = _renderMoonSprite(illumFrac, waxing, size);
-  var tilt = (tiltDeg || 0).toFixed(1);
+  var url = _renderMoonSprite(v, size);
   var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
-  var rot = tiltDeg ? 'rotate(' + tilt + 'deg)' : '';
+  var rot = v.tilt ? 'rotate(' + v.tilt.toFixed(1) + 'deg)' : '';
   var xform = (base + rot).trim();
+  var data = _moonSpriteData(v), dataAttrs = '';
+  for (var n in data) dataAttrs += 'data-' + n + '="' + data[n] + '" ';
   return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
     '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
-    'data-illum="' + illumFrac.toFixed(4) + '" data-waxing="' + (waxing ? 1 : 0) + '" data-size="' + size + '" ' +
+    dataAttrs + 'data-size="' + size + '" ' +
     'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
 }
+// What a moon <img> carries of its view, for _repaintMoons to draw it again.
+function _moonSpriteData(v) {
+  return { k: v.k.toFixed(4), limb: v.limb.toFixed(1), l: v.l.toFixed(1), b: v.b.toFixed(1) };
+}
+// Point a rendered moon <img> at view v (the Almanac's live hero).
+function _setMoonSprite(img, v) {
+  var data = _moonSpriteData(v);
+  for (var n in data) img.setAttribute('data-' + n, data[n]);
+  var url = _renderMoonSprite(v, parseInt(img.getAttribute('data-size'), 10) || 48);
+  if (img.getAttribute('src') !== url) img.src = url;
+}
 
-// Repaint already-rendered moon sprites in place — called when the texture
-// finishes loading so a moon drawn before the albedo was ready upgrades to
-// the textured version without a full re-render.
+// Repaint already-rendered moon sprites in place — called when the map
+// finishes loading so a disc drawn before it was ready (plain grey, but with
+// the right phase and turn) gains its maria without a full re-render.
 function _repaintMoons() {
   var imgs = document.querySelectorAll('img.moon-sprite');
   for (var i = 0; i < imgs.length; i++) {
     var el = imgs[i];
-    var url = _renderMoonSprite(
-      parseFloat(el.getAttribute('data-illum')) || 0,
-      el.getAttribute('data-waxing') === '1',
-      parseInt(el.getAttribute('data-size'), 10) || 48
-    );
+    var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
+    var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+      parseInt(el.getAttribute('data-size'), 10) || 48);
     if (el.src !== url) el.src = url;
   }
 }
 
 // ── Canonical moon orientation — ONE derivation for every renderer ──
-// The hero disc (almanac.js _heroMoonTiltDeg), the sky-scene moon
-// (almanac-sky.js) and the Today discover card (below) must all show the SAME
-// moon for the same instant and place. They all rotate the same untilted
-// sprite (lit limb at 3 o'clock when waxing) by the screen tilt computed here:
-// -(chi - q) - 90, where chi is the bright-limb position angle (Meeus 48.5)
-// and q the parallactic angle. This lives in app.js because the Today card
-// renders before almanac.js loads; almanac.js delegates to it.
+// The hero disc, the sky-scene moon, the Today discover card and the 3D view
+// must all show the SAME moon for the same instant and place. _moonView gives
+// it: the lunar-north-up sprite's inputs and the one turn that stands it in
+// the viewer's sky. This lives in app.js because the Today card renders before
+// almanac.js loads; almanac.js delegates to it.
 
-// Geocentric equatorial coordinates of the Moon — the same orbital-element
-// evaluation _moonPosition (almanac.js) starts from, hoisted here so the two
-// files cannot drift apart.
+// Geocentric coordinates of the Moon — the same orbital-element evaluation
+// _moonPosition (almanac.js) starts from, hoisted here so the two files cannot
+// drift apart. lng/lat are ecliptic (degrees), ra/dec equatorial (radians).
+// The largest terms of Meeus's Moon (Astronomical Algorithms ch. 47, tables
+// 47.A and 47.B): [D, M, M', F, degrees], every term over 0.0035 degree. With
+// them the Moon stands within ~0.05 degree of JPL's ephemeris
+// (tests/test_moon_sun_horizons.cjs); the six terms it had were 0.5 off, one
+// of them (M' - F) with its sign turned. Terms in M carry the Earth orbit's
+// shrinking eccentricity, E.
+var _MOON_LON_TERMS = [
+  [0, 0, 1, 0, 6.288774], [2, 0, -1, 0, 1.274027], [2, 0, 0, 0, 0.658314], [0, 0, 2, 0, 0.213618],
+  [0, 1, 0, 0, -0.185116], [0, 0, 0, 2, -0.114332], [2, 0, -2, 0, 0.058793], [2, -1, -1, 0, 0.057066],
+  [2, 0, 1, 0, 0.053322], [2, -1, 0, 0, 0.045758], [0, 1, -1, 0, -0.040923], [1, 0, 0, 0, -0.034720],
+  [0, 1, 1, 0, -0.030383], [2, 0, 0, -2, 0.015327], [0, 0, 1, 2, -0.012528], [0, 0, 1, -2, 0.010980],
+  [4, 0, -1, 0, 0.010675], [0, 0, 3, 0, 0.010034], [4, 0, -2, 0, 0.008548], [2, 1, -1, 0, -0.007888],
+  [2, 1, 0, 0, -0.006766], [1, 0, -1, 0, -0.005163], [1, 1, 0, 0, 0.004987], [2, -1, 1, 0, 0.004036],
+  [2, 0, 2, 0, 0.003994], [4, 0, 0, 0, 0.003861], [2, 0, -3, 0, 0.003665]
+];
+var _MOON_LAT_TERMS = [
+  [0, 0, 0, 1, 5.128122], [0, 0, 1, 1, 0.280602], [0, 0, 1, -1, 0.277693], [2, 0, 0, -1, 0.173237],
+  [2, 0, -1, 1, 0.055413], [2, 0, -1, -1, 0.046271], [2, 0, 0, 1, 0.032573], [0, 0, 2, 1, 0.017198],
+  [2, 0, 1, -1, 0.009266], [0, 0, 2, -1, 0.008822], [2, -1, 0, -1, 0.008216], [2, 0, -2, -1, 0.004324],
+  [2, 0, 1, 1, 0.004200]
+];
+function _moonSeries(terms, D, M, Mp, F, E) {
+  var D2R = Math.PI / 180, s = 0;
+  for (var i = 0; i < terms.length; i++) {
+    var t = terms[i], c = t[4];
+    if (t[1]) c *= t[1] === 1 || t[1] === -1 ? E : E * E;
+    s += c * Math.sin((t[0] * D + t[1] * M + t[2] * Mp + t[3] * F) * D2R);
+  }
+  return s;
+}
+// The Moon's geocentric ecliptic longitude and latitude (degrees) at T,
+// Julian centuries from J2000, and the arguments they come from.
+function _moonEcliptic(T) {
+  var L0 = 218.3164477 + 481267.88123421 * T;   // mean longitude
+  var D = 297.8501921 + 445267.1114034 * T;     // mean elongation
+  var Ms = 357.5291092 + 35999.0502909 * T;     // the Sun's mean anomaly
+  var M = 134.9633964 + 477198.8675055 * T;     // the Moon's mean anomaly
+  var F = 93.2720950 + 483202.0175233 * T;      // argument of latitude
+  var E = 1 - 0.002516 * T;
+  return {
+    lng: ((L0 + _moonSeries(_MOON_LON_TERMS, D, Ms, M, F, E)) % 360 + 360) % 360,
+    lat: _moonSeries(_MOON_LAT_TERMS, D, Ms, M, F, E),
+    D: D, Ms: Ms % 360, M: M, F: F % 360
+  };
+}
+
 function _moonEqCoords(date) {
   var JD = 2440587.5 + date.getTime() / 86400000;
   var T = (JD - 2451545.0) / 36525;
   var D2R = Math.PI / 180;
-  var L0 = (218.3165 + 481267.8813 * T) % 360;   // mean longitude
-  var M  = (134.9634 + 477198.8676 * T) % 360;   // mean anomaly
-  var Ms = (357.5291 +  35999.0503 * T) % 360;   // sun mean anomaly
-  var F  = (93.2720  + 483202.0175 * T) % 360;   // argument of latitude
-  var D  = (297.8502 + 445267.1115 * T) % 360;   // mean elongation
-  var lng = L0
-    + 6.289 * Math.sin(M * D2R)
-    - 1.274 * Math.sin((2 * D - M) * D2R)
-    - 0.658 * Math.sin(2 * D * D2R)
-    - 0.214 * Math.sin(2 * M * D2R)
-    - 0.186 * Math.sin(Ms * D2R);
-  var lat_ec = 5.128 * Math.sin(F * D2R)
-    + 0.281 * Math.sin((M + F) * D2R)
-    + 0.278 * Math.sin((F - M) * D2R);
-  var eps = 23.44 * D2R;
+  var ec = _moonEcliptic(T);
+  var Ms = ec.Ms, F = ec.F, lng = ec.lng, lat_ec = ec.lat;
+  var eps = (23.439291 - 0.0130042 * T) * D2R;
   var lngR = lng * D2R, latR = lat_ec * D2R;
   var dec = Math.asin(Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR));
   var ra = Math.atan2(Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps), Math.cos(lngR));
-  return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms };
+  return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms, lng: lng, lat: lat_ec, F: F };
 }
 
-// Screen tilt (degrees, CSS/canvas rotation sense) of the untilted moon sprite
-// for an observer at lat/lon: the bright limb faces the Sun as seen in that
-// sky. chi is measured from celestial north; subtracting the parallactic
-// angle q gives it from the observer's vertical; the sprite's lit limb starts
-// at 3 o'clock and CSS rotation runs opposite the position-angle sense, hence
-// -(chi - q) - 90.
-function _moonScreenTiltDeg(date, lat, lon) {
-  var eq = _moonEqCoords(date);
+// Where the Moon's lit limb points, in degrees, for one instant:
+//   chi  the position angle of the bright limb's midpoint, from celestial
+//        north through east (Meeus 48.5);
+//   q    the parallactic angle at the observer, the turn from celestial north
+//        to the zenith at the Moon (Meeus 14.1); 0 when lat is null;
+//   rot  chi - q: the lit limb's direction from "up" in the observer's sky,
+//        counterclockwise as they look at it (east of north is to the left).
+// Without a place (lat null) "up" is celestial north and rot = chi, which
+// is labelled "north up" wherever it is shown.
+function _moonLimbAngles(date, lat, lon) {
+  return _moonLimbAnglesOf(_moonEqCoords(date), lat, lon);
+}
+function _moonLimbAnglesOf(eq, lat, lon) {
   var D2R = Math.PI / 180;
-  var GMST = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
-  var HA = (GMST + lon) * D2R - eq.ra;
-  var latR = lat * D2R;
-  var q = Math.atan2(Math.sin(HA), Math.tan(latR) * Math.cos(eq.dec) - Math.sin(eq.dec) * Math.cos(HA));
+  var q = 0;
+  if (lat != null) {
+    var GMST = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
+    var HA = (GMST + lon) * D2R - eq.ra;
+    q = Math.atan2(Math.sin(HA), Math.tan(lat * D2R) * Math.cos(eq.dec) - Math.sin(eq.dec) * Math.cos(HA));
+  }
   // Sun's equatorial position (low-precision) for the bright-limb angle chi.
   var Lsun = 280.4665 + 36000.7698 * eq.T;
   var lamSun = (Lsun + 1.915 * Math.sin(eq.Ms * D2R) + 0.020 * Math.sin(2 * eq.Ms * D2R)) * D2R;
@@ -5071,37 +5397,87 @@ function _moonScreenTiltDeg(date, lat, lon) {
   var dA = raSun - eq.ra;
   var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
     Math.sin(decSun) * Math.cos(eq.dec) - Math.cos(decSun) * Math.sin(eq.dec) * Math.cos(dA));
-  var tilt = -((chi - q) * 180 / Math.PI) - 90;
-  // The sprite has ALREADY put the lit limb on the correct side: it shades
-  // from a Sun vector whose sign is the waxing flag (_moonSpriteCanvas, sx).
-  // chi carries that same flip, because the bright limb genuinely swaps sides
-  // between waxing and waning — so applying both turned every waning moon by
-  // a further 180 degrees. Half of every month was drawn upside down: the lit
-  // limb on the wrong side and the maria inverted, which is what a southern
-  // hemisphere moon looks like from the north (issue #60).
-  //
-  // The correction turns over at new and full, where the sprite's own flag
-  // does. At full the disc is whole and the step is invisible; at new it is
-  // 0% lit, so what turns over is the maria on an unlit disc. That is the
-  // whole cost, and it is the reason this is a step rather than the fully
-  // continuous fix: making it continuous means giving the shading loop a
-  // real terminator angle (its Sun vector is 2D today, x and z only) and
-  // keying the sprite cache on that angle as well as the phase, which is a
-  // different and much larger change than a released bug deserves.
-  if (!_moonIsWaxing(_moonPhase(date))) tilt += 180;
-  return tilt;
+  var chiDeg = _normDeg360(chi / D2R), qDeg = q / D2R;
+  return { chi: chiDeg, q: qDeg, rot: _normDeg360(chiDeg - qDeg) };
+}
+function _normDeg360(d) { return ((d % 360) + 360) % 360; }
+
+// The lunar equator's tilt to the ecliptic (Meeus ch. 53, I).
+var _MOON_EQUATOR_TILT_DEG = 1.54242;
+
+// The Moon's axis as seen from the Earth (Meeus ch. 53, optical libration
+// only; the physical libration is under 0.04 degrees):
+//   l, b  the selenographic longitude (east +) and latitude of the point at
+//         the disc's centre;
+//   P     the position angle of the lunar north pole, from celestial north
+//         through east;
+//   node  the longitude of the Moon's ascending node, Omega (degrees).
+function _moonAxisOf(eq) {
+  var D2R = Math.PI / 180, I = _MOON_EQUATOR_TILT_DEG * D2R;
+  var node = 125.0445479 - 1934.1362891 * eq.T;
+  var W = (eq.lng - node) * D2R, beta = eq.lat * D2R;
+  var A = Math.atan2(Math.sin(W) * Math.cos(beta) * Math.cos(I) - Math.sin(beta) * Math.sin(I),
+    Math.cos(W) * Math.cos(beta));
+  var l = ((A / D2R - eq.F) % 360 + 540) % 360 - 180;
+  var b = Math.asin(-Math.sin(W) * Math.cos(beta) * Math.sin(I) - Math.sin(beta) * Math.cos(I));
+  var V = node * D2R;
+  var X = Math.sin(I) * Math.sin(V);
+  var Y = Math.sin(I) * Math.cos(V) * Math.cos(eq.eps) - Math.cos(I) * Math.sin(eq.eps);
+  var om = Math.atan2(X, Y);
+  var P = Math.asin(Math.sqrt(X * X + Y * Y) * Math.cos(eq.ra - om) / Math.cos(b));
+  return { l: l, b: b / D2R, P: _normDeg360(P / D2R), node: node };
+}
+
+// The Moon as a viewer at lat/lon sees it (lat null: celestial north up):
+//   k      the lit fraction, 0..1;
+//   limb   the bright limb's direction, counterclockwise from the lunar north
+//          pole (chi - P), degrees — with k, what the sprite's terminator is;
+//   l, b   the optical libration, the point of the Moon at the disc's centre;
+//   P, chi, q  as in _moonAxisOf and _moonLimbAngles;
+//   tilt   the CSS/canvas rotation (clockwise +) that turns the lunar-north-up
+//          sprite into this sky: the pole stands P - q counterclockwise of up.
+function _moonView(date, lat, lon) {
+  var eq = _moonEqCoords(date);
+  var ang = _moonLimbAnglesOf(eq, lat, lon), ax = _moonAxisOf(eq);
+  return {
+    k: _moonPhase(date).illumination / 100,
+    limb: _normDeg360(ang.chi - ax.P), l: ax.l, b: ax.b,
+    P: ax.P, chi: ang.chi, q: ang.q, node: ax.node,
+    tilt: ((ang.q - ax.P) % 360 + 540) % 360 - 180
+  };
+}
+
+// Screen tilt (degrees, CSS/canvas rotation sense) of the lunar-north-up
+// sprite for an observer at lat/lon (lat null: celestial north up).
+function _moonScreenTiltDeg(date, lat, lon) {
+  return _moonView(date, lat, lon).tilt;
+}
+
+// The sprite inputs at progress e of a jump from fromTime to toTime: the real
+// Moon at the real intermediate instant within _MOON_ANIM_MAX_CYCLES, else the
+// compressed phase sweep of _moonAnimPhaseAt with the destination's axis (its
+// bright limb flipped to the side that phase lights). Place-free: the sprite
+// never depends on the viewer, only its turn does, and callers ease that.
+function _moonAnimViewAt(fromTime, toTime, e) {
+  var span = toTime - fromTime;
+  if (Math.abs(span) <= _MOON_ANIM_MAX_CYCLES * _MOON_SYNODIC_MS) {
+    return _moonView(new Date(fromTime + span * e), null, null);
+  }
+  var to = _moonView(new Date(toTime), null, null);
+  var ph = _moonAnimPhaseAt(fromTime, toTime, e);
+  var flip = _moonIsWaxing(ph) !== _moonIsWaxing(_moonPhase(new Date(toTime)));
+  return { k: ph.illumination / 100, limb: _normDeg360(to.limb + (flip ? 180 : 0)), l: to.l, b: to.b };
 }
 
 // Waxing predicate — shared so no renderer flips the terminator side on its
 // own convention (the sky scene once used <= where the hero used <).
 function _moonIsWaxing(m) { return m.phase < 0.5; }
 
-// Today-card tilt: canonical derivation at the almanac's location fallback
-// (same synthetic default as almanac.js _getLocation, which may not be loaded).
-function _quickMoonTilt(date) {
-  var ll = _getSessionJSON(SK.ALMANAC_LOC, null);
-  var lat = ll ? ll.lat : 34, lon = ll ? ll.lon : -date.getTimezoneOffset() / 60 * 15;
-  return _moonScreenTiltDeg(date, lat, lon);
+// Today-card view: at the Almanac's chosen place, or celestial north up when
+// none was chosen (as the hero does).
+function _quickMoonView(date) {
+  var ll = _almChosenPlace();
+  return ll ? _moonView(date, ll.lat, ll.lon) : _moonView(date, null, null);
 }
 
 // Lightweight almanac teaser for the Today discover card.
@@ -5133,7 +5509,7 @@ function _todayTeaser() {
     events.push({ days: days, name: s[2], extra: ' \u00b7 ZHR ' + s[3], tonight: true });
   }
   // Equinoxes & solstices — use season-aware names for Southern Hemisphere
-  var _tLoc = _getSessionJSON(SK.ALMANAC_LOC, null);
+  var _tLoc = _almChosenPlace();
   var _tSouth = _tLoc && _tLoc.lat < 0;
   var eqNames = _tSouth
     ? [t('season_autumn') + ' ' + t('alm_equinox'), t('season_winter') + ' ' + t('alm_solstice'), t('season_spring') + ' ' + t('alm_equinox'), t('season_summer') + ' ' + t('alm_solstice')]
@@ -5165,7 +5541,7 @@ function _todayTeaser() {
 function _renderTodayCard() {
   var now = new Date();
   var m = _moonPhase(now);
-  var tilt = _quickMoonTilt(now);
+  var view = _quickMoonView(now);
   var stars = '';
   for (var i = 0; i < 18; i++) {
     var sx = Math.floor(Math.random() * 100);
@@ -5177,7 +5553,7 @@ function _renderTodayCard() {
   var glowOpacity = (m.illumination / 100 * 0.12 + 0.02).toFixed(2);
   return '<div class="dc-today">' + stars +
     '<div class="dc-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'dc-moon-wrap', tilt) +
+    _renderMoonHTML(view, 'dc-moon-wrap') +
     '</div>';
 }
 
@@ -5190,6 +5566,26 @@ var _createLoaded = false;
 
 // ``replaceState`` true means "this history entry IS Create" (a cold load of
 // /#create), false means "Create is a step forward from where we were".
+// A protected server and no token yet: the sign-in comes first, over the
+// page you are on, and what you asked for opens after (Create, Manage).
+function _needsSignIn() { return _managePwRequired && !_manageToken; }
+// Resolves true once signed in as an admin, false if cancelled. Through
+// /login, so what is kept is a session token, not the password typed.
+function _signInFirst() {
+  return new Promise(function(resolve) {
+    _pwResolve = function(tok) {
+      _manageToken = tok; _saveManageToken(tok, document.getElementById('pw-remember').checked);
+      _msPrefetch = {};  // whatever was fetched before the password is stale
+      _pwReject = null;
+      closePwModal();
+      resolve(true);
+    };
+    _pwReject = function() { resolve(false); };
+    _pwLoginMode = true;
+    openPwModal(t('sign_in'));
+  });
+}
+
 function openCreate(replaceState) {
   // Modifier-click: open Create in a new browser tab, like the Almanac.
   if (_isModClick()) {
@@ -5201,17 +5597,8 @@ function openCreate(replaceState) {
   // A protected server asks for the password here, before the page opens,
   // as Manage does: the page used to open and its first request came back
   // as a red "unauthorized" under the Create button (Eric, desktop app).
-  if (_managePwRequired && !_manageToken && !(_userSession && _userSession.can_create) && typeof openPwModal === 'function' && !_pwResolve) {
-    var _afterPw = function(tok) {
-      _manageToken = tok; _saveManageToken(tok, true);
-      closePwModal();
-      openCreate(replaceState);
-    };
-    _pwResolve = _afterPw; _pwReject = function() {};
-    // Through /login, so what _afterPw keeps is a session token, not the
-    // password that was typed.
-    _pwLoginMode = true;
-    openPwModal();
+  if (_needsSignIn() && !(_userSession && _userSession.can_create) && !_pwResolve) {
+    _signInFirst().then(function(ok) { if (ok) openCreate(replaceState); });
     return;
   }
   if (_createLoaded) { _openCreateInner(replaceState); return; }
@@ -5299,6 +5686,19 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
+// The Almanac's tide section, loaded by almanac.js when it scrolls
+// near; written here so the server stamps their content version on them.
+var _ALM_TIDES_JS = '/static/almanac-tides.js?v=1';
+var _ALM_TIDES_CSS = '/static/almanac-tides.css?v=1';
+
+// The Almanac's tables and calculations, loaded on first use from
+// almanac.js (_almRefOpen). Listed here so their ?v= is the content hash.
+var _ALMANAC_REF_ASSETS = [
+  '/static/almanac-reference.css?v=1',
+  '/static/almanac-navdata.js?v=1',
+  '/static/almanac-reference.js?v=1',
+  '/static/almanac-tables.js?v=1'
+];
 
 function openAlmanac(replaceState) {
   // Modifier-click: open Almanac in new browser tab
@@ -5367,11 +5767,17 @@ function closeAlmanac() {
   updateTopbar();
 }
 
+// Discover on or off. Home is drawn again only when it is what is on
+// screen: Settings paints into the same #output, and drawing home from the
+// switch there took the person out of Settings.
+function _setShowDiscover(on) {
+  _setStorageFlag(SK.HIDE_DISCOVER, !on);
+  if (!on) _discoverLoading = false;
+  if (mode === 'home' && !readerOpen) renderHome();
+}
 function _dismissDiscover() {
-  localStorage.setItem(SK.HIDE_DISCOVER, '1');
-  _discoverLoading = false;
-  renderHome();  // Re-render to move stats bar to top
-  _showToast(t('discover_hidden'), 0, function() { localStorage.removeItem(SK.HIDE_DISCOVER); renderHome(); });
+  _setShowDiscover(false);
+  _showToast(t('discover_hidden'), 0, function() { _setShowDiscover(true); });
 }
 
 // ─── Discover Card Pipeline ─────────────────────────────────────────────
@@ -5653,7 +6059,7 @@ function _renderDiscover(el, items) {
       // Season detection — flip for Southern Hemisphere if location is set
       var _nSeasons = ['winter', 'spring', 'summer', 'autumn', 'winter'];
       var _sSeasons = ['summer', 'autumn', 'winter', 'spring', 'summer']; // Southern Hemisphere
-      var _storedLoc = _getSessionJSON(SK.ALMANAC_LOC, null);
+      var _storedLoc = _almChosenPlace();
       var _isSouth = _storedLoc && _storedLoc.lat < 0;
       var _seasonKeys = _isSouth ? _sSeasons : _nSeasons;
       var _sBounds = [
@@ -6741,6 +7147,10 @@ q.addEventListener('input', () => {
   if (_isWikiPage() || _isBooksPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { (_isWikiPage() ? _wikiSearch : _booksSearch)(val); }, 250);
+  } else if (_isDictPage()) {
+    // Dictionary: the words the Wiktionaries have, as you type; Enter opens one.
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _appFrameCall('dictSearch', val); }, 200);
   } else if (_isReddotPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
@@ -6809,6 +7219,12 @@ q.addEventListener('keydown', e => {
       selectSuggest(suggestIndex);
       return;
     }
+    // Shift+Delete takes the chosen recent row away, as a browser's box does.
+    if (e.key === 'Delete' && e.shiftKey && suggestIndex >= 0 && suggestItems[suggestIndex] && suggestItems[suggestIndex]._hist) {
+      e.preventDefault();
+      _recentForget(suggestIndex);
+      return;
+    }
     if (e.key === 'Escape') {
       // This Escape is spent closing the dropdown. Left to bubble, the page's
       // handler saw the dropdown already shut and cleared the query too.
@@ -6816,6 +7232,12 @@ q.addEventListener('keydown', e => {
       hideSuggest();
       return;
     }
+  }
+  // Down from the box, the suggestions shut: into the results.
+  if (e.key === 'ArrowDown' && mode === 'search' && !readerOpen) {
+    const first = _resultStops()[0];
+    // Stopped here: the page's own arrow handler would take a second step.
+    if (first) { e.preventDefault(); e.stopPropagation(); first.focus(); return; }
   }
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -6828,6 +7250,7 @@ q.addEventListener('keydown', e => {
     if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
     if (_isWikiPage()) { _wikiSearch(q.value.trim()); return; }
     if (_isBooksPage()) { _booksSearch(q.value.trim()); return; }
+    if (_isDictPage()) { _appFrameCall('dictGo', q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -6853,19 +7276,26 @@ function applyDidYouMean(suggestion) {
   if (!suggestion) return;
   var q = document.getElementById('q');
   if (q) q.value = suggestion;
-  doSearch(suggestion, true);
+  doSearch(suggestion, 'new');
 }
 
-async function doSearch(query, push) {
+// push: true records the search in the address (replacing a search already
+// there, so the timer while typing and Enter make one entry); 'new' makes it
+// a step of its own, so Back returns to the search it came from (a chip
+// taken off, a spelling taken). perSource: how many results each source is
+// asked for; given, it is "More results" asking again, and the cards on
+// screen stay while it does.
+async function doSearch(query, push, perSource) {
   if (push === undefined) push = true;
+  const more = !!perSource;
+  perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
 
   // Reject all-stop-word queries (e.g. "what", "the", "is it")
-  const STOPS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
-  const meaningful = query.toLowerCase().split(/\s+/).filter(w => !STOPS.has(w));
+  const meaningful = query.toLowerCase().split(/\s+/).filter(w => !SEARCH_STOP_WORDS.has(w));
   if (!meaningful.length) {
     mode = 'search';
     statsBar.style.display = 'none';
@@ -6877,12 +7307,18 @@ async function doSearch(query, push) {
   }
 
   if (searchController) searchController.abort();
+  // This search's number: one started after it ("More from", a chip) wins,
+  // even when this one's response is already in hand.
+  const searchSeq = ++_searchSeq;
   searchController = new AbortController();
 
-  const scope = currentSource;
+  // Reading an article, the box searches its ZIM, as its placeholder says
+  // ("Search in Wikipedia…"); the ZIM's chip in the header widens it again.
+  const scope = _searchScopeSource();
+  if (scope && !currentSource) { currentSource = scope; sourceHeaderEl.style.display = 'none'; }
   mode = 'search';
   sourceAutoReader = false; // user searched — don't auto-home on back
-  visibleResultCount = RESULTS_PER_PAGE;
+  visibleResultCount = more ? visibleResultCount + RESULTS_PER_PAGE : RESULTS_PER_PAGE;
 
   // Close reader or almanac if open
   if (readerOpen) closeReader();
@@ -6891,10 +7327,12 @@ async function doSearch(query, push) {
 
   mainView.classList.remove('hidden');
   if (!scope) sourceHeaderEl.style.display = 'none';
-  statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
-  searchMeta.style.display = 'none';
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_titles') + '</div>';
+  if (!more) {
+    statsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    searchMeta.style.display = 'none';
+    output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_titles') + '</div>';
+  }
   updateTopbar();
 
   let zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
@@ -6904,67 +7342,99 @@ async function doSearch(query, push) {
   const searchT0 = performance.now();
   const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
 
-  try {
-    // ── Progressive two-phase search: fast title matches first, then full FTS ──
-    // Phase 1: fast title search (parallel per-ZIM, no lock contention)
-    const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
-      { signal: searchController.signal });
-    _throwIfRateLimited(r1);
-    const d1 = await r1.json();
-    // Left for Settings or home while it ran: that page is on screen now.
-    if (mode !== 'search') return;
-    const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
-    d1._clientElapsed = phase1Elapsed;
-    d1._query = query;
-    allResults = d1;
-    if (push) {
-      // Replace (not push) if we're already on a search page — prevents duplicate entries
-      // from autosearch timer + Enter key both calling doSearch
-      var hs = history.state;
-      if (hs && hs.mode === 'search') {
-        history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
-      } else {
-        history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
-      }
+  // The address and the recent list, once the search has results to show.
+  const pushSearchState = function() {
+    if (!push) return;
+    // Replace (not push) if we're already on a search page — prevents duplicate entries
+    // from autosearch timer + Enter key both calling doSearch
+    var hs = history.state;
+    var sameSearch = hs && hs.mode === 'search' && hs.query === query && (hs.source || null) === (scope || null);
+    if (hs && hs.mode === 'search' && (push !== 'new' || sameSearch)) {
+      history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
+    } else {
+      history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
     }
+  };
+
+  // Asked before (Back, Forward, the same words again): drawn from what came
+  // then, nothing asked of the server.
+  const keptKey = _searchKeptKey(query, zimParam, perSource);
+  const kept = _searchKeptGet(keptKey);
+  if (kept) {
+    allResults = kept;
+    pushSearchState();
     renderSearchResults(allResults, scope);
-    // Persist search to browse history
-    _histPushSearch(query, scope, (d1.results || []).length);
+    _histPushSearch(query, scope, (kept.results || []).length);
+    return;
+  }
 
-    if (d1.partial) {
-      // Show honest progress: "N title matches (Xs) — searching content..."
-      const titleCount = (d1.results || []).length;
-      const indicator = document.createElement('div');
-      indicator.className = 'content-search-indicator';
-      indicator.id = 'fts-indicator';
-      const msg = titleCount > 0
-        ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) \u2014 '
-        : '';
-      indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content');
-      output.prepend(indicator);
-
-      // Live elapsed timer
-      const timerInterval = setInterval(() => {
-        const el = document.getElementById('fts-indicator');
-        if (!el) { clearInterval(timerInterval); return; }
-        const now = ((performance.now() - searchT0) / 1000).toFixed(0);
-        el.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content_time', {time: now});
-      }, 1000);
-
-      // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
-      const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
-        { signal: searchController.signal });
-      _throwIfRateLimited(r2);
-      const d2 = await r2.json();
+  let d1 = null, gotFull = false, timerInterval = null;
+  try {
+    // ── One request, both passes: the server sends the title matches, the
+    // snippets of the cards they draw, the full-text results, then theirs,
+    // a line of JSON each as it is ready (_searchStream in http.py).
+    const res = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&stream=1',
+      { signal: searchController.signal });
+    _throwIfRateLimited(res);
+    _snippetsStreamSeq = searchSeq;
+    await _readSearchLines(res, function(line) {
+      // Left for Settings or home while it ran, or a newer search began:
+      // that page is on screen now.
+      if (mode !== 'search' || searchSeq !== _searchSeq) throw _SEARCH_STALE;
+      if (line.phase === 'snippets') {
+        _snippetKeepAll(line.snippets);
+        loadSnippets();
+        return;
+      }
+      const d = line.result || {};
+      d._query = query;
+      d._limit = perSource;
+      if (line.phase === 'fast') {
+        const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+        d._clientElapsed = phase1Elapsed;
+        d1 = d;
+        // Asking again for more: the quick pass adds to what is on screen.
+        allResults = more && allResults && allResults._query === query ? mergeSearchResults(allResults, d1) : d1;
+        pushSearchState();
+        renderSearchResults(allResults, scope);
+        // A plain answer is the whole search: it goes in the recent list now.
+        if (!d1.partial) { _histPushSearch(query, scope, (d1.results || []).length); return; }
+        // Show honest progress: "N title matches (Xs) — searching content..."
+        const titleCount = (d1.results || []).length;
+        const indicator = document.createElement('div');
+        indicator.className = 'content-search-indicator';
+        indicator.id = 'fts-indicator';
+        const msg = titleCount > 0
+          ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) — '
+          : '';
+        indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content');
+        output.prepend(indicator);
+        // Live elapsed timer
+        timerInterval = setInterval(() => {
+          const el = document.getElementById('fts-indicator');
+          if (!el) { clearInterval(timerInterval); return; }
+          const now = ((performance.now() - searchT0) / 1000).toFixed(0);
+          el.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content_time', {time: now});
+        }, 1000);
+        return;
+      }
       clearInterval(timerInterval);
-      if (mode !== 'search') return; // the full-text pass landed after you left
-      d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
-      d2._query = query;
-      allResults = mergeSearchResults(d1, d2);
+      d._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+      allResults = d1 ? mergeSearchResults(d1, d) : d;
+      gotFull = true;
       renderSearchResults(allResults, scope);
-    }
+      _histPushSearch(query, scope, (allResults.results || []).length);
+    });
+    clearInterval(timerInterval);
+    if (searchSeq !== _searchSeq) return;
+    _snippetsStreamSeq = 0;
+    if (gotFull) _searchKeptPut(keptKey, allResults);
+    // Any card the answer brought no snippet for asks on its own.
+    if (mode === 'search') loadSnippets();
   } catch(e) {
-    if (e.name === 'AbortError' || mode !== 'search') return;
+    clearInterval(timerInterval);
+    if (searchSeq === _searchSeq) _snippetsStreamSeq = 0;
+    if (e.name === 'AbortError' || mode !== 'search' || searchSeq !== _searchSeq) return;
     // "Search failed / try again" implies the server tried and something went
     // wrong there. If we never reached it, say that instead and offer Retry.
     if (_isOfflineError(e)) {
@@ -6975,11 +7445,72 @@ async function doSearch(query, push) {
     }
     // A throttled search is not an empty one: it used to read "No results".
     if (e.rateLimited) {
-      output.innerHTML = '<div class="empty"><p>' + tH('search_rate_limited', {s: e.retryAfter}) + '</p></div>';
+      output.innerHTML = '<div class="empty"><p>' + tPluralH('search_rate_limited', e.retryAfter) + '</p></div>';
       return;
     }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';
   }
+}
+
+// Read a search's answer a line at a time as it arrives, each line handed to
+// onLine. A plain JSON answer (a ZIM not found, an empty language) is the
+// whole result in one: the quick pass, with nothing after it. onLine throwing
+// stops the reading and lets the rest of the answer go.
+const _SEARCH_STALE = new Error('search_stale');
+_SEARCH_STALE.name = 'AbortError';
+async function _readSearchLines(res, onLine) {
+  if ((res.headers.get('Content-Type') || '').indexOf('ndjson') < 0) {
+    onLine({ phase: 'fast', result: await res.json() });
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    for (;;) {
+      const step = await reader.read();
+      buf += decoder.decode(step.value || new Uint8Array(0), { stream: !step.done });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) onLine(JSON.parse(line));
+      }
+      if (step.done) return;
+    }
+  } catch (e) {
+    try { reader.cancel(); } catch (e2) {}
+    throw e;
+  }
+}
+
+// Searches already answered, kept for Back, Forward and the same words asked
+// again: the merged results (their snippets are in _snippetKept). Keyed by
+// the words as the server's cache knows them (_query_key in search.py), the
+// sources asked and the library, so a ZIM added or taken away asks again.
+const SEARCH_KEPT_MAX = 30;
+const SEARCH_KEPT_MS = 10 * 60 * 1000;
+var _searchKept = new Map();
+function _searchQueryKey(query) {
+  return String(query).replace(/[“”„]/g, '"').split(/\s+/).filter(Boolean)
+    .map(function(w) { return w === 'OR' ? w : w.toLowerCase(); }).join(' ');
+}
+function _searchKeptKey(query, zimParam, perSource) {
+  var library = (zimsCache || []).map(function(z) { return z.name + ':' + (z.entries || ''); }).join(',');
+  return [_searchQueryKey(query), zimParam, perSource, library].join('\n');
+}
+function _searchKeptGet(key) {
+  var kept = _searchKept.get(key);
+  if (!kept) return null;
+  _searchKept.delete(key);
+  if (Date.now() - kept.at > SEARCH_KEPT_MS) return null;
+  _searchKept.set(key, kept);  // most recently used last
+  return kept.result;
+}
+function _searchKeptPut(key, result) {
+  _searchKept.delete(key);
+  if (_searchKept.size >= SEARCH_KEPT_MAX) _searchKept.delete(_searchKept.keys().next().value);
+  _searchKept.set(key, { result: result, at: Date.now() });
 }
 
 function mergeSearchResults(phase1, phase2) {
@@ -7020,6 +7551,7 @@ function mergeSearchResults(phase1, phase2) {
     unsearched: phase2.unsearched || phase1.unsearched,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
+    _limit: phase2._limit,
     // Places come only from the full phase; the keystroke phase reads no
     // shards. They are a group beside the results, not merged into them.
     places: phase2.places || phase1.places || [],
@@ -7094,12 +7626,27 @@ function _allResetPill(active, handler) {
     active + '" onclick="' + handler + '">' + tH('filter_all') + '</button>';
 }
 
+// How many results each source and each language pill would show: the
+// results themselves counted, so the pills add up to All.
+function searchResultCounts(items, zims) {
+  var lang = {};
+  (zims || []).forEach(function(z) { lang[z.name] = z.language || ''; });
+  var bySource = {}, byLanguage = {};
+  items.forEach(function(r) {
+    bySource[r.zim] = (bySource[r.zim] || 0) + 1;
+    var l = lang[r.zim] || '';
+    if (l) byLanguage[l] = (byLanguage[l] || 0) + 1;
+  });
+  return { bySource: bySource, byLanguage: byLanguage };
+}
+
 function renderSearchResults(data, scope) {
   if (snippetController) { snippetController.abort(); snippetController = null; }
   let items = data.results || [];
-  const bySource = data.by_source || {};
-  const byLanguage = data.by_language || {};
-  const totalCount = data.total || items.length;
+  const counts = searchResultCounts(items, zimsCache);
+  const bySource = counts.bySource;
+  const byLanguage = counts.byLanguage;
+  const totalCount = items.length;
 
   // Build cross-reference: which languages per source, which sources per language
   var cache_lang_map = {};
@@ -7214,7 +7761,7 @@ function renderSearchResults(data, scope) {
   if (!scope && zimsCache && data._query) {
     const parsed = parseSearchQuery(data._query);
     const matches = parsed.groups.length ? zimsCache.filter(z =>
-      searchQueryMatches(parsed, (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || ''))) : [];
+      searchQueryMatches(parsed, _libraryFilterText(z))) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
@@ -7234,32 +7781,63 @@ function renderSearchResults(data, scope) {
     }
   }
 
-  // Pagination: show only first visibleResultCount items
-  const visible = items.slice(0, visibleResultCount);
-  const remaining = items.length - visibleResultCount;
+  // The words searched for, marked as each card is drawn (and in each
+  // snippet as it arrives): nothing is asked of the server for it.
+  const hitRe = _resultsHitRe = searchHitRe(data._query);
+  // A snippet already here (the search's answer brought it, or an earlier
+  // draw read it) is drawn with its card; "" is a page with none to show.
+  const snippetHtml = (r) => {
+    const kept = r.snippet ? null : _snippetKept.get(r.zim + '\n' + r.path);
+    const text = r.snippet || (kept && kept.snippet);
+    if (text) return '<div class="snippet">' + searchHitsHtml(text, hitRe) + '</div>';
+    return kept ? '' : '<div class="snippet" data-needs-snippet="1"></div>';
+  };
+  const card = (r, i, sourceRow) =>
+    // Real link (#49): anchors are natively focusable and Enter-activatable,
+    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
+    '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
+      '<div class="result-thumb" data-needs-thumb="1"></div>' +
+      '<div class="result-body">' + (sourceRow ? _resultSourceHtml(r.zim) : '') +
+      '<div class="title">' + searchHitsHtml(r.title, hitRe) + '</div>' +
+      snippetHtml(r) +
+      '</div></a>';
+
+  // Pagination: the first visibleResultCount cards, ranked or in groups.
+  const groups = scope ? null : searchResultGroups(items);
+  let listHtml = '', remaining;
+  if (groups) {
+    let shown = 0, k = 0;
+    for (; k < groups.length && shown < visibleResultCount; k++) {
+      const g = groups[k], top = g.items.slice(0, SEARCH_GROUP_SIZE);
+      listHtml += '<section class="result-group"><h3 class="result-group-head">' + _resultSourceHtml(g.zim) + '</h3>' +
+        top.map((r, i) => card(r, shown + i, false)).join('') +
+        (g.items.length > SEARCH_GROUP_SIZE
+          ? '<button type="button" class="result-more" data-zim="' + escAttr(g.zim) + '" onclick="searchMoreFromSource(this.dataset.zim)">' +
+            // The name set apart: a Latin title in a Hebrew sentence keeps its place.
+            tH('search_more_from').split('{source}').join('<bdi>' + esc(_zimTitle(g.zim)) + '</bdi>') + '</button>'
+          : '') + '</section>';
+      shown += top.length;
+    }
+    remaining = groups.slice(k).reduce((n, g) => n + Math.min(g.items.length, SEARCH_GROUP_SIZE), 0);
+  } else {
+    listHtml = items.slice(0, visibleResultCount).map((r, i) => card(r, i, !scope)).join('');
+    remaining = items.length - visibleResultCount;
+  }
 
   // Real places first. The offer to type into the map's own box is for when
   // the shards had nothing, not a second row under every hit.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
-  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
-    const sourceRow = !scope
-      ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
-        '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
-      : '';
-    // Real link (#49): anchors are natively focusable and Enter-activatable,
-    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
-    return '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
-      '<div class="result-thumb" data-needs-thumb="1"></div>' +
-      '<div class="result-body">' + sourceRow +
-      '<div class="title">' + esc(r.title) + '</div>' +
-      (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
-      '</div></a>';
-  }).join('') + '</div>';
+  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results' + (groups ? ' grouped' : '') + '">' +
+    placesHtml + mapFindHtml + listHtml + '</div>';
 
   if (remaining > 0) {
     html += '<div class="load-more"><button onclick="showMoreResults()">' +
       tH('show_more', {n: Math.min(RESULTS_PER_PAGE, remaining)}) + '</button></div>';
+  } else if (scope && items.length >= (data._limit || SEARCH_PER_SOURCE) && (data._limit || SEARCH_PER_SOURCE) < SEARCH_PER_SOURCE_MAX) {
+    // Everything this search brought is on screen, and the source had more
+    // than it was asked for: ask it for more.
+    html += '<div class="load-more"><button onclick="searchMoreResults(this)">' + tH('search_more_results') + '</button></div>';
   }
 
   // The count and the time are said once, over the results ("Found 1
@@ -7278,6 +7856,55 @@ function showMoreResults() {
   if (savedIndicator && !document.getElementById('fts-indicator')) {
     output.prepend(savedIndicator);
   }
+}
+
+// Results a search asks each source for, and the most a source may be asked
+// for when "More results" asks again (the server's MAX_SEARCH_LIMIT).
+const SEARCH_PER_SOURCE = 10;
+const SEARCH_PER_SOURCE_MAX = 50;
+// The pattern the cards on screen mark their words with (searchHitRe).
+let _resultsHitRe = null;
+
+// Grouped or ranked, one rule: results from three or more sources that are
+// more than a screen are grouped by source, each source's best few with
+// "More from" it, the sources in the order of their best result (so an
+// exact title still leads). Anything less reads better as one ranked list,
+// and so does a list narrowed to its sources by the pills. null: ranked.
+const SEARCH_GROUP_MIN_SOURCES = 3;
+const SEARCH_GROUP_SIZE = 3;
+function searchResultGroups(items) {
+  if (items.length <= RESULTS_PER_PAGE || activeSourceFilters.size) return null;
+  const by = new Map();
+  for (const r of items) {
+    if (!by.has(r.zim)) by.set(r.zim, []);
+    by.get(r.zim).push(r);
+  }
+  if (by.size < SEARCH_GROUP_MIN_SOURCES) return null;
+  return [...by].map(([zim, list]) => ({ zim: zim, items: list }));
+}
+
+// The results the arrow keys step through, in the order shown.
+function _resultStops() {
+  return Array.from(output.querySelectorAll('.results a.result, .results .result-more, .load-more button'));
+}
+
+function _resultSourceHtml(zim) {
+  return '<span class="result-source">' + _sourceIconHtml(zim, 20) +
+    '<span class="rs-name">' + esc(_zimTitle(zim)) + '</span></span>';
+}
+
+// "More from <source>": the same search, in that source alone (the one the
+// box makes while reading it), where it can page further.
+function searchMoreFromSource(zim) {
+  if (allResults && allResults._query) _runRecentSearch(allResults._query, zim);
+}
+
+// A source's results all on screen and it had more: the same search again,
+// asking it for as many as it may give, the cards already read kept in view.
+function searchMoreResults(btn) {
+  if (!allResults || !allResults._query) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>'; }
+  doSearch(allResults._query, false, SEARCH_PER_SOURCE_MAX);
 }
 
 function _zimTitle(name) {
@@ -7307,10 +7934,12 @@ async function loadSnippets() {
 
   // Collect all result cards that need either snippets or thumbnails
   const cards = document.querySelectorAll('.result[data-zim][data-path]');
+  const keptOnly = _snippetsStreamSeq && _snippetsStreamSeq === _searchSeq;
   const queue = [];
   cards.forEach(function(card) {
     const needsSnippet = card.querySelector('[data-needs-snippet="1"]');
     const needsThumb = card.querySelector('[data-needs-thumb]');
+    if (keptOnly && !_snippetKept.has(card.dataset.zim + '\n' + card.dataset.path)) return;
     if (needsSnippet || needsThumb) queue.push(card);
   });
   if (!queue.length) return;
@@ -7342,6 +7971,18 @@ async function loadSnippets() {
 var _snippetKept = new Map();
 var _snippetPending = new Map();
 var SNIPPET_KEPT_MAX = 500;
+// The search whose answer is still arriving, its snippets with it: until it
+// ends, its cards take what came and ask for nothing themselves. 0: none.
+var _snippetsStreamSeq = 0;
+function _snippetKeep(key, data) {
+  _snippetKept.delete(key);
+  if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
+  _snippetKept.set(key, data);
+}
+// The snippets a search's answer brought, by "zim\npath".
+function _snippetKeepAll(byKey) {
+  Object.keys(byKey || {}).forEach(function(k) { _snippetKeep(k, byKey[k]); });
+}
 function _snippetData(zim, path) {
   var key = zim + '\n' + path;
   if (_snippetKept.has(key)) return Promise.resolve(_snippetKept.get(key));
@@ -7349,10 +7990,7 @@ function _snippetData(zim, path) {
   var asked = fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
     .then(function(res) {
       return res.json().then(function(data) {
-        if (res.ok) {
-          if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
-          _snippetKept.set(key, data);
-        }
+        if (res.ok) _snippetKeep(key, data);
         return data;
       });
     })
@@ -7369,7 +8007,7 @@ async function fetchSnippet(snippetEl, zim, path, signal, card) {
     // Populate snippet text if needed
     if (snippetEl && snippetEl.hasAttribute('data-needs-snippet')) {
       if (data.snippet) {
-        snippetEl.textContent = data.snippet;
+        snippetEl.innerHTML = searchHitsHtml(data.snippet, _resultsHitRe);
         snippetEl.removeAttribute('data-needs-snippet');
         snippetEl.style.opacity = '0';
         requestAnimationFrame(() => { snippetEl.style.opacity = '1'; });
@@ -7441,6 +8079,10 @@ function clearSearch() {
 // ── Suggest / Autocomplete ──
 let suggestController = null;
 let _suggestSeq = 0; // sequence counter to discard stale responses
+// Suggestions already asked for this page's life, by the words, the source
+// and the library (_searchKeptKey); the oldest go first.
+const SUGGEST_KEPT_MAX = 200;
+const _suggestKept = new Map();
 
 async function fetchSuggestions(query) {
   // Cancel any in-flight suggest request
@@ -7449,10 +8091,20 @@ async function fetchSuggestions(query) {
   const seq = ++_suggestSeq;
 
   const zimParam = currentSource ? '&zim=' + encodeURIComponent(currentSource) : '';
+  // Typed, taken back and typed again (a typo, Backspace): the words asked
+  // before are answered from here.
+  const keptKey = _searchKeptKey(query, zimParam, 'suggest');
   try {
-    const res = await fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=6' + zimParam,
-      { signal: suggestController.signal });
-    const data = await res.json();
+    let data = _suggestKept.get(keptKey);
+    if (!data) {
+      const res = await fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=6' + zimParam,
+        { signal: suggestController.signal });
+      data = await res.json();
+      if (res.ok) {
+        if (_suggestKept.size >= SUGGEST_KEPT_MAX) _suggestKept.delete(_suggestKept.keys().next().value);
+        _suggestKept.set(keptKey, data);
+      }
+    }
     // Discard if a newer request has been issued or input lost focus
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     // data is {zim_name: [{path, title}, ...], ...}
@@ -7542,15 +8194,16 @@ function showHistoryDropdown(filter) {
   var seen = new Set();
   for (var i = 0; i < h.length && items.length < 8; i++) {
     var entry = h[i];
-    var label, sub, key;
+    var label, sub, key = _histRecentKey(entry);
     if (entry.type === 'search') {
       label = typeof entry.query === 'string' ? entry.query : '';
-      sub = entry.zim ? _zimTitle(entry.zim) : t('all_sources').replace(/^\u2190\s*/, '');
-      key = 's:' + label.toLowerCase();
+      // Found nothing (kept before 1.12.1 left those out): not offered.
+      if (entry.resultCount === 0) continue;
+      // Every source is the usual: named only when the search was in one.
+      sub = entry.zim ? _zimTitle(entry.zim) : '';
     } else {
       label = (typeof entry.title === 'string' && entry.title) || _titleFromPath(entry.path || '');
       sub = entry.zim ? _zimTitle(entry.zim) : '';
-      key = 'a:' + (entry.zim || '') + ':' + (entry.path || '');
     }
     if (!label) continue;
     if (fl && !label.toLowerCase().includes(fl) && !sub.toLowerCase().includes(fl)) continue;
@@ -7564,22 +8217,65 @@ function showHistoryDropdown(filter) {
   }
   // Merge into suggestItems for keyboard navigation
   suggestItems = items.map(function(it) {
-    return it.isSearch
+    var s = it.isSearch
       ? { _hist: true, _histSearch: true, query: it.entry.query, zim: it.entry.zim || '', label: it.label, sub: it.sub }
       : { _hist: true, zim: it.entry.zim, path: it.entry.path, title: it.label, label: it.label, sub: it.sub };
+    s._key = _histRecentKey(it.entry);
+    return s;
   });
   suggestIndex = -1;
   var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  var recentHeader = (filter || !items.length) ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">' + tH('suggest_recent') + '</div>';
-  suggestDropdown.innerHTML = pillsHtml + recentHeader +
+  // Searches are kept in this browser only (with the rest of History, which
+  // goes to an account only when My data is saved there). Each is a tap from
+  // gone, and all of them at once from the header.
+  var anySearch = items.some(function(it) { return it.isSearch; });
+  var recentHeader = (filter || !items.length) ? '' : '<div class="sg-recent-head"><span>' + tH('suggest_recent') + '</span>' +
+    (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
+    '</div>';
+  // What you searched and read first; the library's filter rows under it.
+  suggestDropdown.innerHTML = recentHeader +
     items.map(function(it, i) {
-      return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
+      var forget = t('remove') + ': ' + it.label;
+      return '<div class="suggest-item sg-recent" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
         (it.isSearch ? searchIcon : icon) +
-        '<div style="flex:1;min-width:0"><div class="sg-title">' + esc(it.label) + '</div>' +
-        '<div class="sg-source">' + esc(it.sub) + '</div></div></div>';
-    }).join('');
+        '<div class="sg-recent-text"><div class="sg-title">' + esc(it.label) + '</div>' +
+        (it.sub ? '<div class="sg-source">' + esc(it.sub) + '</div>' : '') + '</div>' +
+        '<button type="button" class="sg-forget" aria-label="' + escAttr(forget) + '" title="' + escAttr(forget) + '" onmousedown="event.preventDefault();event.stopPropagation();_recentForget(' + i + ')">' +
+        _CHIP_X_SVG + '</button></div>';
+    }).join('') + pillsHtml;
   suggestDropdown.style.display = 'block';
+}
+
+// A row of the Recent list, as one thing: a search by its words, a visit by
+// its page. Taking a row away takes every copy of it, or the next one along
+// would show in its place.
+function _histRecentKey(entry) {
+  return entry.type === 'search'
+    ? 's:' + (typeof entry.query === 'string' ? entry.query : '').toLowerCase()
+    : 'a:' + (entry.zim || '') + ':' + (entry.path || '');
+}
+function _histForget(test) {
+  var h = _histLoad(), kept = h.filter(function(e) { return !test(e); });
+  if (kept.length === h.length) return;
+  _persistHist = kept;
+  _histSave();
+  _refreshLibraryPanelIfOpen();
+}
+// The dropdown drawn again as it was (typed filter and all), the box kept.
+function _recentRedraw() {
+  var val = q.value.trim();
+  showHistoryDropdown(val || undefined);
+}
+function _recentForget(i) {
+  var s = suggestItems[i];
+  if (!s || !s._hist) return;
+  _histForget(function(e) { return _histRecentKey(e) === s._key; });
+  _recentRedraw();
+}
+function _recentClearSearches() {
+  _histForget(function(e) { return e.type === 'search'; });
+  _recentRedraw();
 }
 
 function showSuggest() {
@@ -7665,7 +8361,7 @@ async function enterManage(e, section) {
     // manage-auth probe has set manageEnabled we must not leave the button
     // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
     // only bail if management is genuinely disabled.
-    if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
+    if (_manageProbed) { _dropManageBoot(); return false; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
     // The gear turns while the answer is on its way: on a busy server (a
     // library warming after a restart) that can be seconds, and a tap that
@@ -7673,7 +8369,16 @@ async function enterManage(e, section) {
     var gear = document.getElementById('manage-btn');
     if (gear) gear.classList.add('busy');
     try { await _manageProbe; } finally { if (gear) gear.classList.remove('busy'); }
-    if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
+    if (!manageEnabled) { _dropManageBoot(); return false; }  // resolved to disabled
+  }
+  // Signed in first, over the page you are on: Manage painted under the
+  // modal said "Loading catalog..." while it waited for the password (Eric,
+  // 2026-09-21). Create's way. A cold /?manage shows the library behind it;
+  // a second call while the sign-in is up (the boot's re-check) waits on it.
+  if (_needsSignIn()) {
+    if (_pwResolve) return false;
+    _dropManageBoot();
+    if (!(await _signInFirst())) return false;
   }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
@@ -7733,6 +8438,7 @@ async function enterManage(e, section) {
   // (#47). _creatorLoadInventory caches for the session and its DOM fill no-ops
   // until the Creator pane is actually on screen.
   if (typeof _creatorLoadInventory === 'function') _creatorLoadInventory();
+  return true;
 }
 
 // Reveal the library after a cold boot into ?manage that resolved to "you may
@@ -9328,13 +10034,59 @@ function _searchTermRe(text) {
   return new RegExp((_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body, 'u');
 }
 
-// The whole query against one text: a word anywhere (so "wiki" still finds
-// Wikipedia, as the catalog always did), phrases and exclusions as above.
+// Latin, Greek and Cyrillic accents only (query._ACCENTS): a Devanagari vowel
+// sign or an Arabic haraka is part of the word, not an accent on it.
+const _searchUnaccent = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+const _searchFold = s => _searchUnaccent(s).toLowerCase();
+// Where a word part starts inside a word (query._PARTS): MediaWiki, fr_wiki.
+const _SEARCH_PARTS = /(?<=[a-z])(?=[A-Z])|_/g;
+
+// The whole query against one text, case and accents aside: a word anywhere
+// (so "wiki" still finds Wikipedia, as the catalog always did), a phrase from
+// the start of a word, an exclusion from the start of a word or a word part
+// (#94: -wiki drops MediaWiki; -ted still keeps United). query.excluded is the
+// server's half; tests/fixtures/search_query_cases.json holds both to it.
 function searchQueryMatches(parsed, text) {
-  const low = (text || '').toLowerCase();
-  const hit = t => t.phrase ? _searchTermRe(t.text).test(low) : low.includes(t.text);
-  return parsed.groups.every(g => g.some(hit)) &&
-    !parsed.exclude.some(t => _searchTermRe(t.text).test(low));
+  const bare = _searchUnaccent(text), low = bare.toLowerCase();
+  const hit = t => t.phrase ? _searchTermRe(_searchFold(t.text)).test(low) : low.includes(_searchFold(t.text));
+  if (!parsed.groups.every(g => g.some(hit))) return false;
+  if (!parsed.exclude.length) return true;
+  const parts = bare.replace(_SEARCH_PARTS, ' ').toLowerCase();
+  return !parsed.exclude.some(t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); });
+}
+
+// Words too common to search for alone, or to mark in a result.
+const SEARCH_STOP_WORDS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
+
+// The words a query searched for, as one pattern to mark in a result's
+// title and snippet: each word from the start of a word ("sun" marks
+// "Sunlight", not "Tsunami"), a phrase as its words together. What the
+// query excluded or filtered on was not searched, so it is never marked;
+// nor is a common word typed on its own. Longest first, so a phrase wins
+// over a word inside it. null when there is nothing to mark.
+function searchHitRe(query) {
+  const terms = [];
+  for (const g of parseSearchQuery(query || '').groups) {
+    for (const t of g) if (t.phrase || !SEARCH_STOP_WORDS.has(t.text)) terms.push(t.text);
+  }
+  if (!terms.length) return null;
+  const alts = [...new Set(terms)].sort((a, b) => b.length - a.length).map(text => {
+    const body = text.split(/\s+/).map(_reEscape).join('\\s+');
+    return (_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body;
+  });
+  return new RegExp(alts.join('|'), 'giu');
+}
+
+// Text as HTML with what `re` finds in <mark class="hit">, every piece escaped.
+function searchHitsHtml(text, re) {
+  text = String(text || '');
+  if (!re) return esc(text);
+  let out = '', at = 0;
+  for (const m of text.matchAll(re)) {
+    out += esc(text.slice(at, m.index)) + '<mark class="hit">' + esc(m[0]) + '</mark>';
+    at = m.index + m[0].length;
+  }
+  return out + esc(text.slice(at));
 }
 
 // What a catalog filter asks of an item. source:/in: is the name, title or
@@ -9352,6 +10104,12 @@ const _CATALOG_FILTER_TESTS = {
 const _CATALOG_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
 function _catalogText(s) {
   return String(s || '').replace(/&(amp|lt|gt|quot|apos|#39);/g, (m, k) => _CATALOG_ENTITIES[k]);
+}
+
+// An installed ZIM's text for the library filters (home, Settings > Library,
+// the sources a search matched): fields apart, so a phrase cannot run across.
+function _libraryFilterText(z) {
+  return (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || '');
 }
 
 function catalogItemMatches(parsed, item) {
@@ -9486,7 +10244,7 @@ function _searchAgain(query) {
   hideSuggest();
   if (!query) { clearSearch(); return; }
   if (mode === 'manage') browseCatalogFilter(query);
-  else doSearch(query);
+  else doSearch(query, 'new');
 }
 
 // The "?" beside the box: examples written for each language, one operator
@@ -10072,7 +10830,7 @@ async function renderCollectionsTab() {
       h += '<div class="coll-picker" onclick="event.stopPropagation()">';
       for (const cat of Object.keys(catMap).sort()) {
         const catZims = catMap[cat].slice().sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-        h += '<div class="manage-installed-group"><div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + catZims.length + ')</div>';
+        h += '<div class="manage-installed-group"><div class="ci-section-label">' + _countedLabelHtml(_catDisplayName(cat), catZims.length) + '</div>';
         for (const z of catZims) {
           const inColl = collZims.includes(z.name);
           const meta = [];
@@ -11300,7 +12058,7 @@ function _publicAccessCard() {
     '<button class="ms-btn ms-btn-primary ms-pa-save" onclick="_savePublicAccessLimited()">' + tH('save') + '</button>' +
   '</div>';
   var envNote = envLocked
-    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code>ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
+    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code dir="ltr">ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
     : '';
   return '<div class="ms-pa-card">' +
     '<div class="ms-section-label">' + tH('users_pa_title') + '</div>' +
@@ -11467,7 +12225,7 @@ function _creatorStateHtml(ready, hint) {
 // finding out, or the pane offers an install for something already installed.
 function _creatorInstallHtml(ready, cmd) {
   if (ready === null || ready === undefined) return '';
-  return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+  return ready ? '' : '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
 }
 
 // The last /manage/creator payload, for the life of the page. The pane paints
@@ -12189,7 +12947,7 @@ function _msPreferencesHtml() {
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
       on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
-        onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
+        onchange: '_setShowDiscover(this.checked)' }]) +
 
     '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
@@ -12208,14 +12966,12 @@ function _msPreferencesHtml() {
     '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
     _switchRowsHtml([
       // The mirror of the in-article palette's AUTO switch, same key.
-      { id: 'ms-reader-auto', title: tH('reader_auto'), desc: tH('reader_auto_hint'),
+      { id: 'ms-reader-auto', title: tH('reader_auto'),
         on: _readerAuto(), onchange: '_setReaderAuto(this.checked)' },
       { id: 'ms-darken-articles', title: tH('darken_articles'), desc: tH('darken_articles_hint'),
         on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
       { title: tH('show_cross_links'), on: !_getStorageFlag(SK.HIDE_XZIM_LINKS),
         onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
-      { title: tH('a11y_rewrite_label'), desc: tH('a11y_rewrite_hint'), on: _getStorageFlag(SK.A11Y_REWRITE),
-        onchange: '_setStorageFlag(SK.A11Y_REWRITE, this.checked)' },
     ]) +
 
     // Default download flavor (above languages: reached more often)
@@ -12233,6 +12989,9 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:12px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
+  // My data is this browser's (bookmarks, history, these preferences): it
+  // lives with the preferences, not with the server's settings.
+  h += '<div class="ms-mydata" style="margin-top:24px">' + _myDataCardHtml() + '</div>';
   // Security (password + logout) lives in the Users pane ("Your account").
   return h;
 }
@@ -12260,7 +13019,7 @@ function _appUpdateHowHtml(d) {
     var hintKey = type === 'docker' ? 'app_update_how_docker'
       : type === 'homebrew' ? 'app_update_how_brew' : 'app_update_how_pip';
     return '<div class="ms-hint">' + tH(hintKey) + '</div>' +
-      '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+      '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
   }
   if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
   if (type === 'desktop-mac' || type === 'desktop-windows') {
@@ -12574,13 +13333,15 @@ function _netRowHtml(r, offline) {
   var go = !offline && _NET_CONTROLS[r.control]
     ? '<a href="#" class="net-go" onclick="return _netGo(\'' + escAttr(r.control) + '\')">' + tH('net_change') + '</a>'
     : '';
+  // The link sits in the state's column, right under it, on every row: at
+  // the end of whichever line came last it wandered row to row (Eric:
+  // "change isn't even uniformly placed").
   return '<li class="net-row">' +
     '<span class="net-name">' + tH('net_' + r.id) + '</span>' +
     '<span class="net-state net-state-' + escAttr(r.state) + '">' + tH('net_state_' + r.state) + '</span>' +
-    // The link sits at the end of the hosts' line, or of the text when a
-    // row has no host of its own, so it never takes a line to itself.
-    '<span class="net-what">' + tH('net_' + r.id + '_when') + (hosts ? '' : (go ? ' ' + go : '')) + '</span>' +
-    (hosts ? '<span class="net-where">' + hosts + go + '</span>' : '') +
+    '<span class="net-what">' + tH('net_' + r.id + '_when') + '</span>' +
+    '<span class="net-act">' + go + '</span>' +
+    (hosts ? '<span class="net-where">' + hosts + '</span>' : '') +
     '</li>';
 }
 
@@ -12669,6 +13430,11 @@ function _postServerApps(shown) {
 
 // The environment panel. Read-only, and usually empty: the common install
 // overrides nothing, and saying so plainly is the useful answer.
+// A path, a URL, an env name: left to right in a right-to-left page, so
+// /zims keeps its slash at the start in Hebrew. Isolated, so it never
+// reorders the words around it. ``html`` is already escaped.
+function _ltr(html) { return '<bdi dir="ltr">' + html + '</bdi>'; }
+
 async function _renderEnvSection() {
   var rows;
   var fetched;
@@ -12697,17 +13463,21 @@ async function _renderEnvSection() {
   // Values come from the operator's own environment, so they are escaped like
   // any other untrusted string. Secrets arrive as the word "set" and are
   // rendered in the same slot, so the row shape never gives away which is which.
-  el.innerHTML = '<div class="env-rows">' + rows.map(function(r) {
+  // Folded, like Internet use: the summary is the names themselves, which is
+  // the answer most visits want; a tap opens what each one does.
+  el.innerHTML = '<details class="net-details env-details"><summary><span class="env-names" dir="ltr">' +
+    rows.map(function(r) { return esc(r.name); }).join(', ') + '</span></summary>' +
+  '<div class="env-rows">' + rows.map(function(r) {
     return '<div class="env-row">' +
-      '<code class="env-name">' + esc(r.name) + '</code>' +
+      '<code class="env-name">' + _ltr(esc(r.name)) + '</code>' +
       '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
-        (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
+        (r.value === '' ? tH('env_empty') : _ltr(esc(r.value))) + '</code>' +
       '<div class="env-what">' + esc(r.description) +
         (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
-        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
+        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: _ltr(esc(r.path))}) + '</span>' : '') +
       '</div></div>';
   }).join('') + '</div>' +
-  '<div class="ms-hint">' + tH('env_hint') + '</div>';
+  '<div class="ms-hint">' + tH('env_hint') + '</div></details>';
 }
 
 function _msServerHtml() {
@@ -12736,10 +13506,10 @@ function _msServerHtml() {
   if (IS_DESKTOP) {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
@@ -12750,13 +13520,13 @@ function _msServerHtml() {
     setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
-      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
       '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
 
-  // My data + Server backups — two self-titled cards, no extra heading.
-  var backupSec = '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>';
+  // The server's backup; My data, this browser's, is under Preferences.
+  var backupSec = '<div id="ms-backup" class="ms-backup">' + _serverBackupCardHtml() + '</div>';
 
   var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
 
@@ -13131,7 +13901,7 @@ function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, und
       '<div class="share-row-dim">' +
         '<div class="share-row-title">' + tH(titleKey) + '</div>' +
         '<div class="share-row-desc">' + descHtml + '</div>' +
-        (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+        (locked && envVar ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
       '</div>' +
       (noteHtml || '') +
     '</div>' +
@@ -13540,7 +14310,9 @@ async function _renderMirrorSection() {
       (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
 
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
+    // The variable that set it, named once: off, the reason line under the
+    // row says "BitTorrent is off (ZIMI_TORRENT=0)"; on, the lock note does.
+    _shareSwitch('torrent', btOn, m.torrent_env_locked, btOn ? (m.torrent_env_var || 'ZIMI_BT') : '',
       'share_bt_title', tH('share_bt_desc'),
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
@@ -13670,7 +14442,7 @@ var _BACKUP_SCHEMA = 'zimi-backup';
 var _BACKUP_SCHEMA_VERSION = 3;
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
-  SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
+  SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
   SK.EXT_LINKS, SK.OPEN_IN_APPS,
 ];
@@ -13708,7 +14480,8 @@ function _replaceChosen(id) {
 
 // ── Card markup ──
 // "My data" is the only card a signed-in non-admin sees (rendered standalone by
-// _renderUserManage); the admin Server pane shows both via _backupHubHtml.
+// _renderUserManage); an admin finds it under Preferences (it is this
+// browser's), the server's backup under Server.
 function _myDataCardHtml() {
   var signedIn = !!(_userSession && _userSession.name);
   var serverBtns = signedIn
@@ -13732,7 +14505,7 @@ function _myDataCardHtml() {
 }
 
 function _serverBackupCardHtml() {
-  return '<div class="ms-section-label" style="margin-top:22px">' + tH('backup_server_title') + '</div>' +
+  return '<div class="ms-section-label">' + tH('backup_server_title') + '</div>' +
     '<div class="ms-hint">' + tH('backup_server_intro') + '</div>' +
     '<div class="ms-backup-actions">' +
       '<button class="pill" onclick="exportServerBackup()">' + tH('backup_export_file') + '</button>' +
@@ -13742,10 +14515,6 @@ function _serverBackupCardHtml() {
     '</div>' +
     _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
-}
-
-function _backupHubHtml() {
-  return _myDataCardHtml() + _serverBackupCardHtml();
 }
 
 function _downloadJson(filename, obj) {
@@ -14233,16 +15002,13 @@ function renderInstalled(filterText) {
   // "Updates available" pseudo-group rendered first so they're easy to spot.
   const groups = {};
   const pendingUpdates = [];
+  // The search grammar, as the catalog has it: "-wiki" leaves the wikis out (#94).
+  const installedParsed = filterText ? parseSearchQuery(filterText) : null;
   for (const z of zims) {
     const cat = _zimCat(z);  // real category or OTHER_CAT — matches the home grouping
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
     if (manageLangFilter && !_zimMatchesLang(z, manageLangFilter)) continue;
-    if (filterText) {
-      const ft = filterText.toLowerCase();
-      const title = (z.title || z.name).toLowerCase();
-      const catLower = cat.toLowerCase();
-      if (!title.includes(ft) && !catLower.includes(ft) && !z.name.toLowerCase().includes(ft)) continue;
-    }
+    if (installedParsed && !searchQueryMatches(installedParsed, _libraryFilterText(z) + '\u0001' + cat)) continue;
     if (_availableUpdates[z.file]) {
       pendingUpdates.push(z);
       continue;
@@ -14273,7 +15039,7 @@ function renderInstalled(filterText) {
     // Real-category headers are drop targets for the row DnD (#37) — data-cat
     // names the destination; the Updates pseudo-group is never a target.
     const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
-    items_h += '<div class="ci-section-label"' + dropAttr + '>' + esc(groupLabel) + ' (' + items.length + ')</div>';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length) + '</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
@@ -15831,12 +16597,37 @@ function _stepBackToArticle(prev, replaceState) {
 // A single cycling control (chosen over an A−/A+ pair to conserve the already
 // crowded topbar) steps through these percentages, applied as a `zoom` on the
 // iframe body and reapplied on every article load. Persisted in localStorage.
-var READER_FONT_LEVELS = [85, 100, 115, 130];
+var READER_FONT_LEVELS = [85, 92, 100, 115, 130];
 var READER_FONT_DEFAULT = 100;
 
+// Text size, wherever it is set (Reader View, Zimipedia, a book): five named
+// steps, one per READER_FONT_LEVELS entry, drawn as five A's that grow. No
+// numbers: a size is picked by eye (Eric, 2026-09-30).
+var TEXT_SIZE_STEPS = ['smaller', 'small', 'default', 'large', 'larger'];
+var TEXT_SIZE_GLYPH_PX = [12, 14, 16, 19, 22];
+// The step of `list` nearest a stored value, so a size saved on the old,
+// finer scales lands on the step closest to it rather than being dropped.
+// Nothing a size could be (not a number, or far off the scale) is `fallback`.
+function _nearestStep(list, v, fallback) {
+  v = Number(v);
+  if (!isFinite(v) || v < list[0] / 2 || v > list[list.length - 1] * 2) return fallback;
+  return list.reduce(function(best, s) { return Math.abs(s - v) < Math.abs(best - v) ? s : best; });
+}
+// The five buttons. `cls` is the host's group class; each button carries
+// data-size (its step) for a sheet's own click handling, and runs
+// `onpick(step)` when the host passes one.
+function _textSizeStepsHtml(cls, cur, onpick) {
+  return '<div class="' + cls + '" role="radiogroup" aria-label="' + tH('reader_text_size') + '">' +
+    TEXT_SIZE_STEPS.map(function(k, i) {
+      var lbl = tH('text_size_' + k);
+      return '<button type="button" class="tsz-btn" role="radio" aria-checked="' + (i === cur) + '" data-size="' + i +
+        '" title="' + lbl + '" aria-label="' + lbl + '" style="font-size:' + TEXT_SIZE_GLYPH_PX[i] + 'px"' +
+        (onpick ? ' onclick="event.stopPropagation();' + onpick + '(' + i + ')"' : '') + '>A</button>';
+    }).join('') + '</div>';
+}
+
 function _readerFontLevel() {
-  var v = parseInt(localStorage.getItem(SK.READER_FONT), 10);
-  return READER_FONT_LEVELS.indexOf(v) >= 0 ? v : READER_FONT_DEFAULT;
+  return _nearestStep(READER_FONT_LEVELS, parseInt(localStorage.getItem(SK.READER_FONT), 10), READER_FONT_DEFAULT);
 }
 function _applyReaderFont(doc) {
   if (!doc || !doc.documentElement) return;
@@ -15876,21 +16667,16 @@ function _syncFontBtnGlyph() {
   var btn = document.getElementById('font-btn');
   if (!btn) return;
   var level = _readerFontLevel();
-  var idx = READER_FONT_LEVELS.indexOf(level); if (idx < 0) idx = 1;
+  var idx = READER_FONT_LEVELS.indexOf(level);
   var glyph = btn.querySelector('.font-glyph');
-  if (glyph) glyph.style.fontSize = (12 + idx * 2) + 'px'; // 12/14/16/18px live preview
-  var label = t('font_size') + ' — ' + level + '%';
+  if (glyph) glyph.style.fontSize = (12 + idx * 1.5) + 'px'; // 12 to 18px, a live preview
+  var label = t('font_size') + ': ' + t('text_size_' + TEXT_SIZE_STEPS[idx]);
   btn.title = label;
   btn.setAttribute('aria-label', label);
   _syncTopbarMenuReaderItems(); // keep the ... menu row (if open) in step
 }
 function _cycleReaderFont() {
-  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
-  var next = READER_FONT_LEVELS[(idx + 1) % READER_FONT_LEVELS.length];
-  try { localStorage.setItem(SK.READER_FONT, String(next)); } catch(e) {}
-  var frame = document.getElementById('reader-frame');
-  try { if (frame && frame.contentDocument) _applyReaderFont(frame.contentDocument); } catch(e) {}
-  _syncFontBtnGlyph();
+  _setReaderFontStep((READER_FONT_LEVELS.indexOf(_readerFontLevel()) + 1) % READER_FONT_LEVELS.length);
 }
 
 // ── Reader text-to-speech (offline Web Speech API) ──
@@ -16097,7 +16883,10 @@ var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
 // Auto's swatch shows what Auto paints (_readerTheme): the Sepia swatch by
 // day and the Dark one by night, a half each, in the same ring as every
 // swatch. app.css's .rv-sw-auto draws the same split.
-var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
+// Corner to corner, with a pixel of blend so the diagonal is a clean line
+// rather than a stair; painted inside the ring (background-clip), so the
+// ring is one colour all the way round.
+var READER_AUTO_SWATCH = 'linear-gradient(135deg,' + READER_THEME_BG.sepia + ' calc(50% - 0.5px),' + READER_THEME_BG.dark + ' calc(50% + 0.5px))';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
@@ -16142,8 +16931,10 @@ function _readerTextLen(doc, main) {
   return (main === doc.body || doc.__zimiWiki ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
 // A wiki's article in Zimipedia's reader is an article however short (a
-// stub is still one): the floor is for pages that may not be articles.
-function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
+// stub is still one), and a book is a book however short (a poem; a short
+// Gutenberg page fell through to its raw HTML, Bookshelf's Read with no
+// e-reader): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki || _isBookDoc(doc) ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -16152,6 +16943,10 @@ function _readerViewAvailable() {
   var loc = '';
   try { loc = frame.contentWindow.location.pathname; } catch(e) { return false; }
   if (loc.indexOf('/static/') === 0) return false; // pdf.js / other static viewers
+  // Zimi's own pages under /w/ (an article the ZIM does not hold): already
+  // laid out in Zimi's own colours. Restyled, the primary button's label
+  // went brown on brown.
+  if (_docIsOurOwnPage(doc)) return false;
   // When already applied, the stash proves it was readerable — keep it offered.
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
@@ -16188,6 +16983,14 @@ function _readerViewClean(root, doc) {
       var head = sec.firstElementChild;
       if (head && head === sec.lastElementChild && head.matches('h2,h3,h4,h5,h6,.mw-heading') &&
           sec.textContent.trim() === head.textContent.trim()) sec.remove();
+    });
+    // A Wiktionary audio row whose recording the ZIM left out (every nopic
+    // one) is a label beside an empty box; with it goes the bullet it stood in.
+    Array.prototype.forEach.call(root.querySelectorAll('table.audiotable'), function(t) {
+      if (t.querySelector('audio,video,source')) return;
+      var li = t.closest('li');
+      t.remove();
+      if (li && !li.textContent.trim() && !li.querySelector('img,svg,audio,video')) li.remove();
     });
   } catch(e) {}
   // Neutralize INLINE layout constraints that would make the clone a fixed-height
@@ -16338,6 +17141,12 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader img,.zimi-reader figure,.zimi-reader video,.zimi-reader svg,.zimi-reader canvas,.zimi-reader iframe{',
       'max-width:100% !important;height:auto}',
     '.zimi-reader img{border-radius:6px;margin:0.4em 0;display:block}',
+    // A MediaWiki formula is a picture of type (mwoffliner's SVG beside its
+    // hidden MathML): in its line, or centred on its own, never a figure;
+    // black ink on nothing, so in the dark it is turned light, as the text is.
+    '.zimi-reader img.mwe-math-fallback-image-inline{display:inline;margin:0;border-radius:0}',
+    '.zimi-reader img.mwe-math-fallback-image-display{margin:0.5em auto;border-radius:0}',
+    'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math-fallback"]{filter:invert(.88)}',
     // Tap-to-full-size: only images whose source is larger than the scaled-down
     // display get the affordance (class added by _readerMarkImage). zoom-in cue +
     // a subtle focus ring so keyboard users can see the target.
@@ -16385,6 +17194,14 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader table{border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:0.84em}',
     '.zimi-reader th,.zimi-reader td{border:1px solid var(--rv-border);padding:6px 10px;text-align:left;vertical-align:top}',
     '.zimi-reader th{background:var(--rv-th);color:var(--rv-head);font-weight:600}',
+    // Wiktionary's furniture. An inflection table is two pale boxes
+    // (bgcolor="#e2e2ff", which no theme reaches) with empty spacer cells
+    // between; in the reader the boxes take the theme's table fill and the
+    // spacers go. An audio row keeps its line, without cell borders.
+    '.zimi-reader table.inflection-table{border-collapse:separate;border-spacing:8px 0;margin-inline:-8px}',
+    '.zimi-reader .inflection-table td{border:0;background:var(--rv-th)!important;border-radius:8px;padding:8px 14px!important}',
+    '.zimi-reader .inflection-table td:empty{display:none}',
+    '.zimi-reader .audiotable td{border:0;padding:0 8px 0 0}',
     // ── Print / Save as PDF ──
     // The palette's Print row calls frame.contentWindow.print(), so only THIS
     // iframe document prints. Force a clean sheet independent of the on-screen
@@ -16939,11 +17756,9 @@ function _setReaderTheme(theme) {
   _tintReaderChrome();
   _renderReaderPalette();
 }
-function _stepReaderFont(dir) {
-  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
-  if (idx < 0) idx = READER_FONT_LEVELS.indexOf(READER_FONT_DEFAULT);
-  var next = Math.min(READER_FONT_LEVELS.length - 1, Math.max(0, idx + dir));
-  try { localStorage.setItem(SK.READER_FONT, String(READER_FONT_LEVELS[next])); } catch(e) {}
+// One of the five text-size steps (an index into READER_FONT_LEVELS).
+function _setReaderFontStep(step) {
+  try { localStorage.setItem(SK.READER_FONT, String(READER_FONT_LEVELS[step])); } catch(e) {}
   var doc = _readerFrameDoc();
   try { if (doc) _applyReaderFont(doc); } catch(e) {}
   _syncFontBtnGlyph();
@@ -16980,11 +17795,6 @@ function _tintReaderChrome() {
 }
 
 var _READER_PALETTE_ID = 'reader-palette';
-// The size says what it is: a share of the page's own size, in the
-// interface's numerals ("M" named nothing a reader could picture).
-function _readerSizeLabel(lvl) {
-  try { return (lvl / 100).toLocaleString(_currentLang || 'en', { style: 'percent' }); } catch (e) { return lvl + '%'; }
-}
 function _readerPaletteHtml() {
   return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
     '</span></div>' + _readerSettingsRowsHtml();
@@ -17020,15 +17830,7 @@ function _rvFamPillsHtml(fam) {
     _rvFamPillHtml('serif', fam) + _rvFamPillHtml('sans', fam) + '</div>';
 }
 function _rvSizeStepperHtml(lvl) {
-  var minSize = lvl === READER_FONT_LEVELS[0];
-  var maxSize = lvl === READER_FONT_LEVELS[READER_FONT_LEVELS.length - 1];
-  return '<div class="rv-size">' +
-    '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
-      ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
-    '<span class="rv-size-val">' + esc(_readerSizeLabel(lvl)) + '</span>' +
-    '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
-      ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
-    '</div>';
+  return _textSizeStepsHtml('rv-size', READER_FONT_LEVELS.indexOf(lvl), '_setReaderFontStep');
 }
 
 // Compact controls for the ⋯ menu when Reader View is on: theme swatches row +
@@ -17054,14 +17856,14 @@ function _readerSettingsRowsHtml() {
   // Font family
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
     _rvFamPillsHtml(fam) + '</div>';
-  // Text size (reuses the persisted zoom levels as A−/A+)
+  // Text size: the five steps
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_text_size') + '</div>' +
     _rvSizeStepperHtml(lvl) + '</div>';
   // AUTO mode
   h += '<button type="button" class="rv-toggle-row" role="switch" aria-checked="' + (auto ? 'true' : 'false') +
     '" onclick="event.stopPropagation();_toggleReaderAuto()">' +
-    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span>' +
-    '<span class="rv-toggle-sub">' + tH('reader_auto_hint') + '</span></span>' +
+    // The title alone: "Open articles in Reader View" under it said it again.
+    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span></span>' +
     '<span class="rv-switch' + (auto ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
   // Print / Save as PDF (+ native Share where supported). Only while Reader View
   // is active: printing the clean reader shell yields a beautiful page (see the
@@ -17513,8 +18315,8 @@ function openReddot(replaceState, p) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && p) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _reddotUrl(p));
-  else history.pushState(st, '', _reddotUrl(p));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _reddotUrl(p));
+  else history.pushState(_stampFrom(st), '', _reddotUrl(p));
   openReader(_REDDOT_PAGE + '#' + _reddotStrings(p));
   document.title = t('reddot') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -17674,8 +18476,8 @@ function _openHashApp(app, replaceState, show) {
   _appTop = true;
   var st = { mode: 'reader' };
   st[app] = true;
-  if (replaceState === true) history.replaceState(st, '', '/#' + app);
-  else history.pushState(st, '', '/#' + app);
+  if (replaceState === true) history.replaceState(_keepFrom(st), '', '/#' + app);
+  else history.pushState(_stampFrom(st), '', '/#' + app);
   openReader(page);
   document.title = t(app) + ' — Zimi';
   _setWindowTitle(document.title);
@@ -17692,11 +18494,11 @@ function _appFrameCall(fn, val) {
 // No app is on screen: an article, the home page, or another app about to
 // say it is.
 function _appsOff() {
-  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false;
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false; _dictOpen = false;
   _chromeReset();
 }
 function _anyAppOpen() {
-  return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen;
+  return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen || _dictOpen;
 }
 
 // ── Bookshelf ──
@@ -17728,7 +18530,7 @@ function _booksStrings() {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
-    'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
@@ -17739,6 +18541,79 @@ function openBooks(replaceState) {
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 
+// ── Dictionary ──
+// One word across every Wiktionary in the library (/static/dictionary.html,
+// zimi/dictionary.py), shown in the reader like the other apps, each word a
+// step to the next. Eric, 2026-09-28: "done really well might be nice,
+// especially if it's like a nice down the wormhole experience." A word has
+// an address of its own (/?dictionary=water); the front is /#dictionary.
+var _dictOpen = false;
+var _DICT_PAGE = '/static/dictionary.html?v=1';
+var _DICT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 12.5l2.5-6 2.5 6M10.4 10.5h3.2"/></svg>';
+// The Wiktionaries: Zimipedia reads them as wikis; Dictionary reads their words.
+function _installedDictZims() {
+  return (zimsCache || []).filter(function(z) { return z.main_path && z.kind === 'wiki' && z.project === 'wiktionary'; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
+function _isDictPage() {
+  return !!(_dictOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _dictionaryTileHtml() {
+  return _appTileHtml('dictionary', t('dictionary'), _DICT_SVG, _installedDictZims().map(function(z) { return z.title || z.name; }), 'openDictionary');
+}
+function _dictUrl(w) {
+  return w ? '/?dictionary=' + encodeURIComponent(w) : '/#dictionary';
+}
+function _dictStrings(w) {
+  return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
+    'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice',
+    'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
+    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), catalog: t('app_browse_catalog') });
+}
+// A word (or the front, w ''), as Reddot opens a post.
+function openDictionary(replaceState, w) {
+  w = typeof w === 'string' ? w : '';
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_dictUrl(w), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _appsOff();
+  _dictOpen = true;
+  _appTop = !w;
+  var st = { mode: 'reader', dictionary: true, w: w };
+  if (replaceState && w) st.entry = true;
+  if (replaceState) history.replaceState(st, '', _dictUrl(w));
+  else history.pushState(st, '', _dictUrl(w));
+  openReader(_DICT_PAGE + '#' + _dictStrings(w));
+  document.title = (w ? w + ' — ' : '') + t('dictionary') + (w ? '' : ' — Zimi');
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+
+// Zimi's language changed with a word open: the word's translation into it
+// opens (Back returns to the word), or, when it has none, the same word in
+// the new language's strings with that language's entry first. Eric,
+// 2026-10-01: "if a word is selected that would switch to the translation".
+function _dictFollowLanguage(lang) {
+  var win = null;
+  try { win = document.getElementById('reader-frame').contentWindow; } catch (e) {}
+  var w = win && typeof win.dictCurrent === 'function' ? win.dictCurrent() : '';
+  var found = w && typeof win.dictTranslation === 'function' ? win.dictTranslation(lang) : Promise.resolve('');
+  found.then(function(tw) {
+    if (!_isDictPage() || _currentLang !== lang) return;
+    if (tw && tw !== w) openDictionary(false, tw);
+    else openDictionary(true, w);
+    // The page differs only after its '#', and that is a scroll, not a load:
+    // the strings and the word ride there.
+    try { win.location.reload(); } catch (e) {}
+  }, function() {});
+}
+
 // ── Reading settings: the book reader's and Zimipedia's ──
 // One sheet (theme, font, text size, line spacing, margins, and for a book
 // the layout), one set of scales, and one stylesheet for the bars and sheets
@@ -17747,7 +18622,10 @@ function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 // reader's own, kept per browser (a book reads larger and airier than an
 // encyclopedia).
 var _READING_BAR_H = 48;             // px: a reader's bar, under the top inset
-var _READING_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+// px: the five text-size steps, the same shares of 19px as Reader View's
+// zoom levels are of the page (16, 17, 19, 22, 25).
+var _READING_SIZE_BASE = 19;
+var _READING_SIZES = READER_FONT_LEVELS.map(function(p) { return Math.round(_READING_SIZE_BASE * p / 100); });
 var _READING_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
 var _READING_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
 var _READING_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
@@ -17806,14 +18684,13 @@ var _READING_CSS = [
   '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
   // A ring that reads on every sheet, so the sheet's own colour's dot is not
   // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
-  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box}',
-  '.zb-dot-auto{background:' + READER_AUTO_SWATCH + '}.zb-dot-light{background:' + READER_THEME_BG.light + '}.zb-dot-sepia{background:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background:' + READER_THEME_BG.dark + '}',
-  '.zb-step{display:flex;align-items:center;gap:8px}',
-  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
-  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box;background-clip:padding-box}',
+  '.zb-dot-auto{background-image:' + READER_AUTO_SWATCH + '}.zb-dot-light{background-color:' + READER_THEME_BG.light + '}.zb-dot-sepia{background-color:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background-color:' + READER_THEME_BG.dark + '}',
+  // Text size: five A's, each drawn at its own size (inline).
+  '.zb-sizes button{font-family:Georgia,serif;padding:0;line-height:1}',
   '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
   // A finger: the sheet's choices and its close reach 44px.
-  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-step button{height:44px}.zb-x{width:44px;height:44px}}',
+  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-x{width:44px;height:44px}}',
   '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
   '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
 ].join('');
@@ -17823,7 +18700,7 @@ function _readingPrefs(key, defaults) {
   var p = _getStorageJSON(key, {}) || {};
   var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
   return {
-    size: _READING_SIZES.indexOf(p.size) >= 0 ? p.size : defaults.size,
+    size: _nearestStep(_READING_SIZES, p.size, defaults.size),
     lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
     margin: idx(p.margin, _READING_MARGINS, defaults.margin),
     mode: p.mode
@@ -17846,8 +18723,7 @@ function _readingSettingsHtml(prefs, layouts) {
   return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
     row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
     row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
-    row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-      '<output><bdi>' + prefs.size + ' px</bdi></output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+    row(tH('reader_text_size'), _textSizeStepsHtml('zb-seg zb-sizes', si)) +
     row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
     row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
     (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
@@ -17859,10 +18735,7 @@ function _readingSettingsPick(el, prefs) {
   if (el.hasAttribute('data-theme')) return { theme: el.getAttribute('data-theme') };
   if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
   if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
-  if (el.hasAttribute('data-size')) {
-    var i = _READING_SIZES.indexOf(prefs.size) + Number(el.getAttribute('data-size'));
-    return { prefs: { size: _READING_SIZES[Math.max(0, Math.min(_READING_SIZES.length - 1, i))] } };
-  }
+  if (el.hasAttribute('data-size')) return { prefs: { size: _READING_SIZES[Number(el.getAttribute('data-size'))] } };
   var p = el.getAttribute('data-pref');
   if (!p) return null;
   var o = {}; o[p] = Number(el.value);
@@ -18009,12 +18882,14 @@ function _bookPrefs() {
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
 // Gutenberg one and the page is a book's, <title>.<number>; or it is an
-// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// EPUB's chapters, <book>.epub/; or a book whose chapters are pages,
+// _zimi_book_/<root>, zimi/bookpages.py), so Zimi's header can step aside before
 // the book is laid out, not after (a change of the frame's size then would
 // lay the book out twice).
+var _BOOK_PAGES_PREFIX = '_zimi_book_/';
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
-  if (m && /\.epub\/$/i.test(m[2])) return true;
+  if (m && (/\.epub\/$/i.test(m[2]) || m[2].indexOf(_BOOK_PAGES_PREFIX) === 0)) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
@@ -18023,13 +18898,41 @@ function _bookUrl(url) {
 // header does, at every size: the book has a header of its own).
 var _bookReading = false;
 function _bookChrome(on) {
-  on = !!on;
-  if (on !== _chromeHeld) _chromeImmersive(on);
-  _bookReading = on;
+  _bookReading = !!on;
+  _ownChromeSync();
+}
+// So does it while a PDF is read: the viewer draws Zimi's PDF reader
+// (static/pdfreader.js), its own bars in Zimi's look.
+var _pdfReading = false;
+function _pdfChrome(on) {
+  _pdfReading = !!on;
+  _ownChromeSync();
+}
+function _ownChromeSync() {
+  var held = _bookReading || _pdfReading;
+  _viewportCover(held);
+  if (held === _chromeHeld) return;
+  // The header stays while focus is in it (app.css :focus-within): the
+  // search box focused as the page opened would keep it over the reader's.
+  var a = document.activeElement;
+  if (held && a && a.closest && a.closest('.topbar')) a.blur();
+  _chromeImmersive(held);
+}
+// While a reader draws its own bars (a book, a PDF) the page runs to the
+// screen's edges (viewport-fit=cover): only then does the browser report the
+// notch and the home indicator as insets, which the reader keeps its bars
+// clear of. The rest of Zimi keeps the browser's own safe layout.
+var _VIEWPORT_COVER = ', viewport-fit=cover';
+function _viewportCover(on) {
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m) return;
+  var c = (m.getAttribute('content') || '').split(_VIEWPORT_COVER).join('');
+  m.setAttribute('content', on ? c + _VIEWPORT_COVER : c);
 }
 // The screen's safe-area insets (a notch, the home indicator). A page in a
-// frame is not told them, so the shell measures and hands them in.
-function _bookInsets() {
+// frame is not told them, so the shell measures and hands them in (the book
+// reader and the PDF reader).
+function _safeInsets() {
   var el = document.getElementById('zb-insets');
   if (!el) {
     el = document.createElement('div');
@@ -18113,6 +19016,13 @@ function _bookSplitLong(doc, sec, len) {
   sec.parentNode.removeChild(sec);
   return parts;
 }
+// Is there no text before the first chapter but the reader's title?
+function _bookFrontEmpty(article, first, range) {
+  range.setStart(article, 0); range.setEndBefore(first);
+  var title = article.querySelector('.zimi-reader-title');
+  var text = range.toString().replace(/\s+/g, '');
+  return !text || (!!title && text === title.textContent.replace(/\s+/g, ''));
+}
 // The title page: no stacked line breaks, no empty paragraphs, so its title
 // blocks sit together (Gutenberg spaces them with <br>s and empty <p>s).
 function _bookTidyFront(sec) {
@@ -18175,6 +19085,28 @@ function _bookAttach(frame) {
   if (ok) doc.__zimiBook = true;
   return ok;
 }
+// A book whose formulas are TeX for its ZIM's MathJax (zimi/bookpages.py
+// names it in the page's head): drawn by /static/bookmath.js, which loads
+// only for such a page.
+var _BOOK_MATH_JS = '/static/bookmath.js?v=1', _bookMathLoading = null;
+function _bookMath(frame) {
+  var doc = frame.contentDocument;
+  var m = doc && doc.querySelector('head > meta[name="zimi-math"]');
+  var src = m && m.getAttribute('content') || '';
+  if (src.indexOf('/w/') !== 0) return;
+  if (!_bookMathLoading) {
+    _bookMathLoading = new Promise(function(resolve, reject) {
+      var el = document.createElement('script');
+      el.src = _BOOK_MATH_JS;
+      el.onload = function() { window.ZimiBookMath ? resolve(window.ZimiBookMath) : reject(); };
+      el.onerror = function() { _bookMathLoading = null; reject(); };
+      document.head.appendChild(el);
+    });
+  }
+  _bookMathLoading.then(function(M) {
+    M.attach(doc, src, function() { if (typeof doc.__zbReflow === 'function') doc.__zbReflow(); });
+  }, function() {});
+}
 function _bookUndo(doc) {
   try {
     doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open', 'zb-set-open');
@@ -18210,17 +19142,24 @@ function _bookLay(frame) {
   var pre = doc.createRange();
   // A "chapter" with no more than a title before it is the title page's
   // (By Fyodor Dostoevsky, Contents): the book starts where there is more.
-  while (chapters.length) {
+  // A book of pages names its chapters itself (zimi/bookpages.py): a short
+  // first page is still its own.
+  while (chapters.length && meta('zimi-book') !== 'pages') {
     pre.setStart(article, 0); pre.setEndBefore(chapters[0]);
     if (pre.toString().replace(/\s+/g, '').length >= _BOOK_FRONT_MIN) break;
     chapters = Array.prototype.slice.call(chapters, 1);
   }
   if (chapters.length < _BOOK_CHAPTERS_MIN) chapters = [];
+  // Nothing before the first chapter but the book's name (a Wikisource work
+  // whose first page is its contents, taken out): no page of its own, the
+  // name heads the first chapter, so the book opens on its first text and
+  // not on a name alone over "Last page in chapter".
+  var titleOnly = chapters.length > 0 && _bookFrontEmpty(article, chapters[0], pre);
   var secs = [];
-  _bookSections(doc, article, chapters).forEach(function(s) {
+  _bookSections(doc, article, titleOnly ? chapters.slice(1) : chapters).forEach(function(s) {
     secs.push.apply(secs, _bookSplitLong(doc, s, s.textContent.length));
   });
-  if (chapters.length && secs.length) _bookTidyFront(secs[0]);
+  if (chapters.length && secs.length && !titleOnly) _bookTidyFront(secs[0]);
   var lens = [], cum = [], total = 0;
   secs.forEach(function(s, i) { s.__zbI = i; cum.push(total); lens.push(s.textContent.length); total += lens[i]; });
   total = Math.max(1, total);
@@ -18271,7 +19210,7 @@ function _bookLay(frame) {
   // the passage stays the one you were reading until you move, rather than
   // becoming whatever now tops the page, which would drift back a page a time.
   var held = false;
-  var insets = _bookInsets();
+  var insets = _safeInsets();
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
@@ -18543,8 +19482,9 @@ function _bookLay(frame) {
     h += '<li' + (k < 0 ? ' aria-current="true"' : '') + '><button type="button" data-k="-1">' + esc(bookTitle) + '</button></li>';
     chapters.forEach(function(ch, i) {
       var x = _bookText(ch);
-      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not.
-      h += '<li' + (seen[x] > 1 ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
+      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not;
+      // so does a section a book of pages marks as one (data-zb-sub).
+      h += '<li' + (seen[x] > 1 || ch.hasAttribute('data-zb-sub') ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
     });
     tocSheet.innerHTML = h + '</ol>';
   };
@@ -18704,10 +19644,13 @@ function _bookLay(frame) {
       if (size === sizeAt) return;
       var widthChanged = size.split('x')[0] !== sizeAt.split('x')[0];
       sizeAt = size;
-      insets = _bookInsets();
+      insets = _safeInsets();
       if (paged || widthChanged) relayout(anchor);
     });
   });
+  // Something in the page changed size (its formulas drawn): pages are
+  // counted again, the passage held. Scrolling keeps its place by itself.
+  doc.__zbReflow = function() { if (paged) relayout(anchor); };
   // Leaving: the place as last read (the frame may already be hidden, with
   // nothing on screen to read it from).
   win.addEventListener('pagehide', function() { clearTimeout(settleTimer); save(); });
@@ -18792,8 +19735,8 @@ function openExchange(replaceState, q) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && q) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
-  else history.pushState(st, '', _exchangeUrl(q));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _exchangeUrl(q));
+  else history.pushState(_stampFrom(st), '', _exchangeUrl(q));
   openReader(_EXCHANGE_PAGE + '#' + _exchangeStrings(q));
   document.title = t('exchange') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -18836,7 +19779,12 @@ function _appItemOpened(app, id, title) {
 function _appItemClosed() { _appItem = null; _updateLibraryBtnIcon(); updateTopbar(); }
 function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
-  if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+  if (app === 'dictionary') openDictionary(false, _dictWordOfPath(path));
+  else if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+}
+// A Wiktionary page's word: the old A/ namespace off, underscores as spaces.
+function _dictWordOfPath(path) {
+  return String(path || '').replace(/^A\//, '').replace(/_/g, ' ');
 }
 
 // A search result (or a Discover card) opens in the app made for its kind,
@@ -18869,7 +19817,7 @@ function _openResult(zim, path, title) {
 }
 // The apps whose things (a video, a question, a post) open in the app, not
 // the reader; each thing's kind is the one Saved.KIND_APP gives the app.
-var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot'];
+var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot', 'dictionary'];
 function _appItemKind(app) {
   if (_APP_ITEM_APPS.indexOf(app) < 0) return '';
   for (var k in Saved.KIND_APP) if (Saved.KIND_APP[k] === app) return k;
@@ -18897,7 +19845,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -18908,10 +19856,16 @@ function _tubeStrings(play) {
 function _appStep(state, url, key) {
   var s = history.state || {};
   // Item to item is one entry; the way in (a shared link) stays the way in.
-  if (s.mode === 'reader' && s[key]) { if (s.entry) state.entry = true; history.replaceState(state, '', url); }
+  if (s.mode === 'reader' && s[key]) {
+    if (s.entry) state.entry = true;
+    if (s.from) state.from = s.from;
+    history.replaceState(state, '', url);
+  }
   else history.pushState(state, '', url);
 }
 function _appHome(state, url, key) {
+  var s = history.state || {};
+  if (s.from) state.from = s.from;
   history.replaceState(state, '', url);
 }
 // Back or Forward landed on an app address while that app is open: steer
@@ -18941,7 +19895,7 @@ window.addEventListener('message', function(e) {
     _setWindowTitle(document.title);
   } else if (d.zimi === 'back') {
     // The page's own back arrow: the step the shell took for it.
-    if (history.state && (history.state.play || history.state.q || history.state.p)) history.back();
+    if (history.state && (history.state.play || history.state.q || history.state.p || history.state.w)) history.back();
   } else if (d.zimi === 'open' && typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) {
     // "Open the original page" from an app: an article with the app as the
     // step behind it, so the header's arrow returns to the video, the
@@ -18985,6 +19939,19 @@ window.addEventListener('message', function(e) {
     _appItemClosed();
     document.title = t('exchange') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'dictionary-w' && _dictOpen && typeof d.w === 'string' && d.w) {
+    // A word: its own address, a step from the front, and from one word to
+    // the next the same step rewritten (the page's trail walks back them).
+    _appStep({ mode: 'reader', dictionary: true, w: d.w }, _dictUrl(d.w), 'w');
+    document.title = d.w + ' \u2014 ' + t('dictionary');
+    _setWindowTitle(document.title);
+    if (typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) _appItemOpened('dictionary', d.zim + '/' + d.path, d.w);
+    else _appItemClosed();
+  } else if (d.zimi === 'dictionary-home' && _dictOpen) {
+    _appHome({ mode: 'reader', dictionary: true, w: '' }, _dictUrl(''), 'w');
+    _appItemClosed();
+    document.title = t('dictionary') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
     _openCategory(d.category);
   }
@@ -19012,6 +19979,11 @@ function _chromeScroll(y) {
   _chromeBase = y;
   _setChromeAway(away || _chromeHeld);
 }
+// A scroll the page made to keep what is on screen still (a late section
+// arriving above the reader): not the reader's, so the header stays as it is.
+// Sliding it away there changed the scroller's height, and at the page's end
+// the browser pulled the scroll up and moved what was being read.
+function _chromeShift(d) { _chromeBase += d; }
 // Held away (a video playing on a phone turned sideways, a book being read)
 // until let go.
 function _chromeImmersive(on) {
@@ -19056,8 +20028,8 @@ function openTube(replaceState, play) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && play) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _tubeUrl(play));
-  else history.pushState(st, '', _tubeUrl(play));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _tubeUrl(play));
+  else history.pushState(_stampFrom(st), '', _tubeUrl(play));
   openReader(_TUBE_PAGE + '#' + _tubeStrings(play));
   document.title = t('tube') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -19068,7 +20040,7 @@ function openTube(replaceState, play) {
 // can exist on a fresh install and suggest which zims to add or pop to
 // relevant catalog categories." An app with data opens; one without opens
 // the catalog category that feeds it, and its tile says so.
-var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia', books: 'gutenberg' };  // reddot: made, not downloaded
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia', books: 'gutenberg', dictionary: 'wikipedia' };  // reddot: made, not downloaded
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
 var _createRememberSource = '';
@@ -19082,7 +20054,7 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary'];
 // Offered only when the server names them (a preview, while it is built):
 // none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
 var APPS_OPT_IN = [];
@@ -19145,7 +20117,7 @@ function _setUserApp(app, on) {
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
 function _appIcon(app) {
-  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : _REDDOT_SVG;
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : app === 'dictionary' ? _DICT_SVG : _REDDOT_SVG;
 }
 // The ZIMs inside each app: the ones its tile names and its page reads.
 function _appZims(app) {
@@ -19154,6 +20126,7 @@ function _appZims(app) {
     : app === 'exchange' ? _installedQaZims()
     : app === 'wiki' ? _installedWikiZims()
     : app === 'books' ? _installedBookZims()
+    : app === 'dictionary' ? _installedDictZims()
     : _installedRedditZims();
 }
 // What the library holds for each app, in a line under its name.
@@ -19176,7 +20149,7 @@ function _appPicksHtml(apps, checked, onchange, disabled) {
 
 // Each app's tile and its door, by name, so the row and the Apps page can
 // take the apps in any order.
-var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml };
+var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml, dictionary: _dictionaryTileHtml };
 
 // The apps follow the library's order, as the sources do (#100). Eric: "sort
 // the apps by recently updated (i.e. contains zims that were recently
@@ -19255,15 +20228,40 @@ function _appsPageHtml(shown) {
     var inside = _appZims(app);
     if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
-    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false)) : '';
+    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false, function(z) { return _appItemsHtml(app, z); })) : '';
   }).join('');
   return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
 }
+// How many of what the app shows a ZIM holds, as the app counts them: books,
+// videos, questions, posts (server.note_app_items, counted when the app read
+// them and kept with the library's list), a wiki's articles. ZIM entries
+// (pictures, stylesheets, a tag's pages) are not what an app shows. A video
+// ZIM ZimiTube has not read yet counts its video and audio files (its
+// measured shape). Undefined when not known yet: the card then says nothing.
+function _appItemsCount(app, z) {
+  var items = z.items || {};
+  if (items[app]) return items[app];
+  if (app === 'books' && z.feeds && z.feeds.books === 'whole') return 1;
+  if (app === 'wiki' || app === 'dictionary') return typeof z.article_count === 'number' ? z.article_count : undefined;
+  if (app === 'tube' && z.shape && z.shape.breakdown) {
+    var n = 0;
+    z.shape.breakdown.forEach(function(b) { if (b.key === 'video' || b.key === 'audio') n += b.count || 0; });
+    return n || undefined;
+  }
+  return undefined;
+}
+// A card's count on the Apps page. A map is not counted in entries (its
+// tiles): its publisher says which map it is.
+function _appItemsHtml(app, z) {
+  if (app === 'maps') return esc(_mapSourceLabel(z));
+  var n = _appItemsCount(app, z);
+  return n ? esc(tPlural('app_items_' + app, n, {n: n.toLocaleString()})) : '';
+}
 // One app's section: its tile drawn as a banner (the count of what it reads
-// in place of their names, which follow under it), then its ZIMs.
+// in place of their names, which follow under it: a map app's maps), then its ZIMs.
 function _appSectionHtml(app, n, grid) {
   var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
-  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH('app_sources', n) + '</div>');
+  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH(app === 'maps' ? 'apps_count_maps' : 'app_sources', n) + '</div>');
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
@@ -19559,7 +20557,7 @@ async function _openMapsCatalog() {
 // the door, the category is what fills it.
 async function _openCategory(key) {
   if (readerOpen) closeReader();
-  await enterManage(null);
+  if (!(await enterManage(null))) return;
   switchManageTab('browse');
   drillCategory(key);
 }
@@ -19768,6 +20766,81 @@ function _readerShare() {
   navigator.share({ title: title, url: _currentPageUrl() }).catch(function () {});
 }
 
+// Only a PICTURE forces a viewport-less page to be scaled down: one that
+// would otherwise be cut off, like xkcd's comic in its 780px table, which
+// is the case this fitting exists for. Text never is: the containment CSS
+// the reader puts in wraps it, clips it, or gives a <pre> or a wide table
+// its own scrollbar. Measuring text shrank whole documents for nothing: an
+// installed devdocs ZIM, which carries no viewport meta on any page,
+// rendered at 81% because one footer paragraph held a long unbreakable URL
+// (found in review before 1.9.0 was published).
+var MIN_FIT_SCALE = 0.25;  // below this nothing is readable anyway
+var FIT_SLACK_PX = 8;      // wider than the frame by less than this: left as it is
+var FIT_SCAN_MAX = 3000;   // pictures measured at most
+// A page with no viewport meta was laid out for a desktop: xkcd's comic
+// sits in a 780px table. A phone browser shows such a page zoomed out to
+// fit; inside this frame it was clipped at the right edge instead, half the
+// comic gone (seen 2026-09-03). Scale the document to the frame the way the
+// phone would. Measured unzoomed and with the reader's containment CSS
+// (sheet, once it is in) off: it hides the overflow it measures. Called
+// again when the pictures have loaded, so it starts from no zoom each time.
+function _fitWidePictures(d, w, sheet) {
+  if (sheet) sheet.disabled = true;
+  d.documentElement.style.zoom = '';
+  try {
+    // The widest PICTURE, counting spill to the left of the frame (a centred
+    // fixed-width table spills both ways). Anything parked far off-screen, a
+    // skip link at -9999px, is not layout and is ignored.
+    var have = w.innerWidth, wide = have;
+    var shown = d.body ? d.body.querySelectorAll('img,video,canvas,svg,object,embed,iframe,picture') : [];
+    for (var i = 0; i < shown.length && i < FIT_SCAN_MAX; i++) {
+      var r = shown[i].getBoundingClientRect();
+      if (r.width <= 0 || r.left < -have * 2 || r.right > have * 6) continue;
+      var extent = r.right - Math.min(r.left, 0);
+      if (extent > wide) wide = extent;
+    }
+    var scale = have / wide;
+    if (wide > have + FIT_SLACK_PX && have > 0 && scale >= MIN_FIT_SCALE) d.documentElement.style.zoom = String(scale);
+  } finally {
+    if (sheet) sheet.disabled = false;
+  }
+}
+
+// A wiki scraped with its desktop skin (Vector legacy, MonoBook and their
+// kin: explainxkcd, the OpenStreetMap wiki, RationalWiki) keeps, on a phone,
+// the content column's margin for a sidebar the ZIM no longer has: the left
+// half of explainxkcd's main page was empty grey, its "Go to this
+// explanation" link (placed absolutely, beside the heading) sat on "Latest
+// comic", and the comic's box ran off the right edge (2026-10-01). Below the
+// width a sidebar can have, the column takes the whole frame, what is left of
+// the chrome goes, and a template's absolutely placed links fall back into
+// the flow. A responsive skin (Vector 2022, Minerva, mwoffliner's own pages)
+// is not matched; nor is any page on a desktop.
+var MW_DESKTOP_SKIN_MAX_W = 720;
+var MW_DESKTOP_SKIN_CSS = (function () {
+  var skin = ':is(body.skin-vector-legacy,body.skin-monobook,body.skin-modern,body.skin-cologneblue):not(.skin--responsive) ';
+  var sel = function (list) { return list.split(',').map(function (s) { return skin + s; }).join(','); };
+  return '@media (max-width:' + MW_DESKTOP_SKIN_MAX_W + 'px){' +
+    sel('#content,#column-content,.mw-body,#mw-head-base,#left-navigation,#footer,.mw-footer,#mw-data-after-content') +
+      '{margin-left:0!important;margin-right:0!important;border-left:0!important;border-right:0!important}' +
+    sel('.mw-body,#content') + '{padding-left:12px!important;padding-right:12px!important}' +
+    sel('#column-one,#mw-panel,#mw-head,#mw-navigation,#p-logo,#mw-page-base') + '{display:none!important}' +
+    sel('.mw-parser-output [style*="absolute"]') + '{position:static!important}' +
+    // A box with a width and a side margin (the comic's table: 98% and 1em)
+    // is wider than the column once the column is the frame.
+    sel('.mw-parser-output table') + '{margin-left:0!important;margin-right:0!important}' +
+    // A one-column table framing a picture (that comic box again) is laid
+    // out to the column's width, so the picture's max-width:100% has a width
+    // to resolve against; scrolled inside its box, half the comic was hidden.
+    // A real table, two cells a row, keeps its own width and scrolls.
+    sel('.mw-parser-output table:has(img):not(:has(td+td,th+th,td+th,th+td))') +
+      '{display:table!important;table-layout:fixed;width:100%!important}' +
+    // A template's row of buttons, list items set inline: each wraps whole
+    // to the next line instead of breaking in two across it.
+    sel('.mw-parser-output li[style*="inline"]') + '{display:inline-block!important;margin-bottom:4px!important}' +
+  '}';
+})();
+
 // ── Reader ──
 // Calls fn once the frame holds a new document whose DOM is parsed
 // (DOMContentLoaded), before its images load. Gives up when the frame's
@@ -19844,10 +20917,6 @@ function openReader(url) {
   if (lurl.endsWith('.pdf') && !url.startsWith('/static/pdfjs/')) {
     url = _pdfViewerUrl(url);
   }
-  // A11y rewrite opt-in: only ZIM article URLs (/w/...), not PDFs or static.
-  if (_getStorageFlag(SK.A11Y_REWRITE) && url.startsWith('/w/') && !lurl.endsWith('.pdf')) {
-    url += (url.includes('?') ? '&' : '?') + 'a11y=1';
-  }
   readerOpen = true;
   _ttsStop();          // never carry speech across a new article load
   _ttsSetSpeaking(false); // reset the button label to "Read aloud"
@@ -19864,6 +20933,7 @@ function openReader(url) {
   // A book: Zimi's header steps aside for the book's before it loads.
   var _bookLoading = _bookUrl(url);
   _bookChrome(_bookLoading);
+  _pdfChrome(url.startsWith('/static/pdfjs/'));
   // Tint the iframe + loading overlay to the reader theme when Reader View is
   // sticky or AUTO is armed, so the load gap shows theme bg (never ZIM-white).
   _tintReaderChrome();
@@ -19923,7 +20993,6 @@ function openReader(url) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
-    try { _blockPinch(frame.contentDocument); } catch (e) {}
     // Links out of the library, marked (or made plain text) before anything
     // is shown or copied: Reader View and the book reader clone the marks.
     _extHide();
@@ -19957,6 +21026,8 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    _pdfChrome(_isPdfPage());
+    if (_bookDoc && _readerViewOn) _bookMath(frame);
     var _wikiOn = _wikiDoc && _readerViewOn;
     if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
@@ -19977,6 +21048,10 @@ function openReader(url) {
     try { _defineAttachToDoc(frame); } catch(e) {}
     // Highlights: painted when the page has some, offered when text is selected.
     try { _hlReaderAttach(frame); } catch(e) { console.warn('Highlights:', e); }
+    // Find in page: a find open on the page before is over; Cmd/Ctrl+F with
+    // the article focused opens Zimi's, not the browser's.
+    _findClose();
+    try { _findBindDoc(frame.contentDocument); } catch(e) {}
     try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
@@ -20062,45 +21137,25 @@ function openReader(url) {
         // floated infoboxes) that carry an inline pixel width wider than a phone —
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
-          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
+          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+        MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
         'html{overscroll-behavior:none}',
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
-      // Only a PICTURE forces a viewport-less page to be scaled down: one that
-  // would otherwise be cut off, like xkcd's comic in its 780px table, which
-  // is the case this fitting exists for. Text never is — the containment CSS
-  // injected below wraps it, clips it, or gives a <pre> or a wide table its
-  // own scrollbar. Measuring text shrank whole documents for nothing: an
-  // installed devdocs ZIM, which carries no viewport meta on any page,
-  // rendered at 81% because one footer paragraph held a long unbreakable URL
-  // (found in review before 1.9.0 was published).
-  var MIN_FIT_SCALE = 0.25;  // below this nothing is readable anyway
-  // A page with no viewport meta was laid out for a desktop: xkcd's comic
-      // sits in a 780px table. A phone browser shows such a page zoomed out to
-      // fit; inside this frame it was clipped at the right edge instead, half
-      // the comic gone (seen 2026-09-03). Scale the document to the frame the
-      // way the phone would, only when the page did not say it is responsive.
-      // Measured BEFORE the overflow rule below hides the overflow it measures.
+      // A page with no viewport meta was laid out for a desktop: scaled to
+      // the frame (_fitWidePictures). Shown early (at DOMContentLoaded, with
+      // Reader View on), its pictures had no size yet, so an xkcd comic
+      // without width attributes measured nothing and stayed clipped: it is
+      // measured again once they have loaded.
       try {
         var _d = frame.contentDocument, _w = frame.contentWindow;
         if (!_isWebMirror && !_d.querySelector('meta[name="viewport"]')) {
-          // The widest PICTURE, counting spill to the left of the frame (a
-          // centred fixed-width table spills both ways). Anything parked far
-          // off-screen — a skip link at -9999px — is not layout and is ignored.
-          var _have = _w.innerWidth, _wide = _have;
-          var _shown = _d.body ? _d.body.querySelectorAll('img,video,canvas,svg,object,embed,iframe,picture') : [];
-          for (var _i = 0; _i < _shown.length && _i < 3000; _i++) {
-            var _r = _shown[_i].getBoundingClientRect();
-            if (_r.width <= 0 || _r.left < -_have * 2 || _r.right > _have * 6) continue;
-            var _extent = _r.right - Math.min(_r.left, 0);
-            if (_extent > _wide) _wide = _extent;
-          }
-          var _scale = _have / _wide;
-          if (_wide > _have + 8 && _have > 0 && _scale >= MIN_FIT_SCALE) {
-            _d.documentElement.style.zoom = String(_scale);
-          }
+          _fitWidePictures(_d, _w, null);
+          if (_d.readyState !== 'complete') _w.addEventListener('load', function() {
+            try { if (frame.contentDocument === _d) _fitWidePictures(_d, _w, _rStyle.sheet); } catch (e) {}
+          }, { once: true });
         }
       } catch(e) {}
       frame.contentDocument.head.appendChild(_rStyle);
@@ -20405,6 +21460,8 @@ function _histFindPlace(zim, pos) {
   return null;
 }
 function _histPushSearch(query, zimName, resultCount) {
+  // A search that found nothing is not one to go back to.
+  if (!resultCount) return;
   var h = _histLoad();
   // Deduplicate recent identical searches
   if (h.length > 0 && h[0].type === 'search' && h[0].query === query && h[0].zim === (zimName || '')) return;
@@ -20599,10 +21656,28 @@ function _savedCurrentApp() {
   if (_isExchangePage()) return 'exchange';
   if (_isReddotPage()) return 'reddot';
   if (_isWikiPage()) return 'wiki';
+  if (_isDictPage()) return 'dictionary';
   if (_isMapPage()) return 'maps';
   return '';
 }
 function _savedListName(l) { return l.builtin ? t('saved_liked') : l.name; }
+// A slice of Saved named by what is in it where the app's name says less:
+// Dictionary keeps words.
+function _savedSliceName(app) { return app === 'dictionary' ? t('saved_words') : _appTitle(app); }
+// What was saved, by kind, in the store's order of kinds; each kind's items
+// keep the order they came in.
+var _BM_KIND = '__kind_';   // a kind group's collapse id: _BM_KIND + kind
+var _BM_KIND_ORDER = ['article', 'book', 'video', 'question', 'post', 'place', 'word'];
+function _bmLooseByKind(items) {
+  var by = {};
+  items.forEach(function (it) { var k = it.kind || 'article'; (by[k] = by[k] || []).push(it); });
+  var order = _BM_KIND_ORDER.concat(Object.keys(by).filter(function (k) { return _BM_KIND_ORDER.indexOf(k) < 0; }));
+  return order.filter(function (k) { return by[k]; }).map(function (k) { return { kind: k, items: by[k] }; });
+}
+function _savedKindName(kind) {
+  var key = 'saved_kind_' + kind, s = t(key);
+  return s && s !== key ? s : t('saved_kind_article');
+}
 function _bmScopeQuery() { return _bmScope ? { app: _bmScope } : {}; }
 function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 
@@ -20673,11 +21748,17 @@ function _renderBookmarksContent() {
     html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
     if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
   });
-  // The items in no list, under a name of their own once anything is above
-  // them: bare, they read as the last list's.
-  var grouped = loose.length && lists.length;
-  if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
-  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  // The items in no list, named by what they are (Articles, Books, Videos...)
+  // once anything is above them or there is more than one kind: bare, they
+  // read as the last list's. Each group is the top level still (data-fid ''):
+  // a drop on it takes an item out of its list.
+  var kinds = _bmLooseByKind(loose);
+  var grouped = loose.length && (lists.length || kinds.length > 1);
+  kinds.forEach(function (g) {
+    var cid = _BM_KIND + g.kind;
+    if (grouped) html += _bmGroupRowHtml(_BM_ROOT, _savedKindName(g.kind), g.kind === 'place' ? _BM_PIN_SVG : _BM_PAGE_SVG, g.items.length, false, cid);
+    if (!grouped || !_bmIsCollapsed(cid)) g.items.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  });
   // Every highlight on its own, the latest first, each with its page.
   if (hls.length) {
     html += _bmGroupRowHtml(_BM_HIGHLIGHTS, t('saved_highlights'), _HL_SVG.replace('<svg ', '<svg width="17" height="17" '), hls.length, false);
@@ -20690,11 +21771,13 @@ function _renderBookmarksContent() {
 }
 
 // Taking something out of Saved says so, with the way back: an item returns
-// to its lists where it stood, a highlight with its colour and note.
-function _savedRemoveUndoable(ref) {
+// to its lists where it stood, a highlight with its colour and note. From
+// Liked (fid) it is unliked; anywhere else unsaved, and a like stays.
+function _savedRemoveUndoable(ref, fid) {
   var snap = Saved.snapshot(ref);
   if (!snap) return;
-  Saved.remove(ref);
+  if (fid === Saved.LIKED) Saved.removeFromList(ref, Saved.LIKED);
+  else Saved.unsave(ref);
   _showToast(t('saved_removed'), 0, function() { Saved.restore(snap); });
 }
 function _savedRemoveHighlight(id, then) {
@@ -20755,7 +21838,7 @@ function _bmScopeHtml() {
     var on = _bmScope === value;
     return '<button type="button" class="pill' + (on ? ' active' : '') + '" aria-pressed="' + on + '" onclick="_bmSetScope(\'' + value + '\')">' + esc(label) + '</button>';
   };
-  return '<div class="bm-scope" role="group">' + chip(app, _appTitle(app)) + chip('', t('saved_all')) + '</div>';
+  return '<div class="bm-scope" role="group">' + chip(app, _savedSliceName(app)) + chip('', t('saved_all')) + '</div>';
 }
 
 // A row's ⋯: its menu. Out of the Tab order, so Tab leaves the tree in one
@@ -20764,9 +21847,11 @@ function _bmScopeHtml() {
 function _bmGearHtml() {
   return '<button class="bm-gear" data-role="menu" tabindex="-1" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>';
 }
-function _bmGroupRowHtml(id, name, icon, count, menu) {
-  var collapsed = _bmIsCollapsed(id);
-  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '" data-depth="0"' +
+// cid: what collapses it, when not its id (a kind group: the top level, by kind).
+function _bmGroupRowHtml(id, name, icon, count, menu, cid) {
+  var collapsed = _bmIsCollapsed(cid || id);
+  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '"' +
+    (cid ? ' data-cid="' + escAttr(cid) + '"' : '') + ' data-depth="0"' +
     ' style="padding-inline-start:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">▸</span>' +
     '<span class="bm-ficon">' + icon + '</span>' +
@@ -20852,13 +21937,19 @@ var _bmFocusKey = null;
 function _bmRowKey(row) {
   if (!row) return null;
   if (row.classList.contains('bm-hl')) return 'h:' + row.dataset.fid + '\t' + row.dataset.hid;
-  return row.classList.contains('bm-folder') ? 'f:' + row.dataset.fid : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
+  return row.classList.contains('bm-folder') ? 'f:' + _bmGroupId(row) : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
 }
+// A group row's own id, for collapse and focus: a kind group's (data-cid),
+// else its list's.
+function _bmGroupId(row) { return row.dataset.cid || row.dataset.fid; }
 function _bmRowByKey(key) {
   if (!key) return null;
   var host = document.getElementById('bm-tree');
   if (!host) return null;
-  if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
+  if (key.slice(0, 2) === 'f:') {
+    var id = _cssEsc(key.slice(2));
+    return host.querySelector('.bm-folder[data-cid="' + id + '"]') || host.querySelector('.bm-folder[data-fid="' + id + '"]:not([data-cid])');
+  }
   var tab = key.indexOf('\t');
   if (key.slice(0, 2) === 'h:') return host.querySelector('.bm-hl[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-hid="' + _cssEsc(key.slice(tab + 1)) + '"]');
   return host.querySelector('.bm-bk[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-key="' + _cssEsc(key.slice(tab + 1)) + '"]');
@@ -20898,7 +21989,7 @@ function _bmTreeKeydown(e) {
   var rows = _bmRows();
   var i = rows.indexOf(row);
   var isFolder = row.classList.contains('bm-folder');
-  var expanded = isFolder && !_bmIsCollapsed(row.dataset.fid);
+  var expanded = isFolder && !_bmIsCollapsed(_bmGroupId(row));
   switch (e.key) {
     case 'ArrowDown': e.preventDefault(); _bmFocusRow(rows[Math.min(i + 1, rows.length - 1)]); break;
     case 'ArrowUp': e.preventDefault(); _bmFocusRow(rows[Math.max(i - 1, 0)]); break;
@@ -20906,12 +21997,12 @@ function _bmTreeKeydown(e) {
     case 'End': e.preventDefault(); _bmFocusRow(rows[rows.length - 1]); break;
     case 'ArrowRight':
       e.preventDefault();
-      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else if (isFolder && rows[i + 1]) _bmFocusRow(rows[i + 1]);
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else _bmFocusRow(_bmParentRow(row));
       break;
     case 'Enter': case ' ':
@@ -21149,7 +22240,7 @@ function _bmItemMenu(row, x, y) {
   var html = open +
     '<div class="ctx-item">' + tH('saved_lists') + ' ›<div class="ctx-sub">' + _bmListsSubmenuHtml(key) + '</div></div>' +
     '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
-    (fid !== _BM_ROOT ? '<div class="ctx-item" data-action="unlist">' + tH('saved_remove_from_list') + '</div>' : '') +
+    (fid !== _BM_ROOT && fid !== Saved.LIKED ? '<div class="ctx-item" data-action="unlist">' + tH('saved_remove_from_list') + '</div>' : '') +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
   window._openMenuAt(html, x, y, function (action, itemEl) {
@@ -21158,7 +22249,7 @@ function _bmItemMenu(row, x, y) {
     if (action === 'open') _savedOpen(it);
     else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
     else if (action === 'unlist') Saved.removeFromList(key, fid);
-    else if (action === 'remove') _savedRemoveUndoable(key);
+    else if (action === 'remove') _savedRemoveUndoable(key, fid);
     else if (action === 'toggle-list') {
       var lid = itemEl.dataset.lid;
       if (Saved.inList(key, lid)) Saved.removeFromList(key, lid);
@@ -21196,7 +22287,7 @@ function _bmEnsureBound() {
     }
     if (row.classList.contains('bm-folder')) {
       // Twist or anywhere on the group row toggles collapse.
-      _bmToggleCollapse(row.dataset.fid);
+      _bmToggleCollapse(_bmGroupId(row));
       _bmRerender();
     } else if (row.classList.contains('bm-missing')) {
       _showToast(t('bm_source_missing'));
@@ -21482,7 +22573,12 @@ function _pushArticleHistory(zim, path) {
 // (1.12, docs/features/saving.md). An item is one thing kept: what it is
 // (kind), its ZIM and path, a title, the app it belongs to, where you were in
 // it, when it was added, and the lists it is in (as many as you like). Liked
-// is a list every store has. Where you are in a book (a video, later) is a
+// is a list every store has, apart from saving (1.12.1): a like never saves.
+// A thing liked and not saved is an item marked likeOnly, in Liked and in
+// nothing else; saving it clears the mark, letting it go keeps the like.
+// Whether an item is saved has its own time, sv (svOf), apart from ts (its
+// fields): a like alone makes no claim on it (sv 0), so a like on one device
+// never clears a save on another, and an unsave never clears a like. Where you are in a book (a video, later) is a
 // position, kept whether or not the thing is saved; Continue reading is drawn
 // from positions, it is not a list.
 //
@@ -21492,13 +22588,17 @@ function _pushArticleHistory(zim, path) {
 //   Saved.save(item) -> key            add, or update what is given; a renamed
 //                                      title, the lists and the added time stay
 //   Saved.remove(ref)                  removed from every list and every device
-//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it kept
-//   Saved.all()                        every item, the latest added first
+//   Saved.unsave(ref)                  not saved any more; a like stays
+//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it saved
+//                                      (a thing only liked is not)
+//   Saved.all()                        every saved item, the latest added first
 //   Saved.rename(ref, title)           '' goes back to the page's own title
 //   Saved.snapshot(ref) -> snap        before a remove; Saved.restore(snap) puts
 //                                      it back as it was, in each list's place
-//   Saved.itemsFor({app, kind, list})  a list's items in its order (list: '' is
-//                                      the items in no list), else the latest first
+//   Saved.itemsFor({app, kind, list, withLiked})  a list's items in its order
+//                                      (list: '' is the saved items in no list of
+//                                      their own), else the saved ones the latest
+//                                      first, and those only liked too withLiked
 //   Saved.lists({app, kind})           [{id, name, builtin, count}], Liked first;
 //                                      filtered, count counts only what matches
 //   Saved.createList(name) -> id       Saved.renameList(id, name)
@@ -21506,7 +22606,8 @@ function _pushArticleHistory(zim, path) {
 //   Saved.moveList(id, beforeId)       before another list; null is the end
 //   Saved.inList(ref, listId)          Saved.removeFromList(ref, listId)
 //   Saved.addToList(ref, listId, beforeRef)  at the end, or before beforeRef;
-//                                      saves an item given whole first
+//                                      saves an item given whole first (Liked
+//                                      only likes it)
 //   Saved.moveInList(ref, listId, beforeRef) along its list (null: the end)
 //   Saved.position(ref)                {key, kind, zim, path, app, title, meta,
 //                                      where, ts} or null
@@ -21535,10 +22636,12 @@ function _pushArticleHistory(zim, path) {
 // what a person saved is never dropped (a new save is refused instead).
 var Saved = (function () {
   var LIKED = 'liked';
-  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
-  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
+  // The store's shape. 1: 1.12.0, where a like saved the thing too (see likesFromV1).
+  var VERSION = 2;
+  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place', 'word'];
+  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki', 'dictionary'];
   // The app a kind belongs to when the one saving it did not say.
-  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
+  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps', word: 'dictionary' };
   var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
   // How many of each a person can keep, and the store's bytes as the
   // account's file holds it (UTF-8 JSON): past one, a new one is refused with
@@ -21551,7 +22654,7 @@ var Saved = (function () {
   // A highlight's colours, the first the default; its quote (the engine keeps
   // the start and the end of a longer passage), its context, its note.
   var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
-  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000;
+  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000, HL_PAGE_MAX = 1000000;
   // How long a deletion is remembered. A device away for longer can bring
   // back what was deleted while it was gone.
   var GONE_MS = 90 * 86400000;
@@ -21587,7 +22690,7 @@ var Saved = (function () {
     return n;
   }
   function size(x) { return utf8(JSON.stringify(x)); }
-  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
+  function empty() { return { v: VERSION, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
   // The store is kept under two keys: where you were (a place moves every few
   // seconds while you read) apart from the rest, so a place written does not
   // write everything again.
@@ -21633,10 +22736,11 @@ var Saved = (function () {
     return key(out) === id ? out : null;
   }
   // A highlight: the page, what it says and what is around it, where it
-  // starts (a share of the page's text), its colour and note.
+  // starts (a share of the page's text), its colour and note; in a PDF, the
+  // page of the document it is on (pg).
   function highlightRec(r, id) {
     if (!r || typeof r !== 'object' || !ID_RE.test(id)) return null;
-    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added);
+    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added), pg = num(r.pg);
     var str = function (v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; };
     if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
     if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
@@ -21648,6 +22752,7 @@ var Saved = (function () {
     if (APPS.indexOf(r.app) >= 0) out.app = r.app;
     if (typeof r.end === 'string' && r.end && n !== null && n > 0) { out.end = str(r.end, HL_QUOTE_MAX); out.n = Math.round(n); }
     if (typeof r.note === 'string' && r.note) out.note = str(r.note, HL_NOTE_MAX);
+    if (pg !== null && pg >= 1 && pg <= HL_PAGE_MAX) out.pg = Math.floor(pg);
     return out;
   }
   function order(r) {
@@ -21663,7 +22768,11 @@ var Saved = (function () {
     };
     each(x.items, function (id, r) {
       var it = thing(r, id), added = r && num(r.added);
-      if (it) { it.added = Math.round(added === null ? it.ts : added); s.items[id] = it; }
+      if (!it) return;
+      it.added = Math.round(added === null ? it.ts : added);
+      if (r.likeOnly === true) it.likeOnly = true;
+      var sv = num(r.sv);
+      s.items[id] = setSv(it, sv === null ? svOf(it) : Math.max(0, Math.round(sv)));
     });
     each(x.lists, function (id, r) {
       var o = order(r);
@@ -21681,7 +22790,35 @@ var Saved = (function () {
       if (num(ts) !== null && /^[ilmph]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
     });
     s.legacy = x.legacy === true;
+    if (x.v === 1) likesFromV1(s);
     return s;
+  }
+  // 1.12.0 saved whatever was liked. A thing in Liked and in no list of its
+  // own was most likely kept by the heart alone: it stays liked and leaves
+  // Bookmarks. Its time is left as it was, so every copy agrees.
+  function likesFromV1(s) {
+    var liked = {}, listed = {};
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t');
+      (mk.slice(0, i) === LIKED ? liked : listed)[mk.slice(i + 1)] = 1;
+    });
+    Object.keys(liked).forEach(function (id) { if (has(s.items, id) && !listed[id]) s.items[id].likeOnly = true; });
+    s.v = VERSION;
+  }
+
+  // When an item's saved state was last set: sv, or before sv was kept
+  // (1.12.0, and 1.12.1's first builds) ts, except a thing only liked and
+  // never touched since (added is ts): the heart made it, nothing chose.
+  function svOf(r) { return has(r, 'sv') ? r.sv : r.likeOnly && r.added === r.ts ? 0 : r.ts; }
+  // sv is written only where it says more than svOf would without it.
+  function setSv(r, v) { delete r.sv; if (v !== svOf(r)) r.sv = v; return r; }
+  // A thing only liked, its like gone: not kept. Its unsave stays as a
+  // tombstone dated when it was let go (none if it never was saved), so an
+  // older save elsewhere does not come back and a newer one stays saved.
+  function letGo(s, id) {
+    var sv = svOf(s.items[id]);
+    delete s.items[id];
+    if (sv > 0 && !(s.gone['i:' + id] >= sv)) s.gone['i:' + id] = sv;
   }
 
   // ── merge: two copies of a store become one ──
@@ -21723,18 +22860,36 @@ var Saved = (function () {
     });
     return n;
   }
-  // A membership needs its item and its list; tombstones age out; each app
+  // A membership needs its item and its list, and a list of its own a saved
+  // item; a thing only liked needs its like; tombstones age out; each app
   // keeps its latest places; the store fits its byte budget.
   function normalize(s, t, budget) {
+    var liked = {};
     Object.keys(s.members).forEach(function (mk) {
-      var i = mk.indexOf('\t'), lid = mk.slice(0, i);
-      if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i), id = mk.slice(i + 1), it = has(s.items, id) ? s.items[id] : null;
+      if (!it || (lid !== LIKED && (!has(s.lists, lid) || it.likeOnly))) delete s.members[mk];
+      else if (lid === LIKED) liked[id] = 1;
     });
+    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) letGo(s, id); });
     Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
     cap(s.gone, GONE_MAX, goneTs);
     capPlaces(s.positions);
     fit(s, budget == null ? MAX.bytes : budget);
     return s;
+  }
+  // An item holds two things apart: what it is, from the newer copy (r), and
+  // whether it is saved, from the newer of the copies' sv and its tombstone
+  // (a tie keeps a's, a tombstone as new wins). Not saved, it stays for its
+  // like, as likeOnly; normalize lets it go when there is none.
+  function mergeItem(r, x, y, gone, g) {
+    var w = !x ? y : !y ? x : (svOf(y) > svOf(x) ? y : x), sv = svOf(w), saved = !w.likeOnly;
+    if (has(gone, g)) {
+      if (gone[g] >= sv) { saved = false; sv = gone[g]; }
+      else delete gone[g];
+    }
+    var out = Object.assign({}, r);
+    if (saved) delete out.likeOnly; else out.likeOnly = true;
+    return setSv(out, sv);
   }
   // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
   // as the record or newer removes it; a record newer than its tombstone
@@ -21751,6 +22906,7 @@ var Saved = (function () {
         if (has(out[name], id)) return;
         var x = has(A, id) ? A[id] : null, y = has(B, id) ? B[id] : null;
         var r = !x ? y : !y ? x : (y.ts > x.ts ? y : x);
+        if (name === 'items') { out.items[id] = mergeItem(r, x, y, gone, pre + id); return; }
         if (has(gone, pre + id)) {
           if (gone[pre + id] >= r.ts) return;
           delete gone[pre + id];
@@ -21869,12 +23025,14 @@ var Saved = (function () {
     var main = _getStorageJSON(storeKey(), null), pos = _getStorageJSON(posKey(), null);
     if (main && typeof main === 'object' && main.items) {
       ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!main[c] || typeof main[c] !== 'object') main[c] = {}; });
+      var old = main.v === 1;
+      if (old) likesFromV1(main);
       var places = clean(pos);
       see(main); see(places);
       // A store written before places had a key of their own moves them there.
       var moved = Object.keys(main.positions).length > 0;
       _s = Object.keys(places.positions).length || Object.keys(places.gone).length || moved ? mergeStores(main, places, Date.now()) : main;
-      if (moved) write();
+      if (moved || old) write();
       return _s;
     }
     // This store's first use: signed out, what the browser kept before comes
@@ -21955,6 +23113,7 @@ var Saved = (function () {
     var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, title: r.title, app: r.app || '', added: r.added, ts: r.ts,
       lists: (idx().listsOf[id] || []).slice() };
     if (r.origTitle) o.origTitle = r.origTitle;
+    if (r.likeOnly) o.likeOnly = true;
     if (r.where) o.where = copy(r.where);
     if (r.meta) o.meta = copy(r.meta);
     return o;
@@ -21996,7 +23155,9 @@ var Saved = (function () {
     s.gone['m:' + mk] = t;
   }
 
-  function save(item) {
+  // likeOnly: kept for a like alone (addToList to Liked), and only while it
+  // is not saved already.
+  function save(item, likeOnly) {
     var id = key(item);
     if (!id || typeof item !== 'object') return '';
     var s = load(), cur = has(s.items, id) ? s.items[id] : null;
@@ -22013,7 +23174,9 @@ var Saved = (function () {
     var meta = small(item.meta !== undefined ? item.meta : cur && cur.meta);
     if (where) rec.where = where;
     if (meta) rec.meta = meta;
-    s.items[id] = rec;
+    if (likeOnly && (!cur || cur.likeOnly)) rec.likeOnly = true;
+    // A like leaves the saved state as it was; a save sets it now.
+    s.items[id] = setSv(rec, !likeOnly ? t : cur ? svOf(cur) : 0);
     delete s.gone['i:' + id];
     _idx = null;
     (item.lists || []).forEach(function (lid) { addMember(s, id, lid, null, t); });
@@ -22028,6 +23191,17 @@ var Saved = (function () {
     (idx().listsOf[id] || []).forEach(function (lid) { dropMember(s, lid + '\t' + id, t); });
     commit();
   }
+  // Saved no more: out of its lists; a liked thing stays, in Liked alone.
+  function unsave(ref) {
+    var s = load(), id = key(ref), t = now();
+    if (!has(s.items, id) || s.items[id].likeOnly) return;
+    if (!has(s.members, LIKED + '\t' + id)) { remove(id); return; }
+    (idx().listsOf[id] || []).forEach(function (lid) { if (lid !== LIKED) dropMember(s, lid + '\t' + id, t); });
+    s.items[id].likeOnly = true;
+    s.items[id].ts = t;
+    setSv(s.items[id], t);
+    commit();
+  }
   // The custom name is the title (every view reads that); the page's own
   // parks in origTitle so an empty rename, or the original typed back, reverts.
   function rename(ref, name) {
@@ -22038,7 +23212,9 @@ var Saved = (function () {
     name = String(name || '').trim().slice(0, TITLE_MAX);
     if (name && name !== orig) { r.origTitle = orig; r.title = name; }
     else { delete r.origTitle; r.title = orig; }
+    var sv = svOf(r);
     r.ts = now();
+    setSv(r, sv);
     commit();
   }
   function get(ref) {
@@ -22048,10 +23224,12 @@ var Saved = (function () {
   function itemsFor(q) {
     q = q || {};
     var s = load(), ix = idx(), ids;
-    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !(ix.listsOf[id] || []).length; }).sort(newestAdded(s));
+    var own = function (id) { return (ix.listsOf[id] || []).some(function (lid) { return lid !== LIKED; }); };
+    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !own(id); }).sort(newestAdded(s));
     else if (q.list != null) ids = (ix.byList[q.list] || []).slice();
     else ids = Object.keys(s.items).sort(newestAdded(s));
-    return ids.filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); })
+    var only = q.list !== LIKED && !q.withLiked;
+    return ids.filter(function (id) { return has(s.items, id) && !(only && s.items[id].likeOnly) && matches(q, s.items[id]); })
       .map(function (id) { return pub(id, s.items[id]); });
   }
   function lists(q) {
@@ -22102,7 +23280,14 @@ var Saved = (function () {
   function inList(ref, lid) { return has(load().members, lid + '\t' + key(ref)); }
   function addToList(ref, lid, before) {
     var s = load(), id = key(ref);
-    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref);
+    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref, lid === LIKED);
+    else if (lid !== LIKED && has(s.items, id) && s.items[id].likeOnly) {
+      // Into a list of your own: saved now.
+      delete s.items[id].likeOnly;
+      s.items[id].ts = now();
+      setSv(s.items[id], s.items[id].ts);
+      _idx = null;
+    }
     if (addMember(s, id, lid, before == null ? null : before, now())) commit();
   }
   function moveInList(ref, lid, before) {
@@ -22112,8 +23297,10 @@ var Saved = (function () {
     commit();
   }
   function removeFromList(ref, lid) {
-    var s = load(), mk = lid + '\t' + key(ref);
+    var s = load(), id = key(ref), mk = lid + '\t' + id;
     if (!has(s.members, mk)) return;
+    // Unliked, a thing only liked is not kept at all.
+    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) letGo(s, id);
     dropMember(s, mk, now());
     commit();
   }
@@ -22181,7 +23368,11 @@ var Saved = (function () {
     q = q || {};
     var s = load(), ids, page = typeof q === 'string' ? q.split('\n').slice(0, 2).join('\n') : q.zim && q.path ? q.zim + '\n' + q.path : '';
     if (page) {
-      ids = (hidx()[page] || []).slice().sort(function (a, b) { return (s.highlights[a].pos - s.highlights[b].pos) || cmp(a, b); });
+      // A PDF's by its pages first (pos is a share of its page's text).
+      ids = (hidx()[page] || []).slice().sort(function (a, b) {
+        var x = s.highlights[a], y = s.highlights[b];
+        return ((x.pg || 0) - (y.pg || 0)) || (x.pos - y.pos) || cmp(a, b);
+      });
     } else {
       ids = Object.keys(s.highlights).filter(function (id) { return matches(q, s.highlights[id]); })
         .sort(function (a, b) { return (s.highlights[b].added - s.highlights[a].added) || cmp(a, b); });
@@ -22199,7 +23390,7 @@ var Saved = (function () {
     var s = load(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
     if (!id && !room('highlights')) return '';
     var t = now(), rec = id ? copy(s.highlights[id]) : { added: t };
-    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
+    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'pg', 'color', 'note'].forEach(function (f) {
       if (h[f] !== undefined) rec[f] = h[f];
     });
     if (typeof rec.note === 'string') rec.note = rec.note.trim();
@@ -22228,9 +23419,9 @@ var Saved = (function () {
     if (!snap || !snap.rec) return;
     var s = load(), t = now();
     if (!has(s.items, snap.id) && !room('items')) return;
-    var rec = copy(snap.rec);
+    var rec = copy(snap.rec), sv = svOf(rec);
     rec.ts = t;
-    s.items[snap.id] = rec;
+    s.items[snap.id] = setSv(rec, rec.likeOnly ? sv : t);
     delete s.gone['i:' + snap.id];
     _idx = null;
     Object.keys(snap.at).forEach(function (lid) { addMember(s, snap.id, lid, snap.at[lid], t); });
@@ -22246,9 +23437,12 @@ var Saved = (function () {
 
   // ── sync: the account's copy, a file, another device ──
   // What a copy holds, by id: every record's time and every tombstone's.
+  // A record's stamp: its ts, and an item's saved state beside it (that
+  // changes in a merge while ts does not).
+  function stamp(name, r) { return name === 'items' ? r.ts + (r.likeOnly ? '~' : ':') + svOf(r) : r.ts; }
   function stamps(s) {
     var out = {};
-    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = s[c[0]][id].ts; }); });
+    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = stamp(c[0], s[c[0]][id]); }); });
     Object.keys(s.gone).forEach(function (g) { out['g' + g] = s.gone[g]; });
     return out;
   }
@@ -22266,7 +23460,7 @@ var Saved = (function () {
     out.legacy = s.legacy;
     COLLS.forEach(function (c) {
       var m = s[c[0]];
-      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== m[id].ts) out[c[0]][id] = m[id]; });
+      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== stamp(c[0], m[id])) out[c[0]][id] = m[id]; });
     });
     Object.keys(s.gone).forEach(function (g) { if (!st || st['g' + g] !== s.gone[g]) out.gone[g] = s.gone[g]; });
     return out;
@@ -22336,7 +23530,8 @@ var Saved = (function () {
 
   return {
     LIKED: LIKED, NAME_MAX: NAME_MAX, TITLE_MAX: TITLE_MAX, KIND_APP: copy(KIND_APP),
-    key: key, save: save, remove: remove, snapshot: snapshot, restore: restore, get: get, has: function (ref) { return has(load().items, key(ref)); },
+    key: key, save: function (item) { return save(item); }, remove: remove, unsave: unsave, snapshot: snapshot, restore: restore, get: get,
+    has: function (ref) { var s = load(), id = key(ref); return has(s.items, id) && !s.items[id].likeOnly; },
     all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
     list: list, lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
@@ -22564,6 +23759,68 @@ function _savedStart() {
   else setTimeout(_savedPull, 500);
 }
 
+// ── Find in page ───────────────────────────────────────────────────────────
+// The open article's words: Cmd/Ctrl+F while an article is open (in Zimi's
+// page or in the article), or Find in page in the reader's ⋯ menu. Anywhere
+// else Cmd+F is the browser's own, untouched. The bar and the finding are
+// /static/find.js, fetched the first time a find is asked for.
+var _findLoading = null;
+function _findApplies() {
+  return readerOpen && !_almanacOpen && !_createOpen && !_isMapPage() && !_isAppPage() && !_isPdfPage();
+}
+function _findIsOpen() { return !!(window.ZimiFind && window.ZimiFind.isOpen()); }
+function _findClose() { if (_findIsOpen()) window.ZimiFind.close(); }
+function _findLoad() {
+  if (window.ZimiFind) return Promise.resolve(window.ZimiFind);
+  if (!_findLoading) {
+    _findLoading = new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      // The version moves with the file: /static is cached for a year.
+      el.src = '/static/find.js?v=1';
+      el.onload = function () { if (window.ZimiFind) resolve(window.ZimiFind); else { _findLoading = null; reject(); } };
+      el.onerror = function () { _findLoading = null; reject(); };
+      document.head.appendChild(el);
+    });
+  }
+  return _findLoading;
+}
+function openFindInPage() {
+  if (!_findApplies()) return;
+  var frame = document.getElementById('reader-frame'), doc = null;
+  try { doc = frame.contentDocument; } catch (e) {}
+  if (!doc || !doc.body) return;
+  _findLoad().then(function (F) {
+    if (!_findApplies()) return;
+    F.open({
+      host: document.getElementById('reader'),
+      doc: doc,
+      strings: {
+        find: t('find_in_page'), none: t('find_none'), prev: t('find_prev'), next: t('find_next'), close: t('close'),
+        count: function (n, total) { return t('n_of_total', { n: n.toLocaleString(_currentLang), total: total.toLocaleString(_currentLang) }); },
+      },
+      // Closed, the keys go back to the article, where they were.
+      onClose: function () { try { frame.contentWindow.focus(); } catch (e) {} },
+    });
+  }, function () {});
+}
+// Cmd/Ctrl+F, taken for Zimi's find only while there is an article to find
+// in; true when taken.
+function _findKey(e) {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== 'f' && e.key !== 'F')) return false;
+  if (!_findApplies()) return false;
+  e.preventDefault();
+  openFindInPage();
+  return true;
+}
+function _findBindDoc(doc) {
+  if (!doc || doc.__zimiFindBound) return;
+  doc.__zimiFindBound = true;
+  doc.addEventListener('keydown', function (e) {
+    if (_findKey(e)) return;
+    if (e.key === 'Escape' && _findIsOpen()) { e.preventDefault(); _findClose(); }
+  }, true);
+}
+
 // ── Highlights: the shell's side ───────────────────────────────────────────
 // One engine for every reader (/static/highlights.js, docs/features/saving.md).
 // Highlights.attach(doc, ref, opts) is called once per document shown: by the
@@ -22581,7 +23838,7 @@ var Highlights = (function () {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
         // The version moves with the engine: /static is cached for a year.
-        el.src = '/static/highlights.js?v=3';
+        el.src = '/static/highlights.js?v=5';
         el.onload = function () {
           engine = window.ZimiHighlightsEngine || null;
           if (engine) return resolve(engine);
@@ -22680,7 +23937,9 @@ var Highlights = (function () {
     var it = Saved.get(hl) || hl;
     _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
   }
-  return { attach: attach, open: open, changed: changed };
+  // Whether a highlight opened from the panel is on its way to this page.
+  function awaits(ref) { return !!(pending && pending.page === pageOf(ref)); }
+  return { attach: attach, open: open, changed: changed, awaits: awaits };
 })();
 // The reader's document and its highlights: an article (raw or in Reader
 // View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's
@@ -22988,18 +24247,17 @@ function _readerSectionAnchor() {
   } catch (e) { return ''; }
 }
 // The bookmark button: keep what is on screen, or let it go.
+// The reader on one of Zimi's own stand-ins under /w/ ("This article isn't
+// in this ZIM", a page that wasn't captured): not an article, nothing to
+// save. Bookmarked, it went into a bookmarks export as a page titled exactly
+// that (seen 2026-09-03). The page marks itself, as Reader View reads it.
+function _onOwnPage() {
+  return !!(readerOpen && currentArticle && _docIsOurOwnPage(_readerFrameDoc()));
+}
 function toggleBookmark() {
   var ref = _savedRefOnScreen();
   if (!ref) return;
-  // The reader's own "This page wasn't captured" stand-in is not an article:
-  // bookmarked, it went into a bookmarks export as a page titled exactly
-  // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
-  if (currentArticle) {
-    try {
-      var doc = _readerFrameDoc();
-      if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
-    } catch (e) {}
-  }
+  if (_onOwnPage()) return;
   if (Saved.has(ref)) { _savedRemoveUndoable(ref); return; }
   if (ref.kind === 'article') {
     var sec = _readerSectionAnchor();
@@ -23011,15 +24269,18 @@ function toggleBookmark() {
 
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-// Saved's opener: two bookmarks, one behind the other (what you kept), so it
-// never reads as the single bookmark that saves the page beside it.
-var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h9a2 2 0 0 1 2 2v13"/><path d="M15 21l-5-3.5L5 21V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2z"/></svg>';
+// Saved's opener: lines of a list with a ribbon on them (your lists, what you
+// kept). Not a bookmark: two bookmarks stacked read as the single bookmark
+// that saves the page beside it. The bookmark is the verb (Save, here and in
+// every app); this is the place, in the family of the apps' Lists glyph.
+var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8M3 12h8M3 18h18"/><path d="M15 3v10l3-2.5 3 2.5V3z"/></svg>';
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
 function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
+  document.body.classList.toggle('own-page', _onOwnPage());
   var ref = readerOpen ? _savedRefOnScreen() : null;
   var state = !readerOpen ? 'library' : ref && Saved.has(ref) ? 'saved' : 'save';
   // Called on every change to what is kept (a book's place moves every few
@@ -23157,8 +24418,8 @@ function openArticle(zim, path, title, opts) {
   // Deep-link boot replaces the boot entry so the history stack is exactly
   // [article] — browser Back then leaves the site instead of surfacing a phantom
   // home the user never visited.
-  if (opts && opts.replace) history.replaceState(st, '', canonUrl);
-  else history.pushState(st, '', canonUrl);
+  if (opts && opts.replace) history.replaceState(_keepFrom(st), '', canonUrl);
+  else history.pushState(_stampFrom(st), '', canonUrl);
   // PDF: route through pdf.js viewer (renders in reader iframe like any article)
   if (lurl.endsWith('.pdf')) {
     url = _pdfViewerUrl(url);
@@ -23177,6 +24438,7 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _appsOff();
+  _findClose();
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -23203,6 +24465,7 @@ function closeReader() {
   _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');
   _bookChrome(false);
+  _pdfChrome(false);
   // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
   var f = document.getElementById('reader-frame');
   try { f.contentWindow.location.replace('about:blank'); } catch(e) { f.src = 'about:blank'; }
@@ -23446,6 +24709,7 @@ function _isNarrow() {
 }
 
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
+var _TBM_FIND_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><circle cx="16.5" cy="15.5" r="3.5"/><path d="M19 18l2.5 2.5"/></svg>';
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 // The same + the inline button draws, at menu-row weight.
@@ -23516,13 +24780,18 @@ function _buildTopbarMenuHtml() {
       if (!_wikiReading) readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
       readerGroup += _readerActionRowsHtml();
     }
-    // 3. Read aloud.
+    // 3. Find in page: on a phone there is no Cmd+F to reach for.
+    if (_findApplies()) {
+      readerGroup += '<button class="topbar-menu-item" id="tbm-find" onclick="_closeTopbarMenu();openFindInPage()">' + _TBM_FIND_ICON +
+        ' <span class="tbm-label">' + tH('find_in_page') + '</span></button>';
+    }
+    // 4. Read aloud.
     if (_TTS_AVAILABLE && !_isMapPage() && !_isAppPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
-    // 4. Open in browser — LAST, and only where it's meaningful: the desktop app
+    // 5. Open in browser — LAST, and only where it's meaningful: the desktop app
     // or an installed/standalone PWA. In a plain browser tab you're already in a
     // browser, so it's hidden. Opens the ?a= deep link (full Zimi chrome).
     if (IS_DESKTOP || _isStandalonePWA()) {
@@ -23739,9 +25008,11 @@ async function randomArticle(event) {
 
 // ── Keyboard ──
 document.addEventListener('keydown', e => {
+  if (_findKey(e)) return;
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_findIsOpen()) { _findClose(); return; }
     if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);
@@ -23756,10 +25027,23 @@ document.addEventListener('keydown', e => {
     if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
-    if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
+    // From a result reached with the arrows too: the box is where it goes on.
+    if (q.value) { clearSearchInput(); return; }
     if (mode === 'manage' && _manageSavedReader) { _manageToken = ''; history.back(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
     return;
+  }
+  // The arrows walk the results (Enter opens one, as a link does); up from
+  // the first is back in the box.
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.metaKey && !e.ctrlKey && mode === 'search' && !readerOpen) {
+    const stops = _resultStops(), i = stops.indexOf(document.activeElement);
+    if (i >= 0) {
+      e.preventDefault();
+      const next = stops[i + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) next.focus();
+      else if (e.key === 'ArrowUp') q.focus();
+      return;
+    }
   }
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -23800,6 +25084,15 @@ function _historyOnLanding(target) {
 // meant every jump to a saved place rebuilt the map and threw you back to the
 // region's default view.
 
+// A source's page under something Back returns to, without its main article
+// opening over it. Awaited with the flag held: renderSource consults the flag
+// again after its own fetch, and an unawaited call had it reset by then, so
+// the ZIM's main page opened over the search (or article) Back returned to.
+async function _enterSourceNoReader(name) {
+  _popstateNoAutoReader = true;
+  try { await enterSource(name, false); } finally { _popstateNoAutoReader = false; }
+}
+
 window.addEventListener('popstate', async (e) => {
   // Same page, different place on the same map: only the hash changed. The
   // hashchange handler moves the map; there is nothing here to route. Judged
@@ -23807,11 +25100,18 @@ window.addEventListener('popstate', async (e) => {
   // pushes never pass through here, so a remembered URL was still "/" when
   // Back returned to "/" from a map, and the map stayed open over the home page.
   if (_urlIsOpenMapPage()) return;
+  // The Almanac's tables and calculations are a step inside it (almanac-tables.js).
+  if (typeof _almTablesPop === 'function' && _almTablesPop(e)) return;
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
-  // Close Space if open
-  if (_almanacOpen) { closeAlmanac(); return; }
+  // Close the Almanac if open. Forward to a page opened from it: the Almanac
+  // steps aside as it did when the link was followed (its entry and its
+  // place kept for the Back after), and the page opens below.
+  if (_almanacOpen) {
+    if (!(e.state && e.state.from === 'almanac')) { closeAlmanac(); return; }
+    _almReturnScroll = _suspendAlmanacForLink();
+  }
   // Restore reader when navigating back from manage view
   if (mode === 'manage' && _manageSavedReader) {
     _manageToken = '';
@@ -23834,11 +25134,7 @@ window.addEventListener('popstate', async (e) => {
   ) {
     _historyOnLanding(target);
     if (!readerOpen) {
-      // Awaited with the flag held: renderSource consults the flag again
-      // after its own fetch, and an unawaited call had it reset by then, so
-      // the ZIM's main page auto-opened over the article just restored.
-      _popstateNoAutoReader = true;
-      try { await enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
+      await _enterSourceNoReader(target.zim);
     }
     _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
@@ -23852,11 +25148,12 @@ window.addEventListener('popstate', async (e) => {
     if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
     if (app.wiki && _appFrameRoute(_wikiOpen, '')) return;
     if (app.books && _appFrameRoute(_booksOpen, '')) return;
+    if (app.dictionary && _appFrameRoute(_dictOpen, app.w)) return;
   }
   // Landing on an app's address from the article opened out of it: the app
   // is reopened below, not stepped past. (The article history's own copy of
   // that step would otherwise take a second step back.)
-  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki || app.books);
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki || app.books || app.dictionary);
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -23876,9 +25173,8 @@ window.addEventListener('popstate', async (e) => {
   } else if (s && s.mode === 'search' && s.query) {
     // Going back to search results — restore cached results instantly if available
     if (s.source) {
-      _popstateNoAutoReader = true;
-      enterSource(s.source, false);
-      _popstateNoAutoReader = false;
+      await _enterSourceNoReader(s.source);
+      mode = 'search';
     } else {
       mode = 'search'; currentSource = null; sourceAutoReader = false;
       sourceHeaderEl.style.display = 'none';
@@ -23896,6 +25192,8 @@ window.addEventListener('popstate', async (e) => {
     if (!_appFrameRoute(_wikiOpen, '')) openWiki(true);
   } else if (s && s.mode === 'reader' && s.books) {
     if (!_appFrameRoute(_booksOpen, '')) openBooks(true);
+  } else if (s && s.mode === 'reader' && s.dictionary) {
+    if (!_appFrameRoute(_dictOpen, s.w)) openDictionary(true, s.w || '');
   } else if (s && s.mode === 'reader' && s.reddot) {
     if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {
@@ -23904,14 +25202,10 @@ window.addEventListener('popstate', async (e) => {
     if (!_appFrameRoute(_tubeOpen, s.play)) openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
-    _popstateNoAutoReader = true;
-    enterSource(s.zim, false);
-    _popstateNoAutoReader = false;
+    await _enterSourceNoReader(s.zim);
   } else if (s && s.mode === 'source' && s.source) {
     // Going back to source — show source page, don't auto-open reader
-    _popstateNoAutoReader = true;
-    enterSource(s.source, false);
-    _popstateNoAutoReader = false;
+    await _enterSourceNoReader(s.source);
   } else if (s && s.mode === 'almanac') {
     // Back from an almanac-originated article — reopen the almanac at its spot.
     if (typeof _reopenAlmanacFromLink === 'function') _reopenAlmanacFromLink();
@@ -24716,7 +26010,7 @@ function _defineRenderResult(st, hit, html) {
     ? '<div class="define-body">' + body + '</div>'
     : '<div class="define-status">' + tH('define_no_results') + '</div>';
   _definePopover.innerHTML = '<div class="define-card">' + head + content +
-    '<a class="define-open" onclick="_defineOpenFull()">' + tH('define_open_full') + '</a></div>';
+    '<a class="define-open" onclick="_defineOpenFull()">' + tH(_appShown('dictionary') ? 'define_in_dictionary' : 'define_open_full') + '</a></div>';
   _defineReposition(); // final card size known — re-clamp so it can't spill off-screen
 }
 
@@ -24733,10 +26027,14 @@ function _defineWordAt(word, doc, rect) {
   _defineRun();
 }
 
+// The whole word: in Dictionary, where every Wiktionary says it and it can
+// be heard, when Dictionary is offered; else the entry in its ZIM.
 function _defineOpenFull() {
   var st = _defineState;
   _defineHide();
-  if (st && st.zim && st.path) openArticle(st.zim, st.path);
+  if (!st) return;
+  if (_appShown('dictionary')) openDictionary(false, st.word);
+  else if (st.zim && st.path) openArticle(st.zim, st.path);
 }
 
 // Consider the current selection inside the reader iframe; show or hide the
@@ -24839,10 +26137,16 @@ var REPLAY_SETTLE_MS = 2500;
 // breaks the other.
 function _frameIsOurOwnPage(frame) {
   try {
-    return frame.contentWindow.location.pathname.startsWith('/static/');
+    return frame.contentWindow.location.pathname.startsWith('/static/') || _docIsOurOwnPage(frame.contentDocument);
   } catch (e) {
     return false;  // unreadable is not ours; treat it as a page, not a tool
   }
+}
+// A page Zimi wrote, served under /w/ beside the ZIM's own (http.py's
+// _UNCAPTURED_PAGE: an article the ZIM does not hold, a link it did not
+// capture): it says so in its head.
+function _docIsOurOwnPage(doc) {
+  try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-page"]')); } catch (e) { return false; }
 }
 
 function _settleCapturedChrome(frame) {
@@ -25343,7 +26647,8 @@ function _openDownloadsView(e) {
   _closeTopbarMenu();
   if (mode !== 'manage') {
     if (!manageEnabled) return;
-    enterManage();
+    enterManage().then(function(ok) { if (ok) switchManageTab('downloads'); });
+    return;
   }
   switchManageTab('downloads');
 }

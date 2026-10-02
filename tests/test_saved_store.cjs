@@ -58,7 +58,7 @@ function device(seed, opts) {
 }
 const J = (x) => JSON.stringify(x);
 function full(part) {
-  return Object.assign({ v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }, part);
+  return Object.assign({ v: 2, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }, part);
 }
 // Deep equality regardless of key order.
 function same(a, b) {
@@ -213,7 +213,7 @@ const LEGACY = {
   S.deleteList(trip);
   ok('deleteList: the list goes, its items stay saved', S.lists().length === 2 && S.has('wikivoyage\nA/Lisbon') && J(S.get(key).lists) === J(['liked']));
   ok('Liked cannot be deleted or renamed', (S.deleteList(S.LIKED), S.renameList(S.LIKED, 'x'), S.lists()[0].id === 'liked' && S.lists()[0].name === ''));
-  ok('items in no list, the latest first', J(S.itemsFor({ list: '' }).map((i) => i.title)) === J(['A talk', 'Hotel', 'Lisbon']));
+  ok('items in no list of their own (Liked is not one), the latest first', J(S.itemsFor({ list: '' }).map((i) => i.title)) === J(['A talk', 'Hotel', 'Lisbon', 'Aeneid']), J(S.itemsFor({ list: '' }).map((i) => i.title)));
   S.remove(key);
   ok('remove: gone from every list', !S.has(key) && S.itemsFor({ list: S.LIKED }).length === 0);
 
@@ -482,6 +482,108 @@ const LEGACY = {
   ok('...first where it was first, and in Liked', order(b) === 'A/2,A/4' && d.Saved.inList('w\nA/2', d.Saved.LIKED), order(b));
   ok('...and the restore is newer than the delete, so it syncs', after.ts > before.ts);
   ok('nothing to snapshot: null, and restoring it is nothing', d.Saved.snapshot('w\nA/9') === null && (d.Saved.restore(null), true));
+}
+
+// ── Like apart from Save (1.12.1) ───────────────────────────────────────────
+{
+  const d = device(), S = d.Saved;
+  const v = { kind: 'video', app: 'tube', zim: 'ted', path: 'v/1', title: 'A talk' };
+  S.addToList(v, S.LIKED);
+  ok('a like is not a save', S.inList(v, S.LIKED) && !S.has(v));
+  ok('...it is in Liked and nowhere else', S.itemsFor({ list: S.LIKED }).length === 1 && S.itemsFor({}).length === 0 &&
+    S.itemsFor({ list: '' }).length === 0 && S.all().length === 0 && S.lists()[0].count === 1);
+  ok('...an app\'s "All" shows it when asked', S.itemsFor({ app: 'tube', withLiked: true }).length === 1 && S.get(v).likeOnly === true);
+  d.clock += 1;
+  S.removeFromList(v, S.LIKED);
+  ok('unliked, a thing only liked is not kept at all, and no save of it is undone elsewhere',
+    !S.get(v) && S.data().gone['m:liked\tted\nv/1'] > 0 && !('i:ted\nv/1' in S.data().gone));
+  d.clock += 1;
+  S.addToList(v, S.LIKED);
+  d.clock += 1;
+  S.save(v);
+  ok('saved after the like: saved and still liked', S.has(v) && S.inList(v, S.LIKED) && !S.get(v).likeOnly && S.itemsFor({ list: '' }).length === 1);
+  d.clock += 1;
+  S.unsave(v);
+  ok('unsaved: the like stays, the save goes', !S.has(v) && S.inList(v, S.LIKED) && S.get(v).likeOnly);
+  const later = S.createList('Later');
+  d.clock += 1;
+  S.addToList(v, later);
+  ok('into a list of your own: saved', S.has(v) && S.inList(v, later) && S.inList(v, S.LIKED));
+  d.clock += 1;
+  S.unsave(v);
+  ok('unsaved again: out of its list, still liked', !S.inList(v, later) && S.inList(v, S.LIKED) && !S.has(v));
+  const w = { kind: 'article', zim: 'w', path: 'A/Kept', title: 'Kept' };
+  S.save(w);
+  d.clock += 1;
+  S.addToList(w, S.LIKED);
+  d.clock += 1;
+  S.removeFromList(w, S.LIKED);
+  ok('a saved thing unliked stays saved', S.has(w) && !S.inList(w, S.LIKED));
+  S.unsave(w);
+  ok('a thing never liked, unsaved, is gone', !S.get(w));
+}
+// Like and Save never stomp each other across devices: each has its own time.
+{
+  const X = { kind: 'article', zim: 'w', path: 'A/X', title: 'X' };
+  const pair = () => [device({}, { clock: 1000 }), device({}, { clock: 1000 })];
+  const both = (p, t) => { p.Saved.merge(t.Saved.data()); t.Saved.merge(p.Saved.data()); };
+  const state = (d) => (d.Saved.has(X) ? 'saved' : '-') + '+' + (d.Saved.inList(X, d.Saved.LIKED) ? 'liked' : '-');
+  let [p, t] = pair();
+  p.Saved.save(X);
+  t.clock = 2000; t.Saved.addToList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('saved on one device, liked later on one that never had it: saved and liked on both', state(p) === 'saved+liked' && state(t) === 'saved+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.addToList(X, p.Saved.LIKED);
+  t.clock = 2000; t.Saved.save(X);
+  both(p, t);
+  ok('liked on one, saved later on the other: saved and liked on both', state(p) === 'saved+liked' && state(t) === 'saved+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  t.clock = 1500; t.Saved.save(X);
+  p.clock = 2000; p.Saved.removeFromList(X, p.Saved.LIKED);
+  both(p, t);
+  ok('liked on both, saved on one, unliked later on the other: saved, not liked', state(p) === 'saved+-' && state(t) === 'saved+-', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  t.clock = 2500; t.Saved.addToList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('saved on both, unsaved on one, liked later on the other: liked, not saved', state(p) === '-+liked' && state(t) === '-+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  t.clock = 2500; t.Saved.removeFromList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('let go on one, unliked later on the other: neither', state(p) === '-+-' && state(t) === '-+-' && !p.Saved.get(X), state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  p.clock = 2100; p.Saved.removeFromList(X, p.Saved.LIKED);
+  both(p, t);
+  ok('let go then unliked on one: the other\'s older save does not come back', state(p) === '-+-' && state(t) === '-+-', state(p) + ' ' + state(t));
+}
+// A 1.12.0 browser's store: what is only in Liked was liked, not saved.
+{
+  const V1 = { v: 1, items: {
+    'w\nA/L': { kind: 'article', zim: 'w', path: 'A/L', title: 'L', added: 1, ts: 1 },
+    'w\nA/B': { kind: 'article', zim: 'w', path: 'A/B', title: 'B', added: 2, ts: 2 },
+    'w\nA/T': { kind: 'article', zim: 'w', path: 'A/T', title: 'T', added: 3, ts: 3 } },
+    lists: { trip: { name: 'Trip', order: 0, ts: 1 } },
+    members: { 'liked\tw\nA/L': { order: 0, ts: 1 }, 'liked\tw\nA/T': { order: 1, ts: 3 }, 'trip\tw\nA/T': { order: 0, ts: 3 } },
+    highlights: {}, gone: {}, legacy: false };
+  const d = device({ zimi_saved: J(V1) }), S = d.Saved;
+  ok('1.12.0 store: liked only stays liked, out of Bookmarks', S.inList('w\nA/L', S.LIKED) && !S.has('w\nA/L'),
+    J(S.get('w\nA/L')));
+  ok('...saved things stay saved (loose, and liked in a list)', S.has('w\nA/B') && S.has('w\nA/T') && S.inList('w\nA/T', S.LIKED));
+  ok('...and the store is written in today\'s shape', JSON.parse(d.localStorage._all.zimi_saved).v === 2 &&
+    JSON.parse(d.localStorage._all.zimi_saved).items['w\nA/L'].likeOnly === true);
 }
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall saved-store checks passed');

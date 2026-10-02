@@ -1155,14 +1155,12 @@ def _run_in_browser(reason=""):
             print(f"Zimi: {reason}; opening {url} in your browser instead.", file=sys.stderr, flush=True)
         else:
             print(f"Zimi: {url}", file=sys.stderr, flush=True)
-        import webbrowser
-
-        try:
-            opened = webbrowser.open(url)
-        except Exception:
-            opened = False
-        if not opened:
-            print(f"Zimi: could not open a browser here; visit {url}", file=sys.stderr, flush=True)
+        # On a thread of its own: on_ready runs before the server starts
+        # serving, and webbrowser waits for some browsers to exit (a console
+        # browser such as w3m, anything named by BROWSER). Opened inline, the
+        # tab asked for a page from a server that could not answer until the
+        # tab was closed, and showed nothing.
+        threading.Thread(target=_open_in_browser, args=(url,), daemon=True).start()
 
     host = _bind_host(config)
     try:
@@ -1175,6 +1173,18 @@ def _run_in_browser(reason=""):
             _serve(zim_dir, 0, on_ready, host)
         else:
             raise
+
+
+def _open_in_browser(url):
+    """Open ``url`` in the system browser, or say where to go instead."""
+    import webbrowser
+
+    try:
+        opened = webbrowser.open(url)
+    except Exception:
+        opened = False
+    if not opened:
+        print(f"Zimi: could not open a browser here; visit {url}", file=sys.stderr, flush=True)
 
 
 def _serve(zim_dir, port, on_ready, host=LOOPBACK_HOST):

@@ -30,6 +30,7 @@ const box = {
 vm.createContext(box);
 vm.runInContext([
   grab('var _snippetKept = '), grab('var _snippetPending = '), grab('var SNIPPET_KEPT_MAX = '),
+  grab('function _snippetKeep('), grab('function _snippetKeepAll('),
   grab('function _snippetData('),
 ].join('\n'), box);
 
@@ -54,6 +55,12 @@ vm.runInContext([
   for (const p of ['x1', 'x2', 'x3']) await box._snippetData('wiki', p);
   check(vm.runInContext('_snippetKept.size', box) === 3, 'the kept snippets stay within their bound');
   check(!vm.runInContext("_snippetKept.has('wiki\\nA/Water')", box), 'the oldest is let go first');
+
+  // The snippets a search's answer brought are there for its cards: no ask.
+  const before = asked.length;
+  vm.runInContext("_snippetKeepAll({'wiki\\nA/Streamed': {snippet: 'came with the results'}})", box);
+  const streamed = await box._snippetData('wiki', 'A/Streamed');
+  check(asked.length === before && streamed.snippet === 'came with the results', 'a snippet the search brought is not asked for');
 
   // The results' queue stops at a redraw instead of asking for the rest.
   check(/while \(!signal\.aborted && active < concurrency/.test(src), 'a redraw stops the old queue');

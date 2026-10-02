@@ -35,8 +35,10 @@ _ROW_RE = re.compile(
     r'(?:<div class="excerpt">(?P<excerpt>.*?)</div>)?(?P<rest>.*)',
     re.S,
 )
-_TAG_RE = re.compile(r'<a href="[^"]*questions/tagged/([^"]+)" class="post-tag[^"]*"[^>]*>', re.S)
-_PAGES_RE = re.compile(r'_page=(\d+)')
+_TAG_RE = re.compile(
+    r'<a href="[^"]*questions/tagged/([^"]+)" class="post-tag[^"]*"[^>]*>', re.S
+)
+_PAGES_RE = re.compile(r"_page=(\d+)")
 _TAGS_PAGE_RE = re.compile(
     r'<a href="[^"]*questions/tagged/([^"]+)" class="post-tag"[^>]*>[^<]*</a>\s*</div>\s*</div>\s*'
     r'<div class="[^"]*v-truncate4">(.*?)</div>.*?<div class="grid--cell">(\d+) questions</div>',
@@ -44,11 +46,21 @@ _TAGS_PAGE_RE = re.compile(
 )
 _TITLE_RE = re.compile(r'<h1[^>]*itemprop="name"[^>]*>\s*<a[^>]*>(.*?)</a>', re.S)
 _QVOTE_RE = re.compile(r'class="js-vote-count[^"]*"[^>]*data-value="(-?\d+)"', re.S)
-_PROSE_RE = re.compile(r'<div class="s-prose js-post-body"[^>]*>(.*?)</div>\s*(?:<div class="mt24|<div class="post-taglist|</div>\s*<div class="postcell|<div class="grid mb0)', re.S)
-_ANSWER_RE = re.compile(r'<div id="answer-(?P<id>\d+)" class="answer(?P<cls>[^"]*)"[^>]*data-score="(?P<score>-?\d+)"[^>]*>(?P<body>.*?)(?=<a name="\d+"></a>\s*<div id="answer-|<div id="answers-footer|</div>\s*<div class="grid mb0"|$)', re.S)
-_AUTHOR_RE = re.compile(r'class="user-details"[^>]*>.*?itemprop="name">(.*?)</span>', re.S)
-_ANSWER_PROSE_RE = re.compile(r'<div class="s-prose js-post-body"[^>]*>(.*?)</div>\s*<div class="mt24', re.S)
-_SCRIPT_RE = re.compile(r'<script\b.*?</script>', re.S | re.I)
+_PROSE_RE = re.compile(
+    r'<div class="s-prose js-post-body"[^>]*>(.*?)</div>\s*(?:<div class="mt24|<div class="post-taglist|</div>\s*<div class="postcell|<div class="grid mb0)',
+    re.S,
+)
+_ANSWER_RE = re.compile(
+    r'<div id="answer-(?P<id>\d+)" class="answer(?P<cls>[^"]*)"[^>]*data-score="(?P<score>-?\d+)"[^>]*>(?P<body>.*?)(?=<a name="\d+"></a>\s*<div id="answer-|<div id="answers-footer|</div>\s*<div class="grid mb0"|$)',
+    re.S,
+)
+_AUTHOR_RE = re.compile(
+    r'class="user-details"[^>]*>.*?itemprop="name">(.*?)</span>', re.S
+)
+_ANSWER_PROSE_RE = re.compile(
+    r'<div class="s-prose js-post-body"[^>]*>(.*?)</div>\s*<div class="mt24', re.S
+)
+_SCRIPT_RE = re.compile(r"<script\b.*?</script>", re.S | re.I)
 _URLATTR_RE = re.compile(r'\b(href|src)=(["\'])([^"\']*)\2', re.I)
 
 
@@ -76,7 +88,11 @@ def rows_from_listing(text):
         if not m:
             continue
         href = _html.unescape(m.group("href")).lstrip("./")
-        qid = href.split("/")[1] if href.startswith("questions/") and href.count("/") >= 1 else ""
+        qid = (
+            href.split("/")[1]
+            if href.startswith("questions/") and href.count("/") >= 1
+            else ""
+        )
         out.append(
             {
                 "id": qid,
@@ -102,7 +118,13 @@ def tags_from_page(text, limit=40):
     """``[{tag, description, count}]`` from the site's tags page."""
     out = []
     for tag, desc, count in _TAGS_PAGE_RE.findall(text or ""):
-        out.append({"tag": _html.unescape(tag), "description": _text(desc)[:200], "count": int(count)})
+        out.append(
+            {
+                "tag": _html.unescape(tag),
+                "description": _text(desc)[:200],
+                "count": int(count),
+            }
+        )
         if len(out) >= limit:
             break
     return out
@@ -118,12 +140,31 @@ def _rebase(fragment, page, zim):
 
     def fix(m):
         attr, quote, url = m.group(1), m.group(2), m.group(3)
-        if not url or url.startswith(("#", "http://", "https://", "mailto:", "data:", "/w/")):
+        if not url or url.startswith(
+            ("#", "http://", "https://", "mailto:", "data:", "/w/")
+        ):
             return m.group(0)
-        target = posixpath.normpath(posixpath.join(base, url)) if base else posixpath.normpath(url)
+        target = (
+            posixpath.normpath(posixpath.join(base, url))
+            if base
+            else posixpath.normpath(url)
+        )
         target = target.lstrip("./")
-        extra = ' data-q="%s"' % _html.escape(target, quote=True) if attr == "href" and target.startswith("questions/") and "/tagged/" not in target else ""
-        return '%s=%s/w/%s/%s%s%s' % (attr, quote, _srv.url_quote(zim) if hasattr(_srv, "url_quote") else zim, target, quote, extra)
+        extra = (
+            ' data-q="%s"' % _html.escape(target, quote=True)
+            if attr == "href"
+            and target.startswith("questions/")
+            and "/tagged/" not in target
+            else ""
+        )
+        return "%s=%s/w/%s/%s%s%s" % (
+            attr,
+            quote,
+            _srv.url_quote(zim) if hasattr(_srv, "url_quote") else zim,
+            target,
+            quote,
+            extra,
+        )
 
     return _URLATTR_RE.sub(fix, fragment)
 
@@ -142,7 +183,11 @@ def question_from_page(text, page, zim):
     body = prose.group(1) if prose else ""
     head_end = text.find('<div id="answers">')
     head = text[: head_end if head_end > 0 else len(text)]
-    tags = _tags_in(head[head.find('class="post-taglist'):] if 'class="post-taglist' in head else "")
+    tags = _tags_in(
+        head[head.find('class="post-taglist') :]
+        if 'class="post-taglist' in head
+        else ""
+    )
     author = _AUTHOR_RE.search(head)
     answers = []
     for am in _ANSWER_RE.finditer(text):
@@ -172,7 +217,9 @@ def question_from_page(text, page, zim):
 def _archive(name):
     from zimi.search import _get_fts_archive
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     if not entry or entry.get("kind") != "qa" or not _srv.zim_allowed(name):
         return None, None
     try:
@@ -203,8 +250,16 @@ def sites():
     out = []
     for z in _srv._zim_list_cache or []:
         if z.get("kind") == "qa" and z.get("name") and _srv.zim_allowed(z["name"]):
-            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "description": z.get("description") or "",
-                        "date": z.get("date") or "", "size_bytes": z.get("size_bytes") or 0})
+            out.append(
+                {
+                    "name": z["name"],
+                    "title": z.get("title") or z["name"],
+                    "icon": bool(z.get("has_icon")),
+                    "description": z.get("description") or "",
+                    "date": z.get("date") or "",
+                    "size_bytes": z.get("size_bytes") or 0,
+                }
+            )
     out.sort(key=lambda s: s["title"].lower())
     # A site once: a nopic beside a maxi, or last month's file beside this
     # month's, is one site, and the newest build is the one read.
@@ -215,7 +270,9 @@ def listing(name, page=1, tag=""):
     """One page of a site's questions, or of a tag's: the site's own order."""
     base = "questions/tagged/" + tag if tag else "questions"
     path = base if page <= 1 else "%s_page=%d" % (base, page)
-    got = _cached_page(name, path, lambda t: {"rows": rows_from_listing(t), "pages": pages_in(t)})
+    got = _cached_page(
+        name, path, lambda t: {"rows": rows_from_listing(t), "pages": pages_in(t)}
+    )
     return got or {"rows": [], "pages": 0}
 
 
@@ -227,7 +284,11 @@ def question(name, page):
     # An agent may send "<site>/questions/1/x" (openzim/Zimi#54's glued form).
     from zimi.search import read_unglued
 
-    return read_unglued(name, page, lambda p: _cached_page(name, p, lambda t: question_from_page(t, p, name)))
+    return read_unglued(
+        name,
+        page,
+        lambda p: _cached_page(name, p, lambda t: question_from_page(t, p, name)),
+    )
 
 
 def random_question(rng=None):
@@ -245,7 +306,9 @@ def random_question(rng=None):
         pg = rng.randint(1, pages)
         # A page count the listing promises but the ZIM lacks falls back
         # to the first page rather than to nothing.
-        rows = (first["rows"] if pg == 1 else listing(s["name"], pg)["rows"]) or first["rows"]
+        rows = (first["rows"] if pg == 1 else listing(s["name"], pg)["rows"]) or first[
+            "rows"
+        ]
         rows = [r for r in rows if r.get("page")]
         if rows:
             r = rng.choice(rows)
@@ -253,12 +316,36 @@ def random_question(rng=None):
     return None
 
 
+def note_count(name, first=None):
+    """Once per build of a site: its questions, for the Apps page."""
+    if _srv.app_items_known(name, "exchange"):
+        return
+    first = first or listing(name, 1)
+    _srv.note_app_items(
+        name, "exchange", _srv.paged_count(first, lambda p: listing(name, p))
+    )
+
+
+def note_counts():
+    """Every site's questions, for the Apps page (the background worker's)."""
+    for s in sites():
+        note_count(s["name"])
+
+
 def home():
     """Every site with its first page and its top tags: the shelves."""
     out = []
     for s in sites():
         first = listing(s["name"], 1)
-        out.append(dict(s, rows=first["rows"][:12], pages=first["pages"], tags=tags(s["name"])[:12]))
+        note_count(s["name"], first)
+        out.append(
+            dict(
+                s,
+                rows=first["rows"][:12],
+                pages=first["pages"],
+                tags=tags(s["name"])[:12],
+            )
+        )
     return {"sites": out}
 
 

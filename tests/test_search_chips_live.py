@@ -227,51 +227,98 @@ def test_chips_and_help_fit_a_phone(served, lang):
         br.close()
 
 
-def test_a_search_that_lands_after_you_open_settings_leaves_settings_alone(served):
+def _hold_full_pass(monkeypatch, scoped_too=True):
+    """The server's full-text pass waits until the returned Event is set;
+    the quick pass answers at once, so its line of the answer arrives alone."""
+    import zimi.server as srv
+
+    release = threading.Event()
+    real = srv.search_all
+
+    def held(q, limit=5, filter_zim=None, fast=False):
+        if not fast and (scoped_too or not filter_zim):
+            release.wait(20)
+        return real(q, limit=limit, filter_zim=filter_zim, fast=fast)
+
+    monkeypatch.setattr(srv, "search_all", held)
+    srv._search_cache_clear()
+    return release
+
+
+def test_a_search_that_lands_after_you_open_settings_leaves_settings_alone(
+    served, monkeypatch
+):
     """The full-text pass of a search can land seconds after the title pass.
     Opened Settings in between, the late pass painted the search results
     over Settings (CI, a slow runner, caught it). A search whose page you
-    have left draws nothing."""
-    import json as _json
-
+    have left draws nothing. Both passes come in one answer now: the title
+    pass's line is drawn while the full-text pass is still running."""
     from playwright.sync_api import sync_playwright
 
-    held = []
-
-    def search(route):
-        if "fast=1" in route.request.url:
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=_json.dumps({"results": [], "partial": True, "total": 0}),
-            )
-        else:
-            held.append(route)  # the full-text pass waits until Settings is open
-
+    release = _hold_full_pass(monkeypatch)
     with sync_playwright() as pw:
         br = pw.chromium.launch()
         # The service worker would answer /search itself, out of the route's reach.
         pg = br.new_page(viewport=PHONE, service_workers="block")
-        pg.route("**/search?*", search)
         seen = []
-        pg.on("request", lambda r: seen.append(r.url.split("/", 3)[-1]) if "search" in r.url else None)
+        pg.on("request", lambda r: seen.append(r.url) if "/search" in r.url else None)
         pg.goto(served + "/")
         pg.wait_for_function("() => typeof doSearch === 'function' && _manageProbed", timeout=30000)
         pg.evaluate("() => { doSearch('water', true); }")
-        pg.wait_for_function("() => document.getElementById('fts-indicator')", timeout=15000)
-        pg.evaluate("async () => { await enterManage(); switchManageTab('browse'); }")
-        pg.wait_for_function("() => mode === 'manage' && !!document.getElementById('catalog-results')", timeout=15000)
-        for _ in range(50):
-            if held:
-                break
-            pg.wait_for_timeout(100)
-        assert held, "the full-text pass was never asked for: %r" % seen
-        held[0].fulfill(
-            status=200,
-            content_type="application/json",
-            body=_json.dumps({"results": [{"zim": "wikipedia", "path": "A/Water", "title": "Water", "score": 1}], "total": 1}),
+        # The quick line drawn, the full-text pass still held on the server.
+        pg.wait_for_function(
+            "() => document.getElementById('fts-indicator')", timeout=15000
         )
+        pg.evaluate("async () => { await enterManage(); switchManageTab('browse'); }")
+        pg.wait_for_function(
+            "() => mode === 'manage' && !!document.getElementById('catalog-results')",
+            timeout=15000,
+        )
+        release.set()
         pg.wait_for_timeout(800)
-        assert pg.evaluate("() => !!document.getElementById('catalog-results')"), "the late search painted over Settings"
-        assert pg.evaluate("() => !document.getElementById('fts-indicator') || !document.querySelector('#output .result')")
+        assert pg.evaluate(
+            "() => !!document.getElementById('catalog-results')"
+        ), "the late search painted over Settings"
+        assert pg.evaluate(
+            "() => !document.getElementById('fts-indicator') || !document.querySelector('#output .result')"
+        )
+        assert len(seen) == 1, "one search, one request: %r" % seen
+        br.close()
+
+
+def test_an_older_search_landing_late_never_replaces_a_newer_one(served, monkeypatch):
+    """'More from <source>' starts a scoped search while the all-sources
+    search's full-text pass may still be on its way. Landing after, that pass
+    replaced the scoped results with every source's (CI, a slow runner)."""
+    from playwright.sync_api import sync_playwright
+
+    release = _hold_full_pass(monkeypatch, scoped_too=False)
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport=PHONE, service_workers="block")
+        pg.goto(served + "/")
+        pg.wait_for_function("() => typeof doSearch === 'function' && _manageProbed", timeout=30000)
+        # On the slow runner the older response was already arriving, so
+        # cancelling it did nothing; cancelling is switched off to say the same.
+        pg.evaluate(
+            "() => { AbortController.prototype.abort = function () {}; doSearch('water', true); }"
+        )
+        pg.wait_for_function(
+            "() => document.getElementById('fts-indicator')", timeout=15000
+        )
+        # A newer search, scoped to one source, runs to the end.
+        pg.evaluate(
+            "() => { currentSource = 'survival_en_test'; doSearch('water', true); }"
+        )
+        pg.wait_for_function(
+            "() => allResults && allResults._query === 'water' && !allResults.partial"
+            " && (window._newer = allResults)",
+            timeout=15000,
+        )
+        release.set()
+        pg.wait_for_timeout(800)
+        assert pg.evaluate(
+            "allResults === window._newer && currentSource === 'survival_en_test'"
+        ), "the older search landed over the newer one"
+        assert pg.evaluate("allResults.results.length") > 0
         br.close()
