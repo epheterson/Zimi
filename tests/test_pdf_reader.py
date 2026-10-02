@@ -602,7 +602,17 @@ def test_a_highlight_on_a_pdf_page_is_zimis_and_kept(shell):
                 )
                 == PASSAGE
             )
-            pg2.click('#bm-tree .bm-hl[data-fid="__highlights"]')
+            # As on a slow machine: page 3's text let go (pdf.js keeps only
+            # the pages near the view), and pdf.js re-scaling just after the
+            # jump (its initial view landing late, a resize). Each put back
+            # page 12: a stale range scrolled nowhere, and a scroll pdf.js had
+            # not yet seen was undone by the re-scale.
+            fr2.evaluate("() => PDFViewerApplication.pdfViewer.getPageView(2).reset()")
+            pg2.evaluate(
+                """() => { const v = document.getElementById('reader-frame').contentWindow.PDFViewerApplication.pdfViewer;
+                document.querySelector('#bm-tree .bm-hl[data-fid="__highlights"]').click();
+                setTimeout(() => { v.currentScale = v.currentScale * 1.01; }, 0); }"""
+            )
             fr2.wait_for_function(
                 "() => CSS.highlights.has('zimi-hl-on')", timeout=10000
             )

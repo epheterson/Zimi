@@ -23797,7 +23797,7 @@ var Highlights = (function () {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
         // The version moves with the engine: /static is cached for a year.
-        el.src = '/static/highlights.js?v=4';
+        el.src = '/static/highlights.js?v=5';
         el.onload = function () {
           engine = window.ZimiHighlightsEngine || null;
           if (engine) return resolve(engine);
@@ -23896,7 +23896,9 @@ var Highlights = (function () {
     var it = Saved.get(hl) || hl;
     _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
   }
-  return { attach: attach, open: open, changed: changed };
+  // Whether a highlight opened from the panel is on its way to this page.
+  function awaits(ref) { return !!(pending && pending.page === pageOf(ref)); }
+  return { attach: attach, open: open, changed: changed, awaits: awaits };
 })();
 // The reader's document and its highlights: an article (raw or in Reader
 // View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's

@@ -421,6 +421,9 @@
       else p = parseInt(store(POS_KEY + file) || '0', 10);
     } catch (e) { p = 0; }
     known = p || 1;
+    // A highlight opened from Saved goes to its own page: the kept place is
+    // not put back first for pdf.js to return to.
+    try { if (r && shell.Highlights.awaits(r)) return; } catch (e) {}
     if (p > 1 && p <= pages) { page = p; app.page = p; }
   }
   function save() {
@@ -741,6 +744,9 @@
       show: function (range) {
         var b = range.getBoundingClientRect();
         container.scrollTop += b.top - container.clientHeight * SHOW_AT;
+        // Told at once, as goPage does: a re-scale before pdf.js's next frame
+        // (a resize, its own initial view) would put back the page it last saw.
+        try { app.pdfViewer.update(); } catch (e) {}
         showBars(false);
       }
     });

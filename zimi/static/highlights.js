@@ -645,9 +645,12 @@ var ZimiHighlightsEngine = (function () {
     if (this.dead) return false;
     if (!this.found[id] && !this.painter.marks) this.refresh(true);
     var r = this.rangeOf(id), self = this, hl = Saved.getHighlight(id);
-    // Not drawn yet (a PDF's page far from here): the reader brings its
-    // place in (opts.reach, a promise), then it is looked for once more.
+    // Not drawn yet (a PDF's page far from here), or found on text drawn
+    // since let go (a PDF page's text layer, gone with the page, leaves a
+    // range with no box): the reader brings its place in (opts.reach, a
+    // promise), then it is looked for once more.
     var reach = this.opts().reach;
+    if (r && typeof reach === 'function' && !reached && !hasBox(r)) r = null;
     if (!r && hl && !reached && typeof reach === 'function') {
       Promise.resolve(reach(hl)).then(function () { self.refresh(true); self.goTo(id, true); }, function () { self.goTo(id, true); });
       return true;
@@ -685,6 +688,11 @@ var ZimiHighlightsEngine = (function () {
     try { this.painter.clear(); } catch (e) {}
     if (ui.h === this) hideBar();
   };
+  function hasBox(r) {
+    if (!r.startContainer.isConnected) return false;
+    var b = r.getBoundingClientRect();
+    return !!(b.width || b.height);
+  }
   function scrollToRange(win, r) {
     var rect = r.getBoundingClientRect(), before = win.scrollY || 0;
     win.scrollTo(0, Math.max(0, before + rect.top - win.innerHeight * SHOW_AT));
