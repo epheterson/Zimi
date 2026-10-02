@@ -16518,6 +16518,11 @@ async function refreshLibrary() {
 
 
 // ── Helpers ──
+// The viewer page up to 1.12 was served "immutable for a year", so a phone
+// that had opened a PDF kept pdf.js's own bars for that address. A mark in
+// the address no such copy was stored under; the page is now asked for each
+// time, so the mark never needs to change.
+var _PDF_VIEWER_MARK = 'zr=1';
 function _pdfViewerUrl(pdfUrl) {
   // pdfUrl is already percent-encoded (/w/zim/path%20name.pdf).
   // PDF.js viewer fetches via XHR (Sec-Fetch-Dest: empty), so the server
@@ -16527,7 +16532,7 @@ function _pdfViewerUrl(pdfUrl) {
   var lang = (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : '';
   var localeMap = { 'fr': 'fr', 'de': 'de', 'es': 'es-ES', 'pt': 'pt-BR', 'ru': 'ru', 'zh': 'zh-CN', 'ar': 'ar', 'he': 'he', 'hi': 'hi-IN' };
   var locale = localeMap[lang] || '';
-  return '/static/pdfjs/web/viewer.html?file=' + pdfUrl + (locale ? '#locale=' + locale : '');
+  return '/static/pdfjs/web/viewer.html?' + _PDF_VIEWER_MARK + '&file=' + pdfUrl + (locale ? '#locale=' + locale : '');
 }
 // Single-page docs (devdocs) surface result paths like 'index#backslash' where
 // 'index' is the real ZIM entry and '#backslash' is an in-page fragment. Encode
@@ -18606,8 +18611,13 @@ function _dictFollowLanguage(lang) {
   var found = w && typeof win.dictTranslation === 'function' ? win.dictTranslation(lang) : Promise.resolve('');
   found.then(function(tw) {
     if (!_isDictPage() || _currentLang !== lang) return;
-    if (tw && tw !== w) openDictionary(false, tw);
-    else openDictionary(true, w);
+    if (tw && tw !== w) {
+      openDictionary(false, tw);
+      // The page opens again on the translation alone, so its own trail
+      // can't walk back to the word: the shell's step does (Eric,
+      // 2026-10-02: freeze to Spanish "worked for freeze but not going back").
+      history.replaceState(Object.assign({}, history.state, { from: 'language' }), '', location.href);
+    } else openDictionary(true, w);
     // The page differs only after its '#', and that is a scroll, not a load:
     // the strings and the word ride there.
     try { win.location.reload(); } catch (e) {}
@@ -18688,21 +18698,21 @@ var _READING_CSS = [
   '.zb-dot-auto{background-image:' + READER_AUTO_SWATCH + '}.zb-dot-light{background-color:' + READER_THEME_BG.light + '}.zb-dot-sepia{background-color:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background-color:' + READER_THEME_BG.dark + '}',
   // Text size: five A's, each drawn at its own size (inline).
   '.zb-sizes button{font-family:Georgia,serif;padding:0;line-height:1}',
-  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
   // A finger: the sheet's choices and its close reach 44px.
   '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-x{width:44px;height:44px}}',
   '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
   '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
 ].join('');
 // How one reader is read in this browser: {size (px), lh and margin (indexes
-// into the scales)} and, where the reader has one, its mode.
+// into the scales)} and, where the reader has one, its mode. Line spacing
+// and margins are the reader's own, no longer chosen (Eric, 2026-10-02:
+// "kinda nice but taking so much space"): one kept from before is let go.
 function _readingPrefs(key, defaults) {
   var p = _getStorageJSON(key, {}) || {};
-  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
   return {
     size: _nearestStep(_READING_SIZES, p.size, defaults.size),
-    lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
-    margin: idx(p.margin, _READING_MARGINS, defaults.margin),
+    lh: defaults.lh,
+    margin: defaults.margin,
     mode: p.mode
   };
 }
@@ -18724,8 +18734,6 @@ function _readingSettingsHtml(prefs, layouts) {
     row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
     row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
     row(tH('reader_text_size'), _textSizeStepsHtml('zb-seg zb-sizes', si)) +
-    row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
-    row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
     (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
 }
 // What a control of the sheet asks for: {theme}, {fam} or {prefs: a change
@@ -18736,14 +18744,11 @@ function _readingSettingsPick(el, prefs) {
   if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
   if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
   if (el.hasAttribute('data-size')) return { prefs: { size: _READING_SIZES[Number(el.getAttribute('data-size'))] } };
-  var p = el.getAttribute('data-pref');
-  if (!p) return null;
-  var o = {}; o[p] = Number(el.value);
-  return { prefs: o };
+  return null;
 }
-// A reader's settings sheet, live: a tap or a slide sets the theme and the
+// A reader's settings sheet, live: a tap sets the theme and the
 // font at once (Reader View's own setters); a change to the reader's own
-// (size, spacing, margins, layout) goes to apply(change, fam) with fam true
+// (size, layout) goes to apply(change, fam) with fam true
 // when the font changed; the sheet is drawn again with the same control
 // focused. render() draws it.
 function _readingSettingsBind(sheet, getPrefs, apply, close) {
@@ -18755,13 +18760,12 @@ function _readingSettingsBind(sheet, getPrefs, apply, close) {
     else if (pick.fam) { _setReaderFamily(pick.fam); apply(null, true); }
     else apply(pick.prefs, false);
     render();
-    var attr = ['theme', 'fam', 'size', 'mode', 'pref'].filter(function(a) { return el.hasAttribute('data-' + a); })[0];
+    var attr = ['theme', 'fam', 'size', 'mode'].filter(function(a) { return el.hasAttribute('data-' + a); })[0];
     var again = attr && sheet.querySelector('[data-' + attr + '="' + el.getAttribute('data-' + attr) + '"]');
     if (again && !again.disabled) again.focus({ preventScroll: true });
   };
   var render = function() { sheet.innerHTML = _readingSettingsHtml(getPrefs(), sheet.__zbLayouts); };
   sheet.addEventListener('click', function(e) { var b = e.target.closest && e.target.closest('button'); if (b && !b.disabled) act(b); });
-  sheet.addEventListener('change', function(e) { if (e.target.getAttribute && e.target.getAttribute('data-pref')) act(e.target); });
   return render;
 }
 

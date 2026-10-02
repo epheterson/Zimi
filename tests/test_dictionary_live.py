@@ -269,3 +269,29 @@ def test_typing_suggests_and_enter_opens(served):
             assert "No dictionary here has" in f.inner_text(".empty")
         finally:
             br.close()
+
+
+def test_zimis_language_opens_the_translation_and_back_returns(served):
+    """Eric, 2026-10-01: switching Zimi's language with a word open opens its
+    translation. 2026-10-02: freeze to Spanish "worked for freeze but not
+    going back". Zimi's arrow returns to the word the switch started from."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(viewport={"width": 390, "height": 844}, locale="en-US", is_mobile=True, has_touch=True)
+        ctx.add_init_script(VOICES)
+        pg = ctx.new_page()
+        try:
+            pg.goto(served + "/?dictionary=water")
+            _word(_frame(pg), "water")
+            pg.evaluate("() => setLanguage('fr')")
+            pg.wait_for_url("**/?dictionary=eau", timeout=10000)
+            _word(_frame(pg), "eau")
+            pg.wait_for_function("() => !document.body.classList.contains('chrome-away')")
+            _still(pg)
+            pg.click("#back-btn")
+            pg.wait_for_url("**/?dictionary=water", timeout=10000)
+            _word(_frame(pg), "water")
+        finally:
+            br.close()

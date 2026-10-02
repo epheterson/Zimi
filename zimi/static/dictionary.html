@@ -698,11 +698,36 @@ var _voiceWaiting = true;
 var _playing = null, _utterance = null;
 // iPhone: the ring switch on silent mutes a page's sound unless the page
 // asks for playback, as a media player does (Safari 16.4+; elsewhere a no-op).
-function wantPlayback() { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
+// The ringer switch silences a page's sound on an iPhone unless the page asks
+// to play as media. The ask is the document's own, and this page is in a
+// frame: the shell asks too. Speech has no session of its own there, so a
+// moment of silence is played as media in the same tap, which carries the
+// voice through the switch with it (Eric, 2026-10-02: "works but not with
+// ringer silenced").
+var SILENCE_SAMPLES = 800, SILENCE_RATE = 8000;   // a tenth of a second
+var _silence = null;
+function silenceUrl() {
+  if (_silence) return _silence;
+  var n = SILENCE_SAMPLES, b = new DataView(new ArrayBuffer(44 + n));
+  var w = function(o, str) { for (var i = 0; i < str.length; i++) b.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); b.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); b.setUint32(16, 16, true);
+  b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, SILENCE_RATE, true); b.setUint32(28, SILENCE_RATE, true);
+  b.setUint16(32, 1, true); b.setUint16(34, 8, true); w(36, 'data'); b.setUint32(40, n, true);
+  for (var i = 0; i < n; i++) b.setUint8(44 + i, 128);   // 8-bit: 128 is silence
+  _silence = URL.createObjectURL(new Blob([b.buffer], { type: 'audio/wav' }));
+  return _silence;
+}
+function wantPlayback() {
+  [window, window.parent].forEach(function(w) { try { if (w.navigator.audioSession) w.navigator.audioSession.type = 'playback'; } catch (e) {} });
+}
+function wantPlaybackForSpeech() {
+  wantPlayback();
+  try { var a = new Audio(silenceUrl()); a.play().catch(function() {}); } catch (e) {}
+}
 function say(b) {
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
-  wantPlayback();
+  wantPlaybackForSpeech();
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
   b.classList.add('on');

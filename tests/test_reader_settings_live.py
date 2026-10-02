@@ -157,9 +157,6 @@ def test_text_size_resizes_the_articles_text_not_only_its_title(served):
             fr.locator(".zw-bar .zb-aa").click()
             pg.wait_for_timeout(300)
             fr.locator('.zw-set-sheet [data-size="4"]').click()  # Larger
-            fr.locator("#zb-lh").fill("4")
-            fr.locator("#zb-lh").dispatch_event("input")
-            fr.locator("#zb-lh").dispatch_event("change")
             pg.wait_for_timeout(300)
             size1 = _q(
                 pg, "parseFloat(d.documentElement.style.getPropertyValue('--zw-size'))"
@@ -172,7 +169,7 @@ def test_text_size_resizes_the_articles_text_not_only_its_title(served):
             assert size1 > size0
             assert fs1 == size1, "Text size reaches the paragraphs"
             assert title1 > title0
-            assert lh1 / fs1 > lh0 / fs0, "Line spacing reaches them too"
+            assert not fr.locator("#zb-lh, #zb-mg").count(), "no spacing or margin controls"
         finally:
             br.close()
 
