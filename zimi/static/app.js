@@ -4067,7 +4067,7 @@ function _setLibrarySort(mode) {
   // if anything about the page is not the shape this expects.
   // The cards move in place, so the control's own label is told too: it
   // kept naming the old order until the page was drawn again.
-  document.querySelectorAll('.lib-sort-now').forEach(function (el) { el.textContent = t(_LIBRARY_SORT_LABELS[mode]); });
+  if (typeof document !== 'undefined') document.querySelectorAll('.lib-sort-now').forEach(function (el) { el.textContent = t(_LIBRARY_SORT_LABELS[mode]); });
   if (!_reorderLibraryInPlace()) renderHome();
 }
 
