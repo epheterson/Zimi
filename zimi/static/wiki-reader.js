@@ -464,7 +464,7 @@ function _wikiLayout(frame) {
 
   // ── how you read: the settings, laid onto the page ──
   var prefs = _wikiPrefs();
-  var insets = _bookInsets();
+  var insets = _safeInsets();
   var phone = function() { return win.innerWidth <= _WIKI_PHONE_MAX; };
   var applyVars = function() {
     var s = html.style;
@@ -600,7 +600,7 @@ function _wikiLayout(frame) {
       placeSoon();
     });
   }, { passive: true, capture: true });
-  win.addEventListener('resize', function() { insets = _bookInsets(); applyVars(); markCurrent(); });
+  win.addEventListener('resize', function() { insets = _safeInsets(); applyVars(); markCurrent(); });
 
   // ── a citation, in place ──
   var hideCard = function() { card.hidden = true; card.__zwFor = null; };
