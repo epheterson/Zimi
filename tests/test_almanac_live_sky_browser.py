@@ -476,7 +476,7 @@ def test_the_aurora_where_it_is_seen(browser, served):
         )
         pg.touchscreen.tap(b["x"], b["y"])
         tip = pg.inner_text("#almanac-sky-tip")
-        assert "an hour" in tip and "10 times" in tip, tip
+        assert "an hour" in tip and "%d times" % pg.evaluate("SKY_METEOR_SPEEDUP") in tip, tip
         assert not errors, errors
     finally:
         ctx.close()

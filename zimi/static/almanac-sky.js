@@ -838,16 +838,32 @@ var SKY_FRONDS = [[-2.95, 0.6, 0.36, 0.07], [-2.45, 0.58, 0.16, 0.075], [-1.95, 
 var SKY_SWAY_MS = 80;             // the breeze's frames: twelve a second, only while seen and motion is not reduced
 var SKY_SWAY_RAD = 0.045;         // how far a crown swings; the trunk bends a quarter of that
 var SKY_RIM_PX = 1;               // the rim light's width, CSS px
-var SKY_WHALE_GAP_S = [60, 180], SKY_WHALE_S = [2.6, 3.4];
+// The moving things at the pace of the real sky ("It's nice but it's all too
+// frequent and fast", Eric): a whale now and then, an airliner every few
+// minutes taking a few minutes to cross, birds a little more often.
+var SKY_WHALE_GAP_S = [240, 600], SKY_WHALE_S = [5, 6.5];
+var SKY_WHALE_BLOW = 0.22;        // the share of a whale's time that is its blow, before it leaps
+var SKY_WHALE_LEN = 11;           // its length, in the silhouette's units
+var SKY_WHALE_SCALE = 1.4;        // the silhouette's unit, in the scene's (k)
+var SKY_WHALE_DARK = [[10, 12, 16], [24, 28, 36]];   // its back, by night and by day: darker than the sea
+var SKY_WHALE_FIN = [208, 218, 226];                 // a humpback's flippers are white
 var SKY_SEA_ROWS = 16;            // the swell's lines, nearer ones further apart
 var SKY_BOATS = [[23, 3.2, 1, 'sail'], [151, 2.1, -1, 'ship'], [277, 4.4, 1, 'fish']];   // azimuth seed, deg/hour, way, kind
 var SKY_ACTOR_FRAME_MS = 33;      // the moving things' frames: thirty a second is smooth at this size
-var SKY_PLANE_GAP_S = [25, 70], SKY_PLANE_S = [22, 34], SKY_PLANE_ALT = [12, 48];
-var SKY_BIRD_GAP_S = [30, 80], SKY_BIRD_S = [14, 22], SKY_BIRD_ALT = [4, 14];
+// An airliner 11 km up at 900 km/h moves about a degree a second overhead,
+// slower lower down: some three minutes across the scene's 240 degrees.
+var SKY_PLANE_GAP_S = [240, 600], SKY_PLANE_S = [150, 240], SKY_PLANE_ALT = [12, 48];
+// Its lights as a navigator sees them from the ground: points about as
+// bright as a middling star (CSS px radius, alpha), never lamps.
+var SKY_PLANE_NAV_LIGHT = [0.5, 0.5];     // red and green, the wingtips
+var SKY_PLANE_STROBE = [0.7, 0.75];       // the white strobe
+var SKY_PLANE_BEACON = [0.55, 0.55];      // the red beacon
+var SKY_PLANE_CONTRAIL_ALPHA = 0.3;
+var SKY_BIRD_GAP_S = [120, 300], SKY_BIRD_S = [40, 70], SKY_BIRD_ALT = [4, 14];
 var SKY_METEOR_SPORADIC_HR = 6;   // sporadic meteors an hour, any dark night
 var SKY_METEOR_SHOWER_DAYS = 1.5; // a shower's rate falls by e every this many days from its peak
-var SKY_METEOR_SPEEDUP = 10;      // meteors fall here this many times as often as in the real sky
-var SKY_METEOR_MS = [450, 900];
+var SKY_METEOR_SPEEDUP = 2;       // meteors fall here this many times as often as in the real sky: one every five minutes or so
+var SKY_METEOR_MS = [600, 1200];
 var SKY_MAG_POLE = [80.8, -72.6]; // the geomagnetic north pole (IGRF, 2025), degrees
 var SKY_AURORA_LAT = 66, SKY_AURORA_REACH = 4;   // where the oval stands quietly (geomagnetic), how far equatorward an active Sun pushes it
 var SKY_ISS_MIN_ALT = 8;          // the ISS is drawn above this altitude, lit, in a dark enough sky
@@ -1111,32 +1127,76 @@ function _skyPaintPalms(ctx, s, ts) {
 }
 
 // ── A whale ──
-// Now and then, by day, one breaches: out of the sea, over, and back in a
-// splash, somewhere between the shore and the sea's edge.
+// Now and then, by day, a humpback: first its blow, a plume over the water,
+// then it breaches, out of the sea head first, turning over, and back in a
+// splash, somewhere between the shore and the sea's edge. Drawn as a whale
+// (a blunt head, the long pectoral fin, the tail narrowing to its flukes),
+// not a lozenge ("Whale doesn't look like one", Eric).
 function _skyWhale(s) {
   return { type: 'whale', start: performance.now(), dur: _skyRandIn(_skyRand, SKY_WHALE_S) * 1000, dir: _skyRand() < 0.5 ? 1 : -1,
     az: s.center + (_skyRand() - 0.5) * SKY_SPAN_DEG * 0.6, d: 0.15 + 0.4 * _skyRand() };
+}
+// The silhouette, head toward +x, about SKY_WHALE_LEN long and centred on the
+// origin, in the scene's units.
+function _skyWhalePath(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(5.6, 0.2);                                   // the snout
+  ctx.quadraticCurveTo(5.2, -1.3, 2.4, -1.6);             // the head's top
+  ctx.quadraticCurveTo(-1.8, -1.5, -3.8, -0.5);           // the back, narrowing
+  ctx.lineTo(-4.6, -0.3);                                 // the tail stock
+  ctx.quadraticCurveTo(-5.4, -1.6, -6.2, -2.2);           // the upper fluke
+  ctx.quadraticCurveTo(-5.8, -0.6, -5.4, 0);
+  ctx.quadraticCurveTo(-5.8, 0.6, -6.2, 2.2);             // the lower fluke
+  ctx.quadraticCurveTo(-5.4, 1.6, -4.6, 0.3);
+  ctx.lineTo(-3.8, 0.5);
+  ctx.quadraticCurveTo(-0.8, 1.9, 2.6, 1.5);              // the belly
+  ctx.quadraticCurveTo(5.0, 1.2, 5.6, 0.2);
+  ctx.fill();
+}
+// The humpback's long pectoral fin, swept back from under the head.
+function _skyWhaleFin(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(2.6, 1.0);
+  ctx.quadraticCurveTo(0.8, 2.6, -1.2, 3.2);
+  ctx.quadraticCurveTo(0.6, 2.0, 1.4, 1.1);
+  ctx.fill();
 }
 function _skyPaintWhale(ctx, s, a, ts) {
   var p = _skyActorAt(a, ts), x = _skyX(s, a.az), yh = s.H * SKY_HORIZON_Y, dpr = s.dpr;
   if (!_skyInView(s, x, 30 * dpr) || !s.shoreY) return;
   var wy = yh + (s.shoreY - yh) * a.d, k = s.scale * dpr * (0.7 + 1.4 * a.d), light = _skyDaylight(s.eph.sunGeoAlt);
-  var q = _skyClamp(p * 1.25, 0, 1), rise = Math.sin(Math.PI * q), ang = a.dir * (q - 0.5) * 1.6;
-  var bx = x + a.dir * (q - 0.4) * 10 * k, by = wy - rise * 7 * k;
-  if (q < 1) {
+  var spray = 'rgba(240,246,250,';
+  // The blow: a plume rising and drifting apart, before the leap.
+  if (p < SKY_WHALE_BLOW) {
+    var b = p / SKY_WHALE_BLOW, fade = (1 - b) * (0.4 + 0.6 * light);
+    ctx.fillStyle = spray + (0.55 * fade).toFixed(3) + ')';
+    for (var m = 0; m < 3; m++) {
+      ctx.beginPath();
+      ctx.ellipse(x + (m - 1) * 1.1 * k * b, wy - (2 + 5 * b + m * 1.2) * k, (0.8 + 1.4 * b) * k, (1.1 + 1.6 * b) * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // The leap: out nose first, over, and back in.
+  var q = _skyClamp((p - SKY_WHALE_BLOW) / (1 - SKY_WHALE_BLOW) * 1.2, 0, 1);
+  if (p >= SKY_WHALE_BLOW && q < 1) {
+    var rise = Math.sin(Math.PI * q);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, s.W, wy); ctx.clip();
-    ctx.fillStyle = _skyRgb(_skyMix([14, 16, 22], [52, 58, 70], light));
-    ctx.beginPath(); ctx.ellipse(bx, by, 7 * k, 2.2 * k, ang, 0, Math.PI * 2); ctx.fill();
-    // The long pectoral fin, a humpback's.
-    ctx.beginPath(); ctx.ellipse(bx - a.dir * 1.5 * k, by + 1.8 * k, 3.4 * k, 0.7 * k, ang + a.dir * 0.9, 0, Math.PI * 2); ctx.fill();
+    var len = SKY_WHALE_LEN * SKY_WHALE_SCALE * k;
+    ctx.translate(x + a.dir * (q - 0.5) * 6 * k, wy + len * (0.35 - 0.55 * rise));
+    ctx.scale(a.dir * k * SKY_WHALE_SCALE, k * SKY_WHALE_SCALE);
+    ctx.rotate(-1.25 + 1.9 * q);                          // nose up, over, nose down
+    ctx.fillStyle = _skyRgb(_skyMix(SKY_WHALE_DARK[0], SKY_WHALE_DARK[1], light));
+    _skyWhalePath(ctx);
+    ctx.fillStyle = _skyRgb(SKY_WHALE_FIN, 0.35 + 0.55 * light);
+    _skyWhaleFin(ctx);
     ctx.restore();
   }
   // White water where it leaves and where it falls back.
-  var splash = Math.max(1 - p / 0.3, p > 0.6 ? Math.sin(Math.PI * (p - 0.6) / 0.4) : 0);
+  var splash = p < SKY_WHALE_BLOW ? 0 : Math.max(1 - (p - SKY_WHALE_BLOW) / 0.2, p > 0.7 ? Math.sin(Math.PI * (p - 0.7) / 0.3) : 0);
   if (splash > 0) {
-    var sx = p < 0.5 ? x - a.dir * 4 * k : x + a.dir * 6 * k;
-    ctx.strokeStyle = 'rgba(240,246,250,' + (0.85 * splash * (0.4 + 0.6 * light)).toFixed(3) + ')';
+    var sx = p < 0.6 ? x - a.dir * 2 * k : x + a.dir * 4 * k;
+    ctx.strokeStyle = spray + (0.85 * splash * (0.4 + 0.6 * light)).toFixed(3) + ')';
     ctx.lineWidth = Math.max(1, 0.9 * dpr);
     ctx.beginPath();
     for (var j = -3; j <= 3; j++) {
@@ -1295,20 +1355,23 @@ function _skyPaintActor(ctx, s, a, ts) {
       var tx = _skyX(s, az - a.dir * 16);
       if (Math.abs(tx - x) < s.W / 2) {
         var cg = ctx.createLinearGradient(x, y, tx, y);
-        cg.addColorStop(0, 'rgba(255,255,255,' + (0.5 * light).toFixed(3) + ')'); cg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.strokeStyle = cg; ctx.lineWidth = 1.4 * dpr;
+        cg.addColorStop(0, 'rgba(255,255,255,' + (SKY_PLANE_CONTRAIL_ALPHA * light).toFixed(3) + ')'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = cg; ctx.lineWidth = dpr;
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, y + (a.alt1 - a.alt0) * 0.5); ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(40,46,58,' + (0.85 * light).toFixed(3) + ')';
-      ctx.fillRect(x - 3 * u, y - 0.5 * u, 6 * u, 1.2 * u);
-      ctx.fillRect(x - 0.6 * u, y - 2.4 * u, 1.4 * u, 5 * u);
+      // A speck at the contrail's head: from the ground an airliner is a
+      // fraction of a degree long.
+      ctx.fillStyle = 'rgba(40,46,58,' + (0.7 * light).toFixed(3) + ')';
+      ctx.fillRect(x - 1.5 * u, y - 0.35 * u, 3 * u, 0.7 * u);
+      ctx.fillRect(x - 0.3 * u, y - 1.3 * u, 0.6 * u, 2.6 * u);
     }
     if (light < 0.8) {
       var on = 1 - light, t = ts - a.start;
-      _skyLight(ctx, x - a.dir * 3 * u, y, 0.8 * dpr, a.dir > 0 ? [255, 60, 50] : [70, 255, 110], 0.9 * on);
-      _skyLight(ctx, x + a.dir * 3 * u, y, 0.8 * dpr, a.dir > 0 ? [70, 255, 110] : [255, 60, 50], 0.9 * on);
-      if (t % 1000 < 60 || (t % 1000 > 160 && t % 1000 < 220)) _skyLight(ctx, x, y, 1.2 * dpr, [255, 255, 255], on);
-      if (t % 1300 < 120) _skyLight(ctx, x, y - 1.2 * u, 1 * dpr, [255, 40, 30], on);
+      var nav = SKY_PLANE_NAV_LIGHT, st = SKY_PLANE_STROBE, bc = SKY_PLANE_BEACON;
+      _skyLight(ctx, x - a.dir * 1.5 * u, y, nav[0] * dpr, a.dir > 0 ? [255, 60, 50] : [70, 255, 110], nav[1] * on);
+      _skyLight(ctx, x + a.dir * 1.5 * u, y, nav[0] * dpr, a.dir > 0 ? [70, 255, 110] : [255, 60, 50], nav[1] * on);
+      if (t % 1000 < 60 || (t % 1000 > 160 && t % 1000 < 220)) _skyLight(ctx, x, y, st[0] * dpr, [255, 255, 255], st[1] * on);
+      if (t % 1300 < 120) _skyLight(ctx, x, y - 0.8 * u, bc[0] * dpr, [255, 40, 30], bc[1] * on);
     }
     s.bodies.push({ type: 'plane', x: x / dpr, y: y / dpr, r: 6 });
   } else if (a.type === 'birds') {
@@ -1475,7 +1538,8 @@ function _skyKick() {
 }
 
 var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0, sway: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
-var SKY_FIRST_SPAWN_MS = { plane: 4000, birds: 9000, meteor: 2500, whale: 20000 };
+// The first of each after the sky is seen again (opening, coming back to the app).
+var SKY_FIRST_SPAWN_MS = { plane: 20000, birds: 30000, meteor: 15000, whale: 60000 };
 function _skyDisarm() {
   for (var k in _skyTimers) { clearTimeout(_skyTimers[k]); _skyTimers[k] = 0; }
 }
@@ -1562,8 +1626,10 @@ function _skyResume() {
 function _skyWake() {
   if (typeof _almanacOpen !== 'undefined' && _almanacOpen && !document.hidden && _skyStale(_skyState)) _skyResume();
 }
-window.addEventListener('pageshow', _skyWake);
-window.addEventListener('focus', _skyWake);
+if (typeof window.addEventListener === 'function') {   // not in the tests' bare window
+  window.addEventListener('pageshow', _skyWake);
+  window.addEventListener('focus', _skyWake);
+}
 
 // Leaving the Almanac.
 function _skyStop() {
