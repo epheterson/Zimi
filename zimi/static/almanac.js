@@ -166,6 +166,7 @@ function _cancelAllRAF() {
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   _skyPause();
   if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
+  _almTzHandPause();
 }
 function _resumeAllRAF() {
   _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
@@ -3590,7 +3591,10 @@ function _renderSunMap(now) {
   // world grid below
   html += '<div class="alm-tz-wrap">';
   html += '<div class="alm-tz-clock-side">';
-  html += '<canvas id="almanac-tz-clock" width="180" height="180"></canvas>';
+  // The second hand is its own element over the face, turned by the
+  // compositor (_almTzHandSync): it glides without a frame of script.
+  html += '<div class="alm-tz-dial"><canvas id="almanac-tz-clock" width="180" height="180"></canvas>' +
+    '<span class="alm-tz-hand" id="almanac-tz-hand" aria-hidden="true"></span></div>';
   html += '<div id="almanac-tz-label" class="alm-clock-info"></div>';
   html += '</div>';
   html += '<div class="alm-tz-list" id="almanac-tz-pills"></div>';
@@ -3925,7 +3929,7 @@ function _initTzClock(now) {
     html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" role="button" tabindex="0"' +
       ' onclick="' + pick + '" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + pick + '}">';
     html += glyphHtml;
-    html += '<span class="alm-tz-city-name">' + _almEsc(tzc.label) + '</span>';
+    html += '<span class="alm-tz-city-name" title="' + _almEsc(tzc.label) + '">' + _almEsc(tzc.label) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
     if (tzc.added) {
@@ -4021,7 +4025,10 @@ function _drawTzClock(now) {
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  var tz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The zone the lit card shows: the one picked, else the place's (named for
+  // it below), else this device's. It read the device's zone under the
+  // place's name before.
+  var tz = _almSelectedTz || _almDisplayTz();
   var tzLabel = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
     if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
@@ -4103,15 +4110,19 @@ function _drawTzClock(now) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Second hand
-  var secAngle = secs * 6 - 90;
-  var secRad = secAngle * DEG_TO_RAD;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
-  ctx.strokeStyle = 'rgba(245,158,11,0.6)';
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
+  // Second hand: gliding on its own element where the browser can turn one,
+  // drawn here (on the tick) where it cannot.
+  if (_almTzHandSync(now)) secs = null;
+  if (secs !== null) {
+    var secAngle = secs * 6 - 90;
+    var secRad = secAngle * DEG_TO_RAD;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
+    ctx.strokeStyle = 'rgba(245,158,11,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
 
   // Center dot
   ctx.beginPath();
@@ -4261,7 +4272,36 @@ function _tzFmt(tz, opts, lang) {
   return _tzFmtCache[key];
 }
 
-// Smooth clock animation using requestAnimationFrame
+// The second hand sweeps once a minute, continuously ("Clock should glide
+// seconds not pop", Eric): a Web Animation on a transform, which the
+// compositor runs with no script per frame. Motion reduced, it steps once a
+// second instead. Paused with the Almanac's other loops; set to the clock
+// again on each tick when it has drifted.
+var ALM_TZ_SWEEP_MS = 60000;
+var ALM_TZ_SWEEP_STEPS = 60;
+var ALM_TZ_DRIFT_MS = 40;
+function _almTzHandSync(now) {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (!hand || typeof hand.animate !== 'function') return false;
+  var reduce = _almReduceMotion();
+  if (!hand._anim || hand._animReduce !== reduce) {
+    if (hand._anim) hand._anim.cancel();
+    hand._anim = hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+      { duration: ALM_TZ_SWEEP_MS, iterations: Infinity, easing: reduce ? 'steps(' + ALM_TZ_SWEEP_STEPS + ', end)' : 'linear' });
+    hand._animReduce = reduce;
+  }
+  var want = (now.getSeconds() * 1000 + now.getMilliseconds()) % ALM_TZ_SWEEP_MS;
+  var at = hand._anim.currentTime % ALM_TZ_SWEEP_MS;
+  if (hand._anim.playState !== 'running' || Math.abs(at - want) > ALM_TZ_DRIFT_MS) hand._anim.currentTime = want;
+  if (hand._anim.playState !== 'running') hand._anim.play();
+  return true;
+}
+function _almTzHandPause() {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (hand && hand._anim) hand._anim.pause();
+}
+
+// The clock's tick: the face, the digits and the cards, once a second.
 var _tzClockRAF = null;
 var _tzClockColors = null;
 var _tzGridMinute = -1;

@@ -27,6 +27,11 @@
 /* Clock row (analog + digital box side by side) above the grid */
 .alm-tz-wrap { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .alm-tz-clock-side { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; justify-content: center; }
+/* The analog face (canvas) and its second hand, turned by almanac.js
+   _almTzHandSync: from the centre, 0.78 of the face's radius (the canvas's
+   r = size / 2 - 12 at 160px: 53px, 33.15% of the dial). */
+.alm-tz-dial { position: relative; flex: none; line-height: 0; }
+.alm-tz-hand { position: absolute; left: calc(50% - 0.5px); bottom: 50%; width: 1px; height: 33.15%; background: rgba(245, 158, 11, 0.6); transform-origin: 50% 100%; pointer-events: none; will-change: transform; }
 .alm-clock-info { text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 22px; min-width: 200px; }
 .alm-clock-time { font-size: 28px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; justify-content: center; direction: ltr; }
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
@@ -53,18 +58,22 @@
   .alm-sec-out, .alm-sec-in { animation: none; }
 }
 .alm-tz-list { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
+.alm-tz-city-card { --alm-tz-corner: 16px; position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
-.alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; }
+/* One line, whatever the name's length, so every card's time sits on the
+   same line ("Dumont d'Urville Station" wrapped and pushed its time down);
+   the full name is the card's title. Room either side for the hour's glyph
+   and, on an added clock, its remove button. */
+.alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; padding: 0 var(--alm-tz-corner); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; direction: ltr; unicode-bidi: isolate; }
 .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
 /* Each card wears its city's hour: the grid reads as a living band of
    daylight echoing the terminator on the map above. */
-.alm-tz-glyph { position: absolute; top: 3px; right: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
+.alm-tz-glyph { position: absolute; top: 3px; inset-inline-end: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
 /* Solid crescent: a transparent disc whose shadow IS the moon. Pure
    horizontal offset keeps it upright (heavy side right, opening left) —
    the old vertical offset tilted the heavy part up and read as broken. */
-.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; right: 7px; }
+.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; inset-inline-end: 7px; }
 .alm-tz-day .alm-tz-glyph { color: #ffc15e; }
 .alm-tz-dawn .alm-tz-glyph { color: #ff8a65; }
 .alm-tz-dusk .alm-tz-glyph { color: #ab82ff; }
@@ -143,7 +152,8 @@
 .alm-group > .almanac-section:first-of-type, .alm-group-title + .almanac-section { margin-top: 24px; border-top: 0; padding-top: 0; }
 /* The reader's clocks: one taken away by its corner, one added from the
    cities through the native picker laid over a dashed card. */
-.alm-tz-remove { position: absolute; top: 0; inset-inline-end: 0; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
+/* The glyph keeps the end corner; the remove button takes the start one. */
+.alm-tz-remove { position: absolute; top: 0; inset-inline-start: 0; width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
 .alm-tz-remove:hover, .alm-tz-remove:focus-visible { color: var(--amber); }
 .alm-tz-add { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2); font-size: 12px; cursor: pointer; }
 .alm-tz-add:hover, .alm-tz-add:focus-within { color: var(--amber); border-color: var(--amber-border); }
