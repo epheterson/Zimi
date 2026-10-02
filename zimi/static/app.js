@@ -69,7 +69,6 @@ var SK = {
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
   // default to keep ZIM content byte-identical for purist users.
-  A11Y_REWRITE: 'zimi_a11y_rewrite',
   LIBRARY_TAB: 'zimi_library_tab',
   // Home library layout: 'list' (default full cards) | 'tiles' (compact grid).
   LIBRARY_VIEW: 'zimi_library_view',
@@ -12973,8 +12972,6 @@ function _msPreferencesHtml() {
         on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
       { title: tH('show_cross_links'), on: !_getStorageFlag(SK.HIDE_XZIM_LINKS),
         onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
-      { title: tH('a11y_rewrite_label'), desc: tH('a11y_rewrite_hint'), on: _getStorageFlag(SK.A11Y_REWRITE),
-        onchange: '_setStorageFlag(SK.A11Y_REWRITE, this.checked)' },
     ]) +
 
     // Default download flavor (above languages: reached more often)
@@ -14445,7 +14442,7 @@ var _BACKUP_SCHEMA = 'zimi-backup';
 var _BACKUP_SCHEMA_VERSION = 3;
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
-  SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
+  SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
   SK.EXT_LINKS, SK.OPEN_IN_APPS,
 ];
@@ -20871,10 +20868,6 @@ function openReader(url) {
   // PDFs: render in embedded pdf.js viewer (skip if already a viewer URL)
   if (lurl.endsWith('.pdf') && !url.startsWith('/static/pdfjs/')) {
     url = _pdfViewerUrl(url);
-  }
-  // A11y rewrite opt-in: only ZIM article URLs (/w/...), not PDFs or static.
-  if (_getStorageFlag(SK.A11Y_REWRITE) && url.startsWith('/w/') && !lurl.endsWith('.pdf')) {
-    url += (url.includes('?') ? '&' : '?') + 'a11y=1';
   }
   readerOpen = true;
   _ttsStop();          // never carry speech across a new article load

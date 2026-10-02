@@ -1,6 +1,4 @@
 {
-  "a11y_rewrite_hint": "Adiciona texto alternativo às imagens, garante um título por artigo e preenche o idioma do documento. Ajuda leitores de tela; o HTML muda um pouco.",
-  "a11y_rewrite_label": "Melhorar acessibilidade dos artigos ZIM",
   "about_zim": "Sobre este ZIM",
   "act_actor_admin_hint": "sessão iniciada com a palavra-passe de administrador",
   "act_actor_server": "Servidor",

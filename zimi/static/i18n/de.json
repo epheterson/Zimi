@@ -1,6 +1,4 @@
 {
-  "a11y_rewrite_hint": "Fügt fehlende Alt-Texte für Bilder hinzu, stellt eine Überschrift pro Artikel sicher und ergänzt die Dokumentsprache. Hilft Screenreadern; Artikel-HTML ändert sich leicht.",
-  "a11y_rewrite_label": "ZIM-Artikel-Barrierefreiheit verbessern",
   "about_zim": "Über dieses ZIM",
   "act_actor_admin_hint": "mit dem Administratorpasswort angemeldet",
   "act_actor_server": "Server",

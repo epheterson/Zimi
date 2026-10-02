@@ -1,6 +1,4 @@
 {
-  "a11y_rewrite_hint": "Adds missing image alt text, ensures one heading per article, and fills in document language. Helps screen readers; some article HTML changes.",
-  "a11y_rewrite_label": "Improve ZIM article accessibility",
   "about_zim": "About this ZIM",
   "act_actor_admin_hint": "signed in with the admin password",
   "act_actor_server": "Server",

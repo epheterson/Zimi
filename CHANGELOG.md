@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Sign-in comes before Manage opens.
 - Download names: `Zimi-<version>-<os>-<arch>`.
 - Pinch zoom works again on phones.
+- Accessibility fixes apply to every article; the setting is gone.
 - Links: "outside the ZIM" and "outside your library" ([#99](https://github.com/epheterson/Zimi/issues/99)).
 
 ### Fixed

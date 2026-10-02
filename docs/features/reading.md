@@ -44,7 +44,7 @@ In the library, exclusions and phrases are checked against a result's title. lib
 
 **Offline and installable.** A service worker precaches the shell, so Zimi opens with no server round trip and works as an installed PWA. The cache key is the asset-bundle hash, so every deploy invalidates it and a new version takes over immediately rather than waiting for tabs to close.
 
-**Accessibility.** Zimi scores 100/100 on Lighthouse a11y and targets WCAG 2.1 AA. Passing `?a11y=1` on a content URL additionally rewrites the article server-side: fills in a missing `<html lang>`, adds empty `alt` to unlabelled images (decorative by default, per WCAG 1.1.1), and promotes a leading title `div` to a real `<h1>` so heading navigation works.
+**Accessibility.** Zimi scores 100/100 on Lighthouse a11y and targets WCAG 2.1 AA. Every article is also fixed up server-side without changing how it looks: a missing `<html lang>` is filled in, unlabelled images get an empty `alt` (decorative by default, per WCAG 1.1.1), and a leading title `div` is marked as the page heading so heading navigation works.
 
 ### Pages captured without their JavaScript
 
@@ -67,7 +67,6 @@ A page captured by **alive** keeps its scripts and does not need this; see [Crea
 | Reader theme | reader menu | follows app theme | `dark` / `light` / `sepia` for article text |
 | Reader font + size | reader menu | system | Typeface and scale inside Reader View |
 | Auto Reader View | reader menu | off | Open every article straight into Reader View |
-| `?a11y=1` | content URL | off | Server-side accessibility rewrite of the article |
 | Word lookup | — | automatic | Active when any Wiktionary ZIM is installed; dormant otherwise |
 
 ## Troubleshoot

@@ -89,41 +89,56 @@ def test_alt_no_op_when_no_images():
     assert out == html
 
 
-# ── h1 promotion transform ───────────────────────────────────────────
+# ── the title as the heading ─────────────────────────────────────────
+# Marked for screen readers, never rewritten: the page must look the same
+# (the rewriter is always on).
+
+H = 'role="heading" aria-level="1"'
 
 
-def test_div_title_promoted_to_h1_when_no_h1():
+def test_title_div_marked_as_heading_when_no_h1():
     html = '<body><div class="title">Article Heading</div><p>Body</p></body>'
     out = a11y.rewrite_html(html)
-    assert "<h1>Article Heading</h1>" in out
+    assert '<div class="title" ' + H + '>Article Heading</div>' in out
+    assert "<h1" not in out
 
 
-def test_existing_h1_blocks_promotion():
+def test_existing_h1_blocks_marking():
     html = '<body><h1>Real H1</h1><div class="title">Subtitle</div></body>'
     out = a11y.rewrite_html(html)
-    assert "<h1>Real H1</h1>" in out
     assert '<div class="title">Subtitle</div>' in out
-    assert out.count("<h1") == 1
+    assert "role=" not in out
 
 
-def test_div_title_with_multiple_classes_promoted():
+def test_title_with_multiple_classes_marked():
     html = '<div class="article-header title big">Hello</div>'
     out = a11y.rewrite_html(html)
-    assert "<h1>Hello</h1>" in out
+    assert '<div class="article-header title big" ' + H + '>Hello</div>' in out
 
 
-def test_only_first_title_div_promoted():
+def test_only_first_title_marked():
     html = '<div class="title">A</div><div class="title">B</div>'
     out = a11y.rewrite_html(html)
-    assert "<h1>A</h1>" in out
+    assert out.count("role=") == 1
     assert '<div class="title">B</div>' in out
 
 
-def test_empty_title_div_left_alone():
+def test_empty_title_left_alone():
     html = '<div class="title"></div>'
+    assert a11y.rewrite_html(html) == html
+
+
+def test_nested_title_keeps_its_structure():
+    """The old rewrite cut at the first </div> and broke a title holding
+    a nested element; only the opening tag changes now."""
+    html = '<div class="title"><div class="name">Ant</div> <span>(insect)</span></div><p>x</p>'
     out = a11y.rewrite_html(html)
-    # No <h1> created from empty content
-    assert "<h1>" not in out
+    assert out == html.replace('<div class="title">', '<div class="title" ' + H + '>', 1)
+
+
+def test_a_title_with_its_own_role_is_left_alone():
+    html = '<div class="title" role="banner">X</div>'
+    assert a11y.rewrite_html(html) == html
 
 
 # ── Integration: all three transforms ────────────────────────────────
@@ -138,7 +153,7 @@ def test_all_transforms_run_together():
     )
     out = a11y.rewrite_html(html, lang_hint="es")
     assert '<html lang="es">' in out
-    assert "<h1>Hello World</h1>" in out
+    assert 'role="heading" aria-level="1">Hello World</div>' in out
     assert 'alt=""' in out
 
 
