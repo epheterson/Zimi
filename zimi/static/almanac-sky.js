@@ -1452,6 +1452,11 @@ function _skyLoop(ts) {
   var s = _skyState;
   if (!s) return;
   if (s.pending) { _skyCompute(s, s.pending); _skyArm(); }
+  // A live sky is never drawn at an old instant, whichever way the frame
+  // came (Eric's phone showed night at 10:41 until a reload: the timer that
+  // keeps it current had stopped while the app slept, and nothing else
+  // caught it up).
+  else if (_skyStale(s)) _skyCompute(s, new Date());
   // With only the moving things moving, every other frame is enough.
   var onlyActors = !_skyAnimating(s, ts) && !s.baseDirty;
   if (_skyAwake(s) && !(onlyActors && ts - (s.paintedAt || 0) < SKY_ACTOR_FRAME_MS)) { _skyPaint(ts); s.paintedAt = ts; s.paints = (s.paints || 0) + 1; }
@@ -1526,6 +1531,16 @@ function _skyMuonTick() {
   _skyTimers.muon = setTimeout(_skyMuonTick, SKY_MUON_GAP_MS[0] + Math.random() * (SKY_MUON_GAP_MS[1] - SKY_MUON_GAP_MS[0]));
 }
 
+// Live, and older than one tick of the live clock.
+function _skyStale(s) { return !!(s && s.eph && _skyLive() && Date.now() - s.nowTime > SKY_LIVE_MS); }
+// Whether the canvas is on screen now, measured: the observer's last word can
+// be from before the app slept (it reports nothing while the page is frozen).
+function _skyMeasureInView(s) {
+  if (!s || !s.canvas || !s.canvas.isConnected) return false;
+  var r = s.canvas.getBoundingClientRect();
+  return r.bottom > 0 && r.top < (window.innerHeight || document.documentElement.clientHeight) && r.width > 0;
+}
+
 // Hidden tab, the 3D view over the page, the sky scrolled away: nothing runs.
 function _skyPause() {
   _skyDisarm();
@@ -1534,11 +1549,22 @@ function _skyPause() {
 // Back in sight: live, catch up to now; then paint and re-arm.
 function _skyResume() {
   var s = _skyState;
+  if (s) s.inView = _skyMeasureInView(s);
   if (!_skyAwake(s)) return;
   if (s.eph && _skyLive() && Date.now() - s.nowTime > SKY_LIVE_MS / 2) _skyCompute(s, new Date());
   _skyArm();
   _skyKick();
 }
+// Back from the app switcher or a locked screen: iOS does not always say so
+// with visibilitychange (almanac.js resumes on that), so a page shown again
+// from the back-forward cache, or the window focused again, catches up too.
+// Only when the sky has fallen behind: a resume re-arms everything.
+function _skyWake() {
+  if (typeof _almanacOpen !== 'undefined' && _almanacOpen && !document.hidden && _skyStale(_skyState)) _skyResume();
+}
+window.addEventListener('pageshow', _skyWake);
+window.addEventListener('focus', _skyWake);
+
 // Leaving the Almanac.
 function _skyStop() {
   _skyPause();
