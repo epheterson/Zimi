@@ -24219,18 +24219,17 @@ function _readerSectionAnchor() {
   } catch (e) { return ''; }
 }
 // The bookmark button: keep what is on screen, or let it go.
+// The reader on one of Zimi's own stand-ins under /w/ ("This article isn't
+// in this ZIM", a page that wasn't captured): not an article, nothing to
+// save. Bookmarked, it went into a bookmarks export as a page titled exactly
+// that (seen 2026-09-03). The page marks itself, as Reader View reads it.
+function _onOwnPage() {
+  return !!(readerOpen && currentArticle && _docIsOurOwnPage(_readerFrameDoc()));
+}
 function toggleBookmark() {
   var ref = _savedRefOnScreen();
   if (!ref) return;
-  // The reader's own "This page wasn't captured" stand-in is not an article:
-  // bookmarked, it went into a bookmarks export as a page titled exactly
-  // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
-  if (currentArticle) {
-    try {
-      var doc = _readerFrameDoc();
-      if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
-    } catch (e) {}
-  }
+  if (_onOwnPage()) return;
   if (Saved.has(ref)) { _savedRemoveUndoable(ref); return; }
   if (ref.kind === 'article') {
     var sec = _readerSectionAnchor();
@@ -24253,6 +24252,7 @@ function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
 function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
+  document.body.classList.toggle('own-page', _onOwnPage());
   var ref = readerOpen ? _savedRefOnScreen() : null;
   var state = !readerOpen ? 'library' : ref && Saved.has(ref) ? 'saved' : 'save';
   // Called on every change to what is kept (a book's place moves every few
