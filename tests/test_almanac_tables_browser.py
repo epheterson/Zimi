@@ -37,25 +37,25 @@ SF = {
 }
 TABLES = [
     "sunmoon",
+    "tides",
     "twilight",
     "phases",
-    "tides",
+    "seasons",
+    "calendars",
     "nav",
     "stars",
-    "seasons",
     "eclipses",
-    "calendars",
     "suntime",
 ]
 CALCS = [
-    "sight",
-    "sundial",
-    "convert",
-    "days",
-    "zones",
     "distance",
-    "units",
+    "sundial",
     "sunmoonday",
+    "units",
+    "sight",
+    "days",
+    "convert",
+    "zones",
 ]
 DRAWN = (
     "() => { var o = document.getElementById('tb-out'); var a = document.getElementById('tk-answer');"

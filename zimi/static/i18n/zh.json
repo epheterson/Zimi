@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "航海昏影终",
   "tb_astro_dusk": "天文昏影终",
   "tb_sundial_clock": "日晷指向正午时，你的钟表是 {time}。",
-  "tb_zones_there": "{place}：{date}"
+  "tb_zones_there": "{place}：{date}",
+  "tb_hint_body": "你测的天体：太阳、月亮、行星或恒星。",
+  "tb_hint_limb": "你把圆面的哪一边切到地平线上；通常是下边。",
+  "tb_hint_when": "观测时刻，用世界时，尽量精确到秒。",
+  "tb_hint_hs": "六分仪的读数，未做任何改正。",
+  "tb_hint_ie": "两面镜中地平线对齐时六分仪的读数。大于零（弧上）要减去；小于零要加上。",
+  "tb_hint_eye": "你的眼睛离水面多高。站得越高，地平线下沉越多。",
+  "tb_hint_temp": "用于大气折射：冷空气折射更强。标准为 10 °C。",
+  "tb_hint_pressure": "同样用于折射：空气越密折射越强。标准为 1010 hPa。",
+  "tb_hint_lat": "你估计自己所在的位置（推算船位）。结果从这里移动你。",
+  "tb_hint_lon": "同一个估计位置，东或西。"
 }

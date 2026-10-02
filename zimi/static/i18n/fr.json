@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "Crépuscule nautique",
   "tb_astro_dusk": "Crépuscule astronomique",
   "tb_sundial_clock": "Quand le cadran indique midi, votre horloge indique {time}.",
-  "tb_zones_there": "{date} à {place}"
+  "tb_zones_there": "{date} à {place}",
+  "tb_hint_body": "Ce que vous avez mesuré : le Soleil, la Lune, une planète ou une étoile.",
+  "tb_hint_limb": "Le bord du disque amené sur l'horizon ; en général le bord inférieur.",
+  "tb_hint_when": "L'instant de la visée en temps universel, à la seconde si possible.",
+  "tb_hint_hs": "Ce que le sextant indiquait, avant toute correction.",
+  "tb_hint_ie": "Ce qu'indique le sextant quand l'horizon est aligné dans les deux miroirs. Au-dessus de zéro (sur l'arc), on le retranche ; en dessous, on l'ajoute.",
+  "tb_hint_eye": "La hauteur de votre œil au-dessus de l'eau. Plus vous êtes haut, plus l'horizon s'abaisse.",
+  "tb_hint_temp": "Pour la réfraction : l'air froid courbe davantage la lumière. 10 °C est la référence.",
+  "tb_hint_pressure": "Pour la réfraction aussi : l'air dense courbe davantage la lumière. 1 010 hPa est la référence.",
+  "tb_hint_lat": "Où vous pensez être (votre estime). La réponse vous déplace à partir d'ici.",
+  "tb_hint_lon": "La même estime, est ou ouest."
 }

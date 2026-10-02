@@ -1156,9 +1156,13 @@ function _tbNav(span) {
 // Each: init() -> its inputs (from now and here), fields(c) -> the input
 // rows, and solve(c) -> { big, sub, working } (HTML). The answer stands at
 // the top and stays in view while the inputs below it change.
-function _tbField(label, ctl, cls) {
-  return '<div class="tk-row' + (cls ? ' ' + cls : '') + '"><span class="tk-label">' + _almEsc(label) + '</span><span class="tk-ctl">' + ctl + '</span></div>';
+// hint: a line under the label saying what the field is, for the ones a
+// newcomer would not know (index error, height of eye, the limb).
+function _tbField(label, ctl, cls, hint) {
+  return '<div class="tk-row' + (cls ? ' ' + cls : '') + '"><span class="tk-label">' + _almEsc(label) +
+    (hint ? '<span class="tk-hint">' + _almEsc(hint) + '</span>' : '') + '</span><span class="tk-ctl">' + ctl + '</span></div>';
 }
+function _tbHint(k) { return _tbT('hint_' + k); }
 function _tbGroup(title, rows) {
   return '<section class="tk-group">' + (title ? '<h3 class="tk-group-h">' + _almEsc(title) + '</h3>' : '') + '<div class="tk-rows">' + rows + '</div></section>';
 }
@@ -1206,19 +1210,19 @@ TB_CALC.sight = {
     var limbed = c.body === 'sun' || c.body === 'moon';
     var eye = { get: function () { return c.unit === 'ft' ? c.heightM * AR_FT_PER_M : c.heightM; }, set: function (v) { c.heightM = c.unit === 'ft' ? v / AR_FT_PER_M : v; } };
     return _tbGroup(t('ref_the_sight'),
-        _tbField(t('ref_body'), _tkPick('body', t('ref_body'), bodies, function () { return c.body; }, function (v) { c.body = v; _tbCalcFields(); })) +
-        (limbed ? _tbField(t('ref_limb'), _tkSeg('limb', t('ref_limb'), [{ v: 'lower', label: t('ref_limb_lower') }, { v: 'upper', label: t('ref_limb_upper') }], c.limb, function (v) { c.limb = v; _tkChanged(); })) : '') +
-        _tbField(_tbT('when_ut'), _tkDate('ms', _tbDateOn(c, 'ms', _tbT('when_ut'), 'UTC', true))) +
-        _tbField(t('ref_hs'), _tkNum('hs', _tkAngleSpec(Object.assign(_tbProp(c, 'hs'), { label: t('ref_hs'), max: 90 }))))) +
+        _tbField(t('ref_body'), _tkPick('body', t('ref_body'), bodies, function () { return c.body; }, function (v) { c.body = v; _tbCalcFields(); }), '', _tbHint('body')) +
+        (limbed ? _tbField(t('ref_limb'), _tkSeg('limb', t('ref_limb'), [{ v: 'lower', label: t('ref_limb_lower') }, { v: 'upper', label: t('ref_limb_upper') }], c.limb, function (v) { c.limb = v; _tkChanged(); }), '', _tbHint('limb')) : '') +
+        _tbField(_tbT('when_ut'), _tkDate('ms', _tbDateOn(c, 'ms', _tbT('when_ut'), 'UTC', true)), '', _tbHint('when')) +
+        _tbField(t('ref_hs'), _tkNum('hs', _tkAngleSpec(Object.assign(_tbProp(c, 'hs'), { label: t('ref_hs'), max: 90 }))), '', _tbHint('hs'))) +
       _tbGroup(t('ref_instrument'),
-        _tbField(t('ref_index_error'), _tkNum('ie', _tbNumOn(c, 'ie', { label: t('ref_index_error'), step: 0.1, digits: 1, min: -30, max: 30, unit: '′', fmt: function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1); } }))) +
+        _tbField(t('ref_index_error'), _tkNum('ie', _tbNumOn(c, 'ie', { label: t('ref_index_error'), step: 0.1, digits: 1, min: -30, max: 30, unit: '′', fmt: function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1); } })), '', _tbHint('ie')) +
         _tbField(t('ref_eye_height'), _tkNum('eye', _tkNumSpec(Object.assign(eye, { label: t('ref_eye_height'), step: c.unit === 'ft' ? 1 : 0.5, digits: 1, min: 0, max: 100, fmt: function (v) { return _arNum(v, 1); } }))) +
-          _tkSeg('unit', t('ref_unit'), [{ v: 'm', label: 'm' }, { v: 'ft', label: 'ft' }], c.unit, function (v) { c.unit = v; _tbCalcFields(); })) +
-        _tbField(t('ref_temperature'), _tkNum('temp', _tbNumOn(c, 'tempC', { label: t('ref_temperature'), step: 1, digits: 0, min: -60, max: 60, unit: '°C' }))) +
-        _tbField(t('ref_pressure'), _tkNum('hpa', _tbNumOn(c, 'hPa', { label: t('ref_pressure'), step: 1, digits: 0, min: 870, max: 1090, unit: 'hPa' })))) +
+          _tkSeg('unit', t('ref_unit'), [{ v: 'm', label: 'm' }, { v: 'ft', label: 'ft' }], c.unit, function (v) { c.unit = v; _tbCalcFields(); }), '', _tbHint('eye')) +
+        _tbField(t('ref_temperature'), _tkNum('temp', _tbNumOn(c, 'tempC', { label: t('ref_temperature'), step: 1, digits: 0, min: -60, max: 60, unit: '°C' })), '', _tbHint('temp')) +
+        _tbField(t('ref_pressure'), _tkNum('hpa', _tbNumOn(c, 'hPa', { label: t('ref_pressure'), step: 1, digits: 0, min: 870, max: 1090, unit: 'hPa' })), '', _tbHint('pressure'))) +
       _tbGroup(t('ref_assumed_position'),
-        _tbField(t('ref_latitude'), _tkNum('lat', _tkAngleSpec(Object.assign(_tbProp(c, 'lat'), { label: t('ref_latitude'), max: 89.99, hemi: ['N', 'S'] })))) +
-        _tbField(t('ref_longitude'), _tkNum('lon', _tkAngleSpec(Object.assign(_tbProp(c, 'lon'), { label: t('ref_longitude'), max: 180, hemi: ['E', 'W'] })))));
+        _tbField(t('ref_latitude'), _tkNum('lat', _tkAngleSpec(Object.assign(_tbProp(c, 'lat'), { label: t('ref_latitude'), max: 89.99, hemi: ['N', 'S'] }))), '', _tbHint('lat')) +
+        _tbField(t('ref_longitude'), _tkNum('lon', _tkAngleSpec(Object.assign(_tbProp(c, 'lon'), { label: t('ref_longitude'), max: 180, hemi: ['E', 'W'] }))), '', _tbHint('lon')));
   },
   solve: function (c) {
     var r = _arReduceSight(c);

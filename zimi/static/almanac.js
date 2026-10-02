@@ -1755,8 +1755,15 @@ function _almSec(titleHtml, bodyHtml) {
 // (almanac-tables.js, with almanac-reference.js's sums and their styles,
 // loaded on first use: none of it is on the Almanac's first paint). The
 // tiles' order is the view's tabs'.
-var ALM_TB_TABLES = ['sunmoon', 'twilight', 'phases', 'tides', 'nav', 'stars', 'seasons', 'eclipses', 'calendars', 'suntime'];
-var ALM_TB_CALCS = ['sight', 'sundial', 'convert', 'days', 'zones', 'distance', 'units', 'sunmoonday'];
+// In the order you would reach for them cut off from the world (Eric,
+// 2026-10-01: "if we were cut off what we'd actually figure out we need"):
+// daylight and the water first, then the night, the year and the date, the
+// navigator's tables, and last the ones that are mostly wonder.
+var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calendars', 'nav', 'stars', 'eclipses', 'suntime'];
+// How far and which way, the right time from the Sun when the clocks have
+// stopped, a day's light, measures; then the navigator's fix and the sums
+// of dates.
+var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',

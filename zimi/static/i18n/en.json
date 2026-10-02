@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "Nautical dusk",
   "tb_astro_dusk": "Astronomical dusk",
   "tb_sundial_clock": "When the sundial reads noon, your clock reads {time}.",
-  "tb_zones_there": "{date} in {place}"
+  "tb_zones_there": "{date} in {place}",
+  "tb_hint_body": "What you measured: the Sun, the Moon, a planet or a star.",
+  "tb_hint_limb": "Which edge of the disc you brought down to the horizon; usually the lower.",
+  "tb_hint_when": "The moment of the sight in Universal Time, to the second if you can.",
+  "tb_hint_hs": "What the sextant read, before any correction.",
+  "tb_hint_ie": "What the sextant reads with the horizon lined up in both mirrors. Above zero (on the arc) is taken off; below zero is added.",
+  "tb_hint_eye": "How far your eye was above the water. The higher you stand, the further the horizon dips.",
+  "tb_hint_temp": "For refraction: cold air bends light more. 10 °C is standard.",
+  "tb_hint_pressure": "For refraction too: dense air bends light more. 1,010 hPa is standard.",
+  "tb_hint_lat": "Where you think you are (your dead reckoning). The answer moves you from here.",
+  "tb_hint_lon": "The same estimate, east or west."
 }

@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "Nautische Abenddämmerung",
   "tb_astro_dusk": "Astronomische Abenddämmerung",
   "tb_sundial_clock": "Zeigt die Sonnenuhr Mittag, zeigt deine Uhr {time}.",
-  "tb_zones_there": "{date} in {place}"
+  "tb_zones_there": "{date} in {place}",
+  "tb_hint_body": "Was du gemessen hast: Sonne, Mond, einen Planeten oder einen Stern.",
+  "tb_hint_limb": "Welchen Rand der Scheibe du an die Kimm gebracht hast; meist den Unterrand.",
+  "tb_hint_when": "Der Zeitpunkt der Messung in Weltzeit, wenn möglich auf die Sekunde.",
+  "tb_hint_hs": "Was der Sextant zeigte, vor jeder Beschickung.",
+  "tb_hint_ie": "Was der Sextant zeigt, wenn die Kimm in beiden Spiegeln fluchtet. Über null (auf dem Bogen) wird abgezogen, unter null addiert.",
+  "tb_hint_eye": "Wie hoch dein Auge über dem Wasser war. Je höher, desto tiefer liegt die Kimm.",
+  "tb_hint_temp": "Für die Refraktion: kalte Luft bricht das Licht stärker. Standard sind 10 °C.",
+  "tb_hint_pressure": "Ebenfalls für die Refraktion: dichte Luft bricht das Licht stärker. Standard sind 1010 hPa.",
+  "tb_hint_lat": "Wo du zu sein glaubst (dein Koppelort). Die Antwort versetzt dich von hier aus.",
+  "tb_hint_lon": "Derselbe Koppelort, Ost oder West."
 }

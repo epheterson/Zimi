@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "Ocaso náutico",
   "tb_astro_dusk": "Ocaso astronómico",
   "tb_sundial_clock": "Cuando el reloj de sol marca mediodía, tu reloj marca {time}.",
-  "tb_zones_there": "{date} en {place}"
+  "tb_zones_there": "{date} en {place}",
+  "tb_hint_body": "Lo que mediste: el Sol, la Luna, un planeta o una estrella.",
+  "tb_hint_limb": "Qué borde del disco llevaste al horizonte; normalmente el inferior.",
+  "tb_hint_when": "El momento de la observación en tiempo universal, al segundo si puedes.",
+  "tb_hint_hs": "Lo que marcó el sextante, antes de cualquier corrección.",
+  "tb_hint_ie": "Lo que marca el sextante con el horizonte alineado en ambos espejos. Por encima de cero (en el arco) se resta; por debajo se suma.",
+  "tb_hint_eye": "A qué altura sobre el agua estaba tu ojo. Cuanto más alto, más desciende el horizonte.",
+  "tb_hint_temp": "Para la refracción: el aire frío curva más la luz. 10 °C es el estándar.",
+  "tb_hint_pressure": "También para la refracción: el aire denso curva más la luz. 1010 hPa es el estándar.",
+  "tb_hint_lat": "Dónde crees que estás (tu estima). La respuesta te desplaza desde aquí.",
+  "tb_hint_lon": "La misma estima, este u oeste."
 }

@@ -2673,5 +2673,15 @@
   "tb_nautical_dusk": "Crepúsculo náutico",
   "tb_astro_dusk": "Crepúsculo astronômico",
   "tb_sundial_clock": "Quando o relógio de sol marca meio-dia, seu relógio marca {time}.",
-  "tb_zones_there": "{date} em {place}"
+  "tb_zones_there": "{date} em {place}",
+  "tb_hint_body": "O que você mediu: o Sol, a Lua, um planeta ou uma estrela.",
+  "tb_hint_limb": "Qual borda do disco você trouxe ao horizonte; normalmente a inferior.",
+  "tb_hint_when": "O momento da observação em tempo universal, ao segundo se possível.",
+  "tb_hint_hs": "O que o sextante marcou, antes de qualquer correção.",
+  "tb_hint_ie": "O que o sextante marca com o horizonte alinhado nos dois espelhos. Acima de zero (no arco) subtrai-se; abaixo, soma-se.",
+  "tb_hint_eye": "A que altura acima da água estava seu olho. Quanto mais alto, mais o horizonte desce.",
+  "tb_hint_temp": "Para a refração: o ar frio curva mais a luz. 10 °C é o padrão.",
+  "tb_hint_pressure": "Também para a refração: o ar denso curva mais a luz. 1010 hPa é o padrão.",
+  "tb_hint_lat": "Onde você acha que está (sua estima). A resposta o desloca a partir daqui.",
+  "tb_hint_lon": "A mesma estima, leste ou oeste."
 }
