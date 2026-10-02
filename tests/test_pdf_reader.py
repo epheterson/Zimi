@@ -95,6 +95,14 @@ def _open(pw, base, name, device, ctx=None):
     return pg, frame, ctx
 
 
+def _swipe(ctx, pg, x0, x1, y):
+    """A one-finger sideways swipe, as touch events (Chromium's own)."""
+    cdp = ctx.new_cdp_session(pg)
+    for kind, x in (("touchStart", x0), ("touchMove", (x0 + x1) / 2), ("touchMove", x1)):
+        cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"x": x, "y": y}]})
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+
 BARS = """() => { const r = s => { const e = document.querySelector(s); const b = e.getBoundingClientRect();
   const cs = getComputedStyle(e); return { top: b.top, bottom: b.bottom, h: b.height, shown: cs.visibility !== 'hidden' && cs.opacity !== '0' }; };
   return { head: r('.zp-head'), foot: r('.zp-foot'), vh: innerHeight, vw: innerWidth, sw: document.documentElement.scrollWidth,
@@ -132,10 +140,16 @@ def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
               .map(b => b.getBoundingClientRect()).filter(r => r.height < 44 || r.width < 44).length"""
             )
             assert small == 0
-            # Reading down by hand: the bars step aside...
+            # Reading on by hand: the bars step aside. A phone reads a page at
+            # a time and turns it with a swipe; a wide screen scrolls.
             vw = got["vw"]
-            pg.mouse.move(vw / 2, 400)
-            pg.mouse.wheel(0, 900)
+            if isinstance(device, str):
+                assert fr.evaluate("() => PDFViewerApplication.pdfViewer.scrollMode") == 3
+                _swipe(ctx, pg, vw * 0.8, vw * 0.2, 400)
+                fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            else:
+                pg.mouse.move(vw / 2, 400)
+                pg.mouse.wheel(0, 900)
             fr.wait_for_function("() => !zimiPdf.barsShown()", timeout=5000)
             pg.wait_for_timeout(400)
             assert not fr.evaluate(BARS)["head"]["shown"]
@@ -749,3 +763,40 @@ def test_a_jump_is_not_undone_by_a_rescale_in_the_same_moment(shell):
             "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))"
         )
         assert fr.evaluate("() => zimiPdf.page()") in (3, 4)
+
+
+def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
+    """Eric, 2026-10-02: "the page should fit and I'd like to be able to swipe
+    with a fit page view", the button at the bottom right "does nothing", and
+    "go to first go to last the fit options they're nice". A phone opens a
+    page at a time; the button turns that into one long scroll and back (and
+    is kept); the menu goes to either end and fits by width or page. The
+    viewer's address carries a mark no year-cached 1.12 copy was stored under.
+    """
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            assert "zr=1&file=" in fr.url
+            mode = "() => [PDFViewerApplication.pdfViewer.scrollMode, PDFViewerApplication.pdfViewer.currentScaleValue]"
+            assert fr.evaluate(mode) == [3, "page-fit"]
+            fr.click(".zp-fit")
+            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.scrollMode === 0")
+            assert fr.evaluate(mode) == [0, "page-width"]
+            assert fr.evaluate("() => localStorage.getItem('zimi_pdf_view')") == "scroll"
+            fr.click(".zp-fit")
+            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.scrollMode === 3")
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="last"]')
+            fr.wait_for_function("() => zimiPdf.page() === %d" % PAGES, timeout=5000)
+            fr.click(".zp-more")
+            assert fr.evaluate("() => document.querySelector('.zp-menu [data-zp=\"last\"]').disabled")
+            fr.click('.zp-menu [data-zp="fitw"]')
+            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.currentScaleValue === 'page-width'")
+            fr.click('.zp-menu [data-zp="first"]')
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+        finally:
+            ctx.browser.close()

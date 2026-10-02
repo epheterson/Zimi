@@ -27,6 +27,7 @@
   var DARK_KEY = 'zimi_pdf_dark';          // '1' / '0': chosen here; absent: follow the articles
   var POS_KEY = 'zimi_pdf_pos:';           // + the file: the page, outside the shell
   var SPREAD_KEY = 'zimi_pdf_spread';      // '1' / '2' pages side by side, chosen; absent: by the shape
+  var VIEW_KEY = 'zimi_pdf_view';          // 'pages' (a page at a time, swiped) / 'scroll'; absent: by the width
   var ROT_KEY = 'zimi_pdf_rot:';           // + the file: its pages turned, 0 / 90 / 180 / 270
   var REACH_MS = 4000;         // ms a page brought in for a highlight has to draw its text
   var SPREAD_MIN_PX = 1000;    // px of window wide enough for two pages side by side
@@ -34,6 +35,9 @@
   var SHOW_AT = 1 / 3;         // a highlight opened from Saved lands a third of the way down
   var TOKENS = ['--bg', '--surface', '--surface2', '--border', '--text', '--text2', '--amber', '--amber-glow', '--on-amber'];
   var FIT_WIDTH = 'page-width', FIT_PAGE = 'page-fit';
+  var SCROLL_VERTICAL = 0, SCROLL_PAGE = 3;  // pdf.js ScrollMode
+  var SWIPE_PX = 50;           // px a finger travels sideways to turn the page
+  var SWIPE_SLANT = 1.5;       // sideways at least this many times more than up or down
   var FIND_NOT_FOUND = 1;      // pdf.js FindState.NOT_FOUND
   var SPREAD_ODD = 1, SPREAD_EVEN = 2;     // pdf.js SpreadMode: pages side by side from the first, or after it
 
@@ -48,6 +52,7 @@
     find_prev: 'Previous match', find_next: 'Next match', pdf_prev_page: 'Previous page', pdf_next_page: 'Next page', close: 'Close', n_of_total: '{n} of {total}',
     books_contents: 'Contents', books_mode_pages: 'Pages', download: 'Download', save: 'Save', saved: 'Saved',
     pdf_print: 'Print', pdf_fit_width: 'Fit width', pdf_fit_page: 'Fit page', pdf_zoom_in: 'Zoom in',
+    pdf_first_page: 'First page', pdf_last_page: 'Last page', pdf_page_by_page: 'Page by page', pdf_scroll: 'Scroll',
     pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate',
     pdf_about: 'About this PDF', pdf_keywords: 'Keywords', pdf_created: 'Created', pdf_modified: 'Modified',
     pdf_application: 'Application', pdf_producer: 'PDF producer', pdf_version: 'PDF version', pdf_page_size: 'Page size',
@@ -132,6 +137,9 @@
     zin: svg('<path d="M12 5v14M5 12h14"/>'),
     zout: svg('<path d="M5 12h14"/>'),
     up: svg('<path d="M6 15l6-6 6 6"/>'),
+    first: svg('<path d="M6 5h12M7 15l5-5 5 5"/>'),
+    last: svg('<path d="M6 19h12M7 9l5 5 5-5"/>'),
+    scroll: svg('<rect x="6" y="2" width="12" height="8" rx="1"/><rect x="6" y="14" width="12" height="8" rx="1"/>'),
     down: svg('<path d="M6 9l6 6 6-6"/>'),
     mark: svg('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'),
     moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
@@ -154,6 +162,7 @@
   ui.innerHTML =
     '<div class="zp-bar zp-head" role="toolbar">' +
       iconBtn('zp-back zp-flip zp-hide-finding', I.back, t('go_back')) +
+      (zim ? '<img class="zp-zimicon zp-hide-finding" alt="" width="22" height="22" src="/w/' + encodeURIComponent(zim) + '/-/icon">' : '') +
       '<div class="zp-title"><b></b><span></span></div>' +
       '<div class="zp-find" role="search">' +
         iconBtn('zp-find-close zp-flip', I.back, t('close')) +
@@ -173,13 +182,16 @@
         '<div class="zp-pagebox"><button type="button" class="zp-page" aria-label="' + esc(t('pdf_page')) + '"></button></div>' +
         iconBtn('zp-next zp-flip', I.next, t('pdf_next_page'), ' aria-keyshortcuts="ArrowRight PageDown"') +
         iconBtn('zp-zoom zp-in', I.zin, t('pdf_zoom_in')) +
-        iconBtn('zp-fit', I.page, t('pdf_fit_page')) +
+        iconBtn('zp-fit', I.page, t('pdf_page_by_page')) +
       '</div>' +
     '</div>' +
     '<div class="zp-scrim"></div>' +
     '<div class="zp-sheet" role="dialog" aria-label="' + esc(t('books_contents')) + '"></div>' +
     '<div class="zp-menu" role="menu"></div>';
   document.body.appendChild(ui);
+  // A library without an icon of its own: no broken picture by its name.
+  var zimIcon = ui.querySelector('.zp-zimicon');
+  if (zimIcon) zimIcon.addEventListener('error', function () { zimIcon.remove(); });
   var $ = function (s) { return ui.querySelector(s); };
   var head = $('.zp-head'), foot = $('.zp-foot'), scrub = $('.zp-scrub'), pageBtn = $('.zp-page');
   var prevBtn = $('.zp-prev'), nextBtn = $('.zp-next');
@@ -245,6 +257,7 @@
       measureFoot();
       turnAsKept();
       applySpread();
+      applyView();
       resume();
       paint();
       highlightsOn();
@@ -264,8 +277,13 @@
       store(ROT_KEY + file, String(e.pagesRotation || 0));
       applySpread();
     });
-    bus.on('pagechanging', function (e) { page = e.pageNumber; paint(); saveSoon(); });
-    bus.on('scalechanging', function (e) { preset = e.presetValue || ''; paintFit(); });
+    bus.on('pagechanging', function (e) {
+      page = e.pageNumber; paint(); saveSoon();
+      // A page at a time has nothing to scroll: a page turned by hand is the
+      // reading that puts the bars away.
+      if (pageByPage() && Date.now() - handAt < HAND_MS) showBars(false);
+    });
+    bus.on('scalechanging', function (e) { preset = e.presetValue || ''; });
     bus.on('updatefindmatchescount', function (e) { paintCount(e.matchesCount, -1); });
     bus.on('updatefindcontrolstate', function (e) { paintCount(e.matchesCount, e.state); });
     bus.on('metadataloaded', function () {
@@ -289,6 +307,8 @@
     });
     container.addEventListener('click', onTap);
     container.addEventListener('touchstart', function (e) { if (e.touches.length > 1) pinchAt = Date.now(); }, { passive: true });
+    container.addEventListener('touchstart', swipeStart, { passive: true });
+    container.addEventListener('touchend', swipeEnd, { passive: true });
     container.addEventListener('touchmove', function (e) { if (e.touches.length > 1) pinchAt = Date.now(); }, { passive: true });
   }
   // A document that will not open says so, in Zimi's voice.
@@ -406,19 +426,60 @@
     inp.addEventListener('blur', function () { done(true); });
   });
 
-  // ── how it fits: width or the whole page, pinch, and on a wide screen − / + ──
+  // ── how it reads: a page at a time, swiped, or one long scroll; pinch,
+  // and on a wide screen − / + ──
+  // Eric, 2026-10-02: "the page should fit and I'd like to be able to swipe".
+  // On a phone a page's width and its whole are the same size, so a fit alone
+  // changed nothing; a page at a time is the difference you can see.
   var fitBtn = $('.zp-fit');
+  function pageByPage() {
+    var v = store(VIEW_KEY);
+    return v === 'pages' || v === 'scroll' ? v === 'pages' : !wide();
+  }
+  function applyView() {
+    if (!app || !pages) return;
+    var one = pageByPage();
+    var m = one ? SCROLL_PAGE : SCROLL_VERTICAL;
+    if (app.pdfViewer.scrollMode !== m) app.pdfViewer.scrollMode = m;
+    html.classList.toggle('zp-pages', one);
+    app.pdfViewer.currentScaleValue = one ? FIT_PAGE : FIT_WIDTH;
+    paintFit();
+  }
   function paintFit() {
     // The button says what a press will do.
-    var toPage = preset !== FIT_PAGE;
-    fitBtn.innerHTML = toPage ? I.page : I.width;
-    var label = t(toPage ? 'pdf_fit_page' : 'pdf_fit_width');
+    var one = pageByPage();
+    fitBtn.innerHTML = one ? I.scroll : I.page;
+    var label = t(one ? 'pdf_scroll' : 'pdf_page_by_page');
     fitBtn.setAttribute('aria-label', label); fitBtn.title = label;
   }
+  paintFit();
   fitBtn.addEventListener('click', function () {
-    if (!app) return;
-    app.pdfViewer.currentScaleValue = preset === FIT_PAGE ? FIT_WIDTH : FIT_PAGE;
+    store(VIEW_KEY, pageByPage() ? 'scroll' : 'pages');
+    applyView();
   });
+  // A page at a time turns with a sideways swipe, unless the page is zoomed
+  // in past its fit (the finger is then moving around the page).
+  var swipeX = 0, swipeY = 0, swipeOn = false;
+  function zoomedIn() {
+    try {
+      var v = app.pdfViewer, pv = v.getPageView(v.currentPageNumber - 1);
+      return pv.width > container.clientWidth + 1;
+    } catch (e) { return false; }
+  }
+  function swipeStart(e) {
+    swipeOn = e.touches.length === 1 && pageByPage() && !zoomedIn();
+    if (swipeOn) { swipeX = e.touches[0].clientX; swipeY = e.touches[0].clientY; }
+  }
+  function swipeEnd(e) {
+    if (!swipeOn || !e.changedTouches.length) return;
+    swipeOn = false;
+    var dx = e.changedTouches[0].clientX - swipeX, dy = e.changedTouches[0].clientY - swipeY;
+    if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < SWIPE_SLANT * Math.abs(dy)) return;
+    pinchAt = Date.now();   // the swipe's own touch is not a tap on the page
+    // Toward the start of the line is on: left in English, right in Hebrew.
+    byHand();
+    step((dx < 0) === (uiDir() !== 'rtl') ? 1 : -1);
+  }
   $('.zp-in').addEventListener('click', function () { if (app) app.pdfViewer.increaseScale(); });
   $('.zp-out').addEventListener('click', function () { if (app) app.pdfViewer.decreaseScale(); });
 
@@ -582,6 +643,14 @@
         '<button type="button" role="menuitemradio" data-zp="one" aria-checked="' + !two + '">' + I.one + '<span class="zp-grow">' + esc(t('pdf_single_page')) + '</span></button>' +
         '<button type="button" role="menuitemradio" data-zp="two" aria-checked="' + two + '">' + I.two + '<span class="zp-grow">' + esc(t('pdf_two_pages')) + '</span></button></div>';
     }
+    if (pages > 1) {
+      h += '<button type="button" role="menuitem" data-zp="first"' + (page <= 1 ? ' disabled' : '') + '>' + I.first + '<span class="zp-grow">' + esc(t('pdf_first_page')) + '</span></button>' +
+        '<button type="button" role="menuitem" data-zp="last"' + (page >= pages ? ' disabled' : '') + '>' + I.last + '<span class="zp-grow">' + esc(t('pdf_last_page')) + '</span></button><hr>';
+    }
+    var fp = preset === FIT_PAGE, fw = preset === FIT_WIDTH;
+    h += '<div role="group" class="zp-choice">' +
+      '<button type="button" role="menuitemradio" data-zp="fitw" aria-checked="' + fw + '">' + I.width + '<span class="zp-grow">' + esc(t('pdf_fit_width')) + '</span></button>' +
+      '<button type="button" role="menuitemradio" data-zp="fitp" aria-checked="' + fp + '">' + I.page + '<span class="zp-grow">' + esc(t('pdf_fit_page')) + '</span></button></div>';
     h += '<button type="button" role="menuitem" data-zp="rotate">' + I.rotate + '<span class="zp-grow">' + esc(t('pdf_rotate')) + '</span></button>';
     h += '<button type="button" role="menuitemcheckbox" data-zp="dark" aria-checked="' + darkWanted() + '">' + I.moon + '<span class="zp-grow">' + esc(t('pdf_dark_pages')) + '</span><span class="zp-switch" aria-hidden="true"></span></button>' +
       '<hr>' +
@@ -614,6 +683,13 @@
       return;   // a choice: the menu stays, showing it
     }
     if (what === 'rotate') { turn(); return; }   // the menu stays: a half turn is two presses
+    if (what === 'fitw' || what === 'fitp') {
+      b.focus({ preventScroll: true });
+      if (app) app.pdfViewer.currentScaleValue = what === 'fitp' ? FIT_PAGE : FIT_WIDTH;
+      menuAgain();
+      return;   // a choice: the menu stays, showing it
+    }
+    if (what === 'first' || what === 'last') { closePanel(true); goPage(what === 'first' ? 1 : pages); return; }
     closePanel(true);
     if (what === 'save') {
       try { shell.toggleBookmark(); if (shell._updateLibraryBtnIcon) shell._updateLibraryBtnIcon(); } catch (err) {}

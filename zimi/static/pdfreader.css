@@ -87,6 +87,8 @@ html.zp-away .zp-bar { opacity: 0; visibility: hidden; pointer-events: none; tra
 
 /* The document's name, and the library it is from. */
 .zp-title { flex: 1; min-width: 0; padding: 0 6px; line-height: 1.2; }
+.zp-zimicon { flex: none; width: 22px; height: 22px; border-radius: 5px; object-fit: contain; margin-inline-start: 2px; }
+.zp-menu button:disabled { opacity: .4; cursor: default; }
 .zp-title b, .zp-title span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
 .zp-title b { font-weight: 600; font-size: 14.5px; }
 .zp-title span { font-size: 12px; color: var(--text2); }
@@ -239,3 +241,5 @@ html.zp-dark ::highlight(zimi-hl-note), html.zp-dark .textLayer mark.zimi-hl-not
 
 @media print { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim, .zp-msg { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim { transition: none !important; } }
+/* A page at a time sits in the middle of the screen, not at its top. */
+html.zp-pages #viewer { min-height: 100%; display: flex; flex-direction: column; justify-content: center; }
