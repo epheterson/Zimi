@@ -2583,7 +2583,7 @@
   "tb_sight_big": "{n} nm {dir} {zn}°",
   "tb_date": "Date",
   "tb_sundial_big": "Add {v} to the sundial",
-  "tb_lon_corr": "Longitude {lon}, the clock’s meridian {m}° ({z})",
+  "tb_lon_corr": "Longitude {lon}, the clock’s meridian {m} ({z})",
   "tb_sundial_how": "Read the sundial and add the correction to get the time on your clock. The equation of time is how far the Sun runs ahead of an even clock; the longitude part is how far your place lies from the meridian your clock keeps (daylight saving moves that meridian an hour east).",
   "tb_day_of_year": "Day of the year",
   "tb_n_of_m": "{n} of {m}",

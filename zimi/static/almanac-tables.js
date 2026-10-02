@@ -672,11 +672,6 @@ function _tbOpen(id) {
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-labelledby', 'alm-ref-title');
     host.appendChild(el);
-    el.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      if (_tk.pop) _tkPopClose(); else _tbClose();
-    });
     _tkBind(el);
     // The view is a step: Back (the browser's, a phone's) leaves it for the
     // Almanac where it was, and no further.
@@ -689,7 +684,7 @@ function _tbOpen(id) {
   el.innerHTML = '<div class="tb-head">' +
     '<div class="tb-bar">' +
       '<button type="button" class="tb-back" data-tb-close>' + TB_BACK_SVG + '<span>' + _almEsc(t('almanac')) + '</span></button>' +
-      '<h2 id="alm-ref-title">' + _almEsc(_tbName(id)) + '</h2>' +
+      '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
       '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
     '</div>' +
     (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : 'tables') + '">' + list.map(function (k) {
@@ -709,7 +704,7 @@ function _tbOpen(id) {
   else if (kind === 'calc') _tbRenderCalc(body);
   else _arRenderDecay(body);
   el.style.setProperty('--tb-head-h', el.querySelector('.tb-head').offsetHeight + 'px');
-  if (!el.contains(document.activeElement)) el.querySelector('[data-tb-close]').focus({ preventScroll: true });
+  if (!el.contains(document.activeElement)) el.querySelector('#alm-ref-title').focus({ preventScroll: true });
 }
 var TB_BACK_SVG = '<svg class="tb-chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 
@@ -724,11 +719,21 @@ function _tbClose(viaHistory) {
   _tb.returnFocus = null;
   if (f && f.isConnected && f.focus) f.focus({ preventScroll: true });
 }
-// Seen before app.js's own popstate (a capturing listener runs first at the
-// window): Back with the view open closes the view, not the Almanac.
-window.addEventListener('popstate', function (e) {
-  if (_tb.expectPop) { _tb.expectPop = false; e.stopImmediatePropagation(); return; }
-  if (_tbEl('alm-ref') && !(e.state && e.state.almTables)) { e.stopImmediatePropagation(); _tbClose(true); }
+// Asked first by app.js's popstate: Back with the view open closes the view,
+// not the Almanac; the step the view's own close takes back is swallowed.
+// True when the event was the view's.
+function _almTablesPop(e) {
+  if (_tb.expectPop) { _tb.expectPop = false; return true; }
+  if (_tbEl('alm-ref') && !(e.state && e.state.almTables)) { _tbClose(true); return true; }
+  return false;
+}
+// Escape, wherever focus is: the popover first, then the view; never the
+// Almanac behind it (app.js closes that on an Escape that reaches it).
+window.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape' || !_tbEl('alm-ref')) return;
+  e.stopPropagation();
+  e.preventDefault();
+  if (_tk.pop) _tkPopClose(); else _tbClose();
 }, true);
 // Print the view alone, and only while it is showing.
 window.addEventListener('beforeprint', function () {
@@ -848,7 +853,12 @@ function _tbDrawTable() {
       var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
       var ph = _tbEl('tb-print-head');
       if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
-      out.querySelectorAll('table').forEach(function (tb) { if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr'); });
+      out.querySelectorAll('table').forEach(function (tb) {
+        if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
+        // A two-row head: the second row sticks under the first, at its real height.
+        var h1 = tb.tHead && tb.tHead.rows[1] ? tb.tHead.rows[0].offsetHeight : 0;
+        if (h1) tb.style.setProperty('--tb-h1', h1 + 'px');
+      });
       var today = out.querySelector('.tb-today');
       if (today && out.querySelector('.tb-frame')) {
         var fr = out.querySelector('.tb-frame');
@@ -1261,17 +1271,22 @@ function _tbSundial(p, k) {
   var lonCorr = (offMin / 60 * 15 - p.lon) * AR_MIN_PER_DEG;   // the zone's meridian less the place's, in clock minutes
   return { row: r, offMin: offMin, lonCorr: lonCorr, eot: r.eot, correction: r.correction };
 }
+// Minutes as words a clock reads: +59 m 24 s, +1 h 6 m 42 s.
+function _tbMinWords(min) {
+  var t0 = Math.round(Math.abs(min) * 60), h = Math.floor(t0 / 3600), m = Math.floor(t0 / 60) % 60, sec = t0 % 60;
+  return (min < 0 ? '−' : '+') + (h ? h + ' ' + t('alm_h_abbr') + ' ' : '') + m + ' ' + t('alm_m_abbr') + ' ' + sec + ' s';
+}
 function _tbSundialSolve(p, k) {
   var s = _tbSundial(p, k);
   var off = s.offMin, sign = off < 0 ? '−' : '+', oh = Math.floor(Math.abs(off) / 60), om = Math.abs(off) % 60;
   var noonClock = new Date(s.row.noon);
   return {
-    big: _tbT('sundial_big', { v: _arMinSec(s.correction) }),
+    big: _tbT('sundial_big', { v: _tbMinWords(s.correction) }),
     sub: _tbT('sundial_clock', { time: _tzFmt(p.tz, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(noonClock) }),
     correction: s.correction,
     working: _tbWorking([
       [t('ref_eot'), _arMinSec(-s.eot)],
-      [_tbT('lon_corr', { lon: _arLonText(p.lon), m: _arNum(off / 60 * 15, 2), z: 'UTC' + sign + oh + (om ? ':' + String(om).padStart(2, '0') : '') }), _arMinSec(s.lonCorr)],
+      [_tbT('lon_corr', { lon: _arLonText(p.lon), m: _arLonText(off / 60 * 15), z: 'UTC' + sign + oh + (om ? ':' + String(om).padStart(2, '0') : '') }), _arMinSec(s.lonCorr)],
       [t('ref_correction'), _arMinSec(s.correction), 1]
     ]) + _tbNote(_tbH('sundial_how'))
   };

@@ -2583,7 +2583,7 @@
   "tb_sight_big": "{n} mn {dir} {zn}°",
   "tb_date": "Fecha",
   "tb_sundial_big": "Suma {v} al reloj de sol",
-  "tb_lon_corr": "Longitud {lon}, meridiano del reloj {m}° ({z})",
+  "tb_lon_corr": "Longitud {lon}, meridiano del reloj {m} ({z})",
   "tb_sundial_how": "Lee el reloj de sol y suma la corrección para obtener la hora de tu reloj. La ecuación del tiempo es cuánto se adelanta el Sol a un reloj uniforme; la parte de longitud, cuánto dista tu lugar del meridiano de tu reloj (el horario de verano mueve ese meridiano una hora al este).",
   "tb_day_of_year": "Día del año",
   "tb_n_of_m": "{n} de {m}",

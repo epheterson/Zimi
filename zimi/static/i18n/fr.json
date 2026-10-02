@@ -2583,7 +2583,7 @@
   "tb_sight_big": "{n} M {dir} {zn}°",
   "tb_date": "Date",
   "tb_sundial_big": "Ajoutez {v} au cadran",
-  "tb_lon_corr": "Longitude {lon}, méridien de l’horloge {m}° ({z})",
+  "tb_lon_corr": "Longitude {lon}, méridien de l’horloge {m} ({z})",
   "tb_sundial_how": "Lisez le cadran et ajoutez la correction pour obtenir l’heure de votre horloge. L’équation du temps dit de combien le Soleil devance une horloge régulière ; la part de longitude, l’écart de votre lieu au méridien de votre horloge (l’heure d’été déplace ce méridien d’une heure vers l’est).",
   "tb_day_of_year": "Jour de l’année",
   "tb_n_of_m": "{n} sur {m}",

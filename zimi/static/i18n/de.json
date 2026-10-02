@@ -2583,7 +2583,7 @@
   "tb_sight_big": "{n} sm {dir} {zn}°",
   "tb_date": "Datum",
   "tb_sundial_big": "{v} zur Sonnenuhr addieren",
-  "tb_lon_corr": "Länge {lon}, Meridian der Uhr {m}° ({z})",
+  "tb_lon_corr": "Länge {lon}, Meridian der Uhr {m} ({z})",
   "tb_sundial_how": "Sonnenuhr ablesen und die Korrektur addieren, dann hast du die Zeit deiner Uhr. Die Zeitgleichung sagt, wie weit die Sonne einer gleichmäßigen Uhr vorausläuft; der Längenanteil, wie weit dein Ort vom Meridian deiner Uhr liegt (Sommerzeit verschiebt diesen Meridian eine Stunde nach Osten).",
   "tb_day_of_year": "Tag des Jahres",
   "tb_n_of_m": "{n} von {m}",

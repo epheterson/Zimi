@@ -25060,6 +25060,8 @@ window.addEventListener('popstate', async (e) => {
   // pushes never pass through here, so a remembered URL was still "/" when
   // Back returned to "/" from a map, and the map stayed open over the home page.
   if (_urlIsOpenMapPage()) return;
+  // The Almanac's tables and calculations are a step inside it (almanac-tables.js).
+  if (typeof _almTablesPop === 'function' && _almTablesPop(e)) return;
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
