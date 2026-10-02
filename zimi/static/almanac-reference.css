@@ -293,7 +293,6 @@
   .tb-table th, .tb-table td { padding: 6px 8px; }
   .tb-mono { font-size: 11.5px; }
   .tb-print span { display: none; }
-  .tb-back span { max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tk-big { font-size: 26px; }
   .tk-row { flex-wrap: wrap; }
   .tk-seg button { padding: 0 8px; }

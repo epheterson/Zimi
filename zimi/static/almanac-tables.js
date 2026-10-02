@@ -683,7 +683,7 @@ function _tbOpen(id) {
   var list = kind === 'calc' ? TB_CALCS : kind === 'table' ? TB_TABLES : [];
   el.innerHTML = '<div class="tb-head">' +
     '<div class="tb-bar">' +
-      '<button type="button" class="tb-back" data-tb-close>' + TB_BACK_SVG + '<span>' + _almEsc(t('almanac')) + '</span></button>' +
+      '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
       '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
     '</div>' +
