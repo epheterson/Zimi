@@ -176,7 +176,7 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     day = _rows(page)
     _seg(page, "month")
     month = _rows(page)
-    if id_ in ("sunmoon", "twilight", "tides", "calendars", "suntime"):
+    if id_ in ("sunmoon", "twilight", "phases", "tides", "calendars", "suntime"):
         assert day == 1 and month >= 28, (id_, day, month)
     elif id_ == "nav":
         assert day > month or day >= 24, (id_, day, month)
@@ -201,6 +201,93 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     page.evaluate("document.documentElement.classList.remove('alm-ref-print')")
     page.emulate_media(media="screen")
     assert shown == ["block", "none", "none"], shown
+    assert not page.errors, page.errors
+
+
+def test_a_table_on_a_phone(page):
+    """Eric's iPhone review: the day and the place on one line, the day opens
+    a calendar, a phase on every day, Print sets the page up itself, the
+    frozen column hides what scrolls under it, a compact Start again."""
+    _open(page, "phases")
+    _seg(page, "month")
+    row = page.evaluate(
+        "() => { const r = document.querySelector('.tb-controls-row'); const a = r.querySelector('.tb-stepper').getBoundingClientRect(),"
+        " b = r.querySelector('.tk-place').getBoundingClientRect();"
+        " return [Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 4, b.right <= innerWidth]; }"
+    )
+    assert row == [True, True], row
+    lit = page.evaluate("t('tb_lit', { n: '' }).trim()")
+    cells = page.evaluate(
+        "() => [...document.querySelectorAll('#tb-out tbody tr:not(.tb-grp) td')].map(td => [!!td.querySelector('svg'), td.textContent])"
+    )
+    assert len(cells) >= 28 and all(g and lit in txt for g, txt in cells), cells[:3]
+    # The day is a date input: a pick moves the window there.
+    page.evaluate(
+        "() => { const i = document.querySelector('[data-tb-date-in]'); i.value = '2027-03-15'; i.dispatchEvent(new Event('change')); }"
+    )
+    page.wait_for_function(DRAWN)
+    assert (
+        page.evaluate("document.querySelector('[data-tb-date-in]').value")
+        == "2027-03-15"
+    )
+    assert "2027" in page.inner_text("[data-tb-today]")
+    # Start again: the Almanac's day and place.
+    page.click("[data-tb-reset]")
+    page.wait_for_function(DRAWN)
+    assert "2027" not in page.inner_text("[data-tb-today]")
+    # Print: the view is set up for paper before the dialog is asked for.
+    page.evaluate(
+        "() => { window.__p = window.print; window.print = () => { window.__printed = document.documentElement.classList.contains('alm-ref-print'); }; }"
+    )
+    page.click("[data-tb-print]")
+    assert page.evaluate("window.__printed") is True
+    page.evaluate(
+        "() => { window.print = window.__p; window.dispatchEvent(new Event('afterprint')); }"
+    )
+    assert not page.evaluate(
+        "document.documentElement.classList.contains('alm-ref-print')"
+    )
+    # The frozen first column is opaque, on a lit row too.
+    _open(page, "sunmoon")
+    _seg(page, "month")
+    th = page.evaluate(
+        "() => { const c = getComputedStyle(document.querySelector('#tb-out tr.tb-today th')); return [c.backgroundColor, c.position]; }"
+    )
+    assert th[1] == "sticky" and th[0].startswith("rgb("), th
+    # A phase on every day of the Sun and Moon table too.
+    assert (
+        page.evaluate(
+            "document.querySelectorAll('#tb-out tbody tr:not(.tb-grp) td:last-child svg').length"
+        )
+        >= 28
+    )
+    # A calculation's Start again is the same icon, beside Print.
+    _open(page, "days")
+    assert page.evaluate(
+        "!!document.querySelector('.tb-bar [data-tb-reset]') && !document.querySelector('.tb-reset')"
+    )
+    assert _no_side_scroll(page)
+    assert not page.errors, page.errors
+
+
+def test_a_sheet_stands_above_the_keyboard(page):
+    _open(page, "distance")
+    page.click(".tk-place >> nth=0")
+    page.wait_for_selector(".tk-pop.tk-sheet input")
+    # The keyboard: the visual viewport loses its lower 300px.
+    page.evaluate(
+        "() => { const vv = window.visualViewport; Object.defineProperty(vv, 'height', { configurable: true, get: () => innerHeight - 300 });"
+        " vv.dispatchEvent(new Event('resize')); }"
+    )
+    # (It moves by a transition: read it once that has run.)
+    page.wait_for_function(
+        "() => { const p = document.querySelector('.tk-pop'), q = p.querySelector('input'), top = innerHeight - 300;"
+        " return p.getBoundingClientRect().bottom <= top + 1 && q.getBoundingClientRect().bottom <= top; }",
+        timeout=5000,
+    )
+    page.evaluate("() => { delete window.visualViewport.height; }")
+    page.keyboard.press("Escape")
+    assert not page.evaluate("!!document.querySelector('.tk-pop')")
     assert not page.errors, page.errors
 
 

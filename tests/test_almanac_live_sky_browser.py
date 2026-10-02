@@ -278,6 +278,37 @@ def test_one_clock(browser, served):
         ctx.close()
 
 
+def test_a_live_sky_catches_up_after_the_app_slept(browser, served):
+    """Eric's phone showed night at 10:41 until a reload: the app had slept,
+    the live timer had stopped, and the observer's last word said the sky was
+    off screen. Any frame, and the page shown again, bring it to now."""
+    ctx, pg, errors = _almanac(browser, served)
+    slept = (
+        "() => { clearTimeout(_skyTimers.live); _skyTimers.live = 0;"
+        " _skyCompute(_skyState, new Date(Date.now() - 12 * 3600000)); }"
+    )
+    caught_up = "() => Math.abs(_skyState.nowTime - Date.now()) < 5000"
+    try:
+        # A frame asked for any reason (the palms' breeze, a tap).
+        pg.evaluate(slept)
+        assert not pg.evaluate(caught_up)
+        pg.evaluate("_skyKick()")
+        pg.wait_for_function(caught_up, polling=POLL_MS, timeout=10000)
+        # Shown again, with the observer's stale word that it was off screen
+        # (in one turn, so no frame catches it up first).
+        pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
+        woke = pg.evaluate(
+            "(slept) => { (0, eval)('(' + slept + ')')(); _skyPause(); _skyState.inView = false;"
+            " window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));"
+            " return [Date.now() - _skyState.nowTime, _skyState.inView, !!_skyTimers.live]; }",
+            slept,
+        )
+        assert woke[0] < 5000 and woke[1] and woke[2], woke
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 DENVER = {"lat": 39.74, "lon": -104.99, "name": "Denver"}
 TROMSO = {"lat": 69.65, "lon": 18.96, "name": "Tromso"}
 TROMSO_NIGHT = "2026-10-01T22:00:00Z"
@@ -445,7 +476,7 @@ def test_the_aurora_where_it_is_seen(browser, served):
         )
         pg.touchscreen.tap(b["x"], b["y"])
         tip = pg.inner_text("#almanac-sky-tip")
-        assert "an hour" in tip and "10 times" in tip, tip
+        assert "an hour" in tip and "%d times" % pg.evaluate("SKY_METEOR_SPEEDUP") in tip, tip
         assert not errors, errors
     finally:
         ctx.close()

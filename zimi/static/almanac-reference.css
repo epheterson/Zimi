@@ -18,14 +18,17 @@
 .tb-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 6px 8px; min-height: 48px; }
 .tb-bar h2:focus { outline: none; }
 .tb-bar h2 { margin: 0; font-size: 16px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
-.tb-back, .tb-print {
+.tb-back, .tb-print, .tb-iconbtn {
   display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px;
   border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; font-size: 14px; cursor: pointer;
 }
 .tb-back { justify-self: start; }
-.tb-print { justify-self: end; color: var(--text); }
-.tb-back:hover, .tb-print:hover, .tb-back:focus-visible, .tb-print:focus-visible { color: var(--amber); background: var(--amber-glow); }
-.tb-back:focus-visible, .tb-print:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+/* Start again (an icon) and Print, at the bar's end. */
+.tb-bar-end { justify-self: end; display: inline-flex; align-items: center; gap: 2px; }
+.tb-print { color: var(--text); }
+.tb-iconbtn { justify-content: center; width: 40px; padding: 0; }
+.tb-back:hover, .tb-print:hover, .tb-iconbtn:hover, .tb-back:focus-visible, .tb-print:focus-visible, .tb-iconbtn:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.tb-back:focus-visible, .tb-print:focus-visible, .tb-iconbtn:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 [dir="rtl"] .tb-chev { transform: scaleX(-1); }
 .tb-tabs {
   display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter); scrollbar-width: none;
@@ -42,9 +45,16 @@
 .tb-body { position: relative; max-width: 920px; margin: 0 auto; padding: 14px var(--tb-gutter) 56px; }
 
 /* ── A table's two controls: the window, and the place ── */
-.tb-controls { display: grid; gap: 10px; margin: 0 0 14px; }
-.tb-controls-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.tb-stepper { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.tb-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0 0 14px; }
+/* The day and the place on one line, on a phone too: the place's name gives
+   way first, then the day's, each to an ellipsis. A range's two dates wrap. */
+.tb-controls-row { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tb-controls-row:has(.tb-range) { flex-wrap: wrap; }
+.tb-stepper { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex: none; }
+.tb-controls-row > .tk-place { flex: 0 1 auto; min-width: 0; }
+/* The day's label may take what the arrows, the gap and a place pill's
+   smallest useful width (96px) leave of the row. */
+.tb-stepper .tb-span-pick { max-width: calc(100vw - 2 * var(--tb-gutter) - 80px - 8px - 96px); }
 .tb-stepbtn {
   display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0;
   border: 0; border-radius: 10px; background: none; color: var(--text2); cursor: pointer;
@@ -54,11 +64,19 @@
 .tb-fwd svg { transform: scaleX(-1); }
 [dir="rtl"] .tb-fwd svg { transform: none; }
 [dir="rtl"] .tb-stepbtn:not(.tb-fwd) svg { transform: scaleX(-1); }
+.tb-span-pick { position: relative; display: inline-flex; min-width: 0; border-radius: 8px; }
 .tb-span {
-  min-height: 40px; padding: 0 6px; border: 0; background: none; color: var(--text); font: inherit;
-  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; border-radius: 8px; min-width: 0; text-align: center;
+  display: block; padding: 10px 6px; color: var(--text); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+  min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tb-span:hover { color: var(--amber); }
+/* The date input lies over the day, unseen: a tap is the input's, and opens
+   the device's calendar. 16px so iOS does not zoom on focus. */
+.tb-span-in {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
+  opacity: 0; cursor: pointer; font-size: 16px; -webkit-appearance: none; appearance: none;
+}
+.tb-span-pick:hover .tb-span, .tb-span-in:focus-visible + .tb-span { color: var(--amber); }
+.tb-span-pick:focus-within { outline: 2px solid var(--amber); outline-offset: -2px; }
 .tb-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tb-dash { color: var(--text3); }
 
@@ -77,25 +95,28 @@
   position: relative; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   max-height: max(320px, calc(100dvh - var(--tb-head-h, 96px) - 200px));
   border: 1px solid var(--tb-rule); border-radius: 12px; background: var(--bg);
+  isolation: isolate;   /* its frozen head and column stack inside it, under a calculation's answer */
 }
 .tb-frame-flat { max-height: none; }
 .tb-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
 .tb-table th, .tb-table td { padding: 6px 10px; text-align: end; white-space: nowrap; border-bottom: 1px solid var(--tb-rule); }
 .tb-table thead th {
-  position: sticky; top: 0; z-index: 2; background: var(--surface); color: var(--text2);
+  position: sticky; top: 0; z-index: 3; background: var(--surface); color: var(--text2);
   font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
 }
 .tb-table thead tr:nth-child(2) th { top: var(--tb-h1, 29px); }
 .tb-table thead th[scope="colgroup"] { text-align: center; }
 .tb-table tbody th {
-  position: sticky; inset-inline-start: 0; z-index: 1; background: var(--bg);
+  position: sticky; inset-inline-start: 0; z-index: 2; background-color: var(--bg);
   text-align: start; font-weight: 500; color: var(--text);
 }
-.tb-table thead th:first-child { inset-inline-start: 0; z-index: 3; text-align: start; }
+.tb-table thead th:first-child { inset-inline-start: 0; z-index: 4; text-align: start; }
 .tb-table tbody tr:last-child > * { border-bottom: 0; }
 .tb-table .tb-sep { border-inline-start: 1px solid var(--tb-rule); }
 .tb-table tr.tb-six > * { border-bottom-color: var(--text3); }
-.tb-table tr.tb-today > * { background: var(--amber-glow); }
+/* A lit row's tint over the cell's own colour, so the frozen first column
+   stays opaque and the cells scrolled under it never show through. */
+.tb-table tr.tb-today > *, .tb-table tr.tb-seen > * { background-image: linear-gradient(var(--amber-glow), var(--amber-glow)); }
 .tb-table tr.tb-today th { box-shadow: inset 3px 0 0 var(--amber); }
 [dir="rtl"] .tb-table tr.tb-today th { box-shadow: inset -3px 0 0 var(--amber); }
 .tb-table tr.tb-grp th {
@@ -110,7 +131,6 @@
 .tb-table .tb-h { color: var(--text3); }
 .tb-table .tb-feast { color: var(--amber); white-space: normal; display: inline-block; min-width: 10em; text-align: start; }
 .tb-table tr.tb-feastrow th { color: var(--amber); }
-.tb-table tr.tb-seen > * { background: var(--amber-glow); }
 .tb-table .tb-txt { white-space: normal; display: inline-block; min-width: 16em; max-width: 34em; text-align: start; }
 .tb-wrap td { text-align: start; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
@@ -159,9 +179,6 @@
 .tb-cal-line + .tb-cal-line { border-top: 1px solid var(--border); }
 .tb-cal-sys { color: var(--text2); }
 .tb-cal-date { text-align: end; font-weight: 500; }
-.tb-reset { margin: 24px 0 0; }
-.tb-link { padding: 4px 0; border: 0; background: none; color: var(--text2); font: inherit; font-size: 13px; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; cursor: pointer; }
-.tb-link:hover, .tb-link:focus-visible { color: var(--amber); }
 
 /* ── The input kit ── */
 /* A number you drag sideways, or tap to type: it reads as a value, with a
@@ -316,7 +333,7 @@
     --text: #000; --text2: #333; --text3: #666; --border: #999; --tb-rule: #bbb; --surface: #fff; --surface2: #fff; --bg: #fff;
     --amber: #000; --amber-glow: #eee; --amber-border: #000;
   }
-  .tb-head, .tb-controls, .tb-reset, .tk-pop, .tk-scrim, .tk-step, .tk-swap, .tk-caret { display: none !important; }
+  .tb-head, .tb-controls, .tk-pop, .tk-scrim, .tk-step, .tk-swap, .tk-caret { display: none !important; }
   .tb-printhead { display: block; border-bottom: 1.5pt solid #000; padding: 0 0 4pt; margin: 0 0 8pt; }
   .tb-printhead h1 { margin: 0 0 2pt; font-size: 15pt; }
   .tb-printhead p { margin: 0; font-size: 9pt; }
@@ -330,7 +347,7 @@
   .tb-table thead th { border-bottom: 1pt solid #000; }
   .tb-table th, .tb-table td { padding: 1.5pt 4pt; }
   .tb-table tr { break-inside: avoid; }
-  .tb-table tr.tb-today > *, .tb-table tr.tb-seen > * { background: none; box-shadow: none; }
+  .tb-table tr.tb-today > *, .tb-table tr.tb-seen > * { background: none; background-image: none; box-shadow: none; }
   .tb-table tr.tb-grp th { background: none; border-bottom: 1pt solid #000; padding-top: 6pt; }
   .tb-pagebreak { break-before: page; }
   .tk-answer { position: static; margin: 0 0 8pt; padding: 0 0 6pt; border-bottom: 1pt solid #000; }

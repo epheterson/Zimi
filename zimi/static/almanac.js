@@ -166,6 +166,7 @@ function _cancelAllRAF() {
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   _skyPause();
   if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
+  _almTzHandPause();
 }
 function _resumeAllRAF() {
   _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
@@ -1740,8 +1741,8 @@ function _almAboutDataHtml() {
     '</ul><button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></details>';
 }
 
-// The page's parts: a group (the sky now, here, this month, this year, deep
-// time) under one heading, and a titled section inside it.
+// The back matter's group under one heading (the tables and calculations),
+// and a titled section of the page.
 function _almGroupOpen(key) {
   return '<section class="alm-group" id="alm-group-' + key + '" aria-labelledby="alm-group-' + key + '-t">' +
     '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
@@ -1981,12 +1982,11 @@ function _renderAlmanacContent() {
   // open its file, loading after this paint, sees to that itself).
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
-  // The page reads outward in time from the moment at the top: the sky now,
-  // here (the place, its clocks, its tide), this month, this year, deep time,
-  // and then any time: the tables and calculations.
-  //
-  // The sky now. Its clock is the page's (the time machine); almanac-sky.js.
-  html += _almGroupOpen('now');
+  // The order 1.12 had, and Eric's way of reading it (2026-10-02): the
+  // live sky above the month like a wall calendar flipped open, then the
+  // place (the map, its clocks, its tide), the solar system, tonight's
+  // planets and the star chart, the year's figures, deep time.
+  // Its clock is the page's (the time machine); almanac-sky.js.
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
@@ -1995,37 +1995,17 @@ function _renderAlmanacContent() {
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
-  // Drawn with the page, not when the sky's sums land: nothing moves under it.
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
-  // Star chart — a circular planisphere of the sky above the chosen location
-  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
-  html += _almSec(t('alm_star_chart'),
-    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
-    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
-  html += '</section>';
+  html += '<div id="almanac-calendar"></div>';
 
-  // Here: the place (the map, the way to choose it), its clocks, its tide
+  // The place: the map, the way to choose it, its clocks, its tide
   // (almanac-tides.js, loaded after the first paint), the Sun's year there.
-  html += _almGroupOpen('here');
   html += '<div id="almanac-sunmap"></div>';
   html += '<div id="almanac-place"></div>';
-  html += '</section>';
-
-  // This month: the calendar (and every other calendar's day), the showers,
-  // the planets' meetings, this day in history.
-  html += _almGroupOpen('month');
-  html += '<div id="almanac-calendar"></div>';
-  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
-  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
-  html += '</section>';
 
-  // This year: the planets round the Sun, the Sun's figure of eight, the
-  // eclipses and the numbers of the Earth's year.
-  html += _almGroupOpen('year');
+  // The solar system (almanac-orrery.js).
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
@@ -2053,18 +2033,22 @@ function _renderAlmanacContent() {
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
+  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
+  // Star chart — a circular planisphere of the sky above the chosen location
+  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
+  html += _almSec(t('alm_star_chart'),
+    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
+    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += _almSec(_lterm('analemma', t('alm_analemma')),
     '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
     '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
+  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
-  html += '</section>';
-
-  // Deep time, and what people wrote to last through it.
-  html += _almGroupOpen('deep');
-  html += '<div id="almanac-deeptime"></div>';
+  html += _almSec(t('alm_deep_time'), '<div id="almanac-deeptime"></div>');
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
-  html += '</section>';
   // Any time: the tables and the sums, the almanac's back matter.
   html += _almTablesHtml();
   html += _almAboutDataHtml();
@@ -3607,7 +3591,10 @@ function _renderSunMap(now) {
   // world grid below
   html += '<div class="alm-tz-wrap">';
   html += '<div class="alm-tz-clock-side">';
-  html += '<canvas id="almanac-tz-clock" width="180" height="180"></canvas>';
+  // The second hand is its own element over the face, turned by the
+  // compositor (_almTzHandSync): it glides without a frame of script.
+  html += '<div class="alm-tz-dial"><canvas id="almanac-tz-clock" width="180" height="180"></canvas>' +
+    '<span class="alm-tz-hand" id="almanac-tz-hand" aria-hidden="true"></span></div>';
   html += '<div id="almanac-tz-label" class="alm-clock-info"></div>';
   html += '</div>';
   html += '<div class="alm-tz-list" id="almanac-tz-pills"></div>';
@@ -3942,7 +3929,7 @@ function _initTzClock(now) {
     html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" role="button" tabindex="0"' +
       ' onclick="' + pick + '" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + pick + '}">';
     html += glyphHtml;
-    html += '<span class="alm-tz-city-name">' + _almEsc(tzc.label) + '</span>';
+    html += '<span class="alm-tz-city-name" title="' + _almEsc(tzc.label) + '">' + _almEsc(tzc.label) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
     if (tzc.added) {
@@ -4038,7 +4025,10 @@ function _drawTzClock(now) {
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  var tz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The zone the lit card shows: the one picked, else the place's (named for
+  // it below), else this device's. It read the device's zone under the
+  // place's name before.
+  var tz = _almSelectedTz || _almDisplayTz();
   var tzLabel = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
     if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
@@ -4120,15 +4110,19 @@ function _drawTzClock(now) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Second hand
-  var secAngle = secs * 6 - 90;
-  var secRad = secAngle * DEG_TO_RAD;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
-  ctx.strokeStyle = 'rgba(245,158,11,0.6)';
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
+  // Second hand: gliding on its own element where the browser can turn one,
+  // drawn here (on the tick) where it cannot.
+  if (_almTzHandSync(now)) secs = null;
+  if (secs !== null) {
+    var secAngle = secs * 6 - 90;
+    var secRad = secAngle * DEG_TO_RAD;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
+    ctx.strokeStyle = 'rgba(245,158,11,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
 
   // Center dot
   ctx.beginPath();
@@ -4278,7 +4272,36 @@ function _tzFmt(tz, opts, lang) {
   return _tzFmtCache[key];
 }
 
-// Smooth clock animation using requestAnimationFrame
+// The second hand sweeps once a minute, continuously ("Clock should glide
+// seconds not pop", Eric): a Web Animation on a transform, which the
+// compositor runs with no script per frame. Motion reduced, it steps once a
+// second instead. Paused with the Almanac's other loops; set to the clock
+// again on each tick when it has drifted.
+var ALM_TZ_SWEEP_MS = 60000;
+var ALM_TZ_SWEEP_STEPS = 60;
+var ALM_TZ_DRIFT_MS = 40;
+function _almTzHandSync(now) {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (!hand || typeof hand.animate !== 'function') return false;
+  var reduce = _almReduceMotion();
+  if (!hand._anim || hand._animReduce !== reduce) {
+    if (hand._anim) hand._anim.cancel();
+    hand._anim = hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+      { duration: ALM_TZ_SWEEP_MS, iterations: Infinity, easing: reduce ? 'steps(' + ALM_TZ_SWEEP_STEPS + ', end)' : 'linear' });
+    hand._animReduce = reduce;
+  }
+  var want = (now.getSeconds() * 1000 + now.getMilliseconds()) % ALM_TZ_SWEEP_MS;
+  var at = hand._anim.currentTime % ALM_TZ_SWEEP_MS;
+  if (hand._anim.playState !== 'running' || Math.abs(at - want) > ALM_TZ_DRIFT_MS) hand._anim.currentTime = want;
+  if (hand._anim.playState !== 'running') hand._anim.play();
+  return true;
+}
+function _almTzHandPause() {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (hand && hand._anim) hand._anim.pause();
+}
+
+// The clock's tick: the face, the digits and the cards, once a second.
 var _tzClockRAF = null;
 var _tzClockColors = null;
 var _tzGridMinute = -1;
