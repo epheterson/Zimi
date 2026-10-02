@@ -89,6 +89,17 @@
     if (theme) { html.setAttribute('data-zp-theme', theme); html.style.colorScheme = theme; }
     paintDark();
   }
+  // The screen's safe-area insets: a framed page is told none (env() is 0
+  // in a frame), so the shell's, measured where it can see them; outside a
+  // shell the stylesheet's env() stands.
+  var INSETS = { t: '--zp-sat', r: '--zp-sar', b: '--zp-sab', l: '--zp-sal' };
+  function syncInsets() {
+    var i = null;
+    try { i = shell && shell._safeInsets(); } catch (e) { i = null; }
+    if (!i) return;
+    for (var k in INSETS) html.style.setProperty(INSETS[k], (i[k] || 0) + 'px');
+    if (!foot.hidden) measureFoot();
+  }
   function uiDir() {
     try { if (shell) return shell.document.documentElement.getAttribute('dir') === 'rtl' ? 'rtl' : 'ltr'; } catch (e) {}
     return html.dir === 'rtl' ? 'rtl' : 'ltr';
@@ -189,7 +200,14 @@
   var st = shellTitle();
   setTitle(st && st !== 'Zimi' ? st : fileName);
   syncTheme();
+  syncInsets();
   if (shell) {
+    // A turn of the phone moves the notch, and the shell's viewport-fit
+    // taking effect arrives as its resize too.
+    try {
+      shell.addEventListener('resize', syncInsets);
+      window.addEventListener('pagehide', function () { shell.removeEventListener('resize', syncInsets); });
+    } catch (e) {}
     try { new shell.MutationObserver(syncTheme).observe(shell.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); } catch (e) {}
   }
 

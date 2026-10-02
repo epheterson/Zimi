@@ -18878,6 +18878,7 @@ function _pdfChrome(on) {
 }
 function _ownChromeSync() {
   var held = _bookReading || _pdfReading;
+  _viewportCover(held);
   if (held === _chromeHeld) return;
   // The header stays while focus is in it (app.css :focus-within): the
   // search box focused as the page opened would keep it over the reader's.
@@ -18885,9 +18886,21 @@ function _ownChromeSync() {
   if (held && a && a.closest && a.closest('.topbar')) a.blur();
   _chromeImmersive(held);
 }
+// While a reader draws its own bars (a book, a PDF) the page runs to the
+// screen's edges (viewport-fit=cover): only then does the browser report the
+// notch and the home indicator as insets, which the reader keeps its bars
+// clear of. The rest of Zimi keeps the browser's own safe layout.
+var _VIEWPORT_COVER = ', viewport-fit=cover';
+function _viewportCover(on) {
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m) return;
+  var c = (m.getAttribute('content') || '').split(_VIEWPORT_COVER).join('');
+  m.setAttribute('content', on ? c + _VIEWPORT_COVER : c);
+}
 // The screen's safe-area insets (a notch, the home indicator). A page in a
-// frame is not told them, so the shell measures and hands them in.
-function _bookInsets() {
+// frame is not told them, so the shell measures and hands them in (the book
+// reader and the PDF reader).
+function _safeInsets() {
   var el = document.getElementById('zb-insets');
   if (!el) {
     el = document.createElement('div');
@@ -19165,7 +19178,7 @@ function _bookLay(frame) {
   // the passage stays the one you were reading until you move, rather than
   // becoming whatever now tops the page, which would drift back a page a time.
   var held = false;
-  var insets = _bookInsets();
+  var insets = _safeInsets();
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
@@ -19599,7 +19612,7 @@ function _bookLay(frame) {
       if (size === sizeAt) return;
       var widthChanged = size.split('x')[0] !== sizeAt.split('x')[0];
       sizeAt = size;
-      insets = _bookInsets();
+      insets = _safeInsets();
       if (paged || widthChanged) relayout(anchor);
     });
   });
