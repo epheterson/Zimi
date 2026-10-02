@@ -393,6 +393,31 @@ function openWord(target) {
   go({ v: 'word', w: t.w, sec: t.sec });
 }
 
+// Zimi's language changed: the word on screen, and the word that translates
+// it into that language (the first the Wiktionaries give, most-used sense
+// first), or '' when none does. The shell opens whichever it gets.
+function dictCurrent() { var v = cur(); return v.v === 'word' ? v.w : ''; }
+function dictTranslation(code) {
+  var w = dictCurrent(), want = primaryOf(code), name = englishName(want);
+  if (!w || !want) return Promise.resolve('');
+  var url = '/dictionary/word?w=' + encodeURIComponent(w) + '&langs=' + encodeURIComponent(want) + '&names=' + encodeURIComponent(name);
+  return get(url).then(function(d) {
+    if (d === FAILED || !d.found) return '';
+    for (var a = 0; a < d.langs.length; a++) for (var e = 0; e < (d.langs[a].entries || []).length; e++) {
+      var gs = d.langs[a].entries[e].groups || [];
+      for (var g = 0; g < gs.length; g++) for (var p = 0; p < gs[g].parts.length; p++) {
+        var ts = gs[g].parts[p].trans || [];
+        for (var t = 0; t < ts.length; t++) for (var i = 0; i < ts[t].items.length; i++) {
+          var it = ts[t].items[i];
+          var mine = it.lang ? primaryOf(it.lang) === want : !!name && it.name.toLowerCase() === name.toLowerCase();
+          if (mine && it.words.length) return parseTarget(it.words[0].t).w || '';
+        }
+      }
+    }
+    return '';
+  });
+}
+
 // ── the front ────────────────────────────────────────────────────────────
 function recentWords() {
   var S = saved(), seen = {};
@@ -725,6 +750,7 @@ function load() {
   if (w) { _stack.push({ v: 'word', w: w }); show(true); }
 }
 
+window.dictCurrent = dictCurrent; window.dictTranslation = dictTranslation;
 window.dictSearch = dictSearch; window.dictGo = dictGo; window.toTrail = toTrail; window.moreWords = moreWords; window.moreIpa = moreIpa;
 // A ZIM without an icon of its own: no broken picture in its place.
 document.addEventListener('error', function(e) { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);

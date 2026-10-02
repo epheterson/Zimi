@@ -1063,6 +1063,7 @@ async function setLanguage(lang) {
       }
     } catch (e) {}
   }
+  if (_isDictPage()) _dictFollowLanguage(lang);
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -18591,6 +18592,25 @@ function openDictionary(replaceState, w) {
   document.title = (w ? w + ' — ' : '') + t('dictionary') + (w ? '' : ' — Zimi');
   _setWindowTitle(document.title);
   updateTopbar();
+}
+
+// Zimi's language changed with a word open: the word's translation into it
+// opens (Back returns to the word), or, when it has none, the same word in
+// the new language's strings with that language's entry first. Eric,
+// 2026-10-01: "if a word is selected that would switch to the translation".
+function _dictFollowLanguage(lang) {
+  var win = null;
+  try { win = document.getElementById('reader-frame').contentWindow; } catch (e) {}
+  var w = win && typeof win.dictCurrent === 'function' ? win.dictCurrent() : '';
+  var found = w && typeof win.dictTranslation === 'function' ? win.dictTranslation(lang) : Promise.resolve('');
+  found.then(function(tw) {
+    if (!_isDictPage() || _currentLang !== lang) return;
+    if (tw && tw !== w) openDictionary(false, tw);
+    else openDictionary(true, w);
+    // The page differs only after its '#', and that is a scroll, not a load:
+    // the strings and the word ride there.
+    try { win.location.reload(); } catch (e) {}
+  }, function() {});
 }
 
 // ── Reading settings: the book reader's and Zimipedia's ──
