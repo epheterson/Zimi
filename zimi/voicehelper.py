@@ -70,7 +70,26 @@ def kokoro(argv):
         w.writeframes(pcm)
 
 
-COMMANDS = {"piper": piper, "kokoro": kokoro}
+def selftest(argv):
+    """What a build check runs without a voice or a model: both engines
+    import, espeak-ng's library and data are where they are looked for, and
+    Chinese becomes phonemes. Prints "zimi-voice ok"."""
+    import os
+
+    import espeakng_loader
+    import kokoro_onnx  # noqa: F401
+    import onnxruntime  # noqa: F401
+    import piper.voice  # noqa: F401
+
+    for path in (espeakng_loader.get_library_path(), espeakng_loader.get_data_path()):
+        if not os.path.exists(path):
+            sys.exit("missing: " + path)
+    if not _phonemes("水", "zh"):
+        sys.exit("no phonemes for Chinese")
+    print("zimi-voice ok")
+
+
+COMMANDS = {"piper": piper, "kokoro": kokoro, "selftest": selftest}
 
 
 def main(argv=None):

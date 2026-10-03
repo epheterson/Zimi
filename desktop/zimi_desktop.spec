@@ -238,26 +238,49 @@ a = Analysis(
 # mode). Where the host has a library, the host's is used, and matching the
 # host's own WebKitGTK is the whole point.
 # ---------------------------------------------------------------------------
-if platform.system() == 'Linux':
-    _kept, _fallback = [], []
-    for _entry in a.binaries:
-        _dest, _src, _kind = _entry[0], _entry[1], _entry[2]
-        _base = os.path.basename(_dest)
-        _ours = (
-            _kind == 'EXTENSION'
-            or '/site-packages/' in _src.replace(os.sep, '/')
-            or _base.startswith('libpython')
-            or _base.startswith('libgirepository')
+def _split_linux_binaries(binaries):
+    kept, fallback = [], []
+    for entry in binaries:
+        dest, src, kind = entry[0], entry[1], entry[2]
+        base = os.path.basename(dest)
+        ours = (
+            kind == 'EXTENSION'
+            or '/site-packages/' in src.replace(os.sep, '/')
+            or base.startswith('libpython')
+            or base.startswith('libgirepository')
         )
-        if _dest.startswith('gio_modules'):
+        if dest.startswith('gio_modules'):
             continue
-        if _ours:
-            _kept.append(_entry)
+        if ours:
+            kept.append(entry)
         else:
-            _fallback.append((os.path.join('fallback', _base), _src, _kind))
-    a.binaries = _kept + _fallback
+            fallback.append((os.path.join('fallback', base), src, kind))
     print('spec: %d system libraries moved to fallback, for hosts that lack them: %s'
-          % (len(_fallback), ' '.join(sorted(set(os.path.basename(e[0]) for e in _fallback)))))
+          % (len(fallback), ' '.join(sorted(set(os.path.basename(e[0]) for e in fallback)))))
+    return kept + fallback
+
+
+# ---------------------------------------------------------------------------
+# zimi-voice: Piper and Kokoro for the Dictionary's Say, as their own
+# executable beside Zimi (desktop/voice_helper.py says why). Built only when
+# this Python has the engines; without them the app is as before.
+# ---------------------------------------------------------------------------
+import sys  # noqa: E402
+
+sys.path.insert(0, DESKTOP_DIR)
+import voice_helper  # noqa: E402
+
+voice_a = voice_exe = None
+if voice_helper.available():
+    voice_a, voice_exe = voice_helper.build(REPO_ROOT)
+    print('spec: building %s beside Zimi' % voice_helper.NAME)
+else:
+    print('spec: no voice engines in this Python; %s is not built' % voice_helper.NAME)
+
+if platform.system() == 'Linux':
+    a.binaries = _split_linux_binaries(a.binaries)
+    if voice_a is not None:
+        voice_a.binaries = _split_linux_binaries(voice_a.binaries)
 
 pyz = PYZ(a.pure, cipher=block_cipher)
 
@@ -280,6 +303,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    *((voice_exe, voice_a.binaries, voice_a.datas) if voice_exe is not None else ()),
     strip=False,
     upx=True,
     upx_exclude=[],
