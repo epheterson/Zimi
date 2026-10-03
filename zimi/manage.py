@@ -6495,7 +6495,7 @@ def handle_manage_post(handler, parsed, data):
         _ok, err = _voices.start_download(data.get("lang"))
         if err == "unknown":
             return handler._json(404, {"error": "No such voice"})
-        if err in ("never", "nopiper"):
+        if err in ("never", "noengine"):
             return handler._json(409, {"error": "Voices cannot be downloaded here"})
         if err == "busy":
             return handler._json(409, {"error": "Another voice is downloading"})

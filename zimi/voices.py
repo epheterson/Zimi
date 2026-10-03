@@ -5,26 +5,35 @@ A browser's speechSynthesis is not media on an iPhone, so the ring switch
 mutes it, and every device has its own voices or none. A WAV played by an
 <audio> element is media: it plays on silent and sounds the same everywhere.
 
-Three engines, each a separate program run as a child (never imported, so
+Four engines, each a separate program run as a child (never imported, so
 GPL code stays beside MIT Zimi the way ffmpeg does), in this order:
 
 1. Piper (piper-tts), when a voice for the language is installed. Natural
    speech, and Eric's first choice: "If it sounds clearer and is more
    accurate that might be better than letting the system do whatever."
-2. macOS ``say``, on a Mac.
-3. espeak-ng, when installed. Robotic, and there with no download at all.
+2. Kokoro (kokoro-onnx, with misaki's own Chinese phonemes), for Chinese,
+   where no Piper voice has a licence that allows it. Eric: "Add Kokoro for
+   Chinese".
+3. macOS ``say``, on a Mac.
+4. espeak-ng, when installed. Robotic, and there with no download at all.
+
+Piper and Kokoro run through voicehelper.py: ``python voicehelper.py`` where
+they are installed in Zimi's Python (Docker, pip), or the ``zimi-voice``
+executable the desktop apps carry beside Zimi.
 
 An accent asks first for an engine with that region's voice, then for any
 voice of the language. None that can say it: no audio, and the page uses the
 device's own voice.
 
-Piper voices are a download (about 60 MB each), one per language, chosen by
-someone in the Dictionary or in Manage, under "Voices for Dictionary": Ask
-first, Automatically (a voice is fetched when a word in its language is
-said), Never. ZIMI_OFFLINE forbids it. The voices are pinned per Zimi
-release in ``PIPER_VOICES``; nothing updates on its own.
+Piper voices (about 60 MB each) and the Kokoro model (about 120 MB) are a
+download, one language at a time, chosen by someone in the Dictionary or in
+Manage, under "Voices for Dictionary": Ask first, Automatically (a voice is
+fetched when a word in its language is said), Never. ZIMI_OFFLINE forbids
+it. Every voice is pinned per Zimi release in ``VOICES``, with its licence
+and credit; nothing updates on its own.
 """
 
+import collections
 import hashlib
 import importlib.util
 import json
@@ -42,47 +51,118 @@ from zimi import outbound, subproc
 
 log = logging.getLogger("zimi")
 
-PIPER, SAY, ESPEAK = "piper", "say", "espeak"
-ENGINES = (PIPER, SAY, ESPEAK)
+PIPER, KOKORO, SAY, ESPEAK = "piper", "kokoro", "say", "espeak"
+ENGINES = (PIPER, KOKORO, SAY, ESPEAK)
+DOWNLOADED = (PIPER, KOKORO)  # the engines whose voices are a download
 
-# The pinned voices: rhasspy/piper-voices at one tag, one voice per
-# language (accents where Piper has them), medium quality, each under a
-# license that lets anyone download and use it (CC0, public domain, CC BY,
-# CC BY-SA, Unlicense; non-commercial and unknown licenses are left out).
-# tag -> (voice id, .onnx bytes, .onnx.json bytes, license). A newer pin is
-# a one-line change here; Manage then offers "Newer voice", and nothing
-# downloads on its own.
+# Every voice Zimi can fetch, pinned per release: one per language (accents
+# where Piper has them), each under a licence that lets anyone download and
+# use it, with the credit that licence asks for. A newer pin is a one-line
+# change here; Manage then offers "Newer voice", and nothing downloads on its
+# own. ``files`` is ((name, url, bytes), ...), sizes measured at the pin: a
+# download that is not exactly that size is not installed.
+Pin = collections.namedtuple("Pin", "engine id voice revision files license credit")
+
 PIPER_REVISION = "v1.0.0"
 PIPER_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/"
-PIPER_VOICES = {
-    "ca": ("ca_ES-upc_ona-medium", 63201294, 4875, "CC BY-SA 3.0"),
-    "cs": ("cs_CZ-jirka-medium", 63201294, 5025, "CC0"),
-    "da": ("da_DK-talesyntese-medium", 63201294, 4878, "CC0"),
-    "de": ("de_DE-thorsten-medium", 63201294, 4819, "CC0"),
-    "en-US": ("en_US-ljspeech-medium", 63531379, 4972, "public domain"),
-    "en-GB": ("en_GB-cori-medium", 63531379, 4966, "public domain"),
-    "es-ES": ("es_ES-davefx-medium", 63201294, 4817, "CC0"),
-    "es-MX": ("es_MX-ald-medium", 63201294, 4889, "Unlicense"),
-    "fa": ("fa_IR-amir-medium", 63531379, 4958, "CC0"),
-    "fi": ("fi_FI-harri-medium", 63201294, 4873, "CC0"),
-    "fr": ("fr_FR-siwis-medium", 63201294, 4875, "CC BY 4.0"),
-    "hu": ("hu_HU-anna-medium", 63201294, 5018, "CC0"),
-    "lv": ("lv_LV-aivars-medium", 63511038, 7242, "CC0"),
-    "nb": ("no_NO-talesyntese-medium", 63201294, 4880, "CC0"),
-    "ne": ("ne_NP-chitwan-medium", 62950044, 5043, "CC0"),
-    "nl": ("nl_NL-pim-medium", 63516050, 5037, "CC0"),
-    "pl": ("pl_PL-gosia-medium", 63201294, 4814, "CC0"),
-    "pt-BR": ("pt_BR-faber-medium", 63201294, 4855, "CC0"),
-    "pt-PT": ("pt_PT-tugão-medium", 63201294, 5026, "CC0"),
-    "ro": ("ro_RO-mihai-medium", 63201294, 4877, "CC0"),
-    "ru": ("ru_RU-denis-medium", 63201294, 4823, "CC0"),
-    "sk": ("sk_SK-lili-medium", 63201294, 4963, "CC0"),
-    "sl": ("sl_SI-artur-medium", 63200492, 4970, "CC BY 4.0"),
-    "sv": ("sv_SE-nst-medium", 63104526, 4157, "CC0"),
-    "tr": ("tr_TR-fahrettin-medium", 63201294, 5022, "CC0"),
-    "uk": ("uk_UA-ukrainian_tts-medium", 76735663, 2002, "CC0"),
-    "vi": ("vi_VN-vais1000-medium", 63201294, 4860, "CC BY 4.0"),
+# rohan came to rhasspy/piper-voices after v1.0.0: pinned to that commit.
+PIPER_ROHAN_REVISION = "c10ece1aade47bb51c153c893d14e5bf8e5b7117"
+NABU = "Nabu Casa voice datasets"
+SPRAKBANKEN = "Språkbanken, National Library of Norway"
+
+# Kokoro-82M (hexgrad, weights Apache-2.0) as kokoro-onnx publishes it: the
+# int8 model and every voice in one file, one download whatever the voice.
+KOKORO_REVISION = "model-files-v1.0"
+KOKORO_BASE_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+KOKORO_ID = "kokoro-v1.0.int8"
+KOKORO_MODEL, KOKORO_VOICES = "kokoro-v1.0.int8.onnx", "voices-v1.0.bin"
+KOKORO_SIZES = {KOKORO_MODEL: 92361271, KOKORO_VOICES: 28214398}
+
+
+def _voice_url(voice_id, suffix, revision=PIPER_REVISION):
+    family = voice_id.split("_", 1)[0]
+    locale, name, quality = voice_id.split("-", 2)
+    path = "/".join((family, locale, name, quality, voice_id + suffix))
+    return PIPER_BASE_URL + revision + "/" + urllib.parse.quote(path)
+
+
+def _piper(vid, onnx, cfg, license, credit, revision=PIPER_REVISION):
+    # The small config first: one that will not come is found out before 60 MB.
+    files = tuple(
+        (vid + suffix, _voice_url(vid, suffix, revision), size)
+        for suffix, size in ((".onnx.json", cfg), (".onnx", onnx))
+    )
+    return Pin(PIPER, vid, None, revision, files, license, credit)
+
+
+def _kokoro(voice):
+    files = tuple(
+        (name, KOKORO_BASE_URL + KOKORO_REVISION + "/" + name, size)
+        for name, size in KOKORO_SIZES.items()
+    )
+    return Pin(
+        KOKORO,
+        KOKORO_ID,
+        voice,
+        KOKORO_REVISION,
+        files,
+        "Apache-2.0",
+        "Kokoro-82M by hexgrad",
+    )
+
+
+# fmt: off
+VOICES = {
+    "ca": _piper("ca_ES-upc_ona-medium", 63201294, 4875, "CC BY-SA 3.0", "Festcat corpus, Universitat Politècnica de Catalunya"),
+    "cs": _piper("cs_CZ-jirka-medium", 63201294, 5025, "CC0", NABU),
+    "da": _piper("da_DK-talesyntese-medium", 63201294, 4878, "CC0", SPRAKBANKEN),
+    "de": _piper("de_DE-thorsten-medium", 63201294, 4819, "CC0", "Thorsten Müller, Thorsten-Voice"),
+    "en-US": _piper("en_US-ljspeech-medium", 63531379, 4972, "public domain", "LJ Speech, Keith Ito and LibriVox"),
+    "en-GB": _piper("en_GB-cori-medium", 63531379, 4966, "public domain", "LibriVox"),
+    "es-ES": _piper("es_ES-davefx-medium", 63201294, 4817, "CC0", NABU),
+    "es-MX": _piper("es_MX-ald-medium", 63201294, 4889, "Unlicense", "Ald Mexican Spanish dataset, Rafael Pantoja"),
+    "fa": _piper("fa_IR-amir-medium", 63531379, 4958, "CC0", "Datacula"),
+    "fi": _piper("fi_FI-harri-medium", 63201294, 4873, "CC0", "Finnish single-speaker dataset, Bryan Park"),
+    "fr": _piper("fr_FR-siwis-medium", 63201294, 4875, "CC BY 4.0", "SIWIS French speech corpus, University of Edinburgh"),
+    "hi": _piper("hi_IN-rohan-medium", 62950044, 5041, "CC BY 4.0", "Indic TTS, IIT Madras", PIPER_ROHAN_REVISION),
+    "hu": _piper("hu_HU-anna-medium", 63201294, 5018, "CC0", NABU),
+    "it": _piper("it_IT-paola-medium", 63511038, 7099, "CC0", "Paola Persico, Voice-Dataset-Italian"),
+    "lv": _piper("lv_LV-aivars-medium", 63511038, 7242, "CC0", "Raivis Dejus"),
+    "nb": _piper("no_NO-talesyntese-medium", 63201294, 4880, "CC0", SPRAKBANKEN),
+    "ne": _piper("ne_NP-chitwan-medium", 62950044, 5043, "CC0", NABU),
+    "nl": _piper("nl_NL-pim-medium", 63516050, 5037, "CC0", NABU),
+    "pl": _piper("pl_PL-gosia-medium", 63201294, 4814, "CC0", NABU),
+    "pt-BR": _piper("pt_BR-faber-medium", 63201294, 4855, "CC0", NABU),
+    "pt-PT": _piper("pt_PT-tugão-medium", 63201294, 5026, "CC0", NABU),
+    "ro": _piper("ro_RO-mihai-medium", 63201294, 4877, "CC0", NABU),
+    "ru": _piper("ru_RU-denis-medium", 63201294, 4823, "CC0", NABU),
+    "sk": _piper("sk_SK-lili-medium", 63201294, 4963, "CC0", NABU),
+    "sl": _piper("sl_SI-artur-medium", 63200492, 4970, "CC BY 4.0", "Artur studio TTS corpus, ppisljar"),
+    "sv": _piper("sv_SE-nst-medium", 63104526, 4157, "CC0", "NST, " + SPRAKBANKEN),
+    "tr": _piper("tr_TR-fahrettin-medium", 63201294, 5022, "CC0", NABU),
+    "uk": _piper("uk_UA-ukrainian_tts-medium", 76735663, 2002, "CC0", NABU),
+    "vi": _piper("vi_VN-vais1000-medium", 63201294, 4860, "CC BY 4.0", "VAIS-1000 corpus"),
+    "zh": _kokoro("zf_xiaoxiao"),
 }
+# fmt: on
+
+# Voices left out on purpose, so a later pin does not bring one back: a
+# licence that forbids commercial use, or none stated. Arabic has no clean
+# voice yet and keeps the basic one. Japanese on Kokoro would need misaki's
+# MeCab dictionary, a download of its own, so it is not offered yet.
+EXCLUDED = {
+    "hi_IN-pratham-medium": "CC BY-NC-SA",
+    "hi_IN-priyamvada-medium": "CC BY-NC-SA",
+    "zh_CN-huayan-medium": "licence unknown",
+    "zh_CN-huayan-x_low": "licence unknown",
+}
+
+
+def needs_credit(license):
+    """Whether a licence asks for its credit to be shown (CC BY, Apache);
+    CC0, public domain and the Unlicense do not."""
+    return str(license).startswith(("CC BY", "Apache"))
+
 
 # The setting: Ask first / Automatically / Never (outbound.py).
 DOWNLOADS_ENV = "ZIMI_VOICE_DOWNLOADS"
@@ -94,6 +174,9 @@ POLICY = outbound.FetchPolicy(
 # A word or a short phrase, never a paragraph: what the Dictionary says.
 TEXT_MAX = 64
 SYNTH_TIMEOUT_S = 20  # Piper loads its model each time: about a second
+# Kokoro loads its model and a Chinese dictionary each time: about 5 s on a
+# laptop (measured 2026-10-03), so a slow NAS is given longer.
+KOKORO_TIMEOUT_S = 60
 SYNTH_WAIT_S = 30  # how long a request queues behind another synthesis
 CACHE_MAX_BYTES = 64 * 1024 * 1024  # a word is ~40 KB: well over a thousand
 FETCH_TIMEOUT_S = 30
@@ -101,6 +184,13 @@ FETCH_CHUNK = 256 * 1024
 WAV_HEADER_BYTES = 44
 SAY_FORMAT = ("--file-format=WAVE", "--data-format=LEI16@22050")
 PIPER_CMD_ENV = "ZIMI_PIPER"  # a piper command to use instead of finding one
+HELPER_NAME = "zimi-voice"  # the desktop builds' engines, beside Zimi
+HELPER_SCRIPT = "voicehelper.py"  # the same, run by Zimi's Python
+# What voicehelper.py needs in Zimi's Python to run an engine.
+_ENGINE_MODULES = {
+    PIPER: ("piper",),
+    KOKORO: ("kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an"),
+}
 
 VOICES_DIR = "voices"
 MANIFEST = "installed.json"
@@ -148,19 +238,16 @@ def _dir(*parts):
     return os.path.join(_srv.ZIMI_DATA_DIR, VOICES_DIR, *parts)
 
 
+def _engine_dir(engine):
+    return _dir(engine)
+
+
 def _piper_dir():
-    return _dir(PIPER)
+    return _engine_dir(PIPER)
 
 
 def _cache_dir(engine, voice):
     return _dir("cache", engine + "-" + _UNSAFE_RE.sub("_", voice))
-
-
-def _voice_url(voice_id, suffix):
-    family = voice_id.split("_", 1)[0]
-    locale, name, quality = voice_id.split("-", 2)
-    path = "/".join((family, locale, name, quality, voice_id + suffix))
-    return PIPER_BASE_URL + PIPER_REVISION + "/" + urllib.parse.quote(path)
 
 
 def _primary(tag):
@@ -240,9 +327,47 @@ def _memo(key, fn):
     return value
 
 
+def _has_modules(*names):
+    """Whether Zimi's own Python could run voicehelper.py with these: found,
+    never imported (an engine stays out of Zimi's process)."""
+    if getattr(sys, "frozen", False):
+        return False  # sys.executable is Zimi itself, not a Python
+    try:
+        return all(importlib.util.find_spec(n) is not None for n in names)
+    except (ImportError, ValueError):
+        return False
+
+
+def helper_command():
+    """The desktop app's ``zimi-voice``, beside Zimi's own executable, or
+    None: a frozen build carries Piper and Kokoro there, not in Zimi."""
+    if not getattr(sys, "frozen", False):
+        return None
+    exe = os.path.join(
+        os.path.dirname(os.path.abspath(sys.executable)),
+        HELPER_NAME + (".exe" if os.name == "nt" else ""),
+    )
+    return [exe] if os.path.isfile(exe) and os.access(exe, os.X_OK) else None
+
+
+def _runner(engine):
+    """voicehelper.py's command for ``engine``: the bundled helper, or the
+    script itself run by Zimi's Python where the engine is installed."""
+    helper = helper_command()
+    if helper:
+        return helper + [engine]
+    if _has_modules(*_ENGINE_MODULES[engine]):
+        return [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), HELPER_SCRIPT),
+            engine,
+        ]
+    return None
+
+
 def piper_command():
-    """How to run Piper, or None: ZIMI_PIPER, a ``piper`` on PATH, or
-    piper-tts in Zimi's own Python, run as ``python -m piper``."""
+    """How to run Piper, or None: ZIMI_PIPER, a ``piper`` on PATH, the desktop
+    app's helper, or piper-tts in Zimi's own Python."""
 
     def find():
         named = os.environ.get(PIPER_CMD_ENV, "").strip()
@@ -251,14 +376,20 @@ def piper_command():
         on_path = shutil.which("piper")
         if on_path:
             return [on_path]
-        try:
-            if importlib.util.find_spec("piper") is not None:
-                return [sys.executable, "-m", "piper"]
-        except (ImportError, ValueError):
-            pass
-        return None
+        return _runner(PIPER)
 
-    return _memo("piper", find)
+    return _memo(PIPER, find)
+
+
+def kokoro_command():
+    """How to run Kokoro, or None: the desktop app's helper, or kokoro-onnx
+    and misaki's Chinese in Zimi's own Python."""
+    return _memo(KOKORO, lambda: _runner(KOKORO))
+
+
+def runtime(engine):
+    """The command for a downloaded voice's engine, or None."""
+    return {PIPER: piper_command, KOKORO: kokoro_command}[engine]()
 
 
 def _say_voices():
@@ -310,18 +441,38 @@ def _espeak_voices():
     return _memo(ESPEAK, find)
 
 
-def _piper_voices():
-    """Installed Piper voices Piper can run: {primary: {region: tag}}."""
-    if not piper_command():
+def _downloaded_voices(engine):
+    """Installed voices of ``engine`` it can run: {primary: {region: tag}}.
+    A Piper voice's region is in its id; Kokoro's is the language's home."""
+    if not runtime(engine):
         return {}
     out = {}
     for tag, rec in installed().items():
-        out.setdefault(_primary(tag), {})[_region_of(rec["id"])] = tag
+        if rec["engine"] != engine:
+            continue
+        primary = _primary(tag)
+        region = (
+            _region_of(rec["id"]) if engine == PIPER else _HOME_REGION.get(primary, "")
+        )
+        out.setdefault(primary, {})[region] = tag
     return out
 
 
+def _piper_voices():
+    return _downloaded_voices(PIPER)
+
+
+def _kokoro_voices():
+    return _downloaded_voices(KOKORO)
+
+
 def _voices(engine):
-    return {PIPER: _piper_voices, SAY: _say_voices, ESPEAK: _espeak_voices}[engine]()
+    return {
+        PIPER: _piper_voices,
+        KOKORO: _kokoro_voices,
+        SAY: _say_voices,
+        ESPEAK: _espeak_voices,
+    }[engine]()
 
 
 def _home_first(primary, regions):
@@ -387,16 +538,33 @@ def _command(engine, voice, out):
         rec = installed().get(voice)
         onnx = os.path.join(_piper_dir(), rec["id"] + ".onnx")
         return piper_command() + ["-m", onnx, "-f", out]
+    if engine == KOKORO:
+        rec = installed().get(voice)
+        folder = _engine_dir(KOKORO)
+        return kokoro_command() + [
+            "--model", os.path.join(folder, KOKORO_MODEL),
+            "--voices", os.path.join(folder, KOKORO_VOICES),
+            "--voice", rec["voice"],
+            "--lang", _primary(voice),
+            "-f", out,
+        ]  # fmt: skip
     if engine == SAY:
         return ["say", "-v", voice, "-f", "-", "-o", out] + list(SAY_FORMAT)
     return [shutil.which("espeak-ng") or "espeak-ng", "-v", voice, "-w", out, "--stdin"]
 
 
+def _cache_key(rec):
+    """A downloaded voice's audio folder name: its model id, and the voice
+    within the model where there is one (Kokoro)."""
+    return rec["id"] + ("-" + rec["voice"] if rec.get("voice") else "")
+
+
 def _cache_voice(engine, voice):
-    """The cache's name for a voice: a Piper voice by its id, so a newer
-    voice for the same language never answers with the old one's audio."""
-    if engine == PIPER:
-        return installed().get(voice, {}).get("id", voice)
+    """The cache's name for a voice: a downloaded one by its model, so a
+    newer voice for the same language never answers with the old one's audio."""
+    if engine in DOWNLOADED:
+        rec = installed().get(voice)
+        return _cache_key(rec) if rec else voice
     return voice
 
 
@@ -426,7 +594,8 @@ def speak(text, lang, accent=""):
         os.makedirs(folder, exist_ok=True)
         tmp = path + ".part"
         try:
-            if not _run(_command(engine, voice, tmp), text, tmp):
+            wait = KOKORO_TIMEOUT_S if engine == KOKORO else SYNTH_TIMEOUT_S
+            if not _run(_command(engine, voice, tmp), text, tmp, timeout=wait):
                 return None
             os.replace(tmp, path)
         finally:
@@ -471,53 +640,91 @@ def _trim_cache(limit=None):
             pass
 
 
-# ── Piper voices: installed, downloaded, removed ─────────────────────────
+# ── downloaded voices: installed, fetched, removed ───────────────────────
 
 
-def installed():
-    """{tag: {"id", "revision", "bytes"}} for the Piper voices on disk."""
+def _read_manifest(engine):
     try:
-        with open(os.path.join(_piper_dir(), MANIFEST), encoding="utf-8") as f:
+        with open(os.path.join(_engine_dir(engine), MANIFEST), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return {}
-    return {
-        t: r
-        for t, r in (data if isinstance(data, dict) else {}).items()
-        if isinstance(r, dict)
-        and isinstance(r.get("id"), str)
-        and os.path.isfile(os.path.join(_piper_dir(), r["id"] + ".onnx"))
-    }
+    return data if isinstance(data, dict) else {}
 
 
-def _write_installed(data):
+def _rec_files(rec):
+    """A record's files: as written, or a Piper voice's two by its id."""
+    files = rec.get("files")
+    if isinstance(files, list) and files and all(isinstance(f, str) for f in files):
+        return files
+    return [rec["id"] + ".onnx", rec["id"] + ".onnx.json"]
+
+
+def installed():
+    """{tag: {"engine", "id", "revision", "bytes", "files", "voice"}} for the
+    downloaded voices on disk, every engine's (one manifest per engine's
+    folder)."""
+    out = {}
+    for engine in DOWNLOADED:
+        folder = _engine_dir(engine)
+        for t, r in _read_manifest(engine).items():
+            if not (isinstance(r, dict) and isinstance(r.get("id"), str)):
+                continue
+            # The model itself must be here; a config alone says nothing.
+            if not all(
+                os.path.isfile(os.path.join(folder, f))
+                for f in _rec_files(r)
+                if not f.endswith(".json")
+            ):
+                continue
+            out[t] = dict(r, engine=engine)
+    return out
+
+
+def _set_installed(engine, tag, rec):
+    """Write one tag's record into its engine's manifest (None takes it out)."""
     from zimi import server as _srv
 
-    os.makedirs(_piper_dir(), exist_ok=True)
-    return _srv._atomic_write_json(os.path.join(_piper_dir(), MANIFEST), data)
+    data = _read_manifest(engine)
+    if rec is None:
+        data.pop(tag, None)
+    else:
+        data[tag] = rec
+    os.makedirs(_engine_dir(engine), exist_ok=True)
+    return _srv._atomic_write_json(os.path.join(_engine_dir(engine), MANIFEST), data)
 
 
 def _offer_tag(lang, accent=""):
     """The pinned voice for a language (its accent's, where there is one)."""
     primary = _primary(lang)
     region = (accent or "").upper()
-    if region and primary + "-" + region in PIPER_VOICES:
+    if region and primary + "-" + region in VOICES:
         return primary + "-" + region
-    if primary in PIPER_VOICES:
+    if primary in VOICES:
         return primary
-    tags = [t for t in PIPER_VOICES if _primary(t) == primary]
+    tags = [t for t in VOICES if _primary(t) == primary]
     return tags[0] if tags else None
 
 
 def _bytes(tag):
-    _vid, onnx, cfg, _lic = PIPER_VOICES[tag]
-    return onnx + cfg
+    return sum(size for _name, _url, size in VOICES[tag].files)
 
 
-def can_download():
-    """Whether a voice may be fetched now: Piper is here to use it, and the
-    setting is not Never (ZIMI_OFFLINE is Never)."""
-    return bool(piper_command()) and POLICY.mode()[0] != outbound.NEVER
+def _is_current(tag, rec):
+    pin = VOICES[tag]
+    return (
+        rec["id"] == pin.id
+        and rec.get("revision") == pin.revision
+        and rec.get("voice") == pin.voice
+    )
+
+
+def can_download(tag=None):
+    """Whether a voice may be fetched now: its engine is here to use it (any
+    engine, with no tag), and the setting is not Never (ZIMI_OFFLINE is
+    Never)."""
+    engines = [VOICES[tag].engine] if tag else DOWNLOADED
+    return any(runtime(e) for e in engines) and POLICY.mode()[0] != outbound.NEVER
 
 
 def downloading():
@@ -527,20 +734,16 @@ def downloading():
 
 def start_download(tag):
     """Fetch the pinned voice ``tag`` in the background. ``(ok, error)``:
-    error is "unknown", "never" (the setting, or ZIMI_OFFLINE), "nopiper",
-    "installed" or "busy" (one voice at a time)."""
-    if not isinstance(tag, str) or tag not in PIPER_VOICES:
+    error is "unknown", "never" (the setting, or ZIMI_OFFLINE), "noengine"
+    (nothing here could run it), "installed" or "busy" (one at a time)."""
+    if not isinstance(tag, str) or tag not in VOICES:
         return False, "unknown"
     if POLICY.mode()[0] == outbound.NEVER:
         return False, "never"
-    if not piper_command():
-        return False, "nopiper"
+    if not runtime(VOICES[tag].engine):
+        return False, "noengine"
     rec = installed().get(tag)
-    if (
-        rec
-        and rec["id"] == PIPER_VOICES[tag][0]
-        and rec.get("revision") == PIPER_REVISION
-    ):
+    if rec and _is_current(tag, rec):
         return False, "installed"
     with _lock:
         if _download.get("tag"):
@@ -560,7 +763,7 @@ def _maybe_fetch(lang, accent):
     if POLICY.mode()[0] != outbound.AUTO:
         return
     tag = _offer_tag(lang, accent)
-    if tag and tag not in installed():
+    if tag and tag not in installed() and runtime(VOICES[tag].engine):
         start_download(tag)
 
 
@@ -587,33 +790,49 @@ def _fetch_file(url, dest, expect):
         raise ValueError("not the pinned voice's size")
 
 
+def _have_file(path, size):
+    try:
+        return os.path.getsize(path) == size
+    except OSError:
+        return False
+
+
 def _fetch_voice(tag):
-    vid, onnx_bytes, cfg_bytes, _lic = PIPER_VOICES[tag]
-    folder = _piper_dir()
+    pin = VOICES[tag]
+    folder = _engine_dir(pin.engine)
     parts = []
     try:
         os.makedirs(folder, exist_ok=True)
-        for suffix, size in ((".onnx.json", cfg_bytes), (".onnx", onnx_bytes)):
-            part = os.path.join(folder, vid + suffix + ".part")
-            parts.append((part, os.path.join(folder, vid + suffix)))
-            _fetch_file(_voice_url(vid, suffix), part, size)
+        for name, url, size in pin.files:
+            final = os.path.join(folder, name)
+            if _have_file(final, size):  # a model another language shares
+                with _lock:
+                    _download["done"] = _download.get("done", 0) + size
+                continue
+            part = final + ".part"
+            parts.append((part, final))
+            _fetch_file(url, part, size)
         for part, final in parts:
             os.replace(part, final)
         old = installed().get(tag)
-        data = installed()
-        data[tag] = {
-            "id": vid,
-            "revision": PIPER_REVISION,
-            "bytes": onnx_bytes + cfg_bytes,
-        }
-        _write_installed(data)
-        if old and old["id"] != vid:
-            _delete_voice_files(old["id"])
-        log.info("Voices: %s (%s) installed", tag, vid)
+        _set_installed(
+            pin.engine,
+            tag,
+            {
+                "id": pin.id,
+                "revision": pin.revision,
+                "bytes": _bytes(tag),
+                "files": [name for name, _url, _size in pin.files],
+                "voice": pin.voice,
+            },
+        )
+        if old and not _is_current(tag, old):
+            _delete_voice_files(old)
+        log.info("Voices: %s (%s) installed", tag, pin.id)
         with _lock:
             _download.clear()
     except Exception as e:
-        log.warning("Voices: could not fetch %s: %s", vid, e)
+        log.warning("Voices: could not fetch %s: %s", pin.id, e)
         with _lock:
             _download.clear()
             _download.update({"tag": None, "error": tag})
@@ -623,23 +842,28 @@ def _fetch_voice(tag):
                 os.remove(part)
 
 
-def _delete_voice_files(vid):
-    for suffix in (".onnx", ".onnx.json"):
-        p = os.path.join(_piper_dir(), vid + suffix)
-        if os.path.exists(p):
+def _delete_voice_files(rec):
+    """A downloaded voice's files and its audio. A file another installed
+    voice still uses (one Kokoro model, many languages) stays."""
+    engine = rec.get("engine", PIPER)
+    shutil.rmtree(_cache_dir(engine, _cache_key(rec)), ignore_errors=True)
+    still = {
+        f for r in installed().values() if r["engine"] == engine for f in _rec_files(r)
+    }
+    for name in _rec_files(rec):
+        p = os.path.join(_engine_dir(engine), name)
+        if name not in still and os.path.exists(p):
             os.remove(p)
-    shutil.rmtree(_cache_dir(PIPER, vid), ignore_errors=True)
 
 
 def remove(tag):
-    """Take a Piper voice away, and its audio with it. The language falls
-    back at once to the next engine. False when it was not installed."""
-    data = installed()
-    rec = data.pop(tag, None) if isinstance(tag, str) else None
+    """Take a downloaded voice away, and its audio with it. The language
+    falls back at once to the next engine. False when it was not installed."""
+    rec = installed().get(tag) if isinstance(tag, str) else None
     if not rec:
         return False
-    _write_installed(data)
-    _delete_voice_files(rec["id"])
+    _set_installed(rec["engine"], tag, None)
+    _delete_voice_files(rec)
     log.info("Voices: %s (%s) removed", tag, rec["id"])
     return True
 
@@ -653,10 +877,9 @@ def page_payload():
     mode, locked = POLICY.mode()
     have = installed()
     offers = {}
-    if can_download():
-        for tag in PIPER_VOICES:
-            if tag not in have:
-                offers.setdefault(_primary(tag), {"tag": tag, "bytes": _bytes(tag)})
+    for tag in VOICES:
+        if tag not in have and can_download(tag):
+            offers.setdefault(_primary(tag), {"tag": tag, "bytes": _bytes(tag)})
     return {
         "langs": can_say(),
         "offers": offers,
@@ -667,29 +890,33 @@ def page_payload():
 
 
 def manage_payload():
-    """For Manage: the setting, and every pinned voice with what speaks its
-    language now (piper, say or espeak, or none)."""
+    """For Manage: the setting, and every pinned voice with its licence and
+    credit, whether its engine is here, and what speaks its language now
+    (piper, kokoro, say or espeak, or none)."""
     have = installed()
     rows = []
-    for tag, (vid, _onnx, _cfg, lic) in PIPER_VOICES.items():
+    for tag, pin in VOICES.items():
         rec = have.get(tag)
         picked = choose(tag)
         rows.append(
             {
                 "tag": tag,
-                "voice": vid,
+                "voice": pin.id + ("/" + pin.voice if pin.voice else ""),
+                "kind": pin.engine,
                 "bytes": rec.get("bytes", _bytes(tag)) if rec else _bytes(tag),
-                "license": lic,
+                "license": pin.license,
+                "credit": pin.credit,
+                "credit_required": needs_credit(pin.license),
+                "runnable": bool(runtime(pin.engine)),
                 "installed": bool(rec),
-                "newer": bool(rec)
-                and (rec["id"] != vid or rec.get("revision") != PIPER_REVISION),
+                "newer": bool(rec) and not _is_current(tag, rec),
                 "engine": picked[0] if picked else None,
             }
         )
     return {
         "setting": POLICY.setting(),
         "piper": bool(piper_command()),
-        "revision": PIPER_REVISION,
+        "kokoro": bool(kokoro_command()),
         "voices": rows,
         "downloading": downloading(),
     }

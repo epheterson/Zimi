@@ -2140,6 +2140,7 @@
   "voices_hint": "उच्चारण इसी सर्वर से चलता है, इसलिए फ़ोन साइलेंट पर हो तब भी सुनाई देता है। हर भाषा यहाँ की सबसे साफ़ आवाज़ लेती है: पहले Piper, फिर सिस्टम की, फिर एक साधारण आवाज़।",
   "voices_no_piper": "इस सर्वर पर Piper इंस्टॉल नहीं है, इसलिए कोई आवाज़ डाउनलोड नहीं हो सकती (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "सिस्टम",
   "voices_engine_espeak": "साधारण",
   "voices_engine_none": "केवल डिवाइस",

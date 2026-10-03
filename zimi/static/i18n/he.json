@@ -2140,6 +2140,7 @@
   "voices_hint": "ההגייה מושמעת מהשרת הזה, כך ששומעים אותה גם בטלפון על שקט. כל שפה משתמשת בקול הברור ביותר שיש כאן: Piper, אחר כך של המערכת, ואחר כך קול בסיסי.",
   "voices_no_piper": "Piper אינו מותקן בשרת הזה, ולכן אי אפשר להוריד קולות (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "מערכת",
   "voices_engine_espeak": "בסיסי",
   "voices_engine_none": "המכשיר בלבד",

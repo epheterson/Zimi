@@ -13,6 +13,10 @@ Pinned here:
   - Removing a Piper voice falls back to the next engine at once and clears
     that voice's audio.
   - /dictionary/speak answers a range, as Safari asks for one.
+  - Every pinned voice carries its licence and credit; non-commercial and
+    unstated licences stay out; Chinese is Kokoro, then ``say``, then
+    espeak-ng; removing Kokoro clears its model and audio; the desktop
+    helper is found beside a frozen Zimi; Zimi never imports an engine.
 
 A fake Piper (a script that writes a known WAV) stands in for the real one;
 no test here reaches the network.
@@ -64,14 +68,24 @@ def fake_piper(folder):
 
 
 def install(tag):
-    """A pinned Piper voice on disk, as a download would leave it."""
-    vid = voices.PIPER_VOICES[tag][0]
-    os.makedirs(voices._piper_dir(), exist_ok=True)
-    for suffix in (".onnx", ".onnx.json"):
-        open(os.path.join(voices._piper_dir(), vid + suffix), "wb").close()
-    data = voices.installed()
-    data[tag] = {"id": vid, "revision": voices.PIPER_REVISION, "bytes": 1}
-    voices._write_installed(data)
+    """A pinned voice on disk, as a download would leave it."""
+    pin = voices.VOICES[tag]
+    folder = voices._engine_dir(pin.engine)
+    os.makedirs(folder, exist_ok=True)
+    names = [name for name, _url, _size in pin.files]
+    for name in names:
+        open(os.path.join(folder, name), "wb").close()
+    voices._set_installed(
+        pin.engine,
+        tag,
+        {
+            "id": pin.id,
+            "revision": pin.revision,
+            "bytes": 1,
+            "files": names,
+            "voice": pin.voice,
+        },
+    )
 
 
 @pytest.fixture
@@ -89,13 +103,15 @@ def data(tmp_path, monkeypatch):
 def piper(data, monkeypatch):
     """The fake Piper as Zimi's Piper; no ``say`` and no espeak-ng."""
     monkeypatch.setenv(voices.PIPER_CMD_ENV, fake_piper(data))
+    monkeypatch.setattr(voices, "kokoro_command", lambda: None)
     monkeypatch.setattr(voices, "_say_voices", lambda: {})
     monkeypatch.setattr(voices, "_espeak_voices", lambda: {})
     return data
 
 
-def engines(monkeypatch, piper=None, say=None, espeak=None):
+def engines(monkeypatch, piper=None, say=None, espeak=None, kokoro=None):
     monkeypatch.setattr(voices, "_piper_voices", lambda: piper or {})
+    monkeypatch.setattr(voices, "_kokoro_voices", lambda: kokoro or {})
     monkeypatch.setattr(voices, "_say_voices", lambda: say or {})
     monkeypatch.setattr(voices, "_espeak_voices", lambda: espeak or {})
 
@@ -299,7 +315,7 @@ def test_no_engine_no_audio(data, monkeypatch):
 def test_voices_are_ask_first_by_default_and_listed(data):
     assert voices.POLICY.mode() == ("ask", None)
     row = {r["id"]: r for r in outbound.inventory()["rows"]}["voices"]
-    assert row["state"] == "ask" and row["hosts"] == ["huggingface.co"]
+    assert row["state"] == "ask" and row["hosts"] == ["huggingface.co", "github.com"]
     assert outbound.SOURCES["voices"] == ("voices",)
 
 
@@ -361,7 +377,9 @@ def test_automatically_fetches_a_languages_voice_when_a_word_is_said(
 
 def test_a_download_lands_only_at_the_pinned_size(piper, monkeypatch):
     monkeypatch.setitem(
-        voices.PIPER_VOICES, "fr", ("fr_FR-siwis-medium", 10, 4, "CC BY 4.0")
+        voices.VOICES,
+        "fr",
+        voices._piper("fr_FR-siwis-medium", 10, 4, "CC BY 4.0", "SIWIS"),
     )
     bodies = {".onnx": b"0123456789", ".onnx.json": b"{}{}"}
 
@@ -412,7 +430,9 @@ def test_removing_a_voice_falls_back_and_clears_its_audio(piper, monkeypatch):
 
 def test_a_newer_pin_is_shown_never_fetched(piper, monkeypatch):
     install("fr")
-    monkeypatch.setitem(voices.PIPER_VOICES, "fr", ("fr_FR-tom-medium", 1, 1, "CC0"))
+    monkeypatch.setitem(
+        voices.VOICES, "fr", voices._piper("fr_FR-tom-medium", 1, 1, "CC0", "Tom")
+    )
     row = {r["tag"]: r for r in voices.manage_payload()["voices"]}["fr"]
     assert row["installed"] and row["newer"]
     assert voices.choose("fr") == ("piper", "fr"), "the voice on disk still speaks"
@@ -437,14 +457,177 @@ def test_the_dictionary_line_follows_the_setting(piper, monkeypatch):
 
 
 def test_pinned_voices_are_well_formed():
-    for tag, (vid, onnx, cfg, lic) in voices.PIPER_VOICES.items():
-        assert (
-            voices._primary(tag) == voices._primary(vid.split("-")[0]) or tag == "nb"
+    for tag, pin in voices.VOICES.items():
+        assert pin.engine in voices.DOWNLOADED, tag
+        assert pin.files and all(
+            url.startswith("https://") and url.endswith(name) is not None and size > 0
+            for name, url, size in pin.files
         ), tag
-        assert vid.endswith("-medium") and onnx > 1e6 and cfg > 0 and lic, tag
-        assert voices._voice_url(vid, ".onnx").startswith(
-            voices.PIPER_BASE_URL + voices.PIPER_REVISION + "/"
-        )
+        if pin.engine == voices.PIPER:
+            assert (
+                voices._primary(tag) == voices._primary(pin.id.split("-")[0])
+                or tag == "nb"
+            ), tag
+            assert pin.id.endswith("-medium") and pin.voice is None, tag
+            onnx = [s for n, _u, s in pin.files if n.endswith(".onnx")]
+            assert onnx and onnx[0] > 1e6, tag
+            assert pin.files[1][1].startswith(
+                voices.PIPER_BASE_URL + pin.revision + "/"
+            ), tag
+            assert pin.files[1][1] == voices._voice_url(pin.id, ".onnx", pin.revision)
+
+
+# ── licences ──────────────────────────────────────────────────────────────
+
+
+def test_every_voice_carries_its_licence_and_credit(piper):
+    """Eric: "Can we sort the licensing to cover all platforms and languages
+    in some way??" Every pinned voice says its licence and whom to credit,
+    and Manage shows the credit where the licence asks for it."""
+    for tag, pin in voices.VOICES.items():
+        assert pin.license and pin.credit, tag
+        assert "NC" not in pin.license and "unknown" not in pin.license.lower(), tag
+    rows = {r["tag"]: r for r in voices.manage_payload()["voices"]}
+    assert set(rows) == set(voices.VOICES)
+    for tag, row in rows.items():
+        assert row["license"] == voices.VOICES[tag].license
+        assert row["credit"] == voices.VOICES[tag].credit
+        assert row["credit_required"] == voices.needs_credit(row["license"])
+    # The two voices Eric added, and the one for Chinese.
+    assert voices.VOICES["it"].id == "it_IT-paola-medium"
+    assert voices.VOICES["it"].license == "CC0" and not rows["it"]["credit_required"]
+    assert voices.VOICES["hi"].id == "hi_IN-rohan-medium"
+    assert rows["hi"]["credit_required"] and "IIT Madras" in rows["hi"]["credit"]
+    assert voices.VOICES["zh"].engine == voices.KOKORO
+    assert voices.VOICES["zh"].license == "Apache-2.0" and rows["zh"]["credit_required"]
+    assert rows["fr"]["credit_required"] and rows["ca"]["credit_required"]
+    assert not rows["de"]["credit_required"] and not rows["en-US"]["credit_required"]
+
+
+def test_excluded_voices_stay_out():
+    """Non-commercial and unstated licences never become a pin."""
+    ids = {pin.id for pin in voices.VOICES.values()}
+    for vid in (
+        "hi_IN-pratham-medium",
+        "hi_IN-priyamvada-medium",
+        "zh_CN-huayan-medium",
+    ):
+        assert vid in voices.EXCLUDED and vid not in ids
+    assert not any("huayan" in i or "pratham" in i or "priyamvada" in i for i in ids)
+    assert "ar" not in voices.VOICES, "Arabic keeps the basic voice"
+
+
+def test_zimi_never_imports_a_speech_engine():
+    """The GPL engines (and Kokoro, whose phonemizer loads espeak-ng) run as
+    a separate program; voicehelper.py imports nothing of Zimi, so starting
+    it never loads the server, and Zimi never imports it."""
+    import ast
+
+    engines = {"piper", "kokoro_onnx", "misaki", "espeakng_loader", "phonemizer"}
+
+    def imported(path):
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names.add(node.module.split(".")[0])
+        return names
+
+    zimi_dir = os.path.join(REPO, "zimi")
+    for name in os.listdir(zimi_dir):
+        if name.endswith(".py") and name != voices.HELPER_SCRIPT:
+            got = imported(os.path.join(zimi_dir, name))
+            assert not got & engines, name
+            assert "voicehelper" not in got, name
+    assert "zimi" not in imported(os.path.join(zimi_dir, voices.HELPER_SCRIPT))
+
+
+# ── Kokoro, for Chinese ───────────────────────────────────────────────────
+
+
+def test_chinese_is_kokoro_then_say_then_espeak(monkeypatch):
+    kokoro = {"zh": {"CN": "zh"}}
+    say = {"zh": {"CN": "Tingting"}}
+    espeak = {"zh": {"CN": "cmn"}}
+    engines(monkeypatch, kokoro=kokoro, say=say, espeak=espeak)
+    assert voices.choose("zh") == ("kokoro", "zh")
+    assert voices.choose("zh-CN") == ("kokoro", "zh")
+    engines(monkeypatch, say=say, espeak=espeak)
+    assert voices.choose("zh") == ("say", "Tingting")
+    engines(monkeypatch, espeak=espeak)
+    assert voices.choose("zh") == ("espeak", "cmn")
+
+
+def test_kokoro_speaks_through_its_runner_and_remove_clears_it(piper, monkeypatch):
+    runner = fake_piper(piper)  # writes a WAV at -f, whatever else it is given
+    monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
+    seen = []
+    real = voices._run
+    monkeypatch.setattr(
+        voices,
+        "_run",
+        lambda cmd, text, out, **k: seen.append(cmd) or real(cmd, text, out, **k),
+    )
+    assert voices.choose("zh") is None
+    install("zh")
+    assert voices.choose("zh") == ("kokoro", "zh")
+    body = voices.speak("水", "zh")
+    assert body and body[:4] == b"RIFF"
+    cmd = seen[-1]
+    assert cmd[:2] == [runner, "kokoro"]
+    assert cmd[cmd.index("--voice") + 1] == "zf_xiaoxiao"
+    assert cmd[cmd.index("--lang") + 1] == "zh"
+    assert cmd[cmd.index("--model") + 1].endswith(voices.KOKORO_MODEL)
+    assert "水" not in cmd, "the text goes on stdin"
+    cache = voices._cache_dir("kokoro", "kokoro-v1.0.int8-zf_xiaoxiao")
+    assert os.listdir(cache)
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"zh": {"CN": "cmn"}})
+    assert voices.remove("zh") is True
+    assert not os.path.exists(cache), "its audio went with it"
+    folder = voices._engine_dir(voices.KOKORO)
+    assert not os.path.exists(os.path.join(folder, voices.KOKORO_MODEL))
+    assert not os.path.exists(os.path.join(folder, voices.KOKORO_VOICES))
+    assert voices.choose("zh") == ("espeak", "cmn")
+    assert voices.remove("zh") is False
+
+
+def test_kokoro_is_offered_only_where_it_can_run(piper, monkeypatch):
+    assert "zh" not in voices.page_payload()["offers"]
+    assert voices.start_download("zh") == (False, "noengine")
+    row = {r["tag"]: r for r in voices.manage_payload()["voices"]}["zh"]
+    assert row["kind"] == "kokoro" and not row["runnable"]
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    offer = voices.page_payload()["offers"]["zh"]
+    assert offer == {"tag": "zh", "bytes": 92361271 + 28214398}
+
+
+def test_the_desktop_helper_is_found_beside_zimi(tmp_path, monkeypatch):
+    """A frozen build runs Piper and Kokoro through zimi-voice beside its own
+    executable; elsewhere voicehelper.py runs in Zimi's Python."""
+    for name in ("Zimi", voices.HELPER_NAME):
+        p = tmp_path / name
+        p.write_text("")
+        p.chmod(0o755)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "Zimi"))
+    monkeypatch.delenv(voices.PIPER_CMD_ENV, raising=False)
+    monkeypatch.setattr(voices.shutil, "which", lambda name: None)
+    voices._reset_for_tests()
+    helper = str(tmp_path / voices.HELPER_NAME)
+    assert voices.helper_command() == [helper]
+    assert voices.piper_command() == [helper, "piper"]
+    assert voices.kokoro_command() == [helper, "kokoro"]
+    os.remove(helper)
+    voices._reset_for_tests()
+    assert voices.piper_command() is None and voices.kokoro_command() is None
+    monkeypatch.setattr(sys, "frozen", False)
+    monkeypatch.setattr(voices, "_has_modules", lambda *names: True)
+    voices._reset_for_tests()
+    script = os.path.join(os.path.dirname(voices.__file__), voices.HELPER_SCRIPT)
+    assert voices.kokoro_command() == [sys.executable, script, "kokoro"]
+    voices._reset_for_tests()
 
 
 # ── over HTTP ─────────────────────────────────────────────────────────────

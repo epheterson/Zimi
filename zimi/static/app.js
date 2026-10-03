@@ -13396,9 +13396,15 @@ function _voicesModeHtml(s) {
   });
 }
 
+// A voice's licence, and its credit where the licence asks for one (CC BY,
+// Apache): names and licence ids, the same in every language.
+function _voiceLicenceHtml(v) {
+  return ' · ' + esc(v.license) + (v.credit_required ? ' · ' + esc(v.credit) : '');
+}
+
 // One language: its name, the voice that says it now, and what can be done.
 function _voiceRowHtml(v, d) {
-  var dl = d.downloading || {}, mayFetch = d.piper && d.setting.mode !== 'never';
+  var dl = d.downloading || {}, mayFetch = v.runnable && d.setting.mode !== 'never';
   var engine = tH('voices_engine_' + (v.engine || 'none'));
   var act = '';
   if (dl.tag === v.tag) {
@@ -13414,7 +13420,8 @@ function _voiceRowHtml(v, d) {
     act += ' <button class="pill" onclick="_voicesPost(\'/manage/voices/remove\', \'' + escAttr(v.tag) + '\')">' + tH('voices_remove') + '</button>';
   }
   // The size is said once: beside Piper when it is here, on Download when not.
-  var meta = engine + (v.installed ? ' · ' + esc(fmtBytes(v.bytes)) : '') + (v.newer ? ' · ' + tH('voices_newer') : '');
+  var meta = engine + (v.installed ? ' · ' + esc(fmtBytes(v.bytes)) : '') + (v.newer ? ' · ' + tH('voices_newer') : '') +
+    _voiceLicenceHtml(v);
   return '<div class="mc-row"><span class="mc-label">' + esc(_langDisplayName(v.tag)) +
     '<span class="app-update-quiet voice-meta">' + meta + '</span></span>' +
     '<span class="mc-value">' + act + '</span></div>';

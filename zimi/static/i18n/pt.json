@@ -2140,6 +2140,7 @@
   "voices_hint": "Pronunciar toca a palavra a partir deste servidor, então ela é ouvida mesmo com o telefone no silencioso. Cada idioma usa a voz mais clara disponível: Piper, depois a do sistema, depois uma básica.",
   "voices_no_piper": "O Piper não está instalado neste servidor, então nenhuma voz pode ser baixada (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "Sistema",
   "voices_engine_espeak": "Básica",
   "voices_engine_none": "Só o dispositivo",

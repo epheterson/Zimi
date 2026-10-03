@@ -2140,6 +2140,7 @@
   "voices_hint": "朗读由本服务器播放，手机静音时也能听到。每种语言使用这里最清晰的语音：先 Piper，再系统语音，最后是基础语音。",
   "voices_no_piper": "此服务器未安装 Piper，无法下载语音（pip install piper-tts）",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "系统",
   "voices_engine_espeak": "基础",
   "voices_engine_none": "仅设备",

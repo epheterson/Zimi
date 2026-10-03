@@ -2140,6 +2140,7 @@
   "voices_hint": "Произношение воспроизводится с этого сервера, поэтому его слышно даже на телефоне в беззвучном режиме. Каждый язык использует самый чёткий голос: Piper, затем системный, затем простой.",
   "voices_no_piper": "Piper не установлен на этом сервере, поэтому голоса загрузить нельзя (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "Системный",
   "voices_engine_espeak": "Простой",
   "voices_engine_none": "Только устройство",

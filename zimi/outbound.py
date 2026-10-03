@@ -208,7 +208,7 @@ def inventory():
         },
         {
             "id": "voices",
-            "hosts": ["huggingface.co"],
+            "hosts": ["huggingface.co", "github.com"],
             "state": _mode_state(voices.POLICY.mode()[0]),
             "control": "voices",
         },

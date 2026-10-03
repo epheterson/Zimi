@@ -2140,6 +2140,7 @@
   "voices_hint": "Aussprechen spielt das Wort von diesem Server ab, so hört man es auch auf einem stummgeschalteten Telefon. Jede Sprache nutzt die klarste Stimme hier: Piper, dann die des Systems, dann eine einfache.",
   "voices_no_piper": "Piper ist auf diesem Server nicht installiert, daher lassen sich keine Stimmen laden (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "System",
   "voices_engine_espeak": "Einfach",
   "voices_engine_none": "Nur Gerät",

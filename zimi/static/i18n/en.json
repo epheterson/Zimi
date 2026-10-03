@@ -2140,6 +2140,7 @@
   "voices_hint": "Say plays the word from this server, so a phone on silent hears it. Each language uses the clearest voice here: Piper, then the system's, then a basic one.",
   "voices_no_piper": "Piper isn't installed on this server, so no voice can be downloaded (pip install piper-tts)",
   "voices_engine_piper": "Piper",
+  "voices_engine_kokoro": "Kokoro",
   "voices_engine_say": "System",
   "voices_engine_espeak": "Basic",
   "voices_engine_none": "Device only",
