@@ -56,6 +56,16 @@ var AE_SHADOW_ENLARGE = 1.02;
 var AE_SUN_ABERRATION_ARCSEC = 20.4898;
 // Moon mean distance, the constant of Meeus 47 (km).
 var AE_MOON_MEAN_DIST_KM = 385000.56;
+// The mean motions of Meeus 47.1-47.5, degrees per Julian century of TT, and
+// the mean obliquity of Meeus 22.2 at J2000 and its rate (arcseconds). Named
+// so the Almanac's Constants tables read the very numbers the Moon is built on.
+var AE_MOON_MEAN_LON_RATE = 481267.88123421;   // the Moon's mean longitude
+var AE_MOON_ELONG_RATE = 445267.1114034;       // its mean elongation from the Sun
+var AE_SUN_ANOMALY_RATE = 35999.0502909;       // the Sun's mean anomaly
+var AE_MOON_ANOMALY_RATE = 477198.8675055;     // the Moon's mean anomaly
+var AE_MOON_ARGLAT_RATE = 483202.0175233;      // its argument of latitude
+var AE_OBLIQUITY_J2000_ARCSEC = 23 * 3600 + 26 * 60 + 21.448;
+var AE_OBLIQUITY_RATE_ARCSEC = -46.8150;
 
 function _aeDeg(x) { return x * 180 / Math.PI; }
 function _aeRad(x) { return x * Math.PI / 180; }
@@ -76,7 +86,7 @@ function _aeNutation(T) {
   var dpsi = (-17.20 * Math.sin(omega) - 1.32 * Math.sin(2 * Ls) - 0.23 * Math.sin(2 * Lm) + 0.21 * Math.sin(2 * omega)) * AE_ARCSEC_TO_DEG;
   var deps = (9.20 * Math.cos(omega) + 0.57 * Math.cos(2 * Ls) + 0.10 * Math.cos(2 * Lm) - 0.09 * Math.cos(2 * omega)) * AE_ARCSEC_TO_DEG;
   // Mean obliquity of the ecliptic (Meeus 22.2).
-  var eps0 = 23 + 26 / 60 + (21.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T) / 3600;
+  var eps0 = (AE_OBLIQUITY_J2000_ARCSEC + AE_OBLIQUITY_RATE_ARCSEC * T - 0.00059 * T * T + 0.001813 * T * T * T) / 3600;
   return { dpsi: dpsi, deps: deps, eps0: eps0, eps: eps0 + deps };
 }
 
@@ -198,11 +208,11 @@ var AE_MOON_DIST_SCALE = 1e-3;   // table units: 1e-3 km
 function _aeMoon(jde) {
   var T = (jde - JD_J2000) / JULIAN_CENTURY;
   var T2 = T * T, T3 = T2 * T, T4 = T3 * T;
-  var Lp = 218.3164477 + 481267.88123421 * T - 0.0015786 * T2 + T3 / 538841 - T4 / 65194000;   // mean longitude
-  var D = 297.8501921 + 445267.1114034 * T - 0.0018819 * T2 + T3 / 545868 - T4 / 113065000;     // mean elongation
-  var M = 357.5291092 + 35999.0502909 * T - 0.0001536 * T2 + T3 / 24490000;                     // Sun's mean anomaly
-  var Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T2 + T3 / 69699 - T4 / 14712000;       // Moon's mean anomaly
-  var F = 93.2720950 + 483202.0175233 * T - 0.0036539 * T2 - T3 / 3526000 + T4 / 863310000;      // argument of latitude
+  var Lp = 218.3164477 + AE_MOON_MEAN_LON_RATE * T - 0.0015786 * T2 + T3 / 538841 - T4 / 65194000;   // mean longitude
+  var D = 297.8501921 + AE_MOON_ELONG_RATE * T - 0.0018819 * T2 + T3 / 545868 - T4 / 113065000;     // mean elongation
+  var M = 357.5291092 + AE_SUN_ANOMALY_RATE * T - 0.0001536 * T2 + T3 / 24490000;                     // Sun's mean anomaly
+  var Mp = 134.9633964 + AE_MOON_ANOMALY_RATE * T + 0.0087414 * T2 + T3 / 69699 - T4 / 14712000;       // Moon's mean anomaly
+  var F = 93.2720950 + AE_MOON_ARGLAT_RATE * T - 0.0036539 * T2 - T3 / 3526000 + T4 / 863310000;      // argument of latitude
   var A1 = 119.75 + 131.849 * T;      // action of Venus
   var A2 = 53.09 + 479264.290 * T;    // action of Jupiter
   var A3 = 313.45 + 481266.484 * T;   // flattening of the Earth

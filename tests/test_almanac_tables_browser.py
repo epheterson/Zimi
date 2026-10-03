@@ -3,7 +3,7 @@
 On the shipped files, served by Zimi, in headless Chromium at a phone's width
 (390px), San Francisco chosen as the place:
 
-  1. The tiles: two rows, every table and calculation, scrolling inside
+  1. The tiles: three rows, every table, calculation and constants table, scrolling inside
      themselves; the page never scrolls sideways.
   2. Every table opens with rows, its time window changes them (a day, a
      month, a year), and the print rules are there for it.
@@ -57,6 +57,7 @@ CALCS = [
     "convert",
     "zones",
 ]
+CONSTS = ["k_earth", "k_sunmoon", "k_time", "k_nav", "k_physics", "k_units"]
 DRAWN = (
     "() => { var o = document.getElementById('tb-out'); var a = document.getElementById('tk-answer');"
     " return (o && !o.classList.contains('tb-busy') && o.firstChild && !o.querySelector('.tb-wait'))"
@@ -147,12 +148,27 @@ def _seg(pg, v):
     pg.wait_for_function(DRAWN, timeout=60000)
 
 
+def _how_is_made(page, id_, md):
+    """Under every view, closed: inputs, method, constants; in Print and Share."""
+    how = page.evaluate(
+        "() => { const d = document.querySelector('#tb-how details'); return d && { open: d.open,"
+        " groups: [...d.querySelectorAll('h4')].map((h) => h.textContent), lines: d.querySelectorAll('li').length }; }"
+    )
+    assert how and not how["open"] and how["lines"] >= 1, (id_, how)
+    assert "Method" in how["groups"], (id_, how)
+    assert "## How this is made" in md and "### Method" in md, (id_, md[-600:])
+    page.evaluate("_tbPrintOn()")
+    assert page.evaluate("document.querySelector('#tb-how details').open")
+    page.evaluate("_tbPrintOff()")
+    assert not page.evaluate("document.querySelector('#tb-how details').open")
+
+
 def test_the_tiles(page):
     tiles = page.evaluate(
         "[...document.querySelectorAll('.alm-tile')].map(b => b.dataset.tb)"
     )
-    assert tiles == TABLES + CALCS
-    assert page.evaluate("document.querySelectorAll('.alm-tiles').length") == 2
+    assert tiles == TABLES + CALCS + CONSTS
+    assert page.evaluate("document.querySelectorAll('.alm-tiles').length") == 3
     # Each row scrolls inside itself; the print chips are gone.
     assert page.evaluate(
         "[...document.querySelectorAll('.alm-tiles')].every(r => r.scrollWidth > r.clientWidth)"
@@ -201,6 +217,19 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     page.evaluate("document.documentElement.classList.remove('alm-ref-print')")
     page.emulate_media(media="screen")
     assert shown == ["block", "none", "none"], shown
+    # Share: the same view as Markdown, its name, place and window, then a table.
+    md = page.evaluate("_tbMarkdown()")
+    name = page.evaluate("document.getElementById('alm-ref-title').textContent")
+    lines = md.split("\n")
+    assert lines[0] == "# " + name and lines[2], (id_, lines[:3])
+    assert "| --- |" in md, (id_, md[:300])
+    _how_is_made(page, id_, md)
+    # Each table's rows are as wide as its head.
+    for block in "\n".join(ln if ln.startswith("| ") else "" for ln in lines).split(
+        "\n\n"
+    ):
+        widths = {ln.count(" | ") for ln in block.split("\n") if ln}
+        assert len(widths) <= 1, (id_, widths)
     assert not page.errors, page.errors
 
 
@@ -301,6 +330,63 @@ def test_every_calculation_answers_from_its_defaults(page, id_):
         "document.querySelector('.tk-calc, button[data-calculate]') === null"
     )
     assert _no_side_scroll(page)
+    # Share: its answer first, then what it was worked from, then the working.
+    md = page.evaluate("_tbMarkdown()")
+    assert md.startswith("# ") and ("**" + big.strip()) in md, (id_, md[:200])
+    assert "\n- " in md and "| --- |" in md, (id_, md[:400])
+    _how_is_made(page, id_, md)
+    assert not page.errors, page.errors
+
+
+@pytest.mark.parametrize("id_", CONSTS)
+def test_every_constants_table(page, id_):
+    _open(page, id_)
+    rows = page.evaluate(
+        "[...document.querySelectorAll('#tb-out tbody tr')].map((r) => [...r.cells].map((c) => c.textContent))"
+    )
+    assert len(rows) >= 6, (id_, rows)
+    for r in rows:
+        assert len(r) == 3 and r[0] and r[1] and r[2], (id_, r)
+        assert "NaN" not in r[1] and r[1] != "–" and "undefined" not in "".join(r), (id_, r)
+    md = page.evaluate("_tbMarkdown()")
+    assert md.startswith("# ") and "| --- | --- | --- |" in md, (id_, md[:300])
+    assert page.evaluate("!!document.querySelector('.tb-bar [data-tb-share]') && !document.querySelector('.tb-bar [data-tb-reset]')")
+    assert _no_side_scroll(page)
+    assert not page.errors, page.errors
+
+
+def test_constants_read_the_sums_own_numbers(page):
+    _open(page, "k_earth")
+    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
+    assert "6,378.137 km" in cells and "1 / 298.257223563" in cells, cells
+    _open(page, "k_sunmoon")
+    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
+    assert "29.530589 d" in cells and "27.554550 d" in cells and "27.212221 d" in cells, cells
+    # How this is made links a constant to its tile.
+    _open(page, "sunmoon")
+    page.evaluate("document.querySelector('#tb-how details').open = true")
+    page.click("#tb-how [data-tb-go='k_sunmoon']")
+    page.wait_for_function("document.getElementById('alm-ref-title').textContent === 'Sun and Moon' && !!document.querySelector('.tb-consts')")
+    assert not page.errors, page.errors
+
+
+def test_share_sends_markdown_or_copies_it(page):
+    _open(page, "days")
+    page.evaluate(
+        "() => { window.__shared = null; window.__copied = null;"
+        " navigator.share = (d) => { window.__shared = d; return Promise.resolve(); };"
+        " window.__ct = _copyText; _copyText = (s) => { window.__copied = s; }; }"
+    )
+    page.click("[data-tb-share]")
+    shared = page.evaluate("window.__shared")
+    assert shared and shared["text"].startswith("# ") and shared["title"], shared
+    # No share sheet: onto the clipboard ("Copied").
+    page.evaluate(
+        "() => { delete navigator.share; Navigator.prototype.share = undefined; }"
+    )
+    page.click("[data-tb-share]")
+    assert page.evaluate("window.__copied") == shared["text"]
+    page.evaluate("() => { _copyText = window.__ct; }")
     assert not page.errors, page.errors
 
 
@@ -403,4 +489,59 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.wait_for_function("() => !document.getElementById('alm-ref')")
     page.wait_for_timeout(300)
     assert page.evaluate("_almanacOpen")
+    assert not page.errors, page.errors
+
+
+def test_add_a_clock_from_a_searchable_sheet(page):
+    """+ Add a clock opens a sheet: a search on top, every zone below with its
+    time now; typing filters, a tap adds the clock."""
+    page.evaluate(
+        "() => { const r = document.getElementById('alm-ref'); if (r) _tbClose(); }"
+    )
+    page.wait_for_selector(".alm-tz-add", state="attached", timeout=30000)
+    page.locator(".alm-tz-add").scroll_into_view_if_needed()
+    page.click(".alm-tz-add")
+    page.wait_for_selector(".alm-clock-sheet .tk-search")
+    n_all = page.evaluate(
+        "document.querySelectorAll('.alm-clock-sheet .tk-opt').length"
+    )
+    assert n_all > 60, n_all
+    sub = page.inner_text(".alm-clock-sheet .tk-opt .tk-opt-sub >> nth=0")
+    assert "UTC" in sub and ":" in sub, sub
+    page.fill(".alm-clock-sheet .tk-search", "kathm")
+    assert (
+        page.evaluate("document.querySelectorAll('.alm-clock-sheet .tk-opt').length")
+        == 1
+    )
+    page.click(".alm-clock-sheet .tk-opt")
+    assert not page.evaluate("!!document.querySelector('.alm-clock-sheet, .tk-scrim')")
+    assert "Asia/Kathmandu" in page.evaluate(
+        "localStorage.getItem('zimi_almanac_clocks')"
+    )
+    assert "Kathmandu" in page.inner_text("#almanac-tz-pills")
+    page.evaluate("_almClockRemove('Asia/Kathmandu')")
+    assert not page.errors, page.errors
+
+
+def test_a_sections_own_tiles_and_back_to_it(page):
+    """Tides' quiet link shows only its tiles, All shows every tile, and Back
+    returns to the tide section with every tile again."""
+    page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
+    link = page.locator("#almanac-place + .alm-subject-link")
+    link.scroll_into_view_if_needed()
+    link.click()
+    shown = page.evaluate(
+        "[...document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])')].map((b) => b.dataset.tb)"
+    )
+    assert shown == page.evaluate("ALM_TB_SUBJECTS.tides"), shown
+    assert page.is_visible("#alm-subject-bar") and "the tides" in page.inner_text("#alm-subject-bar")
+    page.click(".alm-subject-all")
+    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])').length") == len(TABLES + CALCS + CONSTS)
+    link.click()
+    page.go_back()
+    page.wait_for_function("() => document.getElementById('alm-subject-bar').hidden")
+    assert page.evaluate("_almanacOpen")
+    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile[hidden]').length") == 0
+    top = page.evaluate("document.getElementById('almanac-place').getBoundingClientRect().top")
+    assert -900 < top < 900, top
     assert not page.errors, page.errors

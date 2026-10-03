@@ -28,6 +28,7 @@
 
 var TB_TABLES = ALM_TB_TABLES;     // almanac.js: the tiles' order is the tabs'
 var TB_CALCS = ALM_TB_CALCS;
+var TB_CONSTS = ALM_TB_CONSTS;
 // The window a table opens on: the span its data is naturally read over.
 var TB_DEFAULT_WIN = { sunmoon: 'month', twilight: 'month', phases: 'month', tides: 'week', nav: 'day',
   stars: 'year', seasons: 'year', eclipses: 'year', calendars: 'month', suntime: 'month' };
@@ -410,35 +411,16 @@ function _tkPopOpen(anchor, html, cls, onBuild) {
     pop.style.top = top + 'px';
   }
   _tk.pop = { el: pop, anchor: anchor };
-  if (narrow) _tkSheetAboveKeyboard(pop);
+  if (narrow) _almSheetAboveKeyboard(pop);
   if (onBuild) onBuild(pop);
   _tkPaint(pop);
   var first = pop.querySelector('input, [data-tk], button');
   if (first) first.focus({ preventScroll: true });
   return pop;
 }
-// A sheet stands on the bottom of the layout viewport, which an iPhone's
-// keyboard covers: it would type into a box nobody can see ("text box is
-// stuck to bottom of page and I don't see it", Eric). While the keyboard is
-// up, the sheet stands on the top of the keyboard instead, and fits above it.
-var TK_SHEET_GAP_PX = 8;
-function _tkSheetAboveKeyboard(pop) {
-  var vv = window.visualViewport;
-  if (!vv) return;
-  function fit() {
-    if (!pop.isConnected) return;
-    var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
-    pop.style.bottom = covered ? covered + 'px' : '';
-    pop.style.maxHeight = covered ? (vv.height - TK_SHEET_GAP_PX) + 'px' : '';
-  }
-  vv.addEventListener('resize', fit);
-  vv.addEventListener('scroll', fit);
-  pop._tkUnfit = function () { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
-  fit();
-}
 function _tkPopClose(quiet) {
   if (!_tk.pop) return;
-  if (_tk.pop.el._tkUnfit) _tk.pop.el._tkUnfit();
+  if (_tk.pop.el._almUnfit) _tk.pop.el._almUnfit();
   var a = _tk.pop.anchor;
   _tk.pop.el.remove();
   if (_tk.scrim) { _tk.scrim.remove(); _tk.scrim = null; }
@@ -684,7 +666,9 @@ function _tkType(el, first) {
 // ═══════════════════════════════════════════════════════════════════════
 // The view: one table or calculation over the Almanac
 // ═══════════════════════════════════════════════════════════════════════
-function _tbKind(id) { return TB_TABLES.indexOf(id) >= 0 ? 'table' : TB_CALCS.indexOf(id) >= 0 ? 'calc' : id === 'decay' ? 'decay' : null; }
+function _tbKind(id) {
+  return TB_TABLES.indexOf(id) >= 0 ? 'table' : TB_CALCS.indexOf(id) >= 0 ? 'calc' : TB_CONSTS.indexOf(id) >= 0 ? 'const' : id === 'decay' ? 'decay' : null;
+}
 function _tbName(id) { return id === 'decay' ? t('ref_decay') : t('tb_' + id); }
 
 function _tbOpen(id) {
@@ -709,17 +693,18 @@ function _tbOpen(id) {
   _tb.id = id; _tb.kind = kind; _tb.changed = null;
   _tkPopClose(true);
   _tkReset();
-  var list = kind === 'calc' ? TB_CALCS : kind === 'table' ? TB_TABLES : [];
+  var list = kind === 'calc' ? TB_CALCS : kind === 'table' ? TB_TABLES : kind === 'const' ? TB_CONSTS : [];
   el.innerHTML = '<div class="tb-head">' +
     '<div class="tb-bar">' +
       '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
       '<span class="tb-bar-end">' +
-        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>') +
+        (kind === 'table' || kind === 'calc' ? '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>' : '') +
+        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-share aria-label="' + _almEsc(t('reader_share')) + '" title="' + _almEsc(t('reader_share')) + '">' + TB_SHARE_SVG + '</button>') +
         '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
       '</span>' +
     '</div>' +
-    (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : 'tables') + '">' + list.map(function (k) {
+    (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : kind === 'const' ? 'consts' : 'tables') + '">' + list.map(function (k) {
       return '<button type="button" class="tb-tab" data-tb-go="' + k + '"' + (k === id ? ' aria-current="page"' : '') + '>' + _almEsc(_tbName(k)) + '</button>';
     }).join('') + '</nav>' : '') +
     '</div><div class="tb-body" id="tb-body"></div>';
@@ -727,6 +712,8 @@ function _tbOpen(id) {
   el.querySelector('[data-tb-print]').addEventListener('click', _tbPrint);
   var reset = el.querySelector('[data-tb-reset]');
   if (reset) reset.addEventListener('click', _tbReset);
+  var share = el.querySelector('[data-tb-share]');
+  if (share) share.addEventListener('click', _tbShare);
   el.querySelectorAll('[data-tb-go]').forEach(function (b) {
     b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); var n = _tbEl('alm-ref').querySelector('[data-tb-go="' + b.getAttribute('data-tb-go') + '"]'); if (n) n.focus({ preventScroll: true }); });
   });
@@ -736,6 +723,7 @@ function _tbOpen(id) {
   var body = _tbEl('tb-body');
   if (kind === 'table') _tbRenderTable(body);
   else if (kind === 'calc') _tbRenderCalc(body);
+  else if (kind === 'const') _tbRenderConst(body);
   else _arRenderDecay(body);
   el.style.setProperty('--tb-head-h', el.querySelector('.tb-head').offsetHeight + 'px');
   if (!el.contains(document.activeElement)) el.querySelector('#alm-ref-title').focus({ preventScroll: true });
@@ -757,6 +745,94 @@ function _tbReset() {
     _tbCalcFields();
   }
 }
+// Share what is on screen as Markdown: the share sheet where there is one,
+// else the clipboard (app.js _copyText says "Copied"). Eric: "reset print and
+// copy/share the MD or text output".
+var TB_SHARE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+function _tbShare() {
+  _tkPopClose(true);
+  var text = _tbMarkdown();
+  if (!text) return;
+  var copy = function () { if (typeof _copyText === 'function') _copyText(text); };
+  if (navigator.share) {
+    navigator.share({ title: _tbName(_tb.id), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
+  } else copy();
+}
+// The open table or calculation as Markdown: its name, where and when, then
+// what the page shows in order (a calculation's answer and the values it was
+// worked from first), headings, tables, notes. Read off the page itself, so
+// every table and calculation has it with nothing of its own.
+function _tbMarkdown() {
+  var body = _tbEl('tb-body');
+  if (!body || !_tb.id) return '';
+  var md = [], txt = _tbMdText;
+  var head = [].map.call(body.querySelectorAll('#tb-print-head p:not(.tb-made)'), txt).filter(Boolean);
+  md.push('# ' + _tbName(_tb.id) + (head.length ? '\n\n' + head.join(' · ') : ''));
+  var ans = body.querySelector('#tk-answer');
+  if (ans) {
+    var big = ans.querySelector('.tk-big'), sub = ans.querySelector('.tk-sub');
+    md.push('**' + txt(big) + '**' + (sub && txt(sub) ? '  \n' + txt(sub) : ''));
+    var fields = [].map.call(body.querySelectorAll('#tk-fields .tk-row'), function (r) {
+      var l = r.querySelector('.tk-label'), c = r.querySelector('.tk-ctl');
+      if (!l || !c) return '';
+      var lc = l.cloneNode(true), cc = c.cloneNode(true);
+      [].forEach.call(lc.querySelectorAll('.tk-hint'), function (n) { n.remove(); });
+      [].forEach.call(cc.querySelectorAll('.tk-swap, .tk-step, [aria-hidden="true"]'), function (n) { n.remove(); });
+      return txt(lc) && txt(cc) ? '- ' + txt(lc) + ': ' + txt(cc) : '';
+    }).filter(Boolean);
+    if (fields.length) md.push(fields.join('\n'));
+  }
+  body.querySelectorAll('#tb-out, #tk-working, #tb-how').forEach(function (host) {
+    host.querySelectorAll('summary, h3, h4, li, table, dl, p.tb-note, p.tb-empty').forEach(function (n) {
+      if (n.tagName === 'SUMMARY') { md.push('## ' + txt(n)); return; }
+      if (n.tagName === 'H4') { md.push('### ' + txt(n)); return; }
+      if (n.tagName === 'LI') { md.push('- ' + txt(n)); return; }
+      if (n.tagName === 'H3') md.push('## ' + txt(n));
+      else if (n.tagName === 'TABLE') md.push(_tbMdTable(n));
+      else if (n.tagName === 'DL') md.push([].map.call(n.querySelectorAll('dt'), function (dt) { return '- ' + txt(dt) + ': ' + txt(dt.nextElementSibling); }).join('\n'));
+      else if (txt(n)) md.push(txt(n));
+    });
+  });
+  // A list's items one under another, not a paragraph each.
+  return md.filter(Boolean).join('\n\n').replace(/^(- .*)\n\n(?=- )/gm, '$1\n') + '\n';
+}
+function _tbMdText(n) { return n ? String(n.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+// A cell's words, or its picture's name (a phase drawn is titled "Full moon").
+function _tbMdCell(n) {
+  var s = _tbMdText(n);
+  if (!s && n) s = [].map.call(n.querySelectorAll('[title]'), function (x) { return x.getAttribute('title'); }).join(' ');
+  return s.replace(/\|/g, '\\|');
+}
+// A table, its spans laid out on a grid: a heading cell over several columns
+// is repeated in each, two head rows join per column, and a month's heading
+// across the rows stands in its first cell.
+function _tbMdTable(table) {
+  var grid = [], headRows = table.tHead ? table.tHead.rows.length : 0, w = 0;
+  [].forEach.call(table.rows, function (tr, ri) {
+    grid[ri] = grid[ri] || [];
+    var ci = 0;
+    [].forEach.call(tr.cells, function (td) {
+      while (grid[ri][ci] != null) ci++;
+      var span = td.colSpan || 1, down = td.rowSpan || 1, text = _tbMdCell(td), group = ri >= headRows && span > 1;
+      for (var r = 0; r < down; r++) {
+        grid[ri + r] = grid[ri + r] || [];
+        for (var c = 0; c < span; c++) grid[ri + r][ci + c] = group && c ? '' : (r && ri + r >= headRows ? '' : text);
+      }
+      ci += span;
+      w = Math.max(w, ci);
+    });
+  });
+  var fill = function (row) { var o = []; for (var c = 0; c < w; c++) o.push(row && row[c] != null ? row[c] : ''); return o; };
+  var head = fill([]).map(function (_, c) {
+    var parts = [];
+    for (var h = 0; h < headRows; h++) { var x = grid[h][c]; if (x && parts[parts.length - 1] !== x) parts.push(x); }
+    return parts.join(' ');
+  });
+  var line = function (cells) { return '| ' + cells.join(' | ') + ' |'; };
+  var out = [line(head), line(head.map(function () { return '---'; }))];
+  for (var b = headRows; b < grid.length; b++) out.push(line(fill(grid[b])));
+  return out.join('\n');
+}
 var TB_BACK_SVG = '<svg class="tb-chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 
 function _tbClose(viaHistory) {
@@ -770,10 +846,10 @@ function _tbClose(viaHistory) {
   _tb.returnFocus = null;
   if (f && f.isConnected && f.focus) f.focus({ preventScroll: true });
 }
-// Asked first by app.js's popstate: Back with the view open closes the view,
-// not the Almanac; the step the view's own close takes back is swallowed.
-// True when the event was the view's.
-function _almTablesPop(e) {
+// Asked by almanac.js's _almTablesPop (app.js's popstate): Back with the
+// view open closes the view, not the Almanac; the step the view's own close
+// takes back is swallowed. True when the event was the view's.
+function _tbHistoryPop(e) {
   if (_tb.expectPop) { _tb.expectPop = false; return true; }
   if (_tbEl('alm-ref') && !(e.state && e.state.almTables)) { _tbClose(true); return true; }
   return false;
@@ -794,9 +870,17 @@ window.addEventListener('keydown', function (e) {
 var TB_PRINT_CLASS = 'alm-ref-print';
 var TB_PRINT_UNDO_MS = 60000;   // afterprint can be late or missing on a phone
 function _tbPrintOn() {
-  if (_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen) document.documentElement.classList.add(TB_PRINT_CLASS);
+  if (!(_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen)) return;
+  document.documentElement.classList.add(TB_PRINT_CLASS);
+  // Paper has no tap to open "How this is made": it prints open.
+  var d = document.querySelector('#tb-how details');
+  if (d && !d.open) { d.open = true; d.setAttribute('data-print-opened', ''); }
 }
-function _tbPrintOff() { document.documentElement.classList.remove(TB_PRINT_CLASS); }
+function _tbPrintOff() {
+  document.documentElement.classList.remove(TB_PRINT_CLASS);
+  var d = document.querySelector('#tb-how details[data-print-opened]');
+  if (d) { d.open = false; d.removeAttribute('data-print-opened'); }
+}
 function _tbPrint() {
   _tkPopClose(true);
   if (typeof window.print !== 'function') return;
@@ -807,6 +891,253 @@ function _tbPrint() {
 }
 window.addEventListener('beforeprint', _tbPrintOn);
 window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo); _tbPrintOff(); });
+
+// ═══ How this is made ═══
+// Eric: "add like all the stuff used to generate everything on the page".
+// Under every table and calculation, closed: the inputs in effect, the method
+// behind each quantity, the constants. Every number is read from the constant
+// the sums themselves use; which lines a view has is TB_MADE.
+var TB_MADE = {
+  sunmoon: ['sun', 'moon', 'rise', 'moonrise', 'search', 'deltat'],
+  twilight: ['sun', 'twilight', 'search', 'deltat'],
+  phases: ['sun', 'moon', 'phases', 'deltat'],
+  tides: ['tides'],
+  nav: ['sun', 'moon', 'planets', 'stars', 'deltat'],
+  stars: ['sun', 'stars', 'heliacal'],
+  seasons: ['seasons', 'deltat'],
+  eclipses: ['sun', 'moon', 'eclipses', 'deltat'],
+  calendars: ['calendars'],
+  suntime: ['sun', 'eot'],
+  distance: ['distance'],
+  sundial: ['sun', 'eot'],
+  sunmoonday: ['sun', 'moon', 'rise', 'moonrise', 'twilight', 'deltat'],
+  units: ['units'],
+  sight: ['sun', 'moon', 'planets', 'stars', 'sight', 'deltat'],
+  days: ['calendars'],
+  convert: ['calendars'],
+  zones: ['zones']
+};
+var TB_ARCMIN_PER_DEG = 60, TB_S_PER_DAY = 86400;
+function _tbArcmin(deg) { return _arNum(deg * TB_ARCMIN_PER_DEG, 0) + '′'; }
+// Each method: its line, and the constants it rests on.
+var TB_MADE_METHOD = {
+  sun: function () { return { line: _tbT('mm_sun'), c: ['aberration', 'light'] }; },
+  moon: function () { return { line: _tbT('mm_moon'), c: ['moonk', 'synodic'] }; },
+  rise: function () {
+    return { line: _tbT('mm_rise', { alt: '−' + _tbArcmin(-AR_SUNRISE_ALT), r: _tbArcmin(AR_MOON_REFRACTION_DEG), sd: _tbArcmin(-AR_SUNRISE_ALT - AR_MOON_REFRACTION_DEG) }) };
+  },
+  moonrise: function () { return { line: _tbT('mm_moonrise', { k: _arNum(AR_MOON_HP_FACTOR, 4), r: _tbArcmin(AR_MOON_REFRACTION_DEG) }) }; },
+  twilight: function () {
+    return { line: _tbT('mm_twilight', { c: -AR_TWILIGHT_ALTS.civil, n: -AR_TWILIGHT_ALTS.nautical, a: -AR_TWILIGHT_ALTS.astronomical }) };
+  },
+  search: function () {
+    var gridMin = AR_SAMPLE_HOURS * 60 / AR_GRID_STEPS;
+    return { line: _tbT('mm_search', { h: AR_SAMPLE_HOURS, m: _arNum(gridMin, 0), s: _arNum(gridMin * 60 / Math.pow(2, AR_BISECT_STEPS), 0) }) };
+  },
+  deltat: function (x) {
+    var jd = _dateToJD(x.mid || Date.now());
+    return { line: _tbT('mm_deltat', { s: _arNum(_cnDeltaTdays(jd) * TB_S_PER_DAY, 1) }), c: ['tai'] };
+  },
+  phases: function () { return { line: _tbT('mm_phases', { list: AR_PHASE_ANGLES.map(function (a) { return a + '°'; }).join(', ') }) }; },
+  seasons: function () { return { line: _tbT('mm_seasons') }; },
+  eclipses: function () { return { line: _tbT('mm_eclipses', { m: _arNum(AR_ECL_STEP_MS / TB_MS_MIN, 0), h: _arNum(AR_ECL_HALF_SPAN_MS / TB_MS_HOUR, 0) }) }; },
+  planets: function () { return { line: _tbT('mm_planets'), c: ['light', 'aberration'] }; },
+  stars: function () { return { line: _tbT('mm_stars'), c: ['sidereal', 'year'] }; },
+  heliacal: function () { return { line: _tbT('mm_heliacal', { av: AR_ARCUS_VISIONIS_DEG, alt: '−' + _tbArcmin(-AR_STAR_RISE_ALT) }) }; },
+  sight: function () { return { line: _tbT('mm_sight', { k: _arNum(AR_DIP_ARCMIN_PER_SQRT_M, 2), t: AR_STD_TEMP_C, p: AR_STD_PRESSURE_HPA }), c: ['parallax'] }; },
+  tides: function (x) {
+    var m = x.made;
+    if (!m) return null;
+    return { line: m.ref ? _tbT('mm_tides_sub', { ref: m.ref, station: m.station }) : _tbT('mm_tides', { station: m.station, n: m.n }) };
+  },
+  eot: function () { return { line: _tbT('mm_eot') }; },
+  calendars: function () { return { line: _tbT('mm_calendars', { list: AR_CAL_SYSTEMS.map(_arCalLabel).join(', ') }) }; },
+  distance: function () { return { line: _tbT('mm_distance', { r: _arNum(TB_EARTH_R_KM, 4) }) }; },
+  units: function () { return { line: _tbT('mm_units') }; },
+  zones: function () { return { line: _tbT('mm_zones') }; }
+};
+var TB_MADE_CONST = {
+  aberration: function () { return _arNum(AR_ABERRATION_ARCSEC, 5) + '″'; },
+  light: function () { return _arNum(AR_LIGHT_DAYS_PER_AU * TB_S_PER_DAY, 3) + ' s'; },
+  parallax: function () { return _arNum(AR_SOLAR_PARALLAX_ARCSEC, 3) + '″'; },
+  moonk: function () { return _arNum(AR_MOON_K, 7); },
+  synodic: function () { return _arT('days_n', { n: _arNum(_CN_SYN, 6) }); },
+  sidereal: function () { return _arNum(AR_SIDEREAL_DEG_PER_DAY, 6) + '°/d'; },
+  year: function () { return _arT('days_n', { n: _arNum(AR_DAYS_PER_JULIAN_YEAR, 2) }); },
+  tai: function () { return AR_TAI_MINUS_UTC + ' s'; }
+};
+// The middle of a table's window, as an instant.
+function _tbMid(span) { return (_arDayMs(span.from) + _arDayMs(span.to)) / 2; }
+// A calculation's inputs in effect: its places, its date, its unit.
+function _tbCalcInputs(c) {
+  var places = ['place', 'a', 'b'].map(function (k) { return c[k]; }).filter(function (p) { return p && p.lat != null; });
+  return { places: places, date: typeof c.ms === 'number' ? c.ms : null, mid: typeof c.ms === 'number' ? c.ms : null, units: c.unit || null };
+}
+function _tbMadeInputs(x) {
+  var out = [], places = x.places || (x.place ? [x.place] : []), seenTz = {};
+  places.forEach(function (p) { out.push(_tbT('made_place', { name: p.name || _tbPlaceLine(p), at: _arLatText(p.lat) + ' ' + _arLonText(p.lon) })); });
+  var at = x.date || x.mid || Date.now();
+  places.map(function (p) { return p.tz; }).concat(x.made && x.made.tz ? [x.made.tz] : []).forEach(function (tz) {
+    if (!tz || seenTz[tz]) return;
+    seenTz[tz] = 1;
+    out.push(_tbT('made_zone', { tz: tz, off: _almTzOffsetLabel(tz, new Date(at)) }));
+  });
+  if (x.range) out.push(_tbT('made_dates', { range: x.range }));
+  else if (x.date != null && places.length) out.push(_tbT('made_date', { date: _tbLongDay(_tbDayIn(x.date, places[0].tz)) }));
+  var units = x.units || (x.made && x.made.units);
+  if (units) out.push(_tbT('made_units', { u: units }));
+  return out;
+}
+// Fill #tb-how for the open view (x: what it was worked from).
+function _tbMadeFill(x) {
+  var host = _tbEl('tb-how'), keys = TB_MADE[_tb.id];
+  if (!host) return;
+  if (!keys || !x) { host.innerHTML = ''; return; }
+  var methods = [], consts = [], seen = {};
+  keys.forEach(function (k) {
+    var m = TB_MADE_METHOD[k](x);
+    if (!m) return;
+    methods.push(m.line);
+    (m.c || []).forEach(function (ck) { if (!seen[ck]) { seen[ck] = 1; consts.push({ text: _tbT('mc_' + ck) + ': ' + TB_MADE_CONST[ck](), tile: TB_MADE_CONST_TILE[ck] }); } });
+  });
+  var was = host.querySelector('details'), open = was && was.open && !was.hasAttribute('data-print-opened');
+  // A line, and for a constant the tile that holds it ("Physics").
+  function group(key, lines) {
+    return lines.length ? '<h4>' + _tbH(key) + '</h4><ul>' + lines.map(function (l) {
+      if (typeof l === 'string') return '<li>' + _almEsc(l) + '</li>';
+      return '<li>' + _almEsc(l.text) + ' · <button type="button" class="tb-how-k" data-tb-go="' + l.tile + '">' + _almEsc(_tbName(l.tile)) + '</button></li>';
+    }).join('') + '</ul>' : '';
+  }
+  host.innerHTML = '<details class="tb-how"' + (open ? ' open' : '') + '><summary>' + _tbH('made_title') + '</summary>' +
+    group('made_inputs', _tbMadeInputs(x)) + group('made_method', methods) + group('made_constants', consts) + '</details>';
+  host.querySelectorAll('[data-tb-go]').forEach(function (b) { b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); }); });
+}
+// Which Constants tile holds each constant a method rests on.
+var TB_MADE_CONST_TILE = { aberration: 'k_physics', light: 'k_physics', parallax: 'k_nav', moonk: 'k_sunmoon', synodic: 'k_sunmoon',
+  sidereal: 'k_earth', year: 'k_time', tai: 'k_time' };
+
+// ═══ Constants ═══
+// Each tile a table: name, value, unit, source. Every value is read from the
+// named constant the sums use (or worked from them: a month from a mean
+// motion), never typed again here.
+var TB_DEG_PER_CENTURY_TO_DAYS = JULIAN_CENTURY * 360;   // a rate in degrees per century -> its period in days
+function _tbPeriod(degPerCentury) { return TB_DEG_PER_CENTURY_TO_DAYS / degPerCentury; }
+// Reference values no sum uses, shown for completeness: defined once here.
+var TB_G_SI = 6.67430e-11;           // CODATA 2018
+var TB_G0_M_S2 = 9.80665;            // standard gravity, exact (CGPM 1901)
+var TB_ISA_T0_C = 15;                // ICAO standard atmosphere at sea level
+var TB_ISA_LAPSE_K_PER_KM = 6.5;
+var TB_SAROS_SYNODIC = 223;          // the Saros: 223 synodic months
+var TB_S_PER_DAY_SI = 86400;
+var TB_SRC_EXACT = 'SI';
+// Rows: [name key, value, digits, unit, source]; value a number, or text.
+var TB_CONST_ROWS = {
+  k_earth: function () {
+    var a = AE_EARTH_RADIUS_KM, f = AE_EARTH_FLATTENING;
+    return [
+      ['eq_radius', a, 3, 'km', 'WGS84'],
+      ['polar_radius', a * (1 - f), 3, 'km', 'WGS84'],
+      ['mean_radius', TB_EARTH_R_KM, 4, 'km', 'IUGG'],
+      ['flattening', '1 / ' + _arNum(1 / f, 9), 0, '', 'WGS84'],
+      ['gm_earth', AE_GM_EARTH, 4, 'km³/s²', 'WGS84'],
+      ['g0', TB_G0_M_S2, 5, 'm/s²', 'CGPM'],
+      ['rotation', AR_SIDEREAL_DEG_PER_DAY, 8, '°/d', 'Meeus 12.4'],
+      ['obliquity', AE_OBLIQUITY_J2000_ARCSEC / 3600, 7, '°', 'Meeus 22.2'],
+      ['obliquity_rate', AE_OBLIQUITY_RATE_ARCSEC, 4, '″/century', 'Meeus 22.2']
+    ];
+  },
+  k_sunmoon: function () {
+    return [
+      ['au', AU_M / 1000, 0, 'km', 'IAU 2012'],
+      ['sun_radius', AE_SUN_RADIUS_KM, 0, 'km', 'IAU 2015'],
+      ['moon_dist', AE_MOON_MEAN_DIST_KM, 2, 'km', 'Meeus 47'],
+      ['moon_radius', AE_MOON_RADIUS_KM, 1, 'km', 'IAU'],
+      ['moon_k', AR_MOON_K, 7, '', 'IAU'],
+      ['moon_motion', AE_MOON_MEAN_LON_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.1'],
+      ['sun_motion', AE_SUN_ANOMALY_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.3'],
+      ['synodic', _CN_SYN, 6, 'd', 'Meeus 49'],
+      ['tropical_month', _tbPeriod(AE_MOON_MEAN_LON_RATE), 6, 'd', 'Meeus 47.1'],
+      ['anomalistic', _tbPeriod(AE_MOON_ANOMALY_RATE), 6, 'd', 'Meeus 47.4'],
+      ['draconic', _tbPeriod(AE_MOON_ARGLAT_RATE), 6, 'd', 'Meeus 47.5'],
+      ['saros', TB_SAROS_SYNODIC * _CN_SYN, 3, 'd', TB_SAROS_SYNODIC + ' × ' + _tbT('mc_synodic')]
+    ];
+  },
+  k_time: function () {
+    var now = Date.now();
+    return [
+      ['day', TB_S_PER_DAY_SI, 0, 's', TB_SRC_EXACT],
+      ['sidereal_day', 360 / AR_SIDEREAL_DEG_PER_DAY * TB_S_PER_DAY_SI, 4, 's', 'Meeus 12.4'],
+      ['tropical_year', _CN_TROPICAL_YEAR, 4, 'd', 'Meeus 27'],
+      ['julian_year', AR_DAYS_PER_JULIAN_YEAR, 2, 'd', TB_SRC_EXACT],
+      ['julian_century', JULIAN_CENTURY, 0, 'd', TB_SRC_EXACT],
+      ['jd_j2000', JD_J2000, 1, 'JD', 'IAU'],
+      ['jd_unix', JD_UNIX_EPOCH, 1, 'JD', '1970-01-01 00:00 UTC'],
+      ['delta_t', _cnDeltaTdays(_dateToJD(now)) * TB_S_PER_DAY_SI, 1, 's', 'Espenak, Meeus'],
+      ['delta_t_measured', AR_MEASURED_DELTA_T.s, 1, 's', 'IERS ' + AR_MEASURED_DELTA_T.year],
+      ['tai_utc', AR_TAI_MINUS_UTC, 0, 's', 'IERS'],
+      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS']
+    ];
+  },
+  k_nav: function () {
+    return [
+      ['nmi', TB_KM_PER.nm * 1000, 0, 'm', TB_SRC_EXACT],
+      ['knot', TB_KM_PER.nm, 3, 'km/h', TB_SRC_EXACT],
+      ['refraction', AR_MOON_REFRACTION_DEG * TB_ARCMIN_PER_DEG, 0, '′', 'Nautical Almanac'],
+      ['std_air', AR_STD_TEMP_C + ' °C · ' + AR_STD_PRESSURE_HPA + ' hPa', 0, '', 'Nautical Almanac'],
+      ['dip', AR_DIP_ARCMIN_PER_SQRT_M, 2, '′ × √m', 'Nautical Almanac'],
+      ['horizon', SKY_EYE_KM, 2, 'km × √m', 'Bowditch'],
+      ['sun_sd', (-AR_SUNRISE_ALT - AR_MOON_REFRACTION_DEG) * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
+      ['sunrise_alt', AR_SUNRISE_ALT * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
+      ['moon_hp', AR_MOON_HP_FACTOR, 4, '× HP', 'Meeus 15'],
+      ['sun_parallax', AR_SOLAR_PARALLAX_ARCSEC, 3, '″', 'IAU'],
+      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO']
+    ];
+  },
+  k_physics: function () {
+    var atm = _tbUnitFactor('pressure', 'atm');
+    return [
+      ['c', SPEED_OF_LIGHT_M_S, 0, 'm/s', TB_SRC_EXACT],
+      ['g', TB_G_SI.toExponential(5), 0, 'm³/(kg·s²)', 'CODATA 2018'],
+      ['light_au', AR_LIGHT_DAYS_PER_AU * TB_S_PER_DAY_SI, 3, 's', 'Meeus 33.3'],
+      ['aberration', AR_ABERRATION_ARCSEC, 5, '″', 'Meeus 23'],
+      ['atm', atm, 0, 'Pa', TB_SRC_EXACT],
+      ['sea_pressure', atm / _tbUnitFactor('pressure', 'hpa'), 2, 'hPa', 'ICAO'],
+      ['isa_t0', TB_ISA_T0_C, 0, '°C', 'ICAO'],
+      ['lapse', TB_ISA_LAPSE_K_PER_KM, 1, 'K/km', 'ICAO'],
+      ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
+    ];
+  },
+  k_units: function () {
+    var rows = [];
+    Object.keys(TB_UNITS).forEach(function (kind) {
+      var base = TB_UNITS[kind].filter(function (u) { return u[1] === 1; })[0];
+      if (!base) return;
+      TB_UNITS[kind].forEach(function (u) {
+        if (u === base) return;
+        rows.push([null, u[1], null, _tbUnitSym(base[0]), TB_SRC_EXACT, '1 ' + _tbUnitSym(u[0]) + ' (' + _tbT('u_' + u[0]) + ')']);
+      });
+    });
+    rows.push([null, '(°F − ' + TB_F_ZERO_C + ') × 5/9', 0, '°C', TB_SRC_EXACT, '°F']);
+    return rows;
+  }
+};
+// A value as the table shows it: text as it is; a number to its digits, or
+// to its own significant figures when it has none.
+function _tbConstVal(v, d) {
+  if (typeof v !== 'number') return String(v);
+  return d == null ? _tbSig(v, true) : _arNum(v, d);
+}
+function _tbRenderConst(body) {
+  var rows = TB_CONST_ROWS[_tb.id]().map(function (r) {
+    var name = r[5] || _tbT('kn_' + r[0]);
+    // The unit beside its value: four columns do not fit a phone.
+    return '<tr><th scope="row">' + _almEsc(name) + '</th><td><span dir="ltr">' + _almEsc(_tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : '')) + '</span></td>' +
+      '<td class="tb-src">' + _almEsc(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
+  }).join('');
+  body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
+    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
+  _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
+}
 
 // The heading only paper carries: what, where, when, and when worked out.
 function _tbPrintHead(lines) {
@@ -882,7 +1213,7 @@ function _tbRenderTable(body) {
           '<button type="button" class="tb-stepbtn tb-fwd" data-tb-step="1" aria-label="' + _tbH('later') + '">' + TB_BACK_SVG + '</button></span>') +
       (fixedPlace ? '' : _tkPlace('place', { label: _tbT('place'), get: function () { return _tb.place; }, set: function (p) { _tb.place = p; } })) +
     '</div></div>' +
-    '<div id="tb-print-head"></div><div class="tb-out" id="tb-out" aria-live="polite"></div>';
+    '<div id="tb-print-head"></div><div class="tb-out" id="tb-out" aria-live="polite"></div><div id="tb-how"></div>';
   body.innerHTML = html;
   body.querySelectorAll('[data-tb-step]').forEach(function (b) {
     b.addEventListener('click', function () { _tbStep(w, +b.getAttribute('data-tb-step')); _tbDrawTable(); });
@@ -946,6 +1277,7 @@ function _tbDrawTable() {
       var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
       var ph = _tbEl('tb-print-head');
       if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
+      _tbMadeFill({ place: res.place === false ? null : p, range: span.label, mid: _tbMid(span), made: res.made });
       out.querySelectorAll('table').forEach(function (tb) {
         if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
         // A two-row head: the second row sticks under the first, at its real height.
@@ -1082,6 +1414,7 @@ var TB_RENDER = {
     var head = '<tr><th scope="col">' + _arTH('day') + '</th><th scope="colgroup" colspan="4">' + _almEsc(t('alm_tide_col_turns')) + ' (' + _almEsc(unit) + ')</th></tr>';
     var station = _atTideName(st);
     return { place: _tbT('tide_station', { name: station }) + ' · ' + tz,
+      made: { station: station, n: pr.n, ref: st.refrec ? _atTitle(st.refrec.n) : null, tz: tz, units: unit },
       html: '<p class="tb-lede">' + _tbH('tide_station', { name: station }) + '</p>' + _tbTable(head, rows, 'tb-tides') + _tbCapNote(span) +
         _tbNote(_almEsc(st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note')) + ' ' +
           _almEsc(t('alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id }))) };
@@ -1571,10 +1904,11 @@ var TB_UNIT_SYM = { ml: 'mL', l: 'L', m3: 'm³', floz: 'fl oz', impgal: 'imp gal
 function _tbUnitSym(u) { return TB_UNIT_SYM[u] || u; }
 function _tbUnitFactor(kind, u) { var l = TB_UNITS[kind]; for (var i = 0; i < l.length; i++) if (l[i][0] === u) return l[i][1]; return NaN; }
 // v in unit a to unit b, both of one kind. Temperature by way of kelvin.
+var TB_ZERO_C_K = 273.15, TB_F_ZERO_C = 32, TB_C_PER_F = 5 / 9;
 function _tbConvert(kind, v, a, b) {
   if (kind === 'temperature') {
-    var k = a === 'c' ? v + 273.15 : a === 'f' ? (v - 32) * 5 / 9 + 273.15 : v;
-    return b === 'c' ? k - 273.15 : b === 'f' ? (k - 273.15) * 9 / 5 + 32 : k;
+    var k = a === 'c' ? v + TB_ZERO_C_K : a === 'f' ? (v - TB_F_ZERO_C) * TB_C_PER_F + TB_ZERO_C_K : v;
+    return b === 'c' ? k - TB_ZERO_C_K : b === 'f' ? (k - TB_ZERO_C_K) / TB_C_PER_F + TB_F_ZERO_C : k;
   }
   return v * _tbUnitFactor(kind, a) / _tbUnitFactor(kind, b);
 }
@@ -1657,7 +1991,7 @@ function _tbRenderCalc(body) {
   body.innerHTML = '<div id="tb-print-head"></div>' +
     '<div class="tk-answer" id="tk-answer" aria-live="polite"></div>' +
     '<div class="tk-fields" id="tk-fields"></div>' +
-    '<div id="tk-working"></div>';
+    '<div id="tk-working"></div><div id="tb-how"></div>';
   body.addEventListener('click', function (e) {
     if (!e.target.closest('[data-tb-swap]')) return;
     var u = _tb.calc[_tb.id], x = u.from;
@@ -1688,6 +2022,7 @@ function _tbSolve() {
   ans.innerHTML = (r.glyph ? '<span class="tk-answer-glyph" aria-hidden="true">' + r.glyph + '</span>' : '') +
     '<div class="tk-answer-text"><div class="tk-big" dir="auto">' + _almEsc(r.big) + '</div><div class="tk-sub">' + _almEsc(r.sub) + '</div></div>';
   wk.innerHTML = (r.extra || '') + r.working;
+  _tbMadeFill(_tbCalcInputs(c));
   var ph = _tbEl('tb-print-head');
   if (ph) ph.innerHTML = _tbPrintHead([]);
   _tb.last = r;

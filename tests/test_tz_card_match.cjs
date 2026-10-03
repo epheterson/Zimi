@@ -37,6 +37,8 @@ const pieces = [
   extract(/function _tzFmt\(tz, opts, lang\)\s*\{[\s\S]*?\n\}/, '_tzFmt'),
   extract(/function _tzUtcOffsetMin\([\s\S]*?\n\}/, '_tzUtcOffsetMin'),
   extract(/function _almTzCardLabel\(tz\)\s*\{[\s\S]*?\n\}/, '_almTzCardLabel'),
+  extract(/function _almTzSegment\(tz\) \{[^\n]+\n/, '_almTzSegment'),
+  extract(/function _almTzCityLabel\(tz\)\s*\{[\s\S]*?\n\}/, '_almTzCityLabel'),
   extract(/var _ALM_CLOCKS_KEY = [^\n]+\n/, '_ALM_CLOCKS_KEY'),
   extract(/var ALM_TZ_NAME_RE = [^\n]+\n/, 'ALM_TZ_NAME_RE'),
   extract(/function _almClocks\(\)\s*\{[\s\S]*?\n\}/, '_almClocks'),

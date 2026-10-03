@@ -488,9 +488,7 @@
     // The Earth view (almanac-earth.js): a tapped satellite's card
     'term:gps':            { q: 'Q18822',  en: 'Global Positioning System' },
     'term:iss':            { q: 'Q25271',  en: 'International Space Station' },
-    'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' },
-    // The live sky's muons (Q3151 verified 2026-09-30: enwiki pageprops)
-    'term:muon':           { q: 'Q3151',   en: 'Muon' }
+    'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' }
   };
 
   // The four seasons — displayed as the current-season name in the astro panel.

@@ -133,6 +133,9 @@
 .tb-table tr.tb-feastrow th { color: var(--amber); }
 .tb-table .tb-txt { white-space: normal; display: inline-block; min-width: 16em; max-width: 34em; text-align: start; }
 .tb-wrap td { text-align: start; }
+/* Constants: the name and the source wrap, the value and its unit stay whole. */
+.tb-consts th[scope="row"], .tb-consts .tb-src { white-space: normal; text-align: start; }
+.tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
 .tb-mono { font-family: var(--tb-mono); font-size: 12px; }
 .tb-mono th, .tb-mono td { padding: 5px 8px; }
@@ -168,6 +171,14 @@
 .tk-hint { display: block; margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--text2); max-width: 30em; }
 .tk-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tb-working { margin-top: 8px; }
+/* How this is made: closed under the page, one terse line each. */
+.tb-how { margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text2); }
+.tb-how summary { padding: 12px 0; color: var(--text); font-weight: 600; cursor: pointer; }
+.tb-how summary:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.tb-how h4 { margin: 8px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+.tb-how ul { margin: 0 0 6px; padding-inline-start: 18px; }
+.tb-how li { margin: 2px 0; line-height: 1.45; overflow-wrap: anywhere; }
+.tb-how-k { padding: 0; border: 0; background: none; color: var(--amber); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .tb-steps th { font-weight: 400; color: var(--text2); white-space: normal; }
 .tb-steps td { font-family: var(--tb-mono); font-size: 13px; }
 .tb-steps tr.tb-total > * { font-weight: 600; color: var(--text); border-top: 1px solid var(--text3); }
@@ -243,33 +254,7 @@
 }
 .tk-swap:hover, .tk-swap:focus-visible { color: var(--amber); background: var(--amber-glow); }
 
-/* ── Popovers: under the pill on a wide screen, a sheet from the bottom on a phone ── */
-.tk-pop {
-  position: absolute; z-index: 30; width: min(340px, calc(100% - 16px)); max-height: 420px; overflow: auto;
-  padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
-}
-.tk-pop.tk-sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 72dvh;
-  border-radius: 16px 16px 0 0; padding: 14px 14px max(14px, env(safe-area-inset-bottom));
-}
-.tk-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
-.tk-search {
-  width: 100%; min-height: 42px; padding: 0 12px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg); color: var(--text); font: inherit; font-size: 16px; box-sizing: border-box;
-}
-.tk-search:focus { outline: 2px solid var(--amber); outline-offset: 0; }
-.tk-list { display: grid; }
-.tk-list-h { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
-.tk-opt {
-  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 9px;
-  background: none; color: var(--text); font: inherit; font-size: 15px; text-align: start; cursor: pointer;
-}
-.tk-opt:hover, .tk-opt:focus-visible { background: var(--amber-glow); outline: none; }
-.tk-opt[aria-selected="true"] { color: var(--amber); font-weight: 600; }
-.tk-opt-sub { margin-inline-start: auto; font-size: 12px; color: var(--text2); font-weight: 400; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
-.tk-opt-here { color: var(--amber); }
-.tk-pop-hint { margin: 8px 2px 0; font-size: 12px; color: var(--text2); text-align: center; }
+/* Popovers and sheets: almanac.css (shared with the clocks' sheet). */
 .tk-pop-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .tk-btn {
   min-height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
