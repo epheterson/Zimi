@@ -14,17 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `zimi-mcp`: the MCP server and search as their own small package; `zimi mcp` serves three tools by default.
 - Find in page while reading.
 - Search results highlight matched words and group by source.
-- PDFs: Zimi's own reader with contents, page thumbnails, two-page spreads, rotate, About this PDF and highlights.
+- PDFs: Zimi's own reader with contents, page thumbnails, a page at a time with a swipe, first and last page, the page from a list, two-page spreads, rotate, About this PDF and highlights.
 - Wikisource works and textbooks open in the book reader; math renders.
-- Almanac: a live Moon and 3D view on the page's clock, a live sky, tides, the Sun with sunspots, and Tables and Calculations: sun, moon, tides, navigation and eclipse tables, and a sight reduction, sundial, calendar, time zone, distance and units calculator.
-- Back returns to where you came from: the Almanac, a search, an app.
+- Back returns to where you came from: a search, an app.
+- Picking a language in Zimipedia sets Zimi's language too.
 - The AppImage updates itself.
 
 ### Changed
 
 - Save is one verb in every app; Like is separate.
 - Searches send far fewer requests, and searches from your own network are never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
-- Text size is five steps.
+- Text size is five steps; line spacing and margins are no longer settings.
+- Search: words found are bold, and a map's places come after the reading.
 - Sign-in comes before Manage opens.
 - Download names: `Zimi-<version>-<os>-<arch>`.
 - Pinch zoom works again on phones.
@@ -37,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Like and Save on different devices never undo each other.
 - Several timing bugs on slow devices: late searches, Manage opening unasked, apps reappearing after Back.
 - Right-to-left paths, dark-mode formulas, clipped wide pictures, the Auto swatch.
+- A PDF opened before 1.13 no longer reopens with pdf.js's own toolbar.
+- Dictionary: Back after switching language returns to the word; speech is quicker and plays with the ringer switch on silent.
 
 ## [1.12.0] - 2026-09-30
 

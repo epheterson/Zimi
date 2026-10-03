@@ -162,6 +162,16 @@ Eric: "Using language selector should affect the content like in dictionary if a
 - Gap found: with Tube, Exchange, Reddot, Books or Zimipedia open, changing language does not re-render the app's strings (they ride in the page's #fragment, read once). Reopen in place, keeping the item, as the Dictionary now does.
 - On-device AI translation when no counterpart exists: 2.0, with the AI features; labelled as a machine translation, never passed off as the ZIM's text.
 
+## From the 1.13.0 phone review (Eric, 2026-10-02)
+
+- Textbooks as a bookstore (Eric: "If there's textbooks then there's types make this like a bookstore that I can browse and find what I need they're not all in one bundle"): LibreTexts and the other textbook ZIMs browsed by subject and level, one book at a time, in Bookshelf.
+- The library off the front page (Eric: "We're almost at the point where we don't need the library always visible and could be an icon or something you dive into on a separate page. With apps collections favorites discovery why that list too?"): home becomes apps, collections, favorites and Discover; the full list of ZIMs is a page of its own.
+- Dark pages turn on dark mode (Eric: "if I flip dark pages we should force dark mode (but if actually in dark mode only toggle pages)").
+- World clocks: the 28-city grid back as the default, the added clocks pinned first, an "All cities / My clocks" toggle.
+- The live sky's landscape by place (Eric: "we're on a tiny island when I rotate? In the future we need to figure that out"): ice, inland, coast instead of one beach everywhere.
+- The Sun alive (Eric: "the flares are static they don't grow and move and the sunspots don't form and disappear, the sun is a magnificent force it should feel that way"; again: "can be more alive and loud").
+- Tables that show how to use them (Eric: "like a lil sundial visualizer in that page that can print out too"): a visualization per table, printable.
+
 ## Killed, and staying killed
 
 - Article Map (v1.6, removed).
