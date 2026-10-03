@@ -6200,6 +6200,7 @@ function _renderDiscover(el, items) {
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
           '<div dir="auto" class="dc-headword">' + esc(displayTitle) + '</div>' +
+          _discoverSayHtml(displayTitle, it.zim) +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div dir="auto" class="dc-def">' + esc(it.blurb) + '</div>' : '') +
         '</div></a>';
@@ -20068,7 +20069,8 @@ function _dictWordOfPath(path) {
 // A search result (or a Discover card) opens in the app made for its kind,
 // by default: a wiki's article in Zimipedia's reader (saving, highlights,
 // languages), a book in Bookshelf's, a video in ZimiTube, a question in
-// ZimiExchange, a post in Reddot. A map already opens in Maps' viewer. The
+// ZimiExchange, a post in Reddot, a word in the Dictionary. A map already
+// opens in Maps' viewer. The
 // ZIM's own page when Settings > Reading says so, when the app is not shown
 // here, or when the page is not one of the app's things (a ZIM's front page,
 // a tag list, a user page).
@@ -20079,6 +20081,8 @@ function _setOpenInApps(on) { try { if (on) localStorage.removeItem(SK.OPEN_IN_A
 function _resultApp(zim, path) {
   if (!_openInApps()) return '';
   var z = _zimInfo(zim), app = z && _RESULT_APP[z.kind];
+  // A Wiktionary's word opens in the Dictionary, not Zimipedia's reader.
+  if (z && z.project === 'wiktionary') app = 'dictionary';
   if (!app || !path || path === z.main_path || !_appShown(app)) return '';
   if (_APP_ITEM_PATH[app] && !_APP_ITEM_PATH[app].test(path)) return '';
   return app;
@@ -25557,6 +25561,33 @@ function _spaNav(e, fn) {
   if (_anchorNativeClick(e)) return true;
   e.preventDefault();
   fn();
+  return false;
+}
+// The word on Discover's word card, said as the Dictionary says it: the
+// server's voice for the Wiktionary's language, the device's when the server
+// has none (Eric, 2026-10-03: "Maybe we can show in Discover card"). Inside
+// the card's link, so the tap is kept from opening the word.
+var _DISC_SPEAKER = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>';
+var _discAudio = null;
+function _discoverSayHtml(word, zim) {
+  var m = _WIKTIONARY_LANG_RE.exec(zim || '');
+  if (!m || !word) return '';
+  return '<span class="dc-say" role="button" tabindex="0" data-say="' + escAttr(word) + '" data-lang="' + escAttr(m[1]) + '" aria-label="' + escAttr(t('dictionary_say_word', { word: word })) + '"' +
+    ' onclick="return _discoverSay(event, this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \')return _discoverSay(event, this)">' + _DISC_SPEAKER + '<span>' + tH('dictionary_say') + '</span></span>';
+}
+function _discoverSay(e, el) {
+  e.preventDefault(); e.stopPropagation();
+  var word = el.getAttribute('data-say'), lang = el.getAttribute('data-lang');
+  var device = function() {
+    try { var u = new SpeechSynthesisUtterance(word); u.lang = lang; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (err) {}
+  };
+  if (_discAudio) { try { _discAudio.pause(); } catch (err) {} }
+  var a = _discAudio = new Audio('/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang));
+  el.classList.add('on');
+  a.onended = a.onpause = function() { el.classList.remove('on'); };
+  a.onerror = function() { el.classList.remove('on'); device(); };
+  // Started in the tap: a phone plays media only from one.
+  a.play().catch(function() { el.classList.remove('on'); });
   return false;
 }
 // Anchor-card variants reading the data-* the card already carries, so the
