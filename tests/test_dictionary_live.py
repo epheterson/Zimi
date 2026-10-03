@@ -18,6 +18,7 @@ Run: pytest tests/test_dictionary_live.py -v
 import os
 import sys
 import threading
+import time
 
 import pytest
 
@@ -97,7 +98,10 @@ def _word(f, w):
     step), then its entries (the lookup answered). A timeout says which of
     the two never came, and what the page showed instead."""
     for cond, what in (
-        ("w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w; }", "the page never went to it"),
+        (
+            "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w; }",
+            "the page never went to it",
+        ),
         (
             "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w && !document.querySelector('.sk'); }",
             "the lookup never answered",
@@ -106,7 +110,9 @@ def _word(f, w):
         try:
             f.wait_for_function(cond, arg=w, timeout=20000)
         except Exception as e:
-            raise AssertionError("%r: %s; the page: %r" % (w, what, f.evaluate(STATE))) from e
+            raise AssertionError(
+                "%r: %s; the page: %r" % (w, what, f.evaluate(STATE))
+            ) from e
 
 
 def _still(pg):
@@ -192,7 +198,9 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             _shot(pg, "eau-" + scheme)
             # Zimi's arrow walks the trail back (its header back in view at the top).
             f.evaluate("() => window.scrollTo(0, 0)")
-            pg.wait_for_function("() => !document.body.classList.contains('chrome-away')")
+            pg.wait_for_function(
+                "() => !document.body.classList.contains('chrome-away')"
+            )
             _still(pg)
             pg.click("#back-btn")
             _word(f, "water")
@@ -290,7 +298,12 @@ def test_zimis_language_opens_the_translation_and_back_returns(served):
 
     with sync_playwright() as pw:
         br = pw.chromium.launch()
-        ctx = br.new_context(viewport={"width": 390, "height": 844}, locale="en-US", is_mobile=True, has_touch=True)
+        ctx = br.new_context(
+            viewport={"width": 390, "height": 844},
+            locale="en-US",
+            is_mobile=True,
+            has_touch=True,
+        )
         ctx.add_init_script(VOICES)
         pg = ctx.new_page()
         try:
@@ -299,7 +312,9 @@ def test_zimis_language_opens_the_translation_and_back_returns(served):
             pg.evaluate("() => setLanguage('fr')")
             pg.wait_for_url("**/?dictionary=eau", timeout=10000)
             _word(_frame(pg), "eau")
-            pg.wait_for_function("() => !document.body.classList.contains('chrome-away')")
+            pg.wait_for_function(
+                "() => !document.body.classList.contains('chrome-away')"
+            )
             _still(pg)
             pg.click("#back-btn")
             pg.wait_for_url("**/?dictionary=water", timeout=10000)
@@ -317,7 +332,9 @@ PLAYED = """(() => {
 OFFER = "() => { const o = document.querySelector('[data-offer=\\'fr\\']:not([hidden])'); return o ? o.textContent : ''; }"
 
 
-def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(served, tmp_path, monkeypatch):
+def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(
+    served, tmp_path, monkeypatch
+):
     """Eric's phone on silent: Say plays the server's WAV through <audio>,
     never speechSynthesis, when the server can say the language. Without a
     clearer voice for it the device speaks, and an admin is offered one,
@@ -328,7 +345,9 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(serv
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
     tv.fake_piper(tmp_path)
     voices._reset_for_tests()
-    assert voices.piper_command() == [str(tmp_path / "piper")], "the fake Piper, found on PATH"
+    assert voices.piper_command() == [
+        str(tmp_path / "piper")
+    ], "the fake Piper, found on PATH"
 
     def fetched(tag):
         tv.install(tag)
@@ -338,12 +357,21 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(serv
     monkeypatch.setattr(voices, "_fetch_voice", fetched)
     with sync_playwright() as pw:
         br = pw.chromium.launch()
-        ctx = br.new_context(viewport={"width": 390, "height": 844}, locale="en-US", is_mobile=True, has_touch=True)
+        ctx = br.new_context(
+            viewport={"width": 390, "height": 844},
+            locale="en-US",
+            is_mobile=True,
+            has_touch=True,
+        )
         ctx.add_init_script(VOICES)
         ctx.add_init_script(PLAYED)
         pg = ctx.new_page()
         answers = []
-        pg.on("response", lambda r: "/dictionary/speak" in r.url and answers.append((r.status, r.headers.get("content-type"))))
+        pg.on(
+            "response",
+            lambda r: "/dictionary/speak" in r.url
+            and answers.append((r.status, r.headers.get("content-type"))),
+        )
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
 
@@ -351,7 +379,9 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(serv
             pg.goto(served + "/?dictionary=eau")
             f = _frame(pg)
             _word(f, "eau")
-            f.wait_for_function("() => document.querySelector('[data-say][data-code=\"fr\"]:not([hidden])')")
+            f.wait_for_function(
+                "() => document.querySelector('[data-say][data-code=\"fr\"]:not([hidden])')"
+            )
             pg.wait_for_timeout(300)
             return f
 
@@ -389,9 +419,14 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(serv
             played = f.evaluate("() => window.__played")
             assert played[-1].endswith("/dictionary/speak?text=eau&lang=fr"), played
             pg.wait_for_timeout(500)
-            assert f.evaluate("() => window.__said") == [], "speechSynthesis is not called"
+            assert (
+                f.evaluate("() => window.__said") == []
+            ), "speechSynthesis is not called"
             # Chromium asks for it by range, as Safari does.
-            assert answers and answers[-1] in ((200, "audio/wav"), (206, "audio/wav")), answers
+            assert answers and answers[-1] in (
+                (200, "audio/wav"),
+                (206, "audio/wav"),
+            ), answers
             # Removed: the device says it again, at once.
             assert voices.remove("fr")
             f = open_eau()
@@ -405,3 +440,174 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(serv
             voices.remove("fr")
             voices.POLICY.set("ask")
             voices._reset_for_tests()
+
+
+SAY_FR = "[data-say][data-code='fr']:not([hidden])"
+SAY_EN = "[data-say][data-code='en']:not([hidden])"
+LINE_FR = "() => { const o = document.querySelector('[data-offer=\\'fr\\']'); return o && !o.hidden ? o.textContent : ''; }"
+
+
+@pytest.fixture
+def piper_here(served, tmp_path, monkeypatch):
+    """A fake Piper on PATH, and a phone to open eau on."""
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.delenv(voices.PIPER_CMD_ENV, raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+    tv.fake_piper(tmp_path)
+    voices._reset_for_tests()
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(
+            viewport={"width": 390, "height": 844},
+            locale="en-US",
+            is_mobile=True,
+            has_touch=True,
+        )
+        ctx.add_init_script(VOICES)
+        ctx.add_init_script(PLAYED)
+        pg = ctx.new_page()
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+
+        def open_eau():
+            pg.goto(served + "/?dictionary=eau")
+            f = _frame(pg)
+            _word(f, "eau")
+            f.wait_for_function("s => document.querySelector(s)", arg=SAY_FR)
+            pg.wait_for_timeout(300)
+            return f
+
+        try:
+            yield open_eau, errors
+        finally:
+            br.close()
+            for tag in list(voices.installed()):
+                voices.remove(tag)
+            voices.POLICY.set("ask")
+            voices._reset_for_tests()
+
+
+def test_say_shows_it_is_working_never_stacks_and_recovers(piper_here, monkeypatch):
+    """A server voice's first word takes seconds (Kokoro, about five): the
+    button says so from the tap, more taps add nothing, and audio that
+    fails hands the word to the device, whose voice the next tap uses at
+    once (inside the tap, where iOS lets speech start)."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+    tv.install("en-US")
+    real = voices.speak
+
+    def slow(*a, **k):
+        time.sleep(1.5)
+        return real(*a, **k)
+
+    monkeypatch.setattr(voices, "speak", slow)
+    f = open_eau()
+    f.eval_on_selector(SAY_FR, "b => { b.click(); b.click(); b.click(); }")
+    assert (
+        f.eval_on_selector(
+            SAY_FR, "b => b.classList.contains('busy') && b.getAttribute('aria-busy')"
+        )
+        == "true"
+    )
+    f.wait_for_function(
+        "s => !document.querySelector(s).classList.contains('busy')",
+        arg=SAY_FR,
+        timeout=10000,
+    )
+    f.wait_for_function(
+        "s => !document.querySelector(s).classList.contains('on')",
+        arg=SAY_FR,
+        timeout=10000,
+    )
+    assert len(f.evaluate("() => window.__played")) == 1, "three taps, one word"
+    assert f.evaluate("() => window.__said") == []
+    # Audio that is not audio (English, not yet heard, so not in the
+    # browser's cache): the device says it, and the button is idle.
+    monkeypatch.setattr(voices, "speak", lambda *a, **k: b"RIFF not a wave")
+    f.evaluate("() => { window.__played = []; }")
+    f.eval_on_selector(SAY_EN, "b => b.click()")
+    f.wait_for_function("() => window.__said.length === 1", timeout=10000)
+    assert f.evaluate("() => window.__said[0][1]") == "Samantha"
+    f.wait_for_function("s => document.querySelector(s).className === 'spk'", arg=SAY_EN)
+    f.eval_on_selector(SAY_EN, "b => b.click()")
+    f.wait_for_function("() => window.__said.length === 2")
+    assert (
+        len(f.evaluate("() => window.__played")) == 1
+    ), "the next tap went straight to the device"
+    assert not errors, errors
+
+
+def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch):
+    """The line under the word: a bar that moves while the voice comes,
+    Cancel, a failure said plainly with Retry, and gone when it is here,
+    Say then the server's without a reload. A page opened mid-download
+    picks the progress up. A viewer who is not an admin sees no line."""
+    from zimi import users
+
+    open_eau, errors = piper_here
+    steps = {"fail": False}
+
+    def fetch(tag):
+        with voices._lock:
+            total = voices._download["total"]
+        for i in range(1, 9):
+            time.sleep(0.5)
+            with voices._lock:
+                if voices._download.get("cancel"):
+                    voices._download.clear()
+                    return
+                voices._download["done"] = total * i // 10
+        with voices._lock:
+            voices._download.clear()
+            if steps["fail"]:
+                voices._download.update({"tag": None, "error": tag})
+                return
+        tv.install(tag)
+
+    monkeypatch.setattr(voices, "_fetch_voice", fetch)
+    f = open_eau()
+    f.wait_for_function("() => (%s)() !== ''" % LINE_FR)
+    # Cancel: back to the offer.
+    f.eval_on_selector("[data-get='fr']", "b => b.click()")
+    assert f.evaluate(LINE_FR).startswith("Downloading the voice for French")
+    f.wait_for_function("() => /[1-9][0-9]*%%/.test((%s)())" % LINE_FR, timeout=5000)
+    f.eval_on_selector("[data-offer='fr'] [data-cancel]", "b => b.click()")
+    f.wait_for_function(
+        "() => (%s)() === 'Clearer voice for French: Download (63 MB)'" % LINE_FR,
+        timeout=5000,
+    )
+    # A failure: said, with Retry.
+    steps["fail"] = True
+    f.wait_for_function(
+        "() => !document.querySelector('[data-offer=fr] [data-cancel]')"
+    )
+    f.eval_on_selector("[data-get='fr']", "b => b.click()")
+    f.wait_for_function(
+        '() => (%s)() === "Couldn\'t download the voice Retry"' % LINE_FR, timeout=10000
+    )
+    # Retry, and leave mid-way: the page opened again picks it up, moving.
+    steps["fail"] = False
+    f.eval_on_selector("[data-offer='fr'] [data-get='fr']", "b => b.click()")
+    f.wait_for_function("() => /Cancel$/.test((%s)())" % LINE_FR, timeout=5000)
+    f = open_eau()
+    seen = f.evaluate(LINE_FR)
+    assert seen.startswith("Downloading"), seen
+    f.wait_for_function(
+        "s => { const l = (%s)(); return l !== s && l !== ''; }" % LINE_FR,
+        arg=seen,
+        timeout=5000,
+    )
+    # Done: the line goes, and Say is the server's.
+    f.wait_for_function("() => (%s)() === ''" % LINE_FR, timeout=10000)
+    assert "fr" in voices.installed()
+    f.eval_on_selector(SAY_FR, "b => b.click()")
+    f.wait_for_function("() => window.__played.length > 0")
+    assert f.evaluate("() => window.__said") == []
+    # Not an admin: no line, and the device still says it.
+    voices.remove("fr")
+    monkeypatch.setattr(users, "_request_is_admin", lambda h: False)
+    f = open_eau()
+    assert f.evaluate(LINE_FR) == ""
+    assert not errors, errors

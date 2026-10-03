@@ -60,8 +60,18 @@
   .ipas .ipr { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
   .ipas .more-ipa { border: 0; background: none; padding: 2px 0; color: var(--text2); font: inherit; font-size: 12.5px; cursor: pointer; text-align: start; }
   .ipas .acc { font-size: 12px; color: var(--text2); min-width: 0; }
+  /* Tapped, and the word is on its way: the sound waves breathe until it is heard. */
+  .spk.busy { cursor: progress; }
+  .spk.busy svg path + path { animation: spk-wait 1s ease-in-out infinite; }
+  @keyframes spk-wait { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .spk.busy svg path + path { animation: none; opacity: .45; } }
   .novoice, .voffer { font-size: 12.5px; color: var(--text2); }
-  .vget { border: 0; background: none; padding: 0; font: inherit; color: var(--amber); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .voffer { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+  .vget { border: 0; background: none; padding: 6px 0; margin: -6px 0; font: inherit; color: var(--amber); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  /* A voice on its way: a thin bar in the Download's colour, and how far. */
+  .vbar { width: 64px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; flex: none; }
+  .vbar i { display: block; height: 100%; background: var(--amber); border-radius: 2px; transition: width .9s linear; }
+  .vpct { font-variant-numeric: tabular-nums; min-width: 3.2em; }
   .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
   .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
 
@@ -154,9 +164,9 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   synonyms: 'Synonyms', antonyms: 'Antonyms', homophones: 'Homophones', rhymes: 'Rhymes',
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
   recording: 'Recording', no_voice: 'No {lang} voice on this device',
-  voice_offer: 'Clearer voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading a clearer voice for {lang}…', voice_failed: 'Couldn\'t download the voice', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
-  entries: '{n} words', retry: 'Retry', catalog: 'Browse the catalog' });
+  entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
 // ── pure parts (tests/test_dictionary_page.cjs runs these) ───────────────
 var WORDS_SHOWN = 14;     // of a list of words, before "n more"
@@ -166,7 +176,7 @@ var SAVED_SHOWN = 30;
 var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is given this long
 var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
 var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
-var VOICE_POLL_MS = 2000; // how often a page asks how a voice download is going
+var VOICE_POLL_MS = 1000; // how often a page asks how a voice download is going: the bar moves
 var BYTES_PER_MB = 1000 * 1000; // as Zimi's sizes count
 
 // A Wiktionary's code for a language as a speech engine knows it. English
@@ -716,7 +726,7 @@ function deviceSays(b, vs) {
 function wireSpeech() {
   var vs = voices();
   document.querySelectorAll('[data-say]').forEach(function(b) {
-    var ok = serverSays(b) || deviceSays(b, vs);
+    var ok = !!speakUrl(b) || deviceSays(b, vs);
     b.hidden = !ok;
     if (!b.hasAttribute('data-exact')) {
       var note = b.parentNode.querySelector('[data-novoice]');
@@ -731,10 +741,21 @@ var _voiceWaiting = true;
   if (s && 'onvoiceschanged' in s) s.addEventListener('voiceschanged', function() { _voiceWaiting = false; wireSpeech(); });
   setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
 })();
+// While a voice downloads, the page asks how it is going until it is done
+// (this page's tap or another's: a page opened mid-download picks it up),
+// then says the word with the new voice.
+var _voicePoll = null;
 function loadVoices() {
   return authed('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; })
     .catch(function() { return null; })
-    .then(function(d) { _server = d || { langs: {}, offers: {} }; wireSpeech(); return _server; });
+    .then(function(d) {
+      _server = d || { langs: {}, offers: {} };
+      _missed = {};
+      wireSpeech();
+      clearTimeout(_voicePoll);
+      if (_server.downloading && _server.downloading.tag) _voicePoll = setTimeout(loadVoices, VOICE_POLL_MS);
+      return _server;
+    });
 }
 // A clearer voice for a language the server says only with a lesser engine
 // (or not at all), offered to whoever may fetch it: a quiet line under the
@@ -745,46 +766,112 @@ function offerFor(code) {
   if (row && row.engine === 'piper') return null;
   return (_server.offers || {})[lang] || null;
 }
+var _pct = null;
+function pct(f) {
+  try {
+    _pct = _pct || new Intl.NumberFormat(STR.lang || undefined, { style: 'percent', maximumFractionDigits: 0 });
+    return _pct.format(f);
+  } catch (e) { return Math.floor(f * 100) + '%'; }
+}
+function barWidth(f) { return (f * 100).toFixed(1) + '%'; }
+// The line's states: offered, downloading (a bar that moves, and Cancel),
+// failed (Retry), or gone. Where this device has no voice for the language
+// either, the download is not a clearer voice: it is the voice, and it
+// says what the "no voice" line would have said, and what to do about it.
 function offerPaint(el) {
   var code = el.getAttribute('data-offer'), offer = offerFor(code), dl = (_server && _server.downloading) || {};
   var name = langName(code, el.getAttribute('data-name') || code);
-  var html = '';
-  if (offer && dl.tag === offer.tag) html = esc(fill(STR.voice_downloading, { lang: name }));
-  else if (offer && dl.error === offer.tag) html = esc(STR.voice_failed);
-  else if (offer && !dl.tag) {
-    html = esc(fill(STR.voice_offer, { lang: name })) + ' <button type="button" class="vget" data-get="' + esc(offer.tag) + '">' +
-      esc(fill(STR.voice_download, { mb: Math.round(offer.bytes / BYTES_PER_MB) })) + '</button>';
+  var spk = el.parentNode.querySelector('[data-say]'), none = !spk || spk.hidden;
+  var state = !offer ? '' : dl.tag === offer.tag ? 'dl' : dl.error === offer.tag ? 'failed' : dl.tag ? '' : 'offer';
+  var done = dl.total ? Math.min(1, (dl.done || 0) / dl.total) : 0;
+  // Still downloading: the bar moves; nothing is redrawn under the finger.
+  if (state === 'dl' && el.getAttribute('data-state') === 'dl') {
+    el.querySelector('.vbar i').style.width = barWidth(done);
+    el.querySelector('.vbar').setAttribute('aria-valuenow', Math.floor(done * 100));
+    el.querySelector('.vpct').textContent = pct(done);
+    return;
   }
+  // Its parts, spaced by the line's gap (and by a space, for a screen reader).
+  var parts = [];
+  if (state === 'dl') {
+    parts = ['<span>' + esc(fill(STR.voice_downloading, { lang: name })) + '</span>',
+      '<span class="vbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.floor(done * 100) + '"><i style="width:' + barWidth(done) + '"></i></span>',
+      '<span class="vpct">' + esc(pct(done)) + '</span>', '<button type="button" class="vget" data-cancel>' + esc(STR.cancel) + '</button>'];
+  } else if (state === 'failed') {
+    parts = ['<span>' + esc(STR.voice_failed) + '</span>', '<button type="button" class="vget" data-get="' + esc(offer.tag) + '">' + esc(STR.retry) + '</button>'];
+  } else if (state === 'offer') {
+    parts = ['<span>' + esc(fill(none ? STR.voice_offer_none : STR.voice_offer, { lang: name })) + '</span>',
+      '<button type="button" class="vget" data-get="' + esc(offer.tag) + '">' + esc(fill(STR.voice_download, { mb: Math.round(offer.bytes / BYTES_PER_MB) })) + '</button>'];
+  }
+  var html = parts.join(' ');
   el.innerHTML = html;
   el.hidden = !html;
+  el.setAttribute('data-state', state);
+  var note = el.parentNode.querySelector('[data-novoice]');
+  if (note && html) note.hidden = true;
 }
-// The download runs on the server; the page asks how it is going until it
-// is done, then says the word with the new voice.
+// The download runs on the server. The line shows it from the tap; the
+// server's answer then has the last word.
+function voicePost(path, body) {
+  return authed(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r) { return r.ok; }, function() { return false; });
+}
 function getVoice(tag) {
-  authed('/manage/voices/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: tag }) })
-    .catch(function() {})
-    .then(function() { return loadVoices(); })
-    .then(watchDownload);
+  var offer = null, offers = (_server && _server.offers) || {};
+  Object.keys(offers).forEach(function(k) { if (offers[k].tag === tag) offer = offers[k]; });
+  _server.downloading = { tag: tag, done: 0, total: offer ? offer.bytes : 0 };
+  wireSpeech();
+  voicePost('/manage/voices/download', { lang: tag }).then(function(ok) {
+    return loadVoices().then(function(d) {
+      // Refused (another voice is downloading, the setting changed, the
+      // server is gone): said so, with Retry.
+      if (!ok && !(d.downloading && d.downloading.tag)) { d.downloading = { error: tag }; wireSpeech(); }
+    });
+  });
 }
-function watchDownload(d) {
-  if (d && d.downloading && d.downloading.tag) setTimeout(function() { loadVoices().then(watchDownload); }, VOICE_POLL_MS);
+function cancelVoice() {
+  _server.downloading = {};
+  wireSpeech();
+  voicePost('/manage/voices/cancel', {}).then(loadVoices);
 }
+// What is playing: {a: the <audio>, b: its button, busy: not started yet}.
 var _playing = null, _utterance = null;
 function wantPlayback() {
   [window, window.parent].forEach(function(w) { try { if (w.navigator.audioSession) w.navigator.audioSession.type = 'playback'; } catch (e) {} });
 }
-// The server's audio, started in the tap (iOS plays media only from one).
-// A server that cannot say it after all leaves the word to this device.
-function say(b) {
-  if (!serverSays(b)) { deviceSay(b); return; }
+// A speaker's look: busy from the tap until the sound starts (a server
+// voice's first word can take seconds), on while it is heard.
+function mark(b, busy, on) {
+  b.classList.toggle('busy', busy);
+  b.classList.toggle('on', on);
+  if (busy) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy');
+}
+// The server's address for this button's word, or '' when it is the device's.
+function speakUrl(b) {
+  if (!serverSays(b)) return '';
   var code = b.getAttribute('data-code'), region = b.hasAttribute('data-exact') ? sayRegion(code, b.getAttribute('data-accent')) : '';
   var url = '/dictionary/speak?text=' + encodeURIComponent(b.getAttribute('data-say')) + '&lang=' + encodeURIComponent(speechTag(code)) +
     (region ? '&accent=' + encodeURIComponent(region) : '');
-  playUrl(b, url, function() { if (deviceSays(b, voices())) deviceSay(b); });
+  return _missed[url] ? '' : url;
+}
+// Words the server could not say after all. The next tap goes straight to
+// this device, inside the tap, where iOS lets speech start; a fresh answer
+// from the server (a voice downloaded) forgets them.
+var _missed = {};
+// The server's audio, started in the tap (iOS plays media only from one).
+// A server that cannot say it after all leaves the word to this device.
+function say(b) {
+  var url = speakUrl(b);
+  if (!url) { deviceSay(b); return; }
+  playUrl(b, url, function() {
+    _missed[url] = true;
+    if (deviceSays(b, voices())) deviceSay(b); else wireSpeech();
+  });
 }
 function deviceSay(b) {
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
+  stopPlaying();
   wantPlayback();
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
@@ -803,21 +890,39 @@ function deviceSay(b) {
   else s.speak(u);
 }
 function play(b) { playUrl(b, b.getAttribute('data-audio')); }
+function stopPlaying() {
+  var was = _playing;
+  _playing = null;
+  if (!was) return;
+  try { was.a.pause(); } catch (e) {}
+  mark(was.b, false, false);
+}
+// One sound at a time. A second tap while the word is still coming does
+// nothing more; while it is heard, it starts again from the top.
 function playUrl(b, url, failed) {
   wantPlayback();
-  if (_playing) { try { _playing.pause(); } catch (e) {} }
-  var a = new Audio();
+  var was = _playing;
+  if (was && was.b === b) {
+    if (!was.busy) { try { was.a.currentTime = 0; was.a.play(); } catch (e) {} }
+    return;
+  }
+  stopPlaying();
+  var s = synth();
+  if (s && (s.speaking || s.pending)) { try { s.cancel(); } catch (e) {} }
+  var a = new Audio(), me = { a: a, b: b, busy: true };
   a.setAttribute('playsinline', '');
   a.src = url;
-  _playing = a;
-  b.classList.add('on');
-  var off = function() { b.classList.remove('on'); };
-  // Once: an error and a refused play() can both report one failure.
-  var fail = function() { off(); if (failed && _playing === a) { _playing = null; failed(); } };
-  a.onended = a.onpause = off;
-  a.onerror = fail;
+  _playing = me;
+  mark(b, true, true);
+  // Each answer counts only while this sound is the one playing, and once:
+  // an error and a refused play() can both report one failure.
+  var mine = function() { return _playing === me; };
+  var done = function() { if (!mine()) return false; _playing = null; mark(b, false, false); return true; };
+  a.onplaying = function() { if (mine()) { me.busy = false; mark(b, false, true); } };
+  a.onended = a.onpause = done;
+  a.onerror = function() { if (done() && failed) failed(); };
   var p = a.play();
-  if (p && p.catch) p.catch(function(e) { if (e && e.name === 'AbortError') off(); else fail(); });
+  if (p && p.catch) p.catch(function(e) { if (done() && !(e && e.name === 'AbortError') && failed) failed(); });
 }
 
 // Every word on the page opens the next; a modified click keeps the link
@@ -825,6 +930,7 @@ function playUrl(b, url, failed) {
 document.addEventListener('click', function(e) {
   var get = e.target.closest && e.target.closest('[data-get]');
   if (get) { e.preventDefault(); getVoice(get.getAttribute('data-get')); return; }
+  if (e.target.closest && e.target.closest('[data-cancel]')) { e.preventDefault(); cancelVoice(); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
   if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
