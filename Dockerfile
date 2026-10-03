@@ -115,6 +115,17 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libmagic1 ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
+# The Dictionary's Say (zimi/voices.py): espeak-ng is the voice every language
+# has with no download, and Piper the clearer one, for the languages someone
+# fetches a voice for. Both are separate programs Zimi runs as children
+# (espeak-ng and Piper are GPL-3, kept beside MIT Zimi as ffmpeg is). piper-tts
+# brings onnxruntime and numpy: about 170 MB installed, espeak-ng about 20 MB.
+# Their own layer, before the source copy, so a code deploy stays fast.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends espeak-ng \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir "piper-tts>=1.8,<2"
+
 WORKDIR /app
 COPY zimi/ ./zimi/
 
