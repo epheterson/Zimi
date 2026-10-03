@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Right-to-left paths, dark-mode formulas, clipped wide pictures, the Auto swatch.
 - A PDF opened before 1.13 no longer reopens with pdf.js's own toolbar.
 - Dictionary: Back after switching language returns to the word; speech is quicker and plays with the ringer switch on silent.
+- Apps keep their loader until their data is drawn, with no blank pause; no light line at the top while scrolling.
+- Favoriting on home keeps the page where it was.
+- zimit 1 ZIMs (Off the Grid) open on the first tap, and Back returns home.
 
 ## [1.12.0] - 2026-09-30
 
