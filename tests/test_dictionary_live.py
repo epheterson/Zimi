@@ -617,66 +617,8 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
     assert not errors, errors
 
 
-def test_manage_voices_shows_progress_cancels_and_asks_before_removing(
-    piper_here, monkeypatch, served
-):
-    """Manage > Voices at 390px: a download's row moves on the ZIM
-    downloads' bar, with Cancel; Remove asks once (a second tap) and the
-    language then falls back; nothing is wider than the phone."""
-    open_eau, errors = piper_here
-    tv.install("fr")
-
-    def fetch(tag):
-        with voices._lock:
-            total = voices._download["total"]
-        for i in range(1, 60):
-            time.sleep(0.25)
-            with voices._lock:
-                if voices._download.get("cancel"):
-                    voices._download.clear()
-                    return
-                voices._download["done"] = total * i // 60
-
-    monkeypatch.setattr(voices, "_fetch_voice", fetch)
-    assert voices.start_download("de") == (True, None)
-    f = open_eau()  # the same phone, now in Manage
-    pg = f.page
-    pg.goto(served + "/?manage=server")
-    pg.wait_for_selector("#ms-voices details", timeout=20000)
-    pg.eval_on_selector("#ms-voices details", "d => d.open = true")
-    row = "#ms-voices .voice-row:has(.voice-progress)"
-    first = pg.text_content(row + " .voice-progress")
-    pg.wait_for_function(
-        "([s, t]) => document.querySelector(s).textContent !== t",
-        arg=[row + " .voice-progress", first],
-        timeout=5000,
-    )
-    assert (
-        pg.eval_on_selector(row + " .dl-progress-bar", "b => parseFloat(b.style.width)")
-        > 0
-    )
-    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
-    pg.click(row + " button:has-text('Cancel')")
-    pg.wait_for_function(
-        "() => !document.querySelector('#ms-voices .voice-progress')", timeout=5000
-    )
-    assert voices.downloading() == {}
-    # Remove: the first tap asks, the second removes.
-    rm = "#ms-voices button[data-confirm]"
-    pg.eval_on_selector(rm, "b => b.scrollIntoView({ block: 'center' })")
-    pg.click(rm)
-    assert pg.text_content(rm) == "Remove?"
-    assert "fr" in voices.installed()
-    pg.click(rm)
-    pg.wait_for_function(
-        "() => !document.querySelector('#ms-voices button[data-confirm]')", timeout=5000
-    )
-    assert "fr" not in voices.installed()
-    assert not errors, errors
-
-
 CARET_FR = "[data-voices='fr']"
-MENU_FR = "() => [...document.querySelectorAll(\"[data-voices='fr'] + .menu .menu-item\")].map(i => [i.textContent, i.getAttribute('aria-checked'), i.getAttribute('data-engine')])"
+MENU_FR = "() => [...document.querySelectorAll(\"[data-voices='fr'] + .menu .menu-item\")].map(i => [i.querySelector('.vname').textContent, i.hasAttribute('data-default'), i.getAttribute('data-engine')])"
 
 
 def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeypatch):
@@ -700,10 +642,13 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     _shot(f.page, "say-menu-closed-light")
     _tap(f, CARET_FR)
     assert f.evaluate(MENU_FR) == [
-        ["✓Piper", "true", "piper"],
-        ["Basic", "false", "espeak"],
-        ["This device", "false", "device"],
+        ["Piper", True, "piper"],
+        ["Basic", False, "espeak"],
+        ["This device", False, "device"],
+        ["Voices…", False, None],
     ]
+    assert not f.query_selector(".menu-check"), "no tick: 'default' says it"
+    assert f.eval_on_selector("[data-default] .vdef", "e => e.textContent") == "default"
     assert (
         f.eval_on_selector(CARET_FR + " + .menu", "m => m.getAttribute('role')")
         == "menu"
@@ -721,18 +666,26 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     f.page.emulate_media(color_scheme="dark")
     _shot(f.page, "say-menu-open-dark")
     f.page.emulate_media(color_scheme="light")
-    # A voice from the menu: its own engine's audio, the menu closed.
+    # A voice playing: the item pulses as Say does.
+    f.evaluate("() => { HTMLMediaElement.prototype.play = function() { window.__played.push(this.src); return new Promise(() => {}); }; }")
+    f.click(".menu-item[data-engine='piper']")
+    f.wait_for_selector(".menu-item.busy[data-engine='piper']")
+    _shot(f.page, "say-menu-playing-light")
+    f.page.emulate_media(color_scheme="dark")
+    _shot(f.page, "say-menu-playing-dark")
+    f.page.emulate_media(color_scheme="light")
+    # A voice from the menu: its own engine's audio, the menu still open
+    # (the next voice is a tap away) and the item, not Say, at work.
     f.click(".menu-item[data-engine='espeak']")
     f.wait_for_function("() => window.__played.length > 0")
     assert "&engine=espeak&" in f.evaluate("() => window.__played")[-1]
-    assert (
-        f.eval_on_selector(CARET_FR, "c => c.getAttribute('aria-expanded')") == "false"
-    )
+    assert f.eval_on_selector(CARET_FR, "c => c.getAttribute('aria-expanded')") == "true"
+    f.click(".hw h1")
     # No espeak-ng here after all: the server says 404, and Basic leaves the
     # menu rather than another voice answering under its name.
     f.wait_for_function("() => !document.querySelector('.spk.busy')")
     _tap(f, CARET_FR)
-    assert [e for _t, _c, e in f.evaluate(MENU_FR)] == ["piper", "device"]
+    assert [e for _t, _c, e in f.evaluate(MENU_FR)] == ["piper", "device", None]
     # This device's own voice.
     f.evaluate("() => { window.__said = []; }")
     f.click(".menu-item[data-engine='device']")
@@ -756,6 +709,8 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
         f.evaluate("() => document.activeElement.getAttribute('data-engine')")
         == "device"
     )
+    f.page.keyboard.press("ArrowDown")
+    assert f.evaluate("() => document.activeElement.hasAttribute('data-sheet')")
     f.page.keyboard.press("ArrowDown")
     assert (
         f.evaluate("() => document.activeElement.getAttribute('data-engine')")
@@ -783,11 +738,38 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     assert not errors, errors
 
 
-def test_manage_shows_natural_voices_as_one_row_and_a_choice(
+SHEET = "#voices-sheet"
+DOOR = "#ms-voices-door"
+ROWS = "() => [...document.querySelectorAll('#voices-sheet .voice-lang')].map(r => [r.querySelector('.share-row-title').textContent, !!r.closest('.voice-more')])"
+
+
+def _sheet_from_settings(pg, served, shot=""):
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector(DOOR + ":not([hidden]) button", timeout=20000)
+    pg.eval_on_selector(DOOR + " button", "b => b.scrollIntoView({ block: 'center' })")
+    if shot:
+        pg.wait_for_function("d => document.querySelector(d + ' .share-row-desc').textContent.trim()", arg=DOOR)
+        _shot(pg, shot)
+    pg.click(DOOR + " button")
+    pg.wait_for_selector(SHEET + " .voice-foot", timeout=10000)
+
+
+def _until(fn, what):
+    for _ in range(80):
+        if fn():
+            return
+        time.sleep(0.1)
+    raise AssertionError(what)
+
+
+def test_voices_sheet_opens_from_the_front_and_settings_and_shows_the_library_languages(
     piper_here, monkeypatch, served, tmp_path
 ):
-    """Manage > Voices: Kokoro is one row, Natural voices, naming its
-    languages; where two voices say a language, a select picks which."""
+    """Eric, 2026-10-03: the Server settings list was "a monster". The
+    voices are a sheet of the Dictionary's own: from the front's speaker,
+    from Say's menu (Voices…) and from Settings > Apps. Natural voices are
+    one card; the library's languages with a voice here (English, French) are rows;
+    the rest are folded; a select picks the voice, and the stamp follows."""
     open_eau, errors = piper_here
     runner = tv.fake_piper(tmp_path)
     monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
@@ -795,28 +777,186 @@ def test_manage_shows_natural_voices_as_one_row_and_a_choice(
     tv.install("fr")
     f = open_eau()
     pg = f.page
-    pg.goto(served + "/?manage=server")
-    pg.wait_for_selector("#ms-voices details", timeout=20000)
-    pg.eval_on_selector("#ms-voices details", "d => d.open = true")
-    natural = pg.eval_on_selector_all(
-        "#ms-voices .voice-row",
-        "rs => rs.map(r => r.textContent).filter(t => t.indexOf('Natural voices') === 0)",
+    # Say's menu: Voices… last.
+    _tap(f, CARET_FR)
+    f.click(".menu-item[data-sheet]")
+    pg.wait_for_selector(SHEET + " .voice-foot", timeout=10000)
+    pg.click(".voices-panel .zi-close")
+    assert not pg.query_selector(SHEET)
+    # The front's speaker.
+    f.evaluate("() => window.__home()")
+    f.wait_for_selector(".vdoor:not([hidden])", timeout=10000)
+    box = f.eval_on_selector(
+        ".vdoor",
+        "b => { const r = b.getBoundingClientRect(); return [r.width, r.height]; }",
     )
+    assert box == [44, 44], box
+    _shot(pg, "voices-front-admin")
+    f.click(".vdoor")
+    pg.wait_for_selector(SHEET + " .voice-foot", timeout=10000)
+    natural = pg.text_content(SHEET + " .voice-natural")
     assert (
-        len(natural) == 1 and "Chinese" in natural[0] and "Hindi" in natural[0]
+        natural.startswith("Natural voices8 languages") and "Hindi" in natural
     ), natural
-    sel = "#ms-voices select[aria-label$='French']"
+    assert "On" in natural and "Apache-2.0" in natural
+    # Maltese has no voice on the server at all: no row to choose in.
+    assert [r for r in pg.evaluate(ROWS) if not r[1]] == [["English", False], ["French", False]]
+    rest = [n for n, folded in pg.evaluate(ROWS) if folded]
+    assert "Swedish" in rest and "Arabic" not in rest, rest
+    assert not pg.eval_on_selector(SHEET + " .voice-more", "d => d.open")
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    _shot(pg, "voices-sheet-natural-on")
+    sel = SHEET + " select[aria-label$='French']"
     assert pg.eval_on_selector(
         sel, "s => [...s.options].map(o => o.value + (o.selected ? '*' : ''))"
-    ) == ["kokoro*", "piper"]
-    pg.eval_on_selector(sel, "s => s.scrollIntoView({ block: 'center' })")
-    _shot(pg, "manage-voices-choice")
+    ) == ["kokoro*", "piper", "remove:fr"]
+    before = voices.page_payload()["stamp"]
     pg.select_option(sel, "piper")
-    for _ in range(50):
-        if voices.choices() == {"fr": "piper"}:
-            break
-        time.sleep(0.1)
-    assert voices.choices() == {"fr": "piper"}
-    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    _until(lambda: voices.choices() == {"fr": "piper"}, "the choice was never saved")
+    assert voices.page_payload()["stamp"] != before
+    # The Dictionary heard: its Say's address carries the new stamp.
+    f.wait_for_function(
+        "s => _server && _server.stamp === s",
+        arg=voices.page_payload()["stamp"],
+        timeout=5000,
+    )
+    pg.wait_for_function("s => document.querySelector(s).value === 'piper'", arg=sel)
+    pg.mouse.move(1, 400)
+    _shot(pg, "voices-sheet-choice")
+    pg.keyboard.press("Escape")
+    # Settings > Apps: the same sheet, the row says what is on (in the dark,
+    # which the shell takes from the system as it loads).
+    pg.emulate_media(color_scheme="dark")
+    _sheet_from_settings(pg, served, "voices-settings-row-dark")
+    pg.mouse.move(1, 400)
+    _shot(pg, "voices-sheet-choice-dark")
+    pg.emulate_media(color_scheme="light")
+    assert "Natural voices on" in pg.text_content(DOOR)
+    if SHOTS:
+        pg.keyboard.press("Escape")
+        pg.set_viewport_size({"width": 1280, "height": 800})
+        pg.click(DOOR + " button")
+        pg.wait_for_selector(SHEET + " .voice-foot")
+        pg.eval_on_selector(SHEET + " .voice-more", "d => d.open = true")
+        _shot(pg, "voices-sheet-desktop-dark")
+        pg.set_viewport_size({"width": 390, "height": 844})
+    assert not pg.query_selector("#ms-voices"), "nothing left in Server settings"
     voices.set_choice("fr", None)
+    assert not errors, errors
+
+
+def test_voices_sheet_downloads_piper_from_the_select_cancels_and_removes_in_two_taps(
+    piper_here, monkeypatch, served
+):
+    """Nothing downloaded: French's select ends "Piper (63 MB)…", which
+    downloads it; the row gives way to the bar and Cancel. A voice here is
+    removed from the same select, with a second tap on Remove?."""
+    open_eau, errors = piper_here
+    steps = {"go": True}
+
+    def fetch(tag):
+        with voices._lock:
+            total = voices._download["total"]
+        for i in range(1, 60):
+            time.sleep(0.25)
+            with voices._lock:
+                if voices._download.get("cancel"):
+                    voices._download.clear()
+                    return
+                voices._download["done"] = total * i // 60
+            if not steps["go"]:
+                break
+        with voices._lock:
+            voices._download.clear()
+        tv.install(tag)
+
+    monkeypatch.setattr(voices, "_fetch_voice", fetch)
+    f = open_eau()
+    pg = f.page
+    _sheet_from_settings(pg, served)
+    assert not pg.query_selector(
+        SHEET + " .voice-natural"
+    ), "no Kokoro engine here: no card"
+    sel = SHEET + " select[aria-label$='French']"
+    assert pg.eval_on_selector(sel, "s => [...s.options].map(o => o.textContent)") == [
+        "Device only",
+        "Piper (63 MB)…",
+    ]
+    assert not pg.query_selector(SHEET + " .voice-lang button"), "no per-row buttons"
+    _shot(pg, "voices-sheet-empty")
+    pg.emulate_media(color_scheme="dark")
+    _sheet_from_settings(pg, served)
+    _shot(pg, "voices-sheet-empty-dark")
+    pg.emulate_media(color_scheme="light")
+    _sheet_from_settings(pg, served)
+    pg.select_option(sel, "get:fr")
+    row = SHEET + " .voice-lang[data-lang='fr']"
+    pg.wait_for_selector(row + " .voice-progress", timeout=5000)
+    first = pg.text_content(row + " .voice-progress")
+    pg.wait_for_function(
+        "([s, t]) => document.querySelector(s).textContent !== t",
+        arg=[row + " .voice-progress", first],
+        timeout=5000,
+    )
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    _shot(pg, "voices-sheet-downloading")
+    pg.click(row + " button:has-text('Cancel')")
+    pg.wait_for_function(
+        "() => !document.querySelector('#voices-sheet .voice-progress')", timeout=5000
+    )
+    assert voices.downloading() == {} and "fr" not in voices.installed()
+    # Again, to the end: Piper says French.
+    steps["go"] = False
+    pg.select_option(sel, "get:fr")
+    _until(lambda: "fr" in voices.installed(), "the voice never came")
+    pg.wait_for_function(
+        "s => { const e = document.querySelector(s); return e && e.value === 'piper'; }",
+        arg=sel,
+        timeout=5000,
+    )
+    # Remove: from the select, then a second tap.
+    pg.select_option(sel, "remove:fr")
+    rm = row + " button[data-confirm]"
+    assert pg.text_content(rm) == "Remove?"
+    assert "fr" in voices.installed()
+    pg.click(rm)
+    _until(lambda: "fr" not in voices.installed(), "the voice was never removed")
+    pg.wait_for_selector(sel, timeout=5000)
+    assert not errors, errors
+
+
+def test_voices_never_offers_no_download_and_a_reader_sees_no_door(
+    piper_here, monkeypatch, served
+):
+    """Never (or ZIMI_OFFLINE): the selects offer no Piper and the setting
+    says so. Not an admin: no speaker on the front, no Voices… in Say's
+    menu, no row in Settings > Apps."""
+    from zimi import users
+
+    open_eau, errors = piper_here
+    voices.POLICY.set("never")
+    tv.install("fr")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"fr": {"FR": "fr-fr"}})
+    f = open_eau()
+    pg = f.page
+    _sheet_from_settings(pg, served)
+    opts = pg.eval_on_selector_all(
+        SHEET + " select.voice-select option", "os => os.map(o => o.value)"
+    )
+    assert not [o for o in opts if o.startswith("get:")], opts
+    assert pg.eval_on_selector("#voices-mode", "s => s.value") == "never"
+    voices.POLICY.set("ask")
+    monkeypatch.setattr(users, "_request_is_admin", lambda h: False)
+    f = open_eau()
+    _tap(f, CARET_FR)
+    assert not f.query_selector(".menu-item[data-sheet]")
+    f.click(".hw h1")
+    f.evaluate("() => window.__home()")
+    f.wait_for_selector(".wotd, .hint", timeout=10000)
+    assert f.eval_on_selector(".vdoor", "b => b.hidden")
+    _shot(f.page, "voices-front-reader")
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector("#ms-apps", timeout=20000)
+    pg.wait_for_timeout(500)
+    assert pg.eval_on_selector(DOOR, "d => d.hidden")
     assert not errors, errors

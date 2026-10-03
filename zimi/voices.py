@@ -1101,34 +1101,56 @@ def _manage_row(tag, rec):
     return row
 
 
+def _piper_tags(primary):
+    """The pinned Piper voices for a language, its home region's first."""
+    tags = [t for t in VOICES if t != KOKORO_TAG and _primary(t) == primary]
+    home = primary + "-" + _HOME_REGION.get(primary, primary.upper())
+    return sorted(tags, key=lambda t: t not in (primary, home))
+
+
+def _lang_row(primary, have, chosen, fetch_ok):
+    """One language in the Dictionary's voices sheet: the engines here that
+    say it (best first) and the one that does; the Piper voice it could
+    fetch ("piper": tag, bytes, newer) and the one it could remove."""
+    options = engines_for(primary)
+    picked = choose(primary)
+    tags = _piper_tags(primary)
+    here = [t for t in tags if t in have]
+    offer = None
+    if fetch_ok:
+        stale = [t for t in here if not _is_current(t, have[t])]
+        want = stale or ([] if here else tags)
+        if want:
+            offer = {"tag": want[0], "bytes": _bytes(want[0]), "newer": bool(stale)}
+    return {
+        "lang": primary,
+        "engines": options,
+        "engine": picked[0] if picked else None,
+        "chosen": chosen.get(primary) if chosen.get(primary) in options else None,
+        "pinned": bool(tags) or primary in _KOKORO_PRIMARIES,
+        "piper": offer,
+        "remove": here[0] if here else None,
+    }
+
+
 def manage_payload():
-    """For Manage: the setting, and every pinned voice with its licence and
-    credit, whether its engine is here, and what speaks its language now
-    (piper, kokoro, say or espeak, or none). Kokoro is one row, "langs" its
-    languages. "choices": each language more than one engine here can say,
-    with the one that does (chosen, or the best)."""
+    """For the Dictionary's voices sheet: the setting, and every pinned
+    voice with its licence and credit, whether its engine is here, and what
+    speaks its language now (piper, kokoro, say or espeak, or none). Kokoro
+    is one row, "langs" its languages. "langs": every language a pinned
+    voice or an engine here says, one row each (_lang_row)."""
     have = installed()
     rows = [_manage_row(t, have.get(t)) for t in VOICES]
     chosen = choices()
-    # Only where a downloaded voice is one of the options: a choice between
-    # the system's voice and the basic one is not worth a row.
-    picks = []
-    for lang in sorted(set().union(*(_voices(e) for e in DOWNLOADED))):
-        options = engines_for(lang)
-        if len(options) > 1:
-            picks.append(
-                {
-                    "lang": lang,
-                    "engines": options,
-                    "engine": choose(lang)[0],
-                    "chosen": chosen.get(lang) if chosen.get(lang) in options else None,
-                }
-            )
+    fetch_ok = bool(runtime(PIPER)) and POLICY.mode()[0] != outbound.NEVER
+    primaries = {_primary(t) for t in VOICES if t != KOKORO_TAG}
+    primaries |= _KOKORO_PRIMARIES | set(can_say())
+    langs = [_lang_row(p, have, chosen, fetch_ok) for p in sorted(primaries)]
     return {
         "setting": POLICY.setting(),
         "piper": bool(piper_command()),
         "kokoro": bool(kokoro_command()),
         "voices": rows,
-        "choices": picks,
+        "langs": langs,
         "downloading": downloading(),
     }

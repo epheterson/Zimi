@@ -76,11 +76,24 @@
      every voice that can say the word (apps.css .menu, the shell's). */
   .split { position: relative; display: inline-flex; }
   .split.two > .spk[data-say] { border-start-end-radius: 0; border-end-end-radius: 0; }
-  .spk.caret { min-width: 34px; padding: 0 8px 0 6px; border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: 1px; position: relative; }
+  .spk.caret { min-width: 30px; padding: 0 8px 0 6px; border-start-start-radius: 0; border-end-start-radius: 0; position: relative; border-inline-start: 1px solid rgba(255,255,255,.35); }
   .spk.caret::after { content: ''; position: absolute; inset-block: -5px; inset-inline: -2px -8px; } /* a 44px target */
   .spk.caret svg { width: 14px; height: 14px; }
   .spk.caret[aria-expanded="true"] { filter: brightness(1.12); }
   .split > .menu { top: calc(100% + 6px); inset-inline-start: 0; }
+  .menu .menu-item { gap: 10px; padding: 0 14px; }
+  .menu .menu-item svg { width: 15px; height: 15px; flex: none; color: var(--text2); }
+  .menu .menu-item .vname { flex: 1; }
+  .menu .menu-item .vdef { font-size: 11px; color: var(--text2); }
+  .menu .menu-item[data-sheet] .vname { padding-inline-start: 25px; } /* under the names, past the icons */
+  .menu .menu-item.on, .menu .menu-item.on svg { color: var(--amber); }
+  .menu-item.busy svg path + path { animation: spk-wait 1s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .menu-item.busy svg path + path { animation: none; opacity: .45; } }
+  /* The front's door to the voices sheet: quiet, at the top, a 44px target. */
+  .front-top { display: flex; justify-content: flex-end; margin: -6px 0 2px; }
+  .vdoor { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-inline-end: -10px; border: 0; border-radius: 22px; background: none; color: var(--text2); cursor: pointer; }
+  .vdoor:hover, .vdoor:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+  .vdoor svg { width: 20px; height: 20px; }
   .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
   .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
 
@@ -179,7 +192,7 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
   recording: 'Recording', no_voice: 'No {lang} voice on this device',
   voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice',
-  voices_menu: 'Voices', voice_device: 'This device', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  voices_menu: 'Voices', voice_device: 'This device', voices_more: 'Voices…', voice_default: 'default', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
   entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
@@ -471,7 +484,7 @@ function renderHome() {
     $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
     return;
   }
-  var html = '';
+  var html = '<div class="front-top"><button type="button" class="vdoor" data-sheet aria-label="' + esc(STR.voices_menu) + '" hidden>' + SPEAKER + '</button></div>';
   var w = _today && _today !== FAILED ? pickToday(_today.words, LANGS) : null;
   if (w) {
     var src = h.wiktionaries.filter(function(x) { return x.name === w.zim; })[0];
@@ -764,10 +777,12 @@ function wireSpeech() {
   });
   document.querySelectorAll('[data-offer]').forEach(offerPaint);
   document.querySelectorAll('[data-voices]').forEach(caretPaint);
+  document.querySelectorAll('.vdoor').forEach(function(b) { b.hidden = !(_server && _server.can_change); });
 }
 // Say's voices, behind the caret beside it: every voice that can say the
-// word (the server's engines, then this device's own), the one Say plays
-// ticked. Each is a one-off listen; which voice Say plays is Manage's
+// word (the server's engines, then this device's own), "default" beside
+// the one Say plays (a tick read as stuck), then Voices… for an admin.
+// Each is a one-off listen; which voice Say plays is the voices sheet's
 // choice. Eric, 2026-10-03: "A lil dropdown on the say button".
 function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
 function voicesFor(caret) {
@@ -788,12 +803,15 @@ function openMenu(caret) {
   var menu = caret.nextElementSibling, main = mainOf(caret), code = caret.getAttribute('data-voices');
   var word = main.getAttribute('data-say'), def = speakUrl(main) ? serverRow(code).engine : 'device';
   menu.innerHTML = voicesFor(caret).map(function(e) {
-    return '<button type="button" class="menu-item" role="menuitemradio" tabindex="-1" aria-checked="' + (e === def) + '" data-say="' + esc(word) +
-      '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '"><span class="menu-check">' + (e === def ? '\u2713' : '') + '</span>' + esc(voiceName(e)) + '</button>';
-  }).join('');
+    return '<button type="button" class="menu-item" role="menuitem" tabindex="-1"' + (e === def ? ' data-default' : '') + ' data-say="' + esc(word) +
+      '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '">' + SPEAKER + '<span class="vname">' + esc(voiceName(e)) + '</span>' +
+      (e === def ? '<span class="vdef">' + esc(STR.voice_default) + '</span>' : '') + '</button>';
+  }).join('') + (_server && _server.can_change
+    ? '<div class="menu-sep" role="separator"></div><button type="button" class="menu-item" role="menuitem" tabindex="-1" data-sheet><span class="vname">' + esc(STR.voices_more) + '</span></button>'
+    : '');
   menu.hidden = false;
   caret.setAttribute('aria-expanded', 'true');
-  var items = menuItems(menu), on = items.filter(function(i) { return i.getAttribute('aria-checked') === 'true'; })[0];
+  var items = menuItems(menu), on = items.filter(function(i) { return i.hasAttribute('data-default'); })[0];
   (on || items[0]).focus();
 }
 function closeMenu(caret, refocus) {
@@ -1032,20 +1050,20 @@ document.addEventListener('click', function(e) {
   if (!(e.target.closest && e.target.closest('.menu, [data-voices]'))) closeMenus();
   var caret = e.target.closest && e.target.closest('[data-voices]');
   if (caret) { e.preventDefault(); if (caret.getAttribute('aria-expanded') === 'true') closeMenu(caret); else openMenu(caret); return; }
+  var door = e.target.closest && e.target.closest('[data-sheet]');
+  if (door) { e.preventDefault(); closeMenus(); tell({ zimi: 'voices' }); return; }
   var item = e.target.closest && e.target.closest('.menu [data-say]');
-  if (item) {
-    e.preventDefault();
-    caret = item.parentNode.previousElementSibling;
-    closeMenu(caret, true);
-    say(item, mainOf(caret));
-    return;
-  }
+  if (item) { e.preventDefault(); say(item, item); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
   if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
   openWord(a.getAttribute('data-w'));
+});
+
+window.addEventListener('message', function(e) {
+  if (e.origin === location.origin && e.data && e.data.zimi === 'voices-changed') loadVoices();
 });
 
 function load() {

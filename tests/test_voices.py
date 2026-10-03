@@ -774,14 +774,17 @@ def three(piper, monkeypatch):
 def test_with_no_choice_the_best_here_says_it(three):
     assert voices.choices() == {}
     assert voices.choose("en") == ("kokoro", "en-US")
-    picks = {c["lang"]: c for c in voices.manage_payload()["choices"]}
+    picks = {c["lang"]: c for c in voices.manage_payload()["langs"]}
     assert picks["en"] == {
         "lang": "en",
         "engines": ["kokoro", "piper", "espeak"],
         "engine": "kokoro",
         "chosen": None,
+        "pinned": True,
+        "piper": None,
+        "remove": "en-US",
     }
-    assert "zh" not in picks, "one engine is no choice"
+    assert picks["zh"]["engines"] == ["kokoro"], "one engine: a select of one"
 
 
 def test_a_choice_overrides_the_order_and_is_saved(three):
@@ -805,7 +808,7 @@ def test_a_chosen_voice_removed_falls_back_to_the_best(three):
     voices.remove("en-US")
     assert voices.choose("en") == ("kokoro", "en-US")
     assert voices.can_say()["en"]["engine"] == "kokoro"
-    picks = {c["lang"]: c for c in voices.manage_payload()["choices"]}
+    picks = {c["lang"]: c for c in voices.manage_payload()["langs"]}
     assert picks["en"]["chosen"] is None and picks["en"]["engine"] == "kokoro"
 
 
@@ -959,7 +962,8 @@ def test_a_choice_over_http(served, monkeypatch):
             return e.code, None
 
     code, got = post({"lang": "en", "engine": "espeak"})
-    assert code == 200 and got["choices"][0]["engine"] == "espeak"
+    picks = {c["lang"]: c for c in got["langs"]}
+    assert code == 200 and picks["en"]["engine"] == "espeak"
     assert post({"lang": "en", "engine": "say"})[0] == 409
     assert post({"lang": "en", "engine": None})[0] == 200 and voices.choices() == {}
 
