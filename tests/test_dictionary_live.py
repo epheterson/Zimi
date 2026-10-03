@@ -216,7 +216,9 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             f = _frame(pg)
             f.wait_for_selector(".cloud a[data-w='water']", timeout=20000)
             # The word of the day is said where it stands, beside its link.
-            assert f.evaluate("() => { const b = document.querySelector('.wotd-box > .wotd-say [data-say]'); return !!b && !b.closest('a'); }")
+            assert f.evaluate(
+                "() => { const b = document.querySelector('.wotd-box > .wotd-say [data-say]'); return !!b && !b.closest('a'); }"
+            )
             heads = f.evaluate(
                 "() => Array.from(document.querySelectorAll('.shelf-h h2')).map(h => h.textContent)"
             )
@@ -526,8 +528,10 @@ def test_say_shows_it_is_working_never_stacks_and_recovers(piper_here, monkeypat
     assert len(f.evaluate("() => window.__played")) == 1, "three taps, one word"
     assert f.evaluate("() => window.__said") == []
     # Audio that is not audio (English, not yet heard, so not in the
-    # browser's cache): the device says it, and the button is idle.
+    # browser's cache): the server says it made it, the device says it, and
+    # the button is idle.
     monkeypatch.setattr(voices, "speak", lambda *a, **k: b"RIFF not a wave")
+    monkeypatch.setattr(voices, "said", lambda *a, **k: {"made": True, "failed": False})
     f.evaluate("() => { window.__played = []; }")
     f.eval_on_selector(SAY_EN, "b => b.click()")
     f.wait_for_function("() => window.__said.length === 1", timeout=10000)
@@ -735,6 +739,83 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     f.evaluate("() => { document.documentElement.dir = 'ltr'; }")
     f.page.emulate_media(color_scheme="dark")
     _shot(f.page, "say-menu-closed-dark")
+    assert not errors, errors
+
+
+IDLE = "() => !document.querySelector('.spk.busy, .spk.on, .menu-item.busy, .menu-item.on')"
+
+
+def test_a_busy_voice_stays_and_a_missing_one_goes(piper_here, monkeypatch):
+    """Eric, 2026-10-03: "piper disappeared while i was using it on
+    homophone". A voice the server is too busy for (503) stays in the menu,
+    Say is idle again, nothing else answers under its name, and the next
+    tap asks the server again. Only a voice the server cannot say the word
+    in at all (404) leaves the menu."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"fr": {"FR": "fr-fr"}})
+
+    def busy(*a, **k):
+        raise voices.Busy("queue full")
+
+    monkeypatch.setattr(voices, "speak", busy)
+    f = open_eau()
+    f.wait_for_function("s => !document.querySelector(s).hidden", arg=CARET_FR)
+    _tap(f, CARET_FR)
+    for engine in ("piper", "piper", "espeak"):
+        f.click(".menu-item[data-engine='%s']" % engine)
+        f.wait_for_function(IDLE)
+        f.wait_for_timeout(300)  # the page's question to the server, answered
+    f.click(".hw h1")
+    _tap(f, SAY_FR)
+    f.wait_for_function(IDLE)
+    f.wait_for_timeout(300)
+    played = f.evaluate("() => window.__played")
+    assert len(played) == 4, "every tap asked the server again: %r" % played
+    assert f.evaluate("() => window.__said") == [], "no other voice under its name"
+    _tap(f, CARET_FR)
+    assert [e for _t, _c, e in f.evaluate(MENU_FR)] == [
+        "piper",
+        "espeak",
+        "device",
+        None,
+    ]
+    f.click(".hw h1")
+    # The server has no Basic voice for it after all: 404, and Basic goes.
+    monkeypatch.setattr(voices, "speak", lambda *a, **k: None)
+    monkeypatch.setattr(
+        voices,
+        "said",
+        lambda text, lang, accent="", engine=None: (
+            None if engine == "espeak" else {"made": False, "failed": False}
+        ),
+    )
+    _tap(f, CARET_FR)
+    f.click(".menu-item[data-engine='espeak']")
+    f.wait_for_function(IDLE)
+    f.wait_for_timeout(300)
+    f.click(".hw h1")
+    _tap(f, CARET_FR)
+    assert [e for _t, _c, e in f.evaluate(MENU_FR)] == ["piper", "device", None]
+    f.click(".hw h1")
+    assert not errors, errors
+
+
+def test_the_page_asks_the_server_to_load_its_voices(piper_here, monkeypatch):
+    """The Dictionary opening asks the server to load the downloaded voices
+    its languages use, once each, so the first tap is not the slow one. A
+    language said only by a voice that loads nothing (espeak-ng) is not
+    asked for."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})
+    asked = []
+    monkeypatch.setattr(voices, "warm", lambda langs: asked.append(list(langs)) or [])
+    f = open_eau()
+    f.wait_for_timeout(500)
+    langs = [lang for call in asked for lang in call]
+    assert "fr" in langs and not [x for x in langs if x.startswith("en")], asked
+    assert len(langs) == len(set(langs)), "once each: %r" % asked
     assert not errors, errors
 
 

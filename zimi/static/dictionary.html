@@ -206,6 +206,7 @@ var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is gi
 var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
 var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
 var VOICE_POLL_MS = 1000; // how often a page asks how a voice download is going: the bar moves
+var WARM_ENGINES = ['kokoro', 'piper']; // the server's voices that load a model, worth loading before the first tap
 var BYTES_PER_MB = 1000 * 1000; // as Zimi's sizes count
 
 // A Wiktionary's code for a language as a speech engine knows it. English
@@ -784,6 +785,21 @@ function wireSpeech() {
   document.querySelectorAll('[data-offer]').forEach(offerPaint);
   document.querySelectorAll('[data-voices]').forEach(caretPaint);
   document.querySelectorAll('.vdoor').forEach(function(b) { b.hidden = !_server; });
+  warmVoices(LANGS.concat(Array.prototype.map.call(document.querySelectorAll('[data-say]'), function(b) { return b.getAttribute('data-code'); })));
+}
+// The server loads a downloaded voice once and keeps it (a NAS took up to
+// 13 s a word when each started it afresh): ask it to load the voices this
+// page's languages use, once each, before the first tap. It fetches nothing.
+var _warmed = {};
+function warmVoices(codes) {
+  var langs = [];
+  codes.forEach(function(code) {
+    var tag = speechTag(code), row = serverRow(code);
+    if (!tag || !row || _warmed[tag] || WARM_ENGINES.indexOf(row.engine) < 0) return;
+    _warmed[tag] = true;
+    langs.push(tag);
+  });
+  if (langs.length) voicePost('/dictionary/voices/warm', { langs: langs });
 }
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
@@ -859,6 +875,7 @@ function loadVoices() {
     .then(function(d) {
       _server = d || { langs: {}, offers: {} };
       _missed = {};
+      _warmed = {};
       wireSpeech();
       clearTimeout(_voicePoll);
       if (_server.downloading && _server.downloading.tag) _voicePoll = setTimeout(loadVoices, VOICE_POLL_MS);
@@ -984,9 +1001,23 @@ function say(b, face) {
   var url = speakUrl(b);
   if (!url) { if (engine) wireSpeech(); else deviceSay(b, face); return; }
   playUrl(face, url, function() {
-    _missed[url] = true;
-    if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
+    voiceGone(url).then(function(gone) {
+      if (!gone) { wireSpeech(); return; }
+      _missed[url] = true;
+      if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
+    });
   });
+}
+// Why the server's audio did not play, asked of the server (an <audio>
+// element is not told): no voice for it (404), audio made that would not
+// play, or an engine that tried and could not, and the word is this
+// device's from now on; a voice that was busy (503) or a server out of
+// reach, and the voice stays: the next tap asks again.
+function voiceGone(url) {
+  return authed(url + '&check=1').then(function(r) {
+    if (r.status === 404) return true;
+    return r.ok ? r.json().then(function(d) { return !!(d && (d.made || d.failed)); }) : false;
+  }).catch(function() { return false; });
 }
 function deviceSay(b, face) {
   face = face || b;
