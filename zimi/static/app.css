@@ -38,6 +38,10 @@
        never sit on top of the article someone is reading. */
     --conn-h: 0px;
     --under-topbar: calc(56px + var(--conn-h));
+    /* Where the header goes when it steps aside: its own height and a pixel
+       more, so a part pixel of rounding never leaves its bottom border
+       showing as a line along the top of the page. */
+    --topbar-away: calc(-100% - 1px);
     color-scheme: dark;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
@@ -1483,6 +1487,10 @@
     .find-bar { position: static; order: -1; width: auto; margin: 8px 8px 0; box-shadow: none; }
   }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+  /* An app page is drawn on the app's ground, not on a ZIM page's white:
+     whatever of the frame shows past the page (iOS's bounce at the top, a
+     part pixel as the header slides) was a white hairline in either theme. */
+  body.app-page #reader-frame { background: var(--bg); }
   /* The header steps aside on a phone while an app or the Almanac is read
      (body.chrome-away, set by _chromeScroll in app.js): it slides up and
      the page takes its room. Keyboard focus in it brings it back. */
@@ -1490,7 +1498,7 @@
     .topbar { transition: transform 0.2s ease; }
     .reader-view, body .almanac-view { transition: top 0.2s ease; }
     body.chrome-away { --under-topbar: var(--conn-h); }
-    body.chrome-away .topbar:not(:focus-within) { transform: translateY(-100%); }
+    body.chrome-away .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
     body.chrome-away .conn-banner { top: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1499,7 +1507,7 @@
   /* Held away (a book being read, a video on a phone turned sideways):
      at every size, since the book's own header takes its place. */
   body.chrome-held { --under-topbar: var(--conn-h); }
-  body.chrome-held .topbar:not(:focus-within) { transform: translateY(-100%); }
+  body.chrome-held .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
   body.chrome-held .conn-banner { top: 0; }
 
   /* ── Context Menu ── */

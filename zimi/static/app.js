@@ -17859,7 +17859,9 @@ function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
   var bg = (_readerViewOn || _readerAuto() || _bookReading || _wikiFromApp) ? _readerThemeBg() : '';
-  if (frame) frame.style.background = bg || '#fff';
+  // No tint: app.css decides (white under a ZIM's page, the app's own ground
+  // under an app page).
+  if (frame) frame.style.background = bg || '';
   if (loading) loading.style.background = bg || '';
 }
 
@@ -21110,7 +21112,7 @@ function openReader(url) {
     if (_bookDoc && _readerViewOn) _bookMath(frame);
     var _wikiOn = _wikiDoc && _readerViewOn;
     if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
-    _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
+    _tintReaderChrome(); // reset frame bg to app.css's if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
     // white page doesn't break dark mode. No-op under Reader View / dark pages.
