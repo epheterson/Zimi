@@ -23,6 +23,7 @@ const sandbox = {
   console,
   esc: s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
   activeSourceFilters: new Set(),
+  _isMapZim: name => name.startsWith('map'),
 };
 vm.createContext(sandbox);
 const decls = [
@@ -65,6 +66,8 @@ check(S.searchResultGroups(res([['a', 5], ['b', 5], ['c', 5]])) === null, 'three
 const g = S.searchResultGroups(interleave(res([['a', 10], ['b', 10], ['c', 10]])));
 check(g && g.length === 3 && g.every(x => x.items.length === 10), 'three sources past a screen: grouped, every result kept');
 check(g && g.map(x => x.zim).join() === 'a,b,c', 'sources in the order of their best result');
+const gm = S.searchResultGroups(interleave(res([['mapx', 10], ['a', 10], ['b', 10]])));
+check(gm && gm.map(x => x.zim).join() === 'a,b,mapx', "a map's places after the reading, even when it ranks first");
 S.activeSourceFilters = new Set(['a']);
 check(S.searchResultGroups(res([['a', 10], ['b', 10], ['c', 10]])) === null, 'narrowed by a source pill: ranked');
 

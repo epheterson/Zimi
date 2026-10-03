@@ -7880,7 +7880,11 @@ function searchResultGroups(items) {
     by.get(r.zim).push(r);
   }
   if (by.size < SEARCH_GROUP_MIN_SOURCES) return null;
-  return [...by].map(([zim, list]) => ({ zim: zim, items: list }));
+  // A map's places come after the reading: "pizza" is a word to read about
+  // before it is a list of pizzerias (Eric, 2026-10-02: "maps results are
+  // first which is weird").
+  const groups = [...by].map(([zim, list]) => ({ zim: zim, items: list }));
+  return groups.filter(g => !_isMapZim(g.zim)).concat(groups.filter(g => _isMapZim(g.zim)));
 }
 
 // The results the arrow keys step through, in the order shown.
