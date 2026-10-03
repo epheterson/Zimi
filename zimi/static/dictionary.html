@@ -193,7 +193,7 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
   recording: 'Recording', no_voice: 'No {lang} voice on this device',
   voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice',
-  voices_menu: 'Voices', voice_device: 'This device', voices_more: 'Voices…', voice_default: 'default', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  voices_menu: 'Voices', voice_device: 'Device', voices_more: 'Voices…', voice_default: 'default', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
   entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
@@ -804,8 +804,8 @@ function warmVoices(codes) {
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
 // the one Say plays (a tick read as stuck), then Voices… for an admin.
-// Each is a one-off listen; which voice Say plays is the voices sheet's
-// choice. Eric, 2026-10-03: "A lil dropdown on the say button".
+// Each is a one-off listen; which voice Say plays is the person's own
+// (Settings > Languages), else the voices sheet's default. Eric, 2026-10-03: "A lil dropdown on the say button".
 function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
 function voicesFor(caret) {
   var code = caret.getAttribute('data-voices'), word = mainOf(caret).getAttribute('data-say'), row = serverRow(code);
@@ -823,8 +823,9 @@ function voiceName(e) { return e === 'device' ? STR.voice_device : STR['engine_'
 function openMenu(caret) {
   closeMenus();
   var menu = caret.nextElementSibling, main = mainOf(caret), code = caret.getAttribute('data-voices');
-  var word = main.getAttribute('data-say'), def = speakUrl(main) ? serverRow(code).engine : 'device';
-  menu.innerHTML = voicesFor(caret).map(function(e) {
+  var list = voicesFor(caret), mine = myVoice(code);
+  var word = main.getAttribute('data-say'), def = list.indexOf(mine) >= 0 ? mine : speakUrl(main) ? serverRow(code).engine : 'device';
+  menu.innerHTML = list.map(function(e) {
     return '<button type="button" class="menu-item" role="menuitem" tabindex="-1"' + (e === def ? ' data-default' : '') + ' data-say="' + esc(word) +
       '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '">' + SPEAKER + '<span class="vname">' + esc(voiceName(e)) + '</span>' +
       (e === def ? '<span class="vdef">' + esc(STR.voice_default) + '</span>' : '') + '</button>';
@@ -993,18 +994,20 @@ var _missed = {};
 // A server that cannot say it after all leaves the word to this device; a
 // voice from the menu that cannot leaves the menu instead, never another
 // voice under its name. ``face`` is the button that shows it working: Say,
-// for a voice from its menu.
-function say(b, face) {
+// for a voice from its menu. ``missed``, when given, is what to do instead
+// when the voice cannot say it.
+function say(b, face, missed) {
   face = face || b;
   var engine = b.getAttribute('data-engine');
   if (engine === 'device') { deviceSay(b, face); return; }
   var url = speakUrl(b);
-  if (!url) { if (engine) wireSpeech(); else deviceSay(b, face); return; }
+  if (!url) { if (missed) missed(); else if (engine) wireSpeech(); else deviceSay(b, face); return; }
   playUrl(face, url, function() {
     voiceGone(url).then(function(gone) {
       if (!gone) { wireSpeech(); return; }
       _missed[url] = true;
-      if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
+      if (missed) missed();
+      else if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
     });
   });
 }
@@ -1018,6 +1021,26 @@ function voiceGone(url) {
     if (r.status === 404) return true;
     return r.ok ? r.json().then(function(d) { return !!(d && (d.made || d.failed)); }) : false;
   }).catch(function() { return false; });
+}
+// The person's own voice for a language, from Settings > Languages (kept
+// with their preferences under VOICE_CHOICES_KEY, app.js's SK.VOICE_CHOICES:
+// {fr: 'piper', en: 'device'}), or '' for the server's default.
+var VOICE_CHOICES_KEY = 'zimi_voice_choices';
+function myVoice(code) {
+  try { var m = JSON.parse(localStorage.getItem(VOICE_CHOICES_KEY) || '{}'); return (m && m[serverLang(code)]) || ''; }
+  catch (e) { return ''; }
+}
+// Say, in the person's voice when it can say this word; when it cannot (not
+// here now, or the server's 404), the default says it this tap and the
+// choice stays theirs. An accent's own button asks for its region instead.
+function sayMine(b) {
+  var mine = !b.hasAttribute('data-exact') && myVoice(b.getAttribute('data-code'));
+  if (!mine) { say(b); return; }
+  var as = b.cloneNode(true);
+  as.setAttribute('data-engine', mine);
+  var can = mine === 'device' ? deviceSays(as, voices()) : !!speakUrl(as);
+  if (!can) { say(b); return; }
+  say(as, b, function() { say(b); });
 }
 function deviceSay(b, face) {
   face = face || b;
@@ -1092,7 +1115,7 @@ document.addEventListener('click', function(e) {
   var item = e.target.closest && e.target.closest('.menu [data-say]');
   if (item) { e.preventDefault(); say(item, item); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
-  if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
+  if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else sayMine(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();

@@ -648,7 +648,7 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     assert f.evaluate(MENU_FR) == [
         ["Piper", True, "piper"],
         ["Basic", False, "espeak"],
-        ["This device", False, "device"],
+        ["Device", False, "device"],
         ["Voices…", False, None],
     ]
     assert not f.query_selector(".menu-check"), "no tick: 'default' says it"
@@ -671,7 +671,9 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     _shot(f.page, "say-menu-open-dark")
     f.page.emulate_media(color_scheme="light")
     # A voice playing: the item pulses as Say does.
-    f.evaluate("() => { HTMLMediaElement.prototype.play = function() { window.__played.push(this.src); return new Promise(() => {}); }; }")
+    f.evaluate(
+        "() => { HTMLMediaElement.prototype.play = function() { window.__played.push(this.src); return new Promise(() => {}); }; }"
+    )
     f.click(".menu-item[data-engine='piper']")
     f.wait_for_selector(".menu-item.busy[data-engine='piper']")
     _shot(f.page, "say-menu-playing-light")
@@ -683,14 +685,16 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     f.click(".menu-item[data-engine='espeak']")
     f.wait_for_function("() => window.__played.length > 0")
     assert "&engine=espeak&" in f.evaluate("() => window.__played")[-1]
-    assert f.eval_on_selector(CARET_FR, "c => c.getAttribute('aria-expanded')") == "true"
+    assert (
+        f.eval_on_selector(CARET_FR, "c => c.getAttribute('aria-expanded')") == "true"
+    )
     f.click(".hw h1")
     # No espeak-ng here after all: the server says 404, and Basic leaves the
     # menu rather than another voice answering under its name.
     f.wait_for_function("() => !document.querySelector('.spk.busy')")
     _tap(f, CARET_FR)
     assert [e for _t, _c, e in f.evaluate(MENU_FR)] == ["piper", "device", None]
-    # This device's own voice.
+    # The device's own voice.
     f.evaluate("() => { window.__said = []; }")
     f.click(".menu-item[data-engine='device']")
     f.wait_for_function("() => window.__said.length > 0")
@@ -820,18 +824,17 @@ def test_the_page_asks_the_server_to_load_its_voices(piper_here, monkeypatch):
 
 
 SHEET = "#voices-sheet"
-DOOR = "#ms-voices-door"
+DOOR = "#ms-langs-wrap .voices-manage"
 ROWS = "() => [...document.querySelectorAll('#voices-sheet .voice-lang')].map(r => [r.querySelector('.share-row-title').textContent, !!r.closest('.voice-more')])"
 
 
 def _sheet_from_settings(pg, served, shot=""):
     pg.goto(served + "/?manage=preferences")
-    pg.wait_for_selector(DOOR + ":not([hidden]) button", timeout=20000)
-    pg.eval_on_selector(DOOR + " button", "b => b.scrollIntoView({ block: 'center' })")
+    pg.wait_for_selector(DOOR, timeout=20000)
+    pg.eval_on_selector(DOOR, "b => b.scrollIntoView({ block: 'center' })")
     if shot:
-        pg.wait_for_function("d => document.querySelector(d + ' .share-row-desc').textContent.trim()", arg=DOOR)
         _shot(pg, shot)
-    pg.click(DOOR + " button")
+    pg.click(DOOR)
     # An admin's sheet ends with the downloads setting, anyone else's with a note.
     pg.wait_for_selector(SHEET + " .voice-foot, " + SHEET + " .ms-hint", timeout=10000)
 
@@ -849,7 +852,8 @@ def test_voices_sheet_opens_from_the_front_and_settings_and_shows_the_library_la
 ):
     """Eric, 2026-10-03: the Server settings list was "a monster". The
     voices are a sheet of the Dictionary's own: from the front's speaker,
-    from Say's menu (Voices…) and from Settings > Apps. Natural voices are
+    from Say's menu (Voices…) and, for an admin, from Settings > Languages
+    (Manage voices…). Natural voices are
     one card; the library's languages with a voice here (English, French) are rows;
     the rest are folded; a select picks the voice, and the stamp follows."""
     open_eau, errors = piper_here
@@ -882,7 +886,10 @@ def test_voices_sheet_opens_from_the_front_and_settings_and_shows_the_library_la
     ), natural
     assert "On" in natural and "Apache-2.0" in natural
     # Maltese has no voice on the server at all: no row to choose in.
-    assert [r for r in pg.evaluate(ROWS) if not r[1]] == [["English", False], ["French", False]]
+    assert [r for r in pg.evaluate(ROWS) if not r[1]] == [
+        ["English", False],
+        ["French", False],
+    ]
     rest = [n for n, folded in pg.evaluate(ROWS) if folded]
     assert "Swedish" in rest and "Arabic" not in rest, rest
     assert not pg.eval_on_selector(SHEET + " .voice-more", "d => d.open")
@@ -906,18 +913,17 @@ def test_voices_sheet_opens_from_the_front_and_settings_and_shows_the_library_la
     pg.mouse.move(1, 400)
     _shot(pg, "voices-sheet-choice")
     pg.keyboard.press("Escape")
-    # Settings > Apps: the same sheet, the row says what is on (in the dark,
-    # which the shell takes from the system as it loads).
+    # Settings > Languages: the same sheet, from Manage voices… (in the
+    # dark, which the shell takes from the system as it loads).
     pg.emulate_media(color_scheme="dark")
     _sheet_from_settings(pg, served, "voices-settings-row-dark")
     pg.mouse.move(1, 400)
     _shot(pg, "voices-sheet-choice-dark")
     pg.emulate_media(color_scheme="light")
-    assert "Natural voices on" in pg.text_content(DOOR)
     if SHOTS:
         pg.keyboard.press("Escape")
         pg.set_viewport_size({"width": 1280, "height": 800})
-        pg.click(DOOR + " button")
+        pg.click(DOOR)
         pg.wait_for_selector(SHEET + " .voice-foot")
         pg.eval_on_selector(SHEET + " .voice-more", "d => d.open = true")
         _shot(pg, "voices-sheet-desktop-dark")
@@ -1012,8 +1018,9 @@ def test_voices_never_offers_no_download_and_a_reader_sees_them_all_read_only(
 ):
     """Never (or ZIMI_OFFLINE): the selects offer no Piper and the setting
     says so. Not an admin (Eric, 2026-10-03: "All users see all available
-    only admins can add"): every door is there and the sheet lists the
-    voices, with nothing to download, remove or choose."""
+    only admins can add"): the Dictionary's doors are there and the sheet
+    lists the voices, with nothing to download, remove or choose; Settings
+    has no Manage voices… for them."""
     from zimi import users
 
     open_eau, errors = piper_here
@@ -1038,10 +1045,151 @@ def test_voices_never_offers_no_download_and_a_reader_sees_them_all_read_only(
     f.wait_for_selector(".wotd, .hint", timeout=10000)
     assert not f.eval_on_selector(".vdoor", "b => b.hidden")
     _shot(f.page, "voices-front-reader")
-    _sheet_from_settings(pg, served)
-    got = pg.evaluate("""(sel) => { const s = document.querySelector(sel);
+    f.click(".vdoor")
+    pg.wait_for_selector(SHEET + " .ms-hint", timeout=10000)
+    got = pg.evaluate(
+        """(sel) => { const s = document.querySelector(sel);
       return { pills: s.querySelectorAll('button.pill').length, mode: !!s.querySelector('#voices-mode'),
         enabled: [...s.querySelectorAll('select.voice-select')].filter(x => !x.disabled).length,
-        rows: s.querySelectorAll('.voice-lang').length }; }""", SHEET)
-    assert got["rows"] and not got["pills"] and not got["mode"] and not got["enabled"], got
+        rows: s.querySelectorAll('.voice-lang').length }; }""",
+        SHEET,
+    )
+    assert (
+        got["rows"] and not got["pills"] and not got["mode"] and not got["enabled"]
+    ), got
+    assert not errors, errors
+    # Settings: their own languages and voices, and no Manage voices….
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_function("() => window._langsVoices", timeout=20000)
+    assert not pg.query_selector(DOOR)
+    pg.eval_on_selector("#ms-langs-wrap", "e => e.scrollIntoView({ block: 'start' })")
+    _shot(pg, "languages-reader")
+
+
+LANGS = "#ms-langs-wrap"
+LANG_ROWS = "() => [...document.querySelectorAll('#ms-langs-wrap .lang-row')].map(r => r.getAttribute('data-lang'))"
+VOICE_SEL = LANGS + " .lang-row[data-lang='fr'] select"
+
+
+def _settings_languages(pg, served):
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_function("() => window._langsVoices", timeout=20000)
+    pg.eval_on_selector(LANGS, "e => e.scrollIntoView({ block: 'start' })")
+
+
+def _shots(pg, name):
+    """One look at a state: phone and desktop, light and dark."""
+    if not SHOTS:
+        return
+    size = pg.viewport_size
+    for w, h, tag in ((390, 844, "390"), (1280, 860, "desktop")):
+        pg.set_viewport_size({"width": w, "height": h})
+        for scheme in ("light", "dark"):
+            pg.emulate_media(color_scheme=scheme)
+            pg.wait_for_timeout(150)
+            _shot(pg, "%s-%s-%s" % (name, tag, scheme))
+    pg.set_viewport_size(size)
+    pg.emulate_media(color_scheme="light")
+
+
+def _add_language(pg, query, code):
+    pg.click(LANGS + " .lang-add")
+    pg.wait_for_selector(".lang-add-search")
+    assert pg.evaluate("() => document.activeElement.matches('.lang-add-search')")
+    pg.fill(".lang-add-search", query)
+    pg.click(".lang-add-opt[data-code='%s']" % code)
+    assert not pg.query_selector(".lang-add-overlay")
+
+
+def test_your_languages_each_with_its_own_voice(piper_here, monkeypatch, served):
+    """Eric, 2026-10-03: "Redesign this to have that nice UI for selecting
+    languages and voices right there." "Everyone gets their own preference
+    ui from what they have." Settings > Languages lists the person's
+    languages (the catalog filter); Add a language is a search over every
+    language; each row has a voice of the person's own, kept across a
+    reload, which the Dictionary's Say asks for, and which a voice that
+    cannot say the word gives way from for that tap only."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"fr": {"FR": "fr-fr"}})
+    f = open_eau()
+    pg = f.page
+    _settings_languages(pg, served)
+    assert pg.evaluate(LANG_ROWS) == []
+    assert "every language" in pg.text_content(LANGS + " .lang-empty")
+    assert pg.query_selector(LANGS + " .voices-manage"), "an admin manages voices"
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    _shots(pg, "languages-empty")
+    # Add: a search over every language, the list under it.
+    pg.click(LANGS + " .lang-add")
+    pg.fill(".lang-add-search", "fra")
+    names = pg.eval_on_selector_all(
+        ".lang-add-opt", "os => os.map(o => o.dataset.code)"
+    )
+    assert names == ["fr"], names
+    _shots(pg, "languages-add-search")
+    pg.keyboard.press("Escape")
+    assert not pg.query_selector(".lang-add-overlay")
+    for q, code in (("French", "fr"), ("Deutsch", "de"), ("ja", "ja")):
+        _add_language(pg, q, code)
+    assert pg.evaluate(LANG_ROWS) == ["fr", "de", "ja"]
+    assert pg.evaluate("() => JSON.parse(localStorage.zimi_pref_languages)") == [
+        "fr",
+        "de",
+        "ja",
+    ]
+    # French: Piper (the server's default), Basic, and this browser's own.
+    opts = pg.eval_on_selector(
+        VOICE_SEL, "s => [...s.options].map(o => [o.value, o.textContent])"
+    )
+    assert opts == [
+        ["", "Default (Piper)"],
+        ["piper", "Piper"],
+        ["espeak", "Basic"],
+        ["device", "Device"],
+    ], opts
+    # German: nothing on the server and no voice in this browser: no select.
+    assert not pg.query_selector(LANGS + " .lang-row[data-lang='de'] select")
+    _shots(pg, "languages-three")
+    pg.select_option(VOICE_SEL, "espeak")
+    _shots(pg, "languages-voice-chosen")
+    # Kept across a reload, and in the preferences My data carries.
+    _settings_languages(pg, served)
+    assert pg.eval_on_selector(VOICE_SEL, "s => s.value") == "espeak"
+    assert pg.evaluate("() => JSON.parse(localStorage.zimi_voice_choices)") == {
+        "fr": "espeak"
+    }
+    assert (
+        pg.evaluate("() => _collectPreferences().zimi_voice_choices")
+        == '{"fr":"espeak"}'
+    )
+    # Remove: the row goes, and the catalog filter with it.
+    pg.click(LANGS + " .lang-row[data-lang='ja'] .lang-remove")
+    assert pg.evaluate(LANG_ROWS) == ["fr", "de"]
+    assert pg.evaluate("() => JSON.parse(localStorage.zimi_pref_languages)") == [
+        "fr",
+        "de",
+    ]
+    # The Dictionary: the person's voice is Say's default in the menu, and
+    # Say asks for it.
+    f = open_eau()
+    _tap(f, CARET_FR)
+    assert [e for _n, d, e in f.evaluate(MENU_FR) if d] == ["espeak"]
+    f.click(".hw h1")
+    f.evaluate("() => { window.__played = []; }")
+    _tap(f, SAY_FR)
+    # No espeak-ng here: its 404 gives the word to the default, this tap.
+    f.wait_for_function("() => window.__played.length > 1", timeout=10000)
+    played = f.evaluate("() => window.__played")
+    assert "&engine=espeak&" in played[0] and "engine=" not in played[1], played
+    assert f.evaluate("() => JSON.parse(localStorage.zimi_voice_choices)") == {
+        "fr": "espeak"
+    }
+    # Device: this browser speaks it.
+    f.evaluate(
+        "() => { localStorage.zimi_voice_choices = JSON.stringify({ fr: 'device' }); window.__said = []; }"
+    )
+    _tap(f, SAY_FR)
+    f.wait_for_function("() => window.__said.length > 0")
+    assert f.evaluate("() => window.__said")[0][1] == "Thomas"
     assert not errors, errors
