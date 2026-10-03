@@ -28,6 +28,7 @@
 
 var TB_TABLES = ALM_TB_TABLES;     // almanac.js: the tiles' order is the tabs'
 var TB_CALCS = ALM_TB_CALCS;
+var TB_CONSTS = ALM_TB_CONSTS;
 // The window a table opens on: the span its data is naturally read over.
 var TB_DEFAULT_WIN = { sunmoon: 'month', twilight: 'month', phases: 'month', tides: 'week', nav: 'day',
   stars: 'year', seasons: 'year', eclipses: 'year', calendars: 'month', suntime: 'month' };
@@ -665,7 +666,9 @@ function _tkType(el, first) {
 // ═══════════════════════════════════════════════════════════════════════
 // The view: one table or calculation over the Almanac
 // ═══════════════════════════════════════════════════════════════════════
-function _tbKind(id) { return TB_TABLES.indexOf(id) >= 0 ? 'table' : TB_CALCS.indexOf(id) >= 0 ? 'calc' : id === 'decay' ? 'decay' : null; }
+function _tbKind(id) {
+  return TB_TABLES.indexOf(id) >= 0 ? 'table' : TB_CALCS.indexOf(id) >= 0 ? 'calc' : TB_CONSTS.indexOf(id) >= 0 ? 'const' : id === 'decay' ? 'decay' : null;
+}
 function _tbName(id) { return id === 'decay' ? t('ref_decay') : t('tb_' + id); }
 
 function _tbOpen(id) {
@@ -690,18 +693,18 @@ function _tbOpen(id) {
   _tb.id = id; _tb.kind = kind; _tb.changed = null;
   _tkPopClose(true);
   _tkReset();
-  var list = kind === 'calc' ? TB_CALCS : kind === 'table' ? TB_TABLES : [];
+  var list = kind === 'calc' ? TB_CALCS : kind === 'table' ? TB_TABLES : kind === 'const' ? TB_CONSTS : [];
   el.innerHTML = '<div class="tb-head">' +
     '<div class="tb-bar">' +
       '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
       '<span class="tb-bar-end">' +
-        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>' +
-          '<button type="button" class="tb-iconbtn" data-tb-share aria-label="' + _almEsc(t('reader_share')) + '" title="' + _almEsc(t('reader_share')) + '">' + TB_SHARE_SVG + '</button>') +
+        (kind === 'table' || kind === 'calc' ? '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>' : '') +
+        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-share aria-label="' + _almEsc(t('reader_share')) + '" title="' + _almEsc(t('reader_share')) + '">' + TB_SHARE_SVG + '</button>') +
         '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
       '</span>' +
     '</div>' +
-    (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : 'tables') + '">' + list.map(function (k) {
+    (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : kind === 'const' ? 'consts' : 'tables') + '">' + list.map(function (k) {
       return '<button type="button" class="tb-tab" data-tb-go="' + k + '"' + (k === id ? ' aria-current="page"' : '') + '>' + _almEsc(_tbName(k)) + '</button>';
     }).join('') + '</nav>' : '') +
     '</div><div class="tb-body" id="tb-body"></div>';
@@ -720,6 +723,7 @@ function _tbOpen(id) {
   var body = _tbEl('tb-body');
   if (kind === 'table') _tbRenderTable(body);
   else if (kind === 'calc') _tbRenderCalc(body);
+  else if (kind === 'const') _tbRenderConst(body);
   else _arRenderDecay(body);
   el.style.setProperty('--tb-head-h', el.querySelector('.tb-head').offsetHeight + 'px');
   if (!el.contains(document.activeElement)) el.querySelector('#alm-ref-title').focus({ preventScroll: true });
@@ -994,14 +998,145 @@ function _tbMadeFill(x) {
     var m = TB_MADE_METHOD[k](x);
     if (!m) return;
     methods.push(m.line);
-    (m.c || []).forEach(function (ck) { if (!seen[ck]) { seen[ck] = 1; consts.push(_tbT('mc_' + ck) + ': ' + TB_MADE_CONST[ck]()); } });
+    (m.c || []).forEach(function (ck) { if (!seen[ck]) { seen[ck] = 1; consts.push({ text: _tbT('mc_' + ck) + ': ' + TB_MADE_CONST[ck](), tile: TB_MADE_CONST_TILE[ck] }); } });
   });
   var was = host.querySelector('details'), open = was && was.open && !was.hasAttribute('data-print-opened');
+  // A line, and for a constant the tile that holds it ("Physics").
   function group(key, lines) {
-    return lines.length ? '<h4>' + _tbH(key) + '</h4><ul>' + lines.map(function (l) { return '<li>' + _almEsc(l) + '</li>'; }).join('') + '</ul>' : '';
+    return lines.length ? '<h4>' + _tbH(key) + '</h4><ul>' + lines.map(function (l) {
+      if (typeof l === 'string') return '<li>' + _almEsc(l) + '</li>';
+      return '<li>' + _almEsc(l.text) + ' · <button type="button" class="tb-how-k" data-tb-go="' + l.tile + '">' + _almEsc(_tbName(l.tile)) + '</button></li>';
+    }).join('') + '</ul>' : '';
   }
   host.innerHTML = '<details class="tb-how"' + (open ? ' open' : '') + '><summary>' + _tbH('made_title') + '</summary>' +
     group('made_inputs', _tbMadeInputs(x)) + group('made_method', methods) + group('made_constants', consts) + '</details>';
+  host.querySelectorAll('[data-tb-go]').forEach(function (b) { b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); }); });
+}
+// Which Constants tile holds each constant a method rests on.
+var TB_MADE_CONST_TILE = { aberration: 'k_physics', light: 'k_physics', parallax: 'k_nav', moonk: 'k_sunmoon', synodic: 'k_sunmoon',
+  sidereal: 'k_earth', year: 'k_time', tai: 'k_time' };
+
+// ═══ Constants ═══
+// Each tile a table: name, value, unit, source. Every value is read from the
+// named constant the sums use (or worked from them: a month from a mean
+// motion), never typed again here.
+var TB_DEG_PER_CENTURY_TO_DAYS = JULIAN_CENTURY * 360;   // a rate in degrees per century -> its period in days
+function _tbPeriod(degPerCentury) { return TB_DEG_PER_CENTURY_TO_DAYS / degPerCentury; }
+// Reference values no sum uses, shown for completeness: defined once here.
+var TB_G_SI = 6.67430e-11;           // CODATA 2018
+var TB_G0_M_S2 = 9.80665;            // standard gravity, exact (CGPM 1901)
+var TB_ISA_T0_C = 15;                // ICAO standard atmosphere at sea level
+var TB_ISA_LAPSE_K_PER_KM = 6.5;
+var TB_SAROS_SYNODIC = 223;          // the Saros: 223 synodic months
+var TB_S_PER_DAY_SI = 86400;
+var TB_SRC_EXACT = 'SI';
+// Rows: [name key, value, digits, unit, source]; value a number, or text.
+var TB_CONST_ROWS = {
+  k_earth: function () {
+    var a = AE_EARTH_RADIUS_KM, f = AE_EARTH_FLATTENING;
+    return [
+      ['eq_radius', a, 3, 'km', 'WGS84'],
+      ['polar_radius', a * (1 - f), 3, 'km', 'WGS84'],
+      ['mean_radius', TB_EARTH_R_KM, 4, 'km', 'IUGG'],
+      ['flattening', '1 / ' + _arNum(1 / f, 9), 0, '', 'WGS84'],
+      ['gm_earth', AE_GM_EARTH, 4, 'km³/s²', 'WGS84'],
+      ['g0', TB_G0_M_S2, 5, 'm/s²', 'CGPM'],
+      ['rotation', AR_SIDEREAL_DEG_PER_DAY, 8, '°/d', 'Meeus 12.4'],
+      ['obliquity', AE_OBLIQUITY_J2000_ARCSEC / 3600, 7, '°', 'Meeus 22.2'],
+      ['obliquity_rate', AE_OBLIQUITY_RATE_ARCSEC, 4, '″/century', 'Meeus 22.2']
+    ];
+  },
+  k_sunmoon: function () {
+    return [
+      ['au', AU_M / 1000, 0, 'km', 'IAU 2012'],
+      ['sun_radius', AE_SUN_RADIUS_KM, 0, 'km', 'IAU 2015'],
+      ['moon_dist', AE_MOON_MEAN_DIST_KM, 2, 'km', 'Meeus 47'],
+      ['moon_radius', AE_MOON_RADIUS_KM, 1, 'km', 'IAU'],
+      ['moon_k', AR_MOON_K, 7, '', 'IAU'],
+      ['moon_motion', AE_MOON_MEAN_LON_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.1'],
+      ['sun_motion', AE_SUN_ANOMALY_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.3'],
+      ['synodic', _CN_SYN, 6, 'd', 'Meeus 49'],
+      ['tropical_month', _tbPeriod(AE_MOON_MEAN_LON_RATE), 6, 'd', 'Meeus 47.1'],
+      ['anomalistic', _tbPeriod(AE_MOON_ANOMALY_RATE), 6, 'd', 'Meeus 47.4'],
+      ['draconic', _tbPeriod(AE_MOON_ARGLAT_RATE), 6, 'd', 'Meeus 47.5'],
+      ['saros', TB_SAROS_SYNODIC * _CN_SYN, 3, 'd', TB_SAROS_SYNODIC + ' × ' + _tbT('mc_synodic')]
+    ];
+  },
+  k_time: function () {
+    var now = Date.now();
+    return [
+      ['day', TB_S_PER_DAY_SI, 0, 's', TB_SRC_EXACT],
+      ['sidereal_day', 360 / AR_SIDEREAL_DEG_PER_DAY * TB_S_PER_DAY_SI, 4, 's', 'Meeus 12.4'],
+      ['tropical_year', _CN_TROPICAL_YEAR, 4, 'd', 'Meeus 27'],
+      ['julian_year', AR_DAYS_PER_JULIAN_YEAR, 2, 'd', TB_SRC_EXACT],
+      ['julian_century', JULIAN_CENTURY, 0, 'd', TB_SRC_EXACT],
+      ['jd_j2000', JD_J2000, 1, 'JD', 'IAU'],
+      ['jd_unix', JD_UNIX_EPOCH, 1, 'JD', '1970-01-01 00:00 UTC'],
+      ['delta_t', _cnDeltaTdays(_dateToJD(now)) * TB_S_PER_DAY_SI, 1, 's', 'Espenak, Meeus'],
+      ['delta_t_measured', AR_MEASURED_DELTA_T.s, 1, 's', 'IERS ' + AR_MEASURED_DELTA_T.year],
+      ['tai_utc', AR_TAI_MINUS_UTC, 0, 's', 'IERS'],
+      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS']
+    ];
+  },
+  k_nav: function () {
+    return [
+      ['nmi', TB_KM_PER.nm * 1000, 0, 'm', TB_SRC_EXACT],
+      ['knot', TB_KM_PER.nm, 3, 'km/h', TB_SRC_EXACT],
+      ['refraction', AR_MOON_REFRACTION_DEG * TB_ARCMIN_PER_DEG, 0, '′', 'Nautical Almanac'],
+      ['std_air', AR_STD_TEMP_C + ' °C · ' + AR_STD_PRESSURE_HPA + ' hPa', 0, '', 'Nautical Almanac'],
+      ['dip', AR_DIP_ARCMIN_PER_SQRT_M, 2, '′ × √m', 'Nautical Almanac'],
+      ['horizon', SKY_EYE_KM, 2, 'km × √m', 'Bowditch'],
+      ['sun_sd', (-AR_SUNRISE_ALT - AR_MOON_REFRACTION_DEG) * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
+      ['sunrise_alt', AR_SUNRISE_ALT * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
+      ['moon_hp', AR_MOON_HP_FACTOR, 4, '× HP', 'Meeus 15'],
+      ['sun_parallax', AR_SOLAR_PARALLAX_ARCSEC, 3, '″', 'IAU'],
+      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO']
+    ];
+  },
+  k_physics: function () {
+    var atm = _tbUnitFactor('pressure', 'atm');
+    return [
+      ['c', SPEED_OF_LIGHT_M_S, 0, 'm/s', TB_SRC_EXACT],
+      ['g', TB_G_SI.toExponential(5), 0, 'm³/(kg·s²)', 'CODATA 2018'],
+      ['light_au', AR_LIGHT_DAYS_PER_AU * TB_S_PER_DAY_SI, 3, 's', 'Meeus 33.3'],
+      ['aberration', AR_ABERRATION_ARCSEC, 5, '″', 'Meeus 23'],
+      ['atm', atm, 0, 'Pa', TB_SRC_EXACT],
+      ['sea_pressure', atm / _tbUnitFactor('pressure', 'hpa'), 2, 'hPa', 'ICAO'],
+      ['isa_t0', TB_ISA_T0_C, 0, '°C', 'ICAO'],
+      ['lapse', TB_ISA_LAPSE_K_PER_KM, 1, 'K/km', 'ICAO'],
+      ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
+    ];
+  },
+  k_units: function () {
+    var rows = [];
+    Object.keys(TB_UNITS).forEach(function (kind) {
+      var base = TB_UNITS[kind].filter(function (u) { return u[1] === 1; })[0];
+      if (!base) return;
+      TB_UNITS[kind].forEach(function (u) {
+        if (u === base) return;
+        rows.push([null, u[1], null, _tbUnitSym(base[0]), TB_SRC_EXACT, '1 ' + _tbUnitSym(u[0]) + ' (' + _tbT('u_' + u[0]) + ')']);
+      });
+    });
+    rows.push([null, '(°F − ' + TB_F_ZERO_C + ') × 5/9', 0, '°C', TB_SRC_EXACT, '°F']);
+    return rows;
+  }
+};
+// A value as the table shows it: text as it is; a number to its digits, or
+// to its own significant figures when it has none.
+function _tbConstVal(v, d) {
+  if (typeof v !== 'number') return String(v);
+  return d == null ? _tbSig(v, true) : _arNum(v, d);
+}
+function _tbRenderConst(body) {
+  var rows = TB_CONST_ROWS[_tb.id]().map(function (r) {
+    var name = r[5] || _tbT('kn_' + r[0]);
+    // The unit beside its value: four columns do not fit a phone.
+    return '<tr><th scope="row">' + _almEsc(name) + '</th><td><span dir="ltr">' + _almEsc(_tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : '')) + '</span></td>' +
+      '<td class="tb-src">' + _almEsc(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
+  }).join('');
+  body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
+    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
+  _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
 }
 
 // The heading only paper carries: what, where, when, and when worked out.
@@ -1769,10 +1904,11 @@ var TB_UNIT_SYM = { ml: 'mL', l: 'L', m3: 'm³', floz: 'fl oz', impgal: 'imp gal
 function _tbUnitSym(u) { return TB_UNIT_SYM[u] || u; }
 function _tbUnitFactor(kind, u) { var l = TB_UNITS[kind]; for (var i = 0; i < l.length; i++) if (l[i][0] === u) return l[i][1]; return NaN; }
 // v in unit a to unit b, both of one kind. Temperature by way of kelvin.
+var TB_ZERO_C_K = 273.15, TB_F_ZERO_C = 32, TB_C_PER_F = 5 / 9;
 function _tbConvert(kind, v, a, b) {
   if (kind === 'temperature') {
-    var k = a === 'c' ? v + 273.15 : a === 'f' ? (v - 32) * 5 / 9 + 273.15 : v;
-    return b === 'c' ? k - 273.15 : b === 'f' ? (k - 273.15) * 9 / 5 + 32 : k;
+    var k = a === 'c' ? v + TB_ZERO_C_K : a === 'f' ? (v - TB_F_ZERO_C) * TB_C_PER_F + TB_ZERO_C_K : v;
+    return b === 'c' ? k - TB_ZERO_C_K : b === 'f' ? (k - TB_ZERO_C_K) / TB_C_PER_F + TB_F_ZERO_C : k;
   }
   return v * _tbUnitFactor(kind, a) / _tbUnitFactor(kind, b);
 }

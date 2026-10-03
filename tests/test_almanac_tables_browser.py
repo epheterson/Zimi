@@ -3,7 +3,7 @@
 On the shipped files, served by Zimi, in headless Chromium at a phone's width
 (390px), San Francisco chosen as the place:
 
-  1. The tiles: two rows, every table and calculation, scrolling inside
+  1. The tiles: three rows, every table, calculation and constants table, scrolling inside
      themselves; the page never scrolls sideways.
   2. Every table opens with rows, its time window changes them (a day, a
      month, a year), and the print rules are there for it.
@@ -57,6 +57,7 @@ CALCS = [
     "convert",
     "zones",
 ]
+CONSTS = ["k_earth", "k_sunmoon", "k_time", "k_nav", "k_physics", "k_units"]
 DRAWN = (
     "() => { var o = document.getElementById('tb-out'); var a = document.getElementById('tk-answer');"
     " return (o && !o.classList.contains('tb-busy') && o.firstChild && !o.querySelector('.tb-wait'))"
@@ -166,8 +167,8 @@ def test_the_tiles(page):
     tiles = page.evaluate(
         "[...document.querySelectorAll('.alm-tile')].map(b => b.dataset.tb)"
     )
-    assert tiles == TABLES + CALCS
-    assert page.evaluate("document.querySelectorAll('.alm-tiles').length") == 2
+    assert tiles == TABLES + CALCS + CONSTS
+    assert page.evaluate("document.querySelectorAll('.alm-tiles').length") == 3
     # Each row scrolls inside itself; the print chips are gone.
     assert page.evaluate(
         "[...document.querySelectorAll('.alm-tiles')].every(r => r.scrollWidth > r.clientWidth)"
@@ -334,6 +335,38 @@ def test_every_calculation_answers_from_its_defaults(page, id_):
     assert md.startswith("# ") and ("**" + big.strip()) in md, (id_, md[:200])
     assert "\n- " in md and "| --- |" in md, (id_, md[:400])
     _how_is_made(page, id_, md)
+    assert not page.errors, page.errors
+
+
+@pytest.mark.parametrize("id_", CONSTS)
+def test_every_constants_table(page, id_):
+    _open(page, id_)
+    rows = page.evaluate(
+        "[...document.querySelectorAll('#tb-out tbody tr')].map((r) => [...r.cells].map((c) => c.textContent))"
+    )
+    assert len(rows) >= 6, (id_, rows)
+    for r in rows:
+        assert len(r) == 3 and r[0] and r[1] and r[2], (id_, r)
+        assert "NaN" not in r[1] and r[1] != "–" and "undefined" not in "".join(r), (id_, r)
+    md = page.evaluate("_tbMarkdown()")
+    assert md.startswith("# ") and "| --- | --- | --- |" in md, (id_, md[:300])
+    assert page.evaluate("!!document.querySelector('.tb-bar [data-tb-share]') && !document.querySelector('.tb-bar [data-tb-reset]')")
+    assert _no_side_scroll(page)
+    assert not page.errors, page.errors
+
+
+def test_constants_read_the_sums_own_numbers(page):
+    _open(page, "k_earth")
+    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
+    assert "6,378.137 km" in cells and "1 / 298.257223563" in cells, cells
+    _open(page, "k_sunmoon")
+    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
+    assert "29.530589 d" in cells and "27.554550 d" in cells and "27.212221 d" in cells, cells
+    # How this is made links a constant to its tile.
+    _open(page, "sunmoon")
+    page.evaluate("document.querySelector('#tb-how details').open = true")
+    page.click("#tb-how [data-tb-go='k_sunmoon']")
+    page.wait_for_function("document.getElementById('alm-ref-title').textContent === 'Sun and Moon' && !!document.querySelector('.tb-consts')")
     assert not page.errors, page.errors
 
 

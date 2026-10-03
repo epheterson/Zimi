@@ -133,6 +133,9 @@
 .tb-table tr.tb-feastrow th { color: var(--amber); }
 .tb-table .tb-txt { white-space: normal; display: inline-block; min-width: 16em; max-width: 34em; text-align: start; }
 .tb-wrap td { text-align: start; }
+/* Constants: the name and the source wrap, the value and its unit stay whole. */
+.tb-consts th[scope="row"], .tb-consts .tb-src { white-space: normal; text-align: start; }
+.tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
 .tb-mono { font-family: var(--tb-mono); font-size: 12px; }
 .tb-mono th, .tb-mono td { padding: 5px 8px; }
@@ -175,6 +178,7 @@
 .tb-how h4 { margin: 8px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
 .tb-how ul { margin: 0 0 6px; padding-inline-start: 18px; }
 .tb-how li { margin: 2px 0; line-height: 1.45; overflow-wrap: anywhere; }
+.tb-how-k { padding: 0; border: 0; background: none; color: var(--amber); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .tb-steps th { font-weight: 400; color: var(--text2); white-space: normal; }
 .tb-steps td { font-family: var(--tb-mono); font-size: 13px; }
 .tb-steps tr.tb-total > * { font-weight: 600; color: var(--text); border-top: 1px solid var(--text3); }
