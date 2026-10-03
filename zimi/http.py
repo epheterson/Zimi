@@ -175,6 +175,38 @@ def _with_reopen_in_shell(text):
     return text[:at] + _REOPEN_IN_SHELL_SCRIPT + text[at:]
 
 
+# A zimit 1 ZIM (Off the Grid, the 2023 web captures) opens on A/index.html,
+# whose load.js registers a replay service worker and then sends the page on
+# to the capture. Two things in it assume nothing else controls the page:
+# - it waits only for "a controller", and Zimi's own worker (scope /) already
+#   is one, so the first open posted to the wrong worker and spun forever;
+# - it moves on with location.href =, which leaves index.html in history, so
+#   Back (the iPhone edge swipe) landed on it and was sent forward again.
+# Served through Zimi, it waits for the replay worker and moves on with
+# location.replace. The ETag carries ZIMIT1_LOADER_MEND so a copy cached
+# before the mend is fetched again.
+ZIMIT1_LOADER_MEND = "zimit1-loader-2"
+_ZIMIT1_LOADER_ENTRY = "load.js"
+_ZIMIT1_REPLAY_SW = "sw.js?replayPrefix"
+_ZIMIT1_WAIT_RE = re.compile(r"if\s*\(\s*!\s*sw\.controller\s*\)")
+_ZIMIT1_GO_RE = re.compile(r"window\.location\.href\s*=\s*prefix\s*;")
+
+
+def _is_zimit1_loader(entry_path):
+    return entry_path.rsplit("/", 1)[-1] == _ZIMIT1_LOADER_ENTRY
+
+
+def _mend_zimit1_loader(text):
+    if "addColl" not in text or "topTemplateUrl" not in text:
+        return text
+    text = _ZIMIT1_WAIT_RE.sub(
+        "if (!sw.controller || sw.controller.scriptURL.indexOf(%r) < 0)"
+        % _ZIMIT1_REPLAY_SW,
+        text,
+    )
+    return _ZIMIT1_GO_RE.sub("window.location.replace(prefix);", text)
+
+
 # "Remember me" user-session cookie lifetime (seconds). 30 days — long enough
 # for a kid's device to stay logged in, short enough to age out abandoned tokens.
 SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
@@ -208,7 +240,14 @@ _RATE_LIMITED_API_PATHS = (
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
 # matched exactly, they answered without limit.
-_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/", "/books/", "/dictionary/")
+_RATE_LIMITED_API_PREFIXES = (
+    "/exchange/",
+    "/reddot/",
+    "/tube/",
+    "/wiki/",
+    "/books/",
+    "/dictionary/",
+)
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -356,7 +395,9 @@ def _almanac_ages():
 
     if _tz_map_source is None:
         try:
-            with open(os.path.join(_STATIC_DIR, "tz-borders.json"), encoding="utf-8") as f:
+            with open(
+                os.path.join(_STATIC_DIR, "tz-borders.json"), encoding="utf-8"
+            ) as f:
                 m = re.search(r'"source":"[^"]*?(\d{4}[a-z])', f.read(512))
             _tz_map_source = m.group(1) if m else ""
         except OSError:
@@ -1765,7 +1806,14 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
-APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html", "dictionary.html")
+APP_PAGES = (
+    "tube.html",
+    "exchange.html",
+    "reddot.html",
+    "wiki.html",
+    "books.html",
+    "dictionary.html",
+)
 # Pages that show a ZIM's own HTML may load only from Zimi: inline styles and
 # scripts run (ZIM content uses them), anything on another host is refused,
 # and nothing outside Zimi may frame them. A ZIM's article and an app page
@@ -2463,6 +2511,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # check at all.
                 zim_count = _srv.server_zim_count()
                 from zimi.p2p import is_offline as _is_offline
+
                 return self._json(
                     200,
                     {
@@ -2514,7 +2563,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Reddot: subreddits as ZIMs.
                 from zimi import reddot as _rd
 
-                sub = parsed.path[len("/reddot"):].strip("/")
+                sub = parsed.path[len("/reddot") :].strip("/")
                 try:
                     pg = max(1, int(param("page", "1")))
                 except (TypeError, ValueError):
@@ -2524,14 +2573,28 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _rd.home())
                 if sub == "random":
                     got = _rd.random_post()
-                    return self._json(200, got) if got else self._json(404, {"error": "no posts"})
-                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "no posts"})
+                    )
+                if (
+                    not zim
+                    or zim not in _srv.get_zim_files()
+                    or not _srv.zim_allowed(zim)
+                ):
                     return self._json(404, {"error": "not found"})
                 if sub == "sub":
-                    return self._json(200, _rd.listing(zim, param("r"), param("sort", "top"), pg))
+                    return self._json(
+                        200, _rd.listing(zim, param("r"), param("sort", "top"), pg)
+                    )
                 if sub == "post":
                     got = _rd.post(zim, param("p"))
-                    return self._json(200, got) if got else self._json(404, {"error": "not a post page"})
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "not a post page"})
+                    )
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/wiki" or parsed.path.startswith("/wiki/"):
                 # Zimipedia: every wiki in the library, as one.
@@ -2541,7 +2604,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # not here at all.
                 if "wiki" not in _srv.apps_shown():
                     return self._json(404, {"error": "not found"})
-                sub = parsed.path[len("/wiki"):].strip("/")
+                sub = parsed.path[len("/wiki") :].strip("/")
                 if sub in ("", "home"):
                     return self._json(200, _wiki.home(param("day"), param("lang")))
                 # Only the days a browser can be on: a caller cannot make
@@ -2564,7 +2627,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         param("path") or "",
                         languages_only=param("only") == "languages",
                     )
-                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "not found"})
+                    )
                 if sub != "onthisday":
                     return self._json(404, {"error": "not found"})
                 zim = param("zim")
@@ -2581,22 +2648,44 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
                 from zimi import books as _books
 
-                sub = parsed.path[len("/books"):].strip("/")
+                sub = parsed.path[len("/books") :].strip("/")
                 if sub in ("", "home"):
                     return self._json(200, _books.home())
                 if sub == "list":
-                    return self._json(200, _books.listing(
-                        q=param("q") or "", author=param("author") or "", shelf_code=param("shelf") or "",
-                        lang=param("lang") or "", era=param("era") or "", zim=param("zim") or "",
-                        sort=param("sort") or "popular", offset=param("offset") or 0, limit=param("limit") or _books.LIST_LIMIT))
+                    return self._json(
+                        200,
+                        _books.listing(
+                            q=param("q") or "",
+                            author=param("author") or "",
+                            shelf_code=param("shelf") or "",
+                            lang=param("lang") or "",
+                            era=param("era") or "",
+                            zim=param("zim") or "",
+                            sort=param("sort") or "popular",
+                            offset=param("offset") or 0,
+                            limit=param("limit") or _books.LIST_LIMIT,
+                        ),
+                    )
                 if sub == "authors":
-                    return self._json(200, _books.authors(
-                        q=param("q") or "", lang=param("lang") or "", shelf_code=param("shelf") or "",
-                        era=param("era") or "", sort=param("sort") or "name", offset=param("offset") or 0,
-                        limit=param("limit") or _books.LIST_LIMIT))
+                    return self._json(
+                        200,
+                        _books.authors(
+                            q=param("q") or "",
+                            lang=param("lang") or "",
+                            shelf_code=param("shelf") or "",
+                            era=param("era") or "",
+                            sort=param("sort") or "name",
+                            offset=param("offset") or 0,
+                            limit=param("limit") or _books.LIST_LIMIT,
+                        ),
+                    )
                 if sub == "book":
                     got = _books.book(param("zim") or "", param("id"))
-                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "not found"})
+                    )
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/dictionary" or parsed.path.startswith("/dictionary/"):
                 # Dictionary: one word across every Wiktionary in the library.
@@ -2604,7 +2693,7 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 if "dictionary" not in _srv.apps_shown():
                     return self._json(404, {"error": "not found"})
-                sub = parsed.path[len("/dictionary"):].strip("/")
+                sub = parsed.path[len("/dictionary") :].strip("/")
                 if sub in ("", "home"):
                     return self._json(200, _dict.home())
                 if sub == "today":
@@ -2612,18 +2701,25 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if sub == "suggest":
                     return self._json(200, _dict.suggest(param("q") or ""))
                 if sub == "word":
+
                     def split(v):
                         return [x for x in (v or "").split(",") if x][:8]
 
-                    return self._json(200, _dict.lookup(
-                        param("w") or "", langs=split(param("langs")), names=split(param("names")),
-                        every=param("tr") == "all"))
+                    return self._json(
+                        200,
+                        _dict.lookup(
+                            param("w") or "",
+                            langs=split(param("langs")),
+                            names=split(param("names")),
+                            every=param("tr") == "all",
+                        ),
+                    )
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.
                 from zimi import exchange as _ex
 
-                sub = parsed.path[len("/exchange"):].strip("/")
+                sub = parsed.path[len("/exchange") :].strip("/")
                 try:
                     pg = max(1, int(param("page", "1")))
                 except (TypeError, ValueError):
@@ -2633,8 +2729,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _ex.home())
                 if sub == "random":
                     got = _ex.random_question()
-                    return self._json(200, got) if got else self._json(404, {"error": "no questions"})
-                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "no questions"})
+                    )
+                if (
+                    not zim
+                    or zim not in _srv.get_zim_files()
+                    or not _srv.zim_allowed(zim)
+                ):
                     return self._json(404, {"error": "not found"})
                 if sub == "site":
                     return self._json(200, _ex.listing(zim, pg, param("tag")))
@@ -2642,14 +2746,23 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, {"tags": _ex.tags(zim)})
                 if sub == "q":
                     got = _ex.question(zim, param("q"))
-                    return self._json(200, got) if got else self._json(404, {"error": "not a question page"})
+                    return (
+                        self._json(200, got)
+                        if got
+                        else self._json(404, {"error": "not a question page"})
+                    )
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/tube/play":
                 # ZimiTube's own player: the media behind one video's page.
                 from zimi import tube as _tube
 
                 zim, page = param("zim"), param("page")
-                if not zim or not page or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                if (
+                    not zim
+                    or not page
+                    or zim not in _srv.get_zim_files()
+                    or not _srv.zim_allowed(zim)
+                ):
                     return self._json(404, {"error": "not found"})
                 out = _tube.playback(zim, page)
                 if out is None:
@@ -2678,11 +2791,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                 t0 = time.time()
                 groups = _srv.find_places(q)
                 _record_metric("/places", time.time() - t0)
-                return self._json(200, {"groups": groups, "elapsed": round(time.time() - t0, 3)})
+                return self._json(
+                    200, {"groups": groups, "elapsed": round(time.time() - t0, 3)}
+                )
             elif parsed.path == "/map-home":
                 # Where a map opens when nobody has been on it yet.
                 zim = param("zim")
-                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                if (
+                    not zim
+                    or zim not in _srv.get_zim_files()
+                    or not _srv.zim_allowed(zim)
+                ):
                     return self._json(404, {"error": "not found"})
                 view = _srv._map_home_view(zim)
                 return self._json(200, view or {"error": "no place index"})
@@ -3028,10 +3147,18 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not name:
                     return self._json(401, {"error": "sign in required"})
                 blob = _users.load_user_data(name)
-                prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
+                prefs = (
+                    blob.get("preferences")
+                    if isinstance(blob.get("preferences"), dict)
+                    else {}
+                )
                 if "apps" in data:
                     # True, False, or the names of the apps to keep.
-                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps"), _srv.APPS_ALL) or frozenset(), _srv.APPS_ALL)
+                    prefs["apps"] = _srv._apps_setting(
+                        _srv._apps_value(data.get("apps"), _srv.APPS_ALL)
+                        or frozenset(),
+                        _srv.APPS_ALL,
+                    )
                 # Only the preferences go back: the rest of the blob (the saved
                 # store another device may be syncing this moment) stays as kept.
                 ok, err, _ = _users.sync_user_data(name, {"preferences": prefs})
@@ -3325,7 +3452,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         issue #86). RFC 6266 is how a name that is not Latin-1 is carried:
         an ASCII fallback for anything old, and filename* for everyone else.
         """
-        ascii_name = filename.encode("ascii", "replace").decode("ascii").replace('"', "_")
+        ascii_name = (
+            filename.encode("ascii", "replace").decode("ascii").replace('"', "_")
+        )
         value = 'attachment; filename="%s"' % ascii_name
         if filename != ascii_name:
             value += "; filename*=UTF-8''%s" % quote(filename, safe="")
@@ -3467,7 +3596,10 @@ class ZimHandler(BaseHTTPRequestHandler):
         def _text(value):
             return escape(value, quote=False)
 
-        title = unquote(entry_path.rsplit("/", 1)[-1]).replace("_", " ").strip() or entry_path
+        title = (
+            unquote(entry_path.rsplit("/", 1)[-1]).replace("_", " ").strip()
+            or entry_path
+        )
         body = _UNCAPTURED_PAGE.format(
             url_attr=escape("/?q=" + quote(title), quote=True),
             url_text=_text(title),
@@ -3484,7 +3616,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             url_label_key="uncaptured_url_label",
             open_key="entry_missing_search",
         ).replace('target="_blank"', 'target="_top"')
-        return self._send(200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store")
+        return self._send(
+            200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store"
+        )
 
     def _send_entry_too_large(self, total_size):
         """413 for an entry Zimi refuses to materialize. Used by every /w/
@@ -3565,9 +3699,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # name, a bookmark or link to the old one moves to the new.
                 current = re.sub(r"_(?:nopic|mini)$", "", zim_name)
                 if current != zim_name and current in _srv.get_zim_files():
-                    moved = "/w/%s/%s" % (_srv.url_quote(current), quote(entry_path, safe="/"))
+                    moved = "/w/%s/%s" % (
+                        _srv.url_quote(current),
+                        quote(entry_path, safe="/"),
+                    )
                     if self.path.find("?") >= 0:
-                        moved += self.path[self.path.find("?"):]
+                        moved += self.path[self.path.find("?") :]
                     self.send_response(301)
                     self.send_header("Location", moved)
                     self.send_header("Content-Length", "0")
@@ -3735,6 +3872,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     file_id = f"{st.st_size}-{int(st.st_mtime)}"
                 except OSError:
                     file_id = str(_srv._cache_generation)
+                if _is_zimit1_loader(entry_path):
+                    file_id += "/" + ZIMIT1_LOADER_MEND
                 etag = (
                     '"'
                     + hashlib.md5(
@@ -3837,6 +3976,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     lang_hint = ""
                 text = _a11y.rewrite_html(text, lang_hint=lang_hint)
             content = text.encode("UTF-8")
+        elif _is_zimit1_loader(entry_path) and not is_streamable:
+            mended = _mend_zimit1_loader(content.decode("UTF-8", errors="replace"))
+            content = mended.encode("UTF-8")
 
         if range_start is not None and range_end is not None:
             self.send_response(206)
@@ -4126,7 +4268,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(send_len))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Disposition", self._attachment(os.path.basename(path)))
+        self.send_header(
+            "Content-Disposition", self._attachment(os.path.basename(path))
+        )
         self.end_headers()
 
         # Stream in 1 MB chunks. A peer disconnecting mid-pull (BrokenPipe)
@@ -4273,7 +4417,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached and current_mtime is not None and cached[2] == current_mtime and rel_path not in _INLINED_PAGES:
+            if (
+                cached
+                and current_mtime is not None
+                and cached[2] == current_mtime
+                and rel_path not in _INLINED_PAGES
+            ):
                 body, content_type = cached[0], cached[1]
             else:
                 file_path = probe_path
@@ -4456,7 +4605,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         etag = (
             ZimHandler._index_etag
             if stamp is None
-            else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1)
+            else ZimHandler._index_etag.replace(
+                '"', '-apps-%s"' % stamp.replace(",", "-"), 1
+            )
         )
         # Cache strategy:
         #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
@@ -4673,7 +4824,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Bearer. It used to keep the password itself, in plain text in
             # localStorage under "Remember me"; a password is kept nowhere now.
             return self._json_cookie(
-                200, {"role": "admin", "token": token}, self._session_cookie(token, remember)
+                200,
+                {"role": "admin", "token": token},
+                self._session_cookie(token, remember),
             )
         return self._json(401, {"error": "invalid credentials"})
 
@@ -4703,7 +4856,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             # token is restored from storage as the manage Bearer token).
             if _users.is_admin_user(name):
                 return self._json(
-                    200, {"role": "admin", "name": name, "secondary": True, "apps": apps}
+                    200,
+                    {"role": "admin", "name": name, "secondary": True, "apps": apps},
                 )
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
@@ -4781,11 +4935,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         name = _users.resolve_request_user(self)
         if not name:
             return self._json(401, {"error": "sign in required"})
-        ok, err, doc = _users.sync_user_data(name, data if isinstance(data, dict) else {})
+        ok, err, doc = _users.sync_user_data(
+            name, data if isinstance(data, dict) else {}
+        )
         if not ok:
             # Too large is the account's to fix (the device says sync is paused).
             # A file that could not be read is the server's, and passes.
-            status = 413 if err.endswith("too large") else 503 if err == "read failed" else 400
+            status = (
+                413
+                if err.endswith("too large")
+                else 503 if err == "read failed" else 400
+            )
             return self._json(status, {"error": err})
         return self._json(200, {"status": "ok", "saved": doc["saved"]})
 
