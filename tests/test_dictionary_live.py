@@ -417,7 +417,7 @@ def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(
             _tap(f, "[data-say][data-code='fr']:not([hidden])")
             f.wait_for_function("() => window.__played.length > 0")
             played = f.evaluate("() => window.__played")
-            assert played[-1].endswith("/dictionary/speak?text=eau&lang=fr"), played
+            assert "/dictionary/speak?text=eau&lang=fr&v=" in played[-1], played
             pg.wait_for_timeout(500)
             assert (
                 f.evaluate("() => window.__said") == []

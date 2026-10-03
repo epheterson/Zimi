@@ -1266,7 +1266,7 @@
   "ext_links_hide": "Ausblenden",
   "ext_links_hint": "Ein Link, der deine Bibliothek ins Web verlässt, bekommt einen kleinen Pfeil und zeigt vorher, wohin er führt. Ausgeblendet liest er sich als reiner Text.",
   "open_in_apps": "Artikel in Apps öffnen",
-  "open_in_apps_hint": "Ein Suchtreffer aus einem Wiki öffnet sich in Zimipedia, ein Buch in Bookshelf, ein Video in ZimiTube, eine Frage in ZimiExchange, ein Beitrag in Reddot. Ausgeschaltet öffnet sich die eigene Seite des ZIM.",
+  "open_in_apps_hint": "Wikis, Bücher, Videos, Fragen und Beiträge öffnen sich in ihrer App. Aus: die Seite des ZIM.",
   "data_folder": "Datenordner",
   "data_folder_hint": "Cache, Sammlungen, Lesezeichen und Verlauf. Leer lassen, um sie neben den ZIMs zu speichern.",
   "default_flavor": "Bevorzugte Variante",

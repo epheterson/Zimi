@@ -851,7 +851,7 @@ function speakUrl(b) {
   if (!serverSays(b)) return '';
   var code = b.getAttribute('data-code'), region = b.hasAttribute('data-exact') ? sayRegion(code, b.getAttribute('data-accent')) : '';
   var url = '/dictionary/speak?text=' + encodeURIComponent(b.getAttribute('data-say')) + '&lang=' + encodeURIComponent(speechTag(code)) +
-    (region ? '&accent=' + encodeURIComponent(region) : '');
+    (region ? '&accent=' + encodeURIComponent(region) : '') + '&v=' + encodeURIComponent(_server.stamp || '');
   return _missed[url] ? '' : url;
 }
 // Words the server could not say after all. The next tap goes straight to

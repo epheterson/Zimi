@@ -1266,7 +1266,7 @@
   "ext_links_hide": "Hide them",
   "ext_links_hint": "A link that leaves your library for the web gets a small arrow, and says where it goes before it goes. Hidden, it reads as plain text.",
   "open_in_apps": "Open articles in apps",
-  "open_in_apps_hint": "A search result from a wiki opens in Zimipedia, a book in Bookshelf, a video in ZimiTube, a question in ZimiExchange, a post in Reddot. Off, it opens the ZIM's own page.",
+  "open_in_apps_hint": "Wikis, books, videos, questions and posts open in their app. Off: the ZIM's own page.",
   "data_folder": "Data folder",
   "data_folder_hint": "Cache, collections, bookmarks, and history. Leave blank to store alongside ZIMs.",
   "default_flavor": "Default download flavor",

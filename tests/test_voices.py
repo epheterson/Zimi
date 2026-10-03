@@ -762,3 +762,13 @@ def test_speak_answers_a_wav_a_range_and_a_404(served):
         and got["mode"] == "ask"
         and "fr" in got["offers"]
     )
+
+
+def test_a_voice_downloaded_is_a_new_address_for_every_word(piper):
+    """Eric, 2026-10-03: English downloaded "but it's still robotic": the
+    phone kept the word's audio from the basic voice at the same address.
+    The page puts the voices on disk in every word's address."""
+    before = voices.page_payload()["stamp"]
+    install("fr")
+    after = voices.page_payload()["stamp"]
+    assert before != after and "fr" in after

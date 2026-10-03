@@ -1266,7 +1266,7 @@
   "ext_links_hide": "Ocultá-los",
   "ext_links_hint": "Um link que sai da sua biblioteca para a web leva uma pequena seta e mostra para onde vai antes de ir. Oculto, lê-se como texto simples.",
   "open_in_apps": "Abrir artigos nos apps",
-  "open_in_apps_hint": "Um resultado de um wiki abre no Zimipedia, um livro no Bookshelf, um vídeo no ZimiTube, uma pergunta no ZimiExchange, um post no Reddot. Desativado, abre a própria página do ZIM.",
+  "open_in_apps_hint": "Wikis, livros, vídeos, perguntas e posts abrem no seu app. Desligado: a página do ZIM.",
   "data_folder": "Pasta de dados",
   "data_folder_hint": "Cache, coleções, favoritos e histórico. Deixe em branco para guardar junto aos ZIMs.",
   "default_flavor": "Variante padrão",

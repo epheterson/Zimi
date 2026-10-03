@@ -914,6 +914,11 @@ def page_payload():
             offers.setdefault(_primary(tag), {"tag": tag, "bytes": _bytes(tag)})
     return {
         "langs": can_say(),
+        # Which voices are here, in the address of every word's audio: a
+        # voice downloaded or removed is a new address, never the browser's
+        # copy of the word in the old voice (Eric, 2026-10-03: English
+        # downloaded "but it's still robotic").
+        "stamp": "-".join(sorted("%s.%s" % (t, r["id"]) for t, r in have.items())) or "none",
         "offers": offers,
         "downloading": downloading(),
         "mode": mode,
