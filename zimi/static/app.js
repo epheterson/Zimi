@@ -13402,12 +13402,6 @@ function _voicesModeHtml(s) {
   });
 }
 
-// A voice's licence, and its credit where the licence asks for one (CC BY,
-// Apache): names and licence ids, the same in every language.
-function _voiceLicenceHtml(v) {
-  return ' · ' + esc(v.license) + (v.credit_required ? ' · ' + esc(v.credit) : '');
-}
-
 function _voiceButtonHtml(path, tag, label, extra) {
   return '<button class="pill"' + (extra || '') + ' onclick="' + escAttr('_voicesPost(' + JSON.stringify(path) + ', ' + JSON.stringify(tag) + ', this)') + '">' + label + '</button>';
 }
@@ -13436,11 +13430,36 @@ function _voiceRowHtml(v, d) {
     act += _voiceButtonHtml('/manage/voices/remove', v.tag, tH('voices_remove'), ' data-confirm="' + escAttr(t('voices_remove_confirm')) + '"');
   }
   // The size is said once: beside Piper when it is here, on Download when not.
-  var meta = engine + (v.installed ? ' · ' + esc(fmtBytes(v.bytes)) : '') + (v.newer ? ' · ' + tH('voices_newer') : '') +
-    _voiceLicenceHtml(v);
-  return '<div class="mc-row voice-row"><span class="mc-label">' + esc(_langDisplayName(v.tag)) +
+  // Natural voices (Kokoro) is one download for several languages: its row
+  // names them, and says no engine of its own (each language's line does).
+  // The licence, and its credit where the licence asks for one (CC BY,
+  // Apache): names and licence ids, the same in every language.
+  // A language with a choice above says its voice there, not again here.
+  var chosen = (d.choices || []).some(function(c) { return c.lang === v.tag.split('-')[0]; });
+  var multi = v.langs && v.langs.length, meta = multi || chosen ? [] : [engine];
+  if (v.installed) meta.push(esc(fmtBytes(v.bytes)));
+  if (v.newer) meta.push(tH('voices_newer'));
+  meta.push(esc(v.license));
+  if (v.credit_required) meta.push(esc(v.credit));
+  meta = meta.join(' · ');
+  var name = multi ? tH('voices_natural') : esc(_langDisplayName(v.tag));
+  var langs = multi ? '<span class="app-update-quiet voice-meta">' + esc(v.langs.map(_langDisplayName).join(', ')) + '</span>' : '';
+  return '<div class="mc-row voice-row"><span class="mc-label">' + name + langs +
     '<span class="app-update-quiet voice-meta">' + meta + '</span>' + below + '</span>' +
     '<span class="mc-value">' + act + '</span></div>';
+}
+
+// Which voice says a language, where more than one here can: the best by
+// default (Natural, then Piper, then the system's, then the basic one), or
+// the one chosen. Eric: "Options couldn't hurt once it's built."
+function _voiceChoiceHtml(c) {
+  var opts = c.engines.map(function(e) { return _appUpdateOption(e, t('voices_engine_' + e), e === c.engine); }).join('');
+  return '<div class="mc-row voice-row" style="align-items:center"><span class="mc-label">' + esc(_langDisplayName(c.lang)) + '</span>' +
+    '<span class="mc-value"><select aria-label="' + escAttr(t('voices_choose') + ': ' + _langDisplayName(c.lang)) + '" style="' + _APP_UPDATE_SELECT_CSS + '"' +
+    ' onchange="' + escAttr('_voicesChoose(' + JSON.stringify(c.lang) + ', this.value)') + '">' + opts + '</select></span></div>';
+}
+function _voicesChoose(lang, engine) {
+  _voicesSend('/manage/voices/choose', { lang: lang, engine: engine }, t('voices_failed_choice'));
 }
 
 // The languages this library is read in: its Wiktionaries' and Zimi's own.
@@ -13454,19 +13473,24 @@ function _voiceLangsInUse() {
   return langs;
 }
 function _voicesHtml(d) {
-  var have = d.voices.filter(function(v) { return v.installed; }).length;
+  // Counted in languages: Natural voices is one row for several.
+  var langsOf = function(v) { return v.langs ? v.langs.map(function(l) { return l.split('-')[0]; }) : [v.tag.split('-')[0]]; };
+  var all = {}, here = {};
+  d.voices.forEach(function(v) { langsOf(v).forEach(function(l) { all[l] = true; if (v.installed) here[l] = true; }); });
   var inUse = _voiceLangsInUse(), dl = (d.downloading && d.downloading.tag) || '';
-  var near = function(v) { return v.installed || inUse[v.tag.split('_')[0].split('-')[0]] || v.tag === dl; };
-  // The ones here first, then by name in the reader's language.
+  var near = function(v) { return v.installed || !!v.langs || inUse[v.tag.split('_')[0].split('-')[0]] || v.tag === dl; };
+  // Natural voices first, then the ones here, then by name in the reader's language.
   var rows = d.voices.slice().sort(function(a, b) {
-    return (b.installed - a.installed) || _langDisplayName(a.tag).localeCompare(_langDisplayName(b.tag));
+    return (!!b.langs - !!a.langs) || (b.installed - a.installed) || _langDisplayName(a.tag).localeCompare(_langDisplayName(b.tag));
   });
   var first = rows.filter(near), rest = rows.filter(function(v) { return !near(v); });
   var row = function(v) { return _voiceRowHtml(v, d); };
+  var choices = (d.choices || []).length ? '<div class="ms-hint">' + tH('voices_choose') + '</div>' + d.choices.map(_voiceChoiceHtml).join('') : '';
   return _voicesModeHtml(d.setting) +
     (d.piper ? '' : '<div class="ms-hint">' + tH('voices_no_piper') + '</div>') +
     '<details class="net-details"' + (dl ? ' open' : '') + '><summary>' +
-      tH('voices_summary', { n: have, m: d.voices.length }) + '</summary>' +
+      tH('voices_summary', { n: Object.keys(here).length, m: Object.keys(all).length }) + '</summary>' +
+      choices +
       first.map(row).join('') +
       (rest.length ? '<details class="net-details voice-more"><summary>' + tH('voices_more') + '</summary>' + rest.map(row).join('') + '</details>' : '') +
     '</details>';
@@ -18815,9 +18839,10 @@ function _dictUrl(w) {
 function _dictStrings(w) {
   return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
     'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
-    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading', 'dictionary_voices_menu', 'dictionary_voice_device',
     'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
-    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), cancel: t('cancel'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed') });
+    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), cancel: t('cancel'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed'),
+      engine_kokoro: t('voices_engine_kokoro'), engine_piper: t('voices_engine_piper'), engine_say: t('voices_engine_say'), engine_espeak: t('voices_engine_espeak') });
 }
 // A word (or the front, w ''), as Reddot opens a post.
 function openDictionary(replaceState, w) {

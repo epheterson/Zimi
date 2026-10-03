@@ -72,6 +72,15 @@
   .vbar { width: 64px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; flex: none; }
   .vbar i { display: block; height: 100%; background: var(--amber); border-radius: 2px; transition: width .9s linear; }
   .vpct { font-variant-numeric: tabular-nums; min-width: 3.2em; }
+  /* Say and its voices: one pill split in two, the caret opening a menu of
+     every voice that can say the word (apps.css .menu, the shell's). */
+  .split { position: relative; display: inline-flex; }
+  .split.two > .spk[data-say] { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .spk.caret { min-width: 34px; padding: 0 8px 0 6px; border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: 1px; position: relative; }
+  .spk.caret::after { content: ''; position: absolute; inset-block: -5px; inset-inline: -2px -8px; } /* a 44px target */
+  .spk.caret svg { width: 14px; height: 14px; }
+  .spk.caret[aria-expanded="true"] { filter: brightness(1.12); }
+  .split > .menu { top: calc(100% + 6px); inset-inline-start: 0; }
   .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
   .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
 
@@ -164,7 +173,8 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   synonyms: 'Synonyms', antonyms: 'Antonyms', homophones: 'Homophones', rhymes: 'Rhymes',
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
   recording: 'Recording', no_voice: 'No {lang} voice on this device',
-  voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice',
+  voices_menu: 'Voices', voice_device: 'This device', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
   entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
@@ -574,6 +584,7 @@ function langHtml(g, i, open, d) {
   return '<details class="lang" id="lg' + i + '"><summary class="lang-h"><h2>' + esc(name) + '</h2><span class="peek">' + esc(firstSense(g)) + '</span></summary>' + body + '</details>';
 }
 var SPEAKER = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>';
+var CARET = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>';
 // How a language sounds: the word said (a recording when the ZIM has one,
 // else this device's voice for the language), then the IPA by accent, each
 // accent with its own voice where the device has one for its region.
@@ -586,7 +597,9 @@ function soundHtml(g, word) {
         (a.accent ? '<span>' + esc(a.accent) + '</span>' : i ? '' : '<span>' + esc(STR.recording) + '</span>') + '</button>';
     }).join('') + '</div>';
   } else if (speechTag(code)) {
-    html += '<div class="say"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
+    html += '<div class="say"><span class="split"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
+      '<button type="button" class="spk caret" data-voices="' + esc(code) + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(STR.voices_menu) + '" hidden>' + CARET + '</button>' +
+      '<span class="menu" role="menu" aria-label="' + esc(STR.voices_menu) + '" hidden></span></span>' +
       '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span>' +
       '<span class="voffer" data-offer="' + esc(code) + '" data-name="' + esc(groupName(g)) + '" hidden></span></div>';
   }
@@ -709,9 +722,11 @@ function serverLang(code) { return primaryOf(speechTag(code)); }
 function sayRegion(code, accent) { return accentRegion(accent) || regionOf(speechTag(code)); }
 // Whether the server says this button's word: the language, and for an
 // accent's own button, that region's voice.
+function serverRow(code) { return (_server && _server.langs && _server.langs[serverLang(code)]) || null; }
 function serverSays(b) {
-  var code = b.getAttribute('data-code'), row = _server && _server.langs && _server.langs[serverLang(code)];
+  var code = b.getAttribute('data-code'), row = serverRow(code), engine = b.getAttribute('data-engine');
   if (!row || !speechTag(code)) return false;
+  if (engine) return (row.engines || []).indexOf(engine) >= 0;
   if (!b.hasAttribute('data-exact')) return true;
   var region = sayRegion(code, b.getAttribute('data-accent'));
   return !!region && row.regions.indexOf(region) >= 0;
@@ -725,16 +740,71 @@ function deviceSays(b, vs) {
 // so. An accent's own button only where its region has a voice of its own.
 function wireSpeech() {
   var vs = voices();
-  document.querySelectorAll('[data-say]').forEach(function(b) {
+  document.querySelectorAll('[data-say]:not([data-engine])').forEach(function(b) {
     var ok = !!speakUrl(b) || deviceSays(b, vs);
     b.hidden = !ok;
     if (!b.hasAttribute('data-exact')) {
-      var note = b.parentNode.querySelector('[data-novoice]');
+      var note = b.closest('.say').querySelector('[data-novoice]');
       if (note) note.hidden = ok || !_server || (!vs.length && _voiceWaiting);
     }
   });
   document.querySelectorAll('[data-offer]').forEach(offerPaint);
+  document.querySelectorAll('[data-voices]').forEach(caretPaint);
 }
+// Say's voices, behind the caret beside it: every voice that can say the
+// word (the server's engines, then this device's own), the one Say plays
+// ticked. Each is a one-off listen; which voice Say plays is Manage's
+// choice. Eric, 2026-10-03: "A lil dropdown on the say button".
+function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
+function voicesFor(caret) {
+  var code = caret.getAttribute('data-voices'), word = mainOf(caret).getAttribute('data-say'), row = serverRow(code);
+  var list = ((row && row.engines) || []).filter(function(e) { return !_missed[speakAddress(word, code, '', e)]; });
+  if (pickVoice(voices(), code, '')) list.push('device');
+  return list;
+}
+function caretPaint(caret) {
+  var two = !mainOf(caret).hidden && voicesFor(caret).length > 1;
+  caret.hidden = !two;
+  caret.parentNode.classList.toggle('two', two);
+  if (!two) closeMenu(caret);
+}
+function voiceName(e) { return e === 'device' ? STR.voice_device : STR['engine_' + e] || e; }
+function openMenu(caret) {
+  closeMenus();
+  var menu = caret.nextElementSibling, main = mainOf(caret), code = caret.getAttribute('data-voices');
+  var word = main.getAttribute('data-say'), def = speakUrl(main) ? serverRow(code).engine : 'device';
+  menu.innerHTML = voicesFor(caret).map(function(e) {
+    return '<button type="button" class="menu-item" role="menuitemradio" tabindex="-1" aria-checked="' + (e === def) + '" data-say="' + esc(word) +
+      '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '"><span class="menu-check">' + (e === def ? '\u2713' : '') + '</span>' + esc(voiceName(e)) + '</button>';
+  }).join('');
+  menu.hidden = false;
+  caret.setAttribute('aria-expanded', 'true');
+  var items = menuItems(menu), on = items.filter(function(i) { return i.getAttribute('aria-checked') === 'true'; })[0];
+  (on || items[0]).focus();
+}
+function closeMenu(caret, refocus) {
+  var menu = caret.nextElementSibling;
+  if (menu.hidden) return;
+  menu.hidden = true;
+  caret.setAttribute('aria-expanded', 'false');
+  if (refocus) caret.focus();
+}
+function closeMenus() { document.querySelectorAll('[data-voices][aria-expanded="true"]').forEach(function(c) { closeMenu(c); }); }
+function menuItems(menu) { return Array.prototype.slice.call(menu.querySelectorAll('.menu-item')); }
+// The menu's keys, as the shell's menus have them: arrows, Home and End move,
+// Escape closes and gives focus back to the caret, Tab leaves.
+document.addEventListener('keydown', function(e) {
+  var t = e.target, caret = t.closest && t.closest('[data-voices]');
+  if (caret && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); openMenu(caret); return; }
+  var menu = t.closest && t.closest('.menu');
+  if (!menu) return;
+  caret = menu.previousElementSibling;
+  var items = menuItems(menu), i = items.indexOf(t), n = items.length;
+  var to = { ArrowDown: (i + 1) % n, ArrowUp: (i - 1 + n) % n, Home: 0, End: n - 1 }[e.key];
+  if (to !== undefined) { e.preventDefault(); items[to].focus(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeMenu(caret, true); }
+  else if (e.key === 'Tab') closeMenu(caret);
+});
 var _voiceWaiting = true;
 (function() {
   var s = synth();
@@ -759,12 +829,12 @@ function loadVoices() {
 }
 // A clearer voice for a language the server says only with a lesser engine
 // (or not at all), offered to whoever may fetch it: a quiet line under the
-// word. Never and ZIMI_OFFLINE leave the server nothing to offer.
+// word. The server offers only where no downloaded voice says the language
+// (Kokoro, one download, for its eight); Never and ZIMI_OFFLINE leave it
+// nothing to offer.
 function offerFor(code) {
   if (!_server || !_server.can_change) return null;
-  var lang = serverLang(code), row = _server.langs[lang];
-  if (row && row.engine === 'piper') return null;
-  return (_server.offers || {})[lang] || null;
+  return (_server.offers || {})[serverLang(code)] || null;
 }
 var _pct = null;
 function pct(f) {
@@ -850,34 +920,47 @@ function mark(b, busy, on) {
 function speakUrl(b) {
   if (!serverSays(b)) return '';
   var code = b.getAttribute('data-code'), region = b.hasAttribute('data-exact') ? sayRegion(code, b.getAttribute('data-accent')) : '';
-  var url = '/dictionary/speak?text=' + encodeURIComponent(b.getAttribute('data-say')) + '&lang=' + encodeURIComponent(speechTag(code)) +
-    (region ? '&accent=' + encodeURIComponent(region) : '') + '&v=' + encodeURIComponent(_server.stamp || '');
+  var url = speakAddress(b.getAttribute('data-say'), code, region, b.getAttribute('data-engine'));
   return _missed[url] ? '' : url;
+}
+// A word's audio: its language, an accent's region, one engine when the
+// menu asks for one, and the server's voices (stamp): a change is a new address.
+function speakAddress(word, code, region, engine) {
+  return '/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(speechTag(code)) +
+    (region ? '&accent=' + encodeURIComponent(region) : '') + (engine ? '&engine=' + encodeURIComponent(engine) : '') +
+    '&v=' + encodeURIComponent((_server && _server.stamp) || '');
 }
 // Words the server could not say after all. The next tap goes straight to
 // this device, inside the tap, where iOS lets speech start; a fresh answer
 // from the server (a voice downloaded) forgets them.
 var _missed = {};
 // The server's audio, started in the tap (iOS plays media only from one).
-// A server that cannot say it after all leaves the word to this device.
-function say(b) {
+// A server that cannot say it after all leaves the word to this device; a
+// voice from the menu that cannot leaves the menu instead, never another
+// voice under its name. ``face`` is the button that shows it working: Say,
+// for a voice from its menu.
+function say(b, face) {
+  face = face || b;
+  var engine = b.getAttribute('data-engine');
+  if (engine === 'device') { deviceSay(b, face); return; }
   var url = speakUrl(b);
-  if (!url) { deviceSay(b); return; }
-  playUrl(b, url, function() {
+  if (!url) { if (engine) wireSpeech(); else deviceSay(b, face); return; }
+  playUrl(face, url, function() {
     _missed[url] = true;
-    if (deviceSays(b, voices())) deviceSay(b); else wireSpeech();
+    if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
   });
 }
-function deviceSay(b) {
+function deviceSay(b, face) {
+  face = face || b;
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
   stopPlaying();
   wantPlayback();
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
-  b.classList.add('on');
+  face.classList.add('on');
   u.onend = u.onerror = function() {
-    b.classList.remove('on');
+    face.classList.remove('on');
     if (_utterance === u) _utterance = null;
   };
   // Held until it ends: Safari lets an unreferenced utterance be collected
@@ -902,14 +985,14 @@ function stopPlaying() {
 function playUrl(b, url, failed) {
   wantPlayback();
   var was = _playing;
-  if (was && was.b === b) {
+  if (was && was.b === b && was.url === url) {
     if (!was.busy) { try { was.a.currentTime = 0; was.a.play(); } catch (e) {} }
     return;
   }
   stopPlaying();
   var s = synth();
   if (s && (s.speaking || s.pending)) { try { s.cancel(); } catch (e) {} }
-  var a = new Audio(), me = { a: a, b: b, busy: true };
+  var a = new Audio(), me = { a: a, b: b, url: url, busy: true };
   a.setAttribute('playsinline', '');
   a.src = url;
   _playing = me;
@@ -931,6 +1014,18 @@ document.addEventListener('click', function(e) {
   var get = e.target.closest && e.target.closest('[data-get]');
   if (get) { e.preventDefault(); getVoice(get.getAttribute('data-get')); return; }
   if (e.target.closest && e.target.closest('[data-cancel]')) { e.preventDefault(); cancelVoice(); return; }
+  // A tap anywhere but a menu or its caret closes it.
+  if (!(e.target.closest && e.target.closest('.menu, [data-voices]'))) closeMenus();
+  var caret = e.target.closest && e.target.closest('[data-voices]');
+  if (caret) { e.preventDefault(); if (caret.getAttribute('aria-expanded') === 'true') closeMenu(caret); else openMenu(caret); return; }
+  var item = e.target.closest && e.target.closest('.menu [data-say]');
+  if (item) {
+    e.preventDefault();
+    caret = item.parentNode.previousElementSibling;
+    closeMenu(caret, true);
+    say(item, mainOf(caret));
+    return;
+  }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
   if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');

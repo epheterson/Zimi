@@ -127,7 +127,7 @@ jobs:
       - name: Install the voice engines (zimi-voice)
         shell: bash
         run: |
-          pip install "piper-tts>=1.8,<2" "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" \
+          pip install "piper-tts>=1.8,<2" "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" "num2words>=0.5.14,<0.6" \
             || echo "::warning::no voice engines for this platform; this build ships without zimi-voice"
 
       # ── Build ─────────────────────────────────────────────────────────
