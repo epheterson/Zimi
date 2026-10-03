@@ -497,7 +497,10 @@ const run = (code) => vm.runInContext(code, S);
   {
     fetches.push(answer({}));
     await reopen();
-    run('_aeUpdate(_aeDisplayMs())');
+    // A fixed instant: on some days the Moon stands in front of the Earth as
+    // seen from the Sun, and a tap there rightly finds the Moon (the check
+    // below failed on 3 Oct 2026 at 23:00 UTC and on the 10th and 17th).
+    run('_aeUpdate(Date.UTC(2026, 9, 2, 12))');
     // Stand the camera somewhere the body is on screen and not behind the
     // Earth, looking at `target`; answer where the body is drawn.
     const viewOf = (target, body, dist) => JSON.parse(run('(function () {' +
