@@ -1,8 +1,10 @@
 """The Dictionary's Say, spoken by the server (zimi/voices.py).
 
 Pinned here:
-  - Piper first, then macOS ``say``, then espeak-ng; an accent asks first for
-    an engine with that region's voice; no engine, no audio (404).
+  - Kokoro first, then Piper, then macOS ``say``, then espeak-ng, unless
+    Manage chose another for the language; an accent asks first for an
+    engine with that region's voice; no engine, no audio (404); a word asked
+    of one engine is said by it or not at all.
   - The text is a word or a short phrase, reaches the engine on stdin and
     never a shell or its arguments, and the child is always reaped.
   - Audio is cached per engine and voice, and the cache keeps under its cap,
@@ -110,6 +112,7 @@ def piper(data, monkeypatch):
 
 
 def engines(monkeypatch, piper=None, say=None, espeak=None, kokoro=None):
+    monkeypatch.setattr(voices, "_choices", {})  # none made, none read from disk
     monkeypatch.setattr(voices, "_piper_voices", lambda: piper or {})
     monkeypatch.setattr(voices, "_kokoro_voices", lambda: kokoro or {})
     monkeypatch.setattr(voices, "_say_voices", lambda: say or {})
@@ -173,8 +176,8 @@ def test_what_the_server_can_say(monkeypatch):
         say={"en": {"GB": "Daniel"}, "fr": {"FR": "Thomas"}},
     )
     assert voices.can_say() == {
-        "en": {"engine": "piper", "regions": ["GB", "US"]},
-        "fr": {"engine": "say", "regions": ["FR"]},
+        "en": {"engine": "piper", "engines": ["piper", "say"], "regions": ["GB", "US"]},
+        "fr": {"engine": "say", "engines": ["say"], "regions": ["FR"]},
     }
 
 
@@ -371,8 +374,15 @@ def test_automatically_fetches_a_languages_voice_when_a_word_is_said(
         )(),
     )
     voices.POLICY.set("auto")
+    voices.speak("Wasser", "de")
+    assert fetched == ["de"]
+    # Kokoro's languages fetch the one Kokoro download, where it can run.
     voices.speak("water", "en", "GB")
-    assert fetched == ["en-GB"]
+    assert fetched == ["de"], "no Kokoro runner here"
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    voices._download.clear()  # the stand-in thread never finished German
+    voices.speak("water", "en", "GB")
+    assert fetched == ["de", "kokoro"]
 
 
 def test_a_download_lands_only_at_the_pinned_size(piper, monkeypatch):
@@ -553,13 +563,14 @@ def test_every_voice_carries_its_licence_and_credit(piper):
         assert row["license"] == voices.VOICES[tag].license
         assert row["credit"] == voices.VOICES[tag].credit
         assert row["credit_required"] == voices.needs_credit(row["license"])
-    # The two voices Eric added, and the one for Chinese.
+    # The two voices Eric added, and Kokoro.
     assert voices.VOICES["it"].id == "it_IT-paola-medium"
     assert voices.VOICES["it"].license == "CC0" and not rows["it"]["credit_required"]
     assert voices.VOICES["hi"].id == "hi_IN-rohan-medium"
     assert rows["hi"]["credit_required"] and "IIT Madras" in rows["hi"]["credit"]
-    assert voices.VOICES["zh"].engine == voices.KOKORO
-    assert voices.VOICES["zh"].license == "Apache-2.0" and rows["zh"]["credit_required"]
+    kokoro = voices.VOICES[voices.KOKORO_TAG]
+    assert kokoro.engine == voices.KOKORO and "hexgrad" in kokoro.credit
+    assert kokoro.license == "Apache-2.0" and rows["kokoro"]["credit_required"]
     assert rows["fr"]["credit_required"] and rows["ca"]["credit_required"]
     assert not rows["de"]["credit_required"] and not rows["en-US"]["credit_required"]
 
@@ -604,7 +615,7 @@ def test_zimi_never_imports_a_speech_engine():
     assert "zimi" not in imported(os.path.join(zimi_dir, voices.HELPER_SCRIPT))
 
 
-# ── Kokoro, for Chinese ───────────────────────────────────────────────────
+# ── Kokoro: one download, eight languages ─────────────────────────────────
 
 
 def test_chinese_is_kokoro_then_say_then_espeak(monkeypatch):
@@ -631,36 +642,197 @@ def test_kokoro_speaks_through_its_runner_and_remove_clears_it(piper, monkeypatc
         lambda cmd, text, out, **k: seen.append(cmd) or real(cmd, text, out, **k),
     )
     assert voices.choose("zh") is None
-    install("zh")
+    install("kokoro")
     assert voices.choose("zh") == ("kokoro", "zh")
-    body = voices.speak("水", "zh")
-    assert body and body[:4] == b"RIFF"
-    cmd = seen[-1]
-    assert cmd[:2] == [runner, "kokoro"]
-    assert cmd[cmd.index("--voice") + 1] == "zf_xiaoxiao"
-    assert cmd[cmd.index("--lang") + 1] == "zh"
-    assert cmd[cmd.index("--model") + 1].endswith(voices.KOKORO_MODEL)
-    assert "水" not in cmd, "the text goes on stdin"
-    cache = voices._cache_dir("kokoro", "kokoro-v1.0.int8-zf_xiaoxiao")
-    assert os.listdir(cache)
+    said = {}
+    for text, lang, speaker, code in (
+        ("水", "zh", "zf_xiaobei", "zh"),
+        ("water", "en", "af_heart", "en-us"),
+        ("eau", "fr", "ff_siwis", "fr-fr"),
+        ("água", "pt", "pf_dora", "pt-br"),
+    ):
+        body = voices.speak(text, lang)
+        assert body and body[:4] == b"RIFF", lang
+        cmd = seen[-1]
+        assert cmd[:2] == [runner, "kokoro"]
+        assert cmd[cmd.index("--voice") + 1] == speaker, lang
+        assert cmd[cmd.index("--lang") + 1] == code, "espeak-ng's code, or misaki's"
+        assert cmd[cmd.index("--model") + 1].endswith(voices.KOKORO_MODEL)
+        assert text not in cmd, "the text goes on stdin"
+        said[lang] = voices._cache_dir("kokoro", "kokoro-v1.0.int8-" + speaker)
+        assert os.listdir(said[lang]), "cached per speaker"
+    voices.speak("water", "en", "GB")
+    assert seen[-1][seen[-1].index("--voice") + 1] == "bf_emma", "the UK accent"
     monkeypatch.setattr(voices, "_espeak_voices", lambda: {"zh": {"CN": "cmn"}})
-    assert voices.remove("zh") is True
-    assert not os.path.exists(cache), "its audio went with it"
+    assert voices.remove("kokoro") is True
+    assert not any(os.path.exists(c) for c in said.values()), "its audio went with it"
     folder = voices._engine_dir(voices.KOKORO)
     assert not os.path.exists(os.path.join(folder, voices.KOKORO_MODEL))
     assert not os.path.exists(os.path.join(folder, voices.KOKORO_VOICES))
     assert voices.choose("zh") == ("espeak", "cmn")
-    assert voices.remove("zh") is False
+    assert voices.remove("kokoro") is False
 
 
 def test_kokoro_is_offered_only_where_it_can_run(piper, monkeypatch):
     assert "zh" not in voices.page_payload()["offers"]
-    assert voices.start_download("zh") == (False, "noengine")
-    row = {r["tag"]: r for r in voices.manage_payload()["voices"]}["zh"]
+    assert voices.start_download("kokoro") == (False, "noengine")
+    row = {r["tag"]: r for r in voices.manage_payload()["voices"]}["kokoro"]
     assert row["kind"] == "kokoro" and not row["runnable"]
+    # Where Kokoro cannot run, Piper's voice is the offer for English.
+    assert voices.page_payload()["offers"]["en"]["tag"] == "en-US"
     monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
     offer = voices.page_payload()["offers"]["zh"]
-    assert offer == {"tag": "zh", "bytes": 92361271 + 28214398}
+    assert offer == {"tag": "kokoro", "bytes": 92361271 + 28214398}
+
+
+def test_kokoro_comes_before_an_installed_piper_voice(piper, monkeypatch):
+    """Kokoro beats Piper for its languages; Piper's English on disk still
+    speaks while Kokoro is not here (Eric's ljspeech)."""
+    runner = fake_piper(piper)
+    install("en-US")
+    assert voices.choose("en") == ("piper", "en-US"), "Piper, with no Kokoro"
+    assert voices.speak("water", "en")
+    monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
+    install("kokoro")
+    assert voices.choose("en") == ("kokoro", "en-US")
+    assert voices.choose("en", "GB") == ("kokoro", "en-GB")
+    assert voices.choose("en", "US") == ("kokoro", "en-US")
+    assert voices.choose("de") is None, "not one of Kokoro's"
+    assert voices.can_say()["en"]["engines"] == ["kokoro", "piper"]
+
+
+def test_kokoro_is_one_row_in_manage(piper, monkeypatch):
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    rows = voices.manage_payload()["voices"]
+    kokoro = [r for r in rows if r["kind"] == "kokoro"]
+    assert len(kokoro) == 1 and kokoro[0]["tag"] == "kokoro"
+    assert kokoro[0]["langs"] == ["en-US", "en-GB", "es", "fr", "it", "pt-BR", "hi", "zh"]
+    assert kokoro[0]["bytes"] == 92361271 + 28214398 and kokoro[0]["runnable"]
+    assert kokoro[0]["license"] == "Apache-2.0" and kokoro[0]["credit_required"]
+    # Piper's voices for the same languages stay on offer beside it.
+    tags = {r["tag"] for r in rows}
+    assert {"en-US", "en-GB", "es-ES", "fr", "it", "pt-BR", "hi"} <= tags
+    assert "zh" not in tags and "en" not in tags
+
+
+def test_the_dictionary_offers_the_one_kokoro_download(piper, monkeypatch):
+    """Every Kokoro language's line offers the same single download, never a
+    Piper voice; other languages keep Piper's."""
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    offers = voices.page_payload()["offers"]
+    for lang in ("en", "es", "fr", "it", "pt", "hi", "zh"):
+        assert offers[lang] == {"tag": "kokoro", "bytes": 92361271 + 28214398}, lang
+    assert offers["de"]["tag"] == "de"
+    # A language a downloaded voice already says is offered nothing more.
+    install("en-US")
+    assert "en" not in voices.page_payload()["offers"]
+    install("kokoro")
+    offers = voices.page_payload()["offers"]
+    assert not {"en", "es", "fr", "zh"} & set(offers) and offers["de"]["tag"] == "de"
+
+
+def test_kokoro_downloaded_or_removed_is_a_new_address(piper, monkeypatch):
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    before = voices.page_payload()["stamp"]
+    install("kokoro")
+    during = voices.page_payload()["stamp"]
+    assert during != before and "kokoro" in during
+    voices.remove("kokoro")
+    assert voices.page_payload()["stamp"] == before
+
+
+def test_kokoro_installed_for_chinese_alone_is_the_one_download(piper, monkeypatch):
+    """Before Kokoro said eight languages its record was Chinese's: the same
+    model on disk is the one download now, and Remove takes it all."""
+    monkeypatch.setattr(voices, "kokoro_command", lambda: ["kokoro-runner"])
+    install("kokoro")
+    folder = voices._engine_dir(voices.KOKORO)
+    rec = voices._read_manifest(voices.KOKORO)["kokoro"]
+    with open(os.path.join(folder, voices.MANIFEST), "w") as f:
+        json.dump({"zh": dict(rec, voice="zf_xiaoxiao")}, f)
+    have = voices.installed()
+    assert list(have) == ["kokoro"] and have["kokoro"]["voice"] is None
+    row = {r["tag"]: r for r in voices.manage_payload()["voices"]}["kokoro"]
+    assert row["installed"] and not row["newer"]
+    assert voices.choose("en") == ("kokoro", "en-US")
+    assert voices.remove("kokoro") is True and voices.installed() == {}
+
+
+# ── which voice says a language: chosen in Manage ─────────────────────────
+
+
+@pytest.fixture
+def three(piper, monkeypatch):
+    """English said by Kokoro, Piper and espeak-ng, all here."""
+    monkeypatch.setattr(voices, "kokoro_command", lambda: [fake_piper(piper), "kokoro"])
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})
+    install("kokoro")
+    install("en-US")
+    return piper
+
+
+def test_with_no_choice_the_best_here_says_it(three):
+    assert voices.choices() == {}
+    assert voices.choose("en") == ("kokoro", "en-US")
+    picks = {c["lang"]: c for c in voices.manage_payload()["choices"]}
+    assert picks["en"] == {
+        "lang": "en",
+        "engines": ["kokoro", "piper", "espeak"],
+        "engine": "kokoro",
+        "chosen": None,
+    }
+    assert "zh" not in picks, "one engine is no choice"
+
+
+def test_a_choice_overrides_the_order_and_is_saved(three):
+    assert voices.set_choice("en", "piper") is True
+    assert voices.choose("en") == ("piper", "en-US")
+    assert voices.can_say()["en"]["engine"] == "piper"
+    voices._reset_for_tests()  # read back from the prefs file
+    assert voices.choices() == {"en": "piper"}
+    assert voices.choose("en") == ("piper", "en-US")
+    assert voices.choose("en", "GB") == ("kokoro", "en-GB"), "the accent's own voice"
+    assert voices.set_choice("en", "espeak") and voices.choose("en") == ("espeak", "en-us")
+    # The best again, or none: no choice is kept.
+    assert voices.set_choice("en", "kokoro") and voices.choices() == {}
+    assert voices.set_choice("en", "say") is False, "no say here"
+    assert voices.set_choice("de", "piper") is False
+    assert voices.set_choice("../x", None) is False
+
+
+def test_a_chosen_voice_removed_falls_back_to_the_best(three):
+    voices.set_choice("en", "piper")
+    voices.remove("en-US")
+    assert voices.choose("en") == ("kokoro", "en-US")
+    assert voices.can_say()["en"]["engine"] == "kokoro"
+    picks = {c["lang"]: c for c in voices.manage_payload()["choices"]}
+    assert picks["en"]["chosen"] is None and picks["en"]["engine"] == "kokoro"
+
+
+def test_a_choice_is_a_new_address(three):
+    before = voices.page_payload()["stamp"]
+    voices.set_choice("en", "piper")
+    after = voices.page_payload()["stamp"]
+    assert after != before and "en=piper" in after
+    voices.set_choice("en", None)
+    assert voices.page_payload()["stamp"] == before
+
+
+def test_a_word_asked_of_one_engine_is_said_by_it_or_not_at_all(three, monkeypatch):
+    seen = []
+    real = voices._run
+    monkeypatch.setattr(
+        voices,
+        "_run",
+        lambda cmd, text, out, **k: seen.append(cmd) or real(cmd, text, out, **k),
+    )
+    assert voices.speak("water", "en", engine="piper")
+    assert "kokoro" not in seen[-1]
+    assert voices.choose("en", engine="espeak") == ("espeak", "en-us")
+    assert voices.speak("water", "en", engine="say") is None
+    assert voices.speak("water", "en", engine="nonsense") is None
+    assert voices.speak("water", "en")
+    assert seen[-1][1] == "kokoro", "the default, as before"
 
 
 def test_the_desktop_helper_is_found_beside_zimi(tmp_path, monkeypatch):
@@ -759,9 +931,37 @@ def test_speak_answers_a_wav_a_range_and_a_404(served):
     got = json.loads(body)
     assert (
         got["langs"]["en"]["engine"] == "piper"
+        and got["langs"]["en"]["engines"] == ["piper"]
         and got["mode"] == "ask"
         and "fr" in got["offers"]
     )
+    # One engine asked for: that one, or 404; a name that is no engine, 400.
+    assert _get(served + "/dictionary/speak?text=water&lang=en&engine=piper")[0] == 200
+    assert _get(served + "/dictionary/speak?text=water&lang=en&engine=espeak")[0] == 404
+    assert _get(served + "/dictionary/speak?text=water&lang=en&engine=rm")[0] == 400
+
+
+def test_a_choice_over_http(served, monkeypatch):
+    install("en-US")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})
+
+    def post(body):
+        req = urllib.request.Request(
+            served + "/manage/voices/choose",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            r = urllib.request.urlopen(req)
+            return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, None
+
+    code, got = post({"lang": "en", "engine": "espeak"})
+    assert code == 200 and got["choices"][0]["engine"] == "espeak"
+    assert post({"lang": "en", "engine": "say"})[0] == 409
+    assert post({"lang": "en", "engine": None})[0] == 200 and voices.choices() == {}
 
 
 def test_a_voice_downloaded_is_a_new_address_for_every_word(piper):

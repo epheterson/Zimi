@@ -4302,8 +4302,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         """The Dictionary's Say (voices.py). /dictionary/voices: what the
         server can say and the clearer voices it could fetch, with whether
         this viewer may fetch them (the admin rule every /manage write
-        follows). /dictionary/speak?text=&lang=[&accent=]: the word as a WAV,
-        or 404 when no engine here can say the language."""
+        follows). /dictionary/speak?text=&lang=[&accent=][&engine=]: the word
+        as a WAV, or 404 when no engine here (or not the one named) can say
+        the language."""
         from zimi import voices as _voices
 
         if sub == "voices":
@@ -4312,14 +4313,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _srv.ZIMI_MANAGE and _users._request_is_admin(self)
             )
             return self._uncached(lambda: self._json(200, payload))
-        text, lang, accent = (
+        text, lang, accent, engine = (
             param("text") or "",
             param("lang") or "",
             param("accent") or "",
+            param("engine") or None,
         )
-        if _voices.clean_text(text) is None or not _voices.valid_lang(lang, accent):
+        if (
+            _voices.clean_text(text) is None
+            or not _voices.valid_lang(lang, accent)
+            or (engine is not None and engine not in _voices.ENGINES)
+        ):
             return self._json(400, {"error": "bad request"})
-        body = _voices.speak(text, lang, accent)
+        body = _voices.speak(text, lang, accent, engine)
         if body is None:
             return self._json(404, {"error": "no voice"})
         return self._send_media(

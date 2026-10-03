@@ -6488,6 +6488,15 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _voices.manage_payload())
 
+    elif parsed.path == "/manage/voices/choose":
+        # Which engine says a language: {"lang": primary, "engine": name}, or
+        # engine null for the best here.
+        from zimi import voices as _voices
+
+        if not _voices.set_choice(data.get("lang"), data.get("engine")):
+            return handler._json(409, {"error": "That voice cannot say this language here"})
+        return handler._json(200, _voices.manage_payload())
+
     elif parsed.path == "/manage/voices/download":
         # One language's clearer voice, fetched in the background: {"lang": tag}.
         from zimi import voices as _voices

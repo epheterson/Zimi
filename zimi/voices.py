@@ -8,12 +8,12 @@ mutes it, and every device has its own voices or none. A WAV played by an
 Four engines, each a separate program run as a child (never imported, so
 GPL code stays beside MIT Zimi the way ffmpeg does), in this order:
 
-1. Piper (piper-tts), when a voice for the language is installed. Natural
-   speech, and Eric's first choice: "If it sounds clearer and is more
-   accurate that might be better than letting the system do whatever."
-2. Kokoro (kokoro-onnx, with misaki's own Chinese phonemes), for Chinese,
-   where no Piper voice has a licence that allows it. Eric: "Add Kokoro for
-   Chinese".
+1. Kokoro (kokoro-onnx, with misaki's phonemes for English and Chinese): one
+   download, the "Natural voices", says English (US and UK), Spanish,
+   French, Italian, Brazilian Portuguese, Hindi and Chinese. Eric, after
+   Piper's English: "It does sound robotic still and a lil off."
+2. Piper (piper-tts), one download per language. For Kokoro's languages it
+   is a choice beside Kokoro: "Options couldn't hurt once it's built."
 3. macOS ``say``, on a Mac.
 4. espeak-ng, when installed. Robotic, and there with no download at all.
 
@@ -25,9 +25,9 @@ An accent asks first for an engine with that region's voice, then for any
 voice of the language. None that can say it: no audio, and the page uses the
 device's own voice.
 
-Piper voices (about 60 MB each) and the Kokoro model (about 120 MB) are a
-download, one language at a time, chosen by someone in the Dictionary or in
-Manage, under "Voices for Dictionary": Ask first, Automatically (a voice is
+Piper voices (about 60 MB each, one language) and the Kokoro model (about
+120 MB, all its languages) are a download, chosen by someone in the
+Dictionary or in Manage, under "Voices for Dictionary": Ask first, Automatically (a voice is
 fetched when a word in its language is said), Never. ZIMI_OFFLINE forbids
 it. Every voice is pinned per Zimi release in ``VOICES``, with its licence
 and credit; nothing updates on its own.
@@ -52,7 +52,7 @@ from zimi import outbound, subproc
 log = logging.getLogger("zimi")
 
 PIPER, KOKORO, SAY, ESPEAK = "piper", "kokoro", "say", "espeak"
-ENGINES = (PIPER, KOKORO, SAY, ESPEAK)
+ENGINES = (KOKORO, PIPER, SAY, ESPEAK)  # the order a language asks them in
 DOWNLOADED = (PIPER, KOKORO)  # the engines whose voices are a download
 
 # Every voice Zimi can fetch, pinned per release: one per language (accents
@@ -77,6 +77,21 @@ KOKORO_BASE_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download
 KOKORO_ID = "kokoro-v1.0.int8"
 KOKORO_MODEL, KOKORO_VOICES = "kokoro-v1.0.int8.onnx", "voices-v1.0.bin"
 KOKORO_SIZES = {KOKORO_MODEL: 92361271, KOKORO_VOICES: 28214398}
+KOKORO_TAG = "kokoro"  # the one download, in Manage and the Dictionary alike
+# Kokoro's languages: the speaker for each, the best graded in hexgrad's
+# VOICES.md for v1.0, and how its words become phonemes (misaki for English
+# and Chinese in voicehelper.py, espeak-ng's code for the rest). Japanese
+# would need misaki's MeCab dictionary, a download of its own: not yet.
+KOKORO_LANGS = {
+    "en-US": ("af_heart", "en-us"),  # A
+    "en-GB": ("bf_emma", "en-gb"),  # B-
+    "es": ("ef_dora", "es"),  # ungraded; the only Spanish woman
+    "fr": ("ff_siwis", "fr-fr"),  # B-
+    "it": ("if_sara", "it"),  # C, as im_nicola
+    "pt-BR": ("pf_dora", "pt-br"),  # ungraded
+    "hi": ("hf_alpha", "hi"),  # C, as the other three
+    "zh": ("zf_xiaobei", "zh"),  # D, as all eight
+}
 
 
 def _voice_url(voice_id, suffix, revision=PIPER_REVISION):
@@ -95,7 +110,7 @@ def _piper(vid, onnx, cfg, license, credit, revision=PIPER_REVISION):
     return Pin(PIPER, vid, None, revision, files, license, credit)
 
 
-def _kokoro(voice):
+def _kokoro():
     files = tuple(
         (name, KOKORO_BASE_URL + KOKORO_REVISION + "/" + name, size)
         for name, size in KOKORO_SIZES.items()
@@ -103,7 +118,7 @@ def _kokoro(voice):
     return Pin(
         KOKORO,
         KOKORO_ID,
-        voice,
+        None,  # every speaker is in the one voices file
         KOKORO_REVISION,
         files,
         "Apache-2.0",
@@ -113,6 +128,7 @@ def _kokoro(voice):
 
 # fmt: off
 VOICES = {
+    KOKORO_TAG: _kokoro(),
     "ca": _piper("ca_ES-upc_ona-medium", 63201294, 4875, "CC BY-SA 3.0", "Festcat corpus, Universitat Politècnica de Catalunya"),
     "cs": _piper("cs_CZ-jirka-medium", 63201294, 5025, "CC0", NABU),
     "da": _piper("da_DK-talesyntese-medium", 63201294, 4878, "CC0", SPRAKBANKEN),
@@ -142,14 +158,12 @@ VOICES = {
     "tr": _piper("tr_TR-fahrettin-medium", 63201294, 5022, "CC0", NABU),
     "uk": _piper("uk_UA-ukrainian_tts-medium", 76735663, 2002, "CC0", NABU),
     "vi": _piper("vi_VN-vais1000-medium", 63201294, 4860, "CC BY 4.0", "VAIS-1000 corpus"),
-    "zh": _kokoro("zf_xiaoxiao"),
 }
 # fmt: on
 
 # Voices left out on purpose, so a later pin does not bring one back: a
 # licence that forbids commercial use, or none stated. Arabic has no clean
-# voice yet and keeps the basic one. Japanese on Kokoro would need misaki's
-# MeCab dictionary, a download of its own, so it is not offered yet.
+# voice yet and keeps the basic one.
 EXCLUDED = {
     "hi_IN-pratham-medium": "CC BY-NC-SA",
     "hi_IN-priyamvada-medium": "CC BY-NC-SA",
@@ -170,6 +184,10 @@ PREFS_KEY = "voice_downloads"
 POLICY = outbound.FetchPolicy(
     DOWNLOADS_ENV, PREFS_KEY, outbound.ASK, "Voices for Dictionary"
 )
+# Which engine says a language, where someone chose in Manage: {primary:
+# engine}, beside the setting in the same prefs file. Eric: "Options couldn't
+# hurt once it's built." No choice: the best here, in ENGINES order.
+CHOICES_KEY = "voice_engines"
 
 # A word or a short phrase, never a paragraph: what the Dictionary says.
 TEXT_MAX = 64
@@ -189,7 +207,7 @@ HELPER_SCRIPT = "voicehelper.py"  # the same, run by Zimi's Python
 # What voicehelper.py needs in Zimi's Python to run an engine.
 _ENGINE_MODULES = {
     PIPER: ("piper",),
-    KOKORO: ("kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an"),
+    KOKORO: ("kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an", "num2words"),
 }
 
 VOICES_DIR = "voices"
@@ -222,12 +240,15 @@ _synth_lock = threading.Lock()  # one synthesis at a time
 _found = {}
 _download = {}
 _fetcher = None  # the thread fetching a voice, while one is
+_choices = None  # CHOICES_KEY as last read or written: no file read per word
 
 
 def _reset_for_tests():
+    global _choices
     with _lock:
         _found.clear()
         _download.clear()
+        _choices = None
 
 
 # ── where things are ──────────────────────────────────────────────────────
@@ -442,20 +463,30 @@ def _espeak_voices():
     return _memo(ESPEAK, find)
 
 
+def _kokoro_region(tag):
+    """A Kokoro language's region: its tag's, else the language's home."""
+    primary = _primary(tag)
+    if "-" in tag:
+        return tag.split("-", 1)[1]
+    return _HOME_REGION.get(primary, primary.upper())
+
+
 def _downloaded_voices(engine):
     """Installed voices of ``engine`` it can run: {primary: {region: tag}}.
-    A Piper voice's region is in its id; Kokoro's is the language's home."""
+    A Piper voice's region is in its id; Kokoro's model says every one of
+    its languages, each by its KOKORO_LANGS tag."""
     if not runtime(engine):
         return {}
+    have = installed()
     out = {}
-    for tag, rec in installed().items():
-        if rec["engine"] != engine:
-            continue
-        primary = _primary(tag)
-        region = (
-            _region_of(rec["id"]) if engine == PIPER else _HOME_REGION.get(primary, "")
-        )
-        out.setdefault(primary, {})[region] = tag
+    if engine == KOKORO:
+        if KOKORO_TAG in have:
+            for tag in KOKORO_LANGS:
+                out.setdefault(_primary(tag), {})[_kokoro_region(tag)] = tag
+        return out
+    for tag, rec in have.items():
+        if rec["engine"] == engine:
+            out.setdefault(_primary(tag), {})[_region_of(rec["id"])] = tag
     return out
 
 
@@ -481,13 +512,72 @@ def _home_first(primary, regions):
     return sorted(regions, key=lambda r: (r != home, r == ""))
 
 
-def choose(lang, accent=""):
+def choices():
+    """{primary: engine}: the engine chosen in Manage for each language."""
+    global _choices
+    with _lock:
+        if _choices is not None:
+            return dict(_choices)
+    from zimi import manage
+
+    saved = manage._read_app_update_prefs().get(CHOICES_KEY)
+    saved = {
+        k: v
+        for k, v in (saved if isinstance(saved, dict) else {}).items()
+        if isinstance(k, str) and v in ENGINES
+    }
+    with _lock:
+        _choices = saved
+    return dict(saved)
+
+
+def engines_for(lang):
+    """The engines here that can say ``lang``, best first."""
+    primary = _primary(lang)
+    return [e for e in ENGINES if _voices(e).get(primary)]
+
+
+def set_choice(lang, engine):
+    """Have ``engine`` say ``lang`` from now on; None, or the engine that
+    would say it anyway, goes back to the best here. False when ``engine``
+    cannot say it here."""
+    global _choices
+    primary = _primary(lang)
+    if not _LANG_RE.match(primary or ""):
+        return False
+    if engine is not None and engine not in engines_for(primary):
+        return False
+    from zimi import manage
+
+    saved = choices()
+    best = engines_for(primary)[:1]
+    if engine is None or [engine] == best:
+        saved.pop(primary, None)
+    else:
+        saved[primary] = engine
+    manage._write_app_update_prefs(**{CHOICES_KEY: saved})
+    with _lock:
+        _choices = saved
+    return True
+
+
+def _engine_order(primary):
+    """ENGINES, the chosen one for this language first. A chosen engine
+    that can no longer say it (its voice removed) is simply passed over."""
+    chosen = choices().get(primary)
+    return ((chosen,) if chosen else ()) + tuple(e for e in ENGINES if e != chosen)
+
+
+def choose(lang, accent="", engine=None):
     """``(engine, voice)`` to say ``lang`` with, or None. An accent's region
     asks first for an engine with that region's voice, then any voice of the
-    language, Piper before ``say`` before espeak-ng."""
+    language: the engine chosen in Manage, else Kokoro before Piper before
+    ``say`` before espeak-ng. ``engine`` asks for that one alone (the
+    Dictionary's Other voices)."""
     primary = _primary(lang)
     region = (accent or (lang.split("-", 1)[1] if "-" in lang else "")).upper()
-    tables = [(e, _voices(e).get(primary) or {}) for e in ENGINES]
+    order = (engine,) if engine else _engine_order(primary)
+    tables = [(e, _voices(e).get(primary) or {}) for e in order]
     if region:
         for engine, by_region in tables:
             if region in by_region:
@@ -499,17 +589,24 @@ def choose(lang, accent=""):
 
 
 def can_say():
-    """What the server can say: {primary: {"engine", "regions"}}, the engine
-    a plain Say would use and every region some engine has a voice for."""
+    """What the server can say: {primary: {"engine", "engines", "regions"}},
+    the engine a plain Say would use, every engine that can say it (best
+    first), and every region some engine has a voice for."""
     out = {}
     for engine in ENGINES:
         for primary, by_region in _voices(engine).items():
-            row = out.setdefault(primary, {"engine": engine, "regions": []})
+            row = out.setdefault(
+                primary, {"engine": engine, "engines": [], "regions": []}
+            )
+            row["engines"].append(engine)
             for r in by_region:
                 if r and r not in row["regions"]:
                     row["regions"].append(r)
-    for row in out.values():
+    chosen = choices()
+    for primary, row in out.items():
         row["regions"].sort()
+        if chosen.get(primary) and _voices(chosen[primary]).get(primary):
+            row["engine"] = chosen[primary]
     return out
 
 
@@ -540,13 +637,13 @@ def _command(engine, voice, out):
         onnx = os.path.join(_piper_dir(), rec["id"] + ".onnx")
         return piper_command() + ["-m", onnx, "-f", out]
     if engine == KOKORO:
-        rec = installed().get(voice)
+        speaker, code = KOKORO_LANGS[voice]
         folder = _engine_dir(KOKORO)
         return kokoro_command() + [
             "--model", os.path.join(folder, KOKORO_MODEL),
             "--voices", os.path.join(folder, KOKORO_VOICES),
-            "--voice", rec["voice"],
-            "--lang", _primary(voice),
+            "--voice", speaker,
+            "--lang", code,
             "-f", out,
         ]  # fmt: skip
     if engine == SAY:
@@ -554,30 +651,30 @@ def _command(engine, voice, out):
     return [shutil.which("espeak-ng") or "espeak-ng", "-v", voice, "-w", out, "--stdin"]
 
 
-def _cache_key(rec):
-    """A downloaded voice's audio folder name: its model id, and the voice
-    within the model where there is one (Kokoro)."""
-    return rec["id"] + ("-" + rec["voice"] if rec.get("voice") else "")
-
-
 def _cache_voice(engine, voice):
-    """The cache's name for a voice: a downloaded one by its model, so a
-    newer voice for the same language never answers with the old one's audio."""
-    if engine in DOWNLOADED:
+    """The cache's name for a voice: a downloaded one by its model, and
+    Kokoro's by the speaker within it too, so a newer voice (or another
+    speaker) for the same language never answers with the old one's audio."""
+    if engine == KOKORO:
+        rec = installed().get(KOKORO_TAG)
+        return (rec["id"] if rec else KOKORO_ID) + "-" + KOKORO_LANGS[voice][0]
+    if engine == PIPER:
         rec = installed().get(voice)
-        return _cache_key(rec) if rec else voice
+        return rec["id"] if rec else voice
     return voice
 
 
-def speak(text, lang, accent=""):
+def speak(text, lang, accent="", engine=None):
     """WAV bytes of ``text`` said in ``lang``, or None when no engine can
-    say it (or every engine that could failed). Cached by engine, voice and
-    text; one synthesis at a time."""
+    say it (or every engine that could failed). ``engine``: that engine or
+    none. Cached by engine, voice and text; one synthesis at a time."""
     text = clean_text(text)
     if text is None or not valid_lang(lang, accent):
         return None
+    if engine is not None and engine not in ENGINES:
+        return None
     _maybe_fetch(lang, accent)
-    picked = choose(lang, accent)
+    picked = choose(lang, accent, engine)
     if not picked:
         return None
     engine, voice = picked
@@ -664,11 +761,14 @@ def _rec_files(rec):
 def installed():
     """{tag: {"engine", "id", "revision", "bytes", "files", "voice"}} for the
     downloaded voices on disk, every engine's (one manifest per engine's
-    folder)."""
+    folder). Kokoro's model is one record, KOKORO_TAG, whatever its manifest
+    named it (Chinese's, before it said every language)."""
     out = {}
     for engine in DOWNLOADED:
         folder = _engine_dir(engine)
         for t, r in _read_manifest(engine).items():
+            if engine == KOKORO and isinstance(r, dict):
+                t, r = KOKORO_TAG, dict(r, voice=None)
             if not (isinstance(r, dict) and isinstance(r.get("id"), str)):
                 continue
             # The model itself must be here; a config alone says nothing.
@@ -686,7 +786,8 @@ def _set_installed(engine, tag, rec):
     """Write one tag's record into its engine's manifest (None takes it out)."""
     from zimi import server as _srv
 
-    data = _read_manifest(engine)
+    # Kokoro's folder holds one model: its record replaces whatever was there.
+    data = {} if engine == KOKORO else _read_manifest(engine)
     if rec is None:
         data.pop(tag, None)
     else:
@@ -695,9 +796,20 @@ def _set_installed(engine, tag, rec):
     return _srv._atomic_write_json(os.path.join(_engine_dir(engine), MANIFEST), data)
 
 
+_KOKORO_PRIMARIES = {_primary(t) for t in KOKORO_LANGS}
+
+
+def _pin_langs(tag):
+    """The languages a pinned download says: Kokoro's every one."""
+    return sorted(_KOKORO_PRIMARIES) if tag == KOKORO_TAG else [_primary(tag)]
+
+
 def _offer_tag(lang, accent=""):
-    """The pinned voice for a language (its accent's, where there is one)."""
+    """The pinned download for a language: Kokoro for its languages, else
+    Piper's voice (its accent's, where there is one)."""
     primary = _primary(lang)
+    if primary in _KOKORO_PRIMARIES:
+        return KOKORO_TAG
     region = (accent or "").upper()
     if region and primary + "-" + region in VOICES:
         return primary + "-" + region
@@ -708,7 +820,9 @@ def _offer_tag(lang, accent=""):
 
 
 def _bytes(tag):
-    return sum(size for _name, _url, size in VOICES[tag].files)
+    """A pinned download's size; ``tag`` may be the Pin itself."""
+    pin = tag if isinstance(tag, Pin) else VOICES[tag]
+    return sum(size for _name, _url, size in pin.files)
 
 
 def _is_current(tag, rec):
@@ -874,11 +988,24 @@ def _fetch_voice(tag):
                 os.remove(part)
 
 
+def _drop_audio(engine, rec):
+    """A downloaded voice's said words: its folder, and every speaker's
+    within the model (Kokoro)."""
+    name = os.path.basename(_cache_dir(engine, rec["id"]))
+    try:
+        folders = os.listdir(_dir("cache"))
+    except OSError:
+        return
+    for f in folders:
+        if f == name or f.startswith(name + "-"):
+            shutil.rmtree(_dir("cache", f), ignore_errors=True)
+
+
 def _delete_voice_files(rec):
     """A downloaded voice's files and its audio. A file another installed
-    voice still uses (one Kokoro model, many languages) stays."""
+    voice still uses stays."""
     engine = rec.get("engine", PIPER)
-    shutil.rmtree(_cache_dir(engine, _cache_key(rec)), ignore_errors=True)
+    _drop_audio(engine, rec)
     still = {
         f for r in installed().values() if r["engine"] == engine for f in _rec_files(r)
     }
@@ -908,17 +1035,24 @@ def page_payload():
     clearer voices it could fetch for a language that has none yet."""
     mode, locked = POLICY.mode()
     have = installed()
+    langs = can_say()
     offers = {}
-    for tag in VOICES:
-        if tag not in have and can_download(tag):
-            offers.setdefault(_primary(tag), {"tag": tag, "bytes": _bytes(tag)})
+    for tag, pin in VOICES.items():
+        if tag in have or not can_download(tag):
+            continue
+        for lang in _pin_langs(tag):
+            # A language a downloaded voice already says needs nothing more:
+            # which one says it is Manage's choice, not the Dictionary's.
+            if (langs.get(lang) or {}).get("engine") not in DOWNLOADED:
+                offers.setdefault(lang, {"tag": tag, "bytes": _bytes(tag)})
     return {
-        "langs": can_say(),
+        "langs": langs,
         # Which voices are here, in the address of every word's audio: a
         # voice downloaded or removed is a new address, never the browser's
         # copy of the word in the old voice (Eric, 2026-10-03: English
-        # downloaded "but it's still robotic").
-        "stamp": "-".join(sorted("%s.%s" % (t, r["id"]) for t, r in have.items())) or "none",
+        # downloaded "but it's still robotic"). Kokoro's carries its
+        # speakers, so a new speaker for a language is a new address too.
+        "stamp": _stamp(have),
         "offers": offers,
         "downloading": downloading(),
         "mode": mode,
@@ -926,34 +1060,75 @@ def page_payload():
     }
 
 
+def _stamp(have):
+    """The voices here and the choices made, as a word's audio address
+    carries them: either changing is a new address."""
+    parts = sorted(_stamp_part(t, r) for t, r in have.items())
+    parts += sorted("%s=%s" % kv for kv in choices().items())
+    return "-".join(parts) or "none"
+
+
+def _stamp_part(tag, rec):
+    part = "%s.%s" % (tag, rec["id"])
+    if tag == KOKORO_TAG:
+        speakers = ",".join(s for s, _code in KOKORO_LANGS.values())
+        part += "." + hashlib.sha1(speakers.encode("utf-8")).hexdigest()[:8]
+    return part
+
+
+def _manage_row(tag, rec):
+    pin = VOICES[tag]
+    if tag == KOKORO_TAG:
+        engine = KOKORO if rec and runtime(KOKORO) else None
+    else:
+        picked = choose(tag)
+        engine = picked[0] if picked else None
+    row = {
+        "tag": tag,
+        "voice": pin.id,
+        "kind": pin.engine,
+        "bytes": rec.get("bytes", _bytes(pin)) if rec else _bytes(pin),
+        "license": pin.license,
+        "credit": pin.credit,
+        "credit_required": needs_credit(pin.license),
+        "runnable": bool(runtime(pin.engine)),
+        "installed": bool(rec),
+        "newer": bool(rec) and not _is_current(tag, rec),
+        "engine": engine,
+    }
+    if tag == KOKORO_TAG:
+        row["langs"] = list(KOKORO_LANGS)
+    return row
+
+
 def manage_payload():
     """For Manage: the setting, and every pinned voice with its licence and
     credit, whether its engine is here, and what speaks its language now
-    (piper, kokoro, say or espeak, or none)."""
+    (piper, kokoro, say or espeak, or none). Kokoro is one row, "langs" its
+    languages. "choices": each language more than one engine here can say,
+    with the one that does (chosen, or the best)."""
     have = installed()
-    rows = []
-    for tag, pin in VOICES.items():
-        rec = have.get(tag)
-        picked = choose(tag)
-        rows.append(
-            {
-                "tag": tag,
-                "voice": pin.id + ("/" + pin.voice if pin.voice else ""),
-                "kind": pin.engine,
-                "bytes": rec.get("bytes", _bytes(tag)) if rec else _bytes(tag),
-                "license": pin.license,
-                "credit": pin.credit,
-                "credit_required": needs_credit(pin.license),
-                "runnable": bool(runtime(pin.engine)),
-                "installed": bool(rec),
-                "newer": bool(rec) and not _is_current(tag, rec),
-                "engine": picked[0] if picked else None,
-            }
-        )
+    rows = [_manage_row(t, have.get(t)) for t in VOICES]
+    chosen = choices()
+    # Only where a downloaded voice is one of the options: a choice between
+    # the system's voice and the basic one is not worth a row.
+    picks = []
+    for lang in sorted(set().union(*(_voices(e) for e in DOWNLOADED))):
+        options = engines_for(lang)
+        if len(options) > 1:
+            picks.append(
+                {
+                    "lang": lang,
+                    "engines": options,
+                    "engine": choose(lang)[0],
+                    "chosen": chosen.get(lang) if chosen.get(lang) in options else None,
+                }
+            )
     return {
         "setting": POLICY.setting(),
         "piper": bool(piper_command()),
         "kokoro": bool(kokoro_command()),
         "voices": rows,
+        "choices": picks,
         "downloading": downloading(),
     }
