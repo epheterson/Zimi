@@ -137,8 +137,9 @@
     zin: svg('<path d="M12 5v14M5 12h14"/>'),
     zout: svg('<path d="M5 12h14"/>'),
     up: svg('<path d="M6 15l6-6 6 6"/>'),
-    first: svg('<path d="M6 5h12M7 15l5-5 5 5"/>'),
-    last: svg('<path d="M6 19h12M7 9l5 5 5-5"/>'),
+    first: svg('<path d="M6 5v14M18 5l-7 7 7 7"/>'),
+    last: svg('<path d="M18 5v14M6 5l7 7-7 7"/>'),
+    close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
     scroll: svg('<rect x="6" y="2" width="12" height="8" rx="1"/><rect x="6" y="14" width="12" height="8" rx="1"/>'),
     down: svg('<path d="M6 9l6 6 6-6"/>'),
     mark: svg('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'),
@@ -165,7 +166,7 @@
       (zim ? '<img class="zp-zimicon zp-hide-finding" alt="" width="22" height="22" src="/w/' + encodeURIComponent(zim) + '/-/icon">' : '') +
       '<div class="zp-title"><b></b><span></span></div>' +
       '<div class="zp-find" role="search">' +
-        iconBtn('zp-find-close zp-flip', I.back, t('close')) +
+        iconBtn('zp-find-close', I.close, t('close')) +
         '<input type="text" enterkeyhint="search" autocomplete="off" spellcheck="false" aria-label="' + esc(t('find_in_page')) + '" placeholder="' + esc(t('find_in_page')) + '">' +
         '<span class="zp-count" aria-live="polite"></span>' +
         iconBtn('zp-find-prev', I.up, t('find_prev')) + iconBtn('zp-find-next', I.down, t('find_next')) +
@@ -178,9 +179,11 @@
       '<div class="zp-row">' +
         iconBtn('zp-toc-btn', I.toc, t('books_contents'), ' aria-haspopup="dialog"') +
         iconBtn('zp-zoom zp-out', I.zout, t('pdf_zoom_out')) +
+        iconBtn('zp-first zp-flip', I.first, t('pdf_first_page'), ' aria-keyshortcuts="Home"') +
         iconBtn('zp-prev zp-flip', I.back, t('pdf_prev_page'), ' aria-keyshortcuts="ArrowLeft PageUp"') +
         '<div class="zp-pagebox"><button type="button" class="zp-page" aria-label="' + esc(t('pdf_page')) + '"></button></div>' +
         iconBtn('zp-next zp-flip', I.next, t('pdf_next_page'), ' aria-keyshortcuts="ArrowRight PageDown"') +
+        iconBtn('zp-last zp-flip', I.last, t('pdf_last_page'), ' aria-keyshortcuts="End"') +
         iconBtn('zp-zoom zp-in', I.zin, t('pdf_zoom_in')) +
         iconBtn('zp-fit', I.page, t('pdf_page_by_page')) +
       '</div>' +
@@ -194,7 +197,7 @@
   if (zimIcon) zimIcon.addEventListener('error', function () { zimIcon.remove(); });
   var $ = function (s) { return ui.querySelector(s); };
   var head = $('.zp-head'), foot = $('.zp-foot'), scrub = $('.zp-scrub'), pageBtn = $('.zp-page');
-  var prevBtn = $('.zp-prev'), nextBtn = $('.zp-next');
+  var prevBtn = $('.zp-prev'), nextBtn = $('.zp-next'), firstBtn = $('.zp-first'), lastBtn = $('.zp-last');
   var sheet = $('.zp-sheet'), menu = $('.zp-menu'), findInput = $('.zp-find input'), count = $('.zp-count');
 
   // The name: the shell's (a catalog's title for it), else the file's, until
@@ -259,6 +262,7 @@
       applySpread();
       applyView();
       resume();
+      pagePicker();
       paint();
       highlightsOn();
     });
@@ -329,8 +333,9 @@
     pageBtn.innerHTML = esc(t('n_of_total', { n: '\u0000', total: num(pages) })).replace('\u0000', '<b>' + num(page) + '</b>');
     if (!scrubbing) scrub.value = String(page);
     scrub.setAttribute('aria-valuetext', t('n_of_total', { n: num(page), total: num(pages) }));
-    prevBtn.disabled = !stepTo(-1);
-    nextBtn.disabled = !stepTo(1);
+    prevBtn.disabled = firstBtn.disabled = !stepTo(-1);
+    nextBtn.disabled = lastBtn.disabled = !stepTo(1);
+    if (pagePick && pagePick.value !== String(page)) pagePick.value = String(page);
     if (openPanel === sheet) markSheetPage();
   }
   // The foot's height, for the room below the last page.
@@ -365,6 +370,8 @@
   }
   function step(d) { var n = stepTo(d); if (n) goPage(n); }
   prevBtn.addEventListener('click', function () { step(-1); });
+  firstBtn.addEventListener('click', function () { goPage(1); });
+  lastBtn.addEventListener('click', function () { goPage(pages); });
   nextBtn.addEventListener('click', function () { step(1); });
   // ── two pages side by side: on a wide window when the pages are taller
   // than wide (a book, a paper), unless one or two was chosen in the menu.
@@ -403,8 +410,31 @@
   });
   scrub.addEventListener('change', function () { scrubbing = false; goPage(Number(scrub.value)); });
   // The page, typed: a tap on "4 of 12" asks for a number.
+  // The page by number: a short document's pages as a list (the phone's own
+  // picker), a long one's typed, the bar lifted over the keyboard.
+  var PICK_MAX = 60;           // pages at most offered as a list
+  var pagePick = null;
+  function pagePicker() {
+    if (pagePick) { pagePick.remove(); pagePick = null; }
+    if (pages < 2 || pages > PICK_MAX) return;
+    var h = '';
+    for (var p = 1; p <= pages; p++) h += '<option value="' + p + '">' + esc(t('n_of_total', { n: num(p), total: num(pages) })) + '</option>';
+    pagePick = document.createElement('select');
+    pagePick.className = 'zp-page-pick';
+    pagePick.setAttribute('aria-label', t('pdf_page'));
+    pagePick.innerHTML = h;
+    pagePick.value = String(page);
+    pagePick.addEventListener('change', function () { goPage(Number(pagePick.value)); });
+    pageBtn.parentNode.appendChild(pagePick);
+    pageBtn.tabIndex = -1;
+  }
+  function liftOverKeyboard(on) {
+    var vv = window.visualViewport;
+    var lift = on && vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+    foot.style.transform = lift ? 'translateY(' + (-lift) + 'px)' : '';
+  }
   pageBtn.addEventListener('click', function () {
-    if (!pages) return;
+    if (!pages || pagePick) return;
     var box = pageBtn.parentNode, inp = document.createElement('input');
     inp.className = 'zp-page-input';
     inp.type = 'text'; inp.inputMode = 'numeric'; inp.enterKeyHint = 'go';
@@ -413,8 +443,12 @@
     pageBtn.hidden = true;
     box.appendChild(inp);
     inp.focus(); inp.select();
+    var lift = function () { liftOverKeyboard(true); };
+    if (window.visualViewport) { visualViewport.addEventListener('resize', lift); visualViewport.addEventListener('scroll', lift); }
     var done = function (go) {
       if (!inp.parentNode) return;
+      if (window.visualViewport) { visualViewport.removeEventListener('resize', lift); visualViewport.removeEventListener('scroll', lift); }
+      liftOverKeyboard(false);
       var n = parseInt(inp.value.replace(/[^\d]/g, ''), 10);
       inp.remove(); pageBtn.hidden = false;
       if (go && n) goPage(n);
@@ -643,12 +677,10 @@
         '<button type="button" role="menuitemradio" data-zp="one" aria-checked="' + !two + '">' + I.one + '<span class="zp-grow">' + esc(t('pdf_single_page')) + '</span></button>' +
         '<button type="button" role="menuitemradio" data-zp="two" aria-checked="' + two + '">' + I.two + '<span class="zp-grow">' + esc(t('pdf_two_pages')) + '</span></button></div>';
     }
-    if (pages > 1) {
-      h += '<button type="button" role="menuitem" data-zp="first"' + (page <= 1 ? ' disabled' : '') + '>' + I.first + '<span class="zp-grow">' + esc(t('pdf_first_page')) + '</span></button>' +
-        '<button type="button" role="menuitem" data-zp="last"' + (page >= pages ? ' disabled' : '') + '>' + I.last + '<span class="zp-grow">' + esc(t('pdf_last_page')) + '</span></button><hr>';
-    }
+    // Width or the whole page: only where the two differ (on a phone a
+    // page's width is its whole).
     var fp = preset === FIT_PAGE, fw = preset === FIT_WIDTH;
-    h += '<div role="group" class="zp-choice">' +
+    if (wide()) h += '<div role="group" class="zp-choice">' +
       '<button type="button" role="menuitemradio" data-zp="fitw" aria-checked="' + fw + '">' + I.width + '<span class="zp-grow">' + esc(t('pdf_fit_width')) + '</span></button>' +
       '<button type="button" role="menuitemradio" data-zp="fitp" aria-checked="' + fp + '">' + I.page + '<span class="zp-grow">' + esc(t('pdf_fit_page')) + '</span></button></div>';
     h += '<button type="button" role="menuitem" data-zp="rotate">' + I.rotate + '<span class="zp-grow">' + esc(t('pdf_rotate')) + '</span></button>';
@@ -689,7 +721,6 @@
       menuAgain();
       return;   // a choice: the menu stays, showing it
     }
-    if (what === 'first' || what === 'last') { closePanel(true); goPage(what === 'first' ? 1 : pages); return; }
     closePanel(true);
     if (what === 'save') {
       try { shell.toggleBookmark(); if (shell._updateLibraryBtnIcon) shell._updateLibraryBtnIcon(); } catch (err) {}

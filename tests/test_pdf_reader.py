@@ -241,9 +241,8 @@ def test_the_slider_moves_through_the_pages(shell):
                 == "9 of %d" % PAGES
             )
             # The page, typed.
-            fr.click(".zp-page")
-            fr.fill(".zp-page-input", "3")
-            fr.press(".zp-page-input", "Enter")
+            # Twelve pages: the page by number is a list.
+            fr.select_option(".zp-page-pick", "3")
             fr.wait_for_function("() => zimiPdf.page() === 3", timeout=5000)
             # Contents: the outline's chapters, the one you are in marked.
             fr.click(".zp-toc-btn")
@@ -768,9 +767,10 @@ def test_a_jump_is_not_undone_by_a_rescale_in_the_same_moment(shell):
 def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
     """Eric, 2026-10-02: "the page should fit and I'd like to be able to swipe
     with a fit page view", the button at the bottom right "does nothing", and
-    "go to first go to last the fit options they're nice". A phone opens a
-    page at a time; the button turns that into one long scroll and back (and
-    is kept); the menu goes to either end and fits by width or page. The
+    "go to first go to last the fit options they're nice", and later "First
+    page last page not in ... but by the page turn arrow area" with "tap a
+    number to choose". A phone opens a page at a time, centred; the button
+    turns that into one long scroll and back (and is kept). The
     viewer's address carries a mark no year-cached 1.12 copy was stored under.
     """
     _skip_without_browser()
@@ -789,14 +789,24 @@ def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
             assert fr.evaluate("() => localStorage.getItem('zimi_pdf_view')") == "scroll"
             fr.click(".zp-fit")
             fr.wait_for_function("() => PDFViewerApplication.pdfViewer.scrollMode === 3")
-            fr.click(".zp-more")
-            fr.click('.zp-menu [data-zp="last"]')
+            # Either end, beside the arrows; the page by number from a list.
+            fr.click(".zp-last")
             fr.wait_for_function("() => zimiPdf.page() === %d" % PAGES, timeout=5000)
-            fr.click(".zp-more")
-            assert fr.evaluate("() => document.querySelector('.zp-menu [data-zp=\"last\"]').disabled")
-            fr.click('.zp-menu [data-zp="fitw"]')
-            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.currentScaleValue === 'page-width'")
-            fr.click('.zp-menu [data-zp="first"]')
+            assert fr.evaluate("() => document.querySelector('.zp-last').disabled")
+            fr.select_option(".zp-page-pick", "5")
+            fr.wait_for_function("() => zimiPdf.page() === 5", timeout=5000)
+            fr.click(".zp-first")
             fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+            # A page at a time sits in the middle of the screen.
+            mid = fr.evaluate("""() => { const p = document.querySelector('.page[data-page-number="1"]').getBoundingClientRect();
+              return Math.abs((p.top + p.bottom) / 2 - innerHeight / 2); }""")
+            assert mid < 30, mid
+            # On a phone the fits are the same size: not offered.
+            fr.click(".zp-more")
+            assert not fr.locator('.zp-menu [data-zp="fitw"]').count()
+            pg.keyboard.press("Escape")
+            # Find closes with an X, not a back arrow.
+            fr.click(".zp-find-btn")
+            assert fr.evaluate("() => !document.querySelector('.zp-find-close').classList.contains('zp-flip') && document.querySelector('.zp-find-close path').getAttribute('d').startsWith('M6 6l12 12')")
         finally:
             ctx.browser.close()
