@@ -6,7 +6,7 @@
 // Loaded before almanac.js; all almanac scripts share one global scope.
 
 // The frame loop runs only while something moves (the Moon gliding to a new
-// instant, the hero's sweep, a muon falling); a still sky is painted once
+// instant, the hero's sweep); a still sky is painted once
 // and then by timers: the live clock's drift and a slow twinkle.
 var _almanacSkyRAF = null;
 
@@ -749,65 +749,6 @@ function _skyPaintMoon(ctx, s, md) {
   if (pos.altitude > SKY_REFRACTION_FROM_DEG) s.bodies.push({ type: 'moon', x: x / s.dpr, y: y / s.dpr, r: R / s.dpr, alt: pos.altitude, az: pos.azimuth });
 }
 
-// ══ Muons ═════════════════════════════════════════════════════════════════
-// Every minute about ten thousand muons cross each square metre at sea level,
-// made by cosmic rays some 15 km up. A faint streak now and then stands for
-// them; a tap tells why any reach the ground. The Feynman Lectures on Physics,
-// Vol. I, ch. 15-4. Muon lifetime 2.197 us: Particle Data Group (2024).
-var MUON_LIFETIME_S = 2.197e-6;
-var MUON_BETA = 0.998;
-var MUON_HEIGHT_M = 15000;
-var SKY_MUON_FIRST_MS = 6000;     // the first after the page has settled
-var SKY_MUON_GAP_MS = [12000, 30000];
-var SKY_MUON_FALL_MS = 450;
-var SKY_MUON_FADE_MS = 2600;
-var SKY_MUON_FADE_STEP_MS = 400;  // the trace fades in steps this far apart
-var SKY_MUON_ALPHA = 0.5;
-
-// The muon's numbers, all from the three above.
-function _muonFacts() {
-  var gamma = _lorentzFactor(MUON_BETA), v = MUON_BETA * SPEED_OF_LIGHT_M_S;
-  var fall = MUON_HEIGHT_M / v;                 // the fall, by a clock on the ground
-  var own = fall / gamma;                       // the same fall, by the muon's clock
-  return {
-    gamma: gamma, fall: fall, own: own,
-    reach: v * MUON_LIFETIME_S,                 // how far it goes in one lifetime, were its clock not slow
-    reachSlow: v * MUON_LIFETIME_S * gamma,     // how far it goes, its clock slow
-    survive: Math.exp(-own / MUON_LIFETIME_S),
-    surviveNaive: Math.exp(-fall / MUON_LIFETIME_S)
-  };
-}
-
-function _skyMuonSpawn(s, ts) {
-  var r = _lcgRand(Math.floor(ts) % 2147483646 + 1);
-  s.muons.push({ x: 0.08 + 0.84 * r(), lean: (r() - 0.5) * 0.12, start: ts });
-}
-// A muon's streak at ts: its top and its head (device px) and how bright.
-function _skyMuonAt(s, m, ts) {
-  var y0 = s.H * 0.03, y1 = s.H * SKY_HORIZON_Y;
-  var x0 = m.x * s.W, x1 = x0 + m.lean * s.W;
-  if (m.still) return { x0: x0, y0: y0, x1: x1, y1: y1, a: SKY_MUON_ALPHA * 0.6 };
-  var age = ts - m.start, p = _skyClamp(age / SKY_MUON_FALL_MS, 0, 1);
-  var a = age < SKY_MUON_FALL_MS ? SKY_MUON_ALPHA : SKY_MUON_ALPHA * (1 - (age - SKY_MUON_FALL_MS) / SKY_MUON_FADE_MS);
-  return { x0: x0, y0: y0, x1: _skyLerp(x0, x1, p), y1: _skyLerp(y0, y1, p), a: a };
-}
-function _skyPaintMuons(ctx, s, ts) {
-  var keep = [];
-  for (var i = 0; i < s.muons.length; i++) {
-    var m = s.muons[i], k = _skyMuonAt(s, m, ts);
-    if (k.a <= 0) continue;
-    keep.push(m);
-    var g = ctx.createLinearGradient(k.x0, k.y0, k.x1, k.y1);
-    g.addColorStop(0, 'rgba(190,220,255,0)');
-    g.addColorStop(1, 'rgba(190,220,255,' + k.a.toFixed(3) + ')');
-    ctx.strokeStyle = g;
-    ctx.lineWidth = 1.2 * s.dpr;
-    ctx.beginPath(); ctx.moveTo(k.x0, k.y0); ctx.lineTo(k.x1, k.y1); ctx.stroke();
-    s.bodies.push({ type: 'muon', x0: k.x0 / s.dpr, y0: k.y0 / s.dpr, x1: k.x1 / s.dpr, y1: k.y1 / s.dpr });
-  }
-  s.muons = keep;
-}
-
 // ══ Life on the horizon ══════════════════════════════════════════════════
 // One scene everywhere, a window on the sky: a beach with palms, looking out
 // to sea. Where a tide station is near, the water stands where today's tide
@@ -818,8 +759,8 @@ function _skyPaintMuons(ctx, s, ts) {
 // when it is overhead and lit. Each is tapped to say what it is. The sea,
 // the boats and the aurora belong to the still picture; the palms are drawn
 // over each frame from cached sprites, swaying on a light timer while seen
-// (still when motion is reduced); planes, birds, whales, meteors, muons and
-// the ISS move, and only while one of them is on screen does a frame loop run.
+// (still when motion is reduced); planes, birds, whales, meteors and the
+// ISS move, and only while one of them is on screen does a frame loop run.
 
 var SKY_EYE_KM = 3.57;            // the sea's edge, km, times the square root of eye height in metres
 var SKY_EYE_M = 1.7;
@@ -1483,7 +1424,6 @@ function _skyPaint(ts) {
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, s.W, s.H * SKY_HORIZON_Y); ctx.clip();
   _skyPaintActors(ctx, s, ts);
-  _skyPaintMuons(ctx, s, ts);
   ctx.restore();
   for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
   _skyPaintPalms(ctx, s, ts);
@@ -1494,22 +1434,13 @@ function _skyLive() { return typeof _almFocus === 'undefined' || !_almFocus; }
 function _skyCovered() { return typeof _aeIsOpen !== 'undefined' && _aeIsOpen; }
 function _skyAwake(s) { return s && s.inView && !document.hidden && !_skyCovered(); }
 
-// Something is moving: the Moon's glide, the hero's sweep, a falling muon.
+// Something is moving: the Moon's glide, the hero's sweep.
 function _skyAnimating(s, ts) {
   if (s.moonAnim) return true;
-  if (typeof _heroMoonAnim !== 'undefined' && _heroMoonAnim) return true;
-  return _skyMuonsIn(s, ts, 0, SKY_MUON_FALL_MS);
+  return typeof _heroMoonAnim !== 'undefined' && !!_heroMoonAnim;
 }
 // A plane, birds, a meteor or the ISS on screen: frames at SKY_ACTOR_FRAME_MS.
 function _skyActorsMoving(s) { return s.actors.length > 0 || s.issUp; }
-// Any moving muon whose age lies in [from, to) ms.
-function _skyMuonsIn(s, ts, from, to) {
-  for (var i = 0; i < s.muons.length; i++) {
-    var age = ts - s.muons[i].start;
-    if (!s.muons[i].still && age >= from && age < to) return true;
-  }
-  return false;
-}
 function _skyLoop(ts) {
   _almanacSkyRAF = null;
   var s = _skyState;
@@ -1526,18 +1457,13 @@ function _skyLoop(ts) {
   // The hero's time-travel sweep rides this same loop (almanac.js).
   if (typeof _heroMoonTick === 'function') _heroMoonTick(ts);
   if (_skyAnimating(s, ts) || (_skyAwake(s) && _skyActorsMoving(s))) { _almanacSkyRAF = requestAnimationFrame(_skyLoop); return; }
-  // A landed muon's trace fades in a few steps, not frame by frame.
-  if (_skyMuonsIn(s, ts, 0, SKY_MUON_FALL_MS + SKY_MUON_FADE_MS)) {
-    clearTimeout(_skyTimers.fade);
-    _skyTimers.fade = setTimeout(_skyKick, SKY_MUON_FADE_STEP_MS);
-  }
 }
 // Ask for a frame (one, or a run while something moves); never a second loop.
 function _skyKick() {
   if (!_almanacSkyRAF && _skyState) _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
-var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0, sway: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
+var _skyTimers = { live: 0, twinkle: 0, sway: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
 // The first of each after the sky is seen again (opening, coming back to the app).
 var SKY_FIRST_SPAWN_MS = { plane: 20000, birds: 30000, meteor: 15000, whale: 60000 };
 function _skyDisarm() {
@@ -1545,7 +1471,7 @@ function _skyDisarm() {
 }
 // The timers a still sky needs while it is seen: live, the clock's drift;
 // unless motion is reduced, the palms' breeze, the twinkle (only with stars
-// out) and the muons.
+// out) and the moving things.
 function _skyArm() {
   _skyDisarm();
   var s = _skyState;
@@ -1554,8 +1480,6 @@ function _skyArm() {
   if (_skyReduceMotion()) return;
   _skyTimers.sway = setTimeout(_skySwayTick, SKY_SWAY_MS);
   if (s.eph.sunGeoAlt < -3) _skyTimers.twinkle = setTimeout(_skyTwinkleTick, SKY_TWINKLE_MS);
-  var gap = s.muonCount ? SKY_MUON_GAP_MS[0] + Math.random() * (SKY_MUON_GAP_MS[1] - SKY_MUON_GAP_MS[0]) : SKY_MUON_FIRST_MS;
-  _skyTimers.muon = setTimeout(_skyMuonTick, gap);
   Object.keys(SKY_FIRST_SPAWN_MS).forEach(function (kind) {
     _skyTimers[kind] = setTimeout(SKY_SPAWNERS[kind], SKY_FIRST_SPAWN_MS[kind] * (0.6 + 0.8 * Math.random()));
   });
@@ -1584,15 +1508,6 @@ function _skyTwinkleTick() {
   s.baseDirty = true;
   _skyKick();
   _skyTimers.twinkle = setTimeout(_skyTwinkleTick, SKY_TWINKLE_MS);
-}
-function _skyMuonTick() {
-  _skyTimers.muon = 0;
-  var s = _skyState;
-  if (!_skyAwake(s) || _skyReduceMotion()) return;
-  s.muonCount = (s.muonCount || 0) + 1;
-  _skyMuonSpawn(s, performance.now());
-  _skyKick();
-  _skyTimers.muon = setTimeout(_skyMuonTick, SKY_MUON_GAP_MS[0] + Math.random() * (SKY_MUON_GAP_MS[1] - SKY_MUON_GAP_MS[0]));
 }
 
 // Live, and older than one tick of the live clock.
@@ -1684,9 +1599,9 @@ function _initSkyScene(now, lat, lon, animateMoon) {
     canvas: canvas, dpr: dpr, W: canvas.width, H: canvas.height, cssW: w, scale: _skyClamp(w / 600, 0.85, 1.15),
     lat: lat, lon: lon, center: _skyHeading != null ? _skyHeading : (lat >= 0 ? 180 : 0),
     stored: loc.stored && loc.lat === lat && loc.lon === lon, name: loc.name || '',
-    moonAnim: null, twinkle: 0, muons: [], bodies: [], baseBodies: [],
+    moonAnim: null, twinkle: 0, bodies: [], baseBodies: [],
     actors: prev ? prev.actors : [], base: prev ? prev.base : null, baseDirty: true,
-    muonCount: prev ? prev.muonCount : 0, inView: prev ? prev.inView : true,
+    inView: prev ? prev.inView : true,
     observer: prev && prev.observer
   };
   _skyState = s;
@@ -1694,8 +1609,6 @@ function _initSkyScene(now, lat, lon, animateMoon) {
     var f = _skyCompute(s, now);
     if (priorMoon) s.moonAnim = { from: priorMoon, to: f.moonData, start: ts, fromTime: priorTime, toTime: now.getTime() };
   } else s.pending = now;
-  // Motion reduced, a still muon stays in the sky to be tapped.
-  if (_skyReduceMotion()) s.muons = [{ x: 0.86, lean: -0.03, start: 0, still: true }];
   if (!s.observer && typeof IntersectionObserver === 'function') {
     s.observer = new IntersectionObserver(function (entries) {
       var st = _skyState;
@@ -1788,7 +1701,7 @@ function _skyCaption(s) {
 // The Sun and the Moon open the 3D view on themselves (when the browser can
 // draw it; else their name and article). A planet is named, with the way to
 // it in the solar system below, which is where the planets are drawn; a
-// named star is named; a muon tells its story.
+// named star is named.
 
 function _sky3DAvailable() { return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported; }
 
@@ -1800,8 +1713,8 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
   return Math.sqrt(qx * qx + qy * qy);
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
-// edge, the Sun, Moon and planets before the stars, then a muon's streak.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, muon: 3, aurora: 4, sea: 5 };
+// edge, the Sun, Moon and planets before the stars.
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, aurora: 3, sea: 4 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
@@ -1823,12 +1736,11 @@ function _skyBodyKey(b) {
   if (b.type === 'moon') return 'planet:moon';
   if (b.type === 'planet') return 'planet:' + b.name.toLowerCase();
   if (b.type === 'star') return _starLinkKey(b.idx);
-  if (b.type === 'muon') return 'term:muon';
   if (b.type === 'iss') return 'term:iss';
   if (b.type === 'meteor') return 'term:meteor_shower';
   return null;
 }
-var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', muon: 'alm_sky_muon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
+var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
   boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
   if (b.type === 'planet') return _tp(b.name);
@@ -1859,17 +1771,6 @@ function _skyLifeLines(b) {
 function _skyBodyLines(b) {
   var life = _skyLifeLines(b);
   if (life) return life;
-  if (b.type === 'muon') {
-    var f = _muonFacts();
-    return [
-      t('alm_sky_muon_head', { life: _orrFmtSpan(MUON_LIFETIME_S), v: _orrNum(MUON_BETA, null, 3) + 'c', h: _orrNum(MUON_HEIGHT_M / 1000, 'kilometer', 0) }),
-      t('alm_sky_muon_math', {
-        g: _orrNum(f.gamma, null, 1), fall: _orrFmtSpan(f.fall), own: _orrFmtSpan(f.own),
-        pct: _orrNum(f.survive * 100, 'percent', 0), d: _orrNum(Math.round(f.reach / 10) * 10, 'meter', 0)
-      }),
-      t('alm_sky_muon_source')
-    ];
-  }
   var where = _skyDeg(b.alt) + ' ' + _azCompass(b.az);
   return [b.mag != null ? t('alm_sky_body_line', { where: where, m: _orrNum(b.mag, null, 1) }) : where];
 }
@@ -1884,7 +1785,7 @@ function _skyShowTip(b) {
   var html = '<span class="alm-sky-tip-name">' + name + '</span>';
   var lines = _skyBodyLines(b);
   for (var i = 0; i < lines.length; i++) {
-    var src = (b.type === 'muon' || b.type === 'meteor') && i === lines.length - 1;   // the source or the footnote, small
+    var src = b.type === 'meteor' && i === lines.length - 1;   // the footnote, small
     html += '<span class="alm-sky-tip-line' + (src ? ' alm-sky-tip-src' : '') + '">' + _almEsc(lines[i]) + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
