@@ -155,9 +155,39 @@
 /* The glyph keeps the end corner; the remove button takes the start one. */
 .alm-tz-remove { position: absolute; top: 0; inset-inline-start: 0; width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
 .alm-tz-remove:hover, .alm-tz-remove:focus-visible { color: var(--amber); }
-.alm-tz-add { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2); font-size: 12px; cursor: pointer; }
-.alm-tz-add:hover, .alm-tz-add:focus-within { color: var(--amber); border-color: var(--amber-border); }
-.alm-tz-add select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.alm-tz-add { display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-tz-add:hover, .alm-tz-add:focus-visible { color: var(--amber); border-color: var(--amber-border); outline: none; }
+/* ── Popovers: under the pill on a wide screen, a sheet from the bottom on a phone (the tables' and the clocks') ── */
+.tk-pop {
+  position: absolute; z-index: 30; width: min(340px, calc(100% - 16px)); max-height: 420px; overflow: auto;
+  padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+}
+.tk-pop.tk-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 72dvh;
+  border-radius: 16px 16px 0 0; padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+}
+.tk-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
+.tk-search {
+  width: 100%; min-height: 42px; padding: 0 12px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px; box-sizing: border-box;
+}
+.tk-search:focus { outline: 2px solid var(--amber); outline-offset: 0; }
+.tk-list { display: grid; }
+.tk-list-h { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+.tk-opt {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 9px;
+  background: none; color: var(--text); font: inherit; font-size: 15px; text-align: start; cursor: pointer;
+}
+.tk-opt:hover, .tk-opt:focus-visible { background: var(--amber-glow); outline: none; }
+.tk-opt[aria-selected="true"] { color: var(--amber); font-weight: 600; }
+.tk-opt-sub { margin-inline-start: auto; font-size: 12px; color: var(--text2); font-weight: 400; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.tk-opt-here { color: var(--amber); }
+.tk-pop-hint { margin: 8px 2px 0; font-size: 12px; color: var(--text2); text-align: center; }
+/* Add a clock: the search stays on top, the list scrolls under it; a column on a wide screen. */
+.alm-clock-sheet { display: flex; flex-direction: column; overflow: hidden; height: 72dvh; max-width: 480px; margin-inline: auto; }
+.alm-clock-sheet .tk-search { flex: none; }
+.alm-clock-sheet .tk-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; overscroll-behavior: contain; }
 /* The invite to choose a place: a chip. */
 .alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -282,7 +312,7 @@
    on it, so the picture is only the picture. */
 .alm-sky-cap { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; padding: 6px 10px 0; font-size: 11px; line-height: 1.35; color: var(--text2); text-align: center; }
 .alm-sky-place { color: var(--text3); }
-/* A tapped body's name: the orrery tip's look, with room for the muon's lines. */
+/* A tapped body's name: the orrery tip's look, with room for a few lines. */
 .alm-sky-tip { position: absolute; z-index: 10; max-width: min(260px, calc(100% - 4px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
 .alm-sky-tip[hidden] { display: none; }
 .alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }

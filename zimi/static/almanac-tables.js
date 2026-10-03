@@ -410,35 +410,16 @@ function _tkPopOpen(anchor, html, cls, onBuild) {
     pop.style.top = top + 'px';
   }
   _tk.pop = { el: pop, anchor: anchor };
-  if (narrow) _tkSheetAboveKeyboard(pop);
+  if (narrow) _almSheetAboveKeyboard(pop);
   if (onBuild) onBuild(pop);
   _tkPaint(pop);
   var first = pop.querySelector('input, [data-tk], button');
   if (first) first.focus({ preventScroll: true });
   return pop;
 }
-// A sheet stands on the bottom of the layout viewport, which an iPhone's
-// keyboard covers: it would type into a box nobody can see ("text box is
-// stuck to bottom of page and I don't see it", Eric). While the keyboard is
-// up, the sheet stands on the top of the keyboard instead, and fits above it.
-var TK_SHEET_GAP_PX = 8;
-function _tkSheetAboveKeyboard(pop) {
-  var vv = window.visualViewport;
-  if (!vv) return;
-  function fit() {
-    if (!pop.isConnected) return;
-    var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
-    pop.style.bottom = covered ? covered + 'px' : '';
-    pop.style.maxHeight = covered ? (vv.height - TK_SHEET_GAP_PX) + 'px' : '';
-  }
-  vv.addEventListener('resize', fit);
-  vv.addEventListener('scroll', fit);
-  pop._tkUnfit = function () { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
-  fit();
-}
 function _tkPopClose(quiet) {
   if (!_tk.pop) return;
-  if (_tk.pop.el._tkUnfit) _tk.pop.el._tkUnfit();
+  if (_tk.pop.el._almUnfit) _tk.pop.el._almUnfit();
   var a = _tk.pop.anchor;
   _tk.pop.el.remove();
   if (_tk.scrim) { _tk.scrim.remove(); _tk.scrim = null; }
@@ -715,7 +696,8 @@ function _tbOpen(id) {
       '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
       '<span class="tb-bar-end">' +
-        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>') +
+        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>' +
+          '<button type="button" class="tb-iconbtn" data-tb-share aria-label="' + _almEsc(t('reader_share')) + '" title="' + _almEsc(t('reader_share')) + '">' + TB_SHARE_SVG + '</button>') +
         '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
       '</span>' +
     '</div>' +
@@ -727,6 +709,8 @@ function _tbOpen(id) {
   el.querySelector('[data-tb-print]').addEventListener('click', _tbPrint);
   var reset = el.querySelector('[data-tb-reset]');
   if (reset) reset.addEventListener('click', _tbReset);
+  var share = el.querySelector('[data-tb-share]');
+  if (share) share.addEventListener('click', _tbShare);
   el.querySelectorAll('[data-tb-go]').forEach(function (b) {
     b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); var n = _tbEl('alm-ref').querySelector('[data-tb-go="' + b.getAttribute('data-tb-go') + '"]'); if (n) n.focus({ preventScroll: true }); });
   });
@@ -756,6 +740,90 @@ function _tbReset() {
     _tb.calc[id] = TB_CALC[id].init();
     _tbCalcFields();
   }
+}
+// Share what is on screen as Markdown: the share sheet where there is one,
+// else the clipboard (app.js _copyText says "Copied"). Eric: "reset print and
+// copy/share the MD or text output".
+var TB_SHARE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+function _tbShare() {
+  _tkPopClose(true);
+  var text = _tbMarkdown();
+  if (!text) return;
+  var copy = function () { if (typeof _copyText === 'function') _copyText(text); };
+  if (navigator.share) {
+    navigator.share({ title: _tbName(_tb.id), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
+  } else copy();
+}
+// The open table or calculation as Markdown: its name, where and when, then
+// what the page shows in order (a calculation's answer and the values it was
+// worked from first), headings, tables, notes. Read off the page itself, so
+// every table and calculation has it with nothing of its own.
+function _tbMarkdown() {
+  var body = _tbEl('tb-body');
+  if (!body || !_tb.id) return '';
+  var md = [], txt = _tbMdText;
+  var head = [].map.call(body.querySelectorAll('#tb-print-head p:not(.tb-made)'), txt).filter(Boolean);
+  md.push('# ' + _tbName(_tb.id) + (head.length ? '\n\n' + head.join(' · ') : ''));
+  var ans = body.querySelector('#tk-answer');
+  if (ans) {
+    var big = ans.querySelector('.tk-big'), sub = ans.querySelector('.tk-sub');
+    md.push('**' + txt(big) + '**' + (sub && txt(sub) ? '  \n' + txt(sub) : ''));
+    var fields = [].map.call(body.querySelectorAll('#tk-fields .tk-row'), function (r) {
+      var l = r.querySelector('.tk-label'), c = r.querySelector('.tk-ctl');
+      if (!l || !c) return '';
+      var lc = l.cloneNode(true), cc = c.cloneNode(true);
+      [].forEach.call(lc.querySelectorAll('.tk-hint'), function (n) { n.remove(); });
+      [].forEach.call(cc.querySelectorAll('.tk-swap, .tk-step, [aria-hidden="true"]'), function (n) { n.remove(); });
+      return txt(lc) && txt(cc) ? '- ' + txt(lc) + ': ' + txt(cc) : '';
+    }).filter(Boolean);
+    if (fields.length) md.push(fields.join('\n'));
+  }
+  body.querySelectorAll('#tb-out, #tk-working').forEach(function (host) {
+    host.querySelectorAll('h3, table, dl, p.tb-note, p.tb-empty').forEach(function (n) {
+      if (n.tagName === 'H3') md.push('## ' + txt(n));
+      else if (n.tagName === 'TABLE') md.push(_tbMdTable(n));
+      else if (n.tagName === 'DL') md.push([].map.call(n.querySelectorAll('dt'), function (dt) { return '- ' + txt(dt) + ': ' + txt(dt.nextElementSibling); }).join('\n'));
+      else if (txt(n)) md.push(txt(n));
+    });
+  });
+  return md.filter(Boolean).join('\n\n') + '\n';
+}
+function _tbMdText(n) { return n ? String(n.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+// A cell's words, or its picture's name (a phase drawn is titled "Full moon").
+function _tbMdCell(n) {
+  var s = _tbMdText(n);
+  if (!s && n) s = [].map.call(n.querySelectorAll('[title]'), function (x) { return x.getAttribute('title'); }).join(' ');
+  return s.replace(/\|/g, '\\|');
+}
+// A table, its spans laid out on a grid: a heading cell over several columns
+// is repeated in each, two head rows join per column, and a month's heading
+// across the rows stands in its first cell.
+function _tbMdTable(table) {
+  var grid = [], headRows = table.tHead ? table.tHead.rows.length : 0, w = 0;
+  [].forEach.call(table.rows, function (tr, ri) {
+    grid[ri] = grid[ri] || [];
+    var ci = 0;
+    [].forEach.call(tr.cells, function (td) {
+      while (grid[ri][ci] != null) ci++;
+      var span = td.colSpan || 1, down = td.rowSpan || 1, text = _tbMdCell(td), group = ri >= headRows && span > 1;
+      for (var r = 0; r < down; r++) {
+        grid[ri + r] = grid[ri + r] || [];
+        for (var c = 0; c < span; c++) grid[ri + r][ci + c] = group && c ? '' : (r && ri + r >= headRows ? '' : text);
+      }
+      ci += span;
+      w = Math.max(w, ci);
+    });
+  });
+  var fill = function (row) { var o = []; for (var c = 0; c < w; c++) o.push(row && row[c] != null ? row[c] : ''); return o; };
+  var head = fill([]).map(function (_, c) {
+    var parts = [];
+    for (var h = 0; h < headRows; h++) { var x = grid[h][c]; if (x && parts[parts.length - 1] !== x) parts.push(x); }
+    return parts.join(' ');
+  });
+  var line = function (cells) { return '| ' + cells.join(' | ') + ' |'; };
+  var out = [line(head), line(head.map(function () { return '---'; }))];
+  for (var b = headRows; b < grid.length; b++) out.push(line(fill(grid[b])));
+  return out.join('\n');
 }
 var TB_BACK_SVG = '<svg class="tb-chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 

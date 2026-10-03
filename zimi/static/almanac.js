@@ -3047,7 +3047,6 @@ _sunMapImg.onerror = function() { _sunMapLoaded = false; };
 _sunMapImg.src = '/static/world-map.svg?v=1';
 
 var _sunMapCanvas = null;
-var _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 }; // click-cycle overlaps
 var _sunMapFlashTimer = 0;
 
 // Equirectangular projection helpers — the map spans the full -180..180 by
@@ -3523,8 +3522,7 @@ function _sunMapDrawZoneHighlight(c, W, H, dpr) {
   c.restore();
 }
 
-// Brief label over the map naming the city just picked (and the cycle hint when
-// several cities overlap). Recreated each time — the map re-renders on a pick.
+// Brief label over the map naming the city just picked. Recreated each time — the map re-renders on a pick.
 function _sunMapFlash(text) {
   var wrap = document.getElementById('almanac-sunmap');
   if (!wrap) return;
@@ -3537,6 +3535,7 @@ function _sunMapFlash(text) {
   _sunMapFlashTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
 }
 var _sunMapNow = null;
+var SUNMAP_SNAP_PX = 15;   // a tap this near a city (CSS px) takes the city
 var _sunMapLat = 34;
 var _sunMapLon = -118;
 var _sunMapLocName = '';
@@ -3621,40 +3620,23 @@ function _renderSunMap(now) {
       var lon = (clickX / rect.width) * 360 - 180;
       var lat = 90 - (clickY / rect.height) * 180;
 
-      // Collect every city within the snap radius, nearest first — then let
-      // repeated clicks on the same spot cycle through them, so overlapping
-      // cities (a dense region) are all reachable.
-      var snapDist = 15 / rect.width * 360;
-      var near = [];
+      // A tap takes the nearest city within the snap radius, else the point
+      // itself. One tap, one place: a dense region is reached by the search.
+      var snapDist = SUNMAP_SNAP_PX / rect.width * 360;
+      var pick = null, pickD = snapDist;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
         var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         var dd = Math.sqrt(dlat * dlat + dlon * dlon);
-        if (dd < snapDist) near.push({ c: c, d: dd });
+        if (dd < pickD) { pick = c; pickD = dd; }
       }
-      near.sort(function (a, b) { return a.d - b.d; });
-      var snappedName = '';
-      if (near.length) {
-        var samePlace = Math.abs(clickX - _sunMapCycle.x) < 6 && Math.abs(clickY - _sunMapCycle.y) < 6;
-        var keys = near.map(function (n) { return n.c.name; }).join('|');
-        if (samePlace && keys === _sunMapCycle.list) {
-          _sunMapCycle.idx = (_sunMapCycle.idx + 1) % near.length;
-        } else {
-          _sunMapCycle = { x: clickX, y: clickY, list: keys, idx: 0 };
-        }
-        var pick = near[_sunMapCycle.idx].c;
-        lat = pick.lat; lon = pick.lon;
-        snappedName = pick.name + (near.length > 1 ? '  (' + (_sunMapCycle.idx + 1) + '/' + near.length + ' · ' + t('alm_click_cycle') + ')' : '');
-        _saveLocation(pick.lat, pick.lon, pick.name);
-      } else {
-        _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 };
-        _saveLocation(lat, lon, '');
-      }
+      if (pick) _saveLocation(pick.lat, pick.lon, pick.name);
+      else _saveLocation(lat, lon, '');
       // Refresh only the location-dependent panels in place — a full rebuild
       // wipes the scroll container and yanks the page upward on every click.
       _almRepaintFocus();
-      // Flash which city we landed on (and the cycle hint) over the map.
-      if (snappedName) _sunMapFlash(snappedName);
+      // Flash which city we landed on over the map.
+      if (pick) _sunMapFlash(pick.name);
     };
   }
 
@@ -3896,27 +3878,8 @@ function _initTzClock(now) {
     var tzc = cards[i];
     var isActive = (i === localMatch);
     var tzTime = '';
-    try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
-    // Compute UTC offset — use en-US with full date+time for accurate diff
-    var utcOff = '';
-    try {
-      var diffMin = _tzUtcOffsetMin(tzc.tz, now);
-      var sign = diffMin >= 0 ? '+' : '\u2212';
-      var absH = Math.floor(Math.abs(diffMin) / 60);
-      var absM = Math.abs(diffMin) % 60;
-      utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
-      // Add the short zone name (PST, CET, JST) beside the offset ONLY when
-      // it's a real abbreviation — a GMT/UTC offset alias (GMT, GMT+8,
-      // UTC-5) just repeats the offset we already show.
-      var znp = _tzFmt(tzc.tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
-      for (var zpi = 0; zpi < znp.length; zpi++) {
-        if (znp[zpi].type === 'timeZoneName') {
-          var zn = znp[zpi].value;
-          if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) utcOff += ' \u00b7 ' + zn;
-          break;
-        }
-      }
-    } catch(e) {}
+    try { tzTime = _tzFmt(tzc.tz, ALM_TZ_TIME_OPTS).format(now); } catch(e) { continue; }
+    var utcOff = _almTzOffsetLabel(tzc.tz, now);
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
@@ -3938,16 +3901,8 @@ function _initTzClock(now) {
     }
     html += '</div>';
   }
-  // Add a clock: the curated cities not already shown.
-  var shown = {};
-  cards.forEach(function (c) { shown[c.tz] = 1; });
-  var opts = _TZ_CITIES.filter(function (c) { return !shown[c.tz]; }).map(function (c) {
-    return '<option value="' + c.tz + '">' + _almEsc(t('alm_city_' + c.key)) + '</option>';
-  }).join('');
-  if (opts) {
-    html += '<label class="alm-tz-add"><span>+ ' + _almEsc(t('alm_clock_add')) + '</span>' +
-      '<select onchange="_almClockAdd(this.value)" aria-label="' + _almEsc(t('alm_clock_add')) + '"><option value=""></option>' + opts + '</select></label>';
-  }
+  // Add a clock: a sheet of every zone the Almanac knows.
+  html += '<button type="button" class="alm-tz-add" onclick="_almClockSheetOpen(this)">+ ' + _almEsc(t('alm_clock_add')) + '</button>';
   pillsEl.innerHTML = html;
 
   // Draw the clock
@@ -3972,6 +3927,129 @@ function _almClockAdd(tz) {
   _almSetClocks(list);
 }
 function _almClockRemove(tz) { _almSetClocks(_almClocks().filter(function (z) { return z !== tz; })); }
+
+// A clock's time, and its zone's offset from UTC now: "UTC+5:30 · IST". The
+// short name only when it is a real abbreviation; a GMT/UTC alias (GMT+8,
+// UTC-5) would only repeat the offset.
+var ALM_TZ_TIME_OPTS = { hour: 'numeric', minute: '2-digit', hour12: true };
+function _almTzOffsetLabel(tz, now) {
+  var out = '';
+  try {
+    var diffMin = _tzUtcOffsetMin(tz, now);
+    var absH = Math.floor(Math.abs(diffMin) / 60), absM = Math.abs(diffMin) % 60;
+    out = 'UTC' + (diffMin >= 0 ? '+' : '\u2212') + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
+    var znp = _tzFmt(tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+    for (var i = 0; i < znp.length; i++) {
+      if (znp[i].type !== 'timeZoneName') continue;
+      var zn = znp[i].value;
+      if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) out += ' \u00b7 ' + zn;
+      break;
+    }
+  } catch (e) {}
+  return out;
+}
+// A zone's own city: the IANA name's last part ("Buenos Aires").
+function _almTzSegment(tz) { return (String(tz || '').split('/').pop() || String(tz || '')).replace(/_/g, ' '); }
+// A zone's name on a clock: a curated city's, in the reader's language, else its own city.
+function _almTzCityLabel(tz) {
+  for (var i = 0; i < _TZ_CITIES.length; i++) if (_TZ_CITIES[i].tz === tz) return t('alm_city_' + _TZ_CITIES[i].key);
+  return _almTzSegment(tz);
+}
+
+// Add a clock ("show the full list of tiles and a search box", Eric): a sheet
+// with a search on top and every zone the Almanac knows below it (the curated
+// cities and the zones the map resolves places to), west to east, each with
+// its time now; typing filters, a tap adds. On a phone it stands on the
+// keyboard, as the tables' sheets do.
+var _almClockSheetEl = null;
+function _almClockZones(now) {
+  var shown = {}, seen = {}, out = [];
+  _almClockCards(_almSelectedTz || _almDisplayTz(), now).forEach(function (c) { shown[c.tz] = 1; });
+  function add(tz) {
+    if (shown[tz] || seen[tz]) return;
+    seen[tz] = 1;
+    var off;
+    try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
+    var label = _almTzCityLabel(tz);
+    out.push({ tz: tz, label: label, off: off, hay: (label + ' ' + tz.replace(/_/g, ' ')).toLowerCase() });
+  }
+  _TZ_CITIES.forEach(function (c) { add(c.tz); });
+  _TZ_ANCHORS.forEach(function (a) { add(a[2]); });
+  return out.sort(function (a, b) { return a.off - b.off || a.label.localeCompare(b.label); });
+}
+function _almClockSheetOpen(btn) {
+  _almClockSheetClose();
+  var view = document.getElementById('almanac-view');
+  if (!view) return;
+  var now = new Date(), zones = _almClockZones(now), label = _almEsc(t('alm_clock_add'));
+  zones.forEach(function (z) {
+    try { z.time = _tzFmt(z.tz, ALM_TZ_TIME_OPTS).format(now); } catch (e) { z.time = ''; }
+    z.sub = z.time + ' \u00b7 ' + _almTzOffsetLabel(z.tz, now);
+  });
+  var scrim = document.createElement('div');
+  scrim.className = 'tk-scrim';
+  var sheet = document.createElement('div');
+  sheet.className = 'tk-pop tk-sheet alm-clock-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-label', t('alm_clock_add'));
+  sheet.innerHTML = '<input type="search" class="tk-search" placeholder="' + _almEsc(t('alm_clock_search')) + '" aria-label="' + _almEsc(t('alm_clock_search')) + '" autocomplete="off">' +
+    '<div class="tk-list" role="listbox" aria-label="' + label + '"></div>';
+  view.appendChild(scrim);
+  view.appendChild(sheet);
+  var q = sheet.querySelector('.tk-search'), list = sheet.querySelector('.tk-list');
+  function draw() {
+    var f = q.value.trim().toLowerCase(), h = '';
+    zones.forEach(function (z) {
+      if (f && z.hay.indexOf(f) < 0) return;
+      h += '<button type="button" role="option" class="tk-opt" data-tz="' + _almEsc(z.tz) + '"><span>' + _almEsc(z.label) + '</span>' +
+        '<span class="tk-opt-sub" dir="ltr">' + _almEsc(z.sub) + '</span></button>';
+    });
+    list.innerHTML = h || '<p class="tk-pop-hint">' + _almEsc(t('tb_no_match')) + '</p>';
+  }
+  draw();
+  q.addEventListener('input', draw);
+  list.addEventListener('click', function (e) {
+    var b = e.target.closest('.tk-opt');
+    if (!b) return;
+    _almClockSheetClose();
+    _almClockAdd(b.getAttribute('data-tz'));
+  });
+  // Escape closes the sheet, never the Almanac behind it (app.js closes that on an Escape that reaches it).
+  sheet.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _almClockSheetClose(btn); } });
+  scrim.addEventListener('click', function () { _almClockSheetClose(btn); });
+  _almClockSheetEl = { sheet: sheet, scrim: scrim };
+  _almSheetAboveKeyboard(sheet);
+  q.focus({ preventScroll: true });
+}
+// Closed, focus back on the button that opened it (when it is still there).
+function _almClockSheetClose(returnTo) {
+  if (!_almClockSheetEl) return;
+  if (_almClockSheetEl.sheet._almUnfit) _almClockSheetEl.sheet._almUnfit();
+  _almClockSheetEl.sheet.remove();
+  _almClockSheetEl.scrim.remove();
+  _almClockSheetEl = null;
+  if (returnTo && returnTo.isConnected) returnTo.focus({ preventScroll: true });
+}
+// A sheet stands on the bottom of the layout viewport, which an iPhone's
+// keyboard covers: it would type into a box nobody can see ("text box is
+// stuck to bottom of page and I don't see it", Eric). While the keyboard is
+// up, the sheet stands on the top of the keyboard instead, and fits above it.
+// Shared with the tables' sheets (almanac-tables.js).
+var ALM_SHEET_GAP_PX = 8;
+function _almSheetAboveKeyboard(pop) {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  function fit() {
+    if (!pop.isConnected) return;
+    var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+    pop.style.bottom = covered ? covered + 'px' : '';
+    pop.style.maxHeight = covered ? (vv.height - ALM_SHEET_GAP_PX) + 'px' : '';
+  }
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  pop._almUnfit = function () { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
+  fit();
+}
 // The cards: the place's zone (or the one selected), the device's when it
 // differs, the added ones; one each, sorted west to east by offset now.
 function _almClockCards(targetTz, now) {
@@ -3979,12 +4057,10 @@ function _almClockCards(targetTz, now) {
   function add(tz, added) {
     if (!tz || seen[tz]) return;
     seen[tz] = 1;
-    var idx = -1;
-    for (var i = 0; i < _TZ_CITIES.length; i++) if (_TZ_CITIES[i].tz === tz) { idx = i; break; }
     var off = 0;
     try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
-    out.push({ tz: tz, idx: idx, added: added, off: off,
-      label: tz === home && named ? _almTzCardLabel(tz) : idx >= 0 ? t('alm_city_' + _TZ_CITIES[idx].key) : String(tz).split('/').pop().replace(/_/g, ' ') });
+    out.push({ tz: tz, added: added, off: off,
+      label: tz === home && named ? _almTzCardLabel(tz) : _almTzCityLabel(tz) });
   }
   add(home, false);
   add(targetTz, false);
@@ -3999,9 +4075,7 @@ function _almClockCards(targetTz, now) {
 // IANA zone's own city segment when nothing was named.
 function _almTzCardLabel(tz) {
   var name = (_getLocation().name || '').split(',')[0].trim();
-  if (name) return name;
-  var seg = String(tz || '').split('/').pop() || tz || '';
-  return seg.replace(/_/g, ' ');
+  return name || _almTzSegment(tz);
 }
 
 // A clock tapped is shown on the big clock face and its zone on the map. The

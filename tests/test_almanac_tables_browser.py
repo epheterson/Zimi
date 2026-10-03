@@ -201,6 +201,18 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     page.evaluate("document.documentElement.classList.remove('alm-ref-print')")
     page.emulate_media(media="screen")
     assert shown == ["block", "none", "none"], shown
+    # Share: the same view as Markdown, its name, place and window, then a table.
+    md = page.evaluate("_tbMarkdown()")
+    name = page.evaluate("document.getElementById('alm-ref-title').textContent")
+    lines = md.split("\n")
+    assert lines[0] == "# " + name and lines[2], (id_, lines[:3])
+    assert "| --- |" in md, (id_, md[:300])
+    # Each table's rows are as wide as its head.
+    for block in "\n".join(ln if ln.startswith("| ") else "" for ln in lines).split(
+        "\n\n"
+    ):
+        widths = {ln.count(" | ") for ln in block.split("\n") if ln}
+        assert len(widths) <= 1, (id_, widths)
     assert not page.errors, page.errors
 
 
@@ -301,6 +313,30 @@ def test_every_calculation_answers_from_its_defaults(page, id_):
         "document.querySelector('.tk-calc, button[data-calculate]') === null"
     )
     assert _no_side_scroll(page)
+    # Share: its answer first, then what it was worked from, then the working.
+    md = page.evaluate("_tbMarkdown()")
+    assert md.startswith("# ") and ("**" + big.strip()) in md, (id_, md[:200])
+    assert "\n- " in md and "| --- |" in md, (id_, md[:400])
+    assert not page.errors, page.errors
+
+
+def test_share_sends_markdown_or_copies_it(page):
+    _open(page, "days")
+    page.evaluate(
+        "() => { window.__shared = null; window.__copied = null;"
+        " navigator.share = (d) => { window.__shared = d; return Promise.resolve(); };"
+        " window.__ct = _copyText; _copyText = (s) => { window.__copied = s; }; }"
+    )
+    page.click("[data-tb-share]")
+    shared = page.evaluate("window.__shared")
+    assert shared and shared["text"].startswith("# ") and shared["title"], shared
+    # No share sheet: onto the clipboard ("Copied").
+    page.evaluate(
+        "() => { delete navigator.share; Navigator.prototype.share = undefined; }"
+    )
+    page.click("[data-tb-share]")
+    assert page.evaluate("window.__copied") == shared["text"]
+    page.evaluate("() => { _copyText = window.__ct; }")
     assert not page.errors, page.errors
 
 
@@ -403,4 +439,35 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.wait_for_function("() => !document.getElementById('alm-ref')")
     page.wait_for_timeout(300)
     assert page.evaluate("_almanacOpen")
+    assert not page.errors, page.errors
+
+
+def test_add_a_clock_from_a_searchable_sheet(page):
+    """+ Add a clock opens a sheet: a search on top, every zone below with its
+    time now; typing filters, a tap adds the clock."""
+    page.evaluate(
+        "() => { const r = document.getElementById('alm-ref'); if (r) _tbClose(); }"
+    )
+    page.wait_for_selector(".alm-tz-add", state="attached", timeout=30000)
+    page.locator(".alm-tz-add").scroll_into_view_if_needed()
+    page.click(".alm-tz-add")
+    page.wait_for_selector(".alm-clock-sheet .tk-search")
+    n_all = page.evaluate(
+        "document.querySelectorAll('.alm-clock-sheet .tk-opt').length"
+    )
+    assert n_all > 60, n_all
+    sub = page.inner_text(".alm-clock-sheet .tk-opt .tk-opt-sub >> nth=0")
+    assert "UTC" in sub and ":" in sub, sub
+    page.fill(".alm-clock-sheet .tk-search", "kathm")
+    assert (
+        page.evaluate("document.querySelectorAll('.alm-clock-sheet .tk-opt').length")
+        == 1
+    )
+    page.click(".alm-clock-sheet .tk-opt")
+    assert not page.evaluate("!!document.querySelector('.alm-clock-sheet, .tk-scrim')")
+    assert "Asia/Kathmandu" in page.evaluate(
+        "localStorage.getItem('zimi_almanac_clocks')"
+    )
+    assert "Kathmandu" in page.inner_text("#almanac-tz-pills")
+    page.evaluate("_almClockRemove('Asia/Kathmandu')")
     assert not page.errors, page.errors
