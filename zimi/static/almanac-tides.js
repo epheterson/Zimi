@@ -339,7 +339,7 @@ var TideMath = (function() {
     if (rec.a) {
       var h = harmonic(rec, names);
       return {
-        kind: 'harmonic',
+        kind: 'harmonic', n: h.names.length,
         extremes: function(a, b) { return extremes(h, a, b); },
         height: function(ms) { return heightAt(h, ms)[0]; }
       };
@@ -354,7 +354,7 @@ var TideMath = (function() {
       return cache.list;
     }
     return {
-      kind: 'subordinate',
+      kind: 'subordinate', n: ref.names.length,
       extremes: function(a, b) { return subordinateExtremes(ref, rec, a, b); },
       height: function(ms) {
         var l = turnsAround(ms);

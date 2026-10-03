@@ -778,15 +778,19 @@ function _tbMarkdown() {
     }).filter(Boolean);
     if (fields.length) md.push(fields.join('\n'));
   }
-  body.querySelectorAll('#tb-out, #tk-working').forEach(function (host) {
-    host.querySelectorAll('h3, table, dl, p.tb-note, p.tb-empty').forEach(function (n) {
+  body.querySelectorAll('#tb-out, #tk-working, #tb-how').forEach(function (host) {
+    host.querySelectorAll('summary, h3, h4, li, table, dl, p.tb-note, p.tb-empty').forEach(function (n) {
+      if (n.tagName === 'SUMMARY') { md.push('## ' + txt(n)); return; }
+      if (n.tagName === 'H4') { md.push('### ' + txt(n)); return; }
+      if (n.tagName === 'LI') { md.push('- ' + txt(n)); return; }
       if (n.tagName === 'H3') md.push('## ' + txt(n));
       else if (n.tagName === 'TABLE') md.push(_tbMdTable(n));
       else if (n.tagName === 'DL') md.push([].map.call(n.querySelectorAll('dt'), function (dt) { return '- ' + txt(dt) + ': ' + txt(dt.nextElementSibling); }).join('\n'));
       else if (txt(n)) md.push(txt(n));
     });
   });
-  return md.filter(Boolean).join('\n\n') + '\n';
+  // A list's items one under another, not a paragraph each.
+  return md.filter(Boolean).join('\n\n').replace(/^(- .*)\n\n(?=- )/gm, '$1\n') + '\n';
 }
 function _tbMdText(n) { return n ? String(n.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
 // A cell's words, or its picture's name (a phase drawn is titled "Full moon").
@@ -862,9 +866,17 @@ window.addEventListener('keydown', function (e) {
 var TB_PRINT_CLASS = 'alm-ref-print';
 var TB_PRINT_UNDO_MS = 60000;   // afterprint can be late or missing on a phone
 function _tbPrintOn() {
-  if (_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen) document.documentElement.classList.add(TB_PRINT_CLASS);
+  if (!(_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen)) return;
+  document.documentElement.classList.add(TB_PRINT_CLASS);
+  // Paper has no tap to open "How this is made": it prints open.
+  var d = document.querySelector('#tb-how details');
+  if (d && !d.open) { d.open = true; d.setAttribute('data-print-opened', ''); }
 }
-function _tbPrintOff() { document.documentElement.classList.remove(TB_PRINT_CLASS); }
+function _tbPrintOff() {
+  document.documentElement.classList.remove(TB_PRINT_CLASS);
+  var d = document.querySelector('#tb-how details[data-print-opened]');
+  if (d) { d.open = false; d.removeAttribute('data-print-opened'); }
+}
 function _tbPrint() {
   _tkPopClose(true);
   if (typeof window.print !== 'function') return;
@@ -875,6 +887,122 @@ function _tbPrint() {
 }
 window.addEventListener('beforeprint', _tbPrintOn);
 window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo); _tbPrintOff(); });
+
+// ═══ How this is made ═══
+// Eric: "add like all the stuff used to generate everything on the page".
+// Under every table and calculation, closed: the inputs in effect, the method
+// behind each quantity, the constants. Every number is read from the constant
+// the sums themselves use; which lines a view has is TB_MADE.
+var TB_MADE = {
+  sunmoon: ['sun', 'moon', 'rise', 'moonrise', 'search', 'deltat'],
+  twilight: ['sun', 'twilight', 'search', 'deltat'],
+  phases: ['sun', 'moon', 'phases', 'deltat'],
+  tides: ['tides'],
+  nav: ['sun', 'moon', 'planets', 'stars', 'deltat'],
+  stars: ['sun', 'stars', 'heliacal'],
+  seasons: ['seasons', 'deltat'],
+  eclipses: ['sun', 'moon', 'eclipses', 'deltat'],
+  calendars: ['calendars'],
+  suntime: ['sun', 'eot'],
+  distance: ['distance'],
+  sundial: ['sun', 'eot'],
+  sunmoonday: ['sun', 'moon', 'rise', 'moonrise', 'twilight', 'deltat'],
+  units: ['units'],
+  sight: ['sun', 'moon', 'planets', 'stars', 'sight', 'deltat'],
+  days: ['calendars'],
+  convert: ['calendars'],
+  zones: ['zones']
+};
+var TB_ARCMIN_PER_DEG = 60, TB_S_PER_DAY = 86400;
+function _tbArcmin(deg) { return _arNum(deg * TB_ARCMIN_PER_DEG, 0) + '′'; }
+// Each method: its line, and the constants it rests on.
+var TB_MADE_METHOD = {
+  sun: function () { return { line: _tbT('mm_sun'), c: ['aberration', 'light'] }; },
+  moon: function () { return { line: _tbT('mm_moon'), c: ['moonk', 'synodic'] }; },
+  rise: function () {
+    return { line: _tbT('mm_rise', { alt: '−' + _tbArcmin(-AR_SUNRISE_ALT), r: _tbArcmin(AR_MOON_REFRACTION_DEG), sd: _tbArcmin(-AR_SUNRISE_ALT - AR_MOON_REFRACTION_DEG) }) };
+  },
+  moonrise: function () { return { line: _tbT('mm_moonrise', { k: _arNum(AR_MOON_HP_FACTOR, 4), r: _tbArcmin(AR_MOON_REFRACTION_DEG) }) }; },
+  twilight: function () {
+    return { line: _tbT('mm_twilight', { c: -AR_TWILIGHT_ALTS.civil, n: -AR_TWILIGHT_ALTS.nautical, a: -AR_TWILIGHT_ALTS.astronomical }) };
+  },
+  search: function () {
+    var gridMin = AR_SAMPLE_HOURS * 60 / AR_GRID_STEPS;
+    return { line: _tbT('mm_search', { h: AR_SAMPLE_HOURS, m: _arNum(gridMin, 0), s: _arNum(gridMin * 60 / Math.pow(2, AR_BISECT_STEPS), 0) }) };
+  },
+  deltat: function (x) {
+    var jd = _dateToJD(x.mid || Date.now());
+    return { line: _tbT('mm_deltat', { s: _arNum(_cnDeltaTdays(jd) * TB_S_PER_DAY, 1) }), c: ['tai'] };
+  },
+  phases: function () { return { line: _tbT('mm_phases', { list: AR_PHASE_ANGLES.map(function (a) { return a + '°'; }).join(', ') }) }; },
+  seasons: function () { return { line: _tbT('mm_seasons') }; },
+  eclipses: function () { return { line: _tbT('mm_eclipses', { m: _arNum(AR_ECL_STEP_MS / TB_MS_MIN, 0), h: _arNum(AR_ECL_HALF_SPAN_MS / TB_MS_HOUR, 0) }) }; },
+  planets: function () { return { line: _tbT('mm_planets'), c: ['light', 'aberration'] }; },
+  stars: function () { return { line: _tbT('mm_stars'), c: ['sidereal', 'year'] }; },
+  heliacal: function () { return { line: _tbT('mm_heliacal', { av: AR_ARCUS_VISIONIS_DEG, alt: '−' + _tbArcmin(-AR_STAR_RISE_ALT) }) }; },
+  sight: function () { return { line: _tbT('mm_sight', { k: _arNum(AR_DIP_ARCMIN_PER_SQRT_M, 2), t: AR_STD_TEMP_C, p: AR_STD_PRESSURE_HPA }), c: ['parallax'] }; },
+  tides: function (x) {
+    var m = x.made;
+    if (!m) return null;
+    return { line: m.ref ? _tbT('mm_tides_sub', { ref: m.ref, station: m.station }) : _tbT('mm_tides', { station: m.station, n: m.n }) };
+  },
+  eot: function () { return { line: _tbT('mm_eot') }; },
+  calendars: function () { return { line: _tbT('mm_calendars', { list: AR_CAL_SYSTEMS.map(_arCalLabel).join(', ') }) }; },
+  distance: function () { return { line: _tbT('mm_distance', { r: _arNum(TB_EARTH_R_KM, 4) }) }; },
+  units: function () { return { line: _tbT('mm_units') }; },
+  zones: function () { return { line: _tbT('mm_zones') }; }
+};
+var TB_MADE_CONST = {
+  aberration: function () { return _arNum(AR_ABERRATION_ARCSEC, 5) + '″'; },
+  light: function () { return _arNum(AR_LIGHT_DAYS_PER_AU * TB_S_PER_DAY, 3) + ' s'; },
+  parallax: function () { return _arNum(AR_SOLAR_PARALLAX_ARCSEC, 3) + '″'; },
+  moonk: function () { return _arNum(AR_MOON_K, 7); },
+  synodic: function () { return _arT('days_n', { n: _arNum(_CN_SYN, 6) }); },
+  sidereal: function () { return _arNum(AR_SIDEREAL_DEG_PER_DAY, 6) + '°/d'; },
+  year: function () { return _arT('days_n', { n: _arNum(AR_DAYS_PER_JULIAN_YEAR, 2) }); },
+  tai: function () { return AR_TAI_MINUS_UTC + ' s'; }
+};
+// The middle of a table's window, as an instant.
+function _tbMid(span) { return (_arDayMs(span.from) + _arDayMs(span.to)) / 2; }
+// A calculation's inputs in effect: its places, its date, its unit.
+function _tbCalcInputs(c) {
+  var places = ['place', 'a', 'b'].map(function (k) { return c[k]; }).filter(function (p) { return p && p.lat != null; });
+  return { places: places, date: typeof c.ms === 'number' ? c.ms : null, mid: typeof c.ms === 'number' ? c.ms : null, units: c.unit || null };
+}
+function _tbMadeInputs(x) {
+  var out = [], places = x.places || (x.place ? [x.place] : []), seenTz = {};
+  places.forEach(function (p) { out.push(_tbT('made_place', { name: p.name || _tbPlaceLine(p), at: _arLatText(p.lat) + ' ' + _arLonText(p.lon) })); });
+  var at = x.date || x.mid || Date.now();
+  places.map(function (p) { return p.tz; }).concat(x.made && x.made.tz ? [x.made.tz] : []).forEach(function (tz) {
+    if (!tz || seenTz[tz]) return;
+    seenTz[tz] = 1;
+    out.push(_tbT('made_zone', { tz: tz, off: _almTzOffsetLabel(tz, new Date(at)) }));
+  });
+  if (x.range) out.push(_tbT('made_dates', { range: x.range }));
+  else if (x.date != null && places.length) out.push(_tbT('made_date', { date: _tbLongDay(_tbDayIn(x.date, places[0].tz)) }));
+  var units = x.units || (x.made && x.made.units);
+  if (units) out.push(_tbT('made_units', { u: units }));
+  return out;
+}
+// Fill #tb-how for the open view (x: what it was worked from).
+function _tbMadeFill(x) {
+  var host = _tbEl('tb-how'), keys = TB_MADE[_tb.id];
+  if (!host) return;
+  if (!keys || !x) { host.innerHTML = ''; return; }
+  var methods = [], consts = [], seen = {};
+  keys.forEach(function (k) {
+    var m = TB_MADE_METHOD[k](x);
+    if (!m) return;
+    methods.push(m.line);
+    (m.c || []).forEach(function (ck) { if (!seen[ck]) { seen[ck] = 1; consts.push(_tbT('mc_' + ck) + ': ' + TB_MADE_CONST[ck]()); } });
+  });
+  var was = host.querySelector('details'), open = was && was.open && !was.hasAttribute('data-print-opened');
+  function group(key, lines) {
+    return lines.length ? '<h4>' + _tbH(key) + '</h4><ul>' + lines.map(function (l) { return '<li>' + _almEsc(l) + '</li>'; }).join('') + '</ul>' : '';
+  }
+  host.innerHTML = '<details class="tb-how"' + (open ? ' open' : '') + '><summary>' + _tbH('made_title') + '</summary>' +
+    group('made_inputs', _tbMadeInputs(x)) + group('made_method', methods) + group('made_constants', consts) + '</details>';
+}
 
 // The heading only paper carries: what, where, when, and when worked out.
 function _tbPrintHead(lines) {
@@ -950,7 +1078,7 @@ function _tbRenderTable(body) {
           '<button type="button" class="tb-stepbtn tb-fwd" data-tb-step="1" aria-label="' + _tbH('later') + '">' + TB_BACK_SVG + '</button></span>') +
       (fixedPlace ? '' : _tkPlace('place', { label: _tbT('place'), get: function () { return _tb.place; }, set: function (p) { _tb.place = p; } })) +
     '</div></div>' +
-    '<div id="tb-print-head"></div><div class="tb-out" id="tb-out" aria-live="polite"></div>';
+    '<div id="tb-print-head"></div><div class="tb-out" id="tb-out" aria-live="polite"></div><div id="tb-how"></div>';
   body.innerHTML = html;
   body.querySelectorAll('[data-tb-step]').forEach(function (b) {
     b.addEventListener('click', function () { _tbStep(w, +b.getAttribute('data-tb-step')); _tbDrawTable(); });
@@ -1014,6 +1142,7 @@ function _tbDrawTable() {
       var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
       var ph = _tbEl('tb-print-head');
       if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
+      _tbMadeFill({ place: res.place === false ? null : p, range: span.label, mid: _tbMid(span), made: res.made });
       out.querySelectorAll('table').forEach(function (tb) {
         if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
         // A two-row head: the second row sticks under the first, at its real height.
@@ -1150,6 +1279,7 @@ var TB_RENDER = {
     var head = '<tr><th scope="col">' + _arTH('day') + '</th><th scope="colgroup" colspan="4">' + _almEsc(t('alm_tide_col_turns')) + ' (' + _almEsc(unit) + ')</th></tr>';
     var station = _atTideName(st);
     return { place: _tbT('tide_station', { name: station }) + ' · ' + tz,
+      made: { station: station, n: pr.n, ref: st.refrec ? _atTitle(st.refrec.n) : null, tz: tz, units: unit },
       html: '<p class="tb-lede">' + _tbH('tide_station', { name: station }) + '</p>' + _tbTable(head, rows, 'tb-tides') + _tbCapNote(span) +
         _tbNote(_almEsc(st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note')) + ' ' +
           _almEsc(t('alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id }))) };
@@ -1725,7 +1855,7 @@ function _tbRenderCalc(body) {
   body.innerHTML = '<div id="tb-print-head"></div>' +
     '<div class="tk-answer" id="tk-answer" aria-live="polite"></div>' +
     '<div class="tk-fields" id="tk-fields"></div>' +
-    '<div id="tk-working"></div>';
+    '<div id="tk-working"></div><div id="tb-how"></div>';
   body.addEventListener('click', function (e) {
     if (!e.target.closest('[data-tb-swap]')) return;
     var u = _tb.calc[_tb.id], x = u.from;
@@ -1756,6 +1886,7 @@ function _tbSolve() {
   ans.innerHTML = (r.glyph ? '<span class="tk-answer-glyph" aria-hidden="true">' + r.glyph + '</span>' : '') +
     '<div class="tk-answer-text"><div class="tk-big" dir="auto">' + _almEsc(r.big) + '</div><div class="tk-sub">' + _almEsc(r.sub) + '</div></div>';
   wk.innerHTML = (r.extra || '') + r.working;
+  _tbMadeFill(_tbCalcInputs(c));
   var ph = _tbEl('tb-print-head');
   if (ph) ph.innerHTML = _tbPrintHead([]);
   _tb.last = r;

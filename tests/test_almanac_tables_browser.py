@@ -147,6 +147,21 @@ def _seg(pg, v):
     pg.wait_for_function(DRAWN, timeout=60000)
 
 
+def _how_is_made(page, id_, md):
+    """Under every view, closed: inputs, method, constants; in Print and Share."""
+    how = page.evaluate(
+        "() => { const d = document.querySelector('#tb-how details'); return d && { open: d.open,"
+        " groups: [...d.querySelectorAll('h4')].map((h) => h.textContent), lines: d.querySelectorAll('li').length }; }"
+    )
+    assert how and not how["open"] and how["lines"] >= 1, (id_, how)
+    assert "Method" in how["groups"], (id_, how)
+    assert "## How this is made" in md and "### Method" in md, (id_, md[-600:])
+    page.evaluate("_tbPrintOn()")
+    assert page.evaluate("document.querySelector('#tb-how details').open")
+    page.evaluate("_tbPrintOff()")
+    assert not page.evaluate("document.querySelector('#tb-how details').open")
+
+
 def test_the_tiles(page):
     tiles = page.evaluate(
         "[...document.querySelectorAll('.alm-tile')].map(b => b.dataset.tb)"
@@ -207,6 +222,7 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     lines = md.split("\n")
     assert lines[0] == "# " + name and lines[2], (id_, lines[:3])
     assert "| --- |" in md, (id_, md[:300])
+    _how_is_made(page, id_, md)
     # Each table's rows are as wide as its head.
     for block in "\n".join(ln if ln.startswith("| ") else "" for ln in lines).split(
         "\n\n"
@@ -317,6 +333,7 @@ def test_every_calculation_answers_from_its_defaults(page, id_):
     md = page.evaluate("_tbMarkdown()")
     assert md.startswith("# ") and ("**" + big.strip()) in md, (id_, md[:200])
     assert "\n- " in md and "| --- |" in md, (id_, md[:400])
+    _how_is_made(page, id_, md)
     assert not page.errors, page.errors
 
 
