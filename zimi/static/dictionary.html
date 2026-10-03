@@ -130,6 +130,11 @@
   .wotd .p { font: italic 14px/1.3 var(--serif); color: var(--text2); }
   .wotd .b { font-size: 14.5px; line-height: 1.5; margin: 8px 0 0; unicode-bidi: plaintext; }
   .wotd .s { font-size: 11.5px; color: var(--text2); margin: 10px 0 0; }
+  .wotd-box { position: relative; margin: 0 0 26px; }
+  .wotd-box .wotd { margin: 0; }
+  /* Room for Say beside the label and the word; the text below runs full width. */
+  .wotd-box .wotd .k, .wotd-box .wotd .w { padding-inline-end: 124px; }
+  .wotd-say { position: absolute; top: 14px; inset-inline-end: 14px; margin: 0; }
   .shelf-h h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
   .dicts { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text2); }
   .dicts div { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
@@ -470,9 +475,13 @@ function renderHome() {
   var w = _today && _today !== FAILED ? pickToday(_today.words, LANGS) : null;
   if (w) {
     var src = h.wiktionaries.filter(function(x) { return x.name === w.zim; })[0];
-    html += '<a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '"><div class="k">' + esc(STR.word_of_day) + '</div>' +
+    // The word of the day is said where it stands (Eric, 2026-10-03: "Say
+    // button should be on dictionary home hero too"): beside the card's
+    // link, not inside it, so a tap on Say is not a tap on the word.
+    html += '<div class="wotd-box"><a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '"><div class="k">' + esc(STR.word_of_day) + '</div>' +
       '<div class="w" lang="' + esc(w.lang) + '">' + esc(w.w) + '</div>' + (w.pos ? '<div class="p">' + esc(w.pos) + '</div>' : '') +
-      (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>';
+      (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>' +
+      (speechTag(w.lang) ? '<div class="say wotd-say">' + sayHtml(w.w, w.lang) + '</div>' : '') + '</div>';
   } else {
     html += '<p class="hint">' + esc(STR.hint) + '</p>';
   }
@@ -482,6 +491,7 @@ function renderHome() {
     return '<div>' + zimIcon(x.name) + '<span>' + esc(x.title) + '</span><span class="n">' + esc(fill(STR.entries, { n: Number(x.entries || 0).toLocaleString(STR.lang) })) + '</span></div>';
   }).join('') + '</div></section>';
   $('view').innerHTML = html;
+  wireSpeech();
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
 
@@ -597,9 +607,7 @@ function soundHtml(g, word) {
         (a.accent ? '<span>' + esc(a.accent) + '</span>' : i ? '' : '<span>' + esc(STR.recording) + '</span>') + '</button>';
     }).join('') + '</div>';
   } else if (speechTag(code)) {
-    html += '<div class="say"><span class="split"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
-      '<button type="button" class="spk caret" data-voices="' + esc(code) + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(STR.voices_menu) + '" hidden>' + CARET + '</button>' +
-      '<span class="menu" role="menu" aria-label="' + esc(STR.voices_menu) + '" hidden></span></span>' +
+    html += '<div class="say">' + sayHtml(word, code) +
       '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span>' +
       '<span class="voffer" data-offer="' + esc(code) + '" data-name="' + esc(groupName(g)) + '" hidden></span></div>';
   }
@@ -667,6 +675,12 @@ function wordsHtml(title, items, code) {
     (rest > 0 ? '<button type="button" onclick="moreWords(\'' + id + '\')">' + esc(fill(STR.more, { n: rest })) + '</button>' : '') + '</div></div>';
 }
 var _wl = 0, _lists = {};
+// Say and its voices: the button, its caret and the menu the caret opens.
+function sayHtml(word, code) {
+  return '<span class="split"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + esc(fill(STR.say_word, { word: word })) + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
+    '<button type="button" class="spk caret" data-voices="' + esc(code) + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(STR.voices_menu) + '" hidden>' + CARET + '</button>' +
+    '<span class="menu" role="menu" aria-label="' + esc(STR.voices_menu) + '" hidden></span></span>';
+}
 function moreIpa(b) { b.parentNode.querySelectorAll('.ipr[hidden]').forEach(function(r) { r.hidden = false; }); b.remove(); wireSpeech(); }
 function moreWords(id) {
   var l = _lists[id], el = $(id);
