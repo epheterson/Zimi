@@ -347,26 +347,39 @@ def test_every_constants_table(page, id_):
     assert len(rows) >= 6, (id_, rows)
     for r in rows:
         assert len(r) == 3 and r[0] and r[1] and r[2], (id_, r)
-        assert "NaN" not in r[1] and r[1] != "–" and "undefined" not in "".join(r), (id_, r)
+        assert "NaN" not in r[1] and r[1] != "–" and "undefined" not in "".join(r), (
+            id_,
+            r,
+        )
     md = page.evaluate("_tbMarkdown()")
     assert md.startswith("# ") and "| --- | --- | --- |" in md, (id_, md[:300])
-    assert page.evaluate("!!document.querySelector('.tb-bar [data-tb-share]') && !document.querySelector('.tb-bar [data-tb-reset]')")
+    assert page.evaluate(
+        "!!document.querySelector('.tb-bar [data-tb-share]') && !document.querySelector('.tb-bar [data-tb-reset]')"
+    )
     assert _no_side_scroll(page)
     assert not page.errors, page.errors
 
 
 def test_constants_read_the_sums_own_numbers(page):
     _open(page, "k_earth")
-    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
+    cells = page.evaluate(
+        "[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)"
+    )
     assert "6,378.137 km" in cells and "1 / 298.257223563" in cells, cells
     _open(page, "k_sunmoon")
-    cells = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)")
-    assert "29.530589 d" in cells and "27.554550 d" in cells and "27.212221 d" in cells, cells
+    cells = page.evaluate(
+        "[...document.querySelectorAll('#tb-out tbody tr')].map((r) => r.cells[1].textContent)"
+    )
+    assert (
+        "29.530589 d" in cells and "27.554550 d" in cells and "27.212221 d" in cells
+    ), cells
     # How this is made links a constant to its tile.
     _open(page, "sunmoon")
     page.evaluate("document.querySelector('#tb-how details').open = true")
     page.click("#tb-how [data-tb-go='k_sunmoon']")
-    page.wait_for_function("document.getElementById('alm-ref-title').textContent === 'Sun and Moon' && !!document.querySelector('.tb-consts')")
+    page.wait_for_function(
+        "document.getElementById('alm-ref-title').textContent === 'Sun and Moon' && !!document.querySelector('.tb-consts')"
+    )
     assert not page.errors, page.errors
 
 
@@ -523,25 +536,86 @@ def test_add_a_clock_from_a_searchable_sheet(page):
     assert not page.errors, page.errors
 
 
+SHOWN = "[...document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])')].map((b) => b.dataset.tb)"
+ACTIVE_CHIP = "document.querySelector('#alm-subject-chips .pill.active').dataset.subj"
+
+
+def test_subject_chips_filter_all_three_rows(page):
+    """The pill row above the tiles: All, then a chip per subject; each chip
+    leaves only its subject's tiles in every row, and All brings them back.
+    The row scrolls inside itself; the page never scrolls sideways."""
+    page.evaluate(
+        "() => { if (document.getElementById('alm-ref')) _tbClose(); _almSubjectChip(''); }"
+    )
+    chips = page.evaluate(
+        "[...document.querySelectorAll('#alm-subject-chips .pill')].map((c) => c.dataset.subj)"
+    )
+    assert chips == [""] + page.evaluate("ALM_TB_SUBJECT_ORDER"), chips
+    assert page.evaluate(ACTIVE_CHIP) == ""
+    for s in chips[1:]:
+        page.click("#alm-subject-chips [data-subj='%s']" % s)
+        assert page.evaluate(SHOWN) == [
+            k
+            for k in TABLES + CALCS + CONSTS
+            if k in page.evaluate("(s) => ALM_TB_SUBJECTS[s]", s)
+        ], s
+        assert page.evaluate(ACTIVE_CHIP) == s
+        assert (
+            page.evaluate(
+                "document.querySelectorAll('#alm-subject-chips [aria-pressed=\"true\"]').length"
+            )
+            == 1
+        )
+        assert _no_side_scroll(page), s
+    page.click("#alm-subject-chips [data-subj='']")
+    assert page.evaluate(SHOWN) == TABLES + CALCS + CONSTS
+    assert not page.errors, page.errors
+
+
 def test_a_sections_own_tiles_and_back_to_it(page):
-    """Tides' quiet link shows only its tiles, All shows every tile, and Back
-    returns to the tide section with every tile again."""
+    """Tides' table icon opens the tiles with the Tides chip chosen, another
+    chip filters from there, and Back returns to the tide section with every
+    tile again."""
     page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
     link = page.locator("#almanac-place + .alm-subject-link")
     link.scroll_into_view_if_needed()
-    link.click()
-    shown = page.evaluate(
-        "[...document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])')].map((b) => b.dataset.tb)"
+    # An icon, named for what it opens.
+    icon = page.evaluate(
+        "() => { const b = document.querySelector('#almanac-place + .alm-subject-link'), r = b.getBoundingClientRect();"
+        " return { label: b.getAttribute('aria-label'), title: b.title, text: b.textContent.trim(), svg: !!b.querySelector('svg'),"
+        " w: r.width, h: r.height, right: innerWidth - r.right }; }"
     )
-    assert shown == page.evaluate("ALM_TB_SUBJECTS.tides"), shown
-    assert page.is_visible("#alm-subject-bar") and "the tides" in page.inner_text("#alm-subject-bar")
-    page.click(".alm-subject-all")
-    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])').length") == len(TABLES + CALCS + CONSTS)
+    assert (
+        icon["label"] == "Tables, calculations, constants"
+        and icon["title"] == icon["label"]
+    ), icon
+    assert icon["svg"] and not icon["text"], icon
+    assert 32 <= icon["w"] <= 44 and 32 <= icon["h"] <= 44, icon
+    assert icon["right"] < 40, icon  # at the section's trailing edge
     link.click()
+    assert page.evaluate(SHOWN) == page.evaluate("ALM_TB_SUBJECTS.tides")
+    assert page.evaluate(ACTIVE_CHIP) == "tides"
+    page.click("#alm-subject-chips [data-subj='']")
+    assert page.evaluate(
+        "document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])').length"
+    ) == len(TABLES + CALCS + CONSTS)
+    page.click("#alm-subject-chips [data-subj='eclipses']")
+    assert sorted(page.evaluate(SHOWN)) == sorted(
+        page.evaluate("ALM_TB_SUBJECTS.eclipses")
+    )
     page.go_back()
-    page.wait_for_function("() => document.getElementById('alm-subject-bar').hidden")
+    page.wait_for_function(
+        "() => document.querySelector('#alm-subject-chips .pill.active').dataset.subj === ''"
+    )
     assert page.evaluate("_almanacOpen")
-    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile[hidden]').length") == 0
-    top = page.evaluate("document.getElementById('almanac-place').getBoundingClientRect().top")
+    assert (
+        page.evaluate(
+            "document.querySelectorAll('#alm-group-tables .alm-tile[hidden]').length"
+        )
+        == 0
+    )
+    top = page.evaluate(
+        "document.getElementById('almanac-place').getBoundingClientRect().top"
+    )
     assert -900 < top < 900, top
     assert not page.errors, page.errors
