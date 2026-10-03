@@ -4140,21 +4140,10 @@ function _almClockSheetClose(returnTo) {
 // keyboard covers: it would type into a box nobody can see ("text box is
 // stuck to bottom of page and I don't see it", Eric). While the keyboard is
 // up, the sheet stands on the top of the keyboard instead, and fits above it.
-// Shared with the tables' sheets (almanac-tables.js).
-var ALM_SHEET_GAP_PX = 8;
+// Shared with the tables' sheets (almanac-tables.js); the fitting itself is
+// the shell's (app.js), which Settings' sheets use too.
 function _almSheetAboveKeyboard(pop) {
-  var vv = window.visualViewport;
-  if (!vv) return;
-  function fit() {
-    if (!pop.isConnected) return;
-    var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
-    pop.style.bottom = covered ? covered + 'px' : '';
-    pop.style.maxHeight = covered ? (vv.height - ALM_SHEET_GAP_PX) + 'px' : '';
-  }
-  vv.addEventListener('resize', fit);
-  vv.addEventListener('scroll', fit);
-  pop._almUnfit = function () { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
-  fit();
+  pop._almUnfit = _sheetAboveKeyboard(pop);
 }
 // The cards: the place's zone (or the one selected), the device's when it
 // differs, the added ones; one each, sorted west to east by offset now.
