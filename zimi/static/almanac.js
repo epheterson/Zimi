@@ -1793,7 +1793,9 @@ var ALM_TB_ICONS = {
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
   k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
-  k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
+  k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>',
+  // A section's way to its tables: a small table.
+  table: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
 function _almTbIcon(k, px) {
@@ -1808,17 +1810,28 @@ function _almTilesRow(key, ids) {
         '<span class="alm-tile-sub">' + _almEsc(t('tb_' + k + '_sub')) + '</span></button>';
     }).join('') + '</div>';
 }
+// The subjects in the page's order, as the row of chips above the tiles.
+var ALM_TB_SUBJECT_ORDER = ['sky', 'calendars', 'time', 'tides', 'stars', 'sun', 'eclipses', 'seasons'];
+function _almSubjectChipsHtml() {
+  return '<div class="pills-row alm-subject-chips" id="alm-subject-chips" role="group" aria-label="' + _almEsc(t('alm_subject_chips')) + '">' +
+    [''].concat(ALM_TB_SUBJECT_ORDER).map(function (s) {
+      return '<button type="button" class="pill' + (s ? '' : ' active') + '" data-subj="' + s + '" aria-pressed="' + (s ? 'false' : 'true') + '"' +
+        ' onclick="_almSubjectChip(\'' + s + '\')">' + _almEsc(s ? t('alm_subj_' + s) : t('all')) + '</button>';
+    }).join('') + '</div>';
+}
 function _almTablesHtml() {
   _almSubject = null;   // a fresh page shows every tile
-  return _almGroupOpen('tables') + '<div class="alm-subject-bar" id="alm-subject-bar" hidden></div>' +
+  return _almGroupOpen('tables') + _almSubjectChipsHtml() +
     _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
 }
 
 // Each section's own tables, calculations and constants ("pull up all
 // relevant tables calculations and constants for each thing in the
-// almanac", Eric): a quiet link at the section's end shows the tiles for
-// its subject alone, with All to see every tile again; Back returns to the
-// section. Which tiles a subject has is this one table.
+// almanac", Eric): the chips above the tiles filter all three rows to one
+// subject ("use our slider row things for showing all filters", Eric,
+// 2026-10-03), and a quiet table icon at a section's end opens them with
+// its subject chosen; Back returns to the section. Which tiles a subject
+// has is this one table.
 var ALM_TB_SUBJECTS = {
   sky: ['sunmoon', 'twilight', 'phases', 'stars', 'sunmoonday', 'k_sunmoon', 'k_nav'],
   calendars: ['calendars', 'phases', 'seasons', 'days', 'convert', 'k_time'],
@@ -1829,14 +1842,17 @@ var ALM_TB_SUBJECTS = {
   eclipses: ['eclipses', 'phases', 'k_sunmoon'],
   seasons: ['seasons', 'sunmoon', 'twilight', 'k_time', 'k_earth']
 };
-var _almSubject = null;   // { s, from }: the subject shown, the section it came from
+var _almSubject = null;   // { s, from, pushed }: the subject shown, the section it came from
+var ALM_TB_LINK_ICON_PX = 18;
 function _almSubjectLink(s) {
-  return '<button type="button" class="alm-subject-link" onclick="_almSubjectOpen(\'' + s + '\', this)">' + _almEsc(t('alm_subject_link')) + '</button>';
+  var label = _almEsc(t('alm_subject_link'));
+  return '<button type="button" class="alm-subject-link" onclick="_almSubjectOpen(\'' + s + '\', this)" aria-label="' + label + '" title="' + label + '">' +
+    _almTbIcon('table', ALM_TB_LINK_ICON_PX) + '</button>';
 }
-// Only the subject's tiles, each row with none of them hidden.
+// Only the subject's tiles, each row with none of them hidden; its chip lit.
 function _almSubjectFilter(s) {
-  var group = document.getElementById('alm-group-tables'), bar = document.getElementById('alm-subject-bar');
-  if (!group || !bar) return;
+  var group = document.getElementById('alm-group-tables');
+  if (!group) return;
   var ids = s ? ALM_TB_SUBJECTS[s] : null;
   group.querySelectorAll('.alm-tile').forEach(function (b) { b.hidden = !!ids && ids.indexOf(b.getAttribute('data-tb')) < 0; });
   group.querySelectorAll('.alm-tiles').forEach(function (row) {
@@ -1844,9 +1860,25 @@ function _almSubjectFilter(s) {
     row.hidden = none;
     if (row.previousElementSibling) row.previousElementSibling.hidden = none;
   });
-  bar.hidden = !s;
-  bar.innerHTML = s ? '<span>' + _almEsc(t('alm_subject_for', { name: t('alm_subj_' + s) })) + '</span>' +
-    '<button type="button" class="alm-subject-all" onclick="_almSubjectAll()">' + _almEsc(t('all')) + '</button>' : '';
+  group.querySelectorAll('#alm-subject-chips [data-subj]').forEach(function (c) {
+    var on = c.getAttribute('data-subj') === (s || '');
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on) _almChipIntoView(c);
+  });
+}
+// A chip scrolled into its own row, never the page.
+function _almChipIntoView(c) {
+  var row = c.parentNode, l = c.offsetLeft - row.offsetLeft, r = l + c.offsetWidth;
+  if (l < row.scrollLeft) row.scrollLeft = l;
+  else if (r > row.scrollLeft + row.clientWidth) row.scrollLeft = r - row.clientWidth;
+}
+// A chip: that subject (or All), staying here.
+function _almSubjectChip(s) {
+  s = ALM_TB_SUBJECTS[s] ? s : null;
+  if (_almSubject) _almSubject.s = s;
+  else if (s) _almSubject = { s: s, from: null, pushed: false };
+  _almSubjectFilter(s);
 }
 function _almSubjectOpen(s, btn) {
   if (!ALM_TB_SUBJECTS[s]) return;
@@ -1856,11 +1888,6 @@ function _almSubjectOpen(s, btn) {
   if (!pushed) { try { history.pushState({ mode: 'almanac', almSubject: s }, '', location.href); _almSubject.pushed = true; } catch (e) {} }
   var group = document.getElementById('alm-group-tables');
   if (group) group.scrollIntoView({ block: 'start', behavior: _almReduceMotion() ? 'auto' : 'smooth' });
-}
-// Every tile again, staying here.
-function _almSubjectAll() {
-  if (_almSubject) _almSubject.s = null;
-  _almSubjectFilter(null);
 }
 // app.js asks on Back: the tables view first (almanac-tables.js), then the
 // subject's step, which returns to the section it came from.
@@ -1873,7 +1900,7 @@ function _almTablesPop(e) {
     if (_almSubject.s) _almSubjectFilter(_almSubject.s);
     return true;
   }
-  if (!_almSubject) return false;
+  if (!_almSubject || !_almSubject.pushed) return false;
   var from = _almSubject.from;
   _almSubject = null;
   _almSubjectFilter(null);

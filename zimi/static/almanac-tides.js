@@ -365,8 +365,10 @@ var TideMath = (function() {
   }
 
   return {
-    astro: astro, yearTerms: yearTerms, predictor: predictor,
-    CONSTITUENTS: CONSTITUENTS, compoundOf: compoundOf, M_PER_FT: M_PER_FT
+    astro: astro, yearTerms: yearTerms, predictor: predictor, harmonic: harmonic,
+    CONSTITUENTS: CONSTITUENTS, compoundOf: compoundOf, M_PER_FT: M_PER_FT,
+    // The mean longitudes' polynomials, for the tables' Equations.
+    MEAN: { s: S_C, h: H_C, p: P_C, N: N_C, p1: P1_C }
   };
 })();
 
