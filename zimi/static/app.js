@@ -13376,7 +13376,7 @@ function _appUpdateSetDelay(days) {
 // Folded to one line, so the list of languages is a tap away.
 var _VOICES_ID = 'ms-voices';
 var _VOICES_MODE_ID = 'ms-voices-mode';
-var _VOICES_POLL_MS = 2000;
+var _VOICES_POLL_MS = 1000; // a download's bar moves while it is watched
 var _VOICE_BYTES_PER_MB = 1000 * 1000; // as fmtBytes counts, and the Dictionary's line
 var _voicesTimer = null;
 
@@ -13402,28 +13402,38 @@ function _voiceLicenceHtml(v) {
   return ' · ' + esc(v.license) + (v.credit_required ? ' · ' + esc(v.credit) : '');
 }
 
+function _voiceButtonHtml(path, tag, label, extra) {
+  return '<button class="pill"' + (extra || '') + ' onclick="' + escAttr('_voicesPost(' + JSON.stringify(path) + ', ' + JSON.stringify(tag) + ', this)') + '">' + label + '</button>';
+}
+
 // One language: its name, the voice that says it now, and what can be done.
+// Downloading, the row says how far under its name, on the same bar as a
+// ZIM's download, with Cancel; a failure says so, with Retry.
 function _voiceRowHtml(v, d) {
   var dl = d.downloading || {}, mayFetch = v.runnable && d.setting.mode !== 'never';
   var engine = tH('voices_engine_' + (v.engine || 'none'));
-  var act = '';
+  var act = '', below = '';
+  var fetchLabel = tH('dictionary_voice_download', { mb: Math.round(v.bytes / _VOICE_BYTES_PER_MB) });
   if (dl.tag === v.tag) {
-    act = '<span class="app-update-quiet">' + tH('voices_downloading', { p: Math.floor(100 * (dl.done || 0) / (dl.total || 1)) }) + '</span>';
+    var p = Math.floor(100 * (dl.done || 0) / (dl.total || 1));
+    below = '<span class="voice-meta voice-progress">' + tH('voices_downloading', { p: p }) + '</span>' +
+      '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + p + '%"></div></div>';
+    act = _voiceButtonHtml('/manage/voices/cancel', v.tag, tH('cancel'));
   } else if (dl.error === v.tag) {
-    act = '<span class="app-update-quiet">' + tH('voices_failed') + '</span>';
+    below = '<span class="voice-meta voice-failed">' + tH('voices_failed') + '</span>';
+    fetchLabel = tH('retry');
   }
   if (!dl.tag && mayFetch && (!v.installed || v.newer)) {
-    act += ' <button class="pill" onclick="_voicesPost(\'/manage/voices/download\', \'' + escAttr(v.tag) + '\')">' +
-      tH('dictionary_voice_download', { mb: Math.round(v.bytes / _VOICE_BYTES_PER_MB) }) + '</button>';
+    act += _voiceButtonHtml('/manage/voices/download', v.tag, fetchLabel);
   }
-  if (v.installed) {
-    act += ' <button class="pill" onclick="_voicesPost(\'/manage/voices/remove\', \'' + escAttr(v.tag) + '\')">' + tH('voices_remove') + '</button>';
+  if (v.installed && dl.tag !== v.tag) {
+    act += _voiceButtonHtml('/manage/voices/remove', v.tag, tH('voices_remove'), ' data-confirm="' + escAttr(t('voices_remove_confirm')) + '"');
   }
   // The size is said once: beside Piper when it is here, on Download when not.
   var meta = engine + (v.installed ? ' · ' + esc(fmtBytes(v.bytes)) : '') + (v.newer ? ' · ' + tH('voices_newer') : '') +
     _voiceLicenceHtml(v);
-  return '<div class="mc-row"><span class="mc-label">' + esc(_langDisplayName(v.tag)) +
-    '<span class="app-update-quiet voice-meta">' + meta + '</span></span>' +
+  return '<div class="mc-row voice-row"><span class="mc-label">' + esc(_langDisplayName(v.tag)) +
+    '<span class="app-update-quiet voice-meta">' + meta + '</span>' + below + '</span>' +
     '<span class="mc-value">' + act + '</span></div>';
 }
 
@@ -13444,6 +13454,13 @@ function _voicesPaint(d) {
   var el = document.getElementById(_VOICES_ID);
   if (!el) return;
   if (!d || !d.voices) { el.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return; }
+  // A Remove waiting for its second tap is not redrawn from under it; the
+  // poll looks again next time.
+  if (el.querySelector('.confirming')) {
+    clearTimeout(_voicesTimer);
+    _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
+    return;
+  }
   var open = !!el.querySelector('details[open]');
   el.innerHTML = _voicesHtml(d);
   if (open) el.querySelector('details').open = true;
@@ -13471,7 +13488,24 @@ function _voicesSend(path, body, failText) {
   }).catch(function() { _showToast(failText); _renderVoicesSection(); });
 }
 
-function _voicesPost(path, tag) { return _voicesSend(path, { lang: tag }, t('voices_failed')); }
+var _VOICE_CONFIRM_MS = 4000; // as long as a ZIM's Redownload? waits for its second tap
+
+// A button that asks first (Remove) is armed by one tap and acts on the
+// next, as Delete and Redownload do; the voice is a download away again.
+function _voicesPost(path, tag, btn) {
+  var ask = btn && btn.getAttribute('data-confirm');
+  if (ask && !btn.classList.contains('confirming')) {
+    var label = btn.textContent;
+    btn.classList.add('confirming');
+    btn.textContent = ask;
+    setTimeout(function() {
+      if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = label; }
+    }, _VOICE_CONFIRM_MS);
+    return;
+  }
+  if (btn) btn.disabled = true;
+  return _voicesSend(path, { lang: tag }, t('voices_failed'));
+}
 
 function _voicesSetMode(mode) {
   _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' })).then(_renderNetSection);
@@ -13724,7 +13758,9 @@ function _msServerHtml() {
   // The Dictionary's voices: what says each language, and the downloads.
   var voicesSec = '<div class="ms-section-label">' + tH('net_voices') + '</div>' +
     '<div class="ms-hint">' + tH('voices_hint') + '</div>' +
-    '<div id="' + _VOICES_ID + '">' + tH('loading') + '</div>';
+    // Loading, one quiet line about the height of the list's own summary,
+    // so the section does not jump when the answer comes.
+    '<div id="' + _VOICES_ID + '"><div class="mc-row"><span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('loading') + '</span></div></div>';
 
   // Internet use, last on the tab: everything this server can fetch, and
   // which of it happens without anyone asking.

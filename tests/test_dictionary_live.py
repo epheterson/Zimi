@@ -611,3 +611,48 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
     f = open_eau()
     assert f.evaluate(LINE_FR) == ""
     assert not errors, errors
+
+
+def test_manage_voices_shows_progress_cancels_and_asks_before_removing(piper_here, monkeypatch, served):
+    """Manage > Voices at 390px: a download's row moves on the ZIM
+    downloads' bar, with Cancel; Remove asks once (a second tap) and the
+    language then falls back; nothing is wider than the phone."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+
+    def fetch(tag):
+        with voices._lock:
+            total = voices._download["total"]
+        for i in range(1, 60):
+            time.sleep(0.25)
+            with voices._lock:
+                if voices._download.get("cancel"):
+                    voices._download.clear()
+                    return
+                voices._download["done"] = total * i // 60
+
+    monkeypatch.setattr(voices, "_fetch_voice", fetch)
+    assert voices.start_download("de") == (True, None)
+    f = open_eau()  # the same phone, now in Manage
+    pg = f.page
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-voices details", timeout=20000)
+    pg.eval_on_selector("#ms-voices details", "d => d.open = true")
+    row = "#ms-voices .voice-row:has(.voice-progress)"
+    first = pg.text_content(row + " .voice-progress")
+    pg.wait_for_function("([s, t]) => document.querySelector(s).textContent !== t", arg=[row + " .voice-progress", first], timeout=5000)
+    assert pg.eval_on_selector(row + " .dl-progress-bar", "b => parseFloat(b.style.width)") > 0
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    pg.click(row + " button:has-text('Cancel')")
+    pg.wait_for_function("() => !document.querySelector('#ms-voices .voice-progress')", timeout=5000)
+    assert voices.downloading() == {}
+    # Remove: the first tap asks, the second removes.
+    rm = "#ms-voices button[data-confirm]"
+    pg.eval_on_selector(rm, "b => b.scrollIntoView({ block: 'center' })")
+    pg.click(rm)
+    assert pg.text_content(rm) == "Remove?"
+    assert "fr" in voices.installed()
+    pg.click(rm)
+    pg.wait_for_function("() => !document.querySelector('#ms-voices button[data-confirm]')", timeout=5000)
+    assert "fr" not in voices.installed()
+    assert not errors, errors
