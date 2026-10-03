@@ -846,10 +846,10 @@ function _tbClose(viaHistory) {
   _tb.returnFocus = null;
   if (f && f.isConnected && f.focus) f.focus({ preventScroll: true });
 }
-// Asked first by app.js's popstate: Back with the view open closes the view,
-// not the Almanac; the step the view's own close takes back is swallowed.
-// True when the event was the view's.
-function _almTablesPop(e) {
+// Asked by almanac.js's _almTablesPop (app.js's popstate): Back with the
+// view open closes the view, not the Almanac; the step the view's own close
+// takes back is swallowed. True when the event was the view's.
+function _tbHistoryPop(e) {
   if (_tb.expectPop) { _tb.expectPop = false; return true; }
   if (_tbEl('alm-ref') && !(e.state && e.state.almTables)) { _tbClose(true); return true; }
   return false;

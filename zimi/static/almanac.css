@@ -195,6 +195,13 @@
 /* Tables and calculations: two rows of tiles, each a scroller that runs to
    the screen's edges (the page itself never scrolls sideways). A tile is
    what opens: its mark, its name, and one line of what it gives. */
+/* A section's way to its own tiles: quiet, at its end. */
+.alm-subject-link { display: block; margin: 8px auto 0; padding: 8px 10px; min-height: 36px; border: 0; background: none; color: var(--text3); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-subject-link:hover, .alm-subject-link:focus-visible { color: var(--amber); outline: none; text-decoration: underline; }
+.alm-subject-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 0; font-size: 13px; color: var(--text2); }
+.alm-subject-bar[hidden], .alm-tiles[hidden], .alm-tiles-h[hidden], .alm-tile[hidden] { display: none; }
+.alm-subject-all { min-height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 18px; background: none; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.alm-subject-all:hover, .alm-subject-all:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); outline: none; }
 .alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
 .alm-group-title + .alm-tiles-h { margin-top: 4px; }
 .alm-tiles {

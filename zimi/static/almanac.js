@@ -1809,7 +1809,76 @@ function _almTilesRow(key, ids) {
     }).join('') + '</div>';
 }
 function _almTablesHtml() {
-  return _almGroupOpen('tables') + _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
+  _almSubject = null;   // a fresh page shows every tile
+  return _almGroupOpen('tables') + '<div class="alm-subject-bar" id="alm-subject-bar" hidden></div>' +
+    _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
+}
+
+// Each section's own tables, calculations and constants ("pull up all
+// relevant tables calculations and constants for each thing in the
+// almanac", Eric): a quiet link at the section's end shows the tiles for
+// its subject alone, with All to see every tile again; Back returns to the
+// section. Which tiles a subject has is this one table.
+var ALM_TB_SUBJECTS = {
+  sky: ['sunmoon', 'twilight', 'phases', 'stars', 'sunmoonday', 'k_sunmoon', 'k_nav'],
+  calendars: ['calendars', 'phases', 'seasons', 'days', 'convert', 'k_time'],
+  time: ['suntime', 'sundial', 'zones', 'distance', 'k_time', 'k_earth'],
+  tides: ['tides', 'phases', 'k_earth', 'k_sunmoon'],
+  stars: ['stars', 'nav', 'sight', 'k_nav', 'k_time'],
+  sun: ['sunmoon', 'twilight', 'suntime', 'sundial', 'sight', 'sunmoonday', 'k_sunmoon', 'k_nav'],
+  eclipses: ['eclipses', 'phases', 'k_sunmoon'],
+  seasons: ['seasons', 'sunmoon', 'twilight', 'k_time', 'k_earth']
+};
+var _almSubject = null;   // { s, from }: the subject shown, the section it came from
+function _almSubjectLink(s) {
+  return '<button type="button" class="alm-subject-link" onclick="_almSubjectOpen(\'' + s + '\', this)">' + _almEsc(t('alm_subject_link')) + '</button>';
+}
+// Only the subject's tiles, each row with none of them hidden.
+function _almSubjectFilter(s) {
+  var group = document.getElementById('alm-group-tables'), bar = document.getElementById('alm-subject-bar');
+  if (!group || !bar) return;
+  var ids = s ? ALM_TB_SUBJECTS[s] : null;
+  group.querySelectorAll('.alm-tile').forEach(function (b) { b.hidden = !!ids && ids.indexOf(b.getAttribute('data-tb')) < 0; });
+  group.querySelectorAll('.alm-tiles').forEach(function (row) {
+    var none = !row.querySelector('.alm-tile:not([hidden])');
+    row.hidden = none;
+    if (row.previousElementSibling) row.previousElementSibling.hidden = none;
+  });
+  bar.hidden = !s;
+  bar.innerHTML = s ? '<span>' + _almEsc(t('alm_subject_for', { name: t('alm_subj_' + s) })) + '</span>' +
+    '<button type="button" class="alm-subject-all" onclick="_almSubjectAll()">' + _almEsc(t('all')) + '</button>' : '';
+}
+function _almSubjectOpen(s, btn) {
+  if (!ALM_TB_SUBJECTS[s]) return;
+  var pushed = _almSubject ? _almSubject.pushed : false;
+  _almSubject = { s: s, from: btn.closest('.almanac-section') || btn.previousElementSibling || btn, pushed: pushed };
+  _almSubjectFilter(s);
+  if (!pushed) { try { history.pushState({ mode: 'almanac', almSubject: s }, '', location.href); _almSubject.pushed = true; } catch (e) {} }
+  var group = document.getElementById('alm-group-tables');
+  if (group) group.scrollIntoView({ block: 'start', behavior: _almReduceMotion() ? 'auto' : 'smooth' });
+}
+// Every tile again, staying here.
+function _almSubjectAll() {
+  if (_almSubject) _almSubject.s = null;
+  _almSubjectFilter(null);
+}
+// app.js asks on Back: the tables view first (almanac-tables.js), then the
+// subject's step, which returns to the section it came from.
+function _almTablesPop(e) {
+  if (typeof _tbHistoryPop === 'function' && _tbHistoryPop(e)) return true;
+  // Arriving at the subject's own step (Forward, or back out of a table
+  // opened from it): its tiles, still or again.
+  if (e.state && e.state.almSubject && ALM_TB_SUBJECTS[e.state.almSubject] && document.getElementById('alm-group-tables')) {
+    if (!_almSubject) _almSubject = { s: e.state.almSubject, from: null, pushed: true };
+    if (_almSubject.s) _almSubjectFilter(_almSubject.s);
+    return true;
+  }
+  if (!_almSubject) return false;
+  var from = _almSubject.from;
+  _almSubject = null;
+  _almSubjectFilter(null);
+  if (from && from.isConnected) from.scrollIntoView({ block: 'center', behavior: 'auto' });
+  return true;
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
@@ -2005,12 +2074,13 @@ function _renderAlmanacContent() {
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += '<div id="almanac-calendar"></div>';
+  html += _almSubjectLink('sky');
+  html += '<div id="almanac-calendar"></div>' + _almSubjectLink('calendars');
 
   // The place: the map, the way to choose it, its clocks, its tide
   // (almanac-tides.js, loaded after the first paint), the Sun's year there.
-  html += '<div id="almanac-sunmap"></div>';
-  html += '<div id="almanac-place"></div>';
+  html += '<div id="almanac-sunmap"></div>' + _almSubjectLink('time');
+  html += '<div id="almanac-place"></div>' + _almSubjectLink('tides');
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
 
@@ -2048,14 +2118,14 @@ function _renderAlmanacContent() {
   html += _almSec(t('alm_star_chart'),
     '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
     '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>' + _almSubjectLink('stars'));
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += _almSec(_lterm('analemma', t('alm_analemma')),
     '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
-    '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
+    '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>' + _almSubjectLink('sun'));
   html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
-  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
-  html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>' + _almSubjectLink('eclipses'));
+  html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>' + _almSubjectLink('seasons'));
   html += _almSec(t('alm_deep_time'), '<div id="almanac-deeptime"></div>');
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
   // Any time: the tables and the sums, the almanac's back matter.

@@ -521,3 +521,27 @@ def test_add_a_clock_from_a_searchable_sheet(page):
     assert "Kathmandu" in page.inner_text("#almanac-tz-pills")
     page.evaluate("_almClockRemove('Asia/Kathmandu')")
     assert not page.errors, page.errors
+
+
+def test_a_sections_own_tiles_and_back_to_it(page):
+    """Tides' quiet link shows only its tiles, All shows every tile, and Back
+    returns to the tide section with every tile again."""
+    page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
+    link = page.locator("#almanac-place + .alm-subject-link")
+    link.scroll_into_view_if_needed()
+    link.click()
+    shown = page.evaluate(
+        "[...document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])')].map((b) => b.dataset.tb)"
+    )
+    assert shown == page.evaluate("ALM_TB_SUBJECTS.tides"), shown
+    assert page.is_visible("#alm-subject-bar") and "the tides" in page.inner_text("#alm-subject-bar")
+    page.click(".alm-subject-all")
+    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])').length") == len(TABLES + CALCS + CONSTS)
+    link.click()
+    page.go_back()
+    page.wait_for_function("() => document.getElementById('alm-subject-bar').hidden")
+    assert page.evaluate("_almanacOpen")
+    assert page.evaluate("document.querySelectorAll('#alm-group-tables .alm-tile[hidden]').length") == 0
+    top = page.evaluate("document.getElementById('almanac-place').getBoundingClientRect().top")
+    assert -900 < top < 900, top
+    assert not page.errors, page.errors
