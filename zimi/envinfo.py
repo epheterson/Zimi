@@ -75,7 +75,7 @@ VARS: dict[str, tuple[str, str]] = {
         "Satellite data from the internet",
     ),
     "ZIMI_VOICE_DOWNLOADS": (
-        "Clearer Piper voices for the Dictionary's Say, from Hugging Face: ask (only when an admin asks), auto or never",
+        "Clearer voices for the Dictionary's Say (Piper from Hugging Face, Kokoro from GitHub): ask (only when an admin asks), auto or never",
         "Voices for Dictionary",
     ),
     "ZIMI_PIPER": ("The Piper command the Dictionary's Say runs, when not piper on PATH", "Voices for Dictionary"),

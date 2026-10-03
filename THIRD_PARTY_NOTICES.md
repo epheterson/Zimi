@@ -11,6 +11,16 @@ it — downloads fall back to plain HTTP.
 - License: BSD 3-Clause
 - Source code: https://github.com/arvidn/libtorrent
 
+## Voices for the Dictionary (zimi-voice)
+
+The Dictionary's Say runs Piper and Kokoro as a separate program, `zimi-voice` (`zimi/voicehelper.py`), beside Zimi in the desktop builds and under Python in the Docker image. Zimi never imports them. Piper (piper-tts), espeak-ng (inside piper-tts and espeakng-loader) and phonemizer are GPL-3.0; kokoro-onnx, espeakng-loader, onnxruntime, jieba, pypinyin and cn2an are MIT; misaki is Apache-2.0; numpy is BSD-3-Clause. Each component's licence text ships in its `.dist-info` beside `zimi-voice`, and `zimi/assets/voices-NOTICE.txt` lists every component with its source link. The voices themselves are downloaded on request, each under the licence shown in Settings.
+
+- Piper: https://github.com/OHF-Voice/piper1-gpl
+- espeak-ng: https://github.com/espeak-ng/espeak-ng
+- kokoro-onnx: https://github.com/thewh1teagle/kokoro-onnx
+- misaki: https://github.com/hexgrad/misaki
+- Kokoro-82M (weights, Apache-2.0, downloaded): https://huggingface.co/hexgrad/Kokoro-82M
+
 # Data shipped with Zimi
 
 ## NOAA CO-OPS tide stations (`zimi/assets/tides-snapshot.json.gz`)
