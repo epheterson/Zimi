@@ -706,7 +706,16 @@ def test_kokoro_is_one_row_in_manage(piper, monkeypatch):
     rows = voices.manage_payload()["voices"]
     kokoro = [r for r in rows if r["kind"] == "kokoro"]
     assert len(kokoro) == 1 and kokoro[0]["tag"] == "kokoro"
-    assert kokoro[0]["langs"] == ["en-US", "en-GB", "es", "fr", "it", "pt-BR", "hi", "zh"]
+    assert kokoro[0]["langs"] == [
+        "en-US",
+        "en-GB",
+        "es",
+        "fr",
+        "it",
+        "pt-BR",
+        "hi",
+        "zh",
+    ]
     assert kokoro[0]["bytes"] == 92361271 + 28214398 and kokoro[0]["runnable"]
     assert kokoro[0]["license"] == "Apache-2.0" and kokoro[0]["credit_required"]
     # Piper's voices for the same languages stay on offer beside it.
@@ -795,7 +804,10 @@ def test_a_choice_overrides_the_order_and_is_saved(three):
     assert voices.choices() == {"en": "piper"}
     assert voices.choose("en") == ("piper", "en-US")
     assert voices.choose("en", "GB") == ("kokoro", "en-GB"), "the accent's own voice"
-    assert voices.set_choice("en", "espeak") and voices.choose("en") == ("espeak", "en-us")
+    assert voices.set_choice("en", "espeak") and voices.choose("en") == (
+        "espeak",
+        "en-us",
+    )
     # The best again, or none: no choice is kept.
     assert voices.set_choice("en", "kokoro") and voices.choices() == {}
     assert voices.set_choice("en", "say") is False, "no say here"
@@ -976,3 +988,219 @@ def test_a_voice_downloaded_is_a_new_address_for_every_word(piper):
     install("fr")
     after = voices.page_payload()["stamp"]
     assert before != after and "fr" in after
+
+
+# ── the warm worker ───────────────────────────────────────────────────────
+# A fake ``voicehelper.py serve``: the protocol, a WAV for each word, and a
+# log of each start (its pid) and each load, beside it.
+FAKE_SERVE = """import json, os, sys, time, wave
+log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.log")
+def note(s):
+    with open(log, "a") as f:
+        f.write(s + "\\n")
+note("start %d" % os.getpid())
+for line in sys.stdin:
+    req = json.loads(line)
+    text = req.get("text")
+    if text is None:
+        note("warm " + req["model"])
+    elif text == "hang":
+        time.sleep(30)
+    elif text == "fail":
+        print(json.dumps({"ok": False, "error": "no"}), flush=True)
+        continue
+    else:
+        w = wave.open(req["out"], "wb")
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.writeframes(b"\\x10\\x00" * 4000)
+        w.close()
+        note("said " + text)
+    print(json.dumps({"ok": True}), flush=True)
+"""
+
+
+@pytest.fixture
+def worker(piper, monkeypatch):
+    """Piper's warm worker, the fake; yields its log's lines."""
+    script = os.path.join(str(piper), "serve.py")
+    with open(script, "w") as f:
+        f.write(FAKE_SERVE)
+    cmd = [sys.executable, script, "serve", "piper"]
+    monkeypatch.setattr(
+        voices, "_worker_command", lambda e: cmd if e == voices.PIPER else None
+    )
+    install("en-US")
+
+    def log():
+        try:
+            with open(os.path.join(str(piper), "serve.log")) as f:
+                return f.read().split("\n")[:-1]
+        except OSError:
+            return []
+
+    yield log
+    voices._stop_workers()
+
+
+def _starts(log):
+    return [line for line in log() if line.startswith("start")]
+
+
+def test_the_worker_is_reused_restarted_when_killed_and_stopped_when_idle(
+    worker, monkeypatch
+):
+    runs = []
+    monkeypatch.setattr(voices, "_run", lambda *a, **k: runs.append(a) or False)
+    for word in ("water", "fire", "earth"):
+        assert voices.speak(word, "en")[:4] == b"RIFF"
+    assert len(_starts(worker)) == 1 and runs == [], "one worker said all three"
+    w = voices._workers[voices.PIPER]
+    w.proc.kill()
+    w.proc.wait()
+    assert voices.speak("air", "en")[:4] == b"RIFF", "started again"
+    assert len(_starts(worker)) == 2
+    proc = w.proc
+    assert voices._reap_idle(now=w.used + voices.WORKER_IDLE_S - 1) is True
+    assert w.alive(), "not yet idle long enough"
+    assert voices._reap_idle(now=w.used + voices.WORKER_IDLE_S) is False
+    assert w.proc is None and proc.returncode is not None, "stopped and reaped"
+    assert voices.speak("stone", "en")[:4] == b"RIFF", "and back on the next word"
+    assert worker()[-1] == "said stone" and len(_starts(worker)) == 3
+
+
+def test_a_worker_that_hangs_is_stopped_and_the_word_is_busy(worker, monkeypatch):
+    monkeypatch.setattr(voices, "SYNTH_TIMEOUT_S", 1)
+    voices.speak("water", "en")
+    w = voices._workers[voices.PIPER]
+    with pytest.raises(voices.Busy):
+        voices.speak("hang", "en")
+    assert w.proc is None, "stopped: its late answer would go to the next word"
+    assert voices.said("hang", "en") == {"made": False, "failed": False}
+    with pytest.raises(voices.Failed):
+        voices.speak("fail", "en")
+    assert voices.said("fail", "en") == {"made": False, "failed": True}
+    assert voices.speak("water", "en")[:4] == b"RIFF"
+    assert voices.said("water", "en") == {"made": True, "failed": False}
+
+
+def test_a_helper_with_no_serve_mode_says_each_word_afresh(piper, monkeypatch):
+    """An older zimi-voice beside a newer Zimi: the worker never answers,
+    and every word runs the engine as before."""
+    install("en-US")
+    monkeypatch.setattr(
+        voices,
+        "_worker_command",
+        lambda e: [sys.executable, "-c", "import sys; sys.exit('usage')"],
+    )
+    assert voices.speak("water", "en")[:4] == b"RIFF"
+    assert voices._workers[voices.PIPER].serves is False
+    assert voices._worker(voices.PIPER) is None
+    assert voices.speak("fire", "en")[:4] == b"RIFF"
+    voices._stop_workers()
+
+
+def test_a_queue_waits_and_one_more_is_busy_never_missing(piper, monkeypatch):
+    install("en-US")
+    monkeypatch.setattr(voices, "SYNTH_WAIT_S", 0.2)
+    with voices._synth_lock:  # a word being said
+        with pytest.raises(voices.Busy):
+            voices.speak("water", "en")  # waited its turn, too long
+        monkeypatch.setattr(voices, "_synth_slots", threading.BoundedSemaphore(1))
+        voices._synth_slots.acquire()
+        with pytest.raises(voices.Busy):
+            voices.speak("fire", "en")  # the queue is full: told at once
+        voices._synth_slots.release()
+    assert voices.speak("water", "en")[:4] == b"RIFF", "then said"
+    engines(monkeypatch)
+    assert voices.speak("water", "en") is None, "no engine: no voice"
+
+
+def test_busy_is_503_and_missing_is_404_over_http(served, monkeypatch):
+    install("en-US")
+    real = voices.speak
+
+    def busy(text, lang, *a, **k):
+        if voices.choose(lang) is None:
+            return real(text, lang, *a, **k)
+        raise voices.Busy("queue full")
+
+    monkeypatch.setattr(voices, "speak", busy)
+    code, headers, _ = _get(served + "/dictionary/speak?text=water&lang=en")
+    assert code == 503 and headers["Retry-After"] == str(voices.RETRY_AFTER_S)
+    assert "no-store" in headers["Cache-Control"]
+    code, _h, body = _get(served + "/dictionary/speak?text=water&lang=en&check=1")
+    assert code == 200 and json.loads(body) == {"made": False, "failed": False}
+    assert _get(served + "/dictionary/speak?text=eau&lang=fr")[0] == 404
+    assert _get(served + "/dictionary/speak?text=eau&lang=fr&check=1")[0] == 404
+
+    def failed(*a, **k):
+        raise voices.Failed("piper")
+
+    monkeypatch.setattr(voices, "speak", failed)
+    assert _get(served + "/dictionary/speak?text=water&lang=en")[0] == 500
+
+
+def test_prewarm_loads_once_and_downloads_nothing(worker, monkeypatch):
+    voices.POLICY.set("auto")  # a word said would fetch French's voice
+    started = []
+    monkeypatch.setattr(voices, "start_download", lambda tag: started.append(tag))
+    try:
+        assert voices.warm(["en", "fr", "xx", "not a tag", 7]) == ["piper"]
+        w = voices._workers[voices.PIPER]
+        for _ in range(200):
+            if not w.warming:
+                break
+            threading.Event().wait(0.05)
+        model = voices._request(voices.PIPER, "en-US")["model"]
+        assert [x for x in worker() if x.startswith("warm")] == ["warm " + model]
+        assert voices.warm(["en"]) == [], "already loaded: nothing"
+        assert voices.speak("water", "en")[:4] == b"RIFF"
+        assert len(_starts(worker)) == 1, "the word went to the loaded worker"
+        assert started == [] and voices.downloading() == {}, "nothing fetched"
+    finally:
+        voices.POLICY.set("ask")
+
+
+def test_prewarm_over_http(served, monkeypatch):
+    asked = []
+    monkeypatch.setattr(voices, "warm", lambda langs: asked.append(langs) or ["piper"])
+
+    def post(body):
+        req = urllib.request.Request(
+            served + "/dictionary/voices/warm",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            r = urllib.request.urlopen(req)
+            return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, None
+
+    assert post({"langs": ["en"]}) == (200, {"warming": ["piper"]})
+    assert asked == [["en"]]
+    assert post({"langs": "en"})[0] == 400
+
+
+def test_the_helper_answers_line_by_line_until_stdin_ends():
+    """voicehelper.py serve: a bad request is an answer, not the end; the
+    end of stdin ends it; nothing but answers on stdout."""
+    import subprocess
+
+    from zimi import voicehelper
+
+    script = voicehelper.__file__
+    proc = subprocess.run(
+        [sys.executable, script, "serve", "piper"],
+        input=b"not json\n\n{}\n",
+        capture_output=True,
+        timeout=60,
+    )
+    answers = [json.loads(x) for x in proc.stdout.decode().splitlines()]
+    assert proc.returncode == 0 and len(answers) == 2, proc.stderr
+    assert all(a["ok"] is False and a["error"] for a in answers)
+    bad = subprocess.run(
+        [sys.executable, script, "serve", "nope"], capture_output=True, timeout=60
+    )
+    assert bad.returncode != 0 and b"usage" in bad.stderr

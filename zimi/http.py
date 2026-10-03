@@ -3136,6 +3136,18 @@ class ZimHandler(BaseHTTPRequestHandler):
             if parsed.path.startswith("/manage/"):
                 return handle_manage_post(self, parsed, data)
 
+            if parsed.path == "/dictionary/voices/warm":
+                # The Dictionary opening: load the voices its languages
+                # use now, not on the first tap. Downloads nothing.
+                if "dictionary" not in _srv.apps_shown():
+                    return self._json(404, {"error": "not found"})
+                from zimi import voices as _voices
+
+                langs = data.get("langs") if isinstance(data, dict) else None
+                if not isinstance(langs, list):
+                    return self._json(400, {"error": "'langs' must be a list"})
+                return self._json(200, {"warming": _voices.warm(langs)})
+
             if parsed.path == "/login":
                 retry_after = _check_rate_limit(
                     self._client_ip(),
@@ -4303,8 +4315,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         server can say and the clearer voices it could fetch, with whether
         this viewer may fetch them (the admin rule every /manage write
         follows). /dictionary/speak?text=&lang=[&accent=][&engine=]: the word
-        as a WAV, or 404 when no engine here (or not the one named) can say
-        the language."""
+        as a WAV; 404 only when no engine here (or not the one named) can
+        say the language; 503 with Retry-After when one can but is busy, so
+        the page keeps it; 500 when it tried and could not. &check=1:
+        nothing said, 404 or {"made", "failed"} (the page asking why its
+        <audio> failed, which an <audio> element is not told)."""
         from zimi import voices as _voices
 
         if sub == "voices":
@@ -4329,7 +4344,23 @@ class ZimHandler(BaseHTTPRequestHandler):
             or (engine is not None and engine not in _voices.ENGINES)
         ):
             return self._json(400, {"error": "bad request"})
-        body = _voices.speak(text, lang, accent, engine)
+        if param("check"):
+            got = _voices.said(text, lang, accent, engine)
+            if got is None:
+                return self._json(404, {"error": "no voice"})
+            return self._uncached(lambda: self._json(200, got))
+        try:
+            body = _voices.speak(text, lang, accent, engine)
+        except _voices.Busy:
+            return self._uncached(
+                lambda: self._json(
+                    503, {"error": "busy"}, retry_after=_voices.RETRY_AFTER_S
+                )
+            )
+        except _voices.Failed:
+            return self._uncached(
+                lambda: self._json(500, {"error": "could not say it"})
+            )
         if body is None:
             return self._json(404, {"error": "no voice"})
         return self._send_media(
@@ -4414,11 +4445,22 @@ class ZimHandler(BaseHTTPRequestHandler):
     # /whoami put back apps the admin had just turned off.
     _no_store = False
 
-    def _send(self, code, body_bytes, content_type, vary=None, cache=None, etag=None):
+    def _send(
+        self,
+        code,
+        body_bytes,
+        content_type,
+        vary=None,
+        cache=None,
+        etag=None,
+        retry_after=None,
+    ):
         if cache is None and self._no_store:
             cache = "no-store"
         self.send_response(code)
         self.send_header("Content-Type", content_type)
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "same-origin")
@@ -4709,11 +4751,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         finally:
             self._no_store = False
 
-    def _json(self, code, data):
+    def _json(self, code, data, retry_after=None):
         self._send(
             code,
             json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
+            retry_after=retry_after,
         )
 
     def _ndjson_stream(self):

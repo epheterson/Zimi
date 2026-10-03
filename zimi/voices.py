@@ -19,7 +19,9 @@ GPL code stays beside MIT Zimi the way ffmpeg does), in this order:
 
 Piper and Kokoro run through voicehelper.py: ``python voicehelper.py`` where
 they are installed in Zimi's Python (Docker, pip), or the ``zimi-voice``
-executable the desktop apps carry beside Zimi.
+executable the desktop apps carry beside Zimi. Each runs as a warm worker
+(``serve``) that loads its model once and stops when idle; the Dictionary
+asks it to load as the page opens (``warm``).
 
 An accent asks first for an engine with that region's voice, then for any
 voice of the language. None that can say it: no audio, and the page uses the
@@ -33,17 +35,20 @@ it. Every voice is pinned per Zimi release in ``VOICES``, with its licence
 and credit; nothing updates on its own.
 """
 
+import atexit
 import collections
 import hashlib
 import importlib.util
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 
@@ -191,11 +196,27 @@ CHOICES_KEY = "voice_engines"
 
 # A word or a short phrase, never a paragraph: what the Dictionary says.
 TEXT_MAX = 64
-SYNTH_TIMEOUT_S = 20  # Piper loads its model each time: about a second
-# Kokoro loads its model and a Chinese dictionary each time: about 5 s on a
-# laptop (measured 2026-10-03), so a slow NAS is given longer.
+SYNTH_TIMEOUT_S = 20  # Piper, its model loaded with the first word
+# Kokoro's first word loads its model and a language's dictionary: about 5 s
+# on a laptop, 13 on Eric's NAS (2026-10-03), so it is given longer.
 KOKORO_TIMEOUT_S = 60
 SYNTH_WAIT_S = 30  # how long a request queues behind another synthesis
+# Requests that may wait behind the one being said; one more is told to come
+# back (503, Retry-After), never that there is no voice.
+SYNTH_QUEUE = 4
+RETRY_AFTER_S = 2
+# A warm worker (voicehelper.py serve) gives its memory back after this long
+# with nothing said; the next word starts it again.
+WORKER_IDLE_S = 10 * 60
+WORKER_IDLE_CHECK_S = 30
+WORKER_STOP_GRACE_S = 2  # a worker told its requests are over leaves at once
+WORKER_STDERR_LINES = 20  # what a worker that failed last said, for the log
+WARM_LANGS_MAX = 8  # the languages one page may ask to warm
+FAILURES_MAX = 256  # words an engine could not say, remembered for the page
+# What became of a word asked of an engine: said; the engine could not say
+# it; no answer this time (busy, too slow, the worker died); and, from a
+# worker only, a helper with no serve mode (each word runs it afresh).
+OK, FAILED, LOST, UNSERVED = "ok", "failed", "lost", "unserved"
 CACHE_MAX_BYTES = 64 * 1024 * 1024  # a word is ~40 KB: well over a thousand
 FETCH_TIMEOUT_S = 30
 FETCH_CHUNK = 256 * 1024
@@ -237,6 +258,7 @@ _HOME_REGION = {"en": "US", "pt": "BR", "zh": "CN", "nb": "NO", "sv": "SE", "da"
 
 _lock = threading.Lock()  # the engine discovery memo and the download state
 _synth_lock = threading.Lock()  # one synthesis at a time
+_synth_slots = threading.BoundedSemaphore(1 + SYNTH_QUEUE)  # said or waiting
 _found = {}
 _download = {}
 _fetcher = None  # the thread fetching a voice, while one is
@@ -245,9 +267,11 @@ _choices = None  # CHOICES_KEY as last read or written: no file read per word
 
 def _reset_for_tests():
     global _choices
+    _stop_workers()
     with _lock:
         _found.clear()
         _download.clear()
+        _failures.clear()
         _choices = None
 
 
@@ -412,6 +436,219 @@ def kokoro_command():
 def runtime(engine):
     """The command for a downloaded voice's engine, or None."""
     return {PIPER: piper_command, KOKORO: kokoro_command}[engine]()
+
+
+# ── the warm workers ──────────────────────────────────────────────────────
+# Started afresh, an engine spends most of a word loading: its model, and
+# Kokoro's dictionaries (7 to 13 s a word on Eric's NAS, 2026-10-03). So the
+# helper runs as ``voicehelper.py serve ENGINE``: loaded once, one request a
+# line, one worker per engine, in a process group of its own (subproc.py),
+# stopped after WORKER_IDLE_S to give the memory back. Where it cannot run
+# (a ``piper`` of the operator's own, an older zimi-voice), each word runs
+# the engine as before.
+
+
+class _Worker:
+    """One engine's warm helper. ``ask`` sends a request and waits for its
+    answer; a worker that dies is started again by the next request, one
+    that hangs past the timeout is stopped."""
+
+    def __init__(self, engine, cmd):
+        self.engine, self.cmd = engine, cmd
+        self.proc = None
+        self.answers = None  # the reply lines of the current process
+        self.lock = threading.Lock()  # one request at a time
+        self.used = 0.0  # time.monotonic() of the last answer
+        self.loaded = set()  # what the running process has loaded, by _load_key
+        self.warming = set()  # what a warm-up is loading now
+        self.serves = None  # None until it has answered once; False: it cannot
+        self.stderr = collections.deque(maxlen=WORKER_STDERR_LINES)
+
+    def alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def _start(self):
+        self.stop()
+        self.proc = subproc.popen(
+            self.cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.used = time.monotonic()
+        self.answers = queue.Queue()
+        for target, pipe in (
+            (self._read, self.proc.stdout),
+            (self._drain, self.proc.stderr),
+        ):
+            threading.Thread(
+                target=target,
+                args=(pipe, self.answers),
+                daemon=True,
+                name="voice-worker",
+            ).start()
+        _ensure_janitor()
+
+    @staticmethod
+    def _read(pipe, answers):
+        try:
+            for line in pipe:
+                answers.put(line)
+        except (OSError, ValueError):
+            pass
+        answers.put(None)  # it ended
+
+    def _drain(self, pipe, _answers):
+        try:
+            for line in pipe:
+                self.stderr.append(line.decode("utf-8", "replace").rstrip())
+        except (OSError, ValueError):
+            pass
+
+    def ask(self, req, timeout):
+        """OK, FAILED (it could not say this), LOST (busy, too slow, or it
+        died: the next request starts it again), or UNSERVED: it never
+        answered at all, this helper has no serve mode."""
+        if not self.lock.acquire(timeout=timeout):
+            return LOST
+        try:
+            deadline = time.monotonic() + timeout
+            try:
+                if not self.alive():
+                    self._start()
+                self.proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
+                self.proc.stdin.flush()
+                line = self.answers.get(timeout=max(0.1, deadline - time.monotonic()))
+            except (OSError, ValueError, queue.Empty):
+                line = None
+            if line is None:
+                log.warning(
+                    "Say: the %s worker %s: %s",
+                    self.engine,
+                    "stopped" if not self.alive() else "took over %ss" % timeout,
+                    " | ".join(list(self.stderr)[-3:]),
+                )
+                self.stop()
+                if self.serves is None:
+                    self.serves = False
+                    return UNSERVED
+                return LOST
+            self.serves = True
+            self.used = time.monotonic()
+            try:
+                reply = json.loads(line)
+            except ValueError:
+                reply = {}
+            if reply.get("ok") is not True:
+                log.warning("Say: %s: %s", self.engine, reply.get("error", "no answer"))
+                return FAILED
+            return OK
+        finally:
+            self.lock.release()
+
+    def stop(self):
+        proc, self.proc = self.proc, None
+        self.loaded = set()
+        if proc is not None:
+            try:
+                proc.stdin.close()  # the end of its requests: it leaves
+            except (OSError, ValueError):
+                pass
+            subproc.stop(proc, grace=WORKER_STOP_GRACE_S)
+
+
+_workers = {}  # engine -> _Worker
+_workers_lock = threading.Lock()
+_janitor = None
+
+
+def _worker_command(engine):
+    """``voicehelper.py serve ENGINE`` where the engine runs through Zimi's
+    own helper (not a ``piper`` the operator named), else None."""
+
+    def find():
+        helper = runtime(engine)
+        if not helper or helper != _runner(engine):
+            return None
+        return helper[:-1] + ["serve", engine]
+
+    return _memo("serve-" + engine, find)
+
+
+def _worker(engine):
+    """The engine's worker (started on its first request), or None where
+    each word runs the engine afresh."""
+    cmd = _worker_command(engine) if engine in DOWNLOADED else None
+    if not cmd:
+        return None
+    with _workers_lock:
+        w = _workers.get(engine)
+        if w is None or w.cmd != cmd:
+            if w is not None:
+                w.stop()
+            w = _workers[engine] = _Worker(engine, cmd)
+    return None if w.serves is False else w
+
+
+def _stop_workers(engines=DOWNLOADED):
+    """Stop these engines' workers (a voice removed or replaced: the next
+    word loads what is on disk now) and forget them."""
+    with _workers_lock:
+        gone = [_workers.pop(e) for e in engines if e in _workers]
+    for w in gone:
+        # A word in flight gets a moment; then it is stopped anyway, and
+        # its request comes back LOST rather than holding up a removal.
+        held = w.lock.acquire(timeout=WORKER_STOP_GRACE_S)
+        try:
+            w.stop()
+        finally:
+            if held:
+                w.lock.release()
+
+
+def _reap_idle(now=None):
+    """Stop every worker nothing has asked of for WORKER_IDLE_S. One in the
+    middle of a word is left to finish it. True while any is still up."""
+    now = time.monotonic() if now is None else now
+    with _workers_lock:
+        workers = list(_workers.values())
+    for w in workers:
+        if (
+            w.alive()
+            and now - w.used >= WORKER_IDLE_S
+            and w.lock.acquire(blocking=False)
+        ):
+            try:
+                log.info("Say: the %s worker was idle, stopped", w.engine)
+                w.stop()
+            finally:
+                w.lock.release()
+    return any(w.alive() for w in workers)
+
+
+def _janitor_loop():
+    global _janitor
+    while True:
+        time.sleep(WORKER_IDLE_CHECK_S)
+        if _reap_idle():
+            continue
+        with _workers_lock:  # one started since is seen here, or starts another
+            if not any(w.alive() for w in _workers.values()):
+                _janitor = None
+                return
+
+
+def _ensure_janitor():
+    global _janitor
+    with _workers_lock:
+        if _janitor is None:
+            _janitor = threading.Thread(
+                target=_janitor_loop, daemon=True, name="voice-workers"
+            )
+            _janitor.start()
+
+
+atexit.register(_stop_workers)
 
 
 def _say_voices():
@@ -631,19 +868,33 @@ def valid_lang(lang, accent=""):
     )
 
 
-def _command(engine, voice, out):
+def _request(engine, voice):
+    """What a downloaded voice's engine is given besides the text: its
+    files, and Kokoro's speaker and phoneme code (voicehelper.py)."""
     if engine == PIPER:
         rec = installed().get(voice)
-        onnx = os.path.join(_piper_dir(), rec["id"] + ".onnx")
-        return piper_command() + ["-m", onnx, "-f", out]
+        return {"model": os.path.join(_piper_dir(), rec["id"] + ".onnx")}
+    speaker, code = KOKORO_LANGS[voice]
+    folder = _engine_dir(KOKORO)
+    return {
+        "model": os.path.join(folder, KOKORO_MODEL),
+        "voices": os.path.join(folder, KOKORO_VOICES),
+        "voice": speaker,
+        "lang": code,
+    }
+
+
+def _command(engine, voice, out):
+    """One engine run that says one word, the text on its stdin."""
+    if engine == PIPER:
+        return piper_command() + ["-m", _request(engine, voice)["model"], "-f", out]
     if engine == KOKORO:
-        speaker, code = KOKORO_LANGS[voice]
-        folder = _engine_dir(KOKORO)
+        req = _request(engine, voice)
         return kokoro_command() + [
-            "--model", os.path.join(folder, KOKORO_MODEL),
-            "--voices", os.path.join(folder, KOKORO_VOICES),
-            "--voice", speaker,
-            "--lang", code,
+            "--model", req["model"],
+            "--voices", req["voices"],
+            "--voice", req["voice"],
+            "--lang", req["lang"],
             "-f", out,
         ]  # fmt: skip
     if engine == SAY:
@@ -664,45 +915,168 @@ def _cache_voice(engine, voice):
     return voice
 
 
+class Busy(Exception):
+    """The voice is there but did not say the word this time: others were
+    ahead of it, or it took too long. Not "no voice": the page keeps the
+    voice and asks again (503, Retry-After)."""
+
+
+class Failed(Exception):
+    """The engine ran and could not say this word (500)."""
+
+
+_failures = collections.OrderedDict()  # audio path -> True, the latest last
+
+
 def speak(text, lang, accent="", engine=None):
     """WAV bytes of ``text`` said in ``lang``, or None when no engine can
-    say it (or every engine that could failed). ``engine``: that engine or
-    none. Cached by engine, voice and text; one synthesis at a time."""
+    say it. ``engine``: that engine or none. Raises Busy when one can but
+    did not get to it, Failed when it tried and could not. Cached by engine,
+    voice and text; one synthesis at a time, SYNTH_QUEUE more waiting."""
+    if clean_text(text) is None or not valid_lang(lang, accent):
+        return None
+    if engine is not None and engine not in ENGINES:
+        return None
+    _maybe_fetch(lang, accent)
+    where = _audio(text, lang, accent, engine)
+    if where is None:
+        return None
+    engine, voice, text, path = where
+    folder = os.path.dirname(path)
+    got = _cached(path)
+    if got is not None:
+        return got
+    if not _synth_slots.acquire(blocking=False):
+        raise Busy("queue full")
+    try:
+        if not _synth_lock.acquire(timeout=SYNTH_WAIT_S):
+            raise Busy("waited %ss" % SYNTH_WAIT_S)
+        try:
+            got = _cached(path)  # another request may have said it while we waited
+            if got is not None:
+                return got
+            os.makedirs(folder, exist_ok=True)
+            tmp = path + ".part"
+            try:
+                done = _synthesize(engine, voice, text, tmp)
+                _note_failure(path, done == FAILED)
+                if done == FAILED:
+                    raise Failed(engine)
+                if done != OK:
+                    raise Busy("%s did not answer" % engine)
+                os.replace(tmp, path)
+            finally:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+        finally:
+            _synth_lock.release()
+    finally:
+        _synth_slots.release()
+    _trim_cache()
+    return _cached(path)
+
+
+def _audio(text, lang, accent="", engine=None):
+    """(engine, voice, text, path): who says the word and where its audio
+    is kept, or None when no engine here can say it."""
     text = clean_text(text)
     if text is None or not valid_lang(lang, accent):
         return None
     if engine is not None and engine not in ENGINES:
         return None
-    _maybe_fetch(lang, accent)
     picked = choose(lang, accent, engine)
     if not picked:
         return None
     engine, voice = picked
     folder = _cache_dir(engine, _cache_voice(engine, voice))
-    path = os.path.join(folder, hashlib.sha1(text.encode("utf-8")).hexdigest() + ".wav")
-    got = _cached(path)
-    if got is not None:
-        return got
-    if not _synth_lock.acquire(timeout=SYNTH_WAIT_S):
+    name = hashlib.sha1(text.encode("utf-8")).hexdigest() + ".wav"
+    return engine, voice, text, os.path.join(folder, name)
+
+
+def said(text, lang, accent="", engine=None):
+    """None when no voice here says the word, else {"made": its audio is
+    there, "failed": the engine could not say it last time}. Nothing is
+    said or fetched: the page asks this after its audio failed. Missing,
+    made (audio that would not play) or failed: the word is the device's.
+    Neither: the voice was busy, and the next tap asks again."""
+    where = _audio(text, lang, accent, engine)
+    if where is None:
         return None
+    path = where[3]
+    with _lock:
+        failed = path in _failures
+    return {"made": os.path.isfile(path), "failed": failed}
+
+
+def _note_failure(path, failed):
+    with _lock:
+        _failures.pop(path, None)
+        if failed:
+            _failures[path] = True
+            while len(_failures) > FAILURES_MAX:
+                _failures.popitem(last=False)
+
+
+def _synthesize(engine, voice, text, out):
+    """Say ``text`` into ``out``: through the engine's warm worker where it
+    has one, else one run of the engine. OK (a WAV is there), FAILED or
+    LOST."""
+    timeout = KOKORO_TIMEOUT_S if engine == KOKORO else SYNTH_TIMEOUT_S
+    worker = _worker(engine)
+    if worker is not None:
+        loads = _request(engine, voice)
+        done = worker.ask(dict(loads, text=text, out=out), timeout)
+        if done == OK:
+            worker.loaded.add(_load_key(loads))
+            return OK if _is_wav(out) else FAILED
+        if done != UNSERVED:
+            return done
+    return (
+        OK if _run(_command(engine, voice, out), text, out, timeout=timeout) else FAILED
+    )
+
+
+def warm(langs):
+    """Have the worker of the engine that says each language load it now,
+    in the background, so the first word is not the slow one. Downloads
+    nothing (no _maybe_fetch); a voice already loaded, or loading, is left
+    alone. Returns the engines asked to load something."""
+    started = []
+    for lang in list(langs or [])[:WARM_LANGS_MAX]:
+        if not isinstance(lang, str) or not valid_lang(lang):
+            continue
+        picked = choose(lang)
+        if not picked or picked[0] not in DOWNLOADED:
+            continue
+        worker = _worker(picked[0])
+        if worker is None:
+            continue
+        req = _request(*picked)
+        key = _load_key(req)
+        with _workers_lock:
+            if key in worker.loaded or key in worker.warming:
+                continue
+            worker.warming.add(key)
+        started.append(picked[0])
+        threading.Thread(
+            target=_warm_one, args=(worker, req, key), daemon=True, name="voice-warm"
+        ).start()
+    return started
+
+
+def _warm_one(worker, req, key):
+    timeout = KOKORO_TIMEOUT_S if worker.engine == KOKORO else SYNTH_TIMEOUT_S
     try:
-        got = _cached(path)  # another request may have said it while we waited
-        if got is not None:
-            return got
-        os.makedirs(folder, exist_ok=True)
-        tmp = path + ".part"
-        try:
-            wait = KOKORO_TIMEOUT_S if engine == KOKORO else SYNTH_TIMEOUT_S
-            if not _run(_command(engine, voice, tmp), text, tmp, timeout=wait):
-                return None
-            os.replace(tmp, path)
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+        if worker.ask(req, timeout) == OK:
+            worker.loaded.add(key)
     finally:
-        _synth_lock.release()
-    _trim_cache()
-    return _cached(path)
+        with _workers_lock:
+            worker.warming.discard(key)
+
+
+def _load_key(req):
+    """What a request makes a worker load: the same key, nothing new."""
+    return json.dumps(req, sort_keys=True)
 
 
 def _cached(path):
@@ -969,6 +1343,7 @@ def _fetch_voice(tag):
             },
         )
         if old and not _is_current(tag, old):
+            _stop_workers((pin.engine,))
             _delete_voice_files(old)
         log.info("Voices: %s (%s) installed", tag, pin.id)
         with _lock:
@@ -1022,6 +1397,7 @@ def remove(tag):
     if not rec:
         return False
     _set_installed(rec["engine"], tag, None)
+    _stop_workers((rec["engine"],))  # its memory back, and nothing stale
     _delete_voice_files(rec)
     log.info("Voices: %s (%s) removed", tag, rec["id"])
     return True
