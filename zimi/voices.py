@@ -728,8 +728,25 @@ def can_download(tag=None):
 
 
 def downloading():
+    """The download in flight ({"tag", "done", "total"}), or the language
+    whose last one failed ({"error": tag}). One being cancelled is already
+    gone as far as anyone looking is concerned."""
     with _lock:
-        return dict(_download)
+        return {} if _download.get("cancel") else dict(_download)
+
+
+class _Cancelled(Exception):
+    pass
+
+
+def cancel_download():
+    """Stop the download in flight; its partial files go and the language
+    is as it was. False when nothing was downloading."""
+    with _lock:
+        if not _download.get("tag"):
+            return False
+        _download["cancel"] = True
+    return True
 
 
 def start_download(tag):
@@ -785,6 +802,8 @@ def _fetch_file(url, dest, expect):
                 raise ValueError("larger than the pinned voice")
             f.write(chunk)
             with _lock:
+                if _download.get("cancel"):
+                    raise _Cancelled()
                 _download["done"] = _download.get("done", 0) + len(chunk)
     if got != expect:
         raise ValueError("not the pinned voice's size")
@@ -829,6 +848,10 @@ def _fetch_voice(tag):
         if old and not _is_current(tag, old):
             _delete_voice_files(old)
         log.info("Voices: %s (%s) installed", tag, pin.id)
+        with _lock:
+            _download.clear()
+    except _Cancelled:
+        log.info("Voices: %s cancelled", tag)
         with _lock:
             _download.clear()
     except Exception as e:

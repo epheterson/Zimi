@@ -6501,6 +6501,13 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(409, {"error": "Another voice is downloading"})
         return handler._json(200, _voices.manage_payload())
 
+    elif parsed.path == "/manage/voices/cancel":
+        # The download in flight stops; its partial files go.
+        from zimi import voices as _voices
+
+        _voices.cancel_download()
+        return handler._json(200, _voices.manage_payload())
+
     elif parsed.path == "/manage/voices/remove":
         # {"lang": tag}: the voice and its audio go; the language falls back.
         from zimi import voices as _voices

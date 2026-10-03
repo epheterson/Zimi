@@ -412,6 +412,44 @@ def test_a_download_lands_only_at_the_pinned_size(piper, monkeypatch):
     assert not [f for f in os.listdir(voices._piper_dir()) if f.endswith(".part")]
 
 
+def test_a_cancelled_download_leaves_nothing_and_no_error(piper, monkeypatch):
+    """Cancel stops the fetch at its next chunk: no voice, no partial file,
+    no failure to report, and the language can be fetched again."""
+    monkeypatch.setitem(
+        voices.VOICES,
+        "fr",
+        voices._piper("fr_FR-siwis-medium", 10, 4, "CC BY 4.0", "SIWIS"),
+    )
+    assert voices.cancel_download() is False, "nothing to cancel"
+
+    class Resp:
+        """Hands out one byte at a time; cancelled after the first."""
+
+        def __init__(self):
+            self.n = 0
+
+        def read(self, _k):
+            self.n += 1
+            if self.n == 2:
+                assert voices.cancel_download() is True
+                assert voices.downloading() == {}, "cancelled is already gone"
+            return b"0"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(voices.urllib.request, "urlopen", lambda req, timeout: Resp())
+    voices._download.update({"tag": "fr", "done": 0, "total": 14})
+    voices._fetch_voice("fr")
+    assert "fr" not in voices.installed()
+    assert voices.downloading() == {}
+    assert voices._download == {}, "free for the next download"
+    assert not [f for f in os.listdir(voices._piper_dir()) if f.endswith(".part")]
+
+
 def test_removing_a_voice_falls_back_and_clears_its_audio(piper, monkeypatch):
     install("en-US")
     monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})
@@ -652,6 +690,29 @@ def _get(url, headers=None):
         return r.status, r.headers, r.read()
     except urllib.error.HTTPError as e:
         return e.code, e.headers, e.read()
+
+
+def test_cancel_over_http_answers_the_list(served):
+    """POST /manage/voices/cancel: the download in flight is gone from the
+    answer at once, and with nothing in flight it is harmless."""
+
+    def post():
+        req = urllib.request.Request(
+            served + "/manage/voices/cancel",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        r = urllib.request.urlopen(req)
+        return r.status, json.loads(r.read())
+
+    code, got = post()
+    assert code == 200 and got["downloading"] == {} and got["voices"]
+    voices._download.update({"tag": "fr", "done": 1, "total": 10})
+    code, got = post()
+    assert code == 200 and got["downloading"] == {}
+    assert voices._download.get("cancel") is True
+    voices._reset_for_tests()
 
 
 def test_speak_answers_a_wav_a_range_and_a_404(served):
