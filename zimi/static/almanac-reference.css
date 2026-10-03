@@ -178,6 +178,18 @@
 .tb-how h4 { margin: 8px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
 .tb-how ul { margin: 0 0 6px; padding-inline-start: 18px; }
 .tb-how li { margin: 2px 0; line-height: 1.45; overflow-wrap: anywhere; }
+/* Equations: one a line, its label small above it; a long one scrolls in
+   its own line, never the page. The terms' tables are short frames. */
+.tb-eqs { margin: 6px 0 4px; }
+.tb-eqs > summary { padding: 10px 0; font-weight: 600; color: var(--text); cursor: pointer; }
+.tb-eq { margin: 4px 0 10px; break-inside: avoid; }
+.tb-eq-l { font-size: 11.5px; color: var(--text3); }
+.tb-eq-m { overflow-x: auto; overflow-y: hidden; padding: 2px 0; color: var(--text); scrollbar-width: thin; }
+.tb-eq-m math { font-size: 15px; margin: 0; }
+.tb-eq-m math.tml-display { display: block math; width: max-content; min-width: 100%; text-align: start; }
+.tb-eq-src { font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text2); }
+.tb-eq-frame { max-height: 260px; margin: 4px 0 12px; }
+.tb-eq-terms { font-variant-numeric: tabular-nums; }
 .tb-how-k { padding: 0; border: 0; background: none; color: var(--amber); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .tb-steps th { font-weight: 400; color: var(--text2); white-space: normal; }
 .tb-steps td { font-family: var(--tb-mono); font-size: 13px; }
@@ -346,4 +358,7 @@
   .tk-seg button { padding: 0; min-height: 0; box-shadow: none !important; }
   .tk-pill svg { display: none; }
   .tb-plot, .tb-figure, .tb-working, .alm-ref-list li { break-inside: avoid; }
+  .tb-eq-m { overflow: visible; }
+  .tb-eq-m math { font-size: 10pt; color: #000; }
+  .tb-eqs > summary { padding: 4pt 0; }
 }

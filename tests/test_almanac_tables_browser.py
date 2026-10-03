@@ -157,10 +157,20 @@ def _how_is_made(page, id_, md):
     assert how and not how["open"] and how["lines"] >= 1, (id_, how)
     assert "Method" in how["groups"], (id_, how)
     assert "## How this is made" in md and "### Method" in md, (id_, md[-600:])
+    # Its Equations: closed inside it, and in the Markdown as LaTeX.
+    eqs = page.evaluate(
+        "() => { const e = document.querySelector('#tb-how details.tb-eqs'); return e && { open: e.open, n: e.querySelectorAll('.tb-eq').length }; }"
+    )
+    assert eqs and not eqs["open"] and eqs["n"] >= 1, (id_, eqs)
+    assert "### Equations" in md and md.count("$$") >= 2 * eqs["n"], (id_, md[-600:])
     page.evaluate("_tbPrintOn()")
-    assert page.evaluate("document.querySelector('#tb-how details').open")
+    assert page.evaluate(
+        "[...document.querySelectorAll('#tb-how details')].every((d) => d.open)"
+    )
     page.evaluate("_tbPrintOff()")
-    assert not page.evaluate("document.querySelector('#tb-how details').open")
+    assert not page.evaluate(
+        "[...document.querySelectorAll('#tb-how details')].some((d) => d.open)"
+    )
 
 
 def test_the_tiles(page):
@@ -175,6 +185,11 @@ def test_the_tiles(page):
     )
     assert page.evaluate("document.querySelectorAll('.alm-sheet').length") == 0
     assert _no_side_scroll(page)
+    # The equations' renderer is not on the Almanac's path: it comes only
+    # when Equations are opened (or printed).
+    assert page.evaluate(
+        "!window.temml && !document.querySelector('script[src*=\"temml\"]')"
+    )
 
 
 @pytest.mark.parametrize("id_", TABLES)
@@ -618,4 +633,44 @@ def test_a_sections_own_tiles_and_back_to_it(page):
         "document.getElementById('almanac-place').getBoundingClientRect().top"
     )
     assert -900 < top < 900, top
+    assert not page.errors, page.errors
+
+
+def test_equations_open_and_draw_as_mathml(page):
+    """A table's Equations: Temml loads only when they are opened, every
+    equation is drawn as <math>, a long one scrolls in its own line (the
+    page never sideways), and Print draws them too. The tide's lists its
+    station's constituents."""
+    page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
+    _open(page, "suntime")
+    page.evaluate("document.querySelector('#tb-how details').open = true")
+    page.click("#tb-how details.tb-eqs > summary")
+    page.wait_for_function(
+        "() => { const e = document.querySelectorAll('#tb-how .tb-eq'); return e.length && [...e].every((x) => x.querySelector('math')); }",
+        timeout=20000,
+    )
+    n = page.evaluate("document.querySelectorAll('#tb-how .tb-eq math').length")
+    assert n >= 10, n
+    assert page.evaluate("document.querySelectorAll('#tb-how .tb-eq-src').length") == 0
+    assert _no_side_scroll(page)
+    # Still drawn after the table redraws (another month).
+    page.click("[data-tb-step='1']")
+    page.wait_for_function(DRAWN, timeout=60000)
+    page.wait_for_function(
+        "() => document.querySelector('#tb-how details.tb-eqs').open && document.querySelectorAll('#tb-how .tb-eq math').length > 0"
+    )
+    # The tide's: its station's constituents in a table.
+    _open(page, "tides")
+    page.evaluate(
+        "() => { document.querySelector('#tb-how details').open = true; document.querySelector('#tb-how details.tb-eqs').open = true; }"
+    )
+    page.wait_for_function(
+        "() => document.querySelectorAll('#tb-how .tb-eq math').length > 0",
+        timeout=20000,
+    )
+    rows = page.evaluate(
+        "document.querySelectorAll('#tb-how .tb-eq-terms tbody tr').length"
+    )
+    assert rows >= 5, rows
+    assert "M2" in page.inner_text("#tb-how .tb-eq-terms")
     assert not page.errors, page.errors

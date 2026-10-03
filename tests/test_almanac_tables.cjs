@@ -159,5 +159,61 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
   check(hm(day.rise) === '05:25' && hm(day.set) === '20:31', 'one day for New York: sunrise ' + hm(day.rise) + ', sunset ' + hm(day.set));
 }
 
+// ── 7. Equations: every view has them, each parses, each label is a string,
+// and every number written into one is the code's own ──
+{
+  vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-tides.js'), 'utf8'), S);
+  vm.runInContext(fs.readFileSync(path.join(STATIC, 'temml', 'temml.min.js'), 'utf8'), S);
+  const en = JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'en.json'), 'utf8'));
+  const src = ['almanac.js', 'almanac-earth.js', 'almanac-reference.js', 'almanac-tables.js', 'almanac-tides.js', 'app.js']
+    .map((f) => fs.readFileSync(path.join(STATIC, f), 'utf8')).join('\n');
+  // A function's text, by name (its braces balanced), and every named constant's line.
+  function fnText(name) {
+    const at = src.indexOf('function ' + name + '(');
+    if (at < 0) return null;
+    let i = src.indexOf('{', at), depth = 0;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) return src.slice(at, i + 1);
+    }
+    return null;
+  }
+  const decls = src.split('\n').filter((l) => /^\s*var [A-Z_][A-Z0-9_]* = /.test(l)).join('\n');
+  // A station of two constituents, for the tide's group.
+  S._at.data = { tides: { constituents: ['M2', 'S2'] } };
+  const made = { st: { a: [1000, 300], g: [1800, 2000], z0: 1500 } };
+  const x = { mid: Date.UTC(2026, 9, 3), date: Date.UTC(2026, 9, 3), places: [], made };
+  let n = 0, badParse = [], badLabel = [], badNum = [], badFn = [];
+  for (const view of Object.keys(S.TB_EQ_VIEWS)) {
+    S._tb.id = view;
+    const items = [].concat.apply([], S.TB_EQ_VIEWS[view].map((g) => S.TB_EQ[g](x)));
+    check(items.some((it) => it.tex), view + ' has equations');
+    for (const it of items) {
+      if (!it.tex) continue;
+      n++;
+      try { S.temml.renderToString(it.tex, { displayMode: true, throwOnError: true }); } catch (e) { badParse.push(view + ': ' + it.tex + ' (' + e.message + ')'); }
+      if (!en['tb_eq_' + it.l]) badLabel.push(it.l);
+      if (!it.fns.length) continue;
+      const texts = it.fns.map(fnText);
+      if (texts.some((s) => !s)) { badFn.push(it.fns.join(',')); continue; }
+      const body = texts.join('\n');
+      for (const num of it.tex.match(/\d+\.\d+|\d{5,}/g) || []) {
+        if (body.indexOf(num) < 0 && decls.indexOf(num) < 0) badNum.push(view + ' ' + it.l + ': ' + num + ' not in ' + it.fns.join(','));
+      }
+    }
+  }
+  check(!badParse.length, n + ' equations are TeX Temml draws' + (badParse.length ? ': ' + badParse.slice(0, 3).join(' | ') : ''));
+  check(!badLabel.length, 'every equation has its label' + (badLabel.length ? ': ' + badLabel.join(', ') : ''));
+  check(!badFn.length, 'every function an equation names exists' + (badFn.length ? ': ' + badFn.join(' | ') : ''));
+  check(!badNum.length, 'every number in an equation is in its function or a named constant' + (badNum.length ? ': ' + badNum.join(' | ') : ''));
+  // A number that is not the code's is caught: the guard can fail.
+  const fake = S._tbEq('nutation', '\\Delta\\psi=-17.25\\sin\\Omega', ['_aeNutation']);
+  check(fnText('_aeNutation').indexOf('17.25') < 0 && fake.tex.match(/\d+\.\d+/)[0] === '17.25', 'a wrong coefficient would be caught');
+  // The tide's constituents: the station's own, with this year's f and V0 + u.
+  S._tb.id = 'tides';
+  const tide = S.TB_EQ.tides(x), table = tide.filter((it) => it.table)[0];
+  check(table && /M2/.test(table.table) && /S2/.test(table.table), 'the tide lists its station\'s constituents');
+}
+
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all passed');
