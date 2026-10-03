@@ -2792,6 +2792,25 @@ function goHome(e) {
   setTimeout(function() { window.scrollTo({ top: 0 }); }, 0);
 }
 
+// An app page has loaded before it has anything to show: its data is a fetch
+// away, and the page sat blank until it came. The loader stays until the page
+// says it has drawn ('ready', from apps.js), or APP_READY_MAX_MS at the most.
+var APP_READY_MAX_MS = 6000;
+var _appReadyTimer = null;
+function _readerLoaded(frame, loading) {
+  clearTimeout(_appReadyTimer);
+  var w = null; try { w = frame.contentWindow; } catch (e) {}
+  var waiting = false; try { waiting = !!(w && w.__zimiAppPage && !w.__zimiReady); } catch (e) {}
+  if (!waiting) { loading.classList.add('hidden'); return; }
+  _appReadyTimer = setTimeout(function() { loading.classList.add('hidden'); }, APP_READY_MAX_MS);
+}
+function _appReady(source) {
+  var f = document.getElementById('reader-frame');
+  if (!f || source !== f.contentWindow) return;
+  clearTimeout(_appReadyTimer);
+  document.getElementById('reader-loading').classList.add('hidden');
+}
+
 function _isAppPage() {
   return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage() || _isDictPage();
 }
@@ -19963,6 +19982,8 @@ window.addEventListener('message', function(e) {
     if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'ready') {
+    _appReady(e.source);
   } else if (d.zimi === 'top') {
     _appTop = d.top !== false;
     updateTopbar();
@@ -21095,7 +21116,7 @@ function openReader(url) {
     // white page doesn't break dark mode. No-op under Reader View / dark pages.
     try { _applyArticleDarken(frame.contentDocument); } catch(e) {}
     frame.style.visibility = 'visible'; // reveal now — shell (or raw doc) is ready to paint
-    loading.classList.add('hidden');
+    _readerLoaded(frame, loading);
     try { _applyReaderFont(frame.contentDocument); } catch(e) {} // reapply persisted font scale
     // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
     try {
