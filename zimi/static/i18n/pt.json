@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "Voz para {lang}:",
   "dictionary_voice_download": "Baixar ({mb} MB)",
   "dictionary_voice_downloading": "Baixando a voz para {lang}",
+  "dictionary_voices_menu": "Vozes",
+  "dictionary_voice_device": "Este dispositivo",
   "dictionary_not_found": "Nenhum dicionário aqui tem “{word}”.",
   "dictionary_near": "Quis dizer",
   "dictionary_empty": "Ainda não há nenhum Wikcionário instalado.",

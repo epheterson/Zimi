@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "Голос для языка «{lang}»:",
   "dictionary_voice_download": "Загрузить ({mb} МБ)",
   "dictionary_voice_downloading": "Загружается голос для языка «{lang}»",
+  "dictionary_voices_menu": "Голоса",
+  "dictionary_voice_device": "Это устройство",
   "dictionary_not_found": "Ни в одном словаре здесь нет «{word}».",
   "dictionary_near": "Возможно, вы имели в виду",
   "dictionary_empty": "Викисловарь пока не установлен.",

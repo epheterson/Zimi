@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "Stimme für {lang}:",
   "dictionary_voice_download": "Herunterladen ({mb} MB)",
   "dictionary_voice_downloading": "Stimme für {lang} wird geladen",
+  "dictionary_voices_menu": "Stimmen",
+  "dictionary_voice_device": "Dieses Gerät",
   "dictionary_not_found": "Kein Wörterbuch hier kennt „{word}“.",
   "dictionary_near": "Meintest du",
   "dictionary_empty": "Noch kein Wiktionary installiert.",

@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "صوت لـ{lang}:",
   "dictionary_voice_download": "تنزيل ({mb} ميغابايت)",
   "dictionary_voice_downloading": "جارٍ تنزيل صوت لـ{lang}",
+  "dictionary_voices_menu": "الأصوات",
+  "dictionary_voice_device": "هذا الجهاز",
   "dictionary_not_found": "لا يحوي أي قاموس هنا «{word}».",
   "dictionary_near": "هل تقصد",
   "dictionary_empty": "لم يُثبَّت أي ويكاموس بعد.",

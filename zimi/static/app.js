@@ -13434,7 +13434,9 @@ function _voiceRowHtml(v, d) {
   // names them, and says no engine of its own (each language's line does).
   // The licence, and its credit where the licence asks for one (CC BY,
   // Apache): names and licence ids, the same in every language.
-  var multi = v.langs && v.langs.length, meta = multi ? [] : [engine];
+  // A language with a choice above says its voice there, not again here.
+  var chosen = (d.choices || []).some(function(c) { return c.lang === v.tag.split('-')[0]; });
+  var multi = v.langs && v.langs.length, meta = multi || chosen ? [] : [engine];
   if (v.installed) meta.push(esc(fmtBytes(v.bytes)));
   if (v.newer) meta.push(tH('voices_newer'));
   meta.push(esc(v.license));
@@ -18837,9 +18839,10 @@ function _dictUrl(w) {
 function _dictStrings(w) {
   return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
     'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
-    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading', 'dictionary_voices_menu', 'dictionary_voice_device',
     'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
-    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), cancel: t('cancel'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed') });
+    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), cancel: t('cancel'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed'),
+      engine_kokoro: t('voices_engine_kokoro'), engine_piper: t('voices_engine_piper'), engine_say: t('voices_engine_say'), engine_espeak: t('voices_engine_espeak') });
 }
 // A word (or the front, w ''), as Reddot opens a post.
 function openDictionary(replaceState, w) {

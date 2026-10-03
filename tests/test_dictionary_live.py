@@ -530,7 +530,9 @@ def test_say_shows_it_is_working_never_stacks_and_recovers(piper_here, monkeypat
     f.eval_on_selector(SAY_EN, "b => b.click()")
     f.wait_for_function("() => window.__said.length === 1", timeout=10000)
     assert f.evaluate("() => window.__said[0][1]") == "Samantha"
-    f.wait_for_function("s => document.querySelector(s).className === 'spk'", arg=SAY_EN)
+    f.wait_for_function(
+        "s => document.querySelector(s).className === 'spk'", arg=SAY_EN
+    )
     f.eval_on_selector(SAY_EN, "b => b.click()")
     f.wait_for_function("() => window.__said.length === 2")
     assert (
@@ -613,7 +615,9 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
     assert not errors, errors
 
 
-def test_manage_voices_shows_progress_cancels_and_asks_before_removing(piper_here, monkeypatch, served):
+def test_manage_voices_shows_progress_cancels_and_asks_before_removing(
+    piper_here, monkeypatch, served
+):
     """Manage > Voices at 390px: a download's row moves on the ZIM
     downloads' bar, with Cancel; Remove asks once (a second tap) and the
     language then falls back; nothing is wider than the phone."""
@@ -640,11 +644,20 @@ def test_manage_voices_shows_progress_cancels_and_asks_before_removing(piper_her
     pg.eval_on_selector("#ms-voices details", "d => d.open = true")
     row = "#ms-voices .voice-row:has(.voice-progress)"
     first = pg.text_content(row + " .voice-progress")
-    pg.wait_for_function("([s, t]) => document.querySelector(s).textContent !== t", arg=[row + " .voice-progress", first], timeout=5000)
-    assert pg.eval_on_selector(row + " .dl-progress-bar", "b => parseFloat(b.style.width)") > 0
+    pg.wait_for_function(
+        "([s, t]) => document.querySelector(s).textContent !== t",
+        arg=[row + " .voice-progress", first],
+        timeout=5000,
+    )
+    assert (
+        pg.eval_on_selector(row + " .dl-progress-bar", "b => parseFloat(b.style.width)")
+        > 0
+    )
     assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
     pg.click(row + " button:has-text('Cancel')")
-    pg.wait_for_function("() => !document.querySelector('#ms-voices .voice-progress')", timeout=5000)
+    pg.wait_for_function(
+        "() => !document.querySelector('#ms-voices .voice-progress')", timeout=5000
+    )
     assert voices.downloading() == {}
     # Remove: the first tap asks, the second removes.
     rm = "#ms-voices button[data-confirm]"
@@ -653,6 +666,155 @@ def test_manage_voices_shows_progress_cancels_and_asks_before_removing(piper_her
     assert pg.text_content(rm) == "Remove?"
     assert "fr" in voices.installed()
     pg.click(rm)
-    pg.wait_for_function("() => !document.querySelector('#ms-voices button[data-confirm]')", timeout=5000)
+    pg.wait_for_function(
+        "() => !document.querySelector('#ms-voices button[data-confirm]')", timeout=5000
+    )
     assert "fr" not in voices.installed()
+    assert not errors, errors
+
+
+CARET_FR = "[data-voices='fr']"
+MENU_FR = "() => [...document.querySelectorAll(\"[data-voices='fr'] + .menu .menu-item\")].map(i => [i.textContent, i.getAttribute('aria-checked'), i.getAttribute('data-engine')])"
+
+
+def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeypatch):
+    """Eric, 2026-10-03: "A lil dropdown on the say button". Say plays the
+    default voice; its caret opens a menu of every voice that can say the
+    word, the default ticked, each a one-off listen by its own engine. One
+    voice: no caret. Arrows, Escape (focus back on the caret) and a tap
+    outside work as the shell's menus do."""
+    open_eau, errors = piper_here
+    f = open_eau()
+    assert f.eval_on_selector(CARET_FR, "c => c.hidden"), "the device alone: no caret"
+    tv.install("fr")
+    monkeypatch.setattr(voices, "_espeak_voices", lambda: {"fr": {"FR": "fr-fr"}})
+    f = open_eau()
+    f.wait_for_function("s => !document.querySelector(s).hidden", arg=CARET_FR)
+    caret = f.eval_on_selector(
+        CARET_FR,
+        "c => [c.getAttribute('aria-haspopup'), c.getAttribute('aria-expanded')]",
+    )
+    assert caret == ["menu", "false"]
+    _shot(f.page, "say-menu-closed-light")
+    _tap(f, CARET_FR)
+    assert f.evaluate(MENU_FR) == [
+        ["✓Piper", "true", "piper"],
+        ["Basic", "false", "espeak"],
+        ["This device", "false", "device"],
+    ]
+    assert (
+        f.eval_on_selector(CARET_FR + " + .menu", "m => m.getAttribute('role')")
+        == "menu"
+    )
+    heights = f.eval_on_selector_all(
+        ".menu-item", "is => is.map(i => i.getBoundingClientRect().height)"
+    )
+    assert min(heights) >= 44, heights
+    assert (
+        f.evaluate("() => document.activeElement.getAttribute('data-engine')")
+        == "piper"
+    ), "the ticked voice has focus"
+    assert f.evaluate("() => document.documentElement.scrollWidth") <= 390
+    _shot(f.page, "say-menu-open-light")
+    f.page.emulate_media(color_scheme="dark")
+    _shot(f.page, "say-menu-open-dark")
+    f.page.emulate_media(color_scheme="light")
+    # A voice from the menu: its own engine's audio, the menu closed.
+    f.click(".menu-item[data-engine='espeak']")
+    f.wait_for_function("() => window.__played.length > 0")
+    assert "&engine=espeak&" in f.evaluate("() => window.__played")[-1]
+    assert (
+        f.eval_on_selector(CARET_FR, "c => c.getAttribute('aria-expanded')") == "false"
+    )
+    # No espeak-ng here after all: the server says 404, and Basic leaves the
+    # menu rather than another voice answering under its name.
+    f.wait_for_function("() => !document.querySelector('.spk.busy')")
+    _tap(f, CARET_FR)
+    assert [e for _t, _c, e in f.evaluate(MENU_FR)] == ["piper", "device"]
+    # This device's own voice.
+    f.evaluate("() => { window.__said = []; }")
+    f.click(".menu-item[data-engine='device']")
+    f.wait_for_function("() => window.__said.length > 0")
+    assert f.evaluate("() => window.__said")[0][1] == "Thomas"
+    # Say itself still plays the default, with no engine named.
+    f.evaluate("() => { window.__played = []; }")
+    _tap(f, SAY_FR)
+    f.wait_for_function("() => window.__played.length > 0")
+    assert "engine=" not in f.evaluate("() => window.__played")[-1]
+    # Keys: Down opens on the ticked voice, Down moves, Escape closes and
+    # gives focus back to the caret.
+    f.focus(CARET_FR)
+    f.page.keyboard.press("ArrowDown")
+    assert (
+        f.evaluate("() => document.activeElement.getAttribute('data-engine')")
+        == "piper"
+    )
+    f.page.keyboard.press("ArrowDown")
+    assert (
+        f.evaluate("() => document.activeElement.getAttribute('data-engine')")
+        == "device"
+    )
+    f.page.keyboard.press("ArrowDown")
+    assert (
+        f.evaluate("() => document.activeElement.getAttribute('data-engine')")
+        == "piper"
+    ), "round again"
+    f.page.keyboard.press("Escape")
+    assert f.evaluate("() => document.activeElement.matches(\"[data-voices='fr']\")")
+    assert f.eval_on_selector(CARET_FR + " + .menu", "m => m.hidden")
+    # A tap outside closes it.
+    _tap(f, CARET_FR)
+    f.click(".hw h1")
+    assert f.eval_on_selector(CARET_FR + " + .menu", "m => m.hidden")
+    # Right to left, the menu hangs from Say's other edge.
+    f.evaluate("() => { document.documentElement.dir = 'rtl'; }")
+    _tap(f, CARET_FR)
+    edges = f.eval_on_selector(
+        CARET_FR + " + .menu",
+        "m => [m.getBoundingClientRect().right, m.parentNode.getBoundingClientRect().right]",
+    )
+    assert abs(edges[0] - edges[1]) < 1, edges
+    f.click(".hw h1")
+    f.evaluate("() => { document.documentElement.dir = 'ltr'; }")
+    f.page.emulate_media(color_scheme="dark")
+    _shot(f.page, "say-menu-closed-dark")
+    assert not errors, errors
+
+
+def test_manage_shows_natural_voices_as_one_row_and_a_choice(
+    piper_here, monkeypatch, served, tmp_path
+):
+    """Manage > Voices: Kokoro is one row, Natural voices, naming its
+    languages; where two voices say a language, a select picks which."""
+    open_eau, errors = piper_here
+    runner = tv.fake_piper(tmp_path)
+    monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
+    tv.install("kokoro")
+    tv.install("fr")
+    f = open_eau()
+    pg = f.page
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-voices details", timeout=20000)
+    pg.eval_on_selector("#ms-voices details", "d => d.open = true")
+    natural = pg.eval_on_selector_all(
+        "#ms-voices .voice-row",
+        "rs => rs.map(r => r.textContent).filter(t => t.indexOf('Natural voices') === 0)",
+    )
+    assert (
+        len(natural) == 1 and "Chinese" in natural[0] and "Hindi" in natural[0]
+    ), natural
+    sel = "#ms-voices select[aria-label$='French']"
+    assert pg.eval_on_selector(
+        sel, "s => [...s.options].map(o => o.value + (o.selected ? '*' : ''))"
+    ) == ["kokoro*", "piper"]
+    pg.eval_on_selector(sel, "s => s.scrollIntoView({ block: 'center' })")
+    _shot(pg, "manage-voices-choice")
+    pg.select_option(sel, "piper")
+    for _ in range(50):
+        if voices.choices() == {"fr": "piper"}:
+            break
+        time.sleep(0.1)
+    assert voices.choices() == {"fr": "piper"}
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    voices.set_choice("fr", None)
     assert not errors, errors

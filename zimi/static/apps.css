@@ -10,11 +10,13 @@
   --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4;
   --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08);
   --green: #2f7d4f; --radius: 12px; --radius-s: 8px;
+  --radius-menu: 10px; --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b;
     --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); --green: #5cbf80;
+    --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
 }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
@@ -137,3 +139,12 @@ button { font: inherit; color: inherit; }
   .chip.tag::after { inset: -7px 0; }
   .more { min-height: 44px; }
 }
+
+/* A menu, as the shell draws one (app.css #zim-ctx-menu, .ctx-item,
+   .ctx-check): surface, hairline, 10px corners, the popup shadow; items a
+   thumb's height, a tick column that mirrors in a right-to-left page. */
+.menu { position: absolute; z-index: 20; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-menu); box-shadow: var(--shadow-popup); padding: 4px 0; user-select: none; }
+.menu-item { display: flex; align-items: center; width: 100%; min-height: 44px; box-sizing: border-box; padding: 0 16px 0 10px; border: 0; background: none; font-size: 13px; color: var(--text); cursor: pointer; text-align: start; white-space: nowrap; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
+.menu-check { display: inline-block; width: 1.4em; flex: none; color: var(--amber); font-weight: 700; }
+.menu-sep { height: 1px; background: var(--border); margin: 4px 0; }

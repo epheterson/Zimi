@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "{lang} के लिए आवाज़:",
   "dictionary_voice_download": "डाउनलोड ({mb} MB)",
   "dictionary_voice_downloading": "{lang} के लिए आवाज़ डाउनलोड हो रही है",
+  "dictionary_voices_menu": "आवाज़ें",
+  "dictionary_voice_device": "यह डिवाइस",
   "dictionary_not_found": "यहाँ किसी शब्दकोश में “{word}” नहीं है।",
   "dictionary_near": "क्या आपका मतलब था",
   "dictionary_empty": "अभी कोई विक्षनरी इंस्टॉल नहीं है।",

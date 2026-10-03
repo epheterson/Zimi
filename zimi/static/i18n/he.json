@@ -2498,6 +2498,8 @@
   "dictionary_voice_offer_none": "קול ל{lang}:",
   "dictionary_voice_download": "הורדה ({mb} MB)",
   "dictionary_voice_downloading": "מוריד קול ל{lang}",
+  "dictionary_voices_menu": "קולות",
+  "dictionary_voice_device": "המכשיר הזה",
   "dictionary_not_found": "אף מילון כאן לא כולל את „{word}”.",
   "dictionary_near": "אולי התכוונת ל",
   "dictionary_empty": "עדיין לא הותקן ויקימילון.",
