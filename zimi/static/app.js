@@ -18600,6 +18600,12 @@ function openDictionary(replaceState, w) {
   updateTopbar();
 }
 
+// Whether Zimi takes up a language an app picked: one it speaks, and not
+// the one it already is in (wiki.html asks before it draws).
+function _uiLangFollows(code) {
+  return code !== _currentLang && _AVAILABLE_LANGS.some(function(l) { return l.code === code; });
+}
+
 // Zimi's language changed with a word open: the word's translation into it
 // opens (Back returns to the word), or, when it has none, the same word in
 // the new language's strings with that language's entry first. Eric,
@@ -19900,7 +19906,7 @@ window.addEventListener('message', function(e) {
   } else if (d.zimi === 'ui-lang' && _wikiOpen && typeof d.lang === 'string') {
     // Zimipedia's language picked: Zimi's follows when it has one by that
     // name, and the page opens again in its words (they ride in its '#').
-    if (d.lang === _currentLang || !_AVAILABLE_LANGS.some(function(l) { return l.code === d.lang; })) return;
+    if (!_uiLangFollows(d.lang)) return;
     setLanguage(d.lang).then(function() {
       if (!_isWikiPage() || _currentLang !== d.lang) return;
       var win = document.getElementById('reader-frame').contentWindow;

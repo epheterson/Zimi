@@ -837,7 +837,20 @@ function toggleLangs(open) {
 }
 // A language picked here is Zimi's too, where Zimi speaks it (Eric,
 // 2026-10-02: "when I switch languages also change Zimi language to match").
-function pickLang(code) { toggleLangs(false); setLang(code); tell({ zimi: 'ui-lang', lang: code }); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+// When Zimi changes with it the page opens again in Zimi's new words, so it
+// is kept and left to that one change (drawn here first, it changed twice).
+function pickLang(code) {
+  toggleLangs(false);
+  var zimi = false;
+  try { zimi = window.parent._uiLangFollows(code); } catch (e) { zimi = false; }
+  if (zimi && code !== _lang) {
+    try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
+    tell({ zimi: 'ui-lang', lang: code });
+    return;
+  }
+  setLang(code);
+  var b = document.getElementById('lang-btn'); if (b) b.focus();
+}
 // A tap outside the list, or Escape, closes it.
 document.addEventListener('click', function(e) {
   if (document.getElementById('lang-menu') && !(e.target.closest && e.target.closest('.lang-pick'))) toggleLangs(false);
