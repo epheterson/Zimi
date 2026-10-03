@@ -759,12 +759,12 @@ function loadVoices() {
 }
 // A clearer voice for a language the server says only with a lesser engine
 // (or not at all), offered to whoever may fetch it: a quiet line under the
-// word. Never and ZIMI_OFFLINE leave the server nothing to offer.
+// word. The server offers only where no downloaded voice says the language
+// (Kokoro, one download, for its eight); Never and ZIMI_OFFLINE leave it
+// nothing to offer.
 function offerFor(code) {
   if (!_server || !_server.can_change) return null;
-  var lang = serverLang(code), row = _server.langs[lang];
-  if (row && row.engine === 'piper') return null;
-  return (_server.offers || {})[lang] || null;
+  return (_server.offers || {})[serverLang(code)] || null;
 }
 var _pct = null;
 function pct(f) {
