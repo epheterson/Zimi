@@ -2792,6 +2792,25 @@ function goHome(e) {
   setTimeout(function() { window.scrollTo({ top: 0 }); }, 0);
 }
 
+// An app page has loaded before it has anything to show: its data is a fetch
+// away, and the page sat blank until it came. The loader stays until the page
+// says it has drawn ('ready', from apps.js), or APP_READY_MAX_MS at the most.
+var APP_READY_MAX_MS = 6000;
+var _appReadyTimer = null;
+function _readerLoaded(frame, loading) {
+  clearTimeout(_appReadyTimer);
+  var w = null; try { w = frame.contentWindow; } catch (e) {}
+  var waiting = false; try { waiting = !!(w && w.__zimiAppPage && !w.__zimiReady); } catch (e) {}
+  if (!waiting) { loading.classList.add('hidden'); return; }
+  _appReadyTimer = setTimeout(function() { loading.classList.add('hidden'); }, APP_READY_MAX_MS);
+}
+function _appReady(source) {
+  var f = document.getElementById('reader-frame');
+  if (!f || source !== f.contentWindow) return;
+  clearTimeout(_appReadyTimer);
+  document.getElementById('reader-loading').classList.add('hidden');
+}
+
 function _isAppPage() {
   return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage() || _isDictPage();
 }
@@ -4810,7 +4829,7 @@ function renderCardGrid(items, showStars, showCategory, countOf) {
     // preventDefault too: the card is now an anchor (#49), and a button click
     // inside a link otherwise still follows the link's href.
     const starHtml = showStars
-      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.preventDefault();event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.preventDefault();event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\', this)" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z, false, isTiles);
@@ -6266,7 +6285,49 @@ function _fmtDiscoverDate(dateStr) {
   }
 }
 
-async function toggleFavorite(zimName) {
+// A star on home moves a card into or out of Favorites, above everything else,
+// so the re-render used to bounce the page under the finger. What was tapped is
+// held where it was: the card in its own section, else that section's heading
+// (the card left Favorites), else the heading after it (Favorites emptied).
+function _homeSectionHeading(card) {
+  var grid = card.closest('.stats-grid');
+  var head = grid && grid.previousElementSibling;
+  return head && head.classList.contains('cat-heading') ? head : null;
+}
+function _homeHeadingByText(text) {
+  if (!text) return null;
+  var heads = document.querySelectorAll('.cat-heading');
+  for (var i = 0; i < heads.length; i++) if (heads[i].textContent === text) return heads[i];
+  return null;
+}
+function _homeAnchorOf(el) {
+  var card = el && el.closest && el.closest('.stat-card[data-zim]');
+  var head = card && _homeSectionHeading(card);
+  if (!head) return null;
+  var next = head.nextElementSibling;
+  while (next && !next.classList.contains('cat-heading')) next = next.nextElementSibling;
+  return {
+    zim: card.dataset.zim,
+    head: head.textContent, headTop: head.getBoundingClientRect().top,
+    cardTop: card.getBoundingClientRect().top,
+    next: next ? next.textContent : '', nextTop: next ? next.getBoundingClientRect().top : 0
+  };
+}
+function _keepHomeAnchor(a) {
+  if (!a) return;
+  var head = _homeHeadingByText(a.head);
+  var card = null;
+  if (head) {
+    var grid = head.nextElementSibling;
+    card = grid && grid.querySelector('.stat-card[data-zim="' + CSS.escape(a.zim) + '"]');
+  }
+  var el = card || head || _homeHeadingByText(a.next);
+  if (!el) return;
+  var was = card ? a.cardTop : head ? a.headTop : a.nextTop;
+  window.scrollBy(0, el.getBoundingClientRect().top - was);
+}
+
+async function toggleFavorite(zimName, fromEl) {
   try {
     const res = await fetch('/favorites', {
       method: 'POST',
@@ -6279,8 +6340,11 @@ async function toggleFavorite(zimName) {
       collectionsCache.favorites = data.favorites;
     }
     // Re-render current view to update stars
-    if (mode === 'home') renderHome();
-    else if (mode === 'search') renderSearchResults(allResults, currentSource);
+    if (mode === 'home') {
+      var anchor = _homeAnchorOf(fromEl);
+      renderHome();
+      _keepHomeAnchor(anchor);
+    } else if (mode === 'search') renderSearchResults(allResults, currentSource);
   } catch(e) {}
 }
 
@@ -6821,7 +6885,7 @@ function _moveZimTo(zim, category) {
       if (!nc || !nc.trim()) return;
       _moveZimTo(zim, nc.trim());
     } else if (action === 'favorite') {
-      closeCtx(); toggleFavorite(zim);
+      closeCtx(); toggleFavorite(zim, card);
     } else if (action === 'toggle-coll') {
       var collName = item.dataset.coll;
       closeCtx();
@@ -17799,7 +17863,9 @@ function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
   var bg = (_readerViewOn || _readerAuto() || _bookReading || _wikiFromApp) ? _readerThemeBg() : '';
-  if (frame) frame.style.background = bg || '#fff';
+  // No tint: app.css decides (white under a ZIM's page, the app's own ground
+  // under an app page).
+  if (frame) frame.style.background = bg || '';
   if (loading) loading.style.background = bg || '';
 }
 
@@ -19928,6 +19994,8 @@ window.addEventListener('message', function(e) {
     if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'ready') {
+    _appReady(e.source);
   } else if (d.zimi === 'top') {
     _appTop = d.top !== false;
     updateTopbar();
@@ -21054,13 +21122,13 @@ function openReader(url) {
     if (_bookDoc && _readerViewOn) _bookMath(frame);
     var _wikiOn = _wikiDoc && _readerViewOn;
     if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
-    _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
+    _tintReaderChrome(); // reset frame bg to app.css's if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
     // white page doesn't break dark mode. No-op under Reader View / dark pages.
     try { _applyArticleDarken(frame.contentDocument); } catch(e) {}
     frame.style.visibility = 'visible'; // reveal now — shell (or raw doc) is ready to paint
-    loading.classList.add('hidden');
+    _readerLoaded(frame, loading);
     try { _applyReaderFont(frame.contentDocument); } catch(e) {} // reapply persisted font scale
     // Capture mousedown inside iframe for modifier-click detection + dismiss context menu
     try {
