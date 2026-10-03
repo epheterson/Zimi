@@ -96,7 +96,10 @@ async function checkVersion() {
 // /userdata: an account's own saved things. Served stale, a second device
 // never saw what the first had saved, and the account's copy outlived a
 // sign-out in the cache.
-const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata'];
+// The Dictionary's voices: /dictionary/voices says who may fetch a voice and
+// what the server can say now (a download changes it), and /dictionary/speak
+// is audio asked for by range, which the cache cannot hold.
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak'];
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.

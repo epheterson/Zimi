@@ -2143,7 +2143,6 @@
   "voices_engine_say": "System",
   "voices_engine_espeak": "Einfach",
   "voices_engine_none": "Nur Gerät",
-  "voices_download": "Herunterladen",
   "voices_remove": "Entfernen",
   "voices_newer": "Neuere Stimme",
   "voices_downloading": "Wird geladen: {p} %",

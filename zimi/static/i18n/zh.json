@@ -2143,7 +2143,6 @@
   "voices_engine_say": "系统",
   "voices_engine_espeak": "基础",
   "voices_engine_none": "仅设备",
-  "voices_download": "下载",
   "voices_remove": "移除",
   "voices_newer": "较新的语音",
   "voices_downloading": "正在下载 {p}%",

@@ -13370,6 +13370,106 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// "Dictionary voices" (voices.py): the setting, Ask first / Automatically /
+// Never like the update check, and every language Piper has a pinned voice
+// for, with the voice that says it now, its size, and Download or Remove.
+// Folded to one line, so the list of languages is a tap away.
+var _VOICES_ID = 'ms-voices';
+var _VOICES_MODE_ID = 'ms-voices-mode';
+var _VOICES_POLL_MS = 2000;
+var _VOICE_BYTES_PER_MB = 1000 * 1000; // as fmtBytes counts, and the Dictionary's line
+var _voicesTimer = null;
+
+function _voicesModeHtml(s) {
+  var opts = (s.choices || ['ask', 'auto', 'never']).map(function(m) {
+    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === s.mode);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: _VOICES_MODE_ID,
+    labelKey: 'voices_mode',
+    hintKey: 'voices_mode_hint',
+    envVar: s.env || 'ZIMI_VOICE_DOWNLOADS',
+    locked: !!s.locked,
+    lockNote: s.locked === 'offline' ? t('net_offline') : '',
+    onchange: '_voicesSetMode(this.value)',
+    options: opts
+  });
+}
+
+// One language: its name, the voice that says it now, and what can be done.
+function _voiceRowHtml(v, d) {
+  var dl = d.downloading || {}, mayFetch = d.piper && d.setting.mode !== 'never';
+  var engine = tH('voices_engine_' + (v.engine || 'none'));
+  var act = '';
+  if (dl.tag === v.tag) {
+    act = '<span class="app-update-quiet">' + tH('voices_downloading', { p: Math.floor(100 * (dl.done || 0) / (dl.total || 1)) }) + '</span>';
+  } else if (dl.error === v.tag) {
+    act = '<span class="app-update-quiet">' + tH('voices_failed') + '</span>';
+  }
+  if (!dl.tag && mayFetch && (!v.installed || v.newer)) {
+    act += ' <button class="pill" onclick="_voicesPost(\'/manage/voices/download\', \'' + escAttr(v.tag) + '\')">' +
+      tH('dictionary_voice_download', { mb: Math.round(v.bytes / _VOICE_BYTES_PER_MB) }) + '</button>';
+  }
+  if (v.installed) {
+    act += ' <button class="pill" onclick="_voicesPost(\'/manage/voices/remove\', \'' + escAttr(v.tag) + '\')">' + tH('voices_remove') + '</button>';
+  }
+  // The size is said once: beside Piper when it is here, on Download when not.
+  var meta = engine + (v.installed ? ' · ' + esc(fmtBytes(v.bytes)) : '') + (v.newer ? ' · ' + tH('voices_newer') : '');
+  return '<div class="mc-row"><span class="mc-label">' + esc(_langDisplayName(v.tag)) +
+    '<span class="app-update-quiet voice-meta">' + meta + '</span></span>' +
+    '<span class="mc-value">' + act + '</span></div>';
+}
+
+function _voicesHtml(d) {
+  var have = d.voices.filter(function(v) { return v.installed; }).length;
+  // The ones here first, then by name in the reader's language.
+  var rows = d.voices.slice().sort(function(a, b) {
+    return (b.installed - a.installed) || _langDisplayName(a.tag).localeCompare(_langDisplayName(b.tag));
+  });
+  return _voicesModeHtml(d.setting) +
+    (d.piper ? '' : '<div class="ms-hint">' + tH('voices_no_piper') + '</div>') +
+    '<details class="net-details"' + (d.downloading && d.downloading.tag ? ' open' : '') + '><summary>' +
+      tH('voices_summary', { n: have, m: d.voices.length }) + '</summary>' +
+      rows.map(function(v) { return _voiceRowHtml(v, d); }).join('') + '</details>';
+}
+
+function _voicesPaint(d) {
+  var el = document.getElementById(_VOICES_ID);
+  if (!el) return;
+  if (!d || !d.voices) { el.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return; }
+  var open = !!el.querySelector('details[open]');
+  el.innerHTML = _voicesHtml(d);
+  if (open) el.querySelector('details').open = true;
+  // A download in flight: ask how it is going until it is done.
+  clearTimeout(_voicesTimer);
+  if (d.downloading && d.downloading.tag) _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
+}
+
+async function _renderVoicesSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/voices'); } catch (e) {}
+  _voicesPaint(d);
+}
+
+// Every answer is repainted from the server's truth; a refusal says so in
+// the words the caller names.
+function _voicesSend(path, body, failText) {
+  return manageFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d && d.error) _showToast(failText);
+    _renderVoicesSection();
+  }).catch(function() { _showToast(failText); _renderVoicesSection(); });
+}
+
+function _voicesPost(path, tag) { return _voicesSend(path, { lang: tag }, t('voices_failed')); }
+
+function _voicesSetMode(mode) {
+  _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' })).then(_renderNetSection);
+}
+
 // "What Zimi fetches from the internet" (outbound.py): every destination, one
 // row each, what sets it off and whether it happens on its own. Folded to one
 // line, the count of each, so a phone reads the answer without scrolling past
@@ -13380,6 +13480,7 @@ var _NET_ID = 'ms-net';
 // own action (a download, a capture) or by ZIMI_OFFLINE.
 var _NET_CONTROLS = {
   update_check: _APP_UPDATE_CHECK_ID,
+  voices: _VOICES_MODE_ID,
   sharing: 'ms-mirror-status',
   auto_update: 'library'
 };
@@ -13613,6 +13714,11 @@ function _msServerHtml() {
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
+  // The Dictionary's voices: what says each language, and the downloads.
+  var voicesSec = '<div class="ms-section-label">' + tH('net_voices') + '</div>' +
+    '<div class="ms-hint">' + tH('voices_hint') + '</div>' +
+    '<div id="' + _VOICES_ID + '">' + tH('loading') + '</div>';
+
   // Internet use, last on the tab: everything this server can fetch, and
   // which of it happens without anyone asking.
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
@@ -13621,8 +13727,9 @@ function _msServerHtml() {
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, Hot ZIMs + cache, the environment, and
   // Internet use last (Eric's final pass for 1.12).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, voicesSec, envSec, netSec].join(sep);
   _renderEnvSection();
+  _renderVoicesSection();
   _renderNetSection();
   // Async fill security
   Promise.all([
@@ -18642,9 +18749,9 @@ function _dictUrl(w) {
 function _dictStrings(w) {
   return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
     'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
-    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_download', 'dictionary_voice_downloading',
     'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
-    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), catalog: t('app_browse_catalog') });
+    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed') });
 }
 // A word (or the front, w ''), as Reddot opens a post.
 function openDictionary(replaceState, w) {

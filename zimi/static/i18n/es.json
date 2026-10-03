@@ -2143,7 +2143,6 @@
   "voices_engine_say": "Sistema",
   "voices_engine_espeak": "Básica",
   "voices_engine_none": "Solo el dispositivo",
-  "voices_download": "Descargar",
   "voices_remove": "Quitar",
   "voices_newer": "Voz más nueva",
   "voices_downloading": "Descargando {p} %",

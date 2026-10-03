@@ -9,6 +9,8 @@ the word, and the front lists it with the words you looked at.
 
 The device's voices are a Mac's, given to the page (headless Chromium has
 none): English and French, no Maltese; its reader reads English and French.
+The server says nothing (no Piper, say or espeak-ng) except in the test of
+the server's voice, where a fake Piper on PATH writes a known WAV.
 
 Run: pytest tests/test_dictionary_live.py -v
 """
@@ -23,9 +25,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dictionary_fixture as fx  # noqa: E402
+import test_voices as tv  # noqa: E402
 import zimi.renderer as renderer  # noqa: E402
 import zimi.server as srv  # noqa: E402
 from zimi import dictionary as dic  # noqa: E402
+from zimi import voices  # noqa: E402
 
 SHOTS = os.environ.get("ZIMI_SHOTS", "")
 VOICES = """(() => {
@@ -59,6 +63,13 @@ def served(tmp_path_factory):
     mp.setattr(srv, "ZIM_DIR", str(zdir))
     mp.setattr(srv, "ZIMI_DATA_DIR", str(tmp / "data"))
     os.makedirs(str(tmp / "data"), exist_ok=True)
+    # The server says nothing: the device's voices are the ones under test.
+    mp.setenv(voices.PIPER_CMD_ENV, str(tmp / "no-piper"))
+    mp.setattr(voices, "_say_voices", lambda: {})
+    mp.setattr(voices, "_espeak_voices", lambda: {})
+    for name in ("ZIMI_OFFLINE", voices.DOWNLOADS_ENV):
+        mp.delenv(name, raising=False)
+    voices._reset_for_tests()
     dic._reset_for_tests()
     srv.load_cache(force=True)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
@@ -295,3 +306,102 @@ def test_zimis_language_opens_the_translation_and_back_returns(served):
             _word(_frame(pg), "water")
         finally:
             br.close()
+
+
+# Every <audio> the page starts, and what it was asked to play.
+PLAYED = """(() => {
+  window.__played = [];
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function() { window.__played.push(this.src); return play.call(this); };
+})();"""
+OFFER = "() => { const o = document.querySelector('[data-offer=\\'fr\\']:not([hidden])'); return o ? o.textContent : ''; }"
+
+
+def test_say_is_the_servers_audio_and_the_download_line_follows_the_setting(served, tmp_path, monkeypatch):
+    """Eric's phone on silent: Say plays the server's WAV through <audio>,
+    never speechSynthesis, when the server can say the language. Without a
+    clearer voice for it the device speaks, and an admin is offered one,
+    unless the setting is Never or Zimi is offline."""
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.delenv(voices.PIPER_CMD_ENV, raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+    tv.fake_piper(tmp_path)
+    voices._reset_for_tests()
+    assert voices.piper_command() == [str(tmp_path / "piper")], "the fake Piper, found on PATH"
+
+    def fetched(tag):
+        tv.install(tag)
+        with voices._lock:
+            voices._download.clear()
+
+    monkeypatch.setattr(voices, "_fetch_voice", fetched)
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(viewport={"width": 390, "height": 844}, locale="en-US", is_mobile=True, has_touch=True)
+        ctx.add_init_script(VOICES)
+        ctx.add_init_script(PLAYED)
+        pg = ctx.new_page()
+        answers = []
+        pg.on("response", lambda r: "/dictionary/speak" in r.url and answers.append((r.status, r.headers.get("content-type"))))
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+
+        def open_eau():
+            pg.goto(served + "/?dictionary=eau")
+            f = _frame(pg)
+            _word(f, "eau")
+            f.wait_for_function("() => document.querySelector('[data-say][data-code=\"fr\"]:not([hidden])')")
+            pg.wait_for_timeout(300)
+            return f
+
+        try:
+            # No French voice on the server: the device says it, and an
+            # admin (this machine, no password) is offered a clearer one.
+            f = open_eau()
+            f.wait_for_function("() => (%s)() !== ''" % OFFER)
+            assert f.evaluate(OFFER) == "Clearer voice for French: Download (63 MB)"
+            _shot(pg, "voice-offer")
+            _tap(f, "[data-say][data-code='fr']:not([hidden])")
+            f.wait_for_function("() => window.__said.length > 0")
+            assert f.evaluate("() => window.__played") == []
+            # Never, and offline: no line.
+            voices.POLICY.set("never")
+            f = open_eau()
+            assert f.evaluate(OFFER) == ""
+            voices.POLICY.set("ask")
+            monkeypatch.setenv("ZIMI_OFFLINE", "1")
+            f = open_eau()
+            assert f.evaluate(OFFER) == ""
+            monkeypatch.delenv("ZIMI_OFFLINE")
+            # The tap downloads it; then Say is the server's audio.
+            f = open_eau()
+            f.wait_for_function("() => (%s)() !== ''" % OFFER)
+            _tap(f, "[data-get='fr']")
+            f.wait_for_function("() => (%s)() === ''" % OFFER, timeout=10000)
+            assert "fr" in voices.installed()
+            _shot(pg, "voice-installed")
+            pg.reload()
+            f = open_eau()
+            f.evaluate("() => { window.__said = []; }")
+            _tap(f, "[data-say][data-code='fr']:not([hidden])")
+            f.wait_for_function("() => window.__played.length > 0")
+            played = f.evaluate("() => window.__played")
+            assert played[-1].endswith("/dictionary/speak?text=eau&lang=fr"), played
+            pg.wait_for_timeout(500)
+            assert f.evaluate("() => window.__said") == [], "speechSynthesis is not called"
+            # Chromium asks for it by range, as Safari does.
+            assert answers and answers[-1] in ((200, "audio/wav"), (206, "audio/wav")), answers
+            # Removed: the device says it again, at once.
+            assert voices.remove("fr")
+            f = open_eau()
+            f.evaluate("() => { window.__played = []; }")
+            _tap(f, "[data-say][data-code='fr']:not([hidden])")
+            f.wait_for_function("() => window.__said.length > 0")
+            assert f.evaluate("() => window.__played") == []
+            assert not errors, errors
+        finally:
+            br.close()
+            voices.remove("fr")
+            voices.POLICY.set("ask")
+            voices._reset_for_tests()

@@ -2143,7 +2143,6 @@
   "voices_engine_say": "מערכת",
   "voices_engine_espeak": "בסיסי",
   "voices_engine_none": "המכשיר בלבד",
-  "voices_download": "הורדה",
   "voices_remove": "הסרה",
   "voices_newer": "קול חדש יותר",
   "voices_downloading": "מוריד {p}%",

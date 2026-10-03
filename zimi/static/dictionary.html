@@ -60,7 +60,8 @@
   .ipas .ipr { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
   .ipas .more-ipa { border: 0; background: none; padding: 2px 0; color: var(--text2); font: inherit; font-size: 12.5px; cursor: pointer; text-align: start; }
   .ipas .acc { font-size: 12px; color: var(--text2); min-width: 0; }
-  .novoice { font-size: 12.5px; color: var(--text2); }
+  .novoice, .voffer { font-size: 12.5px; color: var(--text2); }
+  .vget { border: 0; background: none; padding: 0; font: inherit; color: var(--amber); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
   .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
   .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
 
@@ -152,7 +153,8 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   etymology: 'Etymology', translations: 'Translations', all_translations: 'All {n} translations', fewer_translations: 'Only my languages',
   synonyms: 'Synonyms', antonyms: 'Antonyms', homophones: 'Homophones', rhymes: 'Rhymes',
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
-  recording: 'Recording', no_voice: 'No {lang} voice on this device', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  recording: 'Recording', no_voice: 'No {lang} voice on this device',
+  voice_offer: 'Clearer voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading a clearer voice for {lang}…', voice_failed: 'Couldn\'t download the voice', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
   entries: '{n} words', retry: 'Retry', catalog: 'Browse the catalog' });
 
@@ -164,6 +166,8 @@ var SAVED_SHOWN = 30;
 var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is given this long
 var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
 var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
+var VOICE_POLL_MS = 2000; // how often a page asks how a voice download is going
+var BYTES_PER_MB = 1000 * 1000; // as Zimi's sizes count
 
 // A Wiktionary's code for a language as a speech engine knows it. English
 // Wiktionary names Mandarin cmn and Cantonese yue; voices are zh-CN and
@@ -573,7 +577,8 @@ function soundHtml(g, word) {
     }).join('') + '</div>';
   } else if (speechTag(code)) {
     html += '<div class="say"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
-      '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span></div>';
+      '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span>' +
+      '<span class="voffer" data-offer="' + esc(code) + '" data-name="' + esc(groupName(g)) + '" hidden></span></div>';
   }
   if (s.ipa.length) {
     // A few accents, the rest a tap away: English "water" has eight.
@@ -672,23 +677,53 @@ function allTranslations(on) {
 }
 
 // ── speech ───────────────────────────────────────────────────────────────
+// A word is said by the server when it can (zimi/voices.py: a WAV played by
+// an <audio> element, which is media, so an iPhone on silent still plays
+// it, and it sounds the same on every device), else by this device's voice.
+// Eric, 2026-10-03: "If it sounds clearer and is more accurate that might
+// be better than letting the system do whatever."
 function synth() { try { return window.speechSynthesis || null; } catch (e) { return null; } }
 function voices() { var s = synth(); try { return s ? s.getVoices() : []; } catch (e) { return []; } }
-// Each speaker is shown only where this device can say the word in its
-// language; where it cannot, the button gives way to a line that says so.
-// An accent's own button only where its region has a voice of its own.
+// Through the shell's authedFetch when it is there, so an admin signed in
+// by token is known as one and may fetch a voice.
+function authed(url, opts) {
+  try { if (window.parent !== window && typeof window.parent.authedFetch === 'function') return window.parent.authedFetch(url, opts); } catch (e) {}
+  return fetch(url, opts);
+}
+// What the server can say (/dictionary/voices), fetched once with the page:
+// {langs: {en: {engine, regions}}, offers: {fr: {tag, bytes}}, downloading, can_change}.
+var _server = null;
+// The server's name for a word's language, and the region an accent (or the
+// tag) asks for.
+function serverLang(code) { return primaryOf(speechTag(code)); }
+function sayRegion(code, accent) { return accentRegion(accent) || regionOf(speechTag(code)); }
+// Whether the server says this button's word: the language, and for an
+// accent's own button, that region's voice.
+function serverSays(b) {
+  var code = b.getAttribute('data-code'), row = _server && _server.langs && _server.langs[serverLang(code)];
+  if (!row || !speechTag(code)) return false;
+  if (!b.hasAttribute('data-exact')) return true;
+  var region = sayRegion(code, b.getAttribute('data-accent'));
+  return !!region && row.regions.indexOf(region) >= 0;
+}
+function deviceSays(b, vs) {
+  var c = pickVoice(vs, b.getAttribute('data-code'), b.getAttribute('data-accent'));
+  return !!c && (!b.hasAttribute('data-exact') || c.exact);
+}
+// Each speaker is shown where the server or this device can say the word in
+// its language; where neither can, the button gives way to a line that says
+// so. An accent's own button only where its region has a voice of its own.
 function wireSpeech() {
   var vs = voices();
-  if (vs.length) underVoiceReady();
   document.querySelectorAll('[data-say]').forEach(function(b) {
-    var c = pickVoice(vs, b.getAttribute('data-code'), b.getAttribute('data-accent'));
-    var ok = !!c && (!b.hasAttribute('data-exact') || c.exact);
+    var ok = serverSays(b) || deviceSays(b, vs);
     b.hidden = !ok;
     if (!b.hasAttribute('data-exact')) {
       var note = b.parentNode.querySelector('[data-novoice]');
-      if (note) note.hidden = ok || (!vs.length && _voiceWaiting);
+      if (note) note.hidden = ok || !_server || (!vs.length && _voiceWaiting);
     }
   });
+  document.querySelectorAll('[data-offer]').forEach(offerPaint);
 }
 var _voiceWaiting = true;
 (function() {
@@ -696,62 +731,67 @@ var _voiceWaiting = true;
   if (s && 'onvoiceschanged' in s) s.addEventListener('voiceschanged', function() { _voiceWaiting = false; wireSpeech(); });
   setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
 })();
+function loadVoices() {
+  return authed('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; })
+    .catch(function() { return null; })
+    .then(function(d) { _server = d || { langs: {}, offers: {} }; wireSpeech(); return _server; });
+}
+// A clearer voice for a language the server says only with a lesser engine
+// (or not at all), offered to whoever may fetch it: a quiet line under the
+// word. Never and ZIMI_OFFLINE leave the server nothing to offer.
+function offerFor(code) {
+  if (!_server || !_server.can_change) return null;
+  var lang = serverLang(code), row = _server.langs[lang];
+  if (row && row.engine === 'piper') return null;
+  return (_server.offers || {})[lang] || null;
+}
+function offerPaint(el) {
+  var code = el.getAttribute('data-offer'), offer = offerFor(code), dl = (_server && _server.downloading) || {};
+  var name = langName(code, el.getAttribute('data-name') || code);
+  var html = '';
+  if (offer && dl.tag === offer.tag) html = esc(fill(STR.voice_downloading, { lang: name }));
+  else if (offer && dl.error === offer.tag) html = esc(STR.voice_failed);
+  else if (offer && !dl.tag) {
+    html = esc(fill(STR.voice_offer, { lang: name })) + ' <button type="button" class="vget" data-get="' + esc(offer.tag) + '">' +
+      esc(fill(STR.voice_download, { mb: Math.round(offer.bytes / BYTES_PER_MB) })) + '</button>';
+  }
+  el.innerHTML = html;
+  el.hidden = !html;
+}
+// The download runs on the server; the page asks how it is going until it
+// is done, then says the word with the new voice.
+function getVoice(tag) {
+  authed('/manage/voices/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: tag }) })
+    .catch(function() {})
+    .then(function() { return loadVoices(); })
+    .then(watchDownload);
+}
+function watchDownload(d) {
+  if (d && d.downloading && d.downloading.tag) setTimeout(function() { loadVoices().then(watchDownload); }, VOICE_POLL_MS);
+}
 var _playing = null, _utterance = null;
-// iPhone: the ring switch on silent mutes a page's sound unless the page
-// asks for playback, as a media player does (Safari 16.4+; elsewhere a
-// no-op). The ask is each document's own, and this page is in a frame: the
-// shell asks too. Speech has no audio session of its own, so a silent clip
-// plays as media under the voice for as long as it speaks, which carries it
-// through the switch. The clip is loaded with the page (not in the tap,
-// which made Say slow), loops (one that ended before the voice began left it
-// muted), and is started in the tap (iOS starts media only from a touch).
-// No give-up timer: the phone switching to media can take a second, and a
-// timer that cancelled a word not yet begun silenced every first word.
-// Eric, 2026-10-02/03: "not with ringer silenced", "not fast or reliable",
-// "still not hearing speaking, nail it".
-var SILENCE_SAMPLES = 4000, SILENCE_RATE = 8000;  // half a second, looped
-var _underVoice = null;
-function silenceUrl() {
-  var n = SILENCE_SAMPLES, b = new DataView(new ArrayBuffer(44 + n));
-  var w = function(o, str) { for (var i = 0; i < str.length; i++) b.setUint8(o + i, str.charCodeAt(i)); };
-  w(0, 'RIFF'); b.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); b.setUint32(16, 16, true);
-  b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, SILENCE_RATE, true); b.setUint32(28, SILENCE_RATE, true);
-  b.setUint16(32, 1, true); b.setUint16(34, 8, true); w(36, 'data'); b.setUint32(40, n, true);
-  for (var i = 0; i < n; i++) b.setUint8(44 + i, 128);   // 8-bit: 128 is silence
-  return URL.createObjectURL(new Blob([b.buffer], { type: 'audio/wav' }));
-}
-function underVoiceReady() {
-  if (_underVoice) return;
-  try {
-    _underVoice = new Audio();
-    _underVoice.loop = true; _underVoice.preload = 'auto';
-    _underVoice.setAttribute('playsinline', '');
-    _underVoice.src = silenceUrl();
-    _underVoice.load();
-  } catch (e) { _underVoice = null; }
-}
-function underVoice(on) {
-  if (!_underVoice) return;
-  try {
-    if (on) { if (_underVoice.paused) _underVoice.play().catch(function() {}); }
-    else if (!_underVoice.paused) _underVoice.pause();
-  } catch (e) {}
-}
 function wantPlayback() {
   [window, window.parent].forEach(function(w) { try { if (w.navigator.audioSession) w.navigator.audioSession.type = 'playback'; } catch (e) {} });
 }
+// The server's audio, started in the tap (iOS plays media only from one).
+// A server that cannot say it after all leaves the word to this device.
 function say(b) {
+  if (!serverSays(b)) { deviceSay(b); return; }
+  var code = b.getAttribute('data-code'), region = b.hasAttribute('data-exact') ? sayRegion(code, b.getAttribute('data-accent')) : '';
+  var url = '/dictionary/speak?text=' + encodeURIComponent(b.getAttribute('data-say')) + '&lang=' + encodeURIComponent(speechTag(code)) +
+    (region ? '&accent=' + encodeURIComponent(region) : '');
+  playUrl(b, url, function() { if (deviceSays(b, voices())) deviceSay(b); });
+}
+function deviceSay(b) {
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
   wantPlayback();
-  underVoiceReady();
-  underVoice(true);
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
   b.classList.add('on');
   u.onend = u.onerror = function() {
     b.classList.remove('on');
-    if (_utterance === u) { _utterance = null; underVoice(false); }
+    if (_utterance === u) _utterance = null;
   };
   // Held until it ends: Safari lets an unreferenced utterance be collected
   // mid-word, and its end never comes.
@@ -762,19 +802,29 @@ function say(b) {
   if (s.speaking || s.pending) { s.cancel(); setTimeout(function() { s.speak(u); }, SPEECH_AFTER_CANCEL_MS); }
   else s.speak(u);
 }
-function play(b) {
+function play(b) { playUrl(b, b.getAttribute('data-audio')); }
+function playUrl(b, url, failed) {
   wantPlayback();
   if (_playing) { try { _playing.pause(); } catch (e) {} }
-  var a = new Audio(b.getAttribute('data-audio'));
+  var a = new Audio();
+  a.setAttribute('playsinline', '');
+  a.src = url;
   _playing = a;
   b.classList.add('on');
-  a.onended = a.onerror = a.onpause = function() { b.classList.remove('on'); };
-  a.play().catch(function() { b.classList.remove('on'); });
+  var off = function() { b.classList.remove('on'); };
+  // Once: an error and a refused play() can both report one failure.
+  var fail = function() { off(); if (failed && _playing === a) { _playing = null; failed(); } };
+  a.onended = a.onpause = off;
+  a.onerror = fail;
+  var p = a.play();
+  if (p && p.catch) p.catch(function(e) { if (e && e.name === 'AbortError') off(); else fail(); });
 }
 
 // Every word on the page opens the next; a modified click keeps the link
 // for a new tab.
 document.addEventListener('click', function(e) {
+  var get = e.target.closest && e.target.closest('[data-get]');
+  if (get) { e.preventDefault(); getVoice(get.getAttribute('data-get')); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
   if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
@@ -785,6 +835,7 @@ document.addEventListener('click', function(e) {
 
 function load() {
   _home = null;
+  loadVoices();
   renderHome();
   get('/dictionary/home').then(function(d) {
     _home = d;

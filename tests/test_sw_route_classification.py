@@ -39,6 +39,9 @@ IDENTITY_ENDPOINTS = [
     # An account's own saved things (1.12's sync): stale, a second device
     # never saw what the first had saved.
     "/userdata",
+    # Who may fetch a voice, and audio asked for by range.
+    "/dictionary/voices",
+    "/dictionary/speak",
 ]
 
 # Query strings must not change the classification (the SW keys off pathname).

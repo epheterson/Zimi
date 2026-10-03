@@ -2143,7 +2143,6 @@
   "voices_engine_say": "सिस्टम",
   "voices_engine_espeak": "साधारण",
   "voices_engine_none": "केवल डिवाइस",
-  "voices_download": "डाउनलोड",
   "voices_remove": "हटाएँ",
   "voices_newer": "नई आवाज़",
   "voices_downloading": "डाउनलोड हो रहा है {p}%",

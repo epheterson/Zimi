@@ -2143,7 +2143,6 @@
   "voices_engine_say": "Системный",
   "voices_engine_espeak": "Простой",
   "voices_engine_none": "Только устройство",
-  "voices_download": "Загрузить",
   "voices_remove": "Удалить",
   "voices_newer": "Новый голос",
   "voices_downloading": "Загрузка {p}%",
