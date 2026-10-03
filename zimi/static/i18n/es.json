@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "Básica",
   "voices_engine_none": "Solo el dispositivo",
   "voices_remove": "Quitar",
+  "voices_more": "Más idiomas",
+  "voices_remove_failed": "No se pudo quitar la voz",
   "voices_remove_confirm": "¿Quitar?",
   "voices_newer": "Voz más nueva",
   "voices_downloading": "Descargando {p} %",

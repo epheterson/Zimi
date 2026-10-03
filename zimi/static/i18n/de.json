@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "Einfach",
   "voices_engine_none": "Nur Gerät",
   "voices_remove": "Entfernen",
+  "voices_more": "Weitere Sprachen",
+  "voices_remove_failed": "Die Stimme konnte nicht entfernt werden",
   "voices_remove_confirm": "Entfernen?",
   "voices_newer": "Neuere Stimme",
   "voices_downloading": "Wird geladen: {p} %",

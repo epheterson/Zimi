@@ -13437,17 +13437,33 @@ function _voiceRowHtml(v, d) {
     '<span class="mc-value">' + act + '</span></div>';
 }
 
+// The languages this library is read in: its Wiktionaries' and Zimi's own.
+// Their voices are listed; the rest wait behind "More languages", so the
+// list is a few rows, not thirty Download buttons.
+var _WIKTIONARY_LANG_RE = /^wiktionary_([a-z]{2,3})(?:_|$)/;
+function _voiceLangsInUse() {
+  var langs = {};
+  langs[_currentLang] = true;
+  (zimsCache || []).forEach(function(z) { var m = _WIKTIONARY_LANG_RE.exec(z.name || ''); if (m) langs[m[1]] = true; });
+  return langs;
+}
 function _voicesHtml(d) {
   var have = d.voices.filter(function(v) { return v.installed; }).length;
+  var inUse = _voiceLangsInUse(), dl = (d.downloading && d.downloading.tag) || '';
+  var near = function(v) { return v.installed || inUse[v.tag.split('_')[0].split('-')[0]] || v.tag === dl; };
   // The ones here first, then by name in the reader's language.
   var rows = d.voices.slice().sort(function(a, b) {
     return (b.installed - a.installed) || _langDisplayName(a.tag).localeCompare(_langDisplayName(b.tag));
   });
+  var first = rows.filter(near), rest = rows.filter(function(v) { return !near(v); });
+  var row = function(v) { return _voiceRowHtml(v, d); };
   return _voicesModeHtml(d.setting) +
     (d.piper ? '' : '<div class="ms-hint">' + tH('voices_no_piper') + '</div>') +
-    '<details class="net-details"' + (d.downloading && d.downloading.tag ? ' open' : '') + '><summary>' +
+    '<details class="net-details"' + (dl ? ' open' : '') + '><summary>' +
       tH('voices_summary', { n: have, m: d.voices.length }) + '</summary>' +
-      rows.map(function(v) { return _voiceRowHtml(v, d); }).join('') + '</details>';
+      first.map(row).join('') +
+      (rest.length ? '<details class="net-details voice-more"><summary>' + tH('voices_more') + '</summary>' + rest.map(row).join('') + '</details>' : '') +
+    '</details>';
 }
 
 function _voicesPaint(d) {
@@ -13461,9 +13477,10 @@ function _voicesPaint(d) {
     _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
     return;
   }
-  var open = !!el.querySelector('details[open]');
+  var open = !!el.querySelector('details[open]'), more = !!el.querySelector('.voice-more[open]');
   el.innerHTML = _voicesHtml(d);
   if (open) el.querySelector('details').open = true;
+  if (more && el.querySelector('.voice-more')) el.querySelector('.voice-more').open = true;
   // A download in flight: ask how it is going until it is done.
   clearTimeout(_voicesTimer);
   if (d.downloading && d.downloading.tag) _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
@@ -13504,7 +13521,7 @@ function _voicesPost(path, tag, btn) {
     return;
   }
   if (btn) btn.disabled = true;
-  return _voicesSend(path, { lang: tag }, t('voices_failed'));
+  return _voicesSend(path, { lang: tag }, t(/remove$/.test(path) ? 'voices_remove_failed' : 'voices_failed'));
 }
 
 function _voicesSetMode(mode) {

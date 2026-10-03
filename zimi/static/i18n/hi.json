@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "साधारण",
   "voices_engine_none": "केवल डिवाइस",
   "voices_remove": "हटाएँ",
+  "voices_more": "और भाषाएँ",
+  "voices_remove_failed": "आवाज़ हटाई नहीं जा सकी",
   "voices_remove_confirm": "हटाएँ?",
   "voices_newer": "नई आवाज़",
   "voices_downloading": "डाउनलोड हो रहा है {p}%",

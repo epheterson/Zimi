@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "基础",
   "voices_engine_none": "仅设备",
   "voices_remove": "移除",
+  "voices_more": "更多语言",
+  "voices_remove_failed": "无法删除语音",
   "voices_remove_confirm": "确认移除？",
   "voices_newer": "较新的语音",
   "voices_downloading": "正在下载 {p}%",

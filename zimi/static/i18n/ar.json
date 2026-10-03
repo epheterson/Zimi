@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "أساسي",
   "voices_engine_none": "الجهاز فقط",
   "voices_remove": "إزالة",
+  "voices_more": "لغات أخرى",
+  "voices_remove_failed": "تعذّرت إزالة الصوت",
   "voices_remove_confirm": "إزالة؟",
   "voices_newer": "صوت أحدث",
   "voices_downloading": "جارٍ التنزيل {p}٪",

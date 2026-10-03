@@ -2145,6 +2145,8 @@
   "voices_engine_espeak": "בסיסי",
   "voices_engine_none": "המכשיר בלבד",
   "voices_remove": "הסרה",
+  "voices_more": "שפות נוספות",
+  "voices_remove_failed": "לא ניתן להסיר את הקול",
   "voices_remove_confirm": "להסיר?",
   "voices_newer": "קול חדש יותר",
   "voices_downloading": "מוריד {p}%",
