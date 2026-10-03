@@ -125,6 +125,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends espeak-ng \
  && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir "piper-tts>=1.8,<2"
+# Kokoro (kokoro-onnx, MIT; the Kokoro-82M weights are Apache-2.0 and a
+# download) with misaki's Chinese phonemes (Apache-2.0): Chinese, which no
+# Piper voice with a clear licence speaks. Run by zimi/voicehelper.py as a
+# child like Piper, never imported (its phonemizer loads espeak-ng). It
+# shares onnxruntime and numpy with Piper: about 125 MB more, mostly jieba's
+# and pypinyin's dictionaries.
+RUN pip install --no-cache-dir "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10"
 
 WORKDIR /app
 COPY zimi/ ./zimi/
