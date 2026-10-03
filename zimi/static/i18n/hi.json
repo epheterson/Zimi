@@ -2158,6 +2158,8 @@
   "voices_get_newer": "नई Piper आवाज़ ({mb} MB)…",
   "voices_remove_piper": "Piper आवाज़ हटाएँ…",
   "voices_on": "चालू",
+  "voices_not_here": "डाउनलोड नहीं",
+  "voices_admin_only": "कोई एडमिन आवाज़ें जोड़ या हटा सकता है।",
   "voices_status_natural": "प्राकृतिक आवाज़ें चालू",
   "voices_status_piper": "Piper आवाज़ें चालू",
   "voices_status_basic": "साधारण आवाज़ें",

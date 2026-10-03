@@ -13382,9 +13382,10 @@ function _appUpdateSetDelay(days) {
 // opened from its front page, from Say's menu ("Voices…") and from
 // Settings > Apps. Natural voices first, one card; then a row for each
 // language this library is read in, with the voice that says it; the rest
-// folded; and the downloads setting, one quiet line at the end. Only an
-// admin opens it (every /manage write is an admin's): the doors stay hidden
-// for anyone else.
+// folded; and the downloads setting, one quiet line at the end. Everyone
+// sees what is here (Eric, 2026-10-03: "All users see all available only
+// admins can add"); an admin alone downloads, removes and chooses.
+var _voicesCanChange = false;
 var _VOICES_ID = 'voices-sheet';
 var _VOICES_MODE_ID = 'voices-mode';
 var _VOICES_POLL_MS = 1000; // a download's bar moves while it is watched
@@ -13418,9 +13419,12 @@ function _voiceBarHtml(dl) {
 // Natural voices (Kokoro): one download for its languages. Download, or
 // the bar with Cancel, or On with Remove; the licence and credit under it.
 function _voiceNaturalHtml(v, d) {
-  var dl = d.downloading || {}, mayFetch = v.runnable && d.setting.mode !== 'never';
+  var dl = d.downloading || {}, mayFetch = _voicesCanChange && v.runnable && d.setting.mode !== 'never';
   var act = '', below = '';
-  if (dl.tag === v.tag) {
+  if (!_voicesCanChange) {
+    act = '<span class="voice-on">' + tH(v.installed ? 'voices_on' : 'voices_not_here') + '</span>';
+    if (dl.tag === v.tag) below = _voiceBarHtml(dl);
+  } else if (dl.tag === v.tag) {
     below = _voiceBarHtml(dl);
     act = _voiceAction('/manage/voices/cancel', v.tag, tH('cancel'));
   } else {
@@ -13453,18 +13457,18 @@ function _voiceLangHtml(r, d) {
   var below = '', control;
   if (mine(dl.tag)) {
     below = _voiceBarHtml(dl);
-    control = _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel'));
+    control = _voicesCanChange ? _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel')) : '';
   } else {
     if (mine(dl.error)) below = '<span class="share-row-desc voice-failed">' + tH('voices_failed') + '</span>';
     var opts = r.engines.map(function(e) { return _appUpdateOption(e, t('voices_engine_' + e), e === r.engine); });
     if (!r.engines.length) opts.push(_appUpdateOption('', t('voices_engine_none'), true));
-    if (r.piper && !dl.tag) {
+    if (_voicesCanChange && r.piper && !dl.tag) {
       opts.push(_appUpdateOption('get:' + r.piper.tag,
         t(r.piper.newer ? 'voices_get_newer' : 'voices_get_piper', { mb: _voiceMb(r.piper.bytes) }), false));
     }
-    if (r.remove && !dl.tag) opts.push(_appUpdateOption('remove:' + r.remove, t('voices_remove_piper'), false));
+    if (_voicesCanChange && r.remove && !dl.tag) opts.push(_appUpdateOption('remove:' + r.remove, t('voices_remove_piper'), false));
     control = '<select class="voice-select" aria-label="' + escAttr(t('voices_choose') + ': ' + name) + '"' +
-      (opts.length < 2 ? ' disabled' : '') +
+      (opts.length < 2 || !_voicesCanChange ? ' disabled' : '') +
       ' onchange="' + escAttr('_voicesChoose(' + JSON.stringify(r.lang) + ', this)') + '">' + opts.join('') + '</select>';
   }
   return '<div class="share-row voice-lang" data-lang="' + escAttr(r.lang) + '">' +
@@ -13495,7 +13499,7 @@ function _voicesHtml(d) {
     (natural && (natural.runnable || natural.installed) ? _voiceNaturalHtml(natural, d) : '') +
     (yours.length ? '<div class="ms-section-label voice-head">' + tH('voices_yours') + '</div>' + rows(yours) : '') +
     (rest.length ? '<details class="net-details voice-more"><summary>' + tH('voices_more') + '</summary>' + rows(rest) + '</details>' : '') +
-    _voicesModeHtml(d.setting);
+    (_voicesCanChange ? _voicesModeHtml(d.setting) : '<div class="ms-hint voice-small">' + tH('voices_admin_only') + '</div>');
 }
 
 function _voicesPaint(d) {
@@ -13517,8 +13521,11 @@ function _voicesPaint(d) {
 }
 
 function _renderVoicesSheet() {
-  return manageFetch('/manage/voices').then(function(r) { return r.ok ? r.json() : null; })
-    .catch(function() { return null; }).then(_voicesPaint);
+  return authedFetch('/dictionary/voices?all=1').then(function(r) { return r.ok ? r.json() : null; })
+    .catch(function() { return null; }).then(function(d) {
+      if (d) _voicesCanChange = !!d.can_change;
+      _voicesPaint(d);
+    });
 }
 
 // The Dictionary hears of every change, so its Say uses the new voice.
@@ -13627,7 +13634,7 @@ function _renderVoicesDoor() {
   authedFetch('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }).then(function(d) {
     var door = document.getElementById('ms-voices-door');
     if (!door) return;
-    door.hidden = !(d && d.can_change);
+    door.hidden = !d;
     if (d) door.querySelector('.share-row-desc').textContent = _voicesStatus(d);
   });
 }

@@ -4308,7 +4308,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         from zimi import voices as _voices
 
         if sub == "voices":
-            payload = _voices.page_payload()
+            # ?all=1: every voice and language, as the Voices sheet lists
+            # them; anyone sees what is here, an admin alone changes it.
+            payload = (
+                _voices.manage_payload() if param("all") else _voices.page_payload()
+            )
             payload["can_change"] = bool(
                 _srv.ZIMI_MANAGE and _users._request_is_admin(self)
             )

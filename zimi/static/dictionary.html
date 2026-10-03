@@ -783,7 +783,7 @@ function wireSpeech() {
   });
   document.querySelectorAll('[data-offer]').forEach(offerPaint);
   document.querySelectorAll('[data-voices]').forEach(caretPaint);
-  document.querySelectorAll('.vdoor').forEach(function(b) { b.hidden = !(_server && _server.can_change); });
+  document.querySelectorAll('.vdoor').forEach(function(b) { b.hidden = !_server; });
 }
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
@@ -812,7 +812,7 @@ function openMenu(caret) {
     return '<button type="button" class="menu-item" role="menuitem" tabindex="-1"' + (e === def ? ' data-default' : '') + ' data-say="' + esc(word) +
       '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '">' + SPEAKER + '<span class="vname">' + esc(voiceName(e)) + '</span>' +
       (e === def ? '<span class="vdef">' + esc(STR.voice_default) + '</span>' : '') + '</button>';
-  }).join('') + (_server && _server.can_change
+  }).join('') + (_server
     ? '<div class="menu-sep" role="separator"></div><button type="button" class="menu-item" role="menuitem" tabindex="-1" data-sheet><span class="vname">' + esc(STR.voices_more) + '</span></button>'
     : '');
   menu.hidden = false;

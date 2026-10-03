@@ -2158,6 +2158,8 @@
   "voices_get_newer": "صوت Piper أحدث ‏({mb} م.ب)…",
   "voices_remove_piper": "إزالة صوت Piper…",
   "voices_on": "مفعّلة",
+  "voices_not_here": "غير محمّلة",
+  "voices_admin_only": "يمكن للمشرف إضافة الأصوات أو إزالتها.",
   "voices_status_natural": "الأصوات الطبيعية مفعّلة",
   "voices_status_piper": "أصوات Piper مفعّلة",
   "voices_status_basic": "أصوات أساسية",

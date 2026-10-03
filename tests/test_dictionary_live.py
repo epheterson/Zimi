@@ -751,7 +751,8 @@ def _sheet_from_settings(pg, served, shot=""):
         pg.wait_for_function("d => document.querySelector(d + ' .share-row-desc').textContent.trim()", arg=DOOR)
         _shot(pg, shot)
     pg.click(DOOR + " button")
-    pg.wait_for_selector(SHEET + " .voice-foot", timeout=10000)
+    # An admin's sheet ends with the downloads setting, anyone else's with a note.
+    pg.wait_for_selector(SHEET + " .voice-foot, " + SHEET + " .ms-hint", timeout=10000)
 
 
 def _until(fn, what):
@@ -925,12 +926,13 @@ def test_voices_sheet_downloads_piper_from_the_select_cancels_and_removes_in_two
     assert not errors, errors
 
 
-def test_voices_never_offers_no_download_and_a_reader_sees_no_door(
+def test_voices_never_offers_no_download_and_a_reader_sees_them_all_read_only(
     piper_here, monkeypatch, served
 ):
     """Never (or ZIMI_OFFLINE): the selects offer no Piper and the setting
-    says so. Not an admin: no speaker on the front, no Voices… in Say's
-    menu, no row in Settings > Apps."""
+    says so. Not an admin (Eric, 2026-10-03: "All users see all available
+    only admins can add"): every door is there and the sheet lists the
+    voices, with nothing to download, remove or choose."""
     from zimi import users
 
     open_eau, errors = piper_here
@@ -949,14 +951,16 @@ def test_voices_never_offers_no_download_and_a_reader_sees_no_door(
     monkeypatch.setattr(users, "_request_is_admin", lambda h: False)
     f = open_eau()
     _tap(f, CARET_FR)
-    assert not f.query_selector(".menu-item[data-sheet]")
+    assert f.query_selector(".menu-item[data-sheet]")
     f.click(".hw h1")
     f.evaluate("() => window.__home()")
     f.wait_for_selector(".wotd, .hint", timeout=10000)
-    assert f.eval_on_selector(".vdoor", "b => b.hidden")
+    assert not f.eval_on_selector(".vdoor", "b => b.hidden")
     _shot(f.page, "voices-front-reader")
-    pg.goto(served + "/?manage=preferences")
-    pg.wait_for_selector("#ms-apps", timeout=20000)
-    pg.wait_for_timeout(500)
-    assert pg.eval_on_selector(DOOR, "d => d.hidden")
+    _sheet_from_settings(pg, served)
+    got = pg.evaluate("""(sel) => { const s = document.querySelector(sel);
+      return { pills: s.querySelectorAll('button.pill').length, mode: !!s.querySelector('#voices-mode'),
+        enabled: [...s.querySelectorAll('select.voice-select')].filter(x => !x.disabled).length,
+        rows: s.querySelectorAll('.voice-lang').length }; }""", SHEET)
+    assert got["rows"] and not got["pills"] and not got["mode"] and not got["enabled"], got
     assert not errors, errors

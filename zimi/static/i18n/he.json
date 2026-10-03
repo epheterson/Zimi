@@ -2158,6 +2158,8 @@
   "voices_get_newer": "קול Piper חדש יותר ‏({mb} MB)…",
   "voices_remove_piper": "הסרת קול Piper…",
   "voices_on": "פועלים",
+  "voices_not_here": "לא הורדו",
+  "voices_admin_only": "מנהל יכול להוסיף או להסיר קולות.",
   "voices_status_natural": "קולות טבעיים פועלים",
   "voices_status_piper": "קולות Piper פועלים",
   "voices_status_basic": "קולות בסיסיים",

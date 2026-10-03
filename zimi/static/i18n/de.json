@@ -2158,6 +2158,8 @@
   "voices_get_newer": "Neuere Piper-Stimme ({mb} MB)…",
   "voices_remove_piper": "Piper-Stimme entfernen…",
   "voices_on": "An",
+  "voices_not_here": "Nicht heruntergeladen",
+  "voices_admin_only": "Stimmen kann ein Administrator hinzufügen oder entfernen.",
   "voices_status_natural": "Natürliche Stimmen an",
   "voices_status_piper": "Piper-Stimmen an",
   "voices_status_basic": "Einfache Stimmen",

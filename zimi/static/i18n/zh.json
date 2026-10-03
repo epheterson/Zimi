@@ -2158,6 +2158,8 @@
   "voices_get_newer": "更新的 Piper 语音（{mb} MB）…",
   "voices_remove_piper": "移除 Piper 语音…",
   "voices_on": "已开启",
+  "voices_not_here": "未下载",
+  "voices_admin_only": "管理员可以添加或删除语音。",
   "voices_status_natural": "自然语音已开启",
   "voices_status_piper": "Piper 语音已开启",
   "voices_status_basic": "基础语音",

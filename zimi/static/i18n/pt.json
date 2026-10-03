@@ -2158,6 +2158,8 @@
   "voices_get_newer": "Voz Piper mais recente ({mb} MB)…",
   "voices_remove_piper": "Remover a voz Piper…",
   "voices_on": "Ativadas",
+  "voices_not_here": "Não baixadas",
+  "voices_admin_only": "Um administrador pode adicionar ou remover vozes.",
   "voices_status_natural": "Vozes naturais ativadas",
   "voices_status_piper": "Vozes Piper ativadas",
   "voices_status_basic": "Vozes básicas",
