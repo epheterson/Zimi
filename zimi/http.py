@@ -150,6 +150,10 @@ _rate_lock = threading.Lock()
 # replaced archive corrects itself before anybody files a bug — the ETag
 # carries the ZIM file's size and mtime, so the correction is automatic.
 ZIM_CONTENT_MAX_AGE = 60
+# A word said by the server: kept by the browser for a minute, so a second
+# tap is instant and a voice downloaded or removed is heard a minute later
+# at most (the server keeps its own cache).
+VOICE_MAX_AGE_S = 60
 
 # Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
 # per credential per TTL — not on every polled request.
@@ -2701,6 +2705,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _dict.today(param("day") or ""))
                 if sub == "suggest":
                     return self._json(200, _dict.suggest(param("q") or ""))
+                if sub in ("voices", "speak"):
+                    return self._dictionary_voice(sub, param)
                 if sub == "word":
 
                     def split(v):
@@ -4291,6 +4297,58 @@ class ZimHandler(BaseHTTPRequestHandler):
             return
         except OSError as e:
             log.warning("peer file stream failed for %s: %s", name, e)
+
+    def _dictionary_voice(self, sub, param):
+        """The Dictionary's Say (voices.py). /dictionary/voices: what the
+        server can say and the clearer voices it could fetch, with whether
+        this viewer may fetch them (the admin rule every /manage write
+        follows). /dictionary/speak?text=&lang=[&accent=]: the word as a WAV,
+        or 404 when no engine here can say the language."""
+        from zimi import voices as _voices
+
+        if sub == "voices":
+            payload = _voices.page_payload()
+            payload["can_change"] = bool(
+                _srv.ZIMI_MANAGE and _users._request_is_admin(self)
+            )
+            return self._uncached(lambda: self._json(200, payload))
+        text, lang, accent = (
+            param("text") or "",
+            param("lang") or "",
+            param("accent") or "",
+        )
+        if _voices.clean_text(text) is None or not _voices.valid_lang(lang, accent):
+            return self._json(400, {"error": "bad request"})
+        body = _voices.speak(text, lang, accent)
+        if body is None:
+            return self._json(404, {"error": "no voice"})
+        return self._send_media(
+            body, "audio/wav", "private, max-age=%d" % VOICE_MAX_AGE_S
+        )
+
+    def _send_media(self, body, content_type, cache):
+        """Bytes for an <audio> element, by range when asked: Safari asks for
+        the first two bytes before it plays anything, and plays nothing from
+        a server that does not answer a range."""
+        start, end = self._parse_range(self.headers.get("Range"), len(body))
+        if start is not None:
+            self.send_response(206)
+            self.send_header(
+                "Content-Range", "bytes %d-%d/%d" % (start, end, len(body))
+            )
+            body = body[start : end + 1]
+        else:
+            self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Cache-Control", cache)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")

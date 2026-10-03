@@ -5473,6 +5473,12 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, _sats.setting())
 
+    elif parsed.path == "/manage/voices":
+        # "Voices for Dictionary": the setting and every pinned Piper voice.
+        from zimi import voices as _voices
+
+        return handler._json(200, _voices.manage_payload())
+
     elif parsed.path == "/manage/books/whole":
         # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
         from zimi import books as _books
@@ -6462,6 +6468,46 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(502, {"error": "Could not reach CelesTrak"})
         payload["can_change"] = True
         return handler._json(200, payload)
+
+    elif parsed.path == "/manage/voices":
+        # "Voices for Dictionary": {"mode": "ask"|"auto"|"never"}, the same
+        # env-lock contract: ZIMI_VOICE_DOWNLOADS (or ZIMI_OFFLINE) wins.
+        from zimi import voices as _voices
+
+        _mode, err = _voices.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(
+                403,
+                {"error": "Voices are controlled by the %s env var" % _voices.DOWNLOADS_ENV},
+            )
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/download":
+        # One language's clearer voice, fetched in the background: {"lang": tag}.
+        from zimi import voices as _voices
+
+        _ok, err = _voices.start_download(data.get("lang"))
+        if err == "unknown":
+            return handler._json(404, {"error": "No such voice"})
+        if err in ("never", "nopiper"):
+            return handler._json(409, {"error": "Voices cannot be downloaded here"})
+        if err == "busy":
+            return handler._json(409, {"error": "Another voice is downloading"})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/remove":
+        # {"lang": tag}: the voice and its audio go; the language falls back.
+        from zimi import voices as _voices
+
+        if not _voices.remove(data.get("lang")):
+            return handler._json(404, {"error": "No such voice"})
+        return handler._json(200, _voices.manage_payload())
 
     elif parsed.path == "/manage/books/whole":
         # A ZIM that is one book (a textbook captured whole) onto the
