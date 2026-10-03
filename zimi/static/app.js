@@ -11717,7 +11717,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _renderVoicesDoor(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -13019,6 +13019,7 @@ function _msPreferencesHtml() {
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
         _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
+    _voicesDoorHtml() +
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
       on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
@@ -13377,150 +13378,153 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
-// "Dictionary voices" (voices.py): the setting, Ask first / Automatically /
-// Never like the update check, and every language Piper has a pinned voice
-// for, with the voice that says it now, its size, and Download or Remove.
-// Folded to one line, so the list of languages is a tap away.
-var _VOICES_ID = 'ms-voices';
-var _VOICES_MODE_ID = 'ms-voices-mode';
+// The Dictionary's voices (voices.py), a sheet of the Dictionary's own:
+// opened from its front page, from Say's menu ("Voices…") and from
+// Settings > Apps. Natural voices first, one card; then a row for each
+// language this library is read in, with the voice that says it; the rest
+// folded; and the downloads setting, one quiet line at the end. Only an
+// admin opens it (every /manage write is an admin's): the doors stay hidden
+// for anyone else.
+var _VOICES_ID = 'voices-sheet';
+var _VOICES_MODE_ID = 'voices-mode';
 var _VOICES_POLL_MS = 1000; // a download's bar moves while it is watched
 var _VOICE_BYTES_PER_MB = 1000 * 1000; // as fmtBytes counts, and the Dictionary's line
+var _VOICE_CONFIRM_MS = 4000; // as long as a ZIM's Redownload? waits for its second tap
 var _voicesTimer = null;
+
+function _voiceMb(bytes) { return Math.round(bytes / _VOICE_BYTES_PER_MB); }
+
+// The languages this library is read in: its Wiktionaries' and Zimi's own.
+var _WIKTIONARY_LANG_RE = /^wiktionary_([a-z]{2,3})(?:_|$)/;
+function _voiceLangsInUse() {
+  var langs = {};
+  langs[String(_currentLang || 'en').split('-')[0]] = true;
+  (zimsCache || []).forEach(function(z) { var m = _WIKTIONARY_LANG_RE.exec(z.name || ''); if (m) langs[m[1]] = true; });
+  return langs;
+}
+
+function _voiceAction(path, tag, label, extra) {
+  return '<button type="button" class="pill"' + (extra || '') + ' onclick="' + escAttr('_voicesPost(' + JSON.stringify(path) + ', ' + JSON.stringify(tag) + ', this)') + '">' + label + '</button>';
+}
+function _voiceRemoveHtml(tag, label) {
+  return _voiceAction('/manage/voices/remove', tag, label, ' data-confirm="' + escAttr(t('voices_remove_confirm')) + '"');
+}
+function _voiceBarHtml(dl) {
+  var p = Math.floor(100 * (dl.done || 0) / (dl.total || 1));
+  return '<span class="share-row-desc voice-progress">' + tH('voices_downloading', { p: p }) + '</span>' +
+    '<div class="dl-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + p + '"><div class="dl-progress-bar" style="width:' + p + '%"></div></div>';
+}
+
+// Natural voices (Kokoro): one download for its languages. Download, or
+// the bar with Cancel, or On with Remove; the licence and credit under it.
+function _voiceNaturalHtml(v, d) {
+  var dl = d.downloading || {}, mayFetch = v.runnable && d.setting.mode !== 'never';
+  var act = '', below = '';
+  if (dl.tag === v.tag) {
+    below = _voiceBarHtml(dl);
+    act = _voiceAction('/manage/voices/cancel', v.tag, tH('cancel'));
+  } else {
+    if (dl.error === v.tag) below = '<span class="share-row-desc voice-failed">' + tH('voices_failed') + '</span>';
+    if (!dl.tag && mayFetch && (!v.installed || v.newer)) {
+      act = _voiceAction('/manage/voices/download', v.tag,
+        dl.error === v.tag ? tH('retry') : tH('dictionary_voice_download', { mb: _voiceMb(v.bytes) }), ' data-primary');
+    }
+    if (v.installed) act += '<span class="voice-on">' + tH('voices_on') + '</span>' + _voiceRemoveHtml(v.tag, tH('voices_remove'));
+  }
+  var facts = [tH('voices_langs_n', { n: v.langs.length }), esc(fmtBytes(v.bytes))];
+  if (v.newer) facts.push(tH('voices_newer'));
+  var credit = [esc(v.license)].concat(v.credit_required ? [esc(v.credit)] : []).join(' · ');
+  return '<div class="share-rows voice-natural"><div class="share-row">' +
+    '<span class="share-row-text"><span class="share-row-title">' + tH('voices_natural') + '</span>' +
+      '<span class="share-row-desc">' + facts.join(' · ') + '</span>' +
+      '<span class="share-row-desc voice-small">' + esc(v.langs.map(_langDisplayName).join(', ')) + '</span>' +
+      below +
+      '<span class="share-row-desc voice-small">' + credit + '</span></span>' +
+    '<span class="voice-act">' + act + '</span></div></div>';
+}
+
+// A language: its name, and a select of the voices here that can say it,
+// the one that does selected. Piper's voice, not here yet, is the select's
+// last option ("Piper (63 MB)…"); one that is here can be removed from it.
+// Downloading, the select gives way to the bar and Cancel.
+function _voiceLangHtml(r, d) {
+  var dl = d.downloading || {}, name = _langDisplayName(r.lang);
+  var mine = function(tag) { return !!tag && ((r.piper && r.piper.tag === tag) || r.remove === tag); };
+  var below = '', control;
+  if (mine(dl.tag)) {
+    below = _voiceBarHtml(dl);
+    control = _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel'));
+  } else {
+    if (mine(dl.error)) below = '<span class="share-row-desc voice-failed">' + tH('voices_failed') + '</span>';
+    var opts = r.engines.map(function(e) { return _appUpdateOption(e, t('voices_engine_' + e), e === r.engine); });
+    if (!r.engines.length) opts.push(_appUpdateOption('', t('voices_engine_none'), true));
+    if (r.piper && !dl.tag) {
+      opts.push(_appUpdateOption('get:' + r.piper.tag,
+        t(r.piper.newer ? 'voices_get_newer' : 'voices_get_piper', { mb: _voiceMb(r.piper.bytes) }), false));
+    }
+    if (r.remove && !dl.tag) opts.push(_appUpdateOption('remove:' + r.remove, t('voices_remove_piper'), false));
+    control = '<select class="voice-select" aria-label="' + escAttr(t('voices_choose') + ': ' + name) + '"' +
+      (opts.length < 2 ? ' disabled' : '') +
+      ' onchange="' + escAttr('_voicesChoose(' + JSON.stringify(r.lang) + ', this)') + '">' + opts.join('') + '</select>';
+  }
+  return '<div class="share-row voice-lang" data-lang="' + escAttr(r.lang) + '">' +
+    '<span class="share-row-text"><span class="share-row-title">' + esc(name) + '</span>' + below + '</span>' +
+    '<span class="voice-act">' + control + '</span></div>';
+}
 
 function _voicesModeHtml(s) {
   var opts = (s.choices || ['ask', 'auto', 'never']).map(function(m) {
     return _appUpdateOption(m, t('alm_earth_sat_' + m), m === s.mode);
   }).join('');
-  return _appUpdateSelectRow({
-    id: _VOICES_MODE_ID,
-    labelKey: 'voices_mode',
-    hintKey: 'voices_mode_hint',
-    envVar: s.env || 'ZIMI_VOICE_DOWNLOADS',
-    locked: !!s.locked,
-    lockNote: s.locked === 'offline' ? t('net_offline') : '',
-    onchange: '_voicesSetMode(this.value)',
-    options: opts
-  });
+  var note = s.locked ? (s.locked === 'offline' ? t('net_offline') : t('env_controlled', { v: s.env || 'ZIMI_VOICE_DOWNLOADS' })) : '';
+  return '<div class="voice-foot"><label for="' + _VOICES_MODE_ID + '">' + tH('voices_mode') + '</label>' +
+    '<select id="' + _VOICES_MODE_ID + '" class="voice-select"' + (s.locked ? ' disabled' : '') +
+    ' onchange="_voicesSetMode(this.value)">' + opts + '</select></div>' +
+    (note ? '<div class="ms-hint voice-small">' + esc(note) + '</div>' : '');
 }
 
-function _voiceButtonHtml(path, tag, label, extra) {
-  return '<button class="pill"' + (extra || '') + ' onclick="' + escAttr('_voicesPost(' + JSON.stringify(path) + ', ' + JSON.stringify(tag) + ', this)') + '">' + label + '</button>';
-}
-
-// One language: its name, the voice that says it now, and what can be done.
-// Downloading, the row says how far under its name, on the same bar as a
-// ZIM's download, with Cancel; a failure says so, with Retry.
-function _voiceRowHtml(v, d) {
-  var dl = d.downloading || {}, mayFetch = v.runnable && d.setting.mode !== 'never';
-  var engine = tH('voices_engine_' + (v.engine || 'none'));
-  var act = '', below = '';
-  var fetchLabel = tH('dictionary_voice_download', { mb: Math.round(v.bytes / _VOICE_BYTES_PER_MB) });
-  if (dl.tag === v.tag) {
-    var p = Math.floor(100 * (dl.done || 0) / (dl.total || 1));
-    below = '<span class="voice-meta voice-progress">' + tH('voices_downloading', { p: p }) + '</span>' +
-      '<div class="dl-progress"><div class="dl-progress-bar" style="width:' + p + '%"></div></div>';
-    act = _voiceButtonHtml('/manage/voices/cancel', v.tag, tH('cancel'));
-  } else if (dl.error === v.tag) {
-    below = '<span class="voice-meta voice-failed">' + tH('voices_failed') + '</span>';
-    fetchLabel = tH('retry');
-  }
-  if (!dl.tag && mayFetch && (!v.installed || v.newer)) {
-    act += _voiceButtonHtml('/manage/voices/download', v.tag, fetchLabel);
-  }
-  if (v.installed && dl.tag !== v.tag) {
-    act += _voiceButtonHtml('/manage/voices/remove', v.tag, tH('voices_remove'), ' data-confirm="' + escAttr(t('voices_remove_confirm')) + '"');
-  }
-  // The size is said once: beside Piper when it is here, on Download when not.
-  // Natural voices (Kokoro) is one download for several languages: its row
-  // names them, and says no engine of its own (each language's line does).
-  // The licence, and its credit where the licence asks for one (CC BY,
-  // Apache): names and licence ids, the same in every language.
-  // A language with a choice above says its voice there, not again here.
-  var chosen = (d.choices || []).some(function(c) { return c.lang === v.tag.split('-')[0]; });
-  var multi = v.langs && v.langs.length, meta = multi || chosen ? [] : [engine];
-  if (v.installed) meta.push(esc(fmtBytes(v.bytes)));
-  if (v.newer) meta.push(tH('voices_newer'));
-  meta.push(esc(v.license));
-  if (v.credit_required) meta.push(esc(v.credit));
-  meta = meta.join(' · ');
-  var name = multi ? tH('voices_natural') : esc(_langDisplayName(v.tag));
-  var langs = multi ? '<span class="app-update-quiet voice-meta">' + esc(v.langs.map(_langDisplayName).join(', ')) + '</span>' : '';
-  return '<div class="mc-row voice-row"><span class="mc-label">' + name + langs +
-    '<span class="app-update-quiet voice-meta">' + meta + '</span>' + below + '</span>' +
-    '<span class="mc-value">' + act + '</span></div>';
-}
-
-// Which voice says a language, where more than one here can: the best by
-// default (Natural, then Piper, then the system's, then the basic one), or
-// the one chosen. Eric: "Options couldn't hurt once it's built."
-function _voiceChoiceHtml(c) {
-  var opts = c.engines.map(function(e) { return _appUpdateOption(e, t('voices_engine_' + e), e === c.engine); }).join('');
-  return '<div class="mc-row voice-row" style="align-items:center"><span class="mc-label">' + esc(_langDisplayName(c.lang)) + '</span>' +
-    '<span class="mc-value"><select aria-label="' + escAttr(t('voices_choose') + ': ' + _langDisplayName(c.lang)) + '" style="' + _APP_UPDATE_SELECT_CSS + '"' +
-    ' onchange="' + escAttr('_voicesChoose(' + JSON.stringify(c.lang) + ', this.value)') + '">' + opts + '</select></span></div>';
-}
-function _voicesChoose(lang, engine) {
-  _voicesSend('/manage/voices/choose', { lang: lang, engine: engine }, t('voices_failed_choice'));
-}
-
-// The languages this library is read in: its Wiktionaries' and Zimi's own.
-// Their voices are listed; the rest wait behind "More languages", so the
-// list is a few rows, not thirty Download buttons.
-var _WIKTIONARY_LANG_RE = /^wiktionary_([a-z]{2,3})(?:_|$)/;
-function _voiceLangsInUse() {
-  var langs = {};
-  langs[_currentLang] = true;
-  (zimsCache || []).forEach(function(z) { var m = _WIKTIONARY_LANG_RE.exec(z.name || ''); if (m) langs[m[1]] = true; });
-  return langs;
-}
 function _voicesHtml(d) {
-  // Counted in languages: Natural voices is one row for several.
-  var langsOf = function(v) { return v.langs ? v.langs.map(function(l) { return l.split('-')[0]; }) : [v.tag.split('-')[0]]; };
-  var all = {}, here = {};
-  d.voices.forEach(function(v) { langsOf(v).forEach(function(l) { all[l] = true; if (v.installed) here[l] = true; }); });
-  var inUse = _voiceLangsInUse(), dl = (d.downloading && d.downloading.tag) || '';
-  var near = function(v) { return v.installed || !!v.langs || inUse[v.tag.split('_')[0].split('-')[0]] || v.tag === dl; };
-  // Natural voices first, then the ones here, then by name in the reader's language.
-  var rows = d.voices.slice().sort(function(a, b) {
-    return (!!b.langs - !!a.langs) || (b.installed - a.installed) || _langDisplayName(a.tag).localeCompare(_langDisplayName(b.tag));
-  });
-  var first = rows.filter(near), rest = rows.filter(function(v) { return !near(v); });
-  var row = function(v) { return _voiceRowHtml(v, d); };
-  var choices = (d.choices || []).length ? '<div class="ms-hint">' + tH('voices_choose') + '</div>' + d.choices.map(_voiceChoiceHtml).join('') : '';
-  return _voicesModeHtml(d.setting) +
-    (d.piper ? '' : '<div class="ms-hint">' + tH('voices_no_piper') + '</div>') +
-    '<details class="net-details"' + (dl ? ' open' : '') + '><summary>' +
-      tH('voices_summary', { n: Object.keys(here).length, m: Object.keys(all).length }) + '</summary>' +
-      choices +
-      first.map(row).join('') +
-      (rest.length ? '<details class="net-details voice-more"><summary>' + tH('voices_more') + '</summary>' + rest.map(row).join('') + '</details>' : '') +
-    '</details>';
+  var natural = d.voices.filter(function(v) { return v.langs; })[0];
+  var inUse = _voiceLangsInUse(), dl = d.downloading || {};
+  var busy = function(r) { return !!dl.tag && (r.remove === dl.tag || (r.piper && r.piper.tag === dl.tag)); };
+  var yours = d.langs.filter(function(r) { return inUse[r.lang] || busy(r); });
+  var rest = d.langs.filter(function(r) { return !inUse[r.lang] && !busy(r) && r.pinned; });
+  var byName = function(a, b) { return _langDisplayName(a.lang).localeCompare(_langDisplayName(b.lang)); };
+  var rows = function(list) { return '<div class="share-rows">' + list.sort(byName).map(function(r) { return _voiceLangHtml(r, d); }).join('') + '</div>'; };
+  return (d.piper || d.kokoro ? '' : '<div class="ms-hint voice-top">' + tH('voices_no_piper') + '</div>') +
+    (natural && (natural.runnable || natural.installed) ? _voiceNaturalHtml(natural, d) : '') +
+    (yours.length ? '<div class="ms-section-label voice-head">' + tH('voices_yours') + '</div>' + rows(yours) : '') +
+    (rest.length ? '<details class="net-details voice-more"><summary>' + tH('voices_more') + '</summary>' + rows(rest) + '</details>' : '') +
+    _voicesModeHtml(d.setting);
 }
 
 function _voicesPaint(d) {
   var el = document.getElementById(_VOICES_ID);
   if (!el) return;
-  if (!d || !d.voices) { el.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return; }
+  clearTimeout(_voicesTimer);
+  if (!d || !d.voices) { el.innerHTML = '<div class="zi-none">' + tH('net_unavailable') + '</div>'; return; }
   // A Remove waiting for its second tap is not redrawn from under it; the
   // poll looks again next time.
   if (el.querySelector('.confirming')) {
-    clearTimeout(_voicesTimer);
-    _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
+    _voicesTimer = setTimeout(_renderVoicesSheet, _VOICES_POLL_MS);
     return;
   }
-  var open = !!el.querySelector('details[open]'), more = !!el.querySelector('.voice-more[open]');
+  var more = !!el.querySelector('.voice-more[open]');
   el.innerHTML = _voicesHtml(d);
-  if (open) el.querySelector('details').open = true;
   if (more && el.querySelector('.voice-more')) el.querySelector('.voice-more').open = true;
   // A download in flight: ask how it is going until it is done.
-  clearTimeout(_voicesTimer);
-  if (d.downloading && d.downloading.tag) _voicesTimer = setTimeout(_renderVoicesSection, _VOICES_POLL_MS);
+  if (d.downloading && d.downloading.tag) _voicesTimer = setTimeout(_renderVoicesSheet, _VOICES_POLL_MS);
 }
 
-async function _renderVoicesSection() {
-  var d = null;
-  try { d = await _msFetch('/manage/voices'); } catch (e) {}
-  _voicesPaint(d);
+function _renderVoicesSheet() {
+  return manageFetch('/manage/voices').then(function(r) { return r.ok ? r.json() : null; })
+    .catch(function() { return null; }).then(_voicesPaint);
+}
+
+// The Dictionary hears of every change, so its Say uses the new voice.
+function _voicesTellDictionary() {
+  var f = document.getElementById('reader-frame');
+  try { if (f && f.contentWindow) f.contentWindow.postMessage({ zimi: 'voices-changed' }, location.origin); } catch (e) {}
 }
 
 // Every answer is repainted from the server's truth; a refusal says so in
@@ -13532,31 +13536,105 @@ function _voicesSend(path, body, failText) {
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (d && d.error) _showToast(failText);
-    _renderVoicesSection();
-  }).catch(function() { _showToast(failText); _renderVoicesSection(); });
+    if (d && d.voices) _voicesPaint(d); else _renderVoicesSheet();
+    _voicesTellDictionary();
+  }).catch(function() { _showToast(failText); _renderVoicesSheet(); });
 }
-
-var _VOICE_CONFIRM_MS = 4000; // as long as a ZIM's Redownload? waits for its second tap
 
 // A button that asks first (Remove) is armed by one tap and acts on the
 // next, as Delete and Redownload do; the voice is a download away again.
+function _voicesArm(btn) {
+  var label = btn.textContent;
+  btn.classList.add('confirming');
+  btn.textContent = btn.getAttribute('data-confirm');
+  setTimeout(function() {
+    if (!btn.classList.contains('confirming')) return;
+    btn.classList.remove('confirming');
+    btn.textContent = label;
+    if (btn.hasAttribute('data-from-select')) _renderVoicesSheet();
+  }, _VOICE_CONFIRM_MS);
+}
 function _voicesPost(path, tag, btn) {
-  var ask = btn && btn.getAttribute('data-confirm');
-  if (ask && !btn.classList.contains('confirming')) {
-    var label = btn.textContent;
-    btn.classList.add('confirming');
-    btn.textContent = ask;
-    setTimeout(function() {
-      if (btn.classList.contains('confirming')) { btn.classList.remove('confirming'); btn.textContent = label; }
-    }, _VOICE_CONFIRM_MS);
-    return;
-  }
-  if (btn) btn.disabled = true;
+  if (btn && btn.getAttribute('data-confirm') && !btn.classList.contains('confirming')) { _voicesArm(btn); return; }
+  if (btn) { btn.disabled = true; btn.classList.remove('confirming'); }
   return _voicesSend(path, { lang: tag }, t(/remove$/.test(path) ? 'voices_remove_failed' : 'voices_failed'));
 }
 
+// The select: a voice chosen, Piper fetched, or Piper's voice removed (the
+// select gives way to Remove?, the second tap).
+function _voicesChoose(lang, sel) {
+  var v = sel.value, tag = v.slice(v.indexOf(':') + 1);
+  if (v.indexOf('get:') === 0) return _voicesSend('/manage/voices/download', { lang: tag }, t('voices_failed'));
+  if (v.indexOf('remove:') === 0) {
+    var slot = sel.parentNode;
+    slot.innerHTML = _voiceRemoveHtml(tag, tH('voices_remove'));
+    var btn = slot.querySelector('button');
+    btn.setAttribute('data-from-select', '');
+    _voicesArm(btn);
+    btn.focus();
+    return;
+  }
+  return _voicesSend('/manage/voices/choose', { lang: lang, engine: v }, t('voices_failed_choice'));
+}
+
 function _voicesSetMode(mode) {
-  _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' })).then(_renderNetSection);
+  _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' }));
+}
+
+// Escape closes the sheet and nothing under it (Settings, the reader):
+// heard first, and kept.
+function _voicesKeydown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeVoicesSheet(); }
+}
+function closeVoicesSheet() {
+  clearTimeout(_voicesTimer);
+  var ov = document.getElementById(_VOICES_ID + '-overlay');
+  if (!ov) return;
+  ov.parentNode.removeChild(ov);
+  if (!document.getElementById(_ZI_OVERLAY_ID)) document.documentElement.classList.remove('zi-open');
+  document.removeEventListener('keydown', _voicesKeydown, true);
+  _renderVoicesDoor();
+}
+// The sheet opens at once with a quiet loading line, then fills from the
+// server.
+function openVoicesSheet() {
+  closeVoicesSheet();
+  var ov = document.createElement('div');
+  ov.className = 'zi-overlay';
+  ov.id = _VOICES_ID + '-overlay';
+  ov.innerHTML =
+    '<div class="zi-panel voices-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('net_voices')) + '">' +
+    '<div class="zi-head"><span class="zi-head-title">' + tH('net_voices') + '</span>' +
+    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="closeVoicesSheet()">✕</button>' +
+    '</div><div class="zi-body" id="' + _VOICES_ID + '"><div class="zi-none voice-loading"><span class="spinner-inline"></span>' + tH('loading') + '</div></div></div>';
+  document.body.appendChild(ov);
+  document.documentElement.classList.add('zi-open');
+  ov.addEventListener('click', function(e) { if (e.target === ov) closeVoicesSheet(); });
+  document.addEventListener('keydown', _voicesKeydown, true);
+  ov.querySelector('.zi-close').focus();
+  _renderVoicesSheet();
+}
+
+// Settings > Apps: "Dictionary voices", what says the Dictionary now, and
+// a chevron to the sheet. Shown to an admin alone, as the sheet's other
+// doors are (/dictionary/voices says who may change them).
+function _voicesStatus(d) {
+  var used = Object.keys(d.langs || {}).map(function(k) { return d.langs[k].engine; });
+  return t(used.indexOf('kokoro') >= 0 ? 'voices_status_natural' : used.indexOf('piper') >= 0 ? 'voices_status_piper' : 'voices_status_basic');
+}
+function _renderVoicesDoor() {
+  if (!document.getElementById('ms-voices-door')) return;
+  authedFetch('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }).then(function(d) {
+    var door = document.getElementById('ms-voices-door');
+    if (!door) return;
+    door.hidden = !(d && d.can_change);
+    if (d) door.querySelector('.share-row-desc').textContent = _voicesStatus(d);
+  });
+}
+function _voicesDoorHtml() {
+  return '<div class="share-rows set-rows" id="ms-voices-door" hidden><button type="button" class="share-row set-row voice-door" onclick="openVoicesSheet()">' +
+    '<span class="share-row-text"><span class="share-row-title">' + tH('net_voices') + '</span><span class="share-row-desc">&nbsp;</span></span>' +
+    '<span class="voice-chev" aria-hidden="true">›</span></button></div>';
 }
 
 // "What Zimi fetches from the internet" (outbound.py): every destination, one
@@ -13569,13 +13647,14 @@ var _NET_ID = 'ms-net';
 // own action (a download, a capture) or by ZIMI_OFFLINE.
 var _NET_CONTROLS = {
   update_check: _APP_UPDATE_CHECK_ID,
-  voices: _VOICES_MODE_ID,
+  voices: 'voices-sheet',
   sharing: 'ms-mirror-status',
   auto_update: 'library'
 };
 
 function _netGo(control) {
   var target = _NET_CONTROLS[control];
+  if (target === 'voices-sheet') { openVoicesSheet(); return false; }
   if (_MS_SECTIONS.indexOf(target) >= 0) { switchMs(target); return false; }
   var el = document.getElementById(target);
   if (el) {
@@ -13803,13 +13882,6 @@ function _msServerHtml() {
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
-  // The Dictionary's voices: what says each language, and the downloads.
-  var voicesSec = '<div class="ms-section-label">' + tH('net_voices') + '</div>' +
-    '<div class="ms-hint">' + tH('voices_hint') + '</div>' +
-    // Loading, one quiet line about the height of the list's own summary,
-    // so the section does not jump when the answer comes.
-    '<div id="' + _VOICES_ID + '"><div class="mc-row"><span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('loading') + '</span></div></div>';
-
   // Internet use, last on the tab: everything this server can fetch, and
   // which of it happens without anyone asking.
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
@@ -13818,9 +13890,8 @@ function _msServerHtml() {
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, Hot ZIMs + cache, the environment, and
   // Internet use last (Eric's final pass for 1.12).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, voicesSec, envSec, netSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
-  _renderVoicesSection();
   _renderNetSection();
   // Async fill security
   Promise.all([
@@ -18840,7 +18911,7 @@ function _dictUrl(w) {
 function _dictStrings(w) {
   return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
     'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
-    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading', 'dictionary_voices_menu', 'dictionary_voice_device',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice', 'dictionary_voice_offer', 'dictionary_voice_offer_none', 'dictionary_voice_download', 'dictionary_voice_downloading', 'dictionary_voices_menu', 'dictionary_voice_device', 'dictionary_voices_more', 'dictionary_voice_default',
     'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
     { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), cancel: t('cancel'), catalog: t('app_browse_catalog'), voice_failed: t('voices_failed'),
       engine_kokoro: t('voices_engine_kokoro'), engine_piper: t('voices_engine_piper'), engine_say: t('voices_engine_say'), engine_espeak: t('voices_engine_espeak') });
@@ -20246,6 +20317,8 @@ window.addEventListener('message', function(e) {
     _appItemClosed();
     document.title = t('dictionary') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'voices') {
+    openVoicesSheet();
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
     _openCategory(d.category);
   }

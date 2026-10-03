@@ -1726,14 +1726,6 @@
      up with a differently-coloured link in each section. */
   .ms-pane .app-update-badge { color: var(--amber); font-weight: 600; }
   .ms-pane .app-update-quiet { color: var(--text2); }
-  /* A Dictionary voice: the language, and under it what says it now. */
-  .ms-pane .voice-meta { display: block; font-size: 11.5px; margin-top: 1px; }
-  .ms-pane .voice-row { align-items: flex-start; gap: 12px; }
-  .ms-pane .voice-row .mc-label { flex: 1; min-width: 0; }
-  .ms-pane .voice-row .mc-value { flex: none; display: flex; gap: 6px; }
-  .ms-pane .voice-row .dl-progress { margin-top: 5px; }
-  .ms-pane .voice-progress { color: var(--amber); }
-  .ms-pane .voice-row .pill.confirming { color: var(--error); border-color: var(--error); }
   .ms-pane .app-update-link { color: var(--amber); }
   .ms-pane code.app-update-cmd { display: block; margin: 6px 0 2px; padding: 6px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--amber); user-select: all; overflow-x: auto; white-space: nowrap; }
   /* The ZIMs the auto-updater cannot reach, as a wrapped row of names. Chips
@@ -3416,6 +3408,43 @@
   .zi-ev-detail { font-size: 12.5px; color: var(--text); line-height: 1.45; margin-top: 3px; }
   .zi-ev-fact { font-size: 11.5px; color: var(--text2); line-height: 1.45; margin-top: 2px; }
   .zi-ev-sub { color: var(--text3); }
+  /* The Dictionary's voices: About this ZIM's sheet, Settings' cards
+     (.share-rows) and selects. A row is a language and the voice that says
+     it; the Natural voices card says what it is in small print under it. */
+  .voices-panel .zi-body { padding-top: 12px; }
+  .voices-panel .share-rows { margin-top: 0; }
+  .voices-panel .share-row { min-height: 52px; box-sizing: border-box; padding: 8px 14px; }
+  .voice-natural .share-row { align-items: flex-start; padding: 13px 14px; }
+  .voices-panel .share-row-title, .voices-panel .share-row-desc { display: block; }
+  .voices-panel .share-row-desc + .share-row-desc { margin-top: 3px; }
+  .voice-natural .share-row-title { font-size: 14px; }
+  .voice-small { font-size: 11.5px; }
+  .voice-act { flex: none; display: flex; align-items: center; gap: 8px; }
+  .voice-on { font-size: 12px; color: var(--amber); font-weight: 600; }
+  .voice-progress { color: var(--amber); }
+  .voice-failed { color: var(--error); }
+  .voices-panel .dl-progress { margin-top: 6px; }
+  .voices-panel .pill { min-height: 32px; }
+  .voices-panel .pill[data-primary] { color: var(--amber); border-color: var(--amber-border); }
+  .voices-panel .pill.confirming { color: var(--error); border-color: var(--error); }
+  .voice-select {
+    font-size: 12.5px; padding: 6px 8px; min-height: 32px; width: 150px; max-width: 45vw; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+  }
+  .voice-select:disabled { opacity: 0.6; }
+  .voice-head { margin: 22px 0 8px; }
+  .voice-more { margin-top: 14px; }
+  .voice-more > summary { padding: 8px 0; color: var(--text2); }
+  .voice-more[open] > summary { margin-bottom: 4px; }
+  .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text2); }
+  .voice-loading { display: flex; align-items: center; gap: 6px; min-height: 84px; }
+  .voice-top { margin: 0 0 12px; }
+  /* Settings > Apps: the door to the sheet, a row with a chevron. */
+  .voice-door { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+  .voice-door:hover .share-row-title, .voice-door:focus-visible .share-row-title { color: var(--amber); }
+  .voice-chev { font-size: 22px; line-height: 1; color: var(--text2); }
+  [dir="rtl"] .voice-chev { transform: scaleX(-1); }
+  @media (pointer: coarse) { .voice-select, .voices-panel .pill { min-height: 40px; } }
   @media (max-width: 600px) {
     .zi-overlay { padding: 0; align-items: stretch; }
     .zi-panel { width: 100%; max-height: 100%; border-radius: 0; border: none; }
