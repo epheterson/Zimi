@@ -978,25 +978,31 @@ function _appConfirm(message, okLabel) {
   });
 }
 
-async function _loadI18n(lang) {
-  if (lang === 'en') {
-    // Load English inline (always available)
-    try {
-      var res = await fetch('/static/i18n/en.json?v=' + _i18nVer);
-      if (res.ok) { _i18nFallback = await res.json(); _i18n = _i18nFallback; }
-    } catch(e) {}
-    return;
-  }
-  // Load target language + English fallback in parallel
+// A language's words, kept on this device from the last time they loaded:
+// a fetch that fails (offline after a deploy changed the address, a
+// sign-in in front of the server answering with its own page) falls back
+// to them instead of leaving every label its key (Eric, 2026-10-03: the
+// Dictionary and the search box read "dictionary_say", "search").
+var _I18N_KEPT = 'zimi_i18n_kept_';
+async function _i18nFetch(lang) {
   try {
-    var [langRes, enRes] = await Promise.allSettled([
-      fetch('/static/i18n/' + lang + '.json?v=' + _i18nVer),
-      fetch('/static/i18n/en.json?v=' + _i18nVer)
-    ]);
-    if (enRes.status === 'fulfilled' && enRes.value.ok) _i18nFallback = await enRes.value.json();
-    if (langRes.status === 'fulfilled' && langRes.value.ok) _i18n = await langRes.value.json();
-    else _i18n = _i18nFallback;
-  } catch(e) { _i18n = _i18nFallback; }
+    var res = await fetch('/static/i18n/' + lang + '.json?v=' + _i18nVer);
+    if (res.ok) {
+      var words = await res.json();
+      if (words && typeof words === 'object' && Object.keys(words).length) {
+        try { localStorage.setItem(_I18N_KEPT + lang, JSON.stringify(words)); } catch (e) {}
+        return words;
+      }
+    }
+  } catch (e) {}
+  try { var kept = JSON.parse(localStorage.getItem(_I18N_KEPT + lang) || 'null'); if (kept) return kept; } catch (e) {}
+  return null;
+}
+async function _loadI18n(lang) {
+  // English is every language's fallback; the language itself alongside it.
+  var got = await Promise.all([_i18nFetch('en'), lang === 'en' ? null : _i18nFetch(lang)]);
+  if (got[0]) _i18nFallback = got[0];
+  _i18n = (lang !== 'en' && got[1]) || _i18nFallback;
 }
 
 function _detectLanguage() {
