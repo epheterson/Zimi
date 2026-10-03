@@ -497,7 +497,12 @@ def test_reduced_motion_keeps_the_sky_still(browser, served):
         )
         # The palms stand still: no breeze timer, and no frames asked for.
         assert pg.evaluate("!_skyTimers.sway")
-        assert pg.evaluate("_skyState.actors.length === 0 && !_almanacSkyRAF")
+        # Nothing crossing, and no frame loop once the settle's last frame is drawn.
+        pg.wait_for_function(
+            "() => _skyState.actors.length === 0 && !_almanacSkyRAF",
+            polling=POLL_MS,
+            timeout=5000,
+        )
         assert not errors, errors
     finally:
         ctx.close()
