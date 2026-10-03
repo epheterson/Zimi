@@ -21,6 +21,8 @@ onnxruntime            MIT                https://github.com/microsoft/onnxrunti
 jieba                  MIT                https://github.com/fxsjy/jieba
 pypinyin               MIT                https://github.com/mozillazg/python-pinyin
 cn2an                  MIT                https://github.com/Ailln/cn2an
+num2words              LGPL-2.1           https://github.com/savoirfairelinux/num2words
+docopt                 MIT                https://github.com/docopt/docopt
 numpy                  BSD-3-Clause       https://github.com/numpy/numpy
 
 The source of every GPL program above, at the version shipped, is at the

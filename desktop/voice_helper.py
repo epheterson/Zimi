@@ -8,7 +8,7 @@ player. It shares the bundle's support folder with Zimi; its Python modules
 are in its own archive, so none of them can reach Zimi's process.
 
 Built only when the build's Python has the engines (pip install piper-tts
-kokoro-onnx "misaki[zh]"); without them the app is built as before and
+kokoro-onnx "misaki[zh]" num2words); without them the app is built as before and
 Say uses the system's voice. Each engine's licence comes with it: its
 .dist-info (licence texts included) and zimi/assets/voices-NOTICE.txt.
 """
@@ -36,9 +36,11 @@ DISTRIBUTIONS = (
     "jieba",
     "pypinyin",
     "cn2an",
+    "num2words",
+    "docopt",
     "numpy",
 )
-NEEDS = ("piper", "kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an")
+NEEDS = ("piper", "kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an", "num2words")
 
 
 def available():
@@ -64,7 +66,9 @@ def build(repo_root):
         pathex=[repo_root],
         binaries=binaries,
         datas=datas,
-        hiddenimports=hidden + ["misaki.zh", "piper.voice", "piper.__main__"],
+        # misaki.en and misaki.espeak: English, imported inside a function.
+        hiddenimports=hidden
+        + ["misaki.zh", "misaki.en", "misaki.espeak", "num2words", "piper.voice", "piper.__main__"],
         excludes=[
             "zimi",
             "tkinter",
