@@ -450,6 +450,28 @@ def test_a_cancelled_download_leaves_nothing_and_no_error(piper, monkeypatch):
     assert not [f for f in os.listdir(voices._piper_dir()) if f.endswith(".part")]
 
 
+def test_download_right_after_cancel_waits_for_the_old_one(piper, monkeypatch):
+    """The cancelled fetch notices at its next chunk; a Download tapped in
+    between waits for it instead of being refused as busy."""
+    import time
+
+    def fetch(tag):
+        while True:
+            time.sleep(0.05)
+            with voices._lock:
+                if voices._download.get("cancel"):
+                    voices._download.clear()
+                    return
+
+    monkeypatch.setattr(voices, "_fetch_voice", fetch)
+    assert voices.start_download("fr") == (True, None)
+    assert voices.cancel_download()
+    assert voices.start_download("fr") == (True, None)
+    assert voices.downloading()["tag"] == "fr"
+    assert voices.cancel_download()
+    voices._fetcher.join(5)
+
+
 def test_removing_a_voice_falls_back_and_clears_its_audio(piper, monkeypatch):
     install("en-US")
     monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})

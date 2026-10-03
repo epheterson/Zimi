@@ -221,6 +221,7 @@ _lock = threading.Lock()  # the engine discovery memo and the download state
 _synth_lock = threading.Lock()  # one synthesis at a time
 _found = {}
 _download = {}
+_fetcher = None  # the thread fetching a voice, while one is
 
 
 def _reset_for_tests():
@@ -762,14 +763,22 @@ def start_download(tag):
     rec = installed().get(tag)
     if rec and _is_current(tag, rec):
         return False, "installed"
+    global _fetcher
+    # A download just cancelled stops at its next chunk: Download again
+    # right after Cancel waits for it rather than being refused.
+    with _lock:
+        stopping = _fetcher if _download.get("cancel") else None
+    if stopping:
+        stopping.join(FETCH_TIMEOUT_S)
     with _lock:
         if _download.get("tag"):
             return False, "busy"
         _download.clear()
         _download.update({"tag": tag, "done": 0, "total": _bytes(tag)})
-    threading.Thread(
-        target=_fetch_voice, args=(tag,), daemon=True, name="voice-fetch"
-    ).start()
+        _fetcher = threading.Thread(
+            target=_fetch_voice, args=(tag,), daemon=True, name="voice-fetch"
+        )
+        _fetcher.start()
     return True, None
 
 
