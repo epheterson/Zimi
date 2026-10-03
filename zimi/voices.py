@@ -529,7 +529,7 @@ def start_download(tag):
     """Fetch the pinned voice ``tag`` in the background. ``(ok, error)``:
     error is "unknown", "never" (the setting, or ZIMI_OFFLINE), "nopiper",
     "installed" or "busy" (one voice at a time)."""
-    if tag not in PIPER_VOICES:
+    if not isinstance(tag, str) or tag not in PIPER_VOICES:
         return False, "unknown"
     if POLICY.mode()[0] == outbound.NEVER:
         return False, "never"
@@ -635,7 +635,7 @@ def remove(tag):
     """Take a Piper voice away, and its audio with it. The language falls
     back at once to the next engine. False when it was not installed."""
     data = installed()
-    rec = data.pop(tag, None)
+    rec = data.pop(tag, None) if isinstance(tag, str) else None
     if not rec:
         return False
     _write_installed(data)

@@ -339,6 +339,8 @@ def test_ask_first_downloads_only_when_asked(piper, monkeypatch):
     assert fetched == ["fr"]
     voices._reset_for_tests()
     assert voices.start_download("xx") == (False, "unknown")
+    assert voices.start_download(["fr"]) == (False, "unknown")
+    assert voices.remove({"fr": 1}) is False
 
 
 def test_automatically_fetches_a_languages_voice_when_a_word_is_said(
