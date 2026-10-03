@@ -696,16 +696,17 @@ var _voiceWaiting = true;
   setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
 })();
 var _playing = null, _utterance = null;
-// iPhone: the ring switch on silent mutes a page's sound unless the page
-// asks for playback, as a media player does (Safari 16.4+; elsewhere a no-op).
 // The ringer switch silences a page's sound on an iPhone unless the page asks
 // to play as media. The ask is the document's own, and this page is in a
-// frame: the shell asks too. Speech has no session of its own there, so a
-// moment of silence is played as media in the same tap, which carries the
-// voice through the switch with it (Eric, 2026-10-02: "works but not with
-// ringer silenced").
-var SILENCE_SAMPLES = 800, SILENCE_RATE = 8000;   // a tenth of a second
-var _silence = null;
+// frame: the shell asks too. Speech has no session of its own, so while a
+// word is said a silent clip plays as media under it, which carries the
+// voice through the switch (Eric, 2026-10-02: "works but not with ringer
+// silenced"). One clip, kept and looped while speaking: a new one each tap
+// was loaded and decoded first, and starting it could cut the voice off
+// ("not fast or reliable").
+var SILENCE_SAMPLES = 800, SILENCE_RATE = 8000;   // a tenth of a second, looped
+var SPEECH_START_MS = 1200;  // a voice not begun by then is asked once more
+var _silence = null, _underVoice = null;
 function silenceUrl() {
   if (_silence) return _silence;
   var n = SILENCE_SAMPLES, b = new DataView(new ArrayBuffer(44 + n));
@@ -720,25 +721,48 @@ function silenceUrl() {
 function wantPlayback() {
   [window, window.parent].forEach(function(w) { try { if (w.navigator.audioSession) w.navigator.audioSession.type = 'playback'; } catch (e) {} });
 }
-function wantPlaybackForSpeech() {
-  wantPlayback();
-  try { var a = new Audio(silenceUrl()); a.play().catch(function() {}); } catch (e) {}
+function underVoice(on) {
+  try {
+    if (on) {
+      if (!_underVoice) { _underVoice = new Audio(silenceUrl()); _underVoice.loop = true; _underVoice.preload = 'auto'; }
+      if (_underVoice.paused) _underVoice.play().catch(function() {});
+    } else if (_underVoice && !_underVoice.paused) _underVoice.pause();
+  } catch (e) {}
 }
 function say(b) {
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
-  wantPlaybackForSpeech();
-  var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
-  u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
-  b.classList.add('on');
-  u.onend = u.onerror = function() { b.classList.remove('on'); if (_utterance === u) _utterance = null; };
-  // Held until it ends: Safari lets an unreferenced utterance be collected
-  // mid-word, and its end never comes.
-  _utterance = u;
+  wantPlayback();
+  underVoice(true);   // in the tap itself: iOS starts media only from a touch
+  var text = b.getAttribute('data-say'), tries = 0;
+  var speak = function() {
+    var u = new SpeechSynthesisUtterance(text);
+    u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
+    var begun = false;
+    u.onstart = function() { begun = true; };
+    u.onend = u.onerror = function() {
+      if (_utterance !== u) return;
+      _utterance = null; b.classList.remove('on'); underVoice(false);
+    };
+    // Held until it ends: Safari lets an unreferenced utterance be collected
+    // mid-word, and its end never comes.
+    _utterance = u;
+    b.classList.add('on');
+    underVoice(true);
+    if (s.paused) s.resume();
+    s.speak(u);
+    // iOS sometimes takes the utterance and never starts it: asked again once.
+    setTimeout(function() {
+      if (begun || _utterance !== u || tries++) return;
+      _utterance = null;   // its cancel is not the end of the word
+      s.cancel();
+      setTimeout(speak, SPEECH_AFTER_CANCEL_MS);
+    }, SPEECH_START_MS);
+  };
   // iOS drops a speak() that follows cancel() in the same moment: cancel only
   // what is still talking, and speak on the next turn when it was.
-  if (s.speaking || s.pending) { s.cancel(); setTimeout(function() { s.speak(u); }, SPEECH_AFTER_CANCEL_MS); }
-  else s.speak(u);
+  if (s.speaking || s.pending) { _utterance = null; s.cancel(); setTimeout(speak, SPEECH_AFTER_CANCEL_MS); }
+  else speak();
 }
 function play(b) {
   wantPlayback();
