@@ -1759,10 +1759,11 @@ function _almAboutDataHtml() {
 }
 
 // The back matter's group under one heading (the tables and calculations),
-// and a titled section of the page.
-function _almGroupOpen(key) {
+// and a titled section of the page; end, when given, sits at the title's right.
+function _almGroupOpen(key, end) {
+  var h = '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
   return '<section class="alm-group" id="alm-group-' + key + '" aria-labelledby="alm-group-' + key + '-t">' +
-    '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
+    (end ? '<div class="alm-group-head">' + h + end + '</div>' : h);
 }
 function _almSec(titleHtml, bodyHtml) {
   return '<div class="almanac-section"><div class="almanac-section-title">' + titleHtml + '</div>' + bodyHtml + '</div>';
@@ -1835,21 +1836,28 @@ function _almSubjectChipsHtml() {
     }).join('') + '</div>';
 }
 // Everything the chips show, as one document: copied as Markdown, shared,
-// or printed (Save as PDF is in the print dialog).
-var ALM_COPY_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
-var ALM_SHARE_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
-function _almBookBtn(action, svg, label) {
-  return '<button type="button" class="alm-book-btn" data-alm-book="' + action + '" onclick="_almBook(\'' + action + '\')">' + svg + '<span>' + _almEsc(label) + '</span></button>';
+// or printed (Save as PDF is in the print dialog). Three icons at the
+// title's right, the same three at each table's own (almanac-tables.js):
+// Copy, Share where there is a share sheet, Print.
+var ALM_COPY_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
+var ALM_SHARE_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+var ALM_DOC_ACTIONS = [['copy', ALM_COPY_SVG, 'tb_book_copy'], ['share', ALM_SHARE_SVG, 'reader_share'], ['print', ALM_PRINT_SVG, 'tb_book_print']];
+// An icon button: its words are its name and its tooltip.
+function _almIconBtn(attrs, label, svg) {
+  var l = _almEsc(label);
+  return '<button type="button" class="alm-doc-btn" ' + attrs + ' aria-label="' + l + '" title="' + l + '">' + svg + '</button>';
 }
-function _almBookBarHtml() {
-  return '<div class="alm-book-bar" role="group" aria-label="' + _almEsc(t('tb_book_label')) + '">' +
-    _almBookBtn('copy', ALM_COPY_SVG, t('tb_book_copy')) +
-    (navigator.share ? _almBookBtn('share', ALM_SHARE_SVG, t('reader_share')) : '') +
-    _almBookBtn('print', ALM_PRINT_SVG, t('tb_book_print')) + '</div>';
+// The three, each marked data-<attr>="copy|share|print"; onclick, when
+// given, is called with the action.
+function _almDocActionsHtml(attr, onclick) {
+  return ALM_DOC_ACTIONS.filter(function (a) { return a[0] !== 'share' || navigator.share; }).map(function (a) {
+    return _almIconBtn('data-' + attr + '="' + a[0] + '"' + (onclick ? ' onclick="' + onclick + '(\'' + a[0] + '\')"' : ''), t(a[2]), a[1]);
+  }).join('');
 }
 function _almTablesHtml() {
   _almSubject = null;   // a fresh page shows every tile
-  return _almGroupOpen('tables') + _almSubjectChipsHtml() + _almBookBarHtml() +
+  return _almGroupOpen('tables', '<span class="alm-book-bar" role="group" aria-label="' + _almEsc(t('tb_book_label')) + '">' +
+    _almDocActionsHtml('alm-book', '_almBook') + '</span>') + _almSubjectChipsHtml() +
     _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
 }
 

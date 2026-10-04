@@ -205,12 +205,17 @@
 .alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
 .alm-group-title + .alm-tiles-h { margin-top: 4px; }
 .alm-subject-chips + .alm-tiles-h { margin-top: 14px; }
-/* Everything the chips show as one document: three quiet actions under them,
-   the tables view's Print in look; amber when reached for. */
-.alm-book-bar { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px -10px 0; }
-.alm-book-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; font-size: 13px; cursor: pointer; transition: color 0.2s, background 0.2s; }
-.alm-book-btn:hover, .alm-book-btn:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
-.alm-book-bar + .alm-tiles-h { margin-top: 10px; }
+/* A title with its icons at its right: Copy, Share, Print for everything
+   the chips show. The icons' own edge lines up with the page's. */
+.alm-group-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.alm-group-head .alm-group-title { flex: 1; min-width: 0; margin: 0; }
+.alm-book-bar { display: inline-flex; flex: none; margin-inline-end: -13px; }
+/* An icon button (here, and in each table's own bar): a 44px target, quiet,
+   amber when reached for. */
+.alm-doc-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s; }
+.alm-doc-btn svg { width: 18px; height: 18px; }
+.alm-doc-btn:hover, .alm-doc-btn:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.alm-doc-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 .alm-tiles {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
   margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;

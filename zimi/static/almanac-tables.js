@@ -698,10 +698,11 @@ function _tbOpen(id) {
     '<div class="tb-bar">' +
       '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
+      // Start again, then the Almanac's own Copy, Share and Print icons
+      // ("what stops being true" only prints).
       '<span class="tb-bar-end">' +
-        (kind === 'table' || kind === 'calc' ? '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>' : '') +
-        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-share aria-label="' + _almEsc(t('reader_share')) + '" title="' + _almEsc(t('reader_share')) + '">' + TB_SHARE_SVG + '</button>') +
-        '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
+        (kind === 'table' || kind === 'calc' ? _almIconBtn('data-tb-reset', _tbT('reset'), TB_RESET_SVG) : '') +
+        (kind === 'decay' ? _almIconBtn('data-tb-act="print"', t('ref_print'), ALM_PRINT_SVG) : _almDocActionsHtml('tb-act')) +
       '</span>' +
     '</div>' +
     (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : kind === 'const' ? 'consts' : 'tables') + '">' + list.map(function (k) {
@@ -709,11 +710,11 @@ function _tbOpen(id) {
     }).join('') + '</nav>' : '') +
     '</div><div class="tb-body" id="tb-body"></div>';
   el.querySelector('[data-tb-close]').addEventListener('click', function () { _tbClose(); });
-  el.querySelector('[data-tb-print]').addEventListener('click', _tbPrint);
   var reset = el.querySelector('[data-tb-reset]');
   if (reset) reset.addEventListener('click', _tbReset);
-  var share = el.querySelector('[data-tb-share]');
-  if (share) share.addEventListener('click', _tbShare);
+  el.querySelectorAll('[data-tb-act]').forEach(function (b) {
+    b.addEventListener('click', function () { _tbAct(b.getAttribute('data-tb-act')); });
+  });
   el.querySelectorAll('[data-tb-go]').forEach(function (b) {
     b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); var n = _tbEl('alm-ref').querySelector('[data-tb-go="' + b.getAttribute('data-tb-go') + '"]'); if (n) n.focus({ preventScroll: true }); });
   });
@@ -745,29 +746,23 @@ function _tbReset() {
     _tbCalcFields();
   }
 }
-// Share what is on screen as Markdown: the share sheet where there is one,
-// else the clipboard (app.js _copyText says "Copied"). Eric: "reset print and
-// copy/share the MD or text output".
-var TB_SHARE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
-function _tbShare() {
+// The view's Copy, Share and Print ("reset print and copy/share the MD or
+// text output", Eric): the book of this one tile, as it stands now. "What
+// stops being true" only prints, as it is.
+function _tbAct(action) {
   _tkPopClose(true);
-  var text = _tbMarkdown();
-  if (!text) return;
-  var copy = function () { if (typeof _copyText === 'function') _copyText(text); };
-  if (navigator.share) {
-    navigator.share({ title: _tbName(_tb.id), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
-  } else copy();
+  if (_tb.kind === 'decay') return _tbPrint();
+  if (action === 'print') return _tbBookPrint([_tb.id]);
+  _tbBookSend([_tb.id], null, action === 'share');
 }
-// The open table or calculation as Markdown: its name, where and when, then
-// what the page shows in order (a calculation's answer and the values it was
+// The open table or calculation as Markdown, as Copy gives it.
+function _tbMarkdown() { return _tb.id ? _tbBookMarkdown([_tb.id]) : ''; }
+// A page drawn (in the book's hidden host) as Markdown, under its heading:
+// what it shows in order (a calculation's answer and the values it was
 // worked from first), headings, tables, notes. Read off the page itself, so
 // every table and calculation has it with nothing of its own.
-function _tbMarkdown() {
-  var body = _tbEl('tb-body');
-  if (!body || !_tb.id) return '';
+function _tbPageMd(body) {
   var md = [], txt = _tbMdText;
-  var head = [].map.call(body.querySelectorAll('#tb-print-head p:not(.tb-made)'), txt).filter(Boolean);
-  md.push('# ' + _tbName(_tb.id) + (head.length ? '\n\n' + head.join(' · ') : ''));
   var ans = body.querySelector('#tk-answer');
   if (ans) {
     var big = ans.querySelector('.tk-big'), sub = ans.querySelector('.tk-sub');
@@ -785,7 +780,7 @@ function _tbMarkdown() {
   body.querySelectorAll('#tb-out, #tk-working, #tb-how').forEach(function (host) {
     host.querySelectorAll('summary, h3, h4, li, table, dl, p.tb-note, p.tb-empty, .tb-eq').forEach(function (n) {
       // An equation as its label and its LaTeX, which Markdown readers draw.
-      if (n.classList.contains('tb-eq')) { md.push(txt(n.querySelector('.tb-eq-l')) + '\n$$' + n.getAttribute('data-tex') + '$$'); return; }
+      if (n.classList.contains('tb-eq')) { md.push(txt(n.querySelector('.tb-eq-l')) + '\n\n$$\n' + n.getAttribute('data-tex') + '\n$$'); return; }
       if (n.tagName === 'SUMMARY') { md.push((n.parentNode.classList.contains('tb-eqs') ? '### ' : '## ') + txt(n)); return; }
       if (n.tagName === 'H4') { md.push('### ' + txt(n)); return; }
       if (n.tagName === 'LI') { md.push('- ' + txt(n)); return; }
@@ -864,62 +859,68 @@ window.addEventListener('keydown', function (e) {
   e.preventDefault();
   if (_tk.pop) _tkPopClose(); else _tbClose();
 }, true);
-// Print the view alone, and only while it is showing. Print sets it up
-// itself before asking for the dialog: iOS does not always send beforeprint,
-// and without it the whole app went to paper, which is the Almanac's fixed
-// frame and a blank page. The page's own Print (a browser menu, a key) still
-// comes through beforeprint.
+// Paper. Every table, calculation and constants table prints as a book
+// (below): the whole book of the tiles the chips show, or the book of one
+// tile from its own Print, or from the browser's Print while it is open.
+// "What stops being true" prints as the view is. Print sets the page up
+// itself before asking for the dialog: iOS does not always send
+// beforeprint, and without it the whole app went to paper, which is the
+// Almanac's fixed frame and a blank page.
 var TB_PRINT_CLASS = 'alm-ref-print';
+var TB_BOOK_CLASS = 'alm-book-print';
 var TB_PRINT_UNDO_MS = 60000;   // afterprint can be late or missing on a phone
 function _tbPrintOn() {
-  if (!(_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen)) return;
+  if (_tbEl(TB_BOOK_ID) || !(_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen)) return;
+  if (_tb.kind !== 'decay') { _tbBookOn([_tb.id]); return; }
   document.documentElement.classList.add(TB_PRINT_CLASS);
-  // Paper has no tap to open "How this is made" or its Equations: they print
-  // open, the equations drawn (as their TeX if Temml never came).
-  document.querySelectorAll('#tb-how details').forEach(function (d) {
-    if (!d.open) { d.open = true; d.setAttribute('data-print-opened', ''); }
-  });
-  _tbEqPaint(_tbEl('tb-how'));
 }
 function _tbPrintOff() {
-  document.documentElement.classList.remove(TB_PRINT_CLASS);
-  var book = _tbEl(TB_BOOK_ID);
-  if (book) book.remove();
-  document.querySelectorAll('#tb-how details[data-print-opened]').forEach(function (d) {
-    d.open = false; d.removeAttribute('data-print-opened');
-  });
+  document.documentElement.classList.remove(TB_PRINT_CLASS, TB_BOOK_CLASS);
+  [TB_BOOK_ID, TB_BOOK_STYLE_ID].forEach(function (id) { var n = _tbEl(id); if (n) n.remove(); });
+}
+function _tbPrintNow() {
+  clearTimeout(_tb.printUndo);
+  _tb.printUndo = setTimeout(_tbPrintOff, TB_PRINT_UNDO_MS);
+  try { window.print(); } catch (e) { _tbPrintOff(); }
 }
 function _tbPrint() {
   _tkPopClose(true);
   if (typeof window.print !== 'function') return;
-  function go() {
-    _tbPrintOn();
-    clearTimeout(_tb.printUndo);
-    _tb.printUndo = setTimeout(_tbPrintOff, TB_PRINT_UNDO_MS);
-    try { window.print(); } catch (e) { _tbPrintOff(); }
-  }
-  // The equations go to paper drawn: Temml first, when the view has them.
-  if (document.querySelector('#tb-how .tb-eq') && !window.temml) _tbTemmlLoad().then(go);
-  else go();
+  _tbPrintOn();
+  _tbPrintNow();
 }
 window.addEventListener('beforeprint', _tbPrintOn);
 window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo); _tbPrintOff(); });
 
-// ═══ The whole book ═══
+// ═══ The book ═══
 // Every tile the chips show ("For the selected filter or all I want a
 // top-level copy or print for all tables calcs and constants shown that
-// create a single doc nicely formatted", Eric, 2026-10-03), as one
-// Markdown document or one printed one: a title page (the place, the day,
-// the subject), then each table, calculation and constants table as its
-// own view would print it, from its starting values, How this is made open.
+// create a single doc nicely formatted", Eric, 2026-10-03; "Filtered for
+// what's being shown", 2026-10-04), as one Markdown document or one
+// printed one: a title page (the place, the days, what is shown, the
+// contents), then each tile on its own page as it stands now (its window,
+// its place, its inputs), How this is made open, the equations drawn.
+// One tile's own Copy and Print give the same, its title block its heading.
 var TB_BOOK_ID = 'alm-book';
-// Each tile drawn in turn, out of sight, and read off: its Markdown and,
-// for paper, its page. The open view's state is put back after.
+var TB_BOOK_STYLE_ID = 'alm-book-pages';
+// The words' face on paper: a book serif with lining, even-width figures.
+var TB_BOOK_SERIF = "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Noto Serif', Georgia, serif";
+// A portrait page's text width (A4, 15 mm margins): a table wider than this
+// gets a landscape page of its own.
+var TB_BOOK_TEXT_MM = 180;
+// Each tile drawn in turn, out of sight, and read off: its name, its
+// one-line subtitle, its Markdown and, for paper, its page. The open view
+// steps aside meanwhile (the pages are drawn under its ids) and comes back
+// as it was; every tile is drawn from the state it has now.
 function _tbBookPages(ids, paper) {
-  var open = _tbEl('alm-ref');
-  if (open) _tbClose();
+  var view = _tbEl('alm-ref'), parent = view && view.parentNode, next = view && view.nextSibling;
+  var scroll = view ? view.scrollTop : 0, focus = view && view.contains(document.activeElement) ? document.activeElement : null;
+  if (view) parent.removeChild(view);
   var keep = { id: _tb.id, kind: _tb.kind, changed: _tb.changed, place: _tb.place, win: _tb.win, calc: _tb.calc, specs: _tk.specs };
-  _tb.place = _tbAlmanacPlace(); _tb.win = {}; _tb.calc = {};
+  _tb.place = keep.place || _tbAlmanacPlace();
+  // A tile never opened is drawn from its starting values, and still starts
+  // from them when it is opened later.
+  _tb.win = Object.assign({}, keep.win); _tb.calc = Object.assign({}, keep.calc);
   var host = document.createElement('div');
   host.hidden = true;
   document.body.appendChild(host);
@@ -936,15 +937,15 @@ function _tbBookPages(ids, paper) {
       if (kind === 'table') _tbRenderTable(body);
       else if (kind === 'calc') _tbRenderCalc(body);
       else _tbRenderConst(body);
-      var page = { id: id, md: _tbMarkdown() };
       // A constants table shares its name with a table ("Sun and Moon"):
       // in the book it says which it is.
-      if (kind === 'const') {
-        var full = _tbT('consts') + ' · ' + _tbName(id), h1 = body.querySelector('.tb-printhead h1');
-        page.md = page.md.replace(/^# .*/, '# ' + full);
-        if (h1) h1.textContent = full;
-      }
+      var page = { id: id, kind: kind, name: kind === 'const' ? _tbT('consts') + ' · ' + _tbName(id) : _tbName(id),
+        sub: _tbMdText(body.querySelector('.tb-printhead .tb-sub')), at: _tbMdText(body.querySelector('.tb-printhead .tb-at')),
+        md: _tbPageMd(body) };
+      if (kind === 'table') page.span = _tbSpan(_tbWinState(id));
       if (paper) {
+        var h1 = body.querySelector('.tb-printhead h1');
+        if (h1) h1.textContent = page.name;
         body.querySelectorAll('.tb-controls, .tk-pop').forEach(function (n) { n.remove(); });
         body.querySelectorAll('details').forEach(function (d) { d.open = true; d.setAttribute('open', ''); });
         _tbEqPaint(body);
@@ -959,52 +960,136 @@ function _tbBookPages(ids, paper) {
     host.remove();
     _tb.id = keep.id; _tb.kind = keep.kind; _tb.changed = keep.changed; _tb.place = keep.place;
     _tb.win = keep.win; _tb.calc = keep.calc; _tk.specs = keep.specs;
+    if (view) {
+      parent.insertBefore(view, next && next.parentNode === parent ? next : null);
+      view.scrollTop = scroll;
+      if (focus && focus.isConnected) focus.focus({ preventScroll: true });
+    }
   }
   return pages;
 }
-// The title page's lines: the place, the day, what the chips show.
-function _tbBookHead(showing) {
-  var p = _tbAlmanacPlace();
-  return { title: t('alm_group_tables'), lines: [p.name + ' · ' + _tbPlaceLine(p),
-    _tbLongDay(_tbDayIn(_almFocusInstant().getTime(), p.tz)), _tbT('book_showing', { s: showing })] };
+// The title page's lines: the tables' place, where it is, the days the
+// tables cover (or the Almanac's day), what the chips show.
+function _tbBookHead(pages, showing) {
+  var p = _tb.place || _tbAlmanacPlace(), spans = pages.filter(function (pg) { return pg.span; }), when;
+  if (spans.length) {
+    var from = spans[0].span.from, to = spans[0].span.to;
+    spans.forEach(function (pg) {
+      if (_tbJdn(pg.span.from) < _tbJdn(from)) from = pg.span.from;
+      if (_tbJdn(pg.span.to) > _tbJdn(to)) to = pg.span.to;
+    });
+    when = _tbRangeText(from, to);
+  } else when = _tbLongDay(_tbDayIn(_almFocusInstant().getTime(), p.tz));
+  return { title: t('alm_group_tables'), place: p.name, at: _tbPlaceLine(p), when: when,
+    showing: showing ? _tbT('book_showing', { s: showing }) : '', made: _tbT('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) };
 }
+// As Markdown: a title block, then a section a tile, headings a level down.
+// One tile: its own title block, then its page.
 function _tbBookMarkdown(ids, showing) {
-  var head = _tbBookHead(showing);
-  var md = ['# ' + head.title + '\n\n' + head.lines.join('  \n') + '\n\n*' + _tbT('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) + '*'];
-  // Each page's headings a level down, under the book's title.
-  _tbBookPages(ids, false).forEach(function (pg) { md.push(pg.md.replace(/^(#+) /gm, '#$1 ').trim()); });
+  var pages = _tbBookPages(ids, false), head = _tbBookHead(pages, showing);
+  if (!pages.length) return '';
+  if (!showing) {
+    var pg = pages[0];
+    return ['# ' + pg.name, [pg.sub, pg.at].filter(Boolean).join('  \n'), '*' + head.made + '*', pg.md].filter(Boolean).join('\n\n') + '\n';
+  }
+  var md = ['# ' + head.title, [head.place, head.at, head.when, head.showing].join('  \n'), '*' + head.made + '*',
+    '**' + _tbT('book_contents') + '**\n\n' + pages.map(function (p) { return '- ' + p.name; }).join('\n')];
+  pages.forEach(function (p) {
+    md.push('## ' + p.name + (p.sub ? '\n\n' + p.sub : '') + (p.md ? '\n\n' + p.md.replace(/^(#+) /gm, '#$1 ') : ''));
+  });
   return md.join('\n\n') + '\n';
 }
 // Share sends it where there is a share sheet; Copy, and Share without one,
 // put it on the clipboard (app.js _copyText says "Copied").
 function _tbBookSend(ids, showing, share) {
   var text = _tbBookMarkdown(ids, showing);
+  if (!text) return;
   var copy = function () { if (typeof _copyText === 'function') _copyText(text); };
   if (share && navigator.share) {
-    navigator.share({ title: t('alm_group_tables'), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
+    navigator.share({ title: showing ? t('alm_group_tables') : _tbName(ids[0]), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
   } else copy();
 }
-// Paper: the book in the Almanac's place, the equations drawn (Temml first),
-// the browser's own print dialog (its Save as PDF), and gone again after.
+// The book on paper, in the Almanac's place (the print rules show it and
+// nothing else): the title page and its contents, then the pages.
+function _tbBookBuild(ids, showing) {
+  var host = _tbEl('almanac-content');
+  if (!host) return null;
+  _tbPrintOff();
+  var pages = _tbBookPages(ids, true);
+  if (!pages.length) return null;
+  var head = _tbBookHead(pages, showing), one = !showing, e = _almEsc;
+  var book = document.createElement('div');
+  book.id = TB_BOOK_ID;
+  book.className = 'alm-book' + (one ? ' alm-book-one' : '');
+  book.style.setProperty('--tb-book-serif', TB_BOOK_SERIF);
+  var html = '';
+  if (!one) {
+    var toc = [['table', 'tables'], ['calc', 'calcs'], ['const', 'consts']].map(function (k) {
+      var these = pages.filter(function (p) { return p.kind === k[0]; });
+      return these.length ? '<h3>' + _tbH(k[1]) + '</h3><ol>' + these.map(function (p) {
+        return '<li><span>' + e(k[0] === 'const' ? _tbName(p.id) : p.name) + '</span>' + (p.sub ? '<span class="tb-toc-sub">' + e(p.sub) + '</span>' : '') + '</li>';
+      }).join('') + '</ol>' : '';
+    }).join('');
+    html = '<header class="tb-book-title"><p class="tb-book-kicker">' + e(t('almanac')) + '</p><h1>' + e(head.title) + '</h1>' +
+      '<p class="tb-book-place">' + e(head.place) + '</p><p>' + e(head.at) + '</p><p>' + e(head.when) + '</p>' +
+      '<p class="tb-book-showing">' + e(head.showing) + '</p>' +
+      '<nav class="tb-book-toc"><h2>' + _tbH('book_contents') + '</h2>' + toc + '</nav>' +
+      '<p class="tb-made">' + e(head.made) + '</p></header>';
+  }
+  html += pages.map(function (p) { return '<section class="tb-book-page tb-body" data-tb="' + p.id + '">' + p.html + '</section>'; }).join('');
+  // No page boxes for a running foot: one at the foot of the paper instead.
+  if (!('CSSMarginRule' in window)) html += '<footer class="tb-book-foot">' + e(one ? pages[0].name : head.title) + ' · ' + e(head.place) + '</footer>';
+  book.innerHTML = html;
+  if (one) {
+    var ph = book.querySelector('.tb-printhead');
+    if (ph) ph.insertAdjacentHTML('beforeend', '<p class="tb-made">' + e(head.made) + '</p>');
+  }
+  host.appendChild(book);
+  _tbBookWide(book);
+  _tbBookPageRules((one ? pages[0].name : head.title) + ' · ' + _tbShortName({ name: head.place }), one);
+  return book;
+}
+// A page whose table is wider than portrait paper is set on its own,
+// landscape page (the print rules' named page tb-wide).
+function _tbBookWide(book) {
+  book.classList.add('alm-book-measure');
+  book.style.width = TB_BOOK_TEXT_MM + 'mm';
+  book.querySelectorAll('.tb-book-page').forEach(function (s) {
+    var w = s.clientWidth;
+    var wide = [].some.call(s.querySelectorAll('.tb-out table, .tb-working table'), function (tb) { return tb.offsetWidth > w + 1; });
+    s.classList.toggle('tb-book-wide', wide);
+  });
+  book.style.width = '';
+  book.classList.remove('alm-book-measure');
+}
+// The paper's own rules, while the book is out: margins, the running foot
+// (the book's name and place, the page and the count; none on a title
+// page) and the landscape page for a wide table.
+function _tbCssString(s) { return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ') + '"'; }
+function _tbBookPageRules(running, one) {
+  var foot = 'font-family: ' + TB_BOOK_SERIF + '; font-size: 8pt; color: #333;';
+  var st = document.createElement('style');
+  st.id = TB_BOOK_STYLE_ID;
+  st.textContent = '@media print {' +
+    '@page { margin: 16mm 15mm 18mm; @bottom-left { content: ' + _tbCssString(running) + '; ' + foot + ' }' +
+    ' @bottom-right { content: counter(page) " / " counter(pages); ' + foot + ' } }' +
+    (one ? '' : '@page :first { @bottom-left { content: none; } @bottom-right { content: none; } }') +
+    '@page tb-wide { size: landscape; } }';
+  document.head.appendChild(st);
+}
+function _tbBookOn(ids, showing) {
+  if (!_tbBookBuild(ids, showing)) return false;
+  document.documentElement.classList.add(TB_PRINT_CLASS, TB_BOOK_CLASS);
+  return true;
+}
+// Print: the equations drawn (Temml first), the book out, the browser's own
+// print dialog (its Save as PDF), and gone again after.
 function _tbBookPrint(ids, showing) {
+  _tkPopClose(true);
   if (typeof window.print !== 'function') return Promise.resolve();
   return _tbTemmlLoad().then(function () {
-    var host = _tbEl('almanac-content');
-    if (!host) return;
-    var old = _tbEl(TB_BOOK_ID);
-    if (old) old.remove();
-    var head = _tbBookHead(showing), book = document.createElement('div');
-    book.id = TB_BOOK_ID;
-    book.className = 'alm-book';
-    book.innerHTML = '<header class="tb-book-title"><h1>' + _almEsc(head.title) + '</h1>' +
-      head.lines.map(function (l) { return '<p>' + _almEsc(l) + '</p>'; }).join('') +
-      '<p class="tb-made">' + _tbH('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) + '</p></header>' +
-      _tbBookPages(ids, true).map(function (pg) { return '<section class="tb-book-page tb-body">' + pg.html + '</section>'; }).join('');
-    host.appendChild(book);
-    document.documentElement.classList.add(TB_PRINT_CLASS);
-    clearTimeout(_tb.printUndo);
-    _tb.printUndo = setTimeout(_tbPrintOff, TB_PRINT_UNDO_MS);
-    try { window.print(); } catch (e) { _tbPrintOff(); }
+    if (!_tbBookOn(ids, showing)) return;
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(_tbPrintNow);
   });
 }
 
@@ -1116,8 +1201,8 @@ function _tbMadeFill(x) {
     methods.push(m.line);
     (m.c || []).forEach(function (ck) { if (!seen[ck]) { seen[ck] = 1; consts.push({ text: _tbT('mc_' + ck) + ': ' + TB_MADE_CONST[ck](), tile: TB_MADE_CONST_TILE[ck] }); } });
   });
-  var was = host.querySelector('details'), open = was && was.open && !was.hasAttribute('data-print-opened');
-  var wasEq = host.querySelector('details.tb-eqs'), openEq = wasEq && wasEq.open && !wasEq.hasAttribute('data-print-opened');
+  var was = host.querySelector('details'), open = was && was.open;
+  var wasEq = host.querySelector('details.tb-eqs'), openEq = wasEq && wasEq.open;
   // A line, and for a constant the tile that holds it ("Physics").
   function group(key, lines) {
     return lines.length ? '<h4>' + _tbH(key) + '</h4><ul>' + lines.map(function (l) {
@@ -1172,6 +1257,12 @@ function _tbTx(v) {
   var s = String(v), m = /^(-?[\d.]+)e([+-]\d+)$/.exec(s);
   return m ? m[1] + '\\times10^{' + (+m[2]) + '}' : s;
 }
+// The same number in a table's cell (HTML and Markdown alike): 9.03×10⁻⁸.
+var TB_SUPERSCRIPT = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+function _tbCellNum(v) {
+  var s = String(v), m = /^(-?[\d.]+)e([+-]\d+)$/.exec(s);
+  return m ? m[1] + '×10' + String(+m[2]).replace(/./g, function (c) { return TB_SUPERSCRIPT[c]; }) : s;
+}
 // Words inside an equation (\text{...}): the reader's language, TeX's
 // special characters left out.
 function _tbTxText(k, vars) { return String(_tbT(k, vars)).replace(/[\\{}_^#$%&~]/g, ' '); }
@@ -1199,7 +1290,7 @@ function _tbEqDeltaTTex(y) {
 // Rows of a VSOP87 series: its name and power, A, B, C.
 function _tbEqVsopRows(name, series) {
   var out = [];
-  series.forEach(function (row, p) { row.forEach(function (term) { out.push([name + '<sub>' + p + '</sub>', _tbTx(term[0]), _tbTx(term[1]), _tbTx(term[2])]); }); });
+  series.forEach(function (row, p) { row.forEach(function (term) { out.push([name + '<sub>' + p + '</sub>', _tbCellNum(term[0]), _tbCellNum(term[1]), _tbCellNum(term[2])]); }); });
   return out;
 }
 function _tbEqTermCount(series) { return series.map(function (r) { return r.length; }).join('+'); }
@@ -1644,11 +1735,12 @@ function _tbRenderConst(body) {
   _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
 }
 
-// The heading only paper carries: what, where, when, and when worked out.
-function _tbPrintHead(lines) {
+// The heading only paper and Copy carry: what, then where and when in one
+// line; at, the place's coordinates and zone, for a one-tile title block.
+function _tbPrintHead(lines, at) {
+  var sub = lines.filter(Boolean).join(' · ');
   return '<header class="tb-printhead"><h1>' + _almEsc(_tbName(_tb.id)) + '</h1>' +
-    lines.filter(Boolean).map(function (l) { return '<p>' + _almEsc(l) + '</p>'; }).join('') +
-    '<p class="tb-made">' + _tbH('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) + '</p></header>';
+    (sub ? '<p class="tb-sub">' + _almEsc(sub) + '</p>' : '') + (at ? '<p class="tb-at">' + _almEsc(at) + '</p>' : '') + '</header>';
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1781,9 +1873,9 @@ function _tbDrawTable() {
     out.innerHTML = res.html;
     out.classList.remove('tb-busy');
     var p = _tb.place;
-    var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
+    var own = res.place === false ? null : res.place || _tbShortName(p);
     var ph = _tbEl('tb-print-head');
-    if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
+    if (ph) ph.innerHTML = _tbPrintHead([own, span.label + (res.step ? ' · ' + res.step : '')], res.place == null ? _tbPlaceLine(p) : null);
     _tbMadeFill({ place: res.place === false ? null : p, range: span.label, mid: _tbMid(span), made: res.made });
     out.querySelectorAll('table').forEach(function (tb) {
       if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
@@ -2528,9 +2620,12 @@ function _tbSolve() {
   ans.innerHTML = (r.glyph ? '<span class="tk-answer-glyph" aria-hidden="true">' + r.glyph + '</span>' : '') +
     '<div class="tk-answer-text"><div class="tk-big" dir="auto">' + _almEsc(r.big) + '</div><div class="tk-sub">' + _almEsc(r.sub) + '</div></div>';
   wk.innerHTML = (r.extra || '') + r.working;
-  _tbMadeFill(_tbCalcInputs(c));
+  var x = _tbCalcInputs(c);
+  _tbMadeFill(x);
+  // Its subtitle: the places it was worked for and its day.
   var ph = _tbEl('tb-print-head');
-  if (ph) ph.innerHTML = _tbPrintHead([]);
+  if (ph) ph.innerHTML = _tbPrintHead(x.places.map(function (p) { return p.name ? _tbShortName(p) : _arLatText(p.lat) + ' ' + _arLonText(p.lon); }).concat(x.date == null ? [] : [_tbShortDay(_tbDayIn(x.date, x.places.length ? x.places[0].tz : null))]),
+    x.places.length === 1 ? _tbPlaceLine(x.places[0]) : null);
   _tb.last = r;
 }
 
