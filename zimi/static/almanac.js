@@ -190,6 +190,22 @@ document.addEventListener('visibilitychange', function() {
 // null means "the open reader did not originate in the almanac".
 var _almReturnScroll = null;
 
+// The header steps aside as the page scrolls (app.js _chromeScroll), but not
+// for the browser's own pull back at the page's end. Hiding the header makes
+// the scroller taller, which at the end lowers its furthest scroll and pulls
+// it up; read as the reader scrolling up, that brought the header back, the
+// scroller shrank again and the page's last lines stayed out of reach ("I
+// can't scroll to the very bottom of almanac", Eric, 2026-10-03). A move up
+// that leaves the page still at its end is the browser's, not the reader's.
+var ALM_END_SLOP_PX = 2;
+function _almAtEnd(sc) { return sc.scrollTop + sc.clientHeight >= sc.scrollHeight - ALM_END_SLOP_PX; }
+function _almChromeScroll(sc) {
+  var y = sc.scrollTop, last = sc._chromeY == null ? y : sc._chromeY;
+  sc._chromeY = y;
+  if (y < last && _almAtEnd(sc)) { if (typeof _chromeShift === 'function') _chromeShift(y - last); return; }
+  _chromeScroll(y);
+}
+
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
   document.body.classList.add('almanac-mode');
@@ -206,7 +222,7 @@ function _openAlmanacInner(replaceState) {
   var content = document.getElementById('almanac-content');
   if (content && !content._chromeWatch && typeof _chromeScroll === 'function') {
     content._chromeWatch = true;
-    content.addEventListener('scroll', function() { if (_almanacOpen) _chromeScroll(content.scrollTop); }, { passive: true });
+    content.addEventListener('scroll', function() { if (_almanacOpen) _almChromeScroll(content); }, { passive: true });
   }
   // Deep-links: fresh library check per open, and one delegated tap handler.
   if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
@@ -2213,7 +2229,7 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Footer
-  html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
+  html += '<div class="alm-footer">' +
     t('alm_footer') +
     '</div>';
 

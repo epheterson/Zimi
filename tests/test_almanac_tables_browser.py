@@ -483,6 +483,29 @@ def test_a_date_drum_and_an_angle(page):
     )
 
 
+def test_the_page_scrolls_to_its_very_end(page):
+    """At 390x844 the page reaches its end and stays there: the header
+    stepping aside grows the scroller, and the browser's pull back at the
+    end must not bring it back (which shrank the scroller and left the last
+    lines out of reach). The footer clears a phone's home indicator."""
+    page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
+    end = (
+        "() => { const c = document.getElementById('almanac-content'); c.scrollTop = c.scrollHeight;"
+        " return new Promise((r) => setTimeout(() => r({ gap: c.scrollHeight - c.scrollTop - c.clientHeight,"
+        " foot: c.querySelector('.alm-footer').getBoundingClientRect().bottom - c.getBoundingClientRect().bottom }), 300)); }"
+    )
+    for _ in range(3):
+        got = page.evaluate(end)
+        assert got["gap"] <= 1 and got["foot"] <= 0, got
+    css = page.evaluate(
+        "[...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } })"
+        ".filter((r) => r.selectorText === '.alm-footer').map((r) => r.cssText).join(' ')"
+    )
+    assert "safe-area-inset-bottom" in css, css
+    page.evaluate("document.getElementById('almanac-content').scrollTop = 0")
+    assert not page.errors, page.errors
+
+
 def test_back_returns_to_the_almanac_where_it_was(page):
     page.evaluate(
         "window.AlmanacRef && document.getElementById('alm-ref') && AlmanacRef.close()"

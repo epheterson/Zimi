@@ -14,6 +14,10 @@
    keep-still watcher sees is the height they take. */
 #almanac-place, #almanac-rosetta { display: flow-root; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
+/* The page's last line, clear of a phone's home indicator: the inset is the
+   footer's, not the scroller's padding, which would lift the docked time
+   machine off the screen's edge too. */
+.alm-footer { margin-top: 40px; padding-bottom: env(safe-area-inset-bottom, 0px); text-align: center; font-size: 11px; color: var(--text3); }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
