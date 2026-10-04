@@ -4384,12 +4384,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         ):
             return self._json(400, {"error": "bad request"})
         if param("check"):
-            got = _voices.said(text, lang, accent, engine, limit)
+            got = _voices.said(text, lang, accent, engine, limit=limit)
             if got is None:
                 return self._json(404, {"error": "no voice"})
             return self._uncached(lambda: self._json(200, got))
         try:
-            body = _voices.speak(text, lang, accent, engine, limit)
+            body = _voices.speak(text, lang, accent, engine, limit=limit)
         except _voices.Busy:
             return self._uncached(
                 lambda: self._json(

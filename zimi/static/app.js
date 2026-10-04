@@ -903,9 +903,9 @@ function _voiceRowHtml(x, isOn, last) {
     '<button type="button" class="set-btn voice-hear" aria-label="' + escAttr(t('voices_hear') + ': ' + _voiceEngineName(e)) + '"' +
       (isOn ? '' : ' disabled') + ' onclick="' + escAttr('_hearVoice(' + js + ', this)') + '">' +
       '<span class="voice-hear-icon">' + _HEAR_ICON + '</span><span>' + tH('voices_hear') + '</span></button>' +
-    '<span class="switch"><input type="checkbox" role="switch" aria-label="' + escAttr(_voiceEngineName(e)) + '"' +
+    '<label class="switch"><input type="checkbox" role="switch" aria-label="' + escAttr(_voiceEngineName(e)) + '"' +
       (isOn ? ' checked' : '') + (isOn && last ? ' disabled' : '') +
-      ' onchange="' + escAttr('_setVoiceEngineOn(' + js + ', this.checked)') + '"><span class="switch-slider"></span></span></div>';
+      ' onchange="' + escAttr('_setVoiceEngineOn(' + js + ', this.checked)') + '"><span class="switch-slider"></span></label></div>';
 }
 function _voicePrefsHtml() {
   var off = _voicePrefs().off, here = _voiceEnginesHere();
