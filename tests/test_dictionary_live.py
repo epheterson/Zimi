@@ -222,12 +222,64 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             heads = f.evaluate(
                 "() => Array.from(document.querySelectorAll('.shelf-h h2')).map(h => h.textContent)"
             )
-            assert heads[:2] == ["Recent", "Saved"] and "Your dictionaries" in heads
+            assert heads[:3] == ["More words", "Recent", "Saved"]
+            assert "Your dictionaries" in heads
             recent = f.evaluate(
-                "() => Array.from(document.querySelectorAll('.shelf')[0].querySelectorAll('a')).map(a => a.textContent)"
+                "() => Array.from(document.querySelectorAll('.shelf:not(.more-words)')[0].querySelectorAll('a')).map(a => a.textContent)"
             )
             assert set(recent) == {"water", "eau"}
             _shot(pg, "home-" + scheme)
+            assert not errors, errors
+        finally:
+            br.close()
+
+
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+def test_the_front_offers_more_words_than_one_at_390px(served, scheme):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(
+            viewport={"width": 390, "height": 844},
+            color_scheme=scheme,
+            locale="en-US",
+            is_mobile=True,
+            has_touch=True,
+        )
+        ctx.add_init_script(VOICES)
+        pg = ctx.new_page()
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        try:
+            pg.goto(served + "/#dictionary")
+            f = _frame(pg)
+            f.wait_for_selector(".more-words .cloud a", timeout=20000)
+            got = f.evaluate(
+                """() => ({ day: (document.querySelector('.wotd .w') || {}).textContent || '',
+              more: Array.from(document.querySelectorAll('.more-words .cloud a')).map(a => [a.getAttribute('data-w'), (a.querySelector('.ml') || {}).textContent || '']),
+              wide: document.documentElement.scrollWidth - document.documentElement.clientWidth })"""
+            )
+            # The word of the day, and at least six more besides it.
+            assert got["day"] and len(got["more"]) >= 6, got
+            assert got["day"] not in [w for w, _ in got["more"]]
+            # A French word says it is French; Zimi speaks English.
+            assert "French" in [lang for _, lang in got["more"]]
+            assert got["wide"] <= 0
+            pg.wait_for_function(
+                "() => getComputedStyle(document.getElementById('reader-loading')).opacity === '0' || document.getElementById('reader-loading').offsetParent === null"
+            )
+            _shot(pg, "front-more-" + scheme)
+            # Shuffle brings another handful, still words that open.
+            f.click(".more-words .shelf-h .all")
+            f.wait_for_function(
+                "() => { const b = document.querySelector('.more-words .shelf-h .all'); return b && !b.disabled; }"
+            )
+            first = f.evaluate(
+                "() => document.querySelector('.more-words .cloud a').getAttribute('data-w')"
+            )
+            _tap(f, ".more-words .cloud a")
+            _word(f, first)
             assert not errors, errors
         finally:
             br.close()
@@ -705,7 +757,9 @@ def test_say_has_a_menu_of_every_voice_that_can_say_the_word(piper_here, monkeyp
     _tap(f, SAY_FR)
     f.wait_for_function("() => window.__said.length > 0")
     # With no preference, Say plays the default, with no engine named.
-    f.evaluate("() => { localStorage.removeItem('zimi_voice_prefs'); window.__played = []; }")
+    f.evaluate(
+        "() => { localStorage.removeItem('zimi_voice_prefs'); window.__played = []; }"
+    )
     _tap(f, SAY_FR)
     f.wait_for_function("() => window.__played.length > 0")
     assert "engine=" not in f.evaluate("() => window.__played")[-1]
@@ -1140,9 +1194,13 @@ def test_languages_switch_and_its_folded_list_set_the_catalog_filter(
         "fr",
         "de",
     ]
-    assert pg.eval_on_selector(
-        fold + " .ms-lang-pill[data-lang='fr']", "b => b.getAttribute('aria-pressed')"
-    ) == "true"
+    assert (
+        pg.eval_on_selector(
+            fold + " .ms-lang-pill[data-lang='fr']",
+            "b => b.getAttribute('aria-pressed')",
+        )
+        == "true"
+    )
     pg.click(fold + " .ms-lang-pill[data-lang='fr']")
     assert pg.evaluate("() => JSON.parse(localStorage.zimi_pref_languages)") == ["de"]
     assert pg.eval_on_selector(fold, "d => d.open"), "a pill keeps the list open"

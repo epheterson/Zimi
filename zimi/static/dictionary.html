@@ -149,6 +149,7 @@
   .wotd-box .wotd { padding: 0; border: 0; border-radius: 0; background: none; margin: 0; }
   .wotd-box .wotd:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .wotd-say { margin: 10px 0 2px; }
+  .cloud .ml { margin-inline-start: 6px; font-size: 11px; color: var(--text2); }
   .shelf-h h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
   .dicts { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text2); }
   .dicts div { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
@@ -195,7 +196,7 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice',
   voices_menu: 'Voices', voice_device: 'Device', voices_more: 'Voices…', voice_default: 'default', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
-  entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
+  more_words: 'More words', shuffle: 'Shuffle', entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
 // ── pure parts (tests/test_dictionary_page.cjs runs these) ───────────────
 var WORDS_SHOWN = 14;     // of a list of words, before "n more"
@@ -359,10 +360,34 @@ function pickToday(words, langs) {
   for (var i = 0; i < langs.length; i++) for (var j = 0; j < words.length; j++) if (primaryOf(words[j].lang) === langs[i]) return words[j];
   return words[0];
 }
+// The front's other words: the reader's languages taken in turn (so each
+// has a say), then the rest, never the word of the day, each word once.
+var MORE_SHOWN = 8;
+function pickMore(words, langs, skip) {
+  var buckets = {}, order = [], seen = {};
+  if (skip) seen[skip] = 1;
+  (words || []).forEach(function(x) {
+    if (!x || !x.w || seen[x.w]) return;
+    seen[x.w] = 1;
+    var p = primaryOf(x.lang);
+    if (!buckets[p]) { buckets[p] = []; order.push(p); }
+    buckets[p].push(x);
+  });
+  var mine = langs.filter(function(l) { return buckets[l]; });
+  var rest = order.filter(function(l) { return mine.indexOf(l) < 0; });
+  var out = [];
+  [mine, rest].forEach(function(group) {
+    for (var i = 0, took = true; took && out.length < MORE_SHOWN; i++) {
+      took = false;
+      group.forEach(function(l) { if (buckets[l][i] && out.length < MORE_SHOWN) { out.push(buckets[l][i]); took = true; } });
+    }
+  });
+  return out;
+}
 
 // ── views ────────────────────────────────────────────────────────────────
 var LANGS = readerLangs(STR.lang, (typeof navigator !== 'undefined' && navigator.languages) || []);
-var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null;
+var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null, _shuffled = null;
 function $(id) { return document.getElementById(id); }
 function cur() { return _stack[_stack.length - 1]; }
 var FAILED = { failed: true };
@@ -505,6 +530,7 @@ function renderHome() {
   } else {
     html += '<p class="hint">' + esc(STR.hint) + '</p>';
   }
+  html += moreHtml(w);
   html += cloudOf(recentWords(), STR.recent);
   html += cloudOf(savedWords(), STR.saved_words);
   html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.sources) + '</h2></div><div class="dicts">' + h.wiktionaries.map(function(x) {
@@ -512,6 +538,27 @@ function renderHome() {
   }).join('') + '</div></section>';
   $('view').innerHTML = html;
   wireSpeech();
+}
+// More words: today's (or a shuffled handful), each opening the word, with
+// its language named when it is not Zimi's.
+function moreHtml(today) {
+  var words = _shuffled || (_today && _today !== FAILED ? pickMore(_today.more, LANGS, today && today.w) : []);
+  if (!words.length) return '';
+  return '<section class="shelf more-words"><div class="shelf-h"><h2>' + esc(STR.more_words) + '</h2>' +
+    '<button type="button" class="all" onclick="shuffleWords(this)">' + esc(STR.shuffle) + '</button></div><div class="cloud">' +
+    words.map(function(x) {
+      var other = primaryOf(x.lang) !== primaryOf(STR.lang) ? '<span class="ml">' + esc(langName(x.lang)) + '</span>' : '';
+      return '<a class="w" href="' + esc(wordUrl(x.w)) + '" data-w="' + esc(x.w) + '"><span lang="' + esc(x.lang) + '">' + esc(x.w) + '</span>' + other + '</a>';
+    }).join('') + '</div></section>';
+}
+function shuffleWords(b) {
+  if (b.disabled) return;
+  b.disabled = true; b.setAttribute('aria-busy', 'true');
+  get('/dictionary/random?langs=' + encodeURIComponent(LANGS.join(','))).then(function(r) {
+    if (r !== FAILED && r.words && r.words.length) _shuffled = pickMore(r.words, LANGS, '');
+    if (cur().v === 'home') renderHome();
+    else { b.disabled = false; b.removeAttribute('aria-busy'); }
+  });
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
 
@@ -1192,7 +1239,7 @@ window.dictCurrent = dictCurrent; window.dictTranslation = dictTranslation;
 window.dictSearch = dictSearch; window.dictGo = dictGo; window.toTrail = toTrail; window.moreWords = moreWords; window.moreIpa = moreIpa;
 // A ZIM without an icon of its own: no broken picture in its place.
 document.addEventListener('error', function(e) { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);
-window.allTranslations = allTranslations; window.goCatalog = goCatalog; window.load = load; window.show = show;
+window.shuffleWords = shuffleWords; window.allTranslations = allTranslations; window.goCatalog = goCatalog; window.load = load; window.show = show;
 // What you keep changed: the front's lists, or the word's Save.
 window.__saved = function() { if (cur().v === 'home') renderHome(); else savedPaint(); };
 window.__top = function() { return _stack.length <= 1; };
