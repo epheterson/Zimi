@@ -78,6 +78,7 @@ def served(tmp_path_factory):
     old_details = books.request_details
     books.request_details = lambda name: None
     books._reset_for_tests()
+    old_dirs = srv.ZIM_DIR, srv.ZIMI_DATA_DIR
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(zdir), str(tmp / "data")
     os.makedirs(srv.ZIMI_DATA_DIR, exist_ok=True)
     srv.load_cache(force=True)
@@ -86,6 +87,9 @@ def served(tmp_path_factory):
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
     books.request_details = old_details
+    # Put the library back, or a later test (test_unit's data-dir defaults)
+    # reads this module's temporary one.
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old_dirs
 
 
 @pytest.fixture
