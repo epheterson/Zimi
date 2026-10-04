@@ -12569,9 +12569,15 @@ function _shellQuote(text) {
   return "'" + text.replace(/'/g, "'\\''") + "'";
 }
 
+// Every capture engine names its version beside its state, as the probe saw it.
+function _creatorVersionedHtml(version, ready) {
+  return (version ? '<span class="app-update-quiet">' + esc(version) + '</span> ' : '') + _creatorStateHtml(ready);
+}
 function _creatorSidecarHtml(sidecar) {
-  return (sidecar.version ? '<span class="app-update-quiet">' + esc(sidecar.version) + '</span> ' : '') +
-    _creatorStateHtml(sidecar.installed);
+  return _creatorVersionedHtml(sidecar.version, sidecar.installed);
+}
+function _creatorBrowserCell(d) {
+  return _creatorVersionedHtml(d.browser_ready ? d.browser_version : null, d.browser_ready);
 }
 
 // A capture-default switch row, wired to the admin-only POST half of
@@ -12602,7 +12608,7 @@ function _creatorHtml(d) {
   // Capabilities — the "what's installed" report.
   h += sep + '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
     '<div class="ms-hint" style="margin-bottom:10px">' + tH('creator_engines_hint') + '</div>' +
-    _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
+    _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorBrowserCell(d) + '</span>') +
     '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarCell(d) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
@@ -12726,7 +12732,7 @@ function _patchCreatorSection(d) {
     var el = document.getElementById(id);
     if (el && el.innerHTML !== html) el.innerHTML = html;
   };
-  put('ms-cr-browser', _creatorStateHtml(d.browser_ready));
+  put('ms-cr-browser', _creatorBrowserCell(d));
   put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));

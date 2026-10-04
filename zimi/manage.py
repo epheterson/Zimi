@@ -4106,6 +4106,17 @@ def _create_browser_ready():
         return False
 
 
+def _create_browser_version():
+    """The rendered engine's Chromium and Playwright, as its probe saw them."""
+    try:
+        from zimi.renderer import browser_version
+
+        return browser_version()
+    except Exception:
+        log.exception("rendered-engine version failed")
+        return None
+
+
 def _create_browser_install():
     """The command that installs the rendered engine INTO THIS SERVER's
     Python, or None when there is no such command (a frozen desktop build,
@@ -4302,6 +4313,7 @@ def _creator_payload():
     known = _creator_capabilities()
     return {
         "browser_ready": known["browser_ready"] if known else None,
+        "browser_version": known.get("browser_version") if known else None,
         "alive_ready": known["alive_ready"] if known else None,
         "sidecar": known["sidecar"] if known else None,
         # ArcticZim, the subreddit engine: two files on disk, no probe.
@@ -4368,6 +4380,7 @@ def _creator_probe_pass():
             "alive_ready": _create_alive_ready(),
             "sidecar": _creator_sidecar(),
         }
+        answer["browser_version"] = _create_browser_version()
     except Exception:
         log.exception("creator capability probe failed")
     with _creator_probe_lock:
