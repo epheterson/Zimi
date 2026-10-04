@@ -2891,12 +2891,57 @@ function _currentPageUrl() {
 }
 
 // ── Open in browser (escape the app shell into a real browser tab) ──
+// An iPhone's or iPad's home-screen app cannot hand a page to Safari: a
+// window.open to Zimi's own address opens inside the app again, and the
+// x-safari scheme is undocumented and works on some iOS versions only.
+// There the control says what it does instead: Copy link. Android's and a
+// computer's installed app open a real browser tab.
+function _browserOutOfReach() {
+  return _isStandalonePWA() && !IS_DESKTOP &&
+    (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+}
 function _openInBrowser() {
   var url = _currentPageUrl();
-  // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
-  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url, true); return; }
+  if (_browserOutOfReach()) { _copyText(url, true); return; }
   _openOnWeb(url);
 }
+
+// ── A tap on the top bar's empty space: the view on screen to its top ──
+// Eric, 2026-10-03: "In PWA tapping header doesn't scroll to top." An
+// installed app on iOS has no browser status bar to tap, and Zimi's views
+// scroll in places iOS would not reach anyway (the reader's frame, an app
+// page, the PDF viewer's box).
+var _TOPBAR_TAP_SKIP = 'a, button, input, select, textarea, label, [role="button"], .topbar-breadcrumb, .topbar-search, .topbar-menu, #history-trail';
+function _scrollBehavior() {
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } catch (e) { return 'smooth'; }
+}
+// The window when it is scrolled; else the scrolled box under the middle of
+// the view (the PDF viewer's, an app's list, a panel's).
+function _scrollToTopIn(win, how) {
+  var doc = win.document;
+  if (win.scrollY > 0) { win.scrollTo(how); return true; }
+  var el = doc.elementFromPoint(win.innerWidth / 2, win.innerHeight / 2);
+  for (; el && el !== doc.documentElement; el = el.parentElement) {
+    if (el.scrollTop > 0) { el.scrollTo(how); return true; }
+  }
+  return false;
+}
+function _scrollViewToTop() {
+  var how = { top: 0, behavior: _scrollBehavior() };
+  if (readerOpen) {
+    try { if (_scrollToTopIn(document.getElementById('reader-frame').contentWindow, how)) return; } catch (e) {}
+  }
+  _scrollToTopIn(window, how);
+}
+function _wireTopbarTap() {
+  var bar = document.querySelector('.topbar');
+  if (!bar) return;
+  bar.addEventListener('click', function(e) {
+    if (e.defaultPrevented || (e.target.closest && e.target.closest(_TOPBAR_TAP_SKIP))) return;
+    _scrollViewToTop();
+  });
+}
+_wireTopbarTap();
 
 // A new browser tab, or in the desktop app the system's browser (the
 // pywebview bridge): where Zimi sends anything that leaves it.
@@ -25313,7 +25358,7 @@ function _buildTopbarMenuHtml() {
     // browser, so it's hidden. Opens the ?a= deep link (full Zimi chrome).
     if (IS_DESKTOP || _isStandalonePWA()) {
       readerGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_openInBrowser()">' + _TBM_NEWTAB_ICON +
-        ' ' + tH('open_in_browser') + '</button>';
+        ' ' + tH(_browserOutOfReach() ? 'copy_link' : 'open_in_browser') + '</button>';
     }
   }
 
