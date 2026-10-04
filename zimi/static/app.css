@@ -1892,6 +1892,11 @@
   .app-theme-btn.active {
     background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600;
   }
+  .app-theme-btn:disabled { cursor: default; opacity: 0.5; }
+  .app-theme-btn:disabled:hover { color: var(--text2); border-color: transparent; background: none; }
+  .app-theme-btn.active:disabled:hover { color: var(--on-amber); background: var(--amber); }
+  .app-theme-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .ms-pane .app-theme-btn { min-height: calc(var(--set-ctl-h) - 2px); }
   .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
   .ms-section-label { margin-bottom: 8px; }
   /* Creator "made here" breakdown: amber count chips over a sortable table.
@@ -2241,7 +2246,9 @@
   .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
-  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; }
+  /* Under BitTorrent's switch, with its status, in the right column. */
+  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .share-inactive .share-upnp, .share-upnp:has(input:disabled) { opacity: 0.5; cursor: default; }
   /* Icon button matching the num-input chrome beside it (6px radius,
      surface fill) — an SVG reload glyph, centered, amber on hover. */
   .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }

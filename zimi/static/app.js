@@ -11997,7 +11997,7 @@ function _renderUserManage() {
         ' <span style="color:var(--text2);font-size:12px">' + scope + '</span></span>' +
       '</div>' +
       '<div class="ms-actions" style="margin-top:16px">' +
-        '<button class="manage-btn-action" onclick="userLogout()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('log_out') + '</button>' +
+        '<button class="set-btn" onclick="userLogout()">' + tH('log_out') + '</button>' +
       '</div>' +
       // A signed-in user's own "My data" card: export/import a file, or sync
       // bookmarks/history/preferences to their server account (Save/Restore).
@@ -12972,9 +12972,6 @@ function _setCreatorDefault(key, input) {
 // never updates is exactly the kind of thing a library owner should not have
 // to deduce.
 var AU_FREQUENCIES = ['disabled', 'daily', 'weekly', 'monthly'];
-var _AU_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
-  'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
-
 // The frequency control. Same id, same handler, same env lock as before — the
 // poll gating and two other renderers read #auto-update-freq by name.
 function _autoUpdateSelectHtml(au) {
@@ -12983,9 +12980,8 @@ function _autoUpdateSelectHtml(au) {
     return '<option value="' + f + '"' + (f === cur ? ' selected' : '') + '>' +
       esc(t('au_' + f)) + '</option>';
   }).join('');
-  var lock = au.locked
-    ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="' + _AU_SELECT_CSS + ';opacity:0.5"'
-    : ' style="' + _AU_SELECT_CSS + '"';
+  // Styled as every Settings select is (.ms-pane select).
+  var lock = au.locked ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '"' : '';
   var select = '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + lock + '>' + opts + '</select>';
   // A greyed-out control with the reason hidden in a hover tooltip reads as
   // broken, and did (#69): the reporter saw "Daily" that would not change and
@@ -13076,9 +13072,9 @@ function _msLibraryHtml() {
     // app-update line above it (Eric: "no spacing after Updates line").
     '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}) + '</div>' +
     '<div class="ms-actions">' +
-      '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
-      '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
-      '<button id="library-health-btn" class="manage-btn-action" onclick="runLibraryHealth()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('library_health') + '</button>' +
+      '<button class="set-btn" onclick="manageImportZim()">' + tH('import_zim') + '</button>' +
+      '<button id="refresh-cache-btn" class="set-btn" onclick="settingsRefreshCache()">' + tH('refresh_cache') + '</button>' +
+      '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()">' + tH('library_health') + '</button>' +
       '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
@@ -13494,8 +13490,6 @@ var _APP_UPDATE_CHANNEL_LABELS = {
   latest: 'app_update_channel_latest',
   beta: 'app_update_channel_beta'
 };
-var _APP_UPDATE_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
-  'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
 
 // One row shape for the update selects: label, <select>, and either the
 // setting's hint or, locked, why (the env-controlled note unless the caller
@@ -13504,8 +13498,8 @@ function _appUpdateSelectRow(o) {
   var lockNote = o.lockNote || t('env_controlled', { v: o.envVar });
   return '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + esc(t(o.labelKey)) + '</span>' +
-      '<span class="mc-value"><select id="' + escAttr(o.id) + '" style="' + _APP_UPDATE_SELECT_CSS +
-        (o.locked ? ';opacity:0.5' : '') + '"' +
+      // Styled as every Settings select is (.ms-pane select).
+      '<span class="mc-value"><select id="' + escAttr(o.id) + '"' +
         (o.locked ? ' disabled title="' + escAttr(lockNote) + '"' : '') +
         ' onchange="' + escAttr(o.onchange) + '">' + o.options + '</select></span></div>' +
     '<div class="ms-hint">' + esc(o.locked ? lockNote : t(o.hintKey)) + '</div>';
@@ -13622,18 +13616,17 @@ function _appUpdateSettingsSlot(d) {
 // "Check for updates": Ask first / Automatically / Never, the choice the
 // satellite data offers too, with the same labels (alm_earth_sat_<mode>).
 function _appUpdateCheckHtml(d) {
-  var opts = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
-    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === d.check_mode);
+  // A selector row, as every three-way choice in Settings is; locked, its
+  // buttons are disabled and the hint names the variable.
+  var locked = !!d.check_locked;
+  var btns = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
+    var on = m === d.check_mode;
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
+      (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH('alm_earth_sat_' + m) + '</span></button>';
   }).join('');
-  return _appUpdateSelectRow({
-    id: _APP_UPDATE_CHECK_ID,
-    labelKey: 'app_update_check',
-    hintKey: 'app_update_check_hint',
-    envVar: d.check_env || 'ZIMI_UPDATE_CHECK',
-    locked: !!d.check_locked,
-    onchange: '_appUpdateSetCheck(this.value)',
-    options: opts
-  });
+  return '<div class="ms-theme-label">' + tH('app_update_check') + '</div>' +
+    '<div class="app-theme-seg" id="' + _APP_UPDATE_CHECK_ID + '" role="radiogroup" tabindex="-1" aria-label="' + escAttr(t('app_update_check')) + '">' + btns + '</div>' +
+    '<div class="ms-hint">' + esc(locked ? t('env_controlled', { v: d.check_env || 'ZIMI_UPDATE_CHECK' }) : t('app_update_check_hint')) + '</div>';
 }
 var _APP_UPDATE_CHECK_ID = 'app-update-check';
 
@@ -14207,10 +14200,10 @@ function _msServerHtml() {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
-      '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
+      '<button class="set-btn" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
-      '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
+      '<button class="set-btn" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
@@ -14627,9 +14620,10 @@ var _BT_SETTLE_POLL_MAX = 10;
 // and dims the group). Env-locked fields stay locked.
 function _applyTorrentToggleInPlace(on) {
   const controls = document.getElementById('ms-bt-controls');
+  const upnp = document.getElementById(_UPNP_ID);
   if (controls) {
     controls.classList.toggle('share-controls-off', !on);
-    controls.querySelectorAll('input, button').forEach(function(el) {
+    Array.from(controls.querySelectorAll('input, button')).concat(upnp ? [upnp] : []).forEach(function(el) {
       // data-nogate stays editable with BT off: it governs HTTP downloads too
       // (e.g. the concurrent-download cap), not just the BT engine.
       if (el.dataset.envlock === '1' || el.dataset.nogate === '1') return;
@@ -14768,16 +14762,14 @@ async function _setBtMaxConn(inp) {
 // looked amateur next to the crafted inputs. Inline SVG is pixel-stable.
 var _SVG_REFRESH = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
 
-// Port row: [port input] [reachability dot] [retry] [UPnP]. Always rendered
+// Port row: [port input] [reachability dot] [retry]. Always rendered
 // (disabled when BT is off) so the card height never changes on toggle.
 function _portRowInner(bt, btOn) {
   var nat = bt.nat || null;
   var dotColor = !nat || nat.reachable == null ? 'var(--text3)' : (nat.reachable ? '#6abf69' : 'var(--error)');
   var dotTitle = !nat || nat.reachable == null ? t('bt_port_unknown') : (nat.reachable ? t('bt_port_open') : t('bt_port_closed'));
   var portLock = bt.bt_port_env_locked;
-  var upnpLock = bt.upnp_env_locked;
   var portDis = (portLock || !btOn) ? ' disabled' : '';
-  var upnpDis = (upnpLock || !btOn) ? ' disabled' : '';
   return '<label>' + tH('bt_port_word') + '</label>' +
     '<span class="share-port-group">' +
       '<input type="number" class="share-num-input share-port-input" min="1024" max="65535" value="' + (bt.bt_port || '') + '"' +
@@ -14786,10 +14778,18 @@ function _portRowInner(bt, btOn) {
       // Reachability light sits right beside the port it describes.
       '<span class="share-port-dot" id="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
       '<button class="share-port-retry"' + (btOn ? '' : ' disabled') + ' onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
-      '<label class="share-upnp"' + (upnpLock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-        'UPnP <span class="switch switch-sm"><input type="checkbox" role="switch"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span>' +
-      '</label>' +
     '</span>';
+}
+
+// UPnP: under BitTorrent's own switch, in the card's right column. Beside
+// the port it wrapped onto a broken line of its own on a phone (Eric,
+// 2026-10-03: "UPnP toggle should be able to float under on.off bt toggle").
+var _UPNP_ID = 'ms-bt-upnp';
+function _upnpHtml(bt, btOn) {
+  var lock = bt.upnp_env_locked;
+  return '<label class="share-upnp"' + (lock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
+    'UPnP <span class="switch switch-sm"><input type="checkbox" role="switch" id="' + _UPNP_ID + '"' + (bt.upnp_enabled ? ' checked' : '') +
+    ((lock || !btOn) ? ' disabled' : '') + (lock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span></label>';
 }
 
 async function _setBtPort(inp) {
@@ -15017,7 +15017,7 @@ async function _renderMirrorSection() {
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
       // line already gives it — claiming ZIMI_BT did this would be a lie.
-      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>',
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + _upnpHtml(bt || {}, btOn),
       // Reason first, then the fields it explains. Both sit outside the dimmed
       // block: the reason so it stays readable, the fields because `disabled`
       // already greys them and dimming twice reads as damage.
