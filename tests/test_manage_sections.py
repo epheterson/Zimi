@@ -89,6 +89,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
     first = _get("/manage/creator").body
     assert set(first) == {
         "browser_ready",
+        "browser_version",  # Chromium and Playwright, beside Ready
         "alive_ready",
         "sidecar",
         "reddit_ready",
