@@ -34,6 +34,19 @@ DOC = "files/Water (1).pdf"
 
 @pytest.fixture
 def shell(tmp_path, monkeypatch):
+    yield from _shell(tmp_path, monkeypatch, PAGES)
+
+
+# Over the list's PICK_MAX: the page is typed, not picked.
+LONG = 70
+
+
+@pytest.fixture
+def long_shell(tmp_path, monkeypatch):
+    yield from _shell(tmp_path, monkeypatch, LONG)
+
+
+def _shell(tmp_path, monkeypatch, pages):
     from http.server import ThreadingHTTPServer
 
     zdir = tmp_path / "zims"
@@ -41,7 +54,7 @@ def shell(tmp_path, monkeypatch):
     entries = {
         "home": ("text/html", "<html><body>Water</body></html>", "Home"),
         "database.js": ("text/javascript", fx.WATER_DATABASE, "database.js"),
-        DOC: ("application/pdf", multipage_pdf(PAGES), ""),
+        DOC: ("application/pdf", multipage_pdf(pages), ""),
     }
     fx.build_zim(
         str(zdir / "zimgit-water_en_2024-08.zim"),
@@ -72,7 +85,7 @@ def _skip_without_browser():
         pytest.skip("playwright + chromium are not usable here")
 
 
-def _open(pw, base, name, device, ctx=None):
+def _open(pw, base, name, device, ctx=None, pages=PAGES):
     """The shell, opened on the PDF; returns (page, the viewer's frame)."""
     if ctx is None:
         br = pw.chromium.launch()
@@ -91,15 +104,22 @@ def _open(pw, base, name, device, ctx=None):
                 pass
         pg.wait_for_timeout(100)
     assert frame is not None, "the PDF viewer never opened"
-    frame.wait_for_function("() => zimiPdf.pages() === %d" % PAGES, timeout=20000)
+    frame.wait_for_function("() => zimiPdf.pages() === %d" % pages, timeout=20000)
     return pg, frame, ctx
 
 
 def _swipe(ctx, pg, x0, x1, y):
     """A one-finger sideways swipe, as touch events (Chromium's own)."""
     cdp = ctx.new_cdp_session(pg)
-    for kind, x in (("touchStart", x0), ("touchMove", (x0 + x1) / 2), ("touchMove", x1)):
-        cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": [{"x": x, "y": y}]})
+    for kind, x in (
+        ("touchStart", x0),
+        ("touchMove", (x0 + x1) / 2),
+        ("touchMove", x1),
+    ):
+        cdp.send(
+            "Input.dispatchTouchEvent",
+            {"type": kind, "touchPoints": [{"x": x, "y": y}]},
+        )
     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
 
 
@@ -144,7 +164,9 @@ def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
             # a time and turns it with a swipe; a wide screen scrolls.
             vw = got["vw"]
             if isinstance(device, str):
-                assert fr.evaluate("() => PDFViewerApplication.pdfViewer.scrollMode") == 3
+                assert (
+                    fr.evaluate("() => PDFViewerApplication.pdfViewer.scrollMode") == 3
+                )
                 _swipe(ctx, pg, vw * 0.8, vw * 0.2, 400)
                 fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
             else:
@@ -203,7 +225,11 @@ def test_the_bars_and_sheets_keep_clear_of_the_notch_and_home_indicator(shell):
             assert got["headPad"] == NOTCH and got["headTop"] >= NOTCH, got
             assert abs(got["footEdge"] - got["vh"]) < 1, got
             assert got["footBottom"] <= got["vh"] - HOME, got
-            pg.screenshot(path=os.path.join(os.environ.get("ZIMI_SHOTS", "/tmp"), "pdf-safe-area-390.png"))
+            pg.screenshot(
+                path=os.path.join(
+                    os.environ.get("ZIMI_SHOTS", "/tmp"), "pdf-safe-area-390.png"
+                )
+            )
             # A sheet's last row clears the indicator too.
             fr.click(".zp-toc-btn")
             fr.wait_for_selector(".zp-sheet.zp-open")
@@ -736,7 +762,6 @@ def test_a_page_back_and_on_in_a_right_to_left_zimi(shell):
             br.close()
 
 
-
 def test_a_jump_is_not_undone_by_a_rescale_in_the_same_moment(shell):
     """A page jumped to (a highlight opened from Saved) stays put when pdf.js
     re-scales before its next frame (the panel closing resizes the frame; on
@@ -784,11 +809,17 @@ def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
             mode = "() => [PDFViewerApplication.pdfViewer.scrollMode, PDFViewerApplication.pdfViewer.currentScaleValue]"
             assert fr.evaluate(mode) == [3, "page-fit"]
             fr.click(".zp-fit")
-            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.scrollMode === 0")
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.scrollMode === 0"
+            )
             assert fr.evaluate(mode) == [0, "page-width"]
-            assert fr.evaluate("() => localStorage.getItem('zimi_pdf_view')") == "scroll"
+            assert (
+                fr.evaluate("() => localStorage.getItem('zimi_pdf_view')") == "scroll"
+            )
             fr.click(".zp-fit")
-            fr.wait_for_function("() => PDFViewerApplication.pdfViewer.scrollMode === 3")
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.scrollMode === 3"
+            )
             # Either end, beside the arrows; the page by number from a list.
             fr.click(".zp-last")
             fr.wait_for_function("() => zimiPdf.page() === %d" % PAGES, timeout=5000)
@@ -798,8 +829,10 @@ def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
             fr.click(".zp-first")
             fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
             # A page at a time sits in the middle of the screen.
-            mid = fr.evaluate("""() => { const p = document.querySelector('.page[data-page-number="1"]').getBoundingClientRect();
-              return Math.abs((p.top + p.bottom) / 2 - innerHeight / 2); }""")
+            mid = fr.evaluate(
+                """() => { const p = document.querySelector('.page[data-page-number="1"]').getBoundingClientRect();
+              return Math.abs((p.top + p.bottom) / 2 - innerHeight / 2); }"""
+            )
             assert mid < 30, mid
             # On a phone the fits are the same size: not offered.
             fr.click(".zp-more")
@@ -807,6 +840,142 @@ def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
             pg.keyboard.press("Escape")
             # Find closes with an X, not a back arrow.
             fr.click(".zp-find-btn")
-            assert fr.evaluate("() => !document.querySelector('.zp-find-close').classList.contains('zp-flip') && document.querySelector('.zp-find-close path').getAttribute('d').startsWith('M6 6l12 12')")
+            assert fr.evaluate(
+                "() => !document.querySelector('.zp-find-close').classList.contains('zp-flip') && document.querySelector('.zp-find-close path').getAttribute('d').startsWith('M6 6l12 12')"
+            )
+        finally:
+            ctx.browser.close()
+def test_a_tap_at_either_side_turns_the_page(shell):
+    """Eric, 2026-10-03: "In PDF page view can we get tap left/right like in
+    reader?" A page at a time turns on a tap in the outer 30% either side
+    (the reader's _BOOK_EDGE); the middle still shows or hides the bars."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            vw = fr.evaluate("() => innerWidth")
+            y = fr.evaluate("() => innerHeight / 2")
+            for x, want in ((0.9, 2), (0.9, 3), (0.1, 2)):
+                fr.click("#viewerContainer", position={"x": vw * x, "y": y})
+                fr.wait_for_function("() => zimiPdf.page() === %d" % want, timeout=5000)
+            pg.wait_for_timeout(500)  # past the tap-after-tap guard
+            shown = fr.evaluate("() => zimiPdf.barsShown()")
+            fr.click("#viewerContainer", position={"x": vw * 0.5, "y": y})
+            fr.wait_for_function(
+                "(s) => zimiPdf.barsShown() === !s", arg=shown, timeout=5000
+            )
+            assert fr.evaluate("() => zimiPdf.page()") == 2, "the middle does not turn"
+        finally:
+            ctx.browser.close()
+
+
+def test_a_tap_at_either_side_is_mirrored_right_to_left(shell):
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        ctx.add_init_script(
+            "try { localStorage.setItem('zimi_ui_lang', 'ar'); } catch (e) {}"
+        )
+        pg, fr, _ = _open(pw, base, name, None, ctx=ctx)
+        try:
+            pg.wait_for_function("() => document.documentElement.dir === 'rtl'")
+            vw = fr.evaluate("() => innerWidth")
+            y = fr.evaluate("() => innerHeight / 2")
+            fr.click("#viewerContainer", position={"x": vw * 0.1, "y": y})
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            fr.click("#viewerContainer", position={"x": vw * 0.9, "y": y})
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+        finally:
+            br.close()
+
+
+def test_print_is_the_raw_file_not_pdfjs_drawing(shell):
+    """Eric, 2026-10-03: "Why preparing document for printing when we can just
+    print the PDF raw?" A computer prints the file from a hidden frame;
+    pdf.js's triggerPrinting (the page-by-page re-render) is never called."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.evaluate("""() => { window.__pdfjsPrints = 0;
+              PDFViewerApplication.triggerPrinting = () => { window.__pdfjsPrints++; };
+              window.print = () => { window.__pdfjsPrints++; }; }""")
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="print"]')
+            fr.wait_for_function(
+                "() => !!document.querySelector('iframe.zp-print-frame')", timeout=5000
+            )
+            src = fr.evaluate(
+                "() => document.querySelector('iframe.zp-print-frame').getAttribute('src')"
+            )
+            assert (
+                src.startswith("/w/") and src.endswith("raw=1") and ".pdf" in src
+            ), src
+            # Ctrl/Cmd+P is the same print, not pdf.js's.
+            fr.click("#viewerContainer", position={"x": 600, "y": 300})
+            pg.keyboard.press("Control+p")
+            pg.wait_for_timeout(300)
+            assert (
+                fr.evaluate(
+                    "() => document.querySelectorAll('iframe.zp-print-frame').length"
+                )
+                == 1
+            )
+            assert fr.evaluate("() => window.__pdfjsPrints") == 0
+            # What the frame loads is the PDF itself.
+            r = pg.request.get(base + src, headers={"Sec-Fetch-Dest": "iframe"})
+            assert r.status == 200 and r.body()[:5] == b"%PDF-"
+        finally:
+            ctx.browser.close()
+
+
+def test_the_typed_page_stays_above_the_keyboard(long_shell):
+    """Eric, 2026-10-03: "When I tap on PDF page number it brings up number
+    keyboard but I can't see the field." On an iPhone the keyboard shrinks the
+    shell's visual viewport, not the viewer frame's; the bar is lifted by
+    whichever is covered."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = long_shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13", pages=LONG)
+        try:
+            # The keyboard: the shell's visual viewport loses its lower 336px.
+            pg.evaluate(
+                """() => { const kb = 336, fake = new EventTarget();
+              Object.assign(fake, { offsetTop: 0, offsetLeft: 0, pageTop: 0, pageLeft: 0, scale: 1, width: innerWidth, height: innerHeight });
+              Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => fake });
+              window.__kb = () => { fake.height = innerHeight - kb; fake.dispatchEvent(new Event('resize')); }; }"""
+            )
+            fr.click(".zp-page")
+            fr.wait_for_selector(".zp-page-input", timeout=5000)
+            pg.evaluate("() => window.__kb()")
+            pg.wait_for_timeout(600)  # the bar's own slide
+            got = fr.evaluate(
+                """() => { const r = document.querySelector('.zp-page-input').getBoundingClientRect();
+              const t = frameElement.getBoundingClientRect();
+              return { top: t.top + r.top, bottom: t.top + r.bottom, visible: parent.visualViewport.height }; }"""
+            )
+            assert got["top"] >= 0 and got["bottom"] <= got["visible"], got
+            fr.fill(".zp-page-input", "42")
+            pg.keyboard.press("Enter")
+            fr.wait_for_function("() => zimiPdf.page() === 42", timeout=5000)
+            assert (
+                fr.evaluate("() => document.querySelector('.zp-foot').style.transform")
+                == ""
+            )
         finally:
             ctx.browser.close()

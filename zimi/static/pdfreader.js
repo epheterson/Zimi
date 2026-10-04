@@ -21,6 +21,7 @@
   'use strict';
   var BARS_HIDE = 24;          // px scrolled down (or up) before the bars leave (or come back)
   var SAVE_MS = 800;           // ms of rest on a page before it is kept
+  var TAP_EDGE = 0.3;          // share of the width at either side where a tap turns the page (the reader's _BOOK_EDGE)
   var PINCH_TAP_MS = 400;      // ms after a pinch in which a tap is the pinch's own
   var THUMB_PX = 200;          // px wide a page is drawn for the pages sheet (two device pixels a column)
   var LOAD_WAIT_MS = 50, LOAD_WAIT_TRIES = 200;
@@ -428,9 +429,30 @@
     pageBtn.parentNode.appendChild(pagePick);
     pageBtn.tabIndex = -1;
   }
+  // How far the keyboard covers this frame's bottom edge. On an iPhone the
+  // keyboard shrinks the SHELL's visual viewport, not the frame's: the
+  // frame's own stayed full height, the lift came out 0 and the typed page
+  // sat under the keys. Both are measured; the larger cover wins.
+  function keyboardCover() {
+    var own = window.visualViewport, cover = 0;
+    if (own) cover = innerHeight - own.height - own.offsetTop;
+    try {
+      var top = shell && shell.visualViewport, el = window.frameElement;
+      if (top && el) {
+        var bottom = el.getBoundingClientRect().top + innerHeight;
+        cover = Math.max(cover, bottom - (top.offsetTop + top.height));
+      }
+    } catch (e) {}
+    return Math.max(0, Math.round(cover));
+  }
+  function viewports() {
+    var out = [];
+    if (window.visualViewport) out.push(window.visualViewport);
+    try { if (shell && shell.visualViewport) out.push(shell.visualViewport); } catch (e) {}
+    return out;
+  }
   function liftOverKeyboard(on) {
-    var vv = window.visualViewport;
-    var lift = on && vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+    var lift = on ? keyboardCover() : 0;
     foot.style.transform = lift ? 'translateY(' + (-lift) + 'px)' : '';
   }
   pageBtn.addEventListener('click', function () {
@@ -444,10 +466,12 @@
     box.appendChild(inp);
     inp.focus(); inp.select();
     var lift = function () { liftOverKeyboard(true); };
-    if (window.visualViewport) { visualViewport.addEventListener('resize', lift); visualViewport.addEventListener('scroll', lift); }
+    var vps = viewports();
+    vps.forEach(function (vp) { vp.addEventListener('resize', lift); vp.addEventListener('scroll', lift); });
+    lift();
     var done = function (go) {
       if (!inp.parentNode) return;
-      if (window.visualViewport) { visualViewport.removeEventListener('resize', lift); visualViewport.removeEventListener('scroll', lift); }
+      vps.forEach(function (vp) { vp.removeEventListener('resize', lift); vp.removeEventListener('scroll', lift); });
       liftOverKeyboard(false);
       var n = parseInt(inp.value.replace(/[^\d]/g, ''), 10);
       inp.remove(); pageBtn.hidden = false;
@@ -574,6 +598,15 @@
     if (e.target.closest && e.target.closest('a,button,input,select,textarea,.annotationLayer section')) return;
     var sel = window.getSelection && window.getSelection();
     if (sel && !sel.isCollapsed && String(sel).trim()) return;
+    // A page at a time turns on a tap at either side, as a book's pages do in
+    // the reader: the side you tap is the way it goes, mirrored right to left.
+    if (pageByPage() && !zoomedIn() && container) {
+      var box = container.getBoundingClientRect();
+      var rel = box.width ? (e.clientX - box.left) / box.width : 0.5;
+      var on = uiDir() !== 'rtl' ? 1 : -1;
+      if (rel < TAP_EDGE) { byHand(); step(-on); return; }
+      if (rel > 1 - TAP_EDGE) { byHand(); step(on); return; }
+    }
     showBars(!barsShown());
   }
 
@@ -695,6 +728,7 @@
   $('.zp-more').addEventListener('click', function (e) {
     if (openPanel === menu) { closePanel(true); return; }
     renderMenu();
+    if (appleTouch()) readyFile();
     openAs(menu, e.currentTarget);
     var first = menu.querySelector('button');
     if (first) first.focus({ preventScroll: true });
@@ -725,9 +759,54 @@
     if (what === 'save') {
       try { shell.toggleBookmark(); if (shell._updateLibraryBtnIcon) shell._updateLibraryBtnIcon(); } catch (err) {}
     } else if (what === 'download' && app) app.downloadOrSave();
-    else if (what === 'print' && app) app.triggerPrinting();
+    else if (what === 'print') printRaw();
     else if (what === 'about') openAbout($('.zp-more'));
   });
+  // ── print: the file itself, not pdf.js's drawing of it ──
+  // pdf.js prints by drawing every page to an image first ("Preparing
+  // document for printing"): slow, soft, and pointless when the file is a
+  // PDF already. A computer's browser prints the raw file from a hidden
+  // frame. An iPhone or iPad cannot print a frame's PDF: there the file goes
+  // to the share sheet (Print is on it), or opens on its own, where the
+  // system's viewer has Share and Print.
+  var rawUrl = file ? file + (file.indexOf('?') < 0 ? '?' : '&') + 'raw=1' : '';
+  var printFrame = null;
+  function appleTouch() {
+    return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function printRaw() {
+    if (!rawUrl) { if (app) app.triggerPrinting(); return; }
+    if (appleTouch()) { shareOrOpen(); return; }
+    if (printFrame) printFrame.remove();
+    printFrame = document.createElement('iframe');
+    printFrame.className = 'zp-print-frame';
+    printFrame.setAttribute('aria-hidden', 'true');
+    printFrame.tabIndex = -1;
+    printFrame.onload = function () {
+      try { printFrame.contentWindow.focus(); printFrame.contentWindow.print(); }
+      catch (e) { window.open(rawUrl, '_blank', 'noopener'); }
+    };
+    printFrame.src = rawUrl;
+    document.body.appendChild(printFrame);
+  }
+  // The share sheet wants a file inside the tap, so the bytes pdf.js holds are
+  // asked for as the menu opens and are ready by the time Print is pressed.
+  var pdfFile = null;
+  function readyFile() {
+    if (pdfFile || !app || !app.pdfDocument || !window.File) return;
+    app.pdfDocument.getData().then(function (bytes) {
+      pdfFile = new File([bytes], (fileName || 'document') + '.pdf', { type: 'application/pdf' });
+    }, function () {});
+  }
+  function shareOrOpen() {
+    var data = pdfFile && { files: [pdfFile], title: fileName };
+    if (data && navigator.canShare && navigator.canShare(data)) {
+      navigator.share(data).catch(function (e) { if (!e || e.name !== 'AbortError') window.open(rawUrl, '_blank'); });
+      return;
+    }
+    window.open(rawUrl, '_blank');
+  }
+
   // The menu, open while what it shows changes (one page or two, after a
   // turn): drawn again, the focus where it was.
   function menuAgain() {
@@ -998,6 +1077,9 @@
     var typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault(); e.stopImmediatePropagation(); openFind(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault(); e.stopImmediatePropagation(); printRaw(); return;
     }
     if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); e.stopImmediatePropagation(); openFind(); return; }
     // A page back or on: the arrows (mirrored in a right-to-left Zimi;

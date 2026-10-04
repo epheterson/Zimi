@@ -124,6 +124,8 @@ html.zp-finding .zp-title, html.zp-finding .zp-head > .zp-hide-finding { display
 /* A short document's pages as a list: the page button is its face, the
    native picker opens over it. */
 .zp-page-pick { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; cursor: pointer; }
+/* The raw file, loaded out of sight to be printed. */
+.zp-print-frame { position: fixed; inset-inline-end: 0; bottom: 0; width: 0; height: 0; border: 0; opacity: 0; pointer-events: none; }
 .zp-zoom { display: none; }
 .zp-one .zp-scrub, .zp-one .zp-prev, .zp-one .zp-next, .zp-one .zp-first, .zp-one .zp-last { display: none; }
 /* Roomier: one row. Contents at the start, how it fits at the end, and the
