@@ -2514,6 +2514,8 @@
   "dictionary_also": "Auch",
   "dictionary_hint": "Gib oben ein Wort ein, um es nachzuschlagen.",
   "dictionary_entries": "{n} Seiten",
+  "dictionary_more_words": "Weitere Wörter",
+  "dictionary_shuffle": "Mischen",
   "apps_count_dictionary_one": "{n} Wiktionary",
   "apps_count_dictionary_other": "{n} Wiktionarys",
   "app_items_dictionary_one": "{n} Seite",

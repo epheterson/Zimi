@@ -2514,6 +2514,8 @@
   "dictionary_also": "Aussi",
   "dictionary_hint": "Tapez un mot dans le champ ci-dessus pour le chercher.",
   "dictionary_entries": "{n} pages",
+  "dictionary_more_words": "Autres mots",
+  "dictionary_shuffle": "Mélanger",
   "apps_count_dictionary_one": "{n} Wiktionnaire",
   "apps_count_dictionary_other": "{n} Wiktionnaires",
   "app_items_dictionary_one": "{n} page",

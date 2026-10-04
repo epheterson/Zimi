@@ -2514,6 +2514,8 @@
   "dictionary_also": "另见",
   "dictionary_hint": "在上方的框中输入一个词来查询。",
   "dictionary_entries": "{n} 页",
+  "dictionary_more_words": "更多词语",
+  "dictionary_shuffle": "换一批",
   "apps_count_dictionary_one": "{n} 个维基词典",
   "apps_count_dictionary_other": "{n} 个维基词典",
   "app_items_dictionary_one": "{n} 页",

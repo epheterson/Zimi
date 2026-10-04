@@ -2514,6 +2514,8 @@
   "dictionary_also": "Also",
   "dictionary_hint": "Type a word in the box above to look it up.",
   "dictionary_entries": "{n} pages",
+  "dictionary_more_words": "More words",
+  "dictionary_shuffle": "Shuffle",
   "apps_count_dictionary_one": "{n} Wiktionary",
   "apps_count_dictionary_other": "{n} Wiktionaries",
   "app_items_dictionary_one": "{n} page",

@@ -2514,6 +2514,8 @@
   "dictionary_also": "גם",
   "dictionary_hint": "הקלידו מילה בתיבה שלמעלה כדי לחפש אותה.",
   "dictionary_entries": "{n} דפים",
+  "dictionary_more_words": "מילים נוספות",
+  "dictionary_shuffle": "ערבוב",
   "apps_count_dictionary_one": "ויקימילון אחד",
   "apps_count_dictionary_other": "{n} ויקימילונים",
   "app_items_dictionary_one": "דף אחד",

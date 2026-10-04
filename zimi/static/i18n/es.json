@@ -2514,6 +2514,8 @@
   "dictionary_also": "También",
   "dictionary_hint": "Escribe una palabra en el cuadro de arriba para buscarla.",
   "dictionary_entries": "{n} páginas",
+  "dictionary_more_words": "Más palabras",
+  "dictionary_shuffle": "Mezclar",
   "apps_count_dictionary_one": "{n} Wikcionario",
   "apps_count_dictionary_other": "{n} Wikcionarios",
   "app_items_dictionary_one": "{n} página",

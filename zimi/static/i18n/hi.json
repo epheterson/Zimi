@@ -2514,6 +2514,8 @@
   "dictionary_also": "यह भी",
   "dictionary_hint": "खोजने के लिए ऊपर के बॉक्स में कोई शब्द लिखें।",
   "dictionary_entries": "{n} पृष्ठ",
+  "dictionary_more_words": "और शब्द",
+  "dictionary_shuffle": "फेरबदल",
   "apps_count_dictionary_one": "{n} विक्षनरी",
   "apps_count_dictionary_other": "{n} विक्षनरी",
   "app_items_dictionary_one": "{n} पृष्ठ",

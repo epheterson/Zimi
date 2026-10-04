@@ -2514,6 +2514,8 @@
   "dictionary_also": "أيضًا",
   "dictionary_hint": "اكتب كلمة في المربع أعلاه للبحث عنها.",
   "dictionary_entries": "{n} صفحة",
+  "dictionary_more_words": "مزيد من الكلمات",
+  "dictionary_shuffle": "خلط",
   "apps_count_dictionary_one": "ويكاموس واحد",
   "apps_count_dictionary_other": "{n} ويكاموس",
   "app_items_dictionary_one": "صفحة واحدة",

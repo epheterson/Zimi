@@ -2514,6 +2514,8 @@
   "dictionary_also": "Также",
   "dictionary_hint": "Введите слово в поле выше, чтобы найти его.",
   "dictionary_entries": "Страниц: {n}",
+  "dictionary_more_words": "Ещё слова",
+  "dictionary_shuffle": "Перемешать",
   "apps_count_dictionary_one": "{n} Викисловарь",
   "apps_count_dictionary_other": "Викисловарей: {n}",
   "app_items_dictionary_one": "{n} страница",
