@@ -15,20 +15,18 @@
 
 /* ── The head: back to the Almanac, the name, Print; then the tabs ── */
 .tb-head { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); }
-.tb-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 6px 8px; min-height: 48px; }
+/* Back, the name, and at its right Start again, Copy, Share and Print
+   (almanac.css .alm-doc-btn, the Almanac's own icons). */
+.tb-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px; padding: 2px 4px; min-height: 48px; }
 .tb-bar h2:focus { outline: none; }
-.tb-bar h2 { margin: 0; font-size: 16px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
-.tb-back, .tb-print, .tb-iconbtn {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px;
-  border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; font-size: 14px; cursor: pointer;
+.tb-bar h2 { margin: 0; font-size: 16px; font-weight: 600; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-back {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0;
+  border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; cursor: pointer;
 }
-.tb-back { justify-self: start; }
-/* Start again (an icon) and Print, at the bar's end. */
-.tb-bar-end { justify-self: end; display: inline-flex; align-items: center; gap: 2px; }
-.tb-print { color: var(--text); }
-.tb-iconbtn { justify-content: center; width: 40px; padding: 0; }
-.tb-back:hover, .tb-print:hover, .tb-iconbtn:hover, .tb-back:focus-visible, .tb-print:focus-visible, .tb-iconbtn:focus-visible { color: var(--amber); background: var(--amber-glow); }
-.tb-back:focus-visible, .tb-print:focus-visible, .tb-iconbtn:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.tb-bar-end { display: inline-flex; align-items: center; }
+.tb-back:hover, .tb-back:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.tb-back:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 [dir="rtl"] .tb-chev { transform: scaleX(-1); }
 .tb-tabs {
   display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter); scrollbar-width: none;
@@ -136,6 +134,7 @@
 /* Constants: the name and the source wrap, the value and its unit stay whole. */
 .tb-consts th[scope="row"], .tb-consts .tb-src { white-space: normal; text-align: start; }
 .tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; }
+.tb-consts thead th:last-child { text-align: start; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
 .tb-mono { font-family: var(--tb-mono); font-size: 12px; }
 .tb-mono th, .tb-mono td { padding: 5px 8px; }
@@ -307,7 +306,6 @@
   .tb-table { font-size: 12.5px; }
   .tb-table th, .tb-table td { padding: 6px 8px; }
   .tb-mono { font-size: 11.5px; }
-  .tb-print span { display: none; }
   .tk-big { font-size: 26px; }
   .tk-row { flex-wrap: wrap; }
   .tk-seg button { padding: 0 8px; }
@@ -334,7 +332,6 @@
   .tb-printhead { display: block; border-bottom: 1.5pt solid #000; padding: 0 0 4pt; margin: 0 0 8pt; }
   .tb-printhead h1 { margin: 0 0 2pt; font-size: 15pt; }
   .tb-printhead p { margin: 0; font-size: 9pt; }
-  .tb-printhead .tb-made { color: #444; font-style: italic; }
   .tb-body { max-width: none; padding: 0; }
   .tb-out { opacity: 1 !important; }
   .tb-frame { max-height: none; overflow: visible; border: 0; border-radius: 0; }
@@ -361,22 +358,126 @@
   .tb-eq-m { overflow: visible; }
   .tb-eq-m math { font-size: 10pt; color: #000; }
   .tb-eqs > summary { padding: 4pt 0; }
-  /* The whole book: set like a printed almanac. A title page, then each
-     table on a page of its own under a serif heading; the words in a serif,
-     the figures compact. */
-  html.alm-ref-print .alm-book { display: block !important; --tb-book-serif: Georgia, 'Times New Roman', 'Noto Serif', serif; font-family: var(--tb-book-serif); }
-  .alm-book h1 { font-family: var(--tb-book-serif); }  .tb-book-title { break-after: page; padding-top: 70mm; text-align: center; }
-  .tb-book-title h1 { margin: 0 0 6mm; padding-bottom: 4mm; border-bottom: 1.5pt solid #000; font-size: 28pt; font-weight: 400; letter-spacing: 0.02em; }
-  .tb-book-title p { margin: 0 0 2mm; font-size: 11pt; }
-  .tb-book-title .tb-made { margin-top: 8mm; color: #444; font-style: italic; font-size: 9pt; }
-  .tb-book-page + .tb-book-page { break-before: page; }
-  .alm-book .tb-printhead h1 { font-size: 17pt; font-weight: 400; letter-spacing: 0.01em; }
-  /* Figures that line up: Georgia's are old-style, Times's are lining. */
-  .alm-book .tb-table { font-family: 'Times New Roman', Times, 'Noto Serif', serif; font-size: 8pt; font-variant-numeric: lining-nums tabular-nums; }
-  .alm-book .tb-table th, .alm-book .tb-table td { padding: 1pt 3.5pt; }
-  .alm-book .tb-how > summary, .alm-book .tb-eqs > summary { font-weight: 600; list-style: none; }
-  .alm-book .tb-how > summary::-webkit-details-marker, .alm-book .tb-eqs > summary::-webkit-details-marker { display: none; }
-  .alm-book .tb-how-k { border: 0; background: none; padding: 0; font: inherit; color: #000; }
 }
-/* The book is for paper only. */
-@media screen { .alm-book { display: none !important; } }
+
+/* ── The book (almanac-tables.js _tbBookBuild): every tile shown, or one,
+   set for paper like a printed almanac. A title page (the place, the days,
+   what is shown, the contents), then each tile on its own page: its name,
+   one line of where and when, the table between clean rules, How this is
+   made open with its equations drawn. A book serif with lining, even-width
+   figures; black on white, rules and secondary words dark enough for grey
+   ink. Its rules hold on screen as on paper, so a table's width can be
+   measured before printing (a wide one gets a landscape page). ── */
+.alm-book {
+  --text: #000; --text2: #222; --text3: #333; --border: #000; --tb-rule: #999; --surface: #fff; --surface2: #fff; --bg: #fff;
+  --amber: #000; --amber-glow: transparent; --amber-border: #000;
+  background: #fff; color: #000; font-family: var(--tb-book-serif); font-size: 10pt; line-height: 1.4;
+  font-variant-numeric: lining-nums tabular-nums; font-kerning: normal;
+}
+.alm-book h1, .alm-book h2, .alm-book h3, .alm-book h4, .alm-book summary, .alm-book button, .alm-book .tb-mono { font-family: inherit; }
+.alm-book h1, .alm-book h2, .alm-book h3, .alm-book h4, .alm-book summary, .tb-eq-l { break-after: avoid; }
+
+/* The title page: a centred block, then the contents. */
+.tb-book-title { break-after: page; padding-top: 28mm; text-align: center; }
+.tb-book-kicker { margin: 0 0 3mm; font-size: 9pt; letter-spacing: 0.24em; text-transform: uppercase; }
+.tb-book-title h1 { margin: 0 auto 6mm; padding-bottom: 5mm; max-width: 140mm; border-bottom: 1.2pt solid #000; font-size: 30pt; font-weight: 400; line-height: 1.15; }
+.tb-book-title p { margin: 0 0 1.2mm; font-size: 10.5pt; }
+.tb-book-title .tb-book-place { font-size: 13pt; }
+.tb-book-title .tb-book-showing { margin-top: 3mm; font-style: italic; }
+.tb-book-toc { max-width: 140mm; margin: 14mm auto 0; text-align: start; }
+.tb-book-toc h2 { margin: 0 0 2mm; padding-bottom: 1.5mm; border-bottom: 0.6pt solid #000; font-size: 9pt; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+.tb-book-toc h3 { margin: 3.5mm 0 0.5mm; font-size: 10pt; font-weight: 600; }
+.tb-book-toc ol { list-style: none; margin: 0; padding: 0; }
+/* Each tile, a dotted leader, then where and when it is for. */
+.tb-book-toc li { display: flex; align-items: baseline; gap: 2mm; margin: 0.6mm 0; font-size: 10pt; }
+.tb-book-toc li::after { content: ''; order: 1; flex: 1; min-width: 6mm; border-bottom: 0.6pt dotted #555; }
+.tb-book-toc .tb-toc-sub { order: 2; font-size: 9pt; font-style: italic; color: #222; }
+.alm-book .tb-made { margin: 2mm 0 0; font-size: 8.5pt; font-style: italic; color: #333; }
+.tb-book-title .tb-made { margin-top: 12mm; }
+
+/* A tile's page. */
+.tb-book-page + .tb-book-page { break-before: page; }
+.tb-book-wide { page: tb-wide; }
+.alm-book .tb-body { max-width: none; margin: 0; padding: 0; }
+.alm-book .tb-printhead { display: block; margin: 0 0 5mm; padding: 0 0 2.5mm; border-bottom: 0.8pt solid #000; }
+.alm-book .tb-printhead h1 { margin: 0; font-size: 19pt; font-weight: 400; line-height: 1.2; }
+.alm-book .tb-printhead p { margin: 0.8mm 0 0; font-size: 10pt; }
+.alm-book .tb-printhead .tb-sub { font-style: italic; }
+.alm-book .tb-at { display: none; }
+/* One tile: its heading is the title block. */
+.alm-book-one .tb-printhead { margin-bottom: 7mm; padding-bottom: 4mm; border-bottom-width: 1.2pt; }
+.alm-book-one .tb-printhead h1 { font-size: 26pt; }
+.alm-book-one .tb-at { display: block; }
+
+/* Tables: rules above and below, a finer one under the head, hairlines
+   between rows; the head again on every page, no row split across two. */
+.alm-book .tb-out { min-height: 0; opacity: 1; transition: none; }
+.alm-book .tb-frame { position: static; max-height: none; overflow: visible; border: 0; border-radius: 0; background: none; isolation: auto; }
+.alm-book .tb-table { border-collapse: collapse; width: 100%; font-size: 8.5pt; line-height: 1.25; border-top: 1pt solid #000; border-bottom: 1pt solid #000; }
+.alm-book .tb-table thead { display: table-header-group; }
+.alm-book .tb-table tr { break-inside: avoid; }
+.alm-book .tb-table th, .alm-book .tb-table td { position: static; padding: 1.5pt 4pt; border-bottom: 0.3pt solid #999; background: none; color: #000; box-shadow: none; }
+.alm-book .tb-table thead th { padding-top: 3pt; padding-bottom: 3pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.02em; vertical-align: bottom; }
+.alm-book .tb-table tbody th { font-weight: 400; }
+.alm-book .tb-table tbody tr:last-child > * { border-bottom: 0; }
+.alm-book .tb-table tr.tb-today > *, .alm-book .tb-table tr.tb-seen > * { background-image: none; box-shadow: none; }
+.alm-book .tb-table tr.tb-six > * { border-bottom-color: #333; }
+.alm-book .tb-table .tb-sep { border-inline-start: 0.3pt solid #999; }
+.alm-book .tb-table tr.tb-grp th { padding-top: 7pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.alm-book .tb-table .tb-dim, .alm-book .tb-table .tb-lo, .alm-book .tb-table .tb-h { color: #333; }
+.alm-book .tb-table .tb-feast, .alm-book .tb-table tr.tb-feastrow th { color: #000; font-style: italic; }
+.alm-book .tb-ph svg { width: 8pt; height: 8pt; }
+.alm-book .tb-book-wide .tb-table { font-size: 8pt; }
+.alm-book .tb-note, .alm-book .tb-lede { max-width: none; margin-top: 2.5mm; font-size: 8.5pt; line-height: 1.4; color: #222; }
+.alm-book .tb-empty { border: 0.5pt solid #999; border-radius: 0; color: #222; }
+.alm-book .tb-h3, .alm-book h3 { margin: 5mm 0 2mm; font-size: 8pt; letter-spacing: 0.12em; color: #000; }
+.alm-book .tb-figure, .alm-book .tb-plot, .alm-book .tb-working { break-inside: avoid; }
+
+/* A calculation: its answer, the values it was worked from, the working. */
+.alm-book .tk-answer { position: static; margin: 0 0 4mm; padding: 0 0 3mm; border-bottom: 0.5pt solid #000; background: none; }
+.alm-book .tk-answer-glyph svg { width: 28pt; height: 28pt; }
+.alm-book .tk-big { color: #000; font-size: 17pt; font-weight: 600; }
+.alm-book .tk-sub { margin-top: 1mm; color: #222; font-size: 10pt; font-style: italic; }
+.alm-book .tk-fields { gap: 3mm; margin-bottom: 4mm; }
+.alm-book .tk-group-h { margin: 0 0 1mm; color: #000; font-size: 7.5pt; letter-spacing: 0.12em; }
+.alm-book .tk-rows { border: 0; border-top: 0.7pt solid #000; border-bottom: 0.7pt solid #000; border-radius: 0; background: none; }
+.alm-book .tk-row { min-height: 0; padding: 1.5pt 0; break-inside: avoid; }
+.alm-book .tk-row + .tk-row { border-top: 0.3pt solid #999; }
+.alm-book .tk-label { color: #000; font-size: 9.5pt; }
+.alm-book .tk-hint, .alm-book .tk-step, .alm-book .tk-swap, .alm-book .tk-caret, .alm-book .tk-pill svg { display: none; }
+.alm-book .tk-num, .alm-book .tk-pill, .alm-book .tk-hemi, .alm-book .tk-seg, .alm-book .tk-seg button {
+  min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: #000; font: inherit; font-size: 9.5pt;
+}
+.alm-book .tk-seg { overflow: visible; }
+.alm-book .tk-seg button:not([aria-checked="true"]) { display: none; }
+
+/* How this is made, open: small capitals over each part, the equations
+   drawn, each under its name. */
+.alm-book .tb-how { margin-top: 6mm; padding-top: 3mm; border-top: 0.7pt solid #000; color: #000; font-size: 9pt; }
+.alm-book .tb-how > summary, .alm-book .tb-eqs > summary { display: block; margin: 0 0 1.5mm; padding: 0; color: #000; font-size: 11pt; font-weight: 600; list-style: none; cursor: auto; }
+.alm-book .tb-eqs > summary { margin-top: 4mm; font-size: 10pt; }
+.alm-book summary::-webkit-details-marker { display: none; }
+.alm-book .tb-how h4 { margin: 3mm 0 1mm; color: #000; font-size: 7.5pt; letter-spacing: 0.14em; }
+.alm-book .tb-how ul { margin: 0 0 1mm; padding-inline-start: 4.5mm; }
+.alm-book .tb-how li { margin: 0.4mm 0; line-height: 1.35; break-inside: avoid; }
+.alm-book .tb-how-k { padding: 0; border: 0; background: none; color: #000; font: inherit; font-style: italic; text-decoration: none; }
+.alm-book .tb-eq { margin: 1mm 0 3mm; }
+.alm-book .tb-eq-l { color: #222; font-size: 8pt; font-style: italic; }
+.alm-book .tb-eq-m { overflow: visible; padding: 0.5mm 0 0 6mm; color: #000; }
+[dir="rtl"] .alm-book .tb-eq-m { padding: 0.5mm 6mm 0 0; }
+.alm-book .tb-eq-m math { font-size: 10.5pt; color: #000; }
+/* A series' terms: small, in two columns, its head over each. */
+.alm-book .tb-eq-frame { margin: 1mm 0 3mm; columns: 2; column-gap: 8mm; }
+.alm-book .tb-eq-frame .tb-table { font-size: 7pt; line-height: 1.15; }
+.alm-book .tb-eq-frame .tb-table th, .alm-book .tb-eq-frame .tb-table td { padding-top: 0.6pt; padding-bottom: 0.6pt; }
+
+/* The book is for paper only (and, unseen, for measuring). */
+@media screen {
+  .alm-book { display: none !important; }
+  .alm-book.alm-book-measure { display: block !important; position: fixed; top: 0; left: -10000px; visibility: hidden; }
+}
+@media print {
+  html.alm-book-print #almanac-content > *:not(#alm-book) { display: none !important; }
+  html.alm-book-print .alm-book { display: block !important; position: static !important; overflow: visible !important; }
+  .tb-book-foot { position: fixed; bottom: 0; inset-inline: 0; color: #333; font-size: 8pt; }
+}
