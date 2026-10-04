@@ -130,7 +130,55 @@ def _zimi_metadata(argv):
         return json.load(f)
 
 
+# Arctic Shift answers a request it is too busy for with 422 or 429 (or a
+# 5xx), and the same request a moment later with the data. ArcticZim's
+# retrieve gives up on the first such answer and the whole capture fails
+# (r/Kiwix, 2026-10-04: a 422 two years into its comments). Its requests
+# are asked again, waiting longer each time, before one is let through.
+RETRY_STATUSES = (422, 429, 500, 502, 503, 504)
+RETRY_TRIES = 6
+RETRY_FIRST_WAIT_S = 2
+RETRY_MAX_WAIT_S = 60
+REQUEST_TIMEOUT_S = 60
+
+
+def _patient_retrieve():
+    import time
+
+    try:
+        import requests
+        import arcticzim.retriever as retriever
+    except ImportError:
+        return  # an ArcticZim without it: run as it is
+
+    class Patient:
+        def __getattr__(self, name):
+            return getattr(requests, name)
+
+        def get(self, *args, **kwargs):
+            kwargs.setdefault("timeout", REQUEST_TIMEOUT_S)
+            wait = RETRY_FIRST_WAIT_S
+            for attempt in range(1, RETRY_TRIES + 1):
+                try:
+                    r = requests.get(*args, **kwargs)
+                    if r.status_code not in RETRY_STATUSES or attempt == RETRY_TRIES:
+                        return r
+                    why = "HTTP " + str(r.status_code)
+                except (requests.ConnectionError, requests.Timeout) as e:
+                    if attempt == RETRY_TRIES:
+                        raise
+                    why = type(e).__name__
+                print("Arctic Shift is busy (" + why + "); asking again in "
+                      + str(wait) + " s", flush=True)
+                time.sleep(wait)
+                wait = min(wait * 2, RETRY_MAX_WAIT_S)
+
+    retriever.requests = Patient()
+
+
 if __name__ == "__main__":
+    if "retrieve" in sys.argv:
+        _patient_retrieve()
     extra = _zimi_metadata(sys.argv)
     if extra:
         import arcticzim.zimbuild.builder as _zb
