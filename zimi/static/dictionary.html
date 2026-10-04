@@ -740,7 +740,8 @@ function allTranslations(on) {
 // Eric, 2026-10-03: "If it sounds clearer and is more accurate that might
 // be better than letting the system do whatever."
 function synth() { try { return window.speechSynthesis || null; } catch (e) { return null; } }
-function voices() { var s = synth(); try { return s ? s.getVoices() : []; } catch (e) { return []; } }
+// None when the person switched this device's voices off (Settings > Voices).
+function voices() { var s = synth(); if (!voiceOn('device')) return []; try { return s ? s.getVoices() : []; } catch (e) { return []; } }
 // Through the shell's authedFetch when it is there, so an admin signed in
 // by token is known as one and may fetch a voice.
 function authed(url, opts) {
@@ -816,8 +817,9 @@ var _presaid = {};  // asked once each: wireSpeech runs again and again
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
 // the one Say plays (a tick read as stuck), then Voices… for an admin.
-// Each is a one-off listen; which voice Say plays is the person's own
-// (Settings > Languages), else the voices sheet's default. Eric, 2026-10-03: "A lil dropdown on the say button".
+// Each is a listen; which voice Say plays is the person's preferred one
+// (Settings > Voices), which a pick here becomes unless they switched that
+// off, else the voices sheet's default. Eric, 2026-10-03: "A lil dropdown on the say button".
 function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
 function voicesFor(caret) {
   var code = caret.getAttribute('data-voices'), word = mainOf(caret).getAttribute('data-say'), row = serverRow(code);
@@ -886,7 +888,7 @@ function loadVoices() {
   return authed('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; })
     .catch(function() { return null; })
     .then(function(d) {
-      _server = d || { langs: {}, offers: {} };
+      _server = ownVoices(d || { langs: {}, offers: {} });
       _missed = {};
       _warmed = {};
       wireSpeech();
@@ -1034,25 +1036,58 @@ function voiceGone(url) {
     return r.ok ? r.json().then(function(d) { return !!(d && (d.made || d.failed)); }) : false;
   }).catch(function() { return false; });
 }
-// The person's own voice for a language, from Settings > Languages (kept
-// with their preferences under VOICE_CHOICES_KEY, app.js's SK.VOICE_CHOICES:
-// {fr: 'piper', en: 'device'}), or '' for the server's default.
-var VOICE_CHOICES_KEY = 'zimi_voice_choices';
-function myVoice(code) {
-  try { var m = JSON.parse(localStorage.getItem(VOICE_CHOICES_KEY) || '{}'); return (m && m[serverLang(code)]) || ''; }
-  catch (e) { return ''; }
+// The person's voices, from Settings > Voices (kept with their preferences
+// under VOICE_PREFS_KEY, app.js's SK.VOICE_PREFS): {voice: the one Say
+// prefers in every language, '' for the server's; remember: false when a
+// pick in Say's menu should not become it; off: [engines never used]}.
+var VOICE_PREFS_KEY = 'zimi_voice_prefs';
+function voicePrefs() {
+  try { var p = JSON.parse(localStorage.getItem(VOICE_PREFS_KEY) || '{}'); return p && typeof p === 'object' ? p : {}; }
+  catch (e) { return {}; }
 }
-// Say, in the person's voice when it can say this word; when it cannot (not
-// here now, or the server's 404), the default says it this tap and the
-// choice stays theirs. An accent's own button asks for its region instead.
+function voiceOn(e) { var off = voicePrefs().off; return !(Array.isArray(off) && off.indexOf(e) >= 0); }
+function rememberVoice(e) {
+  var p = voicePrefs();
+  if (p.remember === false || p.voice === e) return;
+  p.voice = e;
+  try { localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(p)); } catch (x) {}
+}
+// What the server says, less the engines the person switched off; a
+// language whose default was one falls to the next on, named (row.named),
+// and a language with none left is not the server's.
+function ownVoices(d) {
+  Object.keys(d.langs || {}).forEach(function(k) {
+    var row = d.langs[k], list = (row.engines || []).filter(voiceOn);
+    if (!list.length) { delete d.langs[k]; return; }
+    if (!voiceOn(row.engine)) { row.engine = list[0]; row.named = true; }
+    row.engines = list;
+  });
+  return d;
+}
+// The voice Say plays for a language: the preferred one when it says the
+// language here, else the server's default (by name when the person's
+// switches moved it), '' for the server's own choice.
+function myVoice(code) {
+  var row = serverRow(code), pref = voicePrefs().voice || '';
+  if (pref && (pref === 'device' ? !!pickVoice(voices(), code, '') : !!row && row.engines.indexOf(pref) >= 0)) return pref;
+  return row && row.named ? row.engine : '';
+}
+function asVoice(b, engine) {
+  var as = b.cloneNode(true);
+  as.setAttribute('data-engine', engine);
+  return as;
+}
+// Say, in the person's voice; when it cannot say this word after all (the
+// server's 404), the default says it this tap and the preference stays.
+// An accent's own button asks for its region instead.
 function sayMine(b) {
   var mine = !b.hasAttribute('data-exact') && myVoice(b.getAttribute('data-code'));
   if (!mine) { say(b); return; }
-  var as = b.cloneNode(true);
-  as.setAttribute('data-engine', mine);
+  var row = serverRow(b.getAttribute('data-code')), fallback = row && row.named ? asVoice(b, row.engine) : b;
+  var as = asVoice(b, mine);
   var can = mine === 'device' ? deviceSays(as, voices()) : !!speakUrl(as);
-  if (!can) { say(b); return; }
-  say(as, b, function() { say(b); });
+  if (!can) { say(fallback, b); return; }
+  say(as, b, mine === fallback.getAttribute('data-engine') ? null : function() { say(fallback, b); });
 }
 function deviceSay(b, face) {
   face = face || b;
@@ -1125,7 +1160,7 @@ document.addEventListener('click', function(e) {
   var door = e.target.closest && e.target.closest('[data-sheet]');
   if (door) { e.preventDefault(); closeMenus(); tell({ zimi: 'voices' }); return; }
   var item = e.target.closest && e.target.closest('.menu [data-say]');
-  if (item) { e.preventDefault(); say(item, item); return; }
+  if (item) { e.preventDefault(); say(item, item); rememberVoice(item.getAttribute('data-engine')); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
   if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else sayMine(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
