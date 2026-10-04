@@ -201,6 +201,11 @@ def test_the_quote_card_says_its_quote_and_stays(served, scheme):
             where = pg.url
             say.click()
             pg.wait_for_function("() => !!document.querySelector('.dc-say.on')")
+            # The button lights in the tap; the request is seen a moment later.
+            for _ in range(50):
+                if asked:
+                    break
+                pg.wait_for_timeout(100)
             assert asked, "Say asked the server for nothing"
             got = parse_qs(urlparse(asked[-1]).query)
             assert got["text"] == [QUOTE]
