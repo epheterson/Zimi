@@ -128,3 +128,86 @@ def test_the_counts_close_home_and_the_apps_lead_it(served, discover):
                 assert gap < 40, gap
         finally:
             br.close()
+
+
+def _silence_wav(seconds=1.0, rate=8000):
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x00\x00" * int(rate * seconds))
+    return buf.getvalue()
+
+
+QUOTE = (
+    "Imagination is more important than knowledge. For knowledge is limited,"
+    " whereas imagination embraces the entire world."
+)
+
+
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+def test_the_quote_card_says_its_quote_and_stays(served, scheme):
+    """Eric, 2026-10-03: "What if we also offered speaking the quote of the
+    day to hear it with more impact!?" The quote card's Say asks for the
+    quote alone (not who said it) as a sentence in the Wikiquote's
+    language, pulses while it plays, and is not a tap on the card."""
+    from urllib.parse import parse_qs, urlparse
+
+    from playwright.sync_api import sync_playwright
+
+    wav = _silence_wav()
+    asked = []
+
+    def speak(route):
+        asked.append(route.request.url)
+        route.fulfill(status=200, body=wav, headers={"Content-Type": "audio/wav"})
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_context(
+            **pw.devices["iPhone 13"], service_workers="block", color_scheme=scheme
+        ).new_page()
+        try:
+            pg.route("**/dictionary/speak?*", speak)
+            pg.goto(served + "/")
+            pg.wait_for_function(READY, timeout=30000)
+            pg.wait_for_selector("#discover-row", state="attached")
+            # Discover's own cards in first, so they do not paint over ours.
+            pg.wait_for_function(
+                "() => document.querySelector('#discover-row .discover-card') && !document.querySelector('#discover-row .dc-loading')",
+                timeout=20000,
+            )
+            pg.wait_for_timeout(500)
+            pg.evaluate(
+                """q => _renderDiscover(document.getElementById('discover-row'), [{
+                  zim: 'wikiquote_de_all_nopic_2026-01', path: 'Albert_Einstein',
+                  title: 'Albert Einstein', blurb: '\\u201c' + q + '\\u201d',
+                  attribution: 'Albert Einstein' }])""",
+                QUOTE,
+            )
+            say = pg.locator(".dc-quote-card .dc-say")
+            assert say.count() == 1
+            say.scroll_into_view_if_needed()
+            if os.environ.get("ZIMI_SHOTS"):
+                pg.locator(".dc-quote-card").screenshot(
+                    path=os.path.join(
+                        os.environ["ZIMI_SHOTS"], "discover-quote-say-%s.png" % scheme
+                    )
+                )
+            where = pg.url
+            say.click()
+            pg.wait_for_function("() => !!document.querySelector('.dc-say.on')")
+            assert asked, "Say asked the server for nothing"
+            got = parse_qs(urlparse(asked[-1]).query)
+            assert got["text"] == [QUOTE]
+            assert got["lang"] == ["de"] and got["kind"] == ["sentence"]
+            pg.wait_for_timeout(300)
+            assert pg.url == where and pg.evaluate("() => mode") != "reader"
+            box = pg.locator(".dc-quote-card").bounding_box()
+            assert box["x"] >= 0 and box["x"] + box["width"] <= 390
+        finally:
+            br.close()

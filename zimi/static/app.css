@@ -3510,6 +3510,7 @@
   @keyframes dcSayPulse { 50% { opacity: .65; } }
   @media (prefers-reduced-motion: reduce) { .dc-say.on { animation: none; } }
   .dc-word-card .dc-say + .dc-pos { display: block; }
+  .dc-quote-card .dc-quote + .dc-say { margin: 12px 0 0; }
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }

@@ -6396,6 +6396,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div dir="auto" class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
+          _discoverSayHtml(cleanQuote, it.zim, 'sentence') +
           attrLine +
         '</div></a>';
 
@@ -25834,13 +25835,29 @@ function _spaNav(e, fn) {
 // The word on Discover's word card, said as the Dictionary says it: the
 // server's voice for the Wiktionary's language, the device's when the server
 // has none (Eric, 2026-10-03: "Maybe we can show in Discover card"). Inside
-// the card's link, so the tap is kept from opening the word.
+// the card's link, so the tap is kept from opening the word. The quote card
+// says its quote the same way, in the Wikiquote's language, the quote alone
+// (Eric, 2026-10-03: "What if we also offered speaking the quote of the day
+// to hear it with more impact!?").
 var _DISC_SPEAKER = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>';
 var _discAudio = null;
-function _discoverSayHtml(word, zim) {
-  var m = _WIKTIONARY_LANG_RE.exec(zim || '');
+// What the server says at most as a sentence (voices.SENTENCE_MAX).
+var _DISC_SENTENCE_MAX = 300;
+var _DISC_SAY_LANG_RE = { word: _WIKTIONARY_LANG_RE, sentence: /^wikiquote_([a-z]{2,3})(?:_|$)/ };
+// A quote longer than the server says, cut at the last word that fits.
+function _discSentence(text) {
+  text = String(text || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= _DISC_SENTENCE_MAX) return text;
+  var cut = text.slice(0, _DISC_SENTENCE_MAX), sp = cut.lastIndexOf(' ');
+  return sp > 0 ? cut.slice(0, sp) : cut;
+}
+function _discoverSayHtml(word, zim, kind) {
+  kind = kind || 'word';
+  var m = _DISC_SAY_LANG_RE[kind].exec(zim || '');
+  if (kind === 'sentence') word = _discSentence(word);
   if (!m || !word) return '';
-  return '<span class="dc-say" role="button" tabindex="0" data-say="' + escAttr(word) + '" data-lang="' + escAttr(m[1]) + '" aria-label="' + escAttr(t('dictionary_say_word', { word: word })) + '"' +
+  var label = kind === 'word' ? t('dictionary_say_word', { word: word }) : t('dictionary_say');
+  return '<span class="dc-say" role="button" tabindex="0" data-say="' + escAttr(word) + '" data-lang="' + escAttr(m[1]) + '" data-kind="' + kind + '" aria-label="' + escAttr(label) + '"' +
     ' onclick="return _discoverSay(event, this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \')return _discoverSay(event, this)">' + _DISC_SPEAKER + '<span>' + tH('dictionary_say') + '</span></span>';
 }
 function _discoverSay(e, el) {
@@ -25850,7 +25867,8 @@ function _discoverSay(e, el) {
     try { var u = new SpeechSynthesisUtterance(word); u.lang = lang; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (err) {}
   };
   if (_discAudio) { try { _discAudio.pause(); } catch (err) {} }
-  var a = _discAudio = new Audio('/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang));
+  var kind = el.getAttribute('data-kind') === 'sentence' ? '&kind=sentence' : '';
+  var a = _discAudio = new Audio('/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang) + kind);
   el.classList.add('on');
   a.onended = a.onpause = function() { el.classList.remove('on'); };
   a.onerror = function() { el.classList.remove('on'); device(); };
