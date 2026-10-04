@@ -196,6 +196,11 @@ CHOICES_KEY = "voice_engines"
 
 # A word or a short phrase, never a paragraph: what the Dictionary says.
 TEXT_MAX = 64
+# A sentence, for the few places that say one (Discover's quote of the day):
+# asked for with kind=sentence, cached and fed on stdin as a word is.
+SENTENCE_MAX = 300
+# What each kind of text may be at most, by the name a request gives it.
+TEXT_LIMITS = {"word": TEXT_MAX, "sentence": SENTENCE_MAX}
 SYNTH_TIMEOUT_S = 20  # Piper, its model loaded with the first word
 # Kokoro's first word loads its model and a language's dictionary: about 5 s
 # on a laptop, 13 on Eric's NAS (2026-10-03), so it is given longer.
@@ -855,14 +860,14 @@ def can_say():
 # ── saying a word ─────────────────────────────────────────────────────────
 
 
-def clean_text(text):
+def clean_text(text, limit=TEXT_MAX):
     """The text as an engine gets it, or None: one line, no control
-    characters, at most TEXT_MAX characters."""
+    characters, at most ``limit`` characters (TEXT_MAX, a word)."""
     text = str(text or "")
     if _CONTROL_RE.search(text.replace("\t", " ").replace("\n", " ")):
         return None
     text = _SPACES_RE.sub(" ", text).strip()
-    if not text or len(text) > TEXT_MAX:
+    if not text or len(text) > limit:
         return None
     return text
 
@@ -933,17 +938,17 @@ class Failed(Exception):
 _failures = collections.OrderedDict()  # audio path -> True, the latest last
 
 
-def speak(text, lang, accent="", engine=None):
+def speak(text, lang, accent="", engine=None, limit=TEXT_MAX):
     """WAV bytes of ``text`` said in ``lang``, or None when no engine can
     say it. ``engine``: that engine or none. Raises Busy when one can but
     did not get to it, Failed when it tried and could not. Cached by engine,
     voice and text; one synthesis at a time, SYNTH_QUEUE more waiting."""
-    if clean_text(text) is None or not valid_lang(lang, accent):
+    if clean_text(text, limit) is None or not valid_lang(lang, accent):
         return None
     if engine is not None and engine not in ENGINES:
         return None
     _maybe_fetch(lang, accent)
-    where = _audio(text, lang, accent, engine)
+    where = _audio(text, lang, accent, engine, limit)
     if where is None:
         return None
     engine, voice, text, path = where
@@ -981,10 +986,10 @@ def speak(text, lang, accent="", engine=None):
     return _cached(path)
 
 
-def _audio(text, lang, accent="", engine=None):
+def _audio(text, lang, accent="", engine=None, limit=TEXT_MAX):
     """(engine, voice, text, path): who says the word and where its audio
     is kept, or None when no engine here can say it."""
-    text = clean_text(text)
+    text = clean_text(text, limit)
     if text is None or not valid_lang(lang, accent):
         return None
     if engine is not None and engine not in ENGINES:
@@ -998,13 +1003,13 @@ def _audio(text, lang, accent="", engine=None):
     return engine, voice, text, os.path.join(folder, name)
 
 
-def said(text, lang, accent="", engine=None):
+def said(text, lang, accent="", engine=None, limit=TEXT_MAX):
     """None when no voice here says the word, else {"made": its audio is
     there, "failed": the engine could not say it last time}. Nothing is
     said or fetched: the page asks this after its audio failed. Missing,
     made (audio that would not play) or failed: the word is the device's.
     Neither: the voice was busy, and the next tap asks again."""
-    where = _audio(text, lang, accent, engine)
+    where = _audio(text, lang, accent, engine, limit)
     if where is None:
         return None
     path = where[3]

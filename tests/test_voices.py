@@ -210,6 +210,14 @@ def test_text_is_a_word_or_a_short_phrase(text, ok):
     assert voices.clean_text(text) == ok
 
 
+def test_a_sentence_may_be_longer_than_a_word():
+    """Discover's quote of the day: up to SENTENCE_MAX, asked for as such."""
+    quote = "x" * voices.SENTENCE_MAX
+    assert voices.clean_text(quote) is None
+    assert voices.clean_text(quote, voices.TEXT_LIMITS["sentence"]) == quote
+    assert voices.clean_text(quote + "x", voices.SENTENCE_MAX) is None
+
+
 @pytest.mark.parametrize(
     "lang, accent, ok",
     [
@@ -942,6 +950,15 @@ def test_speak_answers_a_wav_a_range_and_a_404(served):
     assert _get(served + "/dictionary/speak?text=eau&lang=fr")[0] == 404
     assert _get(served + "/dictionary/speak?text=&lang=en")[0] == 400
     assert _get(served + "/dictionary/speak?text=" + "x" * 200 + "&lang=en")[0] == 400
+    # A sentence (Discover's quote) is said when asked for as one; a kind
+    # that is none is refused.
+    quote = "%20".join(["words"] * 30)
+    assert _get(served + "/dictionary/speak?text=" + quote + "&lang=en")[0] == 400
+    code, headers, body = _get(
+        served + "/dictionary/speak?text=" + quote + "&lang=en&kind=sentence"
+    )
+    assert code == 200 and body[:4] == b"RIFF"
+    assert _get(served + "/dictionary/speak?text=water&lang=en&kind=essay")[0] == 400
     code, _h, body = _get(served + "/dictionary/voices")
     got = json.loads(body)
     assert (

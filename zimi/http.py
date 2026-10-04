@@ -4343,8 +4343,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         """The Dictionary's Say (voices.py). /dictionary/voices: what the
         server can say and the clearer voices it could fetch, with whether
         this viewer may fetch them (the admin rule every /manage write
-        follows). /dictionary/speak?text=&lang=[&accent=][&engine=]: the word
-        as a WAV; 404 only when no engine here (or not the one named) can
+        follows). /dictionary/speak?text=&lang=[&accent=][&engine=]
+        [&kind=sentence]: the word (or a sentence, up to SENTENCE_MAX) as a WAV; 404 only when no engine here (or not the one named) can
         say the language; 503 with Retry-After when one can but is busy, so
         the page keeps it; 500 when it tried and could not. &check=1:
         nothing said, 404 or {"made", "failed"} (the page asking why its
@@ -4367,19 +4367,21 @@ class ZimHandler(BaseHTTPRequestHandler):
             param("accent") or "",
             param("engine") or None,
         )
+        limit = _voices.TEXT_LIMITS.get(param("kind") or "word")
         if (
-            _voices.clean_text(text) is None
+            limit is None
+            or _voices.clean_text(text, limit) is None
             or not _voices.valid_lang(lang, accent)
             or (engine is not None and engine not in _voices.ENGINES)
         ):
             return self._json(400, {"error": "bad request"})
         if param("check"):
-            got = _voices.said(text, lang, accent, engine)
+            got = _voices.said(text, lang, accent, engine, limit)
             if got is None:
                 return self._json(404, {"error": "no voice"})
             return self._uncached(lambda: self._json(200, got))
         try:
-            body = _voices.speak(text, lang, accent, engine)
+            body = _voices.speak(text, lang, accent, engine, limit)
         except _voices.Busy:
             return self._uncached(
                 lambda: self._json(
