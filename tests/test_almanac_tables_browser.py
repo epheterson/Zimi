@@ -587,52 +587,21 @@ def test_subject_chips_filter_all_three_rows(page):
     assert not page.errors, page.errors
 
 
-def test_a_sections_own_tiles_and_back_to_it(page):
-    """Tides' table icon opens the tiles with the Tides chip chosen, another
-    chip filters from there, and Back returns to the tide section with every
-    tile again."""
+def test_no_section_table_icons_the_chips_choose(page):
+    """The chips replaced the table icon each section ended with: none is
+    left on the page, and a chip still chooses a subject's tiles."""
     page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
-    link = page.locator("#almanac-place + .alm-subject-link")
-    link.scroll_into_view_if_needed()
-    # An icon, named for what it opens.
-    icon = page.evaluate(
-        "() => { const b = document.querySelector('#almanac-place + .alm-subject-link'), r = b.getBoundingClientRect();"
-        " return { label: b.getAttribute('aria-label'), title: b.title, text: b.textContent.trim(), svg: !!b.querySelector('svg'),"
-        " w: r.width, h: r.height, right: innerWidth - r.right }; }"
-    )
-    assert (
-        icon["label"] == "Tables, calculations, constants"
-        and icon["title"] == icon["label"]
-    ), icon
-    assert icon["svg"] and not icon["text"], icon
-    assert 32 <= icon["w"] <= 44 and 32 <= icon["h"] <= 44, icon
-    assert icon["right"] < 40, icon  # at the section's trailing edge
-    link.click()
+    assert page.evaluate("document.querySelectorAll('.alm-subject-link').length") == 0
+    page.click("#alm-subject-chips [data-subj='tides']")
     assert page.evaluate(SHOWN) == page.evaluate("ALM_TB_SUBJECTS.tides")
     assert page.evaluate(ACTIVE_CHIP) == "tides"
     page.click("#alm-subject-chips [data-subj='']")
-    assert page.evaluate(
-        "document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])').length"
-    ) == len(TABLES + CALCS + CONSTS)
-    page.click("#alm-subject-chips [data-subj='eclipses']")
-    assert sorted(page.evaluate(SHOWN)) == sorted(
-        page.evaluate("ALM_TB_SUBJECTS.eclipses")
-    )
-    page.go_back()
-    page.wait_for_function(
-        "() => document.querySelector('#alm-subject-chips .pill.active').dataset.subj === ''"
-    )
-    assert page.evaluate("_almanacOpen")
     assert (
         page.evaluate(
             "document.querySelectorAll('#alm-group-tables .alm-tile[hidden]').length"
         )
         == 0
     )
-    top = page.evaluate(
-        "document.getElementById('almanac-place').getBoundingClientRect().top"
-    )
-    assert -900 < top < 900, top
     assert not page.errors, page.errors
 
 

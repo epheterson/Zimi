@@ -195,10 +195,6 @@
 /* Tables and calculations: two rows of tiles, each a scroller that runs to
    the screen's edges (the page itself never scrolls sideways). A tile is
    what opens: its mark, its name, and one line of what it gives. */
-/* A section's way to its own tiles: a small table mark, quiet, at the
-   section's trailing edge; amber when reached for. */
-.alm-subject-link { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: 6px 0 0; margin-inline-start: auto; padding: 0; border: 1px solid transparent; border-radius: 18px; background: none; color: var(--text3); cursor: pointer; transition: color 0.2s, border-color 0.2s, background 0.2s; }
-.alm-subject-link:hover, .alm-subject-link:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); outline: none; }
 /* The subjects: app.css's own pill row, run to the screen's edges like the tiles. */
 .alm-subject-chips { width: auto; margin: 4px -16px 0; padding: 2px 16px; scroll-padding-inline: 16px; }
 .alm-tiles[hidden], .alm-tiles-h[hidden], .alm-tile[hidden] { display: none; }

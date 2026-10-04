@@ -1793,9 +1793,7 @@ var ALM_TB_ICONS = {
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
   k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
-  k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>',
-  // A section's way to its tables: a small table.
-  table: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/>'
+  k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
 function _almTbIcon(k, px) {
@@ -1829,9 +1827,9 @@ function _almTablesHtml() {
 // relevant tables calculations and constants for each thing in the
 // almanac", Eric): the chips above the tiles filter all three rows to one
 // subject ("use our slider row things for showing all filters", Eric,
-// 2026-10-03), and a quiet table icon at a section's end opens them with
-// its subject chosen; Back returns to the section. Which tiles a subject
-// has is this one table.
+// 2026-10-03). They replaced the table icon each section ended with ("maybe
+// just remove the table icons now that the filter pills are clear", Eric,
+// 2026-10-03). Which tiles a subject has is this one table.
 var ALM_TB_SUBJECTS = {
   sky: ['sunmoon', 'twilight', 'phases', 'stars', 'sunmoonday', 'k_sunmoon', 'k_nav'],
   calendars: ['calendars', 'phases', 'seasons', 'days', 'convert', 'k_time'],
@@ -1842,13 +1840,7 @@ var ALM_TB_SUBJECTS = {
   eclipses: ['eclipses', 'phases', 'k_sunmoon'],
   seasons: ['seasons', 'sunmoon', 'twilight', 'k_time', 'k_earth']
 };
-var _almSubject = null;   // { s, from, pushed }: the subject shown, the section it came from
-var ALM_TB_LINK_ICON_PX = 18;
-function _almSubjectLink(s) {
-  var label = _almEsc(t('alm_subject_link'));
-  return '<button type="button" class="alm-subject-link" onclick="_almSubjectOpen(\'' + s + '\', this)" aria-label="' + label + '" title="' + label + '">' +
-    _almTbIcon('table', ALM_TB_LINK_ICON_PX) + '</button>';
-}
+var _almSubject = null;   // the subject chosen, or null for All
 // Only the subject's tiles, each row with none of them hidden; its chip lit.
 function _almSubjectFilter(s) {
   var group = document.getElementById('alm-group-tables');
@@ -1875,37 +1867,12 @@ function _almChipIntoView(c) {
 }
 // A chip: that subject (or All), staying here.
 function _almSubjectChip(s) {
-  s = ALM_TB_SUBJECTS[s] ? s : null;
-  if (_almSubject) _almSubject.s = s;
-  else if (s) _almSubject = { s: s, from: null, pushed: false };
-  _almSubjectFilter(s);
+  _almSubject = ALM_TB_SUBJECTS[s] ? s : null;
+  _almSubjectFilter(_almSubject);
 }
-function _almSubjectOpen(s, btn) {
-  if (!ALM_TB_SUBJECTS[s]) return;
-  var pushed = _almSubject ? _almSubject.pushed : false;
-  _almSubject = { s: s, from: btn.closest('.almanac-section') || btn.previousElementSibling || btn, pushed: pushed };
-  _almSubjectFilter(s);
-  if (!pushed) { try { history.pushState({ mode: 'almanac', almSubject: s }, '', location.href); _almSubject.pushed = true; } catch (e) {} }
-  var group = document.getElementById('alm-group-tables');
-  if (group) group.scrollIntoView({ block: 'start', behavior: _almReduceMotion() ? 'auto' : 'smooth' });
-}
-// app.js asks on Back: the tables view first (almanac-tables.js), then the
-// subject's step, which returns to the section it came from.
+// app.js asks on Back: the tables view (almanac-tables.js) takes it first.
 function _almTablesPop(e) {
-  if (typeof _tbHistoryPop === 'function' && _tbHistoryPop(e)) return true;
-  // Arriving at the subject's own step (Forward, or back out of a table
-  // opened from it): its tiles, still or again.
-  if (e.state && e.state.almSubject && ALM_TB_SUBJECTS[e.state.almSubject] && document.getElementById('alm-group-tables')) {
-    if (!_almSubject) _almSubject = { s: e.state.almSubject, from: null, pushed: true };
-    if (_almSubject.s) _almSubjectFilter(_almSubject.s);
-    return true;
-  }
-  if (!_almSubject || !_almSubject.pushed) return false;
-  var from = _almSubject.from;
-  _almSubject = null;
-  _almSubjectFilter(null);
-  if (from && from.isConnected) from.scrollIntoView({ block: 'center', behavior: 'auto' });
-  return true;
+  return typeof _tbHistoryPop === 'function' && _tbHistoryPop(e);
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
@@ -2101,13 +2068,12 @@ function _renderAlmanacContent() {
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += _almSubjectLink('sky');
-  html += '<div id="almanac-calendar"></div>' + _almSubjectLink('calendars');
+  html += '<div id="almanac-calendar"></div>';
 
   // The place: the map, the way to choose it, its clocks, its tide
   // (almanac-tides.js, loaded after the first paint), the Sun's year there.
-  html += '<div id="almanac-sunmap"></div>' + _almSubjectLink('time');
-  html += '<div id="almanac-place"></div>' + _almSubjectLink('tides');
+  html += '<div id="almanac-sunmap"></div>';
+  html += '<div id="almanac-place"></div>';
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
 
@@ -2145,14 +2111,14 @@ function _renderAlmanacContent() {
   html += _almSec(t('alm_star_chart'),
     '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
     '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>' + _almSubjectLink('stars'));
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += _almSec(_lterm('analemma', t('alm_analemma')),
     '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
-    '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>' + _almSubjectLink('sun'));
+    '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
   html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
-  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>' + _almSubjectLink('eclipses'));
-  html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>' + _almSubjectLink('seasons'));
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
+  html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
   html += _almSec(t('alm_deep_time'), '<div id="almanac-deeptime"></div>');
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
   // Any time: the tables and the sums, the almanac's back matter.
