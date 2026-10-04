@@ -79,7 +79,10 @@
   .spk.caret { min-width: 30px; padding: 0 8px 0 6px; border-start-start-radius: 0; border-end-start-radius: 0; position: relative; border-inline-start: 1px solid rgba(255,255,255,.35); }
   .spk.caret::after { content: ''; position: absolute; inset-block: -5px; inset-inline: -2px -8px; } /* a 44px target */
   .spk.caret svg { width: 14px; height: 14px; }
-  .spk.caret[aria-expanded="true"] { filter: brightness(1.12); }
+  /* The caret open or pressed lights the whole joined pill, both halves, the
+     way Say lights when it plays: one control, not half of one. */
+  .split:has(> .caret[aria-expanded="true"]), .split:has(> .caret:active) { border-radius: 17px; box-shadow: 0 0 0 4px var(--amber-glow); }
+  .split:has(> .caret[aria-expanded="true"]) > .spk, .split:has(> .caret:active) > .spk { filter: brightness(1.12); }
   .split > .menu { top: calc(100% + 6px); inset-inline-start: 0; }
   .menu .menu-item { gap: 10px; padding: 0 14px; }
   .menu .menu-item svg { width: 15px; height: 15px; flex: none; color: var(--text2); }
