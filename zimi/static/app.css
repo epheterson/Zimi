@@ -3349,10 +3349,12 @@
        The body itself is frozen by .zi-open below. */
     overscroll-behavior: contain;
   }
-  /* Set on <html> while the panel is up. Frozen rather than hidden: a plain
-     overflow:hidden on the body makes the page jump to the top and lose the
-     reader's place, which is a worse bug than the one being fixed. */
+  /* Set on <html> while the panel is up. Frozen rather than hidden: the body
+     is pinned where it was scrolled to (_ziLockPage sets its top) and put
+     back after, so the reader keeps their place and iOS draws the sheet
+     where it is, not where the page was. */
   html.zi-open, html.zi-open body { overflow: hidden; }
+  html.zi-open body { position: fixed; left: 0; right: 0; }
   .zi-panel {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     width: min(520px, 100%); max-height: 84vh; display: flex; flex-direction: column;

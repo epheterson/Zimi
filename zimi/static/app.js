@@ -921,11 +921,16 @@ function _voicePrefsHtml() {
   }
   return h + '</div><div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
+// Drawn again only when something in it changed: the browser names its voices
+// (voiceschanged) when it pleases, and a repaint under a finger swallowed the
+// tap on Get more voices.
 function _paintVoicePrefs() {
   var el = document.getElementById(_VOICES_WRAP_ID);
   if (!el) return;
+  var html = _voicePrefsHtml();
+  if (el._painted === html) return;
   _stopVoiceSample();
-  el.innerHTML = _voicePrefsHtml();
+  el.innerHTML = el._painted = html;
 }
 var _voicesHeard = false;
 function _renderVoicePrefs() {
@@ -5042,10 +5047,34 @@ function _ziKeydown(e) {
   if (e.key === 'Escape') { e.preventDefault(); _closeZimAbout(); }
 }
 
+// The page behind a sheet (About this ZIM, the voices) holds still. Frozen
+// where it was: the body is pinned at its own scroll and put back after.
+// overflow:hidden alone on a page scrolled far down (Settings > Voices sits
+// near the bottom) left iOS Safari drawing the new fixed sheet off screen
+// until the next scroll: "Get more voices tap does not open right and
+// weirdly appears when I scroll up" (Eric, 2026-10-03). Any sheet still up
+// keeps the lock; the last one gives it back.
+var _ZI_SHEETS = '.zi-overlay';
+var _ziScrollY = 0;
+function _ziLockPage() {
+  var html = document.documentElement;
+  if (html.classList.contains('zi-open')) return;
+  _ziScrollY = window.scrollY || html.scrollTop || 0;
+  document.body.style.top = -_ziScrollY + 'px';
+  html.classList.add('zi-open');
+}
+function _ziUnlockPage() {
+  var html = document.documentElement;
+  if (!html.classList.contains('zi-open') || document.querySelector(_ZI_SHEETS)) return;
+  html.classList.remove('zi-open');
+  document.body.style.top = '';
+  window.scrollTo({ top: _ziScrollY, behavior: 'instant' });
+}
+
 function _closeZimAbout() {
   var ov = document.getElementById(_ZI_OVERLAY_ID);
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
-  document.documentElement.classList.remove('zi-open');
+  _ziUnlockPage();
   document.removeEventListener('keydown', _ziKeydown);
 }
 
@@ -5065,11 +5094,11 @@ function _openZimAbout(zim) {
   document.body.appendChild(ov);
   // Freeze the library behind the panel. Without this the page kept scrolling
   // under a modal, which is the one thing a modal is for.
-  document.documentElement.classList.add('zi-open');
+  _ziLockPage();
   ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
   document.addEventListener('keydown', _ziKeydown);
   var closeBtn = ov.querySelector('.zi-close');
-  if (closeBtn) closeBtn.focus();
+  if (closeBtn) closeBtn.focus({ preventScroll: true });
   var write = function (html) {
     var body = document.querySelector('#' + _ZI_OVERLAY_ID + ' .zi-body');
     if (body) body.innerHTML = html;
@@ -13945,7 +13974,7 @@ function closeVoicesSheet() {
   var ov = document.getElementById(_VOICES_ID + '-overlay');
   if (!ov) return;
   ov.parentNode.removeChild(ov);
-  if (!document.getElementById(_ZI_OVERLAY_ID)) document.documentElement.classList.remove('zi-open');
+  _ziUnlockPage();
   document.removeEventListener('keydown', _voicesKeydown, true);
   _renderVoicePrefs();
 }
@@ -13962,10 +13991,12 @@ function openVoicesSheet() {
     '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="closeVoicesSheet()">✕</button>' +
     '</div><div class="zi-body" id="' + _VOICES_ID + '"><div class="zi-none voice-loading"><span class="spinner-inline"></span>' + tH('loading') + '</div></div></div>';
   document.body.appendChild(ov);
-  document.documentElement.classList.add('zi-open');
+  _ziLockPage();
   ov.addEventListener('click', function(e) { if (e.target === ov) closeVoicesSheet(); });
   document.addEventListener('keydown', _voicesKeydown, true);
-  ov.querySelector('.zi-close').focus();
+  // Focus without scrolling: a focus that scrolls a locked page is the other
+  // half of the sheet landing off screen.
+  ov.querySelector('.zi-close').focus({ preventScroll: true });
   _renderVoicesSheet();
 }
 
