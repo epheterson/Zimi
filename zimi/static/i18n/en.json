@@ -1540,7 +1540,6 @@
   "ms_server": "Server",
   "ms_settings_tab": "Settings",
   "ms_users": "Users",
-  "multi_lang": "Multi-language",
   "multilingual": "Multilingual ({n} languages)",
   "n_languages_one": "{n} language",
   "n_languages_other": "{n} languages",
@@ -1825,7 +1824,6 @@
   "show_apps_server": "Apps offered to everyone",
   "apps_server_hint": "Unchecked here hides that app for everyone.",
   "show_installed_covered": "Show {n} you already have",
-  "show_lang_chooser": "Show languages",
   "show_list": "Show list",
   "show_more": "Show {n} more results",
   "sign_in": "Sign in",
@@ -2940,7 +2938,6 @@
   "tb_eq_tide_sub": "Subordinate station",
   "tb_eq_or": "or",
   "tb_eq_tide_between": "Between high and low water",
-  "catalog_languages_hint_short": "Click to add or remove from your catalog filter.",
   "languages_yours": "Your languages",
   "voices_section": "Voices",
   "voices_hear": "Hear",
@@ -2954,5 +2951,10 @@
   "voices_say_remembers": "Say in the Dictionary keeps the voice you picked last in its menu.",
   "voices_sample": "Some dictionary words are: {words}.",
   "voices_sample_none": "This is how this voice sounds.",
-  "voices_hear_failed": "That voice couldn't play just now"
+  "voices_hear_failed": "That voice couldn't play just now",
+  "languages_yours_hint": "Zimi shows and offers these languages: the catalog, search, Discover, the Dictionary and Zimipedia. None picked: every language.",
+  "languages_every": "Every language",
+  "languages_more": "{n} more",
+  "lang_filters_title": "Language filters",
+  "lang_filters_desc": "Language chips over the library and the catalog, and the language menu in the top bar."
 }

@@ -937,18 +937,29 @@ document.addEventListener('click', function(e) {
   tell({ zimi: 'open', zim: a.getAttribute('data-zim'), path: a.getAttribute('data-path') });
 });
 
-// The language asked for: this browser's last choice, else the interface's;
-// the server settles it (English, else the language with the most wikis,
-// when no wiki is in it).
+// Your languages (Settings > Languages) when Zimi's is not among them.
+function yourLang() {
+  var yours = STR.yours || [];
+  return yours.length && yours.indexOf(STR.lang) < 0 ? yours[0] : '';
+}
+// Its languages, yours first in your order, the rest as the server gave them.
+function yoursFirst(langs) {
+  var yours = STR.yours || [], rank = function(c) { var i = yours.indexOf(c); return i < 0 ? yours.length : i; };
+  return langs.map(function(l, i) { return { l: l, i: i }; })
+    .sort(function(a, b) { return (rank(a.l.code) - rank(b.l.code)) || (a.i - b.i); }).map(function(x) { return x.l; });
+}
+// The language asked for: this browser's last choice, else yours, else the
+// interface's; the server settles it (English, else the language with the
+// most wikis, when no wiki is in it).
 function load() {
-  fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(storedLang() || STR.lang || 'en')).then(function(r) {
+  fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(storedLang() || yourLang() || STR.lang || 'en')).then(function(r) {
     if (!r.ok) throw new Error(r.status);
     return r.json();
   }).then(function(d) {
     _wikis = d.wikis || [];
     _by = {}; _wikis.forEach(function(w) { _by[w.name] = w; });
     _labels = pillLabels(_wikis);
-    _langs = d.languages || [];
+    _langs = yoursFirst(d.languages || []);
     _lang = d.lang || '';
     applyDir();
     if (d.day === _day) absorb(d);

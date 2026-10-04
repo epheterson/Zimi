@@ -745,36 +745,81 @@ function _hasStoredManageToken() {
   return !!_readManageToken();
 }
 
-// User-preferred languages for the catalog. Empty = no filter (show all).
+// Your languages (Settings > Languages): the languages Zimi shows and offers.
+// Eric, 2026-10-03: "Can't I have the whole experience offered in just
+// English and Spanish for example?" One set, read by what already has a
+// language notion: the catalog's filter (_zimMatchesLang), search's language
+// pills (_applyPreferredLanguages), the library's language pills (yours
+// first), Discover's picks (_featuredZimFor), the Dictionary's languages and
+// their order, and Zimipedia's language. Empty: every language.
 function _getPrefLanguages() {
-  return _getStorageJSON(SK.PREF_LANGUAGES, []) || [];
+  var v = _getStorageJSON(SK.PREF_LANGUAGES, []);
+  return Array.isArray(v) ? v.filter(function(c) { return c && c !== 'multi'; }) : [];
 }
 function _setPrefLanguages(langs) {
-  _setStorageJSON(SK.PREF_LANGUAGES, langs);
+  if (langs.length) _setStorageJSON(SK.PREF_LANGUAGES, langs);
+  else { try { localStorage.removeItem(SK.PREF_LANGUAGES); } catch (e) {} }
+}
+// Where your languages rank a language: its place among them, or after them.
+function _prefLangRank(code) {
+  var prefs = _getPrefLanguages().map(_normLang), i = prefs.indexOf(_normLang(code));
+  return i < 0 ? prefs.length : i;
 }
 
-// Common languages for the catalog filter (Settings > Languages > Your
-// languages), roughly by global Wikipedia use.
-const _LANG_PREF_OPTIONS = ['en', 'fr', 'de', 'es', 'pt', 'ru', 'zh', 'ar', 'hi', 'he', 'ja', 'it', 'multi'];
-
+// The common languages offered as chips beside the library's own, roughly
+// by global Wikipedia use.
+var _LANG_PREF_OPTIONS = ['en', 'es', 'fr', 'de', 'pt', 'ru', 'zh', 'ar', 'hi', 'he', 'ja', 'it'];
+var _LANG_CHIPS_SHOWN = 8; // chips past this fold behind "N more"
+var _langChipsAll = false; // the fold opened, until the pane is drawn again
+// The chips, in order: yours (as you picked them), Zimi's language, the
+// library's languages (most ZIMs first), then the common ones.
+function _langChipCodes() {
+  var out = [];
+  var add = function(c) { c = _normLang(c); if (c && _isValidLangCode(c) && out.indexOf(c) < 0) out.push(c); };
+  _getPrefLanguages().forEach(add);
+  add(String(_currentLang || '').split('-')[0]);
+  var counts = {};
+  (zimsCache || []).forEach(function(z) { _parseLangs(z.language).forEach(function(l) { counts[l] = (counts[l] || 0) + 1; }); });
+  Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; }).forEach(add);
+  _LANG_PREF_OPTIONS.forEach(add);
+  return out;
+}
+function _langChipHtml(code, on) {
+  var label = _langDisplayName(code) || code.toUpperCase();
+  return '<button type="button" class="set-chip' + (on ? ' active' : '') + '" aria-pressed="' + on +
+    '" data-lang="' + escAttr(code) + '" onclick="_togglePrefLanguage(' + escAttr(JSON.stringify(code)) + ')">' +
+    (on ? '<span class="set-chip-check" aria-hidden="true">✓</span>' : '') + esc(label) + '</button>';
+}
 function _renderLangPrefPills() {
-  const selected = new Set(_getPrefLanguages());
-  return _LANG_PREF_OPTIONS.map(function(code) {
-    const isOn = selected.has(code);
-    const label = code === 'multi' ? t('multi_lang') : (_langDisplayName(code) || code.toUpperCase());
-    return '<button type="button" class="ms-lang-pill' + (isOn ? ' active' : '') + '" aria-pressed="' + isOn +
-      '" data-lang="' + code + '" onclick="_togglePrefLanguage(\'' + code + '\')">' +
-      '<span class="ms-lang-code">' + code + '</span> ' + esc(label) + '</button>';
-  }).join('');
+  var mine = _getPrefLanguages().map(_normLang), codes = _langChipCodes();
+  // Every one of yours shows, folded or not.
+  var shown = Math.max(_LANG_CHIPS_SHOWN, mine.length);
+  var rest = _langChipsAll ? 0 : Math.max(0, codes.length - shown);
+  var h = codes.slice(0, codes.length - rest).map(function(c) { return _langChipHtml(c, mine.indexOf(c) >= 0); }).join('');
+  if (rest) h += '<button type="button" class="set-chip set-chip-more" onclick="_showAllLangChips()">' + tH('languages_more', { n: rest }) + '</button>';
+  return h;
 }
-
-function _togglePrefLanguage(code) {
-  const current = new Set(_getPrefLanguages());
-  if (current.has(code)) current.delete(code);
-  else current.add(code);
-  _setPrefLanguages(Array.from(current));
-  const el = document.getElementById('ms-lang-pills');
+function _paintLangPrefs() {
+  var el = document.getElementById('ms-lang-pills');
   if (el) el.innerHTML = _renderLangPrefPills();
+  var sum = document.getElementById('ms-lang-summary');
+  if (sum) sum.textContent = _langPrefSummary();
+}
+function _showAllLangChips() { _langChipsAll = true; _paintLangPrefs(); }
+// "English, Spanish" or "Every language": the row's own line.
+function _langPrefSummary() {
+  var mine = _getPrefLanguages();
+  return mine.length ? mine.map(function(c) { return _langDisplayName(c) || c; }).join(', ') : t('languages_every');
+}
+function _togglePrefLanguage(code) {
+  var current = _getPrefLanguages().map(_normLang), i = current.indexOf(code);
+  if (i >= 0) current.splice(i, 1); else current.push(code);
+  _setPrefLanguages(current);
+  _paintLangPrefs();
+}
+function _setShowLangFilters(on) {
+  _setStorageFlag(SK.HIDE_LANG_CHOOSER, !on);
+  if (window.updateTopbar) updateTopbar();
 }
 
 // ── Voices (Settings > Preferences > Voices) ──
@@ -1006,15 +1051,18 @@ function _sheetAboveKeyboard(el) {
 // Preferred download flavor: "full" (with images), "nopic", or "mini".
 // Used to sort variant pickers so the user's default lands at the top.
 function _getPrefFlavor() {
-  return localStorage.getItem(SK.PREF_FLAVOR) || 'full';
+  try { return localStorage.getItem(SK.PREF_FLAVOR) || 'full'; } catch (e) { return 'full'; }
 }
+var PREF_FLAVORS = ['full', 'nopic', 'mini'];
+var _NO_ICONS = { full: '', nopic: '', mini: '' };
 function _setPrefFlavor(f) {
-  localStorage.setItem(SK.PREF_FLAVOR, f);
+  try { localStorage.setItem(SK.PREF_FLAVOR, f); } catch (e) {}
+  var seg = document.getElementById('ms-flavor-seg');
+  if (seg) seg.innerHTML = _flavorSegInner();
 }
-function _flavorRadio(value, label) {
-  const checked = _getPrefFlavor() === value ? ' checked' : '';
-  return '<label class="ms-flavor-pill"><input type="radio" name="zimi-flavor" value="' +
-    value + '"' + checked + ' onchange="_setPrefFlavor(\'' + value + '\')"> ' + label + '</label>';
+// Settings' selector row for it (Full / No images / Mini).
+function _flavorSegInner() {
+  return _segButtonsHtml(PREF_FLAVORS, _getPrefFlavor(), _NO_ICONS, '_setPrefFlavor', 'flavor_');
 }
 
 // ── State ──
@@ -3894,7 +3942,8 @@ function renderHome(filter) {
   // library never sees it (and any stale filter state is dropped).
   var _langCounts = {};
   sortedAll.forEach(z => { var l = z.language || ''; if (l && _isValidLangCode(l)) _langCounts[l] = (_langCounts[l] || 0) + 1; });
-  var _langCodes = Object.keys(_langCounts).sort((a, b) => _langCounts[b] - _langCounts[a]);
+  // Your languages (Settings > Languages) lead, then the most ZIMs.
+  var _langCodes = Object.keys(_langCounts).sort((a, b) => (_prefLangRank(a) - _prefLangRank(b)) || (_langCounts[b] - _langCounts[a]));
   var _showLangPills = !filter && _langCodes.length >= 2;
   if (!_showLangPills) homeLangFilter.clear();
 
@@ -6146,13 +6195,14 @@ document.addEventListener('wheel', function(e) {
 // for the day, so On this day never reads one.
 var _WHOLE_WIKIPEDIA_RE = /^wikipedia(?:_[a-z]{2,3})?$/;
 
-// The installed ZIM a Discover card reads: one in the language the interface
-// speaks when there is one, else English, else any; among those the fullest.
+// The installed ZIM a Discover card reads: one in your languages (Settings >
+// Languages) first, the interface's among them first, else English, else
+// any; among those the fullest.
 // Simple English Wiktionary is the English Word of the day's first choice:
 // every entry in it is an English word, where a full English Wiktionary is
 // mostly other languages' words. Reads only the library list already held.
 function _featuredZimFor(feat, names) {
-  var ui = _defineLang2(_currentLang);
+  var ui = _defineLang2(_currentLang), prefs = _getPrefLanguages().length;
   var best = null, bestRank = null;
   for (var i = 0; i < names.length; i++) {
     var n = names[i];
@@ -6162,7 +6212,8 @@ function _featuredZimFor(feat, names) {
     var lang = _defineLang2((info.language || '').split(',')[0]);
     var entries = typeof info.entries === 'number' ? info.entries : 0;
     var simple = feat.match === 'wiktionary' && /simple/i.test(n) ? 1 : 0;
-    var rank = [lang === ui ? 2 : (lang === 'en' ? 1 : 0), simple, entries];
+    var mine = _prefLangRank(lang) < prefs ? 4 : 0;
+    var rank = [mine + (lang === ui ? 2 : 0) + (lang === 'en' ? 1 : 0), simple, entries];
     if (!bestRank || rank[0] > bestRank[0] || (rank[0] === bestRank[0] &&
         (rank[1] > bestRank[1] || (rank[1] === bestRank[1] && rank[2] > bestRank[2])))) {
       best = n; bestRank = rank;
@@ -6186,7 +6237,8 @@ function _loadDiscover() {
   // The cards are chosen for the interface's language, so the day's cache is
   // kept per language: switching it chooses again rather than showing
   // another language's picks.
-  var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '-' + _currentLang + '_' + today;
+  var yours = _getPrefLanguages().map(_normLang).filter(_isValidLangCode).join('.');
+  var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '-' + _currentLang + (yours ? '-' + yours : '') + '_' + today;
   // Clean up old Discover cache keys (from previous days or old versions).
   //
   // Matched on SHAPE, not on a prefix. This used to delete anything starting
@@ -13297,6 +13349,7 @@ function _switchRowsHtml(rows) {
 }
 
 function _msPreferencesHtml() {
+  _langChipsAll = false;
   // Apps: every app a row of the same shape, and whether results open in
   // them right under it. The rows offered to everyone (the server's choice)
   // paint from its answer into #ms-apps; an account that may not set them
@@ -13338,23 +13391,25 @@ function _msPreferencesHtml() {
         onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
     ]) +
 
-    // Default download flavor (above languages: reached more often)
+    // Default download flavor (above languages: reached more often): one
+    // selector row, like the theme.
     '<div class="ms-section-label" style="margin-top:24px">' + tH('default_flavor') + '</div>' +
+    _segHtml('ms-flavor-seg', 'default_flavor', _flavorSegInner()) +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
-    '<div class="ms-flavor-row">' +
-      _flavorRadio('full', tH('flavor_full')) +
-      _flavorRadio('nopic', tH('flavor_nopic')) +
-      _flavorRadio('mini', tH('flavor_mini')) +
-    '</div>' +
-    // Whether the language choosers show (library, catalog, top bar), and
-    // folded under it the languages the catalog filters to.
+    // Your languages, as chips in plain sight, and under them whether the
+    // language filters show (the chips over the library and catalog, and
+    // the top bar's language menu).
     '<div class="ms-section-label" style="margin-top:24px">' + tH('languages_section') + '</div>' +
     '<div class="share-rows set-rows">' +
-      _switchRowHtml({ title: tH('show_lang_chooser'), on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER),
-        onchange: '_setStorageFlag(SK.HIDE_LANG_CHOOSER, !this.checked);if(window.updateTopbar)updateTopbar()' }) +
-      '<details class="lang-fold" id="ms-lang-fold"><summary>' + tH('languages_yours') + '</summary>' +
-        '<div class="ms-hint">' + tH('catalog_languages_hint_short') + '</div>' +
-        '<div class="ms-lang-pills" id="ms-lang-pills">' + _renderLangPrefPills() + '</div></details></div>' +
+      '<div class="share-row set-row lang-yours"><span class="share-row-text">' +
+        '<span class="share-row-title">' + tH('languages_yours') + '</span>' +
+        '<span class="share-row-desc">' + tH('languages_yours_hint') + '</span>' +
+        '<span class="share-row-desc lang-summary" id="ms-lang-summary">' + esc(_langPrefSummary()) + '</span>' +
+        '<span class="set-chips" id="ms-lang-pills" role="group" aria-label="' + escAttr(t('languages_yours')) + '">' + _renderLangPrefPills() + '</span>' +
+      '</span></div>' +
+      _switchRowHtml({ id: 'ms-lang-filters', title: tH('lang_filters_title'), desc: tH('lang_filters_desc'),
+        on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER), onchange: '_setShowLangFilters(this.checked)' }) +
+    '</div>' +
     '<div class="ms-section-label" style="margin-top:24px">' + tH('voices_section') + '</div>' +
     '<div id="' + _VOICES_WRAP_ID + '">' + _voicePrefsHtml() + '</div>';
   // My data is this browser's (bookmarks, history, these preferences): it
@@ -18910,7 +18965,9 @@ function _reddotUrl(p) {
 // considerations with all this."
 function _appStrings(app, keys, extra) {
   var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
-    dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app) };
+    dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app),
+    // Your languages (Settings > Languages), for the apps that pick by language.
+    yours: _getPrefLanguages().map(_normLang).filter(Boolean) };
   keys.forEach(function(k) { out[k.slice(app.length + 1)] = t(k); });
   for (var k in extra) out[k] = extra[k];
   return encodeURIComponent(JSON.stringify(out));

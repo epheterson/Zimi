@@ -386,7 +386,8 @@ function pickMore(words, langs, skip) {
 }
 
 // ── views ────────────────────────────────────────────────────────────────
-var LANGS = readerLangs(STR.lang, (typeof navigator !== 'undefined' && navigator.languages) || []);
+// Zimi's language, then your languages (Settings > Languages), else the browser's.
+var LANGS = readerLangs(STR.lang, (STR.yours && STR.yours.length ? STR.yours : (typeof navigator !== 'undefined' && navigator.languages)) || []);
 var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null, _shuffled = null;
 function $(id) { return document.getElementById(id); }
 function cur() { return _stack[_stack.length - 1]; }

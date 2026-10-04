@@ -2532,7 +2532,7 @@
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
-     (.ms-lang-pills is display:flex further down); when open, the element
+     (a list with a display of its own further down); when open, the element
      keeps its natural display. */
   .ms-collapsed-list:not(.ms-open) { display: none !important; }
   /* Each sharing toggle owns its hint — indent under the checkbox text so
@@ -2548,32 +2548,24 @@
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
   .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-  /* Settings > Languages: the catalog filter's pills, folded under the
-     Show languages switch in the same card. */
-  .lang-fold { border-top: 1px solid var(--border); padding: 0 14px; }
-  .lang-fold > summary { cursor: pointer; padding: 12px 0; font-size: 13px; font-weight: 600; color: var(--text); }
-  .lang-fold[open] { padding-bottom: 14px; }
-  .lang-fold .ms-hint { margin-top: 0; }
-  .ms-lang-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .ms-lang-pill {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg); font-size: 13px; color: var(--text);
+  /* Settings > Languages: your languages as chips in plain sight, the rest
+     folded behind "N more". A chip is a toggle: amber-outlined with a tick
+     when it is one of yours. */
+  .lang-yours .share-row-text { min-width: 0; }
+  .lang-summary { color: var(--amber); font-weight: 500; }
+  .set-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .set-chip {
+    display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; min-height: 32px;
+    padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface2);
+    font: inherit; font-size: 13px; color: var(--text2); cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
   }
-  .ms-lang-pill.active { border-color: var(--amber); color: var(--amber); }
-  .ms-lang-pill .ms-lang-code {
-    font-family: monospace; font-size: 11px; color: var(--text2);
-    text-transform: uppercase;
-  }
-  .ms-lang-pill.active .ms-lang-code { color: var(--amber); }
-  .ms-flavor-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-  .ms-flavor-pill {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg); font-size: 13px; color: var(--text);
-  }
-  .ms-flavor-pill:has(input:checked) { border-color: var(--amber); color: var(--amber); }
-  .ms-flavor-pill input { accent-color: var(--amber); }
+  .set-chip:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .set-chip.active { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); font-weight: 600; }
+  .set-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .set-chip-check { font-size: 11px; }
+  .set-chip-more { border-style: dashed; color: var(--text2); background: none; }
+  @media (pointer: coarse) { .set-chip { min-height: 36px; } }
   .ms-hot-show { margin-top: 6px; }
   .updates-detail {
     margin: 6px 0 12px 0; padding: 8px;
