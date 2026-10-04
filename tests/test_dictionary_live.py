@@ -1245,6 +1245,10 @@ def test_your_languages_are_chips_that_drive_the_apps_filters(piper_here, served
     )
     pg.click("label.set-row:has(#ms-lang-filters)")
     assert pg.evaluate("() => localStorage.zimi_hide_lang_chooser") == "1"
+    # Zimi's own language stays a tap away (Eric, 2026-10-04: switched to
+    # Hebrew from Zimipedia, "then there's no way back").
+    pg.evaluate("() => updateTopbar()")
+    assert pg.evaluate("() => document.getElementById('lang-selector-btn').style.display") != "none"
     assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
     assert not errors, errors
 

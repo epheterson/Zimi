@@ -2318,8 +2318,10 @@ function updateTopbar() {
   // !important, which no inline display can outrank.
   document.body.classList.toggle('creating', !!_createOpen);
   _syncTopbarMore();
-  document.getElementById('lang-selector-btn').style.display =
-    _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
+  // Zimi's own language is always a tap away: Language filters hides the
+  // filter chips, never the way back to a language you can read (Eric,
+  // 2026-10-04: Zimipedia switched Zimi to Hebrew "then there's no way back").
+  document.getElementById('lang-selector-btn').style.display = '';
   _updateLibraryBtnIcon();
 
   // Search placeholder: fitted once the ? has taken (or given back) its room.
@@ -25552,7 +25554,7 @@ function _buildTopbarMenuHtml() {
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
-    if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
     var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
