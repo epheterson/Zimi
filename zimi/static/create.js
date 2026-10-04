@@ -4094,10 +4094,34 @@ function _renderCreateRecent() {
           ? '<button type="button" class="ms-btn" onclick="_createOpenResult(\'' +
             escJs(h.result) + '\')">' + tH('create_open') + '</button>'
           : '') +
+        (h.has_log && h.id
+          ? '<button type="button" class="ms-btn" aria-expanded="false" onclick="_createShowLog(this, \'' +
+            escJs(h.id) + '\')">' + tH('create_log') + '</button>'
+          : '') +
       '</div>';
   }
   host.innerHTML = '<div class="create-recent">' +
     '<div class="ms-form-label">' + tH('create_recent') + '</div>' + rows + '</div>';
+}
+
+// A finished job's kept log, under its row: what a failure said, readable
+// after the page was left (discussion #105).
+function _createShowLog(btn, id) {
+  var row = btn.closest('.create-hist'), open = row.nextElementSibling;
+  if (open && open.classList.contains('create-hist-log')) {
+    open.remove(); btn.setAttribute('aria-expanded', 'false'); return;
+  }
+  manageFetch('/manage/create/log?job=' + encodeURIComponent(id))
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .catch(function() { return null; })
+    .then(function(d) {
+      var pre = document.createElement('pre');
+      pre.className = 'create-hist-log';
+      pre.textContent = d && d.lines && d.lines.length ? d.lines.join('\n') : t('create_log_none');
+      row.parentNode.insertBefore(pre, row.nextSibling);
+      btn.setAttribute('aria-expanded', 'true');
+      pre.scrollTop = pre.scrollHeight;
+    });
 }
 
 // The eternal spinner's replacement. A job that was running when the server

@@ -450,6 +450,29 @@ def test_a_job_finished_twice_only_counts_once(tmp_path, held_engine):
     assert manage._create_queue == []
 
 
+def test_a_failed_jobs_log_is_kept_and_read_after_the_page_is_gone(
+    tmp_path, held_engine, caplog
+):
+    """Discussion #105: "How can I view the logs? I left the page while it
+    was running." A job that did not end well keeps its last lines in the
+    journal; the history says there is a log, /manage/create/log gives it,
+    and the server's own log has the tail too."""
+    _start_job("running")
+    job = manage._create_job
+    with manage._create_lock:
+        job.lines.extend(["fetching posts", "HTTPError: 422 Client Error"])
+    with caplog.at_level("WARNING"):
+        assert manage._create_finish(job, error="ArcticZim failed") is True
+    record = [r for r in _journal(tmp_path) if r["id"] == job.id][0]
+    assert record["log"][-1] == "HTTPError: 422 Client Error"
+    hist = [h for h in manage._create_history() if h["id"] == job.id][0]
+    assert hist["has_log"] is True and "log" not in hist, "the list stays small"
+    assert manage._create_log(job.id)[-2:] == ["fetching posts", "HTTPError: 422 Client Error"]
+    assert manage._create_log("nope") is None
+    assert "HTTPError: 422" in caplog.text
+    held_engine["go"] = True
+
+
 # ── the structured event stream ─────────────────────────────────────────────
 
 
