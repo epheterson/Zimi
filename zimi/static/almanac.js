@@ -1742,11 +1742,12 @@ function _almTmInit() {
 
 
 
-// "About this data": how close each figure on the page is, and to what. The
-// 1.7.2 changelog announced it; it was never built. Every line states a
-// method the code uses and a precision it has been checked against.
-var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'hebrew', 'islamic',
-  'persian', 'chinese', 'deeptime', 'timezones'];
+// "About this data": that it is all offline, and how close each figure is,
+// where the answer is a limit worth knowing. The methods are each table's
+// "How this is made" ("is about this data really needed maybe so but reread
+// and think", Eric, 2026-10-03); the sources' ages are the sheet one tap in.
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'islamic', 'chinese',
+  'deeptime', 'timezones'];
 // The data's sources and ages, folded away at the page's end, with what stops
 // being true without updates (a reference sheet) one tap inside it.
 function _almAboutDataHtml() {
