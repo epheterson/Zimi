@@ -163,13 +163,14 @@ def _how_is_made(page, id_, md):
     )
     assert eqs and not eqs["open"] and eqs["n"] >= 1, (id_, eqs)
     assert "### Equations" in md and md.count("$$") >= 2 * eqs["n"], (id_, md[-600:])
+    # On paper they are open, in the printed copy; the view's stay closed.
     page.evaluate("_tbPrintOn()")
     assert page.evaluate(
-        "[...document.querySelectorAll('#tb-how details')].every((d) => d.open)"
+        "() => { const d = [...document.querySelectorAll('#alm-book .tb-how, #alm-book .tb-eqs')]; return d.length === 2 && d.every((x) => x.open); }"
     )
     page.evaluate("_tbPrintOff()")
     assert not page.evaluate(
-        "[...document.querySelectorAll('#tb-how details')].some((d) => d.open)"
+        "!!document.getElementById('alm-book') || [...document.querySelectorAll('#tb-how details')].some((d) => d.open)"
     )
 
 
@@ -218,20 +219,22 @@ def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     if id_ == "seasons":
         assert year == 4
     assert _no_side_scroll(page)
-    # Print: the rules that make the view the page, and its heading for paper.
+    # Print: the book of this one table is the page, its heading the title
+    # block, the view (and its controls) set aside.
     assert page.evaluate(
         "document.querySelector('#tb-print-head .tb-printhead h1') !== null"
     )
+    page.evaluate("_tbPrintOn()")
     page.emulate_media(media="print")
-    page.evaluate("document.documentElement.classList.add('alm-ref-print')")
     shown = page.evaluate(
-        "() => [getComputedStyle(document.querySelector('.tb-printhead')).display,"
-        " getComputedStyle(document.querySelector('.tb-head')).display,"
-        " getComputedStyle(document.querySelector('.tb-controls')).display]"
+        "() => { const b = document.getElementById('alm-book'); return [getComputedStyle(b).display,"
+        " getComputedStyle(document.getElementById('alm-ref')).display,"
+        " getComputedStyle(b.querySelector('.tb-printhead')).display, b.querySelectorAll('.tb-controls').length,"
+        " b.querySelectorAll('.tb-book-page').length, !!b.querySelector('.tb-book-title')]; }"
     )
-    page.evaluate("document.documentElement.classList.remove('alm-ref-print')")
     page.emulate_media(media="screen")
-    assert shown == ["block", "none", "none"], shown
+    page.evaluate("_tbPrintOff()")
+    assert shown == ["block", "none", "block", 0, 1, False], shown
     # Share: the same view as Markdown, its name, place and window, then a table.
     md = page.evaluate("_tbMarkdown()")
     name = page.evaluate("document.getElementById('alm-ref-title').textContent")
@@ -281,10 +284,16 @@ def test_a_table_on_a_phone(page):
     assert "2027" not in page.inner_text("[data-tb-today]")
     # Print: the view is set up for paper before the dialog is asked for.
     page.evaluate(
-        "() => { window.__p = window.print; window.print = () => { window.__printed = document.documentElement.classList.contains('alm-ref-print'); }; }"
+        "() => { window.__printed = null; window.__p = window.print; window.print = () => { window.__printed ="
+        " document.documentElement.classList.contains('alm-ref-print') && !!document.getElementById('alm-book'); }; }"
     )
-    page.click("[data-tb-print]")
+    page.click("[data-tb-act='print']")
+    page.wait_for_function("() => window.__printed !== null", timeout=30000)
     assert page.evaluate("window.__printed") is True
+    # The view is where it was, still the open view.
+    assert page.evaluate(
+        "!!document.querySelector('#alm-ref #tb-out table') && document.getElementById('alm-ref-title').textContent === t('tb_phases')"
+    )
     page.evaluate(
         "() => { window.print = window.__p; window.dispatchEvent(new Event('afterprint')); }"
     )
@@ -369,7 +378,8 @@ def test_every_constants_table(page, id_):
     md = page.evaluate("_tbMarkdown()")
     assert md.startswith("# ") and "| --- | --- | --- |" in md, (id_, md[:300])
     assert page.evaluate(
-        "!!document.querySelector('.tb-bar [data-tb-share]') && !document.querySelector('.tb-bar [data-tb-reset]')"
+        "!!document.querySelector('.tb-bar [data-tb-act=copy]') && !!document.querySelector('.tb-bar [data-tb-act=print]')"
+        " && !document.querySelector('.tb-bar [data-tb-reset]')"
     )
     assert _no_side_scroll(page)
     assert not page.errors, page.errors
@@ -398,22 +408,56 @@ def test_constants_read_the_sums_own_numbers(page):
     assert not page.errors, page.errors
 
 
+ICONS = (
+    "(sel) => [...document.querySelectorAll(sel)].map((b) => [b.dataset.tbAct || b.dataset.almBook || (b.hasAttribute('data-tb-reset') ? 'reset' : ''),"
+    " b.getAttribute('aria-label'), b.getAttribute('title'), b.textContent.trim(), Math.round(b.getBoundingClientRect().width),"
+    " Math.round(b.getBoundingClientRect().height), !!b.querySelector('svg')])"
+)
+
+
 def test_share_sends_markdown_or_copies_it(page):
-    _open(page, "days")
     page.evaluate(
-        "() => { window.__shared = null; window.__copied = null;"
+        "() => { if (document.getElementById('alm-ref')) _tbClose(); window.__shared = null; window.__copied = null;"
         " navigator.share = (d) => { window.__shared = d; return Promise.resolve(); };"
         " window.__ct = _copyText; _copyText = (s) => { window.__copied = s; }; }"
     )
-    page.click("[data-tb-share]")
+    _open(page, "days")
+    # Start again, Copy, Share, Print: icons only, 44px, named in words.
+    icons = page.evaluate(ICONS, ".tb-bar-end button")
+    assert [i[0] for i in icons] == ["reset", "copy", "share", "print"], icons
+    words = [
+        "Start again from now and here",
+        "Copy as Markdown",
+        "Share",
+        "Print or PDF",
+    ]
+    assert [i[1] for i in icons] == words and [i[2] for i in icons] == words, icons
+    assert all(i[3] == "" and i[4] >= 44 and i[5] >= 44 and i[6] for i in icons), icons
+    # At the right of the title.
+    assert page.evaluate(
+        "document.querySelector('.tb-bar-end').getBoundingClientRect().left >= document.getElementById('alm-ref-title').getBoundingClientRect().right"
+    )
+    page.click("[data-tb-act='share']")
+    page.wait_for_function("() => window.__shared")
     shared = page.evaluate("window.__shared")
     assert shared and shared["text"].startswith("# ") and shared["title"], shared
-    # No share sheet: onto the clipboard ("Copied").
-    page.evaluate(
-        "() => { delete navigator.share; Navigator.prototype.share = undefined; }"
-    )
-    page.click("[data-tb-share]")
+    page.click("[data-tb-act='copy']")
+    page.wait_for_function("() => window.__copied")
     assert page.evaluate("window.__copied") == shared["text"]
+    # No share sheet: Share puts it on the clipboard ("Copied"), and a view
+    # opened without one has no Share at all.
+    page.evaluate(
+        "() => { window.__copied = null; delete navigator.share; Navigator.prototype.share = undefined; }"
+    )
+    page.click("[data-tb-act='share']")
+    page.wait_for_function("() => window.__copied")
+    assert page.evaluate("window.__copied") == shared["text"]
+    _open(page, "sundial")
+    assert [i[0] for i in page.evaluate(ICONS, ".tb-bar-end button")] == [
+        "reset",
+        "copy",
+        "print",
+    ]
     page.evaluate("() => { _copyText = window.__ct; }")
     assert not page.errors, page.errors
 
@@ -610,69 +654,208 @@ def test_subject_chips_filter_all_three_rows(page):
     assert not page.errors, page.errors
 
 
+def _md_sections(md):
+    """The book's Markdown cut at each tile's ## heading: {name: body}."""
+    out = {}
+    for part in md.split("\n## ")[1:]:
+        name, _, body = part.partition("\n")
+        out[name] = body
+    return out
+
+
 def test_the_whole_book_of_what_is_shown(page):
-    """Above the tiles, Copy as Markdown and Print: one document of every
-    tile the chips show, under a title block (the place, the day, the
-    subject). Paper gets a page per tile, How this is made open, the
-    equations drawn, none of the view's ids; and it is gone after."""
+    """At the right of the title, Copy, Share (where there is a share sheet)
+    and Print: icons, named in words. One document of exactly the tiles the
+    chips show, each as it stands now (a window changed is the window
+    printed), under a title page: the place, where it is, the days, what is
+    shown and the contents. Paper gets a page per tile, How this is made
+    open, the equations drawn, none of the view's ids; and it is gone after."""
     page.evaluate(
         "() => { if (document.getElementById('alm-ref')) _tbClose();"
         " window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
         " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
         " window.print = () => { window.__printed++; }; }"
     )
-    bar = page.evaluate(
-        "[...document.querySelectorAll('#alm-group-tables .alm-book-bar [data-alm-book]')].map((b) => b.dataset.almBook)"
+    icons = page.evaluate(
+        ICONS, "#alm-group-tables .alm-group-head .alm-book-bar button"
     )
-    assert "copy" in bar and "print" in bar, bar
-    try:
-        page.click("#alm-subject-chips [data-subj='tides']")
-        page.click("[data-alm-book='copy']")
-        page.wait_for_function("() => window.__copied", timeout=60000)
-        md = page.evaluate("window.__copied")
-        names = page.evaluate(
-            "ALM_TB_SUBJECTS.tides.map((k) => (_tbKind(k) === 'const' ? t('tb_consts') + ' · ' : '') + t('tb_' + k))"
-        )
-        assert md.startswith("# Tables and calculations\n"), md[:200]
-        assert "San Francisco" in md.split("## ")[0] and "Showing: Tides" in md, md[
-            :400
-        ]
-        pages = [l[3:] for l in md.split("\n") if l.startswith("## ")]
-        assert sorted(pages) == sorted(names), (pages, names)
-        assert "### How this is made" in md and "$$" in md
-        # All: every tile, one page each.
-        page.click("#alm-subject-chips [data-subj='']")
+    share = page.evaluate("!!navigator.share")
+    assert [i[0] for i in icons] == (
+        ["copy", "share", "print"] if share else ["copy", "print"]
+    ), icons
+    assert all(
+        i[1] and i[1] == i[2] and i[3] == "" and i[4] >= 44 and i[5] >= 44 and i[6]
+        for i in icons
+    ), icons
+    assert page.evaluate(
+        "() => { const h = document.getElementById('alm-group-tables-t').getBoundingClientRect(),"
+        " b = document.querySelector('#alm-group-tables .alm-book-bar').getBoundingClientRect();"
+        " return b.left >= h.right - 1 && Math.abs((b.top + b.bottom) / 2 - (h.top + h.bottom) / 2) < 6; }"
+    )
+    assert not page.evaluate(
+        "document.querySelector('.alm-book-btn, .alm-book-bar span')"
+    )
+
+    def copy():
         page.evaluate("window.__copied = null")
         page.click("[data-alm-book='copy']")
         page.wait_for_function("() => window.__copied", timeout=60000)
-        md = page.evaluate("window.__copied")
-        assert "Showing: All" in md
-        assert sum(1 for l in md.split("\n") if l.startswith("## ")) == len(
-            TABLES + CALCS + CONSTS
+        return page.evaluate("window.__copied")
+
+    def names(subj):
+        return page.evaluate(
+            "(s) => [...ALM_TB_TABLES, ...ALM_TB_CALCS, ...ALM_TB_CONSTS].filter((k) => !s || ALM_TB_SUBJECTS[s].includes(k))"
+            ".map((k) => (_tbKind(k) === 'const' ? t('tb_consts') + ' · ' : '') + t('tb_' + k))",
+            subj,
         )
-        # Paper.
+
+    try:
+        # Sun and Moon set to a week, Twilight to a year: the book says so.
+        _open(page, "sunmoon")
+        _seg(page, "week")
+        week = " ".join(page.inner_text("[data-tb-today]").split())
+        _open(page, "twilight")
+        _seg(page, "year")
+        page.evaluate("_tbClose()")
+        page.click("#alm-subject-chips [data-subj='sun']")
+        md = copy()
+        assert md.startswith("# Tables and calculations\n"), md[:200]
+        head = md.split("\n## ")[0]
+        assert (
+            "San Francisco" in head
+            and "Showing: Sun" in head
+            and "America/Los_Angeles" in head
+        ), head
+        assert "**Contents**" in head, head
+        secs = _md_sections(md)
+        assert list(secs) == names("sun"), (list(secs), names("sun"))
+        assert ("San Francisco · " + week) in secs["Sun and Moon"].split("\n")[1], secs[
+            "Sun and Moon"
+        ][:200]
+        sm_rows = [
+            l
+            for l in secs["Sun and Moon"].split("### ")[0].split("\n")
+            if l.startswith("| ") and "---" not in l
+        ]
+        assert len(sm_rows) == 1 + 7, sm_rows
+        assert secs["Twilight"].split("\n")[1].endswith(" · 2026"), secs["Twilight"][
+            :200
+        ]
+        # A table in every tile's section, and How this is made a level down.
+        for n, body in secs.items():
+            assert "| --- |" in body, (n, body[:300])
+        assert (
+            "### How this is made" in md and "#### Equations" in md and "\n$$\n" in md
+        )
+        # All: every tile, once each.
+        page.click("#alm-subject-chips [data-subj='']")
+        md = copy()
+        assert "Showing: All" in md
+        assert list(_md_sections(md)) == names(""), list(_md_sections(md))
+        # Paper: one chip's tiles, a page each, as they stand.
         page.click("#alm-subject-chips [data-subj='eclipses']")
         page.click("[data-alm-book='print']")
         page.wait_for_function("() => window.__printed === 1", timeout=60000)
         book = page.evaluate(
-            "() => { const b = document.getElementById('alm-book'); return b && { pages: b.querySelectorAll('.tb-book-page').length,"
+            "() => { const b = document.getElementById('alm-book'); return b && { pages: [...b.querySelectorAll('.tb-book-page')].map((p) => p.dataset.tb),"
             " heads: b.querySelectorAll('.tb-book-page .tb-printhead h1').length, title: b.querySelector('.tb-book-title').innerText,"
+            " toc: b.querySelectorAll('.tb-book-toc li').length,"
             " closed: b.querySelectorAll('details:not([open])').length, math: b.querySelectorAll('.tb-eq math').length,"
-            " eqs: b.querySelectorAll('.tb-eq').length, ids: b.querySelectorAll('[id]').length, controls: b.querySelectorAll('.tb-controls').length,"
-            " printing: document.documentElement.classList.contains('alm-ref-print') }; }"
+            " eqs: b.querySelectorAll('.tb-eq').length, ids: b.querySelectorAll('[id]').length, controls: b.querySelectorAll('.tb-controls, button:not(.tb-how-k)').length,"
+            " printing: document.documentElement.classList.contains('alm-ref-print') && document.documentElement.classList.contains('alm-book-print'),"
+            " pageRules: (document.getElementById('alm-book-pages') || {}).textContent || '' }; }"
         )
-        n = len(page.evaluate("ALM_TB_SUBJECTS.eclipses"))
-        assert book and book["pages"] == n and book["heads"] == n, book
-        assert "Showing: Eclipses" in book["title"], book
+        ecl = page.evaluate(
+            "[...document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])')].map((b) => b.dataset.tb)"
+        )
+        assert sorted(ecl) == sorted(page.evaluate("ALM_TB_SUBJECTS.eclipses")), ecl
+        assert book and book["pages"] == ecl and book["heads"] == len(ecl), book
+        assert book["toc"] == len(ecl), book
+        assert (
+            "Showing: Eclipses" in book["title"] and "Contents" in book["title"]
+        ), book
         assert book["closed"] == 0 and book["ids"] == 0 and book["controls"] == 0, book
         assert book["eqs"] > 0 and book["math"] == book["eqs"], book
         assert book["printing"], book
+        assert (
+            "counter(page)" in book["pageRules"] and "tb-wide" in book["pageRules"]
+        ), book
+        # On paper the book is all there is: serif, black on white.
+        page.emulate_media(media="print")
+        look = page.evaluate(
+            "() => { const b = document.getElementById('alm-book'), s = getComputedStyle(b);"
+            " return [s.display, s.color, s.backgroundColor, /Charter|serif/.test(s.fontFamily),"
+            " document.getElementById('alm-subject-chips').getClientRects().length,"
+            " getComputedStyle(b.querySelector('.tb-table thead')).display]; }"
+        )
+        page.emulate_media(media="screen")
+        assert look == [
+            "block",
+            "rgb(0, 0, 0)",
+            "rgb(255, 255, 255)",
+            True,
+            0,
+            "table-header-group",
+        ], look
+        # A table wider than portrait paper gets a landscape page.
+        assert page.evaluate(
+            "() => { const b = document.getElementById('alm-book'), s = b.querySelector('.tb-book-page'), tb = s.querySelector('.tb-out table');"
+            " _tbBookWide(b); const before = s.classList.contains('tb-book-wide'); tb.style.minWidth = '300mm'; _tbBookWide(b);"
+            " return !before && s.classList.contains('tb-book-wide') && getComputedStyle(s).page === 'tb-wide'; }"
+        )
         page.evaluate("_tbPrintOff()")
-        assert page.evaluate("!document.getElementById('alm-book')")
+        assert page.evaluate(
+            "!document.getElementById('alm-book') && !document.getElementById('alm-book-pages')"
+            " && !document.documentElement.classList.contains('alm-book-print')"
+        )
     finally:
         page.evaluate(
             "() => { _copyText = window.__ct; window.print = window.__pr; _almSubjectChip(''); }"
         )
+    assert not page.errors, page.errors
+
+
+def test_one_tile_prints_and_copies_as_its_own_book(page):
+    """A tile's own Print and Copy: the same design for just that tile, its
+    heading the title block (where, when, the coordinates and zone), as it
+    stands now."""
+    page.evaluate(
+        "() => { window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
+        " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
+        " window.print = () => { window.__printed++; }; }"
+    )
+    try:
+        _open(page, "seasons")
+        _seg(page, "year")
+        page.click("[data-tb-step='1']")
+        page.wait_for_function(DRAWN)
+        page.click("[data-tb-act='copy']")
+        page.wait_for_function("() => window.__copied", timeout=60000)
+        md = page.evaluate("window.__copied")
+        lines = md.split("\n")
+        assert lines[0] == "# Seasons" and lines[2].startswith(
+            "San Francisco · 2027"
+        ), lines[:5]
+        assert "37°46.5′N" in lines[3] and "*Worked out offline" in md, lines[:6]
+        assert "| --- |" in md and "\n## How this is made\n" in md, md[:400]
+        page.click("[data-tb-act='print']")
+        page.wait_for_function("() => window.__printed === 1", timeout=60000)
+        one = page.evaluate(
+            "() => { const b = document.getElementById('alm-book'); return b && [b.classList.contains('alm-book-one'), !!b.querySelector('.tb-book-title'),"
+            " b.querySelectorAll('.tb-book-page').length, b.querySelector('.tb-printhead h1').textContent,"
+            " b.querySelector('.tb-printhead .tb-sub').textContent, !!b.querySelector('.tb-printhead .tb-made'),"
+            " !!document.querySelector('#alm-ref #tb-out table')]; }"
+        )
+        assert (
+            one
+            and one[:4] == [True, False, 1, "Seasons"]
+            and "2027" in one[4]
+            and one[5]
+            and one[6]
+        ), one
+        page.evaluate("_tbPrintOff()")
+    finally:
+        page.evaluate("() => { _copyText = window.__ct; window.print = window.__pr; }")
     assert not page.errors, page.errors
 
 
