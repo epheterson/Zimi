@@ -26,6 +26,8 @@
 //      them in; and the ISS's fade, then its orbit alone, as its data ages.
 //   5. The GPS clock: +45.7 us/day from gravity, -7.2 from speed, net ~38.5,
 //      about 11.5 km a day of ranging error if ignored.
+//   6. A drag: the point under the finger follows it, at any roll of the
+//      view (the Moon's tilt in the observer's sky) and any elevation.
 //
 // Run: node tests/test_almanac_earth.cjs   (exit 0 = pass)
 
@@ -238,6 +240,46 @@ const utc = (iso) => Date.parse(iso);
   check(Math.abs(us(rates.net) - 38.5) < 0.4, 'net: ' + us(rates.net).toFixed(2) + ' us/day (38)');
   const km = S._aeKmPerDay(rates.net);
   check(km > 10 && km < 12, 'ignored, it costs ' + km.toFixed(1) + ' km a day');
+}
+
+// ── 6. A drag turns the globe the way the finger goes ─────────────────────
+// The point under the finger follows it: the near surface point at the
+// screen's centre, fixed on the Moon, seen from the camera after the turn,
+// lands where the finger went, whatever the view's roll (the Moon's tilt in
+// the observer's sky) and the camera's elevation.
+{
+  const R = S.AE_MOON_RADIUS_RE, D = 7.5 * R, f = 900;
+  const k = S._aeDragRadPerPx(D, R, f);
+  check(Math.abs(k - (D - R) / (R * f)) < 1e-12, 'a drag turns (D - R) / (R f) radians a pixel');
+  check(S._aeDragRadPerPx(400, R, f) === S.AE_DRAG_RAD_PER_PX, 'from far out, no faster than the cap');
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  function screen(az, el, roll, p) {
+    const pos = S._aeCameraOffset(az, el, D);
+    const fwd = S._aeNorm(S._aeSub([0, 0, 0], pos));
+    const up = S._aeViewUp(fwd, roll);
+    const right = S._aeCross(fwd, up);
+    const v = S._aeSub(p, pos), z = dot(v, fwd);
+    return [f * dot(v, right) / z, -f * dot(v, up) / z];
+  }
+  let worst = 0;
+  for (const roll of [0, 37, 90, -120, 180]) {
+    for (const el of [0, 0.5, -0.9]) {
+      const az = 1.1;
+      const near = S._aeScale(S._aeNorm(S._aeCameraOffset(az, el, D)), R);
+      for (const [dx, dy] of [[12, 0], [0, 12], [-8, 6]]) {
+        const tr = S._aeDragTurn(dx, dy, roll, k, el);
+        const got = screen(az + tr.daz, el + tr.del, roll, near);
+        const e = Math.hypot(got[0] - dx, got[1] - dy) / Math.hypot(dx, dy);
+        worst = Math.max(worst, e);
+      }
+    }
+  }
+  // Off by a little only where a turn in azimuth bends round a latitude.
+  check(worst < 0.08, 'the point under the finger follows it, any roll or elevation (worst ' + (worst * 100).toFixed(1) + '% off)');
+  // The directions, plainly: north up, a drag right turns the camera west
+  // (azimuth down), a drag down lifts it (elevation up).
+  const r = S._aeDragTurn(10, 0, 0, k, 0), d = S._aeDragTurn(0, 10, 0, k, 0);
+  check(r.daz < 0 && r.del === 0 && d.del > 0 && Math.abs(d.daz) < 1e-15, 'right and down, north up');
 }
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

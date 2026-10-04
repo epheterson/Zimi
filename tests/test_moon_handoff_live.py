@@ -376,7 +376,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
             " document.getElementById('ae-canvas').classList.contains('ae-dragging')"
         )
         # Each move turns the Moon once, not twice (the page no longer forwards).
-        k = pg.evaluate("AE_DRAG_RAD_PER_PX * _aeDragScale()")
+        want = pg.evaluate("_aeDragTurn(20, 0, _ae.roll, _aeDragK(), _ae.el_).daz")
         az2 = pg.evaluate("_ae.az")
         if pointer == "touch":
             _touch_drag_turns(pg, cdp, x, y, 5, 4, 0)
@@ -384,7 +384,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
             for i in range(1, 6):
                 pg.mouse.move(x + 30 + i * 4, y + 60)
         turned = pg.evaluate("_ae.az") - az2
-        assert abs(abs(turned) - 20 * k) < 0.35 * 20 * k, (turned, 20 * k)
+        assert abs(turned - want) < 0.35 * abs(want), (turned, want)
         if pointer == "touch":
             cdp.send(
                 "Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}

@@ -586,10 +586,10 @@ var AE_MIN_DIST_MOON = AE_MOON_RADIUS_RE * 1.25;
 var AE_MAX_DIST = 420;                // wide enough to hold the Moon's whole orbit
 var AE_MAX_ELEVATION = _aeRad(85);    // north stays up; never flip over a pole
 var AE_START_MAX_LAT = _aeRad(50);    // the opening view leans no further toward a pole
-var AE_DRAG_RAD_PER_PX = 0.006;
-var AE_DRAG_MIN_SCALE = 0.15;         // up close a drag turns the globe more gently
+var AE_DRAG_RAD_PER_PX = 0.02;        // the fastest a drag turns (a disc too small to follow the finger)
 var AE_WHEEL_ZOOM = 0.0015;           // log-distance per wheel unit
 var AE_KEY_TURN = _aeRad(5);
+var AE_KEY_ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };   // as a one-pixel drag
 var AE_KEY_ZOOM = 1.15;
 // A flight's length grows with how far it goes, as a multiple of the scale
 // it leaves or arrives at (log, so the Moon is not ten times the trip to the
@@ -2606,8 +2606,39 @@ function _aeTurnBy(dAz, dEl) {
 // A drag that began on the hero disc (almanac.js), carried on into the view.
 function _aeHandDrag(dx, dy) {
   if (!_aeIsOpen || !_ae.gl) return;
-  var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
-  _aeTurnBy(-dx * k, dy * k);
+  _aeDragBy(dx, dy);
+}
+// A finger's move, in screen pixels (right, down), as the camera's turn: the
+// surface under the finger goes with it ("it moves when I drag but I can't
+// figure out how to intentionally get it a direction", Eric, 2026-10-03).
+// The screen is turned from celestial north by the view's roll (on the Moon,
+// its tilt in the observer's sky), so the move is first turned back into the
+// north-up frame the azimuth and elevation live in; then right is west of
+// the camera (the globe turns right) and down is up (the globe turns down).
+// Away from the equator a turn in azimuth runs round a smaller circle, so it
+// is that much larger for the same move.
+function _aeDragTurn(dx, dy, rollDeg, k, el) {
+  var r = _aeRad(rollDeg || 0), c = Math.cos(r), s = Math.sin(r);
+  var nx = dx * c + dy * s, ny = dy * c - dx * s;
+  var circle = Math.max(Math.cos(el || 0), Math.cos(AE_MAX_ELEVATION));
+  return { daz: -nx * k / circle, del: ny * k };
+}
+// Radians of turn per pixel that keep the point under the finger under it:
+// a turn of a moves the near surface R*a across, seen from D - R away with a
+// focal length of f pixels, so a = px * (D - R) / (R * f). From far out a
+// small disc would spin wildly; it turns no faster than AE_DRAG_RAD_PER_PX.
+function _aeDragRadPerPx(dist, surface, focalPx) {
+  if (!(focalPx > 0) || !(surface > 0)) return AE_DRAG_RAD_PER_PX;
+  return Math.min(AE_DRAG_RAD_PER_PX, Math.max(0, dist - surface) / (surface * focalPx));
+}
+function _aeFocalPx() {
+  var cam = _ae.gl && _ae.gl.camera;
+  return cam && _ae.h ? (_ae.h / 2) / Math.tan(_aeRad(cam.fov) / 2) : 0;
+}
+function _aeDragK() { return _aeDragRadPerPx(_ae.dist, AE_TARGETS[_ae.target].surface, _aeFocalPx()); }
+function _aeDragBy(dx, dy) {
+  var turn = _aeDragTurn(dx, dy, _ae.roll, _aeDragK(), _ae.el_);
+  _aeTurnBy(turn.daz, turn.del);
 }
 // Take over a drag that began on the hero disc, once the view is up: the
 // pointer is captured by this canvas and becomes its own drag, so the same
@@ -2622,10 +2653,6 @@ function _aeAdoptPointer(id, x, y) {
   _ae.drag = { x: x, y: y, x0: x, y0: y, moved: true };
   canvas.classList.add('ae-dragging');
   return true;
-}
-function _aeDragScale() {
-  var surface = AE_TARGETS[_ae.target].surface;
-  return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
 }
 // The canvas's own listeners: bound again to the fresh canvas that replaces
 // one whose context was given back (_aeDisposeGl).
@@ -2658,8 +2685,7 @@ function _aeBindCanvas(canvas) {
       var dx = e.clientX - _ae.drag.x, dy = e.clientY - _ae.drag.y;
       _ae.drag.x = e.clientX; _ae.drag.y = e.clientY;
       if (Math.hypot(e.clientX - _ae.drag.x0, e.clientY - _ae.drag.y0) > AE_TAP_SLOP_PX) _ae.drag.moved = true;
-      var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
-      _aeTurnBy(-dx * k, dy * k);
+      _aeDragBy(dx, dy);
     }
   });
   function end(e) {
@@ -2697,11 +2723,9 @@ function _aeBindKeys() {
       return;
     }
     if (e.target !== _aeById('ae-canvas')) return;
-    var handled = true;
-    if (e.key === 'ArrowLeft') _aeTurnBy(AE_KEY_TURN, 0);
-    else if (e.key === 'ArrowRight') _aeTurnBy(-AE_KEY_TURN, 0);
-    else if (e.key === 'ArrowUp') _aeTurnBy(0, AE_KEY_TURN);
-    else if (e.key === 'ArrowDown') _aeTurnBy(0, -AE_KEY_TURN);
+    var handled = true, arrow = AE_KEY_ARROWS[e.key];
+    // An arrow turns the globe as a drag that way on the screen would.
+    if (arrow) { var turn = _aeDragTurn(arrow[0], arrow[1], _ae.roll, AE_KEY_TURN); _aeTurnBy(turn.daz, turn.del); }
     else if (e.key === '+' || e.key === '=') _aeZoomBy(1 / AE_KEY_ZOOM);
     else if (e.key === '-' || e.key === '_') _aeZoomBy(AE_KEY_ZOOM);
     else handled = false;
