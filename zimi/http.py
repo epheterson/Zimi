@@ -28,6 +28,7 @@ import zimi.server as _srv
 from zimi import bookpages as _bookpages
 from zimi import sso as _sso
 from zimi import users as _users
+from zimi import zimblob as _zimblob
 from zimi.manage import (
     _manage_auth_challenge,
     handle_manage_get,
@@ -3867,6 +3868,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             # each read under the lock, none of them held in memory at once.
             stream_whole = False
             window = 0  # bound below, only ever read when stream_whole is set
+            direct_at = None  # file offset of an uncompressed media entry
+            direct_path = ""
             etag = ""
             range_start = range_end = None
             if is_epub:
@@ -3945,7 +3948,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                         # A satisfiable range still gets clamped — bytes=0- is
                         # a request for the whole item through the ranged door.
                         range_end = min(range_end, range_start + window - 1)
-                    if range_start is not None and range_end is not None:
+                    # The bytes come straight from the file when they are one
+                    # uncompressed run (zimblob): item.content maps the whole
+                    # entry, every time, under this lock.
+                    direct_path = _srv.get_zim_files().get(zim_name, "")
+                    direct_at = _zimblob.locate(
+                        direct_path, getattr(item, "_index", None), total_size
+                    )
+                    if direct_at is not None:
+                        content = b""
+                    elif range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
                     elif stream_whole:
                         content = b""
@@ -3956,6 +3968,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         return self._send_entry_too_large(total_size)
                     content = bytes(item.content)
         # Lock released — safe to do slow I/O
+        if direct_at is not None and not stream_whole:
+            start = range_start if range_start is not None else 0
+            end = range_end if range_end is not None else total_size - 1
+            content = _zimblob.read(direct_path, direct_at, start, end)
 
         # EPUB: write download response outside lock
         if epub_filename:
@@ -4059,8 +4075,11 @@ class ZimHandler(BaseHTTPRequestHandler):
             sent = 0
             while sent < total_size:
                 end = min(sent + window, total_size)
-                with _srv._zim_lock:
-                    chunk = bytes(item.content[sent:end])
+                if direct_at is not None:
+                    chunk = _zimblob.read(direct_path, direct_at, sent, end - 1)
+                else:
+                    with _srv._zim_lock:
+                        chunk = bytes(item.content[sent:end])
                 if not chunk:
                     break
                 self.wfile.write(chunk)
