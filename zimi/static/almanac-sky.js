@@ -1689,7 +1689,11 @@ function _skyCaption(s) {
   if (key !== 'alm_sky_day' && key !== 'alm_sky_night') phase = _lterm('twilight', phase);
   var sunAlt = t('alm_sky_sun_alt', { a: _skyDeg(s.eph.sun.alt) });
   var facing = t('alm_sky_facing', { dir: _azCompass(s.center) });
+  // The season, by the Sun, in this place's hemisphere ("Where do we say the
+  // season", Eric, 2026-10-03): the sky is where the year shows.
+  var season = typeof _almSeasonText === 'function' ? _almSeasonText(s.nowTime, s.lat) : '';
   var html = '<span>' + phase + ' · ' + _almEsc(sunAlt) + ' · ' + _almEsc(facing) + '</span>' +
+    (season ? '<span class="alm-sky-season">' + _almEsc(season) + '</span>' : '') +
     (s.stored ? '<span class="alm-sky-place">' + _almEsc(s.name || _skyCoords(s.lat, s.lon)) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.

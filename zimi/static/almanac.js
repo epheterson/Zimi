@@ -3032,35 +3032,16 @@ function _renderAstroPanel(now) {
   var dayOfYear = _dayOfYear(now);
   var daysInYear = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365;
 
-  // Hemisphere-aware seasons: flip for southern hemisphere observers
-  var obsLat = _getLocation().lat;
-  var south = obsLat < 0;
-  // Season labels follow the observer's hemisphere; the article key follows the
-  // label (a "Summer" label in the south links the Summer article, not Winter).
-  var Wk = south ? 'summer' : 'winter', Spk = south ? 'autumn' : 'spring';
-  var Suk = south ? 'winter' : 'summer', Auk = south ? 'spring' : 'autumn';
-  var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
-  var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
+  // The season by the Sun (the equinoxes and solstices), in the observer's
+  // hemisphere; the article key follows the label (a "Summer" label in the
+  // south links the Summer article, not Winter).
   var _eq = _lterm('equinox', t('alm_equinox')), _sol = _lterm('solstice', t('alm_solstice'));
-  // setFullYear (see _dayOfYear) so season boundaries land on the real year for
-  // any epoch the time machine reaches, not the 1900s for years 0–99.
+  // setFullYear (see _dayOfYear) so dates land on the real year for any
+  // epoch the time machine reaches, not the 1900s for years 0-99.
   function _dmy(yy, mo, dd) { var x = new Date(0); x.setFullYear(yy, mo, dd); x.setHours(0, 0, 0, 0); return x; }
-  var seasonBounds = [
-    { name: W, nameKey: Wk, start: _dmy(y - 1, 11, 21), end: _dmy(y, 2, 20), next: Sp + ' ' + _eq },
-    { name: Sp, nameKey: Spk, start: _dmy(y, 2, 20), end: _dmy(y, 5, 21), next: Su + ' ' + _sol },
-    { name: Su, nameKey: Suk, start: _dmy(y, 5, 21), end: _dmy(y, 8, 22), next: Au + ' ' + _eq },
-    { name: Au, nameKey: Auk, start: _dmy(y, 8, 22), end: _dmy(y, 11, 21), next: W + ' ' + _sol },
-    { name: W, nameKey: Wk, start: _dmy(y, 11, 21), end: _dmy(y + 1, 2, 20), next: Sp + ' ' + _eq }
-  ];
-  var season = null;
-  for (var si = 0; si < seasonBounds.length; si++) {
-    if (now >= seasonBounds[si].start && now < seasonBounds[si].end) {
-      season = seasonBounds[si];
-      season.progress = (now - season.start) / (season.end - season.start);
-      season.daysUntilNext = Math.ceil((season.end - now) / MS_PER_DAY);
-      break;
-    }
-  }
+  var ss = _almSeasonAt(now.getTime(), _getLocation().lat);
+  var season = ss && { name: t('season_' + ss.key), nameKey: ss.key, progress: ss.progress, daysUntilNext: ss.toNext,
+    next: t('season_' + ss.nextKey) + ' ' + (ss.nextKind === 'solstice' ? _sol : _eq) };
 
   var perihelion = _dmy(y, 0, 3);
   var daysSincePeri = (now - perihelion) / MS_PER_DAY;
@@ -6296,6 +6277,31 @@ function _seasonInstantJDE(year, k) {
     S += t2[0] * Math.cos((t2[1] + t2[2] * T) * DEG_TO_RAD);
   }
   return J0 + (0.00001 * S) / dl;
+}
+
+// The season at an instant, by the Sun: from the equinox or solstice
+// before it to the one after, named for the hemisphere (October is spring
+// in Sydney). { key, day (1 on its first day), toNext (whole days, rounded
+// up), nextKey, nextKind ('equinox' | 'solstice'), progress (0..1) }.
+var ALM_SEASONS_NORTH = ['spring', 'summer', 'autumn', 'winter'];   // after k = 0..3
+var ALM_SEASONS_SOUTH = ['autumn', 'winter', 'spring', 'summer'];
+function _almSeasonMs(year, k) { return (_seasonInstantJDE(year, k) - JD_UNIX_EPOCH) * MS_PER_DAY; }
+function _almSeasonAt(ms, lat) {
+  if (!isFinite(ms)) return null;
+  var y = new Date(ms).getUTCFullYear(), marks = [{ ms: _almSeasonMs(y - 1, 3), k: 3 }];
+  for (var k = 0; k < 4; k++) marks.push({ ms: _almSeasonMs(y, k), k: k });
+  marks.push({ ms: _almSeasonMs(y + 1, 0), k: 0 });
+  var i = marks.length - 2;
+  while (i > 0 && marks[i].ms > ms) i--;
+  var from = marks[i], to = marks[i + 1], names = lat < 0 ? ALM_SEASONS_SOUTH : ALM_SEASONS_NORTH;
+  return { key: names[from.k], day: Math.floor((ms - from.ms) / MS_PER_DAY) + 1, toNext: Math.ceil((to.ms - ms) / MS_PER_DAY),
+    nextKey: names[to.k], nextKind: to.k % 2 ? 'solstice' : 'equinox', progress: (ms - from.ms) / (to.ms - from.ms) };
+}
+// "Day 12 of autumn · 79 days to the solstice", for the live sky's caption.
+function _almSeasonText(ms, lat) {
+  var ss = _almSeasonAt(ms, lat);
+  if (!ss) return '';
+  return t('alm_season_day_' + ss.key, { n: ss.day }) + ' · ' + tPlural('alm_season_to_' + ss.nextKind, ss.toNext);
 }
 
 var _seasonCache = { year: 0, events: [] };

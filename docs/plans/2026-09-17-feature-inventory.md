@@ -174,6 +174,7 @@ Eric: "Using language selector should affect the content like in dictionary if a
 - A shorter apps list (Eric, 2026-10-03: "Apps list is getting big maybe when it's all it's a short view? Not sure what I mean"): when every app is shown, a compact view of them.
 - Reader View's own voice (Eric, 2026-10-03: "We could actually drop both preferred and remember toggle by just remembering… one for dictionary and one for reader views and that's that."): 1.13.0 drops Settings' Preferred voice and its remember switch; Say remembers the voice last used in the Dictionary. Reader View (Read aloud) gets its own remembered voice, picked where it plays, when Read aloud moves to the server's voices.
 - Tables that show how to use them (Eric: "like a lil sundial visualizer in that page that can print out too"): a visualization per table, printable.
+- The live sky by season (Eric, 2026-10-03: "Where do we say the season and maybe the live sky should change by season"): the season is said in the live sky's caption from 1.13.0; the scene itself (bare trees, snow, long summer grass, by hemisphere and latitude) is parked.
 
 ## Killed, and staying killed
 

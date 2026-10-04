@@ -278,5 +278,26 @@ vm.runInContext('_almanacSkyRAF = null; _skyState.moonData = null; _skySetInstan
 check(frames.length === 1 && vm.runInContext('_skyState.nowTime', S) === Date.parse('2026-10-01T06:00:00Z') &&
   vm.runInContext('!!_skyState.moonAnim', S), 'a scrub frame takes the new instant and glides the Moon there, one frame asked');
 
+// ── The season in the caption: by the Sun, in the place's hemisphere ──
+// 2026's September equinox is 23 Sep 00:05 UT and its December solstice
+// 21 Dec 20:50 UT (USNO); its March equinox 20 Mar 14:46 UT.
+{
+  const a = almSrc.indexOf('var _SEASON_JDE0'), b = almSrc.indexOf('var _seasonCache');
+  vm.runInContext(almSrc.slice(a, b) + '; function tPlural(k, n) { return k + "(" + n + ")"; }', S);
+  const at = (iso, lat) => vm.runInContext('_almSeasonAt(' + Date.parse(iso) + ', ' + lat + ')', S);
+  const sf = at('2026-10-03T12:00:00Z', 37.77);
+  check(sf.key === 'autumn' && sf.day === 11 && sf.toNext === 80 && sf.nextKind === 'solstice' && sf.nextKey === 'winter',
+    'San Francisco, 3 Oct 2026: day 11 of autumn, 80 days to the solstice (' + JSON.stringify(sf) + ')');
+  const syd = at('2026-10-03T12:00:00Z', -33.87);
+  check(syd.key === 'spring' && syd.nextKey === 'summer' && syd.day === 11, 'Sydney the same day: day 11 of spring');
+  check(at('2026-09-22T23:00:00Z', 37.77).key === 'summer' && at('2026-09-23T01:00:00Z', 37.77).key === 'autumn',
+    'autumn begins at the equinox, not a fixed date');
+  const w = at('2026-03-20T14:00:00Z', 51.5);
+  check(w.key === 'winter' && w.toNext === 1 && w.nextKind === 'equinox', 'the last hours of winter: the equinox tomorrow');
+  check(at('2027-01-05T00:00:00Z', 51.5).key === 'winter' && at('2027-01-05T00:00:00Z', 51.5).day === 15, 'winter runs across the new year');
+  check(vm.runInContext('_almSeasonText(' + Date.parse('2026-10-03T12:00:00Z') + ', 37.77)', S) ===
+    'alm_season_day_autumn{"n":11} · alm_season_to_solstice(80)', 'the caption\'s words');
+}
+
 if (failures) { console.error('\n' + failures + ' failure(s)'); process.exit(1); }
 console.log('\nall live-sky checks passed');
