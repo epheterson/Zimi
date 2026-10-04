@@ -9,6 +9,7 @@ reads the WAV it writes.
     zimi-voice piper -m VOICE.onnx -f OUT.wav          (Piper's own arguments)
     zimi-voice kokoro --model M.onnx --voices V.bin --voice NAME --lang en-us -f OUT.wav
     zimi-voice serve kokoro|piper                      (warm, one request a line)
+    zimi-voice versions                                (the engines' versions, JSON)
 
 The first two say the word on stdin and leave. ``serve`` loads its engine
 once and stays: on a NAS a word took 7 to 13 s when every one started the
@@ -261,7 +262,32 @@ def selftest(argv):
     print("zimi-voice ok")
 
 
-COMMANDS = {"piper": piper, "kokoro": kokoro, "serve": serve, "selftest": selftest}
+# The packages whose versions Settings shows beside each voice.
+VERSIONED = ("piper-tts", "kokoro-onnx")
+
+
+def versions(argv):
+    """One JSON line, {package: version} for each engine package here (one
+    missing is left out). Read from the packages' metadata, nothing
+    imported: voices.py asks once and keeps the answer."""
+    from importlib import metadata
+
+    out = {}
+    for name in VERSIONED:
+        try:
+            out[name] = metadata.version(name)
+        except Exception:
+            pass
+    print(json.dumps(out))
+
+
+COMMANDS = {
+    "piper": piper,
+    "kokoro": kokoro,
+    "serve": serve,
+    "selftest": selftest,
+    "versions": versions,
+}
 
 
 def main(argv=None):

@@ -199,8 +199,11 @@ TEXT_MAX = 64
 # A sentence, for the few places that say one (Discover's quote of the day):
 # asked for with kind=sentence, cached and fed on stdin as a word is.
 SENTENCE_MAX = 300
+# Settings' Hear: "Some dictionary words are: X, Y, Z." in Zimi's language,
+# asked for with kind=sample (or sample=1). Still one line, still cached by text.
+SAMPLE_MAX = 200
 # What each kind of text may be at most, by the name a request gives it.
-TEXT_LIMITS = {"word": TEXT_MAX, "sentence": SENTENCE_MAX}
+TEXT_LIMITS = {"word": TEXT_MAX, "sentence": SENTENCE_MAX, "sample": SAMPLE_MAX}
 SYNTH_TIMEOUT_S = 20  # Piper, its model loaded with the first word
 # Kokoro's first word loads its model and a language's dictionary: about 5 s
 # on a laptop, 13 on Eric's NAS (2026-10-03), so it is given longer.
@@ -446,6 +449,67 @@ def kokoro_command():
 def runtime(engine):
     """The command for a downloaded voice's engine, or None."""
     return {PIPER: piper_command, KOKORO: kokoro_command}[engine]()
+
+
+# ── what each engine is, for Settings ─────────────────────────────────────
+
+_VERSION_RE = re.compile(r"\d+(?:\.\d+)+")
+
+
+def _package_versions():
+    """{package: version} for piper-tts and kokoro-onnx where Zimi runs
+    them: the desktop helper's ``versions`` command, else the packages'
+    metadata in Zimi's own Python (read, never imported)."""
+    helper = helper_command()
+    if helper:
+        try:
+            got = json.loads(_list_output(helper + ["versions"]).strip() or "{}")
+            return got if isinstance(got, dict) else {}
+        except ValueError:
+            return {}
+    from importlib import metadata
+
+    out = {}
+    for name in ("piper-tts", "kokoro-onnx"):
+        try:
+            out[name] = metadata.version(name)
+        except Exception:
+            pass
+    return out
+
+
+def versions():
+    """{engine: "what it is and its version"} for each engine here, found
+    once and kept: Piper's package and its voices' pinned revision,
+    Kokoro's package and model, espeak-ng's own word for itself, and the
+    macOS release ``say`` comes with. An engine not here is left out."""
+
+    def find():
+        pkgs = _package_versions() if (piper_command() or kokoro_command()) else {}
+        out = {}
+        if piper_command():
+            pkg = pkgs.get("piper-tts")
+            out[PIPER] = ("Piper %s" % pkg if pkg else "Piper") + ", voices " + PIPER_REVISION
+        if kokoro_command():
+            pkg = pkgs.get("kokoro-onnx")
+            out[KOKORO] = "kokoro-onnx %s" % pkg if pkg else "kokoro-onnx"
+        if _say_voices():
+            import platform
+
+            mac = platform.mac_ver()[0]
+            out[SAY] = "macOS" + (" " + mac if mac else "")
+        exe = shutil.which("espeak-ng")
+        if exe:
+            m = _VERSION_RE.search(_list_output([exe, "--version"]))
+            out[ESPEAK] = "eSpeak NG" + (" " + m.group(0) if m else "")
+        return out
+
+    out = dict(_memo("versions", find))
+    if KOKORO in out:
+        # The model is a download: whichever is on disk now, else the pinned one.
+        rec = installed().get(KOKORO_TAG)
+        out[KOKORO] += ", " + (rec["id"] if rec else KOKORO_ID)
+    return out
 
 
 # ── the warm workers ──────────────────────────────────────────────────────
@@ -862,7 +926,8 @@ def can_say():
 
 def clean_text(text, limit=TEXT_MAX):
     """The text as an engine gets it, or None: one line, no control
-    characters, at most ``limit`` characters (TEXT_MAX, a word)."""
+    characters, at most ``limit`` characters (TEXT_MAX, a word; see
+    TEXT_LIMITS for a sentence and Settings' sample)."""
     text = str(text or "")
     if _CONTROL_RE.search(text.replace("\t", " ").replace("\n", " ")):
         return None
@@ -1566,6 +1631,7 @@ def manage_payload():
         "setting": POLICY.setting(),
         "piper": bool(piper_command()),
         "kokoro": bool(kokoro_command()),
+        "versions": versions(),
         "voices": rows,
         "langs": langs,
         "downloading": downloading(),

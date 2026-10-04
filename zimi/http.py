@@ -2711,6 +2711,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _dict.random_words(langs))
                 if sub in ("voices", "speak"):
                     return self._dictionary_voice(sub, param)
+                if sub == "sample":
+                    # Settings' Hear: a few words for its sample sentence.
+                    return self._uncached(
+                        lambda: self._json(200, _dict.sample_words(param("lang") or ""))
+                    )
                 if sub == "word":
 
                     def split(v):
@@ -4348,7 +4353,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         say the language; 503 with Retry-After when one can but is busy, so
         the page keeps it; 500 when it tried and could not. &check=1:
         nothing said, 404 or {"made", "failed"} (the page asking why its
-        <audio> failed, which an <audio> element is not told)."""
+        <audio> failed, which an <audio> element is not told). &sample=1:
+        Settings' sample sentence, up to SAMPLE_MAX characters, not
+        TEXT_MAX."""
         from zimi import voices as _voices
 
         if sub == "voices":
@@ -4367,7 +4374,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             param("accent") or "",
             param("engine") or None,
         )
-        limit = _voices.TEXT_LIMITS.get(param("kind") or "word")
+        kind = "sample" if param("sample") else (param("kind") or "word")
+        limit = _voices.TEXT_LIMITS.get(kind)
         if (
             limit is None
             or _voices.clean_text(text, limit) is None

@@ -1233,3 +1233,68 @@ def test_a_pages_words_are_said_ahead_into_the_cache(piper, monkeypatch):
     n = voices.presay([{"text": "water", "lang": "en"}, {"text": "eau", "lang": "fr", "engine": "piper"},
                        {"text": "", "lang": "en"}, {"text": "a", "lang": "en"}, {"text": "b", "lang": "en"}])
     assert n == 2 and said == [("water", "en", None), ("eau", "fr", "piper")], said
+
+
+
+# ── Settings' rows: versions and the sample sentence ──────────────────────
+
+
+def test_each_engine_here_names_its_version_once(piper, monkeypatch, tmp_path):
+    """Settings lists each engine with its version: Piper's package and its
+    voices' pinned revision, Kokoro's package and model, espeak-ng's own
+    word for itself, macOS for ``say``. Found once and kept."""
+    runner = fake_piper(tmp_path)
+    monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
+    monkeypatch.setattr(voices, "_say_voices", lambda: {"en": {"US": "Ava"}})
+    asked = []
+    monkeypatch.setattr(
+        voices,
+        "_package_versions",
+        lambda: asked.append(1) or {"piper-tts": "1.3.0", "kokoro-onnx": "0.4.9"},
+    )
+    espeak = tmp_path / "espeak-ng"
+    espeak.write_text("#!/bin/sh\necho 'eSpeak NG text-to-speech: 1.51  Data at: /x'\n")
+    espeak.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setattr("platform.mac_ver", lambda: ("15.6", ("", "", ""), ""))
+    got = voices.versions()
+    assert got["piper"] == "Piper 1.3.0, voices " + voices.PIPER_REVISION
+    assert got["kokoro"] == "kokoro-onnx 0.4.9, " + voices.KOKORO_ID
+    assert got["say"] == "macOS 15.6"
+    assert got["espeak"] == "eSpeak NG 1.51"
+    voices.versions()
+    assert asked == [1], "asked once, then kept"
+    assert voices.manage_payload()["versions"] == got
+
+
+def test_the_helper_prints_its_versions_as_json():
+    import subprocess
+
+    out = subprocess.run(
+        [sys.executable, os.path.join(REPO, "zimi", "voicehelper.py"), "versions"],
+        capture_output=True,
+        timeout=30,
+    )
+    assert out.returncode == 0 and isinstance(json.loads(out.stdout), dict)
+
+
+def test_a_sample_sentence_is_said_under_its_own_cap(served):
+    """Settings' Hear says a sentence: sample=1 lifts the word's cap to
+    SAMPLE_MAX for that request alone, and the sentence is cached by text
+    like any word."""
+    from urllib.parse import quote
+
+    install("en-US")
+    sentence = "Some dictionary words are: water, river, ocean, island, lighthouse."
+    assert voices.TEXT_MAX < len(sentence) <= voices.SAMPLE_MAX
+    url = served + "/dictionary/speak?lang=en&text=" + quote(sentence)
+    assert _get(url)[0] == 400
+    code, _h, body = _get(url + "&sample=1")
+    assert code == 200 and body[:4] == b"RIFF"
+    assert voices.said(sentence, "en", limit=voices.SAMPLE_MAX)["made"]
+    too_long = (
+        served
+        + "/dictionary/speak?lang=en&sample=1&text="
+        + "x" * (voices.SAMPLE_MAX + 1)
+    )
+    assert _get(too_long)[0] == 400

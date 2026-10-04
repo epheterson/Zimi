@@ -1490,6 +1490,41 @@ def home():
     return {"wiktionaries": wiktionaries()}
 
 
+# Settings' Hear: "Some dictionary words are: X, Y, Z." 3 to 5 plain words
+# (letters only, short enough that the sentence fits voices.SAMPLE_MAX).
+SAMPLE_WORDS = (3, 5)
+SAMPLE_WORD_RE = re.compile(r"^[^\W\d_]{2,12}$")
+SAMPLE_TRIES = 40  # random entries read at most, for the words
+
+
+def sample_words(lang="", rng=None):
+    """A few random words from a Wiktionary in ``lang`` (else the largest):
+    ``{"lang": its language, "words": [...]}``, words [] with none here.
+    The page keeps them for the session."""
+    import random
+
+    from zimi.search import random_entry
+
+    rng = rng or random.Random()
+    ws = wiktionaries()
+    lang = _primary(lang)
+    w = next((x for x in ws if _primary(x["lang"]) == lang), ws[0] if ws else None)
+    if w is None:
+        return {"lang": "", "words": []}
+    want = rng.randint(*SAMPLE_WORDS)
+    words = []
+    with _srv._zim_lock:
+        archive = _srv.get_archive(w["name"])
+        for _ in range(SAMPLE_TRIES if archive is not None else 0):
+            hit = random_entry(archive, max_attempts=4, rng=rng)
+            word = ((hit or {}).get("title") or "").strip()
+            if SAMPLE_WORD_RE.match(word) and word not in words:
+                words.append(word)
+                if len(words) >= want:
+                    break
+    return {"lang": _primary(w["lang"]), "words": words}
+
+
 def today(day):
     """Each Wiktionary's word of the day (Discover's and Zimipedia's own,
     zimi/wiki.py), for the day YYYYMMDD on the reader's clock, and

@@ -261,6 +261,18 @@ def test_the_wiktionaries(library):
     assert {w["lang"] for w in ws} == {"en", "fr", "mt"} and len(ws) == 4
 
 
+def test_sample_words_come_from_a_wiktionary_in_the_language(library):
+    """Settings' Hear: a few plain words from a Wiktionary in the language
+    asked for, the largest when there is none; none at all, no words."""
+    import random
+
+    got = dic.sample_words("fr", random.Random(1))
+    assert got["lang"] == "fr" and got["words"], got
+    assert all(dic.SAMPLE_WORD_RE.match(w) for w in got["words"]), got
+    assert len(got["words"]) <= dic.SAMPLE_WORDS[1]
+    assert dic.sample_words("xx", random.Random(1))["lang"] in ("en", "fr", "mt")
+
+
 def test_a_word_across_every_wiktionary(library):
     got = dic.lookup("water", ["en", "fr"], ["English", "French"])
     assert got["found"] and len(got["sources"]) == 3
