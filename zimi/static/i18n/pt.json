@@ -2020,6 +2020,8 @@
   "sort_added": "Adicionados recentemente",
   "sort_updated": "Atualizados recentemente",
   "sort_entries": "Mais artigos",
+  "sort_size": "Maiores",
+  "sort_type": "Por tipo",
   "env_section": "Ambiente",
   "env_none": "Nada é substituído. Todas as definições são controladas no Zimi.",
   "env_locks": "Bloqueia «{v}»",

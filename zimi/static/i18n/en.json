@@ -2020,6 +2020,8 @@
   "sort_added": "Recently added",
   "sort_updated": "Recently updated",
   "sort_entries": "Most articles",
+  "sort_size": "Largest",
+  "sort_type": "By type",
   "env_section": "Environment",
   "env_none": "Nothing is overridden here. Every setting is controlled in Zimi.",
   "env_locks": "Locks “{v}”",

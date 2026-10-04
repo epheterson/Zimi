@@ -2020,6 +2020,8 @@
   "sort_added": "最近添加",
   "sort_updated": "最近更新",
   "sort_entries": "文章最多",
+  "sort_size": "最大的",
+  "sort_type": "按类型",
   "env_section": "环境变量",
   "env_none": "没有任何设置被覆盖。全部设置都在 Zimi 中控制。",
   "env_locks": "锁定“{v}”",

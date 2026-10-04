@@ -4284,7 +4284,7 @@ function _runRecentSearch(query, zim) {
 function _getLibraryView() {
   return localStorage.getItem(SK.LIBRARY_VIEW) === 'tiles' ? 'tiles' : 'list';
 }
-var LIBRARY_SORTS = ['alpha', 'added', 'updated', 'entries'];
+var LIBRARY_SORTS = ['alpha', 'added', 'updated', 'entries', 'size', 'type'];
 function _librarySort() {
   var v = localStorage.getItem(SK.LIBRARY_SORT);
   return LIBRARY_SORTS.indexOf(v) >= 0 ? v : 'alpha';
@@ -4430,6 +4430,14 @@ var _LIBRARY_SORTERS = {
   added: _byFirstSeenDesc,
   updated: _byUpdatedDesc,
   entries: function(a, b) { return (b.entries || 0) - (a.entries || 0); },
+  // Eric, 2026-10-03: "Sort in library and orders large by type and size".
+  size: function(a, b) { return (b.size_gb || 0) - (a.size_gb || 0); },
+  // Type: the kind of ZIM (Wikipedia, Stack Exchange, books…) together, the
+  // largest first within each.
+  type: function(a, b) {
+    var at = a.category || 'zz', bt = b.category || 'zz';
+    return at === bt ? (b.size_gb || 0) - (a.size_gb || 0) : at.localeCompare(bt);
+  },
 };
 function _sortLibrary(list) {
   return list.slice().sort(_LIBRARY_SORTERS[_librarySort()] || _LIBRARY_SORTERS.alpha);
@@ -4459,6 +4467,7 @@ function _libViewToggleHtml() {
 var _LIBRARY_SORT_LABELS = {
   alpha: 'sort_alpha', added: 'sort_added',
   updated: 'sort_updated', entries: 'sort_entries',
+  size: 'sort_size', type: 'sort_type',
 };
 // Text-sized, the order it is in beside a sort mark: a full select box
 // outweighed the APPS heading it sits on, on a phone most of all. The native
@@ -20731,12 +20740,14 @@ function _appSortValue(app, mode) {
   if (mode === 'entries') {
     return zims.reduce(function(s, z) { return s + (typeof z.entries === 'number' ? z.entries : 0); }, 0);
   }
+  // Largest: an app by everything it holds.
+  if (mode === 'size') return zims.reduce(function(s, z) { return s + (z.size_gb || 0); }, 0);
   var date = _APP_SORT_DATE[mode];
   return zims.reduce(function(m, z) { return Math.max(m, date(z)); }, 0);
 }
 function _sortApps(apps) {
   var mode = _librarySort();
-  if (!_APP_SORT_DATE[mode] && mode !== 'entries') {
+  if (!_APP_SORT_DATE[mode] && mode !== 'entries' && mode !== 'size') {
     return apps.slice().sort(function(a, b) {
       return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
     });
