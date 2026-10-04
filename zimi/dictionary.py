@@ -37,6 +37,7 @@ import collections
 import html as _html
 import logging
 import posixpath
+import random
 import re
 import threading
 from urllib.parse import unquote
@@ -1491,13 +1492,25 @@ def home():
 
 def today(day):
     """Each Wiktionary's word of the day (Discover's and Zimipedia's own,
-    zimi/wiki.py), for the day YYYYMMDD on the reader's clock."""
+    zimi/wiki.py), for the day YYYYMMDD on the reader's clock, and
+    ``more``: each Wiktionary's other words of the day, chosen the same way
+    (wiki.words), for the page to order by the reader's languages."""
     from zimi import wiki as _wiki
 
-    words = []
+    words, more = [], []
     if not _wiki.day_open(day):
-        return {"day": day, "words": []}
+        return {"day": day, "words": [], "more": []}
     for w in wiktionaries():
+        # The day's other words (the More words shelf), kept with the day's
+        # picks, so this answer is still one ask.
+        try:
+            got = _wiki.words(w["name"], day) or []
+        except Exception as e:
+            log.debug("no more words from %s: %s", w["name"], e)
+            got = []
+        more.extend(
+            {"w": x["title"], "zim": w["name"], "lang": w["lang"]} for x in got[1:]
+        )
         try:
             card = _wiki.daily_card(w["name"], day)
         except Exception as e:
@@ -1513,7 +1526,35 @@ def today(day):
                     "pos": card.get("part_of_speech", ""),
                 }
             )
-    return {"day": day, "words": words}
+    return {"day": day, "words": words, "more": more}
+
+
+def random_words(langs=()):
+    """A handful of words by chance (the front's Shuffle), chosen as the
+    day's are, from the Wiktionaries in the reader's languages (``langs``,
+    primary codes) or, when none is, from all of them: ``{words: [{w, zim,
+    lang}]}``, at most wiki.MORE_WORDS. Reads one Wiktionary after another
+    until it has enough."""
+    from zimi import wiki as _wiki
+
+    ws = wiktionaries()
+    mine = [w for w in ws if _primary(w["lang"]) in langs]
+    ws = mine or ws
+    random.shuffle(ws)
+    out, seen = [], set()
+    for w in ws:
+        try:
+            got = _wiki.words_by_chance(w["name"])
+        except Exception as e:
+            log.debug("no words by chance from %s: %s", w["name"], e)
+            continue
+        for x in got:
+            if x["title"] not in seen:
+                seen.add(x["title"])
+                out.append({"w": x["title"], "zim": w["name"], "lang": w["lang"]})
+        if len(out) >= _wiki.MORE_WORDS:
+            break
+    return {"words": out[: _wiki.MORE_WORDS]}
 
 
 def _reset_for_tests():

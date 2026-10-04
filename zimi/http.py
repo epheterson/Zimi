@@ -2706,6 +2706,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _dict.today(param("day") or ""))
                 if sub == "suggest":
                     return self._json(200, _dict.suggest(param("q") or ""))
+                if sub == "random":
+                    langs = [x for x in (param("langs") or "").split(",") if x][:8]
+                    return self._json(200, _dict.random_words(langs))
                 if sub in ("voices", "speak"):
                     return self._dictionary_voice(sub, param)
                 if sub == "word":

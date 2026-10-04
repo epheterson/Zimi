@@ -137,7 +137,9 @@ def test_the_2024_build_wrapped_in_details():
     fr = next(i for t in verb["trans"] for i in t["items"] if i["name"] == "French")
     assert fr["lang"] == "" and fr["words"][0]["w"] == "arroser"
     # Its synonyms are a thesaurus page, which is the wiki's, not a word.
-    assert not any(w["t"].startswith("Thesaurus") for x in noun["words"] for w in x["items"])
+    assert not any(
+        w["t"].startswith("Thesaurus") for x in noun["words"] for w in x["items"]
+    )
 
 
 # ── French Wiktionary (Parsoid, in mwoffliner's shape) ─────────────────────
@@ -208,15 +210,21 @@ def test_a_recording_is_offered_only_when_the_zim_holds_it():
     # The US recording is in the ZIM; the UK one is a label with nothing behind it.
     assert audio == [{"label": "Audio (US)", "accent": "US", "path": fx.AUDIO_PATH}]
     assert (
-        dic.parse_page(html, "water", "en", "wiktionary_en_simple_all", archive_has=lambda p: False)["langs"][0]["pron"]["audio"]
+        dic.parse_page(
+            html, "water", "en", "wiktionary_en_simple_all", archive_has=lambda p: False
+        )["langs"][0]["pron"]["audio"]
         == []
     )
     # A link to Commons is not a recording in the library.
     remote = html.replace(fx.AUDIO_PATH, "//upload.wikimedia.org/x/En-us-water.ogg")
     assert (
-        dic.parse_page(remote, "water", "en", "wiktionary_en_simple_all", archive_has=lambda p: True)["langs"][
-            0
-        ]["pron"]["audio"]
+        dic.parse_page(
+            remote,
+            "water",
+            "en",
+            "wiktionary_en_simple_all",
+            archive_has=lambda p: True,
+        )["langs"][0]["pron"]["audio"]
         == []
     )
 
@@ -288,7 +296,9 @@ def test_a_word_across_every_wiktionary(library):
 def english_noun(got):
     """English Wiktionary's noun "water", wherever the reader's languages put it."""
     en = next(g for g in got["langs"] if g["code"] == "en")
-    return next(e for e in en["entries"] if e["zim"] == "wiktionary")["groups"][0]["parts"][0]
+    return next(e for e in en["entries"] if e["zim"] == "wiktionary")["groups"][0][
+        "parts"
+    ][0]
 
 
 def test_a_translation_leads_to_its_word(library):
@@ -307,10 +317,29 @@ def test_a_translation_leads_to_its_word(library):
 def test_suggestions_and_a_word_nobody_has(library):
     assert dic.suggest("wa")["words"][0] == {
         "w": "water",
-        "zims": ["wiktionary", "wiktionary_en_simple", "wiktionary_fr"],
+        # The largest Wiktionary first: the French, with the front's words.
+        "zims": ["wiktionary_fr", "wiktionary", "wiktionary_en_simple"],
     }
     got = dic.lookup("watr")
     assert not got["found"] and got["langs"] == []
+
+
+def test_the_day_has_more_words_than_one_and_a_shuffle(library):
+    from zimi import wiki
+
+    wiki._reset_for_tests()
+    day = wiki._today().strftime("%Y%m%d")
+    got = dic.today(day)
+    fr = next(w for w in got["words"] if w["zim"] == "wiktionary_fr")
+    more = [x for x in got["more"] if x["zim"] == "wiktionary_fr"]
+    # Chosen as the word of the day is: the same pages, so never that word.
+    assert len(more) >= 6 and fr["w"] not in {x["w"] for x in more}
+    assert {x["lang"] for x in more} == {"fr"}
+    # Kept with the day: the same words when asked again.
+    assert dic.today(day)["more"] == got["more"]
+    shuffled = dic.random_words(["fr"])["words"]
+    assert 6 <= len(shuffled) <= wiki.MORE_WORDS
+    assert {x["zim"] for x in shuffled} == {"wiktionary_fr"}
 
 
 def test_a_kept_page_is_not_changed_by_a_lookup(library):
@@ -359,7 +388,7 @@ def test_the_routes(served, monkeypatch):
     assert status == 200 and got["words"][0]["w"] == "eau"
     assert _get(served + "/dictionary/today?day=19990101") == (
         200,
-        {"day": "19990101", "words": []},
+        {"day": "19990101", "words": [], "more": []},
     )
     assert _get(served + "/dictionary/nothing")[0] == 404
     # A server that does not offer Dictionary does not answer for it.
