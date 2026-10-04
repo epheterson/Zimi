@@ -1540,7 +1540,6 @@
   "ms_server": "服务器",
   "ms_settings_tab": "设置",
   "ms_users": "用户",
-  "multi_lang": "多语言",
   "multilingual": "多语言（{n} 种语言）",
   "n_languages_one": "{n} 种语言",
   "n_languages_other": "{n} 种语言",
@@ -1825,7 +1824,6 @@
   "show_apps_server": "向所有人提供的应用",
   "apps_server_hint": "在此取消勾选会对所有人隐藏该应用。",
   "show_installed_covered": "显示 {n} 个已拥有的",
-  "show_lang_chooser": "显示语言",
   "show_list": "显示列表",
   "show_more": "再显示 {n} 条结果",
   "sign_in": "登录",
@@ -2940,7 +2938,6 @@
   "tb_eq_tide_sub": "副站",
   "tb_eq_or": "或",
   "tb_eq_tide_between": "高潮与低潮之间",
-  "catalog_languages_hint_short": "点击添加或从目录筛选中移除。",
   "languages_yours": "你的语言",
   "voices_section": "语音",
   "voices_hear": "试听",
@@ -2954,5 +2951,10 @@
   "voices_say_remembers": "词典的“朗读”会沿用你最近在其菜单中选择的语音。",
   "voices_sample": "词典里的一些词：{words}。",
   "voices_sample_none": "这个语音听起来是这样的。",
-  "voices_hear_failed": "暂时无法播放这个语音"
+  "voices_hear_failed": "暂时无法播放这个语音",
+  "languages_yours_hint": "Zimi 显示并提供这些语言：目录、搜索、发现、词典和 Zimipedia。未选择：所有语言。",
+  "languages_every": "所有语言",
+  "languages_more": "另外 {n} 种",
+  "lang_filters_title": "语言筛选",
+  "lang_filters_desc": "资料库和目录上方的语言标签，以及顶部栏的语言菜单。"
 }

@@ -1540,7 +1540,6 @@
   "ms_server": "Сервер",
   "ms_settings_tab": "Настройки",
   "ms_users": "Пользователи",
-  "multi_lang": "Многоязычный",
   "multilingual": "Многоязычный ({n} языков)",
   "n_languages_one": "{n} язык",
   "n_languages_other": "{n} яз.",
@@ -1825,7 +1824,6 @@
   "show_apps_server": "Приложения для всех",
   "apps_server_hint": "Снятая здесь отметка скрывает приложение для всех.",
   "show_installed_covered": "Показать {n} уже имеющихся",
-  "show_lang_chooser": "Показать языки",
   "show_list": "Показать список",
   "show_more": "Показать ещё {n}",
   "sign_in": "Войти",
@@ -2940,7 +2938,6 @@
   "tb_eq_tide_sub": "Дополнительная станция",
   "tb_eq_or": "или",
   "tb_eq_tide_between": "Между полной и малой водой",
-  "catalog_languages_hint_short": "Нажмите, чтобы добавить или убрать из фильтра каталога.",
   "languages_yours": "Ваши языки",
   "voices_section": "Голоса",
   "voices_hear": "Прослушать",
@@ -2954,5 +2951,10 @@
   "voices_say_remembers": "Кнопка «Произнести» в Словаре запоминает голос, выбранный в её меню последним.",
   "voices_sample": "Несколько слов из словаря: {words}.",
   "voices_sample_none": "Так звучит этот голос.",
-  "voices_hear_failed": "Этот голос сейчас не воспроизвёлся"
+  "voices_hear_failed": "Этот голос сейчас не воспроизвёлся",
+  "languages_yours_hint": "Zimi показывает и предлагает эти языки: каталог, поиск, «Обзор», Словарь и Zimipedia. Ничего не выбрано: все языки.",
+  "languages_every": "Все языки",
+  "languages_more": "Ещё {n}",
+  "lang_filters_title": "Фильтры языков",
+  "lang_filters_desc": "Метки языков над библиотекой и каталогом и меню языков в верхней панели."
 }
