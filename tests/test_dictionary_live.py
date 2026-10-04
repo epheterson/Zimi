@@ -849,7 +849,7 @@ def test_a_busy_voice_stays_and_a_missing_one_goes(piper_here, monkeypatch):
     monkeypatch.setattr(
         voices,
         "said",
-        lambda text, lang, accent="", engine=None: (
+        lambda text, lang, accent="", engine=None, limit=None: (
             None if engine == "espeak" else {"made": False, "failed": False}
         ),
     )
