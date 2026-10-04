@@ -108,9 +108,9 @@ var SK = {
   MANAGE_USER: 'zimi_manage_user',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
-  // The person's voice per language ({fr: 'piper'}): Settings > Languages;
+  // The person's voices ({voice, remember, off}): Settings > Voices;
   // dictionary.html reads it under this same name.
-  VOICE_CHOICES: 'zimi_voice_choices',
+  VOICE_PREFS: 'zimi_voice_prefs',
   // Reader font scale (percent, one of READER_FONT_LEVELS), applied as a `zoom`
   // on the iframe body and reapplied on every article load.
   READER_FONT: 'zimi_reader_font_scale',
@@ -751,191 +751,170 @@ function _setPrefLanguages(langs) {
   _setStorageJSON(SK.PREF_LANGUAGES, langs);
 }
 
-// ── Your languages (Settings > Preferences > Languages) ──
-// The languages this person reads (the catalog filter), one row each: its
-// name, the voice that says its words for them, and remove; "Add a
-// language" opens a searchable sheet. Eric, 2026-10-03: "Redesign this to
-// have that nice UI for selecting languages and voices right there."
-// "Everyone gets their own preference ui from what they have."
-var _LANGS_WRAP_ID = 'ms-langs-wrap';
-var _LANG_ADD_ID = 'lang-add';
-var _MULTI_LANG = 'multi'; // "Multi-language" ZIMs, a choice of its own
-var _DEVICE_VOICE = 'device'; // the browser's own speechSynthesis
-// /dictionary/voices: {langs: {fr: {engine, engines}}, can_change}, or null
-// before it answers (or when it cannot).
-var _langsVoices = null;
+// Common languages for the catalog filter (Settings > Languages > Your
+// languages), roughly by global Wikipedia use.
+const _LANG_PREF_OPTIONS = ['en', 'fr', 'de', 'es', 'pt', 'ru', 'zh', 'ar', 'hi', 'he', 'ja', 'it', 'multi'];
 
-function _prefLangName(code) {
-  return code === _MULTI_LANG ? t('multi_lang') : (_langDisplayName(code) || code.toUpperCase());
-}
-function _addPrefLanguage(code) {
-  var langs = _getPrefLanguages();
-  if (langs.indexOf(code) < 0) langs.push(code);
-  _setPrefLanguages(langs);
-  _paintPrefLanguages();
-}
-function _removePrefLanguage(code) {
-  _setPrefLanguages(_getPrefLanguages().filter(function(c) { return c !== code; }));
-  _paintPrefLanguages();
-  var add = document.querySelector('#' + _LANGS_WRAP_ID + ' .lang-add');
-  if (add) add.focus({ preventScroll: true });
+function _renderLangPrefPills() {
+  const selected = new Set(_getPrefLanguages());
+  return _LANG_PREF_OPTIONS.map(function(code) {
+    const isOn = selected.has(code);
+    const label = code === 'multi' ? t('multi_lang') : (_langDisplayName(code) || code.toUpperCase());
+    return '<button type="button" class="ms-lang-pill' + (isOn ? ' active' : '') + '" aria-pressed="' + isOn +
+      '" data-lang="' + code + '" onclick="_togglePrefLanguage(\'' + code + '\')">' +
+      '<span class="ms-lang-code">' + code + '</span> ' + esc(label) + '</button>';
+  }).join('');
 }
 
-// The person's own voice per language ({fr: 'piper', en: 'device'}), kept
-// with their preferences; a language without one uses the server's default,
-// which an admin sets in the Voices sheet. The Dictionary reads the same key.
-function _voiceChoices() {
-  var m = _getStorageJSON(SK.VOICE_CHOICES, {});
-  return m && typeof m === 'object' ? m : {};
+function _togglePrefLanguage(code) {
+  const current = new Set(_getPrefLanguages());
+  if (current.has(code)) current.delete(code);
+  else current.add(code);
+  _setPrefLanguages(Array.from(current));
+  const el = document.getElementById('ms-lang-pills');
+  if (el) el.innerHTML = _renderLangPrefPills();
 }
-function _setVoiceChoice(lang, engine) {
-  var m = _voiceChoices();
-  if (engine) m[lang] = engine; else delete m[lang];
-  if (Object.keys(m).length) _setStorageJSON(SK.VOICE_CHOICES, m);
-  else { try { localStorage.removeItem(SK.VOICE_CHOICES); } catch (e) {} }
+
+// ── Voices (Settings > Preferences > Voices) ──
+// The person's own, kept in this browser and carried by My data: the voice
+// Say prefers in every language, whether a pick in Say's menu becomes it,
+// and the engines they switched off. The Dictionary reads the same key.
+// Eric, 2026-10-03: "a voices with toggles maybe for the various ones and a
+// preference top level of which to use natural or whatnot with an example
+// to hear that applies to all languages with in-app last used convenience".
+var _VOICE_ENGINES = ['kokoro', 'piper', 'say', 'espeak', 'device']; // the server's order, then this browser's
+var _DEVICE_VOICE = 'device';
+var _VOICES_WRAP_ID = 'ms-voices-wrap';
+var _VOICE_LANGS_NAMED = 3; // more languages than this read as a count
+// /dictionary/voices?all=1 for Settings, or null before (or without) it.
+var _voicesHere = null;
+// The shape before, a voice per language, was never released: dropped.
+try { localStorage.removeItem('zimi_voice_choices'); } catch (e) {}
+
+// {voice: '' (the server's choice) or an engine, remember: true unless
+// switched off, off: [engines]}.
+function _voicePrefs() {
+  var p = _getStorageJSON(SK.VOICE_PREFS, {});
+  p = p && typeof p === 'object' ? p : {};
+  return { voice: typeof p.voice === 'string' ? p.voice : '', remember: p.remember !== false,
+    off: Array.isArray(p.off) ? p.off.filter(function(e) { return _VOICE_ENGINES.indexOf(e) >= 0; }) : [] };
+}
+function _setVoicePrefs(change) {
+  var p = Object.assign(_voicePrefs(), change);
+  if (p.voice && p.off.indexOf(p.voice) >= 0) p.voice = '';
+  if (!p.voice && p.remember && !p.off.length) { try { localStorage.removeItem(SK.VOICE_PREFS); } catch (e) {} }
+  else _setStorageJSON(SK.VOICE_PREFS, p);
   _voicesTellDictionary();
+  _paintVoicePrefs();
+}
+function _setVoiceEngineOn(engine, on) {
+  var off = _voicePrefs().off.filter(function(e) { return e !== engine; });
+  if (!on) off.push(engine);
+  _setVoicePrefs({ off: off });
 }
 function _voiceEngineName(e) {
   return e === _DEVICE_VOICE ? t('dictionary_voice_device') : t('voices_engine_' + e);
 }
-// Whether this browser has a voice of its own for a language.
-function _deviceSpeaks(lang) {
+// The engines here, each with the languages it says: the server's from its
+// answer, this browser's from its own voices.
+function _voiceEnginesHere() {
+  var by = {};
+  ((_voicesHere && _voicesHere.langs) || []).forEach(function(row) {
+    (row.engines || []).forEach(function(e) { (by[e] = by[e] || []).push(row.lang); });
+  });
   var vs = [];
   try { vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; } catch (e) {}
-  return vs.some(function(v) { return String(v.lang || '').toLowerCase().split(/[-_]/)[0] === lang; });
+  vs.forEach(function(v) {
+    var l = String(v.lang || '').toLowerCase().split(/[-_]/)[0];
+    if (!l) return;
+    var d = by[_DEVICE_VOICE] = by[_DEVICE_VOICE] || [];
+    if (d.indexOf(l) < 0) d.push(l);
+  });
+  return _VOICE_ENGINES.filter(function(e) { return by[e]; }).map(function(e) { return { engine: e, langs: by[e] }; });
 }
-// What can say a language right now: the server's engines (best first),
-// then this device's; and the default, the server's when it has one.
-function _langVoiceOptions(lang) {
-  var row = (_langsVoices && _langsVoices.langs && _langsVoices.langs[lang]) || {};
-  var list = (row.engines || []).slice();
-  if (_deviceSpeaks(lang)) list.push(_DEVICE_VOICE);
-  return { def: row.engine || (list.length ? list[list.length - 1] : ''), list: list };
+function _voiceLangsText(langs) {
+  return langs.length > _VOICE_LANGS_NAMED ? t('voices_n_langs', { n: langs.length })
+    : langs.map(function(l) { return _langDisplayName(l) || l; }).join(', ');
 }
-function _langVoiceSelectHtml(lang, name) {
-  var o = _langVoiceOptions(lang);
-  if (!o.list.length) return '';
-  var mine = _voiceChoices()[lang] || '';
-  var opts = [_appUpdateOption('', t('voices_default_named', { v: _voiceEngineName(o.def) }), o.list.indexOf(mine) < 0)]
-    .concat(o.list.map(function(e) { return _appUpdateOption(e, _voiceEngineName(e), e === mine); }));
-  return '<select class="voice-select" aria-label="' + escAttr(t('voices_for', { lang: name })) + '"' +
-    ' onchange="' + escAttr('_setVoiceChoice(' + JSON.stringify(lang) + ', this.value)') + '">' + opts.join('') + '</select>';
+// What is downloaded here: Natural, then Piper's voices by tag.
+function _voicesInstalledText() {
+  var rows = ((_voicesHere && _voicesHere.voices) || []).filter(function(r) { return r.installed; });
+  var natural = rows.some(function(r) { return r.kind === 'kokoro'; });
+  var piper = rows.filter(function(r) { return r.kind === 'piper'; }).map(function(r) { return r.tag; });
+  var parts = (natural ? [t('voices_engine_kokoro')] : []).concat(piper.length ? [t('voices_engine_piper') + ' ' + piper.join(', ')] : []);
+  return parts.length ? t('voices_installed', { list: parts.join(' · ') }) : t('voices_installed_none');
 }
-function _prefLangRowHtml(code) {
-  var lang = _normLang(code) || code, name = _prefLangName(code), native = _NATIVE_LANG_NAMES[lang];
-  return '<div class="share-row lang-row" data-lang="' + escAttr(code) + '">' +
-    '<span class="share-row-text"><span class="share-row-title">' + esc(name) + '</span>' +
-      (native && native !== name ? '<span class="share-row-desc">' + esc(native) + '</span>' : '') + '</span>' +
-    (code === _MULTI_LANG ? '' : '<span class="voice-act">' + _langVoiceSelectHtml(lang, name) + '</span>') +
-    '<button type="button" class="lang-remove" aria-label="' + escAttr(t('languages_remove', { lang: name })) + '"' +
-      ' onclick="' + escAttr('_removePrefLanguage(' + JSON.stringify(code) + ')') + '">✕</button></div>';
-}
-function _prefLanguagesHtml() {
-  var langs = _getPrefLanguages();
-  return '<div class="share-rows set-rows lang-rows">' +
-    (langs.length ? langs.map(_prefLangRowHtml).join('')
-      : '<div class="share-row lang-empty"><span class="share-row-desc">' + tH('languages_none') + '</span></div>') +
-    '<button type="button" class="share-row lang-add" onclick="_openLangAdd(this)">' +
-      '<span class="lang-add-plus" aria-hidden="true">+</span><span class="share-row-title">' + tH('languages_add') + '</span></button></div>' +
-    // An admin's way to the server's voices; nobody else sees it.
-    (_langsVoices && _langsVoices.can_change
-      ? '<a href="#" class="voices-manage" onclick="openVoicesSheet();return false">' + tH('voices_manage') + '</a>' : '');
-}
-function _paintPrefLanguages() {
-  var el = document.getElementById(_LANGS_WRAP_ID);
-  if (el) el.innerHTML = _prefLanguagesHtml();
-}
-// The voices come from the server (and from this browser, which may name
-// its own a moment after the page loads); the rows repaint as they arrive.
-var _langsVoicesHeard = false;
-function _renderPrefLanguages() {
-  if (!document.getElementById(_LANGS_WRAP_ID)) return;
-  if (!_langsVoicesHeard && window.speechSynthesis && window.speechSynthesis.addEventListener) {
-    _langsVoicesHeard = true;
-    try { window.speechSynthesis.addEventListener('voiceschanged', _paintPrefLanguages); } catch (e) {}
+function _voicePrefsHtml() {
+  var p = _voicePrefs(), here = _voiceEnginesHere();
+  var on = here.filter(function(x) { return p.off.indexOf(x.engine) < 0; });
+  var pick = on.some(function(x) { return x.engine === p.voice; }) ? p.voice : '';
+  var opts = [_appUpdateOption('', t('voices_auto'), !pick)].concat(on.map(function(x) {
+    return _appUpdateOption(x.engine, _voiceEngineName(x.engine), x.engine === pick);
+  }));
+  var h = '<div class="share-rows set-rows voice-prefs">' +
+    '<div class="share-row set-row voice-pref-row"><span class="share-row-text"><span class="share-row-title">' + tH('voices_preferred') + '</span>' +
+      '<select class="voice-select" id="ms-voice-pref" aria-label="' + escAttr(t('voices_preferred')) + '" onchange="_setVoicePrefs({ voice: this.value })">' +
+        opts.join('') + '</select></span>' +
+      '<button type="button" class="pill voice-hear" onclick="_hearVoicePref()">▶ ' + tH('voices_hear') + '</button></div>' +
+    _switchRowHtml({ id: 'ms-voice-remember', title: tH('voices_remember'), on: p.remember,
+      onchange: '_setVoicePrefs({ remember: this.checked })' }) +
+    // One switch per engine here; the last one on stays on.
+    here.map(function(x) {
+      var isOn = p.off.indexOf(x.engine) < 0;
+      return _switchRowHtml({ cls: 'voice-engine', title: esc(_voiceEngineName(x.engine)),
+        desc: esc(_voiceLangsText(x.langs)), on: isOn, disabled: isOn && on.length === 1,
+        onchange: escAttr('_setVoiceEngineOn(' + JSON.stringify(x.engine) + ', this.checked)') });
+    }).join('');
+  if (_voicesHere) {
+    h += '<div class="share-row set-row"><span class="share-row-desc voice-installed">' + esc(_voicesInstalledText()) + '</span></div>' +
+      // An admin's way to the server's voices (downloads, Remove); nobody else's.
+      (_voicesHere.can_change
+        ? '<button type="button" class="share-row set-row voice-door" onclick="openVoicesSheet()"><span class="share-row-text">' +
+          '<span class="share-row-title">' + tH('voices_get_more') + '</span></span><span class="voice-chev" aria-hidden="true">›</span></button>' : '');
   }
-  authedFetch('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }).then(function(d) {
-    _langsVoices = d;
-    _paintPrefLanguages();
+  return h + '</div>';
+}
+function _paintVoicePrefs() {
+  var el = document.getElementById(_VOICES_WRAP_ID);
+  if (el) el.innerHTML = _voicePrefsHtml();
+}
+var _voicesHeard = false;
+function _renderVoicePrefs() {
+  if (!document.getElementById(_VOICES_WRAP_ID)) return;
+  // This browser may name its voices a moment after the page loads.
+  if (!_voicesHeard && window.speechSynthesis && window.speechSynthesis.addEventListener) {
+    _voicesHeard = true;
+    try { window.speechSynthesis.addEventListener('voiceschanged', _paintVoicePrefs); } catch (e) {}
+  }
+  authedFetch('/dictionary/voices?all=1').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }).then(function(d) {
+    _voicesHere = d;
+    _paintVoicePrefs();
   });
 }
-
-// Add a language: every language Zimi knows a name for and every one the
-// library or catalog holds, less those chosen, by name; typing filters, a
-// tap adds. On a phone a sheet that stands on the keyboard, as the
-// Almanac's Add a clock does.
-function _langAddCandidates() {
-  var have = {}, seen = {}, out = [];
-  _getPrefLanguages().forEach(function(c) { have[_normLang(c) || c] = 1; });
-  function add(c) {
-    c = c === _MULTI_LANG ? c : _normLang(c);
-    if (!c || !_isValidLangCode(c) || seen[c] || have[c]) return;
-    seen[c] = 1;
-    var name = _prefLangName(c), native = _NATIVE_LANG_NAMES[c] || '';
-    out.push({ code: c, name: name, sub: native !== name ? native : '', hay: (name + ' ' + native + ' ' + c).toLowerCase() });
+// Hear it: Zimi's language says its own name in the preferred voice; where
+// that voice cannot say it, the server's choice does.
+var _voiceSample = null;
+function _hearVoicePref() {
+  var lang = _currentLang, word = _NATIVE_LANG_NAMES[lang] || lang, e = _voicePrefs().voice;
+  if (_voiceSample) { try { _voiceSample.pause(); } catch (x) {} }
+  if (e === _DEVICE_VOICE) {
+    try {
+      var u = new SpeechSynthesisUtterance(word);
+      u.lang = lang;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (x) {}
+    return;
   }
-  add(_MULTI_LANG);
-  Object.keys(_NATIVE_LANG_NAMES).forEach(add);
-  (zimsCache || []).concat(_catalogCache || []).forEach(function(z) { _parseLangs(z.language).forEach(add); });
-  return out.sort(function(a, b) { return a.name.localeCompare(b.name); });
-}
-function _langAddKeydown(e) {
-  if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); _closeLangAdd(true); }
-}
-var _langAddOpener = null;
-function _closeLangAdd(refocus) {
-  var ov = document.getElementById(_LANG_ADD_ID + '-overlay');
-  if (!ov) return;
-  if (ov._unfit) ov._unfit();
-  ov.parentNode.removeChild(ov);
-  if (!document.querySelector('.zi-overlay')) document.documentElement.classList.remove('zi-open');
-  document.removeEventListener('keydown', _langAddKeydown, true);
-  if (refocus && _langAddOpener && _langAddOpener.isConnected) _langAddOpener.focus({ preventScroll: true });
-}
-function _openLangAdd(btn) {
-  _closeLangAdd();
-  _langAddOpener = btn;
-  var langs = _langAddCandidates(), title = t('languages_add'), search = t('languages_search');
-  var ov = document.createElement('div');
-  ov.className = 'zi-overlay lang-add-overlay';
-  ov.id = _LANG_ADD_ID + '-overlay';
-  ov.innerHTML =
-    '<div class="zi-panel lang-add-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(title) + '">' +
-    '<div class="zi-head"><span class="zi-head-title">' + esc(title) + '</span>' +
-    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '">✕</button></div>' +
-    '<div class="zi-body" id="' + _LANG_ADD_ID + '"><input type="search" class="lang-add-search" autocomplete="off" placeholder="' +
-      escAttr(search) + '" aria-label="' + escAttr(search) + '"><div class="lang-add-list" role="listbox" aria-label="' + escAttr(title) + '"></div></div></div>';
-  document.body.appendChild(ov);
-  document.documentElement.classList.add('zi-open');
-  var q = ov.querySelector('.lang-add-search'), list = ov.querySelector('.lang-add-list');
-  function draw() {
-    var f = q.value.trim().toLowerCase(), h = '';
-    langs.forEach(function(l) {
-      if (f && l.hay.indexOf(f) < 0) return;
-      h += '<button type="button" role="option" class="lang-add-opt" data-code="' + escAttr(l.code) + '"><span>' + esc(l.name) + '</span>' +
-        (l.sub ? '<span class="lang-add-sub">' + esc(l.sub) + '</span>' : '') + '</button>';
-    });
-    list.innerHTML = h || '<div class="zi-none">' + tH('tb_no_match') + '</div>';
+  var url = '/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang);
+  function play(src, failed) {
+    var a = _voiceSample = new Audio(src);
+    a.onerror = failed || null;
+    var pr = a.play();
+    if (pr && pr.catch) pr.catch(function(x) { if (failed && !(x && x.name === 'AbortError')) failed(); });
   }
-  draw();
-  q.addEventListener('input', draw);
-  list.addEventListener('click', function(e) {
-    var b = e.target.closest('.lang-add-opt');
-    if (!b) return;
-    var code = b.getAttribute('data-code');
-    _closeLangAdd();
-    _addPrefLanguage(code);
-    var row = document.querySelector('#' + _LANGS_WRAP_ID + ' .lang-row[data-lang="' + code + '"]');
-    if (row) {
-      row.scrollIntoView({ block: 'nearest' });
-      (row.querySelector('select') || row.querySelector('.lang-remove')).focus({ preventScroll: true });
-    }
-  });
-  ov.querySelector('.zi-close').addEventListener('click', function() { _closeLangAdd(true); });
-  ov.addEventListener('click', function(e) { if (e.target === ov) _closeLangAdd(true); });
-  document.addEventListener('keydown', _langAddKeydown, true);
-  ov._unfit = _sheetAboveKeyboard(ov);
-  q.focus({ preventScroll: true });
+  if (!e) { play(url); return; }
+  play(url + '&engine=' + encodeURIComponent(e), function() { play(url); });
 }
 
 // A sheet stands on the bottom of the layout viewport, which an iPhone's
@@ -11900,7 +11879,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _renderPrefLanguages(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _renderVoicePrefs(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -13240,13 +13219,17 @@ function _msPreferencesHtml() {
       _flavorRadio('nopic', tH('flavor_nopic')) +
       _flavorRadio('mini', tH('flavor_mini')) +
     '</div>' +
-    // Your languages, each with its voice; then whether the language
-    // choosers show in the library, the catalog and the top bar.
+    // Whether the language choosers show (library, catalog, top bar), and
+    // folded under it the languages the catalog filters to.
     '<div class="ms-section-label" style="margin-top:24px">' + tH('languages_section') + '</div>' +
-    '<div class="ms-hint lang-hint">' + tH('languages_hint') + '</div>' +
-    '<div id="' + _LANGS_WRAP_ID + '">' + _prefLanguagesHtml() + '</div>' +
-    _switchRowsHtml([{ title: tH('show_lang_chooser'), desc: tH('show_lang_chooser_hint'), on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER),
-      onchange: '_setStorageFlag(SK.HIDE_LANG_CHOOSER, !this.checked);if(window.updateTopbar)updateTopbar()' }]);
+    '<div class="share-rows set-rows">' +
+      _switchRowHtml({ title: tH('show_lang_chooser'), on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER),
+        onchange: '_setStorageFlag(SK.HIDE_LANG_CHOOSER, !this.checked);if(window.updateTopbar)updateTopbar()' }) +
+      '<details class="lang-fold" id="ms-lang-fold"><summary>' + tH('languages_yours') + '</summary>' +
+        '<div class="ms-hint">' + tH('catalog_languages_hint_short') + '</div>' +
+        '<div class="ms-lang-pills" id="ms-lang-pills">' + _renderLangPrefPills() + '</div></details></div>' +
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('voices_section') + '</div>' +
+    '<div id="' + _VOICES_WRAP_ID + '">' + _voicePrefsHtml() + '</div>';
   // My data is this browser's (bookmarks, history, these preferences): it
   // lives with the preferences, not with the server's settings.
   h += '<div class="ms-mydata" style="margin-top:24px">' + _myDataCardHtml() + '</div>';
@@ -13782,7 +13765,7 @@ function closeVoicesSheet() {
   ov.parentNode.removeChild(ov);
   if (!document.getElementById(_ZI_OVERLAY_ID)) document.documentElement.classList.remove('zi-open');
   document.removeEventListener('keydown', _voicesKeydown, true);
-  _renderPrefLanguages();
+  _renderVoicePrefs();
 }
 // The sheet opens at once with a quiet loading line, then fills from the
 // server.
@@ -14946,7 +14929,7 @@ var _BACKUP_SCHEMA = 'zimi-backup';
 var _BACKUP_SCHEMA_VERSION = 3;
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
-  SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.VOICE_CHOICES, SK.PREF_FLAVOR,
+  SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.VOICE_PREFS, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
   SK.EXT_LINKS, SK.OPEN_IN_APPS,
 ];

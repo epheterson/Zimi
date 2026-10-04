@@ -2510,6 +2510,24 @@
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
   .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  /* Settings > Languages: the catalog filter's pills, folded under the
+     Show languages switch in the same card. */
+  .lang-fold { border-top: 1px solid var(--border); padding: 0 14px; }
+  .lang-fold > summary { cursor: pointer; padding: 12px 0; font-size: 13px; font-weight: 600; color: var(--text); }
+  .lang-fold[open] { padding-bottom: 14px; }
+  .lang-fold .ms-hint { margin-top: 0; }
+  .ms-lang-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .ms-lang-pill {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg); font-size: 13px; color: var(--text);
+  }
+  .ms-lang-pill.active { border-color: var(--amber); color: var(--amber); }
+  .ms-lang-pill .ms-lang-code {
+    font-family: monospace; font-size: 11px; color: var(--text2);
+    text-transform: uppercase;
+  }
+  .ms-lang-pill.active .ms-lang-code { color: var(--amber); }
   .ms-flavor-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .ms-flavor-pill {
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -3421,40 +3439,16 @@
   .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text2); }
   .voice-loading { display: flex; align-items: center; gap: 6px; min-height: 84px; }
   .voice-top { margin: 0 0 12px; }
-  /* Settings > Apps: the door to the sheet, a row with a chevron. */
-  /* Settings > Languages: a row per language (name, its voice, remove),
-     then Add a language, a row of the same card. */
-  .lang-rows .share-row { min-height: 52px; box-sizing: border-box; padding: 8px 8px 8px 14px; gap: 10px; }
-  .lang-rows .share-row-title, .lang-rows .share-row-desc { display: block; }
-  .lang-empty { padding-inline-end: 14px; }
-  .lang-remove {
-    flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none;
-    color: var(--text3); font: inherit; font-size: 13px; line-height: 1; cursor: pointer;
-  }
-  .lang-add { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: var(--text2); cursor: pointer; }
-  .lang-add .share-row-title { color: inherit; font-weight: 500; }
-  .lang-add-plus { flex: none; width: 20px; text-align: center; font-size: 18px; line-height: 1; color: var(--amber); }
-  .lang-remove:hover, .lang-remove:focus-visible, .lang-add:hover, .lang-add:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
-  .voices-manage { display: inline-block; margin: 10px 2px 6px;font-size: 12.5px; color: var(--text2); text-decoration: none; }
-  .voices-manage:hover, .voices-manage:focus-visible { color: var(--amber); }
-  /* Add a language: the search stays on top, the list scrolls under it. A
-     column on a wide screen; on a phone, the whole screen as every sheet
-     here is, ending where the keyboard starts (_sheetAboveKeyboard). */
-  .lang-add-panel { height: min(560px, 100%); }
-  .lang-add-panel .zi-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
-  .lang-add-search {
-    flex: none; width: 100%; min-height: 42px; padding: 0 12px; margin: 0 0 8px; box-sizing: border-box;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
-  }
-  .lang-add-search:focus { outline: 2px solid var(--amber); outline-offset: 0; }
-  .lang-add-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; }
-  .lang-add-opt {
-    display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 9px;
-    background: none; color: var(--text); font: inherit; font-size: 15px; text-align: start; cursor: pointer;
-  }
-  .lang-add-opt:hover, .lang-add-opt:focus-visible { background: var(--amber-glow); outline: none; }
-  .lang-add-sub { margin-inline-start: auto; font-size: 12px; color: var(--text2); }
-  @media (max-width: 600px) { .lang-add-panel { height: 100%; } }
+  /* Settings > Voices: the preferred voice (its select under the name,
+     Hear it at the end), a switch per engine, what is downloaded, and for an
+     admin the door to the sheet, a row with a chevron. */
+  .voice-pref-row .voice-select { display: block; margin-top: 8px; width: 180px; }
+  .voice-hear { flex: none; align-self: flex-end; margin-bottom: 4px; }
+  .voice-door { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+  .voice-door:hover .share-row-title, .voice-door:focus-visible .share-row-title { color: var(--amber); }
+  .voice-chev { font-size: 22px; line-height: 1; color: var(--text2); }
+  [dir="rtl"] .voice-chev { transform: scaleX(-1); }
+  .voice-installed { margin-top: 0; }
   @media (pointer: coarse) { .voice-select, .voices-panel .pill { min-height: 40px; } }
   @media (max-width: 600px) {
     .zi-overlay { padding: 0; align-items: stretch; }
