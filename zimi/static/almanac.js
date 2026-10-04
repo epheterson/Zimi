@@ -1834,9 +1834,22 @@ function _almSubjectChipsHtml() {
         ' onclick="_almSubjectChip(\'' + s + '\')">' + _almEsc(s ? t('alm_subj_' + s) : t('all')) + '</button>';
     }).join('') + '</div>';
 }
+// Everything the chips show, as one document: copied as Markdown, shared,
+// or printed (Save as PDF is in the print dialog).
+var ALM_COPY_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
+var ALM_SHARE_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+function _almBookBtn(action, svg, label) {
+  return '<button type="button" class="alm-book-btn" data-alm-book="' + action + '" onclick="_almBook(\'' + action + '\')">' + svg + '<span>' + _almEsc(label) + '</span></button>';
+}
+function _almBookBarHtml() {
+  return '<div class="alm-book-bar" role="group" aria-label="' + _almEsc(t('tb_book_label')) + '">' +
+    _almBookBtn('copy', ALM_COPY_SVG, t('tb_book_copy')) +
+    (navigator.share ? _almBookBtn('share', ALM_SHARE_SVG, t('reader_share')) : '') +
+    _almBookBtn('print', ALM_PRINT_SVG, t('tb_book_print')) + '</div>';
+}
 function _almTablesHtml() {
   _almSubject = null;   // a fresh page shows every tile
-  return _almGroupOpen('tables') + _almSubjectChipsHtml() +
+  return _almGroupOpen('tables') + _almSubjectChipsHtml() + _almBookBarHtml() +
     _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
 }
 
@@ -1895,10 +1908,22 @@ var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
 var _almRefCss = false;
 function _almRefOpen(name) {
+  _almRefReady(function () { window.AlmanacRef.open(name); });
+}
+// The whole book of the tiles shown (the chips' subject, or All): copied,
+// shared or printed (almanac-tables.js).
+function _almBook(action) {
+  var ids = [].map.call(document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])'), function (b) { return b.getAttribute('data-tb'); });
+  if (!ids.length) return;
+  var showing = _almSubject ? t('alm_subj_' + _almSubject) : t('all');
+  _almRefReady(function () { window.AlmanacRef.book(action, ids, showing); });
+}
+// The tables' files, loaded on first use, then fn.
+function _almRefReady(fn) {
   // The sheets also need the Earth view's Sun and Moon (almanac-earth.js),
   // which loads just after the Almanac opens.
   function ready() { return _almRefCss && window.AlmanacRef && typeof _aeSun === 'function'; }
-  if (ready()) return window.AlmanacRef.open(name);
+  if (ready()) return fn();
   if (_almRefLoading) return;
   _almRefLoading = true;
   var failed = false;
@@ -1913,7 +1938,7 @@ function _almRefOpen(name) {
   }
   var waited = 0;
   (function poll() {
-    if (ready()) { _almRefLoading = false; window.AlmanacRef.open(name); return; }
+    if (ready()) { _almRefLoading = false; fn(); return; }
     waited += _ALM_REF_POLL_MS;
     if (failed || waited > _ALM_REF_LOAD_TIMEOUT_MS) { _almRefLoading = false; _showToast(t('almanac_unavailable_offline')); return; }
     setTimeout(poll, _ALM_REF_POLL_MS);

@@ -205,6 +205,12 @@
 .alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
 .alm-group-title + .alm-tiles-h { margin-top: 4px; }
 .alm-subject-chips + .alm-tiles-h { margin-top: 14px; }
+/* Everything the chips show as one document: three quiet actions under them,
+   the tables view's Print in look; amber when reached for. */
+.alm-book-bar { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px -10px 0; }
+.alm-book-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; font-size: 13px; cursor: pointer; transition: color 0.2s, background 0.2s; }
+.alm-book-btn:hover, .alm-book-btn:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+.alm-book-bar + .alm-tiles-h { margin-top: 10px; }
 .alm-tiles {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
   margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;

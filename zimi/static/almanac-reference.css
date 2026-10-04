@@ -324,8 +324,8 @@
   html.alm-ref-print #almanac-view { position: static !important; display: block !important; background: #fff !important; animation: none !important; }
   html.alm-ref-print #almanac-view > *:not(#almanac-content) { display: none !important; }
   html.alm-ref-print #almanac-content { overflow: visible !important; padding: 0 !important; }
-  html.alm-ref-print #almanac-content > *:not(#alm-ref) { display: none !important; }
-  html.alm-ref-print .alm-ref {
+  html.alm-ref-print #almanac-content > *:not(#alm-ref):not(#alm-book) { display: none !important; }
+  html.alm-ref-print .alm-ref, html.alm-ref-print .alm-book {
     position: static !important; overflow: visible !important; background: #fff; color: #000;
     --text: #000; --text2: #333; --text3: #666; --border: #999; --tb-rule: #bbb; --surface: #fff; --surface2: #fff; --bg: #fff;
     --amber: #000; --amber-glow: #eee; --amber-border: #000;
@@ -361,4 +361,22 @@
   .tb-eq-m { overflow: visible; }
   .tb-eq-m math { font-size: 10pt; color: #000; }
   .tb-eqs > summary { padding: 4pt 0; }
+  /* The whole book: set like a printed almanac. A title page, then each
+     table on a page of its own under a serif heading; the words in a serif,
+     the figures compact. */
+  html.alm-ref-print .alm-book { display: block !important; --tb-book-serif: Georgia, 'Times New Roman', 'Noto Serif', serif; font-family: var(--tb-book-serif); }
+  .alm-book h1 { font-family: var(--tb-book-serif); }  .tb-book-title { break-after: page; padding-top: 70mm; text-align: center; }
+  .tb-book-title h1 { margin: 0 0 6mm; padding-bottom: 4mm; border-bottom: 1.5pt solid #000; font-size: 28pt; font-weight: 400; letter-spacing: 0.02em; }
+  .tb-book-title p { margin: 0 0 2mm; font-size: 11pt; }
+  .tb-book-title .tb-made { margin-top: 8mm; color: #444; font-style: italic; font-size: 9pt; }
+  .tb-book-page + .tb-book-page { break-before: page; }
+  .alm-book .tb-printhead h1 { font-size: 17pt; font-weight: 400; letter-spacing: 0.01em; }
+  /* Figures that line up: Georgia's are old-style, Times's are lining. */
+  .alm-book .tb-table { font-family: 'Times New Roman', Times, 'Noto Serif', serif; font-size: 8pt; font-variant-numeric: lining-nums tabular-nums; }
+  .alm-book .tb-table th, .alm-book .tb-table td { padding: 1pt 3.5pt; }
+  .alm-book .tb-how > summary, .alm-book .tb-eqs > summary { font-weight: 600; list-style: none; }
+  .alm-book .tb-how > summary::-webkit-details-marker, .alm-book .tb-eqs > summary::-webkit-details-marker { display: none; }
+  .alm-book .tb-how-k { border: 0; background: none; padding: 0; font: inherit; color: #000; }
 }
+/* The book is for paper only. */
+@media screen { .alm-book { display: none !important; } }

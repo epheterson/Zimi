@@ -610,6 +610,72 @@ def test_subject_chips_filter_all_three_rows(page):
     assert not page.errors, page.errors
 
 
+def test_the_whole_book_of_what_is_shown(page):
+    """Above the tiles, Copy as Markdown and Print: one document of every
+    tile the chips show, under a title block (the place, the day, the
+    subject). Paper gets a page per tile, How this is made open, the
+    equations drawn, none of the view's ids; and it is gone after."""
+    page.evaluate(
+        "() => { if (document.getElementById('alm-ref')) _tbClose();"
+        " window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
+        " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
+        " window.print = () => { window.__printed++; }; }"
+    )
+    bar = page.evaluate(
+        "[...document.querySelectorAll('#alm-group-tables .alm-book-bar [data-alm-book]')].map((b) => b.dataset.almBook)"
+    )
+    assert "copy" in bar and "print" in bar, bar
+    try:
+        page.click("#alm-subject-chips [data-subj='tides']")
+        page.click("[data-alm-book='copy']")
+        page.wait_for_function("() => window.__copied", timeout=60000)
+        md = page.evaluate("window.__copied")
+        names = page.evaluate(
+            "ALM_TB_SUBJECTS.tides.map((k) => (_tbKind(k) === 'const' ? t('tb_consts') + ' · ' : '') + t('tb_' + k))"
+        )
+        assert md.startswith("# Tables and calculations\n"), md[:200]
+        assert "San Francisco" in md.split("## ")[0] and "Showing: Tides" in md, md[
+            :400
+        ]
+        pages = [l[3:] for l in md.split("\n") if l.startswith("## ")]
+        assert sorted(pages) == sorted(names), (pages, names)
+        assert "### How this is made" in md and "$$" in md
+        # All: every tile, one page each.
+        page.click("#alm-subject-chips [data-subj='']")
+        page.evaluate("window.__copied = null")
+        page.click("[data-alm-book='copy']")
+        page.wait_for_function("() => window.__copied", timeout=60000)
+        md = page.evaluate("window.__copied")
+        assert "Showing: All" in md
+        assert sum(1 for l in md.split("\n") if l.startswith("## ")) == len(
+            TABLES + CALCS + CONSTS
+        )
+        # Paper.
+        page.click("#alm-subject-chips [data-subj='eclipses']")
+        page.click("[data-alm-book='print']")
+        page.wait_for_function("() => window.__printed === 1", timeout=60000)
+        book = page.evaluate(
+            "() => { const b = document.getElementById('alm-book'); return b && { pages: b.querySelectorAll('.tb-book-page').length,"
+            " heads: b.querySelectorAll('.tb-book-page .tb-printhead h1').length, title: b.querySelector('.tb-book-title').innerText,"
+            " closed: b.querySelectorAll('details:not([open])').length, math: b.querySelectorAll('.tb-eq math').length,"
+            " eqs: b.querySelectorAll('.tb-eq').length, ids: b.querySelectorAll('[id]').length, controls: b.querySelectorAll('.tb-controls').length,"
+            " printing: document.documentElement.classList.contains('alm-ref-print') }; }"
+        )
+        n = len(page.evaluate("ALM_TB_SUBJECTS.eclipses"))
+        assert book and book["pages"] == n and book["heads"] == n, book
+        assert "Showing: Eclipses" in book["title"], book
+        assert book["closed"] == 0 and book["ids"] == 0 and book["controls"] == 0, book
+        assert book["eqs"] > 0 and book["math"] == book["eqs"], book
+        assert book["printing"], book
+        page.evaluate("_tbPrintOff()")
+        assert page.evaluate("!document.getElementById('alm-book')")
+    finally:
+        page.evaluate(
+            "() => { _copyText = window.__ct; window.print = window.__pr; _almSubjectChip(''); }"
+        )
+    assert not page.errors, page.errors
+
+
 def test_no_section_table_icons_the_chips_choose(page):
     """The chips replaced the table icon each section ended with: none is
     left on the page, and a chip still chooses a subject's tiles."""

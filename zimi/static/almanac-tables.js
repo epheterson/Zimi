@@ -883,6 +883,8 @@ function _tbPrintOn() {
 }
 function _tbPrintOff() {
   document.documentElement.classList.remove(TB_PRINT_CLASS);
+  var book = _tbEl(TB_BOOK_ID);
+  if (book) book.remove();
   document.querySelectorAll('#tb-how details[data-print-opened]').forEach(function (d) {
     d.open = false; d.removeAttribute('data-print-opened');
   });
@@ -902,6 +904,109 @@ function _tbPrint() {
 }
 window.addEventListener('beforeprint', _tbPrintOn);
 window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo); _tbPrintOff(); });
+
+// ═══ The whole book ═══
+// Every tile the chips show ("For the selected filter or all I want a
+// top-level copy or print for all tables calcs and constants shown that
+// create a single doc nicely formatted", Eric, 2026-10-03), as one
+// Markdown document or one printed one: a title page (the place, the day,
+// the subject), then each table, calculation and constants table as its
+// own view would print it, from its starting values, How this is made open.
+var TB_BOOK_ID = 'alm-book';
+// Each tile drawn in turn, out of sight, and read off: its Markdown and,
+// for paper, its page. The open view's state is put back after.
+function _tbBookPages(ids, paper) {
+  var open = _tbEl('alm-ref');
+  if (open) _tbClose();
+  var keep = { id: _tb.id, kind: _tb.kind, changed: _tb.changed, place: _tb.place, win: _tb.win, calc: _tb.calc, specs: _tk.specs };
+  _tb.place = _tbAlmanacPlace(); _tb.win = {}; _tb.calc = {};
+  var host = document.createElement('div');
+  host.hidden = true;
+  document.body.appendChild(host);
+  _tb.sync = true;
+  var pages = [];
+  try {
+    ids.forEach(function (id) {
+      var kind = _tbKind(id);
+      if (kind !== 'table' && kind !== 'calc' && kind !== 'const') return;
+      _tb.id = id; _tb.kind = kind;
+      _tkReset();
+      host.innerHTML = '<div class="tb-body" id="tb-body"></div>';
+      var body = host.firstChild;
+      if (kind === 'table') _tbRenderTable(body);
+      else if (kind === 'calc') _tbRenderCalc(body);
+      else _tbRenderConst(body);
+      var page = { id: id, md: _tbMarkdown() };
+      // A constants table shares its name with a table ("Sun and Moon"):
+      // in the book it says which it is.
+      if (kind === 'const') {
+        var full = _tbT('consts') + ' · ' + _tbName(id), h1 = body.querySelector('.tb-printhead h1');
+        page.md = page.md.replace(/^# .*/, '# ' + full);
+        if (h1) h1.textContent = full;
+      }
+      if (paper) {
+        body.querySelectorAll('.tb-controls, .tk-pop').forEach(function (n) { n.remove(); });
+        body.querySelectorAll('details').forEach(function (d) { d.open = true; d.setAttribute('open', ''); });
+        _tbEqPaint(body);
+        // Its ids are the open view's; the book's copy keeps none.
+        body.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+        page.html = body.innerHTML;
+      }
+      pages.push(page);
+    });
+  } finally {
+    _tb.sync = false;
+    host.remove();
+    _tb.id = keep.id; _tb.kind = keep.kind; _tb.changed = keep.changed; _tb.place = keep.place;
+    _tb.win = keep.win; _tb.calc = keep.calc; _tk.specs = keep.specs;
+  }
+  return pages;
+}
+// The title page's lines: the place, the day, what the chips show.
+function _tbBookHead(showing) {
+  var p = _tbAlmanacPlace();
+  return { title: t('alm_group_tables'), lines: [p.name + ' · ' + _tbPlaceLine(p),
+    _tbLongDay(_tbDayIn(_almFocusInstant().getTime(), p.tz)), _tbT('book_showing', { s: showing })] };
+}
+function _tbBookMarkdown(ids, showing) {
+  var head = _tbBookHead(showing);
+  var md = ['# ' + head.title + '\n\n' + head.lines.join('  \n') + '\n\n*' + _tbT('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) + '*'];
+  // Each page's headings a level down, under the book's title.
+  _tbBookPages(ids, false).forEach(function (pg) { md.push(pg.md.replace(/^(#+) /gm, '#$1 ').trim()); });
+  return md.join('\n\n') + '\n';
+}
+// Share sends it where there is a share sheet; Copy, and Share without one,
+// put it on the clipboard (app.js _copyText says "Copied").
+function _tbBookSend(ids, showing, share) {
+  var text = _tbBookMarkdown(ids, showing);
+  var copy = function () { if (typeof _copyText === 'function') _copyText(text); };
+  if (share && navigator.share) {
+    navigator.share({ title: t('alm_group_tables'), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
+  } else copy();
+}
+// Paper: the book in the Almanac's place, the equations drawn (Temml first),
+// the browser's own print dialog (its Save as PDF), and gone again after.
+function _tbBookPrint(ids, showing) {
+  if (typeof window.print !== 'function') return Promise.resolve();
+  return _tbTemmlLoad().then(function () {
+    var host = _tbEl('almanac-content');
+    if (!host) return;
+    var old = _tbEl(TB_BOOK_ID);
+    if (old) old.remove();
+    var head = _tbBookHead(showing), book = document.createElement('div');
+    book.id = TB_BOOK_ID;
+    book.className = 'alm-book';
+    book.innerHTML = '<header class="tb-book-title"><h1>' + _almEsc(head.title) + '</h1>' +
+      head.lines.map(function (l) { return '<p>' + _almEsc(l) + '</p>'; }).join('') +
+      '<p class="tb-made">' + _tbH('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) + '</p></header>' +
+      _tbBookPages(ids, true).map(function (pg) { return '<section class="tb-book-page tb-body">' + pg.html + '</section>'; }).join('');
+    host.appendChild(book);
+    document.documentElement.classList.add(TB_PRINT_CLASS);
+    clearTimeout(_tb.printUndo);
+    _tb.printUndo = setTimeout(_tbPrintOff, TB_PRINT_UNDO_MS);
+    try { window.print(); } catch (e) { _tbPrintOff(); }
+  });
+}
 
 // ═══ How this is made ═══
 // Eric: "add like all the stuff used to generate everything on the page".
@@ -1665,32 +1770,33 @@ function _tbDrawTable() {
   var seq = ++_tb.seq;
   out.classList.add('tb-busy');
   if (!out.firstChild) out.innerHTML = '<p class="tb-wait" role="status">' + _almEsc(t('ref_working')) + '</p>';
-  requestAnimationFrame(function () {
-    setTimeout(function () {
-      if (seq !== _tb.seq || !out.isConnected) return;
-      var res;
-      try { res = TB_RENDER[id](span, _tb.place); }
-      catch (e) { res = { html: '<p class="tb-empty">' + _tbH('failed') + '</p>' }; if (window.console) console.error(e); }
-      out.innerHTML = res.html;
-      out.classList.remove('tb-busy');
-      var p = _tb.place;
-      var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
-      var ph = _tbEl('tb-print-head');
-      if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
-      _tbMadeFill({ place: res.place === false ? null : p, range: span.label, mid: _tbMid(span), made: res.made });
-      out.querySelectorAll('table').forEach(function (tb) {
-        if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
-        // A two-row head: the second row sticks under the first, at its real height.
-        var h1 = tb.tHead && tb.tHead.rows[1] ? tb.tHead.rows[0].offsetHeight : 0;
-        if (h1) tb.style.setProperty('--tb-h1', h1 + 'px');
-      });
-      var today = out.querySelector('.tb-today');
-      if (today && out.querySelector('.tb-frame')) {
-        var fr = out.querySelector('.tb-frame');
-        fr.scrollTop = Math.max(0, today.offsetTop - fr.clientHeight / 3);
-      }
-    }, 0);
-  });
+  // The whole book (_tbBookPages) draws every table at once, in one go.
+  if (_tb.sync) draw();
+  else requestAnimationFrame(function () { setTimeout(draw, 0); });
+  function draw() {
+    if (seq !== _tb.seq || !out.isConnected) return;
+    var res;
+    try { res = TB_RENDER[id](span, _tb.place); }
+    catch (e) { res = { html: '<p class="tb-empty">' + _tbH('failed') + '</p>' }; if (window.console) console.error(e); }
+    out.innerHTML = res.html;
+    out.classList.remove('tb-busy');
+    var p = _tb.place;
+    var placeLine = res.place === false ? null : res.place || (p.name + ' · ' + _tbPlaceLine(p));
+    var ph = _tbEl('tb-print-head');
+    if (ph) ph.innerHTML = _tbPrintHead([placeLine, span.label + (res.step ? ' · ' + res.step : '')]);
+    _tbMadeFill({ place: res.place === false ? null : p, range: span.label, mid: _tbMid(span), made: res.made });
+    out.querySelectorAll('table').forEach(function (tb) {
+      if (tb.classList.contains('tb-ltr')) tb.setAttribute('dir', 'ltr');
+      // A two-row head: the second row sticks under the first, at its real height.
+      var h1 = tb.tHead && tb.tHead.rows[1] ? tb.tHead.rows[0].offsetHeight : 0;
+      if (h1) tb.style.setProperty('--tb-h1', h1 + 'px');
+    });
+    var today = out.querySelector('.tb-today');
+    if (today && out.querySelector('.tb-frame')) {
+      var fr = out.querySelector('.tb-frame');
+      fr.scrollTop = Math.max(0, today.offsetTop - fr.clientHeight / 3);
+    }
+  }
 }
 
 // A table of rows in a scrolling frame: the head stays at the top and the
@@ -2428,5 +2534,12 @@ function _tbSolve() {
   _tb.last = r;
 }
 
-// Opening the view by name: a table, a calculation, or "what stops being true".
-window.AlmanacRef = { open: _tbOpen, close: _tbClose };
+// Opening the view by name: a table, a calculation, or "what stops being
+// true"; and the whole book of the tiles shown, copied, shared or printed.
+window.AlmanacRef = {
+  open: _tbOpen, close: _tbClose,
+  book: function (action, ids, showing) {
+    if (action === 'print') return _tbBookPrint(ids, showing);
+    _tbBookSend(ids, showing, action === 'share');
+  }
+};
