@@ -3146,7 +3146,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 langs = data.get("langs") if isinstance(data, dict) else None
                 if not isinstance(langs, list):
                     return self._json(400, {"error": "'langs' must be a list"})
-                return self._json(200, {"warming": _voices.warm(langs)})
+                words = data.get("words") or []
+                return self._json(
+                    200,
+                    {
+                        "warming": _voices.warm(langs),
+                        "saying": _voices.presay(words) if isinstance(words, list) else 0,
+                    },
+                )
 
             if parsed.path == "/login":
                 retry_after = _check_rate_limit(

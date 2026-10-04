@@ -1178,7 +1178,7 @@ def test_prewarm_over_http(served, monkeypatch):
         except urllib.error.HTTPError as e:
             return e.code, None
 
-    assert post({"langs": ["en"]}) == (200, {"warming": ["piper"]})
+    assert post({"langs": ["en"]}) == (200, {"warming": ["piper"], "saying": 0})
     assert asked == [["en"]]
     assert post({"langs": "en"})[0] == 400
 
@@ -1204,3 +1204,15 @@ def test_the_helper_answers_line_by_line_until_stdin_ends():
         [sys.executable, script, "serve", "nope"], capture_output=True, timeout=60
     )
     assert bad.returncode != 0 and b"usage" in bad.stderr
+
+
+def test_a_pages_words_are_said_ahead_into_the_cache(piper, monkeypatch):
+    """Eric, 2026-10-03: "Natural sounds great but takes forever". The page
+    has its words said as it opens; a tap then finds them made. Capped,
+    and a word that can't be said is skipped (of the first three asked)."""
+    said = []
+    monkeypatch.setattr(voices, "speak", lambda t, l, a="", engine=None: said.append((t, l, engine)))
+    monkeypatch.setattr(voices.threading, "Thread", lambda target, args, **k: type("T", (), {"start": lambda self: target(*args)})())
+    n = voices.presay([{"text": "water", "lang": "en"}, {"text": "eau", "lang": "fr", "engine": "piper"},
+                       {"text": "", "lang": "en"}, {"text": "a", "lang": "en"}, {"text": "b", "lang": "en"}])
+    assert n == 2 and said == [("water", "en", None), ("eau", "fr", "piper")], said

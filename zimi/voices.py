@@ -212,6 +212,7 @@ WORKER_IDLE_CHECK_S = 30
 WORKER_STOP_GRACE_S = 2  # a worker told its requests are over leaves at once
 WORKER_STDERR_LINES = 20  # what a worker that failed last said, for the log
 WARM_LANGS_MAX = 8  # the languages one page may ask to warm
+PRESAY_MAX = 3  # words a page asks to have said ahead of a tap
 FAILURES_MAX = 256  # words an engine could not say, remembered for the page
 # What became of a word asked of an engine: said; the engine could not say
 # it; no answer this time (busy, too slow, the worker died); and, from a
@@ -412,17 +413,21 @@ def _runner(engine):
 
 
 def piper_command():
-    """How to run Piper, or None: ZIMI_PIPER, a ``piper`` on PATH, the desktop
-    app's helper, or piper-tts in Zimi's own Python."""
+    """How to run Piper, or None: ZIMI_PIPER, Zimi's own helper (the desktop
+    app's, or piper-tts in Zimi's own Python), else a ``piper`` on PATH. The
+    helper first: only it keeps a voice loaded between words (pip puts a
+    ``piper`` on PATH beside the module, and the NAS took 4 s a word
+    starting that afresh)."""
 
     def find():
         named = os.environ.get(PIPER_CMD_ENV, "").strip()
         if named:
             return [named] if shutil.which(named) else None
+        own = _runner(PIPER)
+        if own:
+            return own
         on_path = shutil.which("piper")
-        if on_path:
-            return [on_path]
-        return _runner(PIPER)
+        return [on_path] if on_path else None
 
     return _memo(PIPER, find)
 
@@ -1062,6 +1067,36 @@ def warm(langs):
             target=_warm_one, args=(worker, req, key), daemon=True, name="voice-warm"
         ).start()
     return started
+
+
+def presay(words):
+    """Say a page's words now, in the background, into the cache, so a tap
+    plays at once: Kokoro takes about 8 s a word on a NAS even loaded (Eric,
+    2026-10-03: "Natural sounds great but takes forever"). ``words``:
+    [{"text", "lang", "engine"?}], the first PRESAY_MAX; nothing is
+    downloaded, a word already said is a cache hit, and one that cannot be
+    said now is skipped."""
+    todo = []
+    for w in list(words or [])[:PRESAY_MAX]:
+        if not isinstance(w, dict):
+            continue
+        text, lang, engine = w.get("text"), w.get("lang"), w.get("engine") or None
+        if not (isinstance(text, str) and isinstance(lang, str)):
+            continue
+        if clean_text(text) is None or not valid_lang(lang) or (engine is not None and engine not in ENGINES):
+            continue
+        todo.append((text, lang, engine))
+    if todo:
+        threading.Thread(target=_presay_all, args=(todo,), daemon=True, name="voice-presay").start()
+    return len(todo)
+
+
+def _presay_all(todo):
+    for text, lang, engine in todo:
+        try:
+            speak(text, lang, "", engine=engine)
+        except Exception:
+            pass  # busy or failed now: the tap asks again
 
 
 def _warm_one(worker, req, key):

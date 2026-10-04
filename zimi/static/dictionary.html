@@ -799,8 +799,20 @@ function warmVoices(codes) {
     _warmed[tag] = true;
     langs.push(tag);
   });
-  if (langs.length) voicePost('/dictionary/voices/warm', { langs: langs });
+  // The words on the page are said now too, ahead of a tap (a NAS takes
+  // seconds a word): the server keeps them, and Say plays them at once.
+  var words = [], seen = {};
+  document.querySelectorAll('[data-say]:not([data-exact]):not([data-engine])').forEach(function(b) {
+    var code = b.getAttribute('data-code'), text = b.getAttribute('data-say'), tag = speechTag(code), mine = myVoice(code);
+    var key = tag + '\n' + text + '\n' + mine;
+    if (!tag || !serverRow(code) || mine === 'device' || seen[key] || _presaid[key] || words.length >= PRESAY_MAX) return;
+    seen[key] = _presaid[key] = true;
+    words.push({ text: text, lang: tag, engine: mine || undefined });
+  });
+  if (langs.length || words.length) voicePost('/dictionary/voices/warm', { langs: langs, words: words });
 }
+var PRESAY_MAX = 3; // as voices.PRESAY_MAX: the words a page has said ahead
+var _presaid = {};  // asked once each: wireSpeech runs again and again
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
 // the one Say plays (a tick read as stuck), then Voices… for an admin.
