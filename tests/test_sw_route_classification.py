@@ -74,7 +74,8 @@ function makeEnv() {
     self, caches, URL,
     fetch: FETCH_FAILS
       ? () => Promise.reject(new TypeError('Failed to fetch'))
-      : () => Promise.resolve({ ok: true, clone: () => ({}) }),
+      : () => Promise.resolve({ ok: true, status: 200, clone: () => ({}),
+                                headers: { get: (k) => k.toLowerCase() === 'content-type' ? RESP_TYPE : null } }),
     Response: class { constructor(b, o) { this.body = b; Object.assign(this, o || {});
       const h = (o && o.headers) || {};
       this.headers = { get: (k) => {
@@ -93,12 +94,16 @@ async function probe(path, mode) {
   const env = makeEnv();
   const strategy = env.self.routeStrategy(new URL('http://x' + path).pathname, mode);
   let responded = null;
-  env.listeners.fetch({ request: { url: 'http://x' + path, mode: mode || 'cors' },
+  const reqHeaders = REQ_HEADERS;
+  env.listeners.fetch({ request: { url: 'http://x' + path, mode: mode || 'cors',
+                                   headers: { has: (k) => Object.prototype.hasOwnProperty.call(reqHeaders, k.toLowerCase()) } },
                         respondWith: (p) => { responded = p; } });
   let resp = null;
   try { resp = await responded; } catch (e) {}
   return {
     strategy,
+    responded: responded !== null,
+    cacheWrites: env.cacheWrites.length,
     touchedCache: env.cacheReads.length + env.cacheWrites.length,
     status: resp ? resp.status : null,
     offlineHeader: resp && resp.headers ? resp.headers.get('X-Zimi-Offline') : null,
@@ -114,12 +119,14 @@ async function probe(path, mode) {
 """
 
 
-def _run_driver(paths, fetch_fails=False):
+def _run_driver(paths, fetch_fails=False, req_headers=None, resp_type="text/css"):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node not available")
     driver = (
         "const FETCH_FAILS = %s;\n" % ("true" if fetch_fails else "false")
+        + "const REQ_HEADERS = %s;\n" % json.dumps(req_headers or {})
+        + "const RESP_TYPE = %s;\n" % json.dumps(resp_type)
     ) + _DRIVER
     proc = subprocess.run(
         [node, "-e", driver, os.path.abspath(_SW), json.dumps(paths)],
@@ -192,6 +199,23 @@ class TestSwRouteClassification(unittest.TestCase):
         self.assertEqual(
             res["/w/apple/www.apple.com/style.css"]["strategy"], "networkFirst"
         )
+
+
+    def test_ranged_requests_bypass_the_worker(self):
+        """A video, ogv.js or Say asks by range; the worker stays out of it.
+
+        Through networkFirst every 206 was cloned for a cache that refuses
+        partial responses, on the phone, while the video played."""
+        res = _run_driver(["/w/ted/videos/1/video.webm"], req_headers={"range": "bytes=0-"})
+        self.assertFalse(res["/w/ted/videos/1/video.webm"]["responded"])
+        self.assertEqual(res["/w/ted/videos/1/video.webm"]["touchedCache"], 0)
+
+    def test_whole_media_is_streamed_not_cached(self):
+        res = _run_driver(["/w/ted/videos/1/video.webm"], resp_type="video/webm")
+        self.assertTrue(res["/w/ted/videos/1/video.webm"]["responded"])
+        self.assertEqual(res["/w/ted/videos/1/video.webm"]["cacheWrites"], 0)
+        res = _run_driver(["/w/apple/www.apple.com/style.css"])
+        self.assertEqual(res["/w/apple/www.apple.com/style.css"]["cacheWrites"], 1)
 
 
 if __name__ == "__main__":

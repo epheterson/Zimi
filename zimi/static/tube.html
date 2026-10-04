@@ -466,7 +466,7 @@ function ogvControls(stage, p) {
     if (!scrubbing && d) seek.value = Math.round(c / d * 1000);
     snd.innerHTML = p.muted ? _MUTE_SVG : _SOUND_SVG;
   };
-  var toggle = function() { if (p.paused) p.play(); else p.pause(); };
+  var toggle = function() { unlockedAudio(); if (p.paused) p.play(); else p.pause(); };
   pp.onclick = toggle;
   p.addEventListener('click', toggle);
   snd.onclick = function() { p.muted = !p.muted; paint(); };
@@ -481,6 +481,31 @@ function ogvControls(stage, p) {
   p.addEventListener('pause', function() { stage.classList.remove('quiet'); });
   p.addEventListener('play', wake);
   paint();
+}
+
+// Safari, the iPhone's and the Mac's.
+function appleBrowser() {
+  var ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua));
+}
+// ogv.js times its pictures by its sound, and makes its AudioContext in
+// play(). ZimiTube calls play() after /tube/play and the decoder's script
+// have loaded, past the tap, so iOS left that context suspended and the
+// talk sat on its first frame ("wouldn't play in tube"). The context is
+// made, and woken, inside the tap instead, and handed to the decoder.
+var _audioCtx = null;
+function unlockedAudio() {
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  try {
+    if (!_audioCtx) {
+      _audioCtx = new AC();
+      var buf = _audioCtx.createBuffer(1, 1, 22050), src = _audioCtx.createBufferSource();
+      src.buffer = buf; src.connect(_audioCtx.destination); if (src.start) src.start(0);
+    }
+    if (_audioCtx.state === 'suspended' && _audioCtx.resume) _audioCtx.resume().catch(function() {});
+  } catch (e) {}
+  return _audioCtx;
 }
 
 // Picture in picture, where the browser has it (Safari's own way, or the
@@ -502,6 +527,8 @@ function play(e, i) {
   if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return true;
   if (e) e.preventDefault();
   var v = _list[i]; if (!v) return false;
+  // Inside the tap, before anything waits: the decoder's sound (below) needs it.
+  if (appleBrowser()) unlockedAudio();
   if (!document.getElementById('home').hidden) keepPlace();
   if (_docked >= 0) stopDock();
   _now = i;
@@ -545,8 +572,7 @@ function play(e, i) {
     var playable = m.media.some(function(src) { return !src.type || probe.canPlayType(src.type) !== ''; });
     // Safari, the Mac's as well: it says it can play WebM and then plays the
     // picture without its Vorbis sound (Eric: "this one DOES play but no audio").
-    var ua = navigator.userAgent;
-    var apple = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua));
+    var apple = appleBrowser();
     var webmOnly = m.media.every(function(src) { return /webm/i.test(src.type || src.path); });
     if ((!playable || (apple && webmOnly)) && m.ogv) { playWithOgv(v, m, stage, i); return; }
     var vid = document.createElement('video');
@@ -638,7 +664,7 @@ function playWithOgv(v, m, stage, i) {
     if (_now !== i || typeof OGVPlayer === 'undefined') { if (_now === i) stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a></div>'; return; }
     try {
       if (window.OGVLoader) OGVLoader.base = base;
-      var p = new OGVPlayer();
+      var p = new OGVPlayer({ audioContext: unlockedAudio() });
       p.src = zpath(v.zim, m.media[0].path);
       if (m.poster) p.poster = zpath(v.zim, m.poster);
       p.setAttribute('playsinline', '');

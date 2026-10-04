@@ -140,6 +140,11 @@ self.routeStrategy = routeStrategy;  // test hook
 
 // Fetch strategy router
 self.addEventListener('fetch', event => {
+  // A ranged request (a <video>, ogv.js's reader, Say's audio) goes to the
+  // network untouched. Through networkFirst every 206 was cloned for a cache
+  // that refuses partial responses, and a whole-file answer was teed into
+  // Cache Storage: a TED talk's 65 MB copied on an iPhone while it played.
+  if (event.request.headers.has('range')) return;
   const url = new URL(event.request.url);
   switch (routeStrategy(url.pathname, event.request.mode)) {
     case 'networkOnly':
@@ -173,13 +178,19 @@ async function networkOnly(request) {
   }
 }
 
+// Sound and pictures that move are streamed, never kept: a whole video in
+// Cache Storage is the phone's space and a long copy while it plays.
+function _isMedia(resp) {
+  return /^(video|audio)\//.test(resp.headers.get('Content-Type') || '');
+}
+
 // Network-first: try network, fall back to cache, then offline page
 async function networkFirst(request) {
   try {
     const resp = await fetch(request);
-    if (resp.ok) {
+    if (resp.ok && resp.status !== 206 && !_isMedia(resp)) {
       const cache = await caches.open(CACHE_VERSION);
-      cache.put(request, resp.clone());
+      cache.put(request, resp.clone()).catch(() => {});
     }
     return resp;
   } catch (e) {

@@ -26621,6 +26621,7 @@ function _defineConsider(frame) {
 // that no longer exist.
 var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
 var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
+var OVERLAY_SWEEP_GAP_MS = 250;      // the least time between two sweeps
 
 // What a site calls the grey box it shows while waiting for a fetch. In an
 // archive that fetch never happens, so the box is a promise of content that
@@ -26875,7 +26876,15 @@ function _sweepBlockingOverlays(frame) {
   // that lives as long as the article is a cost every reader pays for a
   // problem almost no archive has.
   if (typeof win.MutationObserver !== 'function') return;
-  var obs = new win.MutationObserver(function() { sweep(); });
+  // At most one sweep per OVERLAY_SWEEP_GAP_MS. A player's clock is a
+  // mutation per frame (ogv.js on a TED page: ~30 a second), and each sweep
+  // reads the style of every element: per mutation, that pinned an iPhone
+  // for the first OVERLAY_WATCH_MS of every video page.
+  var queued = 0;
+  var obs = new win.MutationObserver(function() {
+    if (queued) return;
+    queued = win.setTimeout(function() { queued = 0; sweep(); }, OVERLAY_SWEEP_GAP_MS);
+  });
   try {
     obs.observe(doc.documentElement, { childList: true, subtree: true });
     win.setTimeout(function() { obs.disconnect(); }, OVERLAY_WATCH_MS);
