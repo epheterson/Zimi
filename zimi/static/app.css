@@ -1793,6 +1793,44 @@
   /* A hint reads the same wherever it sits: the settings panes, and the
      catalog (the StreetZim note under the Maps toggle was 16px body text). */
   .ms-hint { font-size: 12px; line-height: 1.5; color: var(--text2); margin-top: 8px; }
+  /* Settings controls, one language (Eric, 2026-10-03: "upgrade all controls
+     and buttons in settings to be beautiful with this new language"). Cards
+     are .share-rows, choices of three or four are the segmented selector
+     (.app-theme-seg), on/off is .switch; buttons, selects and fields are
+     these: one height, one round quiet button, one amber primary. */
+  .ms-pane { --set-ctl-h: 34px; }
+  .set-btn, .ms-pane .pill:not(.cat-pill):not(.reorder-add), .ms-pane .ms-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+    min-height: var(--set-ctl-h); padding: 0 14px; border-radius: 999px;
+    font: inherit; font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .set-btn:hover:not(:disabled), .ms-pane .pill:not(.cat-pill):not(.reorder-add):hover, .ms-pane .ms-btn:hover {
+    color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow);
+  }
+  .set-btn:focus-visible, .ms-pane .pill:focus-visible, .ms-pane .ms-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .set-btn:disabled { opacity: 0.45; cursor: default; }
+  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active,
+  .ms-pane .manage-btn-action { background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600; }
+  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
+  .ms-pane .manage-btn-action { min-height: var(--set-ctl-h); border-radius: 999px; font-size: 13px; padding: 0 16px; }
+  .ms-pane select {
+    min-height: var(--set-ctl-h); box-sizing: border-box; padding: 0 30px 0 12px; border-radius: var(--radius);
+    font: inherit; font-size: 13px; color: var(--text); background-color: var(--surface2); border: 1px solid var(--border);
+    -webkit-appearance: none; appearance: none; cursor: pointer;
+    /* The caret, drawn in the theme's own text colour. */
+    background-image: linear-gradient(45deg, transparent 50%, var(--text2) 50%), linear-gradient(135deg, var(--text2) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+  }
+  [dir="rtl"] .ms-pane select { padding: 0 12px 0 30px; background-position: 16px 52%, 11px 52%; }
+  .ms-pane select:hover:not(:disabled) { border-color: var(--amber-border); }
+  .ms-pane select:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .ms-pane select:disabled { opacity: 0.55; cursor: default; }
+  .ms-pane .set-rows .set-row { min-height: 54px; box-sizing: border-box; }
+  .ms-pane .ms-section-label { margin-top: 24px; }
+  .ms-pane .ms-section-label:first-child { margin-top: 0; }
+  @media (pointer: coarse) { .ms-pane { --set-ctl-h: 40px; } }
   .browse-drilldown-header + .maps-source-toggle + .ms-hint, .maps-source-toggle + .ms-hint { margin: 6px 0 14px; }
 
   /* Environment panel: a name, its value, and what it takes over. Monospace
@@ -3439,16 +3477,27 @@
   .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text2); }
   .voice-loading { display: flex; align-items: center; gap: 6px; min-height: 84px; }
   .voice-top { margin: 0 0 12px; }
-  /* Settings > Voices: the preferred voice (its select under the name,
-     Hear it at the end), a switch per engine, what is downloaded, and for an
-     admin the door to the sheet, a row with a chevron. */
-  .voice-pref-row .voice-select { display: block; margin-top: 8px; width: 180px; }
-  .voice-hear { flex: none; align-self: flex-end; margin-bottom: 4px; }
+  /* Settings > Voices: a row per engine (name, what it is, its languages
+     and version, Hear, its switch), and for an admin the door to the sheet,
+     a row with a chevron. Hear works (a turning ring) from the tap until the
+     audio starts, then plays (a stop square, a soft pulse) until it ends. */
+  .voice-engine .voice-meta { color: var(--text3); font-size: 11.5px; }
+  .voice-engine.voice-off .share-row-title, .voice-engine.voice-off .share-row-desc { opacity: 0.55; }
+  .voice-hear { flex: none; }
+  .voice-hear-icon { position: relative; display: inline-flex; width: 12px; height: 12px; }
+  .voice-hear.working .voice-hear-icon svg, .voice-hear.playing .voice-hear-icon svg { visibility: hidden; }
+  .voice-hear.working .voice-hear-icon::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    border: 2px solid var(--amber-border); border-top-color: var(--amber); animation: share-spin 0.7s linear infinite;
+  }
+  .voice-hear.playing { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); animation: voice-pulse 1.4s ease-in-out infinite; }
+  .voice-hear.playing .voice-hear-icon::before { content: ''; position: absolute; inset: 2px; border-radius: 2px; background: currentColor; }
+  @keyframes voice-pulse { 50% { box-shadow: 0 0 0 4px var(--amber-glow); } }
+  @media (prefers-reduced-motion: reduce) { .voice-hear.playing { animation: none; } }
   .voice-door { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
   .voice-door:hover .share-row-title, .voice-door:focus-visible .share-row-title { color: var(--amber); }
   .voice-chev { font-size: 22px; line-height: 1; color: var(--text2); }
   [dir="rtl"] .voice-chev { transform: scaleX(-1); }
-  .voice-installed { margin-top: 0; }
   @media (pointer: coarse) { .voice-select, .voices-panel .pill { min-height: 40px; } }
   @media (max-width: 600px) {
     .zi-overlay { padding: 0; align-items: stretch; }

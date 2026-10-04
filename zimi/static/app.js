@@ -108,9 +108,11 @@ var SK = {
   MANAGE_USER: 'zimi_manage_user',
   PREF_LANGUAGES: 'zimi_pref_languages',
   PREF_FLAVOR: 'zimi_pref_flavor',
-  // The person's voices ({voice, remember, off}): Settings > Voices;
-  // dictionary.html reads it under this same name.
+  // The person's voices ({voice: Say's last pick, off: [engines]}):
+  // Settings > Voices; dictionary.html reads it under this same name.
   VOICE_PREFS: 'zimi_voice_prefs',
+  // Hear's sample words, {lang: [words]}: SESSION-scoped, the same all session.
+  VOICE_SAMPLE: 'zimi_voice_sample',
   // Reader font scale (percent, one of READER_FONT_LEVELS), applied as a `zoom`
   // on the iframe body and reapplied on every article load.
   READER_FONT: 'zimi_reader_font_scale',
@@ -776,12 +778,13 @@ function _togglePrefLanguage(code) {
 }
 
 // ── Voices (Settings > Preferences > Voices) ──
-// The person's own, kept in this browser and carried by My data: the voice
-// Say prefers in every language, whether a pick in Say's menu becomes it,
-// and the engines they switched off. The Dictionary reads the same key.
-// Eric, 2026-10-03: "a voices with toggles maybe for the various ones and a
-// preference top level of which to use natural or whatnot with an example
-// to hear that applies to all languages with in-app last used convenience".
+// One row per engine here: its name, a line on what it is, the languages it
+// says here and its version, Hear, and a switch. Say remembers the voice last
+// picked in the Dictionary's menu; nothing to prefer or remember here. Eric,
+// 2026-10-03: "We could actually drop both preferred and remember toggle by
+// just remembering... one for dictionary and one for reader views".
+// Kept in this browser and carried by My data: {voice: Say's last pick,
+// off: [engines switched off]}. The Dictionary reads and writes the same key.
 var _VOICE_ENGINES = ['kokoro', 'piper', 'say', 'espeak', 'device']; // the server's order, then this browser's
 var _DEVICE_VOICE = 'device';
 var _VOICES_WRAP_ID = 'ms-voices-wrap';
@@ -791,22 +794,26 @@ var _voicesHere = null;
 // The shape before, a voice per language, was never released: dropped.
 try { localStorage.removeItem('zimi_voice_choices'); } catch (e) {}
 
-// {voice: '' (the server's choice) or an engine, remember: true unless
-// switched off, off: [engines]}.
 function _voicePrefs() {
   var p = _getStorageJSON(SK.VOICE_PREFS, {});
   p = p && typeof p === 'object' ? p : {};
-  return { voice: typeof p.voice === 'string' ? p.voice : '', remember: p.remember !== false,
+  return { voice: typeof p.voice === 'string' ? p.voice : '',
     off: Array.isArray(p.off) ? p.off.filter(function(e) { return _VOICE_ENGINES.indexOf(e) >= 0; }) : [] };
 }
 function _setVoicePrefs(change) {
   var p = Object.assign(_voicePrefs(), change);
   if (p.voice && p.off.indexOf(p.voice) >= 0) p.voice = '';
-  if (!p.voice && p.remember && !p.off.length) { try { localStorage.removeItem(SK.VOICE_PREFS); } catch (e) {} }
+  if (!p.voice && !p.off.length) { try { localStorage.removeItem(SK.VOICE_PREFS); } catch (e) {} }
   else _setStorageJSON(SK.VOICE_PREFS, p);
   _voicesTellDictionary();
   _paintVoicePrefs();
 }
+// 1.13.0's first builds kept {remember: false} to stop Say's menu from
+// remembering. Remembering is all there is now: the old switch is dropped.
+(function() {
+  var p = _getStorageJSON(SK.VOICE_PREFS, null);
+  if (p && typeof p === 'object' && 'remember' in p) _setStorageJSON(SK.VOICE_PREFS, _voicePrefs());
+})();
 function _setVoiceEngineOn(engine, on) {
   var off = _voicePrefs().off.filter(function(e) { return e !== engine; });
   if (!on) off.push(engine);
@@ -836,47 +843,44 @@ function _voiceLangsText(langs) {
   return langs.length > _VOICE_LANGS_NAMED ? t('voices_n_langs', { n: langs.length })
     : langs.map(function(l) { return _langDisplayName(l) || l; }).join(', ');
 }
-// What is downloaded here: Natural, then Piper's voices by tag.
-function _voicesInstalledText() {
-  var rows = ((_voicesHere && _voicesHere.voices) || []).filter(function(r) { return r.installed; });
-  var natural = rows.some(function(r) { return r.kind === 'kokoro'; });
-  var piper = rows.filter(function(r) { return r.kind === 'piper'; }).map(function(r) { return r.tag; });
-  var parts = (natural ? [t('voices_engine_kokoro')] : []).concat(piper.length ? [t('voices_engine_piper') + ' ' + piper.join(', ')] : []);
-  return parts.length ? t('voices_installed', { list: parts.join(' · ') }) : t('voices_installed_none');
+// The row's small line: the languages it says here, then what it is.
+function _voiceMetaText(x) {
+  var v = _voicesHere && _voicesHere.versions && _voicesHere.versions[x.engine];
+  return [_voiceLangsText(x.langs), v].filter(Boolean).join(' · ');
+}
+var _HEAR_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>';
+function _voiceRowHtml(x, isOn, last) {
+  var e = x.engine, js = JSON.stringify(e);
+  return '<div class="share-row set-row voice-engine' + (isOn ? '' : ' voice-off') + '" data-engine="' + escAttr(e) + '">' +
+    '<span class="share-row-text"><span class="share-row-title">' + esc(_voiceEngineName(e)) + '</span>' +
+      '<span class="share-row-desc">' + tH('voices_desc_' + e) + '</span>' +
+      '<span class="share-row-desc voice-meta">' + esc(_voiceMetaText(x)) + '</span></span>' +
+    '<button type="button" class="set-btn voice-hear" aria-label="' + escAttr(t('voices_hear') + ': ' + _voiceEngineName(e)) + '"' +
+      (isOn ? '' : ' disabled') + ' onclick="' + escAttr('_hearVoice(' + js + ', this)') + '">' +
+      '<span class="voice-hear-icon">' + _HEAR_ICON + '</span><span>' + tH('voices_hear') + '</span></button>' +
+    '<span class="switch"><input type="checkbox" role="switch" aria-label="' + escAttr(_voiceEngineName(e)) + '"' +
+      (isOn ? ' checked' : '') + (isOn && last ? ' disabled' : '') +
+      ' onchange="' + escAttr('_setVoiceEngineOn(' + js + ', this.checked)') + '"><span class="switch-slider"></span></span></div>';
 }
 function _voicePrefsHtml() {
-  var p = _voicePrefs(), here = _voiceEnginesHere();
-  var on = here.filter(function(x) { return p.off.indexOf(x.engine) < 0; });
-  var pick = on.some(function(x) { return x.engine === p.voice; }) ? p.voice : '';
-  var opts = [_appUpdateOption('', t('voices_auto'), !pick)].concat(on.map(function(x) {
-    return _appUpdateOption(x.engine, _voiceEngineName(x.engine), x.engine === pick);
-  }));
-  var h = '<div class="share-rows set-rows voice-prefs">' +
-    '<div class="share-row set-row voice-pref-row"><span class="share-row-text"><span class="share-row-title">' + tH('voices_preferred') + '</span>' +
-      '<select class="voice-select" id="ms-voice-pref" aria-label="' + escAttr(t('voices_preferred')) + '" onchange="_setVoicePrefs({ voice: this.value })">' +
-        opts.join('') + '</select></span>' +
-      '<button type="button" class="pill voice-hear" onclick="_hearVoicePref()">▶ ' + tH('voices_hear') + '</button></div>' +
-    _switchRowHtml({ id: 'ms-voice-remember', title: tH('voices_remember'), on: p.remember,
-      onchange: '_setVoicePrefs({ remember: this.checked })' }) +
-    // One switch per engine here; the last one on stays on.
-    here.map(function(x) {
-      var isOn = p.off.indexOf(x.engine) < 0;
-      return _switchRowHtml({ cls: 'voice-engine', title: esc(_voiceEngineName(x.engine)),
-        desc: esc(_voiceLangsText(x.langs)), on: isOn, disabled: isOn && on.length === 1,
-        onchange: escAttr('_setVoiceEngineOn(' + JSON.stringify(x.engine) + ', this.checked)') });
-    }).join('');
-  if (_voicesHere) {
-    h += '<div class="share-row set-row"><span class="share-row-desc voice-installed">' + esc(_voicesInstalledText()) + '</span></div>' +
-      // An admin's way to the server's voices (downloads, Remove); nobody else's.
-      (_voicesHere.can_change
-        ? '<button type="button" class="share-row set-row voice-door" onclick="openVoicesSheet()"><span class="share-row-text">' +
-          '<span class="share-row-title">' + tH('voices_get_more') + '</span></span><span class="voice-chev" aria-hidden="true">›</span></button>' : '');
+  var off = _voicePrefs().off, here = _voiceEnginesHere();
+  var on = here.filter(function(x) { return off.indexOf(x.engine) < 0; });
+  // One row per engine here; the last one on stays on.
+  var h = '<div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
+    return _voiceRowHtml(x, off.indexOf(x.engine) < 0, on.length === 1);
+  }).join('');
+  // An admin's way to the server's voices (downloads, Remove); nobody else's.
+  if (_voicesHere && _voicesHere.can_change) {
+    h += '<button type="button" class="share-row set-row voice-door" onclick="openVoicesSheet()"><span class="share-row-text">' +
+      '<span class="share-row-title">' + tH('voices_get_more') + '</span></span><span class="voice-chev" aria-hidden="true">›</span></button>';
   }
-  return h + '</div>';
+  return h + '</div><div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
 function _paintVoicePrefs() {
   var el = document.getElementById(_VOICES_WRAP_ID);
-  if (el) el.innerHTML = _voicePrefsHtml();
+  if (!el) return;
+  _stopVoiceSample();
+  el.innerHTML = _voicePrefsHtml();
 }
 var _voicesHeard = false;
 function _renderVoicePrefs() {
@@ -891,30 +895,92 @@ function _renderVoicePrefs() {
     _paintVoicePrefs();
   });
 }
-// Hear it: Zimi's language says its own name in the preferred voice; where
-// that voice cannot say it, the server's choice does.
-var _voiceSample = null;
-function _hearVoicePref() {
-  var lang = _currentLang, word = _NATIVE_LANG_NAMES[lang] || lang, e = _voicePrefs().voice;
-  if (_voiceSample) { try { _voiceSample.pause(); } catch (x) {} }
-  if (e === _DEVICE_VOICE) {
-    try {
-      var u = new SpeechSynthesisUtterance(word);
-      u.lang = lang;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch (x) {}
-    return;
-  }
-  var url = '/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang);
-  function play(src, failed) {
-    var a = _voiceSample = new Audio(src);
-    a.onerror = failed || null;
+
+// Hear: "Some dictionary words are: X, Y, Z." in Zimi's language, the words
+// random ones from the library's Wiktionary in that language, the same for
+// the session. An engine that cannot say Zimi's language says words of one
+// it can. The button works (a pulse) from the tap until the audio starts,
+// then plays until it ends; a second tap stops it.
+var _voiceSample = null; // {btn, audio} while one is working or playing
+function _voiceSampleWords(lang) {
+  var kept = _getSessionJSON(SK.VOICE_SAMPLE, {}) || {};
+  if (Array.isArray(kept[lang])) return Promise.resolve(kept[lang]);
+  return authedFetch('/dictionary/sample?lang=' + encodeURIComponent(lang))
+    .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+    .then(function(d) {
+      var words = (d && Array.isArray(d.words)) ? d.words : [];
+      kept[lang] = words;
+      try { sessionStorage.setItem(SK.VOICE_SAMPLE, JSON.stringify(kept)); } catch (e) {}
+      return words;
+    });
+}
+function _listText(words, lang) {
+  try { return new Intl.ListFormat(lang, { type: 'conjunction' }).format(words); } catch (e) { return words.join(', '); }
+}
+// The sentence for an engine, and the language it is said in.
+function _voiceSampleFor(engine) {
+  var x = _voiceEnginesHere().filter(function(r) { return r.engine === engine; })[0];
+  var langs = x ? x.langs : [];
+  var ui = String(_currentLang || 'en').split('-')[0];
+  var own = !langs.length || langs.indexOf(ui) >= 0;
+  var lang = own ? ui : langs[0];
+  return _voiceSampleWords(lang).then(function(words) {
+    var text = own
+      ? (words.length ? t('voices_sample', { words: _listText(words, lang) }) : t('voices_sample_none'))
+      : (words.length ? _listText(words, lang) : (_NATIVE_LANG_NAMES[lang] || lang));
+    return { lang: lang, text: text };
+  });
+}
+function _voiceHearState(btn, state) {
+  if (!btn) return;
+  btn.classList.toggle('working', state === 'working');
+  btn.classList.toggle('playing', state === 'playing');
+  if (state) btn.setAttribute('aria-busy', state === 'working' ? 'true' : 'false');
+  else btn.removeAttribute('aria-busy');
+}
+function _stopVoiceSample() {
+  var s = _voiceSample;
+  _voiceSample = null;
+  if (!s) return;
+  if (s.audio) { try { s.audio.onplaying = s.audio.onended = s.audio.onerror = null; s.audio.pause(); } catch (e) {} }
+  if (s.device) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  _voiceHearState(s.btn, '');
+}
+function _hearVoice(engine, btn) {
+  var again = _voiceSample && _voiceSample.btn === btn;
+  _stopVoiceSample();
+  if (again) return;
+  var mine = _voiceSample = { btn: btn };
+  _voiceHearState(btn, 'working');
+  var done = function(failed) {
+    if (_voiceSample !== mine) return;
+    _voiceSample = null;
+    _voiceHearState(btn, '');
+    if (failed) _showToast(t('voices_hear_failed'));
+  };
+  _voiceSampleFor(engine).then(function(s) {
+    if (_voiceSample !== mine) return;
+    if (engine === _DEVICE_VOICE) {
+      try {
+        var u = new SpeechSynthesisUtterance(s.text);
+        u.lang = s.lang;
+        u.onstart = function() { if (_voiceSample === mine) _voiceHearState(btn, 'playing'); };
+        u.onend = function() { done(false); };
+        u.onerror = function() { done(true); };
+        mine.device = true;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch (x) { done(true); }
+      return;
+    }
+    var a = mine.audio = new Audio('/dictionary/speak?sample=1&text=' + encodeURIComponent(s.text) +
+      '&lang=' + encodeURIComponent(s.lang) + '&engine=' + encodeURIComponent(engine));
+    a.onplaying = function() { if (_voiceSample === mine) _voiceHearState(btn, 'playing'); };
+    a.onended = function() { done(false); };
+    a.onerror = function() { done(true); };
     var pr = a.play();
-    if (pr && pr.catch) pr.catch(function(x) { if (failed && !(x && x.name === 'AbortError')) failed(); });
-  }
-  if (!e) { play(url); return; }
-  play(url + '&engine=' + encodeURIComponent(e), function() { play(url); });
+    if (pr && pr.catch) pr.catch(function(x) { if (!(x && x.name === 'AbortError')) done(true); });
+  });
 }
 
 // A sheet stands on the bottom of the layout viewport, which an iPhone's
