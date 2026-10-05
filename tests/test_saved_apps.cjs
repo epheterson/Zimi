@@ -297,7 +297,7 @@ function page(extra) {
 }
 
 // ── the pages and the shell ───────────────────────────────────────────────
-ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\) \};/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
+ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\)[,\s}]/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
 ok('ZimiTube is handed Continue watching, and no Save word of its own', /'tube_missing', 'tube_continue'[,\]]/.test(src) && !/tube_watch_later|tube_listen_later|books_add_shelf|books_on_shelf|books_my_shelf/.test(src));
 ok('one list picker, the panel\'s own lists, for every app', /function savedPickLists\(ref, rect, byPointer\) \{[\s\S]*?_bmListsSubmenuHtml\(key\)/.test(src) && /p\.savedPickLists\(item, /.test(shared) &&
   /savedPickLists\(place, at\)/.test(src) && /savedBar\(bookRef\(b\), /.test(books) && !/savedPickLists|_bmListsSubmenuHtml|pickLists\(/.test(tube + exchange + reddot + books));

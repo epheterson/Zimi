@@ -863,7 +863,7 @@ def test_the_desktop_helper_is_found_beside_zimi(tmp_path, monkeypatch):
     executable; elsewhere voicehelper.py runs in Zimi's Python."""
     for name in ("Zimi", voices.HELPER_NAME):
         p = tmp_path / name
-        p.write_text("")
+        p.write_text("", encoding="utf-8")
         p.chmod(0o755)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "Zimi"))
@@ -1253,7 +1253,7 @@ def test_each_engine_here_names_its_version_once(piper, monkeypatch, tmp_path):
         lambda: asked.append(1) or {"piper-tts": "1.3.0", "kokoro-onnx": "0.4.9"},
     )
     espeak = tmp_path / "espeak-ng"
-    espeak.write_text("#!/bin/sh\necho 'eSpeak NG text-to-speech: 1.51  Data at: /x'\n")
+    espeak.write_text("#!/bin/sh\necho 'eSpeak NG text-to-speech: 1.51  Data at: /x'\n", encoding="utf-8")
     espeak.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
     monkeypatch.setattr("platform.mac_ver", lambda: ("15.6", ("", "", ""), ""))
