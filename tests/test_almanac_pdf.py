@@ -207,3 +207,15 @@ def test_one_render_at_a_time(monkeypatch):
     with apdf._render_lock:
         with pytest.raises(apdf.Busy):
             apdf.make(BOOK, "A4", "x")
+
+
+def test_the_pdf_carries_its_own_maths_font():
+    """A server may have no maths font (the NAS's Docker image has none), so
+    the equations would fall back to plain glyphs: the document is given
+    Zimi's own, as data, before it is drawn."""
+    from zimi import almanacpdf
+
+    html = "<html><head><title>t</title></head><body><math><mi>x</mi></math></body></html>"
+    out = almanacpdf._with_math_font(html)
+    assert "data:font/ttf;base64," in out and out.index("Zimi Math") < out.index("</head>")
+    assert almanacpdf._with_math_font("<p>no maths</p>") == "<p>no maths</p>", "only where there is maths"

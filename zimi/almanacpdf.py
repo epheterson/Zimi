@@ -105,6 +105,41 @@ def lookup(pdf_id):
     return (got[0], got[1]) if got and os.path.exists(got[0]) else None
 
 
+# A maths font the PDF carries itself: the equations are MathML, drawn with
+# a system maths font, and a server (the NAS's Docker image) may have none,
+# so they would fall back to plain text glyphs. Noto Sans Math (SIL OFL 1.1)
+# ships with Zimi and is laid into each document, as data, before it is
+# drawn; nothing is fetched.
+MATH_FONT = os.path.join(os.path.dirname(__file__), "static", "fonts", "NotoSansMath-Regular.ttf")
+_math_css = None
+
+
+def _math_style():
+    global _math_css
+    if _math_css is None:
+        try:
+            import base64
+
+            with open(MATH_FONT, "rb") as f:
+                data = base64.b64encode(f.read()).decode("ascii")
+            _math_css = (
+                "<style>@font-face{font-family:'Zimi Math';src:url(data:font/ttf;base64,"
+                + data
+                + ") format('truetype')}math{font-family:'Zimi Math','STIX Two Math','Cambria Math',math}</style>"
+            )
+        except OSError:
+            _math_css = ""
+    return _math_css
+
+
+def _with_math_font(html):
+    style = _math_style()
+    if not style or "<math" not in html:
+        return html
+    at = html.find("</head>")
+    return html[:at] + style + html[at:] if at >= 0 else style + html
+
+
 def _render(html, paper):
     sync_playwright = renderer._playwright_module()
     if sync_playwright is None:
@@ -118,7 +153,7 @@ def _render(html, paper):
             ctx.route("**/*", lambda route: route.abort())
             page = ctx.new_page()
             page.set_default_timeout(RENDER_TIMEOUT_SECONDS * 1000)
-            page.set_content(html, wait_until="load")
+            page.set_content(_with_math_font(html), wait_until="load")
             page.emulate_media(media="print")
             return page.pdf(
                 format=paper,

@@ -11,6 +11,13 @@ it — downloads fall back to plain HTTP.
 - License: BSD 3-Clause
 - Source code: https://github.com/arvidn/libtorrent
 
+## Noto Sans Math
+
+The Almanac's tables PDF embeds Noto Sans Math so its equations draw on a server with no maths font of its own. Shipped unmodified as `zimi/static/fonts/NotoSansMath-Regular.ttf`, with its licence text (`zimi/static/fonts/NotoSansMath-OFL.txt`).
+
+- Project: https://github.com/notofonts/math
+- License: SIL Open Font License 1.1
+
 ## Temml
 
 The Almanac's Tables and Calculations draw their Equations from LaTeX to MathML with Temml 0.13.5, shipped unmodified in `zimi/static/temml/` (`temml.min.js`, `Temml-Local.css`, `Temml.woff2`) with its licence text (`zimi/static/temml/LICENSE`), and loaded only when Equations are opened or printed. Every build carries it, not only the desktop ones.
