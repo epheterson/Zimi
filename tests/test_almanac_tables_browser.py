@@ -1109,6 +1109,78 @@ def test_the_whole_book_as_a_pdf_has_parts_chapters_and_page_numbers(page):
     assert not page.errors, page.errors
 
 
+def test_a_busy_server_is_asked_once_more_and_a_slow_pdf_says_so(page):
+    """The server is drawing someone else's PDF (a 503 naming its wait):
+    the icons keep spinning, the page asks once more after the wait, and the
+    PDF opens. One still coming after TB_PDF_SLOW_MS says so, quietly, until
+    the reader opens."""
+    _open(page, "seasons")
+    seen = []
+
+    def busy_once(route):
+        seen.append(route.request.method)
+        if len(seen) == 1:
+            route.fulfill(
+                status=503,
+                headers={"Retry-After": "1", "Content-Type": "application/json"},
+                body='{"error": "busy"}',
+            )
+        else:
+            route.continue_()
+
+    page.route("**/almanac/pdf", busy_once)
+    page.evaluate("() => { window.__slow = TB_PDF_SLOW_MS; TB_PDF_SLOW_MS = 300; }")
+    toast = "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_making'))"
+    try:
+        page.click("[data-tb-act='print']")
+        page.wait_for_function("() => " + toast, timeout=5000)
+        page.wait_for_timeout(500)
+        assert len(seen) == 1 and page.evaluate(
+            "document.querySelector('[data-tb-act=print]').classList.contains('alm-busy')"
+        )
+        page.wait_for_function(PDF_SHOWN, timeout=120000)
+        assert len(seen) == 2
+        assert not page.evaluate(toast)
+        assert page.evaluate("document.querySelectorAll('.alm-busy').length") == 0
+        page.evaluate("goBack()")
+        page.wait_for_function("() => !readerOpen", timeout=10000)
+    finally:
+        page.unroute("**/almanac/pdf")
+        page.evaluate("() => { TB_PDF_SLOW_MS = window.__slow; }")
+    assert not page.errors, page.errors
+
+
+def test_still_busy_after_the_retry_prints_the_page(page):
+    """Busy twice: the toast, then the browser's own dialog over the book."""
+    _open(page, "seasons")
+    seen = []
+
+    def busy(route):
+        seen.append(1)
+        route.fulfill(
+            status=503,
+            headers={"Retry-After": "1", "Content-Type": "application/json"},
+            body='{"error": "busy"}',
+        )
+
+    page.route("**/almanac/pdf", busy)
+    page.evaluate(
+        "() => { window.__printed = 0; window.__pr = window.print; window.print = () => { window.__printed++; }; }"
+    )
+    try:
+        page.click("[data-tb-act='print']")
+        page.wait_for_function("() => window.__printed === 1", timeout=30000)
+        assert len(seen) == 2
+        assert page.evaluate(
+            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
+        )
+        page.evaluate("_tbPrintOff()")
+    finally:
+        page.unroute("**/almanac/pdf")
+        page.evaluate("() => { window.print = window.__pr; }")
+    assert not page.errors, page.errors
+
+
 def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
     """No PDF (the server failed): a short toast, then the browser's dialog
     over the book, asked for once it is all there."""

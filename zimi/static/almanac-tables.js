@@ -1246,26 +1246,50 @@ function _tbPdfName(ids, showing) {
   var day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   return [showing ? _tbT('pdf_name') : _tbName(ids[0]), _tbShortName(p), day].join(' - ');
 }
+// A busy server (one render at a time) names its wait; the page asks once
+// more after it, the icons still spinning, then prints the page itself.
+var TB_PDF_RETRY_MS = 5000;
+var TB_PDF_RETRY_MAX_MS = 15000;
+// A PDF still coming after this says so, quietly, until the reader opens.
+var TB_PDF_SLOW_MS = 8000;
+function _tbPdfWait(r) {
+  var s = parseFloat(r.headers.get('Retry-After'));
+  return Math.min(s > 0 ? s * 1000 : TB_PDF_RETRY_MS, TB_PDF_RETRY_MAX_MS);
+}
+function _tbPdfToastOff(msg) {
+  document.querySelectorAll('body > div').forEach(function (d) { if (d.textContent === msg) d.remove(); });
+}
 function _tbPdf(ids, showing) {
   var book = _tbBookBuild(ids, showing);
   if (!book) return Promise.reject('empty');
   var name = _tbPdfName(ids, showing), paper = _tbPaper();
-  var html = _tbBookDoc(book, name, paper);
+  var body = JSON.stringify({ html: _tbBookDoc(book, name, paper), paper: paper, name: name });
   _tbPrintOff();
   var ctl = window.AbortController ? new AbortController() : null;
   var timer = ctl && setTimeout(function () { ctl.abort(); }, TB_PDF_TIMEOUT_MS);
-  return fetch(TB_PDF_URL, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-    body: JSON.stringify({ html: html, paper: paper, name: name }), signal: ctl ? ctl.signal : undefined
+  var making = _tbT('pdf_making');
+  var slow = setTimeout(function () {
+    if (typeof _showToast === 'function') _showToast(making, TB_PDF_TIMEOUT_MS);
+  }, TB_PDF_SLOW_MS);
+  var settle = function () { clearTimeout(timer); clearTimeout(slow); _tbPdfToastOff(making); };
+  var post = function () {
+    return fetch(TB_PDF_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+      body: body, signal: ctl ? ctl.signal : undefined
+    });
+  };
+  return post().then(function (r) {
+    if (r.status !== 503) return r;
+    return new Promise(function (resolve) { setTimeout(resolve, _tbPdfWait(r)); }).then(post);
   }).then(function (r) {
-    clearTimeout(timer);
     if (r.status === 501) { _tb.pdfOff = true; throw 'unavailable'; }
     if (!r.ok) throw 'failed';
     return r.json();
-  }, function (e) { clearTimeout(timer); throw e; }).then(function (j) {
+  }).then(function (j) {
+    settle();
     if (!j || !j.url) throw 'failed';
     _tbPdfShow(j.url, name);
-  });
+  }, function (e) { settle(); throw e; });
 }
 // The PDF in the shell's reader, over the Almanac set aside (not closed):
 // Back, from the reader's bar, the browser or Escape, returns to it where
