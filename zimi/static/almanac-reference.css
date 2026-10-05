@@ -361,85 +361,119 @@
 }
 
 /* ── The book (almanac-tables.js _tbBookBuild): every tile shown, or one,
-   set for paper like a printed almanac. A title page (the place, the days,
-   what is shown, the contents), then each tile on its own page: its name,
-   one line of where and when, the table between clean rules, How this is
-   made open with its equations drawn. A book serif with lining, even-width
-   figures; black on white, rules and secondary words dark enough for grey
-   ink. Its rules hold on screen as on paper, so a table's width can be
-   measured before printing (a wide one gets a landscape page). ── */
+   set for paper like a printed almanac. A title page; the contents (part
+   by part, each chapter's number, a dotted leader, its page); each part's
+   own page listing its chapters; then the chapters: a table or a
+   calculation starts a page under a running head (its part, its number
+   and name), the constants run on one after another. A chapter is its
+   name, a line of where and when, the table between clean rules, How
+   this is made open with its equations drawn. One baseline (--bl) sets
+   every space; a book serif with lining, even-width figures; black on
+   white, rules and secondary words dark enough for grey ink. The rules
+   hold on screen as on paper, so a table's width can be measured before
+   printing (a wide one gets a landscape page). ── */
 .alm-book {
   --text: #000; --text2: #222; --text3: #333; --border: #000; --tb-rule: #999; --surface: #fff; --surface2: #fff; --bg: #fff;
   --amber: #000; --amber-glow: transparent; --amber-border: #000;
-  background: #fff; color: #000; font-family: var(--tb-book-serif); font-size: 10pt; line-height: 1.4;
+  --bl: 13pt; --bh: 6.5pt;
+  background: #fff; color: #000; font-family: var(--tb-book-serif); font-size: 9.5pt; line-height: var(--bl);
   font-variant-numeric: lining-nums tabular-nums; font-kerning: normal;
 }
-.alm-book h1, .alm-book h2, .alm-book h3, .alm-book h4, .alm-book summary, .alm-book button, .alm-book .tb-mono { font-family: inherit; }
-.alm-book h1, .alm-book h2, .alm-book h3, .alm-book h4, .alm-book summary, .tb-eq-l { break-after: avoid; }
+.alm-book h1, .alm-book h2, .alm-book h3, .alm-book summary, .alm-book button, .alm-book .tb-mono { font-family: inherit; }
+.alm-book h1, .alm-book h2, .alm-book h3, .alm-book summary, .alm-book .tb-subh, .tb-eq-l, .alm-book .tb-printhead { break-after: avoid; }
+.alm-book a { color: inherit; text-decoration: none; }
+/* Read in the outline, not seen: "Part I · Tables" set as two lines. The
+   outline takes the drawn text, so the joint is drawn, tiny and clear. */
+.alm-book .tb-vh { font-size: 1pt; letter-spacing: 0; color: transparent; }
 
-/* The title page: a centred block, then the contents. */
-.tb-book-title { break-after: page; padding-top: 28mm; text-align: center; }
-.tb-book-kicker { margin: 0 0 3mm; font-size: 9pt; letter-spacing: 0.24em; text-transform: uppercase; }
-.tb-book-title h1 { margin: 0 auto 6mm; padding-bottom: 5mm; max-width: 140mm; border-bottom: 1.2pt solid #000; font-size: 30pt; font-weight: 400; line-height: 1.15; }
-.tb-book-title p { margin: 0 0 1.2mm; font-size: 10.5pt; }
-.tb-book-title .tb-book-place { font-size: 13pt; }
-.tb-book-title .tb-book-showing { margin-top: 3mm; font-style: italic; }
-.tb-book-toc { max-width: 140mm; margin: 14mm auto 0; text-align: start; }
-.tb-book-toc h2 { margin: 0 0 2mm; padding-bottom: 1.5mm; border-bottom: 0.6pt solid #000; font-size: 9pt; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
-.tb-book-toc h3 { margin: 3.5mm 0 0.5mm; font-size: 10pt; font-weight: 600; }
+/* The title page: the book's name a third of the way down, its place and
+   days under a rule, which Zimi made it at the foot. */
+.tb-book-title { break-after: page; padding-top: 62mm; text-align: center; }
+.tb-book-kicker { margin: 0 0 var(--bh); font-size: 9pt; letter-spacing: 0.24em; text-transform: uppercase; }
+.tb-book-title .tb-book-name { margin: 0 auto calc(var(--bl) * 1.5); padding-bottom: var(--bl); max-width: 130mm; border-bottom: 1.2pt solid #000; font-size: 30pt; line-height: 36pt; }
+.tb-book-title p { margin: 0; font-size: 10.5pt; line-height: var(--bl); }
+.tb-book-title .tb-book-place { margin-bottom: var(--bh); font-size: 13pt; line-height: calc(var(--bl) * 1.5); }
+.tb-book-title .tb-book-showing { margin-top: var(--bl); font-style: italic; }
+.alm-book .tb-made { margin: var(--bh) 0 0; font-size: 8.5pt; font-style: italic; color: #333; }
+.tb-book-title .tb-made { margin-top: calc(var(--bl) * 4); }
+
+/* The contents: a page of its own, part by part. */
+.tb-book-toc { page: tb-front; break-after: page; max-width: 150mm; margin: 0 auto; }
+.tb-book-toc h1 { margin: calc(var(--bl) * 2) 0 calc(var(--bl) * 1.5); font-size: 19pt; font-weight: 400; line-height: calc(var(--bl) * 2); }
+.tb-toc-part { margin: var(--bl) 0 var(--bh); font-size: 10pt; font-weight: 600; break-after: avoid; }
+.tb-toc-part .tb-toc-pn { font-weight: 400; font-size: 8pt; letter-spacing: 0.16em; text-transform: uppercase; margin-inline-end: 2mm; }
 .tb-book-toc ol { list-style: none; margin: 0; padding: 0; }
-/* Each tile, a dotted leader, then where and when it is for. */
-.tb-book-toc li { display: flex; align-items: baseline; gap: 2mm; margin: 0.6mm 0; font-size: 10pt; }
-.tb-book-toc li::after { content: ''; order: 1; flex: 1; min-width: 6mm; border-bottom: 0.6pt dotted #555; }
-.tb-book-toc .tb-toc-sub { order: 2; font-size: 9pt; font-style: italic; color: #222; }
-.alm-book .tb-made { margin: 2mm 0 0; font-size: 8.5pt; font-style: italic; color: #333; }
-.tb-book-title .tb-made { margin-top: 12mm; }
+.tb-book-toc li { margin: 0; break-inside: avoid; }
+/* Each chapter: its number, its name, where and when (cut short if it is
+   long), a dotted leader, its page. */
+.tb-book-toc li a { display: flex; align-items: baseline; gap: 2mm; font-size: 10pt; line-height: calc(var(--bl) * 1.25); }
+.tb-toc-n { flex: none; min-width: 8mm; font-variant-numeric: lining-nums tabular-nums; }
+.tb-toc-name { flex: none; }
+.tb-toc-sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8.5pt; font-style: italic; color: #333; }
+.tb-book-toc li a::after { content: ''; order: 3; flex: 1 0 6mm; border-bottom: 0.9pt dotted #777; transform: translateY(-0.25em); }
+.tb-toc-pg { order: 4; flex: none; min-width: 7mm; text-align: end; }
 
-/* A tile's page. */
-.tb-book-page + .tb-book-page { break-before: page; }
+/* A part's page: its number and name, then what is in it. */
+.tb-book-part { page: tb-part; break-before: page; break-after: page; padding-top: 62mm; text-align: center; }
+.tb-book-part h1 { margin: 0 0 calc(var(--bl) * 2); font-weight: 400; }
+.tb-part-n { display: block; margin-bottom: var(--bh); font-size: 11pt; letter-spacing: 0.2em; font-variant-caps: all-small-caps; line-height: var(--bl); }
+.tb-part-name { display: block; padding-bottom: var(--bl); font-size: 30pt; line-height: 36pt; border-bottom: 1.2pt solid #000; max-width: 110mm; margin: 0 auto; }
+.tb-part-list { list-style: none; display: inline-block; margin: 0; padding: 0; text-align: start; font-size: 10.5pt; line-height: calc(var(--bl) * 1.4); }
+.tb-part-list .tb-toc-n { display: inline-block; min-width: 9mm; }
+
+/* A chapter. */
+.alm-book .tb-book-const + .tb-book-const { margin-top: calc(var(--bl) * 2.5); }
+.tb-book-const { break-inside: avoid; }
 .tb-book-wide { page: tb-wide; }
 .alm-book .tb-body { max-width: none; margin: 0; padding: 0; }
-.alm-book .tb-printhead { display: block; margin: 0 0 5mm; padding: 0 0 2.5mm; border-bottom: 0.8pt solid #000; }
-.alm-book .tb-printhead h1 { margin: 0; font-size: 19pt; font-weight: 400; line-height: 1.2; }
-.alm-book .tb-printhead p { margin: 0.8mm 0 0; font-size: 10pt; }
+.alm-book .tb-printhead { display: block; margin: 0 0 var(--bl); padding: 0 0 var(--bh); border-bottom: 0.8pt solid #000; }
+.alm-book .tb-printhead h1, .alm-book .tb-printhead h2 { margin: 0; font-size: 19pt; font-weight: 400; line-height: calc(var(--bl) * 2); }
+.alm-book .tb-ch-n { margin-inline-end: 1.5mm; color: #333; }
+.alm-book .tb-printhead p { margin: 0; font-size: 10pt; line-height: var(--bl); }
 .alm-book .tb-printhead .tb-sub { font-style: italic; }
 .alm-book .tb-at { display: none; }
 /* One tile: its heading is the title block. */
-.alm-book-one .tb-printhead { margin-bottom: 7mm; padding-bottom: 4mm; border-bottom-width: 1.2pt; }
-.alm-book-one .tb-printhead h1 { font-size: 26pt; }
+.alm-book-one .tb-printhead { margin-bottom: calc(var(--bl) * 1.5); padding-bottom: var(--bl); border-bottom-width: 1.2pt; }
+.alm-book-one .tb-printhead h1 { font-size: 26pt; line-height: calc(var(--bl) * 2.5); }
 .alm-book-one .tb-at { display: block; }
 
 /* Tables: rules above and below, a finer one under the head, hairlines
-   between rows; the head again on every page, no row split across two. */
+   between rows a baseline apart; the head again on every page, no row
+   split across two. As wide as their columns need, not the page. */
 .alm-book .tb-out { min-height: 0; opacity: 1; transition: none; }
 .alm-book .tb-frame { position: static; max-height: none; overflow: visible; border: 0; border-radius: 0; background: none; isolation: auto; }
-.alm-book .tb-table { border-collapse: collapse; width: 100%; font-size: 8.5pt; line-height: 1.25; border-top: 1pt solid #000; border-bottom: 1pt solid #000; }
+.alm-book .tb-table { border-collapse: collapse; width: auto; min-width: 66%; font-size: 8.5pt; line-height: 10pt; border-top: 1pt solid #000; border-bottom: 1pt solid #000; }
 .alm-book .tb-table thead { display: table-header-group; }
 .alm-book .tb-table tr { break-inside: avoid; }
-.alm-book .tb-table th, .alm-book .tb-table td { position: static; padding: 1.5pt 4pt; border-bottom: 0.3pt solid #999; background: none; color: #000; box-shadow: none; }
-.alm-book .tb-table thead th { padding-top: 3pt; padding-bottom: 3pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.02em; vertical-align: bottom; }
+.alm-book .tb-table th, .alm-book .tb-table td { position: static; padding: 1.5pt 5pt; border-bottom: 0.3pt solid #999; background: none; color: #000; box-shadow: none; }
+.alm-book .tb-table thead th { padding-top: 3pt; padding-bottom: 2.5pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.02em; vertical-align: bottom; }
 .alm-book .tb-table tbody th { font-weight: 400; }
 .alm-book .tb-table tbody tr:last-child > * { border-bottom: 0; }
 .alm-book .tb-table tr.tb-today > *, .alm-book .tb-table tr.tb-seen > * { background-image: none; box-shadow: none; }
 .alm-book .tb-table tr.tb-six > * { border-bottom-color: #333; }
 .alm-book .tb-table .tb-sep { border-inline-start: 0.3pt solid #999; }
-.alm-book .tb-table tr.tb-grp th { padding-top: 7pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.alm-book .tb-table tr.tb-grp th { padding-top: 6.5pt; border-bottom: 0.7pt solid #000; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
 .alm-book .tb-table .tb-dim, .alm-book .tb-table .tb-lo, .alm-book .tb-table .tb-h { color: #333; }
 .alm-book .tb-table .tb-feast, .alm-book .tb-table tr.tb-feastrow th { color: #000; font-style: italic; }
 .alm-book .tb-ph svg { width: 8pt; height: 8pt; }
 .alm-book .tb-book-wide .tb-table { font-size: 8pt; }
-.alm-book .tb-note, .alm-book .tb-lede { max-width: none; margin-top: 2.5mm; font-size: 8.5pt; line-height: 1.4; color: #222; }
-.alm-book .tb-empty { border: 0.5pt solid #999; border-radius: 0; color: #222; }
-.alm-book .tb-h3, .alm-book h3 { margin: 5mm 0 2mm; font-size: 8pt; letter-spacing: 0.12em; color: #000; }
-.alm-book .tb-figure, .alm-book .tb-plot, .alm-book .tb-working { break-inside: avoid; }
+.alm-book .tb-consts, .alm-book .tb-book-wide .tb-table { width: 100%; }
+.alm-book .tb-note, .alm-book .tb-lede { max-width: none; margin: var(--bh) 0 0; font-size: 8.5pt; line-height: 11pt; color: #222; }
+.alm-book .tb-empty { padding: var(--bl) 0; border: 0.5pt solid #999; border-radius: 0; color: #222; }
+/* A chapter's own subheads (text, not outline headings). */
+.alm-book .tb-subh { margin: var(--bl) 0 var(--bh); font-size: 7.5pt; font-weight: 600; letter-spacing: 0.12em; line-height: var(--bl); text-transform: uppercase; color: #000; }
+.alm-book .tb-figure, .alm-book .tb-plot, .alm-book .tb-working, .alm-book .tb-kv { break-inside: avoid; }
+.alm-book .tb-kv { gap: var(--bh) 6mm; }
+.alm-book .tb-kv dt { font-size: 8pt; color: #333; }
+.alm-book .tb-kv dd { font-size: 9.5pt; }
 
 /* A calculation: its answer, the values it was worked from, the working. */
-.alm-book .tk-answer { position: static; margin: 0 0 4mm; padding: 0 0 3mm; border-bottom: 0.5pt solid #000; background: none; }
-.alm-book .tk-answer-glyph svg { width: 28pt; height: 28pt; }
-.alm-book .tk-big { color: #000; font-size: 17pt; font-weight: 600; }
-.alm-book .tk-sub { margin-top: 1mm; color: #222; font-size: 10pt; font-style: italic; }
-.alm-book .tk-fields { gap: 3mm; margin-bottom: 4mm; }
-.alm-book .tk-group-h { margin: 0 0 1mm; color: #000; font-size: 7.5pt; letter-spacing: 0.12em; }
+.alm-book .tk-answer { position: static; margin: 0 0 var(--bl); padding: 0 0 var(--bh); border-bottom: 0.5pt solid #000; background: none; }
+.alm-book .tk-answer-glyph svg { width: 26pt; height: 26pt; }
+.alm-book .tk-big { color: #000; font-size: 17pt; font-weight: 600; line-height: calc(var(--bl) * 1.5); }
+.alm-book .tk-sub { margin-top: 0; color: #222; font-size: 10pt; font-style: italic; }
+.alm-book .tk-fields { gap: var(--bh) 6mm; margin-bottom: var(--bl); }
+.alm-book .tk-group-h { margin: 0 0 2pt; }
 .alm-book .tk-rows { border: 0; border-top: 0.7pt solid #000; border-bottom: 0.7pt solid #000; border-radius: 0; background: none; }
 .alm-book .tk-row { min-height: 0; padding: 1.5pt 0; break-inside: avoid; }
 .alm-book .tk-row + .tk-row { border-top: 0.3pt solid #999; }
@@ -449,27 +483,38 @@
   min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: #000; font: inherit; font-size: 9.5pt;
 }
 .alm-book .tk-seg { overflow: visible; }
+.alm-book .tb-cal-list { margin: var(--bh) 0 0; border: 0; border-top: 0.7pt solid #000; border-bottom: 0.7pt solid #000; border-radius: 0; break-inside: avoid; }
+.alm-book .tb-cal-line { padding: 1.5pt 0; font-size: 9.5pt; line-height: 10pt; }
+.alm-book .tb-cal-line + .tb-cal-line { border-top: 0.3pt solid #999; }
+.alm-book .tb-cal-sys { color: #000; }
 .alm-book .tk-seg button:not([aria-checked="true"]) { display: none; }
 
-/* How this is made, open: small capitals over each part, the equations
-   drawn, each under its name. */
-.alm-book .tb-how { margin-top: 6mm; padding-top: 3mm; border-top: 0.7pt solid #000; color: #000; font-size: 9pt; }
-.alm-book .tb-how > summary, .alm-book .tb-eqs > summary { display: block; margin: 0 0 1.5mm; padding: 0; color: #000; font-size: 11pt; font-weight: 600; list-style: none; cursor: auto; }
-.alm-book .tb-eqs > summary { margin-top: 4mm; font-size: 10pt; }
+/* How this is made, open: small capitals over each part, then the
+   equations: each one centred, its name beside it in a column of its own
+   (above it, where the equation needs the whole measure). */
+.alm-book .tb-how { margin-top: calc(var(--bl) * 1.5); padding-top: var(--bh); border-top: 0.7pt solid #000; color: #000; font-size: 8.5pt; line-height: 11pt; orphans: 2; widows: 2; }
+.alm-book .tb-how > summary, .alm-book .tb-eqs > summary { display: block; margin: 0 0 var(--bh); padding: 0; list-style: none; cursor: auto; }
+.alm-book summary h3 { margin: 0; color: #000; font-size: 11pt; font-weight: 600; line-height: var(--bl); }
+.alm-book .tb-eqs > summary { margin-top: var(--bl); }
+.alm-book .tb-eqs > summary h3 { font-size: 10pt; }
 .alm-book summary::-webkit-details-marker { display: none; }
-.alm-book .tb-how h4 { margin: 3mm 0 1mm; color: #000; font-size: 7.5pt; letter-spacing: 0.14em; }
-.alm-book .tb-how ul { margin: 0 0 1mm; padding-inline-start: 4.5mm; }
-.alm-book .tb-how li { margin: 0.4mm 0; line-height: 1.35; break-inside: avoid; }
+.alm-book .tb-how .tb-subh { margin: var(--bh) 0 2pt; }
+.alm-book .tb-how ul { margin: 0; padding-inline-start: 4.5mm; }
+.alm-book .tb-how li { margin: 0; line-height: 11pt; break-inside: avoid; }
 .alm-book .tb-how-k { padding: 0; border: 0; background: none; color: #000; font: inherit; font-style: italic; text-decoration: none; }
-.alm-book .tb-eq { margin: 1mm 0 3mm; }
-.alm-book .tb-eq-l { color: #222; font-size: 8pt; font-style: italic; }
-.alm-book .tb-eq-m { overflow: visible; padding: 0.5mm 0 0 6mm; color: #000; }
-[dir="rtl"] .alm-book .tb-eq-m { padding: 0.5mm 6mm 0 0; }
-.alm-book .tb-eq-m math { font-size: 10.5pt; color: #000; }
-/* A series' terms: small, in two columns, its head over each. */
-.alm-book .tb-eq-frame { margin: 1mm 0 3mm; columns: 2; column-gap: 8mm; }
-.alm-book .tb-eq-frame .tb-table { font-size: 7pt; line-height: 1.15; }
-.alm-book .tb-eq-frame .tb-table th, .alm-book .tb-eq-frame .tb-table td { padding-top: 0.6pt; padding-bottom: 0.6pt; }
+.alm-book .tb-eq { display: grid; grid-template-columns: 36mm minmax(0, 1fr); column-gap: 4mm; align-items: center; margin: 0 0 3pt; break-inside: avoid; }
+.alm-book .tb-eq.tb-eq-long { grid-template-columns: minmax(0, 1fr); }
+.alm-book .tb-eq-l { color: #222; font-size: 8pt; font-style: italic; line-height: 10pt; }
+.alm-book .tb-eq-m { overflow: visible; padding: 1pt 0; color: #000; text-align: center; }
+.alm-book .tb-eq-m math { font-size: 10pt; color: #000; }
+.alm-book .tb-eq-m math.tml-display { width: auto; min-width: 0; text-align: center; }
+.alm-book .tb-eq-note { margin: var(--bh) 0; }
+/* A series' terms: small, in two balanced columns, its head over each. */
+.alm-book .tb-eq-frame { margin: var(--bh) 0 var(--bl); columns: 2; column-gap: 8mm; column-fill: balance; }
+.alm-book .tb-eq-frame.tb-eq-few { columns: 1; }
+.alm-book .tb-eq-frame.tb-eq-few .tb-table { width: auto; }
+.alm-book .tb-eq-frame .tb-table { width: 100%; font-size: 7pt; line-height: 8.5pt; }
+.alm-book .tb-eq-frame .tb-table th, .alm-book .tb-eq-frame .tb-table td { padding-top: 0.5pt; padding-bottom: 0.5pt; }
 
 /* The book is for paper only (and, unseen, for measuring). */
 @media screen {
