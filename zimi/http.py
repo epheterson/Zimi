@@ -1900,9 +1900,11 @@ def _almanac_pdf_post(handler, data):
     try:
         pdf_id, name = _apdf.make(html, data.get("paper"), data.get("name"))
     except _apdf.Busy:
-        return handler._json(503, {"error": "busy"}, retry_after=5)
+        return handler._json(
+            503, {"error": "busy"}, retry_after=_apdf.RETRY_AFTER_SECONDS
+        )
     except Exception as e:
-        log.warning("almanac pdf: render failed: %s", e)
+        log.warning("almanac pdf: render failed: %s: %s", type(e).__name__, e)
         return handler._json(500, {"error": "render failed"})
     return handler._json(
         200,
