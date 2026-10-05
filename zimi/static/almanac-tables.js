@@ -1022,10 +1022,11 @@ function _tbBookSend(ids, showing, share) {
   } else copy();
 }
 // A tile's page as a book chapter: headings that make the PDF's outline
-// (Chromium's comes from them). Its own heading is the chapter's, set by the
-// book; How this is made and its Equations are its sections (h3, inside
-// their summaries); the tile's own subheads become text, so the outline is
-// parts, chapters and those two, not every small heading on the page.
+// (Chromium's comes from them, ARIA headings too). Its own heading is the
+// chapter's, set by the book; How this is made and its Equations keep a
+// heading's look (tb-sumh) but are not headings, and the tile's own subheads
+// become text, so the outline is the parts and the chapters only (Eric,
+// 2026-10-05: "PDF depth sounds okay").
 function _tbRetag(n, tag, cls) {
   var m = document.createElement(tag);
   [].forEach.call(n.attributes, function (a) { m.setAttribute(a.name, a.value); });
@@ -1036,7 +1037,7 @@ function _tbRetag(n, tag, cls) {
 }
 function _tbBookHeadings(body) {
   body.querySelectorAll('h3, h4').forEach(function (n) { _tbRetag(n, 'p', 'tb-subh'); });
-  body.querySelectorAll('details > summary').forEach(function (s) { s.innerHTML = '<h3>' + s.innerHTML + '</h3>'; });
+  body.querySelectorAll('details > summary').forEach(function (s) { s.innerHTML = '<div class="tb-sumh">' + s.innerHTML + '</div>'; });
 }
 // The book's parts, in order: Tables, Calculations, Constants. Each that
 // has a tile is a part, numbered as it falls (I, II, III), and each tile in

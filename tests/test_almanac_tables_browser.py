@@ -773,7 +773,8 @@ def test_the_whole_book_of_what_is_shown(page):
             " parts: [...b.querySelectorAll('.tb-book-part h1')].map((h) => h.textContent),"
             " chapters: [...b.querySelectorAll('.tb-book-page')].map((p) => p.id + ' ' + p.querySelector('.tb-printhead h2').textContent),"
             " outline: [...b.querySelectorAll('h1, h2, h3')].map((h) => h.tagName).join(''),"
-            " heads3: [...b.querySelectorAll('h3')].every((h) => h.parentNode.tagName === 'SUMMARY'),"
+            " sumh: [...b.querySelectorAll('summary')].every((s) => s.firstElementChild && s.firstElementChild.classList.contains('tb-sumh')) && b.querySelectorAll('.tb-sumh').length > 0,"
+            " ariaHeads: b.querySelectorAll('[role=\"heading\"]').length,"
             " closed: b.querySelectorAll('details:not([open])').length, math: b.querySelectorAll('.tb-eq math').length,"
             " eqs: b.querySelectorAll('.tb-eq').length, ids: [...b.querySelectorAll('[id]')].filter((n) => !/^tb-(ch|part)-/.test(n.id)).length, controls: b.querySelectorAll('.tb-controls, button:not(.tb-how-k)').length,"
             " printing: document.documentElement.classList.contains('alm-ref-print') && document.documentElement.classList.contains('alm-book-print'),"
@@ -799,10 +800,12 @@ def test_the_whole_book_of_what_is_shown(page):
         ], book["chapters"]
         assert book["tocLinks"] == ["#tb-ch-" + n.replace(".", "-") for n in nums], book
         assert book["marks"] == ["tb-ch-" + n.replace(".", "-") for n in nums], book
-        # The outline's headings: Contents, then each part, its chapters,
-        # their How this is made and Equations (h3 in the summaries only).
-        assert book["outline"].startswith("H1H1H2H3"), book["outline"]
-        assert book["heads3"], book
+        # The outline's headings: Contents, then each part and its chapters
+        # only (Eric, 2026-10-05: "PDF depth sounds okay"). How this is made
+        # and Equations keep a heading's look in their summaries but are no
+        # headings, ARIA's included (Chromium's outline takes those too).
+        assert re.fullmatch(r"H1(H1(H2)+)+", book["outline"]), book["outline"]
+        assert book["sumh"] and book["ariaHeads"] == 0, book
         assert "Showing: Eclipses" in book["title"], book
         assert book["closed"] == 0 and book["ids"] == 0 and book["controls"] == 0, book
         assert book["eqs"] > 0 and book["math"] == book["eqs"], book

@@ -261,7 +261,9 @@ CHAPTERED = (
     "<p><a href='#tb-ch-1-1'>1.1 Alpha <span class='pg' data-pdf-page=\"tb-ch-1-1\"></span></a></p>"
     "<p><a href='#tb-ch-2-1'>2.1 Beta <span class='pg' data-pdf-page=\"tb-ch-2-1\"></span></a></p></nav>"
     "<section><h1>Part I · Tables</h1></section>"
-    "<section id='tb-ch-1-1'><h2>1.1 Alpha</h2><p>one</p></section>"
+    "<section id='tb-ch-1-1'><h2>1.1 Alpha</h2><p>one</p>"
+    "<details open><summary><div class='tb-sumh'>How this is made</div></summary><p>how</p>"
+    "<details open><summary><div class='tb-sumh'>Equations</div></summary><p>e</p></details></details></section>"
     "<section><p>more of Alpha</p></section>"
     "<section><h1>Part II · Constants</h1></section>"
     "<section id='tb-ch-2-1'><h2>2.1 Beta</h2><p>two</p></section>"
@@ -271,8 +273,9 @@ CHAPTERED = (
 
 def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
     """The book's headings become the PDF's outline (parts, then their
-    chapters), and the contents' page numbers are where each chapter fell:
-    the first render says, the second writes them in."""
+    chapters, and no deeper: Eric, 2026-10-05, "PDF depth sounds okay"), and
+    the contents' page numbers are where each chapter fell: the first render
+    says, the second writes them in."""
     _needs_chromium()
     status, body = _post(served, {"html": CHAPTERED, "paper": "A4", "name": "x"})
     assert status == 200, body
@@ -287,6 +290,7 @@ def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
         "2.1 Beta",
     ):
         assert want in titles, titles
+    assert "How this is made" not in titles and "Equations" not in titles, titles
     assert apdf.dest_pages(data) == {"tb-ch-1-1": 3, "tb-ch-2-1": 6}
     import shutil
     import subprocess

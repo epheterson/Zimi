@@ -379,7 +379,7 @@
   background: #fff; color: #000; font-family: var(--tb-book-serif); font-size: 9.5pt; line-height: var(--bl);
   font-variant-numeric: lining-nums tabular-nums; font-kerning: normal;
 }
-.alm-book h1, .alm-book h2, .alm-book h3, .alm-book summary, .alm-book button, .alm-book .tb-mono { font-family: inherit; }
+.alm-book h1, .alm-book h2, .alm-book h3, .alm-book .tb-sumh, .alm-book summary, .alm-book button, .alm-book .tb-mono { font-family: inherit; }
 .alm-book h1, .alm-book h2, .alm-book h3, .alm-book summary, .alm-book .tb-subh, .tb-eq-l, .alm-book .tb-printhead { break-after: avoid; }
 .alm-book a { color: inherit; text-decoration: none; }
 /* Read in the outline, not seen: "Part I · Tables" set as two lines. The
@@ -494,9 +494,9 @@
    (above it, where the equation needs the whole measure). */
 .alm-book .tb-how { margin-top: calc(var(--bl) * 1.5); padding-top: var(--bh); border-top: 0.7pt solid #000; color: #000; font-size: 8.5pt; line-height: 11pt; orphans: 2; widows: 2; }
 .alm-book .tb-how > summary, .alm-book .tb-eqs > summary { display: block; margin: 0 0 var(--bh); padding: 0; list-style: none; cursor: auto; }
-.alm-book summary h3 { margin: 0; color: #000; font-size: 11pt; font-weight: 600; line-height: var(--bl); }
+.alm-book summary .tb-sumh { margin: 0; color: #000; font-size: 11pt; font-weight: 600; line-height: var(--bl); }
 .alm-book .tb-eqs > summary { margin-top: var(--bl); }
-.alm-book .tb-eqs > summary h3 { font-size: 10pt; }
+.alm-book .tb-eqs > summary .tb-sumh { font-size: 10pt; }
 .alm-book summary::-webkit-details-marker { display: none; }
 .alm-book .tb-how .tb-subh { margin: var(--bh) 0 2pt; }
 .alm-book .tb-how ul { margin: 0; padding-inline-start: 4.5mm; }
