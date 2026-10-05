@@ -10,9 +10,11 @@ Run: pytest tests/test_almanac_pdf.py -v
 
 import json
 import os
+import queue
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +24,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.almanacpdf as apdf  # noqa: E402
+import zimi.renderer as renderer  # noqa: E402
 import zimi.server as srv  # noqa: E402
 from zimi.http import ZimHandler  # noqa: E402
 
@@ -202,11 +205,173 @@ def test_unknown_ids_and_names_are_safe():
     assert len(apdf.clean_name("x" * 500)) <= apdf.MAX_NAME_CHARS + 4
 
 
-def test_one_render_at_a_time(monkeypatch):
-    monkeypatch.setattr(apdf, "RENDER_QUEUE_SECONDS", 0.05)
-    with apdf._render_lock:
-        with pytest.raises(apdf.Busy):
-            apdf.make(BOOK, "A4", "x")
+def test_a_full_line_is_busy_and_says_when_to_ask_again(served, monkeypatch):
+    """One render at a time, QUEUE_DEPTH behind it; one more is a 503 whose
+    Retry-After the page waits out before it asks once more."""
+    monkeypatch.setattr(apdf, "_pending", apdf.QUEUE_DEPTH + 1)
+    with pytest.raises(apdf.Busy):
+        apdf.make(BOOK + "<!-- busy -->", "A4", "x")
+    req = urllib.request.Request(
+        served + "/almanac/pdf",
+        data=json.dumps({"html": BOOK + "<!-- busy -->"}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=30)
+    assert e.value.code == 503
+    assert e.value.headers["Retry-After"] == str(apdf.RETRY_AFTER_SECONDS)
+
+
+def test_a_wait_in_line_has_its_limit(monkeypatch):
+    """A request whose turn does not come in RENDER_QUEUE_SECONDS is busy,
+    and its render is dropped from the line."""
+    monkeypatch.setattr(apdf, "RENDER_QUEUE_SECONDS", 0.3)
+    # A line nobody takes from.
+    line = queue.Queue()
+    monkeypatch.setattr(apdf, "_jobs", line)
+    monkeypatch.setattr(apdf, "_ensure_worker", lambda: None)
+    t0 = time.monotonic()
+    with pytest.raises(apdf.Busy):
+        apdf.make(BOOK + "<!-- line -->", "A4", "x")
+    assert time.monotonic() - t0 < 5
+    assert line.get_nowait().cancelled
+    assert apdf._pending == 0
+
+
+def _counting(monkeypatch):
+    """How many documents the browser has drawn, from here on."""
+    drawn = []
+    real = apdf._draw
+
+    def draw(browser, html, paper):
+        drawn.append(html)
+        return real(browser, html, paper)
+
+    monkeypatch.setattr(apdf, "_draw", draw)
+    return drawn
+
+
+def test_the_same_document_again_is_the_same_file(served, monkeypatch):
+    """Asked twice, a document is drawn once: the second answer is the kept
+    file, at once, its time renewed; another paper is another file."""
+    _needs_chromium()
+    drawn = _counting(monkeypatch)
+    doc = BOOK.replace("Page 1", "Page one")
+    status, first = _post(served, {"html": doc, "paper": "A4", "name": "cache"})
+    assert status == 200 and len(drawn) == 1, first
+    made = apdf._files[first["id"]][2]
+    t0 = time.monotonic()
+    status, again = _post(served, {"html": doc, "paper": "A4", "name": "cache"})
+    assert status == 200 and again == first
+    assert time.monotonic() - t0 < 0.5 and len(drawn) == 1
+    assert apdf._files[first["id"]][2] >= made
+    status, letter = _post(served, {"html": doc, "paper": "Letter", "name": "cache"})
+    assert status == 200 and letter["id"] != first["id"] and len(drawn) == 2
+    # Once it has expired, the document is drawn again.
+    apdf.sweep(now=time.time() + apdf.PDF_TTL_SECONDS + 1)
+    status, later = _post(served, {"html": doc, "paper": "A4", "name": "cache"})
+    assert status == 200 and later["id"] != first["id"] and len(drawn) == 3
+
+
+def test_the_browser_stays_warm_between_renders(served):
+    _needs_chromium()
+    assert _post(served, {"html": BOOK + "<!-- w1 -->"})[0] == 200
+    launches = apdf._launches
+    assert _post(served, {"html": BOOK + "<!-- w2 -->"})[0] == 200
+    assert apdf._launches == launches and apdf._worker.pid
+
+
+def _wait(cond, seconds=15):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if cond():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_a_killed_browser_is_replaced_on_the_next_render(served):
+    """Killed while it waits (the OOM killer, a crash): the next render
+    launches another and succeeds."""
+    _needs_chromium()
+    assert _post(served, {"html": BOOK + "<!-- k1 -->"})[0] == 200
+    pid, launches = apdf._worker.pid, apdf._launches
+    apdf._worker.kill()
+    assert _wait(lambda: not renderer._process_alive(pid))
+    status, body = _post(served, {"html": BOOK + "<!-- k2 -->"})
+    assert status == 200, body
+    assert apdf._launches == launches + 1
+    assert _get(served, body["url"])[2].startswith(b"%PDF-")
+
+
+def test_a_crash_mid_render_fails_that_one_and_the_next_works(served, monkeypatch):
+    """The browser dies between the two passes: that request is a 500 (and
+    the log says why), the next is a PDF from a new browser."""
+    _needs_chromium()
+    real = apdf.dest_pages
+
+    def crash(data):
+        apdf._worker.kill()
+        return real(data)
+
+    monkeypatch.setattr(apdf, "dest_pages", crash)
+    status, body = _post(served, {"html": CHAPTERED + "<!-- crash -->"})
+    assert status == 500 and body == {"error": "render failed"}
+    monkeypatch.setattr(apdf, "dest_pages", real)
+    status, body = _post(served, {"html": CHAPTERED + "<!-- crash -->"})
+    assert status == 200, body
+
+
+def test_a_stuck_render_is_killed_at_its_time(served, monkeypatch):
+    """A render that never finishes (here, fonts that never settle) is cut
+    off at RENDER_TIMEOUT_SECONDS: its browser killed, a 500, and the next
+    render launches a new one."""
+    _needs_chromium()
+    assert _post(served, {"html": BOOK + "<!-- s0 -->"})[0] == 200
+    pid = apdf._worker.pid
+    monkeypatch.setattr(apdf, "RENDER_TIMEOUT_SECONDS", 2)
+    monkeypatch.setattr(apdf, "_FONTS_READY_JS", "new Promise(() => {})")
+    t0 = time.monotonic()
+    status, _ = _post(served, {"html": BOOK + "<!-- s1 -->"})
+    assert status == 500 and time.monotonic() - t0 < 15
+    assert _wait(lambda: not renderer._process_alive(pid))
+    monkeypatch.undo()
+    status, body = _post(served, {"html": BOOK + "<!-- s2 -->"})
+    assert status == 200, body
+
+
+def test_the_warm_browser_closes_when_idle(served, monkeypatch):
+    _needs_chromium()
+    monkeypatch.setattr(apdf, "BROWSER_IDLE_SECONDS", 0.5)
+    # The browser's thread reads the idle time as it starts to wait: start
+    # it afresh so it waits the short one.
+    apdf.shutdown()
+    assert _post(served, {"html": BOOK + "<!-- idle -->"})[0] == 200
+    pid = apdf._worker.pid
+    assert pid and renderer._process_alive(pid)
+    assert _wait(lambda: apdf._worker.pid is None and not renderer._process_alive(pid))
+    assert _post(served, {"html": BOOK + "<!-- idle 2 -->"})[0] == 200
+
+
+def test_the_browser_is_launched_afresh_after_its_share(served, monkeypatch):
+    _needs_chromium()
+    monkeypatch.setattr(apdf, "RENDERS_PER_BROWSER", 2)
+    apdf.shutdown()
+    launches = apdf._launches
+    for i in range(3):
+        assert _post(served, {"html": BOOK + "<!-- n%d -->" % i})[0] == 200
+    # One for the first two, a new one for the third.
+    assert apdf._launches == launches + 2
+
+
+def test_shutdown_closes_the_browser(served):
+    _needs_chromium()
+    assert _post(served, {"html": BOOK + "<!-- bye -->"})[0] == 200
+    pid = apdf._worker.pid
+    apdf.shutdown()
+    assert not apdf._worker.is_alive()
+    assert _wait(lambda: not renderer._process_alive(pid))
 
 
 def test_the_pdf_carries_its_own_maths_font():
@@ -292,6 +457,11 @@ def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
         assert want in titles, titles
     assert "How this is made" not in titles and "Equations" not in titles, titles
     assert apdf.dest_pages(data) == {"tb-ch-1-1": 3, "tb-ch-2-1": 6}
+    # The bookmarks go where the contents' links go: the same page objects.
+    named = dict(re.findall(rb"/(tb-ch-[\w-]+)\s*\[\s*(\d+) 0 R", data))
+    marks = dict(re.findall(rb"/Title \(([^)]*)\)\s*/Dest \[(\d+) 0 R", data))
+    assert marks[b"1.1 Alpha"] == named[b"tb-ch-1-1"]
+    assert marks[b"2.1 Beta"] == named[b"tb-ch-2-1"]
     import shutil
     import subprocess
 
@@ -307,10 +477,6 @@ def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
         ), text
 
 
-def test_page_marks_are_filled_or_left_empty():
-    html = '<span data-pdf-page="x"></span><span class="p" data-pdf-page="y"></span>'
-    assert (
-        apdf.fill_pages(html, {"x": 4})
-        == '<span data-pdf-page="x">4</span><span class="p" data-pdf-page="y"></span>'
-    )
+def test_unreadable_pdfs_have_no_pages():
     assert apdf.dest_pages(b"%PDF-1.4 not a real file") == {}
+    assert apdf.dest_pages(b"") == {}
