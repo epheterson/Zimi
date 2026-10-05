@@ -1886,6 +1886,53 @@ def _prefs_reply(prefs):
 _HEADER_BREAK_RE = re.compile(r"[\r\n]")
 
 
+def _almanac_pdf_post(handler, data):
+    """POST /almanac/pdf {html, paper, name}: the Almanac's print document
+    as a PDF (zimi/almanacpdf.py); answers {id, url}. 501 where there is no
+    Chromium, so the page prints it itself."""
+    from zimi import almanacpdf as _apdf
+
+    html = data.get("html") if isinstance(data, dict) else None
+    if not isinstance(html, str) or not html.strip():
+        return handler._json(400, {"error": "'html' must be the document"})
+    if not _apdf.available():
+        return handler._json(501, {"error": "unavailable"})
+    try:
+        pdf_id, name = _apdf.make(html, data.get("paper"), data.get("name"))
+    except _apdf.Busy:
+        return handler._json(503, {"error": "busy"}, retry_after=5)
+    except Exception as e:
+        log.warning("almanac pdf: render failed: %s", e)
+        return handler._json(500, {"error": "render failed"})
+    return handler._json(
+        200,
+        {"id": pdf_id, "url": "/almanac/pdf/%s/%s" % (pdf_id, quote(name))},
+    )
+
+
+def _almanac_pdf_get(handler, path):
+    """GET /almanac/pdf/<id>/<name>.pdf: a kept PDF, while it lasts."""
+    from zimi import almanacpdf as _apdf
+
+    parts = path.split("/")
+    got = _apdf.lookup(parts[3]) if len(parts) >= 4 else None
+    if not got:
+        return handler._json(404, {"error": "not found"})
+    try:
+        with open(got[0], "rb") as f:
+            data = f.read()
+    except OSError:
+        return handler._json(404, {"error": "not found"})
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/pdf")
+    handler.send_header(
+        "Content-Disposition", "inline; filename*=UTF-8''" + quote(got[1])
+    )
+    handler.send_header("Cache-Control", "private, no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
@@ -2367,6 +2414,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 )
                 return self._json(200, payload)
 
+            elif parsed.path.startswith("/almanac/pdf/"):
+                return _almanac_pdf_get(self, parsed.path)
             elif parsed.path == "/almanac-ages":
                 return self._json(200, _almanac_ages())
             elif parsed.path == "/almanac-place":
@@ -3126,11 +3175,14 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Backup import + per-user data save legitimately run large (a full
             # server bundle carries users/history/every per-user blob); every
             # other endpoint stays under the tight default cap.
-            body_cap = (
-                _srv.MAX_BACKUP_BODY
-                if parsed.path in ("/manage/backup", "/userdata")
-                else _srv.MAX_POST_BODY
-            )
+            if parsed.path in ("/manage/backup", "/userdata"):
+                body_cap = _srv.MAX_BACKUP_BODY
+            elif parsed.path == "/almanac/pdf":
+                from zimi import almanacpdf as _apdf
+
+                body_cap = _apdf.MAX_PRINT_BYTES
+            else:
+                body_cap = _srv.MAX_POST_BODY
             if content_len > body_cap:
                 return self._json(
                     413,
@@ -3243,6 +3295,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                     data.get("langs"),
                     data.get("titles"),
                 )
+
+            elif parsed.path == "/almanac/pdf":
+                retry_after = _check_rate_limit(
+                    self._client_ip(), limit=self._rate_limit_for_request()
+                )
+                if retry_after > 0:
+                    return self._json_rate_limited(retry_after)
+                return _almanac_pdf_post(self, data)
 
             elif parsed.path == "/collections":
                 # Auth: only enforce password when manage mode is on (collections are
