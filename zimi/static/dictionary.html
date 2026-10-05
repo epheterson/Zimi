@@ -92,7 +92,7 @@
   .menu .menu-item.on, .menu .menu-item.on svg { color: var(--amber); }
   .menu-item.busy svg path + path { animation: spk-wait 1s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) { .menu-item.busy svg path + path { animation: none; opacity: .45; } }
-  /* The front's door to the voices sheet: quiet, at the top, a 44px target. */
+  /* The front's door to Settings > Languages, where the voices are: quiet, at the top, a 44px target. */
   .front-top { display: flex; justify-content: flex-end; margin: -6px 0 2px; }
   .vdoor { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-inline-end: -10px; border: 0; border-radius: 22px; background: none; color: var(--text2); cursor: pointer; }
   .vdoor:hover, .vdoor:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
@@ -873,10 +873,9 @@ var PRESAY_MAX = 3; // as voices.PRESAY_MAX: the words a page has said ahead
 var _presaid = {};  // asked once each: wireSpeech runs again and again
 // Say's voices, behind the caret beside it: every voice that can say the
 // word (the server's engines, then this device's own), "default" beside
-// the one Say plays (a tick read as stuck), then Voices… for an admin.
-// Each is a listen; which voice Say plays is the person's preferred one
-// (Settings > Voices), which a pick here becomes unless they switched that
-// off, else the voices sheet's default. Eric, 2026-10-03: "A lil dropdown on the say button".
+// the one Say plays (a tick read as stuck), then Voices… (Settings >
+// Languages, a language's voice on each row). Each is a listen; which voice
+// Say plays is the last one picked here, else the server's default. Eric, 2026-10-03: "A lil dropdown on the say button".
 function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
 function voicesFor(caret) {
   var code = caret.getAttribute('data-voices'), word = mainOf(caret).getAttribute('data-say'), row = serverRow(code);
@@ -1215,6 +1214,7 @@ document.addEventListener('click', function(e) {
   var caret = e.target.closest && e.target.closest('[data-voices]');
   if (caret) { e.preventDefault(); if (caret.getAttribute('aria-expanded') === 'true') closeMenu(caret); else openMenu(caret); return; }
   var door = e.target.closest && e.target.closest('[data-sheet]');
+  // Voices… and the front's speaker: Settings > Languages, in the shell.
   if (door) { e.preventDefault(); closeMenus(); tell({ zimi: 'voices' }); return; }
   var item = e.target.closest && e.target.closest('.menu [data-say]');
   if (item) { e.preventDefault(); say(item, item); rememberVoice(item.getAttribute('data-engine')); return; }

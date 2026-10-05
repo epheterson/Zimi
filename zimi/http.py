@@ -4419,7 +4419,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         from zimi import voices as _voices
 
         if sub == "voices":
-            # ?all=1: every voice and language, as the Voices sheet lists
+            # ?all=1: every voice and language, as Settings > Languages lists
             # them; anyone sees what is here, an admin alone changes it.
             payload = (
                 _voices.manage_payload() if param("all") else _voices.page_payload()

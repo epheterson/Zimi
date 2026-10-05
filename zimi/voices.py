@@ -1590,7 +1590,7 @@ def _piper_tags(primary):
 
 
 def _lang_row(primary, have, chosen, fetch_ok):
-    """One language in the Dictionary's voices sheet: the engines here that
+    """One language in Settings > Languages: the engines here that
     say it (best first) and the one that does; the Piper voice it could
     fetch ("piper": tag, bytes, newer) and the one it could remove."""
     options = engines_for(primary)
@@ -1615,7 +1615,7 @@ def _lang_row(primary, have, chosen, fetch_ok):
 
 
 def manage_payload():
-    """For the Dictionary's voices sheet: the setting, and every pinned
+    """For Settings > Languages and Voices: the setting, and every pinned
     voice with its licence and credit, whether its engine is here, and what
     speaks its language now (piper, kokoro, say or espeak, or none). Kokoro
     is one row, "langs" its languages. "langs": every language a pinned

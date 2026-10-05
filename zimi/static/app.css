@@ -2559,24 +2559,44 @@
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
   .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-  /* Settings > Languages: your languages as chips in plain sight, the rest
-     folded behind "N more". A chip is a toggle: amber-outlined with a tick
-     when it is one of yours. */
-  .lang-yours .share-row-text { min-width: 0; }
-  .lang-summary { color: var(--amber); font-weight: 500; }
-  .set-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-  .set-chip {
-    display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; min-height: 32px;
-    padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface2);
-    font: inherit; font-size: 13px; color: var(--text2); cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+  /* Settings > Languages: one card. Show languages, then the fold ("Your
+     languages: English, Español"), and open, a row per language: the check
+     and its names (one tap target), the voice that says it, ▶ and Get. A
+     download's bar runs the row's width under it. */
+  .lang-fold { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+  .lang-fold:hover .share-row-title, .lang-fold:focus-visible .share-row-title { color: var(--amber); }
+  .lang-fold:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .lang-chev { flex: none; width: 14px; font-size: 18px; line-height: 1; color: var(--text2); text-align: center; transition: transform 0.15s; }
+  .lang-fold[aria-expanded="true"] > .lang-chev { transform: rotate(90deg); }
+  [dir="rtl"] .lang-fold[aria-expanded="false"] > .lang-chev { transform: scaleX(-1); }
+  .lang-list { border-top: 1px solid var(--border); }
+  .lang-list[hidden] { display: none; }
+  .lang-all .share-row-title { font-weight: 500; color: var(--text2); }
+  .lang-row { flex-wrap: wrap; gap: 8px 10px; padding: 8px 14px; min-height: 52px; box-sizing: border-box; }
+  .lang-pick {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 0;
+    border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer;
   }
-  .set-chip:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-  .set-chip.active { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); font-weight: 600; }
-  .set-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-  .set-chip-check { font-size: 11px; }
-  .set-chip-more { border-style: dashed; color: var(--text2); background: none; }
-  @media (pointer: coarse) { .set-chip { min-height: 36px; } }
+  .lang-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 6px; }
+  .lang-pick .share-row-title { font-weight: 500; font-size: 14px; unicode-bidi: isolate; }
+  .lang-pick .share-row-title, .lang-pick .share-row-desc { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lang-check {
+    flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+    box-sizing: border-box; border: 1.5px solid var(--text3); border-radius: 5px; color: var(--on-amber);
+  }
+  .lang-row.mine .lang-check { background: var(--amber); border-color: var(--amber); }
+  .lang-pick:hover .lang-check { border-color: var(--amber); }
+  .lang-voice { flex: none; font-size: 12px; color: var(--text2); }
+  .lang-voice.none { color: var(--text3); }
+  .lang-act { flex: none; display: flex; align-items: center; gap: 6px; }
+  .lang-act .set-btn { --set-ctl-h: 30px; padding: 0 10px; font-size: 12px; }
+  .lang-hear { width: 30px; padding: 0 !important; }
+  .lang-get { color: var(--amber); border-color: var(--amber-border); }
+  .lang-more { font-size: 15px !important; letter-spacing: 0.05em; }
+  .lang-dl { flex-basis: 100%; padding-inline-start: 30px; margin-top: -4px; }
+  .lang-dl .dl-progress { margin-top: 4px; height: 3px; }
+  .set-btn.confirming { color: var(--error); border-color: var(--error); background: none; }
+  @media (pointer: coarse) { .lang-act .set-btn { --set-ctl-h: 36px; } .lang-hear { width: 36px; } }
   .ms-hot-show { margin-top: 6px; }
   .updates-detail {
     margin: 6px 0 12px 0; padding: 8px;
@@ -3451,43 +3471,25 @@
   .zi-ev-detail { font-size: 12.5px; color: var(--text); line-height: 1.45; margin-top: 3px; }
   .zi-ev-fact { font-size: 11.5px; color: var(--text2); line-height: 1.45; margin-top: 2px; }
   .zi-ev-sub { color: var(--text3); }
-  /* The Dictionary's voices: About this ZIM's sheet, Settings' cards
-     (.share-rows) and selects. A row is a language and the voice that says
-     it; the Natural voices card says what it is in small print under it. */
-  .voices-panel .zi-body { padding-top: 12px; }
-  .voices-panel .share-rows { margin-top: 0; }
-  .voices-panel .share-row { min-height: 52px; box-sizing: border-box; padding: 8px 14px; }
-  .voice-natural .share-row { align-items: flex-start; padding: 13px 14px; }
-  .voices-panel .share-row-title, .voices-panel .share-row-desc { display: block; }
-  .voices-panel .share-row-desc + .share-row-desc { margin-top: 3px; }
-  .voice-natural .share-row-title { font-size: 14px; }
-  .voice-small { font-size: 11.5px; }
-  .voice-act { flex: none; display: flex; align-items: center; gap: 8px; }
-  .voice-on { font-size: 12px; color: var(--amber); font-weight: 600; }
-  .voice-progress { color: var(--amber); }
-  .voice-failed { color: var(--error); }
-  .voices-panel .dl-progress { margin-top: 6px; }
-  .voices-panel .pill { min-height: 32px; }
-  .voices-panel .pill[data-primary] { color: var(--amber); border-color: var(--amber-border); }
-  .voices-panel .pill.confirming { color: var(--error); border-color: var(--error); }
-  .voice-select {
-    font-size: 12.5px; padding: 6px 8px; min-height: 32px; width: 150px; max-width: 45vw; border-radius: 6px;
-    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
-  }
-  .voice-select:disabled { opacity: 0.6; }
-  .voice-head { margin: 22px 0 8px; }
-  .voice-more { margin-top: 14px; }
-  .voice-more > summary { padding: 8px 0; color: var(--text2); }
-  .voice-more[open] > summary { margin-bottom: 4px; }
-  .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text2); }
-  .voice-loading { display: flex; align-items: center; gap: 6px; min-height: 84px; }
-  .voice-top { margin: 0 0 12px; }
-  /* Settings > Voices: a row per engine (name, what it is, its languages
-     and version, Hear, its switch), and for an admin the door to the sheet,
-     a row with a chevron. Hear works (a turning ring) from the tap until the
-     audio starts, then plays (a stop square, a soft pulse) until it ends. */
+  /* Settings > Voices: a row per engine (name, how many languages it says
+     here and its version, Hear, its switch); Natural's Get or Remove for an
+     admin; the downloads setting one quiet line under the card. Hear works
+     (a turning ring) from the tap until the audio starts, then plays (a stop
+     square, a soft pulse) until it ends. */
+  .voice-engine { flex-wrap: wrap; }
   .voice-engine .voice-meta { color: var(--text3); font-size: 11.5px; }
   .voice-engine.voice-off .share-row-title, .voice-engine.voice-off .share-row-desc { opacity: 0.55; }
+  .voice-engine .set-btn[data-primary] { color: var(--amber); border-color: var(--amber-border); }
+  /* Natural's Remove, quiet in its small line: a word, not a button. */
+  .voice-meta .set-btn[data-quiet] {
+    min-height: 0; padding: 0; border: 0; background: none; font-size: inherit; font-weight: 400;
+    color: var(--text2); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .voice-meta .set-btn[data-quiet].confirming { color: var(--error); }
+  .voice-progress { color: var(--amber); }
+  .voice-failed { color: var(--error); }
+  .voice-engine .lang-dl { padding-inline-start: 0; }
+  .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--text2); }
   .voice-hear { flex: none; }
   .voice-hear-icon { position: relative; display: inline-flex; width: 12px; height: 12px; }
   .voice-hear.working .voice-hear-icon svg, .voice-hear.playing .voice-hear-icon svg { visibility: hidden; }
@@ -3499,11 +3501,6 @@
   .voice-hear.playing .voice-hear-icon::before { content: ''; position: absolute; inset: 2px; border-radius: 2px; background: currentColor; }
   @keyframes voice-pulse { 50% { box-shadow: 0 0 0 4px var(--amber-glow); } }
   @media (prefers-reduced-motion: reduce) { .voice-hear.playing { animation: none; } }
-  .voice-door { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
-  .voice-door:hover .share-row-title, .voice-door:focus-visible .share-row-title { color: var(--amber); }
-  .voice-chev { font-size: 22px; line-height: 1; color: var(--text2); }
-  [dir="rtl"] .voice-chev { transform: scaleX(-1); }
-  @media (pointer: coarse) { .voice-select, .voices-panel .pill { min-height: 40px; } }
   @media (max-width: 600px) {
     .zi-overlay { padding: 0; align-items: stretch; }
     .zi-panel { width: 100%; max-height: 100%; border-radius: 0; border: none; }
