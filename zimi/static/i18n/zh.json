@@ -2952,5 +2952,10 @@
   "voices_get_mb": "获取（{mb} MB）",
   "voices_get_title": "下载{voice}语音（{mb} MB）",
   "voices_none": "无语音",
-  "voices_more_actions": "更多"
+  "voices_more_actions": "更多",
+  "ui_lang_title": "Zimi 的语言",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "Zimi 支持的语言",
+  "languages_other": "其他语言",
+  "show_lang_chooser_desc": "资料库和目录上方的语言标签，以及顶部栏的语言按钮。"
 }

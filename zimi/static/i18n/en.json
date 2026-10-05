@@ -2952,5 +2952,10 @@
   "voices_get_mb": "Get ({mb} MB)",
   "voices_get_title": "Download the {voice} voice ({mb} MB)",
   "voices_none": "No voice",
-  "voices_more_actions": "More"
+  "voices_more_actions": "More",
+  "ui_lang_title": "Zimi's language",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "Zimi speaks",
+  "languages_other": "Other languages",
+  "show_lang_chooser_desc": "Language pills over the library and the catalog, and the language button in the top bar."
 }

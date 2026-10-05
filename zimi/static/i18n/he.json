@@ -2952,5 +2952,10 @@
   "voices_get_mb": "הורדה ({mb} MB)",
   "voices_get_title": "הורדת הקול {voice} ({mb} MB)",
   "voices_none": "אין קול",
-  "voices_more_actions": "עוד"
+  "voices_more_actions": "עוד",
+  "ui_lang_title": "השפה של Zimi",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "Zimi מדבר",
+  "languages_other": "שפות אחרות",
+  "show_lang_chooser_desc": "תגיות השפה מעל הספרייה והקטלוג, וכפתור השפה בסרגל העליון."
 }

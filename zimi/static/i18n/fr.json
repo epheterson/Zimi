@@ -2952,5 +2952,10 @@
   "voices_get_mb": "Obtenir ({mb} Mo)",
   "voices_get_title": "Télécharger la voix {voice} ({mb} Mo)",
   "voices_none": "Aucune voix",
-  "voices_more_actions": "Plus"
+  "voices_more_actions": "Plus",
+  "ui_lang_title": "Langue de Zimi",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "Zimi parle",
+  "languages_other": "Autres langues",
+  "show_lang_chooser_desc": "Les pastilles de langue au-dessus de la bibliothèque et du catalogue, et le bouton de langue de la barre du haut."
 }

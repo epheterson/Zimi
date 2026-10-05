@@ -2952,5 +2952,10 @@
   "voices_get_mb": "पाएँ ({mb} MB)",
   "voices_get_title": "{voice} आवाज़ डाउनलोड करें ({mb} MB)",
   "voices_none": "कोई आवाज़ नहीं",
-  "voices_more_actions": "और"
+  "voices_more_actions": "और",
+  "ui_lang_title": "Zimi की भाषा",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "Zimi की भाषाएं",
+  "languages_other": "अन्य भाषाएं",
+  "show_lang_chooser_desc": "लाइब्रेरी और कैटलॉग के ऊपर भाषा चिप्स, और ऊपरी पट्टी में भाषा बटन।"
 }

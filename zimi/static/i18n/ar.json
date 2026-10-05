@@ -2952,5 +2952,10 @@
   "voices_get_mb": "تنزيل ({mb} ميغابايت)",
   "voices_get_title": "تنزيل صوت {voice} ({mb} ميغابايت)",
   "voices_none": "لا صوت",
-  "voices_more_actions": "المزيد"
+  "voices_more_actions": "المزيد",
+  "ui_lang_title": "لغة Zimi",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "لغات Zimi",
+  "languages_other": "لغات أخرى",
+  "show_lang_chooser_desc": "شارات اللغة فوق المكتبة والفهرس، وزر اللغة في الشريط العلوي."
 }

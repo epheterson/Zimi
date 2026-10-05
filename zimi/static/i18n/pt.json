@@ -2952,5 +2952,10 @@
   "voices_get_mb": "Obter ({mb} MB)",
   "voices_get_title": "Baixar a voz {voice} ({mb} MB)",
   "voices_none": "Sem voz",
-  "voices_more_actions": "Mais"
+  "voices_more_actions": "Mais",
+  "ui_lang_title": "Idioma do Zimi",
+  "lang_zimi_tag": "Zimi",
+  "languages_zimi_speaks": "O Zimi fala",
+  "languages_other": "Outros idiomas",
+  "show_lang_chooser_desc": "As etiquetas de idioma sobre a biblioteca e o catálogo, e o botão de idioma da barra superior."
 }
