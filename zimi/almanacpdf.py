@@ -110,7 +110,9 @@ def lookup(pdf_id):
 # so they would fall back to plain text glyphs. Noto Sans Math (SIL OFL 1.1)
 # ships with Zimi and is laid into each document, as data, before it is
 # drawn; nothing is fetched.
-MATH_FONT = os.path.join(os.path.dirname(__file__), "static", "fonts", "NotoSansMath-Regular.ttf")
+MATH_FONT = os.path.join(
+    os.path.dirname(__file__), "static", "fonts", "NotoSansMath-Regular.ttf"
+)
 _math_css = None
 
 
@@ -155,6 +157,11 @@ def _render(html, paper):
             page.set_default_timeout(RENDER_TIMEOUT_SECONDS * 1000)
             page.set_content(_with_math_font(html), wait_until="load")
             page.emulate_media(media="print")
+            # The maths font loads only once the equations are laid out, after
+            # "load": taken before it arrived, every equation was blank but
+            # for its fraction bars. (Playwright's evaluate runs with the
+            # document's own scripts off.)
+            page.evaluate("document.fonts.ready.then(() => document.fonts.size)")
             return page.pdf(
                 format=paper,
                 print_background=True,

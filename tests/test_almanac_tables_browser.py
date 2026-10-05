@@ -919,6 +919,11 @@ def test_print_opens_a_pdf_in_the_reader(page):
             text = subprocess.run(["pdftotext", "-", "-"], input=res.body(), capture_output=True, check=True).stdout.decode()
             ver = page.evaluate("_zimiVersion")
             assert ("Zimi " + ver + " · 1 / ") in text, text[-400:]
+            # The equations are drawn: their letters are in the file, not
+            # just their fraction bars (the maths font is data the render
+            # waits for).
+            maths = [c for c in text if 0x1D400 <= ord(c) <= 0x1D7FF]
+            assert len(maths) > 20, text[:600]
         fr = page.frame_locator("#reader-frame")
         page.evaluate(
             "() => { const w = document.getElementById('reader-frame').contentWindow; w.__pdfjsPrints = 0;"
