@@ -2731,6 +2731,8 @@ async function _probeManageAuth() {
   finally { _manageProbed = true; }
 }
 
+// The running server's version (/health), for the footer and what Zimi makes.
+var _zimiVersion = '';
 async function _initSecondary() {
   var needsRerender = false;
   // Reuse the probe init() already kicked off in parallel with /list; only
@@ -2747,7 +2749,7 @@ async function _initSecondary() {
     fetch('/health').then(async hres => {
       if (hres.ok) {
         const hdata = await hres.json();
-        if (hdata.version) document.getElementById('footer-version').textContent = hdata.version + ' ';
+        if (hdata.version) { _zimiVersion = hdata.version; document.getElementById('footer-version').textContent = hdata.version + ' '; }
         _extServerOffline = !!hdata.offline;
       }
     }).catch(function(){}),

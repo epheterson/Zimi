@@ -21,8 +21,12 @@ Run: pytest tests/test_almanac_tables_browser.py -v
 
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import threading
+from urllib.parse import unquote, urljoin
 
 import pytest
 
@@ -753,6 +757,10 @@ def test_the_whole_book_of_what_is_shown(page):
         md = copy()
         assert "Showing: All" in md
         assert list(_md_sections(md)) == names(""), list(_md_sections(md))
+        # Which Zimi made it closes the copy, as it signs the paper.
+        ver = page.evaluate("_zimiVersion")
+        assert ver, "the shell knows its version from /health"
+        assert md.endswith("\n\n*Made with Zimi " + ver + "*\n"), md[-200:]
         # Paper: one chip's tiles, a page each, as they stand.
         page.click("#alm-subject-chips [data-subj='eclipses']")
         page.click("[data-alm-book='print']")
@@ -781,6 +789,9 @@ def test_the_whole_book_of_what_is_shown(page):
         assert (
             "counter(page)" in book["pageRules"] and "tb-wide" in book["pageRules"]
         ), book
+        # The running foot names the Zimi; the title page says it made it.
+        assert '"Zimi ' + ver + ' · " counter(page)' in book["pageRules"], book["pageRules"]
+        assert '@bottom-center { content: "Made with Zimi ' + ver + '"' in book["pageRules"], book["pageRules"]
         # On paper the book is all there is: serif, black on white.
         page.emulate_media(media="print")
         look = page.evaluate(
@@ -900,6 +911,14 @@ def test_print_opens_a_pdf_in_the_reader(page):
         assert "/almanac/pdf/" in got["href"], got
         assert got["title"].startswith("Seasons - San Francisco - 20"), got
         assert "\u2014" not in got["title"] and "\u2013" not in got["title"], got
+        # The file itself: the running foot names the Zimi that made it.
+        if shutil.which("pdftotext"):
+            pdf_path = unquote(re.search(r"/almanac/pdf/[^&#?]+", unquote(got["href"])).group(0))
+            res = page.request.get(urljoin(page.url, pdf_path))
+            assert res.ok, pdf_path
+            text = subprocess.run(["pdftotext", "-", "-"], input=res.body(), capture_output=True, check=True).stdout.decode()
+            ver = page.evaluate("_zimiVersion")
+            assert ("Zimi " + ver + " · 1 / ") in text, text[-400:]
         fr = page.frame_locator("#reader-frame")
         page.evaluate(
             "() => { const w = document.getElementById('reader-frame').contentWindow; w.__pdfjsPrints = 0;"

@@ -985,6 +985,10 @@ function _tbBookHead(pages, showing) {
   return { title: t('alm_group_tables'), place: p.name, at: _tbPlaceLine(p), when: when,
     showing: showing ? _tbT('book_showing', { s: showing }) : '', made: _tbT('made', { date: _tbLongDay(_tbDayIn(Date.now(), null)) }) };
 }
+// Which Zimi made it ("add footer or something with Zimi version?", Eric,
+// 2026-10-04): the running foot's "Zimi 1.13.0" and the closing line.
+function _tbZimi() { return ('Zimi ' + (typeof _zimiVersion === 'string' ? _zimiVersion : '')).trim(); }
+function _tbMadeWith() { return _tbT('made_with', { v: typeof _zimiVersion === 'string' ? _zimiVersion : '' }).trim(); }
 // As Markdown: a title block, then a section a tile, headings a level down.
 // One tile: its own title block, then its page.
 function _tbBookMarkdown(ids, showing) {
@@ -992,13 +996,14 @@ function _tbBookMarkdown(ids, showing) {
   if (!pages.length) return '';
   if (!showing) {
     var pg = pages[0];
-    return ['# ' + pg.name, [pg.sub, pg.at].filter(Boolean).join('  \n'), '*' + head.made + '*', pg.md].filter(Boolean).join('\n\n') + '\n';
+    return ['# ' + pg.name, [pg.sub, pg.at].filter(Boolean).join('  \n'), '*' + head.made + '*', pg.md, '*' + _tbMadeWith() + '*'].filter(Boolean).join('\n\n') + '\n';
   }
   var md = ['# ' + head.title, [head.place, head.at, head.when, head.showing].join('  \n'), '*' + head.made + '*',
     '**' + _tbT('book_contents') + '**\n\n' + pages.map(function (p) { return '- ' + p.name; }).join('\n')];
   pages.forEach(function (p) {
     md.push('## ' + p.name + (p.sub ? '\n\n' + p.sub : '') + (p.md ? '\n\n' + p.md.replace(/^(#+) /gm, '#$1 ') : ''));
   });
+  md.push('*' + _tbMadeWith() + '*');
   return md.join('\n\n') + '\n';
 }
 // Share sends it where there is a share sheet; Copy, and Share without one,
@@ -1040,7 +1045,7 @@ function _tbBookBuild(ids, showing) {
   }
   html += pages.map(function (p) { return '<section class="tb-book-page tb-body" data-tb="' + p.id + '">' + p.html + '</section>'; }).join('');
   // No page boxes for a running foot: one at the foot of the paper instead.
-  if (!('CSSMarginRule' in window)) html += '<footer class="tb-book-foot">' + e(one ? pages[0].name : head.title) + ' · ' + e(head.place) + '</footer>';
+  if (!('CSSMarginRule' in window)) html += '<footer class="tb-book-foot">' + e(one ? pages[0].name : head.title) + ' · ' + e(head.place) + ' · ' + e(_tbZimi()) + '</footer>';
   book.innerHTML = html;
   if (one) {
     var ph = book.querySelector('.tb-printhead');
@@ -1066,7 +1071,8 @@ function _tbBookWide(book) {
 }
 // The paper's own rules, while the book is out: margins, the running foot
 // (the book's name and place, the page and the count; none on a title
-// page) and the landscape page for a wide table.
+// page, which says which Zimi made it instead) and the landscape page for
+// a wide table.
 function _tbCssString(s) { return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ') + '"'; }
 function _tbBookPageRules(running, one) {
   var foot = 'font-family: ' + TB_BOOK_SERIF + '; font-size: 8pt; color: #333;';
@@ -1074,8 +1080,9 @@ function _tbBookPageRules(running, one) {
   st.id = TB_BOOK_STYLE_ID;
   st.textContent = '@media print {' +
     '@page { margin: 16mm 15mm 18mm; @bottom-left { content: ' + _tbCssString(running) + '; ' + foot + ' }' +
-    ' @bottom-right { content: counter(page) " / " counter(pages); ' + foot + ' } }' +
-    (one ? '' : '@page :first { @bottom-left { content: none; } @bottom-right { content: none; } }') +
+    ' @bottom-right { content: ' + _tbCssString(_tbZimi() + ' · ') + ' counter(page) " / " counter(pages); ' + foot + ' } }' +
+    (one ? '' : '@page :first { @bottom-left { content: none; } @bottom-right { content: none; }' +
+      ' @bottom-center { content: ' + _tbCssString(_tbMadeWith()) + '; ' + foot + ' color: #666; } }') +
     '@page tb-wide { size: landscape; } }';
   document.head.appendChild(st);
 }
