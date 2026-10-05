@@ -142,6 +142,105 @@ def _with_math_font(html):
     return html[:at] + style + html[at:] if at >= 0 else style + html
 
 
+# The contents' page numbers: the book marks each with the chapter it is for
+# (data-pdf-page="tb-ch-1-3", the id its entry links to). The first render
+# says where each chapter fell (the PDF's named destinations, which Chromium
+# writes for every link target); the numbers are written in and the book
+# drawn again. Each mark keeps its width either way, so the pages do not move.
+_PAGE_MARK = re.compile(r'(data-pdf-page="([A-Za-z0-9_-]+)"[^>]*>)(</span>)')
+_OBJ_RE = re.compile(rb"(?<![0-9])(\d+) 0 obj\b")
+_REF_RE = re.compile(rb"(\d+) 0 R")
+
+
+def _dict_at(data, pos):
+    """The dictionary that starts at ``pos`` (after whitespace), or b''."""
+    while pos < len(data) and data[pos : pos + 1] in b" \r\n\t":
+        pos += 1
+    if data[pos : pos + 2] != b"<<":
+        return b""
+    depth, i = 0, pos
+    while i < len(data) - 1:
+        two = data[i : i + 2]
+        if two == b"<<":
+            depth += 1
+            i += 2
+        elif two == b">>":
+            depth -= 1
+            i += 2
+            if not depth:
+                return data[pos:i]
+        else:
+            i += 1
+    return b""
+
+
+def dest_pages(data):
+    """{destination name: page number} from a PDF Chromium wrote; {} when
+    it has none or reads otherwise."""
+    try:
+        offs = {int(m.group(1)): m.end() for m in _OBJ_RE.finditer(data)}
+
+        def obj(n):
+            return _dict_at(data, offs[n]) if n in offs else b""
+
+        cat = next((d for d in map(obj, offs) if re.search(rb"/Type\s*/Catalog\b", d)), b"")
+        root, dests = re.search(rb"/Pages\s+(\d+) 0 R", cat), re.search(rb"/Dests\s+(\d+) 0 R", cat)
+        if not root or not dests:
+            return {}
+        order, todo = [], [int(root.group(1))]
+        while todo:
+            n = todo.pop(0)
+            d = obj(n)
+            if re.search(rb"/Type\s*/Pages\b", d):
+                kids = re.search(rb"/Kids\s*\[([^\]]*)\]", d)
+                todo = [int(k) for k in _REF_RE.findall(kids.group(1) if kids else b"")] + todo
+            else:
+                order.append(n)
+        at = {n: i + 1 for i, n in enumerate(order)}
+        out = {}
+        for name, ref in re.findall(rb"/([^\s/\[\]<>()]+)\s*\[\s*(\d+) 0 R", obj(int(dests.group(1)))):
+            name = re.sub(rb"#([0-9A-Fa-f]{2})", lambda m: bytes([int(m.group(1), 16)]), name).decode("utf-8", "replace")
+            if int(ref) in at:
+                out[name] = at[int(ref)]
+        return out
+    except (ValueError, KeyError, IndexError):
+        return {}
+
+
+def fill_pages(html, pages):
+    """The marks in ``html`` given their page numbers (left empty where unknown)."""
+    return _PAGE_MARK.sub(lambda m: m.group(1) + str(pages.get(m.group(2), "")) + m.group(3), html)
+
+
+def _draw(ctx, html, paper):
+    page = ctx.new_page()
+    try:
+        page.set_default_timeout(RENDER_TIMEOUT_SECONDS * 1000)
+        page.set_content(html, wait_until="load")
+        page.emulate_media(media="print")
+        # The maths font loads only once the equations are laid out, after
+        # "load": taken before it arrived, every equation was blank but
+        # for its fraction bars. (Playwright's evaluate runs with the
+        # document's own scripts off.)
+        page.evaluate("document.fonts.ready.then(() => document.fonts.size)")
+        opts = dict(
+            format=paper,
+            print_background=True,
+            prefer_css_page_size=True,
+            # The running head and foot are the document's own (@page
+            # margin boxes).
+            display_header_footer=False,
+        )
+        try:
+            # Bookmarks from the headings (parts, chapters, their sections)
+            # and a tagged PDF: Playwright 1.42 and later.
+            return page.pdf(outline=True, tagged=True, **opts)
+        except TypeError:
+            return page.pdf(**opts)
+    finally:
+        page.close()
+
+
 def _render(html, paper):
     sync_playwright = renderer._playwright_module()
     if sync_playwright is None:
@@ -153,22 +252,13 @@ def _render(html, paper):
             # No script, no network: the document is drawn from what it holds.
             ctx = browser.new_context(java_script_enabled=False, offline=True)
             ctx.route("**/*", lambda route: route.abort())
-            page = ctx.new_page()
-            page.set_default_timeout(RENDER_TIMEOUT_SECONDS * 1000)
-            page.set_content(_with_math_font(html), wait_until="load")
-            page.emulate_media(media="print")
-            # The maths font loads only once the equations are laid out, after
-            # "load": taken before it arrived, every equation was blank but
-            # for its fraction bars. (Playwright's evaluate runs with the
-            # document's own scripts off.)
-            page.evaluate("document.fonts.ready.then(() => document.fonts.size)")
-            return page.pdf(
-                format=paper,
-                print_background=True,
-                prefer_css_page_size=True,
-                # The running foot is the document's own (@page margin boxes).
-                display_header_footer=False,
-            )
+            html = _with_math_font(html)
+            data = _draw(ctx, html, paper)
+            if _PAGE_MARK.search(html):
+                pages = dest_pages(data)
+                if pages:
+                    data = _draw(ctx, fill_pages(html, pages), paper)
+            return data
         finally:
             browser.close()
     finally:

@@ -215,7 +215,98 @@ def test_the_pdf_carries_its_own_maths_font():
     Zimi's own, as data, before it is drawn."""
     from zimi import almanacpdf
 
-    html = "<html><head><title>t</title></head><body><math><mi>x</mi></math></body></html>"
+    html = (
+        "<html><head><title>t</title></head><body><math><mi>x</mi></math></body></html>"
+    )
     out = almanacpdf._with_math_font(html)
-    assert "data:font/ttf;base64," in out and out.index("Zimi Math") < out.index("</head>")
-    assert almanacpdf._with_math_font("<p>no maths</p>") == "<p>no maths</p>", "only where there is maths"
+    assert "data:font/ttf;base64," in out and out.index("Zimi Math") < out.index(
+        "</head>"
+    )
+    assert (
+        almanacpdf._with_math_font("<p>no maths</p>") == "<p>no maths</p>"
+    ), "only where there is maths"
+
+
+def _outline_titles(data):
+    """The outline's titles (pypdf's when it is here, else read off the
+    file's /Title entries)."""
+    try:
+        import io
+
+        from pypdf import PdfReader
+
+        def flat(items):
+            for it in items:
+                if isinstance(it, list):
+                    yield from flat(it)
+                else:
+                    yield it.title
+
+        return list(flat(PdfReader(io.BytesIO(data)).outline))
+    except ImportError:
+        out = []
+        for raw in re.findall(rb"/Title\s*(\((?:[^)\\]|\\.)*\)|<[0-9A-Fa-f]+>)", data):
+            if raw.startswith(b"<"):
+                out.append(bytes.fromhex(raw[1:-1].decode()).decode("utf-16"))
+            else:
+                out.append(raw[1:-1].decode("latin-1"))
+        return out
+
+
+CHAPTERED = (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>t</title><style>"
+    "@page { size: A4; margin: 20mm; } section { break-before: page; }"
+    ".pg { display: inline-block; min-width: 3em; }</style></head><body>"
+    "<nav><h1>Contents</h1>"
+    "<p><a href='#tb-ch-1-1'>1.1 Alpha <span class='pg' data-pdf-page=\"tb-ch-1-1\"></span></a></p>"
+    "<p><a href='#tb-ch-2-1'>2.1 Beta <span class='pg' data-pdf-page=\"tb-ch-2-1\"></span></a></p></nav>"
+    "<section><h1>Part I · Tables</h1></section>"
+    "<section id='tb-ch-1-1'><h2>1.1 Alpha</h2><p>one</p></section>"
+    "<section><p>more of Alpha</p></section>"
+    "<section><h1>Part II · Constants</h1></section>"
+    "<section id='tb-ch-2-1'><h2>2.1 Beta</h2><p>two</p></section>"
+    "</body></html>"
+)
+
+
+def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
+    """The book's headings become the PDF's outline (parts, then their
+    chapters), and the contents' page numbers are where each chapter fell:
+    the first render says, the second writes them in."""
+    _needs_chromium()
+    status, body = _post(served, {"html": CHAPTERED, "paper": "A4", "name": "x"})
+    assert status == 200, body
+    data = _get(served, body["url"])[2]
+    assert b"/Outlines" in data
+    titles = _outline_titles(data)
+    for want in (
+        "Contents",
+        "Part I · Tables",
+        "1.1 Alpha",
+        "Part II · Constants",
+        "2.1 Beta",
+    ):
+        assert want in titles, titles
+    assert apdf.dest_pages(data) == {"tb-ch-1-1": 3, "tb-ch-2-1": 6}
+    import shutil
+    import subprocess
+
+    if shutil.which("pdftotext"):
+        text = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "1", "-", "-"],
+            input=data,
+            capture_output=True,
+            check=True,
+        ).stdout.decode()
+        assert re.search(r"1\.1 Alpha\s*3\b", text) and re.search(
+            r"2\.1 Beta\s*6\b", text
+        ), text
+
+
+def test_page_marks_are_filled_or_left_empty():
+    html = '<span data-pdf-page="x"></span><span class="p" data-pdf-page="y"></span>'
+    assert (
+        apdf.fill_pages(html, {"x": 4})
+        == '<span data-pdf-page="x">4</span><span class="p" data-pdf-page="y"></span>'
+    )
+    assert apdf.dest_pages(b"%PDF-1.4 not a real file") == {}
