@@ -293,7 +293,8 @@
     bus.on('updatefindcontrolstate', function (e) { paintCount(e.matchesCount, e.state); });
     bus.on('metadataloaded', function () {
       var own = '';
-      try { own = (app._title || '').trim(); } catch (e) {}
+      // The document's own title (pdf.js's _title is "title - file name").
+      try { own = (app._docTitle || app._title || '').trim(); } catch (e) {}
       // The shell's name for it (a catalog's) wins over the file's own.
       var s = shellTitle();
       if (!s || s === 'Zimi' || s === fileName) setTitle(own || fileName);

@@ -847,6 +847,7 @@ function _tbClose(viaHistory) {
 // view open closes the view, not the Almanac; the step the view's own close
 // takes back is swallowed. True when the event was the view's.
 function _tbHistoryPop(e) {
+  if (_tb.pdf) { _tbPdfClose(); return true; }
   if (_tb.expectPop) { _tb.expectPop = false; return true; }
   if (_tbEl('alm-ref') && !(e.state && e.state.almTables)) { _tbClose(true); return true; }
   return false;
@@ -854,6 +855,7 @@ function _tbHistoryPop(e) {
 // Escape, wherever focus is: the popover first, then the view; never the
 // Almanac behind it (app.js closes that on an Escape that reaches it).
 window.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && _tb.pdf) { e.stopPropagation(); e.preventDefault(); history.back(); return; }
   if (e.key !== 'Escape' || !_tbEl('alm-ref')) return;
   e.stopPropagation();
   e.preventDefault();
@@ -1082,15 +1084,123 @@ function _tbBookOn(ids, showing) {
   document.documentElement.classList.add(TB_PRINT_CLASS, TB_BOOK_CLASS);
   return true;
 }
-// Print: the equations drawn (Temml first), the book out, the browser's own
-// print dialog (its Save as PDF), and gone again after.
+// Print: a real PDF, opened in Zimi's PDF reader (its Print prints the file
+// itself). A phone's own print dialog took the page before the book was set
+// ("I got one page then the webpage tiles view then the full 57 page PDF",
+// Eric, 2026-10-04), so the server lays the book out in its headless
+// Chromium and hands back a file. Where it has none, or it fails, the
+// browser's dialog prints the book, asked for only once it is all there.
+// One at a time: the Print icons spin meanwhile and a second tap waits.
+var TB_PDF_URL = '/almanac/pdf';
+var TB_PDF_TIMEOUT_MS = 120000;
+var TB_PRINT_BTNS = '[data-tb-act="print"], [data-alm-book="print"]';
+// Where a letter-size page is the paper to hand (the rest of the world: A4).
+var TB_LETTER_REGIONS = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'GT', 'CR', 'PA', 'DO', 'PR', 'SV', 'NI', 'HN', 'BZ'];
+function _tbPaper() {
+  var lang = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+  var m = /[-_]([A-Za-z]{2})\b/.exec(lang);
+  return m && TB_LETTER_REGIONS.indexOf(m[1].toUpperCase()) >= 0 ? 'Letter' : 'A4';
+}
+function _tbPrintBusy(on) {
+  document.querySelectorAll(TB_PRINT_BTNS).forEach(function (b) {
+    b.classList.toggle('alm-busy', on);
+    if (on) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy');
+  });
+}
 function _tbBookPrint(ids, showing) {
   _tkPopClose(true);
-  if (typeof window.print !== 'function') return Promise.resolve();
+  if (_tb.printing) return Promise.resolve();
+  _tb.printing = true;
+  _tbPrintBusy(true);
+  var done = function () { _tb.printing = false; _tbPrintBusy(false); };
   return _tbTemmlLoad().then(function () {
-    if (!_tbBookOn(ids, showing)) return;
-    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(_tbPrintNow);
+    if (_tb.pdfOff || typeof openReader !== 'function' || !window.fetch) return _tbPaperPrint(ids, showing);
+    return _tbPdf(ids, showing).catch(function (err) {
+      if (err !== 'unavailable' && typeof _showToast === 'function') _showToast(_tbT('pdf_failed'));
+      return _tbPaperPrint(ids, showing);
+    });
+  }).then(done, done);
+}
+// The browser's dialog, once the book is out, its fonts loaded and two
+// frames drawn (iOS took the page a frame early).
+function _tbPaperPrint(ids, showing) {
+  if (typeof window.print !== 'function' || !_tbBookOn(ids, showing)) return Promise.resolve();
+  var fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  return fonts.then(function () {
+    return new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); });
+  }).then(_tbPrintNow);
+}
+// The book as one document the server can lay out on its own: its rules
+// (the reference sheet, Temml's, the page rules), the page size, the book.
+function _tbBookDoc(book, name, paper) {
+  var css = [];
+  [].forEach.call(document.styleSheets, function (sh) {
+    var href = sh.href || '', own = sh.ownerNode && sh.ownerNode.id === TB_BOOK_STYLE_ID;
+    if (!own && !/almanac-reference\.css|temml\//i.test(href)) return;
+    try { [].forEach.call(sh.cssRules, function (r) { css.push(r.cssText); }); } catch (e) {}
   });
+  css.push('@page { size: ' + paper + '; } @page tb-wide { size: ' + paper + ' landscape; }');
+  var root = document.documentElement;
+  return '<!DOCTYPE html><html lang="' + _almEsc(root.lang || 'en') + '" dir="' + _almEsc(root.dir || 'ltr') + '" class="' + TB_PRINT_CLASS + ' ' + TB_BOOK_CLASS + '">' +
+    '<head><meta charset="utf-8"><title>' + _almEsc(name) + '</title><style>' + css.join('\n').replace(/<\/style/gi, '<\\/style') + '</style></head>' +
+    '<body><div id="almanac-view"><div id="almanac-content">' + book.outerHTML + '</div></div></body></html>';
+}
+// "Almanac tables - San Francisco - 2026-10-04", or the one tile's name.
+function _tbPdfName(ids, showing) {
+  var p = _tb.place || _tbAlmanacPlace(), d = new Date();
+  var day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  return [showing ? _tbT('pdf_name') : _tbName(ids[0]), _tbShortName(p), day].join(' - ');
+}
+function _tbPdf(ids, showing) {
+  var book = _tbBookBuild(ids, showing);
+  if (!book) return Promise.reject('empty');
+  var name = _tbPdfName(ids, showing), paper = _tbPaper();
+  var html = _tbBookDoc(book, name, paper);
+  _tbPrintOff();
+  var ctl = window.AbortController ? new AbortController() : null;
+  var timer = ctl && setTimeout(function () { ctl.abort(); }, TB_PDF_TIMEOUT_MS);
+  return fetch(TB_PDF_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+    body: JSON.stringify({ html: html, paper: paper, name: name }), signal: ctl ? ctl.signal : undefined
+  }).then(function (r) {
+    clearTimeout(timer);
+    if (r.status === 501) { _tb.pdfOff = true; throw 'unavailable'; }
+    if (!r.ok) throw 'failed';
+    return r.json();
+  }, function (e) { clearTimeout(timer); throw e; }).then(function (j) {
+    if (!j || !j.url) throw 'failed';
+    _tbPdfShow(j.url, name);
+  });
+}
+// The PDF in the shell's reader, over the Almanac set aside (not closed):
+// Back, from the reader's bar, the browser or Escape, returns to it where
+// it was, the tables view still open.
+function _tbPdfShow(url, name) {
+  var view = _tbEl('almanac-view');
+  if (view) view.style.display = 'none';
+  _tb.pdf = true;
+  history.pushState({ almPdf: true }, '', location.href);
+  // The reader's bar names it as the shell's title does.
+  if (typeof _setWindowTitle === 'function') _setWindowTitle(name);
+  openReader(_pdfViewerUrl(url));
+}
+function _tbPdfClose() {
+  if (!_tb.pdf) return;
+  _tb.pdf = false;
+  if (typeof closeReader === 'function') closeReader();
+  var view = _tbEl('almanac-view'), mv = _tbEl('main-view');
+  if (view) view.style.display = '';
+  if (mv) mv.classList.add('hidden');
+  if (typeof _setWindowTitle === 'function') _setWindowTitle('Almanac');
+  if (typeof updateTopbar === 'function') updateTopbar();
+  var b = document.querySelector(TB_PRINT_BTNS);
+  if (b && b.focus) b.focus({ preventScroll: true });
+}
+// The shell's Back while the PDF is up (app.js goBack): one step back.
+function _tbPdfBack() {
+  if (!_tb.pdf) return false;
+  history.back();
+  return true;
 }
 
 // ═══ How this is made ═══

@@ -284,7 +284,7 @@ def test_a_table_on_a_phone(page):
     assert "2027" not in page.inner_text("[data-tb-today]")
     # Print: the view is set up for paper before the dialog is asked for.
     page.evaluate(
-        "() => { window.__printed = null; window.__p = window.print; window.print = () => { window.__printed ="
+        "() => { _tb.pdfOff = true; window.__printed = null; window.__p = window.print; window.print = () => { window.__printed ="
         " document.documentElement.classList.contains('alm-ref-print') && !!document.getElementById('alm-book'); }; }"
     )
     page.click("[data-tb-act='print']")
@@ -295,7 +295,7 @@ def test_a_table_on_a_phone(page):
         "!!document.querySelector('#alm-ref #tb-out table') && document.getElementById('alm-ref-title').textContent === t('tb_phases')"
     )
     page.evaluate(
-        "() => { window.print = window.__p; window.dispatchEvent(new Event('afterprint')); }"
+        "() => { _tb.pdfOff = false; window.print = window.__p; window.dispatchEvent(new Event('afterprint')); }"
     )
     assert not page.evaluate(
         "document.documentElement.classList.contains('alm-ref-print')"
@@ -674,7 +674,8 @@ def test_the_whole_book_of_what_is_shown(page):
         "() => { if (document.getElementById('alm-ref')) _tbClose();"
         " window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
         " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
-        " window.print = () => { window.__printed++; }; }"
+        " window.print = () => { window.__printed++; };"
+        " if (typeof _tb !== 'undefined') _tb.pdfOff = true; }"
     )
     icons = page.evaluate(
         ICONS, "#alm-group-tables .alm-group-head .alm-book-bar button"
@@ -810,7 +811,7 @@ def test_the_whole_book_of_what_is_shown(page):
         )
     finally:
         page.evaluate(
-            "() => { _copyText = window.__ct; window.print = window.__pr; _almSubjectChip(''); }"
+            "() => { _copyText = window.__ct; window.print = window.__pr; _tb.pdfOff = false; _almSubjectChip(''); }"
         )
     assert not page.errors, page.errors
 
@@ -822,10 +823,12 @@ def test_one_tile_prints_and_copies_as_its_own_book(page):
     page.evaluate(
         "() => { window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
         " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
-        " window.print = () => { window.__printed++; }; }"
+        " window.print = () => { window.__printed++; };"
+        " if (typeof _tb !== 'undefined') _tb.pdfOff = true; }"
     )
     try:
         _open(page, "seasons")
+        page.evaluate("_tb.pdfOff = true")
         _seg(page, "year")
         page.click("[data-tb-step='1']")
         page.wait_for_function(DRAWN)
@@ -855,7 +858,102 @@ def test_one_tile_prints_and_copies_as_its_own_book(page):
         ), one
         page.evaluate("_tbPrintOff()")
     finally:
-        page.evaluate("() => { _copyText = window.__ct; window.print = window.__pr; }")
+        page.evaluate(
+            "() => { _copyText = window.__ct; window.print = window.__pr; _tb.pdfOff = false; }"
+        )
+    assert not page.errors, page.errors
+
+
+PDF_SHOWN = (
+    "() => { const f = document.getElementById('reader-frame'); try {"
+    " const a = f.contentWindow.PDFViewerApplication; return !!(a && a.pagesCount > 0); } catch (e) { return false; } }"
+)
+
+
+def test_print_opens_a_pdf_in_the_reader(page):
+    """Eric, 2026-10-04: "I want a good PDF open it in the PDF viewer which
+    should support printing." Print: the icon spins, a second tap does
+    nothing, the server's PDF opens in Zimi's PDF reader under its own name,
+    the reader's Print prints that file (no pdf.js re-render), and Back is
+    the tables view where it was."""
+    _open(page, "seasons")
+    page.evaluate(
+        "() => { window.__posts = 0; const f = window.fetch; window.__f = f;"
+        " window.fetch = (u, o) => { if (u === TB_PDF_URL) window.__posts++; return f(u, o); }; }"
+    )
+    try:
+        page.click("[data-tb-act='print']")
+        assert page.evaluate(
+            "document.querySelector('[data-tb-act=print]').classList.contains('alm-busy')"
+        )
+        page.evaluate("_tbBookPrint([_tb.id])")
+        page.wait_for_function(PDF_SHOWN, timeout=120000)
+        assert page.evaluate("window.__posts") == 1
+        got = page.evaluate(
+            "() => { const w = document.getElementById('reader-frame').contentWindow;"
+            " return { n: w.PDFViewerApplication.pagesCount, href: w.location.href,"
+            " title: w.document.querySelector('.zp-title b').textContent,"
+            " almanac: getComputedStyle(document.getElementById('almanac-view')).display,"
+            " busy: document.querySelectorAll('.alm-busy').length }; }"
+        )
+        assert got["n"] >= 1 and got["almanac"] == "none" and got["busy"] == 0, got
+        assert "/almanac/pdf/" in got["href"], got
+        assert got["title"].startswith("Seasons - San Francisco - 20"), got
+        assert "\u2014" not in got["title"] and "\u2013" not in got["title"], got
+        fr = page.frame_locator("#reader-frame")
+        page.evaluate(
+            "() => { const w = document.getElementById('reader-frame').contentWindow; w.__pdfjsPrints = 0;"
+            " w.PDFViewerApplication.triggerPrinting = () => { w.__pdfjsPrints++; }; }"
+        )
+        fr.locator(".zp-more").click()
+        fr.locator('.zp-menu [data-zp="print"]').click()
+        frame = page.frame(url=lambda u: "viewer.html" in u)
+        frame.wait_for_function(
+            "() => !!document.querySelector('iframe.zp-print-frame')", timeout=5000
+        )
+        src = frame.evaluate(
+            "() => document.querySelector('iframe.zp-print-frame').getAttribute('src')"
+        )
+        assert src.startswith("/almanac/pdf/") and src.endswith("raw=1"), src
+        assert frame.evaluate("window.__pdfjsPrints") == 0
+        page.evaluate("goBack()")
+        page.wait_for_function(
+            "() => !readerOpen && getComputedStyle(document.getElementById('almanac-view')).display !== 'none'",
+            timeout=10000,
+        )
+        assert page.evaluate(
+            "_almanacOpen && document.getElementById('alm-ref-title').textContent === t('tb_seasons')"
+            " && !!document.querySelector('#alm-ref #tb-out table')"
+        )
+    finally:
+        page.evaluate("() => { window.fetch = window.__f; }")
+    assert not page.errors, page.errors
+
+
+def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
+    """No PDF (the server failed): a short toast, then the browser's dialog
+    over the book, asked for once it is all there."""
+    _open(page, "seasons")
+    page.route(
+        "**/almanac/pdf",
+        lambda route: route.fulfill(status=500, body='{"error": "render failed"}'),
+    )
+    page.evaluate(
+        "() => { window.__printed = 0; window.__pr = window.print; window.__book = 0;"
+        " window.print = () => { window.__printed++; window.__book = document.querySelectorAll('#alm-book .tb-book-page').length; }; }"
+    )
+    try:
+        page.click("[data-tb-act='print']")
+        page.wait_for_function("() => window.__printed === 1", timeout=60000)
+        assert page.evaluate("window.__book") == 1
+        assert page.evaluate(
+            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
+        )
+        assert not page.evaluate("readerOpen")
+        page.evaluate("_tbPrintOff()")
+    finally:
+        page.unroute("**/almanac/pdf")
+        page.evaluate("() => { window.print = window.__pr; }")
     assert not page.errors, page.errors
 
 

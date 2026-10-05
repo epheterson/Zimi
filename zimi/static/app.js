@@ -3170,6 +3170,8 @@ function _appEntryHome() {
 }
 
 function goBack() {
+  // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
+  if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
   if (_almanacOpen) { closeAlmanac(); return; }
   if (_isAppPage()) {

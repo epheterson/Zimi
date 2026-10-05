@@ -216,6 +216,11 @@
 .alm-doc-btn svg { width: 18px; height: 18px; }
 .alm-doc-btn:hover, .alm-doc-btn:focus-visible { color: var(--amber); background: var(--amber-glow); }
 .alm-doc-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+/* Working (the tables' Print while the PDF is made): a ring in the icon's place. */
+.alm-doc-btn.alm-busy { position: relative; pointer-events: none; }
+.alm-doc-btn.alm-busy svg { visibility: hidden; }
+.alm-doc-btn.alm-busy::after { content: ''; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .alm-doc-btn.alm-busy::after { animation-duration: 2.4s; } }
 .alm-tiles {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
   margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;
