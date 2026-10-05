@@ -538,7 +538,9 @@ def _draw(browser, html, paper):
     ctx.route("**/*", lambda route: route.abort())
     page = ctx.new_page()
     page.set_default_timeout(RENDER_TIMEOUT_SECONDS * 1000)
-    page.set_content(_with_math_font(html), wait_until="load")
+    chaptered = _PAGE_MARK_ATTR in html
+    html = _with_math_font(_mark_contents(html) if chaptered else html)
+    page.set_content(html, wait_until="load")
     page.emulate_media(media="print")
     page.evaluate(_FONTS_READY_JS)
     opts = dict(
@@ -549,18 +551,15 @@ def _draw(browser, html, paper):
         # margin boxes).
         display_header_footer=False,
     )
-    if _PAGE_MARK_ATTR in html:
+    pages = {}
+    if chaptered:
         pages = dest_pages(page.pdf(**opts))
         if pages:
             page.evaluate(_FILL_PAGES_JS, pages)
-    try:
-        # Bookmarks from the headings (parts, chapters, their sections)
-        # and a tagged PDF: Playwright 1.42 and later.
-        data = page.pdf(outline=True, tagged=True, **opts)
-    except TypeError:
-        data = page.pdf(**opts)
+    # Untagged, and no outline of Chromium's: the bookmarks are ours.
+    data = page.pdf(**opts)
     ctx.close()
-    return data
+    return _bookmarked(data, html, pages) if pages else data
 
 
 def _kill(pid):

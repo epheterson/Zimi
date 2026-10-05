@@ -392,91 +392,6 @@ def test_the_pdf_carries_its_own_maths_font():
     ), "only where there is maths"
 
 
-def _outline_titles(data):
-    """The outline's titles (pypdf's when it is here, else read off the
-    file's /Title entries)."""
-    try:
-        import io
-
-        from pypdf import PdfReader
-
-        def flat(items):
-            for it in items:
-                if isinstance(it, list):
-                    yield from flat(it)
-                else:
-                    yield it.title
-
-        return list(flat(PdfReader(io.BytesIO(data)).outline))
-    except ImportError:
-        out = []
-        for raw in re.findall(rb"/Title\s*(\((?:[^)\\]|\\.)*\)|<[0-9A-Fa-f]+>)", data):
-            if raw.startswith(b"<"):
-                out.append(bytes.fromhex(raw[1:-1].decode()).decode("utf-16"))
-            else:
-                out.append(raw[1:-1].decode("latin-1"))
-        return out
-
-
-CHAPTERED = (
-    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>t</title><style>"
-    "@page { size: A4; margin: 20mm; } section { break-before: page; }"
-    ".pg { display: inline-block; min-width: 3em; }</style></head><body>"
-    "<nav><h1>Contents</h1>"
-    "<p><a href='#tb-ch-1-1'>1.1 Alpha <span class='pg' data-pdf-page=\"tb-ch-1-1\"></span></a></p>"
-    "<p><a href='#tb-ch-2-1'>2.1 Beta <span class='pg' data-pdf-page=\"tb-ch-2-1\"></span></a></p></nav>"
-    "<section><h1>Part I · Tables</h1></section>"
-    "<section id='tb-ch-1-1'><h2>1.1 Alpha</h2><p>one</p>"
-    "<details open><summary><div class='tb-sumh'>How this is made</div></summary><p>how</p>"
-    "<details open><summary><div class='tb-sumh'>Equations</div></summary><p>e</p></details></details></section>"
-    "<section><p>more of Alpha</p></section>"
-    "<section><h1>Part II · Constants</h1></section>"
-    "<section id='tb-ch-2-1'><h2>2.1 Beta</h2><p>two</p></section>"
-    "</body></html>"
-)
-
-
-def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
-    """The book's headings become the PDF's outline (parts, then their
-    chapters, and no deeper: Eric, 2026-10-05, "PDF depth sounds okay"), and
-    the contents' page numbers are where each chapter fell: the first render
-    says, the second writes them in."""
-    _needs_chromium()
-    status, body = _post(served, {"html": CHAPTERED, "paper": "A4", "name": "x"})
-    assert status == 200, body
-    data = _get(served, body["url"])[2]
-    assert b"/Outlines" in data
-    titles = _outline_titles(data)
-    for want in (
-        "Contents",
-        "Part I · Tables",
-        "1.1 Alpha",
-        "Part II · Constants",
-        "2.1 Beta",
-    ):
-        assert want in titles, titles
-    assert "How this is made" not in titles and "Equations" not in titles, titles
-    assert apdf.dest_pages(data) == {"tb-ch-1-1": 3, "tb-ch-2-1": 6}
-    # The bookmarks go where the contents' links go: the same page objects.
-    named = dict(re.findall(rb"/(tb-ch-[\w-]+)\s*\[\s*(\d+) 0 R", data))
-    marks = dict(re.findall(rb"/Title \(([^)]*)\)\s*/Dest \[(\d+) 0 R", data))
-    assert marks[b"1.1 Alpha"] == named[b"tb-ch-1-1"]
-    assert marks[b"2.1 Beta"] == named[b"tb-ch-2-1"]
-    import shutil
-    import subprocess
-
-    if shutil.which("pdftotext"):
-        text = subprocess.run(
-            ["pdftotext", "-f", "1", "-l", "1", "-", "-"],
-            input=data,
-            capture_output=True,
-            check=True,
-        ).stdout.decode()
-        assert re.search(r"1\.1 Alpha\s*3\b", text) and re.search(
-            r"2\.1 Beta\s*6\b", text
-        ), text
-
-
 def _outline(data):
     """The outline read back, [(title, page, [children]), ...]: pypdf's
     reading when it is here, else the file's own objects walked from the
@@ -528,6 +443,84 @@ def _outline(data):
         return out
 
     return walk(ref(obj(ref(cat, b"Outlines")), b"First"))
+
+
+# The book's shape (almanac-tables.js _tbBookBuild): the contents, linking
+# to each part and chapter; each part a page of its own (id="tb-part-N");
+# each chapter a section (id="tb-ch-N-M") headed by its number and name.
+CHAPTERED = (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>t</title><style>"
+    "@page { size: A4; margin: 20mm; } section { break-before: page; }"
+    ".pg { display: inline-block; min-width: 3em; }</style></head><body>"
+    '<nav class="tb-book-toc"><h1>Contents</h1>'
+    '<p><a href="#tb-part-1">Part I · Tables</a></p>'
+    '<p><a href="#tb-ch-1-1">1.1 Alpha <span class="pg" data-pdf-page="tb-ch-1-1"></span></a></p>'
+    '<p><a href="#tb-part-2">Part II · Constants</a></p>'
+    '<p><a href="#tb-ch-2-1">2.1 Beta <span class="pg" data-pdf-page="tb-ch-2-1"></span></a></p></nav>'
+    '<section class="tb-book-part" id="tb-part-1"><h1><span>Part I<span>&nbsp;·&nbsp;</span></span>'
+    "<span>Tables</span></h1><ol><li>1.1 Alpha</li></ol></section>"
+    '<section id="tb-ch-1-1"><div><header><h2><span>1.1</span> Alpha</h2></header></div><p>one</p>'
+    "<details open><summary><div class='tb-sumh'>How this is made</div></summary><p>how</p>"
+    "<details open><summary><div class='tb-sumh'>Equations</div></summary><p>e</p></details></details></section>"
+    "<section><p>more of Alpha</p></section>"
+    '<section class="tb-book-part" id="tb-part-2"><h1>Part II · Constants</h1></section>'
+    '<section id="tb-ch-2-1"><h2>2.1 Beta</h2><p>two</p></section>'
+    "</body></html>"
+)
+CHAPTERED_OUTLINE = [
+    ("Contents", 1, []),
+    ("Part I · Tables", 2, [("1.1 Alpha", 3, [])]),
+    ("Part II · Constants", 5, [("2.1 Beta", 6, [])]),
+]
+
+
+def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
+    """Eric, 2026-10-05: small and fast, with "a better balance". The PDF is
+    untagged (a sixth of the size), and its outline is Zimi's own: the
+    contents, then each part with its chapters under it, each going to its
+    page. The contents' page numbers are where each chapter fell."""
+    _needs_chromium()
+    status, body = _post(served, {"html": CHAPTERED, "paper": "A4", "name": "x"})
+    assert status == 200, body
+    data = _get(served, body["url"])[2]
+    assert b"/StructTreeRoot" not in data, "untagged"
+    assert b"/PageMode /UseOutlines" in data
+    assert _outline(data) == CHAPTERED_OUTLINE
+    pages = apdf.dest_pages(data)
+    assert pages["tb-ch-1-1"] == 3 and pages["tb-ch-2-1"] == 6, pages
+    import shutil
+    import subprocess
+
+    if shutil.which("pdftotext"):
+        text = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "1", "-", "-"],
+            input=data,
+            capture_output=True,
+            check=True,
+        ).stdout.decode()
+        assert re.search(r"1\.1 Alpha\s*3\b", text) and re.search(
+            r"2\.1 Beta\s*6\b", text
+        ), text
+    if shutil.which("qpdf"):
+        subprocess.run(["qpdf", "--check", "-"], input=data, check=True)
+
+
+def test_without_its_bookmarks_the_pdf_is_still_served(served, monkeypatch, caplog):
+    """The outline is a nicety: when it cannot be written the PDF is the one
+    Chromium drew, with one line in the log."""
+    _needs_chromium()
+
+    def broken(data, marks):
+        raise ValueError("mangled")
+
+    monkeypatch.setattr(apdf, "with_outline", broken)
+    with caplog.at_level("WARNING", logger="zimi"):
+        status, body = _post(served, {"html": CHAPTERED + "<!-- plain -->"})
+    assert status == 200, body
+    data = _get(served, body["url"])[2]
+    assert data.startswith(b"%PDF-") and b"/Outlines" not in data
+    assert _pages(data) == 6
+    assert [r for r in caplog.records if "no bookmarks" in r.getMessage()]
 
 
 def _tiny_pdf(pages=4):
@@ -621,6 +614,30 @@ def test_a_mangled_or_unreadable_pdf_keeps_no_outline():
     with pytest.raises(ValueError):
         apdf.with_outline(good, [])
     assert apdf.with_outline(good, marks) != good
+
+
+def test_the_marks_are_the_contents_then_parts_with_their_chapters():
+    """The outline is read off the book's own HTML: the contents' heading
+    (made a link target, so the first pass places it), each part's and
+    chapter's heading text, whitespace and entities settled; a chapter
+    the first pass did not place is left out."""
+    html = apdf._mark_contents(CHAPTERED)
+    assert '<h1 id="zimi-pdf-contents">' in html
+    assert '<a href="#zimi-pdf-contents" style="display:none"></a>' in html
+    pages = {
+        "zimi-pdf-contents": 1,
+        "tb-part-1": 2,
+        "tb-ch-1-1": 3,
+        "tb-part-2": 5,
+        "tb-ch-2-1": 6,
+    }
+    assert apdf.outline_marks(html, pages) == [
+        [t, p, [[ct, cp, []] for ct, cp, _ in kids]] for t, p, kids in CHAPTERED_OUTLINE
+    ]
+    del pages["tb-ch-2-1"]
+    assert apdf.outline_marks(html, pages)[-1] == ["Part II · Constants", 5, []]
+    # No page marks, no contents to mark.
+    assert apdf._mark_contents(BOOK) == BOOK
 
 
 def test_unreadable_pdfs_have_no_pages():
