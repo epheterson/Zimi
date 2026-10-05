@@ -1084,7 +1084,8 @@ def test_the_worker_is_reused_restarted_when_killed_and_stopped_when_idle(
     proc = w.proc
     assert voices._reap_idle(now=w.used + voices.WORKER_IDLE_S - 1) is True
     assert w.alive(), "not yet idle long enough"
-    assert voices._reap_idle(now=w.used + voices.WORKER_IDLE_S) is False
+    # A second past the line: (used + 600) - used can come out 599.99999.
+    assert voices._reap_idle(now=w.used + voices.WORKER_IDLE_S + 1) is False
     assert w.proc is None and proc.returncode is not None, "stopped and reaped"
     assert voices.speak("stone", "en")[:4] == b"RIFF", "and back on the next word"
     assert worker()[-1] == "said stone" and len(_starts(worker)) == 3
