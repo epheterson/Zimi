@@ -2774,6 +2774,8 @@
   "tb_book_print": "Печать или PDF",
   "tb_book_showing": "Показано: {s}",
   "tb_book_contents": "Содержание",
+  "tb_pdf_name": "Таблицы альманаха",
+  "tb_pdf_failed": "Не удалось создать PDF. Печатается сама страница.",
   "tb_k_earth": "Земля",
   "tb_k_earth_sub": "Радиусы, тяжесть, наклон",
   "tb_k_sunmoon": "Солнце и Луна",

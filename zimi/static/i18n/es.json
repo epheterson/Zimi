@@ -2774,6 +2774,8 @@
   "tb_book_print": "Imprimir o PDF",
   "tb_book_showing": "Mostrando: {s}",
   "tb_book_contents": "Contenido",
+  "tb_pdf_name": "Tablas del almanaque",
+  "tb_pdf_failed": "No se pudo crear el PDF. Se imprime la página en su lugar.",
   "tb_k_earth": "Tierra",
   "tb_k_earth_sub": "Radios, gravedad, inclinación",
   "tb_k_sunmoon": "Sol y Luna",

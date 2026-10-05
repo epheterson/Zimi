@@ -2774,6 +2774,8 @@
   "tb_book_print": "Print or PDF",
   "tb_book_showing": "Showing: {s}",
   "tb_book_contents": "Contents",
+  "tb_pdf_name": "Almanac tables",
+  "tb_pdf_failed": "Couldn't make the PDF. Printing from the page instead.",
   "tb_k_earth": "Earth",
   "tb_k_earth_sub": "Radii, gravity, tilt",
   "tb_k_sunmoon": "Sun and Moon",

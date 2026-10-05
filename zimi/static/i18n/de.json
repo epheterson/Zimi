@@ -2774,6 +2774,8 @@
   "tb_book_print": "Drucken oder PDF",
   "tb_book_showing": "Angezeigt: {s}",
   "tb_book_contents": "Inhalt",
+  "tb_pdf_name": "Almanach-Tabellen",
+  "tb_pdf_failed": "Das PDF konnte nicht erstellt werden. Es wird stattdessen die Seite gedruckt.",
   "tb_k_earth": "Erde",
   "tb_k_earth_sub": "Radien, Schwere, Neigung",
   "tb_k_sunmoon": "Sonne und Mond",

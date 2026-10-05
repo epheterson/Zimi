@@ -2774,6 +2774,8 @@
   "tb_book_print": "打印或 PDF",
   "tb_book_showing": "显示：{s}",
   "tb_book_contents": "目录",
+  "tb_pdf_name": "年历表格",
+  "tb_pdf_failed": "无法生成 PDF，改为打印页面。",
   "tb_k_earth": "地球",
   "tb_k_earth_sub": "半径、重力、倾角",
   "tb_k_sunmoon": "太阳和月球",

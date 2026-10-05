@@ -2774,6 +2774,8 @@
   "tb_book_print": "طباعة أو PDF",
   "tb_book_showing": "المعروض: {s}",
   "tb_book_contents": "المحتويات",
+  "tb_pdf_name": "جداول التقويم",
+  "tb_pdf_failed": "تعذّر إنشاء ملف PDF. ستُطبع الصفحة بدلًا من ذلك.",
   "tb_k_earth": "الأرض",
   "tb_k_earth_sub": "أنصاف الأقطار، الجاذبية، الميل",
   "tb_k_sunmoon": "الشمس والقمر",
