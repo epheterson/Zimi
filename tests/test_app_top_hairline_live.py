@@ -75,9 +75,9 @@ def test_nothing_light_shows_above_an_app(served, scheme):
         )
         s = pg.evaluate(STATE)
         assert s["frameBg"] == s["bg"], s
-        # The header steps aside as the page is scrolled into (and stays while
-        # focus is in it, so nothing there is focused, as on a phone).
-        pg.evaluate("() => { document.activeElement.blur(); _chromeScroll(0); _chromeScroll(400); }")
+        # Over an app the header steps aside only when held (a video playing
+        # sideways), and stays while focus is in it, so nothing is focused.
+        pg.evaluate("() => { document.activeElement.blur(); _chromeImmersive(true); }")
         pg.wait_for_timeout(400)  # past the slide
         s = pg.evaluate(STATE)
         assert s["away"], s

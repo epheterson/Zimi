@@ -190,22 +190,6 @@ document.addEventListener('visibilitychange', function() {
 // null means "the open reader did not originate in the almanac".
 var _almReturnScroll = null;
 
-// The header steps aside as the page scrolls (app.js _chromeScroll), but not
-// for the browser's own pull back at the page's end. Hiding the header makes
-// the scroller taller, which at the end lowers its furthest scroll and pulls
-// it up; read as the reader scrolling up, that brought the header back, the
-// scroller shrank again and the page's last lines stayed out of reach ("I
-// can't scroll to the very bottom of almanac", Eric, 2026-10-03). A move up
-// that leaves the page still at its end is the browser's, not the reader's.
-var ALM_END_SLOP_PX = 2;
-function _almAtEnd(sc) { return sc.scrollTop + sc.clientHeight >= sc.scrollHeight - ALM_END_SLOP_PX; }
-function _almChromeScroll(sc) {
-  var y = sc.scrollTop, last = sc._chromeY == null ? y : sc._chromeY;
-  sc._chromeY = y;
-  if (y < last && _almAtEnd(sc)) { if (typeof _chromeShift === 'function') _chromeShift(y - last); return; }
-  _chromeScroll(y);
-}
-
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
   document.body.classList.add('almanac-mode');
@@ -217,13 +201,6 @@ function _openAlmanacInner(replaceState) {
   else history.pushState({ mode: 'almanac' }, '', url);
   var el = document.getElementById('almanac-view');
   el.classList.add('open');
-  // The header steps aside on a phone as the Almanac is scrolled, as it
-  // does in the apps (_chromeScroll in app.js).
-  var content = document.getElementById('almanac-content');
-  if (content && !content._chromeWatch && typeof _chromeScroll === 'function') {
-    content._chromeWatch = true;
-    content.addEventListener('scroll', function() { if (_almanacOpen) _almChromeScroll(content); }, { passive: true });
-  }
   // Deep-links: fresh library check per open, and one delegated tap handler.
   if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
   var mv = document.getElementById('main-view');
@@ -2011,7 +1988,6 @@ function _almKeepStill(el) {
     var base = scroller.scrollTop, pulled = scroller._almTop.v - base;
     if (delta < 0 && pulled > 0 && pulled <= -delta + 1) base = scroller._almTop.v;
     scroller.scrollTop = scroller._almTop.v = base + delta;
-    if (typeof _chromeShift === 'function') _chromeShift(scroller.scrollTop - base);
   });
   el._almStill.observe(el);
 }
