@@ -2759,6 +2759,7 @@
   "tb_book_print": "Печать или PDF",
   "tb_book_showing": "Показано: {s}",
   "tb_book_contents": "Содержание",
+  "tb_book_part": "Часть {n}",
   "tb_pdf_name": "Таблицы альманаха",
   "tb_pdf_failed": "Не удалось создать PDF. Печатается сама страница.",
   "tb_made_with": "Сделано в Zimi {v}",

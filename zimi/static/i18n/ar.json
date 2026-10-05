@@ -2759,6 +2759,7 @@
   "tb_book_print": "طباعة أو PDF",
   "tb_book_showing": "المعروض: {s}",
   "tb_book_contents": "المحتويات",
+  "tb_book_part": "الجزء {n}",
   "tb_pdf_name": "جداول التقويم",
   "tb_pdf_failed": "تعذّر إنشاء ملف PDF. ستُطبع الصفحة بدلًا من ذلك.",
   "tb_made_with": "صُنع باستخدام Zimi {v}",

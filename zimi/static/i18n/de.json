@@ -2759,6 +2759,7 @@
   "tb_book_print": "Drucken oder PDF",
   "tb_book_showing": "Angezeigt: {s}",
   "tb_book_contents": "Inhalt",
+  "tb_book_part": "Teil {n}",
   "tb_pdf_name": "Almanach-Tabellen",
   "tb_pdf_failed": "Das PDF konnte nicht erstellt werden. Es wird stattdessen die Seite gedruckt.",
   "tb_made_with": "Erstellt mit Zimi {v}",

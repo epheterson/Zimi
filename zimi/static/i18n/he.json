@@ -2759,6 +2759,7 @@
   "tb_book_print": "הדפסה או PDF",
   "tb_book_showing": "מוצג: {s}",
   "tb_book_contents": "תוכן העניינים",
+  "tb_book_part": "חלק {n}",
   "tb_pdf_name": "טבלאות האלמנך",
   "tb_pdf_failed": "לא ניתן היה ליצור PDF. מדפיסים את הדף במקום.",
   "tb_made_with": "נוצר עם Zimi {v}",

@@ -2759,6 +2759,7 @@
   "tb_book_print": "Print or PDF",
   "tb_book_showing": "Showing: {s}",
   "tb_book_contents": "Contents",
+  "tb_book_part": "Part {n}",
   "tb_pdf_name": "Almanac tables",
   "tb_pdf_failed": "Couldn't make the PDF. Printing from the page instead.",
   "tb_made_with": "Made with Zimi {v}",

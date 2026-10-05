@@ -2759,6 +2759,7 @@
   "tb_book_print": "प्रिंट या PDF",
   "tb_book_showing": "दिखाया गया: {s}",
   "tb_book_contents": "विषय-सूची",
+  "tb_book_part": "भाग {n}",
   "tb_pdf_name": "पंचांग तालिकाएँ",
   "tb_pdf_failed": "PDF नहीं बन सका। इसके बजाय पेज प्रिंट किया जा रहा है।",
   "tb_made_with": "Zimi {v} से बनाया गया",

@@ -2759,6 +2759,7 @@
   "tb_book_print": "Imprimir ou PDF",
   "tb_book_showing": "A mostrar: {s}",
   "tb_book_contents": "Índice",
+  "tb_book_part": "Parte {n}",
   "tb_pdf_name": "Tabelas do almanaque",
   "tb_pdf_failed": "Não foi possível criar o PDF. Imprimindo a página.",
   "tb_made_with": "Feito com Zimi {v}",

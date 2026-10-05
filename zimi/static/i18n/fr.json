@@ -2759,6 +2759,7 @@
   "tb_book_print": "Imprimer ou PDF",
   "tb_book_showing": "Affiché : {s}",
   "tb_book_contents": "Sommaire",
+  "tb_book_part": "Partie {n}",
   "tb_pdf_name": "Tables de l'almanach",
   "tb_pdf_failed": "Impossible de créer le PDF. Impression depuis la page.",
   "tb_made_with": "Réalisé avec Zimi {v}",
