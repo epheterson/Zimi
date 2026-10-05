@@ -1567,15 +1567,19 @@ def today(day):
 def random_words(langs=()):
     """A handful of words by chance (the front's Shuffle), chosen as the
     day's are, from the Wiktionaries in the reader's languages (``langs``,
-    primary codes) or, when none is, from all of them: ``{words: [{w, zim,
+    primary codes) first, then the others until there are enough: ``{words: [{w, zim,
     lang}]}``, at most wiki.MORE_WORDS. Reads one Wiktionary after another
     until it has enough."""
     from zimi import wiki as _wiki
 
     ws = wiktionaries()
     mine = [w for w in ws if _primary(w["lang"]) in langs]
-    ws = mine or ws
-    random.shuffle(ws)
+    rest = [w for w in ws if w not in mine]
+    random.shuffle(mine)
+    random.shuffle(rest)
+    # Yours first; the others until there are enough (a small Wiktionary in
+    # your language alone left the front with a single word).
+    ws = mine + rest
     out, seen = [], set()
     for w in ws:
         try:

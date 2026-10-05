@@ -216,7 +216,9 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             pg.goto(served + "/#dictionary")
             f = _frame(pg)
             f.wait_for_selector(".cloud a[data-w='water']", timeout=20000)
-            # The word of the day is said where it stands, beside its link.
+            # The word of the day is said where it stands, beside its link
+            # (drawn when the day's words answer, after the cloud).
+            f.wait_for_selector(".wotd-box > .wotd-say [data-say]", state="attached", timeout=20000)
             assert f.evaluate(
                 "() => { const b = document.querySelector('.wotd-box > .wotd-say [data-say]'); return !!b && !b.closest('a'); }"
             )
