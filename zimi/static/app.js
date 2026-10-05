@@ -827,6 +827,31 @@ function _setShowLangFilters(on) {
   _setStorageFlag(SK.HIDE_LANG_CHOOSER, !on);
   if (window.updateTopbar) updateTopbar();
 }
+// Show languages off hides the top bar's language button and the menu's
+// Language too (Eric, 2026-10-05), and Zimi's own language is set in
+// Settings > Languages instead. Where this viewer cannot open Settings (Manage
+// off, locked, or behind a password they do not hold) the button stays: a
+// Zimipedia that switched Zimi to Hebrew must always leave a way back.
+function _langSettingsReachable() {
+  return manageEnabled && !_managePublicLocked && !_needsSignIn();
+}
+function _langMenuHidden() {
+  return _getStorageFlag(SK.HIDE_LANG_CHOOSER) && _langSettingsReachable();
+}
+function _isUiLang(c) { return _AVAILABLE_LANGS.some(function(l) { return l.code === c; }); }
+// Zimi's language: its interface languages, each by its own name, one tap to
+// switch. Always open at the top of the card: the way to change Zimi's
+// language when the top bar's button is hidden.
+function _uiLangSegHtml() {
+  var cur = _uiLangPrimary();
+  return '<div class="ms-theme-label">' + tH('ui_lang_title') + '</div>' +
+    '<div class="app-theme-seg ui-lang-seg" id="ms-ui-lang" role="radiogroup" aria-label="' + escAttr(t('ui_lang_title')) + '">' +
+    _AVAILABLE_LANGS.map(function(l) {
+      var on = l.code === cur;
+      return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
+        ' lang="' + l.code + '" data-lang="' + l.code + '" onclick="setLanguage(\'' + l.code + '\')">' + esc(l.name) + '</button>';
+    }).join('') + '</div>';
+}
 
 // A row: the check and the names (one tap target), the voice that says the
 // language here, ▶, and for an admin Get (a better voice to download) or ⋯
@@ -855,7 +880,8 @@ function _langRowHtml(c, mine) {
     '<button type="button" class="lang-pick" role="checkbox" aria-checked="' + mine + '" onclick="_togglePrefLanguage(' + js + ')">' +
       '<span class="lang-check">' + (mine ? _CHECK_ICON : '') + '</span>' +
       '<span class="share-row-text"><span class="share-row-title" lang="' + escAttr(c) + '">' + esc(own) + '</span>' +
-      (named !== own ? '<span class="share-row-desc">' + esc(named) + '</span>' : '') + '</span></button>' +
+      (named !== own ? '<span class="share-row-desc">' + esc(named) + '</span>' : '') + '</span>' +
+      (_isUiLang(c) ? '<span class="lang-zimi-tag">' + tH('lang_zimi_tag') + '</span>' : '') + '</button>' +
     '<span class="lang-voice' + (v ? '' : ' none') + '">' + (v ? esc(_voiceEngineName(v)) : tH('voices_none')) + '</span>' +
     '<span class="lang-act">' + act + '</span>' +
     (busy ? '<div class="lang-dl">' + _voiceBarHtml() + '</div>' : '') +
@@ -868,12 +894,19 @@ function _langListHtml() {
   var names = {};
   rest.forEach(function(c) { names[c] = _langOwnName(c); });
   rest.sort(function(a, b) { return names[a].localeCompare(names[b]); });
+  // Zimi's own languages first, as their own group; the languages only a
+  // voice or a ZIM brings read as the rest.
+  var zimi = rest.filter(_isUiLang), other = rest.filter(function(c) { return !_isUiLang(c); });
+  var group = function(key, codes) {
+    return codes.length ? '<div class="lang-sub" role="heading" aria-level="4">' + tH(key) + '</div>' +
+      codes.map(function(c) { return _langRowHtml(c, false); }).join('') : '';
+  };
   var all = _langAllOpen;
   return mine.map(function(c) { return _langRowHtml(c, true); }).join('') +
     '<button type="button" class="share-row lang-fold lang-all" aria-expanded="' + all + '" onclick="_toggleLangAll()">' +
       '<span class="lang-chev" aria-hidden="true">›</span><span class="share-row-text"><span class="share-row-title">' +
       tH('languages_all', { n: rest.length }) + '</span></span></button>' +
-    (all ? rest.map(function(c) { return _langRowHtml(c, false); }).join('') : '');
+    (all ? group('languages_zimi_speaks', zimi) + group('languages_other', other) : '');
 }
 // The fold's line, and the list under it while it is open.
 function _paintLangPrefs() {
@@ -891,8 +924,9 @@ function _paintLangPrefs() {
 function _languagesCardHtml() {
   var open = _langListOpen();
   return '<div class="ms-section-label" id="ms-languages" style="margin-top:24px">' + tH('languages_section') + '</div>' +
+    _uiLangSegHtml() +
     '<div class="share-rows set-rows lang-card">' +
-      _switchRowHtml({ id: 'ms-lang-filters', title: tH('show_lang_chooser'),
+      _switchRowHtml({ id: 'ms-lang-filters', title: tH('show_lang_chooser'), desc: tH('show_lang_chooser_desc'),
         on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER), onchange: '_setShowLangFilters(this.checked)' }) +
       '<button type="button" class="share-row set-row lang-fold" id="ms-lang-fold" aria-expanded="' + open + '" aria-controls="' + _LANG_LIST_ID + '" onclick="_toggleLangList()">' +
         '<span class="lang-chev" aria-hidden="true">›</span><span class="share-row-text">' +
@@ -1581,7 +1615,11 @@ async function setLanguage(lang) {
   if (readerOpen) {
     // Just update topbar/labels — reader iframe content stays put
   } else if (mode === 'manage') {
-    renderManage();
+    // Drawn again in the new language on the same section, where it was:
+    // Settings > Languages switches Zimi's language without leaving it.
+    var _msY = window.scrollY;
+    _pendingMsSection = _msSection;
+    renderManage().then(function() { window.scrollTo(0, _msY); });
   } else if (mode === 'source' && currentSource) {
     renderSource(currentSource);
   } else {
@@ -2578,10 +2616,7 @@ function updateTopbar() {
   // !important, which no inline display can outrank.
   document.body.classList.toggle('creating', !!_createOpen);
   _syncTopbarMore();
-  // Zimi's own language is always a tap away: Language filters hides the
-  // filter chips, never the way back to a language you can read (Eric,
-  // 2026-10-04: Zimipedia switched Zimi to Hebrew "then there's no way back").
-  document.getElementById('lang-selector-btn').style.display = '';
+  document.getElementById('lang-selector-btn').style.display = _langMenuHidden() ? 'none' : '';
   _updateLibraryBtnIcon();
 
   // Search placeholder: fitted once the ? has taken (or given back) its room.
@@ -25562,7 +25597,7 @@ function _buildTopbarMenuHtml() {
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
-    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+    if (!_langMenuHidden()) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
     var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
