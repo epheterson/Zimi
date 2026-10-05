@@ -3333,25 +3333,33 @@ var _TOPBAR_TAP_SKIP = 'a, button, input, select, textarea, label, [role="button
 function _scrollBehavior() {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } catch (e) { return 'smooth'; }
 }
-// The window when it is scrolled; else the scrolled box under the middle of
-// the view (the PDF viewer's, an app's list, a panel's).
-function _scrollToTopIn(win, how) {
+// The scrolled box under the middle of the view, nearest first: a panel or a
+// sheet in front (Saved, an Almanac table) before what is behind it. Saved
+// over a scrolled page, or a table over the scrolled Almanac, sent the page
+// behind to its top and left the one in front where it was.
+function _scrolledBoxAt(win) {
   var doc = win.document;
-  if (win.scrollY > 0) { win.scrollTo(how); return true; }
   var el = doc.elementFromPoint(win.innerWidth / 2, win.innerHeight / 2);
   for (; el && el !== doc.documentElement; el = el.parentElement) {
-    if (el.scrollTop > 0) { el.scrollTo(how); return true; }
+    if (el.scrollTop > 0) return el;
   }
+  return null;
+}
+// The window when it is scrolled; else the scrolled box under the middle of
+// the view (the PDF viewer's, an app's list).
+function _scrollToTopIn(win, how) {
+  if (win.scrollY > 0) { win.scrollTo(how); return true; }
+  var box = _scrolledBoxAt(win);
+  if (box) { box.scrollTo(how); return true; }
   return false;
 }
 function _scrollViewToTop() {
   var how = { top: 0, behavior: _scrollBehavior() };
-  // The Almanac scrolls in a box of its own (Eric, 2026-10-05: "why can't
-  // I tap top area on iOS to scroll to top of almanac? Works on library").
-  if (typeof _almanacOpen !== 'undefined' && _almanacOpen) {
-    var alm = document.getElementById('almanac-content');
-    if (alm && alm.scrollTop > 0) { alm.scrollTo(how); return; }
-  }
+  // What is in front first: a panel over the reader or the library, the
+  // Almanac's own box (Eric, 2026-10-05: "why can't I tap top area on iOS to
+  // scroll to top of almanac? Works on library"), a table over it.
+  var box = _scrolledBoxAt(window);
+  if (box) { box.scrollTo(how); return; }
   if (readerOpen) {
     try { if (_scrollToTopIn(document.getElementById('reader-frame').contentWindow, how)) return; } catch (e) {}
   }
