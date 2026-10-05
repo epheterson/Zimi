@@ -2762,6 +2762,7 @@
   "tb_book_part": "Partie {n}",
   "tb_pdf_name": "Tables de l'almanach",
   "tb_pdf_failed": "Impossible de créer le PDF. Impression depuis la page.",
+  "tb_pdf_making": "Création du PDF…",
   "tb_made_with": "Réalisé avec Zimi {v}",
   "tb_k_earth": "Terre",
   "tb_k_earth_sub": "Rayons, pesanteur, inclinaison",

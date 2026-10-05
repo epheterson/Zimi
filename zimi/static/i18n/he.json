@@ -2762,6 +2762,7 @@
   "tb_book_part": "חלק {n}",
   "tb_pdf_name": "טבלאות האלמנך",
   "tb_pdf_failed": "לא ניתן היה ליצור PDF. מדפיסים את הדף במקום.",
+  "tb_pdf_making": "יוצרים את קובץ ה-PDF…",
   "tb_made_with": "נוצר עם Zimi {v}",
   "tb_k_earth": "כדור הארץ",
   "tb_k_earth_sub": "רדיוסים, כבידה, נטייה",

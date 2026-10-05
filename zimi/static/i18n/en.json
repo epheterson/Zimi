@@ -2762,6 +2762,7 @@
   "tb_book_part": "Part {n}",
   "tb_pdf_name": "Almanac tables",
   "tb_pdf_failed": "Couldn't make the PDF. Printing from the page instead.",
+  "tb_pdf_making": "Making the PDF…",
   "tb_made_with": "Made with Zimi {v}",
   "tb_k_earth": "Earth",
   "tb_k_earth_sub": "Radii, gravity, tilt",

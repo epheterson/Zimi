@@ -2762,6 +2762,7 @@
   "tb_book_part": "Часть {n}",
   "tb_pdf_name": "Таблицы альманаха",
   "tb_pdf_failed": "Не удалось создать PDF. Печатается сама страница.",
+  "tb_pdf_making": "Создаётся PDF…",
   "tb_made_with": "Сделано в Zimi {v}",
   "tb_k_earth": "Земля",
   "tb_k_earth_sub": "Радиусы, тяжесть, наклон",

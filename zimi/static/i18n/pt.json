@@ -2762,6 +2762,7 @@
   "tb_book_part": "Parte {n}",
   "tb_pdf_name": "Tabelas do almanaque",
   "tb_pdf_failed": "Não foi possível criar o PDF. Imprimindo a página.",
+  "tb_pdf_making": "Criando o PDF…",
   "tb_made_with": "Feito com Zimi {v}",
   "tb_k_earth": "Terra",
   "tb_k_earth_sub": "Raios, gravidade, inclinação",
