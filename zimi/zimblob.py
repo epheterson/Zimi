@@ -29,8 +29,28 @@ _EXTENDED = 0x10  # cluster info bit: blob offsets are 8 bytes, not 4
 _NOT_AN_ITEM = 0xFFFD  # mimetype ids at or above this are redirects/links/deleted
 
 
+# Opened for bytes everywhere: on Windows os.open reads text unless told.
+_OPEN_FLAGS = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+
+
+def _pread(fd, size, offset):
+    """``size`` bytes at ``offset``. Windows has no os.pread; each caller
+    opens its own descriptor, so a seek and a read there are just as safe."""
+    if hasattr(os, "pread"):
+        return os.pread(fd, size, offset)
+    os.lseek(fd, offset, os.SEEK_SET)
+    chunks, left = [], size
+    while left > 0:
+        got = os.read(fd, left)
+        if not got:
+            break
+        chunks.append(got)
+        left -= len(got)
+    return b"".join(chunks)
+
+
 def _read(fd, size, offset):
-    data = os.pread(fd, size, offset)
+    data = _pread(fd, size, offset)
     if len(data) != size:
         raise ValueError("short read")
     return data
@@ -42,7 +62,7 @@ def locate(zim_path, entry_index, size):
     if entry_index is None or not zim_path or not zim_path.endswith(".zim"):
         return None
     try:
-        fd = os.open(zim_path, os.O_RDONLY)
+        fd = os.open(zim_path, _OPEN_FLAGS)
     except OSError:
         return None
     try:
@@ -87,8 +107,8 @@ def locate(zim_path, entry_index, size):
 
 def read(zim_path, offset, start, end):
     """Bytes ``start``..``end`` (inclusive) of a run located at ``offset``."""
-    fd = os.open(zim_path, os.O_RDONLY)
+    fd = os.open(zim_path, _OPEN_FLAGS)
     try:
-        return os.pread(fd, end - start + 1, offset + start)
+        return _pread(fd, end - start + 1, offset + start)
     finally:
         os.close(fd)

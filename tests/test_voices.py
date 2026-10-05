@@ -62,6 +62,10 @@ w.close()
 def fake_piper(folder):
     """A ``piper`` that writes a quarter second of WAV at RATE, and leaves
     the text it was given beside it."""
+    if sys.platform == "win32":
+        # A script run by its #! line: Windows runs the desktop helper's
+        # zimi-voice.exe instead, which these stand-ins can't be.
+        pytest.skip("the stand-in engines are POSIX scripts")
     path = os.path.join(str(folder), "piper")
     with open(path, "w") as f:
         f.write(FAKE_PIPER % (sys.executable, RATE, RATE))
@@ -861,16 +865,17 @@ def test_a_word_asked_of_one_engine_is_said_by_it_or_not_at_all(three, monkeypat
 def test_the_desktop_helper_is_found_beside_zimi(tmp_path, monkeypatch):
     """A frozen build runs Piper and Kokoro through zimi-voice beside its own
     executable; elsewhere voicehelper.py runs in Zimi's Python."""
-    for name in ("Zimi", voices.HELPER_NAME):
+    exe = ".exe" if os.name == "nt" else ""
+    for name in ("Zimi" + exe, voices.HELPER_NAME + exe):
         p = tmp_path / name
         p.write_text("", encoding="utf-8")
         p.chmod(0o755)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(tmp_path / "Zimi"))
+    monkeypatch.setattr(sys, "executable", str(tmp_path / ("Zimi" + exe)))
     monkeypatch.delenv(voices.PIPER_CMD_ENV, raising=False)
     monkeypatch.setattr(voices.shutil, "which", lambda name: None)
     voices._reset_for_tests()
-    helper = str(tmp_path / voices.HELPER_NAME)
+    helper = str(tmp_path / (voices.HELPER_NAME + exe))
     assert voices.helper_command() == [helper]
     assert voices.piper_command() == [helper, "piper"]
     assert voices.kokoro_command() == [helper, "kokoro"]

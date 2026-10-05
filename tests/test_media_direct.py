@@ -173,3 +173,14 @@ class TestServeOutsideLock(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_reads_without_os_pread_as_on_windows(tmp_path, monkeypatch):
+    """Windows has no os.pread: 1.13.0's first CI run served every video
+    there as a 500. The seek-and-read path gives the same bytes."""
+    import zimi.zimblob as zimblob
+
+    p = tmp_path / "blob.bin"
+    p.write_bytes(bytes(range(256)) * 4)
+    monkeypatch.delattr(os, "pread", raising=False)
+    assert zimblob.read(str(p), 100, 0, 9) == (bytes(range(256)) * 4)[100:110]
