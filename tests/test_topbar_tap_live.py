@@ -140,3 +140,27 @@ def test_an_iphone_home_screen_app_offers_copy_link_not_a_browser(served):
             assert copied and "a=" in copied and "Long" in copied, copied
         finally:
             br.close()
+
+
+def test_a_tap_on_the_bar_takes_the_almanac_to_its_top(served):
+    """Eric, 2026-10-05: "why can't I tap top area on iOS to scroll to top of
+    almanac? Works on library page". The Almanac scrolls in a box of its own."""
+    from playwright.sync_api import sync_playwright
+
+    base, _name = served
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"], reduced_motion="reduce")
+        pg = ctx.new_page()
+        try:
+            pg.goto(base + "/#almanac")
+            pg.wait_for_function(
+                "() => { const c = document.getElementById('almanac-content'); return c && c.scrollHeight > 3000; }",
+                timeout=30000,
+            )
+            pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 2500)")
+            pg.wait_for_function("() => document.getElementById('almanac-content').scrollTop > 2000")
+            pg.evaluate("() => _scrollViewToTop()")
+            pg.wait_for_function("() => document.getElementById('almanac-content').scrollTop === 0", timeout=5000)
+        finally:
+            br.close()

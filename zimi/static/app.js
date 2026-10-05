@@ -3346,6 +3346,12 @@ function _scrollToTopIn(win, how) {
 }
 function _scrollViewToTop() {
   var how = { top: 0, behavior: _scrollBehavior() };
+  // The Almanac scrolls in a box of its own (Eric, 2026-10-05: "why can't
+  // I tap top area on iOS to scroll to top of almanac? Works on library").
+  if (typeof _almanacOpen !== 'undefined' && _almanacOpen) {
+    var alm = document.getElementById('almanac-content');
+    if (alm && alm.scrollTop > 0) { alm.scrollTo(how); return; }
+  }
   if (readerOpen) {
     try { if (_scrollToTopIn(document.getElementById('reader-frame').contentWindow, how)) return; } catch (e) {}
   }
