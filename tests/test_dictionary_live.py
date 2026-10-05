@@ -969,30 +969,129 @@ def _slow_fetch(monkeypatch, steps):
     monkeypatch.setattr(voices, "_fetch_voice", fetch)
 
 
-def test_show_languages_is_on_and_hides_only_the_pills(piper_here, served):
-    """Eric, 2026-10-04: "I liked show languages on off and pills on by
-    default." The switch is Show languages again, on until switched off;
-    off, the language pills over the library and catalog go, and Zimi's own
-    language menu stays (switched to Hebrew from Zimipedia, "then there's no
-    way back")."""
+LANG_BTN = "() => document.getElementById('lang-selector-btn').style.display"
+# The ⋯ menu's rows, as a phone builds them: [Language offered, Manage offered].
+MENU = "() => { const h = _buildTopbarMenuHtml(); return [h.includes('toggleLangDropdown'), h.includes('toggleManage') || h.includes('_openDownloadsView')]; }"
+UI_LANG = "#ms-ui-lang"
+
+
+def test_show_languages_hides_the_pills_and_the_top_bars_language(piper_here, served):
+    """Eric, 2026-10-05: "Show languages toggle isn't controlling the menubar
+    language button?" On by default; off, the language pills over the
+    library and catalog go, and so do the top bar's language button and the
+    menu's Language. Zimi's own language stays a tap away in Settings
+    (switched to Hebrew from Zimipedia, "then there's no way back")."""
     _open_eau, errors = piper_here
     pg = _open_eau().page
     _settings_languages(pg, served, open_list=False)
     row = "label.set-row:has(#ms-lang-filters)"
     assert pg.text_content(row + " .share-row-title") == "Show languages"
+    assert "top bar" in pg.text_content(row + " .share-row-desc")
     assert pg.is_checked("#ms-lang-filters")
     pills = "() => _renderLangPills({ en: 2, fr: 1 }, 'x')"
     assert "catalog-lang-row" in pg.evaluate(pills)
+    assert pg.evaluate(LANG_BTN) != "none"
+    assert pg.evaluate(MENU) == [True, True]
     pg.click(row)
     assert pg.evaluate("() => localStorage.zimi_hide_lang_chooser") == "1"
     assert pg.evaluate(pills) == ""
-    pg.evaluate("() => updateTopbar()")
-    assert (
-        pg.evaluate("() => document.getElementById('lang-selector-btn').style.display")
-        != "none"
-    )
+    assert pg.evaluate(LANG_BTN) == "none"
+    assert pg.evaluate(MENU) == [False, True], "Settings is still a tap away"
+    # Off, and drawn again: Settings offers Zimi's language.
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector(UI_LANG + " [data-lang='he']", timeout=20000)
+    assert pg.evaluate(LANG_BTN) == "none"
     pg.click(row)
     assert pg.evaluate("() => localStorage.zimi_hide_lang_chooser") is None
+    assert "catalog-lang-row" in pg.evaluate(pills)
+    assert pg.evaluate(LANG_BTN) != "none"
+    assert pg.evaluate(MENU) == [True, True]
+    assert not errors, errors
+
+
+def test_zimis_language_in_settings_switches_zimi_and_leaves_a_way_back(
+    piper_here, served
+):
+    """Zimi's language, at the top of Settings > Languages and never folded:
+    the ten interface languages by their own names, the current one marked,
+    a tap switching Zimi. With Show languages off it is the way back, in
+    every language, right to left too: the menu keeps Manage."""
+    _open_eau, errors = piper_here
+    pg = _open_eau().page
+    pg.evaluate("() => localStorage.setItem('zimi_hide_lang_chooser', '1')")
+    _settings_languages(pg, served, open_list=False)
+    btns = UI_LANG + " .app-theme-btn"
+    assert pg.eval_on_selector_all(btns, "bs => bs.map(b => b.textContent)") == [
+        "English",
+        "Français",
+        "Deutsch",
+        "Español",
+        "Português",
+        "Русский",
+        "中文",
+        "العربية",
+        "हिन्दी",
+        "עברית",
+    ]
+    assert pg.get_attribute(UI_LANG + " [data-lang='en']", "aria-checked") == "true"
+    # The selector sits above Your languages.
+    assert pg.evaluate(
+        "() => !!(document.getElementById('ms-ui-lang').compareDocumentPosition("
+        "document.getElementById('ms-lang-fold')) & Node.DOCUMENT_POSITION_FOLLOWING)"
+    )
+    assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
+    pg.eval_on_selector("#ms-languages", "e => e.scrollIntoView({ block: 'center' })")
+    _shots(pg, "languages-zimis-language")
+    pg.click(UI_LANG + " [data-lang='he']")
+    pg.wait_for_function(
+        "() => _currentLang === 'he' && document.documentElement.dir === 'rtl'"
+    )
+    pg.wait_for_selector(
+        UI_LANG + " [data-lang='he'][aria-checked='true']", timeout=20000
+    )
+    assert pg.evaluate("() => localStorage.zimi_ui_lang") == "he"
+    assert pg.evaluate(LANG_BTN) == "none"
+    assert pg.evaluate(MENU) == [False, True], "Manage, in Hebrew, right to left"
+    pg.click(UI_LANG + " [data-lang='en']")
+    pg.wait_for_function(
+        "() => _currentLang === 'en' && document.documentElement.dir !== 'rtl'"
+    )
+    assert pg.get_attribute(UI_LANG + " [data-lang='en']", "aria-checked") == "true"
+    assert not errors, errors
+
+
+def test_zimis_languages_are_tagged_and_lead_all_languages(piper_here, served):
+    """Eric, 2026-10-05: the list should "differentiate Zimi 10 (should be
+    prominent) from all voices". Zimi's interface languages carry a Zimi tag
+    and lead All languages under Zimi speaks; the rest follow under Other
+    languages."""
+    _open_eau, errors = piper_here
+    pg = _open_eau().page
+    _settings_languages(pg, served)
+    _open_all(pg)
+    got = pg.evaluate("""() => { const out = []; let head = null;
+      for (const el of document.querySelectorAll('#ms-lang-list > *')) {
+        if (el.classList.contains('lang-sub')) head = el.textContent;
+        else if (el.classList.contains('lang-row'))
+          out.push([head, el.dataset.lang, !!el.querySelector('.lang-zimi-tag')]);
+      }
+      return out; }""")
+    ui = ["en", "fr", "de", "es", "pt", "ru", "zh", "ar", "hi", "he"]
+    zimi = [c for h, c, _t in got if h == "Zimi speaks"]
+    other = [c for h, c, _t in got if h == "Other languages"]
+    assert sorted(zimi) == sorted(ui), got
+    assert other and not set(other) & set(ui), got
+    assert [c for _h, c, _t in got] == zimi + other, "Zimi's first"
+    assert all(t == (c in ui) for _h, c, t in got), got
+    assert pg.text_content(ROW % "fr" + " .lang-zimi-tag") == "Zimi"
+    # Picked, Zimi's languages keep their tag among yours.
+    pg.click(ROW % "fr" + " .lang-pick")
+    assert pg.text_content(ROW % "fr" + " .lang-zimi-tag") == "Zimi"
+    pg.click(ROW % "fr" + " .lang-pick")
+    pg.eval_on_selector(
+        LIST + " .lang-sub", "e => e.scrollIntoView({ block: 'start' })"
+    )
+    _shots(pg, "languages-zimi-first")
     assert not errors, errors
 
 
