@@ -13072,7 +13072,10 @@ function _msLibraryHtml() {
     // — the single writer — so the top-level label never strands on "Checking…".
     '<div id="update-status" class="mc-row">' +
       '<span class="mc-label">' + tH('updates') + '</span>' +
-      '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span></div>' +
+      '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span>' +
+      // "Update all" lives on this row, right after the count it acts on;
+      // _renderUpdatesSummary keeps the element across repaints.
+      '<button id="update-all-btn" class="manage-btn-action" onclick="event.stopPropagation();triggerUpdate()" style="display:none">' + tH('update_all') + '</button></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     // Space before the ZIM auto-update block so its header doesn't crowd the
     // app-update line above it (Eric: "no spacing after Updates line").
@@ -13081,7 +13084,6 @@ function _msLibraryHtml() {
       '<button class="set-btn" onclick="manageImportZim()">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="set-btn" onclick="settingsRefreshCache()">' + tH('refresh_cache') + '</button>' +
       '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()">' + tH('library_health') + '</button>' +
-      '<button id="update-all-btn" class="manage-btn-action" onclick="triggerUpdate()" style="display:none;margin-inline-start:auto">' + tH('update_all') + '</button>' +
     '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>' +
@@ -16872,15 +16874,10 @@ async function _refreshDownloadsInner(useCache) {
         if (!doneUrls.has(stripped) && !doneUrls.has(u.download_url)) stillRunning++;
       }
       const anyActive = dls.some(d => !d.done);
-      const updateEl = document.getElementById('update-status');
       const updateBtn = document.getElementById('update-all-btn');
       if (anyActive) {
-        // Downloads still running — transient "N remaining" progress line (not a
-        // state the summary writer models). Non-clickable while in flight.
-        if (updateEl) {
-          updateEl.onclick = null; updateEl.classList.remove('mc-row-clickable');
-          updateEl.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + stillRunning + ' ' + tH('remaining') + '</span>';
-        }
+        // Downloads still running: the count stays "N available" and the
+        // button beside it counts down the updates still in flight.
         if (updateBtn && updateBtn.disabled) updateBtn.textContent = t('updating_n', {n: stillRunning});
       } else {
         // All downloads finished — drop successful ones, then repaint through the
@@ -17144,13 +17141,17 @@ function _renderUpdatesSummary() {
   } else if (_updatesStatus === 'error') {
     value = '<span class="mc-value" style="color:var(--text2)">' + tH('updates_check_failed') + '</span>';
   } else if (count > 0) {
-    value = '<span class="mc-value" style="color:var(--amber)">' + _autoUpdateTimerHtml() + tH('updates_available', {n: count}) +
+    value = '<span class="mc-value" style="color:var(--amber)">' + _autoUpdateTimerHtml() + tPluralH('updates_available', count) +
       '<svg class="mc-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>';
     clickable = true;
   } else {
     value = '<span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
   }
-  el.innerHTML = label + value;
+  // The button is detached across the repaint so its disabled/progress state
+  // survives, then set right after the count.
+  if (updateBtn && updateBtn.parentNode) updateBtn.parentNode.removeChild(updateBtn);
+  el.innerHTML = label + '<span class="mc-updates-end">' + value + '</span>';
+  if (updateBtn) el.lastChild.appendChild(updateBtn);
   if (clickable) {
     el.classList.add('mc-row-clickable');
     el.setAttribute('role', 'button');
@@ -17158,7 +17159,7 @@ function _renderUpdatesSummary() {
     el.style.cursor = 'pointer';
     el.title = t('updates_show_detail');
     el.onclick = _toggleUpdatesDetail;
-    el.onkeydown = function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _toggleUpdatesDetail(); } };
+    el.onkeydown = function(e) { if (e.target === el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); _toggleUpdatesDetail(); } };
   } else {
     el.classList.remove('mc-row-clickable');
     el.removeAttribute('role');
