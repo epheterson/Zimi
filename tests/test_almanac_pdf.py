@@ -477,6 +477,152 @@ def test_a_chaptered_book_has_bookmarks_and_real_page_numbers(served):
         ), text
 
 
+def _outline(data):
+    """The outline read back, [(title, page, [children]), ...]: pypdf's
+    reading when it is here, else the file's own objects walked from the
+    catalog's /Outlines along /First and /Next."""
+    try:
+        import io
+
+        from pypdf import PdfReader
+
+        r = PdfReader(io.BytesIO(data), strict=True)
+
+        def walk(items):
+            out = []
+            for it in items:
+                if isinstance(it, list):
+                    out[-1][2].extend(walk(it))
+                else:
+                    out.append((it.title, r.get_destination_page_number(it) + 1, []))
+            return out
+
+        return walk(r.outline)
+    except ImportError:
+        pass
+    rows, trailer, _ = apdf._xref(data)
+
+    def obj(n):
+        return apdf._object(data, rows, n)
+
+    def ref(d, key):
+        m = re.search(rb"/" + key + rb"\s+(\d+) 0 R", d)
+        return int(m.group(1)) if m else None
+
+    cat = obj(ref(trailer, b"Root"))
+    order = apdf._page_order(obj, ref(cat, b"Pages"))
+
+    def text(d):
+        m = re.search(rb"/Title\s*(\((?:[^)\\]|\\.)*\)|<[0-9A-Fa-f]+>)", d).group(1)
+        if m.startswith(b"<"):
+            return bytes.fromhex(m[1:-1].decode()).decode("utf-16")
+        return re.sub(rb"\\(.)", rb"\1", m[1:-1]).decode("latin-1")
+
+    def walk(n):
+        out = []
+        while n is not None:
+            d = obj(n)
+            page = int(re.search(rb"/Dest\s*\[\s*(\d+) 0 R", d).group(1))
+            out.append((text(d), order.index(page) + 1, walk(ref(d, b"First"))))
+            n = ref(d, b"Next")
+        return out
+
+    return walk(ref(obj(ref(cat, b"Outlines")), b"First"))
+
+
+def _tiny_pdf(pages=4):
+    """A small classic PDF as a writer like Chromium's makes it, its pages
+    under two nested Pages nodes."""
+    half = pages // 2
+    kids = [list(range(10, 10 + half)), list(range(10 + half, 10 + pages))]
+    objs = {
+        1: b"<</Title (tiny)>>",
+        2: b"<</Type /Catalog\n/Pages 3 0 R>>",
+        3: b"<</Type /Pages /Kids [4 0 R 5 0 R] /Count %d>>" % pages,
+    }
+    for n, ks in zip((4, 5), kids):
+        objs[n] = b"<</Type /Pages /Parent 3 0 R /Kids [%s] /Count %d>>" % (
+            b" ".join(b"%d 0 R" % k for k in ks),
+            len(ks),
+        )
+        for k in ks:
+            objs[k] = b"<</Type /Page /Parent %d 0 R /MediaBox [0 0 200 200]>>" % n
+    out, at = bytearray(b"%PDF-1.4\n"), {}
+    for n in sorted(objs):
+        at[n] = len(out)
+        out += b"%d 0 obj\n" % n + objs[n] + b"\nendobj\n"
+    size = max(objs) + 1
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % size
+    for n in range(1, size):
+        out += b"%010d 00000 n \n" % at[n] if n in at else b"0000000000 65535 f \n"
+    out += (
+        b"trailer\n<</Size %d\n/Root 2 0 R\n/Info 1 0 R>>\nstartxref\n%d\n%%%%EOF\n"
+        % (
+            size,
+            xref,
+        )
+    )
+    return bytes(out)
+
+
+def test_the_outline_is_an_incremental_update():
+    """The bookmarks are appended: Chromium's bytes stay as they were, then
+    the outline, a new catalog and a cross-reference section whose /Prev is
+    the old one. Titles that are not ASCII (a place, another language) are
+    UTF-16 with its byte order mark; pages come from the page tree, nested
+    Pages nodes and all."""
+    data = _tiny_pdf(4)
+    marks = [
+        ["Contents", 1, []],
+        [
+            "Part I · Tables",
+            2,
+            [["1.1 Sun and Moon", 3, []], ["1.2 Tides (Zürich)", 4, []]],
+        ],
+        ["Teil II · 東京 · Αθήνα", 4, [["2.1 \\ (back)", 4, []]]],
+    ]
+    out = apdf.with_outline(data, marks)
+    assert out.startswith(data)
+    tail = out[len(data) :]
+    assert b"/Prev %d" % apdf._xref(data)[2] in tail
+    assert b"<FEFF" in tail and b"(1.1 Sun and Moon)" in tail
+    assert b"/PageMode /UseOutlines" in tail and b"/Info 1 0 R" in tail
+    want = [
+        ("Contents", 1, []),
+        (
+            "Part I · Tables",
+            2,
+            [("1.1 Sun and Moon", 3, []), ("1.2 Tides (Zürich)", 4, [])],
+        ),
+        ("Teil II · 東京 · Αθήνα", 4, [("2.1 \\ (back)", 4, [])]),
+    ]
+    assert _outline(out) == want
+    # Counts: the root counts every open item, a part its chapters.
+    assert re.search(rb"/Type /Outlines [^>]*/Count 6>>", tail), tail[-600:]
+    # Updated again (the chain of sections is followed), the newer outline
+    # is the one read.
+    again = apdf.with_outline(out, [["Only", 2, []]])
+    assert _outline(again) == [("Only", 2, [])]
+
+
+def test_a_mangled_or_unreadable_pdf_keeps_no_outline():
+    """Anything it cannot read is left as it is: no cross-reference table,
+    a cross-reference stream (written by other PDF makers), a page that is
+    not there, nothing to mark."""
+    marks = [["Contents", 1, []]]
+    good = _tiny_pdf(2)
+    stream = good.replace(b"xref\n0 ", b"1 0 obj <</Type /XRef>> ")
+    broken = good[: good.rindex(b"startxref")] + b"startxref\n7\n%%EOF\n"
+    for bad in (b"%PDF-1.4 not a real file", b"", stream, broken):
+        assert apdf._bookmarked(bad, CHAPTERED, {"tb-ch-1-1": 1}) == bad
+    with pytest.raises(ValueError):
+        apdf.with_outline(good, [["Past the end", 3, []]])
+    with pytest.raises(ValueError):
+        apdf.with_outline(good, [])
+    assert apdf.with_outline(good, marks) != good
+
+
 def test_unreadable_pdfs_have_no_pages():
     assert apdf.dest_pages(b"%PDF-1.4 not a real file") == {}
     assert apdf.dest_pages(b"") == {}

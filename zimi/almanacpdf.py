@@ -30,6 +30,7 @@ import secrets
 import signal
 import threading
 import time
+from html import unescape
 
 from zimi import renderer
 
@@ -176,8 +177,7 @@ def _with_math_font(html):
 # (data-pdf-page="tb-ch-1-3", the id its entry links to). A first, plain PDF
 # of the laid-out page says where each chapter fell (the named destinations
 # Chromium writes for every link target); the numbers are written into the
-# same page and the final PDF taken from it. The page is not loaded again,
-# and the plain pass is a sixth of the tagged one's size and half its time.
+# same page and the final PDF taken from it. The page is not loaded again.
 # Each mark keeps its width either way, so the pages do not move.
 _PAGE_MARK_ATTR = 'data-pdf-page="'
 _FILL_PAGES_JS = (
@@ -215,20 +215,44 @@ def _dict_at(data, pos):
     return b""
 
 
+def _page_order(obj, pages_root):
+    """The page objects' numbers in reading order: the page tree walked
+    from ``pages_root`` (Pages nodes nest), ``obj(n)`` giving a dict."""
+    order, todo, seen = [], [pages_root], set()
+    while todo:
+        n = todo.pop(0)
+        if n in seen:
+            raise ValueError("the page tree loops")
+        seen.add(n)
+        d = obj(n)
+        if re.search(rb"/Type\s*/Pages\b", d):
+            kids = re.search(rb"/Kids\s*\[([^\]]*)\]", d)
+            todo = [
+                int(k) for k in _REF_RE.findall(kids.group(1) if kids else b"")
+            ] + todo
+        else:
+            order.append(n)
+    return order
+
+
 def dest_pages(data):
     """{destination name: page number} from a PDF Chromium wrote; {} when
     it has none or reads otherwise. Only the catalog, the page tree and the
-    destinations are read: a tagged book has tens of thousands of objects."""
+    destinations are read."""
     try:
         offs = {int(m.group(1)): m.end() for m in _OBJ_RE.finditer(data)}
 
         def obj(n):
             return _dict_at(data, offs[n]) if n in offs else b""
 
-        at_cat = _CATALOG_RE.search(data)
+        # The newest catalog (an update appends another), and the newest
+        # copy of each object: the object whose header comes last before
+        # the catalog's /Type is it.
+        at_cat = None
+        for at_cat in _CATALOG_RE.finditer(data):
+            pass
         if not at_cat:
             return {}
-        # The catalog is the object whose header comes last before its /Type.
         cat = obj(
             max((n for n, o in offs.items() if o <= at_cat.start()), key=offs.get)
         )
@@ -237,18 +261,7 @@ def dest_pages(data):
         )
         if not root or not dests:
             return {}
-        order, todo = [], [int(root.group(1))]
-        while todo:
-            n = todo.pop(0)
-            d = obj(n)
-            if re.search(rb"/Type\s*/Pages\b", d):
-                kids = re.search(rb"/Kids\s*\[([^\]]*)\]", d)
-                todo = [
-                    int(k) for k in _REF_RE.findall(kids.group(1) if kids else b"")
-                ] + todo
-            else:
-                order.append(n)
-        at = {n: i + 1 for i, n in enumerate(order)}
+        at = {n: i + 1 for i, n in enumerate(_page_order(obj, int(root.group(1))))}
         out = {}
         for name, ref in re.findall(
             rb"/([^\s/\[\]<>()]+)\s*\[\s*(\d+) 0 R", obj(int(dests.group(1)))
@@ -261,6 +274,259 @@ def dest_pages(data):
         return out
     except (ValueError, KeyError, IndexError):
         return {}
+
+
+# The PDF's bookmarks. Chromium writes an outline only into a tagged PDF,
+# and tagged, the whole book was six times the size and a second and a half
+# slower (Eric, 2026-10-05: small and fast, "a better balance"). So the PDF
+# is drawn untagged and its outline written here: the contents, then each
+# part with its chapters, each going to the page the first pass found it on.
+# It is a PDF incremental update appended to Chromium's file: the outline's
+# objects, a new version of the catalog naming them, and a cross-reference
+# section for those alone. (The on-screen tables and Copy as Markdown are
+# the accessible copies.)
+#
+# The contents' heading is no link's target, so Chromium names no
+# destination for it: it is given an id and a hidden link to it.
+_CONTENTS_ID = "zimi-pdf-contents"
+_MARK_ID_RE = re.compile(r"""\bid=["'](tb-part-(\d+)|tb-ch-(\d+)-\d+)["']""")
+_HEADING_RE = re.compile(r"<(h[12])\b[^>]*>(.*?)</\1>", re.S)
+_TAG_RE = re.compile(r"<[^>]*>")
+_STARTXREF_RE = re.compile(rb"startxref\s+(\d+)\s+%%EOF\s*$")
+_XREF_HEAD_RE = re.compile(rb"\s*(\d+)\s+(\d+)[ \t]*\r?\n")
+_XREF_ROW_RE = re.compile(rb"\s*(\d{10}) (\d{5}) ([nf])")
+_TRAILER_RE = re.compile(rb"\s*trailer")
+
+
+def _mark_contents(html):
+    """``html`` with the contents' heading (the last h1 before the first
+    page mark) a link target, so the plain pass says its page."""
+    at = html.find(_PAGE_MARK_ATTR)
+    h = html.rfind("<h1", 0, at) if at >= 0 else -1
+    end = html.find(">", h) if h >= 0 else -1
+    if end < 0 or "id=" in html[h:end]:
+        return html
+    return (
+        html[:h]
+        + '<h1 id="%s"' % _CONTENTS_ID
+        + html[h + 3 : end + 1]
+        + '<a href="#%s" style="display:none"></a>' % _CONTENTS_ID
+        + html[end + 1 :]
+    )
+
+
+def _heading_text(html, start, stop):
+    m = _HEADING_RE.search(html, start, stop)
+    if not m:
+        return ""
+    return re.sub(r"\s+", " ", unescape(_TAG_RE.sub("", m.group(2)))).strip()
+
+
+def outline_marks(html, pages):
+    """The bookmarks, [[title, page, children], ...]: the contents, then
+    each part (id="tb-part-N") with its chapters (id="tb-ch-N-M") under it,
+    each titled by its first heading; only those the first pass placed."""
+    top, parts = [], {}
+    at = html.find('<h1 id="%s"' % _CONTENTS_ID)
+    if _CONTENTS_ID in pages and at >= 0:
+        title = _heading_text(html, at, len(html))
+        if title:
+            top.append([title, pages[_CONTENTS_ID], []])
+    found = list(_MARK_ID_RE.finditer(html))
+    for i, m in enumerate(found):
+        if m.group(1) not in pages:
+            continue
+        stop = found[i + 1].start() if i + 1 < len(found) else len(html)
+        title = _heading_text(html, m.end(), stop)
+        if not title:
+            continue
+        item = [title, pages[m.group(1)], []]
+        if m.group(2):
+            parts[m.group(2)] = item
+            top.append(item)
+        elif m.group(3) in parts:
+            parts[m.group(3)][2].append(item)
+        else:
+            top.append(item)
+    return top
+
+
+def _pdf_text(s):
+    """A PDF text string: literal when plain ASCII, else UTF-16BE with its
+    byte order mark (place names, other languages)."""
+    if all(32 <= ord(c) < 127 for c in s):
+        esc = s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        return b"(" + esc.encode("ascii") + b")"
+    return b"<FEFF" + s.encode("utf-16-be").hex().upper().encode("ascii") + b">"
+
+
+def _xref(data):
+    """The file's cross-reference tables, followed along /Prev: ({object:
+    (offset, generation)}, the newest trailer, its offset). Classic tables
+    only: a cross-reference stream is a ValueError."""
+    m = _STARTXREF_RE.search(data, max(0, len(data) - 1024))
+    if not m:
+        raise ValueError("no startxref")
+    start = at = int(m.group(1))
+    rows, trailer, seen = {}, None, set()
+    while at is not None:
+        if at in seen or data[at : at + 4] != b"xref":
+            raise ValueError("not a classic cross-reference table")
+        seen.add(at)
+        pos = at + 4
+        while True:
+            head = _XREF_HEAD_RE.match(data, pos)
+            if not head:
+                break
+            first, count = int(head.group(1)), int(head.group(2))
+            pos = head.end()
+            for n in range(first, first + count):
+                row = _XREF_ROW_RE.match(data, pos)
+                if not row:
+                    raise ValueError("a short cross-reference table")
+                pos = row.end()
+                if row.group(3) == b"n":
+                    rows.setdefault(n, (int(row.group(1)), int(row.group(2))))
+        t = _TRAILER_RE.match(data, pos)
+        tdict = _dict_at(data, t.end()) if t else b""
+        if not tdict or b"/XRefStm" in tdict:
+            raise ValueError("no plain trailer")
+        trailer = trailer or tdict
+        prev = re.search(rb"/Prev\s+(\d+)", tdict)
+        at = int(prev.group(1)) if prev else None
+    return rows, trailer, start
+
+
+def _object(data, rows, n):
+    """Object ``n``'s dictionary, found by its cross-reference row."""
+    off, gen = rows[n]
+    head = re.compile(rb"%d\s+%d\s+obj" % (n, gen)).match(data, off)
+    d = _dict_at(data, head.end()) if head else b""
+    if not d:
+        raise ValueError("object %d is not a dictionary" % n)
+    return d
+
+
+def _xref_section(at, gens):
+    """A cross-reference section for the objects at ``at`` ({n: offset}),
+    in runs of consecutive numbers, after the free list's head (object 0,
+    as every section of Chromium's own begins; some readers expect it)."""
+    out, nums = bytearray(b"xref\n0 1\n0000000000 65535 f \n"), sorted(at)
+    while nums:
+        run = 1
+        while run < len(nums) and nums[run] == nums[0] + run:
+            run += 1
+        out += b"%d %d\n" % (nums[0], run)
+        for n in nums[:run]:
+            out += b"%010d %05d n \n" % (at[n], gens.get(n, 0))
+        nums = nums[run:]
+    return bytes(out)
+
+
+def with_outline(data, marks):
+    """``data`` with ``marks`` (outline_marks) as its outline, appended as
+    an incremental update. ValueError (KeyError, IndexError) when the file
+    is not one it can read: the caller keeps the file as it was."""
+    if not marks:
+        raise ValueError("no bookmarks")
+    rows, trailer, prev = _xref(data)
+
+    def obj(n):
+        return _object(data, rows, n)
+
+    root = re.search(rb"/Root\s+(\d+)\s+(\d+)\s+R", trailer)
+    size = re.search(rb"/Size\s+(\d+)", trailer)
+    if not root or not size:
+        raise ValueError("no /Root or /Size")
+    cat_n = int(root.group(1))
+    cat = obj(cat_n)
+    tree = re.search(rb"/Pages\s+(\d+)\s+\d+\s+R", cat)
+    if not tree:
+        raise ValueError("no page tree")
+    order = _page_order(obj, int(tree.group(1)))
+    objs, nxt = {}, [max(int(size.group(1)), max(rows) + 1)]
+
+    def alloc():
+        nxt[0] += 1
+        return nxt[0] - 1
+
+    def place(items, parent):
+        """Outline items for ``items`` under ``parent``: (their numbers,
+        how many items they and theirs make)."""
+        nums, count = [alloc() for _ in items], 0
+        for i, (title, page, kids) in enumerate(items):
+            if not 1 <= page <= len(order):
+                raise ValueError("no page %d" % page)
+            n = order[page - 1]
+            d = [
+                b"/Title " + _pdf_text(title),
+                b"/Parent %d 0 R" % parent,
+                b"/Dest [%d %d R /XYZ null null null]" % (n, rows[n][1]),
+            ]
+            if i:
+                d.append(b"/Prev %d 0 R" % nums[i - 1])
+            if i + 1 < len(nums):
+                d.append(b"/Next %d 0 R" % nums[i + 1])
+            if kids:
+                firsts, below = place(kids, nums[i])
+                d.append(
+                    b"/First %d 0 R /Last %d 0 R /Count %d"
+                    % (firsts[0], firsts[-1], below)
+                )
+                count += below
+            objs[nums[i]] = b"<<" + b"\n".join(d) + b">>"
+            count += 1
+        return nums, count
+
+    outlines = alloc()
+    top, total = place(marks, outlines)
+    objs[outlines] = b"<</Type /Outlines /First %d 0 R /Last %d 0 R /Count %d>>" % (
+        top[0],
+        top[-1],
+        total,
+    )
+    # The catalog again, naming the outline and opening with it shown.
+    cat = re.sub(rb"/(?:Outlines\s+\d+\s+\d+\s+R|PageMode\s*/\w+)", b"", cat)
+    objs[cat_n] = cat[:-2] + b"\n/Outlines %d 0 R\n/PageMode /UseOutlines>>" % outlines
+    gens = {cat_n: rows[cat_n][1]}
+
+    out = bytearray(data if data.endswith(b"\n") else data + b"\n")
+    at = {}
+    for n in sorted(objs):
+        at[n] = len(out)
+        out += b"%d %d obj\n" % (n, gens.get(n, 0)) + objs[n] + b"\nendobj\n"
+    xref_at = len(out)
+    out += _xref_section(at, gens)
+    keep = b"".join(
+        b"\n" + m.group(0)
+        for m in (
+            re.search(rb"/Info\s+\d+\s+\d+\s+R", trailer),
+            re.search(rb"/ID\s*\[[^\]]*\]", trailer),
+        )
+        if m
+    )
+    out += (
+        b"trailer\n<</Size %d\n/Root %d %d R%s\n/Prev %d>>\nstartxref\n%d\n%%%%EOF\n"
+        % (
+            nxt[0],
+            cat_n,
+            gens[cat_n],
+            keep,
+            prev,
+            xref_at,
+        )
+    )
+    return bytes(out)
+
+
+def _bookmarked(data, html, pages):
+    """The PDF with its outline, or as it was when that cannot be written
+    (one line in the log: a PDF is never failed for its bookmarks)."""
+    try:
+        return with_outline(data, outline_marks(html, pages))
+    except Exception as e:  # noqa: BLE001 - the bookmarks are a nicety
+        log.warning("almanac pdf: no bookmarks (%s: %s)", type(e).__name__, e)
+        return data
 
 
 def _draw(browser, html, paper):
