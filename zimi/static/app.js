@@ -18873,7 +18873,9 @@ function _watchReaderMap() {
         var base = location.pathname + location.search;
         // replaceState, never push: a pan is not a navigation, and pushing
         // would bury the page you came from under a hundred entries.
-        history.replaceState(history.state, '', base + '#' + mapPositionHash(map.getZoom(), c.lat, c.lng));
+        var here = mapPositionHash(map.getZoom(), c.lat, c.lng);
+        history.replaceState(history.state, '', base + '#' + here);
+        _histFollowMap(here);
       } catch (e) {}
     }, _MAP_HASH_DEBOUNCE_MS);
   };
@@ -22206,6 +22208,20 @@ function _histLoad() {
 function _histSave() {
   if (!_persistHist) return;
   try { localStorage.setItem(_HIST_KEY, JSON.stringify(_persistHist)); } catch(e) {}
+}
+// The map's visit follows the map: the visit was recorded as the map
+// opened, at its first view, and Maps reopens the last visit. Hawaii's first
+// view is the middle of its box, open ocean, so every reopen landed there
+// (Eric, 2026-10-05: "I'm in the ocean and see no land and have to go way
+// to the right to find it every time").
+function _histFollowMap(pos) {
+  if (!currentArticle) return;
+  var h = _histLoad(), top = h[0];
+  if (!top || top.type !== 'article' || top.zim !== currentArticle.zim || top.path !== currentArticle.path) return;
+  var norm = _normMapPos(pos);
+  if (top.pos === norm) return;
+  top.pos = norm;
+  _histSave();
 }
 function _histPushArticle(zim, path, title, pos, app) {
   var h = _histLoad();
