@@ -21,7 +21,12 @@
   'use strict';
   var BARS_HIDE = 24;          // px scrolled down (or up) before the bars leave (or come back)
   var SAVE_MS = 800;           // ms of rest on a page before it is kept
-  var TAP_EDGE = 0.3;          // share of the width at either side where a tap turns the page (the reader's _BOOK_EDGE)
+  // Share of the width at either side where a tap turns the page: a quarter,
+  // leaving the middle half to show or hide the bars (Eric, 2026-10-05: "do we
+  // have the side taps tuned right so tapping center easily brings controls?").
+  // A PDF's page fills a phone's width; the book reader's 0.3 left the bars
+  // 40% of it.
+  var TAP_EDGE = 0.25;
   var PINCH_TAP_MS = 400;      // ms after a pinch in which a tap is the pinch's own
   var THUMB_PX = 200;          // px wide a page is drawn for the pages sheet (two device pixels a column)
   var LOAD_WAIT_MS = 50, LOAD_WAIT_TRIES = 200;

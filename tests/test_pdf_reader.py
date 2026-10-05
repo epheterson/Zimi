@@ -847,8 +847,10 @@ def test_a_page_at_a_time_or_a_scroll_and_the_ends_from_the_menu(shell):
             ctx.browser.close()
 def test_a_tap_at_either_side_turns_the_page(shell):
     """Eric, 2026-10-03: "In PDF page view can we get tap left/right like in
-    reader?" A page at a time turns on a tap in the outer 30% either side
-    (the reader's _BOOK_EDGE); the middle still shows or hides the bars."""
+    reader?" A page at a time turns on a tap in the outer quarter either
+    side; the middle half shows or hides the bars (Eric, 2026-10-05: "do we
+    have the side taps tuned right so tapping center easily brings
+    controls?")."""
     _skip_without_browser()
     from playwright.sync_api import sync_playwright
 
@@ -870,6 +872,45 @@ def test_a_tap_at_either_side_turns_the_page(shell):
             assert fr.evaluate("() => zimiPdf.page()") == 2, "the middle does not turn"
         finally:
             ctx.browser.close()
+
+
+@pytest.mark.parametrize("view", ["pages", "scroll"])
+def test_a_tap_in_the_middle_half_shows_and_hides_the_bars(shell, view):
+    """A finger's tap anywhere in the middle half, a page at a time or
+    scrolling, shows or hides the bars and never turns the page; past a
+    quarter from either side, a page at a time turns."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        ctx.add_init_script(
+            "try { localStorage.setItem('zimi_pdf_view', '%s'); } catch (e) {}" % view
+        )
+        pg, fr, _ = _open(pw, base, name, None, ctx=ctx)
+        try:
+            mode = 3 if view == "pages" else 0
+            fr.wait_for_function(
+                "(m) => PDFViewerApplication.pdfViewer.scrollMode === m", arg=mode
+            )
+            box = pg.locator("#reader-frame").bounding_box()
+            vw = fr.evaluate("() => innerWidth")
+            y = box["y"] + fr.evaluate("() => innerHeight / 2")
+            for x in (0.27, 0.5, 0.73, 0.3, 0.7):
+                shown = fr.evaluate("() => zimiPdf.barsShown()")
+                pg.touchscreen.tap(box["x"] + vw * x, y)
+                fr.wait_for_function(
+                    "(s) => zimiPdf.barsShown() === !s", arg=shown, timeout=5000
+                )
+                pg.wait_for_timeout(450)
+            assert fr.evaluate("() => zimiPdf.page()") == 1, "the middle does not turn"
+            if view == "pages":
+                pg.touchscreen.tap(box["x"] + vw * 0.8, y)
+                fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+        finally:
+            br.close()
 
 
 def test_a_tap_at_either_side_is_mirrored_right_to_left(shell):
