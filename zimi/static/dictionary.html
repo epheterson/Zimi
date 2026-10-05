@@ -555,6 +555,12 @@ function moreHtml(today) {
       return '<a class="w" href="' + esc(wordUrl(x.w)) + '" data-w="' + esc(x.w) + '"><span lang="' + esc(x.lang) + '">' + esc(x.w) + '</span>' + other + '</a>';
     }).join('') + '</div></section>';
 }
+function fillMore() {
+  get('/dictionary/random?langs=' + encodeURIComponent(LANGS.join(','))).then(function(r) {
+    if (r !== FAILED && r.words && r.words.length && !_shuffled) _shuffled = pickMore(r.words, LANGS, '');
+    if (_shuffled && cur().v === 'home') renderHome();
+  });
+}
 function shuffleWords(b) {
   if (b.disabled) return;
   b.disabled = true; b.setAttribute('aria-busy', 'true');
@@ -1232,7 +1238,14 @@ function load() {
     _home = d;
     if (cur().v === 'home') renderHome();
     if (d !== FAILED && d.wiktionaries.length) {
-      get('/dictionary/today?day=' + dayStamp()).then(function(t) { _today = t; if (cur().v === 'home') renderHome(); });
+      get('/dictionary/today?day=' + dayStamp()).then(function(t) {
+        _today = t;
+        // The front always offers more than one word (Eric, 2026-10-04: "I
+        // still want more than one word on dictionary homepage"): when the
+        // day brought none, a handful by chance.
+        if (t === FAILED || !(t.more && t.more.length)) fillMore();
+        if (cur().v === 'home') renderHome();
+      });
     }
   });
   var w = STR.w || '';

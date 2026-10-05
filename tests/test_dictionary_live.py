@@ -1444,3 +1444,24 @@ def test_an_engine_switched_off_is_never_asked_and_the_last_stays_on(
     assert pg.evaluate(PREFS)["off"] == ["espeak", "device"]
     assert pg.eval_on_selector(VOICES_WRAP + " .voice-engine input", "i => i.checked")
     assert not errors, errors
+
+
+def test_the_front_offers_more_words_even_when_the_day_brought_none(served):
+    """Eric, 2026-10-04: "I still want more than one word on dictionary
+    homepage". A day that answered with no other words (or failed) still
+    gets a shelf, filled by chance."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+        pg = ctx.new_page()
+        pg.route("**/dictionary/today?*", lambda r: r.fulfill(status=200, content_type="application/json",
+                                                              body='{"day": "x", "words": [], "more": []}'))
+        try:
+            pg.goto(served + "/#dictionary")
+            f = _frame(pg)
+            f.wait_for_selector(".more-words .cloud a[data-w]", timeout=20000)
+            assert len(f.query_selector_all(".more-words .cloud a[data-w]")) >= 2
+        finally:
+            br.close()
