@@ -767,10 +767,15 @@ def test_the_whole_book_of_what_is_shown(page):
         page.wait_for_function("() => window.__printed === 1", timeout=60000)
         book = page.evaluate(
             "() => { const b = document.getElementById('alm-book'); return b && { pages: [...b.querySelectorAll('.tb-book-page')].map((p) => p.dataset.tb),"
-            " heads: b.querySelectorAll('.tb-book-page .tb-printhead h1').length, title: b.querySelector('.tb-book-title').innerText,"
-            " toc: b.querySelectorAll('.tb-book-toc li').length,"
+            " heads: b.querySelectorAll('.tb-book-page .tb-printhead h2').length, title: b.querySelector('.tb-book-title').innerText,"
+            " toc: [...b.querySelectorAll('.tb-book-toc li')].map((li) => li.querySelector('.tb-toc-n').textContent + ' ' + li.querySelector('.tb-toc-name').textContent),"
+            " tocLinks: [...b.querySelectorAll('.tb-book-toc li a')].map((a) => a.getAttribute('href')), marks: [...b.querySelectorAll('.tb-toc-pg')].map((m) => m.dataset.pdfPage),"
+            " parts: [...b.querySelectorAll('.tb-book-part h1')].map((h) => h.textContent),"
+            " chapters: [...b.querySelectorAll('.tb-book-page')].map((p) => p.id + ' ' + p.querySelector('.tb-printhead h2').textContent),"
+            " outline: [...b.querySelectorAll('h1, h2, h3')].map((h) => h.tagName).join(''),"
+            " heads3: [...b.querySelectorAll('h3')].every((h) => h.parentNode.tagName === 'SUMMARY'),"
             " closed: b.querySelectorAll('details:not([open])').length, math: b.querySelectorAll('.tb-eq math').length,"
-            " eqs: b.querySelectorAll('.tb-eq').length, ids: b.querySelectorAll('[id]').length, controls: b.querySelectorAll('.tb-controls, button:not(.tb-how-k)').length,"
+            " eqs: b.querySelectorAll('.tb-eq').length, ids: [...b.querySelectorAll('[id]')].filter((n) => !/^tb-(ch|part)-/.test(n.id)).length, controls: b.querySelectorAll('.tb-controls, button:not(.tb-how-k)').length,"
             " printing: document.documentElement.classList.contains('alm-ref-print') && document.documentElement.classList.contains('alm-book-print'),"
             " pageRules: (document.getElementById('alm-book-pages') || {}).textContent || '' }; }"
         )
@@ -779,19 +784,51 @@ def test_the_whole_book_of_what_is_shown(page):
         )
         assert sorted(ecl) == sorted(page.evaluate("ALM_TB_SUBJECTS.eclipses")), ecl
         assert book and book["pages"] == ecl and book["heads"] == len(ecl), book
-        assert book["toc"] == len(ecl), book
-        assert (
-            "Showing: Eclipses" in book["title"] and "Contents" in book["title"]
-        ), book
+        # Parts (Tables, Constants: no calculation is shown), each tile a
+        # numbered chapter; the contents lists every one and links to it,
+        # its page number left for the PDF to fill.
+        names = page.evaluate("(ids) => ids.map((k) => t('tb_' + k))", ecl)
+        assert book["parts"] == [
+            "Part I\u00a0·\u00a0Tables",
+            "Part II\u00a0·\u00a0Constants",
+        ], book["parts"]
+        nums = ["1.1", "1.2", "2.1"]
+        assert book["toc"] == [n + " " + m for n, m in zip(nums, names)], book["toc"]
+        assert book["chapters"] == [
+            "tb-ch-%s %s %s" % (n.replace(".", "-"), n, m) for n, m in zip(nums, names)
+        ], book["chapters"]
+        assert book["tocLinks"] == ["#tb-ch-" + n.replace(".", "-") for n in nums], book
+        assert book["marks"] == ["tb-ch-" + n.replace(".", "-") for n in nums], book
+        # The outline's headings: Contents, then each part, its chapters,
+        # their How this is made and Equations (h3 in the summaries only).
+        assert book["outline"].startswith("H1H1H2H3"), book["outline"]
+        assert book["heads3"], book
+        assert "Showing: Eclipses" in book["title"], book
         assert book["closed"] == 0 and book["ids"] == 0 and book["controls"] == 0, book
         assert book["eqs"] > 0 and book["math"] == book["eqs"], book
         assert book["printing"], book
+        assert "counter(page)" in book["pageRules"], book
+        # Each table chapter starts a page under its running head; the
+        # constants run on under their part's.
         assert (
-            "counter(page)" in book["pageRules"] and "tb-wide" in book["pageRules"]
-        ), book
+            '@page tb-c-1 { @top-left { content: "Part I · Tables";'
+            in book["pageRules"]
+        ), book["pageRules"]
+        assert (
+            '@top-right { content: "1.1 ' + names[0] + '";' in book["pageRules"]
+        ), book["pageRules"]
+        assert (
+            '@page tb-p-2 { @top-left { content: "Part II · Constants";'
+            in book["pageRules"]
+        ), book["pageRules"]
         # The running foot names the Zimi; the title page says it made it.
-        assert '"Zimi ' + ver + ' · " counter(page)' in book["pageRules"], book["pageRules"]
-        assert '@bottom-center { content: "Made with Zimi ' + ver + '"' in book["pageRules"], book["pageRules"]
+        assert '"Zimi ' + ver + ' · " counter(page)' in book["pageRules"], book[
+            "pageRules"
+        ]
+        assert (
+            '@bottom-center { content: "Made with Zimi ' + ver + '"'
+            in book["pageRules"]
+        ), book["pageRules"]
         # On paper the book is all there is: serif, black on white.
         page.emulate_media(media="print")
         look = page.evaluate(
@@ -812,8 +849,10 @@ def test_the_whole_book_of_what_is_shown(page):
         # A table wider than portrait paper gets a landscape page.
         assert page.evaluate(
             "() => { const b = document.getElementById('alm-book'), s = b.querySelector('.tb-book-page'), tb = s.querySelector('.tb-out table');"
-            " _tbBookWide(b); const before = s.classList.contains('tb-book-wide'); tb.style.minWidth = '300mm'; _tbBookWide(b);"
-            " return !before && s.classList.contains('tb-book-wide') && getComputedStyle(s).page === 'tb-wide'; }"
+            " _tbBookWide(b); const before = s.classList.contains('tb-book-wide'); tb.querySelector('tbody td').textContent = 'x'.repeat(400); _tbBookWide(b);"
+            " _tbBookPageRules(b, 'x', false); const rules = document.getElementById('alm-book-pages').textContent;"
+            " return !before && s.classList.contains('tb-book-wide') && getComputedStyle(s).page === 'tb-wide-1'"
+            " && rules.includes('@page tb-wide-1 { size: landscape; @top-left'); }"
         )
         page.evaluate("_tbPrintOff()")
         assert page.evaluate(
@@ -913,10 +952,17 @@ def test_print_opens_a_pdf_in_the_reader(page):
         assert "\u2014" not in got["title"] and "\u2013" not in got["title"], got
         # The file itself: the running foot names the Zimi that made it.
         if shutil.which("pdftotext"):
-            pdf_path = unquote(re.search(r"/almanac/pdf/[^&#?]+", unquote(got["href"])).group(0))
+            pdf_path = unquote(
+                re.search(r"/almanac/pdf/[^&#?]+", unquote(got["href"])).group(0)
+            )
             res = page.request.get(urljoin(page.url, pdf_path))
             assert res.ok, pdf_path
-            text = subprocess.run(["pdftotext", "-", "-"], input=res.body(), capture_output=True, check=True).stdout.decode()
+            text = subprocess.run(
+                ["pdftotext", "-", "-"],
+                input=res.body(),
+                capture_output=True,
+                check=True,
+            ).stdout.decode()
             ver = page.evaluate("_zimiVersion")
             assert ("Zimi " + ver + " · 1 / ") in text, text[-400:]
             # The equations are drawn: their letters are in the file, not
@@ -951,6 +997,112 @@ def test_print_opens_a_pdf_in_the_reader(page):
         )
     finally:
         page.evaluate("() => { window.fetch = window.__f; }")
+    assert not page.errors, page.errors
+
+
+def _pdf_outline(data):
+    """The PDF's outline titles, read off its /Title entries."""
+    out = []
+    for raw in re.findall(rb"/Title\s*(\((?:[^)\\]|\\.)*\)|<[0-9A-Fa-f]+>)", data):
+        out.append(
+            bytes.fromhex(raw[1:-1].decode()).decode("utf-16")
+            if raw.startswith(b"<")
+            else raw[1:-1].decode("latin-1")
+        )
+    return out
+
+
+def test_the_whole_book_as_a_pdf_has_parts_chapters_and_page_numbers(page):
+    """Eric, 2026-10-05: "Add proper like chapter markings and whatnot to the
+    PDF." All the tiles, through the server: a part page each for Tables,
+    Calculations and Constants; every tile a numbered chapter, in the PDF's
+    outline under its part and in the contents with the page it starts on;
+    and Zimi's PDF reader lists the parts and chapters in its contents."""
+    if page.evaluate("!!document.getElementById('alm-ref')"):
+        page.evaluate("_tbClose()")
+    page.click("#alm-subject-chips [data-subj='']")
+    page.evaluate("_almBook('print')")
+    # The book's own file (the reader may still hold an earlier one).
+    page.wait_for_function(
+        "() => { const f = document.getElementById('reader-frame'); try { return /almanac\\/pdf\\/[^/]+\\/Almanac/.test(decodeURIComponent(f.contentWindow.location.href))"
+        " && f.contentWindow.PDFViewerApplication.pagesCount > 0; } catch (e) { return false; } }",
+        timeout=180000,
+    )
+    try:
+        href = page.evaluate(
+            "document.getElementById('reader-frame').contentWindow.location.href"
+        )
+        found = re.search(r"/almanac/pdf/[^&#?]+", unquote(href))
+        assert found, href
+        pdf_path = unquote(found.group(0))
+        data = page.request.get(urljoin(page.url, pdf_path)).body()
+        tiles = page.evaluate(
+            "() => { const ks = [...ALM_TB_TABLES, ...ALM_TB_CALCS, ...ALM_TB_CONSTS];"
+            " return [['table', 'Tables'], ['calc', 'Calculations'], ['const', 'Constants']].map(([k, n], i) =>"
+            " [['Part ' + ['I', 'II', 'III'][i] + ' · ' + n], ks.filter((x) => _tbKind(x) === k).map((x, j) => (i + 1) + '.' + (j + 1) + ' ' + t('tb_' + x))]); }"
+        )
+        want = [x for part in tiles for x in part[0] + part[1]]
+        outline = _pdf_outline(data)
+        assert b"/Outlines" in data
+        # Every part and chapter is a bookmark (their order and nesting are
+        # read back below, from the reader's contents).
+        # (A part's title joins its two lines with no-break spaces.)
+        outline = [x.replace(" ", " ") for x in outline]
+        assert set(want + ["Contents"]) <= set(outline), (want, outline)
+        # The contents: every chapter, with a page number that is where its
+        # heading is.
+        if shutil.which("pdftotext"):
+
+            def text(first, last=None):
+                return subprocess.run(
+                    [
+                        "pdftotext",
+                        "-layout",
+                        "-f",
+                        str(first),
+                        "-l",
+                        str(last or first),
+                        "-",
+                        "-",
+                    ],
+                    input=data,
+                    capture_output=True,
+                    check=True,
+                ).stdout.decode()
+
+            def words(s):
+                return re.sub(r"\s+", " ", s)
+
+            toc = text(2)
+            for part in tiles:
+                for ch in part[1]:
+                    num, name = ch.split(" ", 1)
+                    m = re.search(
+                        re.escape(num) + r"\s+" + re.escape(name) + r"\b.*?(\d+)\s*$",
+                        toc,
+                        re.M,
+                    )
+                    assert m, (ch, toc)
+                    assert words(ch) in words(text(int(m.group(1)))), (ch, m.group(1))
+            # A part's own page: its name and its chapters.
+            assert "Tables" in text(3) and words(tiles[0][1][0]) in words(
+                text(3)
+            ), text(3)
+        # Zimi's reader: Contents lists the parts, then their chapters.
+        fr = page.frame_locator("#reader-frame")
+        fr.locator(".zp-toc-btn").click()
+        fr.locator(".zp-toc").first.wait_for(timeout=10000)
+        listed = page.frame(url=lambda u: "viewer.html" in u).evaluate(
+            "() => [...document.querySelector('.zp-toc').querySelectorAll(':scope > li > button')].map((b) => b.textContent.replace(/\u00a0/g, ' '))"
+        )
+        assert listed == ["Contents"] + [p[0][0] for p in tiles], listed
+        nested = page.frame(url=lambda u: "viewer.html" in u).evaluate(
+            "() => [...document.querySelector('.zp-toc').querySelectorAll(':scope > li:nth-child(2) > ul > li > button')].map((b) => b.textContent)"
+        )
+        assert nested == tiles[0][1], nested
+    finally:
+        page.evaluate("goBack()")
+        page.wait_for_function("() => !readerOpen", timeout=10000)
     assert not page.errors, page.errors
 
 

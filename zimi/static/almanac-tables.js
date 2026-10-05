@@ -899,17 +899,21 @@ window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo);
 // top-level copy or print for all tables calcs and constants shown that
 // create a single doc nicely formatted", Eric, 2026-10-03; "Filtered for
 // what's being shown", 2026-10-04), as one Markdown document or one
-// printed one: a title page (the place, the days, what is shown, the
-// contents), then each tile on its own page as it stands now (its window,
-// its place, its inputs), How this is made open, the equations drawn.
-// One tile's own Copy and Print give the same, its title block its heading.
+// printed one. On paper it is a book ("proper like chapter markings",
+// Eric, 2026-10-05): a title page, the contents, then three parts
+// (Tables, Calculations, Constants), each tile a numbered chapter as it
+// stands now (its window, its place, its inputs), How this is made open,
+// the equations drawn. One tile's own Copy and Print give the same, its
+// title block its heading.
 var TB_BOOK_ID = 'alm-book';
 var TB_BOOK_STYLE_ID = 'alm-book-pages';
 // The words' face on paper: a book serif with lining, even-width figures.
 var TB_BOOK_SERIF = "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Noto Serif', Georgia, serif";
-// A portrait page's text width (A4, 15 mm margins): a table wider than this
-// gets a landscape page of its own.
-var TB_BOOK_TEXT_MM = 180;
+// A portrait page's text width (A4 less TB_BOOK_MARGINS' 17 mm sides): a
+// table wider than this gets a landscape page of its own.
+var TB_BOOK_TEXT_MM = 176;
+// A series with no more terms than this is set in one column, not two.
+var TB_BOOK_FEW_TERMS = 10;
 // Each tile drawn in turn, out of sight, and read off: its name, its
 // one-line subtitle, its Markdown and, for paper, its page. The open view
 // steps aside meanwhile (the pages are drawn under its ids) and comes back
@@ -951,6 +955,7 @@ function _tbBookPages(ids, paper) {
         body.querySelectorAll('.tb-controls, .tk-pop').forEach(function (n) { n.remove(); });
         body.querySelectorAll('details').forEach(function (d) { d.open = true; d.setAttribute('open', ''); });
         _tbEqPaint(body);
+        _tbBookHeadings(body);
         // Its ids are the open view's; the book's copy keeps none.
         body.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
         page.html = body.innerHTML;
@@ -1016,8 +1021,46 @@ function _tbBookSend(ids, showing, share) {
     navigator.share({ title: showing ? t('alm_group_tables') : _tbName(ids[0]), text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
   } else copy();
 }
+// A tile's page as a book chapter: headings that make the PDF's outline
+// (Chromium's comes from them). Its own heading is the chapter's, set by the
+// book; How this is made and its Equations are its sections (h3, inside
+// their summaries); the tile's own subheads become text, so the outline is
+// parts, chapters and those two, not every small heading on the page.
+function _tbRetag(n, tag, cls) {
+  var m = document.createElement(tag);
+  [].forEach.call(n.attributes, function (a) { m.setAttribute(a.name, a.value); });
+  if (cls) m.classList.add(cls);
+  while (n.firstChild) m.appendChild(n.firstChild);
+  n.replaceWith(m);
+  return m;
+}
+function _tbBookHeadings(body) {
+  body.querySelectorAll('h3, h4').forEach(function (n) { _tbRetag(n, 'p', 'tb-subh'); });
+  body.querySelectorAll('details > summary').forEach(function (s) { s.innerHTML = '<h3>' + s.innerHTML + '</h3>'; });
+}
+// The book's parts, in order: Tables, Calculations, Constants. Each that
+// has a tile is a part, numbered as it falls (I, II, III), and each tile in
+// it a chapter (1.3).
+var TB_BOOK_PARTS = [['table', 'tables'], ['calc', 'calcs'], ['const', 'consts']];
+var TB_ROMAN = ['I', 'II', 'III', 'IV'];
+function _tbBookParts(pages) {
+  var parts = [];
+  TB_BOOK_PARTS.forEach(function (k) {
+    var these = pages.filter(function (p) { return p.kind === k[0]; });
+    if (!these.length) return;
+    var n = parts.length + 1, part = { n: n, kind: k[0], label: _tbT('book_part', { n: TB_ROMAN[n - 1] }), name: _tbT(k[1]), id: 'tb-part-' + n };
+    part.chapters = these.map(function (p, i) {
+      return { page: p, n: n + '.' + (i + 1), id: 'tb-ch-' + n + '-' + (i + 1), name: k[0] === 'const' ? _tbName(p.id) : p.name };
+    });
+    parts.push(part);
+  });
+  return parts;
+}
 // The book on paper, in the Almanac's place (the print rules show it and
-// nothing else): the title page and its contents, then the pages.
+// nothing else). Many tiles: a title page; the contents (each chapter's
+// number, a dotted leader and its page, which the server's PDF fills in);
+// then each part, its title page listing its chapters, then its chapters.
+// One tile: its heading is the title block, then its page.
 function _tbBookBuild(ids, showing) {
   var host = _tbEl('almanac-content');
   if (!host) return null;
@@ -1029,21 +1072,35 @@ function _tbBookBuild(ids, showing) {
   book.id = TB_BOOK_ID;
   book.className = 'alm-book' + (one ? ' alm-book-one' : '');
   book.style.setProperty('--tb-book-serif', TB_BOOK_SERIF);
-  var html = '';
-  if (!one) {
-    var toc = [['table', 'tables'], ['calc', 'calcs'], ['const', 'consts']].map(function (k) {
-      var these = pages.filter(function (p) { return p.kind === k[0]; });
-      return these.length ? '<h3>' + _tbH(k[1]) + '</h3><ol>' + these.map(function (p) {
-        return '<li><span>' + e(k[0] === 'const' ? _tbName(p.id) : p.name) + '</span>' + (p.sub ? '<span class="tb-toc-sub">' + e(p.sub) + '</span>' : '') + '</li>';
-      }).join('') + '</ol>' : '';
-    }).join('');
-    html = '<header class="tb-book-title"><p class="tb-book-kicker">' + e(t('almanac')) + '</p><h1>' + e(head.title) + '</h1>' +
+  var html = '', parts = one ? [] : _tbBookParts(pages);
+  // A chapter carries its running head (its part; its number and name).
+  var chapter = function (c, h, part) {
+    return '<section class="tb-book-page tb-body' + (part ? ' tb-book-' + part.kind + '" data-part="' + part.n + '" data-head="' + e(part.label + ' · ' + part.name) +
+      '" data-ch="' + e(c.n + ' ' + c.name) : '') + '" data-tb="' + c.page.id + '"' + (c.id ? ' id="' + c.id + '"' : '') + '>' + c.page.html.replace(/<h1>([\s\S]*?)<\/h1>/,
+      '<' + h + '>' + (c.n ? '<span class="tb-ch-n">' + c.n + '</span> ' : '') + e(c.name) + '</' + h + '>') + '</section>';
+  };
+  if (one) html = chapter({ page: pages[0], name: pages[0].name }, 'h1');
+  else {
+    // The title page names the book in words, not a heading: the outline
+    // starts at the contents.
+    html = '<header class="tb-book-title"><p class="tb-book-kicker">' + e(t('almanac')) + '</p><p class="tb-book-name">' + e(head.title) + '</p>' +
       '<p class="tb-book-place">' + e(head.place) + '</p><p>' + e(head.at) + '</p><p>' + e(head.when) + '</p>' +
-      '<p class="tb-book-showing">' + e(head.showing) + '</p>' +
-      '<nav class="tb-book-toc"><h2>' + _tbH('book_contents') + '</h2>' + toc + '</nav>' +
-      '<p class="tb-made">' + e(head.made) + '</p></header>';
+      '<p class="tb-book-showing">' + e(head.showing) + '</p><p class="tb-made">' + e(head.made) + '</p></header>' +
+      '<nav class="tb-book-toc"><h1>' + _tbH('book_contents') + '</h1>' + parts.map(function (part) {
+        return '<p class="tb-toc-part"><a href="#' + part.id + '"><span class="tb-toc-pn">' + e(part.label) + '</span> ' + e(part.name) + '</a></p><ol>' +
+          part.chapters.map(function (c) {
+            return '<li><a href="#' + c.id + '"><span class="tb-toc-n">' + c.n + '</span><span class="tb-toc-name">' + e(c.name) + '</span>' +
+              (c.page.sub ? '<span class="tb-toc-sub">' + e(c.page.sub) + '</span>' : '') +
+              '<span class="tb-toc-pg" data-pdf-page="' + c.id + '"></span></a></li>';
+          }).join('') + '</ol>';
+      }).join('') + '</nav>';
+    html += parts.map(function (part) {
+      return '<section class="tb-book-part" id="' + part.id + '"><h1><span class="tb-part-n">' + e(part.label) + '<span class="tb-vh">\u00a0·\u00a0</span></span>' +
+        '<span class="tb-part-name">' + e(part.name) + '</span></h1><ol class="tb-part-list">' + part.chapters.map(function (c) {
+          return '<li><span class="tb-toc-n">' + c.n + '</span>' + e(c.name) + '</li>';
+        }).join('') + '</ol></section>' + part.chapters.map(function (c) { return chapter(c, 'h2', part); }).join('');
+    }).join('');
   }
-  html += pages.map(function (p) { return '<section class="tb-book-page tb-body" data-tb="' + p.id + '">' + p.html + '</section>'; }).join('');
   // No page boxes for a running foot: one at the foot of the paper instead.
   if (!('CSSMarginRule' in window)) html += '<footer class="tb-book-foot">' + e(one ? pages[0].name : head.title) + ' · ' + e(head.place) + ' · ' + e(_tbZimi()) + '</footer>';
   book.innerHTML = html;
@@ -1053,11 +1110,11 @@ function _tbBookBuild(ids, showing) {
   }
   host.appendChild(book);
   _tbBookWide(book);
-  _tbBookPageRules((one ? pages[0].name : head.title) + ' · ' + _tbShortName({ name: head.place }), one);
+  _tbBookPageRules(book, (one ? pages[0].name : head.title) + ' · ' + _tbShortName({ name: head.place }), one);
   return book;
 }
 // A page whose table is wider than portrait paper is set on its own,
-// landscape page (the print rules' named page tb-wide).
+// landscape page (a named page tb-wide..., the page rules).
 function _tbBookWide(book) {
   book.classList.add('alm-book-measure');
   book.style.width = TB_BOOK_TEXT_MM + 'mm';
@@ -1066,25 +1123,54 @@ function _tbBookWide(book) {
     var wide = [].some.call(s.querySelectorAll('.tb-out table, .tb-working table'), function (tb) { return tb.offsetWidth > w + 1; });
     s.classList.toggle('tb-book-wide', wide);
   });
+  // An equation too wide for the column beside its name goes under it.
+  book.querySelectorAll('.tb-eq').forEach(function (q) {
+    var m = q.querySelector('.tb-eq-m');
+    q.classList.toggle('tb-eq-long', !!m && m.scrollWidth > m.clientWidth + 1);
+  });
+  // A series' terms run in two columns; a short one stays whole in one.
+  book.querySelectorAll('.tb-eq-frame').forEach(function (f) {
+    f.classList.toggle('tb-eq-few', f.querySelectorAll('tbody tr').length <= TB_BOOK_FEW_TERMS);
+  });
   book.style.width = '';
   book.classList.remove('alm-book-measure');
 }
 // The paper's own rules, while the book is out: margins, the running foot
 // (the book's name and place, the page and the count; none on a title
-// page, which says which Zimi made it instead) and the landscape page for
-// a wide table.
+// page, which says which Zimi made it instead), and over each chapter a
+// running head: its part, and its number and name. Each table and
+// calculation starts a page (a named page carries its head); the
+// constants, short, run on one after another under their part's head.
+// A wide chapter's page turns landscape.
 function _tbCssString(s) { return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ') + '"'; }
-function _tbBookPageRules(running, one) {
+var TB_BOOK_MARGINS = '18mm 17mm 18mm';
+function _tbBookPageRules(book, running, one) {
   var foot = 'font-family: ' + TB_BOOK_SERIF + '; font-size: 8pt; color: #333;';
-  var st = document.createElement('style');
-  st.id = TB_BOOK_STYLE_ID;
-  st.textContent = '@media print {' +
-    '@page { margin: 16mm 15mm 18mm; @bottom-left { content: ' + _tbCssString(running) + '; ' + foot + ' }' +
-    ' @bottom-right { content: ' + _tbCssString(_tbZimi() + ' · ') + ' counter(page) " / " counter(pages); ' + foot + ' } }' +
-    (one ? '' : '@page :first { @bottom-left { content: none; } @bottom-right { content: none; }' +
-      ' @bottom-center { content: ' + _tbCssString(_tbMadeWith()) + '; ' + foot + ' color: #666; } }') +
-    '@page tb-wide { size: landscape; } }';
-  document.head.appendChild(st);
+  var top = 'font-family: ' + TB_BOOK_SERIF + '; font-size: 8pt; font-style: italic; color: #333; vertical-align: bottom; padding-bottom: 4mm;';
+  var rules = '@page { margin: ' + TB_BOOK_MARGINS + '; @bottom-left { content: ' + _tbCssString(running) + '; ' + foot + ' }' +
+    ' @bottom-right { content: ' + _tbCssString(_tbZimi() + ' · ') + ' counter(page) " / " counter(pages); ' + foot + ' } }';
+  if (!one) rules += '@page :first { @bottom-left { content: none; } @bottom-right { content: none; }' +
+    ' @bottom-center { content: ' + _tbCssString(_tbMadeWith()) + '; ' + foot + ' color: #666; } }';
+  var flowing = {};
+  book.querySelectorAll('.tb-book-page').forEach(function (s, i) {
+    var wide = s.classList.contains('tb-book-wide'), part = s.getAttribute('data-part');
+    // The constants share their part's page, unless one is wide.
+    var flow = part && !wide && s.classList.contains('tb-book-const');
+    var name = flow ? 'tb-p-' + part : (wide ? 'tb-wide-' : 'tb-c-') + (i + 1);
+    s.style.page = part || wide ? name : '';
+    if (!s.style.page || flowing[name]) return;
+    flowing[name] = true;
+    rules += '@page ' + name + ' { ' + (wide ? 'size: landscape; ' : '') +
+      (part ? '@top-left { content: ' + _tbCssString(s.getAttribute('data-head')) + '; ' + top + ' }' : '') +
+      (part && !flow ? ' @top-right { content: ' + _tbCssString(s.getAttribute('data-ch')) + '; ' + top + ' }' : '') + ' }';
+  });
+  var st = _tbEl(TB_BOOK_STYLE_ID);
+  if (!st) {
+    st = document.createElement('style');
+    st.id = TB_BOOK_STYLE_ID;
+    document.head.appendChild(st);
+  }
+  st.textContent = '@media print {' + rules + '}';
 }
 function _tbBookOn(ids, showing) {
   if (!_tbBookBuild(ids, showing)) return false;
@@ -1146,7 +1232,8 @@ function _tbBookDoc(book, name, paper) {
     if (!own && !/almanac-reference\.css|temml\//i.test(href)) return;
     try { [].forEach.call(sh.cssRules, function (r) { css.push(r.cssText); }); } catch (e) {}
   });
-  css.push('@page { size: ' + paper + '; } @page tb-wide { size: ' + paper + ' landscape; }');
+  css.push('@page { size: ' + paper + '; }');
+  book.querySelectorAll('.tb-book-wide').forEach(function (s) { css.push('@page ' + s.style.page + ' { size: ' + paper + ' landscape; }'); });
   var root = document.documentElement;
   return '<!DOCTYPE html><html lang="' + _almEsc(root.lang || 'en') + '" dir="' + _almEsc(root.dir || 'ltr') + '" class="' + TB_PRINT_CLASS + ' ' + TB_BOOK_CLASS + '">' +
     '<head><meta charset="utf-8"><title>' + _almEsc(name) + '</title><style>' + css.join('\n').replace(/<\/style/gi, '<\\/style') + '</style></head>' +
