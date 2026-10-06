@@ -33,7 +33,9 @@ vm.runInContext(
   (reAt >= 0 ? src.slice(reAt, src.indexOf('\n', reAt)) : '') + '\n' +
   // Your languages (Settings > Languages), as this browser keeps them.
   'function _getStorageJSON() { return PREFS; }\nfunction _normLang(c) { return c; }\n' +
-  slice('_getPrefLanguages') + '\n' + slice('_prefLangRank') + '\n' +
+  // Your languages are Zimi's ten interface languages (Settings > Languages).
+  "function _isUiLang(c) { return ['en','fr','de','es','pt','ru','zh','ar','he','hi'].indexOf(c) >= 0; }\n" +
+  slice('_uiLangPrimary') + '\n' + slice('_getPrefLanguages') + '\n' + slice('_prefLangRank') + '\n' +
   slice('_defineLang2') + '\n' + slice('_featuredZimFor') + '\n' +
   slice('_blurbRepeatsTitle') + '\n' + slice('_otdDateLine') + '\n' + slice('_gutenbergTitle') + '\n' +
   'function _zimInfo(n) { return LIB.find(function(z) { return z.name === n; }); }',
@@ -76,8 +78,10 @@ check(pick('en', 'wikipedia', LIB.slice(1)) === 'wikipedia_de' && pick('de', 'wi
 // Spanish Wikiquote over French; German picked, German Wikipedia over English.
 sandbox.PREFS = ['en', 'es'];
 check(pick('en', 'wikiquote', LIB) === 'wikiquote_es', 'your languages: Spanish Wikiquote');
+// The language Zimi is in always counts as yours (it can't be unchecked):
+// in Chinese with German picked, German Wikipedia over the English fallback.
 sandbox.PREFS = ['de'];
-check(pick('en', 'wikipedia', LIB) === 'wikipedia_de', 'your languages: German Wikipedia over the interface\'s');
+check(pick('zh', 'wikipedia', LIB) === 'wikipedia_de', 'your languages: German Wikipedia over the fallback');
 sandbox.PREFS = [];
 
 check(!sandbox._blurbRepeatsTitle('אתונה היא עיר הבירה של יוון', 'אתונה'), 'a Hebrew blurb is shown');

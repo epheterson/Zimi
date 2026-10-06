@@ -1116,7 +1116,13 @@ def test_the_checklist_is_the_top_bar_menu_and_zimis_own_stays_checked(
     pg.wait_for_function("() => _currentLang === 'fr'")
     assert pg.evaluate(YOURS) == ["en", "es", "fr"]
     pg.evaluate("() => setLanguage('en')")
-    pg.wait_for_function("() => _currentLang === 'en'")
+    pg.wait_for_function("() => _currentLang === 'en' && document.documentElement.lang === 'en'")
+    # Two switches back to back redraw Settings twice; wait for the last one
+    # (a slow CI runner saw the row before the redraw took it away).
+    pg.wait_for_selector(ROW % "de", state="attached", timeout=20000)
+    pg.wait_for_timeout(300)
+    if pg.is_hidden(ROW % "de"):
+        pg.click(FOLD)
     # Every one checked again: nothing stored, every language.
     pg.wait_for_selector(ROW % "de", timeout=20000)
     for c in ("de", "pt", "ru", "zh", "ar", "hi", "he"):
