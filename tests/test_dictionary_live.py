@@ -1121,6 +1121,13 @@ def test_the_checklist_is_the_top_bar_menu_and_zimis_own_stays_checked(
     pg.wait_for_function("() => _currentLang === 'en' && document.documentElement.lang === 'en'")
     # Two switches back to back redraw Settings twice; wait for the last one
     # (a slow CI runner saw the row before the redraw took it away).
+    pg.wait_for_load_state("networkidle")
+    try:
+        pg.wait_for_selector(FOLD, state="attached", timeout=20000)
+    except Exception:
+        raise AssertionError(pg.evaluate(
+            "() => ({ url: location.href, langs: !!document.getElementById('ms-languages'),"
+            " list: !!document.getElementById('ms-lang-list'), view: document.body.className })"))
     pg.wait_for_selector(ROW % "de", state="attached", timeout=20000)
     pg.wait_for_timeout(300)
     if pg.is_hidden(ROW % "de"):

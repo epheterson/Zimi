@@ -853,8 +853,11 @@ function warmVoices(codes) {
   var langs = [];
   codes.forEach(function(code) {
     var tag = speechTag(code), row = serverRow(code);
-    if (!tag || !row || _warmed[tag] || WARM_ENGINES.indexOf(row.engine) < 0) return;
-    _warmed[tag] = true;
+    // Once per language and voice: a download's poll does not warm it again,
+    // a new voice for the language does.
+    var key = tag + ' ' + (row && row.engine);
+    if (!tag || !row || _warmed[key] || WARM_ENGINES.indexOf(row.engine) < 0) return;
+    _warmed[key] = true;
     langs.push(tag);
   });
   // The words on the page are said now too, ahead of a tap (a NAS takes
@@ -946,7 +949,6 @@ function loadVoices() {
     .then(function(d) {
       _server = ownVoices(d || { langs: {}, offers: {} });
       _missed = {};
-      _warmed = {};
       wireSpeech();
       clearTimeout(_voicePoll);
       if (_server.downloading && _server.downloading.tag) _voicePoll = setTimeout(loadVoices, VOICE_POLL_MS);
