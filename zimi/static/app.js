@@ -746,194 +746,127 @@ function _hasStoredManageToken() {
   return !!_readManageToken();
 }
 
-// Your languages (Settings > Languages): the languages Zimi shows and offers.
-// Eric, 2026-10-03: "Can't I have the whole experience offered in just
-// English and Spanish for example?" One set, read by what already has a
-// language notion: the catalog's filter (_zimMatchesLang), search's language
-// pills (_applyPreferredLanguages), the library's language pills (yours
-// first), Discover's picks (_featuredZimFor), the Dictionary's languages and
-// their order, and Zimipedia's language. Empty: every language.
+// Your languages (Settings > Languages): the interface languages checked
+// under Show languages. Eric, 2026-10-05: "show languages dropdown under
+// show languages is a checklist of languages that can be enabled in the
+// UI". Checked ones are the top bar's language menu, and what already has a
+// language notion reads them: the catalog's filter (_zimMatchesLang),
+// search's language pills (_applyPreferredLanguages), the library's language
+// pills (yours first), Discover's picks (_featuredZimFor), the Dictionary's
+// languages and their order, and Zimipedia's language. Nothing stored: every
+// one checked, and nothing filtered. Zimi's own language is always among
+// them. A language beyond the ten (a Swahili ZIM) is the catalog's own pill.
 function _getPrefLanguages() {
   var v = _getStorageJSON(SK.PREF_LANGUAGES, []);
-  return Array.isArray(v) ? v.filter(function(c) { return c && c !== 'multi'; }) : [];
+  v = Array.isArray(v) ? v.map(_normLang).filter(_isUiLang) : [];
+  var ui = _uiLangPrimary();
+  if (v.length && v.indexOf(ui) < 0) v.unshift(ui);
+  return v;
 }
 function _setPrefLanguages(langs) {
-  if (langs.length) _setStorageJSON(SK.PREF_LANGUAGES, langs);
+  if (langs.length && langs.length < _AVAILABLE_LANGS.length) _setStorageJSON(SK.PREF_LANGUAGES, langs);
   else { try { localStorage.removeItem(SK.PREF_LANGUAGES); } catch (e) {} }
 }
 // Where your languages rank a language: its place among them, or after them.
 function _prefLangRank(code) {
-  var prefs = _getPrefLanguages().map(_normLang), i = prefs.indexOf(_normLang(code));
+  var prefs = _getPrefLanguages(), i = prefs.indexOf(_normLang(code));
   return i < 0 ? prefs.length : i;
 }
 function _uiLangPrimary() { return String(_currentLang || 'en').split('-')[0]; }
 function _langPrimary(tag) { return String(tag || '').split('-')[0]; }
+function _isUiLang(c) { return _AVAILABLE_LANGS.some(function(l) { return l.code === c; }); }
+function _langChecked(c) { var p = _getPrefLanguages(); return !p.length || p.indexOf(c) >= 0; }
+// The interface languages the top bar's menu offers.
+function _offeredUiLangs() { return _AVAILABLE_LANGS.filter(function(l) { return _langChecked(l.code); }); }
+// Zimi switched to a language (the top bar, Zimipedia): checked from then on.
+function _keepUiLangChecked(lang) {
+  var p = _getStorageJSON(SK.PREF_LANGUAGES, []);
+  p = Array.isArray(p) ? p.map(_normLang).filter(_isUiLang) : [];
+  if (p.length && p.indexOf(lang) < 0) { p.push(lang); _setPrefLanguages(p); }
+}
 
-// Settings > Languages is one list (Eric, 2026-10-04: "Some way to merge
-// language concepts into one list?"). Folded, one line: "Your languages:
-// English, Español". Open: yours first, each row a check, the language's own
-// name (and Zimi's name for it), the voice that says it here and ▶; then
-// every other language Zimi knows of, folded under "All languages (N)",
-// each row the same shape. Where a better voice can be downloaded, an
-// admin's row has Get, which downloads in place.
+// Settings > Languages: Show languages, and under it (while on) one folded
+// line, "Languages: English, Español", that opens to the ten, each a check,
+// its own name and Zimi's name for it. Zimi's own is checked and locked.
 var _LANG_LIST_ID = 'ms-lang-list';
-var _langAllOpen = false;  // All languages, open until the pane is drawn again
-var _langListOnce = false; // open for this visit (the Dictionary's Voices…)
 var _WIKTIONARY_LANG_RE = /^wiktionary_([a-z]{2,3})(?:_|$)/;
 var _CHECK_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6.2l2.4 2.4 4.6-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-var _GET_ICON = '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12"><path d="M6 1.5v7M2.8 5.6L6 8.8l3.2-3.2M2 10.8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-function _langListOpen() { return _langListOnce || _getStorageFlag(SK.LANG_LIST_OPEN); }
+function _langsShown() { return !_getStorageFlag(SK.HIDE_LANG_CHOOSER); }
+function _langListOpen() { return _getStorageFlag(SK.LANG_LIST_OPEN); }
 function _toggleLangList() {
-  var open = !_langListOpen();
-  _langListOnce = false;
-  _setStorageFlag(SK.LANG_LIST_OPEN, open);
+  _setStorageFlag(SK.LANG_LIST_OPEN, !_langListOpen());
   _paintLangPrefs();
-}
-function _toggleLangAll() { _langAllOpen = !_langAllOpen; _paintLangPrefs(); }
-
-// Every language Zimi knows of: yours, Zimi's own, the library's (its
-// Wiktionaries' among them), the downloadable voices' and Zimi's interface
-// languages, as the catalog writes them (two letters where there are two).
-function _knownLangs() {
-  var out = [];
-  var add = function(c) { c = _normLang(c); if (c && _isValidLangCode(c) && out.indexOf(c) < 0) out.push(c); };
-  _getPrefLanguages().forEach(add);
-  add(_uiLangPrimary());
-  (zimsCache || []).forEach(function(z) {
-    _parseLangs(z.language).forEach(add);
-    var m = _WIKTIONARY_LANG_RE.exec(z.name || '');
-    if (m) add(m[1]);
-  });
-  ((_voicesHere && _voicesHere.langs) || []).forEach(function(r) { if (r.pinned) add(r.lang); });
-  _AVAILABLE_LANGS.forEach(function(l) { add(l.code); });
-  return out;
 }
 // A language in itself (Français, עברית), as a reader finds their own.
 function _langOwnName(c) { return _langEndonym(c, _NATIVE_LANG_NAMES[c], _langDisplayName(c)); }
 
-// "Your languages: English, Español", or "Every language": the fold's line.
 function _langPrefSummary() {
   var mine = _getPrefLanguages();
-  return mine.length ? t('languages_yours_line', { langs: mine.map(_langOwnName).join(', ') }) : t('languages_every');
+  return mine.length ? t('languages_line', { langs: mine.map(_langOwnName).join(', ') }) : t('languages_every');
 }
 function _togglePrefLanguage(code) {
-  var current = _getPrefLanguages().map(_normLang), i = current.indexOf(code);
+  if (code === _uiLangPrimary()) return;
+  var current = _offeredUiLangs().map(function(l) { return l.code; }), i = current.indexOf(code);
   if (i >= 0) current.splice(i, 1); else current.push(code);
   _setPrefLanguages(current);
   _paintLangPrefs();
+  _paintVoices();
 }
 function _setShowLangFilters(on) {
   _setStorageFlag(SK.HIDE_LANG_CHOOSER, !on);
   if (window.updateTopbar) updateTopbar();
+  _paintLangPrefs();
+  _paintVoices();
 }
 // Show languages off hides the top bar's language button and the menu's
-// Language too (Eric, 2026-10-05), and Zimi's own language is set in
-// Settings > Languages instead. Where this viewer cannot open Settings (Manage
-// off, locked, or behind a password they do not hold) the button stays: a
-// Zimipedia that switched Zimi to Hebrew must always leave a way back.
+// Language too (Eric, 2026-10-05): Zimi stays in the language it is in.
+// Where this viewer cannot open Settings (Manage off, locked, or behind a
+// password they do not hold) the button stays: a Zimipedia that switched
+// Zimi to Hebrew must always leave a way back.
 function _langSettingsReachable() {
   return manageEnabled && !_managePublicLocked && !_needsSignIn();
 }
 function _langMenuHidden() {
-  return _getStorageFlag(SK.HIDE_LANG_CHOOSER) && _langSettingsReachable();
-}
-function _isUiLang(c) { return _AVAILABLE_LANGS.some(function(l) { return l.code === c; }); }
-// Zimi's language: its interface languages, each by its own name, one tap to
-// switch. Always open at the top of the card: the way to change Zimi's
-// language when the top bar's button is hidden.
-function _uiLangSegHtml() {
-  var cur = _uiLangPrimary();
-  return '<div class="ms-theme-label">' + tH('ui_lang_title') + '</div>' +
-    '<div class="app-theme-seg ui-lang-seg" id="ms-ui-lang" role="radiogroup" aria-label="' + escAttr(t('ui_lang_title')) + '">' +
-    _AVAILABLE_LANGS.map(function(l) {
-      var on = l.code === cur;
-      return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
-        ' lang="' + l.code + '" data-lang="' + l.code + '" onclick="setLanguage(\'' + l.code + '\')">' + esc(l.name) + '</button>';
-    }).join('') + '</div>';
+  return !_langsShown() && _langSettingsReachable();
 }
 
-// A row: the check and the names (one tap target), the voice that says the
-// language here, ▶, and for an admin Get (a better voice to download) or ⋯
-// (Remove, for a Clear voice here). Downloading, a thin bar and Cancel.
-function _langRowHtml(c, mine) {
-  var own = _langOwnName(c), named = _langDisplayName(c) || c, js = escAttr(JSON.stringify(c));
-  var v = _voiceFor(c), offer = _voiceOfferFor(c), dl = _voicesDl(), row = _voiceRowFor(c);
-  var busy = !!offer && dl.tag === offer.tag, failed = !!offer && !dl.tag && dl.error === offer.tag;
-  var act = '';
-  if (v) {
-    act += '<button type="button" class="set-btn voice-hear lang-hear" aria-label="' + escAttr(t('voices_hear') + ': ' + own) + '"' +
-      ' onclick="_hearLang(' + js + ', this)"><span class="voice-hear-icon">' + _HEAR_ICON + '</span></button>';
-  }
-  if (busy) {
-    act += _voiceAction('/manage/voices/cancel', offer.tag, tH('cancel'));
-  } else if (offer) {
-    var title = t('voices_get_title', { voice: _voiceEngineName(offer.engine), mb: _voiceMb(offer.bytes) });
-    act += '<button type="button" class="set-btn lang-get" title="' + escAttr(title) + '" aria-label="' + escAttr(title + ': ' + own) + '"' +
-      (dl.tag ? ' disabled' : '') + ' onclick="' + escAttr('_voicesPost("/manage/voices/download", ' + JSON.stringify(offer.tag) + ', this)') + '">' +
-      (failed ? tH('retry') : tH('voices_get') + _GET_ICON) + '</button>';
-  } else if (row && row.remove && _voicesHere.can_change && !dl.tag) {
-    act += '<button type="button" class="set-btn lang-more" aria-label="' + escAttr(t('voices_more_actions') + ': ' + own) + '"' +
-      ' onclick="' + escAttr('_voiceMore(' + JSON.stringify(row.remove) + ', this)') + '">⋯</button>';
-  }
-  return '<div class="share-row lang-row' + (mine ? ' mine' : '') + '" data-lang="' + escAttr(c) + '">' +
-    '<button type="button" class="lang-pick" role="checkbox" aria-checked="' + mine + '" onclick="_togglePrefLanguage(' + js + ')">' +
-      '<span class="lang-check">' + (mine ? _CHECK_ICON : '') + '</span>' +
-      '<span class="share-row-text"><span class="share-row-title" lang="' + escAttr(c) + '">' + esc(own) + '</span>' +
-      (named !== own ? '<span class="share-row-desc">' + esc(named) + '</span>' : '') + '</span>' +
-      (_isUiLang(c) ? '<span class="lang-zimi-tag">' + tH('lang_zimi_tag') + '</span>' : '') + '</button>' +
-    '<span class="lang-voice' + (v ? '' : ' none') + '">' + (v ? esc(_voiceEngineName(v)) : tH('voices_none')) + '</span>' +
-    '<span class="lang-act">' + act + '</span>' +
-    (busy ? '<div class="lang-dl">' + _voiceBarHtml() + '</div>' : '') +
-    (failed ? '<div class="lang-dl share-row-desc voice-failed">' + tH('voices_failed') + '</div>' : '') +
-    '</div>';
+function _langRowHtml(l) {
+  var c = l.code, on = _langChecked(c), cur = c === _uiLangPrimary(), named = _langDisplayName(c) || c;
+  return '<button type="button" class="share-row lang-row lang-pick' + (on ? ' mine' : '') + '" role="checkbox" data-lang="' + c + '"' +
+    ' aria-checked="' + on + '"' + (cur ? ' aria-disabled="true"' : '') + ' onclick="_togglePrefLanguage(\'' + c + '\')">' +
+    '<span class="lang-check">' + (on ? _CHECK_ICON : '') + '</span>' +
+    '<span class="share-row-text"><span class="share-row-title" lang="' + c + '">' + esc(l.name) + '</span>' +
+    (named !== l.name ? '<span class="share-row-desc">' + esc(named) + '</span>' : '') + '</span>' +
+    (cur ? '<span class="lang-cur">' + tH('lang_in_use') + '</span>' : '') + '</button>';
 }
-function _langListHtml() {
-  var mine = _getPrefLanguages().map(_normLang);
-  var rest = _knownLangs().filter(function(c) { return mine.indexOf(c) < 0; });
-  var names = {};
-  rest.forEach(function(c) { names[c] = _langOwnName(c); });
-  rest.sort(function(a, b) { return names[a].localeCompare(names[b]); });
-  // Zimi's own languages first, as their own group; the languages only a
-  // voice or a ZIM brings read as the rest.
-  var zimi = rest.filter(_isUiLang), other = rest.filter(function(c) { return !_isUiLang(c); });
-  var group = function(key, codes) {
-    return codes.length ? '<div class="lang-sub" role="heading" aria-level="4">' + tH(key) + '</div>' +
-      codes.map(function(c) { return _langRowHtml(c, false); }).join('') : '';
-  };
-  var all = _langAllOpen;
-  return mine.map(function(c) { return _langRowHtml(c, true); }).join('') +
-    '<button type="button" class="share-row lang-fold lang-all" aria-expanded="' + all + '" onclick="_toggleLangAll()">' +
-      '<span class="lang-chev" aria-hidden="true">›</span><span class="share-row-text"><span class="share-row-title">' +
-      tH('languages_all', { n: rest.length }) + '</span></span></button>' +
-    (all ? group('languages_zimi_speaks', zimi) + group('languages_other', other) : '');
-}
-// The fold's line, and the list under it while it is open.
+// The fold's line, and the list under it while it is open; nothing of
+// either while languages are not shown.
 function _paintLangPrefs() {
+  var shown = _langsShown(), open = shown && _langListOpen();
   var sum = document.getElementById('ms-lang-summary');
   if (sum) sum.textContent = _langPrefSummary();
-  var fold = document.getElementById('ms-lang-fold'), open = _langListOpen();
-  if (fold) fold.setAttribute('aria-expanded', open);
+  var fold = document.getElementById('ms-lang-fold');
+  if (fold) { fold.hidden = !shown; fold.setAttribute('aria-expanded', open); }
   var hint = document.getElementById('ms-lang-hint');
   if (hint) hint.hidden = !open;
   var el = document.getElementById(_LANG_LIST_ID);
   if (!el) return;
   el.hidden = !open;
-  _paintKept(el, open ? _langListHtml() : '');
+  el.innerHTML = open ? _AVAILABLE_LANGS.map(_langRowHtml).join('') : '';
 }
 function _languagesCardHtml() {
-  var open = _langListOpen();
-  return '<div class="ms-section-label" id="ms-languages" style="margin-top:24px">' + tH('languages_section') + '</div>' +
-    _uiLangSegHtml() +
+  return '<div class="ms-section-label" id="ms-languages">' + tH('languages_section') + '</div>' +
     '<div class="share-rows set-rows lang-card">' +
-      _switchRowHtml({ id: 'ms-lang-filters', title: tH('show_lang_chooser'), desc: tH('show_lang_chooser_desc'),
-        on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER), onchange: '_setShowLangFilters(this.checked)' }) +
-      '<button type="button" class="share-row set-row lang-fold" id="ms-lang-fold" aria-expanded="' + open + '" aria-controls="' + _LANG_LIST_ID + '" onclick="_toggleLangList()">' +
+      _switchRowHtml({ id: 'ms-lang-filters', title: tH('show_lang_chooser'),
+        desc: tH('show_langs_desc', { lang: _langOwnName(_uiLangPrimary()) }),
+        on: _langsShown(), onchange: '_setShowLangFilters(this.checked)' }) +
+      '<button type="button" class="share-row set-row lang-fold" id="ms-lang-fold" hidden aria-expanded="false" aria-controls="' + _LANG_LIST_ID + '" onclick="_toggleLangList()">' +
         '<span class="lang-chev" aria-hidden="true">›</span><span class="share-row-text">' +
-        '<span class="share-row-title" id="ms-lang-summary">' + esc(_langPrefSummary()) + '</span></span></button>' +
-      '<div class="lang-list" id="' + _LANG_LIST_ID + '"' + (open ? '' : ' hidden') + '></div>' +
+        '<span class="share-row-title" id="ms-lang-summary"></span></span></button>' +
+      '<div class="lang-list" id="' + _LANG_LIST_ID + '" hidden></div>' +
     '</div>' +
-    '<div class="ms-hint" id="ms-lang-hint"' + (open ? '' : ' hidden') + '>' + tH('languages_yours_hint') + '</div>';
+    '<div class="ms-hint" id="ms-lang-hint" hidden>' + tH('languages_hint') + '</div>';
 }
 
 // ── Voices (Settings > Preferences > Voices) ──
@@ -993,9 +926,19 @@ function _voicesDl() { return (_voicesHere && _voicesHere.downloading) || {}; }
 function _voiceRowFor(lang) {
   return ((_voicesHere && _voicesHere.langs) || []).filter(function(r) { return r.lang === lang; })[0] || null;
 }
-// The languages this browser's own voices say.
+// System (the server's macOS `say`) and Device (this browser's own voices)
+// are the same voices when the page runs on the server's own Mac: the
+// desktop app, or a browser on localhost. Eric, 2026-10-05: "Wouldn't
+// System on a Mac and Device be the same!? Why two?" There, System alone.
+var _LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])$/;
+function _voiceSameMachine() {
+  var says = ((_voicesHere && _voicesHere.langs) || []).some(function(r) { return (r.engines || []).indexOf('say') >= 0; });
+  return says && (!!window.pywebview || _LOCAL_HOST_RE.test(location.hostname));
+}
+// The languages this browser's own voices say (none where System is them).
 function _deviceVoiceLangs() {
   var vs = [], out = [];
+  if (_voiceSameMachine()) return out;
   try { vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; } catch (e) {}
   vs.forEach(function(v) {
     var l = String(v.lang || '').toLowerCase().split(/[-_]/)[0];
@@ -1003,20 +946,6 @@ function _deviceVoiceLangs() {
   });
   return out;
 }
-// The voice that says a language here: the server's (its choice, else the
-// best it has) less the engines this browser switched off, else this
-// device's own; '' when none does.
-function _voiceFor(lang) {
-  var off = _voicePrefs().off, row = _voiceRowFor(lang);
-  var isOn = function(e) { return off.indexOf(e) < 0; };
-  if (row) {
-    if (row.engine && isOn(row.engine)) return row.engine;
-    var next = (row.engines || []).filter(isOn)[0];
-    if (next) return next;
-  }
-  return isOn(_DEVICE_VOICE) && _deviceVoiceLangs().indexOf(lang) >= 0 ? _DEVICE_VOICE : '';
-}
-function _voiceRank(e) { var i = _VOICE_ENGINES.indexOf(e); return i < 0 ? _VOICE_ENGINES.length : i; }
 // Natural voices: the one download (Kokoro) that says several languages.
 function _voiceNatural() {
   return ((_voicesHere && _voicesHere.voices) || []).filter(function(v) { return v.langs; })[0] || null;
@@ -1031,21 +960,6 @@ function _naturalLangs(v) {
 function _voicesMayFetch() {
   var d = _voicesHere;
   return !!(d && d.can_change && d.setting && d.setting.mode !== 'never');
-}
-// A better voice a language could have, for an admin to Get: Natural for its
-// languages (one download fills them all), else Clear (Piper) where the best
-// voice here is a lesser one, or a newer one of either.
-function _voiceOfferFor(lang) {
-  if (!_voicesMayFetch()) return null;
-  var nat = _voiceNatural();
-  if (nat && nat.runnable && (!nat.installed || nat.newer) && _naturalLangs(nat).indexOf(lang) >= 0) {
-    return { tag: nat.tag, bytes: nat.bytes, engine: 'kokoro' };
-  }
-  var row = _voiceRowFor(lang), best = row && row.engines[0];
-  if (row && row.piper && (row.piper.newer || _voiceRank(best) > _voiceRank('piper'))) {
-    return { tag: row.piper.tag, bytes: row.piper.bytes, engine: 'piper' };
-  }
-  return null;
 }
 // The engines here, each with the languages it says: the server's from its
 // answer, this browser's from its own voices.
@@ -1070,12 +984,25 @@ function _voiceBarHtml() {
   return '<div class="voice-dl"><span class="share-row-desc voice-progress"></span>' +
     '<div class="dl-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="dl-progress-bar"></div></div></div>';
 }
+// Languages by their own names, in their alphabet.
+function _langNamesSorted(codes) {
+  return codes.map(_langOwnName).sort(function(a, b) { return a.localeCompare(b); });
+}
+// An engine's "N languages" lists them: in its title (a hover), and on a
+// tap as a line under the row (a phone has no hover).
+var _voiceCountOpen = {};
+function _toggleVoiceCount(e) { _voiceCountOpen[e] = !_voiceCountOpen[e]; _paintVoices(); }
 function _voiceRowHtml(x, isOn, last) {
   var e = x.engine, js = JSON.stringify(e), nat = e === 'kokoro' ? _voiceNatural() : null;
   var dl = _voicesDl(), admin = !!(_voicesHere && _voicesHere.can_change);
-  var busy = !!nat && dl.tag === nat.tag, here = !x.absent;
+  var busy = !!nat && dl.tag === nat.tag, here = !x.absent, open = !!_voiceCountOpen[e];
   var v = _voicesHere && _voicesHere.versions && _voicesHere.versions[e];
-  var meta = [esc(tPlural('n_languages', x.langs.length, { n: x.langs.length })), v ? esc(v) : ''].filter(Boolean).join(' · ');
+  var names = _langNamesSorted(x.langs).join(', ');
+  var meta = '<button type="button" class="voice-count" title="' + escAttr(names) + '" aria-expanded="' + open + '"' +
+    ' onclick="' + escAttr('_toggleVoiceCount(' + js + ')') + '">' + esc(tPlural('n_languages', x.langs.length, { n: x.langs.length })) + '</button>' +
+    (v ? ' · ' + esc(v) : '');
+  // System and Device, told apart in plain words.
+  var what = e === 'say' || e === _DEVICE_VOICE ? '<span class="share-row-desc voice-what">' + tH('voices_desc_' + e) + '</span>' : '';
   // Natural, an admin's: Remove (a second tap) when it is here, Get when it
   // is not (or a newer one is out), Cancel while it comes.
   var act = '';
@@ -1096,7 +1023,8 @@ function _voiceRowHtml(x, isOn, last) {
   }
   return '<div class="share-row set-row voice-engine' + (isOn ? '' : ' voice-off') + '" data-engine="' + escAttr(e) + '">' +
     '<span class="share-row-text"><span class="share-row-title">' + esc(_voiceEngineName(e)) + '</span>' +
-      '<span class="share-row-desc voice-meta">' + meta + '</span></span>' + act +
+      what + '<span class="share-row-desc voice-meta">' + meta + '</span></span>' + act +
+    (open ? '<div class="voice-langs share-row-desc">' + esc(names) + '</div>' : '') +
     (busy ? '<div class="lang-dl">' + _voiceBarHtml() + '</div>' : '') + '</div>';
 }
 // The downloads setting, an admin's, one quiet line under the voices.
@@ -1110,6 +1038,119 @@ function _voicesModeHtml(s) {
     ' onchange="_voicesSetMode(this.value)">' + opts + '</select></div>' +
     (note ? '<div class="ms-hint">' + esc(note) + '</div>' : '');
 }
+
+// Under the engines, which flavor says which language here (Eric,
+// 2026-10-05: "a languages list with like dots representing the coverage
+// for each language across all four voice flavors"). A row per language, a
+// column per flavor here. A cell is one of: on (it says it now: downloaded,
+// or built in), rm (on, and a Clear voice downloaded for this language
+// alone: ✕ removes it), get (an admin may download it here), busy (coming)
+// or none. Natural is one shared download: removed on its engine row only.
+var _VG_GET_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 12 12"><path d="M6 1.5v7M2.8 5.6L6 8.8l3.2-3.2M2 10.8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var _HOVER_MQ = '(hover: hover)';
+var _vgAllOpen = false; // All languages, open until the pane is drawn again
+function _toggleVgAll() { _vgAllOpen = !_vgAllOpen; _paintVoices(); }
+function _voiceCell(lang, e) {
+  if (e === _DEVICE_VOICE) return { s: _deviceVoiceLangs().indexOf(lang) >= 0 ? 'on' : 'none' };
+  var dl = _voicesDl(), row = _voiceRowFor(lang);
+  if (row && (row.engines || []).indexOf(e) >= 0) {
+    return e === 'piper' && row.remove && _voicesHere.can_change && !dl.tag ? { s: 'rm', tag: row.remove } : { s: 'on' };
+  }
+  var offer = null, nat = e === 'kokoro' && _voiceNatural();
+  if (nat && nat.runnable && !nat.installed && _naturalLangs(nat).indexOf(lang) >= 0) offer = nat;
+  if (e === 'piper' && row && row.piper && !row.piper.newer) offer = row.piper;
+  if (offer && dl.tag === offer.tag) return { s: 'busy', tag: offer.tag };
+  if (offer && _voicesMayFetch()) return { s: 'get', tag: offer.tag, bytes: offer.bytes };
+  return { s: 'none' };
+}
+function _vgCovered(lang, flavors) {
+  return flavors.some(function(e) { return _voiceCell(lang, e).s !== 'none'; });
+}
+// Every language a flavor here says (or could, downloaded).
+function _vgAllLangs() {
+  var out = [];
+  var add = function(c) { if (c && out.indexOf(c) < 0) out.push(c); };
+  ((_voicesHere && _voicesHere.langs) || []).forEach(function(r) { add(r.lang); });
+  _naturalLangs(_voiceNatural()).forEach(add);
+  _deviceVoiceLangs().forEach(add);
+  return out;
+}
+// The rows shown first: Zimi's language and the others checked under Show
+// languages, any language with a Clear voice downloaded for it, and the
+// library's languages (its Wiktionaries' among them) that a voice here says.
+function _vgMainLangs(flavors) {
+  var zimi = [_uiLangPrimary()], rest = [];
+  if (_langsShown()) _offeredUiLangs().forEach(function(l) { if (zimi.indexOf(l.code) < 0) zimi.push(l.code); });
+  var add = function(c) { c = _normLang(c); if (c && zimi.indexOf(c) < 0 && rest.indexOf(c) < 0 && _vgCovered(c, flavors)) rest.push(c); };
+  ((_voicesHere && _voicesHere.langs) || []).forEach(function(r) { if (r.remove) add(r.lang); });
+  (zimsCache || []).forEach(function(z) {
+    _parseLangs(z.language).forEach(add);
+    var m = _WIKTIONARY_LANG_RE.exec(z.name || '');
+    if (m) add(m[1]);
+  });
+  return zimi.concat(_vgByName(rest));
+}
+function _vgByName(codes) {
+  return codes.slice().sort(function(a, b) { return _langOwnName(a).localeCompare(_langOwnName(b)); });
+}
+function _vgCellHtml(lang, e, name) {
+  var x = _voiceCell(lang, e), off = _voicePrefs().off.indexOf(e) >= 0;
+  var label = escAttr(t('voices_cell_' + x.s, { lang: name, voice: _voiceEngineName(e), mb: x.bytes ? _voiceMb(x.bytes) : '' }));
+  var a = ' aria-label="' + label + '" title="' + label + '"', inner;
+  if (x.s === 'get') {
+    inner = '<button type="button" class="vg-btn vg-get" data-s="get"' + a + (_voicesDl().tag ? ' disabled' : '') +
+      ' onclick="' + escAttr('_voicesPost("/manage/voices/download", ' + JSON.stringify(x.tag) + ', this)') + '">' + _VG_GET_ICON + '</button>';
+  } else if (x.s === 'rm') {
+    inner = '<button type="button" class="vg-btn vg-rm" data-s="rm"' + a +
+      ' oncontextmenu="event.preventDefault();this.classList.add(\'show-x\')"' +
+      ' onclick="' + escAttr('_vgRemove(this, ' + JSON.stringify(x.tag) + ', ' + JSON.stringify(t('voices_remove_lang', { voice: _voiceEngineName(e), lang: name })) + ')') + '">' +
+      '<span class="vg-dot"></span><span class="vg-x" aria-hidden="true">✕</span></button>';
+  } else {
+    inner = '<span class="vg-dot" data-s="' + x.s + '" role="img"' + a + '></span>';
+  }
+  return '<span class="vg-cell' + (off ? ' off' : '') + '" role="cell">' + inner + '</span>';
+}
+// A row; the first row with a download coming carries its bar and Cancel.
+function _vgRowHtml(lang, flavors, state) {
+  var own = _langOwnName(lang), named = _langDisplayName(lang) || lang, dl = _voicesDl();
+  var busy = !state.bar && dl.tag && flavors.some(function(e) { return _voiceCell(lang, e).s === 'busy'; });
+  if (busy) state.bar = true;
+  return '<div class="vg-row" role="row" data-lang="' + escAttr(lang) + '">' +
+    '<span class="vg-name" role="rowheader"><span class="vg-own" lang="' + escAttr(lang) + '">' + esc(own) + '</span>' +
+    (named !== own ? '<span class="vg-zimi">' + esc(named) + '</span>' : '') + '</span>' +
+    flavors.map(function(e) { return _vgCellHtml(lang, e, named); }).join('') + '</div>' +
+    (busy ? '<div class="lang-dl vg-dl">' + _voiceBarHtml() +
+      (_voicesHere && _voicesHere.can_change ? _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel')) : '') + '</div>' : '');
+}
+function _voiceGridHtml() {
+  var all = _vgAllLangs();
+  var flavors = _VOICE_ENGINES.filter(function(e) { return all.some(function(c) { return _voiceCell(c, e).s !== 'none'; }); });
+  if (!flavors.length) return '';
+  var main = _vgMainLangs(flavors);
+  var rest = _vgByName(all.filter(function(c) { return main.indexOf(c) < 0 && _vgCovered(c, flavors); }));
+  var state = {};
+  var head = '<div class="vg-row vg-head" role="row"><span class="vg-name" role="columnheader"></span>' +
+    flavors.map(function(e) {
+      var n = escAttr(_voiceEngineName(e));
+      return '<span class="vg-h" role="columnheader" title="' + n + '">' + n + '</span>';
+    }).join('') + '</div>';
+  var rows = function(codes) { return codes.map(function(c) { return _vgRowHtml(c, flavors, state); }).join(''); };
+  return '<div class="share-rows vg" role="table" aria-label="' + escAttr(t('voices_section')) + '" style="--vg-n:' + flavors.length + '">' +
+    head + rows(main) +
+    (rest.length ? '<button type="button" class="share-row lang-fold vg-all" aria-expanded="' + _vgAllOpen + '" onclick="_toggleVgAll()">' +
+      '<span class="lang-chev" aria-hidden="true">›</span><span class="share-row-text"><span class="share-row-title">' +
+      tH('languages_all', { n: rest.length }) + '</span></span></button>' + (_vgAllOpen ? rows(rest) : '') : '') +
+    '</div>';
+}
+// ✕ on a Clear voice: a pointer's hover showed it, a touch's first tap (or a
+// long press) shows it; then once asked, it goes.
+function _vgRemove(btn, tag, question) {
+  if (!btn.classList.contains('show-x') && !window.matchMedia(_HOVER_MQ).matches) { btn.classList.add('show-x'); return; }
+  _appConfirm(question, t('voices_remove')).then(function(ok) {
+    btn.classList.remove('show-x');
+    if (ok) _voicesSend('/manage/voices/remove', { lang: tag }, t('voices_remove_failed'));
+  });
+}
 function _voicePrefsHtml() {
   var off = _voicePrefs().off, here = _voiceEnginesHere(), nat = _voiceNatural(), dl = _voicesDl();
   // Natural not here yet: its row, for an admin to Get it from (or to watch
@@ -1122,7 +1163,7 @@ function _voicePrefsHtml() {
   // One row per engine here; the last one on stays on.
   var h = '<div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
     return _voiceRowHtml(x, !x.absent && off.indexOf(x.engine) < 0, on.length === 1);
-  }).join('') + '</div>';
+  }).join('') + '</div>' + _voiceGridHtml();
   if (_voicesHere && _voicesHere.can_change && _voicesHere.setting) h += _voicesModeHtml(_voicesHere.setting);
   return h + '<div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
@@ -1132,7 +1173,7 @@ function _voicePrefsHtml() {
 // a Remove waiting for its second tap is not redrawn from under it.
 function _paintKept(el, html) {
   if (!el) return;
-  if (el._painted !== html && !el.querySelector('.confirming')) {
+  if (el._painted !== html && !el.querySelector('.confirming, .show-x')) {
     if (_voiceSample && el.contains(_voiceSample.btn)) _stopVoiceSample();
     el.innerHTML = el._painted = html;
   }
@@ -1145,7 +1186,6 @@ function _paintKept(el, html) {
 }
 function _paintVoices() {
   _paintKept(document.getElementById(_VOICES_WRAP_ID), _voicePrefsHtml());
-  _paintLangPrefs();
   // A download in flight: ask how it is going until it is done.
   clearTimeout(_voicesTimer);
   if (_voicesDl().tag && document.getElementById(_VOICES_WRAP_ID)) _voicesTimer = setTimeout(_renderVoicePrefs, _VOICES_POLL_MS);
@@ -1183,8 +1223,9 @@ function _voicesSend(path, body, failText) {
     _voicesTellDictionary();
   }).catch(function() { _showToast(failText); _renderVoicePrefs(); });
 }
-// A button that asks first (Remove) is armed by one tap and acts on the
-// next, as Delete and Redownload do; the voice is a download away again.
+// A button that asks first (Natural's Remove) is armed by one tap and acts
+// on the next, as Delete and Redownload do; the voice is a download away
+// again.
 function _voicesArm(btn) {
   var label = btn.textContent;
   btn.classList.add('confirming');
@@ -1193,8 +1234,6 @@ function _voicesArm(btn) {
     if (!btn.classList.contains('confirming')) return;
     btn.classList.remove('confirming');
     btn.textContent = label;
-    // Unanswered, ⋯ comes back.
-    if (btn.hasAttribute('data-from-more')) _paintLangPrefs();
   }, _VOICE_CONFIRM_MS);
 }
 function _voicesPost(path, tag, btn) {
@@ -1202,31 +1241,22 @@ function _voicesPost(path, tag, btn) {
   if (btn) { btn.disabled = true; btn.classList.remove('confirming'); }
   return _voicesSend(path, { lang: tag }, t(/remove$/.test(path) ? 'voices_remove_failed' : 'voices_failed'));
 }
-// A Clear voice's ⋯: Remove?, the second tap removes it.
-function _voiceMore(tag, btn) {
-  var slot = btn.parentNode;
-  btn.outerHTML = _voiceRemoveHtml(tag, ' data-from-more');
-  var rm = slot.querySelector('[data-from-more]');
-  _voicesArm(rm);
-  rm.focus();
-}
 function _voicesSetMode(mode) {
   _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' }));
 }
-// Settings > Languages (or Voices), from elsewhere: the Dictionary's Voices…
-// and its front's speaker, a link to #languages, the network list's row.
+// Settings > Voices (or Languages), from elsewhere: the Dictionary's
+// Voices… and its front's speaker, /?manage=preferences#voices (or
+// #languages), the network list's row.
 var _msScrollTo = null;
+var _MS_HASH_TARGETS = { '#voices': 'ms-voices', '#languages': 'ms-languages' };
 function _openSettingsAt(id) {
   _msScrollTo = id;
-  if (id === 'ms-languages') _langListOnce = true;
   if (mode === 'manage') switchMs('preferences');
   else enterManage(null, 'preferences');
 }
-// /?manage=preferences#languages: Settings > Languages, open, as it loads
-// (the boot's own address changes drop the fragment before Settings draws).
-if (location.hash === '#languages' && new URLSearchParams(location.search).get('manage') === 'preferences') {
-  _msScrollTo = 'ms-languages';
-  _langListOnce = true;
+// The boot's own address changes drop the fragment before Settings draws.
+if (_MS_HASH_TARGETS[location.hash] && new URLSearchParams(location.search).get('manage') === 'preferences') {
+  _msScrollTo = _MS_HASH_TARGETS[location.hash];
 }
 function _msScrollPending() {
   var id = _msScrollTo;
@@ -1288,8 +1318,6 @@ function _hearVoice(engine, btn) {
   var langs = x ? x.langs : [], ui = _uiLangPrimary();
   _playSample(btn, engine, !langs.length || langs.indexOf(ui) >= 0 ? ui : langs[0]);
 }
-// A language's row: the voice that says it here.
-function _hearLang(lang, btn) { _playSample(btn, _voiceFor(lang), lang); }
 function _playSample(btn, engine, lang) {
   var again = _voiceSample && _voiceSample.btn === btn;
   _stopVoiceSample();
@@ -1603,6 +1631,7 @@ var _langLoadId = 0; // Guard against race conditions on rapid language switchin
 async function setLanguage(lang) {
   _currentLang = lang;
   localStorage.setItem(SK.UI_LANG, lang);
+  _keepUiLangChecked(lang);
   var myId = ++_langLoadId;
   await _loadI18n(lang);
   if (_langLoadId !== myId) return; // Superseded by a newer setLanguage call
@@ -13659,7 +13688,7 @@ function _msToggleCollapse(id, btn) {
 // one obvious home for organizing the library. Collapsed by default.
 // Draggable rows, ▲▼ keyboard fallback, Add/remove sections.
 function _msReorderHtml() {
-  return '<div class="ms-section-label" style="margin-top:20px">' + tH('reorder_sections') + '</div>' +
+  return '<div class="ms-section-label">' + tH('reorder_sections') + '</div>' +
     '<div class="ms-hint">' + tH('reorder_hint') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-reorder\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-collapsed-list" id="ms-reorder"' +
@@ -13692,8 +13721,7 @@ function _switchRowsHtml(rows) {
 }
 
 function _msPreferencesHtml() {
-  // Nothing picked, the whole list is the one to pick from.
-  _langAllOpen = !_getPrefLanguages().length;
+  _vgAllOpen = false;
   // Apps: every app a row of the same shape, and whether results open in
   // them right under it. The rows offered to everyone (the server's choice)
   // paint from its answer into #ms-apps; an account that may not set them
@@ -13710,14 +13738,14 @@ function _msPreferencesHtml() {
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
         onchange: '_setShowDiscover(this.checked)' }]) +
 
-    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
+    '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
 
     // Reading: everything about how an article reads, in one place. The two
     // choices first, then the switches.
-    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_reader_section') + '</div>' +
+    '<div class="ms-section-label">' + tH('ms_reader_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('article_theme') + '</div>' +
     _articleThemeSegHtml() +
     '<div class="ms-hint">' + tH('article_theme_hint') + '</div>' +
@@ -13737,11 +13765,11 @@ function _msPreferencesHtml() {
 
     // Default download flavor (above languages: reached more often): one
     // selector row, like the theme.
-    '<div class="ms-section-label" style="margin-top:24px">' + tH('default_flavor') + '</div>' +
+    '<div class="ms-section-label">' + tH('default_flavor') + '</div>' +
     _segHtml('ms-flavor-seg', 'default_flavor', _flavorSegInner()) +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
     _languagesCardHtml() +
-    '<div class="ms-section-label" id="ms-voices" style="margin-top:24px">' + tH('voices_section') + '</div>' +
+    '<div class="ms-section-label" id="ms-voices">' + tH('voices_section') + '</div>' +
     '<div id="' + _VOICES_WRAP_ID + '">' + _voicePrefsHtml() + '</div>';
   // My data is this browser's (bookmarks, history, these preferences): it
   // lives with the preferences, not with the server's settings.
@@ -20759,7 +20787,7 @@ window.addEventListener('message', function(e) {
     document.title = t('dictionary') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'voices') {
-    _openSettingsAt('ms-languages');
+    _openSettingsAt('ms-voices');
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
     _openCategory(d.category);
   }
@@ -25400,8 +25428,9 @@ function _renderLangDropdown() {
   }
 
   // All languages — click name to switch UI language; interlang icon inline when article has translation
-  for (var i = 0; i < _AVAILABLE_LANGS.length; i++) {
-    var l = _AVAILABLE_LANGS[i];
+  var offered = _offeredUiLangs();
+  for (var i = 0; i < offered.length; i++) {
+    var l = offered[i];
     var active = l.code === _currentLang ? ' active' : '';
     var right = '';
     if (l.code === _currentLang) {
