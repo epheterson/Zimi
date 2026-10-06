@@ -602,6 +602,12 @@ def test_say_shows_it_is_working_never_stacks_and_recovers(piper_here, monkeypat
     assert not errors, errors
 
 
+# The stand-in download: eight steps, quick, and waits with room for a busy
+# CI runner (it timed out there at 10 s with half-second steps).
+DL_STEP_S = 0.25
+DL_WAIT_MS = 20000
+
+
 def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch):
     """The line under the word: a bar that moves while the voice comes,
     Cancel, a failure said plainly with Retry, and gone when it is here,
@@ -616,7 +622,7 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
         with voices._lock:
             total = voices._download["total"]
         for i in range(1, 9):
-            time.sleep(0.5)
+            time.sleep(DL_STEP_S)
             with voices._lock:
                 if voices._download.get("cancel"):
                     voices._download.clear()
@@ -635,35 +641,35 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
     # Cancel: back to the offer.
     f.eval_on_selector("[data-get='fr']", "b => b.click()")
     assert f.evaluate(LINE_FR).startswith("Downloading the voice for French")
-    f.wait_for_function("() => /[1-9][0-9]*%%/.test((%s)())" % LINE_FR, timeout=5000)
+    f.wait_for_function("() => /[1-9][0-9]*%%/.test((%s)())" % LINE_FR, timeout=DL_WAIT_MS)
     f.eval_on_selector("[data-offer='fr'] [data-cancel]", "b => b.click()")
     f.wait_for_function(
         "() => (%s)() === 'Clearer voice for French: Download (63 MB)'" % LINE_FR,
-        timeout=5000,
+        timeout=DL_WAIT_MS,
     )
     # A failure: said, with Retry.
     steps["fail"] = True
     f.wait_for_function(
-        "() => !document.querySelector('[data-offer=fr] [data-cancel]')"
+        "() => !document.querySelector('[data-offer=fr] [data-cancel]')", timeout=DL_WAIT_MS
     )
     f.eval_on_selector("[data-get='fr']", "b => b.click()")
     f.wait_for_function(
-        '() => (%s)() === "Couldn\'t download the voice Retry"' % LINE_FR, timeout=10000
+        '() => (%s)() === "Couldn\'t download the voice Retry"' % LINE_FR, timeout=DL_WAIT_MS
     )
     # Retry, and leave mid-way: the page opened again picks it up, moving.
     steps["fail"] = False
     f.eval_on_selector("[data-offer='fr'] [data-get='fr']", "b => b.click()")
-    f.wait_for_function("() => /Cancel$/.test((%s)())" % LINE_FR, timeout=5000)
+    f.wait_for_function("() => /Cancel$/.test((%s)())" % LINE_FR, timeout=DL_WAIT_MS)
     f = open_eau()
     seen = f.evaluate(LINE_FR)
     assert seen.startswith("Downloading"), seen
     f.wait_for_function(
         "s => { const l = (%s)(); return l !== s && l !== ''; }" % LINE_FR,
         arg=seen,
-        timeout=5000,
+        timeout=DL_WAIT_MS,
     )
     # Done: the line goes, and Say is the server's.
-    f.wait_for_function("() => (%s)() === ''" % LINE_FR, timeout=10000)
+    f.wait_for_function("() => (%s)() === ''" % LINE_FR, timeout=DL_WAIT_MS)
     assert "fr" in voices.installed()
     f.eval_on_selector(SAY_FR, "b => b.click()")
     f.wait_for_function("() => window.__played.length > 0")

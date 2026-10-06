@@ -209,6 +209,8 @@ def test_a_full_line_is_busy_and_says_when_to_ask_again(served, monkeypatch):
     """One render at a time, QUEUE_DEPTH behind it; one more is a 503 whose
     Retry-After the page waits out before it asks once more."""
     monkeypatch.setattr(apdf, "_pending", apdf.QUEUE_DEPTH + 1)
+    # A full line, on a runner with or without Chromium: busy comes first.
+    monkeypatch.setattr(apdf, "available", lambda: True)
     with pytest.raises(apdf.Busy):
         apdf.make(BOOK + "<!-- busy -->", "A4", "x")
     req = urllib.request.Request(
