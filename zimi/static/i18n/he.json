@@ -2963,12 +2963,11 @@
   "voices_remove_natural": "להסיר את הקולות הטבעיים? השפות האלה יוסרו איתם: {langs}.",
   "voices_get_all": "כל {n} השפות",
   "voices_speed_kokoro": "איטי יותר",
-  "voices_speed_piper": "מהיר",
+  "voices_speed_piper": "איטי",
   "voices_speed_say": "מהיר",
   "voices_speed_espeak": "מיידי",
   "voices_speed_device": "מיידי",
   "voices_default": "קול ברירת מחדל",
   "voices_default_auto": "אוטומטי",
-  "voices_get_lang": "הורדת {lang} ({mb} MB)",
   "voices_get_other": "שפות אחרות"
 }

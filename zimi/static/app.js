@@ -1021,7 +1021,9 @@ function _voiceRowHtml(x, isOn, last) {
   // there with dropdown showing all enabled languages, footer row All N
   // languages"). Fetched one after another.
   var pick = '';
-  if (e === 'piper' && admin && _voicesMayFetch()) {
+  // Once a Clear voice is here and on, the grid below gets the rest (Eric,
+  // 2026-10-06: "No get other button after one is there and it's on").
+  if (e === 'piper' && admin && _voicesMayFetch() && !(here && isOn)) {
     var offers = _clearOffers(), clearBusy = _clearQueue.length || offers.some(function(o) { return o.tag === dl.tag; });
     if (clearBusy) act += _voiceAction('/manage/voices/cancel', dl.tag || '', tH('cancel'), ' data-clear-cancel');
     else if (offers.length) {
@@ -1030,7 +1032,9 @@ function _voiceRowHtml(x, isOn, last) {
       // Its own line under the words: beside Hear and the switch it wraps.
       pick += '<div class="voice-get-line"><span class="voice-split"><button type="button" class="set-btn" data-primary' + dis +
         ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify([first.tag]) + ')') + '">' +
-        tH('voices_get_lang', { lang: _langDisplayName(first.lang) || first.lang, mb: _voiceMb(first.bytes) }) + '</button>' +
+        // Natural's Get, the language on a light second line.
+        '<span>' + tH('voices_get_mb', { mb: _voiceMb(first.bytes) }) + '</span><span class="set-btn-sub">' +
+        esc(_langDisplayName(first.lang) || first.lang) + '</span></button>' +
         (offers.length > 1 ? '<button type="button" class="set-btn voice-split-more" aria-expanded="' + _clearPickOpen + '"' +
           ' aria-label="' + escAttr(t('voices_get_other')) + '" onclick="_toggleClearPick()">▾</button>' : '') + '</span></div>';
       if (_clearPickOpen && offers.length > 1) {

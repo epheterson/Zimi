@@ -2963,12 +2963,11 @@
   "voices_remove_natural": "删除自然语音？这些语言也会一并删除：{langs}。",
   "voices_get_all": "全部 {n} 种语言",
   "voices_speed_kokoro": "较慢",
-  "voices_speed_piper": "快",
+  "voices_speed_piper": "慢",
   "voices_speed_say": "快",
   "voices_speed_espeak": "即时",
   "voices_speed_device": "即时",
   "voices_default": "默认语音",
   "voices_default_auto": "自动",
-  "voices_get_lang": "获取{lang}（{mb} MB）",
   "voices_get_other": "其他语言"
 }

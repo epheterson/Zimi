@@ -2962,13 +2962,12 @@
   "voices_desc_device": "जिस डिवाइस का आप उपयोग कर रहे हैं उसकी अंतर्निहित आवाज़ें",
   "voices_remove_natural": "प्राकृतिक आवाज़ें हटाएँ? इनके साथ ये भाषाएँ भी जाएँगी: {langs}।",
   "voices_get_all": "सभी {n} भाषाएँ",
-  "voices_speed_kokoro": "धीमी",
-  "voices_speed_piper": "तेज़",
+  "voices_speed_kokoro": "और धीमी",
+  "voices_speed_piper": "धीमी",
   "voices_speed_say": "तेज़",
   "voices_speed_espeak": "तुरंत",
   "voices_speed_device": "तुरंत",
   "voices_default": "डिफ़ॉल्ट आवाज़",
   "voices_default_auto": "स्वचालित",
-  "voices_get_lang": "{lang} पाएँ ({mb} MB)",
   "voices_get_other": "अन्य भाषाएँ"
 }

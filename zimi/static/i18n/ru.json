@@ -2963,12 +2963,11 @@
   "voices_remove_natural": "Удалить естественные голоса? Вместе с ними уйдут: {langs}.",
   "voices_get_all": "Все языки ({n})",
   "voices_speed_kokoro": "Медленнее",
-  "voices_speed_piper": "Быстро",
+  "voices_speed_piper": "Медленно",
   "voices_speed_say": "Быстро",
   "voices_speed_espeak": "Мгновенно",
   "voices_speed_device": "Мгновенно",
   "voices_default": "Голос по умолчанию",
   "voices_default_auto": "Автоматически",
-  "voices_get_lang": "Загрузить: {lang} ({mb} МБ)",
   "voices_get_other": "Другие языки"
 }

@@ -1626,8 +1626,8 @@ def test_clear_is_offered_on_its_row_the_current_language_first(piper_here, monk
     pg.wait_for_selector(clear)
     order = pg.eval_on_selector_all(VOICES_WRAP + " .voice-engine", "rs => rs.map(r => r.dataset.engine)")
     assert order.index("piper") == order.index("kokoro") + 1 if "kokoro" in order else order[0] == "piper", order
-    assert pg.text_content(clear + " .voice-what") == "Fast"
-    assert pg.text_content(clear + " .set-btn[data-primary]").startswith("Get English (")
+    assert pg.text_content(clear + " .voice-what") == "Slow"
+    assert pg.text_content(clear + " .set-btn[data-primary]").startswith("Get (") and pg.text_content(clear + " .set-btn-sub") == "English"
     pg.eval_on_selector(VOICES_WRAP, "e => e.scrollIntoView({ block: 'start' })")
     _shots(pg, "voices-clear-get")
     pg.click(clear + " .voice-split-more")

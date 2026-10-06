@@ -2963,12 +2963,11 @@
   "voices_remove_natural": "Natürliche Stimmen entfernen? Diese Sprachen gehen mit: {langs}.",
   "voices_get_all": "Alle {n} Sprachen",
   "voices_speed_kokoro": "Langsamer",
-  "voices_speed_piper": "Schnell",
+  "voices_speed_piper": "Langsam",
   "voices_speed_say": "Schnell",
   "voices_speed_espeak": "Sofort",
   "voices_speed_device": "Sofort",
   "voices_default": "Standardstimme",
   "voices_default_auto": "Automatisch",
-  "voices_get_lang": "{lang} laden ({mb} MB)",
   "voices_get_other": "Andere Sprachen"
 }

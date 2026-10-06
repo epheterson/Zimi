@@ -2963,12 +2963,11 @@
   "voices_remove_natural": "إزالة الأصوات الطبيعية؟ ستُزال معها هذه اللغات: {langs}.",
   "voices_get_all": "كل اللغات ({n})",
   "voices_speed_kokoro": "أبطأ",
-  "voices_speed_piper": "سريع",
+  "voices_speed_piper": "بطيء",
   "voices_speed_say": "سريع",
   "voices_speed_espeak": "فوري",
   "voices_speed_device": "فوري",
   "voices_default": "الصوت الافتراضي",
   "voices_default_auto": "تلقائي",
-  "voices_get_lang": "تنزيل {lang} ({mb} ميغابايت)",
   "voices_get_other": "لغات أخرى"
 }
