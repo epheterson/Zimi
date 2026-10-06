@@ -1410,7 +1410,7 @@ def test_the_dictionarys_voices_opens_settings_voices(piper_here, served):
     pg.wait_for_selector(GRID, timeout=20000)
     assert not pg.query_selector("#voices-sheet, .voices-panel")
     top = pg.eval_on_selector("#ms-voices", "e => e.getBoundingClientRect().top")
-    assert 0 <= top < 844, top
+    assert -1 <= top < 844, top  # scrolled to: a fraction of a pixel either way
     f = open_eau()
     f.evaluate("() => window.__home()")
     f.wait_for_selector(".vdoor:not([hidden])", timeout=10000)
