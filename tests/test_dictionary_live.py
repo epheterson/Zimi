@@ -506,6 +506,18 @@ SAY_EN = "[data-say][data-code='en']:not([hidden])"
 LINE_FR = "() => { const o = document.querySelector('[data-offer=\\'fr\\']'); return o && !o.hidden ? o.textContent : ''; }"
 
 
+
+def _settle_downloads():
+    """A stand-in download an earlier test left running still writes the
+    shared download state; one that lands mid-test made the download line
+    flake in a full run (never alone). Cancel it and wait it out."""
+    voices.cancel_download()
+    for _ in range(100):
+        with voices._lock:
+            if not voices._download.get("tag"):
+                return
+        time.sleep(0.1)
+
 @pytest.fixture
 def piper_here(served, tmp_path, monkeypatch):
     """A fake Piper on PATH, and a phone to open eau on."""
@@ -514,6 +526,7 @@ def piper_here(served, tmp_path, monkeypatch):
     monkeypatch.delenv(voices.PIPER_CMD_ENV, raising=False)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
     tv.fake_piper(tmp_path)
+    _settle_downloads()
     voices._reset_for_tests()
     with sync_playwright() as pw:
         br = pw.chromium.launch()
