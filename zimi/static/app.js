@@ -1000,8 +1000,9 @@ function _voiceRowHtml(x, isOn, last) {
   var meta = '<button type="button" class="voice-count" title="' + escAttr(names) + '" aria-expanded="' + open + '"' +
     ' onclick="' + escAttr('_toggleVoiceCount(' + js + ')') + '">' + esc(tPlural('n_languages', x.langs.length, { n: x.langs.length })) + '</button>' +
     (v ? ' · ' + esc(v) : '');
-  // System and Device, told apart in plain words.
-  var what = e === 'say' || e === _DEVICE_VOICE ? '<span class="share-row-desc voice-what">' + tH('voices_desc_' + e) + '</span>' : '';
+  // What each is, and how quick against how natural, in plain words (Eric,
+  // 2026-10-05: "gently suggest which are faster or slower for their quality").
+  var what = '<span class="share-row-desc voice-what">' + tH('voices_desc_' + e) + '</span>';
   // Natural, an admin's: Remove (a second tap) when it is here, Get when it
   // is not (or a newer one is out), Cancel while it comes.
   var act = '';
@@ -1011,6 +1012,30 @@ function _voiceRowHtml(x, isOn, last) {
     act += _voiceAction('/manage/voices/download', nat.tag,
       !dl.tag && dl.error === nat.tag ? tH('retry') : tH('voices_get_mb', { mb: _voiceMb(nat.bytes) }),
       ' data-primary' + (dl.tag ? ' disabled' : ''));
+  }
+  // Clear: one Get for every checked language that has no Clear voice yet,
+  // fetched one after another (Eric: "why does voices only show natural for
+  // download in the list and clear is only in the table?").
+  if (e === 'piper' && admin && _voicesMayFetch()) {
+    var offers = _clearOffers(), clearBusy = _clearQueue.length || offers.some(function(o) { return o.tag === dl.tag; });
+    if (clearBusy) act += _voiceAction('/manage/voices/cancel', dl.tag || '', tH('cancel'), ' data-clear-cancel');
+    else if (offers.length) {
+      // Everything checked is the default, and most people read one
+      // language: the one Zimi is in comes first, all of them is the quiet
+      // second choice (Eric, 2026-10-05: "confirm they want all or just
+      // English?").
+      var dis = dl.tag ? ' disabled' : '';
+      var mine = offers.filter(function(o) { return o.lang === _uiLangPrimary(); })[0];
+      var mb = _voiceMb(offers.reduce(function(n, o) { return n + (o.bytes || 0); }, 0));
+      if (mine) {
+        act += '<button type="button" class="set-btn" data-primary' + dis + ' onclick="_clearGetAll(this, true)">' +
+          tH('voices_get_one', { lang: _langDisplayName(mine.lang) || mine.lang, mb: _voiceMb(mine.bytes) }) + '</button>';
+      }
+      if (!mine || offers.length > 1) {
+        act += '<button type="button" class="set-btn"' + (mine ? '' : ' data-primary') + dis + ' onclick="_clearGetAll(this)">' +
+          tH(mine ? 'voices_get_all' : 'voices_get_yours', { n: offers.length, mb: mb }) + '</button>';
+      }
+    }
   }
   if (here) {
     act += '<button type="button" class="set-btn voice-hear" aria-label="' + escAttr(t('voices_hear') + ': ' + _voiceEngineName(e)) + '"' +
@@ -1154,8 +1179,35 @@ function _vgRemove(btn, tag, question) {
     if (ok) _voicesSend('/manage/voices/remove', { lang: tag }, t('voices_remove_failed'));
   });
 }
+// Clear voices to fetch for your languages: each checked language whose Clear
+// cell offers one. A queue, since the server fetches one at a time.
+var _clearQueue = [];
+function _clearOffers() {
+  var out = [];
+  _vgMainLangs().forEach(function(lang) {
+    var c = _voiceCell(lang, 'piper');
+    if ((c.s === 'get' || c.s === 'busy') && c.tag && !out.some(function(o) { return o.tag === c.tag; })) out.push({ tag: c.tag, bytes: c.bytes || 0, lang: lang });
+  });
+  return out;
+}
+function _clearNext() {
+  if (_voicesDl().tag || !_clearQueue.length) return;
+  _voicesSend('/manage/voices/download', { lang: _clearQueue.shift() }, t('voices_failed'));
+}
+function _clearGetAll(btn, justMine) {
+  if (btn) btn.disabled = true;
+  _clearQueue = _clearOffers().filter(function(o) { return !justMine || o.lang === _uiLangPrimary(); }).map(function(o) { return o.tag; });
+  _clearNext();
+}
 function _voicePrefsHtml() {
   var off = _voicePrefs().off, here = _voiceEnginesHere(), nat = _voiceNatural(), dl = _voicesDl();
+  // Clear not here yet but fetchable for your languages: its row, with Get.
+  if (!here.some(function(x) { return x.engine === 'piper'; }) && _voicesHere && _voicesHere.can_change && _voicesMayFetch()) {
+    var offers = _clearOffers();
+    if (offers.length || _clearQueue.length) {
+      here.push({ engine: 'piper', absent: true, langs: _vgMainLangs().filter(function(c) { var x = _voiceCell(c, 'piper').s; return x === 'get' || x === 'busy'; }) });
+    }
+  }
   // Natural not here yet: its row, for an admin to Get it from (or to watch
   // it come).
   if (nat && !here.some(function(x) { return x.engine === 'kokoro'; }) &&
@@ -1188,6 +1240,8 @@ function _paintKept(el, html) {
   });
 }
 function _paintVoices() {
+  // The next Clear voice in line, once the last one is done.
+  if (_clearQueue.length && !_voicesDl().tag) _clearNext();
   _paintKept(document.getElementById(_VOICES_WRAP_ID), _voicePrefsHtml());
   // A download in flight: ask how it is going until it is done.
   clearTimeout(_voicesTimer);
@@ -1240,6 +1294,7 @@ function _voicesArm(btn) {
   }, _VOICE_CONFIRM_MS);
 }
 function _voicesPost(path, tag, btn) {
+  if (btn && btn.hasAttribute('data-clear-cancel')) _clearQueue = [];
   if (btn && btn.getAttribute('data-confirm') && !btn.classList.contains('confirming')) { _voicesArm(btn); return; }
   if (btn) { btn.disabled = true; btn.classList.remove('confirming'); }
   return _voicesSend(path, { lang: tag }, t(/remove$/.test(path) ? 'voices_remove_failed' : 'voices_failed'));

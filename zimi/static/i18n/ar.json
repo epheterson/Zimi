@@ -2960,5 +2960,11 @@
   "voices_remove_lang": "إزالة صوت {voice} للغة {lang}؟",
   "voices_desc_say": "أصوات Mac على هذا الخادم، تُسمع على كل جهاز",
   "voices_desc_device": "الأصوات المدمجة في الجهاز الذي تستخدمه",
-  "voices_remove_natural": "إزالة الأصوات الطبيعية؟ ستُزال معها هذه اللغات: {langs}."
+  "voices_remove_natural": "إزالة الأصوات الطبيعية؟ ستُزال معها هذه اللغات: {langs}.",
+  "voices_desc_kokoro": "الأكثر طبيعية. أبطأ: الكلمة الجديدة تستغرق بضع ثوانٍ على خادم صغير.",
+  "voices_desc_piper": "واضح وسريع. أفضل توازن.",
+  "voices_desc_espeak": "آلي، لكنه فوري ومتاح بكل اللغات تقريبًا.",
+  "voices_get_yours": "تنزيل للغاتك ({n}، {mb} ميغابايت)",
+  "voices_get_one": "{lang} ({mb} ميغابايت)",
+  "voices_get_all": "الكل {n} ({mb} ميغابايت)"
 }

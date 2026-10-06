@@ -2960,5 +2960,11 @@
   "voices_remove_lang": "¿Quitar la voz {voice} de {lang}?",
   "voices_desc_say": "Las voces Mac de este servidor, se oyen en cualquier dispositivo",
   "voices_desc_device": "Las voces integradas en el dispositivo que estás usando",
-  "voices_remove_natural": "¿Quitar las voces Naturales? Estos idiomas se van con ellas: {langs}."
+  "voices_remove_natural": "¿Quitar las voces Naturales? Estos idiomas se van con ellas: {langs}.",
+  "voices_desc_kokoro": "La más natural. Más lenta: una palabra nueva tarda unos segundos en un servidor pequeño.",
+  "voices_desc_piper": "Clara y rápida. El mejor equilibrio.",
+  "voices_desc_espeak": "Robótica, pero instantánea y en casi todos los idiomas.",
+  "voices_get_yours": "Obtener para tus idiomas ({n}, {mb} MB)",
+  "voices_get_one": "{lang} ({mb} MB)",
+  "voices_get_all": "Los {n} ({mb} MB)"
 }

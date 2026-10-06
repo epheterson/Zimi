@@ -2960,5 +2960,11 @@
   "voices_remove_lang": "Die Stimme {voice} für {lang} entfernen?",
   "voices_desc_say": "Die Mac-Stimmen dieses Servers, auf jedem Gerät zu hören",
   "voices_desc_device": "Die Stimmen des Geräts, das Sie gerade benutzen",
-  "voices_remove_natural": "Natürliche Stimmen entfernen? Diese Sprachen gehen mit: {langs}."
+  "voices_remove_natural": "Natürliche Stimmen entfernen? Diese Sprachen gehen mit: {langs}.",
+  "voices_desc_kokoro": "Am natürlichsten. Langsamer: ein neues Wort braucht auf einem kleinen Server ein paar Sekunden.",
+  "voices_desc_piper": "Klar und schnell. Die beste Balance.",
+  "voices_desc_espeak": "Roboterhaft, aber sofort und in fast jeder Sprache.",
+  "voices_get_yours": "Für Ihre Sprachen laden ({n}, {mb} MB)",
+  "voices_get_one": "{lang} ({mb} MB)",
+  "voices_get_all": "Alle {n} ({mb} MB)"
 }

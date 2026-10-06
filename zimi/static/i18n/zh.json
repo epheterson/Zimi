@@ -2960,5 +2960,11 @@
   "voices_remove_lang": "移除{lang}的{voice}语音？",
   "voices_desc_say": "此服务器 Mac 上的语音，在每台设备上都能听到",
   "voices_desc_device": "你正在使用的设备内置的语音",
-  "voices_remove_natural": "删除自然语音？这些语言也会一并删除：{langs}。"
+  "voices_remove_natural": "删除自然语音？这些语言也会一并删除：{langs}。",
+  "voices_desc_kokoro": "最自然。较慢：在小型服务器上，一个新词需要几秒钟。",
+  "voices_desc_piper": "清晰且快速。最佳平衡。",
+  "voices_desc_espeak": "机械感强，但即时可用，几乎支持所有语言。",
+  "voices_get_yours": "为你的语言获取（{n} 种，{mb} MB）",
+  "voices_get_one": "{lang}（{mb} MB）",
+  "voices_get_all": "全部 {n} 种（{mb} MB）"
 }

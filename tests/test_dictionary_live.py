@@ -1611,3 +1611,28 @@ def test_the_front_offers_more_words_even_when_the_day_brought_none(served):
             assert len(f.query_selector_all(".more-words .cloud a[data-w]")) >= 2
         finally:
             br.close()
+
+
+def test_clear_is_offered_on_its_row_the_current_language_first(piper_here, monkeypatch, served):
+    """Eric, 2026-10-05: "why does voices only show natural for download in
+    the list and clear is only in the table?" Clear's row offers Zimi's own
+    language first, and every checked one as the quiet second choice ("the
+    casual user defaulted to all languages but speaking only English").
+    Each engine says how quick it is against how natural."""
+    open_eau, errors = piper_here
+    steps = {"go": False}
+    _slow_fetch(monkeypatch, steps)
+    pg = open_eau().page
+    _settings_voices(pg, served)
+    clear = VOICES_WRAP + " .voice-engine[data-engine='piper']"
+    pg.wait_for_selector(clear)
+    btns = pg.eval_on_selector_all(clear + " .set-btn:not(.voice-hear)", "bs => bs.map(b => b.textContent)")
+    assert btns[0].startswith("English (") and btns[-1].startswith("All "), btns
+    assert "quick" in pg.text_content(clear + " .voice-what")
+    pg.click(clear + " .set-btn[data-primary]")
+    _until(lambda: voices.downloading().get("tag") == "en-US", "English never started")
+    steps["go"] = False
+    _until(lambda: "en-US" in voices.installed(), "English never came")
+    time.sleep(1.5)
+    assert [t for t in voices.installed() if voices.VOICES.get(t) and voices.VOICES[t].engine == voices.PIPER] == ["en-US"], "only English came"
+    assert not errors, errors
