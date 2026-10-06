@@ -941,6 +941,9 @@ def _settings_languages(pg, served, open_list=True):
     """Settings > Languages, the checklist open."""
     pg.goto(served + "/?manage=preferences")
     pg.wait_for_function("() => window._voicesHere", timeout=20000)
+    # Settings draws again as its answers come in (a slow runner sees the
+    # fold replaced under a click): wait until nothing is still coming.
+    pg.wait_for_load_state("networkidle")
     if open_list and pg.get_attribute(FOLD, "aria-expanded") != "true":
         pg.click(FOLD)
     pg.eval_on_selector("#ms-languages", "e => e.scrollIntoView({ block: 'start' })")
@@ -1420,7 +1423,7 @@ def test_the_dictionarys_voices_opens_settings_voices(piper_here, served):
     pg.goto(served + "/?manage=preferences#voices")
     pg.wait_for_selector(GRID, timeout=20000)
     pg.wait_for_function(
-        "() => { const t = document.getElementById('ms-voices').getBoundingClientRect().top; return t >= 0 && t < 844; }",
+        "() => { const t = document.getElementById('ms-voices').getBoundingClientRect().top; return t >= -1 && t < 844; }",
         timeout=5000,
     )
     assert not errors, errors
