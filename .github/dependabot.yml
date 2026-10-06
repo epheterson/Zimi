@@ -6,6 +6,8 @@ updates:
   # The server's pinned requirements (also what the Docker image installs) and the desktop
   # app's. pyproject.toml carries the ranges PyPI users get; pip updates it alongside.
   - package-ecosystem: pip
+    # Quiet: no routine version PRs; a security advisory still opens one.
+    open-pull-requests-limit: 0
     directories:
       - /
       - /desktop
@@ -17,10 +19,11 @@ updates:
     groups:
       python-minor:
         update-types: [minor, patch]
-    open-pull-requests-limit: 5
 
   # Base image of the published container.
   - package-ecosystem: docker
+    # Quiet: no routine version PRs; a security advisory still opens one.
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
@@ -33,6 +36,8 @@ updates:
 
   # Every action is pinned to a commit; this keeps the pins and their version comments current.
   - package-ecosystem: github-actions
+    # Quiet: no routine version PRs; a security advisory still opens one.
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
