@@ -1027,14 +1027,15 @@ function _voiceRowHtml(x, isOn, last) {
     else if (offers.length) {
       var dis = dl.tag ? ' disabled' : '';
       var first = offers.filter(function(o) { return o.lang === _uiLangPrimary(); })[0] || offers[0];
-      act += '<span class="voice-split"><button type="button" class="set-btn" data-primary' + dis +
+      // Its own line under the words: beside Hear and the switch it wraps.
+      pick += '<div class="voice-get-line"><span class="voice-split"><button type="button" class="set-btn" data-primary' + dis +
         ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify([first.tag]) + ')') + '">' +
         tH('voices_get_lang', { lang: _langDisplayName(first.lang) || first.lang, mb: _voiceMb(first.bytes) }) + '</button>' +
         (offers.length > 1 ? '<button type="button" class="set-btn voice-split-more" aria-expanded="' + _clearPickOpen + '"' +
-          ' aria-label="' + escAttr(t('voices_get_other')) + '" onclick="_toggleClearPick()">▾</button>' : '') + '</span>';
+          ' aria-label="' + escAttr(t('voices_get_other')) + '" onclick="_toggleClearPick()">▾</button>' : '') + '</span></div>';
       if (_clearPickOpen && offers.length > 1) {
         var all = offers.map(function(o) { return o.tag; });
-        pick = '<div class="voice-pick">' + offers.filter(function(o) { return o !== first; }).map(function(o) {
+        pick += '<div class="voice-pick">' + offers.filter(function(o) { return o !== first; }).map(function(o) {
           return '<button type="button" class="voice-pick-row"' + dis + ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify([o.tag]) + ')') + '">' +
             '<span>' + esc(_langDisplayName(o.lang) || o.lang) + '</span><span class="voice-pick-mb">' + esc(_voiceMb(o.bytes)) + ' MB</span></button>';
         }).join('') +

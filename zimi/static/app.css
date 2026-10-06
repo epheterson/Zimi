@@ -3516,8 +3516,9 @@
   .voice-engine .share-row-text { flex: 1 1 10em; min-width: 10em; }
   /* Clear's Get and its ▾, one object; the ▾ opens the other languages. */
   .voice-split { display: inline-flex; }
+  .voice-get-line { flex-basis: 100%; display: flex; }
   .voice-split > .set-btn:first-child:not(:last-child) { border-start-end-radius: 0; border-end-end-radius: 0; }
-  .voice-split-more { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: -1px; padding-inline: 10px; }
+  .voice-split-more { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: -1px; padding-inline: 12px; font-size: 15px; }
   .voice-pick { flex-basis: 100%; display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 4px; }
   .voice-pick-row {
     display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border);
@@ -3618,8 +3619,8 @@
   /* Say on a Discover card: a round speaker at the top right, level with
      the card's title, so the card keeps its height (Eric, 2026-10-06). */
   .dc-word-card .dc-body, .dc-quote-card .dc-body { position: relative; }
-  .dc-word-card .dc-header, .dc-quote-card .dc-header { padding-inline-end: 40px; }
-  .dc-say { position: absolute; top: 14px; inset-inline-end: 14px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: 50%; color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); cursor: pointer; }
+  .dc-word-card .dc-header, .dc-quote-card .dc-header { padding-inline-end: 44px; }
+  .dc-say { position: absolute; top: 12px; inset-inline-end: 12px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: 50%; color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); cursor: pointer; }
   .dc-say > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .dc-say:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .dc-say.on { animation: dcSayPulse 1s ease-in-out infinite; }
