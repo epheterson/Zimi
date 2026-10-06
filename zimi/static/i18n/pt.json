@@ -2961,10 +2961,12 @@
   "voices_desc_say": "As vozes Mac deste servidor, ouvidas em qualquer dispositivo",
   "voices_desc_device": "As vozes integradas no dispositivo que você está usando",
   "voices_remove_natural": "Remover as vozes Naturais? Estes idiomas vão junto: {langs}.",
-  "voices_desc_kokoro": "A mais natural. Mais lenta: uma palavra nova leva alguns segundos num servidor pequeno.",
-  "voices_desc_piper": "Clara e rápida. O melhor equilíbrio.",
-  "voices_desc_espeak": "Robótica, mas instantânea e em quase todos os idiomas.",
   "voices_get_yours": "Baixar para seus idiomas ({n}, {mb} MB)",
   "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "Todos os {n} ({mb} MB)"
+  "voices_get_all": "Todos os {n} ({mb} MB)",
+  "voices_speed_kokoro": "Mais lenta",
+  "voices_speed_piper": "Rápida",
+  "voices_speed_say": "Rápida",
+  "voices_speed_espeak": "Instantânea",
+  "voices_speed_device": "Instantânea"
 }

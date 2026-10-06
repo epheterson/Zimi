@@ -1002,7 +1002,10 @@ function _voiceRowHtml(x, isOn, last) {
     (v ? ' · ' + esc(v) : '');
   // What each is, and how quick against how natural, in plain words (Eric,
   // 2026-10-05: "gently suggest which are faster or slower for their quality").
-  var what = '<span class="share-row-desc voice-what">' + tH('voices_desc_' + e) + '</span>';
+  // One word for speed (Eric: "one word each ... instant fast slow"); System
+  // and Device add what tells them apart.
+  var what = '<span class="share-row-desc voice-what">' + tH('voices_speed_' + e) +
+    (e === 'say' || e === _DEVICE_VOICE ? ' · ' + tH('voices_desc_' + e) : '') + '</span>';
   // Natural, an admin's: Remove (a second tap) when it is here, Get when it
   // is not (or a newer one is out), Cancel while it comes.
   var act = '';

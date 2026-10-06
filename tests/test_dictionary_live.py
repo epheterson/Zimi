@@ -1628,7 +1628,7 @@ def test_clear_is_offered_on_its_row_the_current_language_first(piper_here, monk
     pg.wait_for_selector(clear)
     btns = pg.eval_on_selector_all(clear + " .set-btn:not(.voice-hear)", "bs => bs.map(b => b.textContent)")
     assert btns[0].startswith("English (") and btns[-1].startswith("All "), btns
-    assert "quick" in pg.text_content(clear + " .voice-what")
+    assert pg.text_content(clear + " .voice-what") == "Fast"
     pg.click(clear + " .set-btn[data-primary]")
     _until(lambda: voices.downloading().get("tag") == "en-US", "English never started")
     steps["go"] = False

@@ -2961,10 +2961,12 @@
   "voices_desc_say": "Голоса Mac этого сервера, слышны на любом устройстве",
   "voices_desc_device": "Голоса, встроенные в устройство, которым вы пользуетесь",
   "voices_remove_natural": "Удалить естественные голоса? Вместе с ними уйдут: {langs}.",
-  "voices_desc_kokoro": "Самый естественный. Медленнее: новое слово занимает несколько секунд на небольшом сервере.",
-  "voices_desc_piper": "Чёткий и быстрый. Лучший баланс.",
-  "voices_desc_espeak": "Роботизированный, но мгновенный и почти на всех языках.",
   "voices_get_yours": "Загрузить для ваших языков ({n}, {mb} МБ)",
   "voices_get_one": "{lang} ({mb} МБ)",
-  "voices_get_all": "Все {n} ({mb} МБ)"
+  "voices_get_all": "Все {n} ({mb} МБ)",
+  "voices_speed_kokoro": "Медленнее",
+  "voices_speed_piper": "Быстро",
+  "voices_speed_say": "Быстро",
+  "voices_speed_espeak": "Мгновенно",
+  "voices_speed_device": "Мгновенно"
 }

@@ -2961,10 +2961,12 @@
   "voices_desc_say": "इस सर्वर के Mac की आवाज़ें, हर डिवाइस पर सुनाई देती हैं",
   "voices_desc_device": "जिस डिवाइस का आप उपयोग कर रहे हैं उसकी अंतर्निहित आवाज़ें",
   "voices_remove_natural": "प्राकृतिक आवाज़ें हटाएँ? इनके साथ ये भाषाएँ भी जाएँगी: {langs}।",
-  "voices_desc_kokoro": "सबसे स्वाभाविक। धीमी: छोटे सर्वर पर एक नया शब्द कुछ सेकंड लेता है।",
-  "voices_desc_piper": "साफ़ और तेज़। सबसे अच्छा संतुलन।",
-  "voices_desc_espeak": "रोबोट जैसी, पर तुरंत और लगभग हर भाषा में।",
   "voices_get_yours": "आपकी भाषाओं के लिए पाएँ ({n}, {mb} MB)",
   "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "सभी {n} ({mb} MB)"
+  "voices_get_all": "सभी {n} ({mb} MB)",
+  "voices_speed_kokoro": "धीमी",
+  "voices_speed_piper": "तेज़",
+  "voices_speed_say": "तेज़",
+  "voices_speed_espeak": "तुरंत",
+  "voices_speed_device": "तुरंत"
 }
