@@ -1668,3 +1668,30 @@ def test_the_default_voice_shows_only_the_voices_on_here(piper_here, served):
     pg.click(seg + " .app-theme-btn:has-text('Clear')")
     assert pg.evaluate("() => _voicePrefs().voice") == "piper"
     assert not errors, errors
+
+
+def test_overlapping_settings_draws_keep_the_section(piper_here, served):
+    """Two draws of Settings in flight (two language switches in a row): the
+    older one answering last used to land on Library, so Settings left
+    Preferences under the person's finger. Only the newest draw lands."""
+    open_eau, errors = piper_here
+    pg = open_eau().page
+    _settings_languages(pg, served, open_list=False)
+    calls = {"n": 0}
+
+    def slow_first(route):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            time.sleep(1.5)
+        route.continue_()
+
+    pg.route("**/manage/status*", slow_first)
+    pg.evaluate(
+        "() => { _pendingMsSection = 'preferences'; renderManage();"
+        " _pendingMsSection = 'preferences'; renderManage(); }"
+    )
+    pg.wait_for_timeout(3000)
+    assert "manage=preferences" in pg.url, pg.url
+    pg.wait_for_selector(FOLD, state="attached", timeout=5000)
+    pg.unroute("**/manage/status*")
+    assert not errors, errors

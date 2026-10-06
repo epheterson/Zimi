@@ -12321,6 +12321,7 @@ async function _submitSetupKey() {
   }
 }
 
+var _manageRenderId = 0;
 async function renderManage() {
   if (_managePublicLocked) { _renderManagePublicLocked(); return; }
   // A signed-in non-admin has no admin console. Show their minimal account card
@@ -12328,6 +12329,10 @@ async function renderManage() {
   // /manage/status call (it would 401 and re-prompt for sign-in).
   if (_userSession && !_manageToken) { _renderUserManage(); return; }
   const installedCount = zimsCache ? zimsCache.length : 0;
+  // Two draws can overlap (two language switches in a row): only the newest
+  // lands, on the section it was asked for. The older one, answered last,
+  // used to land on Library.
+  var myRender = ++_manageRenderId, target = _pendingMsSection;
 
   output.innerHTML =
     '<div class="manage-wrap">' +
@@ -12363,6 +12368,7 @@ async function renderManage() {
   try {
     const res = await manageFetch('/manage/status');
     const data = await res.json();
+    if (myRender !== _manageRenderId) return;
     _manageStatusData = data;
     switchMs('library');
     // Warm the Server-pane fetches now (token is set from the status call
@@ -12370,7 +12376,9 @@ async function renderManage() {
     // then paints from fresh data instead of the OFF-default shell.
     _prefetchServerSettings();
     // Honor a deep-link (card menu → "Reorder sections…") once the view mounts.
-    if (_pendingMsSection) { var _ms = _pendingMsSection; _pendingMsSection = null; switchMs(_ms); }
+    var _ms = _pendingMsSection || target;
+    _pendingMsSection = null;
+    if (_ms) switchMs(_ms);
     // Sync auto-update dropdown from server
     const au = data.auto_update || {};
     const freqSel = document.getElementById('auto-update-freq');
