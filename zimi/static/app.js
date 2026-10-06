@@ -4354,7 +4354,8 @@ function renderHome(filter) {
   const n = baseZims.length;
   var statsHtml;
   if (filter && zims.length !== baseZims.length) {
-    statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
+    // The count once, lit, where the sentence puts it (#108: "4 4 of 59").
+    statsHtml = t('sources_matching', {n: '<span class="num">' + zims.length + '</span>', total: n, query: esc(filter)});
   } else {
     // The Apps page counts what each app shows on its own cards: a sum of
     // ZIM entries across books, videos and maps would count none of them.
@@ -10917,18 +10918,20 @@ const _searchFold = s => _searchUnaccent(s).toLowerCase();
 // Where a word part starts inside a word (query._PARTS): MediaWiki, fr_wiki.
 const _SEARCH_PARTS = /(?<=[a-z])(?=[A-Z])|_/g;
 
-// The whole query against one text, case and accents aside: a word anywhere
-// (so "wiki" still finds Wikipedia, as the catalog always did), a phrase from
-// the start of a word, an exclusion from the start of a word or a word part
-// (#94: -wiki drops MediaWiki; -ted still keeps United). query.excluded is the
+// The whole query against one text, case and accents aside: every term from
+// the start of a word or a word part, so "git" finds Git Docs and not
+// zimgit-knots (#108), and an exclusion the same way (#94: -wiki drops
+// MediaWiki; -ted still keeps United). query.excluded is the
 // server's half; tests/fixtures/search_query_cases.json holds both to it.
 function searchQueryMatches(parsed, text) {
   const bare = _searchUnaccent(text), low = bare.toLowerCase();
-  const hit = t => t.phrase ? _searchTermRe(_searchFold(t.text)).test(low) : low.includes(_searchFold(t.text));
-  if (!parsed.groups.every(g => g.some(hit))) return false;
-  if (!parsed.exclude.length) return true;
   const parts = bare.replace(_SEARCH_PARTS, ' ').toLowerCase();
-  return !parsed.exclude.some(t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); });
+  // Every term from the start of a word or a word part, as an exclusion
+  // always was: "git" finds Git Docs, not zimgit-knots (#108), and "wiki"
+  // still finds Wikipedia and MediaWiki.
+  const hit = t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); };
+  if (!parsed.groups.every(g => g.some(hit))) return false;
+  return !parsed.exclude.some(hit);
 }
 
 // Words too common to search for alone, or to mark in a result.
