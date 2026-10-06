@@ -412,7 +412,7 @@ def test_a_download_lands_only_at_the_pinned_size(piper, monkeypatch):
         def __exit__(self, *a):
             return False
 
-    def fake_open(req, timeout):
+    def fake_open(req, timeout, context=None):
         suffix = ".onnx.json" if req.full_url.endswith(".json") else ".onnx"
         assert req.full_url.startswith(
             voices.PIPER_BASE_URL + voices.PIPER_REVISION + "/fr/fr_FR/siwis/medium/"
@@ -463,7 +463,7 @@ def test_a_cancelled_download_leaves_nothing_and_no_error(piper, monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(voices.urllib.request, "urlopen", lambda req, timeout: Resp())
+    monkeypatch.setattr(voices.urllib.request, "urlopen", lambda req, timeout, context=None: Resp())
     voices._download.update({"tag": "fr", "done": 0, "total": 14})
     voices._fetch_voice("fr")
     assert "fr" not in voices.installed()

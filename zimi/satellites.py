@@ -220,7 +220,7 @@ def parse_payload(gps_list, iss_list, fetched_at):
 def _get_json(query):
     url = CELESTRAK_GP_URL + "?" + urllib.parse.urlencode(query)
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-    with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S) as resp:
+    with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S, context=_srv.SSL_CTX) as resp:
         body = resp.read(MAX_RESPONSE_BYTES + 1)
     if len(body) > MAX_RESPONSE_BYTES:
         raise ValueError("response too large")

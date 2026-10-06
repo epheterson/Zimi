@@ -1387,12 +1387,14 @@ def _maybe_fetch(lang, accent):
 
 
 def _fetch_file(url, dest, expect):
+    from zimi import server as _srv
     from zimi.library import USER_AGENT
 
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     got = 0
+    # certifi's bundle: a frozen desktop build has no system certificates.
     with (
-        urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S) as resp,
+        urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S, context=_srv.SSL_CTX) as resp,
         open(dest, "wb") as f,
     ):
         while True:
