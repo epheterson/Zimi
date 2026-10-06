@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "בין גאות לשפל",
   "voices_section": "קולות",
   "voices_hear": "האזנה",
-  "voices_say_remembers": "כפתור ההשמעה במילון זוכר את הקול האחרון שבחרת בתפריט שלו.",
+  "voices_say_remembers": "בחירת קול בתפריט ההגייה של המילון הופכת אותו לברירת המחדל.",
   "voices_sample": "כמה מילים מהמילון: {words}.",
   "voices_sample_none": "כך נשמע הקול הזה.",
   "voices_hear_failed": "לא ניתן היה להשמיע את הקול כרגע",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "הקולות של ה-Mac בשרת הזה, נשמעים בכל מכשיר",
   "voices_desc_device": "הקולות המובנים במכשיר שבו אתם משתמשים",
   "voices_remove_natural": "להסיר את הקולות הטבעיים? השפות האלה יוסרו איתם: {langs}.",
-  "voices_get_yours": "הורדה לשפות שלכם ({n}, {mb} MB)",
-  "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "כל ה־{n} ({mb} MB)",
+  "voices_get_all": "כל {n} השפות",
   "voices_speed_kokoro": "איטי יותר",
   "voices_speed_piper": "מהיר",
   "voices_speed_say": "מהיר",
   "voices_speed_espeak": "מיידי",
-  "voices_speed_device": "מיידי"
+  "voices_speed_device": "מיידי",
+  "voices_default": "קול ברירת מחדל",
+  "voices_default_auto": "אוטומטי",
+  "voices_get_lang": "הורדת {lang} ({mb} MB)",
+  "voices_get_other": "שפות אחרות"
 }

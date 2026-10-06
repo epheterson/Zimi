@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "Entre pleine et basse mer",
   "voices_section": "Voix",
   "voices_hear": "Écouter",
-  "voices_say_remembers": "Prononcer, dans le Dictionnaire, garde la dernière voix choisie dans son menu.",
+  "voices_say_remembers": "Choisir une voix dans le menu Prononcer du Dictionnaire en fait la voix par défaut.",
   "voices_sample": "Quelques mots du dictionnaire : {words}.",
   "voices_sample_none": "Voici comment sonne cette voix.",
   "voices_hear_failed": "Cette voix n'a pas pu être lue",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "Les voix Mac de ce serveur, entendues sur tous les appareils",
   "voices_desc_device": "Les voix intégrées à l'appareil que vous utilisez",
   "voices_remove_natural": "Supprimer les voix Naturelles ? Ces langues partent avec : {langs}.",
-  "voices_get_yours": "Obtenir pour vos langues ({n}, {mb} Mo)",
-  "voices_get_one": "{lang} ({mb} Mo)",
-  "voices_get_all": "Les {n} ({mb} Mo)",
+  "voices_get_all": "Les {n} langues",
   "voices_speed_kokoro": "Plus lente",
   "voices_speed_piper": "Rapide",
   "voices_speed_say": "Rapide",
   "voices_speed_espeak": "Instantanée",
-  "voices_speed_device": "Instantanée"
+  "voices_speed_device": "Instantanée",
+  "voices_default": "Voix par défaut",
+  "voices_default_auto": "Automatique",
+  "voices_get_lang": "Obtenir {lang} ({mb} Mo)",
+  "voices_get_other": "Autres langues"
 }

@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "Entre pleamar y bajamar",
   "voices_section": "Voces",
   "voices_hear": "Escuchar",
-  "voices_say_remembers": "Pronunciar, en el Diccionario, conserva la última voz que elegiste en su menú.",
+  "voices_say_remembers": "Elegir una voz en el menú Decir del Diccionario la convierte en la predeterminada.",
   "voices_sample": "Algunas palabras del diccionario son: {words}.",
   "voices_sample_none": "Así suena esta voz.",
   "voices_hear_failed": "Esa voz no pudo sonar ahora",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "Las voces Mac de este servidor, se oyen en cualquier dispositivo",
   "voices_desc_device": "Las voces integradas en el dispositivo que estás usando",
   "voices_remove_natural": "¿Quitar las voces Naturales? Estos idiomas se van con ellas: {langs}.",
-  "voices_get_yours": "Obtener para tus idiomas ({n}, {mb} MB)",
-  "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "Los {n} ({mb} MB)",
+  "voices_get_all": "Los {n} idiomas",
   "voices_speed_kokoro": "Más lenta",
   "voices_speed_piper": "Rápida",
   "voices_speed_say": "Rápida",
   "voices_speed_espeak": "Instantánea",
-  "voices_speed_device": "Instantánea"
+  "voices_speed_device": "Instantánea",
+  "voices_default": "Voz predeterminada",
+  "voices_default_auto": "Automática",
+  "voices_get_lang": "Obtener {lang} ({mb} MB)",
+  "voices_get_other": "Otros idiomas"
 }

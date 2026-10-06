@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "Between high and low water",
   "voices_section": "Voices",
   "voices_hear": "Hear",
-  "voices_say_remembers": "Say in the Dictionary keeps the voice you picked last in its menu.",
+  "voices_say_remembers": "Picking a voice in the Dictionary's Say menu makes it the default.",
   "voices_sample": "Some dictionary words are: {words}.",
   "voices_sample_none": "This is how this voice sounds.",
   "voices_hear_failed": "That voice couldn't play just now",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "This server's Mac voices, heard on every device",
   "voices_desc_device": "The voices built into the device you're using",
   "voices_remove_natural": "Remove Natural voices? These languages go with it: {langs}.",
-  "voices_get_yours": "Get for your languages ({n}, {mb} MB)",
-  "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "All {n} ({mb} MB)",
+  "voices_get_all": "All {n} languages",
   "voices_speed_kokoro": "Slower",
   "voices_speed_piper": "Fast",
   "voices_speed_say": "Fast",
   "voices_speed_espeak": "Instant",
-  "voices_speed_device": "Instant"
+  "voices_speed_device": "Instant",
+  "voices_default": "Default voice",
+  "voices_default_auto": "Automatic",
+  "voices_get_lang": "Get {lang} ({mb} MB)",
+  "voices_get_other": "Other languages"
 }

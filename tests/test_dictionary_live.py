@@ -1614,11 +1614,9 @@ def test_the_front_offers_more_words_even_when_the_day_brought_none(served):
 
 
 def test_clear_is_offered_on_its_row_the_current_language_first(piper_here, monkeypatch, served):
-    """Eric, 2026-10-05: "why does voices only show natural for download in
-    the list and clear is only in the table?" Clear's row offers Zimi's own
-    language first, and every checked one as the quiet second choice ("the
-    casual user defaulted to all languages but speaking only English").
-    Each engine says how quick it is against how natural."""
+    """Clear sits under Natural and offers the language Zimi is in, with a
+    ▾ for the other checked ones and "All N languages" last (Eric,
+    2026-10-06). Each engine says in one word how quick it is."""
     open_eau, errors = piper_here
     steps = {"go": False}
     _slow_fetch(monkeypatch, steps)
@@ -1626,13 +1624,32 @@ def test_clear_is_offered_on_its_row_the_current_language_first(piper_here, monk
     _settings_voices(pg, served)
     clear = VOICES_WRAP + " .voice-engine[data-engine='piper']"
     pg.wait_for_selector(clear)
-    btns = pg.eval_on_selector_all(clear + " .set-btn:not(.voice-hear)", "bs => bs.map(b => b.textContent)")
-    assert btns[0].startswith("English (") and btns[-1].startswith("All "), btns
+    order = pg.eval_on_selector_all(VOICES_WRAP + " .voice-engine", "rs => rs.map(r => r.dataset.engine)")
+    assert order.index("piper") == order.index("kokoro") + 1 if "kokoro" in order else order[0] == "piper", order
     assert pg.text_content(clear + " .voice-what") == "Fast"
+    assert pg.text_content(clear + " .set-btn[data-primary]").startswith("Get English (")
+    pg.click(clear + " .voice-split-more")
+    rows = pg.eval_on_selector_all(clear + " .voice-pick-row", "bs => bs.map(b => b.textContent)")
+    assert rows[-1].startswith("All ") and "languages" in rows[-1], rows
     pg.click(clear + " .set-btn[data-primary]")
     _until(lambda: voices.downloading().get("tag") == "en-US", "English never started")
-    steps["go"] = False
     _until(lambda: "en-US" in voices.installed(), "English never came")
     time.sleep(1.5)
     assert [t for t in voices.installed() if voices.VOICES.get(t) and voices.VOICES[t].engine == voices.PIPER] == ["en-US"], "only English came"
+    assert not errors, errors
+
+
+def test_the_default_voice_shows_only_the_voices_on_here(piper_here, served):
+    """One row of the voices on here plus Automatic; a pick is the default
+    Zimi says things in (Eric, 2026-10-06)."""
+    open_eau, errors = piper_here
+    tv.install("fr")
+    pg = open_eau().page
+    _settings_voices(pg, served)
+    seg = VOICES_WRAP + " .voice-default"
+    pg.wait_for_selector(seg)
+    names = pg.eval_on_selector_all(seg + " .app-theme-btn", "bs => bs.map(b => b.textContent)")
+    assert names[0] == "Automatic" and "Clear" in names and "Natural" not in names, names
+    pg.click(seg + " .app-theme-btn:has-text('Clear')")
+    assert pg.evaluate("() => _voicePrefs().voice") == "piper"
     assert not errors, errors

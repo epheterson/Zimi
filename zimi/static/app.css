@@ -3512,6 +3512,25 @@
      square, a soft pulse) until it ends. */
   .voice-engine { flex-wrap: wrap; }
   .voice-engine .voice-meta { color: var(--text3); font-size: 11.5px; }
+  /* The words keep their width; the buttons wrap under them, not the words. */
+  .voice-engine .share-row-text { flex: 1 1 10em; min-width: 10em; }
+  /* Clear's Get and its ▾, one object; the ▾ opens the other languages. */
+  .voice-split { display: inline-flex; }
+  .voice-split > .set-btn:first-child:not(:last-child) { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .voice-split-more { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: -1px; padding-inline: 10px; }
+  .voice-pick { flex-basis: 100%; display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 4px; }
+  .voice-pick-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border);
+    background: none; color: var(--text); font: inherit; font-size: 13.5px; text-align: start; cursor: pointer;
+  }
+  .voice-pick-row:last-child { border-bottom: 0; }
+  .voice-pick-row:hover { color: var(--amber); }
+  .voice-pick-row:disabled { opacity: 0.5; cursor: default; }
+  .voice-pick-all { color: var(--amber); font-weight: 600; }
+  .voice-pick-mb { color: var(--text3); font-variant-numeric: tabular-nums; font-weight: 400; }
+  /* Default voice: only the voices on here; scrolls sideways when many. */
+  .voice-default { max-width: none; overflow-x: auto; margin-bottom: 12px; scrollbar-width: none; }
+  .voice-default .app-theme-btn { flex: 1 0 auto; white-space: nowrap; }
   .voice-engine.voice-off .share-row-title, .voice-engine.voice-off .share-row-desc { opacity: 0.55; }
   .voice-engine .set-btn[data-primary] { color: var(--amber); border-color: var(--amber-border); }
   /* Natural's Remove, quiet in its small line: a word, not a button. */
@@ -3596,13 +3615,16 @@
   .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
   .dc-word-card .dc-headword { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.5px; line-height: 1.2; }
   .dc-word-card .dc-pos { display: inline-block; font-size: 11px; color: var(--amber); font-style: italic; font-family: Georgia, "Times New Roman", serif; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); width: 100%; }
-  .dc-say { display: inline-flex; align-self: flex-start; width: fit-content; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; margin: 2px 0 10px; border-radius: 16px; font-size: 12.5px; font-weight: 600; color: var(--on-amber, #fff); background: var(--amber); cursor: pointer; }
+  /* Say on a Discover card: a round speaker at the top right, level with
+     the card's title, so the card keeps its height (Eric, 2026-10-06). */
+  .dc-word-card .dc-body, .dc-quote-card .dc-body { position: relative; }
+  .dc-word-card .dc-header, .dc-quote-card .dc-header { padding-inline-end: 40px; }
+  .dc-say { position: absolute; top: 14px; inset-inline-end: 14px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: 50%; color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); cursor: pointer; }
+  .dc-say > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .dc-say:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .dc-say.on { animation: dcSayPulse 1s ease-in-out infinite; }
-  @keyframes dcSayPulse { 50% { opacity: .65; } }
+  @keyframes dcSayPulse { 50% { opacity: .55; } }
   @media (prefers-reduced-motion: reduce) { .dc-say.on { animation: none; } }
-  .dc-word-card .dc-say + .dc-pos { display: block; }
-  .dc-quote-card .dc-quote + .dc-say { margin: 12px 0 0; }
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }

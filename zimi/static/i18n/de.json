@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "Zwischen Hoch- und Niedrigwasser",
   "voices_section": "Stimmen",
   "voices_hear": "Anhören",
-  "voices_say_remembers": "„Aussprechen“ im Wörterbuch behält die Stimme, die Sie zuletzt in seinem Menü gewählt haben.",
+  "voices_say_remembers": "Eine Stimme im Sprechen-Menü des Wörterbuchs zu wählen, macht sie zur Standardstimme.",
   "voices_sample": "Einige Wörter aus dem Wörterbuch: {words}.",
   "voices_sample_none": "So klingt diese Stimme.",
   "voices_hear_failed": "Diese Stimme konnte gerade nicht abgespielt werden",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "Die Mac-Stimmen dieses Servers, auf jedem Gerät zu hören",
   "voices_desc_device": "Die Stimmen des Geräts, das Sie gerade benutzen",
   "voices_remove_natural": "Natürliche Stimmen entfernen? Diese Sprachen gehen mit: {langs}.",
-  "voices_get_yours": "Für Ihre Sprachen laden ({n}, {mb} MB)",
-  "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "Alle {n} ({mb} MB)",
+  "voices_get_all": "Alle {n} Sprachen",
   "voices_speed_kokoro": "Langsamer",
   "voices_speed_piper": "Schnell",
   "voices_speed_say": "Schnell",
   "voices_speed_espeak": "Sofort",
-  "voices_speed_device": "Sofort"
+  "voices_speed_device": "Sofort",
+  "voices_default": "Standardstimme",
+  "voices_default_auto": "Automatisch",
+  "voices_get_lang": "{lang} laden ({mb} MB)",
+  "voices_get_other": "Andere Sprachen"
 }

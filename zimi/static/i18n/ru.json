@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "Между полной и малой водой",
   "voices_section": "Голоса",
   "voices_hear": "Прослушать",
-  "voices_say_remembers": "Кнопка «Произнести» в Словаре запоминает голос, выбранный в её меню последним.",
+  "voices_say_remembers": "Голос, выбранный в меню «Произнести» в Словаре, становится голосом по умолчанию.",
   "voices_sample": "Несколько слов из словаря: {words}.",
   "voices_sample_none": "Так звучит этот голос.",
   "voices_hear_failed": "Этот голос сейчас не воспроизвёлся",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "Голоса Mac этого сервера, слышны на любом устройстве",
   "voices_desc_device": "Голоса, встроенные в устройство, которым вы пользуетесь",
   "voices_remove_natural": "Удалить естественные голоса? Вместе с ними уйдут: {langs}.",
-  "voices_get_yours": "Загрузить для ваших языков ({n}, {mb} МБ)",
-  "voices_get_one": "{lang} ({mb} МБ)",
-  "voices_get_all": "Все {n} ({mb} МБ)",
+  "voices_get_all": "Все языки ({n})",
   "voices_speed_kokoro": "Медленнее",
   "voices_speed_piper": "Быстро",
   "voices_speed_say": "Быстро",
   "voices_speed_espeak": "Мгновенно",
-  "voices_speed_device": "Мгновенно"
+  "voices_speed_device": "Мгновенно",
+  "voices_default": "Голос по умолчанию",
+  "voices_default_auto": "Автоматически",
+  "voices_get_lang": "Загрузить: {lang} ({mb} МБ)",
+  "voices_get_other": "Другие языки"
 }

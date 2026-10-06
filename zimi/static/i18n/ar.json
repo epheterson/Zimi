@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "بين المد والجزر",
   "voices_section": "الأصوات",
   "voices_hear": "استمع",
-  "voices_say_remembers": "يحتفظ زر «انطق» في القاموس بآخر صوت اخترته من قائمته.",
+  "voices_say_remembers": "اختيار صوت من قائمة «انطق» في القاموس يجعله الصوت الافتراضي.",
   "voices_sample": "بعض كلمات القاموس: {words}.",
   "voices_sample_none": "هكذا يبدو هذا الصوت.",
   "voices_hear_failed": "تعذّر تشغيل هذا الصوت الآن",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "أصوات Mac على هذا الخادم، تُسمع على كل جهاز",
   "voices_desc_device": "الأصوات المدمجة في الجهاز الذي تستخدمه",
   "voices_remove_natural": "إزالة الأصوات الطبيعية؟ ستُزال معها هذه اللغات: {langs}.",
-  "voices_get_yours": "تنزيل للغاتك ({n}، {mb} ميغابايت)",
-  "voices_get_one": "{lang} ({mb} ميغابايت)",
-  "voices_get_all": "الكل {n} ({mb} ميغابايت)",
+  "voices_get_all": "كل اللغات ({n})",
   "voices_speed_kokoro": "أبطأ",
   "voices_speed_piper": "سريع",
   "voices_speed_say": "سريع",
   "voices_speed_espeak": "فوري",
-  "voices_speed_device": "فوري"
+  "voices_speed_device": "فوري",
+  "voices_default": "الصوت الافتراضي",
+  "voices_default_auto": "تلقائي",
+  "voices_get_lang": "تنزيل {lang} ({mb} ميغابايت)",
+  "voices_get_other": "لغات أخرى"
 }

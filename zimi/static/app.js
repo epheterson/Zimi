@@ -1016,27 +1016,31 @@ function _voiceRowHtml(x, isOn, last) {
       !dl.tag && dl.error === nat.tag ? tH('retry') : tH('voices_get_mb', { mb: _voiceMb(nat.bytes) }),
       ' data-primary' + (dl.tag ? ' disabled' : ''));
   }
-  // Clear: one Get for every checked language that has no Clear voice yet,
-  // fetched one after another (Eric: "why does voices only show natural for
-  // download in the list and clear is only in the table?").
+  // Clear: Get for the language Zimi is in, and a ▾ for any other checked
+  // one, or all of them (Eric, 2026-10-06: "default to current language
+  // there with dropdown showing all enabled languages, footer row All N
+  // languages"). Fetched one after another.
+  var pick = '';
   if (e === 'piper' && admin && _voicesMayFetch()) {
     var offers = _clearOffers(), clearBusy = _clearQueue.length || offers.some(function(o) { return o.tag === dl.tag; });
     if (clearBusy) act += _voiceAction('/manage/voices/cancel', dl.tag || '', tH('cancel'), ' data-clear-cancel');
     else if (offers.length) {
-      // Everything checked is the default, and most people read one
-      // language: the one Zimi is in comes first, all of them is the quiet
-      // second choice (Eric, 2026-10-05: "confirm they want all or just
-      // English?").
       var dis = dl.tag ? ' disabled' : '';
-      var mine = offers.filter(function(o) { return o.lang === _uiLangPrimary(); })[0];
-      var mb = _voiceMb(offers.reduce(function(n, o) { return n + (o.bytes || 0); }, 0));
-      if (mine) {
-        act += '<button type="button" class="set-btn" data-primary' + dis + ' onclick="_clearGetAll(this, true)">' +
-          tH('voices_get_one', { lang: _langDisplayName(mine.lang) || mine.lang, mb: _voiceMb(mine.bytes) }) + '</button>';
-      }
-      if (!mine || offers.length > 1) {
-        act += '<button type="button" class="set-btn"' + (mine ? '' : ' data-primary') + dis + ' onclick="_clearGetAll(this)">' +
-          tH(mine ? 'voices_get_all' : 'voices_get_yours', { n: offers.length, mb: mb }) + '</button>';
+      var first = offers.filter(function(o) { return o.lang === _uiLangPrimary(); })[0] || offers[0];
+      act += '<span class="voice-split"><button type="button" class="set-btn" data-primary' + dis +
+        ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify([first.tag]) + ')') + '">' +
+        tH('voices_get_lang', { lang: _langDisplayName(first.lang) || first.lang, mb: _voiceMb(first.bytes) }) + '</button>' +
+        (offers.length > 1 ? '<button type="button" class="set-btn voice-split-more" aria-expanded="' + _clearPickOpen + '"' +
+          ' aria-label="' + escAttr(t('voices_get_other')) + '" onclick="_toggleClearPick()">▾</button>' : '') + '</span>';
+      if (_clearPickOpen && offers.length > 1) {
+        var all = offers.map(function(o) { return o.tag; });
+        pick = '<div class="voice-pick">' + offers.filter(function(o) { return o !== first; }).map(function(o) {
+          return '<button type="button" class="voice-pick-row"' + dis + ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify([o.tag]) + ')') + '">' +
+            '<span>' + esc(_langDisplayName(o.lang) || o.lang) + '</span><span class="voice-pick-mb">' + esc(_voiceMb(o.bytes)) + ' MB</span></button>';
+        }).join('') +
+          '<button type="button" class="voice-pick-row voice-pick-all"' + dis + ' onclick="' + escAttr('_clearGet(this, ' + JSON.stringify(all) + ')') + '">' +
+          '<span>' + tH('voices_get_all', { n: offers.length }) + '</span><span class="voice-pick-mb">' +
+          esc(_voiceMb(offers.reduce(function(n, o) { return n + (o.bytes || 0); }, 0))) + ' MB</span></button></div>';
       }
     }
   }
@@ -1051,7 +1055,7 @@ function _voiceRowHtml(x, isOn, last) {
   return '<div class="share-row set-row voice-engine' + (isOn ? '' : ' voice-off') + '" data-engine="' + escAttr(e) + '">' +
     '<span class="share-row-text"><span class="share-row-title">' + esc(_voiceEngineName(e)) + '</span>' +
       what + '<span class="share-row-desc voice-meta">' + meta + '</span></span>' + act +
-    (open ? '<div class="voice-langs share-row-desc">' + esc(names) + '</div>' : '') +
+    (open ? '<div class="voice-langs share-row-desc">' + esc(names) + '</div>' : '') + pick +
     (busy ? '<div class="lang-dl">' + _voiceBarHtml() + '</div>' : '') + '</div>';
 }
 // The downloads setting, an admin's, one quiet line under the voices.
@@ -1197,10 +1201,32 @@ function _clearNext() {
   if (_voicesDl().tag || !_clearQueue.length) return;
   _voicesSend('/manage/voices/download', { lang: _clearQueue.shift() }, t('voices_failed'));
 }
-function _clearGetAll(btn, justMine) {
+var _clearPickOpen = false;
+function _toggleClearPick() { _clearPickOpen = !_clearPickOpen; _paintVoices(); }
+function _clearGet(btn, tags) {
   if (btn) btn.disabled = true;
-  _clearQueue = _clearOffers().filter(function(o) { return !justMine || o.lang === _uiLangPrimary(); }).map(function(o) { return o.tag; });
+  _clearPickOpen = false;
+  _clearQueue = tags.slice();
   _clearNext();
+}
+// The voice Zimi says things in first, wherever there is no menu to pick
+// one (a Discover card) and wherever Say has not been told otherwise (Eric,
+// 2026-10-06: "a selector under voices to choose which is the default used
+// first throughout zimi ... showing only available options"). Automatic is
+// the server's choice per language; a voice that cannot say a language
+// gives way to it there. Picking in the Dictionary's Say menu sets it too.
+function _voiceDefaultHtml(on) {
+  if (on.length < 2) return '';
+  var cur = _voicePrefs().voice;
+  if (cur && !on.some(function(x) { return x.engine === cur; })) cur = '';
+  var opt = function(e, label) {
+    var sel = e === cur;
+    return '<button type="button" class="app-theme-btn' + (sel ? ' active' : '') + '" role="radio" aria-checked="' + sel + '"' +
+      ' onclick="' + escAttr('_setVoicePrefs({ voice: ' + JSON.stringify(e) + ' })') + '"><span>' + esc(label) + '</span></button>';
+  };
+  return '<div class="ms-theme-label">' + tH('voices_default') + '</div>' +
+    '<div class="app-theme-seg voice-default" role="radiogroup" aria-label="' + escAttr(t('voices_default')) + '">' +
+    opt('', t('voices_default_auto')) + on.map(function(x) { return opt(x.engine, _voiceEngineName(x.engine)); }).join('') + '</div>';
 }
 function _voicePrefsHtml() {
   var off = _voicePrefs().off, here = _voiceEnginesHere(), nat = _voiceNatural(), dl = _voicesDl();
@@ -1217,9 +1243,10 @@ function _voicePrefsHtml() {
       ((nat.runnable && _voicesMayFetch()) || dl.tag === nat.tag)) {
     here.unshift({ engine: 'kokoro', langs: _naturalLangs(nat), absent: true });
   }
+  here.sort(function(a, b) { return _VOICE_ENGINES.indexOf(a.engine) - _VOICE_ENGINES.indexOf(b.engine); });
   var on = here.filter(function(x) { return !x.absent && off.indexOf(x.engine) < 0; });
   // One row per engine here; the last one on stays on.
-  var h = '<div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
+  var h = _voiceDefaultHtml(on) + '<div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
     return _voiceRowHtml(x, !x.absent && off.indexOf(x.engine) < 0, on.length === 1);
   }).join('') + '</div>' + _voiceGridHtml();
   if (_voicesHere && _voicesHere.can_change && _voicesHere.setting) h += _voicesModeHtml(_voicesHere.setting);
@@ -26255,13 +26282,26 @@ function _discoverSay(e, el) {
     try { var u = new SpeechSynthesisUtterance(word); u.lang = lang; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (err) {}
   };
   if (_discAudio) { try { _discAudio.pause(); } catch (err) {} }
+  // The default voice from Settings > Voices: a card has no menu to pick one.
+  var voice = _voicePrefs().voice;
+  if (voice === _DEVICE_VOICE) { device(); return false; }
   var kind = el.getAttribute('data-kind') === 'sentence' ? '&kind=sentence' : '';
-  var a = _discAudio = new Audio('/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang) + kind);
-  el.classList.add('on');
+  var url = '/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(lang) + kind;
+  // The default voice when it says this language, else the server's choice,
+  // else the device's. One element throughout: a phone lets an element the
+  // tap started play again, not a new one.
+  var a = _discAudio = new Audio(), engine = voice;
+  var play = function() {
+    a.src = url + (engine ? '&engine=' + encodeURIComponent(engine) : '');
+    el.classList.add('on');
+    a.play().catch(function() { el.classList.remove('on'); });
+  };
   a.onended = a.onpause = function() { el.classList.remove('on'); };
-  a.onerror = function() { el.classList.remove('on'); device(); };
-  // Started in the tap: a phone plays media only from one.
-  a.play().catch(function() { el.classList.remove('on'); });
+  a.onerror = function() {
+    el.classList.remove('on');
+    if (engine) { engine = ''; play(); } else device();
+  };
+  play();
   return false;
 }
 // Anchor-card variants reading the data-* the card already carries, so the

@@ -2941,7 +2941,7 @@
   "tb_eq_tide_between": "ज्वार और भाटे के बीच",
   "voices_section": "आवाज़ें",
   "voices_hear": "सुनें",
-  "voices_say_remembers": "शब्दकोश का «उच्चारण सुनें» उसके मेन्यू में आखिरी चुनी गई आवाज़ याद रखता है।",
+  "voices_say_remembers": "शब्दकोश के बोलें मेनू में कोई आवाज़ चुनने से वह डिफ़ॉल्ट बन जाती है।",
   "voices_sample": "शब्दकोश के कुछ शब्द हैं: {words}।",
   "voices_sample_none": "यह आवाज़ ऐसी सुनाई देती है।",
   "voices_hear_failed": "यह आवाज़ अभी नहीं चल सकी",
@@ -2961,12 +2961,14 @@
   "voices_desc_say": "इस सर्वर के Mac की आवाज़ें, हर डिवाइस पर सुनाई देती हैं",
   "voices_desc_device": "जिस डिवाइस का आप उपयोग कर रहे हैं उसकी अंतर्निहित आवाज़ें",
   "voices_remove_natural": "प्राकृतिक आवाज़ें हटाएँ? इनके साथ ये भाषाएँ भी जाएँगी: {langs}।",
-  "voices_get_yours": "आपकी भाषाओं के लिए पाएँ ({n}, {mb} MB)",
-  "voices_get_one": "{lang} ({mb} MB)",
-  "voices_get_all": "सभी {n} ({mb} MB)",
+  "voices_get_all": "सभी {n} भाषाएँ",
   "voices_speed_kokoro": "धीमी",
   "voices_speed_piper": "तेज़",
   "voices_speed_say": "तेज़",
   "voices_speed_espeak": "तुरंत",
-  "voices_speed_device": "तुरंत"
+  "voices_speed_device": "तुरंत",
+  "voices_default": "डिफ़ॉल्ट आवाज़",
+  "voices_default_auto": "स्वचालित",
+  "voices_get_lang": "{lang} पाएँ ({mb} MB)",
+  "voices_get_other": "अन्य भाषाएँ"
 }
