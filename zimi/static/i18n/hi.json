@@ -1230,6 +1230,7 @@
   "create_warn_spa": "Zimi इस पेज को कैप्चर नहीं कर सकता।",
   "create_zim": "ZIM बनाएँ",
   "creator_alive": "रिकॉर्डिंग इंजन",
+  "creator_alive_parts": "ब्राउज़र + कन्वर्टर",
   "creator_reddit": "सबरेडिट इंजन",
   "creator_browser": "ब्राउज़र इंजन",
   "creator_col_name": "नाम",

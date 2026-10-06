@@ -93,6 +93,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "alive_ready",
         "sidecar",
         "reddit_ready",
+        "reddit_version",
         "probing",
         "create_root",
         "block_ads_default",

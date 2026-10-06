@@ -4116,6 +4116,17 @@ def _reddit_ready():
         return False
 
 
+def _reddit_version():
+    """ArcticZim has no releases; Zimi pins it to a commit, which is its
+    version (short), when the sidecar is installed."""
+    try:
+        from zimi import reddot
+
+        return reddot.ARCTICZIM_COMMIT[:7] if _reddit_ready() else None
+    except Exception:
+        return None
+
+
 def _create_browser_ready():
     """True when the rendered engine can actually run here — Playwright
     importable AND a Chromium that launches.
@@ -4356,6 +4367,7 @@ def _creator_payload():
         "sidecar": known["sidecar"] if known else None,
         # ArcticZim, the subreddit engine: two files on disk, no probe.
         "reddit_ready": _reddit_ready(),
+        "reddit_version": _reddit_version(),
         "probing": known is None,
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.

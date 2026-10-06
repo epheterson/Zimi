@@ -1230,6 +1230,7 @@
   "create_warn_spa": "Zimi не может захватить эту страницу.",
   "create_zim": "Создать ZIM",
   "creator_alive": "Движок записи",
+  "creator_alive_parts": "Браузер + конвертер",
   "creator_reddit": "Движок сабреддитов",
   "creator_browser": "Браузерный движок",
   "creator_col_name": "Имя",

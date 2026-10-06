@@ -1230,6 +1230,7 @@
   "create_warn_spa": "Zimi kann diese Seite nicht erfassen.",
   "create_zim": "ZIM erstellen",
   "creator_alive": "Aufzeichnungs-Engine",
+  "creator_alive_parts": "Browser + Konverter",
   "creator_reddit": "Subreddit-Engine",
   "creator_browser": "Browser-Engine",
   "creator_col_name": "Name",

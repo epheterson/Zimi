@@ -1230,6 +1230,7 @@
   "create_warn_spa": "Zimi 无法抓取此页面。",
   "create_zim": "创建 ZIM",
   "creator_alive": "录制引擎",
+  "creator_alive_parts": "浏览器 + 转换器",
   "creator_reddit": "子版块引擎",
   "creator_browser": "浏览器引擎",
   "creator_col_name": "名称",

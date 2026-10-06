@@ -1230,6 +1230,7 @@
   "create_warn_spa": "لا يستطيع Zimi التقاط هذه الصفحة.",
   "create_zim": "إنشاء ملف ZIM",
   "creator_alive": "محرّك التسجيل",
+  "creator_alive_parts": "المتصفح + المحوّل",
   "creator_reddit": "محرّك المنتديات الفرعية",
   "creator_browser": "محرّك المتصفّح",
   "creator_col_name": "الاسم",

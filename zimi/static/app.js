@@ -13061,15 +13061,48 @@ function _shellQuote(text) {
   return "'" + text.replace(/'/g, "'\\''") + "'";
 }
 
-// Every capture engine names its version beside its state, as the probe saw it.
-function _creatorVersionedHtml(version, ready) {
-  return (version ? '<span class="app-update-quiet">' + esc(version) + '</span> ' : '') + _creatorStateHtml(ready);
+// Every capture engine names its version beside its state, short, as a
+// link to what the engine is (Eric, 2026-10-05: "Just show version and
+// maybe I can click link to discover what the engine is ... for the
+// browsers they're like dim small under that row").
+var _ENGINE_LINKS = {
+  chromium: ['Chromium', 'https://www.chromium.org/'],
+  playwright: ['Playwright', 'https://playwright.dev/'],
+  warc2zim: ['warc2zim', 'https://github.com/openzim/warc2zim'],
+  arcticzim: ['ArcticZim', 'https://github.com/IMayBeABitShy/ArcticZim/commit/']
+};
+function _engineLink(key, version, path) {
+  var e = _ENGINE_LINKS[key];
+  return '<a class="cr-ver" href="' + escAttr(e[1] + (path || '')) + '" target="_blank" rel="noopener" title="' + escAttr(e[0]) + '">' + esc(version) + '</a>';
+}
+function _creatorVersionedHtml(versionHtml, ready) {
+  return (versionHtml ? versionHtml + ' ' : '') + _creatorStateHtml(ready);
 }
 function _creatorSidecarHtml(sidecar) {
-  return _creatorVersionedHtml(sidecar.version, sidecar.installed);
+  return _creatorVersionedHtml(sidecar.version ? _engineLink('warc2zim', sidecar.version) : '', sidecar.installed);
+}
+// "Chromium 153.0.8010.12, Playwright 1.63.0": its major on the row, the
+// whole of it dim under the row.
+function _browserParts(d) {
+  var m = /Chromium ([^,\s]+)(?:, Playwright ([^,\s]+))?/.exec((d.browser_ready && d.browser_version) || '');
+  return m ? { chromium: m[1], playwright: m[2] || '' } : null;
 }
 function _creatorBrowserCell(d) {
-  return _creatorVersionedHtml(d.browser_ready ? d.browser_version : null, d.browser_ready);
+  var p = _browserParts(d);
+  return _creatorVersionedHtml(p ? _engineLink('chromium', p.chromium.split('.')[0]) : '', d.browser_ready);
+}
+function _creatorBrowserDetail(d) {
+  var p = _browserParts(d);
+  if (!p) return '';
+  return '<div class="ms-hint cr-detail">' + _engineLink('chromium', 'Chromium ' + p.chromium) +
+    (p.playwright ? ' · ' + _engineLink('playwright', 'Playwright ' + p.playwright) : '') + '</div>';
+}
+function _creatorRedditCell(d) {
+  return _creatorVersionedHtml(d.reddit_version ? _engineLink('arcticzim', d.reddit_version, d.reddit_version) : '', d.reddit_ready);
+}
+// The recording engine is the other two together: no version of its own.
+function _creatorAliveCell(d) {
+  return '<span class="app-update-quiet">' + tH('creator_alive_parts') + '</span> ' + _creatorStateHtml(d.alive_ready);
 }
 
 // A capture-default switch row, wired to the admin-only POST half of
@@ -13101,11 +13134,12 @@ function _creatorHtml(d) {
   h += sep + '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
     '<div class="ms-hint" style="margin-bottom:10px">' + tH('creator_engines_hint') + '</div>' +
     _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorBrowserCell(d) + '</span>') +
+    '<div id="ms-cr-browser-detail">' + _creatorBrowserDetail(d) + '</div>' +
     '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarCell(d) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
-    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>') +
-    _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorAliveCell(d) + '</span>') +
+    _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorRedditCell(d) + '</span>') +
     '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
   // Created LAST: an unbounded, growing list, and the slow half to gather
@@ -13225,12 +13259,13 @@ function _patchCreatorSection(d) {
     if (el && el.innerHTML !== html) el.innerHTML = html;
   };
   put('ms-cr-browser', _creatorBrowserCell(d));
+  put('ms-cr-browser-detail', _creatorBrowserDetail(d));
   put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
-  put('ms-cr-reddit', _creatorStateHtml(d.reddit_ready));
+  put('ms-cr-reddit', _creatorRedditCell(d));
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
-  put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
+  put('ms-cr-alive', _creatorAliveCell(d));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {
     var input = document.getElementById('ms-cr-' + key);
