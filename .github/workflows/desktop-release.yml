@@ -118,6 +118,18 @@ jobs:
       - name: Run the test suite
         run: python -m pytest tests/ -q
 
+      # The Dictionary's voices: Piper and Kokoro, which zimi_desktop.spec
+      # builds into zimi-voice, an executable of their own beside Zimi and
+      # never inside it (Piper and espeak-ng are GPL-3; see
+      # desktop/voice_helper.py). After the tests, so the suite runs as CI's
+      # does. Soft: where a platform has no wheels the spec builds the app
+      # without zimi-voice, and Say uses the system's or the device's voice.
+      - name: Install the voice engines (zimi-voice)
+        shell: bash
+        run: |
+          pip install "piper-tts>=1.8,<2" "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" "num2words>=0.5.14,<0.6" \
+            || echo "::warning::no voice engines for this platform; this build ships without zimi-voice"
+
       # ── Build ─────────────────────────────────────────────────────────
 
       - name: Download Sparkle.framework (macOS)
@@ -196,6 +208,24 @@ jobs:
             ci/smoke_binary.sh "dist/Zimi/Zimi.exe"
           else
             ci/smoke_binary.sh "dist/Zimi/Zimi"
+          fi
+
+      # zimi-voice, where it was built: both engines import from inside the
+      # bundle, espeak-ng's library and data are where they are looked for,
+      # and Chinese becomes phonemes (no voice or model needed). A failure
+      # is an error on the run but not the release: Say then falls back to
+      # the system's voice, as a build without zimi-voice does.
+      - name: zimi-voice runs from inside the app
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then H="dist/Zimi.app/Contents/MacOS/zimi-voice"
+          elif [ "$RUNNER_OS" = "Windows" ]; then H="dist/Zimi/zimi-voice.exe"
+          else H="dist/Zimi/zimi-voice"; fi
+          if [ ! -e "$H" ]; then echo "::warning::no zimi-voice in this build"; exit 0; fi
+          if ! "$H" selftest; then
+            echo "::error::zimi-voice is in the app but does not run; Say falls back to the system's voice"
+            exit 1
           fi
 
       # GUI smoke: the check above only exercises the headless HTTP server, so
@@ -440,8 +470,12 @@ jobs:
           find dist/Zimi.app -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.pyd" \) -exec \
             codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
 
-          # Sign the main executable
+          # Sign the main executable, and zimi-voice beside it (the
+          # Dictionary's voices) when this build has it
           codesign --force --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/Zimi
+          if [ -f dist/Zimi.app/Contents/MacOS/zimi-voice ]; then
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/zimi-voice
+          fi
 
           # Sign the app bundle itself
           codesign --force --deep --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app

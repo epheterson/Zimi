@@ -488,7 +488,7 @@ def _fake_celestrak(seen):
     every outbound request lands in ``seen`` and is answered like the real
     GP service (the GPS group, or the ISS by its catalogue number)."""
 
-    def fake_urlopen(req, timeout=None):
+    def fake_urlopen(req, timeout=None, context=None):
         seen.append(req)
         body = [_iss()] if "CATNR" in req.full_url else [_omm()]
         return _Resp(json.dumps(body).encode())

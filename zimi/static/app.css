@@ -38,6 +38,10 @@
        never sit on top of the article someone is reading. */
     --conn-h: 0px;
     --under-topbar: calc(56px + var(--conn-h));
+    /* Where the header goes when it steps aside: its own height and a pixel
+       more, so a part pixel of rounding never leaves its bottom border
+       showing as a line along the top of the page. */
+    --topbar-away: calc(-100% - 1px);
     color-scheme: dark;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
@@ -894,6 +898,7 @@
      on this page at all, and a job the server restart took left a spinner that
      never stopped. Both are rows here now. */
   .create-recent { display: flex; flex-direction: column; gap: 6px; }
+  .create-hist-log { margin: -2px 0 6px; padding: 10px 12px; max-height: 260px; overflow: auto; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); }
   .create-hist { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
   .create-hist-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--text3); }
   .create-hist[data-state="ok"] .create-hist-dot { background: var(--success); }
@@ -1415,11 +1420,11 @@
   .result-source .rs-name { font-size: 12px; color: var(--text2); font-weight: 500; }
   .result .title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
   .result .snippet { font-size: 12px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; transition: opacity 0.3s; }
-  /* The words searched for: underlined in amber in the title, set in the
-     text's own colour and weight in the snippet. Never a filled block, which
-     read as a selection. */
+  /* The words searched for: bold, in the title and in the snippet (an amber
+     underline under every title read as too much). Never a filled block,
+     which read as a selection. */
   .result mark.hit { background: none; color: inherit; }
-  .result .title mark.hit { text-decoration: underline; text-decoration-color: var(--amber); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .result .title mark.hit { font-weight: 800; }
   .result .snippet mark.hit { color: var(--text); font-weight: 600; }
   /* Grouped by source: each source's best, under its name, and "More from". */
   .results.grouped { gap: 20px; }
@@ -1483,6 +1488,10 @@
     .find-bar { position: static; order: -1; width: auto; margin: 8px 8px 0; box-shadow: none; }
   }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+  /* An app page is drawn on the app's ground, not on a ZIM page's white:
+     whatever of the frame shows past the page (iOS's bounce at the top, a
+     part pixel as the header slides) was a white hairline in either theme. */
+  body.app-page #reader-frame { background: var(--bg); }
   /* The header steps aside on a phone while an app or the Almanac is read
      (body.chrome-away, set by _chromeScroll in app.js): it slides up and
      the page takes its room. Keyboard focus in it brings it back. */
@@ -1490,7 +1499,7 @@
     .topbar { transition: transform 0.2s ease; }
     .reader-view, body .almanac-view { transition: top 0.2s ease; }
     body.chrome-away { --under-topbar: var(--conn-h); }
-    body.chrome-away .topbar:not(:focus-within) { transform: translateY(-100%); }
+    body.chrome-away .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
     body.chrome-away .conn-banner { top: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1499,7 +1508,7 @@
   /* Held away (a book being read, a video on a phone turned sideways):
      at every size, since the book's own header takes its place. */
   body.chrome-held { --under-topbar: var(--conn-h); }
-  body.chrome-held .topbar:not(:focus-within) { transform: translateY(-100%); }
+  body.chrome-held .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
   body.chrome-held .conn-banner { top: 0; }
 
   /* ── Context Menu ── */
@@ -1785,6 +1794,43 @@
   /* A hint reads the same wherever it sits: the settings panes, and the
      catalog (the StreetZim note under the Maps toggle was 16px body text). */
   .ms-hint { font-size: 12px; line-height: 1.5; color: var(--text2); margin-top: 8px; }
+  /* Settings controls, one language (Eric, 2026-10-03: "upgrade all controls
+     and buttons in settings to be beautiful with this new language"). Cards
+     are .share-rows, choices of three or four are the segmented selector
+     (.app-theme-seg), on/off is .switch; buttons, selects and fields are
+     these: one height, one round quiet button, one amber primary. */
+  .ms-pane { --set-ctl-h: 34px; }
+  .set-btn, .ms-pane .pill:not(.cat-pill):not(.reorder-add), .ms-pane .ms-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+    min-height: var(--set-ctl-h); padding: 0 14px; border-radius: 999px;
+    font: inherit; font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .set-btn:hover:not(:disabled), .ms-pane .pill:not(.cat-pill):not(.reorder-add):hover, .ms-pane .ms-btn:hover {
+    color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow);
+  }
+  .set-btn:focus-visible, .ms-pane .pill:focus-visible, .ms-pane .ms-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .set-btn:disabled { opacity: 0.45; cursor: default; }
+  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active,
+  .ms-pane .manage-btn-action { background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600; }
+  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
+  .ms-pane .manage-btn-action { min-height: var(--set-ctl-h); border-radius: 999px; font-size: 13px; padding: 0 16px; }
+  .ms-pane select {
+    min-height: var(--set-ctl-h); box-sizing: border-box; padding: 0 30px 0 12px; border-radius: var(--radius);
+    font: inherit; font-size: 13px; color: var(--text); background-color: var(--surface2); border: 1px solid var(--border);
+    -webkit-appearance: none; appearance: none; cursor: pointer;
+    /* The caret, drawn in the theme's own text colour. */
+    background-image: linear-gradient(45deg, transparent 50%, var(--text2) 50%), linear-gradient(135deg, var(--text2) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+  }
+  [dir="rtl"] .ms-pane select { padding: 0 12px 0 30px; background-position: 16px 52%, 11px 52%; }
+  .ms-pane select:hover:not(:disabled) { border-color: var(--amber-border); }
+  .ms-pane select:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .ms-pane select:disabled { opacity: 0.55; cursor: default; }
+  .ms-pane .set-rows .set-row { min-height: 54px; box-sizing: border-box; }
+  .ms-pane .ms-section-label:first-child { margin-top: 0; }
+  @media (pointer: coarse) { .ms-pane { --set-ctl-h: 40px; } }
   .browse-drilldown-header + .maps-source-toggle + .ms-hint, .maps-source-toggle + .ms-hint { margin: 6px 0 14px; }
 
   /* Environment panel: a name, its value, and what it takes over. Monospace
@@ -1846,8 +1892,16 @@
   .app-theme-btn.active {
     background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600;
   }
-  .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
-  .ms-section-label { margin-bottom: 8px; }
+  .app-theme-btn:disabled { cursor: default; opacity: 0.5; }
+  .app-theme-btn:disabled:hover { color: var(--text2); border-color: transparent; background: none; }
+  .app-theme-btn.active:disabled:hover { color: var(--on-amber); background: var(--amber); }
+  .app-theme-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .ms-pane .app-theme-btn { min-height: calc(var(--set-ctl-h) - 2px); }
+  .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
+  /* Every Settings section's title: the text's own colour, a size above the
+     rows it heads, more room above than below (Eric, 2026-10-05: "the titles
+     now are like soo small and hidden and dull"). One rule, every section. */
+  .ms-section-label { font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); margin: 32px 0 10px; }
   /* Creator "made here" breakdown: amber count chips over a sortable table.
      Numbers are tabular so the columns line up; the table scrolls inside its
      own box on a phone rather than pushing the pane sideways. */
@@ -1959,6 +2013,9 @@
   /* Caret hints the Updates line expands; nudges right on hover. */
   .mc-caret { vertical-align: -2px; margin-left: 4px; opacity: 0.7; transition: transform 0.12s; }
   .mc-row-clickable:hover .mc-caret { transform: translateX(2px); }
+  /* The Updates count and its "Update all", side by side at the row's end. */
+  .mc-updates-end { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+  .ms-pane .mc-updates-end .manage-btn-action { min-height: 28px; padding: 0 12px; font-size: 12px; }
   .mc-value .spinner-inline {
     display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px;
     border: 2px solid var(--border); border-top-color: var(--amber);
@@ -2195,7 +2252,9 @@
   .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
-  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; }
+  /* Under BitTorrent's switch, with its status, in the right column. */
+  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .share-inactive .share-upnp, .share-upnp:has(input:disabled) { opacity: 0.5; cursor: default; }
   /* Icon button matching the num-input chrome beside it (6px radius,
      surface fill) — an SVG reload glyph, centered, amber on hover. */
   .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
@@ -2486,7 +2545,7 @@
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
-     (.ms-lang-pills is display:flex further down); when open, the element
+     (a list with a display of its own further down); when open, the element
      keeps its natural display. */
   .ms-collapsed-list:not(.ms-open) { display: none !important; }
   /* Each sharing toggle owns its hint — indent under the checkbox text so
@@ -2502,32 +2561,76 @@
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
   .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-  .ms-pref-langs {
-    width: 100%; padding: 8px 10px; margin-top: 4px;
-    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--text); font-size: 13px; box-sizing: border-box;
+  /* Settings > Languages: one card. Show languages, then (while on) the fold
+     ("Languages: English, Español") and, open, Zimi's ten interface
+     languages, each one row: a check, its own name and Zimi's name for it.
+     Zimi's own is checked and locked, tagged In use. */
+  .lang-fold { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+  .lang-fold[hidden] { display: none; }
+  .lang-fold:hover .share-row-title, .lang-fold:focus-visible .share-row-title { color: var(--amber); }
+  .lang-fold:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .lang-chev { flex: none; width: 14px; font-size: 18px; line-height: 1; color: var(--text2); text-align: center; transition: transform 0.15s; }
+  .lang-fold[aria-expanded="true"] > .lang-chev { transform: rotate(90deg); }
+  [dir="rtl"] .lang-fold[aria-expanded="false"] > .lang-chev { transform: scaleX(-1); }
+  .lang-list { border-top: 1px solid var(--border); }
+  .lang-list[hidden] { display: none; }
+  .lang-pick {
+    width: 100%; min-height: 52px; box-sizing: border-box; gap: 12px; padding: 8px 14px;
+    border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer;
   }
-  .ms-pref-langs:focus { outline: none; border-color: var(--amber); }
-  .ms-lang-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .ms-lang-pill {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg); font-size: 13px; color: var(--text);
+  .lang-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .lang-pick .share-row-text { flex: 1; min-width: 0; }
+  .lang-pick .share-row-title { font-weight: 500; font-size: 14px; unicode-bidi: isolate; }
+  .lang-pick .share-row-title, .lang-pick .share-row-desc { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lang-check {
+    flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+    box-sizing: border-box; border: 1.5px solid var(--text3); border-radius: 5px; color: var(--on-amber);
   }
-  .ms-lang-pill.active { border-color: var(--amber); color: var(--amber); }
-  .ms-lang-pill .ms-lang-code {
-    font-family: monospace; font-size: 11px; color: var(--text2);
-    text-transform: uppercase;
+  .lang-pick.mine .lang-check { background: var(--amber); border-color: var(--amber); }
+  .lang-pick:not([aria-disabled]):hover .lang-check { border-color: var(--amber); }
+  .lang-pick[aria-disabled] { cursor: default; }
+  .lang-pick[aria-disabled] .lang-check { opacity: 0.55; }
+  .lang-dl { flex-basis: 100%; padding-inline-start: 30px; margin-top: -4px; }
+  .lang-dl .dl-progress { margin-top: 4px; height: 3px; }
+  .set-btn.confirming { color: var(--error); border-color: var(--error); background: none; }
+  /* Settings > Voices' grid: a row per language, a column per flavor. A dot
+     is green where the flavor says the language here, grey where it cannot;
+     a download arrow (an admin's) gets it; a downloaded Clear voice's dot
+     shows ✕ on hover, focus or a first tap, and ✕ removes it. */
+  .vg { margin-top: 12px; }
+  .vg-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--vg-n), 44px); align-items: center;
+    min-height: 44px; padding: 0 8px 0 14px; box-sizing: border-box;
   }
-  .ms-lang-pill.active .ms-lang-code { color: var(--amber); }
-  .ms-flavor-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-  .ms-flavor-pill {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg); font-size: 13px; color: var(--text);
+  [dir="rtl"] .vg-row { padding: 0 14px 0 8px; }
+  .vg-row + .vg-row, .vg-all, .vg-all + .vg-row { border-top: 1px solid var(--border); }
+  .vg-head { min-height: 32px; }
+  .vg-h { font-size: 10.5px; font-weight: 600; color: var(--text2); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vg-name { min-width: 0; padding: 6px 0; }
+  .vg-own, .vg-zimi { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vg-own { font-size: 14px; font-weight: 500; unicode-bidi: isolate; }
+  .vg-zimi { font-size: 11.5px; color: var(--text3); }
+  .vg-cell { display: flex; align-items: center; justify-content: center; height: 40px; }
+  .vg-cell.off { opacity: 0.45; }
+  .vg-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
+  .vg-dot[data-s="none"] { width: 6px; height: 6px; background: var(--text3); opacity: 0.45; }
+  .vg-dot[data-s="busy"] { background: var(--amber); animation: vg-pulse 1s ease-in-out infinite alternate; }
+  @keyframes vg-pulse { to { opacity: 0.35; } }
+  .vg-btn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+    padding: 0; border: 0; border-radius: 50%; background: none; color: var(--amber); cursor: pointer;
   }
-  .ms-flavor-pill:has(input:checked) { border-color: var(--amber); color: var(--amber); }
-  .ms-flavor-pill input { accent-color: var(--amber); }
+  .vg-btn:disabled { color: var(--text3); cursor: default; }
+  .vg-get:not(:disabled):hover { background: var(--amber-glow); }
+  .vg-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 0; }
+  .vg-x { display: none; font-size: 13px; font-weight: 700; color: var(--error); }
+  .vg-rm:hover .vg-x, .vg-rm:focus-visible .vg-x, .vg-rm.show-x .vg-x { display: block; }
+  .vg-rm:hover .vg-dot, .vg-rm:focus-visible .vg-dot, .vg-rm.show-x .vg-dot { display: none; }
+  .vg-rm:hover, .vg-rm.show-x { background: var(--surface2); }
+  .vg-dl { display: flex; align-items: center; gap: 10px; padding: 0 14px 10px; margin: 0; }
+  .vg-dl .voice-dl { flex: 1; min-width: 0; }
+  .vg-dl .set-btn { --set-ctl-h: 30px; padding: 0 10px; font-size: 12px; }
+  .vg-all .share-row-title { font-weight: 500; color: var(--text2); }
   .ms-hot-show { margin-top: 6px; }
   .updates-detail {
     margin: 6px 0 12px 0; padding: 8px;
@@ -3311,10 +3414,12 @@
        The body itself is frozen by .zi-open below. */
     overscroll-behavior: contain;
   }
-  /* Set on <html> while the panel is up. Frozen rather than hidden: a plain
-     overflow:hidden on the body makes the page jump to the top and lose the
-     reader's place, which is a worse bug than the one being fixed. */
+  /* Set on <html> while the panel is up. Frozen rather than hidden: the body
+     is pinned where it was scrolled to (_ziLockPage sets its top) and put
+     back after, so the reader keeps their place and iOS draws the sheet
+     where it is, not where the page was. */
   html.zi-open, html.zi-open body { overflow: hidden; }
+  html.zi-open body { position: fixed; left: 0; right: 0; }
   .zi-panel {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     width: min(520px, 100%); max-height: 84vh; display: flex; flex-direction: column;
@@ -3400,6 +3505,65 @@
   .zi-ev-detail { font-size: 12.5px; color: var(--text); line-height: 1.45; margin-top: 3px; }
   .zi-ev-fact { font-size: 11.5px; color: var(--text2); line-height: 1.45; margin-top: 2px; }
   .zi-ev-sub { color: var(--text3); }
+  /* Settings > Voices: a row per engine (name, how many languages it says
+     here and its version, Hear, its switch); Natural's Get or Remove for an
+     admin; the downloads setting one quiet line under the card. Hear works
+     (a turning ring) from the tap until the audio starts, then plays (a stop
+     square, a soft pulse) until it ends. */
+  .voice-engine { flex-wrap: wrap; }
+  .voice-engine .voice-meta { color: var(--text3); font-size: 11.5px; }
+  /* The words keep their width; the buttons wrap under them, not the words. */
+  .voice-engine .share-row-text { flex: 1 1 10em; min-width: 10em; }
+  /* Clear's Get and its ▾, one object; the ▾ opens the other languages. */
+  .voice-split { display: inline-flex; }
+  .voice-get-line { flex-basis: 100%; display: flex; }
+  .voice-split > .set-btn[data-primary] { flex-direction: column; line-height: 1.2; padding-block: 6px; }
+  .set-btn-sub { font-size: 11px; font-weight: 400; color: var(--text2); }
+  .voice-split > .set-btn:first-child:not(:last-child) { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .voice-split-more { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: -1px; padding-inline: 12px; font-size: 15px; }
+  .voice-pick { flex-basis: 100%; display: flex; flex-direction: column; border-top: 1px solid var(--border); margin-top: 4px; }
+  .voice-pick-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border);
+    background: none; color: var(--text); font: inherit; font-size: 13.5px; text-align: start; cursor: pointer;
+  }
+  .voice-pick-row:last-child { border-bottom: 0; }
+  .voice-pick-row:hover { color: var(--amber); }
+  .voice-pick-row:disabled { opacity: 0.5; cursor: default; }
+  .voice-pick-all { color: var(--amber); font-weight: 600; }
+  .voice-pick-mb { color: var(--text3); font-variant-numeric: tabular-nums; font-weight: 400; }
+  /* Default voice: only the voices on here; scrolls sideways when many. */
+  .voice-default { max-width: none; overflow-x: auto; margin-bottom: 12px; scrollbar-width: none; }
+  .voice-default .app-theme-btn { flex: 1 0 auto; white-space: nowrap; }
+  .voice-engine.voice-off .share-row-title, .voice-engine.voice-off .share-row-desc { opacity: 0.55; }
+  .voice-engine .set-btn[data-primary] { color: var(--amber); border-color: var(--amber-border); }
+  /* Natural's Remove, quiet in its small line: a word, not a button. */
+  /* "N languages": its title lists them; a tap shows the list as a line. */
+  .voice-count {
+    padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+    text-decoration: underline dotted; text-underline-offset: 2px;
+  }
+  .voice-count:hover, .voice-count[aria-expanded="true"] { color: var(--text2); }
+  .voice-langs { flex-basis: 100%; margin-top: -6px; color: var(--text3); font-size: 11.5px; }
+  .voice-meta .set-btn[data-quiet] {
+    min-height: 0; padding: 0; border: 0; background: none; font-size: inherit; font-weight: 400;
+    color: var(--text2); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .voice-meta .set-btn[data-quiet].confirming { color: var(--error); }
+  .voice-progress { color: var(--amber); }
+  .voice-failed { color: var(--error); }
+  .voice-engine .lang-dl { padding-inline-start: 0; }
+  .voice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--text2); }
+  .voice-hear { flex: none; }
+  .voice-hear-icon { position: relative; display: inline-flex; width: 12px; height: 12px; }
+  .voice-hear.working .voice-hear-icon svg, .voice-hear.playing .voice-hear-icon svg { visibility: hidden; }
+  .voice-hear.working .voice-hear-icon::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    border: 2px solid var(--amber-border); border-top-color: var(--amber); animation: share-spin 0.7s linear infinite;
+  }
+  .voice-hear.playing { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); animation: voice-pulse 1.4s ease-in-out infinite; }
+  .voice-hear.playing .voice-hear-icon::before { content: ''; position: absolute; inset: 2px; border-radius: 2px; background: currentColor; }
+  @keyframes voice-pulse { 50% { box-shadow: 0 0 0 4px var(--amber-glow); } }
+  @media (prefers-reduced-motion: reduce) { .voice-hear.playing { animation: none; } }
   @media (max-width: 600px) {
     .zi-overlay { padding: 0; align-items: stretch; }
     .zi-panel { width: 100%; max-height: 100%; border-radius: 0; border: none; }
@@ -3454,6 +3618,16 @@
   .dc-word-card .dc-header { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
   .dc-word-card .dc-headword { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 4px; letter-spacing: -0.5px; line-height: 1.2; }
   .dc-word-card .dc-pos { display: inline-block; font-size: 11px; color: var(--amber); font-style: italic; font-family: Georgia, "Times New Roman", serif; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); width: 100%; }
+  /* Say on a Discover card: a round speaker at the top right, level with
+     the card's title, so the card keeps its height (Eric, 2026-10-06). */
+  .dc-word-card .dc-body, .dc-quote-card .dc-body { position: relative; }
+  .dc-word-card .dc-header, .dc-quote-card .dc-header { padding-inline-end: 44px; }
+  .dc-say { position: absolute; top: 12px; inset-inline-end: 12px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: 50%; color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); cursor: pointer; }
+  .dc-say > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .dc-say:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .dc-say.on { animation: dcSayPulse 1s ease-in-out infinite; }
+  @keyframes dcSayPulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { .dc-say.on { animation: none; } }
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }
@@ -3712,3 +3886,8 @@
     content: ''; position: absolute; inset: -12px;
   }
 }
+
+/* Settings > Creator: an engine's version is a quiet link to what it is. */
+.cr-ver { color: var(--text2); text-decoration: none; border-bottom: 1px dotted var(--border); font-variant-numeric: tabular-nums; }
+.cr-ver:hover, .cr-ver:focus-visible { color: var(--amber); border-bottom-color: var(--amber); }
+.cr-detail { margin: -4px 0 8px; font-size: 12px; text-align: end; }

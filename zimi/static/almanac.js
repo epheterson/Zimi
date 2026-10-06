@@ -166,6 +166,7 @@ function _cancelAllRAF() {
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   _skyPause();
   if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
+  _almTzHandPause();
 }
 function _resumeAllRAF() {
   _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
@@ -200,13 +201,6 @@ function _openAlmanacInner(replaceState) {
   else history.pushState({ mode: 'almanac' }, '', url);
   var el = document.getElementById('almanac-view');
   el.classList.add('open');
-  // The header steps aside on a phone as the Almanac is scrolled, as it
-  // does in the apps (_chromeScroll in app.js).
-  var content = document.getElementById('almanac-content');
-  if (content && !content._chromeWatch && typeof _chromeScroll === 'function') {
-    content._chromeWatch = true;
-    content.addEventListener('scroll', function() { if (_almanacOpen) _chromeScroll(content.scrollTop); }, { passive: true });
-  }
   // Deep-links: fresh library check per open, and one delegated tap handler.
   if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
   var mv = document.getElementById('main-view');
@@ -1725,11 +1719,12 @@ function _almTmInit() {
 
 
 
-// "About this data": how close each figure on the page is, and to what. The
-// 1.7.2 changelog announced it; it was never built. Every line states a
-// method the code uses and a precision it has been checked against.
-var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'hebrew', 'islamic',
-  'persian', 'chinese', 'deeptime', 'timezones'];
+// "About this data": that it is all offline, and how close each figure is,
+// where the answer is a limit worth knowing. The methods are each table's
+// "How this is made" ("is about this data really needed maybe so but reread
+// and think", Eric, 2026-10-03); the sources' ages are the sheet one tap in.
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'islamic', 'chinese',
+  'deeptime', 'timezones'];
 // The data's sources and ages, folded away at the page's end, with what stops
 // being true without updates (a reference sheet) one tap inside it.
 function _almAboutDataHtml() {
@@ -1740,11 +1735,12 @@ function _almAboutDataHtml() {
     '</ul><button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></details>';
 }
 
-// The page's parts: a group (the sky now, here, this month, this year, deep
-// time) under one heading, and a titled section inside it.
-function _almGroupOpen(key) {
+// The back matter's group under one heading (the tables and calculations),
+// and a titled section of the page; end, when given, sits at the title's right.
+function _almGroupOpen(key, end) {
+  var h = '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
   return '<section class="alm-group" id="alm-group-' + key + '" aria-labelledby="alm-group-' + key + '-t">' +
-    '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
+    (end ? '<div class="alm-group-head">' + h + end + '</div>' : h);
 }
 function _almSec(titleHtml, bodyHtml) {
   return '<div class="almanac-section"><div class="almanac-section-title">' + titleHtml + '</div>' + bodyHtml + '</div>';
@@ -1764,6 +1760,9 @@ var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calen
 // stopped, a day's light, measures; then the navigator's fix and the sums
 // of dates.
 var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
+// The numbers everything above is worked from ("constants rows", Eric): the
+// Earth, the Sun and Moon, time, the navigator's, physics, the units.
+var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_time', 'k_nav', 'k_physics', 'k_units'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
@@ -1783,7 +1782,13 @@ var ALM_TB_ICONS = {
   zones: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
   distance: '<circle cx="5.5" cy="17.5" r="2"/><circle cx="18.5" cy="6.5" r="2"/><path d="M7 16c2.5-5.5 5.5-8.5 9.6-9.3" stroke-dasharray="2 2.5"/>',
   units: '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10.5 8v4.5M14.5 8v3M18.5 8v4.5"/>',
-  sunmoonday: '<path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"/>'
+  sunmoonday: '<path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"/>',
+  k_earth: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5v17"/><ellipse cx="12" cy="12" rx="4" ry="8.5"/>',
+  k_sunmoon: '<circle cx="9" cy="12" r="5"/><circle cx="18.5" cy="8" r="2.5"/><path d="M9 4V3M9 21v-1M1.5 12h1M3.7 6.7l.8.8M3.7 17.3l.8-.8"/>',
+  k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
+  k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
+  k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
+  k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
 function _almTbIcon(k, px) {
@@ -1798,17 +1803,112 @@ function _almTilesRow(key, ids) {
         '<span class="alm-tile-sub">' + _almEsc(t('tb_' + k + '_sub')) + '</span></button>';
     }).join('') + '</div>';
 }
+// The subjects in the page's order, as the row of chips above the tiles.
+var ALM_TB_SUBJECT_ORDER = ['sky', 'calendars', 'time', 'tides', 'stars', 'sun', 'eclipses', 'seasons'];
+function _almSubjectChipsHtml() {
+  return '<div class="pills-row alm-subject-chips" id="alm-subject-chips" role="group" aria-label="' + _almEsc(t('alm_subject_chips')) + '">' +
+    [''].concat(ALM_TB_SUBJECT_ORDER).map(function (s) {
+      return '<button type="button" class="pill' + (s ? '' : ' active') + '" data-subj="' + s + '" aria-pressed="' + (s ? 'false' : 'true') + '"' +
+        ' onclick="_almSubjectChip(\'' + s + '\')">' + _almEsc(s ? t('alm_subj_' + s) : t('all')) + '</button>';
+    }).join('') + '</div>';
+}
+// Everything the chips show, as one document: copied as Markdown, shared,
+// or printed (Save as PDF is in the print dialog). Three icons at the
+// title's right, the same three at each table's own (almanac-tables.js):
+// Copy, Share where there is a share sheet, Print.
+var ALM_COPY_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
+var ALM_SHARE_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+var ALM_DOC_ACTIONS = [['copy', ALM_COPY_SVG, 'tb_book_copy'], ['share', ALM_SHARE_SVG, 'reader_share'], ['print', ALM_PRINT_SVG, 'tb_book_print']];
+// An icon button: its words are its name and its tooltip.
+function _almIconBtn(attrs, label, svg) {
+  var l = _almEsc(label);
+  return '<button type="button" class="alm-doc-btn" ' + attrs + ' aria-label="' + l + '" title="' + l + '">' + svg + '</button>';
+}
+// The three, each marked data-<attr>="copy|share|print"; onclick, when
+// given, is called with the action.
+function _almDocActionsHtml(attr, onclick) {
+  return ALM_DOC_ACTIONS.filter(function (a) { return a[0] !== 'share' || navigator.share; }).map(function (a) {
+    return _almIconBtn('data-' + attr + '="' + a[0] + '"' + (onclick ? ' onclick="' + onclick + '(\'' + a[0] + '\')"' : ''), t(a[2]), a[1]);
+  }).join('');
+}
 function _almTablesHtml() {
-  return _almGroupOpen('tables') + _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + '</section>';
+  _almSubject = null;   // a fresh page shows every tile
+  return _almGroupOpen('tables', '<span class="alm-book-bar" role="group" aria-label="' + _almEsc(t('tb_book_label')) + '">' +
+    _almDocActionsHtml('alm-book', '_almBook') + '</span>') + _almSubjectChipsHtml() +
+    _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + _almTilesRow('consts', ALM_TB_CONSTS) + '</section>';
+}
+
+// Each section's own tables, calculations and constants ("pull up all
+// relevant tables calculations and constants for each thing in the
+// almanac", Eric): the chips above the tiles filter all three rows to one
+// subject ("use our slider row things for showing all filters", Eric,
+// 2026-10-03). They replaced the table icon each section ended with ("maybe
+// just remove the table icons now that the filter pills are clear", Eric,
+// 2026-10-03). Which tiles a subject has is this one table.
+var ALM_TB_SUBJECTS = {
+  sky: ['sunmoon', 'twilight', 'phases', 'stars', 'sunmoonday', 'k_sunmoon', 'k_nav'],
+  calendars: ['calendars', 'phases', 'seasons', 'days', 'convert', 'k_time'],
+  time: ['suntime', 'sundial', 'zones', 'distance', 'k_time', 'k_earth'],
+  tides: ['tides', 'phases', 'k_earth', 'k_sunmoon'],
+  stars: ['stars', 'nav', 'sight', 'k_nav', 'k_time'],
+  sun: ['sunmoon', 'twilight', 'suntime', 'sundial', 'sight', 'sunmoonday', 'k_sunmoon', 'k_nav'],
+  eclipses: ['eclipses', 'phases', 'k_sunmoon'],
+  seasons: ['seasons', 'sunmoon', 'twilight', 'k_time', 'k_earth']
+};
+var _almSubject = null;   // the subject chosen, or null for All
+// Only the subject's tiles, each row with none of them hidden; its chip lit.
+function _almSubjectFilter(s) {
+  var group = document.getElementById('alm-group-tables');
+  if (!group) return;
+  var ids = s ? ALM_TB_SUBJECTS[s] : null;
+  group.querySelectorAll('.alm-tile').forEach(function (b) { b.hidden = !!ids && ids.indexOf(b.getAttribute('data-tb')) < 0; });
+  group.querySelectorAll('.alm-tiles').forEach(function (row) {
+    var none = !row.querySelector('.alm-tile:not([hidden])');
+    row.hidden = none;
+    if (row.previousElementSibling) row.previousElementSibling.hidden = none;
+  });
+  group.querySelectorAll('#alm-subject-chips [data-subj]').forEach(function (c) {
+    var on = c.getAttribute('data-subj') === (s || '');
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on) _almChipIntoView(c);
+  });
+}
+// A chip scrolled into its own row, never the page.
+function _almChipIntoView(c) {
+  var row = c.parentNode, l = c.offsetLeft - row.offsetLeft, r = l + c.offsetWidth;
+  if (l < row.scrollLeft) row.scrollLeft = l;
+  else if (r > row.scrollLeft + row.clientWidth) row.scrollLeft = r - row.clientWidth;
+}
+// A chip: that subject (or All), staying here.
+function _almSubjectChip(s) {
+  _almSubject = ALM_TB_SUBJECTS[s] ? s : null;
+  _almSubjectFilter(_almSubject);
+}
+// app.js asks on Back: the tables view (almanac-tables.js) takes it first.
+function _almTablesPop(e) {
+  return typeof _tbHistoryPop === 'function' && _tbHistoryPop(e);
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
 var _almRefCss = false;
 function _almRefOpen(name) {
+  _almRefReady(function () { window.AlmanacRef.open(name); });
+}
+// The whole book of the tiles shown (the chips' subject, or All): copied,
+// shared or printed (almanac-tables.js).
+function _almBook(action) {
+  var ids = [].map.call(document.querySelectorAll('#alm-group-tables .alm-tile:not([hidden])'), function (b) { return b.getAttribute('data-tb'); });
+  if (!ids.length) return;
+  var showing = _almSubject ? t('alm_subj_' + _almSubject) : t('all');
+  _almRefReady(function () { window.AlmanacRef.book(action, ids, showing); });
+}
+// The tables' files, loaded on first use, then fn.
+function _almRefReady(fn) {
   // The sheets also need the Earth view's Sun and Moon (almanac-earth.js),
   // which loads just after the Almanac opens.
   function ready() { return _almRefCss && window.AlmanacRef && typeof _aeSun === 'function'; }
-  if (ready()) return window.AlmanacRef.open(name);
+  if (ready()) return fn();
   if (_almRefLoading) return;
   _almRefLoading = true;
   var failed = false;
@@ -1823,7 +1923,7 @@ function _almRefOpen(name) {
   }
   var waited = 0;
   (function poll() {
-    if (ready()) { _almRefLoading = false; window.AlmanacRef.open(name); return; }
+    if (ready()) { _almRefLoading = false; fn(); return; }
     waited += _ALM_REF_POLL_MS;
     if (failed || waited > _ALM_REF_LOAD_TIMEOUT_MS) { _almRefLoading = false; _showToast(t('almanac_unavailable_offline')); return; }
     setTimeout(poll, _ALM_REF_POLL_MS);
@@ -1888,7 +1988,6 @@ function _almKeepStill(el) {
     var base = scroller.scrollTop, pulled = scroller._almTop.v - base;
     if (delta < 0 && pulled > 0 && pulled <= -delta + 1) base = scroller._almTop.v;
     scroller.scrollTop = scroller._almTop.v = base + delta;
-    if (typeof _chromeShift === 'function') _chromeShift(scroller.scrollTop - base);
   });
   el._almStill.observe(el);
 }
@@ -1981,12 +2080,11 @@ function _renderAlmanacContent() {
   // open its file, loading after this paint, sees to that itself).
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
-  // The page reads outward in time from the moment at the top: the sky now,
-  // here (the place, its clocks, its tide), this month, this year, deep time,
-  // and then any time: the tables and calculations.
-  //
-  // The sky now. Its clock is the page's (the time machine); almanac-sky.js.
-  html += _almGroupOpen('now');
+  // The order 1.12 had, and Eric's way of reading it (2026-10-02): the
+  // live sky above the month like a wall calendar flipped open, then the
+  // place (the map, its clocks, its tide), the solar system, tonight's
+  // planets and the star chart, the year's figures, deep time.
+  // Its clock is the page's (the time machine); almanac-sky.js.
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
@@ -1995,37 +2093,17 @@ function _renderAlmanacContent() {
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
-  // Drawn with the page, not when the sky's sums land: nothing moves under it.
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
-  // Star chart — a circular planisphere of the sky above the chosen location
-  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
-  html += _almSec(t('alm_star_chart'),
-    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
-    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
-  html += '</section>';
+  html += '<div id="almanac-calendar"></div>';
 
-  // Here: the place (the map, the way to choose it), its clocks, its tide
+  // The place: the map, the way to choose it, its clocks, its tide
   // (almanac-tides.js, loaded after the first paint), the Sun's year there.
-  html += _almGroupOpen('here');
   html += '<div id="almanac-sunmap"></div>';
   html += '<div id="almanac-place"></div>';
-  html += '</section>';
-
-  // This month: the calendar (and every other calendar's day), the showers,
-  // the planets' meetings, this day in history.
-  html += _almGroupOpen('month');
-  html += '<div id="almanac-calendar"></div>';
-  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
-  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
-  html += '</section>';
 
-  // This year: the planets round the Sun, the Sun's figure of eight, the
-  // eclipses and the numbers of the Earth's year.
-  html += _almGroupOpen('year');
+  // The solar system (almanac-orrery.js).
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
@@ -2053,18 +2131,22 @@ function _renderAlmanacContent() {
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
+  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
+  // Star chart — a circular planisphere of the sky above the chosen location
+  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
+  html += _almSec(t('alm_star_chart'),
+    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
+    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += _almSec(_lterm('analemma', t('alm_analemma')),
     '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
     '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
+  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
-  html += '</section>';
-
-  // Deep time, and what people wrote to last through it.
-  html += _almGroupOpen('deep');
-  html += '<div id="almanac-deeptime"></div>';
+  html += _almSec(t('alm_deep_time'), '<div id="almanac-deeptime"></div>');
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
-  html += '</section>';
   // Any time: the tables and the sums, the almanac's back matter.
   html += _almTablesHtml();
   html += _almAboutDataHtml();
@@ -2157,7 +2239,7 @@ function _renderAlmanacContent() {
   html += '</div>';
 
   // Footer
-  html += '<div style="margin-top:40px;text-align:center;font-size:11px;color:var(--text3)">' +
+  html += '<div class="alm-footer">' +
     t('alm_footer') +
     '</div>';
 
@@ -2959,35 +3041,16 @@ function _renderAstroPanel(now) {
   var dayOfYear = _dayOfYear(now);
   var daysInYear = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365;
 
-  // Hemisphere-aware seasons: flip for southern hemisphere observers
-  var obsLat = _getLocation().lat;
-  var south = obsLat < 0;
-  // Season labels follow the observer's hemisphere; the article key follows the
-  // label (a "Summer" label in the south links the Summer article, not Winter).
-  var Wk = south ? 'summer' : 'winter', Spk = south ? 'autumn' : 'spring';
-  var Suk = south ? 'winter' : 'summer', Auk = south ? 'spring' : 'autumn';
-  var W = south ? t('season_summer') : t('season_winter'), Sp = south ? t('season_autumn') : t('season_spring');
-  var Su = south ? t('season_winter') : t('season_summer'), Au = south ? t('season_spring') : t('season_autumn');
+  // The season by the Sun (the equinoxes and solstices), in the observer's
+  // hemisphere; the article key follows the label (a "Summer" label in the
+  // south links the Summer article, not Winter).
   var _eq = _lterm('equinox', t('alm_equinox')), _sol = _lterm('solstice', t('alm_solstice'));
-  // setFullYear (see _dayOfYear) so season boundaries land on the real year for
-  // any epoch the time machine reaches, not the 1900s for years 0–99.
+  // setFullYear (see _dayOfYear) so dates land on the real year for any
+  // epoch the time machine reaches, not the 1900s for years 0-99.
   function _dmy(yy, mo, dd) { var x = new Date(0); x.setFullYear(yy, mo, dd); x.setHours(0, 0, 0, 0); return x; }
-  var seasonBounds = [
-    { name: W, nameKey: Wk, start: _dmy(y - 1, 11, 21), end: _dmy(y, 2, 20), next: Sp + ' ' + _eq },
-    { name: Sp, nameKey: Spk, start: _dmy(y, 2, 20), end: _dmy(y, 5, 21), next: Su + ' ' + _sol },
-    { name: Su, nameKey: Suk, start: _dmy(y, 5, 21), end: _dmy(y, 8, 22), next: Au + ' ' + _eq },
-    { name: Au, nameKey: Auk, start: _dmy(y, 8, 22), end: _dmy(y, 11, 21), next: W + ' ' + _sol },
-    { name: W, nameKey: Wk, start: _dmy(y, 11, 21), end: _dmy(y + 1, 2, 20), next: Sp + ' ' + _eq }
-  ];
-  var season = null;
-  for (var si = 0; si < seasonBounds.length; si++) {
-    if (now >= seasonBounds[si].start && now < seasonBounds[si].end) {
-      season = seasonBounds[si];
-      season.progress = (now - season.start) / (season.end - season.start);
-      season.daysUntilNext = Math.ceil((season.end - now) / MS_PER_DAY);
-      break;
-    }
-  }
+  var ss = _almSeasonAt(now.getTime(), _getLocation().lat);
+  var season = ss && { name: t('season_' + ss.key), nameKey: ss.key, progress: ss.progress, daysUntilNext: ss.toNext,
+    next: t('season_' + ss.nextKey) + ' ' + (ss.nextKind === 'solstice' ? _sol : _eq) };
 
   var perihelion = _dmy(y, 0, 3);
   var daysSincePeri = (now - perihelion) / MS_PER_DAY;
@@ -3063,7 +3126,6 @@ _sunMapImg.onerror = function() { _sunMapLoaded = false; };
 _sunMapImg.src = '/static/world-map.svg?v=1';
 
 var _sunMapCanvas = null;
-var _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 }; // click-cycle overlaps
 var _sunMapFlashTimer = 0;
 
 // Equirectangular projection helpers — the map spans the full -180..180 by
@@ -3539,8 +3601,7 @@ function _sunMapDrawZoneHighlight(c, W, H, dpr) {
   c.restore();
 }
 
-// Brief label over the map naming the city just picked (and the cycle hint when
-// several cities overlap). Recreated each time — the map re-renders on a pick.
+// Brief label over the map naming the city just picked. Recreated each time — the map re-renders on a pick.
 function _sunMapFlash(text) {
   var wrap = document.getElementById('almanac-sunmap');
   if (!wrap) return;
@@ -3553,6 +3614,7 @@ function _sunMapFlash(text) {
   _sunMapFlashTimer = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2000);
 }
 var _sunMapNow = null;
+var SUNMAP_SNAP_PX = 15;   // a tap this near a city (CSS px) takes the city
 var _sunMapLat = 34;
 var _sunMapLon = -118;
 var _sunMapLocName = '';
@@ -3607,7 +3669,10 @@ function _renderSunMap(now) {
   // world grid below
   html += '<div class="alm-tz-wrap">';
   html += '<div class="alm-tz-clock-side">';
-  html += '<canvas id="almanac-tz-clock" width="180" height="180"></canvas>';
+  // The second hand is its own element over the face, turned by the
+  // compositor (_almTzHandSync): it glides without a frame of script.
+  html += '<div class="alm-tz-dial"><canvas id="almanac-tz-clock" width="180" height="180"></canvas>' +
+    '<span class="alm-tz-hand" id="almanac-tz-hand" aria-hidden="true"></span></div>';
   html += '<div id="almanac-tz-label" class="alm-clock-info"></div>';
   html += '</div>';
   html += '<div class="alm-tz-list" id="almanac-tz-pills"></div>';
@@ -3634,40 +3699,23 @@ function _renderSunMap(now) {
       var lon = (clickX / rect.width) * 360 - 180;
       var lat = 90 - (clickY / rect.height) * 180;
 
-      // Collect every city within the snap radius, nearest first — then let
-      // repeated clicks on the same spot cycle through them, so overlapping
-      // cities (a dense region) are all reachable.
-      var snapDist = 15 / rect.width * 360;
-      var near = [];
+      // A tap takes the nearest city within the snap radius, else the point
+      // itself. One tap, one place: a dense region is reached by the search.
+      var snapDist = SUNMAP_SNAP_PX / rect.width * 360;
+      var pick = null, pickD = snapDist;
       for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
         var c = _MAP_CITIES[ci];
         var dlat = lat - c.lat, dlon = (lon - c.lon) * Math.cos(lat * DEG_TO_RAD);
         var dd = Math.sqrt(dlat * dlat + dlon * dlon);
-        if (dd < snapDist) near.push({ c: c, d: dd });
+        if (dd < pickD) { pick = c; pickD = dd; }
       }
-      near.sort(function (a, b) { return a.d - b.d; });
-      var snappedName = '';
-      if (near.length) {
-        var samePlace = Math.abs(clickX - _sunMapCycle.x) < 6 && Math.abs(clickY - _sunMapCycle.y) < 6;
-        var keys = near.map(function (n) { return n.c.name; }).join('|');
-        if (samePlace && keys === _sunMapCycle.list) {
-          _sunMapCycle.idx = (_sunMapCycle.idx + 1) % near.length;
-        } else {
-          _sunMapCycle = { x: clickX, y: clickY, list: keys, idx: 0 };
-        }
-        var pick = near[_sunMapCycle.idx].c;
-        lat = pick.lat; lon = pick.lon;
-        snappedName = pick.name + (near.length > 1 ? '  (' + (_sunMapCycle.idx + 1) + '/' + near.length + ' · ' + t('alm_click_cycle') + ')' : '');
-        _saveLocation(pick.lat, pick.lon, pick.name);
-      } else {
-        _sunMapCycle = { x: -999, y: -999, list: '', idx: 0 };
-        _saveLocation(lat, lon, '');
-      }
+      if (pick) _saveLocation(pick.lat, pick.lon, pick.name);
+      else _saveLocation(lat, lon, '');
       // Refresh only the location-dependent panels in place — a full rebuild
       // wipes the scroll container and yanks the page upward on every click.
       _almRepaintFocus();
-      // Flash which city we landed on (and the cycle hint) over the map.
-      if (snappedName) _sunMapFlash(snappedName);
+      // Flash which city we landed on over the map.
+      if (pick) _sunMapFlash(pick.name);
     };
   }
 
@@ -3909,27 +3957,8 @@ function _initTzClock(now) {
     var tzc = cards[i];
     var isActive = (i === localMatch);
     var tzTime = '';
-    try { tzTime = _tzFmt(tzc.tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(now); } catch(e) { continue; }
-    // Compute UTC offset — use en-US with full date+time for accurate diff
-    var utcOff = '';
-    try {
-      var diffMin = _tzUtcOffsetMin(tzc.tz, now);
-      var sign = diffMin >= 0 ? '+' : '\u2212';
-      var absH = Math.floor(Math.abs(diffMin) / 60);
-      var absM = Math.abs(diffMin) % 60;
-      utcOff = 'UTC' + sign + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
-      // Add the short zone name (PST, CET, JST) beside the offset ONLY when
-      // it's a real abbreviation — a GMT/UTC offset alias (GMT, GMT+8,
-      // UTC-5) just repeats the offset we already show.
-      var znp = _tzFmt(tzc.tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
-      for (var zpi = 0; zpi < znp.length; zpi++) {
-        if (znp[zpi].type === 'timeZoneName') {
-          var zn = znp[zpi].value;
-          if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) utcOff += ' \u00b7 ' + zn;
-          break;
-        }
-      }
-    } catch(e) {}
+    try { tzTime = _tzFmt(tzc.tz, ALM_TZ_TIME_OPTS).format(now); } catch(e) { continue; }
+    var utcOff = _almTzOffsetLabel(tzc.tz, now);
     var tzHour = 0;
     try { tzHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tzc.tz, hour: 'numeric', hour12: false }).format(now)); } catch(e) {}
     var phase = (tzHour < 5 || tzHour >= 21) ? 'night' : tzHour < 8 ? 'dawn' : tzHour < 18 ? 'day' : 'dusk';
@@ -3942,7 +3971,7 @@ function _initTzClock(now) {
     html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" role="button" tabindex="0"' +
       ' onclick="' + pick + '" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + pick + '}">';
     html += glyphHtml;
-    html += '<span class="alm-tz-city-name">' + _almEsc(tzc.label) + '</span>';
+    html += '<span class="alm-tz-city-name" title="' + _almEsc(tzc.label) + '">' + _almEsc(tzc.label) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
     if (tzc.added) {
@@ -3951,16 +3980,8 @@ function _initTzClock(now) {
     }
     html += '</div>';
   }
-  // Add a clock: the curated cities not already shown.
-  var shown = {};
-  cards.forEach(function (c) { shown[c.tz] = 1; });
-  var opts = _TZ_CITIES.filter(function (c) { return !shown[c.tz]; }).map(function (c) {
-    return '<option value="' + c.tz + '">' + _almEsc(t('alm_city_' + c.key)) + '</option>';
-  }).join('');
-  if (opts) {
-    html += '<label class="alm-tz-add"><span>+ ' + _almEsc(t('alm_clock_add')) + '</span>' +
-      '<select onchange="_almClockAdd(this.value)" aria-label="' + _almEsc(t('alm_clock_add')) + '"><option value=""></option>' + opts + '</select></label>';
-  }
+  // Add a clock: a sheet of every zone the Almanac knows.
+  html += '<button type="button" class="alm-tz-add" onclick="_almClockSheetOpen(this)">+ ' + _almEsc(t('alm_clock_add')) + '</button>';
   pillsEl.innerHTML = html;
 
   // Draw the clock
@@ -3985,6 +4006,118 @@ function _almClockAdd(tz) {
   _almSetClocks(list);
 }
 function _almClockRemove(tz) { _almSetClocks(_almClocks().filter(function (z) { return z !== tz; })); }
+
+// A clock's time, and its zone's offset from UTC now: "UTC+5:30 · IST". The
+// short name only when it is a real abbreviation; a GMT/UTC alias (GMT+8,
+// UTC-5) would only repeat the offset.
+var ALM_TZ_TIME_OPTS = { hour: 'numeric', minute: '2-digit', hour12: true };
+function _almTzOffsetLabel(tz, now) {
+  var out = '';
+  try {
+    var diffMin = _tzUtcOffsetMin(tz, now);
+    var absH = Math.floor(Math.abs(diffMin) / 60), absM = Math.abs(diffMin) % 60;
+    out = 'UTC' + (diffMin >= 0 ? '+' : '\u2212') + absH + (absM ? ':' + (absM < 10 ? '0' : '') + absM : '');
+    var znp = _tzFmt(tz, { timeZoneName: 'short', hour: 'numeric' }).formatToParts(now);
+    for (var i = 0; i < znp.length; i++) {
+      if (znp[i].type !== 'timeZoneName') continue;
+      var zn = znp[i].value;
+      if (zn && !/^(GMT|UTC)([+\u2212-]|$)/.test(zn)) out += ' \u00b7 ' + zn;
+      break;
+    }
+  } catch (e) {}
+  return out;
+}
+// A zone's own city: the IANA name's last part ("Buenos Aires").
+function _almTzSegment(tz) { return (String(tz || '').split('/').pop() || String(tz || '')).replace(/_/g, ' '); }
+// A zone's name on a clock: a curated city's, in the reader's language, else its own city.
+function _almTzCityLabel(tz) {
+  for (var i = 0; i < _TZ_CITIES.length; i++) if (_TZ_CITIES[i].tz === tz) return t('alm_city_' + _TZ_CITIES[i].key);
+  return _almTzSegment(tz);
+}
+
+// Add a clock ("show the full list of tiles and a search box", Eric): a sheet
+// with a search on top and every zone the Almanac knows below it (the curated
+// cities and the zones the map resolves places to), west to east, each with
+// its time now; typing filters, a tap adds. On a phone it stands on the
+// keyboard, as the tables' sheets do.
+var _almClockSheetEl = null;
+function _almClockZones(now) {
+  var shown = {}, seen = {}, out = [];
+  _almClockCards(_almSelectedTz || _almDisplayTz(), now).forEach(function (c) { shown[c.tz] = 1; });
+  function add(tz) {
+    if (shown[tz] || seen[tz]) return;
+    seen[tz] = 1;
+    var off;
+    try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
+    var label = _almTzCityLabel(tz);
+    out.push({ tz: tz, label: label, off: off, hay: (label + ' ' + tz.replace(/_/g, ' ')).toLowerCase() });
+  }
+  _TZ_CITIES.forEach(function (c) { add(c.tz); });
+  _TZ_ANCHORS.forEach(function (a) { add(a[2]); });
+  return out.sort(function (a, b) { return a.off - b.off || a.label.localeCompare(b.label); });
+}
+function _almClockSheetOpen(btn) {
+  _almClockSheetClose();
+  var view = document.getElementById('almanac-view');
+  if (!view) return;
+  var now = new Date(), zones = _almClockZones(now), label = _almEsc(t('alm_clock_add'));
+  zones.forEach(function (z) {
+    try { z.time = _tzFmt(z.tz, ALM_TZ_TIME_OPTS).format(now); } catch (e) { z.time = ''; }
+    z.sub = z.time + ' \u00b7 ' + _almTzOffsetLabel(z.tz, now);
+  });
+  var scrim = document.createElement('div');
+  scrim.className = 'tk-scrim';
+  var sheet = document.createElement('div');
+  sheet.className = 'tk-pop tk-sheet alm-clock-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-label', t('alm_clock_add'));
+  sheet.innerHTML = '<input type="search" class="tk-search" placeholder="' + _almEsc(t('alm_clock_search')) + '" aria-label="' + _almEsc(t('alm_clock_search')) + '" autocomplete="off">' +
+    '<div class="tk-list" role="listbox" aria-label="' + label + '"></div>';
+  view.appendChild(scrim);
+  view.appendChild(sheet);
+  var q = sheet.querySelector('.tk-search'), list = sheet.querySelector('.tk-list');
+  function draw() {
+    var f = q.value.trim().toLowerCase(), h = '';
+    zones.forEach(function (z) {
+      if (f && z.hay.indexOf(f) < 0) return;
+      h += '<button type="button" role="option" class="tk-opt" data-tz="' + _almEsc(z.tz) + '"><span>' + _almEsc(z.label) + '</span>' +
+        '<span class="tk-opt-sub" dir="ltr">' + _almEsc(z.sub) + '</span></button>';
+    });
+    list.innerHTML = h || '<p class="tk-pop-hint">' + _almEsc(t('tb_no_match')) + '</p>';
+  }
+  draw();
+  q.addEventListener('input', draw);
+  list.addEventListener('click', function (e) {
+    var b = e.target.closest('.tk-opt');
+    if (!b) return;
+    _almClockSheetClose();
+    _almClockAdd(b.getAttribute('data-tz'));
+  });
+  // Escape closes the sheet, never the Almanac behind it (app.js closes that on an Escape that reaches it).
+  sheet.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _almClockSheetClose(btn); } });
+  scrim.addEventListener('click', function () { _almClockSheetClose(btn); });
+  _almClockSheetEl = { sheet: sheet, scrim: scrim };
+  _almSheetAboveKeyboard(sheet);
+  q.focus({ preventScroll: true });
+}
+// Closed, focus back on the button that opened it (when it is still there).
+function _almClockSheetClose(returnTo) {
+  if (!_almClockSheetEl) return;
+  if (_almClockSheetEl.sheet._almUnfit) _almClockSheetEl.sheet._almUnfit();
+  _almClockSheetEl.sheet.remove();
+  _almClockSheetEl.scrim.remove();
+  _almClockSheetEl = null;
+  if (returnTo && returnTo.isConnected) returnTo.focus({ preventScroll: true });
+}
+// A sheet stands on the bottom of the layout viewport, which an iPhone's
+// keyboard covers: it would type into a box nobody can see ("text box is
+// stuck to bottom of page and I don't see it", Eric). While the keyboard is
+// up, the sheet stands on the top of the keyboard instead, and fits above it.
+// Shared with the tables' sheets (almanac-tables.js); the fitting itself is
+// the shell's (app.js), which Settings' sheets use too.
+function _almSheetAboveKeyboard(pop) {
+  pop._almUnfit = _sheetAboveKeyboard(pop);
+}
 // The cards: the place's zone (or the one selected), the device's when it
 // differs, the added ones; one each, sorted west to east by offset now.
 function _almClockCards(targetTz, now) {
@@ -3992,12 +4125,10 @@ function _almClockCards(targetTz, now) {
   function add(tz, added) {
     if (!tz || seen[tz]) return;
     seen[tz] = 1;
-    var idx = -1;
-    for (var i = 0; i < _TZ_CITIES.length; i++) if (_TZ_CITIES[i].tz === tz) { idx = i; break; }
     var off = 0;
     try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
-    out.push({ tz: tz, idx: idx, added: added, off: off,
-      label: tz === home && named ? _almTzCardLabel(tz) : idx >= 0 ? t('alm_city_' + _TZ_CITIES[idx].key) : String(tz).split('/').pop().replace(/_/g, ' ') });
+    out.push({ tz: tz, added: added, off: off,
+      label: tz === home && named ? _almTzCardLabel(tz) : _almTzCityLabel(tz) });
   }
   add(home, false);
   add(targetTz, false);
@@ -4012,9 +4143,7 @@ function _almClockCards(targetTz, now) {
 // IANA zone's own city segment when nothing was named.
 function _almTzCardLabel(tz) {
   var name = (_getLocation().name || '').split(',')[0].trim();
-  if (name) return name;
-  var seg = String(tz || '').split('/').pop() || tz || '';
-  return seg.replace(/_/g, ' ');
+  return name || _almTzSegment(tz);
 }
 
 // A clock tapped is shown on the big clock face and its zone on the map. The
@@ -4038,7 +4167,10 @@ function _drawTzClock(now) {
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  var tz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The zone the lit card shows: the one picked, else the place's (named for
+  // it below), else this device's. It read the device's zone under the
+  // place's name before.
+  var tz = _almSelectedTz || _almDisplayTz();
   var tzLabel = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
     if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
@@ -4120,15 +4252,19 @@ function _drawTzClock(now) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Second hand
-  var secAngle = secs * 6 - 90;
-  var secRad = secAngle * DEG_TO_RAD;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
-  ctx.strokeStyle = 'rgba(245,158,11,0.6)';
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
+  // Second hand: gliding on its own element where the browser can turn one,
+  // drawn here (on the tick) where it cannot.
+  if (_almTzHandSync(now)) secs = null;
+  if (secs !== null) {
+    var secAngle = secs * 6 - 90;
+    var secRad = secAngle * DEG_TO_RAD;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(secRad) * (r * 0.78), cy + Math.sin(secRad) * (r * 0.78));
+    ctx.strokeStyle = 'rgba(245,158,11,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
 
   // Center dot
   ctx.beginPath();
@@ -4278,7 +4414,36 @@ function _tzFmt(tz, opts, lang) {
   return _tzFmtCache[key];
 }
 
-// Smooth clock animation using requestAnimationFrame
+// The second hand sweeps once a minute, continuously ("Clock should glide
+// seconds not pop", Eric): a Web Animation on a transform, which the
+// compositor runs with no script per frame. Motion reduced, it steps once a
+// second instead. Paused with the Almanac's other loops; set to the clock
+// again on each tick when it has drifted.
+var ALM_TZ_SWEEP_MS = 60000;
+var ALM_TZ_SWEEP_STEPS = 60;
+var ALM_TZ_DRIFT_MS = 40;
+function _almTzHandSync(now) {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (!hand || typeof hand.animate !== 'function') return false;
+  var reduce = _almReduceMotion();
+  if (!hand._anim || hand._animReduce !== reduce) {
+    if (hand._anim) hand._anim.cancel();
+    hand._anim = hand.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+      { duration: ALM_TZ_SWEEP_MS, iterations: Infinity, easing: reduce ? 'steps(' + ALM_TZ_SWEEP_STEPS + ', end)' : 'linear' });
+    hand._animReduce = reduce;
+  }
+  var want = (now.getSeconds() * 1000 + now.getMilliseconds()) % ALM_TZ_SWEEP_MS;
+  var at = hand._anim.currentTime % ALM_TZ_SWEEP_MS;
+  if (hand._anim.playState !== 'running' || Math.abs(at - want) > ALM_TZ_DRIFT_MS) hand._anim.currentTime = want;
+  if (hand._anim.playState !== 'running') hand._anim.play();
+  return true;
+}
+function _almTzHandPause() {
+  var hand = document.getElementById('almanac-tz-hand');
+  if (hand && hand._anim) hand._anim.pause();
+}
+
+// The clock's tick: the face, the digits and the cards, once a second.
 var _tzClockRAF = null;
 var _tzClockColors = null;
 var _tzGridMinute = -1;
@@ -6121,6 +6286,31 @@ function _seasonInstantJDE(year, k) {
     S += t2[0] * Math.cos((t2[1] + t2[2] * T) * DEG_TO_RAD);
   }
   return J0 + (0.00001 * S) / dl;
+}
+
+// The season at an instant, by the Sun: from the equinox or solstice
+// before it to the one after, named for the hemisphere (October is spring
+// in Sydney). { key, day (1 on its first day), toNext (whole days, rounded
+// up), nextKey, nextKind ('equinox' | 'solstice'), progress (0..1) }.
+var ALM_SEASONS_NORTH = ['spring', 'summer', 'autumn', 'winter'];   // after k = 0..3
+var ALM_SEASONS_SOUTH = ['autumn', 'winter', 'spring', 'summer'];
+function _almSeasonMs(year, k) { return (_seasonInstantJDE(year, k) - JD_UNIX_EPOCH) * MS_PER_DAY; }
+function _almSeasonAt(ms, lat) {
+  if (!isFinite(ms)) return null;
+  var y = new Date(ms).getUTCFullYear(), marks = [{ ms: _almSeasonMs(y - 1, 3), k: 3 }];
+  for (var k = 0; k < 4; k++) marks.push({ ms: _almSeasonMs(y, k), k: k });
+  marks.push({ ms: _almSeasonMs(y + 1, 0), k: 0 });
+  var i = marks.length - 2;
+  while (i > 0 && marks[i].ms > ms) i--;
+  var from = marks[i], to = marks[i + 1], names = lat < 0 ? ALM_SEASONS_SOUTH : ALM_SEASONS_NORTH;
+  return { key: names[from.k], day: Math.floor((ms - from.ms) / MS_PER_DAY) + 1, toNext: Math.ceil((to.ms - ms) / MS_PER_DAY),
+    nextKey: names[to.k], nextKind: to.k % 2 ? 'solstice' : 'equinox', progress: (ms - from.ms) / (to.ms - from.ms) };
+}
+// "Day 12 of autumn · 79 days to the solstice", for the live sky's caption.
+function _almSeasonText(ms, lat) {
+  var ss = _almSeasonAt(ms, lat);
+  if (!ss) return '';
+  return t('alm_season_day_' + ss.key, { n: ss.day }) + ' · ' + tPlural('alm_season_to_' + ss.nextKind, ss.toNext);
 }
 
 var _seasonCache = { year: 0, events: [] };

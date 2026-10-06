@@ -102,4 +102,16 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
     else if (/—/.test(d[k])) ok('no em dash in ' + k + ' (' + lang + ')', false);
   }
 }
+// Eric, 2026-10-05: with every app off, the switch is shown off and locked.
+{
+  const sb = { APP_SHOWN: {}, localStorage: { getItem: () => null }, SK: { OPEN_IN_APPS: 'x' } };
+  sb._appShown = (a) => !!sb.APP_SHOWN[a];
+  vm.createContext(sb);
+  vm.runInContext(src.match(/var _OPEN_IN_APP_APPS = [^\n]*\n/)[0] + src.match(/function _openInAppsPossible\(\) \{[^\n]*\}\n/)[0], sb);
+  ok('no app that opens a result: nothing to open in', vm.runInContext('_openInAppsPossible()', sb) === false);
+  sb.APP_SHOWN.dictionary = true;
+  ok('one such app on: it can open there', vm.runInContext('_openInAppsPossible()', sb) === true);
+  ok('the row is drawn off and locked when none is', /on: _openInApps\(\) && _openInAppsPossible\(\), disabled: !_openInAppsPossible\(\)/.test(src));
+  ok('an app turned on or off redraws the row', (src.match(/_syncOpenInAppsRow\(\);/g) || []).length >= 2);
+}
 process.exit(failures ? 1 : 0);

@@ -450,6 +450,7 @@ _attr_re = attr_re
 
 _available_lock = threading.Lock()
 _available = None  # None = never asked, else (ok, reason)
+_browser_seen = None  # what the probe's Chromium called itself, once it launched
 
 
 def _playwright_module():
@@ -486,6 +487,21 @@ def browser_available(refresh=False):
     return browser_status(refresh=refresh)[0]
 
 
+def browser_version():
+    """"Chromium 131.0.6778.33, Playwright 1.49.0" for Settings > Creator,
+    from the probe that already launched it (nothing launched here), or
+    None before it has."""
+    if not _browser_seen:
+        return None
+    try:
+        from importlib import metadata
+
+        pw = metadata.version("playwright")
+    except Exception:
+        pw = ""
+    return "Chromium " + _browser_seen + (", Playwright " + pw if pw else "")
+
+
 def browser_status_known():
     """``(available, reason)`` if it has already been found out, else None.
 
@@ -504,8 +520,10 @@ def _probe_browser():
         return False, "no-playwright"
     started = None
     try:
+        global _browser_seen
         started = sync_playwright().start()
         browser = _launch(started.chromium)
+        _browser_seen = str(browser.version or "") or None
         browser.close()
         return True, "ok"
     except Exception as e:

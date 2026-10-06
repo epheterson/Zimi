@@ -14,6 +14,10 @@
    keep-still watcher sees is the height they take. */
 #almanac-place, #almanac-rosetta { display: flow-root; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
+/* The page's last line, clear of a phone's home indicator: the inset is the
+   footer's, not the scroller's padding, which would lift the docked time
+   machine off the screen's edge too. */
+.alm-footer { margin-top: 40px; padding-bottom: env(safe-area-inset-bottom, 0px); text-align: center; font-size: 11px; color: var(--text3); }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
@@ -27,6 +31,11 @@
 /* Clock row (analog + digital box side by side) above the grid */
 .alm-tz-wrap { margin-top: 24px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .alm-tz-clock-side { flex: 0 0 auto; display: flex; align-items: center; gap: 18px; justify-content: center; }
+/* The analog face (canvas) and its second hand, turned by almanac.js
+   _almTzHandSync: from the centre, 0.78 of the face's radius (the canvas's
+   r = size / 2 - 12 at 160px: 53px, 33.15% of the dial). */
+.alm-tz-dial { position: relative; flex: none; line-height: 0; }
+.alm-tz-hand { position: absolute; left: calc(50% - 0.5px); bottom: 50%; width: 1px; height: 33.15%; background: rgba(245, 158, 11, 0.6); transform-origin: 50% 100%; pointer-events: none; will-change: transform; }
 .alm-clock-info { text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 22px; min-width: 200px; }
 .alm-clock-time { font-size: 28px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; justify-content: center; direction: ltr; }
 .alm-clock-ampm { font-size: 13px; color: var(--text2); font-weight: 500; align-self: flex-end; margin-bottom: 4px; }
@@ -53,18 +62,22 @@
   .alm-sec-out, .alm-sec-in { animation: none; }
 }
 .alm-tz-list { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.alm-tz-city-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
+.alm-tz-city-card { --alm-tz-corner: 16px; position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; cursor: pointer; transition: all 0.1s; text-align: center; }
 .alm-tz-city-card:hover { background: var(--surface2); border-color: var(--text3); }
-.alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; }
+/* One line, whatever the name's length, so every card's time sits on the
+   same line ("Dumont d'Urville Station" wrapped and pushed its time down);
+   the full name is the card's title. Room either side for the hour's glyph
+   and, on an added clock, its remove button. */
+.alm-tz-city-name { font-size: 11px; color: var(--text2); display: block; padding: 0 var(--alm-tz-corner); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alm-tz-city-time { font-size: 13px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; direction: ltr; unicode-bidi: isolate; }
 .alm-tz-city-offset { font-size: 9px; color: var(--text3); display: block; margin-top: 1px; }
 /* Each card wears its city's hour: the grid reads as a living band of
    daylight echoing the terminator on the map above. */
-.alm-tz-glyph { position: absolute; top: 3px; right: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
+.alm-tz-glyph { position: absolute; top: 3px; inset-inline-end: 6px; font-size: 15px; line-height: 1; opacity: 0.9; pointer-events: none; font-family: system-ui, sans-serif; }
 /* Solid crescent: a transparent disc whose shadow IS the moon. Pure
    horizontal offset keeps it upright (heavy side right, opening left) —
    the old vertical offset tilted the heavy part up and read as broken. */
-.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; right: 7px; }
+.alm-glyph-moon { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset -4px 0 0 0 currentColor; top: 5px; inset-inline-end: 7px; }
 .alm-tz-day .alm-tz-glyph { color: #ffc15e; }
 .alm-tz-dawn .alm-tz-glyph { color: #ff8a65; }
 .alm-tz-dusk .alm-tz-glyph { color: #ab82ff; }
@@ -143,11 +156,42 @@
 .alm-group > .almanac-section:first-of-type, .alm-group-title + .almanac-section { margin-top: 24px; border-top: 0; padding-top: 0; }
 /* The reader's clocks: one taken away by its corner, one added from the
    cities through the native picker laid over a dashed card. */
-.alm-tz-remove { position: absolute; top: 0; inset-inline-end: 0; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
+/* The glyph keeps the end corner; the remove button takes the start one. */
+.alm-tz-remove { position: absolute; top: 0; inset-inline-start: 0; width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border-radius: 8px; }
 .alm-tz-remove:hover, .alm-tz-remove:focus-visible { color: var(--amber); }
-.alm-tz-add { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2); font-size: 12px; cursor: pointer; }
-.alm-tz-add:hover, .alm-tz-add:focus-within { color: var(--amber); border-color: var(--amber-border); }
-.alm-tz-add select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.alm-tz-add { display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-tz-add:hover, .alm-tz-add:focus-visible { color: var(--amber); border-color: var(--amber-border); outline: none; }
+/* ── Popovers: under the pill on a wide screen, a sheet from the bottom on a phone (the tables' and the clocks') ── */
+.tk-pop {
+  position: absolute; z-index: 30; width: min(340px, calc(100% - 16px)); max-height: 420px; overflow: auto;
+  padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+}
+.tk-pop.tk-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 72dvh;
+  border-radius: 16px 16px 0 0; padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+}
+.tk-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
+.tk-search {
+  width: 100%; min-height: 42px; padding: 0 12px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px; box-sizing: border-box;
+}
+.tk-search:focus { outline: 2px solid var(--amber); outline-offset: 0; }
+.tk-list { display: grid; }
+.tk-list-h { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+.tk-opt {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 9px;
+  background: none; color: var(--text); font: inherit; font-size: 15px; text-align: start; cursor: pointer;
+}
+.tk-opt:hover, .tk-opt:focus-visible { background: var(--amber-glow); outline: none; }
+.tk-opt[aria-selected="true"] { color: var(--amber); font-weight: 600; }
+.tk-opt-sub { margin-inline-start: auto; font-size: 12px; color: var(--text2); font-weight: 400; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.tk-opt-here { color: var(--amber); }
+.tk-pop-hint { margin: 8px 2px 0; font-size: 12px; color: var(--text2); text-align: center; }
+/* Add a clock: the search stays on top, the list scrolls under it; a column on a wide screen. */
+.alm-clock-sheet { display: flex; flex-direction: column; overflow: hidden; height: 72dvh; max-width: 480px; margin-inline: auto; }
+.alm-clock-sheet .tk-search { flex: none; }
+.alm-clock-sheet .tk-list { flex: 1; min-height: 0; overflow-y: auto; align-content: start; overscroll-behavior: contain; }
 /* The invite to choose a place: a chip. */
 .alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
@@ -155,8 +199,28 @@
 /* Tables and calculations: two rows of tiles, each a scroller that runs to
    the screen's edges (the page itself never scrolls sideways). A tile is
    what opens: its mark, its name, and one line of what it gives. */
+/* The subjects: app.css's own pill row, run to the screen's edges like the tiles. */
+.alm-subject-chips { width: auto; margin: 4px -16px 0; padding: 2px 16px; scroll-padding-inline: 16px; }
+.alm-tiles[hidden], .alm-tiles-h[hidden], .alm-tile[hidden] { display: none; }
 .alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
 .alm-group-title + .alm-tiles-h { margin-top: 4px; }
+.alm-subject-chips + .alm-tiles-h { margin-top: 14px; }
+/* A title with its icons at its right: Copy, Share, Print for everything
+   the chips show. The icons' own edge lines up with the page's. */
+.alm-group-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.alm-group-head .alm-group-title { flex: 1; min-width: 0; margin: 0; }
+.alm-book-bar { display: inline-flex; flex: none; margin-inline-end: -13px; }
+/* An icon button (here, and in each table's own bar): a 44px target, quiet,
+   amber when reached for. */
+.alm-doc-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s; }
+.alm-doc-btn svg { width: 18px; height: 18px; }
+.alm-doc-btn:hover, .alm-doc-btn:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.alm-doc-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+/* Working (the tables' Print while the PDF is made): a ring in the icon's place. */
+.alm-doc-btn.alm-busy { position: relative; pointer-events: none; }
+.alm-doc-btn.alm-busy svg { visibility: hidden; }
+.alm-doc-btn.alm-busy::after { content: ''; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .alm-doc-btn.alm-busy::after { animation-duration: 2.4s; } }
 .alm-tiles {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
   margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;
@@ -272,7 +336,7 @@
    on it, so the picture is only the picture. */
 .alm-sky-cap { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; padding: 6px 10px 0; font-size: 11px; line-height: 1.35; color: var(--text2); text-align: center; }
 .alm-sky-place { color: var(--text3); }
-/* A tapped body's name: the orrery tip's look, with room for the muon's lines. */
+/* A tapped body's name: the orrery tip's look, with room for a few lines. */
 .alm-sky-tip { position: absolute; z-index: 10; max-width: min(260px, calc(100% - 4px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
 .alm-sky-tip[hidden] { display: none; }
 .alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }

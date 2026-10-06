@@ -27,10 +27,15 @@ function slice(name) {
 }
 
 const reAt = src.indexOf('var _WHOLE_WIKIPEDIA_RE');
-const sandbox = { _currentLang: 'en', LIB: [] };
+const sandbox = { _currentLang: 'en', LIB: [], PREFS: [], SK: { PREF_LANGUAGES: 'prefs' } };
 vm.createContext(sandbox);
 vm.runInContext(
   (reAt >= 0 ? src.slice(reAt, src.indexOf('\n', reAt)) : '') + '\n' +
+  // Your languages (Settings > Languages), as this browser keeps them.
+  'function _getStorageJSON() { return PREFS; }\nfunction _normLang(c) { return c; }\n' +
+  // Your languages are Zimi's ten interface languages (Settings > Languages).
+  "function _isUiLang(c) { return ['en','fr','de','es','pt','ru','zh','ar','he','hi'].indexOf(c) >= 0; }\n" +
+  slice('_uiLangPrimary') + '\n' + slice('_getPrefLanguages') + '\n' + slice('_prefLangRank') + '\n' +
   slice('_defineLang2') + '\n' + slice('_featuredZimFor') + '\n' +
   slice('_blurbRepeatsTitle') + '\n' + slice('_otdDateLine') + '\n' + slice('_gutenbergTitle') + '\n' +
   'function _zimInfo(n) { return LIB.find(function(z) { return z.name === n; }); }',
@@ -69,6 +74,15 @@ check(pick('fr', 'wikiquote', LIB) === 'wikiquote_fr', 'French interface: French
 check(pick('zh', 'wikiquote', LIB) === 'wikiquote_es', 'no Chinese or English one: the fullest installed');
 check(pick('en', 'wikipedia', LIB.slice(1)) === 'wikipedia_de' && pick('de', 'wikipedia', LIB.slice(2, 3)) === null,
   'a library with only a German Wikipedia still has On this day, and a topic build is never it');
+// Your languages lead: English and Spanish picked, an English interface reads
+// Spanish Wikiquote over French; German picked, German Wikipedia over English.
+sandbox.PREFS = ['en', 'es'];
+check(pick('en', 'wikiquote', LIB) === 'wikiquote_es', 'your languages: Spanish Wikiquote');
+// The language Zimi is in always counts as yours (it can't be unchecked):
+// in Chinese with German picked, German Wikipedia over the English fallback.
+sandbox.PREFS = ['de'];
+check(pick('zh', 'wikipedia', LIB) === 'wikipedia_de', 'your languages: German Wikipedia over the fallback');
+sandbox.PREFS = [];
 
 check(!sandbox._blurbRepeatsTitle('אתונה היא עיר הבירה של יוון', 'אתונה'), 'a Hebrew blurb is shown');
 check(!sandbox._blurbRepeatsTitle('宁波市是浙江省的副省级市', '宁波'), 'a Chinese blurb is shown');

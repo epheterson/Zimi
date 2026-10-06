@@ -9,8 +9,8 @@ Two things live here:
     One "from the internet" setting with three answers: Ask first (nothing is
     fetched until an admin asks), Automatically, Never. Its environment
     variable wins over the saved choice, and ZIMI_OFFLINE forces Never over
-    both. The satellite data and the Zimi update check are both one of
-    these, so they read, lock and save the same way.
+    both. The satellite data, the Zimi update check and the Dictionary's voices are
+    each one of these, so they read, lock and save the same way.
 
 ``inventory()``
     Every destination Zimi can reach beyond this machine and its network, one
@@ -125,6 +125,7 @@ SOURCES = {
     "desktop": ("app_updates",),
     "winsparkle": ("app_updates",),
     "satellites": ("satellites",),
+    "voices": ("voices",),
     "streetzim": ("streetzim",),
     "sso": ("sso",),
     # Captures: the page, site, video or subreddit someone named, and the
@@ -152,7 +153,7 @@ def inventory():
     ``hosts`` are names nobody translates. ``control`` says where the switch
     is: a setting in Server settings, "offline" when only ZIMI_OFFLINE turns
     it off, or "" when the person's own action is the control."""
-    from zimi import library, manage, p2p, p2p_discovery, satellites, sso
+    from zimi import library, manage, p2p, p2p_discovery, satellites, sso, voices
     from zimi import server as _srv
 
     offline = _offline()
@@ -204,6 +205,12 @@ def inventory():
             "hosts": ["celestrak.org"],
             "state": _mode_state(satellites.update_mode()[0]),
             "control": "satellites",
+        },
+        {
+            "id": "voices",
+            "hosts": ["huggingface.co", "github.com"],
+            "state": _mode_state(voices.POLICY.mode()[0]),
+            "control": "voices",
         },
         {
             "id": "streetzim",

@@ -96,7 +96,10 @@ async function checkVersion() {
 // /userdata: an account's own saved things. Served stale, a second device
 // never saw what the first had saved, and the account's copy outlived a
 // sign-out in the cache.
-const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata'];
+// The Dictionary's voices: /dictionary/voices says who may fetch a voice and
+// what the server can say now (a download changes it), and /dictionary/speak
+// is audio asked for by range, which the cache cannot hold.
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak'];
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.
@@ -137,6 +140,11 @@ self.routeStrategy = routeStrategy;  // test hook
 
 // Fetch strategy router
 self.addEventListener('fetch', event => {
+  // A ranged request (a <video>, ogv.js's reader, Say's audio) goes to the
+  // network untouched. Through networkFirst every 206 was cloned for a cache
+  // that refuses partial responses, and a whole-file answer was teed into
+  // Cache Storage: a TED talk's 65 MB copied on an iPhone while it played.
+  if (event.request.headers.has('range')) return;
   const url = new URL(event.request.url);
   switch (routeStrategy(url.pathname, event.request.mode)) {
     case 'networkOnly':
@@ -170,13 +178,19 @@ async function networkOnly(request) {
   }
 }
 
+// Sound and pictures that move are streamed, never kept: a whole video in
+// Cache Storage is the phone's space and a long copy while it plays.
+function _isMedia(resp) {
+  return /^(video|audio)\//.test(resp.headers.get('Content-Type') || '');
+}
+
 // Network-first: try network, fall back to cache, then offline page
 async function networkFirst(request) {
   try {
     const resp = await fetch(request);
-    if (resp.ok) {
+    if (resp.ok && resp.status !== 206 && !_isMedia(resp)) {
       const cache = await caches.open(CACHE_VERSION);
-      cache.put(request, resp.clone());
+      cache.put(request, resp.clone()).catch(() => {});
     }
     return resp;
   } catch (e) {

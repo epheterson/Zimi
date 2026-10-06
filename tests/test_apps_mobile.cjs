@@ -1,5 +1,5 @@
-// The apps on a phone: Zimi's header steps aside while an app page or the
-// Almanac is read, the jump-to-top button stays out of Zimi's own pages,
+// The apps on a phone: Zimi's header steps aside while an article is read
+// and stays over an app's own page and the Almanac, the jump-to-top button stays out of Zimi's own pages,
 // Back lands where you were in a list, and a long thread folds. Eric,
 // 2026-09-25: "For all our apps see if the others need any considerations
 // too."
@@ -21,11 +21,15 @@ function grab(src, re, label) { const m = src.match(re); if (!m) throw new Error
 
 // ── the shell decides when the header steps aside ──────────────────────────
 const classes = new Set();
-const ctx = { document: { body: { classList: { toggle: (c, on) => { if (on) classes.add(c); else classes.delete(c); }, contains: c => classes.has(c) } } } };
+const frameWin = { location: { pathname: '/w/wiki/A/Water' } };
+const ctx = { readerOpen: true, _almanacOpen: false, _createOpen: false, document: {
+  body: { classList: { toggle: (c, on) => { if (on) classes.add(c); else classes.delete(c); }, contains: c => classes.has(c) } },
+  getElementById: () => ({ contentWindow: frameWin }) } };
 vm.createContext(ctx);
 vm.runInContext([
   grab(app, /var _CHROME_STEP = [^\n]*\n/, '_CHROME_STEP'),
   grab(app, /var _chromeBase = [^\n]*\n/, '_chromeBase'),
+  grab(app, /function _chromeSlides\(\) \{[\s\S]*?\n\}/, '_chromeSlides'),
   grab(app, /function _setChromeAway\(on\) \{[\s\S]*?\n\}/, '_setChromeAway'),
   grab(app, /function _chromeScroll\(y\) \{[\s\S]*?\n\}/, '_chromeScroll'),
   grab(app, /function _chromeImmersive\(on\) \{[\s\S]*?\n\}/, '_chromeImmersive'),
@@ -45,13 +49,29 @@ ctx._chromeImmersive(false); ok('letting go brings it back', !away());
 ctx._chromeScroll(900); ctx._chromeImmersive(true); ctx._chromeReset();
 ok('leaving the page resets it', !away() && ctx._chromeBase === 0);
 
-ok('only an app page can move it, by the two words apps.js speaks',
+// Eric, 2026-10-05: "I don't need or want zimi header to hide ... in main
+// library views or settings." Only a page to read slides it.
+ctx._chromeReset();
+frameWin.location.pathname = '/static/tube.html';
+ctx._chromeScroll(0); ctx._chromeScroll(400); ok('an app\'s own page keeps it', !away());
+ctx._chromeImmersive(true); ok('but a video playing sideways still holds it away', away());
+ctx._chromeImmersive(false);
+frameWin.location.pathname = '/w/wiki/A/Water';
+ctx._almanacOpen = true; ctx._chromeScroll(0); ctx._chromeScroll(400); ok('the Almanac keeps it', !away());
+ctx._almanacOpen = false; ctx._createOpen = true; ctx._chromeScroll(0); ctx._chromeScroll(400); ok('Create keeps it', !away());
+ctx._createOpen = false; ctx.readerOpen = false; ctx._chromeScroll(0); ctx._chromeScroll(400); ok('the library and Settings keep it', !away());
+ctx.readerOpen = true; ctx._chromeScroll(0); ctx._chromeScroll(400); ok('an article in the reader still slides it', away());
+ctx._chromeReset();
+
+ok('only a page in the reader can move it, by the two words apps.js speaks',
   /d\.zimi === 'scroll' && typeof d\.y === 'number' && _isAppPage\(\)/.test(app) && /d\.zimi === 'immersive' && _isAppPage\(\)/.test(app));
 ok('closing an app, opening a page and leaving the Almanac put it back',
   /_booksOpen = false;[^\n]*\n  _chromeReset\(\);/.test(app) && /function openReader\(url\) \{\n  _chromeReset\(\);/.test(app) && /_almanacOpen = false;\n  if \(typeof _chromeReset === 'function'\) _chromeReset\(\);/.test(almanac));
-ok('the Almanac scrolls it away too', /content\.addEventListener\('scroll', function\(\) \{ if \(_almanacOpen\) _chromeScroll\(content\.scrollTop\); \}/.test(almanac));
+ok('the Almanac no longer scrolls it away', !/_chromeScroll|_almChromeScroll/.test(almanac));
 ok('the hiding is a phone thing, and moves the page into the room it leaves',
-  /@media \(max-width: 900px\), \(max-height: 500px\) \{[\s\S]*?body\.chrome-away \{ --under-topbar: var\(--conn-h\); \}[\s\S]*?body\.chrome-away \.topbar:not\(:focus-within\) \{ transform: translateY\(-100%\); \}/.test(appCss));
+  /@media \(max-width: 900px\), \(max-height: 500px\) \{[\s\S]*?body\.chrome-away \{ --under-topbar: var\(--conn-h\); \}[\s\S]*?body\.chrome-away \.topbar:not\(:focus-within\) \{ transform: translateY\(var\(--topbar-away\)\); \}/.test(appCss) &&
+  // all the way out, its bottom border too (a hairline along the top on a phone)
+  /--topbar-away: calc\(-100% - 1px\);/.test(appCss));
 
 // ── the page side ──────────────────────────────────────────────────────────
 const told = [];

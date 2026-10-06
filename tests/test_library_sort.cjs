@@ -75,6 +75,21 @@ check(order(vm.runInContext('_sortLibrary(lib)', sandbox))[0] === 'alpha', 'rece
 check(order(vm.runInContext("_sortLibrary(lib.concat([{ name: 'new', title: 'New', first_seen: 50 }]))", sandbox))[0] === 'new',
       'recently updated counts a ZIM added since as the newest change');
 
+// Eric, 2026-10-03: "Sort in library and orders large by type and size".
+const sized = [
+  { name: 'wp', title: 'Wikipedia', category: 'wikipedia', size_gb: 100 },
+  { name: 'so', title: 'Stack Overflow', category: 'stack_exchange', size_gb: 70 },
+  { name: 'wv', title: 'Wikivoyage', category: 'wikipedia', size_gb: 1 },
+  { name: 'su', title: 'Super User', category: 'stack_exchange', size_gb: 3 },
+];
+vm.runInContext("_setLibrarySort('size')", sandbox);
+check(JSON.stringify(order(vm.runInContext('_sortLibrary(sized)', Object.assign(sandbox, { sized })))) ===
+      JSON.stringify(['wp', 'so', 'su', 'wv']), 'largest first');
+vm.runInContext("_setLibrarySort('type')", sandbox);
+check(JSON.stringify(order(vm.runInContext('_sortLibrary(sized)', sandbox))) ===
+      JSON.stringify(['so', 'su', 'wp', 'wv']), 'by type, the largest first within each');
+vm.runInContext("_setLibrarySort('updated')", sandbox);
+
 vm.runInContext("_setLibrarySort('nonsense')", sandbox);
 check(vm.runInContext('_librarySort()', sandbox) === 'updated', 'an unknown order is refused, not stored');
 

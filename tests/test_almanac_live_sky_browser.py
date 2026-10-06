@@ -11,7 +11,7 @@ the 3D view), at a phone's width, San Francisco chosen as the place:
      moves it there, Back to Now brings it to now, and live a timer (not a
      frame loop) keeps it there.
   3. The cost. Nothing in the frame loop once the sky is still; motion
-     reduced, no twinkle and no muons, and a still muon to tap instead.
+     reduced, no twinkle, no breeze and nothing crossing.
   4. Light clock: on a ride at 0.8c, gamma 1.67 beside the two clocks.
 
 The positions themselves are held to JPL Horizons in
@@ -121,7 +121,7 @@ def _tap_body(pg, kind, name=None):
     _wait_still(pg, "#almanac-sky-canvas")
     b = pg.evaluate(
         "([k, n]) => { const b = _skyState.bodies.find((x) => x.type === k && (!n || x.name === n));"
-        " const r = _skyState.canvas.getBoundingClientRect(); if (!b) return null; const x = b.type === 'muon' ? (b.x0 + b.x1) / 2 : b.x, y = b.type === 'muon' ? (b.y0 + b.y1) / 2 : b.y; return { x: r.left + x, y: r.top + y }; }",
+        " const r = _skyState.canvas.getBoundingClientRect(); if (!b) return null; const x = b.x0 != null ? (b.x0 + b.x1) / 2 : b.x, y = b.x0 != null ? (b.y0 + b.y1) / 2 : b.y; return { x: r.left + x, y: r.top + y }; }",
         [kind, name],
     )
     assert b, "%s %s is drawn" % (kind, name or "")
@@ -270,9 +270,43 @@ def test_one_clock(browser, served):
           setTimeout(() => { window.requestAnimationFrame = r; done(n); }, 1000);
         })""")
         # The palms' breeze asks for a frame every SKY_SWAY_MS (twelve a
-        # second); a twinkle or a muon's fall a frame or two more; a loop
+        # second); a twinkle a frame or two more; a loop
         # would ask ~60.
         assert frames <= 1000 / pg.evaluate("SKY_SWAY_MS") + 3, frames
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_a_live_sky_catches_up_after_the_app_slept(browser, served):
+    """Eric's phone showed night at 10:41 until a reload: the app had slept,
+    the live timer had stopped, and the observer's last word said the sky was
+    off screen. Any frame, and the page shown again, bring it to now."""
+    ctx, pg, errors = _almanac(browser, served)
+    slept = (
+        "() => { clearTimeout(_skyTimers.live); _skyTimers.live = 0;"
+        " _skyCompute(_skyState, new Date(Date.now() - 12 * 3600000)); }"
+    )
+    caught_up = "() => Math.abs(_skyState.nowTime - Date.now()) < 5000"
+    try:
+        # A frame asked for any reason (the palms' breeze, a tap). Slept and
+        # read in one turn: the breeze's own frame can catch it up between two.
+        assert not pg.evaluate(
+            "([slept, up]) => { (0, eval)('(' + slept + ')')(); return (0, eval)('(' + up + ')')(); }",
+            [slept, caught_up],
+        )
+        pg.evaluate("_skyKick()")
+        pg.wait_for_function(caught_up, polling=POLL_MS, timeout=10000)
+        # Shown again, with the observer's stale word that it was off screen
+        # (in one turn, so no frame catches it up first).
+        pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
+        woke = pg.evaluate(
+            "(slept) => { (0, eval)('(' + slept + ')')(); _skyPause(); _skyState.inView = false;"
+            " window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));"
+            " return [Date.now() - _skyState.nowTime, _skyState.inView, !!_skyTimers.live]; }",
+            slept,
+        )
+        assert woke[0] < 5000 and woke[1] and woke[2], woke
         assert not errors, errors
     finally:
         ctx.close()
@@ -336,8 +370,8 @@ def test_life_on_the_horizon(browser, served):
         # Nothing spawns on its own during this test: each thing is put there.
         pg.evaluate(
             "() => { Object.keys(SKY_SPAWNERS).forEach((k) => { clearTimeout(_skyTimers[k]); SKY_FIRST_SPAWN_MS[k] = 1e9; });"
-            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S, SKY_MUON_GAP_MS].forEach((g) => { g[0] = g[1] = 1e9; });"
-            " clearTimeout(_skyTimers.muon); _skyState.muons = []; _skyState.actors = []; _skyKick(); }"
+            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S].forEach((g) => { g[0] = g[1] = 1e9; });"
+            " _skyState.actors = []; _skyKick(); }"
         )
         pg.wait_for_function("() => !!_skyState.sea", polling=POLL_MS, timeout=60000)
         sea = pg.evaluate("_skyState.sea")
@@ -359,7 +393,7 @@ def test_life_on_the_horizon(browser, served):
         # A plane: frames while it crosses, none once it has gone.
         pg.evaluate(
             "() => { Object.keys(SKY_SPAWNERS).forEach((k) => { clearTimeout(_skyTimers[k]); SKY_FIRST_SPAWN_MS[k] = 1e9; });"
-            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S, SKY_MUON_GAP_MS].forEach((g) => { g[0] = g[1] = 1e9; }); clearTimeout(_skyTimers.muon); _skyState.muons = [];"
+            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S].forEach((g) => { g[0] = g[1] = 1e9; });"
             " const a = _skyCrossing(_skyState, 'plane', [6, 6], [30, 30]); _skyState.actors = [a]; _skyKick(); }"
         )
         moving = pg.evaluate("""() => new Promise((done) => {
@@ -445,7 +479,9 @@ def test_the_aurora_where_it_is_seen(browser, served):
         )
         pg.touchscreen.tap(b["x"], b["y"])
         tip = pg.inner_text("#almanac-sky-tip")
-        assert "an hour" in tip and "10 times" in tip, tip
+        assert (
+            "an hour" in tip and "%d times" % pg.evaluate("SKY_METEOR_SPEEDUP") in tip
+        ), tip
         assert not errors, errors
     finally:
         ctx.close()
@@ -455,18 +491,18 @@ def test_reduced_motion_keeps_the_sky_still(browser, served):
     ctx, pg, errors = _almanac(browser, served, reduced=True)
     try:
         _settle(pg, NIGHT)
-        assert pg.evaluate("!_skyTimers.twinkle && !_skyTimers.muon")
+        assert pg.evaluate("!_skyTimers.twinkle")
         assert pg.evaluate(
             "!_skyTimers.plane && !_skyTimers.birds && !_skyTimers.meteor && !_skyTimers.whale"
         )
         # The palms stand still: no breeze timer, and no frames asked for.
         assert pg.evaluate("!_skyTimers.sway")
-        still = pg.evaluate("_skyState.muons.filter((m) => m.still).length")
-        assert still == 1
-        _tap_body(pg, "muon")
-        tip = pg.locator("#almanac-sky-tip")
-        assert tip.is_visible()
-        assert pg.evaluate("t('alm_sky_muon')") in tip.inner_text()
+        # Nothing crossing, and no frame loop once the settle's last frame is drawn.
+        pg.wait_for_function(
+            "() => _skyState.actors.length === 0 && !_almanacSkyRAF",
+            polling=POLL_MS,
+            timeout=5000,
+        )
         assert not errors, errors
     finally:
         ctx.close()

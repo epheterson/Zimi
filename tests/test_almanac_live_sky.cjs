@@ -19,14 +19,12 @@
 //      spherical geometry) against the turn the sky draws the sprite by.
 //   3. The orrery's flat solar system did not move when its orbit code was
 //      shared with the sky's three-dimensional one.
-//   4. The muon's numbers (Feynman Lectures, Vol. I, ch. 15-4: 2.2 us, 0.998c,
-//      15 km) and the light clock's ticks (one tick at rest is gamma ticks
-//      moving).
+//   4. The light clock's ticks (one tick at rest is gamma ticks moving).
 //   5. Twilight by the Sun's altitude, and the faintest star shown.
 //   6. Taps: what a tap reaches, which wins, and what it does (the Sun and
 //      the Moon open the 3D view on themselves; a planet is named).
 //   7. One clock: live, a timer keeps the sky at now; scrubbed, no live
-//      timer; motion reduced, no twinkle and no muons; and no frame loop
+//      timer; motion reduced, no twinkle and no breeze; and no frame loop
 //      once nothing moves.
 //
 // Run: node tests/test_almanac_live_sky.cjs   (exit 0 = pass)
@@ -170,13 +168,7 @@ check(outerWorst > 0.5 && outerWorst < 1.2, 'and the outer planets by at most a 
 const v3 = S._planetHelio3D('Venus', 0.267), v2 = S._planetPosition('Venus', 0.267);
 check(Math.abs(Math.hypot(v3.x, v3.y, v3.z) - v2.r) < 1e-12, 'the 3D orbit keeps the flat one\'s distance from the Sun');
 
-// ── 4. Muons and the light clock ──
-const mu = vm.runInContext('_muonFacts()', S);
-check(Math.abs(mu.gamma - 15.82) < 0.01, 'gamma at 0.998c is 15.82 (' + mu.gamma.toFixed(3) + ')');
-check(Math.abs(mu.fall * 1e6 - 50.13) < 0.01, 'a 15 km fall at 0.998c takes 50.13 us by the ground\'s clock (' + (mu.fall * 1e6).toFixed(3) + ')');
-check(Math.abs(mu.own * 1e6 - 3.17) < 0.01, 'and 3.17 us by the muon\'s (' + (mu.own * 1e6).toFixed(3) + ')');
-check(Math.abs(mu.reach - 658) < 1, 'without the slow clock a muon goes 658 m in a lifetime (' + mu.reach.toFixed(1) + ')');
-check(mu.survive > 0.2 && mu.survive < 0.3 && mu.surviveNaive < 1e-9, 'about a quarter arrive; without it, almost none (' + mu.survive.toFixed(3) + ', ' + mu.surviveNaive.toExponential(2) + ')');
+// ── 4. The light clock ──
 const g = S._lorentzFactor(0.8);
 const ticks = S._lcTicks(16001, g);
 check(ticks.rest === 10 && ticks.moving === 6, 'light clock at 0.8c: 10 ticks at rest, 6 moving (gamma 5/3)');
@@ -214,14 +206,14 @@ vm.runInContext('_skyState = { bodies: [' +
   '{ type: "star", idx: 41, x: 300, y: 60, r: 2, alt: 40, az: 200, mag: -1.46 },' +
   '{ type: "planet", name: "Jupiter", x: 300, y: 70, r: 2, alt: 38, az: 200, mag: -2.5 },' +
   '{ type: "moon", x: 200, y: 150, r: 9, alt: 10, az: 150 },' +
-  '{ type: "muon", x0: 50, y0: 10, x1: 52, y1: 170 }] }', S);
+  '{ type: "meteor", x0: 50, y0: 10, x1: 52, y1: 170 }] }', S);
 const hit = (x, y) => { const b = vm.runInContext('_skyHitTest(' + x + ', ' + y + ')', S); return b ? b.type + (b.name ? ':' + b.name : '') : null; };
 check(hit(100, 100) === 'sun', 'a tap on the Sun is the Sun');
 check(hit(113, 100) === 'planet:Venus', 'beside it, Venus is nearer and wins');
 check(hit(300, 64) === 'planet:Jupiter', 'a planet wins over a star at the same reach');
 check(hit(300, 40) === 'star', 'a star alone is a star');
 check(hit(200, 172) === 'moon', 'the Moon reaches a fingertip beyond its edge');
-check(hit(60, 90) === 'muon', 'a muon\'s streak can be tapped along its length');
+check(hit(60, 90) === 'meteor', 'a meteor\'s streak can be tapped along its length');
 check(hit(250, 200) === null, 'empty sky is nothing');
 // What a tap does: the Sun and the Moon open the 3D view on themselves.
 S.window.openAlmanacEarth = (opts) => opened.push(opts);
@@ -232,8 +224,6 @@ S._orreryShowBody = () => {};
 check(vm.runInContext('_skyAct({ type: "planet", name: "Jupiter", x: 300, y: 70, r: 2, alt: 38, az: 200, mag: -2.5 })', S) === 'tip' &&
   !tipEl.hidden && /alm_sky_find_orrery/.test(tipEl.innerHTML) && opened.length === 2,
   'a planet is named, with the way to it in the solar system');
-vm.runInContext('_skyAct({ type: "muon", x0: 50, y0: 10, x1: 52, y1: 170 })', S);
-check(/alm_sky_muon_head/.test(tipEl.innerHTML) && /alm_sky_muon_math/.test(tipEl.innerHTML), 'a muon tells why it reaches the ground');
 S.window.openAlmanacEarth.unsupported = true;
 check(vm.runInContext('_skyAct({ type: "sun", x: 100, y: 100, r: 9, alt: 30, az: 180 })', S) === 'tip' && opened.length === 2,
   'without WebGL the Sun is named instead');
@@ -242,16 +232,16 @@ delete S.window.openAlmanacEarth.unsupported;
 // ── 7. One clock ──
 vm.runInContext('var _almFocus = null; var _heroMoonAnim = null; var __reduce = false; function _almReduceMotion() { return __reduce; }' +
   'var __painted = 0; _skyPaint = function () { __painted++; };' +
-  '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, muons: [], actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };', S);
+  '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };', S);
 const MOVING = '_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the spawners and the palms' breeze
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
-check(armed() === '_skyLiveTick,_skyMuonTick,' + MOVING + ',_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the muons, the planes, birds and meteors');
+check(armed() === '_skyLiveTick,' + MOVING + ',_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the planes, birds and meteors');
 vm.runInContext('_almFocus = new Date(0)', S);
-check(armed() === '_skyMuonTick,' + MOVING + ',_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
+check(armed() === MOVING + ',_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
 vm.runInContext('_almFocus = null; _skyState.eph.sunGeoAlt = 20', S);
-check(armed() === '_skyLiveTick,_skyMuonTick,' + MOVING, 'by day no twinkle (no stars out)');
+check(armed() === '_skyLiveTick,' + MOVING, 'by day no twinkle (no stars out)');
 vm.runInContext('__reduce = true', S);
-check(armed() === '_skyLiveTick', 'motion reduced: no twinkle, muons or breeze (the palms stand still)');
+check(armed() === '_skyLiveTick', 'motion reduced: no twinkle or breeze (the palms stand still)');
 vm.runInContext('__reduce = false; _skyState.inView = false', S);
 check(armed() === '', 'scrolled out of sight: nothing runs');
 vm.runInContext('_skyState.inView = true; document.hidden = true', S);
@@ -267,20 +257,10 @@ vm.runInContext('_almanacSkyRAF = null; _skyKick(); _skyKick();', S);
 check(frames.length === 1, 'two asks while a frame is pending make one frame, never a second loop');
 frames[0](2000);
 check(frames.length === 1 && vm.runInContext('_almanacSkyRAF', S) === null, 'still: after painting, no frame loop');
-vm.runInContext('_skyState.muons = [{ x: 0.5, lean: 0, start: 1990 }]; _skyKick()', S);
-frames[1](2000);
-check(frames.length === 3, 'a falling muon keeps the loop for its fall');
-timers.length = 0;
-frames[2](1990 + vm.runInContext('SKY_MUON_FALL_MS', S) + 100);
-check(frames.length === 3 && timers.some((x) => x.fn.name === '_skyKick'), 'landed, its trace fades by a few timed paints, not a frame loop');
-vm.runInContext('_almanacSkyRAF = null', S);
-timers.length = 0;
-vm.runInContext('_skyLoop(' + (1990 + vm.runInContext('SKY_MUON_FALL_MS + SKY_MUON_FADE_MS', S) + 1) + ')', S);
-check(frames.length === 3 && timers.length === 0, 'and once it has faded nothing is left running');
 // A plane crossing: the loop runs while it is on screen, painting at most
 // every SKY_ACTOR_FRAME_MS (thirty a second, not sixty), and stops once it has gone.
 frames.length = 0;
-vm.runInContext('_almanacSkyRAF = null; __painted = 0; _skyState.muons = []; _skyState.baseDirty = false; _skyState.paintedAt = 0;' +
+vm.runInContext('_almanacSkyRAF = null; __painted = 0; _skyState.baseDirty = false; _skyState.paintedAt = 0;' +
   '_skyState.actors = [{ type: "plane", start: 0, dur: 1000 }];', S);
 const step = vm.runInContext('SKY_ACTOR_FRAME_MS', S);
 // _skyPaint is the counter here; a real paint drops the plane once its time is up.
@@ -297,6 +277,27 @@ frames.length = 0;
 vm.runInContext('_almanacSkyRAF = null; _skyState.moonData = null; _skySetInstant(new Date("2026-10-01T06:00:00Z"))', S);
 check(frames.length === 1 && vm.runInContext('_skyState.nowTime', S) === Date.parse('2026-10-01T06:00:00Z') &&
   vm.runInContext('!!_skyState.moonAnim', S), 'a scrub frame takes the new instant and glides the Moon there, one frame asked');
+
+// ── The season in the caption: by the Sun, in the place's hemisphere ──
+// 2026's September equinox is 23 Sep 00:05 UT and its December solstice
+// 21 Dec 20:50 UT (USNO); its March equinox 20 Mar 14:46 UT.
+{
+  const a = almSrc.indexOf('var _SEASON_JDE0'), b = almSrc.indexOf('var _seasonCache');
+  vm.runInContext(almSrc.slice(a, b) + '; function tPlural(k, n) { return k + "(" + n + ")"; }', S);
+  const at = (iso, lat) => vm.runInContext('_almSeasonAt(' + Date.parse(iso) + ', ' + lat + ')', S);
+  const sf = at('2026-10-03T12:00:00Z', 37.77);
+  check(sf.key === 'autumn' && sf.day === 11 && sf.toNext === 80 && sf.nextKind === 'solstice' && sf.nextKey === 'winter',
+    'San Francisco, 3 Oct 2026: day 11 of autumn, 80 days to the solstice (' + JSON.stringify(sf) + ')');
+  const syd = at('2026-10-03T12:00:00Z', -33.87);
+  check(syd.key === 'spring' && syd.nextKey === 'summer' && syd.day === 11, 'Sydney the same day: day 11 of spring');
+  check(at('2026-09-22T23:00:00Z', 37.77).key === 'summer' && at('2026-09-23T01:00:00Z', 37.77).key === 'autumn',
+    'autumn begins at the equinox, not a fixed date');
+  const w = at('2026-03-20T14:00:00Z', 51.5);
+  check(w.key === 'winter' && w.toNext === 1 && w.nextKind === 'equinox', 'the last hours of winter: the equinox tomorrow');
+  check(at('2027-01-05T00:00:00Z', 51.5).key === 'winter' && at('2027-01-05T00:00:00Z', 51.5).day === 15, 'winter runs across the new year');
+  check(vm.runInContext('_almSeasonText(' + Date.parse('2026-10-03T12:00:00Z') + ', 37.77)', S) ===
+    'alm_season_day_autumn{"n":11} · alm_season_to_solstice(80)', 'the caption\'s words');
+}
 
 if (failures) { console.error('\n' + failures + ' failure(s)'); process.exit(1); }
 console.log('\nall live-sky checks passed');

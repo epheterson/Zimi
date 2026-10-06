@@ -131,6 +131,23 @@ def test_many_callers_launch_one_browser(slow_probes):
     assert slow_probes["browser"] == 1
 
 
+
+def test_the_browser_engine_names_its_version(slow_probes, monkeypatch):
+    """Settings > Creator: each capture engine with its version. The
+    browser's is what the probe's own launch saw, nothing launched again."""
+    from zimi import renderer
+
+    monkeypatch.setattr(renderer, "_browser_seen", "131.0.6778.33")
+    monkeypatch.setattr(
+        "importlib.metadata.version",
+        lambda name: "1.49.0" if name == "playwright" else "0",
+    )
+    assert renderer.browser_version() == "Chromium 131.0.6778.33, Playwright 1.49.0"
+    _manage._creator_payload()
+    assert _settle()["browser_version"] == "Chromium 131.0.6778.33, Playwright 1.49.0"
+    monkeypatch.setattr(renderer, "_browser_seen", None)
+    assert renderer.browser_version() is None
+
 # ── the made-here walk ─────────────────────────────────────────────────────
 
 

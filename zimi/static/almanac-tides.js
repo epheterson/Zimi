@@ -339,7 +339,7 @@ var TideMath = (function() {
     if (rec.a) {
       var h = harmonic(rec, names);
       return {
-        kind: 'harmonic',
+        kind: 'harmonic', n: h.names.length,
         extremes: function(a, b) { return extremes(h, a, b); },
         height: function(ms) { return heightAt(h, ms)[0]; }
       };
@@ -354,7 +354,7 @@ var TideMath = (function() {
       return cache.list;
     }
     return {
-      kind: 'subordinate',
+      kind: 'subordinate', n: ref.names.length,
       extremes: function(a, b) { return subordinateExtremes(ref, rec, a, b); },
       height: function(ms) {
         var l = turnsAround(ms);
@@ -365,8 +365,10 @@ var TideMath = (function() {
   }
 
   return {
-    astro: astro, yearTerms: yearTerms, predictor: predictor,
-    CONSTITUENTS: CONSTITUENTS, compoundOf: compoundOf, M_PER_FT: M_PER_FT
+    astro: astro, yearTerms: yearTerms, predictor: predictor, harmonic: harmonic,
+    CONSTITUENTS: CONSTITUENTS, compoundOf: compoundOf, M_PER_FT: M_PER_FT,
+    // The mean longitudes' polynomials, for the tables' Equations.
+    MEAN: { s: S_C, h: H_C, p: P_C, N: N_C, p1: P1_C }
   };
 })();
 

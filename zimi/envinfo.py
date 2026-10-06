@@ -74,6 +74,11 @@ VARS: dict[str, tuple[str, str]] = {
         "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",
         "Satellite data from the internet",
     ),
+    "ZIMI_VOICE_DOWNLOADS": (
+        "Clearer voices for the Dictionary's Say (Piper from Hugging Face, Kokoro from GitHub): ask (only when an admin asks), auto or never",
+        "Voices for Dictionary",
+    ),
+    "ZIMI_PIPER": ("The Piper command the Dictionary's Say runs, when not piper on PATH", "Voices for Dictionary"),
     # ── downloads ─────────────────────────────────────────────────────────
     "ZIMI_MAX_CONCURRENT_DOWNLOADS": (
         "How many downloads run at once",

@@ -115,6 +115,27 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libmagic1 ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
+# The Dictionary's Say (zimi/voices.py): espeak-ng is the voice every language
+# has with no download, and Piper the clearer one, for the languages someone
+# fetches a voice for. Both are separate programs Zimi runs as children
+# (espeak-ng and Piper are GPL-3, kept beside MIT Zimi as ffmpeg is). piper-tts
+# brings onnxruntime and numpy: about 170 MB installed, espeak-ng about 20 MB.
+# Their own layer, before the source copy, so a code deploy stays fast.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends espeak-ng \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir "piper-tts>=1.8,<2"
+# Kokoro (kokoro-onnx, MIT; the Kokoro-82M weights are Apache-2.0 and a
+# download), the natural voices for English, Spanish, French, Italian,
+# Portuguese, Hindi and Chinese, with misaki's phonemes for Chinese and
+# English (Apache-2.0). Run by zimi/voicehelper.py as a child like Piper,
+# never imported (its phonemizer loads espeak-ng). It shares onnxruntime and
+# numpy with Piper: about 125 MB more, mostly jieba's and pypinyin's
+# dictionaries. English takes misaki's lexicon and num2words (LGPL, 1.4 MB),
+# not misaki[en]: that extra brings spaCy and torch, 776 MB, for a tagger a
+# dictionary's lone word does not need.
+RUN pip install --no-cache-dir "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" "num2words>=0.5.14,<0.6"
+
 WORKDIR /app
 COPY zimi/ ./zimi/
 

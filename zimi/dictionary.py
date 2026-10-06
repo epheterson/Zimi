@@ -37,6 +37,7 @@ import collections
 import html as _html
 import logging
 import posixpath
+import random
 import re
 import threading
 from urllib.parse import unquote
@@ -1489,15 +1490,62 @@ def home():
     return {"wiktionaries": wiktionaries()}
 
 
+# Settings' Hear: "Some dictionary words are: X, Y, Z." 3 to 5 plain words
+# (letters only, short enough that the sentence fits voices.SAMPLE_MAX).
+SAMPLE_WORDS = (3, 5)
+SAMPLE_WORD_RE = re.compile(r"^[^\W\d_]{2,12}$")
+SAMPLE_TRIES = 40  # random entries read at most, for the words
+
+
+def sample_words(lang="", rng=None):
+    """A few random words from a Wiktionary in ``lang`` (else the largest):
+    ``{"lang": its language, "words": [...]}``, words [] with none here.
+    The page keeps them for the session."""
+    import random
+
+    from zimi.search import random_entry
+
+    rng = rng or random.Random()
+    ws = wiktionaries()
+    lang = _primary(lang)
+    w = next((x for x in ws if _primary(x["lang"]) == lang), ws[0] if ws else None)
+    if w is None:
+        return {"lang": "", "words": []}
+    want = rng.randint(*SAMPLE_WORDS)
+    words = []
+    with _srv._zim_lock:
+        archive = _srv.get_archive(w["name"])
+        for _ in range(SAMPLE_TRIES if archive is not None else 0):
+            hit = random_entry(archive, max_attempts=4, rng=rng)
+            word = ((hit or {}).get("title") or "").strip()
+            if SAMPLE_WORD_RE.match(word) and word not in words:
+                words.append(word)
+                if len(words) >= want:
+                    break
+    return {"lang": _primary(w["lang"]), "words": words}
+
+
 def today(day):
     """Each Wiktionary's word of the day (Discover's and Zimipedia's own,
-    zimi/wiki.py), for the day YYYYMMDD on the reader's clock."""
+    zimi/wiki.py), for the day YYYYMMDD on the reader's clock, and
+    ``more``: each Wiktionary's other words of the day, chosen the same way
+    (wiki.words), for the page to order by the reader's languages."""
     from zimi import wiki as _wiki
 
-    words = []
+    words, more = [], []
     if not _wiki.day_open(day):
-        return {"day": day, "words": []}
+        return {"day": day, "words": [], "more": []}
     for w in wiktionaries():
+        # The day's other words (the More words shelf), kept with the day's
+        # picks, so this answer is still one ask.
+        try:
+            got = _wiki.words(w["name"], day) or []
+        except Exception as e:
+            log.debug("no more words from %s: %s", w["name"], e)
+            got = []
+        more.extend(
+            {"w": x["title"], "zim": w["name"], "lang": w["lang"]} for x in got[1:]
+        )
         try:
             card = _wiki.daily_card(w["name"], day)
         except Exception as e:
@@ -1513,7 +1561,39 @@ def today(day):
                     "pos": card.get("part_of_speech", ""),
                 }
             )
-    return {"day": day, "words": words}
+    return {"day": day, "words": words, "more": more}
+
+
+def random_words(langs=()):
+    """A handful of words by chance (the front's Shuffle), chosen as the
+    day's are, from the Wiktionaries in the reader's languages (``langs``,
+    primary codes) first, then the others until there are enough: ``{words: [{w, zim,
+    lang}]}``, at most wiki.MORE_WORDS. Reads one Wiktionary after another
+    until it has enough."""
+    from zimi import wiki as _wiki
+
+    ws = wiktionaries()
+    mine = [w for w in ws if _primary(w["lang"]) in langs]
+    rest = [w for w in ws if w not in mine]
+    random.shuffle(mine)
+    random.shuffle(rest)
+    # Yours first; the others until there are enough (a small Wiktionary in
+    # your language alone left the front with a single word).
+    ws = mine + rest
+    out, seen = [], set()
+    for w in ws:
+        try:
+            got = _wiki.words_by_chance(w["name"])
+        except Exception as e:
+            log.debug("no words by chance from %s: %s", w["name"], e)
+            continue
+        for x in got:
+            if x["title"] not in seen:
+                seen.add(x["title"])
+                out.append({"w": x["title"], "zim": w["name"], "lang": w["lang"]})
+        if len(out) >= _wiki.MORE_WORDS:
+            break
+    return {"words": out[: _wiki.MORE_WORDS]}
 
 
 def _reset_for_tests():

@@ -181,8 +181,8 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             pg.wait_for_timeout(300)
             rows = _q(pg, "d.querySelectorAll('.zw-set-sheet .zb-set').length")
             assert (
-                rows == 5
-            ), "theme, font, size, spacing, margins (no layout: that is a book's)"
+                rows == 3
+            ), "theme, font, size (no layout: that is a book's)"
             fr.locator('.zw-set-sheet [data-size="3"]').click()  # Large
             pg.wait_for_timeout(300)
             assert (
@@ -652,6 +652,13 @@ def test_the_wikis_lead_the_row_and_the_language_is_one_chip_at_its_end(served):
             items = fr.locator("#lang-menu [role=menuitemradio]")
             assert items.count() == 2
             fr.locator('#lang-menu [lang="he"]').click()
+            # Zimi's language follows (Eric, 2026-10-02), and the page opens
+            # again in it.
+            pg.wait_for_function("() => _currentLang === 'he' && document.documentElement.dir === 'rtl'", timeout=10000)
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.readyState === 'complete' && d.getElementById('lang-btn') && d.getElementById('lang-btn').textContent === 'HE'; }",
+                timeout=20000,
+            )
             pg.wait_for_timeout(300)
             got = _q(
                 pg,

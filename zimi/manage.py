@@ -2253,6 +2253,12 @@ CREATE_STALL_TICK = 15.0  # how often the watchdog looks
 # being a job that is running forever.
 CREATE_JOURNAL_FILE = "create_jobs.json"
 CREATE_JOURNAL_RECORDS = 20
+# A job that did not end well keeps its last lines in the journal, so the log
+# can still be read after the page was left or the server restarted (asked in
+# discussion #105: "How can I view the logs? I left the page while it was
+# running"). Also written to the server's own log when it fails.
+CREATE_JOURNAL_LOG_LINES = 200
+CREATE_SERVER_LOG_LINES = 40
 # The phases a job moves through, in order. The client renders them; the
 # adapter below decides when each begins by reading the engines' own lines.
 # ``convert`` is the warc2zim subprocess: the phase where a recording (alive)
@@ -2760,6 +2766,11 @@ def _create_job_record(job):
         or None,
         "stopped": (job.result or {}).get("stopped"),
         "actor": _activity_clean_actor(getattr(job, "actor", None)),
+        "log": (
+            list(job.lines[-CREATE_JOURNAL_LOG_LINES:])
+            if job.done and _create_job_state(job) != "ok"
+            else None
+        ),
     }
 
 
@@ -2869,7 +2880,27 @@ def _create_journal_put(job):
 def _create_history():
     """The recent jobs, newest first — what a returning admin came back for."""
     with _create_journal_lock:
-        return list(reversed(_create_journal_load()))
+        records = list(reversed(_create_journal_load()))
+    # The kept log is asked for on its own (/manage/create/log); the list
+    # only says there is one.
+    return [
+        dict({k: v for k, v in r.items() if k != "log"}, has_log=bool(r.get("log")))
+        for r in records
+    ]
+
+
+def _create_log(job_id):
+    """A job's kept log lines, or None: the job running now (its live
+    tail), else its journal record."""
+    job = _create_job
+    if job is not None and job.id == job_id:
+        with _create_lock:
+            return list(job.lines)
+    with _create_journal_lock:
+        for r in _create_journal_load():
+            if r.get("id") == job_id:
+                return r.get("log") or []
+    return None
 
 
 def _create_name_of(path):
@@ -3447,6 +3478,13 @@ def _create_finish(job, **outcome):
         # this lock is what makes the two truths one truth.
         job.done = True
         _create_journal_put(job)
+        tail = list(job.lines[-CREATE_SERVER_LOG_LINES:]) if not job.ok else []
+    if tail:
+        # The server's log (docker logs) has it too, for whoever reads there.
+        log.warning(
+            "Create %s failed (%s): %s\n  %s",
+            job.mode, job.source, job.error, "\n  ".join(tail),
+        )
     _create_emit(job, {"t": "phase", "phase": "done", "detail": _create_job_state(job)})
     # The create journal serves the Create page; the activity journal serves the
     # operator asking what has been happening to this library. A settled job is
@@ -4078,6 +4116,17 @@ def _reddit_ready():
         return False
 
 
+def _reddit_version():
+    """ArcticZim has no releases; Zimi pins it to a commit, which is its
+    version (short), when the sidecar is installed."""
+    try:
+        from zimi import reddot
+
+        return reddot.ARCTICZIM_COMMIT[:7] if _reddit_ready() else None
+    except Exception:
+        return None
+
+
 def _create_browser_ready():
     """True when the rendered engine can actually run here — Playwright
     importable AND a Chromium that launches.
@@ -4104,6 +4153,17 @@ def _create_browser_ready():
     except Exception:
         log.exception("rendered-engine probe failed")
         return False
+
+
+def _create_browser_version():
+    """The rendered engine's Chromium and Playwright, as its probe saw them."""
+    try:
+        from zimi.renderer import browser_version
+
+        return browser_version()
+    except Exception:
+        log.exception("rendered-engine version failed")
+        return None
 
 
 def _create_browser_install():
@@ -4302,10 +4362,12 @@ def _creator_payload():
     known = _creator_capabilities()
     return {
         "browser_ready": known["browser_ready"] if known else None,
+        "browser_version": known.get("browser_version") if known else None,
         "alive_ready": known["alive_ready"] if known else None,
         "sidecar": known["sidecar"] if known else None,
         # ArcticZim, the subreddit engine: two files on disk, no probe.
         "reddit_ready": _reddit_ready(),
+        "reddit_version": _reddit_version(),
         "probing": known is None,
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
@@ -4368,6 +4430,7 @@ def _creator_probe_pass():
             "alive_ready": _create_alive_ready(),
             "sidecar": _creator_sidecar(),
         }
+        answer["browser_version"] = _create_browser_version()
     except Exception:
         log.exception("creator capability probe failed")
     with _creator_probe_lock:
@@ -4872,6 +4935,14 @@ def handle_manage_get(handler, parsed, params):
                 history=param("history") == "1",
             ),
         )
+    if parsed.path == "/manage/create/log":
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        lines = _create_log(param("job") or "")
+        if lines is None:
+            return handler._json(404, {"error": "not found"})
+        return handler._json(200, {"lines": lines})
     if parsed.path == "/manage/create/shot":
         # The picture of the live page, while the job is still running. Same
         # gate as the status poll it is announced on, and fetched once per job
@@ -5472,6 +5543,12 @@ def handle_manage_get(handler, parsed, params):
         from zimi import satellites as _sats
 
         return handler._json(200, _sats.setting())
+
+    elif parsed.path == "/manage/voices":
+        # "Voices for Dictionary": the setting and every pinned Piper voice.
+        from zimi import voices as _voices
+
+        return handler._json(200, _voices.manage_payload())
 
     elif parsed.path == "/manage/books/whole":
         # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
@@ -6462,6 +6539,62 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(502, {"error": "Could not reach CelesTrak"})
         payload["can_change"] = True
         return handler._json(200, payload)
+
+    elif parsed.path == "/manage/voices":
+        # "Voices for Dictionary": {"mode": "ask"|"auto"|"never"}, the same
+        # env-lock contract: ZIMI_VOICE_DOWNLOADS (or ZIMI_OFFLINE) wins.
+        from zimi import voices as _voices
+
+        _mode, err = _voices.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(
+                403,
+                {"error": "Voices are controlled by the %s env var" % _voices.DOWNLOADS_ENV},
+            )
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/choose":
+        # Which engine says a language: {"lang": primary, "engine": name}, or
+        # engine null for the best here.
+        from zimi import voices as _voices
+
+        if not _voices.set_choice(data.get("lang"), data.get("engine")):
+            return handler._json(409, {"error": "That voice cannot say this language here"})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/download":
+        # One language's clearer voice, fetched in the background: {"lang": tag}.
+        from zimi import voices as _voices
+
+        _ok, err = _voices.start_download(data.get("lang"))
+        if err == "unknown":
+            return handler._json(404, {"error": "No such voice"})
+        if err in ("never", "noengine"):
+            return handler._json(409, {"error": "Voices cannot be downloaded here"})
+        if err == "busy":
+            return handler._json(409, {"error": "Another voice is downloading"})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/cancel":
+        # The download in flight stops; its partial files go.
+        from zimi import voices as _voices
+
+        _voices.cancel_download()
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/remove":
+        # {"lang": tag}: the voice and its audio go; the language falls back.
+        from zimi import voices as _voices
+
+        if not _voices.remove(data.get("lang")):
+            return handler._json(404, {"error": "No such voice"})
+        return handler._json(200, _voices.manage_payload())
 
     elif parsed.path == "/manage/books/whole":
         # A ZIM that is one book (a textbook captured whole) onto the

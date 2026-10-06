@@ -60,6 +60,8 @@ _otd_cache = {}
 # not per day: the page does not change until the ZIM does).
 _extra_cache = {}
 _front_cache = {}
+# (name, build date, day) -> a Wiktionary's words of the day (words()).
+_words_cache = {}
 _inflight = {}  # key -> threading.Event, so two asks for one key read once
 _warming = set()  # days a background pass is running for
 # Every wiki a library could hold, three days over: small, and cleared whole
@@ -457,23 +459,19 @@ def _judge(role, name, lang, path, title, html):
     return dict(base, blurb=lead), False  # good once it has a picture
 
 
-def _work_pick(name, day):
-    """One wiki's pick for a day: random pages in an order seeded by the
-    wiki and the day, the first that suits the wiki's role (with a picture,
-    where the role has one). Reads under the library lock one page at a
+def _pages_of_day(name, day, role, tries):
+    """Random pages of a wiki in an order seeded by the wiki and the day:
+    ``(path, title, html)`` for up to ``tries`` draws, skipping namespace
+    pages and the front page. Reads under the library lock one page at a
     time, never across the search."""
-    from zimi.previews import _extract_preview_thumbnail
     from zimi.search import _meta_title_re, random_entry
 
-    z = _record(name)
-    project, lang = _project(z), _language(z)
-    role = ROLES.get(project, "article")
-    main = z.get("main_path") or ""
+    main = _record(name).get("main_path") or ""
     archive = _archive(name)
     seed = int(hashlib.md5(("%s|%s" % (name, day)).encode()).hexdigest()[:12], 16)
     rng = random.Random(seed)
-    fallback, seen = None, set()
-    for _ in range(PICK_TRIES):
+    seen = set()
+    for _ in range(tries):
         with _srv._zim_lock:
             got = random_entry(archive, max_attempts=4, rng=rng)
         if not got:
@@ -493,9 +491,22 @@ def _work_pick(name, day):
         seen.add(path)
         with _srv._zim_lock:
             page = _read_page(archive, path)
-        if not page:
-            continue
-        path, title, html = page
+        if page:
+            yield page
+
+
+def _work_pick(name, day):
+    """One wiki's pick for a day: the first of the day's pages
+    (_pages_of_day) that suits the wiki's role (with a picture, where the
+    role has one)."""
+    from zimi.previews import _extract_preview_thumbnail
+
+    z = _record(name)
+    project, lang = _project(z), _language(z)
+    role = ROLES.get(project, "article")
+    archive = _archive(name)
+    fallback = None
+    for path, title, html in _pages_of_day(name, day, role, PICK_TRIES):
         pick, good = _judge(role, name, lang, path, title.replace("_", " "), html)
         if not pick:
             continue
@@ -517,6 +528,46 @@ def pick(name, day):
     offer, None when it could not be read (not kept, so asked again next
     time)."""
     return _kept(_pick_cache, _key(name, day), lambda: _work_pick(name, day))
+
+
+# A Wiktionary's words of the day beyond its word of the day (the
+# Dictionary's More words shelf), and the random pages read to find them.
+MORE_WORDS = 8
+MORE_WORDS_TRIES = 48
+
+
+def _work_words(name, day):
+    lang = _language(_record(name))
+    out = []
+    for path, title, html in _pages_of_day(name, day, "word", MORE_WORDS_TRIES):
+        got, _ = _judge("word", name, lang, path, title.replace("_", " "), html)
+        if got:
+            out.append(
+                {k: got[k] for k in ("path", "title", "blurb", "kick") if got.get(k)}
+            )
+            if len(out) > MORE_WORDS:
+                break
+    return out
+
+
+def words(name, day):
+    """A Wiktionary's words for the day YYYYMMDD, chosen as its word of the
+    day is (the same pages in the same order, so the first is that word):
+    ``[{path, title, blurb?, kick?}]``, up to MORE_WORDS + 1. [] for a ZIM
+    that is not a Wiktionary or a day that cannot be asked for; None when
+    it could not be read (not kept). Kept per copy per day."""
+    if project_of_name(name) != "wiktionary" or not day_open(day):
+        return []
+    return _kept(_words_cache, _key(name, day), lambda: _work_words(name, day))
+
+
+def words_by_chance(name):
+    """Words chosen as the day's are, from a seed of chance instead of the
+    day (the Dictionary's Shuffle): ``[{path, title, blurb?, kick?}]``.
+    Not kept."""
+    if project_of_name(name) != "wiktionary":
+        return []
+    return _work_words(name, "chance|%d" % random.getrandbits(48))
 
 
 # How many of a Wikipedia's events Today shows (wiki.html's OTD_SHOWN): the
@@ -620,7 +671,9 @@ def _picture_size(archive, name, url):
     if not url.startswith(prefix):
         return {}
     try:
-        size = image_size(archive.get_entry_by_path(url[len(prefix) :]).get_item().content)
+        size = image_size(
+            archive.get_entry_by_path(url[len(prefix) :]).get_item().content
+        )
     except Exception:
         return {}
     return {"width": size[0], "height": size[1]} if size else {}
@@ -830,6 +883,7 @@ def _warm(day, names):
     try:
         for name in names:
             _day_of(name, day)
+            words(name, day)
     finally:
         with _lock:
             _warming.discard(day)
@@ -871,11 +925,15 @@ def warm_daily():
     time.sleep(WARM_DELAY)
     while True:
         try:
-            if "wiki" in _srv.apps_shown():
+            # Zimipedia reads every wiki's day; the Dictionary alone, the
+            # Wiktionaries' words.
+            shown = _srv.apps_shown()
+            if "wiki" in shown or "dictionary" in shown:
                 names = [
                     z["name"]
                     for z in _srv._zim_list_cache or []
                     if z.get("kind") == "wiki"
+                    and ("wiki" in shown or _project(z) == "wiktionary")
                 ]
                 if names:
                     _start_warm(_today().strftime("%Y%m%d"), names)
@@ -1276,5 +1334,6 @@ def _reset_for_tests():
         _otd_cache.clear()
         _extra_cache.clear()
         _front_cache.clear()
+        _words_cache.clear()
         _inflight.clear()
         _warming.clear()

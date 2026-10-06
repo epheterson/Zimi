@@ -60,7 +60,43 @@
   .ipas .ipr { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
   .ipas .more-ipa { border: 0; background: none; padding: 2px 0; color: var(--text2); font: inherit; font-size: 12.5px; cursor: pointer; text-align: start; }
   .ipas .acc { font-size: 12px; color: var(--text2); min-width: 0; }
-  .novoice { font-size: 12.5px; color: var(--text2); }
+  /* Tapped, and the word is on its way: the sound waves breathe until it is heard. */
+  .spk.busy { cursor: progress; }
+  .spk.busy svg path + path { animation: spk-wait 1s ease-in-out infinite; }
+  @keyframes spk-wait { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .spk.busy svg path + path { animation: none; opacity: .45; } }
+  .novoice, .voffer { font-size: 12.5px; color: var(--text2); }
+  .voffer { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+  .vget { border: 0; background: none; padding: 6px 0; margin: -6px 0; font: inherit; color: var(--amber); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  /* A voice on its way: a thin bar in the Download's colour, and how far. */
+  .vbar { width: 64px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; flex: none; }
+  .vbar i { display: block; height: 100%; background: var(--amber); border-radius: 2px; transition: width .9s linear; }
+  .vpct { font-variant-numeric: tabular-nums; min-width: 3.2em; }
+  /* Say and its voices: one pill split in two, the caret opening a menu of
+     every voice that can say the word (apps.css .menu, the shell's). */
+  .split { position: relative; display: inline-flex; }
+  .split.two > .spk[data-say] { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .spk.caret { min-width: 30px; padding: 0 8px 0 6px; border-start-start-radius: 0; border-end-start-radius: 0; position: relative; border-inline-start: 1px solid rgba(255,255,255,.35); }
+  .spk.caret::after { content: ''; position: absolute; inset-block: -5px; inset-inline: -2px -8px; } /* a 44px target */
+  .spk.caret svg { width: 14px; height: 14px; }
+  /* The caret open or pressed lights the whole joined pill, both halves, the
+     way Say lights when it plays: one control, not half of one. */
+  .split:has(> .caret[aria-expanded="true"]), .split:has(> .caret:active) { border-radius: 17px; box-shadow: 0 0 0 4px var(--amber-glow); }
+  .split:has(> .caret[aria-expanded="true"]) > .spk, .split:has(> .caret:active) > .spk { filter: brightness(1.12); }
+  .split > .menu { top: calc(100% + 6px); inset-inline-start: 0; }
+  .menu .menu-item { gap: 10px; padding: 0 14px; }
+  .menu .menu-item svg { width: 15px; height: 15px; flex: none; color: var(--text2); }
+  .menu .menu-item .vname { flex: 1; }
+  .menu .menu-item .vdef { font-size: 11px; color: var(--text2); }
+  .menu .menu-item[data-sheet] .vname { padding-inline-start: 25px; } /* under the names, past the icons */
+  .menu .menu-item.on, .menu .menu-item.on svg { color: var(--amber); }
+  .menu-item.busy svg path + path { animation: spk-wait 1s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .menu-item.busy svg path + path { animation: none; opacity: .45; } }
+  /* The front's door to Settings > Languages, where the voices are: quiet, at the top, a 44px target. */
+  .front-top { display: flex; justify-content: flex-end; margin: -6px 0 2px; }
+  .vdoor { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-inline-end: -10px; border: 0; border-radius: 22px; background: none; color: var(--text2); cursor: pointer; }
+  .vdoor:hover, .vdoor:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+  .vdoor svg { width: 20px; height: 20px; }
   .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--text2); margin: -6px 0 14px; }
   .facts b { font-weight: 600; color: var(--text2); margin-inline-end: 4px; }
 
@@ -110,6 +146,13 @@
   .wotd .p { font: italic 14px/1.3 var(--serif); color: var(--text2); }
   .wotd .b { font-size: 14.5px; line-height: 1.5; margin: 8px 0 0; unicode-bidi: plaintext; }
   .wotd .s { font-size: 11.5px; color: var(--text2); margin: 10px 0 0; }
+  /* The card's box; its links and Say inside it carry no box of their own. */
+  .wotd-box { padding: 18px 18px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); margin: 0 0 26px; }
+  .wotd-box:hover, .wotd-box:focus-within { border-color: var(--amber); }
+  .wotd-box .wotd { padding: 0; border: 0; border-radius: 0; background: none; margin: 0; }
+  .wotd-box .wotd:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .wotd-say { margin: 10px 0 2px; }
+  .cloud .ml { margin-inline-start: 6px; font-size: 11px; color: var(--text2); }
   .shelf-h h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
   .dicts { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text2); }
   .dicts div { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
@@ -152,9 +195,11 @@ var STR = strings({ title: 'Dictionary', word_of_day: 'Word of the Day', recent:
   etymology: 'Etymology', translations: 'Translations', all_translations: 'All {n} translations', fewer_translations: 'Only my languages',
   synonyms: 'Synonyms', antonyms: 'Antonyms', homophones: 'Homophones', rhymes: 'Rhymes',
   hyphenation: 'Hyphenation', other_languages: 'In other languages', from: 'From {source}', say: 'Say it', say_word: 'Say “{word}”',
-  recording: 'Recording', no_voice: 'No {lang} voice on this device', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
+  recording: 'Recording', no_voice: 'No {lang} voice on this device',
+  voice_offer: 'Clearer voice for {lang}:', voice_offer_none: 'Voice for {lang}:', voice_download: 'Download ({mb} MB)', voice_downloading: 'Downloading the voice for {lang}', voice_failed: 'Couldn\'t download the voice',
+  voices_menu: 'Voices', voice_device: 'Device', voices_more: 'Voices…', voice_default: 'default', engine_kokoro: 'Natural', engine_piper: 'Piper', engine_say: 'System', engine_espeak: 'Basic', not_found: 'No dictionary here has “{word}”.', near: 'Did you mean',
   empty: 'No Wiktionary installed yet.', more: '{n} more', load_failed: 'Couldn\'t look this up.', also: 'Also', hint: 'Type a word in the box above to look it up.',
-  entries: '{n} words', retry: 'Retry', catalog: 'Browse the catalog' });
+  more_words: 'More words', shuffle: 'Shuffle', entries: '{n} words', retry: 'Retry', cancel: 'Cancel', catalog: 'Browse the catalog' });
 
 // ── pure parts (tests/test_dictionary_page.cjs runs these) ───────────────
 var WORDS_SHOWN = 14;     // of a list of words, before "n more"
@@ -164,6 +209,9 @@ var SAVED_SHOWN = 30;
 var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is given this long
 var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
 var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
+var VOICE_POLL_MS = 1000; // how often a page asks how a voice download is going: the bar moves
+var WARM_ENGINES = ['kokoro', 'piper']; // the server's voices that load a model, worth loading before the first tap
+var BYTES_PER_MB = 1000 * 1000; // as Zimi's sizes count
 
 // A Wiktionary's code for a language as a speech engine knows it. English
 // Wiktionary names Mandarin cmn and Cantonese yue; voices are zh-CN and
@@ -315,10 +363,35 @@ function pickToday(words, langs) {
   for (var i = 0; i < langs.length; i++) for (var j = 0; j < words.length; j++) if (primaryOf(words[j].lang) === langs[i]) return words[j];
   return words[0];
 }
+// The front's other words: the reader's languages taken in turn (so each
+// has a say), then the rest, never the word of the day, each word once.
+var MORE_SHOWN = 8;
+function pickMore(words, langs, skip) {
+  var buckets = {}, order = [], seen = {};
+  if (skip) seen[skip] = 1;
+  (words || []).forEach(function(x) {
+    if (!x || !x.w || seen[x.w]) return;
+    seen[x.w] = 1;
+    var p = primaryOf(x.lang);
+    if (!buckets[p]) { buckets[p] = []; order.push(p); }
+    buckets[p].push(x);
+  });
+  var mine = langs.filter(function(l) { return buckets[l]; });
+  var rest = order.filter(function(l) { return mine.indexOf(l) < 0; });
+  var out = [];
+  [mine, rest].forEach(function(group) {
+    for (var i = 0, took = true; took && out.length < MORE_SHOWN; i++) {
+      took = false;
+      group.forEach(function(l) { if (buckets[l][i] && out.length < MORE_SHOWN) { out.push(buckets[l][i]); took = true; } });
+    }
+  });
+  return out;
+}
 
 // ── views ────────────────────────────────────────────────────────────────
-var LANGS = readerLangs(STR.lang, (typeof navigator !== 'undefined' && navigator.languages) || []);
-var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null;
+// Zimi's language, then your languages (Settings > Languages), else the browser's.
+var LANGS = readerLangs(STR.lang, (STR.yours && STR.yours.length ? STR.yours : (typeof navigator !== 'undefined' && navigator.languages)) || []);
+var _home = null, _stack = [{ v: 'home' }], _seq = 0, _words = {}, _today = null, _shuffled = null;
 function $(id) { return document.getElementById(id); }
 function cur() { return _stack[_stack.length - 1]; }
 var FAILED = { failed: true };
@@ -442,22 +515,60 @@ function renderHome() {
     $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
     return;
   }
-  var html = '';
+  var html = '<div class="front-top"><button type="button" class="vdoor" data-sheet aria-label="' + esc(STR.voices_menu) + '" hidden>' + SPEAKER + '</button></div>';
   var w = _today && _today !== FAILED ? pickToday(_today.words, LANGS) : null;
   if (w) {
     var src = h.wiktionaries.filter(function(x) { return x.name === w.zim; })[0];
-    html += '<a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '"><div class="k">' + esc(STR.word_of_day) + '</div>' +
-      '<div class="w" lang="' + esc(w.lang) + '">' + esc(w.w) + '</div>' + (w.pos ? '<div class="p">' + esc(w.pos) + '</div>' : '') +
-      (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>';
+    // The word of the day is said where it stands (Eric, 2026-10-03: "Say
+    // button should be on dictionary home hero too"): beside the card's
+    // link, not inside it, so a tap on Say is not a tap on the word.
+    // The card is one box: the word and its line link to the word, Say sits
+    // under the word as on the word's own page, and the definition below
+    // links on.
+    var link = '<a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '">';
+    html += '<div class="wotd-box">' + link + '<div class="k">' + esc(STR.word_of_day) + '</div>' +
+      '<div class="w" lang="' + esc(w.lang) + '">' + esc(w.w) + '</div>' + (w.pos ? '<div class="p">' + esc(w.pos) + '</div>' : '') + '</a>' +
+      (speechTag(w.lang) ? '<div class="say wotd-say">' + sayHtml(w.w, w.lang) + '</div>' : '') +
+      ((w.blurb || src) ? link + (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>' : '') +
+      '</div>';
   } else {
     html += '<p class="hint">' + esc(STR.hint) + '</p>';
   }
+  html += moreHtml(w);
   html += cloudOf(recentWords(), STR.recent);
   html += cloudOf(savedWords(), STR.saved_words);
   html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.sources) + '</h2></div><div class="dicts">' + h.wiktionaries.map(function(x) {
     return '<div>' + zimIcon(x.name) + '<span>' + esc(x.title) + '</span><span class="n">' + esc(fill(STR.entries, { n: Number(x.entries || 0).toLocaleString(STR.lang) })) + '</span></div>';
   }).join('') + '</div></section>';
   $('view').innerHTML = html;
+  wireSpeech();
+}
+// More words: today's (or a shuffled handful), each opening the word, with
+// its language named when it is not Zimi's.
+function moreHtml(today) {
+  var words = _shuffled || (_today && _today !== FAILED ? pickMore(_today.more, LANGS, today && today.w) : []);
+  if (!words.length) return '';
+  return '<section class="shelf more-words"><div class="shelf-h"><h2>' + esc(STR.more_words) + '</h2>' +
+    '<button type="button" class="all" onclick="shuffleWords(this)">' + esc(STR.shuffle) + '</button></div><div class="cloud">' +
+    words.map(function(x) {
+      var other = primaryOf(x.lang) !== primaryOf(STR.lang) ? '<span class="ml">' + esc(langName(x.lang)) + '</span>' : '';
+      return '<a class="w" href="' + esc(wordUrl(x.w)) + '" data-w="' + esc(x.w) + '"><span lang="' + esc(x.lang) + '">' + esc(x.w) + '</span>' + other + '</a>';
+    }).join('') + '</div></section>';
+}
+function fillMore() {
+  get('/dictionary/random?langs=' + encodeURIComponent(LANGS.join(','))).then(function(r) {
+    if (r !== FAILED && r.words && r.words.length && !_shuffled) _shuffled = pickMore(r.words, LANGS, '');
+    if (_shuffled && cur().v === 'home') renderHome();
+  });
+}
+function shuffleWords(b) {
+  if (b.disabled) return;
+  b.disabled = true; b.setAttribute('aria-busy', 'true');
+  get('/dictionary/random?langs=' + encodeURIComponent(LANGS.join(','))).then(function(r) {
+    if (r !== FAILED && r.words && r.words.length) _shuffled = pickMore(r.words, LANGS, '');
+    if (cur().v === 'home') renderHome();
+    else { b.disabled = false; b.removeAttribute('aria-busy'); }
+  });
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
 
@@ -560,6 +671,7 @@ function langHtml(g, i, open, d) {
   return '<details class="lang" id="lg' + i + '"><summary class="lang-h"><h2>' + esc(name) + '</h2><span class="peek">' + esc(firstSense(g)) + '</span></summary>' + body + '</details>';
 }
 var SPEAKER = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>';
+var CARET = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></svg>';
 // How a language sounds: the word said (a recording when the ZIM has one,
 // else this device's voice for the language), then the IPA by accent, each
 // accent with its own voice where the device has one for its region.
@@ -572,8 +684,9 @@ function soundHtml(g, word) {
         (a.accent ? '<span>' + esc(a.accent) + '</span>' : i ? '' : '<span>' + esc(STR.recording) + '</span>') + '</button>';
     }).join('') + '</div>';
   } else if (speechTag(code)) {
-    html += '<div class="say"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + mainLabel + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
-      '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span></div>';
+    html += '<div class="say">' + sayHtml(word, code) +
+      '<span class="novoice" data-novoice="' + esc(code) + '" hidden>' + esc(fill(STR.no_voice, { lang: langName(code, groupName(g)) })) + '</span>' +
+      '<span class="voffer" data-offer="' + esc(code) + '" data-name="' + esc(groupName(g)) + '" hidden></span></div>';
   }
   if (s.ipa.length) {
     // A few accents, the rest a tap away: English "water" has eight.
@@ -639,6 +752,12 @@ function wordsHtml(title, items, code) {
     (rest > 0 ? '<button type="button" onclick="moreWords(\'' + id + '\')">' + esc(fill(STR.more, { n: rest })) + '</button>' : '') + '</div></div>';
 }
 var _wl = 0, _lists = {};
+// Say and its voices: the button, its caret and the menu the caret opens.
+function sayHtml(word, code) {
+  return '<span class="split"><button type="button" class="spk" data-say="' + esc(word) + '" data-code="' + esc(code) + '" data-accent="" aria-label="' + esc(fill(STR.say_word, { word: word })) + '">' + SPEAKER + '<span>' + esc(STR.say) + '</span></button>' +
+    '<button type="button" class="spk caret" data-voices="' + esc(code) + '" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(STR.voices_menu) + '" hidden>' + CARET + '</button>' +
+    '<span class="menu" role="menu" aria-label="' + esc(STR.voices_menu) + '" hidden></span></span>';
+}
 function moreIpa(b) { b.parentNode.querySelectorAll('.ipr[hidden]').forEach(function(r) { r.hidden = false; }); b.remove(); wireSpeech(); }
 function moreWords(id) {
   var l = _lists[id], el = $(id);
@@ -672,78 +791,463 @@ function allTranslations(on) {
 }
 
 // ── speech ───────────────────────────────────────────────────────────────
+// A word is said by the server when it can (zimi/voices.py: a WAV played by
+// an <audio> element, which is media, so an iPhone on silent still plays
+// it, and it sounds the same on every device), else by this device's voice.
+// Eric, 2026-10-03: "If it sounds clearer and is more accurate that might
+// be better than letting the system do whatever."
 function synth() { try { return window.speechSynthesis || null; } catch (e) { return null; } }
-function voices() { var s = synth(); try { return s ? s.getVoices() : []; } catch (e) { return []; } }
-// Each speaker is shown only where this device can say the word in its
-// language; where it cannot, the button gives way to a line that says so.
-// An accent's own button only where its region has a voice of its own.
+// None when the person switched this device's voices off (Settings > Voices).
+function voices() { var s = synth(); if (!voiceOn('device')) return []; try { return s ? s.getVoices() : []; } catch (e) { return []; } }
+// Through the shell's authedFetch when it is there, so an admin signed in
+// by token is known as one and may fetch a voice.
+function authed(url, opts) {
+  try { if (window.parent !== window && typeof window.parent.authedFetch === 'function') return window.parent.authedFetch(url, opts); } catch (e) {}
+  return fetch(url, opts);
+}
+// What the server can say (/dictionary/voices), fetched once with the page:
+// {langs: {en: {engine, regions}}, offers: {fr: {tag, bytes}}, downloading, can_change}.
+var _server = null;
+// The server's name for a word's language, and the region an accent (or the
+// tag) asks for.
+function serverLang(code) { return primaryOf(speechTag(code)); }
+function sayRegion(code, accent) { return accentRegion(accent) || regionOf(speechTag(code)); }
+// Whether the server says this button's word: the language, and for an
+// accent's own button, that region's voice.
+function serverRow(code) { return (_server && _server.langs && _server.langs[serverLang(code)]) || null; }
+function serverSays(b) {
+  var code = b.getAttribute('data-code'), row = serverRow(code), engine = b.getAttribute('data-engine');
+  if (!row || !speechTag(code)) return false;
+  if (engine) return (row.engines || []).indexOf(engine) >= 0;
+  if (!b.hasAttribute('data-exact')) return true;
+  var region = sayRegion(code, b.getAttribute('data-accent'));
+  return !!region && row.regions.indexOf(region) >= 0;
+}
+function deviceSays(b, vs) {
+  var c = pickVoice(vs, b.getAttribute('data-code'), b.getAttribute('data-accent'));
+  return !!c && (!b.hasAttribute('data-exact') || c.exact);
+}
+// Each speaker is shown where the server or this device can say the word in
+// its language; where neither can, the button gives way to a line that says
+// so. An accent's own button only where its region has a voice of its own.
 function wireSpeech() {
   var vs = voices();
-  document.querySelectorAll('[data-say]').forEach(function(b) {
-    var c = pickVoice(vs, b.getAttribute('data-code'), b.getAttribute('data-accent'));
-    var ok = !!c && (!b.hasAttribute('data-exact') || c.exact);
+  document.querySelectorAll('[data-say]:not([data-engine])').forEach(function(b) {
+    var ok = !!speakUrl(b) || deviceSays(b, vs);
     b.hidden = !ok;
     if (!b.hasAttribute('data-exact')) {
-      var note = b.parentNode.querySelector('[data-novoice]');
-      if (note) note.hidden = ok || (!vs.length && _voiceWaiting);
+      var note = b.closest('.say').querySelector('[data-novoice]');
+      if (note) note.hidden = ok || !_server || (!vs.length && _voiceWaiting);
     }
   });
+  document.querySelectorAll('[data-offer]').forEach(offerPaint);
+  document.querySelectorAll('[data-voices]').forEach(caretPaint);
+  document.querySelectorAll('.vdoor').forEach(function(b) { b.hidden = !_server; });
+  warmVoices(LANGS.concat(Array.prototype.map.call(document.querySelectorAll('[data-say]'), function(b) { return b.getAttribute('data-code'); })));
 }
+// The server loads a downloaded voice once and keeps it (a NAS took up to
+// 13 s a word when each started it afresh): ask it to load the voices this
+// page's languages use, once each, before the first tap. It fetches nothing.
+var _warmed = {};
+function warmVoices(codes) {
+  var langs = [];
+  codes.forEach(function(code) {
+    var tag = speechTag(code), row = serverRow(code);
+    // Once per language and voice: a download's poll does not warm it again,
+    // a new voice for the language does.
+    var key = tag + ' ' + (row && row.engine);
+    if (!tag || !row || _warmed[key] || WARM_ENGINES.indexOf(row.engine) < 0) return;
+    _warmed[key] = true;
+    langs.push(tag);
+  });
+  // The words on the page are said now too, ahead of a tap (a NAS takes
+  // seconds a word): the server keeps them, and Say plays them at once.
+  var words = [], seen = {};
+  document.querySelectorAll('[data-say]:not([data-exact]):not([data-engine])').forEach(function(b) {
+    var code = b.getAttribute('data-code'), text = b.getAttribute('data-say'), tag = speechTag(code), mine = myVoice(code);
+    var key = tag + '\n' + text + '\n' + mine;
+    if (!tag || !serverRow(code) || mine === 'device' || seen[key] || _presaid[key] || words.length >= PRESAY_MAX) return;
+    seen[key] = _presaid[key] = true;
+    words.push({ text: text, lang: tag, engine: mine || undefined });
+  });
+  if (langs.length || words.length) voicePost('/dictionary/voices/warm', { langs: langs, words: words });
+}
+var PRESAY_MAX = 3; // as voices.PRESAY_MAX: the words a page has said ahead
+var _presaid = {};  // asked once each: wireSpeech runs again and again
+// Say's voices, behind the caret beside it: every voice that can say the
+// word (the server's engines, then this device's own), "default" beside
+// the one Say plays (a tick read as stuck), then Voices… (Settings >
+// Languages, a language's voice on each row). Each is a listen; which voice
+// Say plays is the last one picked here, else the server's default. Eric, 2026-10-03: "A lil dropdown on the say button".
+function mainOf(caret) { return caret.parentNode.querySelector('[data-say]'); }
+function voicesFor(caret) {
+  var code = caret.getAttribute('data-voices'), word = mainOf(caret).getAttribute('data-say'), row = serverRow(code);
+  var list = ((row && row.engines) || []).filter(function(e) { return !_missed[speakAddress(word, code, '', e)]; });
+  if (pickVoice(voices(), code, '')) list.push('device');
+  return list;
+}
+function caretPaint(caret) {
+  var two = !mainOf(caret).hidden && voicesFor(caret).length > 1;
+  caret.hidden = !two;
+  caret.parentNode.classList.toggle('two', two);
+  if (!two) closeMenu(caret);
+}
+function voiceName(e) { return e === 'device' ? STR.voice_device : STR['engine_' + e] || e; }
+function openMenu(caret) {
+  closeMenus();
+  var menu = caret.nextElementSibling, main = mainOf(caret), code = caret.getAttribute('data-voices');
+  var list = voicesFor(caret), mine = myVoice(code);
+  var word = main.getAttribute('data-say'), def = list.indexOf(mine) >= 0 ? mine : speakUrl(main) ? serverRow(code).engine : 'device';
+  menu.innerHTML = list.map(function(e) {
+    return '<button type="button" class="menu-item" role="menuitem" tabindex="-1"' + (e === def ? ' data-default' : '') + ' data-say="' + esc(word) +
+      '" data-code="' + esc(code) + '" data-accent="" data-engine="' + esc(e) + '">' + SPEAKER + '<span class="vname">' + esc(voiceName(e)) + '</span>' +
+      (e === def ? '<span class="vdef">' + esc(STR.voice_default) + '</span>' : '') + '</button>';
+  }).join('') + (_server
+    ? '<div class="menu-sep" role="separator"></div><button type="button" class="menu-item" role="menuitem" tabindex="-1" data-sheet><span class="vname">' + esc(STR.voices_more) + '</span></button>'
+    : '');
+  menu.hidden = false;
+  caret.setAttribute('aria-expanded', 'true');
+  var items = menuItems(menu), on = items.filter(function(i) { return i.hasAttribute('data-default'); })[0];
+  (on || items[0]).focus();
+}
+function closeMenu(caret, refocus) {
+  var menu = caret.nextElementSibling;
+  if (menu.hidden) return;
+  menu.hidden = true;
+  caret.setAttribute('aria-expanded', 'false');
+  if (refocus) caret.focus();
+}
+function closeMenus() { document.querySelectorAll('[data-voices][aria-expanded="true"]').forEach(function(c) { closeMenu(c); }); }
+function menuItems(menu) { return Array.prototype.slice.call(menu.querySelectorAll('.menu-item')); }
+// The menu's keys, as the shell's menus have them: arrows, Home and End move,
+// Escape closes and gives focus back to the caret, Tab leaves.
+document.addEventListener('keydown', function(e) {
+  var t = e.target, caret = t.closest && t.closest('[data-voices]');
+  if (caret && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); openMenu(caret); return; }
+  var menu = t.closest && t.closest('.menu');
+  if (!menu) return;
+  caret = menu.previousElementSibling;
+  var items = menuItems(menu), i = items.indexOf(t), n = items.length;
+  var to = { ArrowDown: (i + 1) % n, ArrowUp: (i - 1 + n) % n, Home: 0, End: n - 1 }[e.key];
+  if (to !== undefined) { e.preventDefault(); items[to].focus(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeMenu(caret, true); }
+  else if (e.key === 'Tab') closeMenu(caret);
+});
 var _voiceWaiting = true;
 (function() {
   var s = synth();
   if (s && 'onvoiceschanged' in s) s.addEventListener('voiceschanged', function() { _voiceWaiting = false; wireSpeech(); });
   setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
 })();
+// While a voice downloads, the page asks how it is going until it is done
+// (this page's tap or another's: a page opened mid-download picks it up),
+// then says the word with the new voice.
+var _voicePoll = null;
+function loadVoices() {
+  return authed('/dictionary/voices').then(function(r) { return r.ok ? r.json() : null; })
+    .catch(function() { return null; })
+    .then(function(d) {
+      _server = ownVoices(d || { langs: {}, offers: {} });
+      _missed = {};
+      wireSpeech();
+      clearTimeout(_voicePoll);
+      if (_server.downloading && _server.downloading.tag) _voicePoll = setTimeout(loadVoices, VOICE_POLL_MS);
+      return _server;
+    });
+}
+// A clearer voice for a language the server says only with a lesser engine
+// (or not at all), offered to whoever may fetch it: a quiet line under the
+// word. The server offers only where no downloaded voice says the language
+// (Kokoro, one download, for its eight); Never and ZIMI_OFFLINE leave it
+// nothing to offer.
+function offerFor(code) {
+  if (!_server || !_server.can_change) return null;
+  return (_server.offers || {})[serverLang(code)] || null;
+}
+var _pct = null;
+function pct(f) {
+  try {
+    _pct = _pct || new Intl.NumberFormat(STR.lang || undefined, { style: 'percent', maximumFractionDigits: 0 });
+    return _pct.format(f);
+  } catch (e) { return Math.floor(f * 100) + '%'; }
+}
+function barWidth(f) { return (f * 100).toFixed(1) + '%'; }
+// The line's states: offered, downloading (a bar that moves, and Cancel),
+// failed (Retry), or gone. Where this device has no voice for the language
+// either, the download is not a clearer voice: it is the voice, and it
+// says what the "no voice" line would have said, and what to do about it.
+function offerPaint(el) {
+  var code = el.getAttribute('data-offer'), offer = offerFor(code), dl = (_server && _server.downloading) || {};
+  var name = langName(code, el.getAttribute('data-name') || code);
+  var spk = el.parentNode.querySelector('[data-say]'), none = !spk || spk.hidden;
+  var state = !offer ? '' : dl.tag === offer.tag ? 'dl' : dl.error === offer.tag ? 'failed' : dl.tag ? '' : 'offer';
+  var done = dl.total ? Math.min(1, (dl.done || 0) / dl.total) : 0;
+  // Still downloading: the bar moves; nothing is redrawn under the finger.
+  if (state === 'dl' && el.getAttribute('data-state') === 'dl') {
+    el.querySelector('.vbar i').style.width = barWidth(done);
+    el.querySelector('.vbar').setAttribute('aria-valuenow', Math.floor(done * 100));
+    el.querySelector('.vpct').textContent = pct(done);
+    return;
+  }
+  // Its parts, spaced by the line's gap (and by a space, for a screen reader).
+  var parts = [];
+  if (state === 'dl') {
+    parts = ['<span>' + esc(fill(STR.voice_downloading, { lang: name })) + '</span>',
+      '<span class="vbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.floor(done * 100) + '"><i style="width:' + barWidth(done) + '"></i></span>',
+      '<span class="vpct">' + esc(pct(done)) + '</span>', '<button type="button" class="vget" data-cancel>' + esc(STR.cancel) + '</button>'];
+  } else if (state === 'failed') {
+    parts = ['<span>' + esc(STR.voice_failed) + '</span>', '<button type="button" class="vget" data-get="' + esc(offer.tag) + '">' + esc(STR.retry) + '</button>'];
+  } else if (state === 'offer') {
+    parts = ['<span>' + esc(fill(none ? STR.voice_offer_none : STR.voice_offer, { lang: name })) + '</span>',
+      '<button type="button" class="vget" data-get="' + esc(offer.tag) + '">' + esc(fill(STR.voice_download, { mb: Math.round(offer.bytes / BYTES_PER_MB) })) + '</button>'];
+  }
+  var html = parts.join(' ');
+  el.innerHTML = html;
+  el.hidden = !html;
+  el.setAttribute('data-state', state);
+  var note = el.parentNode.querySelector('[data-novoice]');
+  if (note && html) note.hidden = true;
+}
+// The download runs on the server. The line shows it from the tap; the
+// server's answer then has the last word.
+function voicePost(path, body) {
+  return authed(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r) { return r.ok; }, function() { return false; });
+}
+function getVoice(tag) {
+  var offer = null, offers = (_server && _server.offers) || {};
+  Object.keys(offers).forEach(function(k) { if (offers[k].tag === tag) offer = offers[k]; });
+  _server.downloading = { tag: tag, done: 0, total: offer ? offer.bytes : 0 };
+  wireSpeech();
+  voicePost('/manage/voices/download', { lang: tag }).then(function(ok) {
+    return loadVoices().then(function(d) {
+      // Refused (another voice is downloading, the setting changed, the
+      // server is gone): said so, with Retry.
+      if (!ok && !(d.downloading && d.downloading.tag)) { d.downloading = { error: tag }; wireSpeech(); }
+    });
+  });
+}
+function cancelVoice() {
+  _server.downloading = {};
+  wireSpeech();
+  voicePost('/manage/voices/cancel', {}).then(loadVoices);
+}
+// What is playing: {a: the <audio>, b: its button, busy: not started yet}.
 var _playing = null, _utterance = null;
-// iPhone: the ring switch on silent mutes a page's sound unless the page
-// asks for playback, as a media player does (Safari 16.4+; elsewhere a no-op).
-function wantPlayback() { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
-function say(b) {
+function wantPlayback() {
+  [window, window.parent].forEach(function(w) { try { if (w.navigator.audioSession) w.navigator.audioSession.type = 'playback'; } catch (e) {} });
+}
+// A speaker's look: busy from the tap until the sound starts (a server
+// voice's first word can take seconds), on while it is heard.
+function mark(b, busy, on) {
+  b.classList.toggle('busy', busy);
+  b.classList.toggle('on', on);
+  if (busy) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy');
+}
+// The server's address for this button's word, or '' when it is the device's.
+function speakUrl(b) {
+  if (!serverSays(b)) return '';
+  var code = b.getAttribute('data-code'), region = b.hasAttribute('data-exact') ? sayRegion(code, b.getAttribute('data-accent')) : '';
+  var url = speakAddress(b.getAttribute('data-say'), code, region, b.getAttribute('data-engine'));
+  return _missed[url] ? '' : url;
+}
+// A word's audio: its language, an accent's region, one engine when the
+// menu asks for one, and the server's voices (stamp): a change is a new address.
+function speakAddress(word, code, region, engine) {
+  return '/dictionary/speak?text=' + encodeURIComponent(word) + '&lang=' + encodeURIComponent(speechTag(code)) +
+    (region ? '&accent=' + encodeURIComponent(region) : '') + (engine ? '&engine=' + encodeURIComponent(engine) : '') +
+    '&v=' + encodeURIComponent((_server && _server.stamp) || '');
+}
+// Words the server could not say after all. The next tap goes straight to
+// this device, inside the tap, where iOS lets speech start; a fresh answer
+// from the server (a voice downloaded) forgets them.
+var _missed = {};
+// The server's audio, started in the tap (iOS plays media only from one).
+// A server that cannot say it after all leaves the word to this device; a
+// voice from the menu that cannot leaves the menu instead, never another
+// voice under its name. ``face`` is the button that shows it working: Say,
+// for a voice from its menu. ``missed``, when given, is what to do instead
+// when the voice cannot say it.
+function say(b, face, missed) {
+  face = face || b;
+  var engine = b.getAttribute('data-engine');
+  if (engine === 'device') { deviceSay(b, face); return; }
+  var url = speakUrl(b);
+  if (!url) { if (missed) missed(); else if (engine) wireSpeech(); else deviceSay(b, face); return; }
+  playUrl(face, url, function() {
+    voiceGone(url).then(function(gone) {
+      if (!gone) { wireSpeech(); return; }
+      _missed[url] = true;
+      if (missed) missed();
+      else if (!engine && deviceSays(b, voices())) deviceSay(b, face); else wireSpeech();
+    });
+  });
+}
+// Why the server's audio did not play, asked of the server (an <audio>
+// element is not told): no voice for it (404), audio made that would not
+// play, or an engine that tried and could not, and the word is this
+// device's from now on; a voice that was busy (503) or a server out of
+// reach, and the voice stays: the next tap asks again.
+function voiceGone(url) {
+  return authed(url + '&check=1').then(function(r) {
+    if (r.status === 404) return true;
+    return r.ok ? r.json().then(function(d) { return !!(d && (d.made || d.failed)); }) : false;
+  }).catch(function() { return false; });
+}
+// The person's voices, from Settings > Voices (kept with their preferences
+// under VOICE_PREFS_KEY, app.js's SK.VOICE_PREFS): {voice: the one Say
+// prefers in every language, '' for the server's; remember: false when a
+// pick in Say's menu should not become it; off: [engines never used]}.
+var VOICE_PREFS_KEY = 'zimi_voice_prefs';
+function voicePrefs() {
+  try { var p = JSON.parse(localStorage.getItem(VOICE_PREFS_KEY) || '{}'); return p && typeof p === 'object' ? p : {}; }
+  catch (e) { return {}; }
+}
+function voiceOn(e) { var off = voicePrefs().off; return !(Array.isArray(off) && off.indexOf(e) >= 0); }
+function rememberVoice(e) {
+  var p = voicePrefs();
+  if (p.remember === false || p.voice === e) return;
+  p.voice = e;
+  try { localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(p)); } catch (x) {}
+}
+// What the server says, less the engines the person switched off; a
+// language whose default was one falls to the next on, named (row.named),
+// and a language with none left is not the server's.
+function ownVoices(d) {
+  Object.keys(d.langs || {}).forEach(function(k) {
+    var row = d.langs[k], list = (row.engines || []).filter(voiceOn);
+    if (!list.length) { delete d.langs[k]; return; }
+    if (!voiceOn(row.engine)) { row.engine = list[0]; row.named = true; }
+    row.engines = list;
+  });
+  return d;
+}
+// The voice Say plays for a language: the preferred one when it says the
+// language here, else the server's default (by name when the person's
+// switches moved it), '' for the server's own choice.
+function myVoice(code) {
+  var row = serverRow(code), pref = voicePrefs().voice || '';
+  if (pref && (pref === 'device' ? !!pickVoice(voices(), code, '') : !!row && row.engines.indexOf(pref) >= 0)) return pref;
+  return row && row.named ? row.engine : '';
+}
+function asVoice(b, engine) {
+  var as = b.cloneNode(true);
+  as.setAttribute('data-engine', engine);
+  return as;
+}
+// Say, in the person's voice; when it cannot say this word after all (the
+// server's 404), the default says it this tap and the preference stays.
+// An accent's own button asks for its region instead.
+function sayMine(b) {
+  var mine = !b.hasAttribute('data-exact') && myVoice(b.getAttribute('data-code'));
+  if (!mine) { say(b); return; }
+  var row = serverRow(b.getAttribute('data-code')), fallback = row && row.named ? asVoice(b, row.engine) : b;
+  var as = asVoice(b, mine);
+  var can = mine === 'device' ? deviceSays(as, voices()) : !!speakUrl(as);
+  if (!can) { say(fallback, b); return; }
+  say(as, b, mine === fallback.getAttribute('data-engine') ? null : function() { say(fallback, b); });
+}
+function deviceSay(b, face) {
+  face = face || b;
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
+  stopPlaying();
   wantPlayback();
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
-  b.classList.add('on');
-  u.onend = u.onerror = function() { b.classList.remove('on'); if (_utterance === u) _utterance = null; };
+  face.classList.add('on');
+  u.onend = u.onerror = function() {
+    face.classList.remove('on');
+    if (_utterance === u) _utterance = null;
+  };
   // Held until it ends: Safari lets an unreferenced utterance be collected
   // mid-word, and its end never comes.
   _utterance = u;
+  if (s.paused) s.resume();
   // iOS drops a speak() that follows cancel() in the same moment: cancel only
   // what is still talking, and speak on the next turn when it was.
   if (s.speaking || s.pending) { s.cancel(); setTimeout(function() { s.speak(u); }, SPEECH_AFTER_CANCEL_MS); }
   else s.speak(u);
 }
-function play(b) {
+function play(b) { playUrl(b, b.getAttribute('data-audio')); }
+function stopPlaying() {
+  var was = _playing;
+  _playing = null;
+  if (!was) return;
+  try { was.a.pause(); } catch (e) {}
+  mark(was.b, false, false);
+}
+// One sound at a time. A second tap while the word is still coming does
+// nothing more; while it is heard, it starts again from the top.
+function playUrl(b, url, failed) {
   wantPlayback();
-  if (_playing) { try { _playing.pause(); } catch (e) {} }
-  var a = new Audio(b.getAttribute('data-audio'));
-  _playing = a;
-  b.classList.add('on');
-  a.onended = a.onerror = a.onpause = function() { b.classList.remove('on'); };
-  a.play().catch(function() { b.classList.remove('on'); });
+  var was = _playing;
+  if (was && was.b === b && was.url === url) {
+    if (!was.busy) { try { was.a.currentTime = 0; was.a.play(); } catch (e) {} }
+    return;
+  }
+  stopPlaying();
+  var s = synth();
+  if (s && (s.speaking || s.pending)) { try { s.cancel(); } catch (e) {} }
+  var a = new Audio(), me = { a: a, b: b, url: url, busy: true };
+  a.setAttribute('playsinline', '');
+  a.src = url;
+  _playing = me;
+  mark(b, true, true);
+  // Each answer counts only while this sound is the one playing, and once:
+  // an error and a refused play() can both report one failure.
+  var mine = function() { return _playing === me; };
+  var done = function() { if (!mine()) return false; _playing = null; mark(b, false, false); return true; };
+  a.onplaying = function() { if (mine()) { me.busy = false; mark(b, false, true); } };
+  a.onended = a.onpause = done;
+  a.onerror = function() { if (done() && failed) failed(); };
+  var p = a.play();
+  if (p && p.catch) p.catch(function(e) { if (done() && !(e && e.name === 'AbortError') && failed) failed(); });
 }
 
 // Every word on the page opens the next; a modified click keeps the link
 // for a new tab.
 document.addEventListener('click', function(e) {
+  var get = e.target.closest && e.target.closest('[data-get]');
+  if (get) { e.preventDefault(); getVoice(get.getAttribute('data-get')); return; }
+  if (e.target.closest && e.target.closest('[data-cancel]')) { e.preventDefault(); cancelVoice(); return; }
+  // A tap anywhere but a menu or its caret closes it.
+  if (!(e.target.closest && e.target.closest('.menu, [data-voices]'))) closeMenus();
+  var caret = e.target.closest && e.target.closest('[data-voices]');
+  if (caret) { e.preventDefault(); if (caret.getAttribute('aria-expanded') === 'true') closeMenu(caret); else openMenu(caret); return; }
+  var door = e.target.closest && e.target.closest('[data-sheet]');
+  // Voices… and the front's speaker: Settings > Languages, in the shell.
+  if (door) { e.preventDefault(); closeMenus(); tell({ zimi: 'voices' }); return; }
+  var item = e.target.closest && e.target.closest('.menu [data-say]');
+  if (item) { e.preventDefault(); say(item, item); rememberVoice(item.getAttribute('data-engine')); return; }
   var sp = e.target.closest && e.target.closest('[data-say],[data-audio]');
-  if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else say(sp); return; }
+  if (sp) { e.preventDefault(); if (sp.hasAttribute('data-audio')) play(sp); else sayMine(sp); return; }
   var a = e.target.closest && e.target.closest('a[data-w]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
   openWord(a.getAttribute('data-w'));
 });
 
+window.addEventListener('message', function(e) {
+  if (e.origin === location.origin && e.data && e.data.zimi === 'voices-changed') loadVoices();
+});
+
 function load() {
   _home = null;
+  loadVoices();
   renderHome();
   get('/dictionary/home').then(function(d) {
     _home = d;
     if (cur().v === 'home') renderHome();
     if (d !== FAILED && d.wiktionaries.length) {
-      get('/dictionary/today?day=' + dayStamp()).then(function(t) { _today = t; if (cur().v === 'home') renderHome(); });
+      get('/dictionary/today?day=' + dayStamp()).then(function(t) {
+        _today = t;
+        // The front always offers more than one word (Eric, 2026-10-04: "I
+        // still want more than one word on dictionary homepage"): when the
+        // day brought none, a handful by chance.
+        if (t === FAILED || !(t.more && t.more.length)) fillMore();
+        if (cur().v === 'home') renderHome();
+      });
     }
   });
   var w = STR.w || '';
@@ -754,7 +1258,7 @@ window.dictCurrent = dictCurrent; window.dictTranslation = dictTranslation;
 window.dictSearch = dictSearch; window.dictGo = dictGo; window.toTrail = toTrail; window.moreWords = moreWords; window.moreIpa = moreIpa;
 // A ZIM without an icon of its own: no broken picture in its place.
 document.addEventListener('error', function(e) { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);
-window.allTranslations = allTranslations; window.goCatalog = goCatalog; window.load = load; window.show = show;
+window.shuffleWords = shuffleWords; window.allTranslations = allTranslations; window.goCatalog = goCatalog; window.load = load; window.show = show;
 // What you keep changed: the front's lists, or the word's Save.
 window.__saved = function() { if (cur().v === 'home') renderHome(); else savedPaint(); };
 window.__top = function() { return _stack.length <= 1; };

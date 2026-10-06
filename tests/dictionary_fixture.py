@@ -58,6 +58,29 @@ def _front(title):
     ).encode()
 
 
+# French words with one sense each: enough for the front's More words.
+MORE_FR = [
+    ("feu", "Dégagement de chaleur et de lumière."),
+    ("terre", "Planète où vivent les humains."),
+    ("lune", "Satellite naturel de la Terre."),
+    ("soleil", "Étoile autour de laquelle tourne la Terre."),
+    ("pierre", "Matière minérale dure et solide."),
+    ("arbre", "Grande plante ligneuse à tronc."),
+    ("vent", "Mouvement naturel de l’air."),
+    ("neige", "Eau congelée qui tombe en flocons."),
+    ("fleur", "Partie colorée d’une plante."),
+    ("nuage", "Amas de gouttelettes en suspension."),
+]
+
+
+def _sense(definition):
+    return (
+        '<html lang="fr"><body><div class="mw-parser-output"><h2 id="Français">'
+        "Français</h2><h3>Nom commun</h3><ol><li>%s</li></ol></div></body></html>"
+        % definition
+    ).encode()
+
+
 def _zim(path, meta, pages, main):
     with Creator(path).config_indexing(True, meta.get("Language", "eng")) as c:
         c.set_mainpath(main)
@@ -108,7 +131,8 @@ def build_library(zdir):
             ),
             ("eau", "eau", page("fr_eau")),
             ("water", "water", page("fr_water")),
-        ],
+        ]
+        + [(w, w, _sense(d)) for w, d in MORE_FR],
         "Wiktionnaire:Page_d’accueil",
     )
     _zim(

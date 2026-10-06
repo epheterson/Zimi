@@ -49,6 +49,7 @@ def data_dir(tmp_path, monkeypatch):
         "ZIMI_OFFLINE",
         "ZIMI_UPDATE_CHECK",
         "ZIMI_SATELLITE_UPDATES",
+        "ZIMI_VOICE_DOWNLOADS",
         "ZIMI_BT",
         "ZIMI_TORRENT",
     ):

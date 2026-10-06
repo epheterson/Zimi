@@ -266,7 +266,9 @@ def test_a_frozen_bundle_uses_the_hosts_platform_first():
 def test_the_spec_leaves_the_gtk_platform_to_the_host_on_linux():
     with open(os.path.join(REPO, "desktop", "zimi_desktop.spec"), encoding="utf-8") as f:
         spec = f.read()
-    assert "a.binaries = _kept + _fallback" in spec and "'/site-packages/' in _src" in spec and "gio_modules" in spec
+    # One split for Zimi and the zimi-voice helper beside it.
+    assert "a.binaries = _split_linux_binaries(a.binaries)" in spec and "return kept + fallback" in spec
+    assert "'/site-packages/' in src" in spec and "gio_modules" in spec
     with open(os.path.join(REPO, "linux", "AppRun"), encoding="utf-8") as f:
         apprun = f.read()
     assert "_internal/fallback" in apprun and "ldconfig -p" in apprun and 'exec "$HERE/Zimi" "$@"' in apprun

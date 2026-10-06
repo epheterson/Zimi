@@ -71,6 +71,11 @@ eq('right to left by the language', ['he', 'ar', 'arz', 'en', 'fr', ''].map(ctx.
 eq('a cut definition ends in an ellipsis, a whole one as it is', [ctx.cutShort('its solid'), ctx.cutShort('A liquid.')], ['its solid…', 'A liquid.']);
 eq('the day asked for is the reader\'s', ctx.dayStamp(new Date(2026, 0, 5)), '20260105');
 eq('the day\'s word in the reader\'s language first', ctx.pickToday([{ w: 'ilma', lang: 'mt' }, { w: 'eau', lang: 'fr' }], ['fr', 'en']).w, 'eau');
+const W = (w, lang) => ({ w: w, lang: lang });
+eq('more words take the reader\'s languages in turn, then the rest, never the day\'s word',
+  ctx.pickMore([W('feu', 'fr'), W('ilma', 'mt'), W('lune', 'fr'), W('cat', 'en'), W('dog', 'en'), W('feu', 'en'), W('sun', 'en')], ['en', 'fr'], 'sun').map(x => x.w),
+  ['cat', 'feu', 'dog', 'lune', 'ilma']);
+eq('more words stop at a handful', ctx.pickMore(Array.from({ length: 20 }, (_, i) => W('w' + i, 'en')), ['en'], '').length, ctx.MORE_SHOWN);
 const g = { entries: [
   { pron: { audio: [], ipa: [{ accent: 'US', ipa: ['/ˈwɔtəɹ/'] }] }, groups: [] },
   { pron: { audio: [{ path: '-/a.ogg' }], ipa: [{ accent: 'US', ipa: ['\\ˈwɑ.ɾɚ\\'] }] }, groups: [] }] };

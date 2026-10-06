@@ -1,0 +1,40 @@
+Voices for the Dictionary's Say: third-party software and voices
+=================================================================
+
+Zimi is MIT-licensed. The speech engines below are separate programs that
+Zimi runs as child processes (the "zimi-voice" helper in the desktop apps,
+or voicehelper.py under Python in Docker and pip installs). Zimi never links
+or imports them. Each keeps its own licence; the full licence texts ship
+beside them (the *.dist-info folders next to zimi-voice in the desktop apps,
+site-packages in Docker and pip installs).
+
+Engines (shipped in the Docker image and the desktop apps)
+----------------------------------------------------------
+Piper (piper-tts)      GPL-3.0-or-later   https://github.com/OHF-Voice/piper1-gpl
+espeak-ng              GPL-3.0-or-later   https://github.com/espeak-ng/espeak-ng
+  (inside piper-tts and espeakng-loader; Debian's espeak-ng in Docker)
+espeakng-loader        MIT                https://github.com/thewh1teagle/espeakng-loader
+phonemizer             GPL-3.0            https://github.com/bootphon/phonemizer
+kokoro-onnx            MIT                https://github.com/thewh1teagle/kokoro-onnx
+misaki                 Apache-2.0         https://github.com/hexgrad/misaki
+onnxruntime            MIT                https://github.com/microsoft/onnxruntime
+jieba                  MIT                https://github.com/fxsjy/jieba
+pypinyin               MIT                https://github.com/mozillazg/python-pinyin
+cn2an                  MIT                https://github.com/Ailln/cn2an
+num2words              LGPL-2.1           https://github.com/savoirfairelinux/num2words
+docopt                 MIT                https://github.com/docopt/docopt
+numpy                  BSD-3-Clause       https://github.com/numpy/numpy
+
+The source of every GPL program above, at the version shipped, is at the
+link beside it; the version is in its .dist-info folder (or Debian's package
+for espeak-ng in Docker). The GPL-3.0 text is piper-tts's COPYING; the
+Apache-2.0 text is misaki's LICENSE.
+
+Voices (downloaded on request, never shipped)
+---------------------------------------------
+Each voice's licence and credit are listed in Zimi under Settings > Server >
+Voices for Dictionary, and pinned in zimi/voices.py. Piper voices come from
+https://huggingface.co/rhasspy/piper-voices; Kokoro-82M (by hexgrad,
+Apache-2.0, https://huggingface.co/hexgrad/Kokoro-82M) from
+https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0.
+Voices under a non-commercial licence, or no stated licence, are not offered.

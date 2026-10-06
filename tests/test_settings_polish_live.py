@@ -78,6 +78,7 @@ def served(tmp_path_factory):
     old_details = books.request_details
     books.request_details = lambda name: None
     books._reset_for_tests()
+    old_dirs = srv.ZIM_DIR, srv.ZIMI_DATA_DIR
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(zdir), str(tmp / "data")
     os.makedirs(srv.ZIMI_DATA_DIR, exist_ok=True)
     srv.load_cache(force=True)
@@ -86,6 +87,9 @@ def served(tmp_path_factory):
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
     books.request_details = old_details
+    # Put the library back, or a later test (test_unit's data-dir defaults)
+    # reads this module's temporary one.
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old_dirs
 
 
 @pytest.fixture
@@ -338,4 +342,61 @@ def test_history_and_saved_are_two_panels(served, phone):
     assert pg.evaluate("() => document.getElementById('history-btn').classList.contains('panel-open')")
     # Nothing in the header crowds the search off a phone.
     assert pg.evaluate("() => document.getElementById('q').getBoundingClientRect().width") >= 100
+    assert not pg.errors, pg.errors
+
+
+def test_three_way_choices_are_selector_rows_that_set_their_setting(served, phone):
+    """Eric, 2026-10-03: "Default download flavor can be a multi selector
+    row"; "upgrade all controls and buttons in settings". The flavor and
+    Check for updates are selector rows like the theme: a tap sets the
+    setting and lights its button; locked, the buttons are disabled."""
+    pg = phone
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector("#ms-flavor-seg", timeout=15000)
+    assert pg.evaluate("() => _getPrefFlavor()") == "full"
+    assert pg.locator("#ms-flavor-seg [role=radio]").count() == 3
+    assert not pg.query_selector("input[name=zimi-flavor]"), "no radio pills left"
+    pg.locator("#ms-flavor-seg [role=radio]").nth(2).tap()
+    assert pg.evaluate("() => localStorage.zimi_pref_flavor") == "mini"
+    lit = pg.eval_on_selector_all(
+        "#ms-flavor-seg [role=radio]", "bs => bs.map(b => b.getAttribute('aria-checked'))"
+    )
+    assert lit == ["false", "false", "true"], lit
+    got = pg.evaluate(
+        """() => { var asked = [], d = document.createElement('div');
+      window._appUpdateSetCheck = m => asked.push(m);
+      d.innerHTML = _appUpdateCheckHtml({ check_mode: 'ask' });
+      document.getElementById('ms-pane').prepend(d);
+      d.querySelectorAll('[role=radio]')[1].click();
+      var locked = document.createElement('div');
+      locked.innerHTML = _appUpdateCheckHtml({ check_mode: 'auto', check_locked: true });
+      return { asked: asked, seg: !!d.querySelector('.app-theme-seg[role=radiogroup]'),
+        on: d.querySelector('[aria-checked=true]').textContent,
+        locked: [...locked.querySelectorAll('button')].every(b => b.disabled),
+        note: locked.querySelector('.ms-hint').textContent }; }"""
+    )
+    assert got["seg"] and got["on"] == "Ask first" and got["asked"] == ["auto"], got
+    assert got["locked"] and "ZIMI_UPDATE_CHECK" in got["note"], got
+    assert pg.evaluate(SMALL_FIELDS) == []
+    assert not pg.errors, pg.errors
+
+
+def test_upnp_sits_under_the_bittorrent_switch(served, phone):
+    """Eric, 2026-10-03: "UPnP toggle should be able to float under on.off bt
+    toggle on mobile to avoid line break". UPnP is in the BitTorrent card's
+    right column, under its switch; the port row is one line."""
+    pg = phone
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-bt-upnp", state="attached", timeout=15000)
+    got = pg.evaluate(
+        """() => { var u = document.getElementById('ms-bt-upnp'), right = u.closest('.share-row-right');
+      var sw = right && right.querySelector('.switch:not(.switch-sm)');
+      var port = document.getElementById('share-port-row');
+      var kids = [...port.querySelectorAll('input, button')].map(e => Math.round(e.getBoundingClientRect().top));
+      return { inRight: !!right, below: sw ? u.getBoundingClientRect().top > sw.getBoundingClientRect().bottom - 1 : false,
+        inPort: !!port.querySelector('#ms-bt-upnp'), oneLine: Math.max(...kids) - Math.min(...kids) <= 4,
+        wide: document.documentElement.scrollWidth }; }"""
+    )
+    assert got["inRight"] and got["below"] and not got["inPort"], got
+    assert got["oneLine"] and got["wide"] <= 390, got
     assert not pg.errors, pg.errors

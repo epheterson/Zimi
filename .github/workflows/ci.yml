@@ -18,6 +18,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A version that reached main is spent: Auto Release tagged it, built its
+  # Docker images and its appcasts. A PR that keeps main's version while that
+  # version is tagged would ship different code under the same number, and
+  # Auto Release would not fire (1.13.0, 2026-10-06). Bump the patch, or label
+  # the PR not-a-release when it truly ships nothing.
+  version:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: A released version is never reused
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          ver() { grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/'; }
+          HEAD_V=$(ver < pyproject.toml)
+          BASE_V=$(git show "origin/${GITHUB_BASE_REF}:pyproject.toml" | ver)
+          case ",$LABELS," in *,not-a-release,*) echo "not-a-release: skipped"; exit 0;; esac
+          if [ "$HEAD_V" = "$BASE_V" ] && git ls-remote --exit-code --tags origin "v$HEAD_V" >/dev/null; then
+            echo "::error::main is already $HEAD_V and v$HEAD_V is tagged. A merged version is spent: bump to the next patch."
+            exit 1
+          fi
+          echo "version $HEAD_V (main $BASE_V): ok"
+
   test:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest

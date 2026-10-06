@@ -239,3 +239,36 @@ var appChrome = (function() {
 var _place = 0;
 function keepPlace() { _place = window.scrollY || 0; }
 function returnToPlace() { window.scrollTo(0, _place); _place = 0; }
+// The shell's loader stays up until the page has drawn what it opened with,
+// not just until the page itself has loaded: an app's data is a fetch away,
+// and between the two the page sat blank. Every fetch started while opening
+// is counted, and so is reading its answer (json, text), each let go a frame
+// after it settles so the page's own draw runs first. When none is left,
+// two frames later (drawn and painted), the page says 'ready'. The shell
+// reads __zimiReady too, in case this comes before its own load handler.
+window.__zimiAppPage = true;
+(function() {
+  var pending = 0, opened = false;
+  function settle() {
+    if (opened || pending) return;
+    opened = true;
+    requestAnimationFrame(function() { requestAnimationFrame(function() {
+      window.__zimiReady = true;
+      tell({ zimi: 'ready' });
+    }); });
+  }
+  function track(p) {
+    if (opened || !p || typeof p.then !== 'function') return p;
+    pending++;
+    var end = function() { requestAnimationFrame(function() { pending--; settle(); }); };
+    p.then(end, end);
+    return p;
+  }
+  var nativeFetch = window.fetch;
+  if (typeof nativeFetch === 'function') window.fetch = function() { return track(nativeFetch.apply(this, arguments)); };
+  if (typeof Response === 'function') ['json', 'text'].forEach(function(k) {
+    var read = Response.prototype[k];
+    Response.prototype[k] = function() { return track(read.apply(this, arguments)); };
+  });
+  window.addEventListener('load', function() { requestAnimationFrame(settle); });
+})();
