@@ -267,18 +267,41 @@ def _lan_client(handler):
     return bool(direct() if direct else handler._is_private_client())
 
 
+def _lan_admin_env():
+    """ZIMI_LAN_ADMIN (or the config file's lan_admin, published into the
+    environment at startup) when someone set it, else None."""
+    raw = os.environ.get("ZIMI_LAN_ADMIN")
+    if raw is None:
+        return None
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _lan_admin_allowed():
     """Whether the operator has said their LAN is their trust boundary.
+
+    The env var or config file when set; else the first-run choice "Anyone on
+    my network" (/manage/access), which only the host or the setup key's
+    holder can make: the same two doors GHSA-5mw2-53vv-9pw6 left for the
+    first password, so no adjacent device can make it for them.
 
     Read fresh rather than cached at import: `zimi config` publishes file
     settings into the environment at startup, and a test that sets it wants it
     to take effect."""
-    return os.environ.get("ZIMI_LAN_ADMIN", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    env = _lan_admin_env()
+    if env is not None:
+        return env
+    return _read_app_update_prefs().get("lan_admin") is True
+
+
+def access_mode():
+    """Who may change settings: open (ZIMI_MANAGE_OPEN), password, lan
+    (anyone directly on the network), or unset (first run: the host, or the
+    setup key, decides)."""
+    if manage_open():
+        return "open"
+    if _get_manage_password_hash():
+        return "password"
+    return "lan" if _lan_admin_allowed() else "unset"
 
 
 def _bootstrap_key_ok(handler):
@@ -4887,6 +4910,8 @@ def handle_manage_get(handler, parsed, params):
             {
                 "has_password": bool(_get_manage_password_hash()),
                 "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
+                "access": access_mode(),
+                "access_env": _lan_admin_env() is not None,
             },
         )
     if parsed.path == "/manage/has-token":
@@ -5831,6 +5856,29 @@ def handle_manage_post(handler, parsed, data):
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled."})
     # Password management — browser only, not accessible via API
+    if parsed.path == "/manage/access":
+        # The first-run choice "Anyone on my network": no password, no
+        # accounts, while internet and proxied clients stay locked out. Made
+        # through the same gate as the first password (the host, or the setup
+        # key the server logged), never by an adjacent device on its own.
+        if data.get("mode") != "lan":
+            return handler._json(400, {"error": "Unknown access mode"})
+        if _lan_admin_env() is not None or manage_open():
+            return handler._json(403, {"error": "Access is set where Zimi is started"})
+        if _get_manage_password_hash():
+            return handler._json(409, {"error": "Remove the password first"})
+        challenge = _manage_auth_challenge(handler)
+        if challenge:
+            return handler._json(*challenge)
+        # Through a reverse proxy the caller is not seen as on the network, so
+        # this choice would lock them out the moment it was made.
+        if not _lan_client(handler):
+            return handler._json(409, {"error": "behind_proxy"})
+        _write_app_update_prefs(lan_admin=True)
+        _clear_setup_key()
+        log.info("Access: anyone on the local network may change settings (first-run choice)")
+        return handler._json(200, {"access": access_mode()})
+
     if parsed.path == "/manage/set-password":
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
@@ -5872,9 +5920,12 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(
                 500, {"error": "Could not save the password (storage is not writable)"}
             )
-        # The setup key's life ends with the bootstrap it existed for.
+        # The setup key's life ends with the bootstrap it existed for, and a
+        # password ends "Anyone on my network".
         if new_pw:
             _clear_setup_key()
+            if _read_app_update_prefs().get("lan_admin"):
+                _write_app_update_prefs(lan_admin=False)
             # A new password ends the sessions the old one opened, and this
             # browser gets a fresh one: it keeps a session, never a password.
             from zimi import users as _users_pw

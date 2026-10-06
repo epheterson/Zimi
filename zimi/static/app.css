@@ -566,11 +566,11 @@
   .ms-user-addbar { margin-top: 16px; }
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
-  .ms-user-add input:not([role="switch"]), .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  .ms-user-add input:not([role="switch"]), .create-field, .access-input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
   /* A checkbox (the allowlist's) is not a text field: the width:100% above
      stretched it across the row. Keep it its own size. */
   .ms-user-add input[type="checkbox"]:not([role="switch"]) { width: auto; padding: 0; accent-color: var(--amber); }
-  .ms-user-add input:not([role="switch"]):focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .ms-user-add input:not([role="switch"]):focus, .create-field:focus, .access-input:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
@@ -1042,6 +1042,13 @@
   /* Management LAN-only notice (passwordless + non-private client, issue #36) */
   .manage-locked-card { max-width: 520px; margin: 32px auto; }
   .manage-locked-card strong { font-size: 15px; }
+  /* First run: who may change settings. The rows are the language
+     checklist's; the inputs and the button share its width. */
+  .access-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+  .access-card .access-rows { margin: 0; }
+  .access-card .lang-pick .share-row-desc { white-space: normal; }
+  .access-card .pw-actions { display: flex; justify-content: flex-end; }
+  .ms-pane > .access-card { margin: 0 0 20px; max-width: none; }
 
   /* ── Tab bar ── */
   /* ── Language selector (globe icon) ── */
@@ -1812,9 +1819,9 @@
   }
   .set-btn:focus-visible, .ms-pane .pill:focus-visible, .ms-pane .ms-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .set-btn:disabled { opacity: 0.45; cursor: default; }
-  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active,
+  .set-btn.primary, .ms-pane .ms-btn-primary, .access-card .ms-btn-primary, .ms-pane .pill.active,
   .ms-pane .manage-btn-action { background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600; }
-  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
+  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .access-card .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
   .ms-pane .manage-btn-action { min-height: var(--set-ctl-h); border-radius: 999px; font-size: 13px; padding: 0 16px; }
   .ms-pane select {
     min-height: var(--set-ctl-h); box-sizing: border-box; padding: 0 30px 0 12px; border-radius: var(--radius);

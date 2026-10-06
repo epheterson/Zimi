@@ -1508,6 +1508,9 @@ let _managePwRequired = false; // server is password-protected and we have no to
 let _managePublicLocked = false;
 let _manageNeedsSetupKey = false;
 let _manageSetupKeyIssued = true;
+// Who may change settings (/manage/has-password's access): password, lan
+// (anyone directly on the network), open, or unset (first run).
+let _manageAccess = '';
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -3113,6 +3116,7 @@ async function _probeManageAuth() {
     // unasked (a slow CI runner caught the gap).
     const h = await hres.json();
     manageEnabled = true;
+    _manageAccess = h.access || '';
     const saved = _readManageToken();
     if (saved) _manageToken = saved;
     if (h.has_password && !_manageToken) {
@@ -12260,24 +12264,7 @@ function _renderManagePublicLocked() {
     return;
   }
   if (_manageNeedsSetupKey) {
-    output.innerHTML =
-      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
-        '<div class="lang-welcome-text">' +
-          '<strong>' + tH('manage_setup_key_title') + '</strong>' +
-          '<p>' + tH('manage_setup_key_body') + '</p>' +
-          '<div class="ms-user-add" style="max-width:340px;margin-top:12px">' +
-            '<input type="text" id="setup-key-input" autocomplete="off" spellcheck="false" ' +
-              'autocapitalize="characters" placeholder="XXXX-XXXX-XXXX">' +
-            '<input type="password" id="setup-pw-input" autocomplete="new-password" ' +
-              'placeholder="' + escAttr(tH('manage_setup_key_pw_ph')) + '" style="margin-top:8px">' +
-            '<div class="pw-actions" style="margin-top:10px">' +
-              '<button class="ms-btn ms-btn-primary" onclick="_submitSetupKey()">' +
-                tH('manage_setup_key_submit') + '</button>' +
-            '</div>' +
-            '<div class="pw-error" id="setup-key-error"></div>' +
-          '</div>' +
-        '</div>' +
-      '</div></div>';
+    output.innerHTML = '<div class="manage-wrap">' + _accessCardHtml(true) + '</div>';
     return;
   }
   output.innerHTML =
@@ -12291,37 +12278,65 @@ function _renderManagePublicLocked() {
     '</div>';
 }
 
-// Spend the setup key: set the first admin password with the key as the
-// bearer authorization the bootstrap gate accepts, then sign in with the
-// password just set. One gesture from a locked remote client to full admin.
-async function _submitSetupKey() {
-  var key = (document.getElementById('setup-key-input') || {}).value || '';
+// First run: who may change settings (#107). Anyone on the network (no
+// password, no accounts; the internet and anything through a proxy stay
+// locked out), or only with a password. The machine running Zimi chooses
+// freely; any other device brings the one-time setup key the server logged,
+// the door GHSA-5mw2-53vv-9pw6 left, so no neighbour can choose for you.
+var _accessPick = 'lan';
+function _accessCardHtml(withKey) {
+  var row = function(mode) {
+    var on = _accessPick === mode;
+    return '<button type="button" class="share-row lang-row lang-pick' + (on ? ' mine' : '') + '" role="radio" data-access="' + mode + '"' +
+      ' aria-checked="' + on + '" onclick="_pickAccess(\'' + mode + '\')"><span class="lang-check">' + (on ? _CHECK_ICON : '') + '</span>' +
+      '<span class="share-row-text"><span class="share-row-title">' + tH('access_' + mode) + '</span>' +
+      '<span class="share-row-desc">' + tH('access_' + mode + '_desc') + '</span></span></button>';
+  };
+  return '<div class="lang-welcome-card manage-locked-card access-card" id="access-card">' +
+    '<div class="lang-welcome-text"><strong>' + tH('access_title') + '</strong>' +
+      (withKey ? '<p>' + tH('access_key_body') + '</p>' : '') + '</div>' +
+    (withKey ? '<input type="text" id="setup-key-input" class="access-input" autocomplete="off" spellcheck="false" autocapitalize="characters"' +
+      ' placeholder="XXXX-XXXX-XXXX" aria-label="' + escAttr(t('access_key_label')) + '">' : '') +
+    '<div class="share-rows set-rows access-rows" role="radiogroup" aria-label="' + escAttr(t('access_title')) + '">' + row('lan') + row('password') + '</div>' +
+    '<input type="password" id="setup-pw-input" class="access-input" autocomplete="new-password" placeholder="' + escAttr(t('manage_setup_key_pw_ph')) + '"' +
+      (_accessPick === 'password' ? '' : ' hidden') + '>' +
+    '<div class="pw-error" id="setup-key-error"></div>' +
+    '<div class="pw-actions"><button type="button" class="ms-btn ms-btn-primary" onclick="_submitAccess(' + !!withKey + ')">' + tH('access_continue') + '</button></div>' +
+    '</div>';
+}
+// In place, so a key or password already typed stays.
+function _pickAccess(mode) {
+  _accessPick = mode;
+  document.querySelectorAll('#access-card [data-access]').forEach(function(b) {
+    var on = b.getAttribute('data-access') === mode;
+    b.classList.toggle('mine', on);
+    b.setAttribute('aria-checked', on);
+    b.querySelector('.lang-check').innerHTML = on ? _CHECK_ICON : '';
+  });
+  var pw = document.getElementById('setup-pw-input');
+  if (pw) { pw.hidden = mode !== 'password'; if (mode === 'password') pw.focus(); }
+}
+async function _submitAccess(withKey) {
+  var key = withKey ? ((document.getElementById('setup-key-input') || {}).value || '').trim() : '';
   var pw = (document.getElementById('setup-pw-input') || {}).value || '';
   var err = document.getElementById('setup-key-error');
-  key = key.trim();
-  if (!key || !pw) {
-    if (err) { err.textContent = tH('manage_setup_key_needboth'); err.style.display = 'block'; }
-    return;
-  }
+  var show = function(k) { if (err) { err.textContent = t(k); err.style.display = 'block'; } };
+  if (withKey && !key) return show('access_need_key');
+  if (_accessPick === 'password' && !pw) return show('access_need_pw');
+  var headers = { 'Content-Type': 'application/json' };
+  if (key) headers['X-Zimi-Setup-Key'] = key;
+  var lan = _accessPick === 'lan';
   try {
-    var res = await fetch('/manage/set-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Zimi-Setup-Key': key },
-      body: JSON.stringify({ password: pw })
+    var res = await fetch(lan ? '/manage/access' : '/manage/set-password', {
+      method: 'POST', headers: headers, body: JSON.stringify(lan ? { mode: 'lan' } : { password: pw })
     });
     if (!res.ok) {
-      if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
-      return;
+      var d = await res.json().catch(function() { return {}; });
+      return show(d.error === 'behind_proxy' ? 'access_behind_proxy' : withKey ? 'manage_setup_key_bad' : 'access_failed');
     }
-    // Password is set; the key is spent. Authenticate with it and enter.
-    _manageNeedsSetupKey = false;
-    _managePublicLocked = false;
-    _manageToken = pw;
-    _saveManageToken(pw);
-    location.reload();
-  } catch (e) {
-    if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
-  }
+  } catch (e) { return show(withKey ? 'manage_setup_key_bad' : 'access_failed'); }
+  if (!lan) { _manageToken = pw; _saveManageToken(pw); }
+  location.reload();
 }
 
 var _manageRenderId = 0;
@@ -12354,7 +12369,8 @@ async function renderManage() {
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
         '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
-        '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>' +
+        // Anyone on the network is the admin: no accounts, so no Users.
+        (_manageAccess === 'lan' ? '' : '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>') +
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
@@ -12528,7 +12544,7 @@ function switchMs(section) {
   var pane = document.getElementById('ms-pane');
   if (!pane) return;
   switch(section) {
-    case 'library': pane.innerHTML = _msLibraryHtml(); break;
+    case 'library': pane.innerHTML = (_manageAccess === 'unset' ? _accessCardHtml(false) : '') + _msLibraryHtml(); break;
     case 'preferences':
       pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _paintLangPrefs(); _renderVoicePrefs(); _msScrollPending(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
@@ -14482,7 +14498,11 @@ function _msServerHtml() {
     var hasToken = results[1].has_token;
     var el = document.getElementById('ms-security');
     if (!el) return;
-    var sh = '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
+    // Anyone on the network: the way back to a password (Users, where it
+    // otherwise lives, is hidden without accounts).
+    var sh = _manageAccess === 'lan' ? '<div class="mc-row"><span class="mc-label">' + tH('access_row') + '</span><span class="mc-value">' +
+      '<button class="pill" onclick="managePassword()">' + tH('set_password') + '</button></span></div>' : '';
+    sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
       sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
         '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>';
