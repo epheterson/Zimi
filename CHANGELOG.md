@@ -5,12 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.13.0] - 2026-10-04
+## [1.13.0] - 2026-10-06
 
 ### Added
 
 - Dictionary: one word across every installed Wiktionary, a word of the day and more words each day, and Say on every word.
-- Voices: Say speaks with the server's voices, offline, and plays with the ringer switch on silent. Download Natural (8 languages) or Clear voices per language; each engine has its own switch and a sample to hear.
+- Voices: Say speaks with the server's voices, offline, and plays with the ringer switch on silent. Natural (7 languages, one download) and Clear (per language) come on demand; Basic is built in.
+- Settings > Voices: a default voice, a switch and a sample for each voice, how fast each one is, and which voice says which of your languages.
 - Say on Discover's word and quote of the day.
 - Create a ZIM from a folder on the server: pick any part of it, with optional `zimi.txt` metadata.
 - `zimi-mcp`: the MCP server and search as their own small package; `zimi mcp` serves three tools by default.
@@ -19,9 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - PDFs: Zimi's own reader with contents, page thumbnails, a page at a time (swipe or tap a side), first and last page, the page from a list, two-page spreads, rotate, About this PDF, highlights, and Print that prints the file itself.
 - Wikisource works and textbooks open in the book reader; math renders.
 - Back returns to where you came from: a search, an app.
-- Your languages: one setting for the catalog, search, the library's order, Discover, the Dictionary and Zimipedia; picking one in Zimipedia sets Zimi's language too.
+- Your languages: one checklist in Settings for the catalog, search, the library's order, Discover, the Dictionary, Zimipedia and the language menu; Show languages off hides them everywhere.
 - Library sorts: Largest, and By type.
-- Wiktionary pages open in the Dictionary; tap the top bar to go to the top.
+- Wiktionary pages open in the Dictionary; tap the top bar to go to the top, in every view.
+- Settings > Creator shows each capture engine's version.
 - A failed ZIM creation keeps its log, opened from Recent ([#105](https://github.com/epheterson/Zimi/discussions/105)).
 - The AppImage updates itself.
 
@@ -30,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Save is one verb in every app; Like is separate.
 - Searches send far fewer requests, and searches from your own network are never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
 - Text size is five steps; line spacing and margins are no longer settings.
-- Settings: one look for every control, choices as selector rows.
+- Settings: one look for every control, choices as selector rows, clearer section titles.
 - Search: words found are bold, and a map's places come after the reading.
 - Sign-in comes before Manage opens.
 - Download names: `Zimi-<version>-<os>-<arch>`.
@@ -53,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Subreddit captures ask Arctic Shift again when it is busy ([#105](https://github.com/epheterson/Zimi/discussions/105)).
 - In an iPhone home-screen app, Open in browser copies the link.
 - Language filters off no longer hides Zimi's own language menu.
+- A map reopens where you left it, not where it first opened.
+- Open articles in apps is off when every app is.
 
 ## [1.12.0] - 2026-09-30
 
