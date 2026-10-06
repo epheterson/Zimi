@@ -1230,7 +1230,6 @@
   "create_warn_spa": "Zimi ne peut pas capturer cette page.",
   "create_zim": "Créer un ZIM",
   "creator_alive": "Moteur d’enregistrement",
-  "creator_alive_parts": "Navigateur + convertisseur",
   "creator_reddit": "Moteur de subreddits",
   "creator_browser": "Moteur de navigateur",
   "creator_col_name": "Nom",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "Afficher les langues",
   "languages_all": "Toutes les langues ({n})",
   "voices_get_mb": "Obtenir ({mb} Mo)",
-  "show_langs_desc": "Les pastilles de langue au-dessus de la bibliothèque et du catalogue, et le menu des langues de la barre du haut. Désactivé, Zimi reste en {lang}.",
+  "show_langs_desc": "Les pastilles de langue au-dessus de la bibliothèque et du catalogue, et le menu des langues de la barre du haut.",
   "languages_line": "Langues : {langs}",
   "languages_hint": "Les langues cochées figurent dans le menu des langues de la barre du haut et passent en premier dans le catalogue, la recherche, Découvrir, le Dictionnaire et Zimipédia. La langue de Zimi est toujours cochée.",
-  "lang_in_use": "Utilisée",
   "voices_cell_on": "{lang}, {voice} : prête",
   "voices_cell_rm": "{lang}, {voice} : téléchargée, supprimer",
   "voices_cell_get": "{lang}, {voice} : télécharger ({mb} Mo)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}, {voice} : indisponible",
   "voices_remove_lang": "Supprimer la voix {voice} pour {lang} ?",
   "voices_desc_say": "Les voix Mac de ce serveur, entendues sur tous les appareils",
-  "voices_desc_device": "Les voix intégrées à l'appareil que vous tenez"
+  "voices_desc_device": "Les voix intégrées à l'appareil que vous utilisez",
+  "voices_remove_natural": "Supprimer les voix Naturelles ? Ces langues partent avec : {langs}."
 }

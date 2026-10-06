@@ -1230,7 +1230,6 @@
   "create_warn_spa": "Zimi kann diese Seite nicht erfassen.",
   "create_zim": "ZIM erstellen",
   "creator_alive": "Aufzeichnungs-Engine",
-  "creator_alive_parts": "Browser + Konverter",
   "creator_reddit": "Subreddit-Engine",
   "creator_browser": "Browser-Engine",
   "creator_col_name": "Name",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "Sprachen anzeigen",
   "languages_all": "Alle Sprachen ({n})",
   "voices_get_mb": "Laden ({mb} MB)",
-  "show_langs_desc": "Sprach-Pillen über Bibliothek und Katalog und das Sprachmenü in der oberen Leiste. Aus: Zimi bleibt auf {lang}.",
+  "show_langs_desc": "Sprach-Pillen über Bibliothek und Katalog und das Sprachmenü in der oberen Leiste.",
   "languages_line": "Sprachen: {langs}",
   "languages_hint": "Angehakte Sprachen stehen im Sprachmenü der oberen Leiste und kommen zuerst in Katalog, Suche, Entdecken, Wörterbuch und Zimipedia. Zimis eigene Sprache ist immer angehakt.",
-  "lang_in_use": "Aktiv",
   "voices_cell_on": "{lang}, {voice}: bereit",
   "voices_cell_rm": "{lang}, {voice}: heruntergeladen, entfernen",
   "voices_cell_get": "{lang}, {voice}: herunterladen ({mb} MB)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}, {voice}: nicht verfügbar",
   "voices_remove_lang": "Die Stimme {voice} für {lang} entfernen?",
   "voices_desc_say": "Die Mac-Stimmen dieses Servers, auf jedem Gerät zu hören",
-  "voices_desc_device": "Die Stimmen, die in dein Gerät eingebaut sind"
+  "voices_desc_device": "Die Stimmen des Geräts, das Sie gerade benutzen",
+  "voices_remove_natural": "Natürliche Stimmen entfernen? Diese Sprachen gehen mit: {langs}."
 }

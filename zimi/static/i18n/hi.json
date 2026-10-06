@@ -1230,7 +1230,6 @@
   "create_warn_spa": "Zimi इस पेज को कैप्चर नहीं कर सकता।",
   "create_zim": "ZIM बनाएँ",
   "creator_alive": "रिकॉर्डिंग इंजन",
-  "creator_alive_parts": "ब्राउज़र + कन्वर्टर",
   "creator_reddit": "सबरेडिट इंजन",
   "creator_browser": "ब्राउज़र इंजन",
   "creator_col_name": "नाम",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "भाषाएँ दिखाएँ",
   "languages_all": "सभी भाषाएं ({n})",
   "voices_get_mb": "पाएँ ({mb} MB)",
-  "show_langs_desc": "लाइब्रेरी और कैटलॉग के ऊपर भाषा पिल्स, और ऊपरी बार का भाषा मेनू। बंद होने पर Zimi {lang} में ही रहता है।",
+  "show_langs_desc": "लाइब्रेरी और कैटलॉग के ऊपर भाषा पिल्स, और ऊपरी बार का भाषा मेनू।",
   "languages_line": "भाषाएँ: {langs}",
   "languages_hint": "चुनी गई भाषाएँ ऊपरी बार के भाषा मेनू में होती हैं और कैटलॉग, खोज, डिस्कवर, शब्दकोश और ज़िमीपीडिया में पहले आती हैं। Zimi की अपनी भाषा हमेशा चुनी रहती है।",
-  "lang_in_use": "उपयोग में",
   "voices_cell_on": "{lang}, {voice}: तैयार",
   "voices_cell_rm": "{lang}, {voice}: डाउनलोड हो चुकी, हटाएँ",
   "voices_cell_get": "{lang}, {voice}: डाउनलोड करें ({mb} MB)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}, {voice}: उपलब्ध नहीं",
   "voices_remove_lang": "{lang} के लिए {voice} आवाज़ हटाएँ?",
   "voices_desc_say": "इस सर्वर के Mac की आवाज़ें, हर डिवाइस पर सुनाई देती हैं",
-  "voices_desc_device": "आपके हाथ में मौजूद डिवाइस में बनी आवाज़ें"
+  "voices_desc_device": "जिस डिवाइस का आप उपयोग कर रहे हैं उसकी अंतर्निहित आवाज़ें",
+  "voices_remove_natural": "प्राकृतिक आवाज़ें हटाएँ? इनके साथ ये भाषाएँ भी जाएँगी: {langs}।"
 }

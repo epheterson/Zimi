@@ -836,9 +836,8 @@ function _langRowHtml(l) {
   return '<button type="button" class="share-row lang-row lang-pick' + (on ? ' mine' : '') + '" role="checkbox" data-lang="' + c + '"' +
     ' aria-checked="' + on + '"' + (cur ? ' aria-disabled="true"' : '') + ' onclick="_togglePrefLanguage(\'' + c + '\')">' +
     '<span class="lang-check">' + (on ? _CHECK_ICON : '') + '</span>' +
-    '<span class="share-row-text"><span class="share-row-title" lang="' + c + '">' + esc(l.name) + '</span>' +
-    (named !== l.name ? '<span class="share-row-desc">' + esc(named) + '</span>' : '') + '</span>' +
-    (cur ? '<span class="lang-cur">' + tH('lang_in_use') + '</span>' : '') + '</button>';
+    '<span class="share-row-text"><span class="share-row-title">' + esc(named) + '</span>' +
+    (named !== l.name ? '<span class="share-row-desc" lang="' + c + '">' + esc(l.name) + '</span>' : '') + '</span></button>';
 }
 // The fold's line, and the list under it while it is open; nothing of
 // either while languages are not shown.
@@ -1054,7 +1053,13 @@ function _voiceCell(lang, e) {
   if (e === _DEVICE_VOICE) return { s: _deviceVoiceLangs().indexOf(lang) >= 0 ? 'on' : 'none' };
   var dl = _voicesDl(), row = _voiceRowFor(lang);
   if (row && (row.engines || []).indexOf(e) >= 0) {
-    return e === 'piper' && row.remove && _voicesHere.can_change && !dl.tag ? { s: 'rm', tag: row.remove } : { s: 'on' };
+    if (e === 'piper' && row.remove && _voicesHere.can_change && !dl.tag) return { s: 'rm', tag: row.remove };
+    // Natural, one shared download, goes the same way (Eric, 2026-10-05:
+    // "Maybe we allow also removing natural the same way"); its question
+    // says every language goes with it.
+    var shared = e === 'kokoro' && _voiceNatural();
+    if (shared && shared.installed && _voicesHere.can_change && !dl.tag) return { s: 'rm', tag: shared.tag, shared: true };
+    return { s: 'on' };
   }
   var offer = null, nat = e === 'kokoro' && _voiceNatural();
   if (nat && nat.runnable && !nat.installed && _naturalLangs(nat).indexOf(lang) >= 0) offer = nat;
@@ -1078,20 +1083,14 @@ function _vgAllLangs() {
 // The rows shown first: Zimi's language and the others checked under Show
 // languages, any language with a Clear voice downloaded for it, and the
 // library's languages (its Wiktionaries' among them) that a voice here says.
+// Eric, 2026-10-05: "Filter the voices list to the checked list above."
 function _vgMainLangs(flavors) {
-  var zimi = [_uiLangPrimary()], rest = [];
+  var zimi = [_uiLangPrimary()];
   if (_langsShown()) _offeredUiLangs().forEach(function(l) { if (zimi.indexOf(l.code) < 0) zimi.push(l.code); });
-  var add = function(c) { c = _normLang(c); if (c && zimi.indexOf(c) < 0 && rest.indexOf(c) < 0 && _vgCovered(c, flavors)) rest.push(c); };
-  ((_voicesHere && _voicesHere.langs) || []).forEach(function(r) { if (r.remove) add(r.lang); });
-  (zimsCache || []).forEach(function(z) {
-    _parseLangs(z.language).forEach(add);
-    var m = _WIKTIONARY_LANG_RE.exec(z.name || '');
-    if (m) add(m[1]);
-  });
-  return zimi.concat(_vgByName(rest));
+  return zimi;
 }
 function _vgByName(codes) {
-  return codes.slice().sort(function(a, b) { return _langOwnName(a).localeCompare(_langOwnName(b)); });
+  return codes.slice().sort(function(a, b) { return (_langDisplayName(a) || a).localeCompare(_langDisplayName(b) || b); });
 }
 function _vgCellHtml(lang, e, name) {
   var x = _voiceCell(lang, e), off = _voicePrefs().off.indexOf(e) >= 0;
@@ -1103,7 +1102,9 @@ function _vgCellHtml(lang, e, name) {
   } else if (x.s === 'rm') {
     inner = '<button type="button" class="vg-btn vg-rm" data-s="rm"' + a +
       ' oncontextmenu="event.preventDefault();this.classList.add(\'show-x\')"' +
-      ' onclick="' + escAttr('_vgRemove(this, ' + JSON.stringify(x.tag) + ', ' + JSON.stringify(t('voices_remove_lang', { voice: _voiceEngineName(e), lang: name })) + ')') + '">' +
+      ' onclick="' + escAttr('_vgRemove(this, ' + JSON.stringify(x.tag) + ', ' + JSON.stringify(x.shared
+        ? t('voices_remove_natural', { langs: _naturalLangs(_voiceNatural()).map(function(c) { return _langDisplayName(c) || c; }).join(', ') })
+        : t('voices_remove_lang', { voice: _voiceEngineName(e), lang: name })) + ')') + '">' +
       '<span class="vg-dot"></span><span class="vg-x" aria-hidden="true">✕</span></button>';
   } else {
     inner = '<span class="vg-dot" data-s="' + x.s + '" role="img"' + a + '></span>';
@@ -1116,8 +1117,10 @@ function _vgRowHtml(lang, flavors, state) {
   var busy = !state.bar && dl.tag && flavors.some(function(e) { return _voiceCell(lang, e).s === 'busy'; });
   if (busy) state.bar = true;
   return '<div class="vg-row" role="row" data-lang="' + escAttr(lang) + '">' +
-    '<span class="vg-name" role="rowheader"><span class="vg-own" lang="' + escAttr(lang) + '">' + esc(own) + '</span>' +
-    (named !== own ? '<span class="vg-zimi">' + esc(named) + '</span>' : '') + '</span>' +
+    // In Zimi's language, the language's own name small after it (Eric,
+    // 2026-10-05: "You know my language").
+    '<span class="vg-name" role="rowheader"><span class="vg-own">' + esc(named) + '</span>' +
+    (named !== own ? '<span class="vg-zimi" lang="' + escAttr(lang) + '">' + esc(own) + '</span>' : '') + '</span>' +
     flavors.map(function(e) { return _vgCellHtml(lang, e, named); }).join('') + '</div>' +
     (busy ? '<div class="lang-dl vg-dl">' + _voiceBarHtml() +
       (_voicesHere && _voicesHere.can_change ? _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel')) : '') + '</div>' : '');
@@ -13087,9 +13090,10 @@ function _browserParts(d) {
   var m = /Chromium ([^,\s]+)(?:, Playwright ([^,\s]+))?/.exec((d.browser_ready && d.browser_version) || '');
   return m ? { chromium: m[1], playwright: m[2] || '' } : null;
 }
+// Its versions are the line under it (Eric, 2026-10-05: "Drop the 153 the
+// versions are already below, right-align").
 function _creatorBrowserCell(d) {
-  var p = _browserParts(d);
-  return _creatorVersionedHtml(p ? _engineLink('chromium', p.chromium.split('.')[0]) : '', d.browser_ready);
+  return _creatorStateHtml(d.browser_ready);
 }
 function _creatorBrowserDetail(d) {
   var p = _browserParts(d);
@@ -13100,10 +13104,7 @@ function _creatorBrowserDetail(d) {
 function _creatorRedditCell(d) {
   return _creatorVersionedHtml(d.reddit_version ? _engineLink('arcticzim', d.reddit_version, d.reddit_version) : '', d.reddit_ready);
 }
-// The recording engine is the other two together: no version of its own.
-function _creatorAliveCell(d) {
-  return '<span class="app-update-quiet">' + tH('creator_alive_parts') + '</span> ' + _creatorStateHtml(d.alive_ready);
-}
+
 
 // A capture-default switch row, wired to the admin-only POST half of
 // /manage/creator so the choice persists server-side.
@@ -13138,7 +13139,6 @@ function _creatorHtml(d) {
     '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarCell(d) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
-    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorAliveCell(d) + '</span>') +
     _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorRedditCell(d) + '</span>') +
     '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
@@ -13265,7 +13265,6 @@ function _patchCreatorSection(d) {
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
   put('ms-cr-reddit', _creatorRedditCell(d));
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
-  put('ms-cr-alive', _creatorAliveCell(d));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {
     var input = document.getElementById('ms-cr-' + key);

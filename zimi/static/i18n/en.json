@@ -1230,7 +1230,6 @@
   "create_warn_spa": "Zimi cannot capture this page.",
   "create_zim": "Create a ZIM",
   "creator_alive": "Recording engine",
-  "creator_alive_parts": "Browser + converter",
   "creator_reddit": "Subreddit engine",
   "creator_browser": "Browser engine",
   "creator_col_name": "Name",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "Show languages",
   "languages_all": "All languages ({n})",
   "voices_get_mb": "Get ({mb} MB)",
-  "show_langs_desc": "Language pills over the library and the catalog, and the language menu in the top bar. Off, Zimi stays in {lang}.",
+  "show_langs_desc": "Language pills over the library and the catalog, and the language menu in the top bar.",
   "languages_line": "Languages: {langs}",
   "languages_hint": "Checked languages are in the top bar's language menu and lead the catalog, search, Discover, the Dictionary and Zimipedia. Zimi's own language is always checked.",
-  "lang_in_use": "In use",
   "voices_cell_on": "{lang}, {voice}: ready",
   "voices_cell_rm": "{lang}, {voice}: downloaded, remove",
   "voices_cell_get": "{lang}, {voice}: download ({mb} MB)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}, {voice}: not available",
   "voices_remove_lang": "Remove the {voice} voice for {lang}?",
   "voices_desc_say": "This server's Mac voices, heard on every device",
-  "voices_desc_device": "The voices built into the device you're holding"
+  "voices_desc_device": "The voices built into the device you're using",
+  "voices_remove_natural": "Remove Natural voices? These languages go with it: {langs}."
 }

@@ -1230,7 +1230,6 @@
   "create_warn_spa": "Zimi 无法抓取此页面。",
   "create_zim": "创建 ZIM",
   "creator_alive": "录制引擎",
-  "creator_alive_parts": "浏览器 + 转换器",
   "creator_reddit": "子版块引擎",
   "creator_browser": "浏览器引擎",
   "creator_col_name": "名称",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "显示语言",
   "languages_all": "所有语言（{n}）",
   "voices_get_mb": "获取（{mb} MB）",
-  "show_langs_desc": "图书馆和目录上方的语言标签，以及顶栏的语言菜单。关闭后，Zimi 保持为{lang}。",
+  "show_langs_desc": "图书馆和目录上方的语言标签，以及顶栏的语言菜单。",
   "languages_line": "语言：{langs}",
   "languages_hint": "勾选的语言会出现在顶栏的语言菜单中，并在目录、搜索、发现、词典和 Zimipedia 中优先显示。Zimi 当前的语言始终勾选。",
-  "lang_in_use": "使用中",
   "voices_cell_on": "{lang}，{voice}：可用",
   "voices_cell_rm": "{lang}，{voice}：已下载，移除",
   "voices_cell_get": "{lang}，{voice}：下载（{mb} MB）",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}，{voice}：不可用",
   "voices_remove_lang": "移除{lang}的{voice}语音？",
   "voices_desc_say": "此服务器 Mac 上的语音，在每台设备上都能听到",
-  "voices_desc_device": "你手中设备自带的语音"
+  "voices_desc_device": "你正在使用的设备内置的语音",
+  "voices_remove_natural": "删除自然语音？这些语言也会一并删除：{langs}。"
 }

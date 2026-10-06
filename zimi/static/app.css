@@ -2590,7 +2590,6 @@
   .lang-pick:not([aria-disabled]):hover .lang-check { border-color: var(--amber); }
   .lang-pick[aria-disabled] { cursor: default; }
   .lang-pick[aria-disabled] .lang-check { opacity: 0.55; }
-  .lang-cur { flex: none; font-size: 11px; font-weight: 600; color: var(--text3); }
   .lang-dl { flex-basis: 100%; padding-inline-start: 30px; margin-top: -4px; }
   .lang-dl .dl-progress { margin-top: 4px; height: 3px; }
   .set-btn.confirming { color: var(--error); border-color: var(--error); background: none; }
@@ -3866,4 +3865,4 @@
 /* Settings > Creator: an engine's version is a quiet link to what it is. */
 .cr-ver { color: var(--text2); text-decoration: none; border-bottom: 1px dotted var(--border); font-variant-numeric: tabular-nums; }
 .cr-ver:hover, .cr-ver:focus-visible { color: var(--amber); border-bottom-color: var(--amber); }
-.cr-detail { margin: -4px 0 8px; font-size: 12px; }
+.cr-detail { margin: -4px 0 8px; font-size: 12px; text-align: end; }

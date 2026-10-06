@@ -1019,7 +1019,6 @@ def test_show_languages_off_hides_the_pills_the_top_bar_and_the_list(
     assert first == "ms-lang-filters", "Show languages leads the section"
     row = "label.set-row:has(%s)" % SHOW
     assert pg.text_content(row + " .share-row-title") == "Show languages"
-    assert "stays in English" in pg.text_content(row + " .share-row-desc")
     assert pg.is_checked(SHOW) and pg.is_visible(FOLD)
     pills = "() => _renderLangPills({ en: 2, fr: 1 }, 'x')"
     assert "catalog-lang-row" in pg.evaluate(pills)
@@ -1082,9 +1081,9 @@ def test_the_checklist_is_the_top_bar_menu_and_zimis_own_stays_checked(
     ]
     assert all(m for _c, m, _l in rows), "every one checked"
     assert [c for c, _m, locked in rows if locked] == ["en"]
-    assert pg.text_content(ROW % "en" + " .lang-cur") == "In use"
-    assert pg.text_content(ROW % "fr" + " .share-row-title") == "Français"
-    assert pg.text_content(ROW % "fr" + " .share-row-desc") == "French"
+    # In Zimi's language, the language's own name small after it.
+    assert pg.text_content(ROW % "fr" + " .share-row-title") == "French"
+    assert pg.text_content(ROW % "fr" + " .share-row-desc") == "Français"
     assert len(pg.evaluate(OFFERED)) == 10
     # Down to English and Español.
     for c in ("fr", "de", "pt", "ru", "zh", "ar", "hi", "he"):
@@ -1166,8 +1165,8 @@ def test_the_voices_grid_shows_what_is_here_what_can_come_and_what_cannot(
         "hi",
         "he",
     ]
-    assert pg.text_content(GRID + " .vg-row[data-lang='fr'] .vg-own") == "Français"
-    assert pg.text_content(GRID + " .vg-row[data-lang='fr'] .vg-zimi") == "French"
+    assert pg.text_content(GRID + " .vg-row[data-lang='fr'] .vg-own") == "French"
+    assert pg.text_content(GRID + " .vg-row[data-lang='fr'] .vg-zimi") == "Français"
     assert (
         pg.get_attribute(_cell(pg, "fr", "Clear"), "aria-label")
         == "French, Clear: downloaded, remove"
@@ -1275,7 +1274,7 @@ def test_natural_is_one_download_for_its_languages(
 ):
     """Natural (Kokoro) is one download for its languages: each of their
     cells offers it, with the Natural row's Get; one fills them all, and
-    it is removed on its row (a second tap), never per cell."""
+    it is removed on its row or from any of its cells."""
     open_eau, errors = piper_here
     runner = tv.fake_piper(tmp_path)
     monkeypatch.setattr(voices, "kokoro_command", lambda: [runner, "kokoro"])
@@ -1295,14 +1294,16 @@ def test_natural_is_one_download_for_its_languages(
     assert cells["de"][0] == "none", cells
     pg.click(_cell(pg, "es", "Natural"))
     _until(lambda: voices.KOKORO_TAG in voices.installed(), "Natural never came")
+    # Downloaded, each of its languages can take it away again, the question
+    # naming them all (Eric, 2026-10-05: "allow also removing natural the
+    # same way").
     pg.wait_for_function(
-        "() => document.querySelector(\"#ms-voices-wrap .vg-row[data-lang='zh'] .vg-cell > *\").dataset.s === 'on'",
-        timeout=5000,
+        "() => document.querySelector(\"#ms-voices-wrap .vg-row[data-lang='zh'] .vg-cell > *\").dataset.s === 'rm'",
+        timeout=DL_WAIT_MS,
     )
     cells = pg.evaluate(GRID_CELLS)
     for c in ("en", "es", "fr", "hi", "pt", "zh"):
-        assert cells[c][0] == "on", (c, cells)
-    assert not pg.query_selector(GRID + " .vg-rm"), "Natural goes on its row"
+        assert cells[c][0] == "rm", (c, cells)
     tv.install("fr")
     _settings_voices(pg, served)
     pg.eval_on_selector(GRID, "e => e.scrollIntoView({ block: 'start' })")

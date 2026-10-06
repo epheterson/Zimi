@@ -1230,7 +1230,6 @@
   "create_warn_spa": "لا يستطيع Zimi التقاط هذه الصفحة.",
   "create_zim": "إنشاء ملف ZIM",
   "creator_alive": "محرّك التسجيل",
-  "creator_alive_parts": "المتصفح + المحوّل",
   "creator_reddit": "محرّك المنتديات الفرعية",
   "creator_browser": "محرّك المتصفّح",
   "creator_col_name": "الاسم",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "إظهار اللغات",
   "languages_all": "كل اللغات ({n})",
   "voices_get_mb": "تنزيل ({mb} ميغابايت)",
-  "show_langs_desc": "أزرار اللغات فوق المكتبة والفهرس، وقائمة اللغات في الشريط العلوي. عند الإيقاف يبقى Zimi باللغة {lang}.",
+  "show_langs_desc": "أزرار اللغات فوق المكتبة والفهرس، وقائمة اللغات في الشريط العلوي.",
   "languages_line": "اللغات: {langs}",
   "languages_hint": "اللغات المحددة تظهر في قائمة اللغات في الشريط العلوي وتتقدم في الفهرس والبحث والاستكشاف والقاموس وزيميبيديا. لغة Zimi نفسها محددة دائمًا.",
-  "lang_in_use": "قيد الاستخدام",
   "voices_cell_on": "{lang}، {voice}: جاهز",
   "voices_cell_rm": "{lang}، {voice}: تم التنزيل، إزالة",
   "voices_cell_get": "{lang}، {voice}: تنزيل ({mb} م.ب)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}، {voice}: غير متاح",
   "voices_remove_lang": "إزالة صوت {voice} للغة {lang}؟",
   "voices_desc_say": "أصوات Mac على هذا الخادم، تُسمع على كل جهاز",
-  "voices_desc_device": "الأصوات المدمجة في الجهاز الذي بين يديك"
+  "voices_desc_device": "الأصوات المدمجة في الجهاز الذي تستخدمه",
+  "voices_remove_natural": "إزالة الأصوات الطبيعية؟ ستُزال معها هذه اللغات: {langs}."
 }

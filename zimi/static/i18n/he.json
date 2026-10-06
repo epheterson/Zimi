@@ -1230,7 +1230,6 @@
   "create_warn_spa": "‏Zimi לא יכול ללכוד את הדף הזה.",
   "create_zim": "יצירת ZIM",
   "creator_alive": "מנוע הקלטה",
-  "creator_alive_parts": "דפדפן + ממיר",
   "creator_reddit": "מנוע סאברדיטים",
   "creator_browser": "מנוע דפדפן",
   "creator_col_name": "שם",
@@ -2950,10 +2949,9 @@
   "show_lang_chooser": "הצג שפות",
   "languages_all": "כל השפות ({n})",
   "voices_get_mb": "הורדה ({mb} MB)",
-  "show_langs_desc": "תוויות השפה מעל הספרייה והקטלוג, ותפריט השפות בסרגל העליון. כשכבוי, Zimi נשארת ב{lang}.",
+  "show_langs_desc": "תוויות השפה מעל הספרייה והקטלוג, ותפריט השפות בסרגל העליון.",
   "languages_line": "שפות: {langs}",
   "languages_hint": "השפות המסומנות מופיעות בתפריט השפות שבסרגל העליון ובאות ראשונות בקטלוג, בחיפוש, בגילוי, במילון ובזימיפדיה. השפה של Zimi מסומנת תמיד.",
-  "lang_in_use": "בשימוש",
   "voices_cell_on": "{lang}, {voice}: מוכן",
   "voices_cell_rm": "{lang}, {voice}: הורד, הסרה",
   "voices_cell_get": "{lang}, {voice}: הורדה ({mb} MB)",
@@ -2961,5 +2959,6 @@
   "voices_cell_none": "{lang}, {voice}: לא זמין",
   "voices_remove_lang": "להסיר את הקול {voice} עבור {lang}?",
   "voices_desc_say": "הקולות של ה-Mac בשרת הזה, נשמעים בכל מכשיר",
-  "voices_desc_device": "הקולות המובנים במכשיר שבידך"
+  "voices_desc_device": "הקולות המובנים במכשיר שבו אתם משתמשים",
+  "voices_remove_natural": "להסיר את הקולות הטבעיים? השפות האלה יוסרו איתם: {langs}."
 }
