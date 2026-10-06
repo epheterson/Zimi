@@ -1829,7 +1829,6 @@
   .ms-pane select:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
   .ms-pane select:disabled { opacity: 0.55; cursor: default; }
   .ms-pane .set-rows .set-row { min-height: 54px; box-sizing: border-box; }
-  .ms-pane .ms-section-label { margin-top: 24px; }
   .ms-pane .ms-section-label:first-child { margin-top: 0; }
   @media (pointer: coarse) { .ms-pane { --set-ctl-h: 40px; } }
   .browse-drilldown-header + .maps-source-toggle + .ms-hint, .maps-source-toggle + .ms-hint { margin: 6px 0 14px; }
@@ -1898,8 +1897,11 @@
   .app-theme-btn.active:disabled:hover { color: var(--on-amber); background: var(--amber); }
   .app-theme-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
   .ms-pane .app-theme-btn { min-height: calc(var(--set-ctl-h) - 2px); }
-  .ms-section-label, .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
-  .ms-section-label { margin-bottom: 8px; }
+  .ci-section-label, .hp-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); }
+  /* Every Settings section's title: the text's own colour, a size above the
+     rows it heads, more room above than below (Eric, 2026-10-05: "the titles
+     now are like soo small and hidden and dull"). One rule, every section. */
+  .ms-section-label { font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); margin: 32px 0 10px; }
   /* Creator "made here" breakdown: amber count chips over a sortable table.
      Numbers are tabular so the columns line up; the table scrolls inside its
      own box on a phone rather than pushing the pane sideways. */
@@ -2559,11 +2561,12 @@
   }
   .hot-zims-search:focus { outline: none; border-color: var(--amber); }
   .hot-zims-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-  /* Settings > Languages: one card. Show languages, then the fold ("Your
-     languages: English, Español"), and open, a row per language: the check
-     and its names (one tap target), the voice that says it, ▶ and Get. A
-     download's bar runs the row's width under it. */
+  /* Settings > Languages: one card. Show languages, then (while on) the fold
+     ("Languages: English, Español") and, open, Zimi's ten interface
+     languages, each one row: a check, its own name and Zimi's name for it.
+     Zimi's own is checked and locked, tagged In use. */
   .lang-fold { width: 100%; border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+  .lang-fold[hidden] { display: none; }
   .lang-fold:hover .share-row-title, .lang-fold:focus-visible .share-row-title { color: var(--amber); }
   .lang-fold:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
   .lang-chev { flex: none; width: 14px; font-size: 18px; line-height: 1; color: var(--text2); text-align: center; transition: transform 0.15s; }
@@ -2571,44 +2574,64 @@
   [dir="rtl"] .lang-fold[aria-expanded="false"] > .lang-chev { transform: scaleX(-1); }
   .lang-list { border-top: 1px solid var(--border); }
   .lang-list[hidden] { display: none; }
-  .lang-all .share-row-title { font-weight: 500; color: var(--text2); }
-  /* Zimi's language: the ten interface languages as one wrapping selector,
-     always open above the card; their rows in the list carry a Zimi tag and
-     lead All languages under their own subheading. */
-  .ui-lang-seg { display: grid; grid-template-columns: repeat(5, 1fr); max-width: 560px; margin-bottom: 12px; }
-  @media (max-width: 600px) { .ui-lang-seg { grid-template-columns: repeat(3, 1fr); } }
-  .ui-lang-seg .app-theme-btn { padding: 7px 6px; font-size: 13px; }
-  .lang-pick:has(.lang-zimi-tag) .share-row-text { flex: 0 1 auto; }
-  .lang-zimi-tag {
-    flex: none; margin-inline-end: auto; padding: 1px 7px; border: 1px solid var(--amber-border);
-    border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--amber);
-  }
-  .lang-sub { padding: 12px 14px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text2); border-top: 1px solid var(--border); }
-  .lang-row { flex-wrap: wrap; gap: 8px 10px; padding: 8px 14px; min-height: 52px; box-sizing: border-box; }
   .lang-pick {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 0;
+    width: 100%; min-height: 52px; box-sizing: border-box; gap: 12px; padding: 8px 14px;
     border: 0; background: none; text-align: start; font: inherit; color: inherit; cursor: pointer;
   }
-  .lang-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 6px; }
+  .lang-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .lang-pick .share-row-text { flex: 1; min-width: 0; }
   .lang-pick .share-row-title { font-weight: 500; font-size: 14px; unicode-bidi: isolate; }
   .lang-pick .share-row-title, .lang-pick .share-row-desc { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lang-check {
     flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
     box-sizing: border-box; border: 1.5px solid var(--text3); border-radius: 5px; color: var(--on-amber);
   }
-  .lang-row.mine .lang-check { background: var(--amber); border-color: var(--amber); }
-  .lang-pick:hover .lang-check { border-color: var(--amber); }
-  .lang-voice { flex: none; font-size: 12px; color: var(--text2); }
-  .lang-voice.none { color: var(--text3); }
-  .lang-act { flex: none; display: flex; align-items: center; gap: 6px; }
-  .lang-act .set-btn { --set-ctl-h: 30px; padding: 0 10px; font-size: 12px; }
-  .lang-hear { width: 30px; padding: 0 !important; }
-  .lang-get { color: var(--amber); border-color: var(--amber-border); }
-  .lang-more { font-size: 15px !important; letter-spacing: 0.05em; }
+  .lang-pick.mine .lang-check { background: var(--amber); border-color: var(--amber); }
+  .lang-pick:not([aria-disabled]):hover .lang-check { border-color: var(--amber); }
+  .lang-pick[aria-disabled] { cursor: default; }
+  .lang-pick[aria-disabled] .lang-check { opacity: 0.55; }
+  .lang-cur { flex: none; font-size: 11px; font-weight: 600; color: var(--text3); }
   .lang-dl { flex-basis: 100%; padding-inline-start: 30px; margin-top: -4px; }
   .lang-dl .dl-progress { margin-top: 4px; height: 3px; }
   .set-btn.confirming { color: var(--error); border-color: var(--error); background: none; }
-  @media (pointer: coarse) { .lang-act .set-btn { --set-ctl-h: 36px; } .lang-hear { width: 36px; } }
+  /* Settings > Voices' grid: a row per language, a column per flavor. A dot
+     is green where the flavor says the language here, grey where it cannot;
+     a download arrow (an admin's) gets it; a downloaded Clear voice's dot
+     shows ✕ on hover, focus or a first tap, and ✕ removes it. */
+  .vg { margin-top: 12px; }
+  .vg-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--vg-n), 44px); align-items: center;
+    min-height: 44px; padding: 0 8px 0 14px; box-sizing: border-box;
+  }
+  [dir="rtl"] .vg-row { padding: 0 14px 0 8px; }
+  .vg-row + .vg-row, .vg-all, .vg-all + .vg-row { border-top: 1px solid var(--border); }
+  .vg-head { min-height: 32px; }
+  .vg-h { font-size: 10.5px; font-weight: 600; color: var(--text2); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vg-name { min-width: 0; padding: 6px 0; }
+  .vg-own, .vg-zimi { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vg-own { font-size: 14px; font-weight: 500; unicode-bidi: isolate; }
+  .vg-zimi { font-size: 11.5px; color: var(--text3); }
+  .vg-cell { display: flex; align-items: center; justify-content: center; height: 40px; }
+  .vg-cell.off { opacity: 0.45; }
+  .vg-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
+  .vg-dot[data-s="none"] { width: 6px; height: 6px; background: var(--text3); opacity: 0.45; }
+  .vg-dot[data-s="busy"] { background: var(--amber); animation: vg-pulse 1s ease-in-out infinite alternate; }
+  @keyframes vg-pulse { to { opacity: 0.35; } }
+  .vg-btn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+    padding: 0; border: 0; border-radius: 50%; background: none; color: var(--amber); cursor: pointer;
+  }
+  .vg-btn:disabled { color: var(--text3); cursor: default; }
+  .vg-get:not(:disabled):hover { background: var(--amber-glow); }
+  .vg-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 0; }
+  .vg-x { display: none; font-size: 13px; font-weight: 700; color: var(--error); }
+  .vg-rm:hover .vg-x, .vg-rm:focus-visible .vg-x, .vg-rm.show-x .vg-x { display: block; }
+  .vg-rm:hover .vg-dot, .vg-rm:focus-visible .vg-dot, .vg-rm.show-x .vg-dot { display: none; }
+  .vg-rm:hover, .vg-rm.show-x { background: var(--surface2); }
+  .vg-dl { display: flex; align-items: center; gap: 10px; padding: 0 14px 10px; margin: 0; }
+  .vg-dl .voice-dl { flex: 1; min-width: 0; }
+  .vg-dl .set-btn { --set-ctl-h: 30px; padding: 0 10px; font-size: 12px; }
+  .vg-all .share-row-title { font-weight: 500; color: var(--text2); }
   .ms-hot-show { margin-top: 6px; }
   .updates-detail {
     margin: 6px 0 12px 0; padding: 8px;
@@ -3493,6 +3516,13 @@
   .voice-engine.voice-off .share-row-title, .voice-engine.voice-off .share-row-desc { opacity: 0.55; }
   .voice-engine .set-btn[data-primary] { color: var(--amber); border-color: var(--amber-border); }
   /* Natural's Remove, quiet in its small line: a word, not a button. */
+  /* "N languages": its title lists them; a tap shows the list as a line. */
+  .voice-count {
+    padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+    text-decoration: underline dotted; text-underline-offset: 2px;
+  }
+  .voice-count:hover, .voice-count[aria-expanded="true"] { color: var(--text2); }
+  .voice-langs { flex-basis: 100%; margin-top: -6px; color: var(--text3); font-size: 11.5px; }
   .voice-meta .set-btn[data-quiet] {
     min-height: 0; padding: 0; border: 0; background: none; font-size: inherit; font-weight: 400;
     color: var(--text2); text-decoration: underline; text-underline-offset: 2px;
