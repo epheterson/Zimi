@@ -35,7 +35,7 @@ import zimi.server as server  # noqa: E402
 from zimi import http as zhttp  # noqa: E402
 from zimi import manage  # noqa: E402
 
-ADJACENT = "10.0.0.149"  # a LAN peer — private-tier, but NOT the host
+ADJACENT = "192.0.2.149"  # a LAN peer — private-tier, but NOT the host
 TAILNET = "100.100.7.42"  # a tailnet peer — the sharp edge the report names
 
 

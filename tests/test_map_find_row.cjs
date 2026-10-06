@@ -1,6 +1,6 @@
 // The search bar offers to run the words in a map's own search box, for
 // maps that have one. Kiwix's maps2zim indexes administrative divisions
-// only ("Danville" lands in Québec; Danville, CA is not in it) and has no
+// only (a small town is often not in it, and its name lands on a namesake) and has no
 // box; StreetZim's box searches towns, streets and addresses. Zimi cannot
 // read StreetZim's hash-bucketed shards, so it hands the query to the box
 // inside the same-origin frame instead.
@@ -47,10 +47,10 @@ vm.runInContext([
   extract(/function _mapFindRowsHtml\(query\) \{[\s\S]*?\n\}/, '_mapFindRowsHtml'),
 ].join('\n'), ctx);
 
-const html = ctx._mapFindRowsHtml('Danville');
+const html = ctx._mapFindRowsHtml('Springfield');
 ok('one row per map with a search box', (html.match(/class="result map-find"/g) || []).length === 1, html.slice(0, 80));
-ok('the row names the map and the words', /Find “Danville” on OSM - Hawaii/.test(html));
-ok('the words ride along for the frame', /data-find="Danville"/.test(html));
+ok('the row names the map and the words', /Find “Springfield” on OSM - Hawaii/.test(html));
+ok('the words ride along for the frame', /data-find="Springfield"/.test(html));
 ok('the row opens the map page', /data-zim="osm-hawaii" data-path="index.html"/.test(html));
 ok('a map without a box gets no row', !/maps_en_all/.test(html));
 ok('no query, no rows', ctx._mapFindRowsHtml('') === '');

@@ -53,7 +53,7 @@ _ISS = "https://" + _TEAM
 _AUD = "8f1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff"
 _OTHER_AUD = "00000000000000000000000000000000000000000000000000000000deadbeef"
 _KID = "test-key-1"
-_EMAIL = "eric@zosia.io"
+_EMAIL = "eric@example.com"
 
 #: Sentinel for "remove this claim entirely" in the token builder.
 _ABSENT = object()
@@ -560,18 +560,18 @@ class TestAccountMapping(_SSOBase):
         users.create_user("eric", "localpw", role="admin")
         name, reason = self.resolve(make_token())
         self.assertIsNone(reason)
-        self.assertEqual(name, "eric-zosia.io")
+        self.assertEqual(name, "eric-example.com")
         listed = {u["name"]: (u["auth"], u["role"]) for u in users.list_users()}
         self.assertEqual(listed["eric"], ("local", "admin"))
-        self.assertEqual(listed["eric-zosia.io"], ("sso", "user"))
+        self.assertEqual(listed["eric-example.com"], ("sso", "user"))
         self.assertEqual(users.authenticate("eric", "localpw"), "eric")
 
     def test_both_candidate_names_taken_is_a_refusal_not_a_takeover(self):
         users.create_user("eric", "localpw")
-        users.create_user("eric-zosia.io", "localpw")
+        users.create_user("eric-example.com", "localpw")
         self.assertRejected(make_token(), "name-conflict")
         self.assertEqual(len(users.list_users()), 2)
-        for name in ("eric", "eric-zosia.io"):
+        for name in ("eric", "eric-example.com"):
             self.assertIsNone(users.federated_identity(record(name)))
 
     def test_a_shared_local_part_falls_back_to_the_full_address(self):
@@ -597,13 +597,13 @@ class TestAccountMapping(_SSOBase):
         self.resolve(make_token())
         sso.reset_caches()
         name, reason = self.resolve(
-            make_token(claims={"email": "e.pheterson@zosia.io"})
+            make_token(claims={"email": "e.renamed@example.com"})
         )
         self.assertIsNone(reason)
         self.assertEqual(name, "eric", "same subject, renamed at the IdP")
         self.assertEqual(len(users.list_users()), 1)
         self.assertEqual(
-            record("eric")["flags"]["sso"]["email"], "e.pheterson@zosia.io"
+            record("eric")["flags"]["sso"]["email"], "e.renamed@example.com"
         )
 
     def test_an_admin_role_change_survives_later_logins(self):

@@ -2,7 +2,7 @@
 
 Every feature below has a two-minute check you can run with your own hands. The browser features run against the preview instance; the CLI features run on your Mac from the repo. Nothing here touches prod.
 
-**Preview instance: http://10.0.0.14:8905** — the `v1.9` branch against the real 53-ZIM library, mounted read-only, own state, torrenting off. Prod at knowledge.zosia.lan is untouched and stays 1.8.2. The preview copied prod's metadata cache and bookmarks at first boot, so it looks like home; changes you make there stay there.
+**Preview instance: http://192.0.2.14:8905** — the `v1.9` branch against the real 53-ZIM library, mounted read-only, own state, torrenting off. Prod at zimi.example.lan is untouched and stays 1.8.2. The preview copied prod's metadata cache and bookmarks at first boot, so it looks like home; changes you make there stay there.
 
 For CLI checks: `cd ~/Repos/zimi` (branch `v1.9`), and `alias z='python3 -m zimi'` if you like.
 
@@ -58,7 +58,7 @@ Before the fix this wrote `catalog_cache.json` about two seconds after boot, eve
 ## Prometheus metrics
 
 ```
-curl -s http://10.0.0.14:8905/metrics | head -30
+curl -s http://192.0.2.14:8905/metrics | head -30
 ```
 
 Expect `# HELP` / `# TYPE` pairs, `zimi_` prefixes, counters ending `_total`, and a `_sum`/`_count` latency pair per endpoint. (Preview has no admin password, so the LAN open-admin rule lets you read it; on a passworded instance it needs the API token, same as /manage.)

@@ -140,7 +140,7 @@ Honesty first: nobody needs "SCIM 2.0, the RFC." Okta and Entra each exercise a 
 
 ## Amendment 2026-08-08 — Cloudflare Access / trusted-header SSO comes first
 
-Eric's own deployment (knowledge.zosia.io) runs behind a Cloudflare Tunnel, and his question "will this interface with our cloudflare oauth" exposed a gap: Cloudflare Access is not an IdP an application talks to, it is an identity-aware proxy that authenticates at the edge and forwards the result as a signed JWT in the Cf-Access-Jwt-Assertion header. The code flow above never fires in that topology.
+A deployment behind a Cloudflare Tunnel raised the question "will this interface with our cloudflare oauth", and it exposed a gap: Cloudflare Access is not an IdP an application talks to, it is an identity-aware proxy that authenticates at the edge and forwards the result as a signed JWT in the Cf-Access-Jwt-Assertion header. The code flow above never fires in that topology.
 
 So the plan gains a mode, and it moves to the front of the queue because it is the one a real deployment here would use, and because the same pattern covers Authelia, authentik, oauth2-proxy and every other identity-aware proxy in the self-hosted world:
 

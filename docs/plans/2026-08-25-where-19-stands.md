@@ -15,7 +15,7 @@ Written to survive a context compaction. Everything a fresh session needs to pic
 | Local suite | **2474 passed, 9 skipped** — and `pytest tests/` now runs the `.cjs` tests too |
 | CI | **green, both jobs**, first time the whole suite has ever run there (2438 passed / 45 skipped on Linux) |
 | Docker publish | green; `epheterson/zimi:dev` published from the branch push (by design — `latest` is gated on main) |
-| Prod | knowledge.zosia.io on today's code, asset `zimi-v1.9.0-626641f9`, create slot free |
+| Prod | zimi.example.com on today's code, asset `zimi-v1.9.0-626641f9`, create slot free |
 | Capture verified on prod | CNN via Fast: **904 entries** (the pre-fix capture got 471), 19/19 images, 0 offsite requests. SingleFile on apple.com: 32/32 images, survives scroll, 1.8 MB |
 
 ## THE DECISION ON THE TABLE

@@ -28,7 +28,7 @@ def _reset_module_state():
 
 
 class _FakeInfo:
-    def __init__(self, host="10.0.0.9", port=8896):
+    def __init__(self, host="192.0.2.9", port=8896):
         self.addresses = [socket.inet_aton(host)]
         self.port = port
         self.properties = {
@@ -53,7 +53,7 @@ class _FakeZc:
 def _seed_peer(name, last_seen):
     disc._peers[name] = {
         "name": name.split("._")[0],
-        "host": "10.0.0.9",
+        "host": "192.0.2.9",
         "port": 8896,
         "bt_port": 6881,
         "version": "1.9",

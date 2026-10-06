@@ -355,7 +355,7 @@ class TestTrustedRateTier(unittest.TestCase):
                     "127.0.0.1",
                     "::1",
                     "192.168.1.50",
-                    "10.0.0.14",
+                    "192.0.2.14",
                     "172.16.3.4",
                     "169.254.1.1",
                     "fd00::1",
@@ -369,7 +369,7 @@ class TestTrustedRateTier(unittest.TestCase):
                     self._limit_for(self._FakeHandler("8.8.8.8")), self.zhttp.RATE_LIMIT
                 )
                 h = self._FakeHandler("127.0.0.1")
-                h.headers["X-Forwarded-For"] = "10.0.0.5"
+                h.headers["X-Forwarded-For"] = "192.0.2.5"
                 self.assertNotEqual(self._limit_for(h), 0)
 
     def _limit_for(self, handler):
@@ -2300,7 +2300,7 @@ class TestClientIPResolution(unittest.TestCase):
     def test_cf_header_beats_xff(self):
         ip = self._ip(
             "172.17.0.1",
-            {"CF-Connecting-IP": "8.8.8.8", "X-Forwarded-For": "10.0.0.9"},
+            {"CF-Connecting-IP": "8.8.8.8", "X-Forwarded-For": "192.0.2.9"},
         )
         self.assertEqual(ip, "8.8.8.8")
 

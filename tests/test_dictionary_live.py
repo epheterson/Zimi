@@ -1401,7 +1401,7 @@ def test_system_and_device_are_one_on_the_servers_own_mac(
     # Elsewhere (another host), both, told apart.
     assert (
         pg.evaluate(
-            "() => { const r = _LOCAL_HOST_RE; return r.test('knowledge.zosia.lan'); }"
+            "() => { const r = _LOCAL_HOST_RE; return r.test('zimi.example.lan'); }"
         )
         is False
     )

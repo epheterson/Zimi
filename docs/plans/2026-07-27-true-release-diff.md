@@ -22,7 +22,7 @@ The maintainer specifically said we were "mentioning ones we DO NOT have like
 per-user filtering and selecting a word to get the definition." **Both exist and
 both work.** They are invisible, not absent. Evidence:
 
-### Word lookup — LIVE-TESTED on http://knowledge.zosia.lan (real library)
+### Word lookup — LIVE-TESTED on http://zimi.example.lan (real library)
 1. Opened `wikipedia/A/Water` in the reader.
 2. Double-clicked the word "Water" in a paragraph.
 3. A **Define** popover appeared (`.define-trigger`, label "Define").
