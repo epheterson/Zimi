@@ -9,54 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Dictionary: one word across every installed Wiktionary, a word of the day and more words each day, and Say on every word.
-- Voices: Say speaks with the server's voices, offline, and plays with the ringer switch on silent. Natural (7 languages, one download) and Clear (per language) come on demand; Basic is built in.
-- Settings > Voices: a default voice, a switch and a sample for each voice, how fast each one is, and which voice says which of your languages.
-- Say on Discover's word and quote of the day.
-- Create a ZIM from a folder on the server: pick any part of it, with optional `zimi.txt` metadata.
-- `zimi-mcp`: the MCP server and search as their own small package; `zimi mcp` serves three tools by default.
-- Find in page while reading.
-- Search results highlight matched words and group by source.
-- PDFs: Zimi's own reader with contents, page thumbnails, a page at a time (swipe or tap a side), first and last page, the page from a list, two-page spreads, rotate, About this PDF, highlights, and Print that prints the file itself.
-- Wikisource works and textbooks open in the book reader; math renders.
-- Back returns to where you came from: a search, an app.
-- Your languages: one checklist in Settings for the catalog, search, the library's order, Discover, the Dictionary, Zimipedia and the language menu; Show languages off hides them everywhere.
-- Library sorts: Largest, and By type.
-- Wiktionary pages open in the Dictionary; tap the top bar to go to the top, in every view.
-- Settings > Creator shows each capture engine's version.
-- A failed ZIM creation keeps its log, opened from Recent ([#105](https://github.com/epheterson/Zimi/discussions/105)).
+- Dictionary: every Wiktionary as one, a word of the day, and Say on every word.
+- Voices: offline voices that play with the ringer silenced; Natural and Clear download on demand.
+- Say on Discover's word and quote.
+- Create a ZIM from a folder on the server.
+- `zimi-mcp`: the MCP server on its own, three tools by default.
+- Find in page.
+- Search highlights matches and groups by source.
+- PDFs: Zimi's own reader, with contents, thumbnails, spreads, highlights and print.
+- Wikisource and textbooks open in the book reader, math included.
+- Back returns to where you came from.
+- Your languages: one checklist for the whole app.
+- Library sorts by size and type.
+- A failed creation keeps its log ([#105](https://github.com/epheterson/Zimi/discussions/105)).
 - The AppImage updates itself.
 
 ### Changed
 
 - Save is one verb in every app; Like is separate.
-- Searches send far fewer requests, and searches from your own network are never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
-- Text size is five steps; line spacing and margins are no longer settings.
-- Settings: one look for every control, choices as selector rows, clearer section titles.
-- Search: words found are bold, and a map's places come after the reading.
-- Sign-in comes before Manage opens.
-- Download names: `Zimi-<version>-<os>-<arch>`.
-- Pinch zoom works again on phones.
-- Accessibility fixes apply to every article; the setting is gone.
-- Links: "outside the ZIM" and "outside your library" ([#99](https://github.com/epheterson/Zimi/issues/99)).
+- Far fewer search requests; your own network is never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
+- Text size in five steps.
+- Settings: one look throughout.
+- Sign-in before Manage.
+- Downloads named `Zimi-<version>-<os>-<arch>`.
+- Accessibility fixes on every article, always.
+- Links say "outside the ZIM" or "outside your library" ([#99](https://github.com/epheterson/Zimi/issues/99)).
 
 ### Fixed
 
 - `-wiki` leaves out MediaWiki ([#94](https://github.com/epheterson/Zimi/issues/94)).
-- Like and Save on different devices never undo each other.
-- Several timing bugs on slow devices: late searches, Manage opening unasked, apps reappearing after Back.
-- Right-to-left paths, dark-mode formulas, clipped wide pictures, the Auto swatch.
-- A PDF opened before 1.13 no longer reopens with pdf.js's own toolbar.
-- Dictionary: Back after switching language returns to the word.
-- Apps keep their loader until their data is drawn, with no blank pause; no light line at the top while scrolling.
-- Favoriting on home keeps the page where it was.
-- zimit 1 ZIMs (Off the Grid) open on the first tap, and Back returns home.
-- Videos stream without holding up search; TED talks play in ZimiTube on iPhone.
-- Subreddit captures ask Arctic Shift again when it is busy ([#105](https://github.com/epheterson/Zimi/discussions/105)).
-- In an iPhone home-screen app, Open in browser copies the link.
-- Language filters off no longer hides Zimi's own language menu.
-- A map reopens where you left it, not where it first opened.
-- Open articles in apps is off when every app is.
+- Pinch zoom on phones.
+- Like and Save across devices.
+- Timing bugs on slow devices.
+- Right-to-left paths, dark-mode formulas, wide pictures.
+- PDFs opened before 1.13 reopen in the new reader.
+- Off the Grid ZIMs open on the first tap.
+- Video no longer holds up search; TED talks play on iPhone.
+- Subreddit captures retry when Arctic Shift is busy ([#105](https://github.com/epheterson/Zimi/discussions/105)).
+- Maps reopen where you left them.
+- Smaller fixes across the Dictionary, apps, home and Settings.
 
 ## [1.12.0] - 2026-09-30
 

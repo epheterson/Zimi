@@ -9,30 +9,26 @@
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Everything in your ZIM files, as small or as big as you need.
+A modern experience for your ZIM files.
 
-[Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files: Wikipedia, Stack Overflow, Project Gutenberg, dev docs, TED talks and thousands more. Zimi runs on top of them in one of three shapes. All of it works offline, in your language.
+[Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
 
-| | What you get | Start with |
-|---|---|---|
-| **Search for agents and scripts** | An [MCP server](#mcp-server): one query across every ZIM, pages as Markdown, sized for small local models. 280 KB, no web app. The full install adds `zimi search` and `zimi read` for the shell. | `pip install zimi-mcp` |
-| **A ZIM reader and library** | A fast reader for every ZIM, search across all of them, and the whole Kiwix catalog with downloads and auto-updates. Nothing else on the page. | `pip install zimi`, then `ZIMI_APPS=0 zimi serve` |
-| **The whole app** | Discover, apps over your library, a dictionary that speaks, your own ZIMs, sharing on your network. | [Install](#install) |
+Use as much as you need:
 
-Same code, same releases: each shape is the one before it with more switched on. Apps turn on and off later in Settings, no restart.
+- **Search for agents.** `pip install zimi-mcp` searches and reads every ZIM over MCP. 280 KB.
+- **A reader and library.** `ZIMI_APPS=0 zimi serve` reads, searches and manages your ZIMs, nothing more.
+- **The whole app.** Everything below.
 
-## The whole app
+## What it does
 
 - **Search everything.** One query across every ZIM, 100M+ articles, with `-word`, `"exact words"`, `OR`, `lang:` and `in:` when you need them.
-- **Discover.** A fresh front page every day from your own library: the picture, the word and the quote of the day, on this day, and more.
-- **Apps over your library.** Zimipedia for every wiki, Bookshelf for every book, ZimiTube for video, ZimiExchange for Q&A, Reddot for subreddits, and offline street Maps.
-- **Read and listen.** A Dictionary across every Wiktionary, Say in offline voices, PDFs and textbooks in Zimi's own readers.
+- **Apps over your library.** Zimipedia for every wiki, the Dictionary for every Wiktionary, Bookshelf for every book, ZimiTube for video, ZimiExchange for Q&A, Reddot for subreddits, and offline street Maps.
 - **Keep what you find.** Bookmarks, lists, likes and highlights in every app, synced across devices when you sign in.
 - **A real library.** The whole Kiwix catalog one click away, even offline, with auto-updates and BitTorrent downloads that seed back.
 - **Make your own ZIMs.** A web page, a whole site, a video playlist, a subreddit, a web archive or a folder of your files.
 - **Share on your network.** Zimi devices find each other and pass ZIMs at LAN speed.
-- **Every language.** Articles across languages by Wikidata ID; ten UI languages, right-to-left included.
-- **Runs anywhere.** Docker, Podman, pip, macOS, Windows, Linux, or your phone as a PWA.
+- **Every language.** Articles across languages by Wikidata ID; ten UI languages, right-to-left included; offline voices.
+- **For people and agents.** Web app, JSON API and an MCP server. Runs on Docker, Podman, pip, macOS, Windows, Linux, or your phone as a PWA.
 
 ## Screenshots
 
