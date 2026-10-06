@@ -114,6 +114,13 @@
      theme. html.almanac-boot covers the reload-into-almanac window before
      almanac.js has added body.almanac-mode, so even the first paint is dark.
      The classes come off with the almanac, so everything reverts on leave. */
+  /* The page under the dark Almanac is dark too: iOS tints its status bar
+     from the root, which stayed paper (Eric: "the tap area color isn't
+     filled"). */
+  :root[data-theme="light"]:has(> body.almanac-mode), :root[data-theme="light"].almanac-boot { background: #0a0a0b; }
+  /* One pixel of page to scroll, so iOS's status-bar tap reaches the
+     Almanac (_armTapRelay). */
+  html.tap-relay body { min-height: calc(100% + 2px); }
   :root[data-theme="light"] .almanac-view,
   :root[data-theme="light"] body.almanac-mode,
   :root[data-theme="light"].almanac-boot body {

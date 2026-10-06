@@ -211,6 +211,7 @@ function _openAlmanacInner(replaceState) {
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('almanac');
   _renderAlmanacContent();
+  if (typeof _armTapRelay === 'function') _armTapRelay(true);
 }
 
 // Shared visual/animation teardown for leaving the almanac. Does NOT touch
@@ -221,6 +222,7 @@ function _almanacTeardown() {
   if (typeof _chromeReset === 'function') _chromeReset();
   _almHeroLiveStop();
   document.body.classList.remove('almanac-mode');
+  if (typeof _armTapRelay === 'function') _armTapRelay(false);
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
   // The 3D Earth (almanac-earth.js, loaded after this file) gives its GPU
   // memory back: a phone keeps a tab that holds less.

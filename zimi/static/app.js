@@ -3501,6 +3501,30 @@ function _wireTopbarTap() {
 }
 _wireTopbarTap();
 
+// iOS scrolls only the page when its status bar is tapped, and the Almanac
+// scrolls in its own box (Eric, 2026-10-06: "tapping to scroll up didn't
+// work at least in PWA"). While it is open on a touch screen the page sits
+// one pixel down, so the tap has something to scroll; the page reaching the
+// top is that tap, passed on to the box, and the pixel is put back.
+var _TAP_RELAY_PX = 1, _TAP_RELAY_REARM_MS = 400, _tapRelayTimer = null;
+function _tapRelayBox() {
+  return document.body.classList.contains('almanac-mode') ? document.querySelector('#almanac-view .almanac-content') : null;
+}
+function _armTapRelay(on) {
+  var root = document.documentElement;
+  if (!on || !window.matchMedia('(pointer: coarse)').matches) { root.classList.remove('tap-relay'); return; }
+  root.classList.add('tap-relay');
+  requestAnimationFrame(function() { if (window.scrollY < _TAP_RELAY_PX) window.scrollTo(0, _TAP_RELAY_PX); });
+}
+window.addEventListener('scroll', function() {
+  if (window.scrollY > 0 || !document.documentElement.classList.contains('tap-relay')) return;
+  var box = _tapRelayBox();
+  if (!box) return;
+  box.scrollTo({ top: 0, behavior: _scrollBehavior() });
+  clearTimeout(_tapRelayTimer);
+  _tapRelayTimer = setTimeout(function() { if (_tapRelayBox()) window.scrollTo(0, _TAP_RELAY_PX); }, _TAP_RELAY_REARM_MS);
+}, { passive: true });
+
 // A new browser tab, or in the desktop app the system's browser (the
 // pywebview bridge): where Zimi sends anything that leaves it.
 function _openOnWeb(url) {

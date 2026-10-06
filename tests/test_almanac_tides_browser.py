@@ -354,3 +354,24 @@ def test_without_a_place_one_line_invites_one(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_the_status_bar_tap_scrolls_the_almanac_to_the_top(browser, served):
+    """iOS scrolls only the page when its status bar is tapped; the Almanac
+    scrolls in its own box (Eric, 2026-10-06: "tapping to scroll up didn't
+    work at least in PWA"). The page sits a pixel down while it is open, and
+    its return to the top takes the Almanac there too. The page under it is
+    dark, so iOS tints the status bar dark (it was paper on a light theme)."""
+    ctx = _context(browser)
+    ctx.add_init_script("localStorage.setItem('zimi_app_theme', 'light')")
+    pg, errors = _open(ctx, served)
+    pg.wait_for_function("() => window.scrollY === 1", polling=POLL_MS)
+    pg.evaluate("() => document.querySelector('#almanac-view .almanac-content').scrollTo(0, 1500)")
+    pg.wait_for_function("() => document.querySelector('#almanac-view .almanac-content').scrollTop > 0", polling=POLL_MS)
+    pg.evaluate("() => window.scrollTo(0, 0)")  # what the status-bar tap does
+    pg.wait_for_function("() => document.querySelector('#almanac-view .almanac-content').scrollTop === 0", polling=POLL_MS)
+    pg.wait_for_function("() => window.scrollY === 1", polling=POLL_MS)
+    assert pg.evaluate("() => document.documentElement.dataset.theme") == "light"
+    assert pg.evaluate("() => getComputedStyle(document.documentElement).backgroundColor") == "rgb(10, 10, 11)"
+    assert not errors, errors
+    ctx.close()
