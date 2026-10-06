@@ -13706,7 +13706,7 @@ function _msPreferencesHtml() {
         _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
-      on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
+      on: _openInApps() && _openInAppsPossible(), disabled: !_openInAppsPossible(), onchange: '_setOpenInApps(this.checked)' },
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
         onchange: '_setShowDiscover(this.checked)' }]) +
 
@@ -14140,6 +14140,7 @@ async function _renderAppsSection() {
   _serverAppsLocked = !!d.env_locked;
   _setHtmlIfChanged('ms-apps', _serverAppsHtml());
   _setHtmlIfChanged('ms-apps-all', _serverAppsAllHtml());
+  _syncOpenInAppsRow();
 }
 // What the server offers, as far as the page knows: the stamp it booted with
 // (the default apps, none, or the names), until /manage/apps answers.
@@ -20574,6 +20575,20 @@ function _dictWordOfPath(path) {
 var _RESULT_APP = { wiki: 'wiki', books: 'books', video: 'tube', qa: 'exchange', reddit: 'reddot' };
 var _APP_ITEM_PATH = { exchange: /^(?:A\/)?questions\/\d+\//, reddot: /^(?:A\/)?r\/[^\/]+\/[^\/]+/ };
 function _openInApps() { try { return localStorage.getItem(SK.OPEN_IN_APPS) !== '0'; } catch (e) { return true; } }
+// With every app that opens a result turned off, the switch has nothing to
+// do: shown off and locked (Eric, 2026-10-05: "disable ... Open articles in
+// apps when all apps are turned off").
+var _OPEN_IN_APP_APPS = ['wiki', 'books', 'tube', 'exchange', 'reddot', 'dictionary'];
+function _openInAppsPossible() { return _OPEN_IN_APP_APPS.some(_appShown); }
+function _syncOpenInAppsRow() {
+  var box = document.getElementById('ms-open-in-apps');
+  if (!box) return;
+  var ok = _openInAppsPossible();
+  box.disabled = !ok;
+  box.checked = ok && _openInApps();
+  var row = box.closest('label');
+  if (row) row.classList.toggle('share-locked', !ok);
+}
 function _setOpenInApps(on) { try { if (on) localStorage.removeItem(SK.OPEN_IN_APPS); else localStorage.setItem(SK.OPEN_IN_APPS, '0'); } catch (e) {} }
 function _resultApp(zim, path) {
   if (!_openInApps()) return '';
@@ -20903,6 +20918,7 @@ async function _setUserPref(key, value) {
     var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { _readPrefs(await r.json()); }
   } catch (e) {}
+  _syncOpenInAppsRow();
   renderHome();
 }
 // One app on or off for this account: the whole list goes up, so the server
