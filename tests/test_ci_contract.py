@@ -378,7 +378,8 @@ def test_release_files_are_named_version_platform_chip(tmp_path):
         "Zimi-1.2.3-x86_64.AppImage.zsync",
     ]
     text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
-    assert "files: release/*" in text
+    # The release publishes every renamed file (beside the SBOM, when one was made).
+    assert re.search(r"files:[ |]*\n?\s*release/\*", text)
     assert 'arch arm: "arm64", intel: "x64"' in text
     assert 'Zimi-#{version}-mac-#{arch}.dmg' in text
     for asset in ("mac-x64.dmg", "mac-arm64.dmg", "windows-x64-setup.exe"):
