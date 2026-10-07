@@ -46,6 +46,8 @@ def test_the_options_are_taken_in_either_shape():
         ({"include": "(unclosed"}, "not a valid regular expression"),
         ({"exclude": ["x"] * 21}, "at most 20"),
         ({"extra_hops": 11}, "extra hops"),
+        ({"include": "(a+)+$"}, "can hang the crawl"),
+        ({"exclude": "(?:\\w+/)*x"}, "can hang the crawl"),
     ],
 )
 def test_a_bad_option_is_refused_before_a_job_exists(fields, said):
@@ -77,3 +79,13 @@ def test_a_job_hands_them_to_the_engine(monkeypatch):
     assert seen["extra_hops"] == 1
     assert seen["max_depth"] == 2
     assert "include" not in seen
+
+
+def test_ordinary_patterns_are_not_mistaken_for_nested_ones():
+    opts = _opts(include=[r"(?:/en)?/wiki/", r"\.(png|jpg)$", r"(\d+)?/x"])
+    assert len(opts["include"]) == 3
+
+
+def test_a_huge_link_is_matched_on_its_start():
+    scope = crawler.CrawlScope("host", exclude=[r"z$"])
+    assert not scope.excluded("https://x.org/" + "a" * 5000 + "z")

@@ -350,6 +350,12 @@ DEFAULT_SCOPE = "prefix"
 MAX_SCOPE_PATTERNS = 20
 MAX_SCOPE_PATTERN_CHARS = 500
 MAX_EXTRA_HOPS = 10
+# Python's re has no timeout and holds the GIL, so a pattern that backtracks
+# without end, (a+)+ against the right link, stalls the whole server. A
+# quantified group that itself holds a quantifier is the shape that does it;
+# it is refused, and a link is matched on its first characters only.
+_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*(?<!\()[*+?}](?:[^()\\]|\\.)*\)\s*[*+{]")
+MAX_MATCHED_URL_CHARS = 2048
 
 
 def _patterns(values, flag):
@@ -372,9 +378,18 @@ def _patterns(values, flag):
             raise CreateError(
                 f"{flag} {text!r} is not a valid regular expression ({e})"
             )
+        if _NESTED_QUANTIFIER.search(text):
+            raise CreateError(
+                f"{flag} {text!r} repeats a group that itself repeats, which can hang the crawl; .* usually says the same"
+            )
     if len(out) > MAX_SCOPE_PATTERNS:
         raise CreateError(f"{flag}: at most {MAX_SCOPE_PATTERNS} patterns")
     return out
+
+
+def _matches(patterns, url):
+    url = url[:MAX_MATCHED_URL_CHARS]
+    return any(p.search(url) for p in patterns)
 
 
 def _base_domain(host):
@@ -449,13 +464,13 @@ class CrawlScope:
         return self
 
     def excluded(self, url):
-        return any(p.search(url) for p in self.exclude)
+        return _matches(self.exclude, url)
 
     def contains(self, url):
         """Whether a page is in scope on its own merits (no extra hops)."""
         if self.excluded(url):
             return False
-        if any(p.search(url) for p in self.include):
+        if _matches(self.include, url):
             return True
         if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
             return False
@@ -725,7 +740,7 @@ def _crawl(
             if key in seen or not looks_like_a_page(key):
                 continue
             hops = scope.hops(key, from_hops)
-            if hops is None or not robots_book.allows(key):
+            if hops is None:
                 continue
             if depth > max_depth:
                 # A page the crawl would have visited, one link too far. Said,
@@ -774,7 +789,9 @@ def _crawl(
     seen.update(seed_keys)
     seed_links = extract_links(seed_text, seed_url)
     scope = (scope or CrawlScope()).settle(seed_id, seed_url, seed_links, origin, note)
-    robots_book = _RobotsBook(origin, robots, ignore_robots, timeout, note)
+    # robots was read for the address that was typed; a seed that redirected
+    # to another origin has that origin's robots.txt read like any other's.
+    robots_book = _RobotsBook(seed_id, robots, ignore_robots, timeout, note)
     enqueue(seed_links, 1, 0)
     capture(seed_keys, seed_url, 0, seed_text)
 
@@ -789,6 +806,13 @@ def _crawl(
             reason = f"byte budget ({_fmt_bytes(budget.limit)})"
             break
         url, depth, hops = queue.popleft()
+        # Here, not when the link was queued: a new origin's robots.txt is a
+        # request like any other, made for a page the crawl is about to visit
+        # and after the stop and cap checks, never for every host a page
+        # happens to link to.
+        if not robots_book.allows(url):
+            log.debug("skipping %s: robots.txt disallows it", url)
+            continue
         waiting = next_fetch_at - time.monotonic()
         if waiting > 0:
             time.sleep(waiting)
@@ -809,7 +833,9 @@ def _crawl(
             log.debug("skipping %s: redirected out of scope to %s", url, final_url)
             note(f"skipped {url}: redirected off-origin")
             continue
-        hops = max(hops, landed)
+        # Where the page landed decides: a redirect back into scope resets
+        # the count, one further out spends a hop.
+        hops = landed
         keys = [url]
         final_key = normalize_url(final_url)
         if final_key != url:

@@ -1529,6 +1529,15 @@ def test_any_scope_follows_links_to_other_sites(fixture_server, tmp_path):
     assert 'href="far_html"' in _text(arc, "A/index")
 
 
+def test_another_sites_robots_is_read_only_when_a_page_there_is_visited(
+    fixture_server, tmp_path
+):
+    """The seed links to the other site, but the page cap ends the crawl
+    first: nobody there is asked anything, robots.txt included."""
+    _site(tmp_path, "/deep/start.html", scope="any", max_pages=1)
+    assert not [h for h, _p in HOSTED if h == "localhost"]
+
+
 def test_extra_hops_follow_links_out_of_scope_one_page(fixture_server, tmp_path):
     """One extra hop: the pages the section links to elsewhere are captured,
     the pages they link to are not, unless those are back in scope."""
