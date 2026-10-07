@@ -26,6 +26,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
 from zimi import bookpages as _bookpages
+from zimi import manage as _manage_mod
 from zimi import sso as _sso
 from zimi import users as _users
 from zimi import zimblob as _zimblob
@@ -313,6 +314,8 @@ _PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
     )
 )
 _PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
+# What a fresh install answers before its setup is done: the page itself.
+_SETUP_SURFACE = frozenset(("/manage/has-password", "/manage/access", "/manifest.json", "/sw.js"))
 
 
 # Asked by the shell once for every wiki article opened (its language menu,
@@ -2122,6 +2125,30 @@ class ZimHandler(BaseHTTPRequestHandler):
         self._json(401, {"error": "authentication required", "login_required": True})
         return True
 
+    def _setup_gate_block(self, parsed):
+        """A fresh install answers nothing but its setup until its owner has
+        said who can change settings (manage.init_setup_gate). Returns True
+        (and sends a 503) when this request has to wait. The shell, its files
+        and the setup endpoints stay open so the page can be shown; this
+        machine keeps its API (a local agent, a script) and the setup key's
+        holder is already the owner."""
+        if not _manage_mod.setup_pending():
+            return False
+        path = parsed.path
+        if (
+            path in _PRIVATE_LOGIN_SURFACE_EXACT
+            or path.startswith("/static/")
+            or path in _SETUP_SURFACE
+        ):
+            return False
+        if self._is_loopback_client() or _manage_mod._bootstrap_key_ok(self):
+            return False
+        if self._wants_html():
+            self._html(503, SEARCH_UI_HTML, vary="Accept, Sec-Fetch-Dest")
+            return True
+        self._json(503, {"error": "setup_pending"})
+        return True
+
     def _wants_html(self):
         """Whether this request came from a browser navigating, not a fetch.
 
@@ -2153,6 +2180,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         # way out, including the early returns below.
         _srv.set_request_allow(_users.request_allow(self))
 
+        if self._setup_gate_block(parsed):
+            return
         # Private mode: block anonymous reads before any handler runs.
         try:
             if self._private_access_block(parsed):
@@ -3166,6 +3195,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         if self._sso_block():
             return
         _srv.set_request_allow(_users.request_allow(self))
+        if self._setup_gate_block(parsed):
+            return
         try:
             if self._private_access_block(parsed):
                 return
@@ -3380,6 +3411,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         _sso.clear_request_cache(self)
         if self._sso_block():
+            return
+        if self._setup_gate_block(parsed):
             return
         # Rate limit write endpoints
         retry_after = _check_rate_limit(
@@ -5030,6 +5063,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         # password as its manage Bearer token (unchanged).
         from zimi import manage as _manage
 
+        # Settings kept inside the network: the admin password is not even
+        # checked from outside it (a user account above still signs in), and
+        # the answer says why rather than "wrong password".
+        if _manage._get_manage_password_hash() and not _manage.settings_reachable(self):
+            return self._json(403, {"error": _manage.OUTSIDE_LOCKED})
         if _manage.verify_admin_credentials(username, password):
             token = _users.create_admin_session()
             log.info("Admin login (password account)")

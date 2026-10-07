@@ -904,6 +904,10 @@ CONFIG_ENV_SETTINGS = (
     # want an admin password at all", which is a real way people run this and
     # which 1.9.0 removed with nothing in its place (issue #59).
     ConfigSetting("lan_admin", "ZIMI_LAN_ADMIN", "bool", "0", None, False),
+    # Settings from outside the private network. Off on the setup page by
+    # default; unset here and never answered there, it is on, which is what
+    # every install with a password had before the page existed.
+    ConfigSetting("manage_external", "ZIMI_MANAGE_EXTERNAL", "bool", "", "setup page", False),
     # The opt out. Management asks for nothing at all: no password, no setup
     # key, no question about where the request came from.
     #
@@ -5115,24 +5119,33 @@ def main():
                 )
             elif _get_manage_password_hash():
                 log.info("Library management enabled (password protected)")
+            elif _mng_open.access_mode() == "lan":
+                log.info("Library management enabled: anyone on the local network")
             else:
-                # No admin password yet. Set one from THIS machine freely; any
-                # other device needs the setup key below (GHSA-5mw2-53vv-9pw6).
-                from zimi import manage as _mng
-
-                key = _mng.ensure_setup_key()
+                # Nobody has said who can change settings. This machine may say
+                # so freely; any other device needs the setup key below
+                # (GHSA-5mw2-53vv-9pw6). A fresh install opens only once it is
+                # answered.
+                gated = _mng_open.init_setup_gate(host)
+                key = _mng_open.ensure_setup_key()
                 log.info("Library management enabled — no admin password set yet.")
+                first = (
+                    "  │  Zimi opens once you choose who can change settings.\n"
+                    if gated
+                    else "  │  Choose who can change settings from this machine,\n"
+                )
                 print(
                     _printable(
                         "\n"
                         "  ┌─ Zimi first-run setup ──────────────────────────────\n"
-                        "  │  Set the admin password from this machine, or from\n"
-                        "  │  another device using this one-time setup key:\n"
+                        + first
+                        + "  │  Open Zimi on this machine, or on another device\n"
+                        "  │  with this one-time setup key:\n"
                         "  │\n"
                         f"  │      SETUP KEY:  {key}\n"
                         "  │\n"
                         "  │  (also saved to the setup-key file in the data dir;\n"
-                        "  │   it stops working the moment a password is set)\n"
+                        "  │   it stops working once setup is done)\n"
                         "  └─────────────────────────────────────────────────────\n",
                     ),
                     flush=True,

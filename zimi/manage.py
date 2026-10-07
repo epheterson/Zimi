@@ -267,13 +267,17 @@ def _lan_client(handler):
     return bool(direct() if direct else handler._is_private_client())
 
 
-def _lan_admin_env():
-    """ZIMI_LAN_ADMIN (or the config file's lan_admin, published into the
+def _env_flag(name):
+    """A boolean env var (or config-file setting, published into the
     environment at startup) when someone set it, else None."""
-    raw = os.environ.get("ZIMI_LAN_ADMIN")
+    raw = os.environ.get(name)
     if raw is None:
         return None
     return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _lan_admin_env():
+    return _env_flag("ZIMI_LAN_ADMIN")
 
 
 def _lan_admin_allowed():
@@ -302,6 +306,74 @@ def access_mode():
     if _get_manage_password_hash():
         return "password"
     return "lan" if _lan_admin_allowed() else "unset"
+
+
+def manage_external():
+    """Whether settings may be changed from outside the private network.
+
+    ZIMI_MANAGE_EXTERNAL (config manage_external) when set, else the setup
+    page's answer. With neither it is on: every install that had a password
+    before the setup page existed reached its settings from anywhere, and an
+    upgrade must not lock its owner out. Without a password it means nothing:
+    `lan` and `unset` keep the outside out on their own."""
+    env = _env_flag("ZIMI_MANAGE_EXTERNAL")
+    if env is not None:
+        return env
+    saved = _read_app_update_prefs().get("manage_external")
+    return True if saved is None else bool(saved)
+
+
+def settings_reachable(handler):
+    """False for a client outside the network when the owner said settings
+    stay inside it. Asked of the resolved client, so the LAN behind a reverse
+    proxy is inside and a Cloudflare visitor is not. A wall on top of the
+    password, never instead of it: a proxy that strips every forwarding
+    header still leaves the password to pass."""
+    return manage_open() or handler._is_private_client() or manage_external()
+
+
+# A fresh self-hosted install is unusable until its owner has answered the
+# setup page (who can change settings). Held in memory: every request asks.
+_setup_gate = False
+
+
+def setup_pending():
+    return _setup_gate
+
+
+def init_setup_gate(host):
+    """At `zimi serve` start, before the setup key is made. Gates a FRESH
+    install (nothing in its data dir yet) that other devices can reach and
+    whose environment does not already answer the question. An install that
+    ran before never gets the gate: its readers keep reading, and a
+    passwordless one is offered the page in Settings instead."""
+    global _setup_gate
+    prefs = _read_app_update_prefs()
+    if "setup_gate" in prefs:
+        _setup_gate = bool(prefs["setup_gate"]) and access_mode() == "unset"
+        return _setup_gate
+    from zimi import users as _users
+
+    seen = (
+        _setup_key_file(),
+        _password_file(),
+        _app_update_prefs_path(),
+        _users._users_path(),
+    )
+    fresh = not any(os.path.exists(p) for p in seen)
+    loopback = host in ("localhost", "::1") or host.startswith("127.")
+    _setup_gate = fresh and not loopback and access_mode() == "unset"
+    if _setup_gate:
+        _write_app_update_prefs(setup_gate=True)
+        log.info("First-run setup: Zimi opens once its owner chooses who can change settings")
+    return _setup_gate
+
+
+def _end_setup_gate():
+    global _setup_gate
+    _setup_gate = False
+    if "setup_gate" in _read_app_update_prefs():
+        _write_app_update_prefs(setup_gate=False)
 
 
 def _bootstrap_key_ok(handler):
@@ -396,6 +468,10 @@ def verify_admin_credentials(username, password):
 #: that the instance has NO password and the client is non-private. There is no
 #: password to enter, so the UI must explain rather than prompt (see issue #36).
 PUBLIC_LOCKED = "public_locked"
+#: The refusal when a password exists but the owner keeps settings inside the
+#: network, and this client is outside it. No password would help, so the UI
+#: explains instead of prompting.
+OUTSIDE_LOCKED = "outside_network"
 
 
 def _primary_admin_authorized(handler):
@@ -542,6 +618,11 @@ def _manage_auth_challenge(handler):
     - password/token required or wrong → ``401 unauthorized`` with
       ``needs_password: True`` (the UI prompts, exactly as before)
     """
+    # Settings kept inside the network: refused before the password is even
+    # looked at, so the outside has nothing to guess at. Only here, on the
+    # settings routes: an admin outside still reads the library.
+    if _get_manage_password_hash() and not settings_reachable(handler):
+        return (403, {"error": OUTSIDE_LOCKED, "needs_password": False})
     result = _check_manage_auth(handler)
     if result is None:
         return None
@@ -696,13 +777,26 @@ def _app_update_prefs_path(data_dir=None):
     return os.path.join(data_dir or _srv.ZIMI_DATA_DIR, "app_update_channel.json")
 
 
+_prefs_cache = {}  # path -> ((inode, mtime_ns, size), prefs); writes replace the inode
+
+
 def _read_app_update_prefs(data_dir=None):
+    """The saved prefs, as a fresh dict. Settings auth asks this on every
+    request (manage_external), so a parse is reused until the file changes."""
+    path = _app_update_prefs_path(data_dir)
     try:
-        with open(_app_update_prefs_path(data_dir), "r", encoding="utf-8") as f:
+        st = os.stat(path)
+        stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
+        hit = _prefs_cache.get(path)
+        if hit and hit[0] == stamp:
+            return dict(hit[1])
+        with open(path, "r", encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return {}
-    return saved if isinstance(saved, dict) else {}
+    saved = saved if isinstance(saved, dict) else {}
+    _prefs_cache[path] = (stamp, saved)
+    return dict(saved)
 
 
 def _write_app_update_prefs(**updates):
@@ -4910,8 +5004,7 @@ def handle_manage_get(handler, parsed, params):
             {
                 "has_password": bool(_get_manage_password_hash()),
                 "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
-                "access": access_mode(),
-                "access_env": _lan_admin_env() is not None,
+                **access_answer(handler),
             },
         )
     if parsed.path == "/manage/has-token":
@@ -5851,33 +5944,134 @@ def spend_dl_ticket(token, fname):
     return bool(entry and entry[1] >= now and entry[0] == fname)
 
 
+def _password_set_response(handler, data, body):
+    """After a new password is saved: the setup key's life ends with the
+    bootstrap it existed for, a password ends "Anyone on my network" and the
+    first-run gate, the sessions the old one opened end, and this browser gets
+    a fresh one (it keeps a session, never a password)."""
+    _clear_setup_key()
+    if _read_app_update_prefs().get("lan_admin"):
+        _write_app_update_prefs(lan_admin=False)
+    _end_setup_gate()
+    from zimi import users as _users_pw
+
+    _users_pw.drop_admin_sessions()
+    token = _users_pw.create_admin_session()
+    return handler._json_cookie(
+        200,
+        dict(body, token=token),
+        handler._session_cookie(token, bool(data.get("remember"))),
+    )
+
+
+def _set_manage_username(name):
+    """Rename the password account, keeping its hash. False when the file
+    cannot be written."""
+    stored = _get_manage_password_hash()
+    if not stored or os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
+        return True  # nothing in the file to rename
+    content = stored + ("\n" + name if name else "")
+    return _atomic_write_text(_password_file(), content)
+
+
+def access_answer(handler):
+    """The setup page's state, for /manage/has-password: what is decided, what
+    the environment owns, and where this browser stands."""
+    return {
+        "access": access_mode(),
+        "access_env": _lan_admin_env() is not None,
+        "external": manage_external() and bool(_get_manage_password_hash()),
+        "external_env": _env_flag("ZIMI_MANAGE_EXTERNAL") is not None,
+        "setup": setup_pending(),
+        # Through a proxy "anyone on my network" would lock this browser out,
+        # so the page holds the password on (see _lan_client).
+        "direct": _lan_client(handler),
+        # The account name, for the admin editing it: never to anyone else, or
+        # it would be half the login handed out.
+        "username": (
+            _get_manage_user()
+            if _get_manage_password_hash() and _check_manage_auth(handler) is None
+            else ""
+        ),
+    }
+
+
+def _handle_access(handler, data):
+    """POST /manage/access: the setup page, and the same rows in Settings.
+
+    {external, require_password, username, password}. Before a password
+    exists this is the bootstrap (GHSA-5mw2-53vv-9pw6): only the machine
+    running Zimi or the holder of the setup key it logged gets through, so a
+    neighbour cannot answer it for the owner. After, it is admin-only.
+    Changing an existing password stays with set-password, which asks for the
+    current one."""
+    if manage_open():
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
+    challenge = _manage_auth_challenge(handler)
+    if challenge:
+        return handler._json(*challenge)
+    external = data.get("external") is True
+    require = data.get("require_password") is True
+    username = str(data.get("username") or "").strip()[:64]
+    password = str(data.get("password") or "").strip()
+    env_pw = bool(os.environ.get("ZIMI_MANAGE_PASSWORD", ""))
+    env_ext = _env_flag("ZIMI_MANAGE_EXTERNAL")
+    stored = _get_manage_password_hash()
+    if env_ext is not None and external != env_ext:
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_EXTERNAL"})
+    if env_pw and (not require or password):
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"})
+    if not require and _lan_admin_env() is False:
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_LAN_ADMIN"})
+    if external and not require:
+        return handler._json(400, {"error": "needs_password"})
+    if require and not stored and not password:
+        return handler._json(400, {"error": "needs_password"})
+    if require and stored and password:
+        return handler._json(400, {"error": "change it with the current password"})
+    if not require:
+        # Through a reverse proxy the caller is not seen as on the network, so
+        # "anyone on my network" would lock them out the moment it was made.
+        if not _lan_client(handler):
+            return handler._json(409, {"error": "behind_proxy"})
+        if stored and _get_api_token():
+            return handler._json(
+                400, {"error": "Revoke the API token before removing the password"}
+            )
+    if os.environ.get("ZIMI_MANAGE_USER", "").strip():
+        username = None  # the environment names the account
+    if require and password:
+        if not _set_manage_password(password, username=username or ""):
+            return handler._json(
+                500, {"error": "Could not save the password (storage is not writable)"}
+            )
+    elif require and username is not None and username != _file_username():
+        if not _set_manage_username(username):
+            return handler._json(500, {"error": "Could not save the username"})
+    elif not require and stored and not _set_manage_password(""):
+        return handler._json(
+            500, {"error": "Could not save the password (storage is not writable)"}
+        )
+    _write_app_update_prefs(manage_external=external, lan_admin=not require)
+    _clear_setup_key()
+    _end_setup_gate()
+    log.info(
+        "Access: %s%s",
+        "password" if require else "anyone on the local network",
+        ", from outside the network too" if external else ", inside the network only",
+    )
+    if require and password:
+        return _password_set_response(handler, data, {"access": access_mode()})
+    return handler._json(200, {"access": access_mode()})
+
+
 def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled."})
     # Password management — browser only, not accessible via API
     if parsed.path == "/manage/access":
-        # The first-run choice "Anyone on my network": no password, no
-        # accounts, while internet and proxied clients stay locked out. Made
-        # through the same gate as the first password (the host, or the setup
-        # key the server logged), never by an adjacent device on its own.
-        if data.get("mode") != "lan":
-            return handler._json(400, {"error": "Unknown access mode"})
-        if _lan_admin_env() is not None or manage_open():
-            return handler._json(403, {"error": "Access is set where Zimi is started"})
-        if _get_manage_password_hash():
-            return handler._json(409, {"error": "Remove the password first"})
-        challenge = _manage_auth_challenge(handler)
-        if challenge:
-            return handler._json(*challenge)
-        # Through a reverse proxy the caller is not seen as on the network, so
-        # this choice would lock them out the moment it was made.
-        if not _lan_client(handler):
-            return handler._json(409, {"error": "behind_proxy"})
-        _write_app_update_prefs(lan_admin=True)
-        _clear_setup_key()
-        log.info("Access: anyone on the local network may change settings (first-run choice)")
-        return handler._json(200, {"access": access_mode()})
+        return _handle_access(handler, data)
 
     if parsed.path == "/manage/set-password":
         # Env var controls password — UI changes would be silently overridden
@@ -5920,23 +6114,11 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(
                 500, {"error": "Could not save the password (storage is not writable)"}
             )
-        # The setup key's life ends with the bootstrap it existed for, and a
-        # password ends "Anyone on my network".
         if new_pw:
-            _clear_setup_key()
-            if _read_app_update_prefs().get("lan_admin"):
-                _write_app_update_prefs(lan_admin=False)
-            # A new password ends the sessions the old one opened, and this
-            # browser gets a fresh one: it keeps a session, never a password.
-            from zimi import users as _users_pw
-
-            _users_pw.drop_admin_sessions()
-            token = _users_pw.create_admin_session()
-            return handler._json_cookie(
-                200,
-                {"status": "password set", "token": token},
-                handler._session_cookie(token, bool(data.get("remember"))),
-            )
+            return _password_set_response(handler, data, {"status": "password set"})
+        # No password and no outside: settings from outside need a password.
+        if _read_app_update_prefs().get("manage_external"):
+            _write_app_update_prefs(manage_external=False)
         return handler._json(200, {"status": "password cleared"})
 
     # API token management — requires existing auth + password must be set
