@@ -557,7 +557,7 @@ def format_duration(seconds):
     up to hours: 28800 is 8h, 5400 is 90m."""
     seconds = int(seconds or 0)
     if not seconds:
-        return "none"
+        return "0"
     for unit, size in (("h", 3600), ("m", 60)):
         if seconds % size == 0:
             return f"{seconds // size}{unit}"
@@ -656,7 +656,7 @@ def _stored_sitemap(value):
 
 
 def _show_bytes(value):
-    return _fmt_bytes(value) if value else "no limit"
+    return _fmt_bytes(value) if value else "0"
 
 
 def _show(value):
@@ -703,7 +703,7 @@ CAPTURE_OPTIONS = {
         # engines and flags are handled where they always were; the rows are
         # what a stored value is checked by.
         CaptureOption("scope", "--scope", _parse_scope),
-        CaptureOption("max_pages", "--max-pages", _parse_int(0, 10**9, "the page limit"), lambda v: f"{v:,}" if v else "no limit"),
+        CaptureOption("max_pages", "--max-pages", _parse_int(0, 10**9, "the page limit"), _show),
         CaptureOption("max_depth", "--max-depth", _parse_int(0, MAX_DEPTH_CEILING, "the depth"), _show),
         CaptureOption("max_bytes", "--max-bytes", _parse_bytes, _show_bytes, engines=_OWN_CRAWLER_ENGINES),
         CaptureOption("delay", "--delay", _parse_delay, lambda v: f"{v:g}s", engines=_OWN_CRAWLER_ENGINES),

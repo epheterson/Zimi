@@ -3638,7 +3638,7 @@ def _build_from_args(args, src, is_url):
         if not site:
             refuse(
                 shape + new_options,
-                "needs --site — without it Zimi captures exactly one page",
+                "needs --site: without it Zimi captures exactly one page",
             )
         wanted = _site_options(args, engine)
         return crawler.create_zimit_zim(
@@ -3659,7 +3659,7 @@ def _build_from_args(args, src, is_url):
     if not site:
         refuse(
             ("--max-pages",) + shape + new_options + builtin_only,
-            "needs --site — without it Zimi captures exactly one page",
+            "needs --site: without it Zimi captures exactly one page",
         )
         return create_page_zim(
             src, engine=engine, block_ads=block_ads, progress=_note, **common

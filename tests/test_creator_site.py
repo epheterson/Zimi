@@ -7,12 +7,14 @@ image is ever pulled. Real end-to-end otherwise: the built .zim is read back
 with libzim's Archive.
 """
 
+import gzip
 import http.server
 import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from typing import List, Optional
 
 import pytest
@@ -43,6 +45,8 @@ REQUESTS = []
 # are one server and two sites, which is how the scope tests leave a site.
 HOSTED = []
 ROBOTS: List[Optional[str]] = [DEFAULT_ROBOTS]
+# The User-Agent of every request, in order, for the identity tests.
+AGENTS: List[Optional[str]] = []
 
 
 def _page(body, *, css=True):
@@ -167,6 +171,57 @@ ROUTES.update(
     }
 )
 
+# Sitemaps. /orphan.html and /archive/old.html are linked from nowhere, so only a
+# sitemap reaches them; the rest of what a sitemap lists is something a crawl
+# must refuse to be sent to (another site, a page robots.txt disallows).
+_NS = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+
+
+def _urlset(*locs):
+    body = "".join(f"<url><loc>{loc}</loc></url>" for loc in locs)
+    return f'<?xml version="1.0"?><urlset {_NS}>{body}</urlset>'.encode()
+
+
+def _index(*locs):
+    body = "".join(f"<sitemap><loc>{loc}</loc></sitemap>" for loc in locs)
+    return f'<?xml version="1.0"?><sitemapindex {_NS}>{body}</sitemapindex>'.encode()
+
+
+ROUTES.update(
+    {
+        "/orphan.html": ("text/html; charset=utf-8", _page("<h1>Orphan</h1>")),
+        "/archive/old.html": ("text/html; charset=utf-8", _page("<h1>Old</h1>")),
+        "/sitemap.xml": (
+            "application/xml",
+            _urlset(
+                f"{BASE}/orphan.html",
+                f"{BASE}/docs/intro.html",
+                "https://elsewhere.invalid/x",
+                f"{BASE}/private/secret.html",
+            ),
+        ),
+        "/custom-map.xml": ("application/xml", _urlset(f"{BASE}/orphan.html")),
+        "/index-map.xml": (
+            "application/xml",
+            _index(f"{BASE}/part-one.xml", f"{BASE}/part-two.xml.gz"),
+        ),
+        "/part-one.xml": ("application/xml", _urlset(f"{BASE}/orphan.html")),
+        "/part-two.xml.gz": (
+            "application/gzip",
+            gzip.compress(_urlset(f"{BASE}/archive/old.html")),
+        ),
+        "/to-localhost": ("redirect", f"{OTHER}/far.html".encode()),
+        "/viewport.html": (
+            "text/html; charset=utf-8",
+            b"<html><head><title>V</title><meta name=viewport content=\"width=device-width\">"
+            b"</head><body><p id=v></p><script>"
+            b"document.getElementById('v').textContent='width='+innerWidth+"
+            b"' touch='+matchMedia('(pointer: coarse)').matches"
+            b"</script></body></html>",
+        ),
+    }
+)
+
 # A link chain deep enough to exercise --max-depth without the seed's other
 # links muddying the count.
 for _i in range(7):
@@ -179,6 +234,9 @@ for _i in range(7):
 class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         REQUESTS.append(self.path)
+        AGENTS.append(self.headers.get("User-Agent"))
+        if self.path == "/hang":
+            time.sleep(4)
         HOSTED.append((self.headers.get("Host", "").split(":")[0], self.path))
         if self.path == "/robots.txt":
             body = ROBOTS[0]
@@ -224,6 +282,7 @@ def _clean(monkeypatch):
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
     REQUESTS.clear()
     HOSTED.clear()
+    AGENTS.clear()
     ROBOTS[0] = DEFAULT_ROBOTS
     yield
 
