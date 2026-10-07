@@ -268,15 +268,20 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-# Session-wide: other modules import this fixture (capture options, the private
-# rule), and one server on one port serves them all.
+# One server on one port for the whole run: other modules import this fixture
+# (capture options, the private rule) and pytest makes each import its own
+# instance, so the server is started once and shared. A daemon thread, so it
+# ends with the process.
+_SERVER = []
+
+
 @pytest.fixture(scope="session")
 def fixture_server():
-    srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield BASE
-    srv.shutdown()
-    srv.server_close()
+    if not _SERVER:
+        srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        _SERVER.append(srv)
+    return BASE
 
 
 @pytest.fixture(autouse=True)
