@@ -96,6 +96,15 @@ from zimi.zimwriter import (
 log = logging.getLogger("zimi.creator")
 
 
+# What every network engine says when the machine is in offline mode. Read by
+# a person on the Create page as much as at a terminal, so it says what is
+# true and what still works, and names the switch for whoever set it.
+OFFLINE_REFUSAL = (
+    "Offline mode is on (ZIMI_OFFLINE), so nothing can be fetched from the web. "
+    "A folder on this server can still become a ZIM."
+)
+
+
 class CreateError(Exception):
     """A user-facing creation failure — the message is printed verbatim."""
 
@@ -2837,11 +2846,7 @@ def create_page_zim(
             progress=progress,
         )
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Page capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
@@ -3106,11 +3111,7 @@ def create_pages_zim(
             f"{urllib.parse.urlsplit(wanted[0]).netloc} with --site"
         )
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Page capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
 
     from zimi.crawler import normalize_url
 

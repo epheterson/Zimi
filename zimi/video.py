@@ -37,6 +37,7 @@ import tempfile
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
     DEFAULT_LANGUAGE,
     LANGUAGE_AUTO,
     CreateError,
@@ -665,7 +666,7 @@ def probe_video(url, limit=None):
     if mod is None:
         raise CreateError(INSTALL_HINT)
     if is_offline():
-        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+        raise CreateError(OFFLINE_REFUSAL)
     head, entries = _flat_entries(
         mod, url, min(limit or PROBE_MAX_ENTRIES, PROBE_MAX_ENTRIES)
     )
@@ -749,10 +750,7 @@ def create_video_zim(
     if mod is None:
         raise CreateError(INSTALL_HINT)
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Video capture downloads media; it cannot run offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if max_bytes < 0:
         raise CreateError("--max-bytes cannot be negative (0 means no limit)")
     say = progress or (lambda _msg: None)

@@ -73,6 +73,7 @@ from typing import Any, Callable, Optional
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
     DEFAULT_ENGINE,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
@@ -1511,11 +1512,7 @@ def create_site_zim(
     # default) from a depth somebody chose.
     max_depth = DEFAULT_MAX_DEPTH if max_depth is None else max_depth
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Site capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
@@ -1758,7 +1755,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
     from zimi.p2p import is_offline
 
     if is_offline():
-        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
@@ -2136,10 +2133,7 @@ def create_zimit_zim(
 
     note = progress or _noop
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "The zimit engine captures from the internet by definition."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     # Only the seed can be judged: zimit's browser runs in a container whose own

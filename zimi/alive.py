@@ -61,6 +61,7 @@ import urllib.parse
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
     CreateError,
     LANGUAGE_AUTO,
     _finish_output,
@@ -496,11 +497,7 @@ def create_alive_page_zim(
 
     note = progress or (lambda _m: None)
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Alive capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     require_alive()
@@ -645,11 +642,7 @@ def create_alive_site_zim(
     timeout = DEFAULT_FETCH_TIMEOUT if timeout is None else timeout
 
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Alive capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
