@@ -4,6 +4,7 @@ Handles /manage/* routes: library status, downloads, catalog, settings,
 history, stats, and admin authentication. Called from ZimHandler in http.py.
 """
 
+import functools
 import hashlib
 import hmac
 import json
@@ -2268,13 +2269,13 @@ CREATE_CAPTURE_VARIANTS = True
 # validator applying it to a silent request, and the payload reporting it.
 
 
-def _create_defaults_path():
-    return os.path.join(_srv.ZIMI_DATA_DIR, "create_defaults.json")
-
-
 def _read_create_defaults():
+    """The stored defaults as the file holds them, bad values and all: what a
+    write merges into. Readers that act on a value use ``_create_default``."""
+    from zimi.crawler import create_defaults_path
+
     try:
-        with open(_create_defaults_path(), "r", encoding="utf-8") as f:
+        with open(create_defaults_path(), "r", encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -2283,18 +2284,61 @@ def _read_create_defaults():
 
 def _create_default(key, fallback):
     """The stored default for ``key``, or ``fallback`` when nobody ever set
-    one. Only a real boolean in the file counts — a hand-edited string like
-    "yes" falls back rather than being guessed at."""
-    value = _read_create_defaults().get(key)
-    return value if isinstance(value, bool) else fallback
+    one. What counts as a valid value is the capture-option table's to say
+    (crawler.CAPTURE_OPTIONS): a hand-edited "yes" or a time limit nobody can
+    read falls back rather than being guessed at."""
+    from zimi.crawler import stored_defaults
+
+    return stored_defaults().get(key, fallback)
 
 
 def _write_create_defaults(**updates):
     """Merge into the defaults file — setting one switch must never drop the
-    other's stored answer."""
+    other's stored answer. A value of None clears that default."""
     prefs = _read_create_defaults()
-    prefs.update(updates)
-    _srv._atomic_write_json(_create_defaults_path(), prefs)
+    for key, value in updates.items():
+        if value is None:
+            prefs.pop(key, None)
+        else:
+            prefs[key] = value
+    from zimi.crawler import create_defaults_path
+
+    _srv._atomic_write_json(create_defaults_path(), prefs)
+
+
+def _create_defaults_view():
+    """The stored defaults for a form: the values, and each as the text a
+    placeholder shows. ``allow_private`` is the admin's alone and is not sent
+    to the Create page (see ``_create_defaults_payload``)."""
+    from zimi.crawler import default_placeholders, stored_defaults
+
+    stored = stored_defaults()
+    return {"defaults": stored, "defaults_text": default_placeholders(stored)}
+
+
+def _create_allows_private():
+    """Whether an admin has allowed web captures of private addresses."""
+    return bool(_create_default("allow_private", False))
+
+
+def _private_rule():
+    """The context a web capture (or its preview) runs in: held to public
+    addresses unless an admin allowed otherwise. The command line never comes
+    through here and is never held."""
+    import contextlib
+
+    from zimi.creator import private_addresses_refused
+
+    return contextlib.nullcontext() if _create_allows_private() else private_addresses_refused()
+
+
+def _under_private_rule(fn):
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        with _private_rule():
+            return fn(*args, **kwargs)
+
+    return run
 
 
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
@@ -2332,6 +2376,9 @@ CREATE_MAX_TITLE = 200
 # outgrew that five days later; on the desktop app the form IS the CLI. Any
 # number is taken, and 0 is none. With both at 0 only the depth and the disk
 # bound a crawl, and the job log says so.
+# These two mirror crawler.MAX_DEPTH_CEILING and crawler.MAX_DELAY, which check a
+# STORED default; this module cannot import the crawler at load (the writer
+# stack), and a test holds the pairs equal.
 CREATE_MAX_DEPTH_CEILING = 50
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
@@ -3140,6 +3187,12 @@ def _create_validate(data):
         opts["delay"] = _create_float(data.get("delay"), 0.0, CREATE_MAX_DELAY)
         opts["ignore_robots"] = bool(data.get("ignore_robots"))
         opts.update(_create_scope(data))
+        opts.update(_create_capture_options(data, opts.get("engine")))
+        # What the form left unsaid is the admin's stored default, then the
+        # engines' own: capture value, stored default, factory.
+        from zimi.crawler import fill_stored_defaults
+
+        fill_stored_defaults(opts, opts.get("engine"))
     elif mode == "video":
         opts["audio_only"] = bool(data.get("audio_only"))
         opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
@@ -3234,6 +3287,20 @@ def _create_scope(data):
     except CreateError as e:
         raise ValueError(str(e))
     return {k: v for k, v in raw.items() if v not in (None, [], 0)}
+
+
+def _create_capture_options(data, engine):
+    """The capture options the table owns (time limit, sitemap, user agent,
+    mobile, page timeout), checked now like the scope is. An option the chosen
+    engine cannot honor is dropped, as a stale block-ads box is: the form may
+    have been filled before the engine picker moved."""
+    from zimi.crawler import capture_options
+    from zimi.creator import CreateError
+
+    try:
+        return capture_options(data, engine, strict=False)
+    except CreateError as e:
+        raise ValueError(str(e))
 
 
 def _create_float(value, low, high):
@@ -3381,6 +3448,7 @@ def _create_out_dir():
     return os.path.join(_srv.ZIM_DIR, "created")
 
 
+@_under_private_rule
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
@@ -3435,6 +3503,11 @@ def _create_run(job, opts):
                 "include",
                 "exclude",
                 "extra_hops",
+                "time_limit",
+                "sitemap",
+                "user_agent",
+                "mobile",
+                "page_timeout",
             ),
         )
     if job.mode == "video":
@@ -3874,6 +3947,13 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
                 "capture_variants", CREATE_CAPTURE_VARIANTS
             ),
         }
+        # Every stored default, and the text a field shows for it, so the
+        # Advanced fields say what silence means. allow_private is the
+        # admin's and stays out of this page.
+        view = _create_defaults_view()
+        view["defaults"].pop("allow_private", None)
+        view["defaults_text"].pop("allow_private", None)
+        payload.update(view)
         # None, not "", when no root is configured: the client reads it as a
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
@@ -4532,6 +4612,7 @@ def _creator_payload():
         "capture_variants_default": _create_default(
             "capture_variants", CREATE_CAPTURE_VARIANTS
         ),
+        **_create_defaults_view(),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
     }
@@ -4759,6 +4840,7 @@ def _detect_html_language(text):
     return None
 
 
+@_under_private_rule
 def _probe_url(source, *, want_robots=False, engine=None):
     """Fetch ONE page and report what the capture would be working with: where
     it really landed, what it is called, whether it is an application shell
@@ -6245,22 +6327,22 @@ def handle_manage_post(handler, parsed, data):
         return handler._json(*challenge)
 
     if parsed.path == "/manage/creator":
-        # The write half of the Creator section: the two capture defaults the
-        # Manage toggles set. Booleans only — a request that sends anything
-        # else is a caller confused about the contract, and refusing is kinder
-        # than storing junk a future job would silently obey. Admin-gated by
-        # the challenge above, like every other manage settings write.
-        updates = {}
-        for key in ("block_ads", "capture_variants"):
-            if key in data:
-                value = data.get(key)
-                if not isinstance(value, bool):
-                    return handler._json(
-                        400, {"error": f"'{key}' must be true or false"}
-                    )
-                updates[key] = value
-        if not updates:
+        # The write half of the Creator section: the standing capture
+        # defaults. What each may hold is the capture-option table's to say
+        # (crawler.CAPTURE_OPTIONS); a value it refuses is a 400 with a
+        # plain sentence, because storing junk a later job would obey is
+        # worse. null or "" clears one. Admin-gated by the challenge above,
+        # like every other manage settings write, which is also why
+        # allow_private can only be set here and never with a capture.
+        from zimi.crawler import validate_stored_defaults
+        from zimi.creator import CreateError
+
+        if not data:
             return handler._json(400, {"error": "nothing to change"})
+        try:
+            updates = validate_stored_defaults(data)
+        except CreateError as e:
+            return handler._json(400, {"error": str(e)})
         _write_create_defaults(**updates)
         return handler._json(
             200,
@@ -6269,6 +6351,7 @@ def handle_manage_post(handler, parsed, data):
                 "capture_variants_default": _create_default(
                     "capture_variants", CREATE_CAPTURE_VARIANTS
                 ),
+                **_create_defaults_view(),
             },
         )
 
