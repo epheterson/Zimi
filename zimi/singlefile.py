@@ -38,7 +38,7 @@ import sys
 import tempfile
 import urllib.parse
 
-from zimi.creator import CreateError
+from zimi.creator import CreateError, check_public
 
 log = logging.getLogger("zimi.singlefile")
 
@@ -186,7 +186,13 @@ def _check_url(url):
 
 
 def capture_page(
-    url, *, timeout=DEFAULT_TIMEOUT, note=None, block_ads=True, work_dir=None
+    url,
+    *,
+    timeout=DEFAULT_TIMEOUT,
+    note=None,
+    block_ads=True,
+    work_dir=None,
+    user_agent=None,
 ):
     """Run SingleFile over ``url`` and return the self-contained HTML.
 
@@ -197,6 +203,9 @@ def capture_page(
     """
     say = note or (lambda _m: None)
     _check_url(url)
+    # Only the address asked for: SingleFile is its own browser in its own
+    # process, and what its page then requests is out of Zimi's sight.
+    check_public(url)
     exe = shutil.which(SINGLEFILE_BIN)
     if not exe:
         raise CreateError(INSTALL_HINT)
@@ -216,6 +225,9 @@ def capture_page(
         # default as the others rather than quietly ignoring it.
         cmd.append("--block-images=false")
         cmd.append("--load-deferred-images=true")
+
+    if user_agent:
+        cmd.append(f"--user-agent={user_agent}")
 
     say("capturing with SingleFile…")
     try:
@@ -283,12 +295,20 @@ class SingleFileCapture:
     """
 
     def __init__(
-        self, *, note=None, block_ads=None, work_dir=None, timeout=DEFAULT_TIMEOUT
+        self,
+        *,
+        note=None,
+        block_ads=None,
+        work_dir=None,
+        timeout=DEFAULT_TIMEOUT,
+        user_agent=None,
     ):
         self._note = note or (lambda _m: None)
         self._block_ads = True if block_ads is None else bool(block_ads)
         self._work_dir = work_dir
         self._timeout = timeout
+        # The UA string to present, already settled (typed, or the phone's).
+        self._user_agent = user_agent
         # The shared reporting surface every engine exposes to the writer.
         self.carried = {}
         self.mimetypes = set()
@@ -335,6 +355,7 @@ class SingleFileCapture:
             note=self._note,
             block_ads=self._block_ads,
             work_dir=self._work_dir,
+            user_agent=self._user_agent,
         )
         return url, html, len(html.encode("utf-8", errors="replace")), ""
 

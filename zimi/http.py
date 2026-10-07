@@ -27,6 +27,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 import zimi.server as _srv
 from zimi import bookpages as _bookpages
 from zimi import manage as _manage_mod
+from zimi import netguard as _netguard
 from zimi import sso as _sso
 from zimi import users as _users
 from zimi import zimblob as _zimblob
@@ -79,8 +80,9 @@ _TRUSTED_PROXY_CIDRS = _load_trusted_proxy_cidrs()
 # from the public routing table. Python's ipaddress.is_private is False for it,
 # so without this Zimi classifies Tailscale peers as PUBLIC and locks management
 # on them (#36 — the lock "came and went" as the reporter switched between LAN
-# and Tailscale).
-CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+# and Tailscale). Defined in zimi.netguard, which also keeps web captures
+# off it.
+CGNAT_NET = _netguard.CGNAT_NET
 
 # Default on. An inbound TCP connection with a 100.64/10 source cannot complete a
 # handshake from the public internet — the return path to that range is

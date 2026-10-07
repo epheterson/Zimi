@@ -29,6 +29,9 @@ ZIM written into the library directory shows up without a full rescan.
 """
 
 import base64
+import contextlib
+import contextvars
+import functools
 import hashlib
 import html as _html
 import http.client
@@ -47,6 +50,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi import netguard as _netguard
 from zimi import folderfiles as _folderfiles
 from zimi import nautilus as _nautilus
 from zimi.blocklist import blocked_phrase
@@ -1261,11 +1265,125 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _user_agent():
-    # One honest UA for all of Zimi's outbound HTTP.
+# What a mobile capture presents itself as: a phone's browser half, and Zimi's
+# own half after it, which is how the renderer already names itself (see
+# RenderedSession._user_agent). A site that keys on "iPhone" serves the phone
+# page; an operator reading logs still finds who asked.
+MOBILE_UA_BROWSER = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+)
+# The phone a mobile capture renders at (CSS pixels), for the engines with a
+# browser. zimit is asked for the device by name instead.
+MOBILE_VIEWPORT = (390, 844)
+
+# The User-Agent every plain-HTTP fetch of ONE capture sends, set for the
+# duration of the call that was given a user agent or asked for mobile. A
+# ContextVar rather than a parameter on the dozen readers between a capture and
+# its sockets: the capture owns the setting, the readers just ask _user_agent().
+_CAPTURE_USER_AGENT = contextvars.ContextVar("zimi_capture_user_agent", default=None)
+
+
+# ── private addresses ───────────────────────────────────────────────────────
+#
+# A capture started from the web may be told to stay off the network the server
+# sits in (see zimi.netguard). The guard rides the capture's context like the
+# user agent does, and every plain-HTTP fetch of a capture asks it first:
+# each hop of a redirect, each asset, robots.txt, the sitemap. The browser
+# engines ask it from their request interception (zimi.renderer).
+_PRIVATE_GUARD = contextvars.ContextVar("zimi_private_guard", default=None)
+
+PRIVATE_REFUSED = (
+    "{host} is a private address, and captures started from the web may not "
+    "reach those. An admin can allow private captures in Manage, under Creator."
+)
+
+
+class PrivateAddressRefused(CreateError, OSError):
+    """A fetch the private-address rule refused. An OSError too, so the readers
+    that skip any asset that cannot be fetched skip this one the same way."""
+
+
+@contextlib.contextmanager
+def private_addresses_refused(guard=None):
+    """Hold every fetch made inside to public addresses."""
+    token = _PRIVATE_GUARD.set(guard or _netguard.PrivateGuard())
+    try:
+        yield
+    finally:
+        _PRIVATE_GUARD.reset(token)
+
+
+def current_private_guard():
+    return _PRIVATE_GUARD.get()
+
+
+def check_public(url, guard=None):
+    """Raise ``PrivateAddressRefused`` when a private-address rule is in force
+    and ``url`` points at one."""
+    guard = guard or _PRIVATE_GUARD.get()
+    if guard is None:
+        return
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if guard.refuses(host):
+        raise PrivateAddressRefused(PRIVATE_REFUSED.format(host=host))
+
+
+class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
+    """Follows redirects, but each hop is held to the private-address rule."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_public(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def urlopen_guarded(req, timeout):
+    """``urllib.request.urlopen``, held to the private-address rule when one is
+    in force: the address asked for and every redirect hop."""
+    if _PRIVATE_GUARD.get() is None:
+        return urllib.request.urlopen(req, timeout=timeout)
+    check_public(req.full_url)
+    return urllib.request.build_opener(_GuardedRedirect).open(req, timeout=timeout)
+
+
+def zimi_user_agent():
+    """Zimi's own, honest, identity. robots.txt rules are matched against this
+    whatever a capture presents itself as: choosing another UA changes what the
+    site serves, never whose rules apply."""
     from zimi.library import USER_AGENT
 
     return USER_AGENT
+
+
+def capture_user_agent(user_agent=None, mobile=False):
+    """The UA string a capture presents, or None for Zimi's own: the one that
+    was typed, else the phone's when mobile was asked for."""
+    if user_agent:
+        return str(user_agent)
+    if mobile:
+        return f"{MOBILE_UA_BROWSER} {zimi_user_agent()}"
+    return None
+
+
+def _user_agent():
+    return _CAPTURE_USER_AGENT.get() or zimi_user_agent()
+
+
+def with_capture_identity(fn):
+    """Run a capture with the ``user_agent`` and ``mobile`` it was given as the
+    identity of its plain-HTTP fetches, undone when it returns or raises."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        token = _CAPTURE_USER_AGENT.set(
+            capture_user_agent(kwargs.get("user_agent"), kwargs.get("mobile"))
+        )
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _CAPTURE_USER_AGENT.reset(token)
+
+    return run
 
 
 def _fetch_page(url, *, timeout, max_redirects):
@@ -1276,6 +1394,7 @@ def _fetch_page(url, *, timeout, max_redirects):
         scheme = urllib.parse.urlsplit(url).scheme.lower()
         if scheme not in ("http", "https"):
             raise CreateError(f"unsupported URL scheme in redirect chain: {url}")
+        check_public(url)
         req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         opener = urllib.request.build_opener(_NoRedirect)
         try:
@@ -1539,7 +1658,9 @@ def _urlopen_retry(req, timeout, tries=3):
     last = None
     for i in range(tries):
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            return urlopen_guarded(req, timeout)
+        except PrivateAddressRefused:
+            raise  # not transient: retrying would only ask again
         except urllib.error.HTTPError as e:
             last = e
             if e.code not in _RETRYABLE_HTTP:
@@ -2570,6 +2691,13 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     # take them on the page they already have open, and neither of their
     # constructors knows the flag.
     pictures = kwargs.pop("pictures", True)
+    # How the capture presents itself, shared by every engine's constructor
+    # call. The fast engine's fetches read it from the capture's context (see
+    # with_capture_identity), so only the engines with a browser, or a tool of
+    # their own, are handed it.
+    user_agent = kwargs.pop("user_agent", None)
+    mobile = bool(kwargs.pop("mobile", False))
+    page_timeout = kwargs.pop("page_timeout", None)
     if name in ("", "builtin"):
         return BuiltinCapture(pictures=pictures, **kwargs)
     if name == "rendered":
@@ -2585,6 +2713,9 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
             capture_variants=kwargs.get("capture_variants"),
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
         )
     if name == "singlefile":
         # SingleFile hands back ONE self-contained document, so it satisfies
@@ -2597,6 +2728,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
             work_dir=kwargs.get("work_dir"),
+            user_agent=capture_user_agent(user_agent, mobile),
         )
     if name == "alive":
         from zimi.alive import AliveCapture
@@ -2608,6 +2740,9 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
             note=kwargs.get("note"),
             block_ads=kwargs.get("block_ads"),
             capture_variants=kwargs.get("capture_variants"),
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
         )
     if name in OFFERED_ENGINES:
         # A real engine that simply does not live here. Worth its own sentence:

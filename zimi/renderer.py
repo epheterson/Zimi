@@ -76,6 +76,10 @@ import urllib.parse
 
 from zimi.blocklist import host_of as _host_of, load as _load_blocklist
 from zimi.creator import (
+    MOBILE_VIEWPORT,
+    capture_user_agent,
+    check_public,
+    current_private_guard,
     CreateError,
     _CSS_URL_RE,
     _fmt_bytes,
@@ -1068,7 +1072,22 @@ class RenderedSession:
         block_ads=None,
         capture_variants=None,
         color_scheme=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
+        # How this session presents itself and how long it waits on a page.
+        # ``user_agent`` replaces the whole string (the default is Chromium's
+        # own with Zimi's appended, see _user_agent); ``mobile`` renders at a
+        # phone's size with touch, and sends a phone's UA unless one was typed.
+        self._mobile = bool(mobile)
+        self._typed_user_agent = capture_user_agent(user_agent, mobile)
+        if self._mobile:
+            viewport = MOBILE_VIEWPORT
+        self._nav_timeout = float(page_timeout) if page_timeout else NAV_TIMEOUT
+        # The private-address rule in force where this session was made (a web
+        # job), or None. Asked of every request the browser makes.
+        self._private_guard = current_private_guard()
         # Which face of the site to capture. A site with its own dark mode
         # serves a different page depending on this, and a capture taken in
         # light while the person browses in dark comes out looking nothing
@@ -1190,13 +1209,15 @@ class RenderedSession:
         self._driver_pid = _driver_pid(self._pw)
         context_options = {
             "viewport": {"width": self._viewport[0], "height": self._viewport[1]},
-            "user_agent": self._user_agent(),
+            "user_agent": self._typed_user_agent or self._user_agent(),
             "ignore_https_errors": False,
         }
+        if self._mobile:
+            context_options.update(is_mobile=True, has_touch=True)
         if self._color_scheme in ("dark", "light"):
             context_options["color_scheme"] = self._color_scheme
         self._context = self._browser.new_context(**context_options)
-        self._context.set_default_timeout(int(NAV_TIMEOUT * 1000))
+        self._context.set_default_timeout(int(self._nav_timeout * 1000))
         self._install_blocking()
         with _sessions_lock:
             _sessions.append(self)
@@ -1214,17 +1235,22 @@ class RenderedSession:
         A failure to install is a capture without blocking, logged — never a
         capture that does not happen. Blocking makes a capture better and it is
         not what anyone asked for when they asked for a capture."""
-        if not self._block_ads or self._context is None:
+        if self._context is None:
             return
-        self._blocklist = _load_blocklist()
-        if not self._blocklist:
-            log.info("ad blocking is on but the list is empty; nothing to refuse")
+        if self._block_ads:
+            self._blocklist = _load_blocklist()
+            if not self._blocklist:
+                log.info("ad blocking is on but the list is empty; nothing to refuse")
+        if not self._blocklist and self._private_guard is None:
             return
         try:
             self._context.route("**/*", self._route)
         except Exception as e:
-            log.warning("could not install the ad blocker: %s", _playwright_reason(e))
+            log.warning("could not install the request filter: %s", _playwright_reason(e))
             self._blocklist = None
+            if self._private_guard is not None:
+                # A web capture that cannot be held to the rule does not run.
+                raise CreateError("could not restrict this capture to public addresses")
 
     def _route(self, route):
         """One request, judged. Abort what is on the list, let everything else
@@ -1239,6 +1265,11 @@ class RenderedSession:
         a request this cannot even ask about is one it must still answer."""
         url = ""
         try:
+            if self._private_guard is not None:
+                url = route.request.url or ""
+                if self._private_guard.refuses(_host_of(url)):
+                    route.abort(BLOCK_ABORT_CODE)
+                    return
             if self._blocklist is not None:
                 url = route.request.url or ""
                 host = _host_of(url)
@@ -1389,6 +1420,9 @@ class RenderedSession:
         asked for this capture could act on."""
         if self._context is None:
             raise CreateError(RENDERER_MISSING)
+        # Said plainly, up front, for the address that was asked for; every
+        # later request (a redirect, a subresource) is refused by the route.
+        check_public(url, self._private_guard)
         page = self._context.new_page()
         responses = []
         # A plain function, not `responses.append`: Playwright decorates the
@@ -1398,7 +1432,7 @@ class RenderedSession:
         try:
             try:
                 landed = page.goto(
-                    url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                    url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
                 )
             except Exception as e:
                 raise CreateError(f"cannot render {url}: {_playwright_reason(e)}")
@@ -1584,7 +1618,7 @@ class RenderedSession:
             responses = []
             page.on("response", lambda response: responses.append(response))
             page.goto(
-                url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
             )
             self._quiet(page, QUIET_TIMEOUT)
             # A site that honours the media query has already changed by now.
@@ -1643,7 +1677,7 @@ class RenderedSession:
         try:
             page = self._context.new_page()
             page.goto(
-                url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
             )
             self._quiet(page, QUIET_TIMEOUT)
             self._reveal(page)
@@ -1722,7 +1756,7 @@ class RenderedSession:
             page.goto(
                 origin + mainpath,
                 wait_until="domcontentloaded" if settle else "load",
-                timeout=int(NAV_TIMEOUT * 1000),
+                timeout=int(self._nav_timeout * 1000),
             )
             if settle:
                 # The same chain shoot_live walks, with one deliberate
@@ -2325,6 +2359,7 @@ class RenderedSession:
             return 0
         self._archived.add(url)
         try:
+            check_public(url, self._private_guard)
             reply = self._context.request.get(url, timeout=int(timeout * 1000))
             status = reply.status
             body = reply.body()
@@ -2448,7 +2483,8 @@ class RenderedSession:
         if self._context is None:
             return None
         try:
-            reply = self._context.request.get(url, timeout=int(NAV_TIMEOUT * 1000))
+            check_public(url, self._private_guard)
+            reply = self._context.request.get(url, timeout=int(self._nav_timeout * 1000))
             if not (200 <= reply.status < 300):
                 return None
             body = reply.body()
@@ -3159,6 +3195,9 @@ class RenderedCapture:
         note=None,
         block_ads=None,
         capture_variants=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
         self._session = RenderedSession(
             work_dir=work_dir,
@@ -3166,6 +3205,9 @@ class RenderedCapture:
             note=note,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
         )
         self._budget = budget
         self._note = note or (lambda _m: None)
