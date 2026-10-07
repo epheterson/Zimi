@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- A new install opens on one setup page: who can change settings, from outside your network or not, with a password or without ([#107](https://github.com/epheterson/Zimi/issues/107)).
+- Settings can stay inside your network even with the password (`ZIMI_MANAGE_EXTERNAL`).
+
+### Fixed
+
+- Library search matches every word from the start of a word, and shows its count once ([#108](https://github.com/epheterson/Zimi/issues/108)).
+
 ## [1.13.0] - 2026-10-06
 
 ### Added
