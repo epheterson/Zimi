@@ -53,7 +53,7 @@ def data_dir(tmp_path, monkeypatch):
 
 
 def _store(data_dir, **values):
-    (data_dir / "create_defaults.json").write_text(json.dumps(values))
+    (data_dir / "create_defaults.json").write_text(json.dumps(values), encoding="utf-8")
 
 
 def _opts(**fields):
@@ -161,7 +161,7 @@ def test_defaults_are_stored_validated_shown_and_cleared(data_dir):
         and r.body["defaults_text"]["max_bytes"] == "2.0 GB"
     )
     assert r.body["block_ads_default"] is False
-    stored = json.loads((data_dir / "create_defaults.json").read_text())
+    stored = json.loads((data_dir / "create_defaults.json").read_text(encoding="utf-8"))
     assert stored["time_limit"] == 28800 and stored["sitemap"] is True
     # Setting one never drops another, and "" clears.
     r = _post("/manage/creator", {"mobile": ""})
@@ -304,7 +304,8 @@ def test_cli_reads_the_stored_defaults_and_a_flag_beats_them(fixture_server, tmp
     (tmp_path / "cli-data" / "create_defaults.json").write_text(
         json.dumps(
             {"user_agent": "Stored/1", "sitemap": True, "max_pages": 3, "delay": 0}
-        )
+        ),
+        encoding="utf-8",
     )
     done = _cli(tmp_path, BASE + "/", "--site")
     assert done.returncode == 0, done.stderr
