@@ -4926,6 +4926,51 @@ def main():
         help="Follow links out of scope this many pages further (--site only; "
         f"0-{_crawler.MAX_EXTRA_HOPS})",
     )
+    # How a --site capture presents itself and when it stops. The table that
+    # says what each means and which engines honor it is crawler.CAPTURE_OPTIONS.
+    p_create.add_argument(
+        "--time-limit",
+        default=None,
+        metavar="DURATION",
+        help="Stop crawling after this long and keep what is captured: 90m, 8h, "
+        "or seconds (--site only)",
+    )
+    p_create.add_argument(
+        "--sitemap",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="URL",
+        help="Also visit the pages a sitemap lists: bare, the one named in "
+        "robots.txt or /sitemap.xml; or give its address (--site only)",
+    )
+    p_create.add_argument(
+        "--no-sitemap",
+        dest="sitemap",
+        action="store_const",
+        const=False,
+        help="Do not read a sitemap, whatever the stored default says",
+    )
+    p_create.add_argument(
+        "--user-agent",
+        default=None,
+        metavar="STRING",
+        help="The User-Agent to present instead of Zimi's own (--site only)",
+    )
+    p_create.add_argument(
+        "--mobile",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Capture as a phone: a mobile user agent, and with a browser "
+        "engine a 390px touch screen (--site only)",
+    )
+    p_create.add_argument(
+        "--page-timeout",
+        default=None,
+        metavar="SECONDS",
+        help="How long a browser engine waits for one page (--site only; "
+        "--engine rendered, alive or zimit)",
+    )
     # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
     p_create.add_argument(
         "--format",

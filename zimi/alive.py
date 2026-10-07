@@ -186,6 +186,9 @@ class AliveCapture:
         warc_path=None,
         block_ads=None,
         capture_variants=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
         from zimi.renderer import ALIVE_EXTRA_WAIT, RenderedSession
 
@@ -221,6 +224,9 @@ class AliveCapture:
                 # came out 41% smaller and replayed no worse.
                 block_ads=block_ads,
                 capture_variants=capture_variants,
+                user_agent=user_agent,
+                mobile=mobile,
+                page_timeout=page_timeout,
             )
         except BaseException:
             # A half-constructed engine is one nobody will ever close, so the
@@ -588,6 +594,11 @@ def create_alive_site_zim(
     block_ads=None,
     capture_variants=None,
     scope=None,
+    time_limit=None,
+    sitemap=None,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
     register=False,
     progress=None,
     stop=None,
@@ -670,6 +681,9 @@ def create_alive_site_zim(
         extra_wait=extra_wait,
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     spool_dir = None
     out = None
@@ -719,6 +733,8 @@ def create_alive_site_zim(
                 scope=scope,
                 ignore_robots=ignore_robots,
                 timeout=timeout,
+                time_limit=time_limit,
+                sitemap=sitemap,
             )
             del seed_text
             note(

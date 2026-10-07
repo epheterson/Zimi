@@ -3500,6 +3500,11 @@ def _crawl_flag_state(args):
         "--include": bool(getattr(args, "include", None)),
         "--exclude": bool(getattr(args, "exclude", None)),
         "--extra-hops": getattr(args, "extra_hops", None) is not None,
+        "--time-limit": getattr(args, "time_limit", None) is not None,
+        "--sitemap": getattr(args, "sitemap", None) is not None,
+        "--user-agent": getattr(args, "user_agent", None) is not None,
+        "--mobile": getattr(args, "mobile", None) is not None,
+        "--page-timeout": getattr(args, "page_timeout", None) is not None,
         "--max-bytes": getattr(args, "max_bytes", None) is not None,
         "--delay": getattr(args, "delay", None) is not None,
         "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
@@ -3616,11 +3621,10 @@ def _build_from_args(args, src, is_url):
     builtin_only = ("--max-bytes", "--delay", "--ignore-robots")
     # Crawl shape every engine takes, zimit included: browsertrix's own options.
     shape = ("--max-depth", "--scope", "--include", "--exclude", "--extra-hops")
-    scope = dict(
-        scope=getattr(args, "scope", None),
-        include=getattr(args, "include", None) or (),
-        exclude=getattr(args, "exclude", None) or (),
-        extra_hops=getattr(args, "extra_hops", None) or 0,
+    # Options of a site capture whatever the engine; which engines honor each
+    # one is the table's to say (crawler.CAPTURE_OPTIONS).
+    new_options = tuple(
+        crawler.CAPTURE_OPTIONS[k].flag for k in crawler.NEW_OPTION_KEYS
     )
     if engine == "zimit":
         # zimit has its own crawl controls, its own robots policy and its own
@@ -3632,13 +3636,18 @@ def _build_from_args(args, src, is_url):
             "equivalent with --engine-arg",
         )
         if not site:
-            refuse(shape, "needs --site — without it Zimi captures exactly one page")
+            refuse(
+                shape + new_options,
+                "needs --site — without it Zimi captures exactly one page",
+            )
+        wanted = _site_options(args, engine)
         return crawler.create_zimit_zim(
             src,
             site=site,
-            max_pages=getattr(args, "max_pages", None),
-            max_depth=getattr(args, "max_depth", None),
-            scope=crawler.CrawlScope(**scope) if site else None,
+            max_pages=wanted.get("max_pages"),
+            max_depth=wanted.get("max_depth"),
+            scope=crawler.CrawlScope(**_scope_kwargs(args, wanted)) if site else None,
+            capture_options={k: wanted[k] for k in crawler.NEW_OPTION_KEYS if k in wanted},
             engine_args=getattr(args, "engine_arg", None) or (),
             progress=_note,
             **common,
@@ -3649,28 +3658,57 @@ def _build_from_args(args, src, is_url):
     block_ads = _block_ads_from_args(args, engine)
     if not site:
         refuse(
-            ("--max-pages",) + shape + builtin_only,
+            ("--max-pages",) + shape + new_options + builtin_only,
             "needs --site — without it Zimi captures exactly one page",
         )
         return create_page_zim(
             src, engine=engine, block_ads=block_ads, progress=_note, **common
         )
+    wanted = _site_options(args, engine, block_ads=block_ads)
     return crawler.create_site_zim(
         src,
         engine=engine,
-        block_ads=block_ads,
-        max_pages=_flag_or(args, "max_pages", crawler.DEFAULT_MAX_PAGES),
-        max_depth=getattr(args, "max_depth", None),
-        **scope,
-        max_bytes=(
-            crawler.parse_size(args.max_bytes)
-            if getattr(args, "max_bytes", None) is not None
-            else crawler.DEFAULT_MAX_BYTES
-        ),
-        delay=_flag_or(args, "delay", crawler.DEFAULT_DELAY),
+        block_ads=wanted.get("block_ads"),
+        capture_variants=wanted.get("capture_variants"),
+        max_pages=wanted.get("max_pages", crawler.DEFAULT_MAX_PAGES),
+        max_depth=wanted.get("max_depth"),
+        **_scope_kwargs(args, wanted),
+        **{k: wanted[k] for k in crawler.NEW_OPTION_KEYS if k in wanted},
+        max_bytes=wanted.get("max_bytes", crawler.DEFAULT_MAX_BYTES),
+        delay=wanted.get("delay", crawler.DEFAULT_DELAY),
         ignore_robots=bool(getattr(args, "ignore_robots", False)),
         progress=_note,
         **common,
+    )
+
+
+def _site_options(args, engine, block_ads=None):
+    """What a site capture on the command line asks for: each option's flag,
+    then the stored default for what the flags left unsaid, then (by absence)
+    the factory. A flag an engine cannot honor is refused; a stored default it
+    cannot honor is simply not applied."""
+    from zimi import crawler
+
+    given = {k: getattr(args, k, None) for k in crawler.NEW_OPTION_KEYS}
+    wanted = crawler.capture_options(given, engine, strict=True)
+    for key in ("scope", "max_pages", "max_depth", "max_bytes", "delay"):
+        value = crawler.capture_option_value(key, getattr(args, key, None))
+        if value is not None:
+            wanted[key] = value
+    if block_ads is not None:
+        wanted["block_ads"] = block_ads
+    return crawler.fill_stored_defaults(wanted, engine)
+
+
+def _scope_kwargs(args, wanted):
+    """The scope's four fields: kind from the options (flag or stored default),
+    the patterns and hops from the command line only, which is why they cannot
+    be stored."""
+    return dict(
+        scope=wanted.get("scope"),
+        include=getattr(args, "include", None) or (),
+        exclude=getattr(args, "exclude", None) or (),
+        extra_hops=getattr(args, "extra_hops", None) or 0,
     )
 
 
