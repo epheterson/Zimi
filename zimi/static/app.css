@@ -718,6 +718,9 @@
   .create-go { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
   .create-go-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; }
   .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+  .create-flag-noted { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .create-flag-noted > .create-caption { margin: 0; }
+  .create-flag-noted[hidden] { display: none; }
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
   .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
   /* ── The capture engine picker ──

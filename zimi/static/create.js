@@ -2016,9 +2016,9 @@ function _createFieldHtml(key, def) {
   var label = tH(f.label);
   if (f.control === 'engine') return _createEngineHtml(f);
   if (f.control === 'check') {
-    // The row carries an id of its own so a field that only applies to some
-    // engines can be hidden whole — label and all — rather than left as a
-    // dangling word beside a checkbox that went away.
+    // Every row carries an id of its own (here and below) so a field that only
+    // applies to some engines can be hidden whole, label and all, rather than
+    // left as a dangling word beside a control that went away.
     return '<label class="create-flag" id="' + f.id + '-row">' +
       '<input type="checkbox" id="' + f.id + '"' + (f.on ? ' checked' : '') +
       (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
@@ -2050,12 +2050,12 @@ function _createFieldHtml(key, def) {
         ' aria-label="' + escAttr(tH('create_size_custom')) + '">'
       : '';
     var change = f.customSize ? ' onchange="_createSizeSelect(this)"' : '';
-    return '<label class="create-flag">' + label +
+    return '<label class="create-flag" id="' + f.id + '-row">' + label +
       '<select class="create-field create-pick" id="' + f.id + '"' + change + '>' + opts + '</select></label>' + extra;
   }
   var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || f.ph || '';
   var number = f.control === 'number';
-  return '<label class="create-flag">' + label +
+  return '<label class="create-flag" id="' + f.id + '-row">' + label +
     '<input type="' + (number ? 'number' : 'text') + '"' +
     ' class="create-field ' + (number ? 'create-num' : 'create-short') + '" id="' + f.id + '"' +
     (f.min !== undefined ? ' min="' + f.min + '"' : '') +
@@ -2150,17 +2150,20 @@ function _createAddCommands(into, capability) {
 
 // A row of controls plus any warnings they carry. The notes sit under the row
 // rather than in it: a sentence wrapped inside a flex row of short fields reads
-// as a broken control, not as a caution.
-function _createFieldsHtml(keys, def) {
+// as a broken control, not as a caution. Under Advanced (``attach``) each note
+// stays with its own field instead: a dozen fields with their notes gathered
+// at the bottom leave every note a long way from what it explains.
+function _createFieldsHtml(keys, def, attach) {
   var controls = '';
   var notes = '';
   for (var i = 0; i < keys.length; i++) {
-    controls += _createFieldHtml(keys[i], def);
+    var html = _createFieldHtml(keys[i], def);
     var f = CREATE_FIELDS[keys[i]];
-    if (f && f.note) {
-      notes += '<div class="create-caption" id="' + f.id + '-note">' +
-        tH(f.note) + '</div>';
-    }
+    var note = f && f.note
+      ? '<div class="create-caption" id="' + f.id + '-note">' + tH(f.note) + '</div>'
+      : '';
+    if (attach && note && html) controls += '<div class="create-flag-noted">' + html + note + '</div>';
+    else { controls += html; notes += note; }
   }
   return controls ? '<div class="create-flags">' + controls + '</div>' + notes : '';
 }
@@ -2560,7 +2563,7 @@ function _renderCreatePanel() {
     return;
   }
   if (def.client) { host.innerHTML = '<div class="create-panel">' + _createBookmarksBodyHtml() + '</div>'; return; }
-  var advanced = _createFieldsHtml(def.advanced || [], def);
+  var advanced = _createFieldsHtml(def.advanced || [], def, true);
   host.innerHTML =
     '<div class="create-panel">' +
       '<div id="create-preview"></div>' +
@@ -2676,6 +2679,10 @@ function _createSyncEngine() {
       var node = document.getElementById(parts[i]);
       if (node) node.hidden = !applies;
     }
+    // A field kept with its note (Advanced) hides as one, or its empty
+    // holder still spends a row of gap.
+    var row = document.getElementById(f.id + '-row');
+    if (row && row.parentNode.classList.contains('create-flag-noted')) row.parentNode.hidden = !applies;
   }
 }
 
