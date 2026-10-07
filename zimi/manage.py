@@ -5986,6 +5986,10 @@ def access_answer(handler):
         # Through a proxy "anyone on my network" would lock this browser out,
         # so the page holds the password on (see _lan_client).
         "direct": _lan_client(handler),
+        # The machine running Zimi needs no setup key; inside the network a
+        # device is offered the key field, outside it only "being set up".
+        "host": bool(getattr(handler, "_is_loopback_client", lambda: False)()),
+        "inside": handler._is_private_client(),
         # The account name, for the admin editing it: never to anyone else, or
         # it would be half the login handed out.
         "username": (

@@ -573,11 +573,11 @@
   .ms-user-addbar { margin-top: 16px; }
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
-  .ms-user-add input:not([role="switch"]), .create-field, .access-input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  .ms-user-add input:not([role="switch"]), .create-field, .setup-field input { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
   /* A checkbox (the allowlist's) is not a text field: the width:100% above
      stretched it across the row. Keep it its own size. */
   .ms-user-add input[type="checkbox"]:not([role="switch"]) { width: auto; padding: 0; accent-color: var(--amber); }
-  .ms-user-add input:not([role="switch"]):focus, .create-field:focus, .access-input:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .ms-user-add input:not([role="switch"]):focus, .create-field:focus, .setup-field input:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
@@ -1051,11 +1051,28 @@
   .manage-locked-card strong { font-size: 15px; }
   /* First run: who may change settings. The rows are the language
      checklist's; the inputs and the button share its width. */
-  .access-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
-  .access-card .access-rows { margin: 0; }
-  .access-card .lang-pick .share-row-desc { white-space: normal; }
-  .access-card .pw-actions { display: flex; justify-content: flex-end; }
-  .ms-pane > .access-card { margin: 0 0 20px; max-width: none; }
+  /* Who can change settings: the setup card, the desktop's second page and
+     Settings > Server share one form. */
+  .setup-form { display: flex; flex-direction: column; gap: 12px; }
+  .setup-form .set-rows { margin: 0; }
+  .setup-form .share-row-desc { white-space: normal; }
+  .setup-fields { display: flex; flex-direction: column; gap: 10px; }
+  .setup-fields[hidden] { display: none; }
+  .setup-field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+  .setup-field > span { font-size: 12px; font-weight: 600; color: var(--text2); }
+  .setup-field input::placeholder { color: var(--text3); }
+  .setup-hint { font-size: 12px; color: var(--text2); margin: -6px 0 0; }
+  .setup-change { display: flex; }
+  .setup-form .btn-row { display: flex; justify-content: flex-end; }
+  .setup-form .btn-primary { padding: 9px 24px; font-size: 14px; font-weight: 600; }
+  .setup-form .pw-error { margin: 0; color: var(--error); font-size: 13px; display: none; }
+  #onboard-access { margin-top: 12px; }
+  .desktop-card .subtitle:last-child { margin-bottom: 0; }
+  .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+  .ms-pane .setup-form { margin-bottom: 16px; }
+  /* Nothing behind a fresh install's setup is usable yet: no half-seen app. */
+  .desktop-overlay.setup-overlay { background: var(--bg); }
+  .setup-overlay .desktop-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
 
   /* ── Tab bar ── */
   /* ── Language selector (globe icon) ── */
@@ -1763,10 +1780,10 @@
   .cache-top-zims { font-size: 11px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
   .cache-top-label { color: var(--text); font-weight: 600; }
   .manage-btn-action,
-  .desktop-card .btn-primary,
+  .desktop-card .btn-primary, .setup-form .btn-primary,
   .coll-form button { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border: none; border-radius: var(--radius); cursor: pointer; }
   .manage-btn-action:hover,
-  .desktop-card .btn-primary:hover { opacity: 0.85; }
+  .desktop-card .btn-primary:hover, .setup-form .btn-primary:hover { opacity: 0.85; }
   .manage-btn-action:disabled,
   .desktop-card .btn-primary:disabled { opacity: 0.4; cursor: default; }
   .manage-btn-action { padding: 8px 16px; font-size: 12px; font-weight: 600; transition: opacity 0.2s; white-space: nowrap; }
@@ -1826,9 +1843,9 @@
   }
   .set-btn:focus-visible, .ms-pane .pill:focus-visible, .ms-pane .ms-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .set-btn:disabled { opacity: 0.45; cursor: default; }
-  .set-btn.primary, .ms-pane .ms-btn-primary, .access-card .ms-btn-primary, .ms-pane .pill.active,
+  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active,
   .ms-pane .manage-btn-action { background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600; }
-  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .access-card .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
+  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
   .ms-pane .manage-btn-action { min-height: var(--set-ctl-h); border-radius: 999px; font-size: 13px; padding: 0 16px; }
   .ms-pane select {
     min-height: var(--set-ctl-h); box-sizing: border-box; padding: 0 30px 0 12px; border-radius: var(--radius);
@@ -2978,11 +2995,16 @@
   .desktop-card .subtitle { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 24px; }
   .desktop-card label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
   .desktop-card .field-row { display: flex; gap: 8px; margin-bottom: 16px; }
-  .desktop-card input[type="text"], .desktop-card input[type="number"] {
+  .desktop-card input[type="text"], .desktop-card input[type="number"], .desktop-card input[type="password"] {
     flex: 1; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border-strong);
     border-radius: var(--radius); color: var(--text); font-size: 14px; font-family: inherit;
   }
-  .desktop-card input[type="text"]:focus, .desktop-card input[type="number"]:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .desktop-card input[type="text"]:focus, .desktop-card input[type="number"]:focus, .desktop-card input[type="password"]:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  /* The setup form's rows and fields keep their own type, not the card's
+     uppercase field labels. */
+  .desktop-card label.share-row, .desktop-card label.setup-field { text-transform: none; letter-spacing: normal; margin: 0; }
+  .desktop-card label.share-row { display: flex; font-size: inherit; font-weight: inherit; color: inherit; }
+  .desktop-card label.setup-field { display: flex; }
   .desktop-card input[readonly] { color: var(--text2); cursor: default; }
   .desktop-card .hint { font-size: 11px; color: var(--text2); opacity: 0.6; margin-top: -10px; margin-bottom: 16px; }
   .desktop-card .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }

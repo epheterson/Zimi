@@ -175,6 +175,7 @@
 <!-- Desktop: Onboarding overlay (first-run) -->
 <div id="desktop-onboarding" class="desktop-overlay" onclick="if(event.target===this)return">
   <div class="desktop-card">
+   <div id="onboard-folder">
     <h2 data-i18n="welcome">Welcome to Zimi</h2>
     <p class="subtitle" data-i18n="choose_folder_hint">Choose where to keep your offline knowledge archives.</p>
     <p class="subtitle" style="font-size:11px;opacity:0.5;margin-top:-16px;margin-bottom:24px" data-i18n="large_files_hint">ZIM files can be large (Wikipedia is ~100 GB) — pick a drive with plenty of space.</p>
@@ -184,9 +185,16 @@
       <button class="btn-browse" onclick="desktopChooseFolder('onboard-path')" data-i18n="choose_folder">Choose Folder</button>
     </div>
     <div class="btn-row">
-      <button class="btn-primary" id="onboard-start" onclick="desktopFinishOnboarding()" disabled data-i18n="get_started">Get Started</button>
+      <button class="btn-primary" id="onboard-start" onclick="desktopOnboardShare()" disabled data-i18n="setup_continue">Continue</button>
     </div>
+   </div>
+   <div id="onboard-share" hidden></div>
   </div>
+</div>
+
+<!-- First run on a server: who can change settings -->
+<div id="setup-overlay" class="desktop-overlay setup-overlay">
+  <div class="desktop-card" id="setup-card"></div>
 </div>
 
 <noscript>

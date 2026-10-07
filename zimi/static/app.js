@@ -1508,6 +1508,9 @@ let _managePwRequired = false; // server is password-protected and we have no to
 let _managePublicLocked = false;
 let _manageNeedsSetupKey = false;
 let _manageSetupKeyIssued = true;
+// A password exists but settings stay inside the network, and this browser
+// is outside it: nothing to enter, so the page explains.
+let _manageOutside = false;
 // Who may change settings (/manage/has-password's access): password, lan
 // (anyone directly on the network), open, or unset (first run).
 let _manageAccess = '';
@@ -2415,6 +2418,7 @@ function submitPw() {
   if (_pwLoginMode) {
     const remember = document.getElementById('pw-remember').checked;
     doLogin(uname, pw, remember).then(function(res) {
+      if (res.status === 403 && res.j.error === 'outside_network') { _showPwError(t('outside_locked_body')); return; }
       if (res.status !== 200) { _showPwError(t('wrong_password')); return; }
       if (res.j.role === 'user') {
         // Named user: no manage powers. Abandon any pending manage request
@@ -3046,7 +3050,11 @@ async function init() {
   // Initialize i18n before anything else
   _currentLang = _detectLanguage();
   _applyRTL(_currentLang);
+  _bootHasPw = _fetchHasPw();
   await _loadI18n(_currentLang);
+  // A fresh install opens once its owner says who can change settings.
+  var _hp = await _bootHasPw;
+  if (_hp.ok && _hp.j.setup) { _openSetup(_hp.j); return; }
 
   // Decide auth BEFORE any library chrome paints. On a private instance an
   // anonymous visitor gets the login form as the first frame (no empty flash),
@@ -3109,13 +3117,15 @@ let _manageProbed = false;
 async function _probeManageAuth() {
   try {
     // Public pre-auth endpoint — learns password state without a 401 probe.
-    const hres = await serverFetch('/manage/has-password');
+    var boot = _bootHasPw; _bootHasPw = null;
+    const hres = await (boot || _fetchHasPw());
     if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
     // Enabled only once the password answer is read: in between, a Manage
     // link saw manageEnabled with no password required and opened Manage
     // unasked (a slow CI runner caught the gap).
-    const h = await hres.json();
+    const h = hres.j;
     manageEnabled = true;
+    _setupState = h;
     _manageAccess = h.access || '';
     const saved = _readManageToken();
     if (saved) _manageToken = saved;
@@ -3138,6 +3148,7 @@ async function _probeManageAuth() {
       // the banner asks for the right thing.
       try {
         var _ld = await mres.clone().json();
+        _manageOutside = !!(_ld && _ld.error === 'outside_network');
         _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
         _manageSetupKeyIssued = !(_ld && _ld.setup_key_issued === false);
       } catch (e) { _manageNeedsSetupKey = false; }
@@ -12288,7 +12299,14 @@ function _renderManagePublicLocked() {
     return;
   }
   if (_manageNeedsSetupKey) {
-    output.innerHTML = '<div class="manage-wrap">' + _accessCardHtml(true) + '</div>';
+    output.innerHTML = '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card setup-card">' +
+      '<div class="lang-welcome-text"><strong>' + tH('setup_settings_title') + '</strong><p>' + tH('setup_body') + '</p></div>' +
+      _setupFormHtml(_setupState, 'setup') + '</div></div>';
+    return;
+  }
+  if (_manageOutside) {
+    output.innerHTML = '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card"><div class="lang-welcome-text">' +
+      '<strong>' + tH('outside_locked_title') + '</strong><p>' + tH('outside_locked_body') + '</p></div></div></div>';
     return;
   }
   output.innerHTML =
@@ -12302,65 +12320,116 @@ function _renderManagePublicLocked() {
     '</div>';
 }
 
-// First run: who may change settings (#107). Anyone on the network (no
-// password, no accounts; the internet and anything through a proxy stay
-// locked out), or only with a password. The machine running Zimi chooses
-// freely; any other device brings the one-time setup key the server logged,
-// the door GHSA-5mw2-53vv-9pw6 left, so no neighbour can choose for you.
-var _accessPick = 'lan';
-function _accessCardHtml(withKey) {
-  var row = function(mode) {
-    var on = _accessPick === mode;
-    return '<button type="button" class="share-row lang-row lang-pick' + (on ? ' mine' : '') + '" role="radio" data-access="' + mode + '"' +
-      ' aria-checked="' + on + '" onclick="_pickAccess(\'' + mode + '\')"><span class="lang-check">' + (on ? _CHECK_ICON : '') + '</span>' +
-      '<span class="share-row-text"><span class="share-row-title">' + tH('access_' + mode) + '</span>' +
-      '<span class="share-row-desc">' + tH('access_' + mode + '_desc') + '</span></span></button>';
+// Who can change settings (#107): the setup page a fresh install opens on,
+// the second page of the desktop's welcome, and the same rows in Settings.
+// Two switches: settings from outside the network, which needs a password,
+// and the password itself; with it on, a username for password managers and
+// the admin to edit later, a password and its confirmation. Before a password
+// exists only the machine running Zimi, or a device with the setup key it
+// logged, may answer (GHSA-5mw2-53vv-9pw6), so no neighbour answers for you.
+var _setupState = {};  // /manage/has-password's answer
+// The setup gate, raced against the language load so it costs the boot no
+// round trip of its own; _probeManageAuth takes the same answer.
+var _bootHasPw = null;
+function _fetchHasPw() {
+  return serverFetch('/manage/has-password', { credentials: 'same-origin' })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }, function() { return { ok: r.ok, j: {} }; }); })
+    .catch(function() { return { ok: false, j: {} }; });
+}
+// mode 'setup' (the welcome card) or 'settings'. st is _setupState.
+function _setupFormHtml(st, mode) {
+  var hasPw = st.access === 'password';
+  var needKey = mode === 'setup' && !st.host;
+  var ext = !!st.external, req = hasPw || ext || st.direct === false || mode === 'setup';
+  var lockReq = ext || st.direct === false || !!st.env_controlled;
+  var input = function(id, type, auto, label, ph, val) {
+    return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + type + '" autocomplete="' + auto + '"' +
+      (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
+      ' spellcheck="false" autocapitalize="off"></label>';
   };
-  return '<div class="lang-welcome-card manage-locked-card access-card" id="access-card">' +
-    '<div class="lang-welcome-text"><strong>' + tH('access_title') + '</strong>' +
-      (withKey ? '<p>' + tH('access_key_body') + '</p>' : '') + '</div>' +
-    (withKey ? '<input type="text" id="setup-key-input" class="access-input" autocomplete="off" spellcheck="false" autocapitalize="characters"' +
-      ' placeholder="XXXX-XXXX-XXXX" aria-label="' + escAttr(t('access_key_label')) + '">' : '') +
-    '<div class="share-rows set-rows access-rows" role="radiogroup" aria-label="' + escAttr(t('access_title')) + '">' + row('lan') + row('password') + '</div>' +
-    '<input type="password" id="setup-pw-input" class="access-input" autocomplete="new-password" placeholder="' + escAttr(t('manage_setup_key_pw_ph')) + '"' +
-      (_accessPick === 'password' ? '' : ' hidden') + '>' +
-    '<div class="pw-error" id="setup-key-error"></div>' +
-    '<div class="pw-actions"><button type="button" class="ms-btn ms-btn-primary" onclick="_submitAccess(' + !!withKey + ')">' + tH('access_continue') + '</button></div>' +
-    '</div>';
+  var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '') +
+    (hasPw ? '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>'
+      : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
+  return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
+    (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
+    _switchRowsHtml([
+      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : 'setup_outside_desc'),
+        on: ext, disabled: !!st.external_env, onchange: '_setupSync()' },
+      { id: 'setup-req', title: tH('setup_password'), desc: tH(_setupReqDesc(st, ext)),
+        on: req, disabled: lockReq, onchange: '_setupSync()' }
+    ]) +
+    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' +
+    '<div class="pw-error" id="setup-error"></div>' +
+    '<div class="btn-row"><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
+    '</form>';
 }
-// In place, so a key or password already typed stays.
-function _pickAccess(mode) {
-  _accessPick = mode;
-  document.querySelectorAll('#access-card [data-access]').forEach(function(b) {
-    var on = b.getAttribute('data-access') === mode;
-    b.classList.toggle('mine', on);
-    b.setAttribute('aria-checked', on);
-    b.querySelector('.lang-check').innerHTML = on ? _CHECK_ICON : '';
-  });
-  var pw = document.getElementById('setup-pw-input');
-  if (pw) { pw.hidden = mode !== 'password'; if (mode === 'password') pw.focus(); }
+function _setupReqDesc(st, ext) {
+  if (st.env_controlled) return 'configured_via_env';
+  if (ext) return 'setup_password_needed_outside';
+  if (st.direct === false) return 'setup_password_needed_proxy';
+  return 'setup_password_desc';
 }
-async function _submitAccess(withKey) {
-  var key = withKey ? ((document.getElementById('setup-key-input') || {}).value || '').trim() : '';
-  var pw = (document.getElementById('setup-pw-input') || {}).value || '';
-  var err = document.getElementById('setup-key-error');
-  var show = function(k) { if (err) { err.textContent = t(k); err.style.display = 'block'; } };
-  if (withKey && !key) return show('access_need_key');
-  if (_accessPick === 'password' && !pw) return show('access_need_pw');
+// Outside on holds the password on; the description says why.
+function _setupSync() {
+  var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
+  if (!ext || !req) return;
+  var st = _setupState, lock = ext.checked || st.direct === false || !!st.env_controlled;
+  if (lock) req.checked = true;
+  req.disabled = lock;
+  req.closest('.share-row').classList.toggle('share-locked', lock);
+  var desc = req.closest('.share-row').querySelector('.share-row-desc');
+  if (desc) desc.textContent = t(_setupReqDesc(st, ext.checked));
+  var f = document.getElementById('setup-fields');
+  if (f) f.hidden = !req.checked;
+}
+var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
+  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body' };
+async function _setupSubmit(opts) {
+  var quiet = !!(opts && opts.quiet);
+  var form = document.getElementById('setup-form');
+  if (!form) return false;
+  var val = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var err = document.getElementById('setup-error');
+  var show = function(k) { err.textContent = t(k); err.style.display = 'block'; return false; };
+  var setup = form.dataset.mode === 'setup', st = _setupState;
+  var req = document.getElementById('setup-req').checked;
+  var body = { external: document.getElementById('setup-ext').checked, require_password: req,
+    username: val('setup-user'), remember: true };
+  var key = val('setup-key');
+  if (document.getElementById('setup-key') && !key) return show('setup_need_key');
+  if (req && st.access !== 'password') {
+    body.password = val('setup-pw');
+    if (!body.password) return show('setup_need_pw');
+    if (body.password !== val('setup-pw2')) return show('setup_mismatch');
+  }
   var headers = { 'Content-Type': 'application/json' };
   if (key) headers['X-Zimi-Setup-Key'] = key;
-  var lan = _accessPick === 'lan';
+  var res;
   try {
-    var res = await fetch(lan ? '/manage/access' : '/manage/set-password', {
-      method: 'POST', headers: headers, body: JSON.stringify(lan ? { mode: 'lan' } : { password: pw })
-    });
-    if (!res.ok) {
-      var d = await res.json().catch(function() { return {}; });
-      return show(d.error === 'behind_proxy' ? 'access_behind_proxy' : withKey ? 'manage_setup_key_bad' : 'access_failed');
-    }
-  } catch (e) { return show(withKey ? 'manage_setup_key_bad' : 'access_failed'); }
-  if (!lan) { _manageToken = pw; _saveManageToken(pw); }
-  location.reload();
+    res = await (setup ? fetch : manageFetch)('/manage/access', { method: 'POST', headers: headers,
+      credentials: 'same-origin', body: JSON.stringify(body) });
+  } catch (e) { return show('setup_failed'); }
+  var d = await res.json().catch(function() { return {}; });
+  if (!res.ok) return show(_SETUP_ERRORS[d.error] || 'setup_failed');
+  if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
+  if (quiet) return true;
+  if (setup) { location.reload(); return true; }
+  _manageAccess = d.access || _manageAccess;
+  _showToast(t('saved'));
+  renderManage();
+  return true;
+}
+// The welcome card for a fresh install. The internet sees only that it is
+// being set up: no field, nothing to guess at.
+function _openSetup(st) {
+  _setupState = st;
+  var card = document.getElementById('setup-card');
+  card.innerHTML = st.inside === false
+    ? '<h2>' + tH('setup_waiting_title') + '</h2><p class="subtitle">' + tH('setup_waiting_body') + '</p>'
+    : '<h2>' + tH('welcome') + '</h2><p class="subtitle">' + tH('setup_body') + '</p>' + _setupFormHtml(st, 'setup');
+  document.getElementById('setup-overlay').classList.add('open');
+  var first = card.querySelector('input:not([type=checkbox])');
+  if (first && first.id === 'setup-key') first.focus();
 }
 
 var _manageRenderId = 0;
@@ -12568,7 +12637,7 @@ function switchMs(section) {
   var pane = document.getElementById('ms-pane');
   if (!pane) return;
   switch(section) {
-    case 'library': pane.innerHTML = (_manageAccess === 'unset' ? _accessCardHtml(false) : '') + _msLibraryHtml(); break;
+    case 'library': pane.innerHTML = _msLibraryHtml(); break;
     case 'preferences':
       pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _paintLangPrefs(); _renderVoicePrefs(); _msScrollPending(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
@@ -14515,17 +14584,16 @@ function _msServerHtml() {
   _renderNetSection();
   // Async fill security
   Promise.all([
-    fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
     manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
   ]).then(function(results) {
     var hasPw = results[0].has_password;
     var hasToken = results[1].has_token;
     var el = document.getElementById('ms-security');
     if (!el) return;
-    // Anyone on the network: the way back to a password (Users, where it
-    // otherwise lives, is hidden without accounts).
-    var sh = _manageAccess === 'lan' ? '<div class="mc-row"><span class="mc-label">' + tH('access_row') + '</span><span class="mc-value">' +
-      '<button class="pill" onclick="managePassword()">' + tH('set_password') + '</button></span></div>' : '';
+    // Who can change settings: the setup page's rows, in place.
+    _setupState = results[0];
+    var sh = _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('setup_settings_title') + '</div>' + _setupFormHtml(results[0], 'settings');
     sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
       sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
@@ -27608,12 +27676,36 @@ async function desktopChooseFolder(inputId) {
   } catch(e) {}
 }
 
+// Page two: other devices on this network, off by default. On, the same
+// rows as a server's setup decide who among them can change settings.
+async function desktopOnboardShare() {
+  if (!IS_DESKTOP || !document.getElementById('onboard-path').value) return;
+  var h = await _fetchHasPw();
+  _setupState = Object.assign({}, h.j, { host: true });
+  var el = document.getElementById('onboard-share');
+  el.innerHTML = '<h2>' + tH('desktop_share_title') + '</h2><p class="subtitle">' + tH('desktop_share_body') + '</p>' +
+    _switchRowsHtml([{ id: 'onboard-lan', title: tH('desktop_lan_access'), desc: tH('desktop_lan_hint'),
+      on: false, onchange: "document.getElementById('onboard-access').hidden=!this.checked" }]) +
+    '<div id="onboard-access" hidden>' + _setupFormHtml(_setupState, 'setup') + '</div>' +
+    '<div class="btn-row" id="onboard-finish"><button type="button" class="btn-primary" onclick="desktopFinishOnboarding()">' + tH('get_started') + '</button></div>';
+  // One button: the form's own submit stands down for Get Started.
+  var own = el.querySelector('#setup-form .btn-row');
+  if (own) own.remove();
+  document.getElementById('onboard-folder').hidden = true;
+  el.hidden = false;
+}
+
 async function desktopFinishOnboarding() {
   if (!IS_DESKTOP) return;
   const path = document.getElementById('onboard-path').value;
   if (!path) return;
+  var lan = document.getElementById('onboard-lan');
+  var share = !!(lan && lan.checked);
+  // Who can change settings is saved before the restart that opens the
+  // server to the network, so it never answers anyone undecided.
+  if (share && !(await _setupSubmit({ quiet: true }))) return;
   try {
-    const needsRestart = await pywebview.api.save_config({ zim_dir: path });
+    const needsRestart = await pywebview.api.save_config({ zim_dir: path, lan_access: share });
     document.getElementById('desktop-onboarding').classList.remove('open');
     if (needsRestart) {
       await pywebview.api.restart();

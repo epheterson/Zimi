@@ -108,7 +108,7 @@ class FirstRunAccessTests(_Harness):
 
     def test_through_a_proxy_no_password_is_refused_rather_than_locking_you_out(self):
         key = manage.ensure_setup_key()
-        hdr = {"X-Zimi-Setup-Key": key, "X-Forwarded-For": "10.0.0.7"}
+        hdr = {"X-Zimi-Setup-Key": key, "X-Forwarded-For": "192.0.2.7"}
         self.assertFalse(self._state(hdr)["direct"])
         status, body = self._post("/manage/access", LAN_ONLY, hdr)
         self.assertEqual((status, body.get("error")), (409, "behind_proxy"), body)
