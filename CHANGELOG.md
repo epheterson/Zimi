@@ -13,8 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Settings can stay inside your network even with the password (`ZIMI_MANAGE_EXTERNAL`).
 - Site captures choose which pages they visit: the section, the whole site, its subdomains or anywhere links lead, plus include and exclude patterns and extra hops (`--scope`, `--include`, `--exclude`, `--extra-hops`, and under Advanced in Create).
 
+- Site captures take a time limit, a sitemap, a user agent, a phone and a page timeout (`--time-limit`, `--sitemap`, `--user-agent`, `--mobile`, `--page-timeout`, and under Advanced in Create). Each is passed to zimit when its image knows the flag.
+- Manage, Creator holds standing defaults for these and for scope, max pages, max depth, size budget and delay; a capture's own value wins, and `zimi create` reads the same file.
+
 ### Changed
 
+- Captures started from the web refuse private addresses (loopback, your network, link-local, carrier-grade NAT), judged by what a name resolves to. An admin can allow them in Manage, Creator; the command line is never restricted.
 - The zimit engine takes the same scope options and `--max-depth`, and speaks zimit 3's flag names to a zimit 3 image.
 
 ### Fixed
