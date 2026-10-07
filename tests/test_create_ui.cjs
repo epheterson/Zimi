@@ -82,9 +82,10 @@ check(captureStopKind('') === null && captureStopKind(null) === null, 'no reason
     { stopped: 'byte budget (1.0 GB)' });
   eq([video.max_bytes, video.format, 'max_depth' in video], ['0', '720', false],
     'a video rerun lifts its budget, keeps its format and gains no depth');
-  // A path with nothing under it: the whole site, from where the capture landed.
+  // A path with nothing under it: the whole site, from the page the capture
+  // landed on, so the depth still counts from there.
   const whole = _createAgainRequest(asked, { stopped: 'nothing under /docs/', url: 'https://www.example.org/en/docs/' });
-  eq([whole.source, whole.max_pages], ['https://www.example.org/', 40],
+  eq([whole.source, whole.scope, whole.max_pages], ['https://www.example.org/en/docs/', 'host', 40],
     'a path with nothing under it reruns as the whole site, bounds as they were');
   check(_createAgainRequest(asked, { stopped: 'interrupted' }) === null, 'a Stop offers no rerun');
   check(_createAgainRequest(null, { stopped: 'page cap (40)' }) === null, 'no request, no rerun');
@@ -210,7 +211,7 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['page', ['block_ads', 'capture_variants', 'strip_links', 'language']],
-  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
     'strip_links', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],

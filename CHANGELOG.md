@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A new install opens on one setup page: who can change settings, from outside your network or not, with a password or without ([#107](https://github.com/epheterson/Zimi/issues/107)).
 - Settings can stay inside your network even with the password (`ZIMI_MANAGE_EXTERNAL`).
+- Site captures choose which pages they visit: the section, the whole site, its subdomains or anywhere links lead, plus include and exclude patterns and extra hops (`--scope`, `--include`, `--exclude`, `--extra-hops`, and under Advanced in Create).
+
+### Changed
+
+- The zimit engine takes the same scope options and `--max-depth`, and speaks zimit 3's flag names to a zimit 3 image.
 
 ### Fixed
 

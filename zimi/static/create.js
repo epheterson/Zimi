@@ -127,8 +127,8 @@ var CREATE_MODE_DEFS = [
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
-      'strip_links', 'language', 'ignore_robots'],
+    advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay',
+      'block_ads', 'capture_variants', 'strip_links', 'language', 'ignore_robots'],
     pick: { max_bytes: '4G' }
   },
   {
@@ -324,6 +324,32 @@ var CREATE_FIELDS = {
   max_depth: {
     id: 'create-max-depth', control: 'number', label: 'create_max_depth',
     kind: 'int', min: 0, max: 50, ph: '10'
+  },
+  // Which pages a site capture walks into: browsertrix's scope types, so what
+  // a zimit user already knows works here (and under the zimit engine too).
+  // The section is the default and says nothing; the server decides it from
+  // the page.
+  scope: {
+    id: 'create-scope', control: 'select', label: 'create_scope', kind: 'text',
+    options: [
+      { v: '', k: 'create_scope_prefix' },
+      { v: 'host', k: 'create_scope_host' },
+      { v: 'domain', k: 'create_scope_domain' },
+      { v: 'any', k: 'create_scope_any' }
+    ]
+  },
+  // One regular expression each; the API and the command line take several.
+  include: {
+    id: 'create-include', control: 'text', label: 'create_include',
+    kind: 'text', ph: '/docs/', note: 'create_include_note'
+  },
+  exclude: {
+    id: 'create-exclude', control: 'text', label: 'create_exclude',
+    kind: 'text', ph: '\\?print='
+  },
+  extra_hops: {
+    id: 'create-extra-hops', control: 'number', label: 'create_extra_hops',
+    kind: 'int', min: 0, max: 10, ph: '0'
   },
   delay: {
     id: 'create-delay', control: 'number', label: 'create_delay',
@@ -1517,9 +1543,12 @@ function _createAgainRequest(request, result) {
     if (hit && Number(hit[1]) >= CREATE_FIELDS.max_depth.max) return null;
   }
   var body = Object.assign({}, request);
+  // Nothing was under the section: the page the capture landed on, with the
+  // whole site as its scope. Starting again at the home page lost the page
+  // that was asked for, and with it the depth counted from there.
   if (kind === 'scope') {
-    var landed = result.url || request.source || '';
-    try { body.source = new URL(landed).origin + '/'; } catch (e) { return null; }
+    body.source = result.url || body.source;
+    body.scope = 'host';
     return body;
   }
   body.max_pages = 0;

@@ -32,6 +32,8 @@ A capture is also **refused rather than packaged** when the site does not return
 
 **Size budget.** `--max-bytes` caps output (e.g. `512MiB`, `4G`; 0 for no limit, and any size under Custom in the Create page). For `--site` it counts pages plus assets (default 4G); for video sources it caps total media (default 16G). Crawls are also bounded by `--max-pages` (site default 10,000; any number, 0 for no limit, and the same in the Create page's Max pages box), `--max-depth` (site default 10), and `--delay` between requests (site default 0.5s; robots.txt `Crawl-delay` wins when larger). `--ignore-robots` (site only) crawls disallowed pages and prints a warning.
 
+**Which pages a site capture visits.** By default a `--site` capture keeps to the start page's section: `/docs/intro.html` stays under `/docs/`. `--scope` widens it with browsertrix's scope types, so a zimit command line carries over unchanged: `host` is every page on the start page's site, `domain` adds its subdomains (a leading `www.` is dropped first), and `any` follows links to any site, bounded by `--max-depth` and the limits. `--include REGEX` adds pages whose address matches, `--exclude REGEX` keeps pages out whatever else says (both repeatable), and `--extra-hops N` follows links that leave the scope N more pages. To capture a page and everything on its site two links from it: `zimi create https://example.org/python/tutorial/ --site --scope host --max-depth 2`. Once a capture can leave the site, each site's robots.txt is read and honored. The same options are under Advanced on the Create page (one pattern per box there), and the zimit engine receives them as its own `--scopeType`, `--scopeIncludeRx`, `--scopeExcludeRx`, `--extraHops` and `--depth`.
+
 **Language** is read off the source (a page's `lang`, a folder's HTML, video metadata) and falls back to `eng`; override with `--language` (ISO 639-3). **Output** defaults to the ZIM directory with library registration; `--out` writes an explicit `.zim` path instead. Title/description/creator metadata is set with `--title` / `--description` / `--creator` (creator defaults to `Zimi`).
 
 **Bookmarks as a ZIM.** The Create page's **Bookmarks** tile packages your saved articles into one standalone `.zim` — the articles themselves, with their images and styles carried in, not a list of links. The result opens in any ZIM reader and needs nothing from the library it came from, which makes it the way to hand somebody a reading list that still works on a machine with no internet and no Zimi.
@@ -102,6 +104,9 @@ The rendered and alive engines take them on the page they already have open. The
 | `--max-bytes` | flag | 4G (site) / 16G (video) | Total size budget |
 | `--max-pages` | flag | 10,000 (site) | Page cap for `--site` |
 | `--max-depth` | flag | 10 (site) | Link hops from the start page |
+| `--scope` | flag | `prefix` | `prefix` (the start page's section) / `host` / `domain` / `any` |
+| `--include` / `--exclude` | flag, repeatable | none | Regular expressions on page addresses: also capture / never capture |
+| `--extra-hops` | flag | 0 | Links to follow past the scope (0 to 10) |
 | `--delay` | flag | 0.5s (site) | Seconds between requests |
 | `--ignore-robots` | flag | off | Crawl robots-disallowed pages (site only) |
 | `--format` / `--audio-only` / `--limit` | flag | ~720p cap, H.264 first | Video source selection. H.264 plays in every browser; YouTube's default MP4 is AV1, which iPhones before the 15 Pro cannot decode. |
