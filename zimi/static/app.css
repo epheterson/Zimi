@@ -718,9 +718,32 @@
   .create-go { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
   .create-go-btn { width: 100%; padding: 10px 12px; font-size: 13px; font-weight: 600; }
   .create-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
-  .create-flag-noted { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-  .create-flag-noted > .create-caption { margin: 0; }
-  .create-flag-noted[hidden] { display: none; }
+  /* ── The form ──
+     One column of names and one edge every control starts on, for the main
+     fields and every Advanced group alike; a checkbox and a note start on that
+     same edge. Grey inside a control means "what happens if you leave it":
+     a placeholder, or a select still on its default (.is-default). */
+  .create-panel { --create-k: 136px; --create-col: 12px; }
+  @media (max-width: 480px) { .create-panel { --create-k: 100px; } }
+  .create-form { display: flex; flex-direction: column; gap: 10px; }
+  .create-adv .create-form + .create-form { margin-top: 20px; }
+  .create-group-h { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
+  .create-form .create-flag { display: grid; grid-template-columns: var(--create-k) minmax(0, 1fr); column-gap: var(--create-col); align-items: center; }
+  .create-form .create-flag > .create-field { width: 100%; max-width: 240px; justify-self: start; }
+  .create-form .create-flag-wide > .create-field { max-width: none; }
+  .create-form .create-flag:has(> input[type="checkbox"]) { display: flex; }
+  .create-form .create-flag:has(> input[type="checkbox"]),
+  .create-form .create-row-note,
+  .create-form .create-flag + input[id$="-custom"] { margin-inline-start: calc(var(--create-k) + var(--create-col)); }
+  .create-form .create-flag + input[id$="-custom"] { width: auto; max-width: 240px; }
+  .create-form .create-row-note { margin-top: -4px; }
+  /* hidden wins over every display above, :has() included */
+  .create-form [hidden] { display: none !important; }
+  .create-form .create-engine-fold > summary { display: grid; grid-template-columns: var(--create-k) auto auto; column-gap: var(--create-col); justify-content: start; }
+  /* Run pane: a line with nothing to say takes no room (a finished job's
+     counters and its phase detail are empty on purpose). */
+  .create-metrics:empty, .create-phase-detail:empty { display: none; }
+  .create-form select.is-default, .create-form .create-field::placeholder { color: var(--text2); opacity: 1; }
   .create-flag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); cursor: pointer; }
   .create-flag input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
   /* ── The capture engine picker ──
@@ -776,7 +799,6 @@
   [dir="rtl"] .create-logbox[open] > summary::before { transform: rotate(-90deg); }
   .create-adv > summary:hover, .create-logbox > summary:hover { color: var(--amber); }
   .create-adv[open] > summary, .create-logbox[open] > summary { margin-bottom: 10px; }
-  .create-adv .create-caption { margin-top: 8px; }
   .create-credit a { color: var(--text2); text-decoration: underline; text-underline-offset: 2px; }
   .create-credit a:hover { color: var(--amber); }
   .create-actions { display: flex; align-items: center; gap: 8px; }
@@ -834,6 +856,10 @@
   .create-step[data-state="failed"] .create-step-dot { border-color: var(--error); background: var(--error); }
   .create-step[data-state="active"] { color: var(--amber); }
   .create-step[data-state="active"] .create-step-dot { border-color: var(--amber); background: var(--amber); animation: createPulse 1.6s ease-in-out infinite; }
+  /* A finished capture ends on Ready, lit and still: the strip says where it
+     got to, not four quiet dots that read as nothing having happened. */
+  .create-step[data-state="complete"] { color: var(--amber); }
+  .create-step[data-state="complete"] .create-step-dot { border-color: var(--amber); background: var(--amber); }
   .create-phase-detail { min-height: 16px; font-size: 12px; color: var(--text2); text-align: center; overflow-wrap: anywhere; }
   .create-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
   .create-metric { display: flex; align-items: baseline; gap: 5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }

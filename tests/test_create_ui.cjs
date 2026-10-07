@@ -588,9 +588,10 @@ eq(_createPreviewRows({ mode: 'page', final_url: 'http://x/', bytes: 8 }).map(r 
   ['create_pv_address'],
   'a missing title and language drop their rows entirely');
 
+// The title is the Title field's placeholder, not a row of its own.
 eq(_createPreviewRows({ mode: 'page', title: 'Handbuch', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
-  ['create_pv_title', 'create_pv_address'],
-  'page rows, with no robots line when the server did not report one');
+  ['create_pv_address'],
+  'page rows: no title row, and no robots line when the server did not report one');
 
 check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowed: false })
   .create_pv_robots === 'create_pv_robots_no',
@@ -602,7 +603,7 @@ check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowe
 // counter during the run is the number, and it counts real responses.
 eq(_createPreviewRows({ mode: 'site', title: 'T', final_url: 'http://x/', bytes: 4096 })
   .map(r => r.k),
-  ['create_pv_title', 'create_pv_address'],
+  ['create_pv_address'],
   'site mode shows no size it cannot measure');
 // Eric, again, on a real CNN capture: the preview said 5.58MB and 36.3MB
 // arrived. `bytes` is the DOCUMENT's weight, and on a modern page the document
@@ -1064,14 +1065,19 @@ sandbox._createTakeDefaults({
 });
 eq([CREATE_FIELDS.sitemap.on, CREATE_FIELDS.mobile.on], [true, false], 'checkboxes start where the stored default puts them');
 eq(sandbox.CREATE_STORED_TEXT, { time_limit: '8h', max_bytes: '2.0 GB', max_pages: '50' }, 'the text fields show the default as their placeholder');
-eq([sandbox._createDef('site').pick.scope, sandbox._createDef('site').pick.max_bytes], ['host', ''],
-  'the selects preselect the stored scope and let an empty size mean the stored one');
+const siteDef = sandbox._createDef('site');
+eq([sandbox._createSelectDefaultText('scope', CREATE_FIELDS.scope, siteDef),
+    sandbox._createSelectDefaultText('max_bytes', CREATE_FIELDS.max_bytes, siteDef)],
+  ['create_scope_host', '2.0 GB'],
+  'a select names the stored default as its empty option, so leaving it sends the default');
 eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', sitemap: false }),
   { mode: 'site', source: 'https://e.org/', sitemap: false },
   'unticking a box that a default turned on says so');
 sandbox._createTakeDefaults({});
-eq([CREATE_FIELDS.sitemap.on, sandbox._createDef('site').pick.max_bytes, Object.keys(sandbox.CREATE_STORED_TEXT).length],
-  [false, '4G', 0], 'clearing the defaults in Manage clears them here');
+eq([CREATE_FIELDS.sitemap.on, Object.keys(sandbox.CREATE_STORED_TEXT).length,
+    sandbox._createSelectDefaultText('max_bytes', CREATE_FIELDS.max_bytes, siteDef),
+    sandbox._createSelectDefaultText('scope', CREATE_FIELDS.scope, siteDef)],
+  [false, 0, '4 GB', 'create_scope_prefix'], 'clearing the defaults in Manage clears them here, back to the mode\'s own');
 
 if (failures) {
   console.error(`\n${failures} failure(s)`);

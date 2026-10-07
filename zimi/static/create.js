@@ -129,14 +129,14 @@ var CREATE_MODE_DEFS = [
     flags: ['engine', 'max_pages'],
     advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay',
       'time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'strip_links', 'language', 'ignore_robots'],
-    pick: { max_bytes: '4G' }
+    sizeDefault: '4 GB'
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
     advanced: ['format', 'max_bytes', 'language'],
-    pick: { max_bytes: '16G' }
+    sizeDefault: '16 GB'
   },
   // No subreddit tile. A reddit.com/r/<name> address under Web page is a
   // subreddit, and the server says so (Eric: "let's be coy. You put in the
@@ -315,7 +315,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 0, ph: '10000', note: 'create_max_pages_note'
+    kind: 'int', min: 0, ph: '10000'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -345,11 +345,11 @@ var CREATE_FIELDS = {
   // One regular expression each; the API and the command line take several.
   include: {
     id: 'create-include', control: 'text', label: 'create_include',
-    kind: 'text', ph: '/docs/', note: 'create_include_note'
+    kind: 'text', ph: '', note: 'create_include_note'
   },
   exclude: {
     id: 'create-exclude', control: 'text', label: 'create_exclude',
-    kind: 'text', ph: '\\?print='
+    kind: 'text', ph: ''
   },
   extra_hops: {
     id: 'create-extra-hops', control: 'number', label: 'create_extra_hops',
@@ -361,7 +361,7 @@ var CREATE_FIELDS = {
   },
   max_bytes: {
     id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
-    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true, note: 'create_max_bytes_note'
+    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true
   },
   // How a site capture ends, finds its pages and presents itself. Each of these
   // can be a stored default (Manage, Creator): the text fields show it as their
@@ -370,11 +370,11 @@ var CREATE_FIELDS = {
   // sends false, which is why `on` is how these boxes carry a default.
   time_limit: {
     id: 'create-time-limit', control: 'text', label: 'create_time_limit',
-    kind: 'text', ph: '8h', note: 'create_time_limit_note'
+    kind: 'text', phKey: 'create_none'
   },
   sitemap: {
     id: 'create-sitemap', control: 'check', label: 'create_sitemap',
-    kind: 'bool', note: 'create_sitemap_note'
+    kind: 'bool'
   },
   user_agent: {
     id: 'create-user-agent', control: 'text', label: 'create_user_agent',
@@ -390,7 +390,8 @@ var CREATE_FIELDS = {
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
-    kind: 'bool', note: 'create_ignore_robots_note'
+    kind: 'bool', note: 'create_ignore_robots_note', noteWhenOn: true,
+    onchange: '_createNoteWhenOn(this)'
   },
   // The only checkbox on this page that starts CHECKED, which is why it is a
   // kind of its own: every other one is off until you turn it on, so it can say
@@ -403,8 +404,7 @@ var CREATE_FIELDS = {
   // field is not sent — see _createFieldApplies.
   block_ads: {
     id: 'create-block-ads', control: 'check', label: 'create_block_ads',
-    kind: 'bool', on: true, needsEngine: ['rendered', 'alive'],
-    note: 'create_block_ads_note'
+    kind: 'bool', on: true, needsEngine: ['rendered', 'alive']
   },
   // The responsive-image sweep, which is the second default-CHECKED box and
   // reads the same way as the first: silence means the row never drew, and an
@@ -419,8 +419,7 @@ var CREATE_FIELDS = {
   // the rendered engine would be a switch over nothing.
   capture_variants: {
     id: 'create-capture-variants', control: 'check', label: 'create_capture_variants',
-    kind: 'bool', on: true, needsEngine: ['alive'],
-    note: 'create_capture_variants_note'
+    kind: 'bool', on: true, needsEngine: ['alive']
   },
   // "Remove links that lead outside the ZIM" (#99): links that leave the site become
   // plain text in the written ZIM, for the readers that are not Zimi. Off until
@@ -428,7 +427,7 @@ var CREATE_FIELDS = {
   // rendered); an alive capture's links are rewritten when it is replayed.
   strip_links: {
     id: 'create-strip-links', control: 'check', label: 'create_strip_links',
-    kind: 'bool', needsEngine: ['', 'rendered'], note: 'create_strip_links_note'
+    kind: 'bool', needsEngine: ['', 'rendered']
   },
   // Auto first, and the probe fills it in: the page you are capturing already
   // declares its language, so making someone recall an ISO 639-3 code was the
@@ -616,9 +615,11 @@ function _createFieldApplies(f, engine) {
 
 // The instance's stored defaults, taken from the server's status reply. Text
 // fields show theirs as the placeholder, the two checkboxes that can be a
-// default start where it puts them, and the two selects preselect it, so the
-// form says what saying nothing means. Called with every reply: clearing a
-// default in Manage clears it here at the next poll.
+// default start where it puts them, and a select names it as its empty first
+// option, so the form says what saying nothing means and saying nothing is
+// what sends it. Called with every reply: clearing a default in Manage clears
+// it here at the next poll.
+var CREATE_STORED_VALUES = {};
 function _createTakeDefaults(data) {
   var values = (data && data.defaults) || {};
   var text = (data && data.defaults_text) || {};
@@ -626,13 +627,27 @@ function _createTakeDefaults(data) {
   for (var key in text) {
     if (Object.prototype.hasOwnProperty.call(text, key)) CREATE_STORED_TEXT[key] = String(text[key]);
   }
+  CREATE_STORED_VALUES = values;
   CREATE_FIELDS.sitemap.on = values.sitemap === true;
   CREATE_FIELDS.mobile.on = values.mobile === true;
-  var site = _createDef('site');
-  if (site && site.pick) {
-    site.pick.max_bytes = values.max_bytes !== undefined ? '' : '4G';
-    site.pick.scope = typeof values.scope === 'string' ? values.scope : '';
+}
+
+// What a select's empty first option stands for: the stored default, else
+// the mode's own (a site's size budget is 4 GB, a channel's 16 GB), else the
+// field's first word ("This section", "Auto-detect").
+function _createSelectDefaultText(key, f, def) {
+  if (key === 'max_bytes') {
+    return CREATE_STORED_TEXT.max_bytes || (def && def.sizeDefault) || t('create_size_default');
   }
+  var stored = CREATE_STORED_VALUES[key];
+  if (typeof stored === 'string' && stored) {
+    for (var i = 0; i < f.options.length; i++) {
+      var o = f.options[i];
+      if (typeof o !== 'string' && o.v === stored) return o.k ? t(o.k) : o.t;
+    }
+  }
+  var first = f.options[0];
+  return typeof first === 'string' ? t(f.label + '_' + first) : (first.k ? t(first.k) : first.t);
 }
 
 // One raw form value → what belongs in the request body, or undefined for
@@ -872,9 +887,11 @@ function _createPreviewRows(p) {
     add('create_pv_what', t('create_pv_reddit_what'));
     add('create_pv_helper', t(p.reddot_ready ? 'create_pv_ready' : 'create_pv_installs'));
   } else {
+    // The title is the Title field's placeholder, not a row; the address is
+    // said only when it is news: several pages, or a redirect somewhere else.
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
-    add('create_pv_title', p.title);
-    add(p.urls > 1 ? 'create_pv_first' : 'create_pv_address', p.final_url);
+    if (p.urls > 1) add('create_pv_first', p.final_url);
+    else if (_createLandedElsewhere(p.final_url)) add('create_pv_address', p.final_url);
     // NO size row, for a page either. The probe fetches the HTML and nothing
     // else, so `bytes` is the document's own weight — and on a modern page the
     // document is the small part. CNN's is 5.6MB against a 36MB ZIM: the
@@ -894,9 +911,8 @@ function _createPreviewRows(p) {
     // and the run's own counter is right seconds later. So the preview says
     // what it knows for certain — the title, the address, the language — and
     // stops guessing.
-    if (p.robots_allowed !== undefined) {
-      add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
-    }
+    // Only a refusal is worth a line.
+    if (p.robots_allowed === false) add('create_pv_robots', t('create_pv_robots_no'));
     // Say what kind of page this is, because it is what decides the engine.
     // An empty shell announces itself the moment you look at the capture; an
     // application that server-rendered its text does not, and finding out
@@ -904,8 +920,16 @@ function _createPreviewRows(p) {
     if (p.spa) add('create_pv_kind', t('create_pv_kind_shell'));
     else if (p.app) add('create_pv_kind', t('create_pv_kind_app'));
   }
-  if (p.language) add('create_pv_language', p.language + ' ' + t('create_pv_detected'));
+  // A detected language goes into the Language control (_createApplyDetectedLanguage).
   return rows;
+}
+
+// Whether the probe landed somewhere other than what was typed: scheme, a
+// trailing slash and case aside, the same address is not news.
+function _createLandedElsewhere(finalUrl) {
+  var typed = (document.getElementById('create-source') || {}).value || '';
+  var bare = function(u) { return String(u || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/+$/, ''); };
+  return !!finalUrl && bare(finalUrl) !== bare(typed.split('\n')[0]);
 }
 
 // Text a one-line header can hold. Neither a URL with a long query nor a title
@@ -2029,17 +2053,21 @@ function _createFieldHtml(key, def) {
     // {v, t|k} rows carrying a literal label or a key of their own. Language
     // and size names are literals on purpose: "Français" and "500 MB" read the
     // same in every UI language, and translating them would be inventing work.
+    // The empty first option is the default and says what it is; an option
+    // that would only repeat it is left out.
     var opts = '';
+    var plain = '';
     for (var i = 0; i < f.options.length; i++) {
       var o = f.options[i];
       var value = typeof o === 'string' ? o : o.v;
-      var text = typeof o === 'string' ? tH(f.label + '_' + o) : (o.k ? tH(o.k) : esc(o.t));
-      var pre = (def && def.pick && def.pick[key] === value) ? ' selected' : '';
-      // A stored size default is what an empty choice means, so it says so.
-      if (key === 'max_bytes' && value === '' && CREATE_STORED_TEXT.max_bytes) {
-        text = esc(t('create_size_stored', { size: CREATE_STORED_TEXT.max_bytes }));
+      var words = typeof o === 'string' ? t(f.label + '_' + o) : (o.k ? t(o.k) : o.t);
+      if (value === '') {
+        plain = _createSelectDefaultText(key, f, def);
+        words = plain;
+      } else if (words === plain) {
+        continue;
       }
-      opts += '<option value="' + escAttr(value) + '"' + pre + '>' + text + '</option>';
+      opts += '<option value="' + escAttr(value) + '">' + esc(words) + '</option>';
     }
     // A select that carries the custom-size hatch grows a free-entry box that
     // shows only while "Custom…" is chosen. The value crosses in the same
@@ -2049,11 +2077,12 @@ function _createFieldHtml(key, def) {
         ' hidden placeholder="2G" spellcheck="false" autocapitalize="none" autocorrect="off"' +
         ' aria-label="' + escAttr(tH('create_size_custom')) + '">'
       : '';
-    var change = f.customSize ? ' onchange="_createSizeSelect(this)"' : '';
+    var change = ' onchange="' + (f.customSize ? '_createSizeSelect(this);' : '') + '_createMarkDefault(this)"';
     return '<label class="create-flag" id="' + f.id + '-row">' + label +
-      '<select class="create-field create-pick" id="' + f.id + '"' + change + '>' + opts + '</select></label>' + extra;
+      '<select class="create-field create-pick' + (plain ? ' is-default' : '') + '" id="' + f.id + '"' + change + '>' +
+      opts + '</select></label>' + extra;
   }
-  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || f.ph || '';
+  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || (f.phKey ? t(f.phKey) : f.ph) || '';
   var number = f.control === 'number';
   return '<label class="create-flag" id="' + f.id + '-row">' + label +
     '<input type="' + (number ? 'number' : 'text') + '"' +
@@ -2063,6 +2092,19 @@ function _createFieldHtml(key, def) {
     (f.step ? ' step="' + f.step + '"' : '') +
     ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
     ' placeholder="' + escAttr(ph) + '"></label>';
+}
+
+// A note that only matters once its box is ticked (overriding robots.txt)
+// shows then and not before.
+function _createNoteWhenOn(box) {
+  var note = document.getElementById(box.id + '-note');
+  if (note) note.hidden = !box.checked;
+}
+
+// A select still on its first, empty option is on the default, and reads grey
+// like a placeholder; anything chosen reads as chosen.
+function _createMarkDefault(sel) {
+  sel.classList.toggle('is-default', sel.value === '');
 }
 
 // Whether the server has reported a capability as usable. The server's own
@@ -2148,24 +2190,55 @@ function _createAddCommands(into, capability) {
   }
 }
 
-// A row of controls plus any warnings they carry. The notes sit under the row
-// rather than in it: a sentence wrapped inside a flex row of short fields reads
-// as a broken control, not as a caution. Under Advanced (``attach``) each note
-// stays with its own field instead: a dozen fields with their notes gathered
-// at the bottom leave every note a long way from what it explains.
-function _createFieldsHtml(keys, def, attach) {
-  var controls = '';
-  var notes = '';
-  for (var i = 0; i < keys.length; i++) {
-    var html = _createFieldHtml(keys[i], def);
-    var f = CREATE_FIELDS[keys[i]];
-    var note = f && f.note
-      ? '<div class="create-caption" id="' + f.id + '-note">' + tH(f.note) + '</div>'
-      : '';
-    if (attach && note && html) controls += '<div class="create-flag-noted">' + html + note + '</div>';
-    else { controls += html; notes += note; }
+// The form's one rule: a column of names and one edge every control starts
+// on. Advanced options are many, so they come in the three questions they
+// answer, in that order (which pages, how much, how it is fetched) and what
+// the ZIM itself carries. A key no group names goes last, untitled. A mode
+// whose options fall in one group shows no heading at all.
+var CREATE_GROUPS = [
+  { k: 'create_group_pages', keys: ['scope', 'max_depth', 'include', 'exclude', 'extra_hops', 'sitemap'] },
+  { k: 'create_group_limits', keys: ['max_bytes', 'time_limit', 'delay'] },
+  { k: 'create_group_fetch', keys: ['format', 'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots'] },
+  { k: 'create_group_zim', keys: ['language', 'strip_links'] }
+];
+
+function _createGroupsOf(keys) {
+  var left = keys.slice();
+  var out = [];
+  for (var g = 0; g < CREATE_GROUPS.length; g++) {
+    var mine = CREATE_GROUPS[g].keys.filter(function(k) { return left.indexOf(k) >= 0; });
+    if (!mine.length) continue;
+    left = left.filter(function(k) { return mine.indexOf(k) < 0; });
+    out.push({ k: CREATE_GROUPS[g].k, keys: mine });
   }
-  return controls ? '<div class="create-flags">' + controls + '</div>' + notes : '';
+  if (left.length) out.push({ k: '', keys: left });
+  return out;
+}
+
+// One field and its note, the note right under it: a note gathered elsewhere
+// is a long way from what it explains.
+function _createRowsHtml(keys, def) {
+  var html = '';
+  for (var i = 0; i < keys.length; i++) {
+    html += _createFieldHtml(keys[i], def);
+    var f = CREATE_FIELDS[keys[i]];
+    if (f && f.note) {
+      html += '<div class="create-caption create-row-note" id="' + f.id + '-note"' +
+        (f.noteWhenOn ? ' hidden' : '') + '>' + tH(f.note) + '</div>';
+    }
+  }
+  return html;
+}
+
+function _createFormHtml(keys, def, grouped) {
+  if (!keys.length) return '';
+  var groups = grouped ? _createGroupsOf(keys) : [{ k: '', keys: keys }];
+  var titled = groups.length > 1;
+  return groups.map(function(g) {
+    return '<div class="create-form">' +
+      (titled && g.k ? '<div class="create-group-h">' + tH(g.k) + '</div>' : '') +
+      _createRowsHtml(g.keys, def) + '</div>';
+  }).join('');
 }
 
 // The credit line for a mode whose work is really another project's.
@@ -2563,13 +2636,15 @@ function _renderCreatePanel() {
     return;
   }
   if (def.client) { host.innerHTML = '<div class="create-panel">' + _createBookmarksBodyHtml() + '</div>'; return; }
-  var advanced = _createFieldsHtml(def.advanced || [], def, true);
+  var advanced = _createFormHtml(def.advanced || [], def, true);
   host.innerHTML =
     '<div class="create-panel">' +
       '<div id="create-preview"></div>' +
-      '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
-      '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
-      _createFieldsHtml(def.flags || [], def) +
+      '<div class="create-form">' +
+        '<label class="create-flag create-flag-wide" id="create-title-row">' + tH('create_pv_title') +
+          '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '"></label>' +
+        _createRowsHtml(def.flags || [], def) +
+      '</div>' +
       (advanced
         ? '<details class="create-adv">' +
             '<summary>' + tH('create_advanced') + '</summary>' + advanced +
@@ -2679,10 +2754,6 @@ function _createSyncEngine() {
       var node = document.getElementById(parts[i]);
       if (node) node.hidden = !applies;
     }
-    // A field kept with its note (Advanced) hides as one, or its empty
-    // holder still spends a row of gap.
-    var row = document.getElementById(f.id + '-row');
-    if (row && row.parentNode.classList.contains('create-flag-noted')) row.parentNode.hidden = !applies;
   }
 }
 
@@ -2779,8 +2850,12 @@ function _renderCreatePreview() {
         return '<li><bdi>' + esc(u.path) + '</bdi> \u00b7 ' + tH('create_folder_why_' + u.reason) + '</li>';
       }).join('') + '</ul>';
   }
-  host.innerHTML = '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' +
-    warn + html + note + '</div>';
+  // What the probe found for the title is what an empty Title field means.
+  var title = document.getElementById('create-title');
+  if (title) title.placeholder = p.title || t('create_ph_title');
+  host.innerHTML = (warn || html || note)
+    ? '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' + warn + html + note + '</div>'
+    : '';
 }
 
 // Ask the server what is actually there. Fired when the source stops changing,
@@ -3525,7 +3600,7 @@ function _createSyncPhases(s) {
   for (var i = 0; i < kids.length; i++) {
     var failed = s.done && !s.ok && !s.cancelled;
     var state = i < step ? 'done'
-      : (i === step ? (failed ? 'failed' : (s.done ? 'done' : 'active')) : 'pending');
+      : (i === step ? (failed ? 'failed' : (s.done ? (s.ok ? 'complete' : 'done') : 'active')) : 'pending');
     kids[i].setAttribute('data-state', state);
     if (state === 'active') kids[i].setAttribute('aria-current', 'step');
     else kids[i].removeAttribute('aria-current');
@@ -3575,6 +3650,10 @@ function _createSyncPhases(s) {
 function _createSyncMetrics(s) {
   var host = document.getElementById('create-metrics');
   if (!host) return;
+  // Once the ZIM is in the library its card carries the count and the size,
+  // and What's inside the breakdown; live counters beside them would be the
+  // same numbers a third time.
+  if (s.done && s.ok) { host.innerHTML = ''; return; }
   var counts = _createViz.counts;
   var html = '';
   for (var i = 0; i < CREATE_COUNT_KEYS.length; i++) {
@@ -4178,7 +4257,7 @@ function _renderCreateRecent() {
           '<span class="create-hist-why">' +
             (h.gone ? tH('create_hist_gone')
               : (CREATE_HISTORY_KEYS[state] ? tH(CREATE_HISTORY_KEYS[state]) : '')) +
-            (state === 'failed' && h.error ? ' — ' + esc(h.error) : '') +
+            (state === 'failed' && h.error ? '. ' + esc(h.error) : '') +
           '</span>' +
         '</span>' +
         (state === 'ok' && h.result && !h.gone
