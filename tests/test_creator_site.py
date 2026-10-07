@@ -268,7 +268,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture(scope="module")
+# Session-wide: other modules import this fixture (capture options, the private
+# rule), and one server on one port serves them all.
+@pytest.fixture(scope="session")
 def fixture_server():
     srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
