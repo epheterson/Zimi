@@ -211,7 +211,8 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['page', ['block_ads', 'capture_variants', 'strip_links', 'language']],
-  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay', 'time_limit', 'sitemap',
+    'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
     'strip_links', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
@@ -1029,6 +1030,48 @@ eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
 
 check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
   'the tree draws a bounded number of rows, whatever the crawl size');
+
+
+// ── capture options: time limit, sitemap, user agent, mobile, page timeout ──
+// Under Advanced, never beside the address: two controls outside it is the cap.
+check(CREATE_MODE_DEFS.every(d => (d.flags || []).length <= 2),
+  'no mode has more than two controls outside Advanced');
+for (const key of ['time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeout']) {
+  check(!(sandbox._createDef('site').flags || []).includes(key), `${key} is not outside Advanced`);
+}
+eq(sandbox._createBuildRequest('site', {
+  source: 'https://e.org/', time_limit: ' 8h ', sitemap: true, user_agent: 'Mine/1',
+  mobile: true, page_timeout: '30', engine: 'rendered' }),
+  { mode: 'site', source: 'https://e.org/', engine: 'rendered', time_limit: '8h', sitemap: true,
+    user_agent: 'Mine/1', mobile: true, page_timeout: 30 },
+  'a site request carries the new options');
+eq(sandbox._createBuildRequest('site', {
+  source: 'https://e.org/', time_limit: '', sitemap: false, user_agent: '', mobile: false, page_timeout: '' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'silent fields send nothing');
+eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', page_timeout: '30', engine: '' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'a page timeout is not sent for the fast engine, which has no browser to wait on');
+eq(sandbox._createBuildRequest('page', { source: 'https://e.org/', mobile: true, time_limit: '1h' }),
+  { mode: 'page', source: 'https://e.org/' },
+  'page mode has none of these');
+
+// Stored defaults: placeholders, checkboxes that start where the default puts
+// them (and so can say "off" against it), and the two selects.
+sandbox._createTakeDefaults({
+  defaults: { sitemap: true, mobile: false, scope: 'host', max_bytes: 2000000000, time_limit: 28800 },
+  defaults_text: { time_limit: '8h', max_bytes: '2.0 GB', max_pages: '50' }
+});
+eq([CREATE_FIELDS.sitemap.on, CREATE_FIELDS.mobile.on], [true, false], 'checkboxes start where the stored default puts them');
+eq(sandbox.CREATE_STORED_TEXT, { time_limit: '8h', max_bytes: '2.0 GB', max_pages: '50' }, 'the text fields show the default as their placeholder');
+eq([sandbox._createDef('site').pick.scope, sandbox._createDef('site').pick.max_bytes], ['host', ''],
+  'the selects preselect the stored scope and let an empty size mean the stored one');
+eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', sitemap: false }),
+  { mode: 'site', source: 'https://e.org/', sitemap: false },
+  'unticking a box that a default turned on says so');
+sandbox._createTakeDefaults({});
+eq([CREATE_FIELDS.sitemap.on, sandbox._createDef('site').pick.max_bytes, Object.keys(sandbox.CREATE_STORED_TEXT).length],
+  [false, '4G', 0], 'clearing the defaults in Manage clears them here');
 
 if (failures) {
   console.error(`\n${failures} failure(s)`);

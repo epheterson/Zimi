@@ -13318,8 +13318,51 @@ function _creatorRedditCell(d) {
 
 // A capture-default switch row, wired to the admin-only POST half of
 // /manage/creator so the choice persists server-side.
-function _creatorDefaultRow(key, labelKey, on) {
-  return { id: 'ms-cr-' + key, title: tH(labelKey), on: on, onchange: '_setCreatorDefault(\'' + key + '\', this)' };
+function _creatorDefaultRow(key, labelKey, on, descKey) {
+  return { id: 'ms-cr-' + key, title: tH(labelKey), desc: descKey ? tH(descKey) : '', on: on,
+    onchange: '_setCreatorDefault(\'' + key + '\', this)' };
+}
+
+// Every switch the section holds, in order. block_ads and capture_variants
+// are answered with the factory value when nothing is stored (the server's
+// *_default fields); the rest are off until stored (d.defaults).
+var _CREATOR_SWITCHES = [
+  { key: 'block_ads', label: 'create_block_ads' },
+  { key: 'capture_variants', label: 'create_capture_variants' },
+  { key: 'sitemap', label: 'create_sitemap', desc: 'create_sitemap_note' },
+  { key: 'mobile', label: 'create_mobile', desc: 'create_mobile_note' },
+  { key: 'allow_private', label: 'creator_private', desc: 'creator_private_hint' }
+];
+function _creatorSwitchOn(d, key) {
+  if ((key + '_default') in d) return !!d[key + '_default'];
+  return !!(d.defaults && d.defaults[key] === true);
+}
+
+// The defaults that are a value, not a switch. The server checks each with the
+// same table the capture options use and answers a 400 with a sentence.
+var _CREATOR_FIELDS = [
+  { key: 'time_limit', label: 'create_time_limit', ph: '8h' },
+  { key: 'user_agent', label: 'create_user_agent', ph: 'Zimi', wide: true },
+  { key: 'page_timeout', label: 'create_page_timeout', ph: '45' },
+  { key: 'max_pages', label: 'create_max_pages', ph: '10000' },
+  { key: 'max_depth', label: 'create_max_depth', ph: '10' },
+  { key: 'max_bytes', label: 'create_max_bytes', ph: '4G' },
+  { key: 'delay', label: 'create_delay', ph: '0.5' }
+];
+function _creatorFieldRow(f, d) {
+  var shown = (d.defaults_text && d.defaults_text[f.key]) || '';
+  return _mcRow(tH(f.label), '<input type="text" class="create-field create-short"' + (f.wide ? ' style="width:240px"' : '') +
+    ' id="ms-cr-f-' + f.key + '" value="' + escAttr(shown) + '" placeholder="' + escAttr(f.ph) + '"' +
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
+    ' onchange="_setCreatorField(\'' + f.key + '\', this)">');
+}
+function _creatorScopeRow(d) {
+  var now = (d.defaults && d.defaults.scope) || '';
+  var opts = [['', 'create_scope_prefix'], ['host', 'create_scope_host'], ['domain', 'create_scope_domain'], ['any', 'create_scope_any']];
+  return _mcRow(tH('create_scope'), '<select class="create-field create-pick" id="ms-cr-f-scope"' +
+    ' onchange="_setCreatorField(\'scope\', this)">' + opts.map(function(o) {
+      return '<option value="' + o[0] + '"' + (o[0] === now ? ' selected' : '') + '>' + tH(o[1]) + '</option>';
+    }).join('') + '</select>');
 }
 
 function _creatorQueueHtml(queue) {
@@ -13333,8 +13376,10 @@ function _creatorHtml(d) {
 
   // Defaults a new capture starts with — the control you actually touch.
   var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _switchRowsHtml([_creatorDefaultRow('block_ads', 'create_block_ads', d.block_ads_default),
-      _creatorDefaultRow('capture_variants', 'create_capture_variants', d.capture_variants_default)]) +
+    _switchRowsHtml(_CREATOR_SWITCHES.map(function(sw) {
+      return _creatorDefaultRow(sw.key, sw.label, _creatorSwitchOn(d, sw.key), sw.desc);
+    })) +
+    _creatorScopeRow(d) + _CREATOR_FIELDS.map(function(f) { return _creatorFieldRow(f, d); }).join('') +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
 
   // The queue, when it matters.
@@ -13476,9 +13521,9 @@ function _patchCreatorSection(d) {
   put('ms-cr-reddit', _creatorRedditCell(d));
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
-  ['block_ads', 'capture_variants'].forEach(function(key) {
-    var input = document.getElementById('ms-cr-' + key);
-    if (input) input.checked = !!d[key + '_default'];
+  _CREATOR_SWITCHES.forEach(function(sw) {
+    var input = document.getElementById('ms-cr-' + sw.key);
+    if (input) input.checked = _creatorSwitchOn(d, sw.key);
   });
 }
 
@@ -13530,20 +13575,57 @@ function _setCreatorDefault(key, input) {
   input.disabled = true;
   var body = {};
   body[key] = want;
-  manageFetch('/manage/creator', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(_msJson).then(function(d) {
-    if (_creatorData) {
-      _creatorData.block_ads_default = d.block_ads_default;
-      _creatorData.capture_variants_default = d.capture_variants_default;
-    }
-    input.checked = !!d[key + '_default'];
+  _postCreatorDefaults(body).then(function(d) {
+    input.checked = _creatorSwitchOn(d, key);
     _showToast(t('saved'));
   }).catch(function() {
     input.checked = !want;
     _showToast(t('error'));
   }).finally(function() { input.disabled = false; });
+}
+
+// A value default edited: stored when the server accepts it, and the field
+// settles on what the server kept (a time limit typed as 480m reads 8h). An
+// empty field clears the default. A refusal is shown as the server's own
+// sentence and the field goes back to what is stored.
+function _setCreatorField(key, input) {
+  var body = {};
+  body[key] = input.value.trim();
+  input.disabled = true;
+  _postCreatorDefaults(body).then(function(d) {
+    if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
+    else input.value = (d.defaults_text && d.defaults_text[key]) || '';
+    _showToast(t('saved'));
+  }).catch(function(e) {
+    var d = _creatorData || {};
+    if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
+    else input.value = (d.defaults_text && d.defaults_text[key]) || '';
+    _showToast((e && e.serverMessage) || t('error'));
+  }).finally(function() { input.disabled = false; });
+}
+
+// POST /manage/creator and keep the pane's copy of the stored defaults in step.
+// A 400 carries the sentence to show, on the rejection as ``serverMessage``.
+function _postCreatorDefaults(body) {
+  return manageFetch('/manage/creator', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r) {
+    return r.json().catch(function() { return {}; }).then(function(d) {
+      if (!r.ok) {
+        var err = new Error('http ' + r.status);
+        err.serverMessage = d && d.error;
+        throw err;
+      }
+      if (_creatorData) {
+        _creatorData.block_ads_default = d.block_ads_default;
+        _creatorData.capture_variants_default = d.capture_variants_default;
+        _creatorData.defaults = d.defaults;
+        _creatorData.defaults_text = d.defaults_text;
+      }
+      return d;
+    });
+  });
 }
 
 // ── ZIM auto-update ─────────────────────────────────────────────────────────

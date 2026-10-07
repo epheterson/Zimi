@@ -128,7 +128,7 @@ var CREATE_MODE_DEFS = [
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
     advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay',
-      'block_ads', 'capture_variants', 'strip_links', 'language', 'ignore_robots'],
+      'time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'strip_links', 'language', 'ignore_robots'],
     pick: { max_bytes: '4G' }
   },
   {
@@ -304,6 +304,10 @@ function _createSidecarCommand() {
   return base + ' --data-dir ' + _createShellQuote(dir);
 }
 
+// The instance's stored defaults, each as the text its field shows as a
+// placeholder (see _createTakeDefaults). Empty until the server has said.
+var CREATE_STORED_TEXT = {};
+
 var CREATE_FIELDS = {
   engine: {
     id: 'create-engine', control: 'engine', label: 'create_engine',
@@ -358,6 +362,31 @@ var CREATE_FIELDS = {
   max_bytes: {
     id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
     kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true, note: 'create_max_bytes_note'
+  },
+  // How a site capture ends, finds its pages and presents itself. Each of these
+  // can be a stored default (Manage, Creator): the text fields show it as their
+  // placeholder and the two checkboxes start where it puts them, so a person
+  // sees what saying nothing means. An unticked box under a default that is on
+  // sends false, which is why `on` is how these boxes carry a default.
+  time_limit: {
+    id: 'create-time-limit', control: 'text', label: 'create_time_limit',
+    kind: 'text', ph: '8h', note: 'create_time_limit_note'
+  },
+  sitemap: {
+    id: 'create-sitemap', control: 'check', label: 'create_sitemap',
+    kind: 'bool', note: 'create_sitemap_note'
+  },
+  user_agent: {
+    id: 'create-user-agent', control: 'text', label: 'create_user_agent',
+    kind: 'text', ph: 'Zimi'
+  },
+  mobile: {
+    id: 'create-mobile', control: 'check', label: 'create_mobile',
+    kind: 'bool'
+  },
+  page_timeout: {
+    id: 'create-page-timeout', control: 'number', label: 'create_page_timeout',
+    kind: 'int', min: 1, max: 600, ph: '45', needsEngine: ['rendered', 'alive']
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
@@ -583,6 +612,27 @@ function _createModeFields(def) {
 function _createFieldApplies(f, engine) {
   if (!f || !f.needsEngine) return true;
   return f.needsEngine.indexOf(String(engine || '')) >= 0;
+}
+
+// The instance's stored defaults, taken from the server's status reply. Text
+// fields show theirs as the placeholder, the two checkboxes that can be a
+// default start where it puts them, and the two selects preselect it, so the
+// form says what saying nothing means. Called with every reply: clearing a
+// default in Manage clears it here at the next poll.
+function _createTakeDefaults(data) {
+  var values = (data && data.defaults) || {};
+  var text = (data && data.defaults_text) || {};
+  CREATE_STORED_TEXT = {};
+  for (var key in text) {
+    if (Object.prototype.hasOwnProperty.call(text, key)) CREATE_STORED_TEXT[key] = String(text[key]);
+  }
+  CREATE_FIELDS.sitemap.on = values.sitemap === true;
+  CREATE_FIELDS.mobile.on = values.mobile === true;
+  var site = _createDef('site');
+  if (site && site.pick) {
+    site.pick.max_bytes = values.max_bytes !== undefined ? '' : '4G';
+    site.pick.scope = typeof values.scope === 'string' ? values.scope : '';
+  }
 }
 
 // One raw form value → what belongs in the request body, or undefined for
@@ -1985,6 +2035,10 @@ function _createFieldHtml(key, def) {
       var value = typeof o === 'string' ? o : o.v;
       var text = typeof o === 'string' ? tH(f.label + '_' + o) : (o.k ? tH(o.k) : esc(o.t));
       var pre = (def && def.pick && def.pick[key] === value) ? ' selected' : '';
+      // A stored size default is what an empty choice means, so it says so.
+      if (key === 'max_bytes' && value === '' && CREATE_STORED_TEXT.max_bytes) {
+        text = esc(t('create_size_stored', { size: CREATE_STORED_TEXT.max_bytes }));
+      }
       opts += '<option value="' + escAttr(value) + '"' + pre + '>' + text + '</option>';
     }
     // A select that carries the custom-size hatch grows a free-entry box that
@@ -1999,7 +2053,7 @@ function _createFieldHtml(key, def) {
     return '<label class="create-flag">' + label +
       '<select class="create-field create-pick" id="' + f.id + '"' + change + '>' + opts + '</select></label>' + extra;
   }
-  var ph = (def && def.hints && def.hints[key]) || f.ph || '';
+  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || f.ph || '';
   var number = f.control === 'number';
   return '<label class="create-flag">' + label +
     '<input type="' + (number ? 'number' : 'text') + '"' +
@@ -3149,6 +3203,7 @@ function _createIngest(data) {
   // the checkboxes' initial state, so a default the admin flipped there is
   // what a fresh form shows. An explicit choice stashed for this mode still
   // wins when the stash restores over the render.
+  _createTakeDefaults(data);
   if (data.capture_defaults) {
     if (typeof data.capture_defaults.block_ads === 'boolean') {
       CREATE_FIELDS.block_ads.on = data.capture_defaults.block_ads;
