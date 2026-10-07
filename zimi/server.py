@@ -4894,6 +4894,38 @@ def main():
         help="Link hops from the starting page "
         f"(--site default: {_crawler.DEFAULT_MAX_DEPTH})",
     )
+    # Which pages a --site capture walks into. browsertrix's names, so a zimit
+    # command translates one to one (all substance in crawler.CrawlScope).
+    p_create.add_argument(
+        "--scope",
+        choices=_crawler.SCOPES,
+        default=None,
+        help="Pages a --site capture visits: prefix (the start page's section, "
+        "the default), host (the whole site), domain (the site and its "
+        "subdomains) or any (wherever links lead; depth bounds it)",
+    )
+    p_create.add_argument(
+        "--include",
+        action="append",
+        default=None,
+        metavar="REGEX",
+        help="Also capture pages whose URL matches, repeatable (--site only)",
+    )
+    p_create.add_argument(
+        "--exclude",
+        action="append",
+        default=None,
+        metavar="REGEX",
+        help="Never capture pages whose URL matches, repeatable; wins over "
+        "--scope and --include (--site only)",
+    )
+    p_create.add_argument(
+        "--extra-hops",
+        type=int,
+        default=None,
+        help="Follow links out of scope this many pages further (--site only; "
+        f"0-{_crawler.MAX_EXTRA_HOPS})",
+    )
     # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
     p_create.add_argument(
         "--format",

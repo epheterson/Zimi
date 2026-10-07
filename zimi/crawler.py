@@ -264,18 +264,30 @@ def crawl_scope(given_url, seed_url, seed_links, note=None):
     address = given_url
     # The widest the typed path could mean. The seed landing outside even
     # that is a redirect to another section, and the section is where it went.
-    widest = _folder_of(given) if "." in given.rsplit("/", 1)[-1] else given.rstrip("/") + "/"
+    widest = (
+        _folder_of(given)
+        if "." in given.rsplit("/", 1)[-1]
+        else given.rstrip("/") + "/"
+    )
     if not in_path_scope(seed_url, widest):
         address = seed_url
-        say(f"the site sent {given} to {_scope_path(urllib.parse.urlsplit(seed_url).path)}; following it")
+        say(
+            f"the site sent {given} to {_scope_path(urllib.parse.urlsplit(seed_url).path)}; following it"
+        )
     scope = path_scope(address, seed_links)
     path = _scope_path(urllib.parse.urlsplit(address).path)
     if scope is None:
-        say(f"capturing the whole site: {path} is a page, and nothing it links to is under it")
+        say(
+            f"capturing the whole site: {path} is a page, and nothing it links to is under it"
+        )
     elif scope.rstrip("/") == path.rstrip("/"):
-        say(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
+        say(
+            f"staying under {scope} (the path in the address); pages elsewhere on the site are left out"
+        )
     else:
-        say(f"staying under {scope}: {path} is a page there, and nothing it links to is under it")
+        say(
+            f"staying under {scope}: {path} is a page there, and nothing it links to is under it"
+        )
     return scope
 
 
@@ -322,6 +334,170 @@ def same_origin(url, origin):
     site is a different origin and stays external — the alternative is
     silently following a scheme downgrade."""
     return _origin_of(normalize_url(url)) == _origin_of(normalize_url(origin))
+
+
+# ── scope ───────────────────────────────────────────────────────────────────
+#
+# Which pages a site capture walks into. The kinds and the pattern flags are
+# browsertrix's own (zimit's --scopeType, --scopeIncludeRx, --scopeExcludeRx,
+# --extraHops), so a zimit command line translates to Zimi's one to one and
+# Zimi is never the narrower tool. "prefix" is the default and is Zimi's smart
+# reading of it: the seed's section, decided from the seed (crawl_scope).
+SCOPES = ("prefix", "host", "domain", "any")
+DEFAULT_SCOPE = "prefix"
+# A web form can send these, and every one is matched against every link the
+# crawl sees: enough for any real rule, few and short enough to stay cheap.
+MAX_SCOPE_PATTERNS = 20
+MAX_SCOPE_PATTERN_CHARS = 500
+MAX_EXTRA_HOPS = 10
+
+
+def _patterns(values, flag):
+    """Compiled regexes from a string or a list of them. A pattern that does
+    not compile is the user's to fix, said with the pattern in it."""
+    if isinstance(values, str):
+        values = [values]
+    out = []
+    for raw in values or ():
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        if len(text) > MAX_SCOPE_PATTERN_CHARS:
+            raise CreateError(
+                f"{flag}: a pattern is longer than {MAX_SCOPE_PATTERN_CHARS} characters"
+            )
+        try:
+            out.append(re.compile(text))
+        except re.error as e:
+            raise CreateError(
+                f"{flag} {text!r} is not a valid regular expression ({e})"
+            )
+    if len(out) > MAX_SCOPE_PATTERNS:
+        raise CreateError(f"{flag}: at most {MAX_SCOPE_PATTERNS} patterns")
+    return out
+
+
+def _base_domain(host):
+    """The domain a ``domain`` scope covers: the host without a leading
+    ``www.``, which is what browsertrix strips before matching subdomains."""
+    host = (host or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+class CrawlScope:
+    """The pages a site capture may visit.
+
+    ``scope`` is one of ``SCOPES`` (kept as ``kind``). ``include`` patterns add pages to it,
+    ``exclude`` patterns take pages out of it and win over everything, and
+    ``extra_hops`` lets the crawl follow that many consecutive links out of it
+    (a page found that way is captured; its in-scope links start counting
+    again from nothing). Patterns match the normalized URL, anywhere in it.
+
+    Settled once the seed is in hand (``settle``), because "the seed's
+    section" and "the seed's host" are about the page the site actually
+    answered with, not the address that was typed."""
+
+    def __init__(self, scope=None, include=(), exclude=(), extra_hops=0):
+        kind = str(scope or DEFAULT_SCOPE).strip().lower()
+        if kind not in SCOPES:
+            raise CreateError(f"unknown scope {kind!r}: use one of {', '.join(SCOPES)}")
+        hops = int(extra_hops or 0)
+        if not 0 <= hops <= MAX_EXTRA_HOPS:
+            raise CreateError(f"extra hops must be between 0 and {MAX_EXTRA_HOPS}")
+        self.kind = kind
+        self.include = _patterns(include, "--include")
+        self.exclude = _patterns(exclude, "--exclude")
+        self.extra_hops = hops
+        self.origin = None
+        self.prefix = None  # the section, for kind "prefix"; None is the whole host
+        self.domain = None
+
+    @property
+    def custom(self):
+        """Whether anything beyond the default was asked for."""
+        return self.kind != DEFAULT_SCOPE or bool(
+            self.include or self.exclude or self.extra_hops
+        )
+
+    def settle(self, given_url, seed_url, seed_links, origin, note=None):
+        say = note or _noop
+        self.origin = origin
+        host = urllib.parse.urlsplit(seed_url).hostname or ""
+        if self.kind == "prefix":
+            self.prefix = crawl_scope(given_url, seed_url, seed_links, note)
+        elif self.kind == "host":
+            say(f"capturing the whole site: every page on {host}")
+        elif self.kind == "domain":
+            self.domain = _base_domain(host)
+            say(f"capturing {self.domain} and its subdomains")
+        else:
+            say("following links to any site; depth and the limits bound the capture")
+        if self.include:
+            say(
+                "also capturing pages matching "
+                + ", ".join(p.pattern for p in self.include)
+            )
+        if self.exclude:
+            say(
+                "never capturing pages matching "
+                + ", ".join(p.pattern for p in self.exclude)
+            )
+        if self.extra_hops:
+            say(
+                f"following links out of scope {_plural(self.extra_hops, 'page')} further"
+            )
+        return self
+
+    def excluded(self, url):
+        return any(p.search(url) for p in self.exclude)
+
+    def contains(self, url):
+        """Whether a page is in scope on its own merits (no extra hops)."""
+        if self.excluded(url):
+            return False
+        if any(p.search(url) for p in self.include):
+            return True
+        if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+            return False
+        if self.kind == "prefix":
+            return same_origin(url, self.origin) and in_path_scope(url, self.prefix)
+        if self.kind == "host":
+            return same_origin(url, self.origin)
+        if self.kind == "domain":
+            host = (urllib.parse.urlsplit(url).hostname or "").lower()
+            return host == self.domain or host.endswith("." + self.domain)
+        return True
+
+    def hops(self, url, from_hops):
+        """The hop count a page reached from a page ``from_hops`` out of scope
+        would carry: 0 in scope, one more out of it while extra hops allow,
+        else None (not visited)."""
+        if self.contains(url):
+            return 0
+        if self.excluded(url) or from_hops + 1 > self.extra_hops:
+            return None
+        return from_hops + 1
+
+
+class _RobotsBook:
+    """robots.txt for every origin a crawl reaches, read once each. A crawl
+    that keeps to its origin only ever holds the one the caller read."""
+
+    def __init__(self, origin, robots, ignore, timeout, note):
+        self._by_origin = {_origin_of(normalize_url(origin)): robots}
+        self._ignore = ignore
+        self._timeout = timeout
+        self._note = note
+
+    def allows(self, url):
+        if self._ignore:
+            return True
+        origin = _origin_of(normalize_url(url))
+        if origin not in self._by_origin:
+            self._by_origin[origin] = load_robots(
+                origin, timeout=self._timeout, note=self._note
+            )
+        return _robots_allows(self._by_origin[origin], url)
 
 
 def looks_like_a_page(url):
@@ -496,9 +672,13 @@ def _crawl(
     max_depth,
     delay,
     note,
+    scope=None,
+    ignore_robots=False,
+    timeout=ROBOTS_TIMEOUT,
 ):
-    """Breadth-first over one origin (and, when the address named one, one path
-    in it: see ``crawl_scope``), capturing each page COMPLETELY as it goes:
+    """Breadth-first over the pages ``scope`` admits (by default one origin
+    and, when the address named one, one path in it: see ``crawl_scope``),
+    capturing each page COMPLETELY as it goes:
     fetched, rendered, its assets pulled down, page and assets spooled.
 
     Returns ``(pages, reason, mimetypes)`` where each page is a dict of
@@ -534,20 +714,18 @@ def _crawl(
     # meantime spends the interval instead of extending it.
     next_fetch_at = time.monotonic() + delay
 
-    frontier_cap = min(max_pages * FRONTIER_FACTOR, FRONTIER_MAX) if max_pages else FRONTIER_MAX
+    frontier_cap = (
+        min(max_pages * FRONTIER_FACTOR, FRONTIER_MAX) if max_pages else FRONTIER_MAX
+    )
     frontier_full = [False]
 
-    def enqueue(links, depth):
+    def enqueue(links, depth, from_hops):
         for link in links:
             key = normalize_url(upgrade_scheme(link, origin))
-            if (
-                key in seen
-                or not same_origin(key, origin)
-                or not in_path_scope(key, scope)
-                or not looks_like_a_page(key)
-            ):
+            if key in seen or not looks_like_a_page(key):
                 continue
-            if not _robots_allows(robots, key):
+            hops = scope.hops(key, from_hops)
+            if hops is None or not robots_book.allows(key):
                 continue
             if depth > max_depth:
                 # A page the crawl would have visited, one link too far. Said,
@@ -557,10 +735,12 @@ def _crawl(
             if len(seen) >= frontier_cap:
                 if frontier_cap == FRONTIER_MAX and not frontier_full[0]:
                     frontier_full[0] = True
-                    note(f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those")
+                    note(
+                        f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those"
+                    )
                 return
             seen.add(key)
-            queue.append((key, depth))
+            queue.append((key, depth, hops))
 
     def capture(keys, final_url, depth, text):
         """Everything one page needs before the crawl may move on."""
@@ -593,8 +773,9 @@ def _crawl(
         seed_keys.append(seed_final)  # the seed redirected; both keys are it
     seen.update(seed_keys)
     seed_links = extract_links(seed_text, seed_url)
-    scope = crawl_scope(seed_id, seed_url, seed_links, note)
-    enqueue(seed_links, 1)
+    scope = (scope or CrawlScope()).settle(seed_id, seed_url, seed_links, origin, note)
+    robots_book = _RobotsBook(origin, robots, ignore_robots, timeout, note)
+    enqueue(seed_links, 1, 0)
     capture(seed_keys, seed_url, 0, seed_text)
 
     while queue:
@@ -607,7 +788,7 @@ def _crawl(
         if budget.exhausted:
             reason = f"byte budget ({_fmt_bytes(budget.limit)})"
             break
-        url, depth = queue.popleft()
+        url, depth, hops = queue.popleft()
         waiting = next_fetch_at - time.monotonic()
         if waiting > 0:
             time.sleep(waiting)
@@ -620,12 +801,15 @@ def _crawl(
             note(f"skipped {url}: {str(e).splitlines()[0]}")
             continue
         budget.spend(nbytes)
-        # A redirect can walk off the origin; the page it landed on is not
-        # ours to capture, and its own links certainly are not.
-        if not same_origin(final_url, origin):
-            log.debug("skipping %s: redirected off-origin to %s", url, final_url)
+        # A redirect can walk out of scope; the page it landed on is not ours
+        # to capture, and its own links certainly are not. Judged as a link
+        # from the page that led here, so extra hops still count.
+        landed = scope.hops(normalize_url(final_url), max(hops - 1, 0))
+        if landed is None:
+            log.debug("skipping %s: redirected out of scope to %s", url, final_url)
             note(f"skipped {url}: redirected off-origin")
             continue
+        hops = max(hops, landed)
         keys = [url]
         final_key = normalize_url(final_url)
         if final_key != url:
@@ -634,15 +818,15 @@ def _crawl(
                 continue
             seen.add(final_key)
             keys.append(final_key)
-        enqueue(extract_links(text, final_url), depth + 1)
+        enqueue(extract_links(text, final_url), depth + 1, hops)
         capture(keys, final_url, depth, text)
     if reason is None and too_deep[0]:
         reason = f"depth limit ({max_depth})"
-    if reason is None and scope and len(pages) == 1:
+    if reason is None and scope.prefix and len(pages) == 1 and not scope.custom:
         # Every link on the seed went somewhere else on the site. A one-page
         # "site" the card called complete was the defect; the card offers the
         # whole site instead.
-        reason = f"nothing under {scope}"
+        reason = f"nothing under {scope.prefix}"
     return pages, reason, engine.mimetypes
 
 
@@ -736,7 +920,7 @@ def create_site_zim(
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
     max_pages=DEFAULT_MAX_PAGES,
-    max_depth=DEFAULT_MAX_DEPTH,
+    max_depth=None,
     max_bytes=DEFAULT_MAX_BYTES,
     delay=DEFAULT_DELAY,
     ignore_robots=False,
@@ -746,11 +930,18 @@ def create_site_zim(
     block_ads=None,
     capture_variants=None,
     strip_links=False,
+    scope=None,
+    include=(),
+    exclude=(),
+    extra_hops=0,
     register=False,
     progress=None,
     stop=None,
 ):
-    """Capture a bounded same-origin crawl as one ZIM.
+    """Capture a bounded crawl as one ZIM.
+
+    ``scope``, ``include``, ``exclude`` and ``extra_hops`` say which pages it
+    walks into: see ``CrawlScope``. The default is the seed's own section.
 
     Returns the ``create_*_zim`` summary dict plus ``"url"`` (the seed's final
     URL), ``"bytes"`` (everything fetched), and ``"stopped"`` (the bound that
@@ -771,8 +962,12 @@ def create_site_zim(
 
     note = progress or _noop
     name = str(engine or "").strip().lower()
+    # Refused before anything is fetched: a pattern that does not compile is a
+    # typo, and an hour of crawling is a bad way to find it.
+    walk = CrawlScope(scope, include, exclude, extra_hops)
     # zimit is its own crawler in its own container: none of the frontier
-    # below applies, and the only bound Zimi can hand it is the page limit.
+    # below applies. What it is handed is the page limit, the depth and the
+    # scope, which are browsertrix's own options under their own names.
     # Routed by name, never by membership in ARCHIVE_ENGINES: that check once
     # sent a whole-site zimit request to the alive engine without a word.
     if name == "zimit":
@@ -786,6 +981,8 @@ def create_site_zim(
             language=language,
             creator_name=creator_name,
             max_pages=max_pages,
+            max_depth=max_depth,
+            scope=walk,
             register=register,
             progress=progress,
         )
@@ -812,10 +1009,14 @@ def create_site_zim(
             timeout=timeout,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            scope=walk,
             register=register,
             progress=progress,
             stop=stop,
         )
+    # None until here so zimit can tell "not asked" (its own unlimited
+    # default) from a depth somebody chose.
+    max_depth = DEFAULT_MAX_DEPTH if max_depth is None else max_depth
     if is_offline():
         raise CreateError(
             "ZIMI_OFFLINE is set — refusing to fetch from the network. "
@@ -825,9 +1026,13 @@ def create_site_zim(
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
-        raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
+        raise CreateError(
+            "crawl bounds must be positive (0 pages or 0 bytes means no limit)"
+        )
     if not max_pages and not max_bytes:
-        note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
+        note(
+            f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture"
+        )
 
     origin = _origin_of(url)
     robots = None
@@ -920,6 +1125,9 @@ def create_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=walk,
+                ignore_robots=ignore_robots,
+                timeout=timeout,
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
@@ -1237,21 +1445,31 @@ def _probe(cmd):
         return False
 
 
+_zimit_help_cache = {}
+
+
 def _image_supports_flag(docker, image, flag):
     """Whether the zimit image knows ``flag``. zimit forwards warc2zim's own
     options, but an older image predates the one Zimi wants — so ask, rather
     than let a provenance stamp be the thing that fails a two-hour crawl. Any
-    probe trouble reads as "no": the stamp is optional, the crawl is not."""
-    try:
-        done = subprocess.run(
-            [docker, "run", "--rm", image, "zimit", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=_ZIMIT_HELP_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return done.returncode == 0 and flag in (done.stdout or "") + (done.stderr or "")
+    probe trouble reads as "no": the stamp is optional, the crawl is not.
+
+    The help text is read once per image: every flag asked about after the
+    first costs nothing, where each used to start a container of its own."""
+    key = (docker, image)
+    if key not in _zimit_help_cache:
+        try:
+            done = subprocess.run(
+                [docker, "run", "--rm", image, "zimit", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=_ZIMIT_HELP_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False  # not cached: the next run may find a working daemon
+        text = (done.stdout or "") + (done.stderr or "")
+        _zimit_help_cache[key] = text if done.returncode == 0 else ""
+    return flag in _zimit_help_cache[key]
 
 
 def _ensure_image(docker, image, note):
@@ -1286,7 +1504,9 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
         f"{tmp_dir}:/output",
         image,
         "zimit",
-        "--url",
+        # zimit 3 took browsertrix's names (--seeds, --pageLimit,
+        # --scopeIncludeRx); zimit 2 had its own. Whichever the image knows.
+        "--seeds" if opts.get("v3") else "--url",
         url,
         "--name",
         opts["name"],
@@ -1307,14 +1527,31 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
     ):
         if value:
             cmd += [flag, str(value)]
+    scope = opts.get("scope")
     if not opts.get("site"):
         # zimit crawls a prefix by default; a single page is a scope choice.
         cmd += ["--scopeType", "page"]
+    elif scope is not None:
+        # Zimi's scope options are browsertrix's, so they cross unchanged. The
+        # default (prefix) is left to zimit's own prefix rule. Several patterns
+        # become one alternation: zimit takes one regex per flag.
+        if scope.kind != DEFAULT_SCOPE:
+            cmd += ["--scopeType", scope.kind]
+        for flag, patterns in (
+            ("--scopeIncludeRx" if opts.get("v3") else "--include", scope.include),
+            ("--scopeExcludeRx" if opts.get("v3") else "--exclude", scope.exclude),
+        ):
+            if patterns:
+                cmd += [flag, "|".join(f"(?:{p.pattern})" for p in patterns)]
+        if scope.extra_hops:
+            cmd += ["--extraHops", str(scope.extra_hops)]
+    if opts.get("site") and opts.get("max_depth") is not None:
+        cmd += ["--depth", str(opts["max_depth"])]
     if opts.get("max_pages"):
         # browsertrix's page cap, which zimit forwards to the crawler. Only
         # sent when the user asked for one — zimit's flag surface is ~100
         # options wide and guessing at it fails a whole run.
-        cmd += ["--limit", str(opts["max_pages"])]
+        cmd += ["--pageLimit" if opts.get("v3") else "--limit", str(opts["max_pages"])]
     cmd += list(opts.get("engine_args") or ())
     return cmd
 
@@ -1356,6 +1593,8 @@ def create_zimit_zim(
     language="eng",
     creator_name="Zimi",
     max_pages=None,
+    max_depth=None,
+    scope=None,
     engine_args=(),
     image=ZIMIT_IMAGE,
     register=False,
@@ -1424,6 +1663,9 @@ def create_zimit_zim(
             "language": language,
             "site": site,
             "max_pages": max_pages,
+            "max_depth": max_depth,
+            "scope": scope,
+            "v3": _image_supports_flag(docker, image, "--seeds"),
             "engine_args": engine_args,
             "scraper_suffix": (
                 scraper_string()
@@ -1508,5 +1750,7 @@ def parse_size(text):
     # Only a real 0 is "no limit". "0.5" with the unit left off truncated to 0
     # and read as no limit at all.
     if value == 0 and float(number) != 0:
-        raise CreateError(f"byte size is less than a byte: {text} (try 512M or 2G; 0 means no limit)")
+        raise CreateError(
+            f"byte size is less than a byte: {text} (try 512M or 2G; 0 means no limit)"
+        )
     return value

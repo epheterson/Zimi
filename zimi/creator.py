@@ -3361,6 +3361,10 @@ def _crawl_flag_state(args):
         "--engine": getattr(args, "engine", "builtin") != "builtin",
         "--max-pages": getattr(args, "max_pages", None) is not None,
         "--max-depth": getattr(args, "max_depth", None) is not None,
+        "--scope": getattr(args, "scope", None) is not None,
+        "--include": bool(getattr(args, "include", None)),
+        "--exclude": bool(getattr(args, "exclude", None)),
+        "--extra-hops": getattr(args, "extra_hops", None) is not None,
         "--max-bytes": getattr(args, "max_bytes", None) is not None,
         "--delay": getattr(args, "delay", None) is not None,
         "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
@@ -3474,7 +3478,15 @@ def _build_from_args(args, src, is_url):
         out_path=args.out,
         register=not args.out,
     )
-    builtin_only = ("--max-depth", "--max-bytes", "--delay", "--ignore-robots")
+    builtin_only = ("--max-bytes", "--delay", "--ignore-robots")
+    # Crawl shape every engine takes, zimit included: browsertrix's own options.
+    shape = ("--max-depth", "--scope", "--include", "--exclude", "--extra-hops")
+    scope = dict(
+        scope=getattr(args, "scope", None),
+        include=getattr(args, "include", None) or (),
+        exclude=getattr(args, "exclude", None) or (),
+        extra_hops=getattr(args, "extra_hops", None) or 0,
+    )
     if engine == "zimit":
         # zimit has its own crawl controls, its own robots policy and its own
         # browser; Zimi's would be quietly dropped on the floor. --engine-arg
@@ -3484,10 +3496,14 @@ def _build_from_args(args, src, is_url):
             "belongs to Zimi's own crawler, not to zimit — pass zimit's "
             "equivalent with --engine-arg",
         )
+        if not site:
+            refuse(shape, "needs --site — without it Zimi captures exactly one page")
         return crawler.create_zimit_zim(
             src,
             site=site,
             max_pages=getattr(args, "max_pages", None),
+            max_depth=getattr(args, "max_depth", None),
+            scope=crawler.CrawlScope(**scope) if site else None,
             engine_args=getattr(args, "engine_arg", None) or (),
             progress=_note,
             **common,
@@ -3498,7 +3514,7 @@ def _build_from_args(args, src, is_url):
     block_ads = _block_ads_from_args(args, engine)
     if not site:
         refuse(
-            ("--max-pages",) + builtin_only,
+            ("--max-pages",) + shape + builtin_only,
             "needs --site — without it Zimi captures exactly one page",
         )
         return create_page_zim(
@@ -3509,7 +3525,8 @@ def _build_from_args(args, src, is_url):
         engine=engine,
         block_ads=block_ads,
         max_pages=_flag_or(args, "max_pages", crawler.DEFAULT_MAX_PAGES),
-        max_depth=_flag_or(args, "max_depth", crawler.DEFAULT_MAX_DEPTH),
+        max_depth=getattr(args, "max_depth", None),
+        **scope,
         max_bytes=(
             crawler.parse_size(args.max_bytes)
             if getattr(args, "max_bytes", None) is not None

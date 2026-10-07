@@ -587,6 +587,7 @@ def create_alive_site_zim(
     extra_wait=None,
     block_ads=None,
     capture_variants=None,
+    scope=None,
     register=False,
     progress=None,
     stop=None,
@@ -715,6 +716,9 @@ def create_alive_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=scope,
+                ignore_robots=ignore_robots,
+                timeout=timeout,
             )
             del seed_text
             note(

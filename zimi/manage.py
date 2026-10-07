@@ -3139,6 +3139,7 @@ def _create_validate(data):
         opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
         opts["delay"] = _create_float(data.get("delay"), 0.0, CREATE_MAX_DELAY)
         opts["ignore_robots"] = bool(data.get("ignore_robots"))
+        opts.update(_create_scope(data))
     elif mode == "video":
         opts["audio_only"] = bool(data.get("audio_only"))
         opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
@@ -3203,6 +3204,36 @@ def _create_int(value, low, high):
     except (TypeError, ValueError):
         return None
     return max(low, n if high is None else min(high, n))
+
+
+def _create_patterns(value):
+    """A pattern field as a list: one string, or a list of them (the API's
+    two shapes). Blank entries are not patterns."""
+    if value in (None, ""):
+        return []
+    items = value if isinstance(value, list) else [value]
+    return [str(v).strip() for v in items if isinstance(v, (str, int, float)) and str(v).strip()]
+
+
+def _create_scope(data):
+    """Which pages a site capture walks into, checked now (an unknown scope
+    or a regex that does not compile is refused here, not an hour into the
+    job). Only what was set goes into the options."""
+    from zimi.crawler import CrawlScope
+    from zimi.creator import CreateError
+
+    raw = {
+        "scope": (str(data.get("scope")).strip().lower() or None)
+        if data.get("scope") not in (None, "") else None,
+        "include": _create_patterns(data.get("include")),
+        "exclude": _create_patterns(data.get("exclude")),
+        "extra_hops": _create_int(data.get("extra_hops"), 0, None),
+    }
+    try:
+        CrawlScope(**raw)
+    except CreateError as e:
+        raise ValueError(str(e))
+    return {k: v for k, v in raw.items() if v not in (None, [], 0)}
 
 
 def _create_float(value, low, high):
@@ -3400,6 +3431,10 @@ def _create_run(job, opts):
                 "block_ads",
                 "capture_variants",
                 "strip_links",
+                "scope",
+                "include",
+                "exclude",
+                "extra_hops",
             ),
         )
     if job.mode == "video":
