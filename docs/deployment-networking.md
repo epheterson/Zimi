@@ -130,7 +130,7 @@ Service tokens (machine access, which carries `common_name` and no email) are no
 
 ### Accounts
 
-The account name comes from the email: `eric@zosia.io` becomes `eric`. If that name is already taken by someone else, the full address is used instead (`eric-other.example`), so two people who share a local part across domains never collide.
+The account name comes from the email: `eric@example.com` becomes `eric`. If that name is already taken by someone else, the full address is used instead (`eric-other.example`), so two people who share a local part across domains never collide.
 
 An existing local-password account is **never** adopted by a matching claim — signing someone into an account because a claim happened to match its name is the classic federation takeover bug. The SSO identity gets its own account, and the user list shows which is which. If you want your existing admin account to be the SSO one, delete it after your first SSO sign-in and promote the new account (or rename around it).
 

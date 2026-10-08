@@ -113,7 +113,7 @@ class PeerShareGateTests(unittest.TestCase):
         self.assertTrue(self._allowed("127.0.0.1"))
 
     def test_private_lan_allowed(self):
-        self.assertTrue(self._allowed("10.0.0.149"))
+        self.assertTrue(self._allowed("192.0.2.149"))
         self.assertTrue(self._allowed("192.168.1.5"))
 
     def test_public_ip_blocked_by_default(self):
@@ -129,7 +129,7 @@ class PeerShareGateTests(unittest.TestCase):
         ZIM through manage), and right-click -> Download rides that same trust
         boundary. Everything weaker stays blocked below."""
         os.environ["ZIMI_PEER_SHARE"] = "0"
-        self.assertTrue(self._allowed("10.0.0.149"))
+        self.assertTrue(self._allowed("192.0.2.149"))
 
     def test_sharing_disabled_blocks_lan_once_a_password_exists(self):
         """The moment a manage password exists, an uncredentialed LAN client
@@ -140,7 +140,7 @@ class PeerShareGateTests(unittest.TestCase):
             import zimi.manage as _m
 
             _m._env_pw_hash_cache = None
-            self.assertFalse(self._allowed("10.0.0.149"))
+            self.assertFalse(self._allowed("192.0.2.149"))
         finally:
             del os.environ["ZIMI_MANAGE_PASSWORD"]
             import zimi.manage as _m2

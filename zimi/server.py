@@ -2188,8 +2188,8 @@ def _zim_kind(scraper, tags, meta_name):
 
 # Map ZIMs that carry a place search of their own (a box inside the map with
 # an index of towns, streets and addresses). Kiwix's maps2zim has no search
-# box, and its index holds administrative divisions only: Danville, CA is not
-# in it, and "Danville" lands in Québec. Zimi's search bar offers to run a
+# box, and its index holds administrative divisions only: a small town is
+# often not in it, and its name lands on a namesake elsewhere. Zimi's search bar offers to run a
 # query in the map's own search only where there is one.
 _MAP_SEARCH_SCRAPERS = ("streetzim", "atlaszim")
 

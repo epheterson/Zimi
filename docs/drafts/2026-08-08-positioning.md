@@ -267,7 +267,7 @@ Current state, verified read-only on 2026-08-08 via `gh repo view` / `gh release
 
 **Social preview.** Almost certainly unset (default GitHub card). Suggest: 1280x640 PNG, dark homepage screenshot with the word "Zimi" and the one-liner overlaid, exported once for 1.9 and updated per major release only. This is the image every HN/Reddit/Slack link unfurls to, so it is worth 20 minutes. Needs Eric to upload (repo Settings, no API for it worth automating).
 
-**About sidebar / homepage URL.** Currently empty. Suggest pointing it at https://hub.docker.com/r/epheterson/zimi (the most useful third-party surface) unless Eric wants a project page later. Do not use knowledge.zosia.io; that is a personal instance, not a demo commitment.
+**About sidebar / homepage URL.** Currently empty. Suggest pointing it at https://hub.docker.com/r/epheterson/zimi (the most useful third-party surface) unless Eric wants a project page later. Do not use a personal instance's address; that is a personal instance, not a demo commitment.
 
 **Releases.** Current and healthy: v1.8.2 is Latest (2026-08-08), five releases in the last three weeks. No action. One nit: release titles are inconsistent ("Zimi v1.8.2" vs "Zimi 1.8.1" vs "v1.7.4"). Pick one form for 1.9 ("Zimi 1.9.0" reads best in the sidebar) and keep it.
 

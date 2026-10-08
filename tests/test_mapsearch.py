@@ -205,7 +205,7 @@ def test_accents_do_not_matter(archive):
 
 
 def test_nothing_is_nothing(archive):
-    assert mapsearch.search_places(archive, "danville") == []
+    assert mapsearch.search_places(archive, "springfield") == []
     assert mapsearch.search_places(archive, "") == []
     assert mapsearch.search_places(archive, "   ") == []
 

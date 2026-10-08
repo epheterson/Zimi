@@ -10,7 +10,7 @@ on:
         required: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -55,12 +55,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
@@ -245,7 +245,7 @@ jobs:
 
       - name: Upload the Windows smoke screenshot
         if: runner.os == 'Windows' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zimi-windows-smoke
           path: |
@@ -281,7 +281,7 @@ jobs:
         # this one. A snap that will not build must not cost the release its
         # Linux app, which is what happened on the v1.10.0 tag.
         continue-on-error: true
-        uses: snapcore/action-build@v1
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
 
       # The snap's own window, which nothing ever opened: 1.10.0 shipped a
       # snap that installed and then did nothing at all, silently, because
@@ -345,7 +345,7 @@ jobs:
       - name: Upload Snap artifact
         if: steps.snap_smoke.outcome == 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Zimi-Linux-snap
           path: "*.snap"
@@ -577,7 +577,7 @@ jobs:
 
       - name: Upload the installed-app smoke screenshot
         if: runner.os == 'Windows' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zimi-windows-installed-smoke
           path: |
@@ -590,14 +590,14 @@ jobs:
         shell: bash
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.asset }}
 
       - name: Upload Windows installer artifact
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Zimi-windows-x64-Setup
           path: dist/Zimi-windows-x64-Setup.exe
@@ -608,17 +608,34 @@ jobs:
     # validating a branch build) stops after the build jobs.
     if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
     runs-on: macos-latest  # Need macOS for Sparkle sign_update tool
+    permissions:
+      contents: write # the draft release, and the appcast/cask commits (via RELEASE_TOKEN)
+      id-token: write # OIDC: the provenance attestation
+      attestations: write # store the provenance attestation
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
           # RELEASE_TOKEN is a fine-grained PAT that can push to main (bypasses branch protection)
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      # An SBOM of the source tree the builds came from (SPDX), made before the
+      # builds are downloaded so it describes the source, not 1 GB of
+      # binaries. Never in the way of the release: a failure here leaves the
+      # draft without its SBOM, not without its downloads.
+      - name: SBOM of the release source
+        continue-on-error: true
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom/zimi-sbom.spdx.json
+          upload-artifact: false
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
 
       # The builds keep their short internal names; what people download is
       # named here, once: Zimi-<version>-<os>-<arch>. The AppImage is the one
@@ -791,12 +808,24 @@ jobs:
           }
           echo "Homebrew cask updated to ${VERSION}"
 
+      # A GitHub build-provenance attestation for every file that ships.
+      # Verify a download with: gh attestation verify <file> --repo epheterson/Zimi
+      - name: Attest build provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/*
+            sbom/zimi-sbom.spdx.json
+
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
           # release/ holds exactly what ships: the five builds, the .zsync, and the snap
           # when it built and opened (checked when release/ was filled).
           fail_on_unmatched_files: true
-          files: release/*
+          files: |
+            release/*
+            sbom/zimi-sbom.spdx.json

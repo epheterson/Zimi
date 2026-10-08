@@ -15,7 +15,7 @@
  * result.
  *
  * Usage:
- *   ZIMI=http://10.0.0.14:8899 TOKEN=… node scripts/capture-fidelity.mjs https://www.cnn.com
+ *   ZIMI=http://192.0.2.14:8899 TOKEN=… node scripts/capture-fidelity.mjs https://www.cnn.com
  *
  * Captures run on the Zimi instance named by ZIMI (the NAS, normally), so what
  * is measured is what that machine actually produces — not a local dev build.
@@ -25,7 +25,7 @@ import fs from 'fs';
 import path from 'path';
 
 const URL_TO_CAPTURE = process.argv[2] || 'https://www.cnn.com';
-const ZIMI = process.env.ZIMI || 'http://10.0.0.14:8899';
+const ZIMI = process.env.ZIMI || 'http://192.0.2.14:8899';
 const TOKEN = process.env.TOKEN || '';
 const OUT = process.env.OUT || './capture-fidelity';
 const ENGINES = (process.env.ENGINES || 'builtin,rendered,alive').split(',');

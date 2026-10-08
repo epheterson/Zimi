@@ -123,11 +123,11 @@ def test_env_locks_the_toggle(monkeypatch):
 
 def test_addresses_only_while_open(no_zimi_host, monkeypatch):
     monkeypatch.setattr(
-        p2p_discovery, "local_ipv4s", lambda: ["10.0.0.5", "192.168.137.1"]
+        p2p_discovery, "local_ipv4s", lambda: ["192.0.2.5", "192.168.137.1"]
     )
     assert desktop.DesktopAPI(_Config(), {}).lan_addresses() == []
     assert desktop.DesktopAPI(_Config(lan_access=True), {}).lan_addresses() == [
-        "10.0.0.5",
+        "192.0.2.5",
         "192.168.137.1",
     ]
 
@@ -141,15 +141,15 @@ def test_addresses_follow_a_named_zimi_host(monkeypatch):
 
 def test_local_ipv4s_keeps_the_hotspot_adapter(monkeypatch):
     """The routed address first, then every other adapter; never loopback."""
-    monkeypatch.setattr(p2p_discovery, "_local_ip", lambda: "10.0.0.5")
+    monkeypatch.setattr(p2p_discovery, "_local_ip", lambda: "192.0.2.5")
     monkeypatch.setattr(
         p2p_discovery.socket,
         "getaddrinfo",
         lambda *a, **k: [
-            (2, 1, 6, "", (ip, 0)) for ip in ("127.0.0.1", "10.0.0.5", "192.168.137.1")
+            (2, 1, 6, "", (ip, 0)) for ip in ("127.0.0.1", "192.0.2.5", "192.168.137.1")
         ],
     )
-    assert p2p_discovery.local_ipv4s() == ["10.0.0.5", "192.168.137.1"]
+    assert p2p_discovery.local_ipv4s() == ["192.0.2.5", "192.168.137.1"]
 
 
 # ── what a device on the network can do ──────────────────────────────────────

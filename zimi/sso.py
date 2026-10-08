@@ -696,7 +696,7 @@ def _peer_trusted(handler):
         peer = ipaddress.ip_address(address[0])
     except (ValueError, IndexError, TypeError):
         return False
-    # A dual-stack listener reports an IPv4 peer as ::ffff:10.0.0.5, which no
+    # A dual-stack listener reports an IPv4 peer as ::ffff:192.0.2.5, which no
     # IPv4 CIDR contains — so an operator's correct-looking allowlist would
     # silently never match. Compare on the address they actually wrote down.
     mapped = getattr(peer, "ipv4_mapped", None)

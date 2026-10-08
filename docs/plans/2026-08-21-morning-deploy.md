@@ -10,7 +10,7 @@ Once it is back:
 
 ```bash
 ./deploy.sh
-ZIMI=http://10.0.0.14:8899 TOKEN=<token> ENGINES=builtin,rendered,alive \
+ZIMI=http://192.0.2.14:8899 TOKEN=<token> ENGINES=builtin,rendered,alive \
   OUT=/tmp/fid node scripts/capture-fidelity.mjs https://www.cnn.com
 ```
 

@@ -8,6 +8,7 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/epheterson/zimi)](https://hub.docker.com/r/epheterson/zimi)
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/epheterson/Zimi/badge)](https://scorecard.dev/viewer/?uri=github.com/epheterson/Zimi)
 
 A modern experience for your ZIM files.
 

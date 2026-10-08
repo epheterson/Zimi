@@ -43,18 +43,18 @@ class PeerDownloadUnitTests(unittest.TestCase):
         return dl_id, err, captured
 
     def test_builds_trusted_url_from_discovery(self):
-        peers = [{"name": "zimi-mini", "host": "10.0.0.149", "port": 8899}]
+        peers = [{"name": "lan-peer", "host": "192.0.2.149", "port": 8899}]
         listing = [{"file": "wikipedia_en_2026-01.zim", "size_bytes": 12345}]
         dl_id, err, dl = self._run(
-            "zimi-mini", "wikipedia_en_2026-01.zim", peers, listing
+            "lan-peer", "wikipedia_en_2026-01.zim", peers, listing
         )
         self.assertIsNone(err)
         self.assertTrue(dl_id)
         self.assertEqual(
-            dl["url"], "http://10.0.0.149:8899/dl/wikipedia_en_2026-01.zim"
+            dl["url"], "http://192.0.2.149:8899/dl/wikipedia_en_2026-01.zim"
         )
         self.assertEqual(dl["_source"], "peer")
-        self.assertEqual(dl["peer_name"], "zimi-mini")
+        self.assertEqual(dl["peer_name"], "lan-peer")
         self.assertEqual(dl["size_bytes"], 12345)
 
     def test_unknown_peer_rejected(self):
@@ -65,9 +65,9 @@ class PeerDownloadUnitTests(unittest.TestCase):
     def test_bad_filename_rejected_before_lookup(self):
         # basename strips the path; not-a-.zim → rejected
         dl_id, err, _ = self._run(
-            "zimi-mini",
+            "lan-peer",
             "../../etc/passwd",
-            [{"name": "zimi-mini", "host": "h", "port": 1}],
+            [{"name": "lan-peer", "host": "h", "port": 1}],
         )
         self.assertIsNone(dl_id)
         self.assertTrue(err)
@@ -142,7 +142,7 @@ class PeerHostGateTests(unittest.TestCase):
     """SSRF guard: only LAN/loopback IP literals are valid peer hosts."""
 
     def test_lan_and_loopback_allowed(self):
-        for h in ("10.0.0.5", "192.168.1.10", "172.16.3.4", "127.0.0.1"):
+        for h in ("192.0.2.5", "192.168.1.10", "172.16.3.4", "127.0.0.1"):
             self.assertTrue(lib._is_lan_host(h), h)
 
     def test_offlan_and_metadata_rejected(self):
@@ -169,7 +169,7 @@ class PeerHostGateTests(unittest.TestCase):
             zhttp._TRUST_CGNAT = False
             self.assertFalse(lib._is_lan_host("100.64.0.1"))
             # Real LAN/loopback still allowed; a public host is still rejected.
-            self.assertTrue(lib._is_lan_host("10.0.0.5"))
+            self.assertTrue(lib._is_lan_host("192.0.2.5"))
             self.assertFalse(lib._is_lan_host("8.8.8.8"))
         finally:
             zhttp._TRUST_CGNAT = saved

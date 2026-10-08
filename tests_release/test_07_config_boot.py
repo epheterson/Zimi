@@ -131,7 +131,7 @@ def test_an_env_var_out_ranks_the_config_file(tmp_path):
     config_path = tmp_path / "zimi.json"
     config_path.write_text(json.dumps({"host": "127.0.0.1"}))
 
-    env = clean_env(ZIMI_HOST="10.0.0.5")
+    env = clean_env(ZIMI_HOST="192.0.2.5")
     result = subprocess.run(
         [sys.executable, "-m", "zimi", "config", "--config", str(config_path)],
         cwd=REPO_ROOT,
@@ -142,7 +142,7 @@ def test_an_env_var_out_ranks_the_config_file(tmp_path):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     rows = _parse_config_report(result.stdout)
-    assert rows["host"] == ("10.0.0.5", "env: ZIMI_HOST")
+    assert rows["host"] == ("192.0.2.5", "env: ZIMI_HOST")
 
 
 def test_an_offline_boot_makes_no_outbound_connection(gate_library, tmp_path_factory):
