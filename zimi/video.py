@@ -267,7 +267,7 @@ def wants_url(url, args):
     Explicit crawl intent (--site, --engine) always wins over extractor
     matching, and --max-bytes signals nothing by itself — the site crawl
     shares it."""
-    if getattr(args, "site", False) or getattr(args, "engine", "builtin") != "builtin":
+    if getattr(args, "site", False) or (getattr(args, "engine", None) or "builtin") != "builtin":
         return False
     if any(getattr(args, n, None) for n in _VIDEO_FLAG_NAMES):
         return True
@@ -734,6 +734,8 @@ def create_video_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     fmt=None,
     audio_only=False,
     limit=None,
@@ -944,11 +946,12 @@ def create_video_zim(
                 ),
                 language=language,
                 creator_name=creator_name,
+                publisher=publisher,
                 source=url,
                 # The playlist/channel URL itself: re-running it next month is
                 # a new edition of this ZIM.
                 name=zim_name(url, language),
-                tags=media_tags(media_mimes),
+                tags=media_tags(media_mimes) + list(tags or ()),
                 # An audio-only build of a playlist is a genuinely different
                 # edition of the same source — exactly what Flavour is for.
                 flavour="audio" if audio_only else None,
@@ -999,14 +1002,15 @@ def build_video(args):
     turned out not to be a video. Printing and exit live in the CLI wrappers so
     ``creator.cli_create`` can catch a failed auto-detection and fall back to
     page capture."""
+    from zimi.crawler import DETAIL_KEYS, detail_kwargs
+
     max_bytes = parse_size(args.max_bytes) if args.max_bytes else DEFAULT_MAX_ZIM_BYTES
     return create_video_zim(
         args.source,
         title=args.title,
-        description=args.description,
         language=args.language,
-        creator_name=args.creator,
         out_path=args.out,
+        **detail_kwargs({k: getattr(args, k, None) for k in DETAIL_KEYS}),
         fmt=args.format,
         audio_only=bool(args.audio_only),
         limit=args.limit,

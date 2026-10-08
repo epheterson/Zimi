@@ -559,6 +559,7 @@ def convert_archive(
     language=None,
     tags=None,
     creator_name=None,
+    publisher=None,
     source=None,
     illustration=None,
     sink=None,
@@ -606,6 +607,8 @@ def convert_archive(
         cmd += ["--tags", tags]
     if creator_name:
         cmd += ["--creator", creator_name]
+    if publisher and _supports_flag(exe, "--publisher"):
+        cmd += ["--publisher", publisher]
     if source:
         cmd += ["--source", source]
     # warc2zim writes the ZIM, so Zimi has no Creator to add its own metadata
@@ -691,6 +694,9 @@ def import_archive(
     name=None,
     title=None,
     description=None,
+    creator_name=None,
+    publisher=None,
+    tags=None,
     out_dir=None,
     out_path=None,
     register=False,
@@ -725,6 +731,9 @@ def import_archive(
         zim_name=zim_name,
         title=title,
         description=description,
+        creator_name=creator_name,
+        publisher=publisher,
+        tags=";".join(tags) if tags else None,
         sink=sink,
     )
     registered = _try_register(out) if register else False
@@ -771,11 +780,14 @@ def cli_import(args):
                 file=sys.stderr,
             )
             sys.exit(2)
+        from zimi.crawler import DETAIL_KEYS, detail_kwargs, zim_details
+
+        details = zim_details({k: getattr(args, k, None) for k in DETAIL_KEYS})
         info = import_archive(
             args.file,
             name=args.name,
             title=args.title,
-            description=args.description,
+            **detail_kwargs(details),
             out_path=args.out,
             register=not args.out,
             sink=print,

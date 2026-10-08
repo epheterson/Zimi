@@ -72,6 +72,7 @@ from zimi.creator import (
     scratch_dir,
 )
 from zimi import zimpatch
+from zimi.capturegate import current_leave_out
 from zimi.warc import WarcWriter
 from zimi.zimwriter import _slug, announce_shot, scraper_string, shot_verdict
 
@@ -354,7 +355,9 @@ def _convert(archive, out, *, zim_name, note, **fields):
     return out
 
 
-def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None, stopped=None):
+def finish_zim(
+    out, *, seed_url, pages, assets, live_shot, note=None, stopped=None, publisher=None
+):
     """Put into the ZIM what only this capture could know.
 
     warc2zim wrote the file and takes no arbitrary metadata, so this is where
@@ -392,7 +395,14 @@ def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None, stopped=No
             log.debug("no packaged picture for %s: %s", out, e)
         return taken.get("shot")
 
-    patched = zimpatch.patch(out, record, live_shot=live_shot, shoot=shoot, note=say)
+    patched = zimpatch.patch(
+        out,
+        record,
+        live_shot=live_shot,
+        shoot=shoot,
+        publisher=publisher or "Zimi",
+        note=say,
+    )
     packaged = taken.get("shot")
     if patched and packaged and live_shot:
         _, short = shot_verdict(live_shot, packaged)
@@ -462,11 +472,12 @@ def _capped(text, limit, fallback=None):
     return value[:limit].strip() or None
 
 
-def _tags():
-    """The tag that says what kind of ZIM this is. A replay behaves unlike an
-    article ZIM — it opens into a replay shell, its search is warc2zim's, and a
-    reader that knows which it is holding can say so."""
-    return "_ftindex:yes;_category:other;zimi:alive"
+def _tags(extra=()):
+    """The tag that says what kind of ZIM this is, and the ones the capture was
+    given. A replay behaves unlike an article ZIM — it opens into a replay
+    shell, its search is warc2zim's, and a reader that knows which it is
+    holding can say so."""
+    return ";".join(["_ftindex:yes", "_category:other", "zimi:alive", *(extra or ())])
 
 
 def create_alive_page_zim(
@@ -478,6 +489,8 @@ def create_alive_page_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     extra_wait=None,
     block_ads=None,
     capture_variants=None,
@@ -538,8 +551,9 @@ def create_alive_page_zim(
             description=_capped(description, MAX_ZIM_DESCRIPTION, parsed.netloc),
             main_url=final_url,
             language=language,
-            tags=_tags(),
+            tags=_tags(tags),
             creator_name=creator_name,
+            publisher=publisher,
             source=final_url,
         )
         pictures = finish_zim(
@@ -549,6 +563,7 @@ def create_alive_page_zim(
             assets=capture.count,
             live_shot=capture.last_shot,
             note=note,
+            publisher=publisher,
         )
     except BaseException:
         capture.discard()
@@ -581,6 +596,8 @@ def create_alive_site_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     max_pages=None,
     max_depth=None,
     max_bytes=None,
@@ -735,6 +752,9 @@ def create_alive_site_zim(
                 f"({capture.count} responses, {capture.warc.records} records)"
             )
             blocked = report_blocked(capture, note)
+            left_out = current_leave_out()
+            if left_out and left_out.summary():
+                note(left_out.summary())
             capture.close()  # the archive must be closed before it is read
             _convert(
                 capture.warc_path,
@@ -745,8 +765,9 @@ def create_alive_site_zim(
                 description=_capped(description, MAX_ZIM_DESCRIPTION, parsed.netloc),
                 main_url=seed_url,
                 language=language,
-                tags=_tags(),
+                tags=_tags(tags),
                 creator_name=creator_name,
+                publisher=publisher,
                 source=seed_url,
             )
             # The seed page's live picture, taken on the first fetch of the
@@ -763,6 +784,7 @@ def create_alive_site_zim(
                 live_shot=capture.last_shot,
                 note=note,
                 stopped=reason,
+                publisher=publisher,
             )
     except BaseException:
         capture.discard()

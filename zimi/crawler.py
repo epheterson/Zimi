@@ -74,6 +74,7 @@ from typing import Any, Callable, Optional
 import zimi.server as _srv
 from zimi.creator import (
     OFFLINE_REFUSAL,
+    OFFERED_ENGINES,
     DEFAULT_ENGINE,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
@@ -106,9 +107,11 @@ from zimi.creator import (
     spool_target,
     looks_like_app,
 )
+from zimi import capturegate as _gate
 from zimi import subproc
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    MAX_DESCRIPTION_LENGTH,
     guess_mime,
     _plural,
     _slug,
@@ -524,6 +527,11 @@ MAX_SITEMAP_URL_CHARS = 2048
 MAX_DEPTH_CEILING = 50
 MAX_DELAY = 60.0  # seconds between page requests
 MOBILE_DEVICE = "iPhone 13"  # zimit's name for the phone a mobile capture is
+MAX_DETAIL_CHARS = 200  # an author or a publisher: one line, not a paragraph
+MAX_TAG_CHARS = 60
+MAX_TAGS = 30
+MIN_WORKERS = 1
+MAX_WORKERS = 16
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhd]?)$")
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
@@ -631,6 +639,101 @@ def _parse_user_agent(value):
     return text
 
 
+def _parse_line(what, limit):
+    """One line of text for the ZIM's own metadata; None when empty."""
+
+    def parse(value):
+        if value is None:
+            return None
+        text = " ".join(str(value).split())
+        if not text:
+            return None
+        if len(text) > limit or _CONTROL_CHARS.search(text):
+            raise CreateError(f"{what} is one line of at most {limit} characters")
+        return text
+
+    return parse
+
+
+def _parse_description(value):
+    """The ZIM description: the openZIM convention caps it, so a longer one is
+    refused with its length rather than cut where nobody chose."""
+    text = _parse_line("a description", 10**6)(value)
+    if text and len(text) > MAX_DESCRIPTION_LENGTH:
+        raise CreateError(
+            f"a ZIM description is at most {MAX_DESCRIPTION_LENGTH} characters "
+            f"and this one is {len(text)}"
+        )
+    return text
+
+
+def _parse_tags(value):
+    """Tags as a list: ``a;b`` from a flag or a form, or a list from the API."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    items = value.split(";") if isinstance(value, str) else value
+    if not isinstance(items, (list, tuple)):
+        raise CreateError("tags are words separated by semicolons: news;health")
+    tags = []
+    for item in items:
+        tag = " ".join(str(item).split())
+        if not tag:
+            continue
+        if len(tag) > MAX_TAG_CHARS or _CONTROL_CHARS.search(tag):
+            raise CreateError(f"a tag is at most {MAX_TAG_CHARS} characters")
+        if tag not in tags:
+            tags.append(tag)
+    if len(tags) > MAX_TAGS:
+        raise CreateError(f"a ZIM has at most {MAX_TAGS} tags")
+    return tags or None
+
+
+def _parse_cookies(value):
+    """The cookies as one tidy Cookie header; the error never carries them."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    # What a request's echo shows in place of the cookies (see
+    # ``redacted_request``): sent back as it was, it means "none this time".
+    # A real Cookie header always has an "=", so the two cannot be confused.
+    if value == _gate.COOKIES_SET:
+        return None
+    try:
+        return _gate.normalize_cookies(value)
+    except _gate.GateError as e:
+        raise CreateError(str(e))
+
+
+def _parse_skip_types(value):
+    try:
+        return _gate.parse_skip_types(value)
+    except _gate.GateError as e:
+        raise CreateError(str(e))
+
+
+def _parse_engine(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    name = str(value).strip().lower()
+    if name not in OFFERED_ENGINES:
+        raise CreateError(f"unknown engine {name[:20]!r}: use one of {', '.join(OFFERED_ENGINES)}")
+    return name
+
+
+def _parse_language(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    code = str(value).strip().lower()
+    if code == LANGUAGE_AUTO:
+        return None
+    if not re.fullmatch(r"[a-z]{2,3}", code):
+        raise CreateError("a language is a code like eng, fra or ara")
+    return code
+
+
+def _show_list(sep):
+    return lambda v: sep.join(v)
+
+
 def _parse_sitemap(value):
     """True (find it: robots.txt, else /sitemap.xml), a URL, or False (off)."""
     if value is None or value is False or value is True:
@@ -679,6 +782,7 @@ class CaptureOption:
     storable: bool = True  # an admin may store it as a standing default
     stored: Optional[Callable[[Any], Any]] = None  # a stricter parser for storing
     needs: str = ""  # what a refused engine is told the option is for
+    never_stored: str = ""  # why a storable=False option is refused as a default
 
     def honored_by(self, engine):
         return self.engines is None or (engine or DEFAULT_ENGINE) in self.engines
@@ -690,6 +794,14 @@ class CaptureOption:
 CAPTURE_OPTIONS = {
     opt.key: opt
     for opt in (
+        # The ZIM's own details. They reach the metadata of every mode that
+        # writes a ZIM, and zimit and warc2zim are handed the same words.
+        CaptureOption("description", "--description", _parse_description, zimit="--description", storable=False,
+                      never_stored="a description describes one ZIM"),
+        CaptureOption("creator", "--creator", _parse_line("an author", MAX_DETAIL_CHARS), zimit="--creator"),
+        CaptureOption("publisher", "--publisher", _parse_line("a publisher", MAX_DETAIL_CHARS), zimit="--publisher"),
+        CaptureOption("tags", "--tags", _parse_tags, _show_list(";"), zimit="--tags", storable=False,
+                      never_stored="tags describe one ZIM"),
         CaptureOption("time_limit", "--time-limit", parse_duration, format_duration, zimit="--timeLimit"),
         CaptureOption("sitemap", "--sitemap", _parse_sitemap, lambda v: "on" if v else "off", zimit="--useSitemap", stored=_stored_sitemap),
         CaptureOption("user_agent", "--user-agent", _parse_user_agent, zimit="--userAgent"),
@@ -700,6 +812,37 @@ CAPTURE_OPTIONS = {
             lambda v: f"{v}s", engines=_BROWSER_ENGINES + ("zimit",), zimit="--pageLoadTimeout",
             needs="the engines that drive a browser",
         ),
+        # A credential: sent to the seed's host and nowhere else, kept nowhere.
+        # zimit's browser runs outside Zimi, so it is told (see
+        # _zimit_capture_args) rather than handed it. SingleFile has no scoped way
+        # to take one.
+        CaptureOption(
+            "cookies", "--cookies", _parse_cookies, lambda v: _gate.COOKIES_SET,
+            engines=("builtin", "rendered", "alive", "zimit"),
+            needs="the fast, rendered and alive engines",
+            storable=False, never_stored="cookies are a credential and are never stored",
+        ),
+        # What a capture does not carry. Zimit has no flag that means these.
+        CaptureOption(
+            "skip_types", "--skip", _parse_skip_types, _show_list(","),
+            engines=("builtin", "rendered", "alive", "zimit"),
+            needs="the fast, rendered and alive engines",
+        ),
+        CaptureOption(
+            "max_file_bytes", "--max-file-size", _parse_bytes, _show_bytes,
+            engines=("builtin", "rendered", "alive", "zimit"),
+            needs="the fast, rendered and alive engines",
+        ),
+        # The crawl's own frontier is one walk with one politeness clock; more
+        # at once is zimit's (browsertrix's) to do.
+        CaptureOption(
+            "workers", "--workers", _parse_int(MIN_WORKERS, MAX_WORKERS, "the number of workers"),
+            _show, engines=("zimit",), zimit="--workers", needs="the zimit engine",
+        ),
+        # What Create's pickers start on. Not options of a capture: the capture
+        # already has fields for both, and these are what silence means there.
+        CaptureOption("engine", "--engine", _parse_engine),
+        CaptureOption("language", "--language", _parse_language),
         # Already options of their own, and now storable as defaults too. Their
         # engines and flags are handled where they always were; the rows are
         # what a stored value is checked by.
@@ -717,7 +860,16 @@ CAPTURE_OPTIONS = {
 }
 # What a request or a command line may carry per capture: the five options this
 # table was made for. The rest are stored defaults, or have their own fields.
-NEW_OPTION_KEYS = ("time_limit", "sitemap", "user_agent", "mobile", "page_timeout")
+NEW_OPTION_KEYS = (
+    "time_limit", "sitemap", "user_agent", "mobile", "page_timeout",
+    "cookies", "skip_types", "max_file_bytes", "workers",
+)
+# The ZIM's own details: options of any mode that writes a ZIM, not only of a
+# site capture.
+DETAIL_KEYS = ("description", "creator", "publisher", "tags")
+# Stored, but not applied to a capture by fill_stored_defaults: the pickers
+# that read them, and the admin's switch.
+PICKER_KEYS = ("engine", "language")
 
 
 def capture_option_value(key, raw):
@@ -789,7 +941,10 @@ def validate_stored_defaults(updates):
     for key, value in updates.items():
         opt = CAPTURE_OPTIONS.get(key)
         if opt is None or not opt.storable:
-            raise CreateError(f"{str(key)[:40]!r} is not a setting that can be stored")
+            raise CreateError(
+                (opt and opt.never_stored)
+                or f"{str(key)[:40]!r} is not a setting that can be stored"
+            )
         out[key] = None if value is None or value == "" else opt.for_store(value)
     return out
 
@@ -800,11 +955,47 @@ def fill_stored_defaults(opts, engine, defaults=None):
     engine honors. The factory is the absence of a key."""
     stored = stored_defaults() if defaults is None else defaults
     for key, value in stored.items():
-        if key == "allow_private" or opts.get(key) is not None:
+        if key == "allow_private" or key in PICKER_KEYS or opts.get(key) is not None:
             continue
         if CAPTURE_OPTIONS[key].honored_by(engine):
             opts[key] = value
     return opts
+
+
+def zim_details(raw, *, stored=True):
+    """The ZIM's own details a surface was given (description, creator,
+    publisher, tags), checked, with the stored defaults behind them for author
+    and publisher: the capture's value, then the stored default, then the
+    factory (which is the absence of a key). Only what is set comes back.
+
+    A folder asks for ``stored=False``: its zimi.txt comes between the two, so
+    ``create_folder_zim`` reads the stored default itself."""
+    out = {}
+    for key in DETAIL_KEYS:
+        value = CAPTURE_OPTIONS[key].parse(raw.get(key))
+        if value is not None:
+            out[key] = value
+    if stored:
+        fill_stored_defaults(out, None, {k: v for k, v in stored_defaults().items() if k in DETAIL_KEYS})
+    return out
+
+
+def detail_kwargs(details):
+    """``zim_details`` as the keyword arguments the ``create_*_zim`` functions
+    take (the author is ``creator_name`` there)."""
+    kwargs = {k: details[k] for k in DETAIL_KEYS if k != "creator" and details.get(k)}
+    if details.get("creator"):
+        kwargs["creator_name"] = details["creator"]
+    return kwargs
+
+
+def redacted_request(data):
+    """A copy of a capture request that is safe to keep and to show: any
+    cookies are replaced by the word ``set``."""
+    out = dict(data)
+    if out.get("cookies"):
+        out["cookies"] = _gate.COOKIES_SET
+    return out
 
 
 def default_placeholders(defaults=None):
@@ -1405,6 +1596,12 @@ def create_site_zim(
     user_agent=None,
     mobile=False,
     page_timeout=None,
+    cookies=None,
+    skip_types=None,
+    max_file_bytes=None,
+    workers=None,
+    publisher=None,
+    tags=None,
     register=False,
     progress=None,
     stop=None,
@@ -1415,7 +1612,11 @@ def create_site_zim(
     is spent, and what is captured is packaged. ``sitemap`` (True, or an
     address) seeds the pages a sitemap lists. ``user_agent`` and ``mobile`` say
     who the capture presents itself as, ``page_timeout`` how long a browser
-    engine waits on a page: see ``CAPTURE_OPTIONS``.
+    engine waits on a page: see ``CAPTURE_OPTIONS``. ``cookies`` (a Cookie
+    header's text) go to the seed's host and its subdomains and nowhere else;
+    ``skip_types`` and ``max_file_bytes`` name what the capture does not carry;
+    ``workers`` is zimit's. ``publisher`` and ``tags`` are the ZIM's own, with
+    ``description`` and ``creator_name``.
 
     ``scope``, ``include``, ``exclude`` and ``extra_hops`` say which pages it
     walks into: see ``CrawlScope``. The default is the seed's own section.
@@ -1450,6 +1651,10 @@ def create_site_zim(
             user_agent=user_agent,
             mobile=mobile,
             page_timeout=page_timeout,
+            cookies=cookies,
+            skip_types=skip_types,
+            max_file_bytes=max_file_bytes,
+            workers=workers,
         ).items()
         if value
     }
@@ -1472,6 +1677,8 @@ def create_site_zim(
             max_depth=max_depth,
             scope=walk,
             capture_options=capture_options_given,
+            publisher=publisher,
+            tags=tags,
             register=register,
             progress=progress,
         )
@@ -1504,6 +1711,8 @@ def create_site_zim(
             user_agent=user_agent,
             mobile=mobile,
             page_timeout=page_timeout,
+            publisher=publisher,
+            tags=tags,
             register=register,
             progress=progress,
             stop=stop,
@@ -1626,6 +1835,9 @@ def create_site_zim(
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
+            left_out = _gate.current_leave_out()
+            if left_out and left_out.summary():
+                note(left_out.summary())
             by_key = _assign_article_paths(pages)
             resolve = _link_resolver(by_key)
             note(f"packaging {_plural(len(pages), 'page')}…")
@@ -1667,7 +1879,8 @@ def create_site_zim(
                     # The HOST alone: a re-crawl of the same site, however
                     # deep it goes this time, is a new edition of this ZIM.
                     name=zim_name(parsed.netloc, language),
-                    tags=media_tags(seen_mimetypes),
+                    tags=media_tags(seen_mimetypes) + list(tags or ()),
+                    publisher=publisher,
                     illustration=illustration,
                     history=history_record(
                         "created",
@@ -1991,7 +2204,12 @@ def _zimit_capture_args(options, supports, note):
     for key in NEW_OPTION_KEYS:
         value = options.get(key)
         opt = CAPTURE_OPTIONS[key]
-        if not value or not opt.zimit:
+        if not value:
+            continue
+        if not opt.zimit:
+            # Said without the value: cookies are among the options zimit has
+            # no flag for.
+            note(f"note: zimit has no equivalent of {opt.flag}; it was not passed")
             continue
         if not supports(opt.zimit):
             note(f"note: this zimit image does not know {opt.zimit}; {opt.flag} was not passed")
@@ -2003,6 +2221,22 @@ def _zimit_capture_args(options, supports, note):
         else:
             args += [opt.zimit, str(value)]
     return args
+
+
+def _zimit_detail_args(details, supports, note):
+    """The ZIM details zimit is asked to write beyond the title, description
+    and creator it has always been handed: each only when the image's help
+    lists the flag, with a note when it does not."""
+    out = {}
+    for key, value in details.items():
+        if not value:
+            continue
+        opt = CAPTURE_OPTIONS[key]
+        if supports(opt.zimit):
+            out[key] = value
+        else:
+            note(f"note: this zimit image does not know {opt.zimit}; {opt.flag} was not passed")
+    return out
 
 
 def _zimit_command(docker, image, container, tmp_dir, url, opts):
@@ -2036,6 +2270,8 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
         ("--title", opts.get("title")),
         ("--description", opts.get("description")),
         ("--creator", opts.get("creator")),
+        (CAPTURE_OPTIONS["publisher"].zimit, opts.get("publisher")),
+        (CAPTURE_OPTIONS["tags"].zimit, ";".join(opts.get("tags") or ())),
         ("--lang", opts.get("language")),
         # zimit writes the ZIM itself, so the Scraper string is the one piece
         # of provenance Zimi can reach — appended to zimit's own, never
@@ -2110,6 +2346,8 @@ def create_zimit_zim(
     description=None,
     language="eng",
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     max_pages=None,
     max_depth=None,
     scope=None,
@@ -2180,6 +2418,13 @@ def create_zimit_zim(
             "title": title,
             "description": description,
             "creator": creator_name,
+            # Only what the image knows: an older one would fail the whole run
+            # over a flag, where a missing publisher costs one metadata field.
+            **_zimit_detail_args(
+                {"publisher": publisher, "tags": tags},
+                lambda flag: _image_supports_flag(docker, image, flag),
+                note,
+            ),
             "language": language,
             "site": site,
             "max_pages": max_pages,
