@@ -14503,7 +14503,7 @@ var _serverAppsLocked = false;
 function _serverAppsNow() { return _serverApps || APP_NAMES.filter(_appsAllowedByServer); }
 function _serverAppsHtml() {
   var shown = _serverAppsNow();
-  return _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
+  return _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
     (_serverAppsLocked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
 }
 // All and None sit on the section's header line, out of the rows' way.
@@ -14512,12 +14512,8 @@ function _serverAppsAllHtml() {
     : '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
       '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button>';
 }
-// The apps the server switch lists: the default ones, and an opt-in one only
-// while the server already offers it (named in ZIMI_APPS or a saved list).
-function _serverOfferable(shown) {
-  return APP_NAMES.filter(function(a) { return !_appOptIn(a) || shown.indexOf(a) >= 0; });
-}
-function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverAppsNow()) : []); }
+// Every app is listed, an opt-in one (off until switched on) included.
+function _setAppsForServerAll(on) { _postServerApps(on ? APP_NAMES : []); }
 function _setAppForServer(app, on) {
   var shown = _serverAppsNow();
   _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : shown.indexOf(a) >= 0; }));
@@ -21226,8 +21222,8 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary'];
 // Offered only when the server names them (a preview, while it is built):
-// none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
-var APPS_OPT_IN = [];
+// Reddot since 1.13.1. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = ['reddot'];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
 var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };
@@ -21311,7 +21307,7 @@ function _appCountLine(app) {
 // Each app a Settings switch row: its icon, its name, what the library holds
 // for it, and the switch. The same row every other on/off in Settings is.
 function _appPicksHtml(apps, checked, onchange, disabled) {
-  return _switchRowsHtml(apps.map(function(app) {
+  return _switchRowsHtml(_appsByName(apps).map(function(app) {
     return { cls: 'app-pick', icon: '<span class="set-row-icon">' + _appIcon(app) + '</span>',
       title: esc(_appTitle(app)), desc: esc(_appCountLine(app)), on: !!checked(app), disabled: disabled,
       onchange: onchange + '(\'' + app + '\', this.checked)' };
@@ -21344,13 +21340,15 @@ function _appSortValue(app, mode) {
   var date = _APP_SORT_DATE[mode];
   return zims.reduce(function(m, z) { return Math.max(m, date(z)); }, 0);
 }
+// Settings lists the apps by name, whatever the library's order.
+function _appsByName(apps) {
+  return apps.slice().sort(function(a, b) {
+    return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
+  });
+}
 function _sortApps(apps) {
   var mode = _librarySort();
-  if (!_APP_SORT_DATE[mode] && mode !== 'entries' && mode !== 'size') {
-    return apps.slice().sort(function(a, b) {
-      return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
-    });
-  }
+  if (!_APP_SORT_DATE[mode] && mode !== 'entries' && mode !== 'size') return _appsByName(apps);
   var value = {};
   apps.forEach(function(app) { value[app] = _appSortValue(app, mode); });
   return apps.slice().sort(function(a, b) { return value[b] - value[a]; });

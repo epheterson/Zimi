@@ -63,13 +63,13 @@ The library's order and its list or grid view sit on the **Apps** heading, above
 
 **One thing once.** When two ZIMs carry the same thing, an app shows it once, from the newest build (then the fullest): last month's file still beside this month's, a nopic beside a maxi of one site, the same region from the same map source, a subreddit in two bundles. The library itself lists every file; only the apps' views are deduplicated.
 
-**Choosing apps.** Each app can be offered or not. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`, `books` and `wiki`); the **Apps** tiles at the top of Preferences do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
+**Choosing apps.** Each app can be offered or not; every app but Reddot is on until you change it. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`, `books`, `wiki` and `dictionary`); the **Apps** tiles at the top of Preferences do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
 
 ## Configure
 
 | Setting | Where | Effect |
 | --- | --- | --- |
-| `ZIMI_APPS` | environment | `0` offers no app to anyone; a comma list of `maps`, `tube`, `exchange`, `reddot`, `books`, `wiki` offers only those. Overrides the saved choice. |
+| `ZIMI_APPS` | environment | `0` offers no app to anyone; a comma list of `maps`, `tube`, `exchange`, `reddot`, `books`, `wiki`, `dictionary` offers only those. Overrides the saved choice. |
 | Apps | Preferences, first section | The server's choice: the six app tiles, lit when offered, with All and None; each tile says what the library holds for it. Saved with the other server preferences. |
 | Apps on my home page | account settings | One account's own choice among the apps the server offers, kept with its bookmarks and history. |
 
