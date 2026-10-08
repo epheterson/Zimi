@@ -222,6 +222,20 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['import', ['description', 'creator', 'publisher', 'tags']]
 ], 'each mode advertises its documented advanced options');
 
+// Reach in the address's terms: the folder it sits in, its site, its domain.
+{
+  const said = [];
+  sandbox.t = (k, v) => { said.push([k, v]); return k + (v ? JSON.stringify(v) : ''); };
+  const w = sandbox._createScopeWords('https://www.example.org/python/tutorial/index.html');
+  check(w.prefix === 'create_scope_prefix_at{"path":"/python/tutorial/"}' &&
+    w.host === 'create_scope_host_at{"host":"example.org"}' &&
+    w.domain === 'create_scope_domain_at{"host":"example.org"}', 'reach names the folder, the site and the domain');
+  const root = sandbox._createScopeWords('example.org');
+  check(root.prefix === root.host, 'at the root the section is the whole site');
+  check(sandbox._createScopeWords('') === null, 'no address, no words of its own');
+  sandbox.t = (k) => k;
+}
+
 // A stored engine is where the form starts; choosing fast over it says so.
 check(sandbox._createEngineFor({ mode: 'site', spa: true }, true, 'alive') === 'alive' &&
   sandbox._createEngineFor({ mode: 'site', spa: true }, true, '') === 'rendered' &&

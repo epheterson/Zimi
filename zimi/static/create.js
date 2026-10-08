@@ -675,6 +675,25 @@ function _createTakeDefaults(data) {
   CREATE_FIELDS.mobile.on = values.mobile === true;
 }
 
+// Reach, in the address's own terms: "Under /docs/", "All of example.org",
+// "example.org and its subdomains". The section is the folder the address
+// sits in, as the crawl works it out; at the root it is the whole site, so
+// the two say the same and the select keeps one. Null without an address.
+function _createScopeWords(address) {
+  var text = String(address || '').trim().split(/\s+/)[0];
+  if (!text) return null;
+  var u;
+  try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : 'https://' + text); } catch (e) { return null; }
+  if (!u.hostname) return null;
+  var host = u.hostname.replace(/^www\./, '');
+  var dir = u.pathname.replace(/[^\/]*$/, '') || '/';
+  return {
+    prefix: dir === '/' ? t('create_scope_host_at', { host: host }) : t('create_scope_prefix_at', { path: dir }),
+    host: t('create_scope_host_at', { host: host }),
+    domain: t('create_scope_domain_at', { host: host })
+  };
+}
+
 // A stored default that is a list (the kinds a capture leaves out), as one.
 function _createStoredList(key) {
   var v = CREATE_STORED_VALUES[key];
@@ -2119,16 +2138,17 @@ function _createFieldHtml(key, def) {
     // Every row carries an id of its own (here and below) so a field that only
     // applies to some engines can be hidden whole, label and all, rather than
     // left as a dangling word beside a control that went away.
-    return '<label class="create-flag" id="' + f.id + '-row">' +
-      '<input type="checkbox" id="' + f.id + '"' + (f.on ? ' checked' : '') +
-      (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
+    // On and off is a switch in the field's own row, its name in the label
+    // column like every other field's (Settings draws the same row).
+    return '<label class="create-flag" id="' + f.id + '-row">' + label +
+      _createSwitchHtml(' id="' + f.id + '"' + (f.on ? ' checked' : '') +
+        (f.onchange ? ' onchange="' + f.onchange + '"' : '')) + '</label>';
   }
   if (f.control === 'checks') {
     var boxes = '';
     for (var c = 0; c < f.options.length; c++) {
-      boxes += '<label class="create-check-opt"><input type="checkbox" name="' + f.id + '" value="' + f.options[c] + '"' +
-        (_createStoredList(key).indexOf(f.options[c]) >= 0 ? ' checked' : '') + '>' +
-        tH(f.label + '_' + f.options[c]) + '</label>';
+      boxes += _createChipHtml(' name="' + f.id + '" value="' + f.options[c] + '"' +
+        (_createStoredList(key).indexOf(f.options[c]) >= 0 ? ' checked' : ''), tH(f.label + '_' + f.options[c]));
     }
     return '<div class="create-flag" id="' + f.id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '">' +
       '<span>' + label + '</span><span class="create-checks" id="' + f.id + '">' + boxes + '</span></div>';
@@ -2168,9 +2188,12 @@ function _createFieldHtml(key, def) {
       '<select class="create-field create-pick' + (plain ? ' is-default' : '') + '" id="' + f.id + '"' + change + '>' +
       opts + '</select></label>' + extra;
   }
-  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || CREATE_FACTORY_TEXT[key] ||
-    (f.phKey ? t(f.phKey) : f.ph) || '';
   var number = f.control === 'number';
+  // A number field's label names its unit, so it shows the bare number; the
+  // server's words ("0.5s") are for the fields that take text.
+  var ph = (def && def.hints && def.hints[key]) || (number ? '' : CREATE_STORED_TEXT[key] || CREATE_FACTORY_TEXT[key]) ||
+    (number && CREATE_STORED_VALUES[key] != null ? String(CREATE_STORED_VALUES[key]) : '') ||
+    (f.phKey ? t(f.phKey) : f.ph) || '';
   return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + f.id + '-row">' + label +
     '<input type="' + (number ? 'number' : 'text') + '"' +
     (f.maxlength ? ' maxlength="' + f.maxlength + '"' : '') +
@@ -2351,6 +2374,11 @@ function _createDefaultsFormHtml(d) {
   }).join('');
 }
 
+// One of several kinds, picked or not: a chip that reads as a word.
+function _createChipHtml(attrs, words) {
+  return '<label class="create-chip create-pick-chip"><input type="checkbox"' + attrs + '><span>' + words + '</span></label>';
+}
+
 function _createSwitchHtml(attrs) {
   return '<span class="switch switch-sm"><input type="checkbox" role="switch"' + attrs + '><span class="switch-slider"></span></span>';
 }
@@ -2372,9 +2400,8 @@ function _createDefaultRowHtml(key, d) {
     var ticked = Array.isArray(stored) ? stored : [];
     return '<div class="create-flag" id="' + id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '"><span>' + label + '</span>' +
       '<span class="create-checks">' + f.options.map(function(o) {
-        return '<label class="create-check-opt">' + _createSwitchHtml(' name="' + id + '" value="' + o + '"' +
-          (ticked.indexOf(o) >= 0 ? ' checked' : '') + ' onchange="_setCreatorList(\'' + key + '\', \'' + id + '\')"') +
-          tH(f.label + '_' + o) + '</label>';
+        return _createChipHtml(' name="' + id + '" value="' + o + '"' + (ticked.indexOf(o) >= 0 ? ' checked' : '') +
+          ' onchange="_setCreatorList(\'' + key + '\', \'' + id + '\')"', tH(f.label + '_' + o));
       }).join('') + '</span></div>';
   }
   var choices = f.control === 'engine' || (f.control === 'select' && !f.customSize) ? f.options : null;
@@ -2389,10 +2416,12 @@ function _createDefaultRowHtml(key, d) {
         return '<option value="' + escAttr(v) + '"' + (v === now ? ' selected' : '') + '>' + esc(words) + '</option>';
       }).join('') + '</select></label>';
   }
-  var shown = (d.defaults_text || {})[key] || '';
-  var ph = factory ? factory : (factory === '' ? t('create_none') : (f.phKey ? t(f.phKey) : f.ph || ''));
+  var number = f.control === 'number';
+  var shown = number ? (stored == null ? '' : String(stored)) : (d.defaults_text || {})[key] || '';
+  var ph = number ? f.ph : factory ? factory : (factory === '' ? t('create_none') : (f.phKey ? t(f.phKey) : f.ph || ''));
   return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + id + '-row">' + label +
     '<input type="text" class="create-field create-short" id="' + id + '" value="' + escAttr(shown) + '"' +
+    (number ? ' inputmode="decimal"' : '') +
     ' placeholder="' + escAttr(ph) + '" spellcheck="false" autocapitalize="none" autocorrect="off"' +
     ' onchange="_setCreatorField(\'' + key + '\', this)"></label>';
 }
@@ -2433,6 +2462,7 @@ function _createWireAddress() {
   // could've clicked create right away and missed that step"). Typing now asks
   // too, after a pause, so the answer is usually there before the button is.
   src.addEventListener('input', function() {
+    _createSyncScopeWords();
     clearTimeout(_createProbeTimer);
     _createProbeTimer = setTimeout(ask, CREATE_PROBE_DEBOUNCE_MS);
   });
@@ -2442,6 +2472,24 @@ function _createWireAddress() {
   });
 }
 var _createProbeTimer = null;
+
+// The Reach select's options, reworded for the address on screen; back to
+// the general words when there is none. A select still on its default keeps
+// naming it, so the empty option is reworded too.
+function _createSyncScopeWords() {
+  var sel = document.getElementById(CREATE_FIELDS.scope.id);
+  if (!sel) return;
+  var words = _createScopeWords((document.getElementById('create-source') || {}).value);
+  for (var i = 0; i < sel.options.length; i++) {
+    var o = sel.options[i];
+    var key = o.value || 'prefix';
+    var plain = t('create_scope_' + key);
+    var said = words && words[key] ? words[key] : plain;
+    if (o.textContent !== said) o.textContent = said;
+    // At the root the section is the whole site: one option says it.
+    o.hidden = !!(words && key === 'host' && words.host === words.prefix);
+  }
+}
 
 // Whether the address on screen has been answered by the probe. The engine and
 // the mode are chosen from that answer, so starting a job without it is
@@ -2816,6 +2864,7 @@ function _renderCreatePanel() {
   _createRestoreMode();
   _createSyncFormat();
   _createSyncEngine();
+  _createSyncScopeWords();
   _renderCreatePreview();
 }
 

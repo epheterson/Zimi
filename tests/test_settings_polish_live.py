@@ -181,7 +181,7 @@ def test_every_settings_on_off_is_a_switch(served, phone):
             pg.wait_for_timeout(300)
         loose = pg.evaluate(
             """() => Array.from(document.querySelectorAll('#ms-pane input[type=checkbox]'))
-          .filter(i => !i.closest('.switch') && !i.closest('.ms-allowlist-picker, #ms-hot-zims'))
+          .filter(i => !i.closest('.switch') && !i.closest('.ms-allowlist-picker, #ms-hot-zims, .create-pick-chip'))
           .map(i => i.id || i.className || i.outerHTML.slice(0, 60))"""
         )
         assert loose == [], (section, loose)

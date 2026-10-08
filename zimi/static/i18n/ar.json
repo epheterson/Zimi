@@ -1084,7 +1084,7 @@
   "create_page_timeout": "مهلة الصفحة (بالثواني)",
   "create_size_stored": "الافتراضي ({size})",
   "create_scope": "النطاق",
-  "create_scope_prefix": "هذا القسم",
+  "create_scope_prefix": "الصفحات تحت العنوان",
   "create_scope_host": "الموقع كله",
   "create_scope_domain": "الموقع ونطاقاته الفرعية",
   "create_scope_any": "أينما تقود الروابط",
@@ -3015,5 +3015,8 @@
   "create_skip_types_pdf": "ملفات PDF",
   "create_skip_types_archives": "أرشيفات",
   "create_skip_types_images": "صور",
-  "create_max_file_bytes": "أكبر ملف"
+  "create_max_file_bytes": "أكبر ملف",
+  "create_scope_prefix_at": "تحت {path}",
+  "create_scope_host_at": "كل {host}",
+  "create_scope_domain_at": "{host} ونطاقاته الفرعية"
 }

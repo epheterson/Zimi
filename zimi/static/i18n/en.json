@@ -1084,7 +1084,7 @@
   "create_page_timeout": "Page timeout (seconds)",
   "create_size_stored": "Default ({size})",
   "create_scope": "Reach",
-  "create_scope_prefix": "This section",
+  "create_scope_prefix": "Pages under the address",
   "create_scope_host": "This whole site",
   "create_scope_domain": "This site and its subdomains",
   "create_scope_any": "Anywhere links lead",
@@ -3015,5 +3015,8 @@
   "create_skip_types_pdf": "PDFs",
   "create_skip_types_archives": "Archives",
   "create_skip_types_images": "Images",
-  "create_max_file_bytes": "Largest file"
+  "create_max_file_bytes": "Largest file",
+  "create_scope_prefix_at": "Under {path}",
+  "create_scope_host_at": "All of {host}",
+  "create_scope_domain_at": "{host} and its subdomains"
 }

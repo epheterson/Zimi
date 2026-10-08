@@ -13577,6 +13577,7 @@ function _setCreatorField(key, input) {
   input.disabled = true;
   _postCreatorDefaults(body).then(function(d) {
     if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
+    else if (input.inputMode === 'decimal') input.value = d.defaults && d.defaults[key] != null ? String(d.defaults[key]) : '';
     else input.value = (d.defaults_text && d.defaults_text[key]) || '';
     _showToast(t('saved'));
   }).catch(function(e) {

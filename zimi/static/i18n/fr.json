@@ -1084,7 +1084,7 @@
   "create_page_timeout": "Délai d'attente par page (secondes)",
   "create_size_stored": "Par défaut ({size})",
   "create_scope": "Portée",
-  "create_scope_prefix": "Cette section",
+  "create_scope_prefix": "Pages sous l’adresse",
   "create_scope_host": "Tout le site",
   "create_scope_domain": "Le site et ses sous-domaines",
   "create_scope_any": "Partout où mènent les liens",
@@ -3015,5 +3015,8 @@
   "create_skip_types_pdf": "PDF",
   "create_skip_types_archives": "Archives",
   "create_skip_types_images": "Images",
-  "create_max_file_bytes": "Fichier le plus gros"
+  "create_max_file_bytes": "Fichier le plus gros",
+  "create_scope_prefix_at": "Sous {path}",
+  "create_scope_host_at": "Tout {host}",
+  "create_scope_domain_at": "{host} et ses sous-domaines"
 }

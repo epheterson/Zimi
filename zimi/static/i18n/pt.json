@@ -1084,7 +1084,7 @@
   "create_page_timeout": "Tempo limite por página (segundos)",
   "create_size_stored": "Padrão ({size})",
   "create_scope": "Alcance",
-  "create_scope_prefix": "Esta secção",
+  "create_scope_prefix": "Páginas sob o endereço",
   "create_scope_host": "O site inteiro",
   "create_scope_domain": "O site e os seus subdomínios",
   "create_scope_any": "Para onde os links levarem",
@@ -3015,5 +3015,8 @@
   "create_skip_types_pdf": "PDFs",
   "create_skip_types_archives": "Arquivos compactados",
   "create_skip_types_images": "Imagens",
-  "create_max_file_bytes": "Maior arquivo"
+  "create_max_file_bytes": "Maior arquivo",
+  "create_scope_prefix_at": "Sob {path}",
+  "create_scope_host_at": "Todo o {host}",
+  "create_scope_domain_at": "{host} e seus subdomínios"
 }

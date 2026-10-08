@@ -1084,7 +1084,7 @@
   "create_page_timeout": "Seiten-Timeout (Sekunden)",
   "create_size_stored": "Standard ({size})",
   "create_scope": "Reichweite",
-  "create_scope_prefix": "Dieser Bereich",
+  "create_scope_prefix": "Seiten unter der Adresse",
   "create_scope_host": "Die ganze Website",
   "create_scope_domain": "Die Website und ihre Subdomains",
   "create_scope_any": "Überall, wohin Links führen",
@@ -3015,5 +3015,8 @@
   "create_skip_types_pdf": "PDFs",
   "create_skip_types_archives": "Archive",
   "create_skip_types_images": "Bilder",
-  "create_max_file_bytes": "Größte Datei"
+  "create_max_file_bytes": "Größte Datei",
+  "create_scope_prefix_at": "Unter {path}",
+  "create_scope_host_at": "Ganz {host}",
+  "create_scope_domain_at": "{host} und Subdomains"
 }
