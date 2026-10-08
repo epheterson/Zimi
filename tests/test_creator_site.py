@@ -47,6 +47,8 @@ HOSTED = []
 ROBOTS: List[Optional[str]] = [DEFAULT_ROBOTS]
 # The User-Agent of every request, in order, for the identity tests.
 AGENTS: List[Optional[str]] = []
+# Host, path and Cookie header of every request, for the cookie tests.
+COOKIES: List[tuple] = []
 
 
 def _page(body, *, css=True):
@@ -235,6 +237,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         REQUESTS.append(self.path)
         AGENTS.append(self.headers.get("User-Agent"))
+        COOKIES.append(
+            (
+                self.headers.get("Host", "").split(":")[0],
+                self.path,
+                self.headers.get("Cookie"),
+            )
+        )
         if self.path == "/hang":
             time.sleep(4)
         HOSTED.append((self.headers.get("Host", "").split(":")[0], self.path))
@@ -290,6 +299,7 @@ def _clean(monkeypatch):
     REQUESTS.clear()
     HOSTED.clear()
     AGENTS.clear()
+    COOKIES.clear()
     ROBOTS[0] = DEFAULT_ROBOTS
     yield
 
