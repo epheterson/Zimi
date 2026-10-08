@@ -166,7 +166,7 @@
     'star:alnitak':         { q: 'Q13076',    en: 'Alnitak' },
     'star:saiph':           { q: 'Q14028',    en: 'Saiph' },
     'star:dubhe':           { q: 'Q13084',    en: 'Dubhe' },
-    'star:merak':           { q: 'Q409073',   en: 'Merak' },
+    'star:merak':           { q: 'Q13096', en: 'Merak (star)' },
     'star:phecda':          { q: 'Q13099',    en: 'Phecda' },
     'star:megrez':          { q: 'Q850779',   en: 'Megrez' },
     'star:alioth':          { q: 'Q13091',    en: 'Alioth' },
@@ -190,7 +190,7 @@
     'star:mimosa':          { q: 'Q13105',    en: 'Mimosa (star)' },
     'star:gacrux':          { q: 'Q14233',    en: 'Gacrux' },
     'star:castor':          { q: 'Q13029',    en: 'Castor (star)' },
-    'star:pollux':          { q: 'Q253312',   en: 'Pollux' },
+    'star:pollux':          { q: 'Q13028', en: 'Pollux (star)' },
     'star:sirius':          { q: 'Q3409',     en: 'Sirius' },
     'star:mirzam':          { q: 'Q13415',    en: 'Mirzam' },
     'star:adhara':          { q: 'Q13414',    en: 'Adhara' },
@@ -207,7 +207,38 @@
     'star:spica':           { q: 'Q13008',    en: 'Spica' },
     'star:fomalhaut':       { q: 'Q13169',    en: 'Fomalhaut' },
     'star:polaris':         { q: 'Q12980',    en: 'Polaris' },
-    'star:hamal':           { q: 'Q13213',    en: 'Hamal' }
+    'star:hamal':           { q: 'Q13213',    en: 'Hamal' },
+    // The Nautical Almanac's other navigation stars (almanac-navdata.js) and the
+    // Pleiades (the star calendar). `en` is the article's own title: most of these
+    // stars are an article under their Bayer designation.
+    'star:alpheratz':        { q: 'Q13039', en: 'Alpheratz' },
+    'star:ankaa':            { q: 'Q14251', en: 'Alpha Phoenicis' },
+    'star:diphda':           { q: 'Q13170', en: 'Beta Ceti' },
+    'star:achernar':         { q: 'Q12183', en: 'Achernar' },
+    'star:acamar':           { q: 'Q66477106', en: 'Theta Eridani' },
+    'star:menkar':           { q: 'Q13173', en: 'Alpha Ceti' },
+    'star:mirfak':           { q: 'Q13790', en: 'Alpha Persei' },
+    'star:avior':            { q: 'Q14256', en: 'Epsilon Carinae' },
+    'star:suhail':           { q: 'Q14245', en: 'Lambda Velorum' },
+    'star:miaplacidus':      { q: 'Q13174', en: 'Beta Carinae' },
+    'star:alphard':          { q: 'Q13577', en: 'Alphard' },
+    'star:gienah':           { q: 'Q15694', en: 'Gamma Corvi' },
+    'star:hadar':            { q: 'Q13175', en: 'Beta Centauri' },
+    'star:menkent':          { q: 'Q14225', en: 'Theta Centauri' },
+    'star:zubenelgenubi':    { q: 'Q13047', en: 'Alpha Librae' },
+    'star:kochab':           { q: 'Q14059', en: 'Kochab' },
+    'star:alphecca':         { q: 'Q14046', en: 'Alpha Coronae Borealis' },
+    'star:atria':            { q: 'Q14242', en: 'Alpha Trianguli Australis' },
+    'star:sabik':            { q: 'Q670536', en: 'Eta Ophiuchi' },
+    'star:rasalhague':       { q: 'Q13504', en: 'Alpha Ophiuchi' },
+    'star:eltanin':          { q: 'Q14246', en: 'Gamma Draconis' },
+    'star:kaus_australis':   { q: 'Q14034', en: 'Epsilon Sagittarii' },
+    'star:nunki':            { q: 'Q14036', en: 'Sigma Sagittarii' },
+    'star:peacock':          { q: 'Q14240', en: 'Alpha Pavonis' },
+    'star:enif':             { q: 'Q14255', en: 'Epsilon Pegasi' },
+    'star:al_na_ir':         { q: 'Q854042', en: 'Alpha Gruis' },
+    'star:markab':           { q: 'Q14262', en: 'Alpha Pegasi' },
+    'star:pleiades':         { q: 'Q13423', en: 'Pleiades' }
   };
 
   // Major holidays — keyed by a NORMALIZED English label (see _norm). Only
@@ -274,7 +305,7 @@
     'stpatricksday':    { q: 'Q181817',   en: "Saint Patrick's Day" },
     'guyfawkesnight':   { q: 'Q844844',   en: 'Guy Fawkes Night' },
     'groundhogday':     { q: 'Q744374',   en: 'Groundhog Day' },
-    'mayday':           { q: 'Q47499',    en: 'International Workers’ Day' },
+    'mayday':           { q: 'Q47499', en: 'Labour Day' },
     'nowruz2':          { q: 'Q483236',   en: 'Nowruz' },
 
     // ── Country-specific packs (#33). A label shared across nations is
@@ -293,12 +324,12 @@
     'presidentsday':         { q: 'Q744159',    en: "Presidents' Day" },
     'memorialday':           { q: 'Q371781',    en: 'Memorial Day' },
     'laborday':              { q: 'Q848352',    en: 'Labor Day' },
-    'indigenouspeoplesday':  { q: 'Q116822503', en: "Indigenous Peoples' Day" },
+    'indigenouspeoplesday':  { q: 'Q6024620', en: "Indigenous Peoples' Day (United States)" },
     // Canada
     'canadaday':                 { q: 'Q639756',   en: 'Canada Day' },
     'truthandreconciliationday': { q: 'Q42378086', en: 'National Day for Truth and Reconciliation' },
     'boxingday':                 { q: 'Q956699',   en: 'Boxing Day' },
-    'labourday':                 { q: 'Q10901070', en: 'Labour Day' },
+    'labourday':                 { q: 'Q47499', en: 'Labour Day' },
     // United Kingdom
     'stgeorgesday':        { q: 'Q212829', en: "Saint George's Day" },
     'remembranceday':      { q: 'Q27631',  en: 'Remembrance Day' },
@@ -338,7 +369,7 @@
     'independenceday_mx': { q: 'Q1145411', en: 'Grito de Dolores' },
     'dayofthedeadii':     { q: 'Q309256',  en: 'Day of the Dead' },
     // Japan
-    'nationalfoundationday': { q: 'Q123118411', en: 'National Foundation Day' },
+    'nationalfoundationday': { q: 'Q1059995', en: 'National Foundation Day (Japan)' },
     'showaday':              { q: 'Q1361434',   en: 'Shōwa Day' },
     'constitutionday_jp':    { q: 'Q1361489',   en: 'Constitution Memorial Day' },
     'childrensday':          { q: 'Q1145630',   en: "Children's Day (Japan)" },
@@ -349,7 +380,7 @@
     // South Africa
     'humanrightsday_za':      { q: 'Q465153',  en: 'Human Rights Day (South Africa)' },
     'freedomday_za':          { q: 'Q2401839', en: 'Freedom Day (South Africa)' },
-    'heritageday_za':         { q: 'Q5738794', en: 'Heritage Day' },
+    'heritageday_za':         { q: 'Q1945098', en: 'Heritage Day (South Africa)' },
     'dayofreconciliation_za': { q: 'Q5242947', en: 'Day of Reconciliation' },
     'dayofgoodwill_za':       { q: 'Q956699',  en: 'Boxing Day' },
     // Russia
@@ -366,7 +397,7 @@
     'youthday_za':           { q: 'Q946446',   en: 'Youth Day' }, // ZA
 
     // ── Worldwide observances (the base Gregorian set) ──
-    'epiphany':                       { q: 'Q61556',    en: 'Epiphany' },
+    'epiphany':                       { q: 'Q132001', en: 'Epiphany (holiday)' },
     'holocaustremembranceday':        { q: 'Q152960',   en: 'International Holocaust Remembrance Day' },
     'darwinday':                      { q: 'Q1166876',  en: 'Darwin Day' },
     'internationalmotherlanguageday': { q: 'Q42375',    en: 'International Mother Language Day' },
@@ -374,7 +405,7 @@
     'worldwaterday':                  { q: 'Q183740',   en: 'World Water Day' },
     'worldhealthday':                 { q: 'Q476734',   en: 'World Health Day' },
     'worldbookday':                   { q: 'Q166051',   en: 'World Book Day' },
-    'maydayworkersday':               { q: 'Q47499',    en: "International Workers' Day" },
+    'maydayworkersday':               { q: 'Q47499', en: 'Labour Day' },
     'starwarsday':                    { q: 'Q2603175',  en: 'Star Wars Day' },
     'towelday':                       { q: 'Q241666',   en: 'Towel Day' },
     'worldenvironmentday':            { q: 'Q199641',   en: 'World Environment Day' },
@@ -439,7 +470,98 @@
     'maghapuja':        { q: 'Q967000',  en: 'Māgha Pūjā' },
     'asalhapuja':       { q: 'Q720682',  en: 'Asalha Puja' },
     'transfiguration':  { q: 'Q201201',  en: 'Transfiguration of Jesus' },
-    'annunciation':     { q: 'Q154326',  en: 'Annunciation' }
+    'annunciation':     { q: 'Q154326',  en: 'Annunciation' },
+
+    // ── Second days, eves and the other calendars' own days (1.14): a repeat day
+    //    of a feast links the feast; every label the calendar can print is either
+    //    here or listed as not linkable in tests/test_almanac_qids.cjs. ──
+    'christmasday':            { q: 'Q19809', en: 'Christmas' },
+    'christmasjulian':         { q: 'Q19809', en: 'Christmas' },
+    'epiphanyjulian':          { q: 'Q132001', en: 'Epiphany (holiday)' },
+    'theophany':               { q: 'Q132001', en: 'Epiphany (holiday)' },
+    'presentationofjesus':     { q: 'Q152771', en: 'Presentation of Jesus' },
+    'dormitionofthetheotokos': { q: 'Q4069073', en: 'Dormition of the Mother of God' },
+    'nativityofmary':          { q: 'Q501107', en: 'Nativity of Mary' },
+    'exaltationofthecross':    { q: 'Q815520', en: 'Feast of the Cross' },
+    'presentationofmary':      { q: 'Q1124234', en: 'Presentation of Mary' },
+    'stnicholasday':           { q: 'Q760225', en: 'Saint Nicholas Day' },
+    'hanukkahi':               { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahii':              { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahiii':             { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahiv':              { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahv':               { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahvi':              { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahvii':             { q: 'Q130881', en: 'Hanukkah' },
+    'hanukkahviii':            { q: 'Q130881', en: 'Hanukkah' },
+    'asarabtevet':             { q: 'Q739324', en: 'Tenth of Tevet' },
+    'erevpesach':              { q: 'Q121393', en: 'Passover' },
+    'erevroshhash':            { q: 'Q131028', en: 'Rosh Hashanah' },
+    'fastofesther':            { q: 'Q1093647', en: 'Fast of Esther' },
+    'hoshanarabbah':           { q: 'Q524418', en: 'Hoshana Rabbah' },
+    'passoverii':              { q: 'Q121393', en: 'Passover' },
+    'passovervii':             { q: 'Q121393', en: 'Passover' },
+    'passoverviii':            { q: 'Q121393', en: 'Passover' },
+    'pesachsheni':             { q: 'Q2918219', en: 'Pesach Sheni' },
+    'roshhashanahii':          { q: 'Q131028', en: 'Rosh Hashanah' },
+    'shavuotii':               { q: 'Q201196', en: 'Shavuot' },
+    'shushanpurim':            { q: 'Q180115', en: 'Purim' },
+    'sukkotii':                { q: 'Q182242', en: 'Sukkot' },
+    'tishabav':                { q: 'Q211349', en: "Tisha B'Av" },
+    'tubav':                   { q: 'Q1820509', en: "Tu B'Av" },
+    'tzomgedaliah':            { q: 'Q219097', en: 'Fast of Gedalia' },
+    'tzomtammuz':              { q: 'Q1517903', en: 'Seventeenth of Tammuz' },
+    'yomhashoah':              { q: 'Q309530', en: 'Yom HaShoah' },
+    'yomhazikaron':            { q: 'Q1539489', en: 'Yom HaZikaron' },
+    'yomhaatzmaut':            { q: 'Q952721', en: 'Independence Day (Israel)' },
+    'yomyerushalayim':         { q: 'Q1472650', en: 'Jerusalem Day' },
+    'arbaeen':                 { q: 'Q310740', en: "Arba'in" },
+    'dayofarafah':             { q: 'Q2371450', en: 'Day of Arafah' },
+    'dhulhijjah':              { q: 'Q186022', en: "Dhu'l-Hijja" },
+    'eidaladhaii':             { q: 'Q514400', en: 'Eid al-Adha' },
+    'eidaladhaiii':            { q: 'Q514400', en: 'Eid al-Adha' },
+    'eidaladhaiv':             { q: 'Q514400', en: 'Eid al-Adha' },
+    'eidalfitrii':             { q: 'Q464458', en: 'Eid al-Fitr' },
+    'eidalfitriii':            { q: 'Q464458', en: 'Eid al-Fitr' },
+    'hajjbegins':              { q: 'Q234915', en: 'Hajj' },
+    'mawlidshia':              { q: 'Q193027', en: 'Mawlid' },
+    'nuzulalquran':            { q: 'Q4115424', en: "Muhammad's first revelation" },
+    'rabialawwal':             { q: 'Q474167', en: 'Rabi I' },
+    'rajabbegins':             { q: 'Q194210', en: 'Rajab' },
+    'shabanbegins':            { q: 'Q220914', en: "Sha'ban" },
+    'shabannight':             { q: 'Q220914', en: "Sha'ban" },
+    'tasua':                   { q: 'Q141098', en: "Tasu'a" },
+    'islamicrepublic':         { q: 'Q5675742', en: 'Iranian Islamic Republic Day' },
+    'khorduduprising':         { q: 'Q2496712', en: '1963 demonstrations in Iran' },
+    'mehregan':                { q: 'Q749563', en: 'Mehregan' },
+    'nowruzii':                { q: 'Q483236', en: 'Nowruz' },
+    'nowruziii':               { q: 'Q483236', en: 'Nowruz' },
+    'nowruziv':                { q: 'Q483236', en: 'Nowruz' },
+    'oilnationalization':      { q: 'Q5962148', en: 'Nationalization of the Iranian oil industry' },
+    'revolutionday':           { q: 'Q126065', en: 'Iranian Revolution' },
+    'sadeh':                   { q: 'Q1070318', en: 'Sadeh' },
+    'sizdahbedar':             { q: 'Q1378894', en: 'Sizdah Be-dar' },
+    'tirgan':                  { q: 'Q1135034', en: 'Tirgan' },
+    'buddhasbirthday':         { q: 'Q5348941', en: "Buddha's Birthday" },
+    'dharmaday':               { q: 'Q720682', en: 'Asalha Puja' },
+    'kathina':                 { q: 'Q1736269', en: 'Kaṭhina' },
+    'nirvanaday':              { q: 'Q4115787', en: 'Parinirvana Day' },
+    'parinirvana':             { q: 'Q4115787', en: 'Parinirvana Day' },
+    'posonpoya':               { q: 'Q48733901', en: 'Poson' },
+    'songkran':                { q: 'Q215014', en: 'Songkran (Thailand)' },
+    'vassabegins':             { q: 'Q1151493', en: 'Vassa' },
+    'vassaends':               { q: 'Q1151493', en: 'Vassa' },
+    'chuxinye':                { q: 'Q7245702', en: "Chinese New Year's Eve" },
+    'hanyifestival':           { q: 'Q10955077', en: 'Winter Clothes Day' },
+    'jadeemperor':             { q: 'Q860434', en: 'Jade Emperor' },
+    'littlenewyear':           { q: 'Q10259922', en: 'Little New Year' },
+    'qixilovers':              { q: 'Q13423122', en: 'Qixi Festival' },
+    'renri':                   { q: 'Q2160437', en: 'Renri' },
+    'shangsifestival':         { q: 'Q698091', en: 'Double Third Festival' },
+    'springfestivalii':        { q: 'Q131772', en: 'Chinese New Year' },
+    'springfestivaliii':       { q: 'Q131772', en: 'Chinese New Year' },
+    'tiankuangfest':           { q: 'Q17500538', en: 'Double Sixth Festival' },
+    'torchfestival':           { q: 'Q7825539', en: 'Torch Festival' },
+    'zhonghefestival':         { q: 'Q5364492', en: 'Longtaitou Festival' }
   };
 
   // Astronomy & timekeeping terms — the obscure-but-linkable vocabulary the
@@ -488,7 +610,57 @@
     // The Earth view (almanac-earth.js): a tapped satellite's card
     'term:gps':            { q: 'Q18822',  en: 'Global Positioning System' },
     'term:iss':            { q: 'Q25271',  en: 'International Space Station' },
-    'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' }
+    'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' },
+    // The tables, calculations and constants (almanac-tables.js, almanac-reference.js)
+    'term:sunrise':                { q: 'Q193294', en: 'Sunrise' },
+    'term:sunset':                 { q: 'Q166564', en: 'Sunset' },
+    'term:solar_noon':             { q: 'Q168182', en: 'Noon' },
+    'term:daylight':               { q: 'Q16491', en: 'Daylight' },
+    'term:moonrise':               { q: 'Q107284481', en: 'Moonrise and moonset' },
+    'term:hour_angle':             { q: 'Q734439', en: 'Hour angle' },
+    'term:first_point_of_aries':   { q: 'Q80360', en: 'First point of Aries' },
+    'term:horizontal_coordinates': { q: 'Q625696', en: 'Horizontal coordinate system' },
+    'term:culmination':            { q: 'Q611114', en: 'Culmination' },
+    'term:delta_t':                { q: 'Q1184932', en: 'ΔT (timekeeping)' },
+    'term:leap_second':            { q: 'Q194230', en: 'Leap second' },
+    'term:tai':                    { q: 'Q119395', en: 'International Atomic Time' },
+    'term:utc':                    { q: 'Q1536', en: 'Coordinated Universal Time' },
+    'term:haversine':              { q: 'Q587172', en: 'Haversine formula' },
+    'term:great_circle':           { q: 'Q912925', en: 'Great-circle distance' },
+    'term:sundial':                { q: 'Q80793', en: 'Sundial' },
+    'term:sight_reduction':        { q: 'Q20386679', en: 'Sight reduction' },
+    'term:sextant':                { q: 'Q179430', en: 'Sextant' },
+    'term:atmospheric_refraction': { q: 'Q254634', en: 'Atmospheric refraction' },
+    'term:isa':                    { q: 'Q579176', en: 'International Standard Atmosphere' },
+    'term:knot':                   { q: 'Q128822', en: 'Knot (unit)' },
+    'term:nautical_mile':          { q: 'Q93318', en: 'Nautical mile' },
+    'term:speed_of_light':         { q: 'Q2111', en: 'Speed of light' },
+    'term:gravitational_constant': { q: 'Q18373', en: 'Gravitational constant' },
+    'term:standard_gravity':       { q: 'Q13400897', en: 'Standard gravity' },
+    'term:earth_radius':           { q: 'Q1155470', en: 'Earth radius' },
+    'term:flattening':             { q: 'Q212750', en: 'Flattening' },
+    'term:sidereal_time':          { q: 'Q191747', en: 'Sidereal time' },
+    'term:tropical_year':          { q: 'Q189607', en: 'Tropical year' },
+    'term:julian_year':            { q: 'Q217208', en: 'Julian year (astronomy)' },
+    'term:lunar_month':            { q: 'Q591259', en: 'Lunar month' },
+    'term:saros':                  { q: 'Q220397', en: 'Saros (astronomy)' },
+    'term:epoch':                  { q: 'Q2703', en: 'Epoch (astronomy)' },
+    'term:unix_time':              { q: 'Q14654', en: 'Unix time' },
+    'term:gravitational_parameter': { q: 'Q579338', en: 'Standard gravitational parameter' },
+    'term:aberration':             { q: 'Q211728', en: 'Aberration (astronomy)' },
+    'term:parallax':               { q: 'Q165074', en: 'Parallax' },
+    'term:angular_diameter':       { q: 'Q718647', en: 'Angular diameter' },
+    'term:computus':               { q: 'Q56318457', en: 'Date of Easter' },
+    'term:metonic':                { q: 'Q285682', en: 'Metonic cycle' },
+    'term:epact':                  { q: 'Q376317', en: 'Epact' },
+    'term:dominical_letter':       { q: 'Q672461', en: 'Dominical letter' },
+    'term:horizon':                { q: 'Q43261', en: 'Horizon' },
+    'term:tide':                   { q: 'Q23384', en: 'Tide' },
+    'term:tidal_range':            { q: 'Q1398201', en: 'Tidal range' },
+    'term:nautical_almanac':       { q: 'Q752001', en: 'Nautical almanac' },
+    'term:bearing':                { q: 'Q1273815', en: 'Bearing (navigation)' },
+    'term:standard_atmosphere':    { q: 'Q177974', en: 'Standard atmosphere (unit)' },
+    'term:daylight_saving':       { q: 'Q36669', en: 'Daylight saving time' }
   };
 
   // The four seasons — displayed as the current-season name in the astro panel.
@@ -507,7 +679,7 @@
   var BELTS = {
     'belt:asteroid':   { q: 'Q2179',    en: 'Asteroid belt' },
     'belt:kuiper':     { q: 'Q427',     en: 'Kuiper belt' },
-    'belt:heliopause': { q: 'Q1137936', en: 'Heliopause (astronomy)' }
+    'belt:heliopause': { q: 'Q131687', en: 'Heliosphere' }
   };
 
   // "On this day" event subjects — the confident entity behind each editorial
@@ -606,7 +778,10 @@
     'ev:ramanujan':      { q: 'Q83163',     en: 'Srinivasa Ramanujan',         sub: 'Srinivasa Ramanujan' },
     'ev:jwst':           { q: 'Q186447',    en: 'James Webb Space Telescope',  sub: 'James Webb Space Telescope' },
     'ev:kepler':         { q: 'Q8963',      en: 'Johannes Kepler',             sub: 'Johannes Kepler' },
-    'ev:beagle':         { q: 'Q35926',     en: 'HMS Beagle',                  sub: 'HMS Beagle' }
+    'ev:beagle':         { q: 'Q35926',     en: 'HMS Beagle',                  sub: 'HMS Beagle' },
+    'ev:mir':              { q: 'Q48604', en: 'Mir', sub: 'Mir' },
+    'ev:astp':             { q: 'Q208759', en: 'Apollo–Soyuz', sub: 'Apollo and Soyuz' },
+    'ev:ariane1':          { q: 'Q18375', en: 'Ariane 1', sub: 'Ariane' }
   };
 
   // Messages Across Time — the enduring-inscription artifacts shown in the
@@ -663,8 +838,60 @@
     'city:auckland':     { q: 'Q37100', en: 'Auckland' }
   };
 
+  // Parent bodies of the meteor showers, keyed 'parent:<shower key>' (the shower
+  // panel names each: almanac.js _METEOR_SHOWERS). Two showers share Halley.
+  var PARENTS = {
+    'parent:quadrantids':      { q: 'Q440406', en: '(196256) 2003 EH1' },
+    'parent:lyrids':           { q: 'Q3235375', en: 'C/1861 G1 (Thatcher)' },
+    'parent:eta_aquariids':    { q: 'Q23054', en: "Halley's Comet" },
+    'parent:s_delta_aquariids': { q: 'Q980094', en: '96P/Machholz' },
+    'parent:alpha_capricornids': { q: 'Q2762284', en: '169P/NEAT' },
+    'parent:perseids':         { q: 'Q126026', en: 'Comet Swift–Tuttle' },
+    'parent:draconids':        { q: 'Q853069', en: '21P/Giacobini–Zinner' },
+    'parent:orionids':         { q: 'Q23054', en: "Halley's Comet" },
+    'parent:taurids':          { q: 'Q166940', en: 'Comet Encke' },
+    'parent:leonids':          { q: 'Q549166', en: '55P/Tempel–Tuttle' },
+    'parent:geminids':         { q: 'Q18944', en: '3200 Phaethon' },
+    'parent:ursids':           { q: 'Q1056776', en: '8P/Tuttle' }
+  };
+
+  // Moon phases that have an article of their own; the quarters share the head
+  // article (term:lunar_phase).
+  var PHASES = {
+    'phase:new':   { q: 'Q108566', en: 'New moon' },
+    'phase:full':  { q: 'Q104641', en: 'Full moon' }
+  };
+
+  // What the live sky's taps explain (almanac-sky.js): the thing tapped.
+  var SKY = {
+    'sky:aurora':  { q: 'Q40609', en: 'Aurora' },
+    'sky:whale':   { q: 'Q132905', en: 'Humpback whale' },
+    'sky:airliner': { q: 'Q210932', en: 'Airliner' },
+    'sky:meteor':  { q: 'Q7012', en: 'Meteoroid' },
+    'sky:sea':     { q: 'Q165', en: 'Sea' },
+    'sky:ship':    { q: 'Q11446', en: 'Ship' },
+    'sky:birds':   { q: 'Q216507', en: 'Bird migration' }
+  };
+
+  // Who and what the tables and constants cite (the Source column).
+  var SOURCES = {
+    'org:si':          { q: 'Q12457', en: 'International System of Units' },
+    'org:wgs84':       { q: 'Q215848', en: 'World Geodetic System' },
+    'org:iau':         { q: 'Q6867', en: 'International Astronomical Union' },
+    'org:cgpm':        { q: 'Q215650', en: 'General Conference on Weights and Measures' },
+    'org:codata':      { q: 'Q735279', en: 'Committee on Data of the International Science Council' },
+    'org:icao':        { q: 'Q125761', en: 'International Civil Aviation Organization' },
+    'org:noaa':        { q: 'Q214700', en: 'National Oceanic and Atmospheric Administration' },
+    'org:usno':        { q: 'Q11700', en: 'United States Naval Observatory' },
+    'org:iers':        { q: 'Q530278', en: 'International Earth Rotation and Reference Systems Service' },
+    'org:iugg':        { q: 'Q1192969', en: 'International Union of Geodesy and Geophysics' },
+    'org:bowditch':    { q: 'Q1759883', en: "Bowditch's American Practical Navigator" },
+    'person:meeus':    { q: 'Q1281654', en: 'Jean Meeus' },
+    'person:espenak':  { q: 'Q2801230', en: 'Fred Espenak' }
+  };
+
   var MAP = {};
-  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS, MESSAGES, CITIES]
+  [PLANETS, PROBES, CONSTELLATIONS, SHOWERS, ECLIPSES, CALENDARS, ZODIAC, STARS, HOLIDAYS, TERMS, SEASONS, BELTS, EVENTS, MESSAGES, CITIES, PARENTS, PHASES, SKY, SOURCES]
     .forEach(function (group) { for (var k in group) if (group.hasOwnProperty(k)) MAP[k] = group[k]; });
 
   // Register curated holidays under a "holiday:<norm>" key so wrapHoliday() can
