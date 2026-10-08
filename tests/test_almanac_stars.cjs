@@ -157,7 +157,7 @@ function closest(fromMs, toMs, target) {
   const size = (m) => Math.max(S.AE_STAR_SIZE_MIN, S.AE_STAR_SIZE0 - S.AE_STAR_SIZE_PER_MAG * m);
   const alpha = (m) => Math.min(1, Math.max(S.AE_STAR_ALPHA_MIN, S.AE_STAR_ALPHA0 - S.AE_STAR_ALPHA_PER_MAG * m));
   check(size(6.5) <= 1.0 && size(5) <= 1.5, 'stars of magnitude 5 to 6.5 are about a pixel across (' + size(5).toFixed(2) + ', ' + size(6.5).toFixed(2) + ')');
-  check(alpha(6.5) <= 0.15 && alpha(5) < 0.3 && alpha(-1.46) === 1, 'faint stars are a dim dust; Sirius is full strength');
+  check(alpha(6.5) <= 0.3 && alpha(5) < 0.5 && alpha(-1.46) === 1, 'faint stars are a dim dust; Sirius is full strength');
   check(size(-1.46) > 3 * size(6) && alpha(1) > 3 * alpha(6), 'the bright stars dominate in size and in light');
   let monotone = true;
   for (let m = -1.5; m < 7; m += 0.1) if (size(m + 0.1) > size(m) || alpha(m + 0.1) > alpha(m)) monotone = false;

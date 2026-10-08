@@ -669,7 +669,7 @@ var AE_MOON_PATH_COLOR = 0xffffff, AE_MOON_PATH_ALPHA = 0.16;
 // The faintest naked-eye stars (magnitude 5 to 6.5) fall to a one-pixel
 // dust at a low alpha, so they texture the dark rather than read as dots.
 var AE_STAR_SIZE0 = 3.4, AE_STAR_SIZE_PER_MAG = 0.55, AE_STAR_SIZE_MIN = 1.0;
-var AE_STAR_ALPHA0 = 1.05, AE_STAR_ALPHA_PER_MAG = 0.16, AE_STAR_ALPHA_MIN = 0.12;
+var AE_STAR_ALPHA0 = 1.15, AE_STAR_ALPHA_PER_MAG = 0.14, AE_STAR_ALPHA_MIN = 0.24;
 var AE_STAR_COLOR_DEFAULT = 0.6;      // B-V where a star has none (the Sun's is 0.65)
 var AE_STAR_CI_MIN = -0.3, AE_STAR_CI_SPAN = 1.9;   // colour index -0.3 (blue) .. 1.6 (orange)
 // stars-v1.bin (scripts/build_star_catalog.py): header, then planar arrays.
