@@ -3006,5 +3006,14 @@
   "create_group_limits": "How much",
   "create_group_fetch": "How it's fetched",
   "create_group_zim": "The ZIM",
-  "create_none": "None"
+  "create_none": "None",
+  "create_cookies": "Cookies",
+  "create_cookies_note": "Sent only to this site, and never saved.",
+  "create_skip_types": "Leave out",
+  "create_skip_types_video": "Video",
+  "create_skip_types_audio": "Audio",
+  "create_skip_types_pdf": "PDFs",
+  "create_skip_types_archives": "Archives",
+  "create_skip_types_images": "Images",
+  "create_max_file_bytes": "Largest file"
 }

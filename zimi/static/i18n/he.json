@@ -3006,5 +3006,14 @@
   "create_group_limits": "כמה",
   "create_group_fetch": "איך מורידים",
   "create_group_zim": "קובץ ה-ZIM",
-  "create_none": "ללא"
+  "create_none": "ללא",
+  "create_cookies": "עוגיות",
+  "create_cookies_note": "נשלחות לאתר הזה בלבד ולעולם לא נשמרות.",
+  "create_skip_types": "להשמיט",
+  "create_skip_types_video": "וידאו",
+  "create_skip_types_audio": "שמע",
+  "create_skip_types_pdf": "קובצי PDF",
+  "create_skip_types_archives": "ארכיונים",
+  "create_skip_types_images": "תמונות",
+  "create_max_file_bytes": "הקובץ הגדול ביותר"
 }

@@ -3006,5 +3006,14 @@
   "create_group_limits": "कितना",
   "create_group_fetch": "कैसे लाया जाए",
   "create_group_zim": "ZIM",
-  "create_none": "कोई नहीं"
+  "create_none": "कोई नहीं",
+  "create_cookies": "कुकीज़",
+  "create_cookies_note": "सिर्फ़ इसी साइट को भेजी जाती हैं, कभी सहेजी नहीं जातीं।",
+  "create_skip_types": "छोड़ें",
+  "create_skip_types_video": "वीडियो",
+  "create_skip_types_audio": "ऑडियो",
+  "create_skip_types_pdf": "PDF",
+  "create_skip_types_archives": "आर्काइव",
+  "create_skip_types_images": "चित्र",
+  "create_max_file_bytes": "सबसे बड़ी फ़ाइल"
 }

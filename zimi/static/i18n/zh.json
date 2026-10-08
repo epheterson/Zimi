@@ -3006,5 +3006,14 @@
   "create_group_limits": "多少",
   "create_group_fetch": "如何获取",
   "create_group_zim": "ZIM 本身",
-  "create_none": "无"
+  "create_none": "无",
+  "create_cookies": "Cookie",
+  "create_cookies_note": "只发送给此网站，从不保存。",
+  "create_skip_types": "不包括",
+  "create_skip_types_video": "视频",
+  "create_skip_types_audio": "音频",
+  "create_skip_types_pdf": "PDF",
+  "create_skip_types_archives": "压缩包",
+  "create_skip_types_images": "图片",
+  "create_max_file_bytes": "最大文件"
 }

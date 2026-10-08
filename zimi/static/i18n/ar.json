@@ -3006,5 +3006,14 @@
   "create_group_limits": "كم",
   "create_group_fetch": "كيف يُجلب",
   "create_group_zim": "ملف ZIM",
-  "create_none": "لا شيء"
+  "create_none": "لا شيء",
+  "create_cookies": "ملفات تعريف الارتباط",
+  "create_cookies_note": "تُرسل إلى هذا الموقع فقط ولا تُحفظ أبدًا.",
+  "create_skip_types": "استبعاد",
+  "create_skip_types_video": "فيديو",
+  "create_skip_types_audio": "صوت",
+  "create_skip_types_pdf": "ملفات PDF",
+  "create_skip_types_archives": "أرشيفات",
+  "create_skip_types_images": "صور",
+  "create_max_file_bytes": "أكبر ملف"
 }

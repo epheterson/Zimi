@@ -3006,5 +3006,14 @@
   "create_group_limits": "Сколько",
   "create_group_fetch": "Как загружать",
   "create_group_zim": "ZIM",
-  "create_none": "Нет"
+  "create_none": "Нет",
+  "create_cookies": "Cookies",
+  "create_cookies_note": "Отправляются только этому сайту и нигде не сохраняются.",
+  "create_skip_types": "Пропускать",
+  "create_skip_types_video": "Видео",
+  "create_skip_types_audio": "Аудио",
+  "create_skip_types_pdf": "PDF",
+  "create_skip_types_archives": "Архивы",
+  "create_skip_types_images": "Изображения",
+  "create_max_file_bytes": "Самый большой файл"
 }

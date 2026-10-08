@@ -121,21 +121,25 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: ['engine'], advanced: ['block_ads', 'capture_variants', 'strip_links', 'language']
+    flags: ['engine'],
+    advanced: ['block_ads', 'capture_variants',
+      'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay',
-      'time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'strip_links', 'language', 'ignore_robots'],
+    advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'sitemap',
+      'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay',
+      'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots',
+      'language', 'description', 'creator', 'publisher', 'tags', 'strip_links'],
     sizeDefault: '4 GB'
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
-    advanced: ['format', 'max_bytes', 'language'],
+    advanced: ['format', 'max_bytes', 'language', 'description', 'creator', 'publisher', 'tags'],
     sizeDefault: '16 GB'
   },
   // No subreddit tile. A reddit.com/r/<name> address under Web page is a
@@ -149,7 +153,7 @@ var CREATE_MODE_DEFS = [
   {
     id: 'folder', network: false, tree: true, serverPath: true,
     label: 'create_label_folder', placeholder: 'create_label_folder',
-    flags: [], advanced: ['language']
+    flags: [], advanced: ['language', 'description', 'creator', 'publisher', 'tags']
   },
   // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
   // address field becomes a list of the archives in the library folder; no
@@ -157,7 +161,7 @@ var CREATE_MODE_DEFS = [
   {
     id: 'import', network: false, sidecar: true, picker: true, serverPath: true,
     label: 'create_label_import', placeholder: 'create_ph_import',
-    flags: [], advanced: []
+    flags: [], advanced: ['description', 'creator', 'publisher', 'tags']
   }
 ];
 
@@ -383,6 +387,41 @@ var CREATE_FIELDS = {
   mobile: {
     id: 'create-mobile', control: 'check', label: 'create_mobile',
     kind: 'bool'
+  },
+  // A signed-in session's cookies, pasted as the Cookie header reads in the
+  // browser's tools. A credential: the server sends it to this site alone and
+  // keeps it nowhere, so it is never a stored default and the note says so.
+  cookies: {
+    id: 'create-cookies', control: 'text', label: 'create_cookies', wide: true,
+    kind: 'text', ph: 'name=value; other=value', note: 'create_cookies_note'
+  },
+  // Kinds of file a capture leaves out, ticked from a fixed set. Its value is
+  // the ticked names joined with commas, the way the command line takes them.
+  skip_types: {
+    id: 'create-skip-types', control: 'checks', label: 'create_skip_types',
+    kind: 'text', options: ['video', 'audio', 'pdf', 'archives', 'images']
+  },
+  max_file_bytes: {
+    id: 'create-max-file-bytes', control: 'text', label: 'create_max_file_bytes',
+    kind: 'text', phKey: 'create_none'
+  },
+  // The ZIM's own details, written into its metadata. A folder's zimi.txt
+  // fills them when the field is left empty.
+  description: {
+    id: 'create-description', control: 'text', label: 'create_pv_description', wide: true,
+    kind: 'text', ph: '', maxlength: 80
+  },
+  creator: {
+    id: 'create-creator', control: 'text', label: 'create_pv_creator',
+    kind: 'text', ph: 'Zimi'
+  },
+  publisher: {
+    id: 'create-publisher', control: 'text', label: 'create_pv_publisher',
+    kind: 'text', ph: 'Zimi'
+  },
+  tags: {
+    id: 'create-tags', control: 'text', label: 'create_pv_tags', wide: true,
+    kind: 'text', ph: ''
   },
   page_timeout: {
     id: 'create-page-timeout', control: 'number', label: 'create_page_timeout',
@@ -620,8 +659,12 @@ function _createFieldApplies(f, engine) {
 // what sends it. Called with every reply: clearing a default in Manage clears
 // it here at the next poll.
 var CREATE_STORED_VALUES = {};
+// What a capture gets when nothing is stored either, as the server words it
+// (the user agent it really sends, not a nickname for it).
+var CREATE_FACTORY_TEXT = {};
 function _createTakeDefaults(data) {
   var values = (data && data.defaults) || {};
+  CREATE_FACTORY_TEXT = (data && data.factory_text) || {};
   var text = (data && data.defaults_text) || {};
   CREATE_STORED_TEXT = {};
   for (var key in text) {
@@ -630,6 +673,12 @@ function _createTakeDefaults(data) {
   CREATE_STORED_VALUES = values;
   CREATE_FIELDS.sitemap.on = values.sitemap === true;
   CREATE_FIELDS.mobile.on = values.mobile === true;
+}
+
+// A stored default that is a list (the kinds a capture leaves out), as one.
+function _createStoredList(key) {
+  var v = CREATE_STORED_VALUES[key];
+  return Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(',') : []);
 }
 
 // What a select's empty first option stands for: the stored default, else
@@ -666,6 +715,12 @@ function _createFieldValue(key, fields) {
     return (raw === undefined || raw === null || raw === '') ? undefined : !!raw;
   }
   if (f.kind === 'bool') return raw ? true : undefined;
+  // A checks row says what is ticked. Nothing ticked is silence, unless a
+  // stored default ticks something: then the empty list is the decision.
+  if (f.control === 'checks') {
+    if (!Array.isArray(raw)) return undefined;
+    return raw.length ? raw.slice() : (_createStoredList(key).length ? [] : undefined);
+  }
   var text = String(raw === undefined || raw === null ? '' : raw).trim();
   if (!text) return undefined;
   if (f.kind === 'int' || f.kind === 'num') {
@@ -2047,6 +2102,16 @@ function _createFieldHtml(key, def) {
       '<input type="checkbox" id="' + f.id + '"' + (f.on ? ' checked' : '') +
       (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
   }
+  if (f.control === 'checks') {
+    var boxes = '';
+    for (var c = 0; c < f.options.length; c++) {
+      boxes += '<label class="create-check-opt"><input type="checkbox" name="' + f.id + '" value="' + f.options[c] + '"' +
+        (_createStoredList(key).indexOf(f.options[c]) >= 0 ? ' checked' : '') + '>' +
+        tH(f.label + '_' + f.options[c]) + '</label>';
+    }
+    return '<div class="create-flag" id="' + f.id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '">' +
+      '<span>' + label + '</span><span class="create-checks" id="' + f.id + '">' + boxes + '</span></div>';
+  }
   if (f.control === 'select') {
     // Options are either bare strings, whose label is an i18n key built from
     // the field name (the original convention, kept for the video presets), or
@@ -2082,10 +2147,12 @@ function _createFieldHtml(key, def) {
       '<select class="create-field create-pick' + (plain ? ' is-default' : '') + '" id="' + f.id + '"' + change + '>' +
       opts + '</select></label>' + extra;
   }
-  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || (f.phKey ? t(f.phKey) : f.ph) || '';
+  var ph = (def && def.hints && def.hints[key]) || CREATE_STORED_TEXT[key] || CREATE_FACTORY_TEXT[key] ||
+    (f.phKey ? t(f.phKey) : f.ph) || '';
   var number = f.control === 'number';
-  return '<label class="create-flag" id="' + f.id + '-row">' + label +
+  return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + f.id + '-row">' + label +
     '<input type="' + (number ? 'number' : 'text') + '"' +
+    (f.maxlength ? ' maxlength="' + f.maxlength + '"' : '') +
     ' class="create-field ' + (number ? 'create-num' : 'create-short') + '" id="' + f.id + '"' +
     (f.min !== undefined ? ' min="' + f.min + '"' : '') +
     (f.max !== undefined ? ' max="' + f.max + '"' : '') +
@@ -2197,9 +2264,9 @@ function _createAddCommands(into, capability) {
 // whose options fall in one group shows no heading at all.
 var CREATE_GROUPS = [
   { k: 'create_group_pages', keys: ['scope', 'max_depth', 'include', 'exclude', 'extra_hops', 'sitemap'] },
-  { k: 'create_group_limits', keys: ['max_bytes', 'time_limit', 'delay'] },
-  { k: 'create_group_fetch', keys: ['format', 'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots'] },
-  { k: 'create_group_zim', keys: ['language', 'strip_links'] }
+  { k: 'create_group_limits', keys: ['max_pages', 'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay'] },
+  { k: 'create_group_fetch', keys: ['format', 'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots'] },
+  { k: 'create_group_zim', keys: ['language', 'description', 'creator', 'publisher', 'tags', 'strip_links'] }
 ];
 
 function _createGroupsOf(keys) {
@@ -2239,6 +2306,68 @@ function _createFormHtml(keys, def, grouped) {
       (titled && g.k ? '<div class="create-group-h">' + tH(g.k) + '</div>' : '') +
       _createRowsHtml(g.keys, def) + '</div>';
   }).join('');
+}
+
+// Manage, Creator: the stored defaults, drawn from the fields Create draws, in
+// Create's groups and columns, so the two pages are one design and a field
+// added here is added there. A stored value fills its control; the factory
+// value is the grey placeholder (or the empty option), so grey means "what a
+// capture gets when you say nothing", as it does in Create.
+var CREATE_DEFAULTS_ID = 'ms-cr-f-';
+function _createDefaultsFormHtml(d) {
+  var keys = (d.storable_keys || []).filter(function(k) { return k !== 'allow_private' && CREATE_FIELDS[k]; });
+  var head = keys.indexOf('engine') >= 0 ? _createDefaultRowHtml('engine', d) : '';
+  var groups = _createGroupsOf(keys.filter(function(k) { return k !== 'engine'; }));
+  return (head ? '<div class="create-form">' + head + '</div>' : '') + groups.map(function(g) {
+    return '<div class="create-form">' + (g.k ? '<div class="create-group-h">' + tH(g.k) + '</div>' : '') +
+      g.keys.map(function(k) { return _createDefaultRowHtml(k, d); }).join('') + '</div>';
+  }).join('');
+}
+
+function _createSwitchHtml(attrs) {
+  return '<span class="switch switch-sm"><input type="checkbox" role="switch"' + attrs + '><span class="switch-slider"></span></span>';
+}
+
+function _createDefaultRowHtml(key, d) {
+  var f = CREATE_FIELDS[key];
+  var id = CREATE_DEFAULTS_ID + key;
+  var stored = (d.defaults || {})[key];
+  var factory = (d.factory_text || {})[key];
+  var label = tH(f.label);
+  if (f.control === 'check') {
+    // Settings says on and off with a switch, everywhere; in the label column's
+    // grid like every other field here.
+    var on = typeof stored === 'boolean' ? stored : !!f.on;
+    return '<label class="create-flag" id="' + id + '-row">' + label +
+      _createSwitchHtml(' id="' + id + '"' + (on ? ' checked' : '') + ' onchange="_setCreatorDefault(\'' + key + '\', this)"') + '</label>';
+  }
+  if (f.control === 'checks') {
+    var ticked = Array.isArray(stored) ? stored : [];
+    return '<div class="create-flag" id="' + id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '"><span>' + label + '</span>' +
+      '<span class="create-checks">' + f.options.map(function(o) {
+        return '<label class="create-check-opt">' + _createSwitchHtml(' name="' + id + '" value="' + o + '"' +
+          (ticked.indexOf(o) >= 0 ? ' checked' : '') + ' onchange="_setCreatorList(\'' + key + '\', \'' + id + '\')"') +
+          tH(f.label + '_' + o) + '</label>';
+      }).join('') + '</span></div>';
+  }
+  var choices = f.control === 'engine' || (f.control === 'select' && !f.customSize) ? f.options : null;
+  if (choices) {
+    var now = typeof stored === 'string' ? stored : '';
+    return '<label class="create-flag" id="' + id + '-row">' + label +
+      '<select class="create-field create-pick' + (now ? '' : ' is-default') + '" id="' + id + '"' +
+      ' onchange="_createMarkDefault(this);_setCreatorField(\'' + key + '\', this)">' +
+      choices.map(function(o) {
+        var words = typeof o === 'string' ? t(f.label + '_' + o) : (o.k ? t(o.k) : o.t);
+        var v = typeof o === 'string' ? o : o.v;
+        return '<option value="' + escAttr(v) + '"' + (v === now ? ' selected' : '') + '>' + esc(words) + '</option>';
+      }).join('') + '</select></label>';
+  }
+  var shown = (d.defaults_text || {})[key] || '';
+  var ph = factory ? factory : (factory === '' ? t('create_none') : (f.phKey ? t(f.phKey) : f.ph || ''));
+  return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + id + '-row">' + label +
+    '<input type="text" class="create-field create-short" id="' + id + '" value="' + escAttr(shown) + '"' +
+    ' placeholder="' + escAttr(ph) + '" spellcheck="false" autocapitalize="none" autocorrect="off"' +
+    ' onchange="_setCreatorField(\'' + key + '\', this)"></label>';
 }
 
 // The credit line for a mode whose work is really another project's.
@@ -2776,6 +2905,7 @@ function _createFormFields() {
     fields[key] = !node ? ''
       : f.control === 'check' ? !!node.checked
       : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : f.control === 'checks' ? _createTickedValues(f.id)
       : f.customSize && node.value === '__custom'
         ? ((document.getElementById(f.id + '-custom') || {}).value || '').trim()
       : node.value;
@@ -2794,6 +2924,14 @@ function _createSizeSelect(sel) {
 }
 
 // A radio group has no value of its own — the checked input has it.
+// The values of a checks row's ticked boxes, in their drawn order.
+function _createTickedValues(name) {
+  var boxes = document.querySelectorAll('input[name="' + name + '"]');
+  var out = [];
+  for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
+  return out;
+}
+
 function _createCheckedRadio(name) {
   var hit = document.querySelector('input[name="' + name + '"]:checked');
   return hit ? hit.value : '';

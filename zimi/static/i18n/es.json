@@ -3006,5 +3006,14 @@
   "create_group_limits": "Cuánto",
   "create_group_fetch": "Cómo se descarga",
   "create_group_zim": "El ZIM",
-  "create_none": "Ninguno"
+  "create_none": "Ninguno",
+  "create_cookies": "Cookies",
+  "create_cookies_note": "Solo se envían a este sitio y nunca se guardan.",
+  "create_skip_types": "Omitir",
+  "create_skip_types_video": "Vídeo",
+  "create_skip_types_audio": "Audio",
+  "create_skip_types_pdf": "PDF",
+  "create_skip_types_archives": "Archivos comprimidos",
+  "create_skip_types_images": "Imágenes",
+  "create_max_file_bytes": "Archivo más grande"
 }

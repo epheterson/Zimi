@@ -210,15 +210,27 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['block_ads', 'capture_variants', 'strip_links', 'language']],
-  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'max_bytes', 'delay', 'time_limit', 'sitemap',
-    'user_agent', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
-    'strip_links', 'language', 'ignore_robots']],
-  ['video', ['format', 'max_bytes', 'language']],
+  ['page', ['block_ads', 'capture_variants',
+    'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']],
+  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'sitemap',
+    'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay',
+    'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots',
+    'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']],
+  ['video', ['format', 'max_bytes', 'language', 'description', 'creator', 'publisher', 'tags']],
   ['bookmarks', []],
-  ['folder', ['language']],
-  ['import', []]
+  ['folder', ['language', 'description', 'creator', 'publisher', 'tags']],
+  ['import', ['description', 'creator', 'publisher', 'tags']]
 ], 'each mode advertises its documented advanced options');
+
+// Leave out: the ticked kinds as a list; nothing ticked says nothing, unless a
+// stored default leaves something out, and then the empty list overrides it.
+eq(_createBuildRequest('site', { source: 'https://e.org/', skip_types: ['video', 'pdf'],
+  cookies: 'a=1', description: ' A site ', creator: 'Me', tags: 'x;y' }),
+  { mode: 'site', source: 'https://e.org/', skip_types: ['video', 'pdf'],
+    cookies: 'a=1', description: 'A site', creator: 'Me', tags: 'x;y' },
+  'a site request carries leave-out, cookies and the details');
+eq(_createBuildRequest('site', { source: 'https://e.org/', skip_types: [] }),
+  { mode: 'site', source: 'https://e.org/' }, 'nothing ticked and nothing stored says nothing');
 
 // Quality is a closed list of preset NAMES. A yt-dlp format expression is an
 // instruction to a downloader, and it stays on the CLI — so this select must
@@ -479,7 +491,7 @@ eq(_createBuildRequest('site', {
   max_bytes: ' 2G ', delay: '1.5', language: 'fra', ignore_robots: true
 }), {
   mode: 'site', source: 'https://e.org/', max_pages: 50, max_depth: 2,
-  max_bytes: '2G', delay: 1.5, language: 'fra', ignore_robots: true
+  max_bytes: '2G', delay: 1.5, ignore_robots: true, language: 'fra'
 }, 'site sends its whole advanced set, sizes as typed and delays fractional');
 
 
@@ -1043,7 +1055,7 @@ for (const key of ['time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeou
 eq(sandbox._createBuildRequest('site', {
   source: 'https://e.org/', time_limit: ' 8h ', sitemap: true, user_agent: 'Mine/1',
   mobile: true, page_timeout: '30', engine: 'rendered' }),
-  { mode: 'site', source: 'https://e.org/', engine: 'rendered', time_limit: '8h', sitemap: true,
+  { mode: 'site', source: 'https://e.org/', engine: 'rendered', sitemap: true, time_limit: '8h',
     user_agent: 'Mine/1', mobile: true, page_timeout: 30 },
   'a site request carries the new options');
 eq(sandbox._createBuildRequest('site', {

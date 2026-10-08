@@ -723,8 +723,13 @@
      fields and every Advanced group alike; a checkbox and a note start on that
      same edge. Grey inside a control means "what happens if you leave it":
      a placeholder, or a select still on its default (.is-default). */
-  .create-panel { --create-k: 136px; --create-col: 12px; }
-  @media (max-width: 480px) { .create-panel { --create-k: 100px; } }
+  .create-panel, .cr-defaults { --create-k: 136px; --create-col: 12px; }
+  @media (max-width: 480px) { .create-panel, .cr-defaults { --create-k: 100px; } }
+  .cr-defaults { display: flex; flex-direction: column; gap: 20px; margin: 4px 0 20px; }
+  .cr-defaults-hint { margin-bottom: 14px; }
+  .create-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .create-form .create-flag > .switch { justify-self: start; }
+  .create-check-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
   .create-form { display: flex; flex-direction: column; gap: 10px; }
   .create-adv .create-form + .create-form { margin-top: 20px; }
   .create-group-h { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }

@@ -13316,54 +13316,41 @@ function _creatorRedditCell(d) {
 }
 
 
-// A capture-default switch row, wired to the admin-only POST half of
-// /manage/creator so the choice persists server-side.
-function _creatorDefaultRow(key, labelKey, on, descKey) {
-  return { id: 'ms-cr-' + key, title: tH(labelKey), desc: descKey ? tH(descKey) : '', on: on,
-    onchange: '_setCreatorDefault(\'' + key + '\', this)' };
+// Whether captures from the web may reach a private address: an admin's switch,
+// not a capture default, so it sits apart from the form, wired to the same
+// admin-only POST half of /manage/creator.
+function _creatorPrivateRow(d) {
+  return { id: 'ms-cr-allow_private', title: tH('creator_private'), desc: tH('creator_private_hint'),
+    on: _creatorSwitchOn(d, 'allow_private'), onchange: '_setCreatorDefault(\'allow_private\', this)' };
 }
-
-// Every switch the section holds, in order. block_ads and capture_variants
-// are answered with the factory value when nothing is stored (the server's
-// *_default fields); the rest are off until stored (d.defaults).
-var _CREATOR_SWITCHES = [
-  { key: 'block_ads', label: 'create_block_ads' },
-  { key: 'capture_variants', label: 'create_capture_variants' },
-  { key: 'sitemap', label: 'create_sitemap', desc: 'create_sitemap_note' },
-  { key: 'mobile', label: 'create_mobile', desc: 'create_mobile_note' },
-  { key: 'allow_private', label: 'creator_private', desc: 'creator_private_hint' }
-];
+// A stored switch, or the factory one the server answers for block_ads and
+// capture_variants (their *_default fields); the rest are off until stored.
 function _creatorSwitchOn(d, key) {
   if ((key + '_default') in d) return !!d[key + '_default'];
   return !!(d.defaults && d.defaults[key] === true);
 }
 
-// The defaults that are a value, not a switch. The server checks each with the
-// same table the capture options use and answers a 400 with a sentence.
-var _CREATOR_FIELDS = [
-  { key: 'time_limit', label: 'create_time_limit', ph: '8h' },
-  { key: 'user_agent', label: 'create_user_agent', ph: 'Zimi', wide: true },
-  { key: 'page_timeout', label: 'create_page_timeout', ph: '45' },
-  { key: 'max_pages', label: 'create_max_pages', ph: '10000' },
-  { key: 'max_depth', label: 'create_max_depth', ph: '10' },
-  { key: 'max_bytes', label: 'create_max_bytes', ph: '4G' },
-  { key: 'delay', label: 'create_delay', ph: '0.5' }
-];
-function _creatorFieldRow(f, d) {
-  var shown = (d.defaults_text && d.defaults_text[f.key]) || '';
-  return _mcRow(tH(f.label), '<input type="text" class="create-field create-short"' + (f.wide ? ' style="width:240px"' : '') +
-    ' id="ms-cr-f-' + f.key + '" value="' + escAttr(shown) + '" placeholder="' + escAttr(f.ph) + '"' +
-    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
-    ' onchange="_setCreatorField(\'' + f.key + '\', this)">');
+// The defaults form is Create's own (create.js draws it from its field table),
+// so the pane fetches create.js the first time it needs it.
+function _creatorDefaultsHtml(d) {
+  if (typeof _createDefaultsFormHtml === 'function') return _createDefaultsFormHtml(d);
+  _creatorLoadForm();
+  return _loadingHtml();
 }
-function _creatorScopeRow(d) {
-  var now = (d.defaults && d.defaults.scope) || '';
-  var opts = [['', 'create_scope_prefix'], ['host', 'create_scope_host'], ['domain', 'create_scope_domain'], ['any', 'create_scope_any']];
-  return _mcRow(tH('create_scope'), '<select class="create-field create-pick" id="ms-cr-f-scope"' +
-    ' onchange="_setCreatorField(\'scope\', this)">' + opts.map(function(o) {
-      return '<option value="' + o[0] + '"' + (o[0] === now ? ' selected' : '') + '>' + tH(o[1]) + '</option>';
-    }).join('') + '</select>');
+function _creatorLoadForm() {
+  if (_creatorFormLoading) return;
+  _creatorFormLoading = true;
+  var el = document.createElement('script');
+  el.src = '/static/create.js?v=1';
+  el.onload = function() {
+    _createLoaded = true;
+    var slot = document.getElementById('ms-cr-defaults');
+    if (slot && _creatorData) slot.innerHTML = _createDefaultsFormHtml(_creatorData);
+  };
+  el.onerror = function() { _creatorFormLoading = false; };
+  document.head.appendChild(el);
 }
+var _creatorFormLoading = false;
 
 function _creatorQueueHtml(queue) {
   return queue
@@ -13376,11 +13363,9 @@ function _creatorHtml(d) {
 
   // Defaults a new capture starts with — the control you actually touch.
   var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _switchRowsHtml(_CREATOR_SWITCHES.map(function(sw) {
-      return _creatorDefaultRow(sw.key, sw.label, _creatorSwitchOn(d, sw.key), sw.desc);
-    })) +
-    _creatorScopeRow(d) + _CREATOR_FIELDS.map(function(f) { return _creatorFieldRow(f, d); }).join('') +
-    '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
+    '<div class="ms-hint cr-defaults-hint">' + tH('creator_defaults_hint') + '</div>' +
+    '<div class="cr-defaults" id="ms-cr-defaults">' + _creatorDefaultsHtml(d) + '</div>' +
+    _switchRowsHtml([_creatorPrivateRow(d)]);
 
   // The queue, when it matters.
   h += sep + '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
@@ -13521,10 +13506,8 @@ function _patchCreatorSection(d) {
   put('ms-cr-reddit', _creatorRedditCell(d));
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
-  _CREATOR_SWITCHES.forEach(function(sw) {
-    var input = document.getElementById('ms-cr-' + sw.key);
-    if (input) input.checked = _creatorSwitchOn(d, sw.key);
-  });
+  var priv = document.getElementById('ms-cr-allow_private');
+  if (priv) priv.checked = _creatorSwitchOn(d, 'allow_private');
 }
 
 // How long to wait before asking again while the server is still probing what
@@ -13601,7 +13584,24 @@ function _setCreatorField(key, input) {
     if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
     else input.value = (d.defaults_text && d.defaults_text[key]) || '';
     _showToast((e && e.serverMessage) || t('error'));
-  }).finally(function() { input.disabled = false; });
+  }).finally(function() {
+    input.disabled = false;
+    if (input.tagName === 'SELECT' && typeof _createMarkDefault === 'function') _createMarkDefault(input);
+  });
+}
+
+// A list default (the kinds a capture leaves out) ticked or unticked: the
+// whole list is stored, and the boxes settle on what the server kept.
+function _setCreatorList(key, name) {
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[name="' + name + '"]'));
+  var body = {};
+  body[key] = boxes.filter(function(b) { return b.checked; }).map(function(b) { return b.value; });
+  var settle = function(d) {
+    var kept = (d && d.defaults && d.defaults[key]) || [];
+    boxes.forEach(function(b) { b.checked = kept.indexOf(b.value) >= 0; });
+  };
+  _postCreatorDefaults(body).then(function(d) { settle(d); _showToast(t('saved')); })
+    .catch(function(e) { settle(_creatorData); _showToast((e && e.serverMessage) || t('error')); });
 }
 
 // POST /manage/creator and keep the pane's copy of the stored defaults in step.

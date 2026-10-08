@@ -101,6 +101,8 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "capture_variants_default",
         "defaults",  # every stored default, for the Creator fields
         "defaults_text",  # and each as the text a placeholder shows
+        "factory_text",  # what a capture gets when nothing is stored
+        "storable_keys",  # which fields the form draws, in order
         "queue",
         "offline",
         "data_dir",  # for the setup commands the pane prints (#61)
@@ -282,12 +284,13 @@ def test_a_stored_default_wins_over_the_factory_constant(monkeypatch):
     monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
     h = _post("/manage/creator", {"block_ads": False})
     assert h.status == 200
-    assert h.body == {
+    assert {k: v for k, v in h.body.items() if k not in ("factory_text", "storable_keys")} == {
         "block_ads_default": False,
         "capture_variants_default": manage.CREATE_CAPTURE_VARIANTS,
         "defaults": {"block_ads": False},
         "defaults_text": {"block_ads": "off"},
     }
+    assert h.body["factory_text"]["block_ads"] == "on"
     body = _get("/manage/creator").body
     assert body["block_ads_default"] is False
     assert body["capture_variants_default"] is manage.CREATE_CAPTURE_VARIANTS
