@@ -223,8 +223,9 @@ SKIP_TYPES = {
 
 
 def parse_skip_types(value):
-    """The kinds named, in the table's order, or None for none. A list or the
-    comma-separated text a flag carries."""
+    """The kinds named, in the table's order. A list or the comma-separated
+    text a flag carries. None is "not given"; an empty list is "leave nothing
+    out", which beats a stored default."""
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     items = value.split(",") if isinstance(value, str) else value
@@ -240,7 +241,7 @@ def parse_skip_types(value):
                 f"cannot leave out {kind[:20]!r}: the kinds are {', '.join(SKIP_TYPES)}"
             )
         wanted.add(kind)
-    return [k for k in SKIP_TYPES if k in wanted] or None
+    return [k for k in SKIP_TYPES if k in wanted]
 
 
 def _extension(url):

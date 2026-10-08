@@ -671,7 +671,7 @@ def _parse_tags(value):
     """Tags as a list: ``a;b`` from a flag or a form, or a list from the API."""
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
-    items = value.split(";") if isinstance(value, str) else value
+    items = re.split(r"[;,]", value) if isinstance(value, str) else value
     if not isinstance(items, (list, tuple)):
         raise CreateError("tags are words separated by semicolons: news;health")
     tags = []
@@ -929,7 +929,7 @@ def stored_defaults(path=None):
             value = opt.for_store(value)
         except CreateError:
             continue
-        if value is not None:
+        if value is not None and value != []:
             out[key] = value
     return out
 
@@ -945,7 +945,7 @@ def validate_stored_defaults(updates):
                 (opt and opt.never_stored)
                 or f"{str(key)[:40]!r} is not a setting that can be stored"
             )
-        out[key] = None if value is None or value == "" else opt.for_store(value)
+        out[key] = None if value is None or value in ("", []) else opt.for_store(value)
     return out
 
 
@@ -960,6 +960,41 @@ def fill_stored_defaults(opts, engine, defaults=None):
         if CAPTURE_OPTIONS[key].honored_by(engine):
             opts[key] = value
     return opts
+
+
+def storable_keys():
+    """The options an admin may store, in the table's order. ``allow_private``
+    is the admin's own switch and is not among them."""
+    return [k for k, o in CAPTURE_OPTIONS.items() if o.storable and k != "allow_private"]
+
+
+def factory_text():
+    """What a capture uses for each storable option when nothing is stored, as
+    display text; "" where the factory is none, no limit, the engine's own, or
+    detection (engine "" is the fast one, language "" is auto)."""
+    try:
+        from zimi.renderer import BLOCK_ADS_DEFAULT, NAV_TIMEOUT, VARIANT_SWEEP_DEFAULT
+    except Exception:
+        BLOCK_ADS_DEFAULT = VARIANT_SWEEP_DEFAULT = True
+        NAV_TIMEOUT = 45.0
+    onoff = lambda v: "on" if v else "off"  # noqa: E731
+    text = {
+        "creator": "Zimi",
+        "publisher": "Zimi",
+        "sitemap": "off",
+        "mobile": "off",
+        "user_agent": zimi_user_agent(),
+        "page_timeout": CAPTURE_OPTIONS["page_timeout"].show(int(NAV_TIMEOUT)),
+        "scope": DEFAULT_SCOPE,
+        "max_pages": str(DEFAULT_MAX_PAGES),
+        "max_depth": str(DEFAULT_MAX_DEPTH),
+        "max_bytes": _show_bytes(DEFAULT_MAX_BYTES),
+        "delay": CAPTURE_OPTIONS["delay"].show(DEFAULT_DELAY),
+        "block_ads": onoff(BLOCK_ADS_DEFAULT),
+        "capture_variants": onoff(VARIANT_SWEEP_DEFAULT),
+        "workers": "1",
+    }
+    return {k: text.get(k, "") for k in storable_keys()}
 
 
 def zim_details(raw, *, stored=True):

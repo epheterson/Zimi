@@ -2313,10 +2313,20 @@ def _create_defaults_view():
     """The stored defaults for a form: the values, and each as the text a
     placeholder shows. ``allow_private`` is the admin's alone and is not sent
     to the Create page (see ``_create_defaults_payload``)."""
-    from zimi.crawler import default_placeholders, stored_defaults
+    from zimi.crawler import (
+        default_placeholders,
+        factory_text,
+        storable_keys,
+        stored_defaults,
+    )
 
     stored = stored_defaults()
-    return {"defaults": stored, "defaults_text": default_placeholders(stored)}
+    return {
+        "defaults": stored,
+        "defaults_text": default_placeholders(stored),
+        "factory_text": factory_text(),
+        "storable_keys": storable_keys(),
+    }
 
 
 def _create_allows_private():

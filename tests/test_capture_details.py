@@ -529,3 +529,29 @@ def test_a_hand_edited_bad_stored_value_falls_back(data_dir):
     )
     assert crawler.stored_defaults() == {}
 
+
+
+def test_the_creator_payload_names_the_factory_and_the_storable_keys(data_dir):
+    view = manage._create_defaults_view()
+    keys = view["storable_keys"]
+    assert "allow_private" not in keys and "cookies" not in keys
+    assert keys == [k for k in crawler.CAPTURE_OPTIONS if k in keys]
+    assert set(view["factory_text"]) == set(keys)
+    factory = view["factory_text"]
+    assert (factory["max_pages"], factory["max_depth"], factory["workers"]) == ("10000", "10", "1")
+    assert (factory["creator"], factory["publisher"], factory["delay"]) == ("Zimi", "Zimi", "0.5s")
+    for none in ("time_limit", "max_file_bytes", "skip_types", "engine", "language"):
+        assert factory[none] == ""
+
+
+def test_an_empty_skip_list_leaves_nothing_out_and_beats_a_stored_default(data_dir):
+    _store(data_dir, skip_types=["video"])
+    assert _opts("site")["skip_types"] == ["video"]
+    assert _opts("site", skip_types=[])["skip_types"] == []
+    assert crawler.capture_option_value("skip_types", "video,pdf") == ["video", "pdf"]
+    assert crawler.validate_stored_defaults({"skip_types": []}) == {"skip_types": None}
+    assert crawler.validate_stored_defaults({"skip_types": ""}) == {"skip_types": None}
+
+
+def test_tags_may_be_separated_by_commas_or_semicolons():
+    assert crawler.capture_option_value("tags", "a, b;c") == ["a", "b", "c"]
