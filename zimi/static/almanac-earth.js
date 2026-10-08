@@ -549,6 +549,7 @@ function _aeEclipseNow(scene) {
 // the old one.
 var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
+var AE_STARS_URL = '/static/earth/stars-v1.bin';   // scripts/build_star_catalog.py documents the format
 var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
 var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
 var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
@@ -665,8 +666,17 @@ var AE_ORBIT_FADE_FROM = 0.5, AE_ORBIT_FADE_TO = 0.85;
 var AE_ISS_RING_COLOR = 0xffc861, AE_ISS_RING_ALPHA = 0.5, AE_ISS_RING_FADED = 0.25;
 var AE_MOON_PATH_COLOR = 0xffffff, AE_MOON_PATH_ALPHA = 0.16;
 // Star dots from magnitude (brighter = bigger, more opaque) and colour index.
-var AE_STAR_SIZE0 = 3.4, AE_STAR_SIZE_PER_MAG = 0.55, AE_STAR_SIZE_MIN = 1.2;
-var AE_STAR_ALPHA0 = 1.05, AE_STAR_ALPHA_PER_MAG = 0.16, AE_STAR_ALPHA_MIN = 0.3;
+// The faintest naked-eye stars (magnitude 5 to 6.5) fall to a one-pixel
+// dust at a low alpha, so they texture the dark rather than read as dots.
+var AE_STAR_SIZE0 = 3.4, AE_STAR_SIZE_PER_MAG = 0.55, AE_STAR_SIZE_MIN = 1.0;
+var AE_STAR_ALPHA0 = 1.05, AE_STAR_ALPHA_PER_MAG = 0.16, AE_STAR_ALPHA_MIN = 0.12;
+var AE_STAR_COLOR_DEFAULT = 0.6;      // B-V where a star has none (the Sun's is 0.65)
+var AE_STAR_CI_MIN = -0.3, AE_STAR_CI_SPAN = 1.9;   // colour index -0.3 (blue) .. 1.6 (orange)
+// stars-v1.bin (scripts/build_star_catalog.py): header, then planar arrays.
+var AE_STARS_HEADER_BYTES = 4, AE_STARS_VERSION = 1, AE_STARS_BYTES_EACH = 6;
+var AE_STARS_U16_STEPS = 65536, AE_STARS_U16_MAX = 65535;
+var AE_STARS_MAG_OFFSET = 2, AE_STARS_MAG_SCALE = 25;
+var AE_STARS_BV_SCALE = 50, AE_STARS_BV_NONE = -128;
 var AE_HOURS_TO_RAD = Math.PI / 12;
 
 var _ae = null;          // view state, built on first open
@@ -1415,26 +1425,74 @@ function _aeLine(THREE, Kind, count, color, alpha) {
   return line;
 }
 
-// The background: the Almanac's bright-star catalogue (almanac-sky.js,
-// J2000; the 0.4 degrees of precession since are below what this view
-// shows), carried with the camera so the stars sit at infinity.
-function _aeStarField(THREE, dpr) {
+// The background, carried with the camera so the stars sit at infinity.
+// J2000; the 0.4 degrees of precession since are below what this view shows.
+// The first sky is the 2D Almanac's 518 stars to magnitude 4
+// (almanac-sky.js), so the view is never empty; _aeLoadStars swaps in the
+// whole Bright Star Catalogue. Both are read through at(i, out): RA and Dec
+// in radians, magnitude, B-V.
+function _aeStarList() {
   var named = (typeof _STARS !== 'undefined') ? _STARS : [];
   var field = (typeof _SKY_FIELD_STARS !== 'undefined') ? _SKY_FIELD_STARS : [];
   var all = named.concat(field);
-  var cloud = _aePointCloud(THREE, all.length, dpr, false, { depthTest: true });
-  for (var i = 0; i < all.length; i++) {
+  return { count: all.length, at: function (i, out) {
     var s = all[i];
-    var v = _aeEqVec(s[0] * AE_HOURS_TO_RAD, _aeRad(s[1]), AE_STAR_RADIUS);
-    var mag = s[2], ci = s.length > 3 ? s[3] : 0.6;
-    var warm = _aeClamp((ci + 0.3) / 1.9, 0, 1);   // colour index -0.3 (blue) .. 1.6 (orange)
+    out.ra = s[0] * AE_HOURS_TO_RAD; out.dec = _aeRad(s[1]); out.mag = s[2];
+    out.ci = s.length > 3 ? s[3] : AE_STAR_COLOR_DEFAULT;
+  } };
+}
+// stars-v1.bin as typed-array views over the one buffer; null if the bytes
+// are not this format.
+function _aeDecodeStars(buf) {
+  if (!buf || buf.byteLength < AE_STARS_HEADER_BYTES) return null;
+  var head = new Uint16Array(buf.slice(0, AE_STARS_HEADER_BYTES)), n = head[0];
+  if (head[1] !== AE_STARS_VERSION || buf.byteLength !== AE_STARS_HEADER_BYTES + AE_STARS_BYTES_EACH * n) return null;
+  var ra = new Uint16Array(buf, AE_STARS_HEADER_BYTES, n);
+  var dec = new Uint16Array(buf, AE_STARS_HEADER_BYTES + 2 * n, n);
+  var mag = new Uint8Array(buf, AE_STARS_HEADER_BYTES + 4 * n, n);
+  var bv = new Int8Array(buf, AE_STARS_HEADER_BYTES + 5 * n, n);
+  return { count: n, at: function (i, out) {
+    out.ra = ra[i] / AE_STARS_U16_STEPS * 2 * Math.PI;
+    out.dec = (dec[i] / AE_STARS_U16_MAX - 0.5) * Math.PI;
+    out.mag = mag[i] / AE_STARS_MAG_SCALE - AE_STARS_MAG_OFFSET;
+    out.ci = bv[i] === AE_STARS_BV_NONE ? AE_STAR_COLOR_DEFAULT : bv[i] / AE_STARS_BV_SCALE;
+  } };
+}
+function _aeStarField(THREE, dpr, stars) {
+  var cloud = _aePointCloud(THREE, stars.count, dpr, false, { depthTest: true });
+  var s = {};
+  for (var i = 0; i < stars.count; i++) {
+    stars.at(i, s);
+    var warm = _aeClamp((s.ci - AE_STAR_CI_MIN) / AE_STAR_CI_SPAN, 0, 1);
     var col = [0.78 + 0.22 * warm, 0.84 + 0.06 * warm, 1.0 - 0.3 * warm];
-    _aeSetPoint(cloud, i, v, col,
-      _aeClamp(AE_STAR_ALPHA0 - AE_STAR_ALPHA_PER_MAG * mag, AE_STAR_ALPHA_MIN, 1),
-      Math.max(AE_STAR_SIZE_MIN, AE_STAR_SIZE0 - AE_STAR_SIZE_PER_MAG * mag));
+    _aeSetPoint(cloud, i, _aeEqVec(s.ra, s.dec, AE_STAR_RADIUS), col,
+      _aeClamp(AE_STAR_ALPHA0 - AE_STAR_ALPHA_PER_MAG * s.mag, AE_STAR_ALPHA_MIN, 1),
+      Math.max(AE_STAR_SIZE_MIN, AE_STAR_SIZE0 - AE_STAR_SIZE_PER_MAG * s.mag));
   }
-  _aeCommitPoints(cloud, all.length);
+  _aeCommitPoints(cloud, stars.count);
   return cloud;
+}
+// The whole catalogue, fetched with the other Earth assets: one fetch, one
+// pass over the bytes, one draw call. A failure keeps the first sky and the
+// next open asks again. The old points leave in the frame the new ones come.
+function _aeLoadStars(S) {
+  if (S.starsLoaded || S.starsLoading) return;
+  S.starsLoading = true;
+  fetch(AE_STARS_URL).then(function (r) {
+    if (!r.ok) throw new Error('stars');
+    return r.arrayBuffer();
+  }).then(function (buf) {
+    var stars = _aeDecodeStars(buf);
+    if (!stars || _ae.gl !== S) throw new Error('stars');
+    var old = S.starCloud;
+    S.starCloud = _aeStarField(S.THREE, S.dpr, stars);
+    S.sky.add(S.starCloud);
+    S.sky.remove(old);
+    old.geometry.dispose(); old.material.dispose();
+    S.starsLoaded = true;
+    _ae.dirty = true;
+    _aeKick();
+  }).catch(function () {}).then(function () { S.starsLoading = false; });
 }
 
 // Light added over what is behind it, as a glow is, leaving the canvas's
@@ -1505,7 +1563,8 @@ function _aeBuildGl(THREE, canvas) {
   scene.add(moon);
 
   var sky = new THREE.Group();
-  sky.add(_aeStarField(THREE, dpr));
+  var starCloud = _aeStarField(THREE, dpr, _aeStarList());
+  sky.add(starCloud);
   scene.add(sky);
 
   var sun = new THREE.Group();
@@ -1536,7 +1595,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, starCloud: starCloud, starsLoaded: false, starsLoading: false, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -1588,6 +1647,7 @@ function _aeSharedHiMoon(S) {
 }
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
+  _aeLoadStars(S);
   _aeLoadMap(S, S.earthUni.nightMap, AE_TEX_NIGHT);
   // The Moon's 1024 map first, then the 4096 one over it (the 2D Moons have
   // usually fetched it by now); without the first the second is not asked.
