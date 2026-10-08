@@ -4192,15 +4192,15 @@ function _drawTzClock(now) {
   // it below), else this device's. It read the device's zone under the
   // place's name before.
   var tz = _almSelectedTz || _almDisplayTz();
-  var tzLabel = '';
+  var tzLabel = '', tzCityKey = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
+    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); tzCityKey = _TZ_CITIES[i].key; break; }
   }
   // If the user searched a specific city whose timezone matches, use their city name
   var storedLoc = _getLocation();
   if (storedLoc.name && (!_almSelectedTz || _almSelectedTz === tz)) {
     var cityOnly = storedLoc.name.split(',')[0].trim();
-    if (cityOnly) tzLabel = cityOnly;
+    if (cityOnly) { if (cityOnly !== tzLabel) tzCityKey = ''; tzLabel = cityOnly; }
   }
 
   // Get time in selected timezone (the clock ticks on the second; see _startTzClock)
@@ -4322,6 +4322,9 @@ function _drawTzClock(now) {
     // Only a real abbreviation (PST, JST, CET) earns a slot next to the city
     // name; a GMT/UTC offset alias (GMT, GMT+4, UTC-5) says nothing new.
     if (/^(GMT|UTC)([+−-]|$)/.test(tzAbbr)) tzAbbr = '';
+    // The city's name links its article when it is a curated city's own name; the
+    // place's name ("Mumbai, Maharashtra" trimmed) links only when it is that city.
+    var tzNameHtml = (tzLabel ? (tzCityKey ? _alLink('city:' + tzCityKey, _almEsc(tzLabel)) : _almEsc(tzLabel)) : '') + (tzAbbr ? ' \u00b7 ' + _almEsc(tzAbbr) : '');
     // Only rebuild the shell when needed; the flip card ticks per second
     var secEl = document.getElementById('alm-clock-sec');
     if (!secEl || labelEl.dataset.tz !== tz) {
@@ -4331,7 +4334,7 @@ function _drawTzClock(now) {
           '<span class="alm-clock-sec" id="alm-clock-sec"></span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
-        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
+        '<div class="alm-clock-sub"><span id="alm-clock-tzname" data-h="' + _almEsc(tzNameHtml) + '">' + tzNameHtml + '</span></div>';
       _rollDigitStr(document.getElementById('alm-clock-hm'), hm);
       _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     } else {
@@ -4341,8 +4344,7 @@ function _drawTzClock(now) {
       var dEl = document.getElementById('alm-clock-date');
       if (dEl && dEl.textContent !== dateStr) dEl.textContent = dateStr;
       var tnEl = document.getElementById('alm-clock-tzname');
-      var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
-      if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
+      if (tnEl && tnEl.getAttribute('data-h') !== tzNameHtml) { tnEl.setAttribute('data-h', tzNameHtml); tnEl.innerHTML = tzNameHtml; }
       _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     }
   }

@@ -1741,9 +1741,11 @@ function _skyBodyKey(b) {
   if (b.type === 'planet') return 'planet:' + b.name.toLowerCase();
   if (b.type === 'star') return _starLinkKey(b.idx);
   if (b.type === 'iss') return 'term:iss';
-  if (b.type === 'meteor') return 'term:meteor_shower';
-  return null;
+  return SKY_LIFE_KEYS[b.type] || null;
 }
+// What lives on the horizon and in the air, and its article (almanac-links.js SKY).
+var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', birds: 'sky:birds',
+  meteor: 'sky:meteor', aurora: 'sky:aurora' };
 var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
   boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
