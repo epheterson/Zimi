@@ -69,6 +69,11 @@ def test_the_almanac_header_clears_the_top_bar(browser, served, prelude):
     ctx, pg = _open_almanac_after(browser, served, prelude)
     try:
         g = pg.evaluate(GEOMETRY)
+        for _ in range(40):   # the view slides down as the header comes back (a 0.2 s transition)
+            if g["view"] >= g["bar"] - 0.5 or g["away"]:
+                break
+            pg.wait_for_timeout(250)
+            g = pg.evaluate(GEOMETRY)
         assert not g["away"], g
         assert g["view"] >= g["bar"] - 0.5, g  # the Almanac starts under the bar
         assert g["date"] >= g["bar"] - 0.5, g  # and its date is not behind it

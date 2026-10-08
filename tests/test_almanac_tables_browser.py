@@ -593,7 +593,8 @@ def test_back_returns_to_the_almanac_where_it_was(page):
 
 def test_add_a_clock_from_a_searchable_sheet(page):
     """+ Add a clock opens a sheet: a search on top, every zone below with its
-    time now; typing filters, a tap adds the clock."""
+    time now (the 28 world clocks are already shown, so the sheet offers the
+    rest); typing filters, a tap adds the clock."""
     page.evaluate(
         "() => { const r = document.getElementById('alm-ref'); if (r) _tbClose(); }"
     )
@@ -607,18 +608,18 @@ def test_add_a_clock_from_a_searchable_sheet(page):
     assert n_all > 60, n_all
     sub = page.inner_text(".alm-clock-sheet .tk-opt .tk-opt-sub >> nth=0")
     assert "UTC" in sub and ":" in sub, sub
-    page.fill(".alm-clock-sheet .tk-search", "kathm")
+    page.fill(".alm-clock-sheet .tk-search", "kabul")
     assert (
         page.evaluate("document.querySelectorAll('.alm-clock-sheet .tk-opt').length")
         == 1
     )
     page.click(".alm-clock-sheet .tk-opt")
     assert not page.evaluate("!!document.querySelector('.alm-clock-sheet, .tk-scrim')")
-    assert "Asia/Kathmandu" in page.evaluate(
+    assert "Asia/Kabul" in page.evaluate(
         "localStorage.getItem('zimi_almanac_clocks')"
     )
-    assert "Kathmandu" in page.inner_text("#almanac-tz-pills")
-    page.evaluate("_almClockRemove('Asia/Kathmandu')")
+    assert "Kabul" in page.inner_text("#almanac-tz-pills")
+    page.evaluate("_almClockRemove('Asia/Kabul')")
     assert not page.errors, page.errors
 
 
