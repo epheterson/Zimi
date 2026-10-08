@@ -184,6 +184,14 @@ Eric: "Using language selector should affect the content like in dictionary if a
 - Tables that show how to use them (Eric: "like a lil sundial visualizer in that page that can print out too"): a visualization per table, printable.
 - The live sky by season (Eric, 2026-10-03: "Where do we say the season and maybe the live sky should change by season"): the season is said in the live sky's caption from 1.13.0; the scene itself (bare trees, snow, long summer grass, by hemisphere and latitude) is parked.
 
+## From 1.13.1 (Eric, 2026-10-08)
+
+- Places across the whole app. "Someday we can align on destinations travel and places across the whole app and do another pass to link them somewhere then." Maps, the Almanac's 494 cities, the chosen place, travel guides (Wikivoyage) and wiki articles agree on one notion of a place and link to it. The Almanac Q-ID pass left its cities unlinked for this (docs/plans/2026-10-08-almanac-qids.md).
+- Signed-in capture: a remote browser view in Create, the person signs in, that session drives one capture (1.14 lead candidate; docs/plans/2026-10-07-capture-options.md). Cookies are the stopgap.
+- Parallel fetching in the builtin crawler: `--workers` is zimit-only until the crawl keeps one politeness clock, robots policy and exact page and byte budgets across workers.
+- Deploy skew: a stale cached shell with a freshly served lazy module (create.js) shows raw string keys until a reload. The server ignores the `?v=` hash it rewrote, so an old shell gets new code with old strings.
+- Fast-engine live picture: honors the user agent, not phone mode, and still loads media the capture leaves out.
+
 ## Killed, and staying killed
 
 - Article Map (v1.6, removed).
