@@ -50,6 +50,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi import capturegate as _gate
 from zimi import netguard as _netguard
 from zimi import folderfiles as _folderfiles
 from zimi import nautilus as _nautilus
@@ -1001,9 +1002,18 @@ def _folder_progress(progress, n_done, n_total, zim_path):
         progress(f"packaged {n_done}/{n_total} {zim_path}")
 
 
+def _stored_detail(key):
+    """The stored default for one of a ZIM's details or its language, or None.
+    Last in line before the factory: a capture's own value and a folder's
+    zimi.txt both come first."""
+    from zimi import crawler
+
+    return crawler.stored_defaults().get(key)
+
+
 def _folder_language_of(language, files, meta):
-    """The language: named by the caller, else the sidecar, else read off
-    the HTML (folder_language)."""
+    """The language: named by the caller, else the sidecar, else the stored
+    default, else read off the HTML (folder_language)."""
     if requested_language(language):
         return folder_language(language, files)
     if meta.get("language"):
@@ -1013,6 +1023,9 @@ def _folder_language_of(language, files, meta):
             log.info(
                 "zimi.txt names a language Zimi does not know: %r", meta["language"]
             )
+    stored = _stored_detail("language")
+    if stored:
+        return normalize_language(stored), "default"
     return folder_language(language, files)
 
 
@@ -1041,6 +1054,8 @@ def create_folder_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name=None,
+    publisher=None,
+    tags=None,
     register=False,
     only=None,
     progress=None,
@@ -1055,7 +1070,8 @@ def create_folder_zim(
     ``only`` is a subset: paths relative to the folder, files or folders,
     and nothing else is read. The folder's ``zimi.txt`` and each file's
     sidecar (zimi.folderfiles) fill in what the arguments leave unsaid:
-    an explicit title, description, language or creator wins. ``exclude``
+    an explicit title, description, language, creator, publisher or tag list
+    wins, then the sidecar, then the stored default. ``exclude``
     is folders never read (the web passes Zimi's own data folder)."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
@@ -1226,15 +1242,20 @@ def create_folder_zim(
             or meta.get("description")
             or f"{summary} packaged by Zimi",
             language=language,
-            creator_name=creator_name or meta.get("creator") or "Zimi",
-            publisher=meta.get("publisher"),
+            creator_name=creator_name
+            or meta.get("creator")
+            or _stored_detail("creator")
+            or "Zimi",
+            publisher=publisher or meta.get("publisher") or _stored_detail("publisher"),
             # The folder's NAME, never its path — see the privacy rule in
             # zimwriter's provenance block.
             source=base_name,
             # Repackaging the same folder next month is a new EDITION of this
             # ZIM, so the Name comes from the folder, never from the date.
             name=zim_name(base_name, language),
-            tags=media_tags(mimetypes) + _folderfiles.tags_of(meta.get("tags")),
+            tags=media_tags(mimetypes)
+            + _folderfiles.tags_of(meta.get("tags"))
+            + list(tags or ()),
             illustration=_folder_icon(folder, meta),
             history=history_record(
                 "created",
@@ -1346,13 +1367,30 @@ class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class _CaptureCookieScope(urllib.request.BaseHandler):
+    """Sets the capture's cookie on every request an opener sends, redirect
+    hops included, and only on the ones going to the seed's host (or a
+    subdomain): a redirect to another origin is asked without it."""
+
+    def _scope(self, req):
+        return _gate.apply_cookie(req)
+
+    http_request = https_request = _scope
+
+
 def urlopen_guarded(req, timeout):
     """``urllib.request.urlopen``, held to the private-address rule when one is
-    in force: the address asked for and every redirect hop."""
-    if _PRIVATE_GUARD.get() is None:
+    in force (the address asked for and every redirect hop) and carrying the
+    capture's cookie to the one host it belongs to."""
+    guarded = _PRIVATE_GUARD.get() is not None
+    handlers = ([_GuardedRedirect] if guarded else []) + (
+        [_CaptureCookieScope] if _gate.current_cookies() else []
+    )
+    if not handlers:
         return urllib.request.urlopen(req, timeout=timeout)
-    check_public(req.full_url)
-    return urllib.request.build_opener(_GuardedRedirect).open(req, timeout=timeout)
+    if guarded:
+        check_public(req.full_url)
+    return urllib.request.build_opener(*handlers).open(req, timeout=timeout)
 
 
 def zimi_user_agent():
@@ -1380,10 +1418,19 @@ def _user_agent():
 
 def with_capture_identity(fn):
     """Run a capture with the ``user_agent`` and ``mobile`` it was given as the
-    identity of its plain-HTTP fetches, undone when it returns or raises."""
+    identity of its plain-HTTP fetches, its ``cookies`` bound to the seed's
+    host and the kinds of file it ``skip_types`` and ``max_file_bytes`` leave
+    out, all undone when it returns or raises."""
 
     @functools.wraps(fn)
     def run(*args, **kwargs):
+        seed = args[0] if args else kwargs.get("url")
+        try:
+            kinds = _gate.parse_skip_types(kwargs.get("skip_types"))
+            cookies = _gate.set_cookies(kwargs.get("cookies"), seed)
+        except _gate.GateError as e:
+            raise CreateError(str(e))
+        leave_out = _gate.set_leave_out(kinds, kwargs.get("max_file_bytes"))
         token = _CAPTURE_USER_AGENT.set(
             capture_user_agent(kwargs.get("user_agent"), kwargs.get("mobile"))
         )
@@ -1391,6 +1438,8 @@ def with_capture_identity(fn):
             return fn(*args, **kwargs)
         finally:
             _CAPTURE_USER_AGENT.reset(token)
+            _gate.reset_leave_out(leave_out)
+            _gate.reset_cookies(cookies)
 
     return run
 
@@ -1404,7 +1453,9 @@ def _fetch_page(url, *, timeout, max_redirects):
         if scheme not in ("http", "https"):
             raise CreateError(f"unsupported URL scheme in redirect chain: {url}")
         check_public(url)
-        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+        req = _gate.apply_cookie(
+            urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+        )
         opener = urllib.request.build_opener(_NoRedirect)
         try:
             resp = opener.open(req, timeout=timeout)
@@ -1709,8 +1760,11 @@ def _http_asset_reader(origin, variants, timeout):
     import zimi.zimwriter as _zw
 
     def read(_label, resolved):
-        cap = _zw._MAX_ASSET_BYTES
+        leave = _gate.current_leave_out()
+        cap = leave.cap(_zw._MAX_ASSET_BYTES) if leave else _zw._MAX_ASSET_BYTES
         url = origin + "/" + resolved
+        if leave and leave.skips_url(url):
+            return None
         try:
             # Request() inside the try, and the same three exception families
             # the remote-asset reader above catches, for the same reason it
@@ -1723,6 +1777,12 @@ def _http_asset_reader(origin, variants, timeout):
                 _request_safe(url), headers={"User-Agent": _user_agent()}
             )
             with _urlopen_retry(req, timeout) as resp:
+                if leave and leave.skips_response(
+                    resp.headers.get("Content-Type"),
+                    resp.headers.get("Content-Length"),
+                    url,
+                ):
+                    return None
                 data = resp.read(cap + 1)
                 mime = (
                     (resp.headers.get("Content-Type") or "application/octet-stream")
@@ -1733,6 +1793,8 @@ def _http_asset_reader(origin, variants, timeout):
             log.debug("asset fetch failed %s: %s", url, e)
             return None
         if len(data) > cap:
+            if leave:
+                leave.skips_size(len(data), url)
             return None
         if "css" in mime or resolved.lower().endswith(".css"):
             data = _relativize_css(
@@ -1765,7 +1827,10 @@ def _http_remote_reader(timeout):
     import zimi.zimwriter as _zw
 
     def read(url):
-        cap = _zw._MAX_ASSET_BYTES
+        leave = _gate.current_leave_out()
+        cap = leave.cap(_zw._MAX_ASSET_BYTES) if leave else _zw._MAX_ASSET_BYTES
+        if leave and leave.skips_url(url):
+            return None
         try:
             # A URL that cannot be requested at all raises something that is
             # NOT an OSError, and so used to travel straight out of here and
@@ -1797,11 +1862,17 @@ def _http_remote_reader(timeout):
                 # page — not the image the tag promised. Drop it before reading.
                 if mime and not _REMOTE_MEDIA_MIME_RE.match(mime):
                     return None
+                if leave and leave.skips_response(
+                    mime, resp.headers.get("Content-Length"), url
+                ):
+                    return None
                 data = resp.read(cap + 1)
         except (OSError, ValueError, http.client.HTTPException) as e:
             log.debug("remote asset fetch failed %s: %s", url, e)
             return None
         if not data or len(data) > cap:
+            if leave and data:
+                leave.skips_size(len(data), url)
             return None
         return data, mime or "application/octet-stream"
 
@@ -2777,6 +2848,8 @@ def create_page_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
@@ -2826,6 +2899,8 @@ def create_page_zim(
             description=description,
             language=language,
             creator_name=creator_name,
+            publisher=publisher,
+            tags=tags,
             register=register,
             progress=progress,
         )
@@ -2840,6 +2915,8 @@ def create_page_zim(
             description=description,
             language=language,
             creator_name=creator_name,
+            publisher=publisher,
+            tags=tags,
             block_ads=block_ads,
             capture_variants=capture_variants,
             register=register,
@@ -2910,11 +2987,12 @@ def create_page_zim(
                 or f"One page captured from {parsed.netloc} by Zimi",
                 language=language,
                 creator_name=creator_name,
+                publisher=publisher,
                 source=final_url,
                 # The whole URL: two pages from one site are two ZIMs, and
                 # recapturing either one is a new edition of that one.
                 name=zim_name(final_url, language),
-                tags=media_tags(capture.mimetypes),
+                tags=media_tags(capture.mimetypes) + list(tags or ()),
                 illustration=site_illustration(final_url, timeout, raw_page),
                 history=history_record(
                     "created",
@@ -3029,6 +3107,8 @@ def create_pages_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     timeout=DEFAULT_FETCH_TIMEOUT,
     max_redirects=DEFAULT_MAX_REDIRECTS,
     engine=DEFAULT_ENGINE,
@@ -3090,6 +3170,8 @@ def create_pages_zim(
             description=description,
             language=language,
             creator_name=creator_name,
+            publisher=publisher,
+            tags=tags,
             timeout=timeout,
             max_redirects=max_redirects,
             engine=engine,
@@ -3233,9 +3315,10 @@ def create_pages_zim(
                 or f"{_plural(len(entries), 'page')} captured from the web by Zimi",
                 language=language,
                 creator_name=creator_name,
+                publisher=publisher,
                 source=entries[0]["final_url"],
                 name=zim_name(_pages_scope(entries), language),
-                tags=media_tags(capture.mimetypes),
+                tags=media_tags(capture.mimetypes) + list(tags or ()),
                 illustration=site_illustration(
                     entries[0]["final_url"], timeout, entries[0].get("page")
                 ),
@@ -3494,7 +3577,7 @@ def _crawl_flag_state(args):
     and a new flag becomes one row rather than three."""
     return {
         "--site": bool(getattr(args, "site", False)),
-        "--engine": getattr(args, "engine", "builtin") != "builtin",
+        "--engine": (getattr(args, "engine", None) or DEFAULT_ENGINE) != DEFAULT_ENGINE,
         "--max-pages": getattr(args, "max_pages", None) is not None,
         "--max-depth": getattr(args, "max_depth", None) is not None,
         "--scope": getattr(args, "scope", None) is not None,
@@ -3506,6 +3589,10 @@ def _crawl_flag_state(args):
         "--user-agent": getattr(args, "user_agent", None) is not None,
         "--mobile": getattr(args, "mobile", None) is not None,
         "--page-timeout": getattr(args, "page_timeout", None) is not None,
+        "--cookies": getattr(args, "cookies", None) is not None,
+        "--skip": getattr(args, "skip_types", None) is not None,
+        "--max-file-size": getattr(args, "max_file_bytes", None) is not None,
+        "--workers": getattr(args, "workers", None) is not None,
         "--max-bytes": getattr(args, "max_bytes", None) is not None,
         "--delay": getattr(args, "delay", None) is not None,
         "--ignore-robots": bool(getattr(args, "ignore_robots", False)),
@@ -3531,7 +3618,7 @@ def _build_pages_from_args(args, sources):
             "several sources means several web pages in one ZIM, so every one "
             f"of them must be a URL — {not_urls[0]} is not"
         )
-    engine = getattr(args, "engine", DEFAULT_ENGINE)
+    engine = getattr(args, "engine", None) or DEFAULT_ENGINE
     given = _crawl_flag_state(args)
     if engine in CAPTURE_ENGINES:
         # Which ENGINE captures a page is not a crawl flag — it is the one
@@ -3549,15 +3636,58 @@ def _build_pages_from_args(args, sources):
     return create_pages_zim(
         sources,
         title=args.title,
-        description=args.description,
         language=args.language,
-        creator_name=args.creator,
         out_path=args.out,
         engine=engine,
         block_ads=_block_ads_from_args(args, engine),
         register=not args.out,
         progress=_note,
+        **_detail_kwargs(args),
     )
+
+
+def _detail_kwargs(args):
+    """The ZIM's details the command line settled on (see
+    ``_apply_cli_defaults``), as keyword arguments."""
+    from zimi import crawler
+
+    return crawler.detail_kwargs({k: getattr(args, k, None) for k in crawler.DETAIL_KEYS})
+
+
+def _apply_cli_defaults(args, sources, folder):
+    """Settle what the command line left unsaid: the ZIM's details, the engine
+    and the language each take the stored default, then the factory. Checked by
+    the same table as every other surface, so a description that is too long
+    or a tag list that is malformed is refused before anything starts.
+
+    A folder reads its stored author and publisher itself, after its
+    zimi.txt, and its language likewise."""
+    from zimi import crawler
+
+    details = crawler.zim_details(
+        {k: getattr(args, k, None) for k in crawler.DETAIL_KEYS}, stored=not folder
+    )
+    for key in crawler.DETAIL_KEYS:
+        setattr(args, key, details.get(key))
+    if folder:
+        return
+    if getattr(args, "language", None) is None:
+        args.language = crawler.stored_defaults().get("language")
+
+
+def _apply_engine_default(args, sources):
+    """The engine the command line left unsaid: the stored default, else the
+    fast one. Settled only once a video URL has had its say, because a typed
+    --engine is crawl intent that beats a video extractor and a stored default
+    is not."""
+    from zimi import crawler
+
+    if getattr(args, "engine", None) is None:
+        engine = crawler.stored_defaults().get("engine")
+        # Several pages cannot go to zimit, so a stored zimit is not theirs.
+        if engine == "zimit" and len(sources) > 1:
+            engine = None
+        args.engine = engine or DEFAULT_ENGINE
 
 
 def _block_ads_from_args(args, engine):
@@ -3582,7 +3712,7 @@ def _build_from_args(args, src, is_url):
     """Pick the capture and run it. Folder, single page, bounded site crawl,
     or the zimit container — the flags that only make sense for one of those
     are refused here rather than silently ignored."""
-    engine = getattr(args, "engine", "builtin")
+    engine = getattr(args, "engine", None) or DEFAULT_ENGINE
     site = bool(getattr(args, "site", False))
     crawl_flags = _crawl_flag_state(args)
 
@@ -3598,26 +3728,24 @@ def _build_from_args(args, src, is_url):
         return create_folder_zim(
             src,
             title=args.title,
-            description=args.description,
             language=args.language,
-            # The flag's default is "Zimi"; leaving it there lets a zimi.txt
-            # name the creator, and anything typed wins over the file.
-            creator_name=None if args.creator in (None, "Zimi") else args.creator,
+            # Nothing typed is None, which lets a zimi.txt name the author and
+            # publisher; anything typed wins over the file.
             out_path=args.out,
             register=not args.out,
             only=getattr(args, "only", None),
             progress=_note,
+            **_detail_kwargs(args),
         )
 
     from zimi import crawler
 
     common: "dict[str, Any]" = dict(
         title=args.title,
-        description=args.description,
         language=args.language,
-        creator_name=args.creator,
         out_path=args.out,
         register=not args.out,
+        **_detail_kwargs(args),
     )
     builtin_only = ("--max-bytes", "--delay", "--ignore-robots")
     # Crawl shape every engine takes, zimit included: browsertrix's own options.
@@ -3778,6 +3906,11 @@ def cli_create(args):
                 print("  registered in the library — no rescan needed")
             return
     is_url = _is_http_url(src)
+    try:
+        _apply_cli_defaults(args, sources, folder=not is_url)
+    except CreateError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
     if is_url and len(sources) == 1:
         from zimi import video as _video
 
@@ -3804,6 +3937,7 @@ def cli_create(args):
             else:
                 _video.print_video_summary(info, args)
                 return
+    _apply_engine_default(args, sources)
     try:
         info = (
             _build_pages_from_args(args, sources)

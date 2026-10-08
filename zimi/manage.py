@@ -2227,6 +2227,9 @@ def activity_payload(type_filter=None, actor_filter=None):
 # picker over the create root like import's: no path is ever typed, and
 # every path the page sends is a relative one checked to stay inside.
 CREATE_MODES = ("folder", "page", "site", "video", "import", "reddit")
+# The modes that write a ZIM of their own and so take its description, author,
+# publisher and tags.
+CREATE_DETAIL_MODES = ("folder", "page", "site", "video", "import")
 # Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
 # name a person may ASK for, which is a wider set than the ones that build a
 # capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
@@ -3145,13 +3148,19 @@ def _create_validate(data):
         opts["urls"] = page_urls
     if mode == "folder":
         opts["only"] = only
+    if mode in CREATE_DETAIL_MODES:
+        opts.update(_create_details(data, stored=mode != "folder"))
     if mode in ("folder", "page", "site", "video"):
-        opts["language"] = _create_language(data.get("language"))
+        # A folder reads the stored language itself, after its zimi.txt.
+        opts["language"] = _create_language(
+            data.get("language")
+            or (None if mode == "folder" else _create_default("language", None))
+        )
     if mode in ("page", "site"):
         # The two modes that capture a web page get to choose HOW. Refused
         # rather than clamped, like every other named value: silently capturing
         # the other way is the one outcome nobody asked for.
-        opts["engine"] = _create_engine(data.get("engine"))
+        opts["engine"] = _create_engine(data.get("engine")) or _create_stored_engine()
         # Ad and tracker blocking, but only for an engine that can do it. A
         # form left open while the engine radio moved back to the fast one can
         # send this; DROPPING it there is right where the CLI's refusal is
@@ -3291,16 +3300,50 @@ def _create_scope(data):
 
 def _create_capture_options(data, engine):
     """The capture options the table owns (time limit, sitemap, user agent,
-    mobile, page timeout), checked now like the scope is. An option the chosen
-    engine cannot honor is dropped, as a stale block-ads box is: the form may
-    have been filled before the engine picker moved."""
+    mobile, page timeout, cookies, what to leave out, workers), checked now
+    like the scope is. An option the chosen engine cannot honor is dropped, as
+    a stale block-ads box is: the form may have been filled before the engine
+    picker moved. Cookies are the exception: dropping them would run the
+    capture signed out, which nobody who typed them asked for."""
     from zimi.crawler import capture_options
     from zimi.creator import CreateError
 
     try:
-        return capture_options(data, engine, strict=False)
+        options = capture_options(data, engine, strict=False)
+        if data.get("cookies") and "cookies" not in options:
+            capture_options({"cookies": data["cookies"]}, engine, strict=True)
+        return options
     except CreateError as e:
         raise ValueError(str(e))
+
+
+def _create_details(data, *, stored):
+    """The ZIM's own description, author, publisher and tags, checked now:
+    the request's value, then the stored default for author and publisher."""
+    from zimi.crawler import DETAIL_KEYS, zim_details
+    from zimi.creator import CreateError
+
+    try:
+        return zim_details({k: data.get(k) for k in DETAIL_KEYS}, stored=stored)
+    except CreateError as e:
+        raise ValueError(str(e))
+
+
+def _create_stored_engine():
+    """The engine an admin stored as the default, when this machine can run it
+    (an engine that has since gone missing is the fast one, not a refusal of
+    every capture that said nothing)."""
+    try:
+        return _create_engine(_create_default("engine", None))
+    except ValueError:
+        return None
+
+
+def _create_detail_kwargs(opts):
+    """The ZIM's details in ``opts`` as the keyword arguments of the engines."""
+    from zimi.crawler import detail_kwargs
+
+    return detail_kwargs(opts)
 
 
 def _create_float(value, low, high):
@@ -3469,6 +3512,7 @@ def _create_run(job, opts):
             **_create_kwargs(
                 opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
             ),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "site":
         from zimi.crawler import _StopFlag, create_site_zim
@@ -3508,7 +3552,12 @@ def _create_run(job, opts):
                 "user_agent",
                 "mobile",
                 "page_timeout",
+                "cookies",
+                "skip_types",
+                "max_file_bytes",
+                "workers",
             ),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "video":
         from zimi.video import create_video_zim
@@ -3521,6 +3570,7 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "reddit":
         from zimi.crawler import _StopFlag
@@ -3549,6 +3599,7 @@ def _create_run(job, opts):
             only=opts.get("only") or None,
             exclude=_create_folder_exclude(),
             **_create_kwargs(opts, "language"),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "import":
         from zimi.importer import import_archive
@@ -3559,6 +3610,7 @@ def _create_run(job, opts):
             out_dir=_create_out_dir(),
             register=True,
             sink=job.note,
+            **_create_detail_kwargs(opts),
         )
     # Only these reach here; validation refuses everything else. A job that
     # arrived with any other mode is a bug in the caller, not an input to run.
@@ -3844,7 +3896,9 @@ def _create_start(data, actor=None):
     # was SUBMITTED, so a rerun is this job with its bounds lifted. Not the
     # validated opts: those are the engine's spelling (``fmt`` for the form's
     # ``format``), and a rerun of them lost the chosen video quality.
-    job.request = dict(data)
+    from zimi.crawler import redacted_request
+
+    job.request = redacted_request(data)
     if actor:
         job.actor = actor
     position = 0

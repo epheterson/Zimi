@@ -4817,7 +4817,20 @@ def main():
         "when the source declares nothing",
     )
     p_create.add_argument(
-        "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
+        "--creator",
+        default=None,
+        help="Author metadata (default: the stored default, else Zimi)",
+    )
+    p_create.add_argument(
+        "--publisher",
+        default=None,
+        help="Publisher metadata (default: the stored default, else Zimi)",
+    )
+    p_create.add_argument(
+        "--tags",
+        default=None,
+        metavar="A;B",
+        help="Tags added to the ZIM's own, separated by semicolons",
     )
     p_create.add_argument(
         "--only",
@@ -4852,8 +4865,9 @@ def main():
     p_create.add_argument(
         "--engine",
         choices=("builtin", "rendered", "alive", "singlefile", "zimit"),
-        default="builtin",
-        help="Capture engine: builtin (no JavaScript, no install), rendered "
+        default=None,
+        help="Capture engine (default: the stored default, else builtin): "
+        "builtin (no JavaScript, no install), rendered "
         "(runs a headless Chromium in this process — needs "
         "`pip install 'zimi[browser]'` and `playwright install chromium`), "
         "alive (records the browser session to a web archive and converts it "
@@ -4970,6 +4984,37 @@ def main():
         help="How long a browser engine waits for one page (--site only; "
         "--engine rendered, alive or zimit)",
     )
+    p_create.add_argument(
+        "--cookies",
+        default=None,
+        metavar="COOKIES",
+        help="Cookies to send, as a Cookie header copied from your browser's "
+        "developer tools: \"a=1; b=2\". Sent only to the page's own host and its "
+        "subdomains, never stored or written down (--site only; not zimit or "
+        "singlefile)",
+    )
+    p_create.add_argument(
+        "--skip",
+        dest="skip_types",
+        default=None,
+        metavar="KINDS",
+        help="Kinds of file to leave out, separated by commas: "
+        "video,audio,pdf,archives,images (--site only; not singlefile)",
+    )
+    p_create.add_argument(
+        "--max-file-size",
+        dest="max_file_bytes",
+        default=None,
+        metavar="SIZE",
+        help="Leave out any one file larger than this, e.g. 50M (--site only; "
+        "not singlefile)",
+    )
+    p_create.add_argument(
+        "--workers",
+        default=None,
+        metavar="N",
+        help="Pages fetched at once, 1 to 16 (--site only; --engine zimit)",
+    )
     # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
     p_create.add_argument(
         "--format",
@@ -5030,6 +5075,11 @@ def main():
     )
     p_import.add_argument("--title", default=None, help="ZIM title")
     p_import.add_argument("--description", default=None, help="ZIM description")
+    p_import.add_argument("--creator", default=None, help="Author metadata")
+    p_import.add_argument("--publisher", default=None, help="Publisher metadata")
+    p_import.add_argument(
+        "--tags", default=None, metavar="A;B", help="Tags, separated by semicolons"
+    )
     p_import.add_argument(
         "--out",
         default=None,
