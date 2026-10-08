@@ -152,11 +152,13 @@ def test_the_cookie_scope_is_the_seeds_host_and_its_subdomains():
 def test_a_browser_gets_the_cookies_bound_to_the_seeds_host():
     named = gate.CaptureCookies("a=1; b=2", "https://docs.example.org/x").for_browser()
     assert named == [
-        {"name": "a", "value": "1", "domain": ".docs.example.org", "path": "/"},
-        {"name": "b", "value": "2", "domain": ".docs.example.org", "path": "/"},
+        {"name": n, "value": v, "domain": ".docs.example.org", "path": "/", "secure": True}
+        for n, v in (("a", "1"), ("b", "2"))
     ]
     local = gate.CaptureCookies("a=1", "http://127.0.0.1:8894/x").for_browser()
-    assert local == [{"name": "a", "value": "1", "domain": "127.0.0.1", "path": "/"}]
+    assert local == [
+        {"name": "a", "value": "1", "domain": "127.0.0.1", "path": "/", "secure": False}
+    ]
 
 
 def _files_under(root):
@@ -621,7 +623,7 @@ def test_cli_flags_reach_zimit(zimit_docker, tmp_path):
         user_agent=None,
         mobile=None,
         page_timeout=None,
-        cookies=HEADER,
+        cookies=None,
         skip_types="pdf",
         max_file_bytes="5M",
         workers="2",
@@ -634,3 +636,134 @@ def test_cli_flags_reach_zimit(zimit_docker, tmp_path):
         and cmd[cmd.index("--tags") + 1] == "x"
     )
     assert SESSION not in " ".join(cmd)
+
+
+def test_zimit_refuses_cookies_rather_than_run_signed_out(zimit_docker, tmp_path):
+    with pytest.raises(
+        creator.CreateError,
+        match="--cookies applies to the fast, rendered and alive engines, which zimit is not",
+    ):
+        crawler.capture_options({"cookies": HEADER}, "zimit", strict=True)
+    args = argparse.Namespace(
+        site=True, engine="zimit", title=None, description=None, language="eng",
+        creator=None, out=str(tmp_path / "x.zim"), max_pages=None, max_depth=None,
+        scope=None, include=None, exclude=None, extra_hops=None, time_limit=None,
+        sitemap=None, user_agent=None, mobile=None, page_timeout=None, cookies=HEADER,
+        skip_types=None, max_file_bytes=None, workers=None,
+    )
+    with pytest.raises(creator.CreateError, match="which zimit is not") as caught:
+        creator._build_from_args(args, "https://example.com/", True)
+    assert SESSION not in str(caught.value) and not zimit_docker["runs"]
+    with pytest.raises(ValueError, match="which zimit is not"):
+        manage._create_capture_options({"cookies": HEADER}, "zimit")
+
+
+def test_cookies_do_not_go_down_from_https_to_http():
+    jar = gate.CaptureCookies("a=1", "https://docs.example.org/")
+    assert jar.header_for("https://docs.example.org/x") == "a=1"
+    assert jar.header_for("http://docs.example.org/x") is None
+    assert jar.header_for("http://a.docs.example.org/x") is None
+    plain = gate.CaptureCookies("a=1", "http://docs.example.org/")
+    assert plain.header_for("http://docs.example.org/") == "a=1"
+    assert plain.header_for("https://docs.example.org/") == "a=1"
+
+
+def test_a_browser_gets_prefixed_cookies_in_the_form_it_demands():
+    jar = gate.CaptureCookies(
+        "__Host-id=1; __Secure-tok=2; plain=3", "https://docs.example.org/x/y"
+    )
+    host, secure, plain = jar.for_browser()
+    assert host == {
+        "name": "__Host-id", "value": "1", "url": "https://docs.example.org/", "secure": True,
+    }
+    assert secure["secure"] is True and secure["domain"] == ".docs.example.org"
+    assert plain == {
+        "name": "plain", "value": "3", "domain": ".docs.example.org", "path": "/", "secure": True,
+    }
+    http = gate.CaptureCookies("__Secure-t=2; p=3", "http://127.0.0.1:8894/").for_browser()
+    assert http[0]["secure"] is True and http[1]["secure"] is False
+
+
+@needs_browser
+def test_a_browser_that_refuses_one_cookie_still_captures(fixture_server, tmp_path):
+    notes = []
+    # __Host- cookies cannot be set on a plain-http seed; the rest still go.
+    info = _site(
+        tmp_path, "/deep/start.html", engine="rendered", max_pages=1,
+        cookies="__Host-id=1; ok=" + SESSION, progress=notes.append,
+    )
+    assert info["pages"] == 1
+    assert any(isinstance(n, str) and "took 1 of 2 cookies" in n for n in notes)
+    assert SESSION not in "\n".join(map(str, notes))
+    assert any(c and "ok=" + SESSION in c for h, _p, c in COOKIES if h == "127.0.0.1")
+
+
+def _alive_session(**rules):
+    from zimi.renderer import RenderedSession
+
+    written = []
+
+    class _Recorder:
+        def write_exchange(self, url, **kw):
+            written.append(url)
+            return "response"
+
+    session = RenderedSession.__new__(RenderedSession)
+    session._recorder = _Recorder()
+    session._context = None
+    session._budget = None
+    session.recorded = 0
+    session._archived = set()
+    session._landed = None
+    session._note = lambda _m: None
+    session._leave_out = gate.LeaveOut(**rules)
+    return session, written
+
+
+def _response(url, kind, ctype, size, body=b"x" * 50):
+    class _Request:
+        resource_type = kind
+        method = "GET"
+        headers = {}
+
+    class _Response:
+        status = 200
+        request = _Request()
+        headers = {"content-type": ctype, "content-length": str(size)}
+
+        def __init__(self):
+            self.url = url
+
+        def body(self):
+            return body
+
+        def all_headers(self):
+            return self.headers
+
+    return _Response()
+
+
+def test_the_alive_recording_never_leaves_a_page_out():
+    session, written = _alive_session(kinds=["pdf", "images"], max_bytes=1000)
+    session._record(
+        [
+            _response("https://h/", "document", "text/html", 5_000_000),
+            _response("https://h/guide.pdf", "document", "text/html", 10),
+            _response("https://h/big.js", "script", "text/javascript", 5_000_000),
+            _response("https://h/pic.png", "image", "image/png", 10),
+        ]
+    )
+    assert written == ["https://h/", "https://h/guide.pdf"]
+    assert session._leave_out.counts == {"too big": 1, "images": 1}
+
+
+def test_the_alive_body_size_check_spares_the_page_too():
+    session, written = _alive_session(max_bytes=100)
+    big = b"x" * 5000
+    session._record(
+        [
+            _response("https://h/", "document", "text/html", 0, body=big),
+            _response("https://h/a.js", "script", "text/javascript", 0, body=big),
+        ]
+    )
+    assert written == ["https://h/"]

@@ -1240,9 +1240,21 @@ class RenderedSession:
         without them: an error from here must not carry a credential."""
         if not self._cookies:
             return
-        try:
-            self._context.add_cookies(self._cookies.for_browser())
-        except Exception:
+        # One at a time: a browser refuses a cookie its rules reject (a
+        # __Host- one on a plain-http seed, say), and one refusal must not
+        # cost the capture the rest. Said without any value.
+        taken = 0
+        for cookie in self._cookies.for_browser():
+            try:
+                self._context.add_cookies([cookie])
+                taken += 1
+            except Exception:
+                log.debug("the browser refused the cookie %r", cookie["name"])
+        if taken < len(self._cookies.for_browser()):
+            self._note(
+                f"note: the browser took {taken} of {len(self._cookies.for_browser())} cookies"
+            )
+        if not taken:
             raise CreateError("the browser would not take those cookies")
 
     def _left_out(self, response, url):
@@ -2156,7 +2168,9 @@ class RenderedSession:
             # skipped for its size or its budget is not one the variant sweep
             # should go and fetch again for the same reasons.
             self._archived.add(url)
-            if self._left_out(response, url):
+            # A page is never left out: the archive needs its documents, and
+            # the leave-out rule is about what a page carries.
+            if kind != "document" and self._left_out(response, url):
                 continue
             if status == 206:
                 # A RANGE. Not the resource — a slice of it, and a browser
@@ -2218,7 +2232,11 @@ class RenderedSession:
                 if len(body) > ALIVE_MAX_RESPONSE_BYTES:
                     log.debug("not archiving %s: %d bytes", url, len(body))
                     continue
-                if self._leave_out is not None and self._leave_out.skips_size(len(body), url):
+                if (
+                    kind != "document"
+                    and self._leave_out is not None
+                    and self._leave_out.skips_size(len(body), url)
+                ):
                     continue
             if self._budget is not None and body and not self._budget.spend(len(body)):
                 log.debug("byte budget spent; not archiving %s", url)

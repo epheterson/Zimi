@@ -90,7 +90,10 @@ class CaptureCookies:
 
     def __init__(self, header, seed_url):
         self._pairs = parse_cookies(header) or []
-        self.host = (urllib.parse.urlsplit(seed_url).hostname or "").lower()
+        seed = urllib.parse.urlsplit(seed_url)
+        self.host = (seed.hostname or "").lower()
+        self._scheme = seed.scheme.lower()
+        self._origin = f"{self._scheme}://{seed.netloc}/"
 
     def __bool__(self):
         return bool(self._pairs and self.host)
@@ -104,7 +107,11 @@ class CaptureCookies:
     def applies_to(self, url):
         parts = urllib.parse.urlsplit(url)
         host = (parts.hostname or "").lower()
-        if parts.scheme.lower() not in ("http", "https") or not host or not self.host:
+        scheme = parts.scheme.lower()
+        if scheme not in ("http", "https") or not host or not self.host:
+            return False
+        # Never down the ladder: a secure seed's cookies do not go out in clear.
+        if self._scheme == "https" and scheme != "https":
             return False
         if host == self.host:
             return True
@@ -117,14 +124,29 @@ class CaptureCookies:
         return "; ".join(f"{n}={v}" for n, v in self._pairs)
 
     def for_browser(self):
-        """The same cookies for a browser context, which does its own matching:
-        a domain cookie (the seed's host and its subdomains) for a name, a
-        host-only one for an address or ``localhost``."""
+        """The same cookies for a browser context, which does its own matching.
+        Ordinarily a domain cookie (the seed's host and its subdomains), or a
+        host-only one for an address or ``localhost``; secure when the seed is
+        https. The prefixes browsers police are given the form they demand:
+        ``__Host-`` is host-only, on the seed's URL, secure; ``__Secure-`` is
+        secure."""
         if not self:
             return []
         wide = not _is_ip(self.host) and "." in self.host
-        scope = {"domain": ("." if wide else "") + self.host, "path": "/"}
-        return [{"name": n, "value": v, **scope} for n, v in self._pairs]
+        secure = self._scheme == "https"
+        out = []
+        for name, value in self._pairs:
+            cookie = {"name": name, "value": value}
+            if name.startswith("__Host-"):
+                cookie.update(url=self._origin, secure=True)
+            else:
+                cookie.update(
+                    domain=("." if wide else "") + self.host,
+                    path="/",
+                    secure=secure or name.startswith("__Secure-"),
+                )
+            out.append(cookie)
+        return out
 
 
 _CAPTURE_COOKIES = contextvars.ContextVar("zimi_capture_cookies", default=None)

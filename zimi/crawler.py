@@ -813,12 +813,12 @@ CAPTURE_OPTIONS = {
             needs="the engines that drive a browser",
         ),
         # A credential: sent to the seed's host and nowhere else, kept nowhere.
-        # zimit's browser runs outside Zimi, so it is told (see
-        # _zimit_capture_args) rather than handed it. SingleFile has no scoped way
-        # to take one.
+        # zimit's browser runs outside Zimi and SingleFile has no scoped way to
+        # take one, so both refuse it: a capture that was meant to be signed in
+        # must not quietly run signed out.
         CaptureOption(
             "cookies", "--cookies", _parse_cookies, lambda v: _gate.COOKIES_SET,
-            engines=("builtin", "rendered", "alive", "zimit"),
+            engines=("builtin", "rendered", "alive"),
             needs="the fast, rendered and alive engines",
             storable=False, never_stored="cookies are a credential and are never stored",
         ),

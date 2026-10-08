@@ -162,9 +162,7 @@ def test_engines_that_cannot_honor_an_option_say_so():
     assert crawler.capture_options({"workers": 4}, "zimit", strict=True) == {
         "workers": 4
     }
-    assert crawler.capture_options(
-        {"cookies": "a=1", "skip_types": "pdf"}, "zimit", strict=True
-    )
+    assert crawler.capture_options({"skip_types": "pdf"}, "zimit", strict=True)
     assert crawler.capture_options({"workers": 4}, "builtin", strict=False) == {}
 
 
