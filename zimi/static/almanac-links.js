@@ -531,7 +531,7 @@
     'shabannight':             { q: 'Q220914', en: "Sha'ban" },
     'tasua':                   { q: 'Q141098', en: "Tasu'a" },
     'islamicrepublic':         { q: 'Q5675742', en: 'Iranian Islamic Republic Day' },
-    'khorduduprising':         { q: 'Q2496712', en: '1963 demonstrations in Iran' },
+    'khordaduprising':         { q: 'Q2496712', en: '1963 demonstrations in Iran' },
     'mehregan':                { q: 'Q749563', en: 'Mehregan' },
     'nowruzii':                { q: 'Q483236', en: 'Nowruz' },
     'nowruziii':               { q: 'Q483236', en: 'Nowruz' },

@@ -1971,7 +1971,7 @@ var TB_CONST_LINKS = {
 var TB_SOURCE_LINKS = {
   'Nautical Almanac': 'term:nautical_almanac', Bowditch: 'org:bowditch', WGS84: 'org:wgs84', IUGG: 'org:iugg',
   CGPM: 'org:cgpm', IAU: 'org:iau', CODATA: 'org:codata', ICAO: 'org:icao', NOAA: 'org:noaa', USNO: 'org:usno',
-  IERS: 'org:iers', Meeus: 'person:meeus', Espenak: 'person:espenak', SI: 'org:si'
+  IERS: 'org:iers', Meeus: 'person:meeus', Espenak: 'person:espenak', SI: 'org:si', UTC: 'term:utc'
 };
 var TB_SOURCE_RE = new RegExp('\\b(' + Object.keys(TB_SOURCE_LINKS).join('|') + ')\\b');
 function _tbSource(text) {
@@ -2552,11 +2552,11 @@ TB_CALC.sight = {
       sub: _arT('lop_answer', { a: lo, b: hi, pos: _arLatText(r.foot.lat) + ' ' + _arLonText(r.foot.lon) }),
       intercept: r.intercept, zn: r.zn,
       working: warn + '<div class="tb-plot">' + _arPlotSvg(c, r) + '</div>' +
-        _tbWorking([[t('ref_hs'), _arDegMin(st.hs)], [t('ref_index_corr'), _arArcmin(st.ie * 60)], [t('ref_dip'), _arArcmin(st.dip * 60)],
-          [t('ref_ha'), _arDegMin(st.ha), 1], [t('ref_refraction'), _arArcmin(st.refr * 60)]]
-          .concat(limbed ? [[t('ref_semi_diameter'), _arArcmin(st.sd * 60)]] : [])
-          .concat([[t('ref_parallax'), _arArcmin(st.pa * 60)], [t('ref_ho'), _arDegMin(r.ho), 1],
-            ['GHA', _arNavGha(r.body.gha).trim()], ['Dec', _arNavDec(r.body.dec)], ['LHA', _arNavGha(r.lha).trim()],
+        _tbWorking([[t('ref_hs'), _arDegMin(st.hs)], [t('ref_index_corr'), _arArcmin(st.ie * 60)], [t('ref_dip'), _arArcmin(st.dip * 60), 0, 'term:horizon'],
+          [t('ref_ha'), _arDegMin(st.ha), 1], [t('ref_refraction'), _arArcmin(st.refr * 60), 0, 'term:atmospheric_refraction']]
+          .concat(limbed ? [[t('ref_semi_diameter'), _arArcmin(st.sd * 60), 0, 'term:angular_diameter']] : [])
+          .concat([[t('ref_parallax'), _arArcmin(st.pa * 60), 0, 'term:parallax'], [t('ref_ho'), _arDegMin(r.ho), 1],
+            ['GHA', _arNavGha(r.body.gha).trim(), 0, 'term:hour_angle'], ['Dec', _arNavDec(r.body.dec), 0, 'term:declination'], ['LHA', _arNavGha(r.lha).trim(), 0, 'term:hour_angle'],
             ['Hc', _arDegMin(r.hc)], ['Zn', Math.round(r.zn) + '°'],
             [t('ref_intercept'), _arNum(Math.abs(r.intercept), 1) + ' ' + t('ref_nm') + ' ' + _arT(r.intercept >= 0 ? 'toward' : 'away'), 1]])) +
         '<h3 class="tb-h3">' + _arTH('noon_sight') + '</h3>' + _tbNote(onMeridian
@@ -2599,7 +2599,7 @@ function _tbSundialSolve(p, k) {
     sub: _tbT('sundial_clock', { time: _tzFmt(p.tz, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(noonClock) }),
     correction: s.correction,
     working: _tbWorking([
-      [t('ref_eot'), _arMinSec(-s.eot)],
+      [t('ref_eot'), _arMinSec(-s.eot), 0, 'term:equation_of_time'],
       [_tbT('lon_corr', { lon: _arLonText(p.lon), m: _arLonText(off / 60 * 15), z: 'UTC' + sign + oh + (om ? ':' + String(om).padStart(2, '0') : '') }), _arMinSec(s.lonCorr)],
       [t('ref_correction'), _arMinSec(s.correction), 1]
     ]) + _tbNote(_tbH('sundial_how'))
@@ -2670,7 +2670,7 @@ TB_CALC.days = {
         [_tbLongDay(k), ''],
         [_tbT('day_of_year'), _tbT('n_of_m', { n: _tbDayOfYear(k), m: _tbYearLength(k.y) })],
         [_tbT('iso_week'), _tbT('week_n', { n: w.week, y: w.year })],
-        [t('ref_jdn'), String(j)]
+        [t('ref_jdn'), String(j), 0, 'term:julian_day']
       ];
     }
     return {
@@ -2744,10 +2744,10 @@ TB_CALC.distance = {
       km: g.km,
       working: _tbWorking([
         [_tbT('gc_dlat'), _arNum(g.dlat, 4) + '°'], [_tbT('gc_dlon'), _arNum(g.dlon, 4) + '°'],
-        ['a = sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2)', _arNum(g.h, 6)],
+        ['a = sin²(Δφ/2) + cos φ₁ cos φ₂ sin²(Δλ/2)', _arNum(g.h, 6), 0, 'term:haversine'],
         [_tbT('gc_angle'), _arNum(g.angle, 4) + '°'],
         [_tbT('gc_times', { r: _arNum(TB_EARTH_R_KM, 1) }), _arNum(g.km, 1) + ' km', 1],
-        [_tbT('gc_initial'), Math.round(g.initial) + '°'], [_tbT('gc_final'), Math.round(g.final) + '°'],
+        [_tbT('gc_initial'), Math.round(g.initial) + '°', 0, 'term:bearing'], [_tbT('gc_final'), Math.round(g.final) + '°', 0, 'term:bearing'],
         [_tbT('gc_mid'), _arLatText(g.mid.lat) + ' ' + _arLonText(g.mid.lon)]
       ]) + _tbNote(_tbH('gc_note'))
     };
