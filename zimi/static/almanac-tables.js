@@ -1946,6 +1946,39 @@ var TB_CONST_ROWS = {
     return rows;
   }
 };
+// The constants pages: the article each row's name stands for. A row left out is a
+// plain label, and tests/test_almanac_qids.cjs says why for each (no article of its own,
+// or a compound of two things).
+var TB_CONST_LINKS = {
+  eq_radius: 'term:earth_radius', polar_radius: 'term:earth_radius', mean_radius: 'term:earth_radius',
+  flattening: 'term:flattening', gm_earth: 'term:gravitational_parameter', g0: 'term:standard_gravity',
+  rotation: 'term:sidereal_time', obliquity: 'term:axial_tilt', obliquity_rate: 'term:axial_tilt',
+  au: 'term:astronomical_unit', sun_radius: 'term:solar_radius', moon_dist: 'term:lunar_distance',
+  moon_radius: 'planet:moon', moon_motion: 'term:mean_motion', sun_motion: 'term:mean_motion',
+  synodic: 'term:lunar_month', tropical_month: 'term:lunar_month', anomalistic: 'term:lunar_month',
+  draconic: 'term:lunar_month', saros: 'term:saros', sidereal_day: 'term:sidereal_time',
+  tropical_year: 'term:tropical_year', julian_year: 'term:julian_year', jd_j2000: 'term:epoch',
+  jd_unix: 'term:unix_time', delta_t: 'term:delta_t', delta_t_measured: 'term:delta_t',
+  tai_utc: 'term:leap_second', last_leap: 'term:leap_second', nmi: 'term:nautical_mile', knot: 'term:knot',
+  refraction: 'term:atmospheric_refraction', std_air: 'term:isa', dip: 'term:horizon', horizon: 'term:horizon',
+  sun_sd: 'term:angular_diameter', sunrise_alt: 'term:sunrise', moon_hp: 'term:parallax',
+  sun_parallax: 'term:parallax', twilights: 'term:twilight', c: 'term:speed_of_light',
+  g: 'term:gravitational_constant', aberration: 'term:aberration', atm: 'term:standard_atmosphere',
+  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa'
+};
+// What a row cites: each name below becomes its article's link wherever it stands in the
+// Source column ("Meeus 12.4" links Meeus; "SI · exact" links SI).
+var TB_SOURCE_LINKS = {
+  'Nautical Almanac': 'term:nautical_almanac', Bowditch: 'org:bowditch', WGS84: 'org:wgs84', IUGG: 'org:iugg',
+  CGPM: 'org:cgpm', IAU: 'org:iau', CODATA: 'org:codata', ICAO: 'org:icao', NOAA: 'org:noaa', USNO: 'org:usno',
+  IERS: 'org:iers', Meeus: 'person:meeus', Espenak: 'person:espenak', SI: 'org:si'
+};
+var TB_SOURCE_RE = new RegExp('\\b(' + Object.keys(TB_SOURCE_LINKS).join('|') + ')\\b');
+function _tbSource(text) {
+  return String(text).split(TB_SOURCE_RE).map(function (part, i) {
+    return i % 2 ? _alLink(TB_SOURCE_LINKS[part], _almEsc(part)) : _almEsc(part);
+  }).join('');
+}
 // A value as the table shows it: text as it is; a number to its digits, or
 // to its own significant figures when it has none.
 function _tbConstVal(v, d) {
@@ -1956,8 +1989,9 @@ function _tbRenderConst(body) {
   var rows = TB_CONST_ROWS[_tb.id]().map(function (r) {
     var name = r[5] || _tbT('kn_' + r[0]);
     // The unit beside its value: four columns do not fit a phone.
-    return '<tr><th scope="row">' + _almEsc(name) + '</th><td><span dir="ltr">' + _almEsc(_tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : '')) + '</span></td>' +
-      '<td class="tb-src">' + _almEsc(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
+    var nameHtml = r[5] || !TB_CONST_LINKS[r[0]] ? _almEsc(name) : _alLink(TB_CONST_LINKS[r[0]], _almEsc(name));
+    return '<tr><th scope="row">' + nameHtml + '</th><td><span dir="ltr">' + _almEsc(_tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : '')) + '</span></td>' +
+      '<td class="tb-src">' + _tbSource(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
   }).join('');
   body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
     _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
@@ -2157,6 +2191,9 @@ function _tbSunMoonDays(span, p) {
   if (_tbSpanMemo.key !== key) _tbSpanMemo = { key: key, v: _arSpan(span.from, span.to, p.lat, p.lon, p.tz) };
   return _tbSpanMemo.v;
 }
+// The principal phases' articles (reference.js AR_PHASE_KEYS order): the new and the full
+// Moon have their own, the quarters share the Moon's phases.
+var TB_PHASE_LINKS = ['phase:new', 'term:lunar_phase', 'phase:full', 'term:lunar_phase'];
 function _tbPhaseGlyph(q) {
   return '<span class="tb-ph" title="' + _almEsc(t('ref_' + AR_PHASE_KEYS[q])) + '">' + _moonGlyphSVG(q / 4, 14) + '</span>';
 }
@@ -2173,17 +2210,21 @@ function _tbDayPhase(r, tz, words, principal) {
   var glyph = r.phase != null ? _tbPhaseGlyph(r.phase)
     : '<span class="tb-ph" title="' + _almEsc(between) + '">' + _moonGlyphSVG(ph.phase, 14) + '</span>';
   if (!words) return glyph;
-  var name = principal ? '<span class="tb-hi">' + _arTH(AR_PHASE_KEYS[principal.q]) + ' ' + _tbTime(principal.ms, tz) + '</span>'
-    : _almEsc(between);
+  var name = principal ? '<span class="tb-hi">' + _alLink(TB_PHASE_LINKS[principal.q], _arTH(AR_PHASE_KEYS[principal.q])) + ' ' + _tbTime(principal.ms, tz) + '</span>'
+    : _lterm('lunar_phase', _almEsc(between));
   return glyph + ' ' + name + ' <span class="tb-dim">' + _tbH('lit', { n: _arNum(ph.illumination, 0) }) + '</span>';
 }
 function _tbTime(ms, tz) { return '<span dir="ltr">' + _almEsc(_arTime(ms, tz)) + '</span>'; }
 
+// The feasts a calendar page prints (reference.js AR_HOLIDAY_COLS) and the article of each;
+// Orthodox Easter shares Easter's.
+var TB_FEAST_LINKS = { easter: 'holiday:easter', orthodox: 'holiday:easter', passover: 'holiday:passover', roshHashanah: 'holiday:roshhashanah',
+  ramadan: 'holiday:ramadanbegins', eidFitr: 'holiday:eidalfitr', eidAdha: 'holiday:eidaladha', cny: 'holiday:springfestival', nowruz: 'holiday:nowruz' };
 var TB_RENDER = {
   sunmoon: function (span, p) {
     span = _tbCapDays(span, TB_MAX_DAYS);
     var S = _tbSunMoonDays(span, p), tz = p.tz;
-    var head = _tbHead([_arTH('day'), _tbH('sunrise'), _tbH('noon'), _tbH('sunset'), _tbH('daylength'), _tbH('noon_height'), _tbH('moonrise'), _tbH('moonset'), _arTH('phase')]);
+    var head = _tbHead([_arTH('day'), _alLink('term:sunrise', _tbH('sunrise')), _alLink('term:solar_noon', _tbH('noon')), _alLink('term:sunset', _tbH('sunset')), _alLink('term:daylight', _tbH('daylength')), _tbH('noon_height'), _alLink('term:moonrise', _tbH('moonrise')), _alLink('term:moonrise', _tbH('moonset')), _alLink('term:lunar_phase', _arTH('phase'))]);
     var rows = _tbDayRows(S.rows, span, function (r) {
       var rise = r.polar ? '<span class="tb-dim">' + _arTH(r.polar === 'up' ? 'up_all_day' : 'down_all_day') + '</span>' : _tbTime(r.rise, tz);
       return [null, rise, _tbTime(r.noon, tz), r.polar ? '' : _tbTime(r.set, tz),
@@ -2197,8 +2238,8 @@ var TB_RENDER = {
     span = _tbCapDays(span, TB_MAX_DAYS);
     var S = _tbSunMoonDays(span, p), tz = p.tz;
     var head = '<tr><th scope="col" rowspan="2">' + _arTH('day') + '</th><th scope="colgroup" colspan="3" class="tb-sep">' + _arTH('dawn') + '</th>' +
-      '<th scope="colgroup" colspan="2" class="tb-sep">' + _arTH('sun') + '</th><th scope="colgroup" colspan="3" class="tb-sep">' + _arTH('dusk') + '</th></tr>' +
-      '<tr>' + [_arTH('astro'), _arTH('nautical'), _arTH('civil'), _arTH('rise'), _arTH('set'), _arTH('civil'), _arTH('nautical'), _arTH('astro')].map(function (c, i) {
+      '<th scope="colgroup" colspan="2" class="tb-sep">' + _alLink('planet:sun', _arTH('sun')) + '</th><th scope="colgroup" colspan="3" class="tb-sep">' + _arTH('dusk') + '</th></tr>' +
+      '<tr>' + [_lterm('twilight', _arTH('astro')), _lterm('twilight', _arTH('nautical')), _lterm('twilight', _arTH('civil')), _lterm('sunrise', _arTH('rise')), _lterm('sunset', _arTH('set')), _lterm('twilight', _arTH('civil')), _lterm('twilight', _arTH('nautical')), _lterm('twilight', _arTH('astro'))].map(function (c, i) {
         return '<th scope="col"' + (i === 0 || i === 3 || i === 5 ? ' class="tb-sep"' : '') + '>' + c + '</th>';
       }).join('') + '</tr>';
     var rows = _tbDayRows(S.rows, span, function (r) {
@@ -2218,7 +2259,7 @@ var TB_RENDER = {
       var ph = at[_arKeyNum(r)];
       return [null, _tbDayPhase(r, tz, true, ph)];
     });
-    return { html: _tbTable(_tbHead([_arTH('day'), _arTH('phase')]), rows, 'tb-phases') + _tbCapNote(span) };
+    return { html: _tbTable(_tbHead([_arTH('day'), _lterm('lunar_phase', _arTH('phase'))]), rows, 'tb-phases') + _tbCapNote(span) };
   },
   tides: function (span) {
     var st = typeof _atTideStation === 'function' && _at.data && !_at.data.failed ? _atTideStation() : null;
@@ -2238,7 +2279,7 @@ var TB_RENDER = {
       return cells;
     });
     var unit = t(_atUnits() === 'ft' ? 'alm_unit_ft' : 'alm_unit_m');
-    var head = '<tr><th scope="col">' + _arTH('day') + '</th><th scope="colgroup" colspan="4">' + _almEsc(t('alm_tide_col_turns')) + ' (' + _almEsc(unit) + ')</th></tr>';
+    var head = '<tr><th scope="col">' + _arTH('day') + '</th><th scope="colgroup" colspan="4">' + _lterm('tide', _almEsc(t('alm_tide_col_turns'))) + ' (' + _almEsc(unit) + ')</th></tr>';
     var station = _atTideName(st);
     return { place: _tbT('tide_station', { name: station }) + ' · ' + tz,
       made: { station: station, n: pr.n, ref: st.refrec ? _atTitle(st.refrec.n) : null, tz: tz, units: unit, st: st },
@@ -2265,7 +2306,7 @@ var TB_RENDER = {
     ev.forEach(function (e) {
       if (span.years && e.k.y !== lastY) rows += _tbGroupRow(String(e.k.y), 4);
       lastY = e.k.y;
-      rows += _tbRow([_almEsc(_tbDate(e.k, { month: 'short', day: 'numeric' })), _almEsc(e.name), _arTH(e.what), _arMag(e.mag)], e.what === 'first_dawn' ? 'tb-rise' : '');
+      rows += _tbRow([_almEsc(_tbDate(e.k, { month: 'short', day: 'numeric' })), _lstar(e.name), _arTH(e.what), _arMag(e.mag)], e.what === 'first_dawn' ? 'tb-rise' : '');
     });
     var notes = ['never', 'always', 'seen'].map(function (why) {
       var names = Object.keys(none[why] || {});
@@ -2285,7 +2326,7 @@ var TB_RENDER = {
       if (kn < lo || kn > hi || !all[i + 1]) return;
       var len = all[i + 1].ms - s.ms, d = Math.floor(len / MS_PER_DAY), h = Math.round((len - d * MS_PER_DAY) / TB_MS_HOUR);
       n++;
-      rows += _tbRow(['<span dir="ltr">' + _almEsc(_tbWhen(s.ms, p.tz, true)) + '</span>', _arTH(keys[s.i]), _tbH('days_hours', { d: d, h: h })]);
+      rows += _tbRow(['<span dir="ltr">' + _almEsc(_tbWhen(s.ms, p.tz, true)) + '</span>', _lterm(s.i % 2 ? 'solstice' : 'equinox', _arTH(keys[s.i])), _tbH('days_hours', { d: d, h: h })]);
     });
     return { html: n ? _tbTable(_tbHead([_tbH('when'), _tbH('event'), _tbH('season_len')]), rows) + _tbNote(_tbH('seasons_note')) : _tbEmpty() };
   },
@@ -2300,7 +2341,7 @@ var TB_RENDER = {
         var here = e.here
           ? _arT(e.solar ? 'eclipse_seen_solar' : 'eclipse_seen_lunar', { kind: _arT('ecl_' + e.here.kind), pct: _arNum(Math.max(0, e.here.mag) * 100, 0), mag: _arNum(Math.max(0, e.here.mag), 2), time: _arTime(e.here.ms, tz), from: _arTime(e.here.start, tz), to: _arTime(e.here.end, tz) })
           : _arT('eclipse_not_seen');
-        rows += _tbRow(['<span dir="ltr">' + _almEsc(_tbWhen(e.ms, tz, true)) + '</span>', _almEsc(e.type), '<span class="tb-txt">' + _almEsc(here) + '</span>'], e.here ? 'tb-seen' : '');
+        rows += _tbRow(['<span dir="ltr">' + _almEsc(_tbWhen(e.ms, tz, true)) + '</span>', _alLink(e.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', _almEsc(e.type)), '<span class="tb-txt">' + _almEsc(here) + '</span>'], e.here ? 'tb-seen' : '');
       });
     }
     return { html: n ? _tbTable(_tbHead([_tbH('when'), _tbH('eclipse'), _tbH('from_here')]), rows, 'tb-wrap') : _tbEmpty('no_eclipse') };
@@ -2311,13 +2352,13 @@ var TB_RENDER = {
     for (var y = span.from.y; y <= span.to.y; y++) {
       var h = _arHolidays(y);
       AR_HOLIDAY_COLS.forEach(function (k) {
-        [].concat(h[k] == null ? [] : h[k]).forEach(function (j) { (feasts[j] = feasts[j] || []).push(_arT('h_' + k)); });
+        [].concat(h[k] == null ? [] : h[k]).forEach(function (j) { (feasts[j] = feasts[j] || []).push(_alLink(TB_FEAST_LINKS[k], _almEsc(_arT('h_' + k)))); });
       });
       var c = _arComputusGregorian(y);
       years[y] = _tbT('computus_line', { year: y, g: c.golden, e: c.epact, l: c.letters });
     }
     var others = AR_CAL_SYSTEMS.filter(function (s) { return s !== 'gregorian'; });
-    var head = _tbHead([_arTH('day')].concat(others.map(function (s) { return _almEsc(_arCalLabel(s)); })).concat([_tbH('feasts')]));
+    var head = _tbHead([_arTH('day')].concat(others.map(function (s) { return _alLink('cal:' + s, _almEsc(_arCalLabel(s))); })).concat([_tbH('feasts')]));
     var focus = _tbDayIn(_almFocusInstant().getTime(), _tb.place.tz), rows = '', lastM = null, lastY = null;
     for (var j = _tbJdn(span.from); j <= _tbJdn(span.to); j++) {
       var k = _tbKey(j);
@@ -2325,7 +2366,7 @@ var TB_RENDER = {
       else if (span.days > 31 && k.m !== lastM) rows += _tbGroupRow(_tbMonthYear(k), others.length + 2);
       lastY = k.y; lastM = k.m;
       var cells = [_tbDayCell(k, {})].concat(others.map(function (s) { return _almEsc(_tbCalShort(s, _arCalFromJDN(s, j))); }));
-      cells.push(feasts[j] ? '<span class="tb-feast">' + _almEsc(feasts[j].join(', ')) + '</span>' : '');
+      cells.push(feasts[j] ? '<span class="tb-feast">' + feasts[j].join(', ') + '</span>' : '');
       rows += _tbRow(cells, _tbSame(k, focus) ? 'tb-today' : (feasts[j] ? 'tb-feastrow' : ''));
     }
     return { place: false, html: _tbTable(head, rows) + _tbCapNote(span) + _tbNote(_arTH('feasts_notes')) };
@@ -2334,7 +2375,7 @@ var TB_RENDER = {
     span = _tbCapDays(span, TB_MAX_DAYS);
     var rows = _arSunTimeSpan(span.from, span.to, p.lon, p.tz);
     var fig = span.days >= 365 ? '<figure class="tb-figure">' + _arAnalemmaSvg(rows.slice(0, 366)) + '<figcaption>' + _arTH('analemma_caption') + '</figcaption></figure>' : '';
-    var head = _tbHead([_arTH('day'), _arTH('sundial_noon'), _arTH('eot'), _arTH('correction'), _tbH('declination')]);
+    var head = _tbHead([_arTH('day'), _lterm('sundial', _arTH('sundial_noon')), _lterm('equation_of_time', _arTH('eot')), _arTH('correction'), _lterm('declination', _tbH('declination'))]);
     var body = _tbDayRows(rows, span, function (r) {
       return [null, _tbTime(r.noon, p.tz), '<span dir="ltr">' + _arMinSec(r.eot) + '</span>', '<span dir="ltr">' + _arMinSec(r.correction) + '</span>',
         '<span dir="ltr">' + _arNavDec(r.dec) + '</span>'];
@@ -2366,9 +2407,10 @@ function _tbNav(span) {
     return _tbGroupRow(_tbLongDay(_tbDayIn(t0 + i * dt, 'UTC')), n);
   }
   var perHour = hourly ? 1 : AR_HOURS;
-  var head = '<tr><th scope="col" rowspan="2">UT</th><th scope="colgroup" colspan="2" class="tb-sep">' + _arTH('sun') + '</th><th scope="colgroup" colspan="5" class="tb-sep">' + _arTH('moon') + '</th></tr>' +
-    '<tr><th scope="col" class="tb-sep">GHA</th><th scope="col">Dec</th><th scope="col" class="tb-sep">GHA</th>' +
-    '<th scope="col">v</th><th scope="col">Dec</th><th scope="col">d</th><th scope="col">HP</th></tr>';
+  var GHA = _lterm('hour_angle', 'GHA'), DEC = _lterm('declination', 'Dec');
+  var head = '<tr><th scope="col" rowspan="2">' + _lterm('utc', 'UT') + '</th><th scope="colgroup" colspan="2" class="tb-sep">' + _alLink('planet:sun', _arTH('sun')) + '</th><th scope="colgroup" colspan="5" class="tb-sep">' + _alLink('planet:moon', _arTH('moon')) + '</th></tr>' +
+    '<tr><th scope="col" class="tb-sep">' + GHA + '</th><th scope="col">' + DEC + '</th><th scope="col" class="tb-sep">' + GHA + '</th>' +
+    '<th scope="col">v</th><th scope="col">' + DEC + '</th><th scope="col">d</th><th scope="col">' + _lterm('parallax', 'HP') + '</th></tr>';
   var b1 = '';
   for (var h = 0; h < steps; h++) {
     var r = rows[h], n = rows[h + 1];
@@ -2376,9 +2418,9 @@ function _tbNav(span) {
     var d = hourly ? ((n.moon.dec - r.moon.dec) * 60).toFixed(1) : ((n.moon.dec - r.moon.dec) * 60 / perHour).toFixed(1);
     b1 += group(h, 8) + _tbRow([ut(h), _arNavGha(r.sun.gha), _arNavDec(r.sun.dec), _arNavGha(r.moon.gha), v, _arNavDec(r.moon.dec), d, r.moon.hp.toFixed(1)], hourly && h % 6 === 5 ? 'tb-six' : '');
   }
-  var head2 = '<tr><th scope="col" rowspan="2">UT</th><th scope="col" class="tb-sep">' + _arTH('aries') + '</th>' +
-    AR_PLANETS.map(function (p) { return '<th scope="colgroup" colspan="2" class="tb-sep">' + _almEsc(_tp(p.charAt(0).toUpperCase() + p.slice(1))) + '</th>'; }).join('') + '</tr>' +
-    '<tr><th scope="col" class="tb-sep">GHA</th>' + AR_PLANETS.map(function () { return '<th scope="col" class="tb-sep">GHA</th><th scope="col">Dec</th>'; }).join('') + '</tr>';
+  var head2 = '<tr><th scope="col" rowspan="2">' + _lterm('utc', 'UT') + '</th><th scope="col" class="tb-sep">' + _lterm('first_point_of_aries', _arTH('aries')) + '</th>' +
+    AR_PLANETS.map(function (p) { return '<th scope="colgroup" colspan="2" class="tb-sep">' + _lp(p.charAt(0).toUpperCase() + p.slice(1)) + '</th>'; }).join('') + '</tr>' +
+    '<tr><th scope="col" class="tb-sep">' + GHA + '</th>' + AR_PLANETS.map(function () { return '<th scope="col" class="tb-sep">' + GHA + '</th><th scope="col">' + DEC + '</th>'; }).join('') + '</tr>';
   var b2 = '';
   for (h = 0; h < steps; h++) {
     var cells = [ut(h), _arNavGha(rows[h].aries)];
@@ -2394,24 +2436,24 @@ function _tbNav(span) {
     var mp = function (key, target) { return _arMerPass(rows, key, target || 0); };
     var ph = _moonPhase(new Date(day + 12 * AR_MS_PER_HOUR));
     var kv = [
-      [_arT('eot') + ' 00h', _arMinSec(_arEquationOfTime(day).eot)], [_arT('eot') + ' 12h', _arMinSec(_arEquationOfTime(day + 12 * AR_MS_PER_HOUR).eot)],
+      [_arT('eot') + ' 00h', _arMinSec(_arEquationOfTime(day).eot), 'term:equation_of_time'], [_arT('eot') + ' 12h', _arMinSec(_arEquationOfTime(day + 12 * AR_MS_PER_HOUR).eot), 'term:equation_of_time'],
       [_arT('sun') + ' · ' + _arT('mer_pass'), mp('sun')],
       [_arT('moon') + ' · ' + _arT('mer_pass_upper'), mp('moon')], [_arT('moon') + ' · ' + _arT('mer_pass_lower'), mp('moon', 180)],
       [_arT('moon_age'), _arT('days_n', { n: _arNum(ph.phase * _CN_SYN, 1) })], [_arT('moon_lit'), _arNum(ph.illumination, 0) + '%'],
       [_arT('aries') + ' · ' + _arT('mer_pass'), mp('aries')]
     ];
     AR_PLANETS.forEach(function (p) {
-      kv.push([_tp(p.charAt(0).toUpperCase() + p.slice(1)) + ' · SHA / ' + _arT('mer_pass'), _arNavGha(_arNorm360(rows[12][p].gha - rows[12].aries)).trim() + ' / ' + mp(p)]);
+      kv.push([_tp(p.charAt(0).toUpperCase() + p.slice(1)) + ' · SHA / ' + _arT('mer_pass'), _arNavGha(_arNorm360(rows[12][p].gha - rows[12].aries)).trim() + ' / ' + mp(p), 'planet:' + p]);
     });
     html += '<h3 class="tb-h3">' + _arTH('day_figures') + '</h3><dl class="tb-kv">' + kv.map(function (x) {
-      return '<div><dt>' + _almEsc(x[0]) + '</dt><dd dir="ltr">' + _almEsc(x[1]) + '</dd></div>';
+      return '<div><dt>' + (x[2] ? _alLink(x[2], _almEsc(x[0])) : _almEsc(x[0])) + '</dt><dd dir="ltr">' + _almEsc(x[1]) + '</dd></div>';
     }).join('') + '</dl>';
   }
   // The stars, at 12h UT of the window's first day: their SHA moves a few tenths a month.
   var noon = _arNavAt(t0 + 12 * AR_MS_PER_HOUR, { noPlanets: true, stars: true }).stars;
   var stars = noon.filter(function (s) { return s.num > 0; }), polaris = noon.filter(function (s) { return s.num === 0; })[0];
-  var b3 = stars.map(function (s) { return _tbRow([String(s.num), _almEsc(s.name), _arNavGha(s.sha), _arNavDec(s.dec), _arMag(s.mag)]); }).join('') +
-    _tbRow(['', _almEsc(polaris.name), _arNavGha(polaris.sha), _arNavDec(polaris.dec), _arMag(polaris.mag)], 'tb-foot');
+  var b3 = stars.map(function (s) { return _tbRow([String(s.num), _lstar(s.name), _arNavGha(s.sha), _arNavDec(s.dec), _arMag(s.mag)]); }).join('') +
+    _tbRow(['', _lstar(polaris.name), _arNavGha(polaris.sha), _arNavDec(polaris.dec), _arMag(polaris.mag)], 'tb-foot');
   html += '<h3 class="tb-h3 tb-pagebreak">' + _arTH('stars_h') + ' · ' + _almEsc(_tbShortDay(span.from)) + ' 12h UT</h3>' +
     _tbTable(_tbHead(['No.', _arTH('star'), 'SHA', 'Dec', _arTH('mag')]), b3, 'tb-ltr tb-mono') + _tbCapNote(span) +
     _tbNote(_arTH('daily_how')) + _tbNote(_arTH('daily_accuracy'));
@@ -2438,7 +2480,7 @@ function _tbGroup(title, rows) {
 function _tbWorking(rows, title) {
   return '<section class="tb-working"><h3 class="tb-h3">' + _almEsc(title || t('ref_corrections')) + '</h3><div class="tb-frame tb-frame-flat"><table class="tb-table tb-steps"><tbody>' +
     rows.map(function (r) {
-      return '<tr' + (r[2] ? ' class="tb-total"' : '') + '><th scope="row">' + _almEsc(r[0]) + '</th><td><span dir="ltr">' + _almEsc(r[1]) + '</span></td></tr>';
+      return '<tr' + (r[2] ? ' class="tb-total"' : '') + '><th scope="row">' + (r[3] ? _alLink(r[3], _almEsc(r[0])) : _almEsc(r[0])) + '</th><td><span dir="ltr">' + _almEsc(r[1]) + '</span></td></tr>';
     }).join('') + '</tbody></table></div></section>';
 }
 // A spec over one property of the calculation's state.
@@ -2593,14 +2635,14 @@ TB_CALC.convert = {
   solve: function (c) {
     var k = _tbKey(c.jdn);
     var list = AR_CAL_SYSTEMS.filter(function (s) { return s !== c.sys; }).map(function (s) {
-      var label = _almEsc(_arCalLabel(s)) + (s === 'islamic' ? ' <span class="tb-dim">(' + _arTH('tabular') + ')</span>' : '');
+      var label = _alLink('cal:' + s, _almEsc(_arCalLabel(s))) + (s === 'islamic' ? ' <span class="tb-dim">(' + _arTH('tabular') + ')</span>' : '');
       return '<div class="tb-cal-line"><span class="tb-cal-sys">' + label + '</span><span class="tb-cal-date">' + _almEsc(_arCalDateText(s, _arCalFromJDN(s, c.jdn))) + '</span></div>';
     }).join('');
     return {
       big: _arCalDateText(c.sys, _arCalFromJDN(c.sys, c.jdn)),
       sub: _tbLongDay(k),
       extra: '<div class="tb-cal-list">' + list + '</div>',
-      working: _tbWorking([[t('ref_jdn'), String(c.jdn)], [t('ref_weekday'), _tbDate(k, { weekday: 'long' })]]) + _tbNote(_arTH('cal_lede'))
+      working: _tbWorking([[t('ref_jdn'), String(c.jdn), 0, 'term:julian_day'], [t('ref_weekday'), _tbDate(k, { weekday: 'long' })]]) + _tbNote(_arTH('cal_lede'))
     };
   }
 };

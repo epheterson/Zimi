@@ -257,7 +257,7 @@ function _starLinkKey(idx) {
   var nm = _STAR_NAMES[idx];
   if (!nm) return null;
   if (_STAR_LINK_OVERRIDES[nm]) return _STAR_LINK_OVERRIDES[nm];
-  return 'star:' + nm.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+  return _almStarKey(nm);
 }
 
 // "r,g,b" tint for a star from its B–V colour index: hot blue-white stars have

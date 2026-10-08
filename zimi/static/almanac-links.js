@@ -660,7 +660,10 @@
     'term:nautical_almanac':       { q: 'Q752001', en: 'Nautical almanac' },
     'term:bearing':                { q: 'Q1273815', en: 'Bearing (navigation)' },
     'term:standard_atmosphere':    { q: 'Q177974', en: 'Standard atmosphere (unit)' },
-    'term:daylight_saving':       { q: 'Q36669', en: 'Daylight saving time' }
+    'term:daylight_saving':       { q: 'Q36669', en: 'Daylight saving time' },
+    'term:lunar_distance':         { q: 'Q94921', en: 'Lunar distance' },
+    'term:solar_radius':           { q: 'Q48440', en: 'Solar radius' },
+    'term:mean_motion':            { q: 'Q1720536', en: 'Mean motion' }
   };
 
   // The four seasons — displayed as the current-season name in the astro panel.

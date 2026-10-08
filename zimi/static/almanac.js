@@ -137,6 +137,11 @@ function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _a
 function _lterm(suffix, html) { return _alLink('term:' + suffix, html); }
 // Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
 function _lseason(key, html) { return key ? _alLink('season:' + key, html) : html; }
+// A star by its proper name (the sky's, or the Nautical Almanac's): its key is the
+// name lowercased, each run of other characters one underscore ("Al Na'ir" is
+// star:al_na_ir). Plain text where the name has no entry.
+function _almStarKey(name) { return 'star:' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+function _lstar(name, html) { return _alLink(_almStarKey(name), html == null ? _almEsc(name) : html); }
 
 function _dayOfYear(date) {
   // setFullYear, not new Date(year,…): the constructor folds years 0–99 into

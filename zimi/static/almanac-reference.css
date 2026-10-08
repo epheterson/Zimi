@@ -526,3 +526,7 @@
   html.alm-book-print .alm-book { display: block !important; position: static !important; overflow: visible !important; }
   .tb-book-foot { position: fixed; bottom: 0; inset-inline: 0; color: #333; font-size: 8pt; }
 }
+/* Paper: an article link is no use on a page, so its dots do not print. */
+@media print {
+  .alm-ref .alm-link, .alm-book .alm-link { text-decoration: none; color: inherit; }
+}
