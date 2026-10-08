@@ -747,6 +747,10 @@ function _createBuildRequest(modeId, fields) {
     var value = _createFieldValue(keys[i], fields);
     if (value !== undefined) body[keys[i]] = value;
   }
+  // The fast engine says nothing, which a stored engine would answer: so
+  // when one is stored, choosing fast says so.
+  if (keys.indexOf('engine') >= 0 && body.engine === undefined &&
+      CREATE_STORED_VALUES.engine && CREATE_STORED_VALUES.engine !== 'builtin') body.engine = 'builtin';
   // Audio-only picks the format itself, so a quality preset alongside it would
   // describe a preference nothing reads. The server drops it too.
   if (body.audio_only) delete body.format;
@@ -1743,9 +1747,23 @@ function _createChipTarget(what, n, s) {
 // ordinary page, and Fast was offered for something whose palette, theme
 // switch and search are all JavaScript (Eric: "why did it recommend fast
 // instead of something better!?").
-function _createEngineFor(p, browserReady) {
-  if (!p || (p.mode !== 'page' && p.mode !== 'site')) return '';
-  return (p.spa || p.app) && browserReady ? 'rendered' : '';
+function _createEngineFor(p, browserReady, base) {
+  base = base || '';
+  if (!p || (p.mode !== 'page' && p.mode !== 'site')) return base;
+  // A stored engine is where the form starts; the probe only lifts the fast
+  // one to a browser for a page that is built by JavaScript.
+  return !base && (p.spa || p.app) && browserReady ? 'rendered' : base;
+}
+
+// The stored engine as the picker spells it: '' for the fast one (and for an
+// engine the picker does not offer, zimit or singlefile, which the request
+// then overrides with an explicit 'builtin').
+function _createStoredEngine() {
+  var v = CREATE_STORED_VALUES.engine;
+  for (var i = 0; i < CREATE_ENGINE_OPTIONS.length; i++) {
+    if (v && CREATE_ENGINE_OPTIONS[i].v === v) return v;
+  }
+  return '';
 }
 
 // ── the surface ─────────────────────────────────────────────────────────────
@@ -2210,9 +2228,15 @@ function _createEngineHtml(f) {
   // Folded: the probe picks the engine (see _createAutoPickEngine), and the
   // summary states the pick. The three options, thirty words each, used to be
   // the largest thing on the form, on a decision most people cannot make.
+  // It starts on the stored engine, or the fast one when that is not here.
+  var first = f.options[0];
+  f.options.forEach(function(o) {
+    if (o.v === _createStoredEngine() && !(o.needs && _createCapabilityMissing(o.needs))) first = o;
+  });
+  var start = first.v;
   var html = '<details class="create-seg-field create-engine-fold" id="create-engine-fold">' +
     '<summary class="create-seg-label"><span>' + tH(f.label) + '</span> ' +
-      '<b id="create-engine-pick">' + tH(f.options[0].k) + '</b> ' +
+      '<b id="create-engine-pick">' + tH(first.k) + '</b> ' +
       '<span class="create-engine-change">' + tH('create_engine_change') + '</span></summary>' +
     '<div class="create-seg" id="' + f.id + '" role="radiogroup"' +
     ' aria-label="' + escAttr(t(f.label)) + '">';
@@ -2223,7 +2247,7 @@ function _createEngineHtml(f) {
     if (off) _createAddCommands(commands, o.needs);
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
-      (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') +
+      (o.v === start ? ' checked' : '') + (off ? ' disabled' : '') +
       ' onchange="_createEngineChosen()">' +
       '<span class="create-seg-name">' + tH(o.k) + '</span>' +
       '<span class="create-seg-desc">' + tH(o.d) + '</span>' +
@@ -2841,7 +2865,7 @@ var _createAutoProbing = false;
 
 function _createAutoPickEngine(p) {
   if (_createEngineTouched || _createAutoProbing) return false;
-  var want = _createEngineFor(p, _createCapabilityReady('browser') === true);
+  var want = _createEngineFor(p, _createCapabilityReady('browser') === true, _createStoredEngine());
   var have = _createCheckedRadio(CREATE_FIELDS.engine.id);
   if (want === have) return false;
   var input = document.querySelector('input[name="' + CREATE_FIELDS.engine.id + '"][value="' + want + '"]');

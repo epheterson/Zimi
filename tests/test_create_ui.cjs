@@ -222,6 +222,18 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['import', ['description', 'creator', 'publisher', 'tags']]
 ], 'each mode advertises its documented advanced options');
 
+// A stored engine is where the form starts; choosing fast over it says so.
+check(sandbox._createEngineFor({ mode: 'site', spa: true }, true, 'alive') === 'alive' &&
+  sandbox._createEngineFor({ mode: 'site', spa: true }, true, '') === 'rendered' &&
+  sandbox._createEngineFor({ mode: 'site' }, true, 'rendered') === 'rendered',
+  'the probe lifts only the fast engine; a stored one stands');
+sandbox._createTakeDefaults({ defaults: { engine: 'rendered' } });
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: '' }),
+  { mode: 'site', source: 'https://e.org/', engine: 'builtin' }, 'fast over a stored engine is sent as builtin');
+sandbox._createTakeDefaults({});
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: '' }),
+  { mode: 'site', source: 'https://e.org/' }, 'with nothing stored, fast still says nothing');
+
 check(_createAgainRequest({ mode: 'site', source: 'https://e.org/', cookies: 'set' },
   { stopped: 'page cap (10)' }) === null,
   'a capture that carried cookies is not offered again: they were never kept');
