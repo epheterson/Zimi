@@ -211,6 +211,10 @@ function _openAlmanacInner(replaceState) {
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('almanac');
   _renderAlmanacContent();
+  // Zimi's header is in place under the Almanac: nothing in it slides the
+  // header, so one left away by the page before (an article scrolled on a
+  // phone) would keep the Almanac's own header, its date, behind the bar.
+  if (typeof _chromeReset === 'function') _chromeReset();
   if (typeof _armTapRelay === 'function') _armTapRelay(true);
 }
 
