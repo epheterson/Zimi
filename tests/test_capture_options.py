@@ -73,7 +73,10 @@ def test_a_duration_reads_back_as_it_was_written():
 def test_every_option_names_what_its_surfaces_need():
     for key in crawler.NEW_OPTION_KEYS:
         opt = crawler.CAPTURE_OPTIONS[key]
-        assert opt.flag.startswith("--") and opt.zimit.startswith("--")
+        assert opt.flag.startswith("--")
+        # Cookies, what to leave out and the largest file have no zimit flag:
+        # zimit is told so in a note instead.
+        assert opt.zimit is None or opt.zimit.startswith("--")
     # The two a person types as text show as text, the rest as on/off or seconds.
     assert crawler.CAPTURE_OPTIONS["time_limit"].show(28800) == "8h"
     assert crawler.CAPTURE_OPTIONS["page_timeout"].show(60) == "60s"
