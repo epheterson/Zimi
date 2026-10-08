@@ -381,9 +381,11 @@ var CREATE_FIELDS = {
     id: 'create-sitemap', control: 'check', label: 'create_sitemap',
     kind: 'bool'
   },
+  // The placeholder is the agent's product token ("Zimi/1.13.1"): the whole
+  // string runs past any field and was cut mid-address. The rest is its title.
   user_agent: {
     id: 'create-user-agent', control: 'text', label: 'create_user_agent',
-    kind: 'text', ph: 'Zimi'
+    kind: 'text', ph: 'Zimi', phToken: true
   },
   mobile: {
     id: 'create-mobile', control: 'check', label: 'create_mobile',
@@ -2196,14 +2198,22 @@ function _createFieldHtml(key, def) {
     (number && CREATE_STORED_VALUES[key] != null ? String(CREATE_STORED_VALUES[key]) : '') ||
     (f.phKey ? t(f.phKey) : f.ph) || '';
   return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + f.id + '-row">' + label +
-    '<input type="' + (number ? 'number' : 'text') + '"' +
+    '<input type="' + (number ? 'number' : 'text') + '"' + _createPhAttrs(f, ph) +
     (f.maxlength ? ' maxlength="' + f.maxlength + '"' : '') +
     ' class="create-field ' + (number ? 'create-num' : 'create-short') + '" id="' + f.id + '"' +
     (f.min !== undefined ? ' min="' + f.min + '"' : '') +
     (f.max !== undefined ? ' max="' + f.max + '"' : '') +
     (f.step ? ' step="' + f.step + '"' : '') +
-    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
-    ' placeholder="' + escAttr(ph) + '"></label>';
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"></label>';
+}
+
+// A placeholder, cut to its first word when the field asks (the user agent),
+// the whole of it then the field's title.
+function _createPhAttrs(f, ph) {
+  if (f.phToken && ph.indexOf(' ') > 0) {
+    return ' placeholder="' + escAttr(ph.split(' ')[0]) + '" title="' + escAttr(ph) + '"';
+  }
+  return ' placeholder="' + escAttr(ph) + '"';
 }
 
 // A note that only matters once its box is ticked (overriding robots.txt)
@@ -2422,8 +2432,8 @@ function _createDefaultRowHtml(key, d) {
   var ph = number ? f.ph : factory ? factory : (factory === '' ? t('create_none') : (f.phKey ? t(f.phKey) : f.ph || ''));
   return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + id + '-row">' + label +
     '<input type="text" class="create-field create-short" id="' + id + '" value="' + escAttr(shown) + '"' +
-    (number ? ' inputmode="decimal"' : '') +
-    ' placeholder="' + escAttr(ph) + '" spellcheck="false" autocapitalize="none" autocorrect="off"' +
+    (number ? ' inputmode="decimal"' : '') + _createPhAttrs(f, ph) +
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
     ' onchange="_setCreatorField(\'' + key + '\', this)"></label>';
 }
 
