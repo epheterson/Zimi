@@ -320,7 +320,7 @@ def test_cli_refuses_what_a_page_engine_cannot_take(tmp_path):
 def test_cli_a_folder_still_refuses_them(tmp_path):
     folder = tmp_path / "f"
     folder.mkdir()
-    (folder / "index.html").write_text("<html><body>x</body></html>")
+    (folder / "index.html").write_text("<html><body>x</body></html>", encoding="utf-8")
     done = _cli(tmp_path, str(folder), "--cookies", "a=1")
     assert done.returncode != 0 and "only applies to a URL capture" in done.stdout + done.stderr
 
