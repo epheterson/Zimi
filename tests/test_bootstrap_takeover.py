@@ -358,6 +358,24 @@ class FirstRunLanTests(unittest.TestCase):
         self.assertEqual(status, 403, body)
         self.assertFalse(manage._get_manage_password_hash())
 
+    def test_after_the_first_hour_the_host_needs_the_key_too(self):
+        """A proxy on the same host that adds no header makes the internet
+        look like loopback; past the hour, the host reads the key from the log."""
+        status, body = self._claim("127.0.0.1", started_ago=manage.FIRST_RUN_LAN_SECONDS + 5)
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+        status, body = self._claim("127.0.0.1")
+        self.assertEqual(status, 200, body)
+
+    def test_under_kubernetes_no_network_is_the_home_network(self):
+        """A NodePort can hand the internet a 10.x node address."""
+        os.environ["KUBERNETES_SERVICE_HOST"] = "10.96.0.1"
+        try:
+            status, body = self._claim("10.0.0.31")
+            self.assertEqual(status, 403, body)
+        finally:
+            del os.environ["KUBERNETES_SERVICE_HOST"]
+
     def test_the_servers_own_container_network_is_not_the_home_network(self):
         """Docker Desktop hands compose networks 192.168.x: a neighbour there
         is the advisory's attacker in a home-looking range."""
@@ -394,6 +412,11 @@ class OwnNetworksTests(unittest.TestCase):
         nets = self.ng.own_networks(routes=[self.lan, self.bridge, self.compose], addrs=[], in_container=True)
         self.assertNotIn(self.lan[1], nets)
         self.assertIn(self.compose[1], nets)
+
+    def test_every_kind_of_virtual_bridge_counts(self):
+        libvirt = ("virbr0", self.net("192.168.122.0/24"))
+        nets = self.ng.own_networks(routes=[self.lan, libvirt], addrs=[], in_container=False)
+        self.assertEqual(nets, (libvirt[1],))
 
     def test_a_bare_host_keeps_its_lan(self):
         self.assertEqual(self.ng.own_networks(routes=[self.lan], addrs=[], in_container=False), ())

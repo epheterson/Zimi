@@ -2131,9 +2131,10 @@ class ZimHandler(BaseHTTPRequestHandler):
         """A fresh install answers nothing but its setup until its owner has
         said who can change settings (manage.init_setup_gate). Returns True
         (and sends a 503) when this request has to wait. The shell, its files
-        and the setup endpoints stay open so the page can be shown; this
-        machine keeps its API (a local agent, a script) and the setup key's
-        holder is already the owner."""
+        and the setup endpoints stay open so the page can be shown; whoever
+        proves ownership (manage._owner_proof: this machine in the first
+        hour, the setup key's holder, the home network in the first hour)
+        keeps the API."""
         if not _manage_mod.setup_pending():
             return False
         path = parsed.path
@@ -2143,7 +2144,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             or path in _SETUP_SURFACE
         ):
             return False
-        if self._is_loopback_client() or _manage_mod._bootstrap_key_ok(self):
+        if _manage_mod._owner_proof(self):
             return False
         if self._wants_html():
             self._html(503, SEARCH_UI_HTML, vary="Accept, Sec-Fetch-Dest")
@@ -4226,6 +4227,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         "X-Envoy-External-Address",
         "Tailscale-User-Login",
         "Tailscale-User-Name",
+        "Tailscale-Funnel-Request",
     )
 
     def _was_forwarded(self):

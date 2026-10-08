@@ -82,7 +82,9 @@ class PrivateGuard:
 # can sit inside a home-looking range without being the owner: Docker Desktop
 # hands compose networks 192.168.x, and a daemon's address pool can be set to
 # anything. These are the subnets such a neighbour comes from.
-_BRIDGE_IFACES = ("docker", "br-")  # the daemon's bridges, seen from the host (or a host-network container)
+# Virtual bridges, seen from the host (or a host-network container): Docker's,
+# libvirt's (virbr0 is 192.168.122.x), LXD's, Podman's and the CNI plugins'.
+_BRIDGE_IFACES = ("docker", "br-", "virbr", "lxdbr", "cni", "podman", "flannel", "cali", "vxlan")
 _PROC_ROUTE = "/proc/net/route"
 _PROC_INET6 = "/proc/net/if_inet6"
 _CONTAINER_MARKERS = ("/.dockerenv", "/run/.containerenv")
@@ -134,6 +136,12 @@ def _ipv6_addrs(path=_PROC_INET6):
         if not (addr.is_loopback or addr.is_link_local):
             out.append((parts[5], net))
     return out
+
+
+def orchestrated():
+    """Whether Zimi runs under Kubernetes, where a NodePort can hand the
+    internet a 10.x node address: no network there is the home network."""
+    return bool(os.environ.get("KUBERNETES_SERVICE_HOST"))
 
 
 def own_networks(routes=None, addrs=None, in_container=None):

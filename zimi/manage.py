@@ -406,10 +406,9 @@ def _first_run_lan_client(handler):
     FIRST_RUN_LAN_NETS, and never from the server's own container networks
     (netguard.own_networks). An install that ran before the page existed never
     shows it, and its LAN still needs the key."""
-    if not setup_pending():
-        return False
-    started = _read_app_update_prefs().get("setup_started")
-    if not isinstance(started, (int, float)) or time.time() - started > FIRST_RUN_LAN_SECONDS:
+    from zimi import netguard
+
+    if not _first_run_window_open() or netguard.orchestrated():
         return False
     direct = getattr(handler, "_is_direct_private_client", None)
     if not direct or not direct():
@@ -424,13 +423,21 @@ def _first_run_lan_client(handler):
     # A neighbouring container can sit inside a home-looking range (Docker
     # Desktop's networks are 192.168.x), so the server's own container
     # networks are never the home network.
-    from zimi import netguard
-
     return (
         any(ip in net for net in FIRST_RUN_LAN_NETS)
         and not any(ip in net for net in FIRST_RUN_NOT_LAN)
         and not netguard.on_own_network(ip)
     )
+
+
+def _first_run_window_open():
+    """A fresh install's setup page is up, inside its first hour. The hour is
+    recorded once, when a fresh data dir first starts; a page without it (an
+    older build's) counts as expired."""
+    if not setup_pending():
+        return False
+    started = _read_app_update_prefs().get("setup_started")
+    return isinstance(started, (int, float)) and time.time() - started <= FIRST_RUN_LAN_SECONDS
 
 
 def _owner_proof(handler):
@@ -441,7 +448,17 @@ def _owner_proof(handler):
     # carries _is_loopback_client, so production always takes the strict
     # loopback path, and test_bootstrap_takeover pins that.
     is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-    return is_local() or _bootstrap_key_ok(handler) or _first_run_lan_client(handler)
+    return (_host_is_owner() and is_local()) or _bootstrap_key_ok(handler) or _first_run_lan_client(handler)
+
+
+def _host_is_owner():
+    """Whether the machine running Zimi proves ownership by being it. Always,
+    except on a fresh install whose page has outlived its first hour: a proxy
+    on the same host that adds no header (nginx proxy_pass alone, socat, ssh
+    -R, a Funnel) makes the internet look like loopback, and whoever is
+    really on the host can read the setup key from the log. An install
+    without the page (the desktop app, one already set up) is unchanged."""
+    return not setup_pending() or _first_run_window_open()
 
 
 def _bootstrap_key_ok(handler):
@@ -6247,7 +6264,7 @@ def access_answer(handler):
         # running Zimi, or the home network while a fresh install's page is up
         # (_first_run_lan_client). Elsewhere inside the network a device is
         # offered the key field; outside it, only "being set up".
-        "keyless": bool(getattr(handler, "_is_loopback_client", lambda: False)())
+        "keyless": (_host_is_owner() and bool(getattr(handler, "_is_loopback_client", lambda: False)()))
         or _first_run_lan_client(handler),
         "inside": handler._is_private_client(),
         # The account name, for the admin editing it: never to anyone else, or
