@@ -3950,8 +3950,7 @@ function _initTzClock(now) {
   // cities are offered to add, not all shown at once.
   var targetTz = _almSelectedTz || _almDisplayTz();
   var cards = _almClockCards(targetTz, now);
-  var localMatch = -1;
-  for (var ci = 0; ci < cards.length; ci++) if (cards[ci].tz === targetTz) { localMatch = ci; break; }
+  var localMatch = _almClockLit(cards, targetTz, now);
 
   // Render city cards with times
   var html = '';
@@ -4120,23 +4119,36 @@ function _almClockSheetClose(returnTo) {
 function _almSheetAboveKeyboard(pop) {
   pop._almUnfit = _sheetAboveKeyboard(pop);
 }
-// The cards: the place's zone (or the one selected), the device's when it
-// differs, the added ones; one each, sorted west to east by offset now.
+// The cards: the curated world tour (every city in _TZ_CITIES), then what the
+// reader brings to it: the place's zone and the device's when no card keeps
+// that offset already, and the clocks they added. One each, west to east by
+// offset now. The place's own city, when it is a curated one, carries the
+// place's name.
 function _almClockCards(targetTz, now) {
-  var out = [], seen = {}, home = _almDisplayTz(), named = _getLocation().stored;
-  function add(tz, added) {
+  var out = [], seen = {}, offs = {}, home = _almDisplayTz(), named = _getLocation().stored;
+  function add(tz, added, onlyIfNewOffset) {
     if (!tz || seen[tz]) return;
-    seen[tz] = 1;
     var off = 0;
     try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
+    if (onlyIfNewOffset && offs[off]) return;
+    seen[tz] = 1; offs[off] = 1;
     out.push({ tz: tz, added: added, off: off,
       label: tz === home && named ? _almTzCardLabel(tz) : _almTzCityLabel(tz) });
   }
-  add(home, false);
-  add(targetTz, false);
-  add(_almDeviceTz(), false);
+  _TZ_CITIES.forEach(function (c) { add(c.tz, false); });
+  add(home, false, true);
+  add(targetTz, false, true);
+  add(_almDeviceTz(), false, true);
   _almClocks().forEach(function (tz) { add(tz, true); });
   return out.sort(function (a, b) { return a.off - b.off; });
+}
+// The card a zone lights: its own, else the first keeping the same offset now.
+function _almClockLit(cards, tz, now) {
+  var off = null;
+  for (var i = 0; i < cards.length; i++) if (cards[i].tz === tz) return i;
+  try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return -1; }
+  for (var j = 0; j < cards.length; j++) if (cards[j].off === off) return j;
+  return -1;
 }
 
 // The name on a card for a zone that is not one of the curated cities: the
