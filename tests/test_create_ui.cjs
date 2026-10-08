@@ -222,6 +222,10 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['import', ['description', 'creator', 'publisher', 'tags']]
 ], 'each mode advertises its documented advanced options');
 
+check(_createAgainRequest({ mode: 'site', source: 'https://e.org/', cookies: 'set' },
+  { stopped: 'page cap (10)' }) === null,
+  'a capture that carried cookies is not offered again: they were never kept');
+
 // Leave out: the ticked kinds as a list; nothing ticked says nothing, unless a
 // stored default leaves something out, and then the empty list overrides it.
 eq(_createBuildRequest('site', { source: 'https://e.org/', skip_types: ['video', 'pdf'],

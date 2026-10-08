@@ -1667,6 +1667,9 @@ function _createT(key) {
 function _createAgainRequest(request, result) {
   var kind = request && result && captureStopKind(result.stopped);
   if (!kind) return null;
+  // Cookies are never kept (the request echoes them as "set"), so a rerun
+  // would run signed out; it is not offered, and the form is the way back.
+  if (request.cookies) return null;
   if (kind === 'depth') {
     var hit = String(result.stopped).match(/^depth limit \((\d+)\)/);
     if (hit && Number(hit[1]) >= CREATE_FIELDS.max_depth.max) return null;
