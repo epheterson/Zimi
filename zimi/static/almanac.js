@@ -503,21 +503,14 @@ function _almIsToday(d) {
 // truth so the full header render and the lightweight scrub updater
 // (_almScrubClock) read time identically.
 //
-// The header clock always reads the VIEWER's own local time, travelling or
-// not. A stored almanac location drives the sky/sun math, but its derived zone
-// must never drive this clock: a stale or wrong-hemisphere stored location
-// (e.g. a western longitude persisted with the wrong sign) resolves to a
-// far-eastern zone and paints tomorrow morning onto today's sky.
-//
-// It must not switch zones on travel either, which it used to. The rest of the
-// instrument reads the focus instant in device-local fields -- the time
-// machine's readout via _almTmParts, the calendar grid via
-// _almSyncSelectedToFocus, the destination chooser via _almMakeInstant, which
-// is also what makes a typed destination round-trip unchanged. A header on the
-// location's zone therefore disagreed with all three, by a whole day within a
-// zone-offset of midnight: pick 23:50 from Los Angeles with Tokyo stored and
-// the grid highlights the 22nd while the header reads the 23rd. One zone for
-// the whole instrument, and it is the device's.
+// The header clock reads the chosen place's local time, with a hint naming it
+// ("3:09 PM · GMT+5:30 · Mumbai"), and the device's own time when no place is
+// chosen or the place keeps the device's zone. The hint is the guard against
+// a place resolving to a wrong zone going unnoticed: it says which place's
+// clock this is. The rest of the instrument (the time machine's readout, the
+// calendar grid, the destination chooser) still reads the focus instant in
+// device-local fields, so within a zone-offset of midnight the header's day
+// can differ from the grid's; the header's hint is what explains it.
 // Date options with the era added for a year before 1: Intl leaves the era
 // out unless asked, so -270000 read "January 1, 270001", the far future.
 // Asked only then, so an ordinary date does not gain an "AD".
@@ -531,7 +524,10 @@ function _almClockParts(focus) {
   var locTz = null;
   try { locTz = _almDisplayTz(loc); } catch (e) {}
   var live = _almIsToday(focus);
-  var displayTz = _almDeviceTz() || locTz;
+  var deviceTz = _almDeviceTz();
+  // A chosen place whose zone is not the device's: its time, and its name.
+  var placeTz = loc.stored && locTz && locTz !== deviceTz ? locTz : null;
+  var displayTz = placeTz || deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
@@ -539,7 +535,8 @@ function _almClockParts(focus) {
     loc: loc, locTz: locTz, lang: lang, live: live,
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
-    tz: _formatTimezone(lang, displayTz, focus)
+    tz: _formatTimezone(lang, displayTz, focus),
+    place: placeTz ? (loc.name || '').split(',')[0].trim() : ''
   };
 }
 
@@ -566,6 +563,7 @@ function _almHeadHtml(focus) {
   // text color is var(--text) already.
   html += '<div id="almanac-head-date"' + tmTap + ' style="font-size:22px;font-weight:600">' + cp.date + '</div>';
   html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time"' + tmTap + '>' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
+    (cp.place ? ' &middot; <span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-head-here') : '') +
     (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
@@ -3658,7 +3656,7 @@ function _renderSunMap(now) {
   } else {
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="' + t('alm_use_location') + '">\uD83D\uDCCD</span>';
+  html += _almHereBtnHtml('');
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
   html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
@@ -4685,13 +4683,19 @@ function _almShowCitySearch() {
 // (the 3D view's button too).
 var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
+// "Where I am": the button back to the device's own place (geolocation, else
+// the manual prompt), offered wherever a place is showing.
+function _almHereBtnHtml(cls) {
+  return '<button type="button" class="alm-invite-btn ' + cls + '" onclick="_shareAlmanacLocation()" title="' + _almEsc(t('alm_use_location')) + '" aria-label="' + _almEsc(t('alm_place_here')) + '">' +
+    ALM_LOCATE_SVG + '<span>' + _almEsc(t('alm_place_here')) + '</span></button>';
+}
+
 // No place chosen yet: one line asking for it, with the two ways to give it
 // (where I am, or a search on the map). The sky and the tides both say it;
 // nothing pretends to stand somewhere.
 function _almPlaceInviteHtml() {
   return '<p class="alm-place-invite"><span>' + _almEsc(t('alm_place_invite')) + '</span> ' +
-    '<button type="button" class="alm-invite-btn" onclick="_shareAlmanacLocation()">' + ALM_LOCATE_SVG +
-    '<span>' + _almEsc(t('alm_place_here')) + '</span></button> ' +
+    _almHereBtnHtml('') + ' ' +
     '<button type="button" class="alm-invite-btn" onclick="_almPlaceFind()">' + _almEsc(t('alm_place_find')) + '</button></p>';
 }
 // The search on the map, brought into view.

@@ -196,6 +196,9 @@
 .alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 .alm-invite-btn svg { flex: none; width: 14px; height: 14px; }
+/* In the header the button is the mark alone: the hint beside it names the place. */
+.alm-head-here { min-height: 24px; padding: 0 7px; margin-left: 2px; vertical-align: middle; }
+.alm-head-here span { display: none; }
 /* Tables and calculations: two rows of tiles, each a scroller that runs to
    the screen's edges (the page itself never scrolls sideways). A tile is
    what opens: its mark, its name, and one line of what it gives. */
