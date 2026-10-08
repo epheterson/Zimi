@@ -72,7 +72,7 @@ from zimi.creator import (
     scratch_dir,
 )
 from zimi import zimpatch
-from zimi.capturegate import current_leave_out
+from zimi.capturegate import report_left_out
 from zimi.warc import WarcWriter
 from zimi.zimwriter import _slug, announce_shot, scraper_string, shot_verdict
 
@@ -494,6 +494,9 @@ def create_alive_page_zim(
     extra_wait=None,
     block_ads=None,
     capture_variants=None,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
     register=False,
     progress=None,
     **_ignored,
@@ -522,6 +525,9 @@ def create_alive_page_zim(
         extra_wait=extra_wait,
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     out = None
     blocked = {}
@@ -541,6 +547,7 @@ def create_alive_page_zim(
         # archive — so the archive has to be closed first. Closing the session
         # here rather than in the `finally` also means the conversion, which is
         # the long part, does not run with a Chromium sitting idle beside it.
+        report_left_out(note)
         capture.close()
         _convert(
             capture.warc_path,
@@ -752,9 +759,7 @@ def create_alive_site_zim(
                 f"({capture.count} responses, {capture.warc.records} records)"
             )
             blocked = report_blocked(capture, note)
-            left_out = current_leave_out()
-            if left_out and left_out.summary():
-                note(left_out.summary())
+            report_left_out(note)
             capture.close()  # the archive must be closed before it is read
             _convert(
                 capture.warc_path,

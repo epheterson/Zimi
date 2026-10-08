@@ -85,22 +85,43 @@ def _is_ip(host):
     return True
 
 
-class CaptureCookies:
-    """The cookies of ONE capture, bound to the host of its seed."""
+class _Seed:
+    """One page a capture was pointed at: where its cookies may go."""
 
-    def __init__(self, header, seed_url):
+    def __init__(self, url):
+        parts = urllib.parse.urlsplit(url)
+        self.host = (parts.hostname or "").lower()
+        self.scheme = parts.scheme.lower()
+        self.origin = f"{self.scheme}://{parts.netloc}/"
+
+    def takes(self, scheme, host):
+        if not self.host or scheme not in ("http", "https"):
+            return False
+        # Never down the ladder: a secure seed's cookies do not go out in clear.
+        if self.scheme == "https" and scheme != "https":
+            return False
+        if host == self.host:
+            return True
+        return not _is_ip(self.host) and host.endswith("." + self.host)
+
+
+class CaptureCookies:
+    """The cookies of ONE capture, bound to the host of each of its seeds (a
+    site has one, several pages have one each)."""
+
+    def __init__(self, header, seed_urls):
         self._pairs = parse_cookies(header) or []
-        seed = urllib.parse.urlsplit(seed_url)
-        self.host = (seed.hostname or "").lower()
-        self._scheme = seed.scheme.lower()
-        self._origin = f"{self._scheme}://{seed.netloc}/"
+        urls = [seed_urls] if isinstance(seed_urls, str) else list(seed_urls or ())
+        self._seeds = [_Seed(u) for u in urls]
+        self.host = self._seeds[0].host if self._seeds else ""
 
     def __bool__(self):
-        return bool(self._pairs and self.host)
+        return bool(self._pairs and any(s.host for s in self._seeds))
 
     # A cookie in a traceback or a log line is a leak; this prints as nothing.
     def __repr__(self):
-        return f"<CaptureCookies {COOKIES_SET} for {self.host or 'no host'}>"
+        hosts = ", ".join(s.host for s in self._seeds) or "no host"
+        return f"<CaptureCookies {COOKIES_SET} for {hosts}>"
 
     __str__ = __repr__
 
@@ -108,14 +129,7 @@ class CaptureCookies:
         parts = urllib.parse.urlsplit(url)
         host = (parts.hostname or "").lower()
         scheme = parts.scheme.lower()
-        if scheme not in ("http", "https") or not host or not self.host:
-            return False
-        # Never down the ladder: a secure seed's cookies do not go out in clear.
-        if self._scheme == "https" and scheme != "https":
-            return False
-        if host == self.host:
-            return True
-        return not _is_ip(self.host) and host.endswith("." + self.host)
+        return bool(host) and any(s.takes(scheme, host) for s in self._seeds)
 
     def header_for(self, url):
         """The ``Cookie`` header to send to ``url``, or None for anywhere else."""
@@ -124,28 +138,32 @@ class CaptureCookies:
         return "; ".join(f"{n}={v}" for n, v in self._pairs)
 
     def for_browser(self):
-        """The same cookies for a browser context, which does its own matching.
-        Ordinarily a domain cookie (the seed's host and its subdomains), or a
-        host-only one for an address or ``localhost``; secure when the seed is
-        https. The prefixes browsers police are given the form they demand:
-        ``__Host-`` is host-only, on the seed's URL, secure; ``__Secure-`` is
-        secure."""
+        """The same cookies for a browser context, which does its own matching,
+        once for each seed's host. Ordinarily a domain cookie (the host and its
+        subdomains), or a host-only one for an address or ``localhost``; secure
+        when the seed is https. The prefixes browsers police are given the form
+        they demand: ``__Host-`` is host-only, on the seed's URL, secure;
+        ``__Secure-`` is secure."""
         if not self:
             return []
-        wide = not _is_ip(self.host) and "." in self.host
-        secure = self._scheme == "https"
-        out = []
-        for name, value in self._pairs:
-            cookie = {"name": name, "value": value}
-            if name.startswith("__Host-"):
-                cookie.update(url=self._origin, secure=True)
-            else:
-                cookie.update(
-                    domain=("." if wide else "") + self.host,
-                    path="/",
-                    secure=secure or name.startswith("__Secure-"),
-                )
-            out.append(cookie)
+        out, done = [], set()
+        for seed in self._seeds:
+            if not seed.host or (seed.host, seed.scheme) in done:
+                continue
+            done.add((seed.host, seed.scheme))
+            wide = not _is_ip(seed.host) and "." in seed.host
+            secure = seed.scheme == "https"
+            for name, value in self._pairs:
+                cookie = {"name": name, "value": value}
+                if name.startswith("__Host-"):
+                    cookie.update(url=seed.origin, secure=True)
+                else:
+                    cookie.update(
+                        domain=("." if wide else "") + seed.host,
+                        path="/",
+                        secure=secure or name.startswith("__Secure-"),
+                    )
+                out.append(cookie)
         return out
 
 
@@ -156,10 +174,10 @@ def current_cookies():
     return _CAPTURE_COOKIES.get()
 
 
-def set_cookies(header, seed_url):
+def set_cookies(header, seed_urls):
     """Put a capture's cookies in force; returns the token to ``reset`` with
     (None when there are none)."""
-    jar = CaptureCookies(header, seed_url) if header else None
+    jar = CaptureCookies(header, seed_urls) if header else None
     return _CAPTURE_COOKIES.set(jar if jar else None)
 
 
@@ -366,3 +384,11 @@ def set_leave_out(kinds=None, max_bytes=None):
 
 def reset_leave_out(token):
     _CAPTURE_LEAVE_OUT.reset(token)
+
+
+def report_left_out(note):
+    """Say what the capture in force left out, once it is known."""
+    rule = _CAPTURE_LEAVE_OUT.get()
+    line = rule.summary() if rule else None
+    if line:
+        note(line)

@@ -864,6 +864,12 @@ NEW_OPTION_KEYS = (
     "time_limit", "sitemap", "user_agent", "mobile", "page_timeout",
     "cookies", "skip_types", "max_file_bytes", "workers",
 )
+# The ones a capture of a single page, or of several, also has: how it presents
+# itself, how long a browser waits, what it sends and what it leaves out. The
+# rest (time limit, sitemap, workers) are about walking a site.
+PAGE_OPTION_KEYS = (
+    "user_agent", "mobile", "page_timeout", "cookies", "skip_types", "max_file_bytes",
+)
 # The ZIM's own details: options of any mode that writes a ZIM, not only of a
 # site capture.
 DETAIL_KEYS = ("description", "creator", "publisher", "tags")
@@ -881,7 +887,7 @@ def _engines_phrase(opt):
     return opt.needs or "every engine"
 
 
-def capture_options(raw, engine, *, strict):
+def capture_options(raw, engine, *, strict, keys=NEW_OPTION_KEYS):
     """The new options a surface was given, parsed, with the engine's say.
 
     An option the engine cannot honor is refused when ``strict`` (a flag typed
@@ -889,7 +895,7 @@ def capture_options(raw, engine, *, strict):
     otherwise (a web form whose engine picker moved on after the field was
     filled). Only what was given comes back."""
     out = {}
-    for key in NEW_OPTION_KEYS:
+    for key in keys:
         value = capture_option_value(key, raw.get(key))
         if value is None:
             continue
@@ -949,13 +955,15 @@ def validate_stored_defaults(updates):
     return out
 
 
-def fill_stored_defaults(opts, engine, defaults=None):
+def fill_stored_defaults(opts, engine, defaults=None, keys=None):
     """Capture value, then stored default, then factory: ``opts`` (what the
     capture asked for) gets every stored default it said nothing about and the
     engine honors. The factory is the absence of a key."""
     stored = stored_defaults() if defaults is None else defaults
     for key, value in stored.items():
         if key == "allow_private" or key in PICKER_KEYS or opts.get(key) is not None:
+            continue
+        if keys is not None and key not in keys:
             continue
         if CAPTURE_OPTIONS[key].honored_by(engine):
             opts[key] = value
@@ -1870,9 +1878,7 @@ def create_site_zim(
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
-            left_out = _gate.current_leave_out()
-            if left_out and left_out.summary():
-                note(left_out.summary())
+            _gate.report_left_out(note)
             by_key = _assign_article_paths(pages)
             resolve = _link_resolver(by_key)
             note(f"packaging {_plural(len(pages), 'page')}…")

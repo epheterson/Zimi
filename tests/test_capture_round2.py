@@ -586,10 +586,7 @@ def test_cli_refuses_what_it_cannot_do(tmp_path):
             ("--site", "--engine", "singlefile", "--cookies", "a=1"),
             "--cookies applies to the fast, rendered and alive engines",
         ),
-        (("--skip", "video"), "--skip needs --site"),
         (("--site", "--skip", "floppies"), "cannot leave out"),
-        (("--max-file-size", "5M"), "--max-file-size needs --site"),
-        (("--cookies", "a=1"), "--cookies needs --site"),
     ]
     for flags, message in cases:
         done = _cli(tmp_path, "https://example.com/", *flags, offline=True)

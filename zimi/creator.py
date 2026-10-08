@@ -1424,7 +1424,7 @@ def with_capture_identity(fn):
 
     @functools.wraps(fn)
     def run(*args, **kwargs):
-        seed = args[0] if args else kwargs.get("url")
+        seed = args[0] if args else (kwargs.get("url") or kwargs.get("urls"))
         try:
             kinds = _gate.parse_skip_types(kwargs.get("skip_types"))
             cookies = _gate.set_cookies(kwargs.get("cookies"), seed)
@@ -2619,6 +2619,9 @@ class BuiltinCapture:
                     note=self._note,
                     block_ads=self._block_ads,
                     capture_variants=False,
+                    # The live picture is a visit to the page like any other:
+                    # it presents the identity the capture was given.
+                    user_agent=_CAPTURE_USER_AGENT.get(),
                 ).start()
             except Exception as e:
                 log.debug("no browser for the fast engine's pictures: %s", e)
@@ -2839,6 +2842,7 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     )
 
 
+@with_capture_identity
 def create_page_zim(
     url,
     *,
@@ -2856,6 +2860,12 @@ def create_page_zim(
     block_ads=None,
     capture_variants=None,
     strip_links=False,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
+    cookies=None,
+    skip_types=None,
+    max_file_bytes=None,
     register=False,
     progress=None,
 ):
@@ -2901,6 +2911,17 @@ def create_page_zim(
             creator_name=creator_name,
             publisher=publisher,
             tags=tags,
+            capture_options={
+                k: v
+                for k, v in dict(
+                    user_agent=user_agent,
+                    mobile=mobile,
+                    page_timeout=page_timeout,
+                    skip_types=skip_types,
+                    max_file_bytes=max_file_bytes,
+                ).items()
+                if v
+            },
             register=register,
             progress=progress,
         )
@@ -2919,6 +2940,9 @@ def create_page_zim(
             tags=tags,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
             register=register,
             progress=progress,
         )
@@ -2936,6 +2960,9 @@ def create_page_zim(
         work_dir=scratch_dir(out_dir, out_path),
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     blocked = {}
     unlink = OtherSiteLinks(strip_links)
@@ -2973,6 +3000,7 @@ def create_page_zim(
             # step? Fetch is all download steps"). The packaging line moves to
             # where the writing actually starts.
             page = unlink(capture.render(creator_target(creator), page, final_url), final_url)
+            _gate.report_left_out(note)
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
@@ -3098,6 +3126,7 @@ def _pages_scope(entries):
     return f"{host} pages {digest}"
 
 
+@with_capture_identity
 def create_pages_zim(
     urls,
     *,
@@ -3115,6 +3144,12 @@ def create_pages_zim(
     block_ads=None,
     capture_variants=None,
     strip_links=False,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
+    cookies=None,
+    skip_types=None,
+    max_file_bytes=None,
     register=False,
     progress=None,
 ):
@@ -3178,6 +3213,12 @@ def create_pages_zim(
             block_ads=block_ads,
             capture_variants=capture_variants,
             strip_links=strip_links,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
+            cookies=cookies,
+            skip_types=skip_types,
+            max_file_bytes=max_file_bytes,
             register=register,
             progress=progress,
         )
@@ -3205,6 +3246,9 @@ def create_pages_zim(
         work_dir=scratch_dir(out_dir, out_path),
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     entries, skipped, taken, detected = [], [], {"index"}, []
     blocked = {}
@@ -3301,6 +3345,7 @@ def create_pages_zim(
                     )
                 )
                 entry["page"] = None  # written; do not hold every page at once
+            _gate.report_left_out(note)
             creator.add_item(
                 static_cls(
                     "A/index", zim_title, _pages_index_html(zim_title, entries, skipped)
@@ -3627,6 +3672,9 @@ def _build_pages_from_args(args, sources):
         # travels with the engine for the same reason.
         given["--engine"] = False
         given["--block-ads"] = False
+    # How a page is fetched is as much the pages' business as a site's.
+    for flag in _page_flags():
+        given[flag] = False
     named = [flag for flag, was_given in given.items() if was_given]
     if named:
         raise CreateError(
@@ -3642,8 +3690,28 @@ def _build_pages_from_args(args, sources):
         block_ads=_block_ads_from_args(args, engine),
         register=not args.out,
         progress=_note,
+        **_page_options(args, engine),
         **_detail_kwargs(args),
     )
+
+
+def _page_flags():
+    """The flags of the options a page capture shares with a site capture."""
+    from zimi import crawler
+
+    return tuple(crawler.CAPTURE_OPTIONS[k].flag for k in crawler.PAGE_OPTION_KEYS)
+
+
+def _page_options(args, engine):
+    """The fetch options a page capture was given (flag, else stored default),
+    refused when the engine cannot honor one a flag asked for."""
+    from zimi import crawler
+
+    keys = crawler.PAGE_OPTION_KEYS
+    wanted = crawler.capture_options(
+        {k: getattr(args, k, None) for k in keys}, engine, strict=True, keys=keys
+    )
+    return crawler.fill_stored_defaults(wanted, engine, keys=keys)
 
 
 def _detail_kwargs(args):
@@ -3753,7 +3821,9 @@ def _build_from_args(args, src, is_url):
     # Options of a site capture whatever the engine; which engines honor each
     # one is the table's to say (crawler.CAPTURE_OPTIONS).
     new_options = tuple(
-        crawler.CAPTURE_OPTIONS[k].flag for k in crawler.NEW_OPTION_KEYS
+        crawler.CAPTURE_OPTIONS[k].flag
+        for k in crawler.NEW_OPTION_KEYS
+        if k not in crawler.PAGE_OPTION_KEYS
     )
     if engine == "zimit":
         # zimit has its own crawl controls, its own robots policy and its own
@@ -3769,7 +3839,7 @@ def _build_from_args(args, src, is_url):
                 shape + new_options,
                 "needs --site: without it Zimi captures exactly one page",
             )
-        wanted = _site_options(args, engine)
+        wanted = _site_options(args, engine) if site else _page_options(args, engine)
         return crawler.create_zimit_zim(
             src,
             site=site,
@@ -3791,7 +3861,12 @@ def _build_from_args(args, src, is_url):
             "needs --site: without it Zimi captures exactly one page",
         )
         return create_page_zim(
-            src, engine=engine, block_ads=block_ads, progress=_note, **common
+            src,
+            engine=engine,
+            block_ads=block_ads,
+            progress=_note,
+            **_page_options(args, engine),
+            **common,
         )
     wanted = _site_options(args, engine, block_ads=block_ads)
     return crawler.create_site_zim(

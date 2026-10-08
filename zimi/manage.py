@@ -3194,6 +3194,13 @@ def _create_validate(data):
         # rewritten at replay, so the box would promise what it cannot do.
         if _create_unlink_engine(opts["engine"]):
             opts["strip_links"] = _create_bool(data.get("strip_links"), False)
+    if mode == "page":
+        # How a page capture presents itself and what it sends and leaves out:
+        # the site options that describe one fetch and not a walk.
+        from zimi.crawler import PAGE_OPTION_KEYS, fill_stored_defaults
+
+        opts.update(_create_capture_options(data, opts.get("engine"), PAGE_OPTION_KEYS))
+        fill_stored_defaults(opts, opts.get("engine"), keys=PAGE_OPTION_KEYS)
     if mode == "site":
         # Any number, and 0 for none: the byte budget bounds the capture. A
         # negative is a typo, not "no limit", so it falls back to the default.
@@ -3308,20 +3315,21 @@ def _create_scope(data):
     return {k: v for k, v in raw.items() if v not in (None, [], 0)}
 
 
-def _create_capture_options(data, engine):
+def _create_capture_options(data, engine, keys=None):
     """The capture options the table owns (time limit, sitemap, user agent,
     mobile, page timeout, cookies, what to leave out, workers), checked now
     like the scope is. An option the chosen engine cannot honor is dropped, as
     a stale block-ads box is: the form may have been filled before the engine
     picker moved. Cookies are the exception: dropping them would run the
     capture signed out, which nobody who typed them asked for."""
-    from zimi.crawler import capture_options
+    from zimi.crawler import NEW_OPTION_KEYS, capture_options
     from zimi.creator import CreateError
 
+    keys = keys or NEW_OPTION_KEYS
     try:
-        options = capture_options(data, engine, strict=False)
+        options = capture_options(data, engine, strict=False, keys=keys)
         if data.get("cookies") and "cookies" not in options:
-            capture_options({"cookies": data["cookies"]}, engine, strict=True)
+            capture_options({"cookies": data["cookies"]}, engine, strict=True, keys=keys)
         return options
     except CreateError as e:
         raise ValueError(str(e))
@@ -3520,7 +3528,18 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(
-                opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
+                opts,
+                "language",
+                "engine",
+                "block_ads",
+                "capture_variants",
+                "strip_links",
+                "user_agent",
+                "mobile",
+                "page_timeout",
+                "cookies",
+                "skip_types",
+                "max_file_bytes",
             ),
             **_create_detail_kwargs(opts),
         )

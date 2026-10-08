@@ -337,9 +337,7 @@ def test_cli_refuses_what_the_engine_or_the_shape_cannot_take(tmp_path):
     for flag, value in (
         ("--time-limit", "1h"),
         ("--sitemap", None),
-        ("--user-agent", "X"),
-        ("--mobile", None),
-        ("--page-timeout", "5"),
+        ("--workers", "2"),
     ):
         done = _cli(
             tmp_path,
