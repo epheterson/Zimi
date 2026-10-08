@@ -210,7 +210,8 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['block_ads', 'capture_variants',
+  ['page', ['max_file_bytes', 'skip_types',
+    'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
     'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']],
   ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'sitemap',
     'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay',
@@ -1096,8 +1097,8 @@ eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', page_timeout:
   { mode: 'site', source: 'https://e.org/' },
   'a page timeout is not sent for the fast engine, which has no browser to wait on');
 eq(sandbox._createBuildRequest('page', { source: 'https://e.org/', mobile: true, time_limit: '1h' }),
-  { mode: 'page', source: 'https://e.org/' },
-  'page mode has none of these');
+  { mode: 'page', source: 'https://e.org/', mobile: true },
+  'page mode takes the fetch options but not a site\'s time limit');
 
 // Stored defaults: placeholders, checkboxes that start where the default puts
 // them (and so can say "off" against it), and the two selects.

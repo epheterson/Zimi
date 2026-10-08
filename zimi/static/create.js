@@ -122,7 +122,8 @@ var CREATE_MODE_DEFS = [
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
     flags: ['engine'],
-    advanced: ['block_ads', 'capture_variants',
+    advanced: ['max_file_bytes', 'skip_types',
+      'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
       'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']
   },
   {
