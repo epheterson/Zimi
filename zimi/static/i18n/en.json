@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "Southern Delta Aquariids",
   "alm_shower_taurids": "Taurids",
   "alm_shower_ursids": "Ursids",
+  "alm_shower_parent": "Parent: {name}",
   "alm_showing_all_countries": "Showing every country's holidays",
   "alm_showing_holidays": "Showing worldwide and {c} holidays",
   "alm_showing_worldwide": "Showing worldwide holidays",

@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "Южные Дельта-Аквариды",
   "alm_shower_taurids": "Тауриды",
   "alm_shower_ursids": "Урсиды",
+  "alm_shower_parent": "Родительское тело: {name}",
   "alm_showing_all_countries": "Показаны праздники всех стран",
   "alm_showing_holidays": "Мировые и {c} праздники",
   "alm_showing_worldwide": "Всемирные праздники",

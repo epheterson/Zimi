@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "دلتا الدلويات الجنوبية",
   "alm_shower_taurids": "الثوريات",
   "alm_shower_ursids": "الدبيات",
+  "alm_shower_parent": "الجسم الأم: {name}",
   "alm_showing_all_countries": "عرض أعياد جميع الدول",
   "alm_showing_holidays": "عرض الأعياد العالمية و{c}",
   "alm_showing_worldwide": "عرض العطلات العالمية",

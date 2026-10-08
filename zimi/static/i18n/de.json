@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "Südliche Delta-Aquariiden",
   "alm_shower_taurids": "Tauriden",
   "alm_shower_ursids": "Ursiden",
+  "alm_shower_parent": "Mutterkörper: {name}",
   "alm_showing_all_countries": "Feiertage aller Länder werden angezeigt",
   "alm_showing_holidays": "Weltweite und {c} Feiertage",
   "alm_showing_worldwide": "Weltweite Feiertage",

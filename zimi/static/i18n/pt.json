@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "Delta Aquáridas do Sul",
   "alm_shower_taurids": "Taurídeas",
   "alm_shower_ursids": "Ursídeas",
+  "alm_shower_parent": "Corpo de origem: {name}",
   "alm_showing_all_countries": "Mostrando feriados de todos os países",
   "alm_showing_holidays": "Feriados mundiais e {c}",
   "alm_showing_worldwide": "Mostrando feriados mundiais",

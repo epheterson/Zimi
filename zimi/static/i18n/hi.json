@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "दक्षिणी डेल्टा एक्वेरिड्स",
   "alm_shower_taurids": "टॉरिड्स",
   "alm_shower_ursids": "अर्सिड्स",
+  "alm_shower_parent": "मूल पिंड: {name}",
   "alm_showing_all_countries": "सभी देशों के अवकाश दिखा रहे हैं",
   "alm_showing_holidays": "वैश्विक और {c} अवकाश दिखा रहे हैं",
   "alm_showing_worldwide": "विश्वव्यापी छुट्टियाँ",

@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "דלתא אקווארידים דרומיים",
   "alm_shower_taurids": "טאורידים",
   "alm_shower_ursids": "אורסידים",
+  "alm_shower_parent": "גוף האם: {name}",
   "alm_showing_all_countries": "מציג חגים מכל המדינות",
   "alm_showing_holidays": "חגים עולמיים ו{c}",
   "alm_showing_worldwide": "מציג חגים עולמיים",

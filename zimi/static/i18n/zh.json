@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "南宝瓶座δ流星雨",
   "alm_shower_taurids": "金牛座流星雨",
   "alm_shower_ursids": "小熊座流星雨",
+  "alm_shower_parent": "母体：{name}",
   "alm_showing_all_countries": "显示所有国家的节日",
   "alm_showing_holidays": "显示全球和{c}节日",
   "alm_showing_worldwide": "显示全球节假日",

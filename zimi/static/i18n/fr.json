@@ -445,6 +445,7 @@
   "alm_shower_s_delta_aquariids": "Delta Aquarides australes",
   "alm_shower_taurids": "Taurides",
   "alm_shower_ursids": "Ursides",
+  "alm_shower_parent": "Corps parent : {name}",
   "alm_showing_all_countries": "Affichage des fêtes de tous les pays",
   "alm_showing_holidays": "Fêtes mondiales et {c}",
   "alm_showing_worldwide": "Jours fériés mondiaux",

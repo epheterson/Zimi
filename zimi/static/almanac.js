@@ -371,14 +371,14 @@ var _ON_THIS_DAY = {
   '02-15': [{ y: 1564, t: 'Galileo Galilei is born in Pisa.', w: 'ev:galileogalilei' }],
   '02-18': [{ y: 1930, t: 'Clyde Tombaugh discovers Pluto.', w: 'ev:pluto' }],
   '02-19': [{ y: 1473, t: 'Nicolaus Copernicus is born in Toruń — he moved the Sun to the centre.', w: 'ev:copernicus' }],
-  '02-20': [{ y: 1986, t: 'The Soviet Union launches the core of Mir, humanity’s home in orbit for 15 years.' }],
+  '02-20': [{ y: 1986, t: 'The Soviet Union launches the core of Mir, humanity’s home in orbit for 15 years.', w: 'ev:mir' }],
   '02-24': [{ y: 1968, t: 'Jocelyn Bell Burnell’s discovery of pulsars is announced.', w: 'ev:bellburnell' }],
   '03-13': [{ y: 1781, t: 'William Herschel discovers Uranus — the first planet found with a telescope.', w: 'ev:uranus' }],
   '03-14': [{ y: 1879, t: 'Albert Einstein is born in Ulm.', w: 'ev:einstein' }, { y: 2018, t: 'Stephen Hawking dies.', w: 'ev:hawking' }],
   '03-16': [{ y: 1926, t: 'Robert Goddard launches the first liquid-fuelled rocket.', w: 'ev:goddard' }],
   '03-18': [{ y: 1965, t: 'Alexei Leonov leaves his capsule for 12 minutes — the first spacewalk.', w: 'ev:leonov' }],
   '03-23': [{ y: 1882, t: 'Emmy Noether is born; her theorem ties every symmetry in physics to a conservation law.', w: 'ev:noether' },
-             { y: 2001, t: 'Mir is guided to a controlled fiery end over the Pacific.' }],
+             { y: 2001, t: 'Mir is guided to a controlled fiery end over the Pacific.', w: 'ev:mir' }],
   '04-12': [{ y: 1961, t: 'Yuri Gagarin orbits the Earth — the first human in space.', w: 'ev:gagarin' },
              { y: 1981, t: 'The first Space Shuttle, Columbia, launches.', w: 'ev:columbia' }],
   '04-13': [{ y: 1970, t: 'An oxygen tank explodes aboard Apollo 13; the crew improvise their way home.', w: 'ev:apollo13' }],
@@ -404,7 +404,7 @@ var _ON_THIS_DAY = {
   '07-15': [{ y: 1965, t: 'Mariner 4 sends back the first close-up photographs of Mars.', w: 'ev:mariner4' }],
   '07-16': [{ y: 1969, t: 'Apollo 11 launches from Kennedy Space Center.', w: 'ev:apollo11' }],
   '07-17': [{ y: 1894, t: 'Georges Lemaître is born in Belgium; the priest-physicist who proposed the expanding universe.', w: 'ev:lemaitre' },
-             { y: 1975, t: 'Apollo and Soyuz dock in orbit — Cold War rivals shaking hands in space.' }],
+             { y: 1975, t: 'Apollo and Soyuz dock in orbit — Cold War rivals shaking hands in space.', w: 'ev:astp' }],
   '07-18': [{ y: 1921, t: 'John Glenn, first American to orbit Earth, is born.', w: 'ev:glenn' }],
   '07-20': [{ y: 1969, t: 'Apollo 11 lands on the Moon; Armstrong and Aldrin walk its surface.', w: 'ev:apollo11' },
              { y: 1976, t: 'Viking 1 makes the first successful landing on Mars.', w: 'ev:viking1' }],
@@ -444,7 +444,7 @@ var _ON_THIS_DAY = {
   '12-17': [{ y: 1903, t: 'The Wright brothers fly for 12 seconds at Kitty Hawk.', w: 'ev:wright' }],
   '12-21': [{ y: 1968, t: 'Apollo 8 launches, carrying the first humans to orbit the Moon.', w: 'ev:apollo8' }],
   '12-22': [{ y: 1887, t: 'Srinivasa Ramanujan is born in Erode, India — self-taught, and still ahead of us.', w: 'ev:ramanujan' }],
-  '12-24': [{ y: 1979, t: 'Europe’s first Ariane rocket lifts off from French Guiana.' }],
+  '12-24': [{ y: 1979, t: 'Europe’s first Ariane rocket lifts off from French Guiana.', w: 'ev:ariane1' }],
   '12-25': [{ y: 1642, t: 'Isaac Newton is born (Old Style calendar).', w: 'ev:newton' },
              { y: 2021, t: 'The James Webb Space Telescope launches from French Guiana.', w: 'ev:jwst' }],
   '12-27': [{ y: 1571, t: 'Johannes Kepler is born; he replaced circles with ellipses.', w: 'ev:kepler' },
@@ -5832,6 +5832,7 @@ function _renderMeteorShowers(now, moon) {
       '<div>' +
       '<span class="almanac-eclipse-type">' + _alLink('shower:' + s.key, t('alm_shower_' + s.key)) + '</span>' +
       '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _lc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
+      ' &middot; ' + t('alm_shower_parent', { name: _alLink('parent:' + s.key, _almEsc(s.parent)) }) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="' + untilClass + '">' + untilStr + '</div></div>';
@@ -6252,14 +6253,14 @@ function _applyRegionHolidays(region, year, month, add, worldwide) {
   // Clock changes: labels hold both hemispheres (October IS spring in AU)
   var dst = pack.dst;
   if (dst === 'us') {
-    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal');
-    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal');
+    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal', '', '', '', 'term:daylight_saving');
   } else if (dst === 'eu') {
-    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal');
-    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal');
+    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal', '', '', '', 'term:daylight_saving');
   } else if (dst === 'au') {
-    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal');
-    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal');
+    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal', '', '', '', 'term:daylight_saving');
   }
 }
 
@@ -6350,7 +6351,7 @@ function _seasonEventsForYear(year) {
   for (var k = 0; k < 4; k++) {
     // JDE (TT ~ UTC at day precision) -> the user's local calendar date
     var d = new Date((_seasonInstantJDE(year, k) - 2440587.5) * 86400000);
-    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k] });
+    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k], link: k % 2 ? 'term:solstice' : 'term:equinox' });
   }
   _seasonCache = { year: year, events: events };
   return events;
@@ -6359,7 +6360,7 @@ function _seasonEventsForYear(year) {
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
-  function add(day, label, type, icon, src, region) {
+  function add(day, label, type, icon, src, region, link) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
     // Belt-and-suspenders: base set + one region pack should never
@@ -6369,7 +6370,7 @@ function _getAlmanacEvents(sys, year, month) {
     }
     // `region` (ISO code) lets a shared label like "Independence Day" deep-link
     // to the right country's article; '' for worldwide/native events.
-    events[day].push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '' });
+    events[day].push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '', link: link || '' });
   }
 
   // Base worldwide / regional / astronomical events are computed on absolute
@@ -6386,15 +6387,15 @@ function _getAlmanacEvents(sys, year, month) {
   var baseByJDN = {};
   for (var _gk in gregMonths) {
     (function (gy, gm) {
-      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src) {
+      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src, region, link) {
         var jdn = _gregorianToJDN(gy, gm, gDay);
-        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '' });
+        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '', link: link || '' });
       });
     })(gregMonths[_gk].gy, gregMonths[_gk].gm);
   }
   for (var _dd = 1; _dd <= daysInMonth; _dd++) {
     var _be = baseByJDN[firstJDN + _dd - 1];
-    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src);
+    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src, _be[_bi].region, _be[_bi].link);
   }
 
   _systemNativeEvents(sys, year, month, add);
@@ -6448,7 +6449,7 @@ function _gregorianBaseEvents(year, month, add) {
     var seasonEvents = _seasonEventsForYear(year);
     for (var sei = 0; sei < seasonEvents.length; sei++) {
       if (seasonEvents[sei].month === month) {
-        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro');
+        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro', '', '', '', seasonEvents[sei].link);
       }
     }
   }
@@ -6456,7 +6457,7 @@ function _gregorianBaseEvents(year, month, add) {
   // Meteor shower peaks — Gregorian dates, so part of the projected base.
   for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
     var s = _METEOR_SHOWERS[si];
-    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄'); }
+    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄', '', '', 'shower:' + s.key); }
   }
 }
 
@@ -6694,9 +6695,10 @@ function _drawAlmanacGrid() {
         var ev = selEvents[ei];
         var rawLabel = _th(ev.label);
         var escName = rawLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        // Holidays deep-link into the library (fail-soft); other event types stay plain text.
+        // Holidays deep-link into the library (fail-soft); a shower, a season or a clock change links its own entity (ev.link).
         var detailLabel = (ev.type === 'holiday' && window.AlmanacLinks)
-          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel, ev.region) : escName;
+          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel, ev.region)
+          : (ev.link ? _alLink(ev.link, escName) : escName);
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';
