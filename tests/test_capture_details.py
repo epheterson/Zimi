@@ -216,7 +216,7 @@ def test_details_reach_a_page_and_several_pages(fixture_server, tmp_path):
 def folder(tmp_path):
     root = tmp_path / "notes"
     root.mkdir()
-    (root / "index.html").write_text("<html><title>Notes</title><body>hi</body></html>")
+    (root / "index.html").write_text("<html><title>Notes</title><body>hi</body></html>", encoding="utf-8")
     return root
 
 
@@ -238,7 +238,8 @@ def test_a_folder_takes_the_capture_then_zimi_txt_then_the_stored_default(
     assert _meta(info["path"], "Publisher") == "Stored Press"
     # zimi.txt beats the stored default.
     (folder / "zimi.txt").write_text(
-        "Creator: Sidecar Author\nPublisher: Sidecar Press\nTags: from-file\n"
+        "Creator: Sidecar Author\nPublisher: Sidecar Press\nTags: from-file\n",
+        encoding="utf-8",
     )
     (tmp_path / "b").mkdir()
     info = _pack(folder, tmp_path / "b")
@@ -262,7 +263,7 @@ def test_a_folder_takes_the_capture_then_zimi_txt_then_the_stored_default(
 def test_a_folder_reads_the_stored_language_after_zimi_txt(folder, tmp_path, data_dir):
     _store(data_dir, language="fra")
     assert _pack(folder, tmp_path)["language"] == "fra"
-    (folder / "zimi.txt").write_text("Language: deu\n")
+    (folder / "zimi.txt").write_text("Language: deu\n", encoding="utf-8")
     (tmp_path / "b").mkdir()
     assert _pack(folder, tmp_path / "b")["language"] == "deu"
     (tmp_path / "c").mkdir()
