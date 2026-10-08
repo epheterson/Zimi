@@ -5,25 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.13.1] - 2026-10-09
 
 ### Added
 
-- A new install opens on one setup page: who can change settings, from outside your network or not, with a password or without ([#107](https://github.com/epheterson/Zimi/issues/107)).
-- Settings can stay inside your network even with the password (`ZIMI_MANAGE_EXTERNAL`).
-- Site captures choose which pages they visit: the section, the whole site, its subdomains or anywhere links lead, plus include and exclude patterns and extra hops (`--scope`, `--include`, `--exclude`, `--extra-hops`, and under Advanced in Create).
-
-- Site captures take a time limit, a sitemap, a user agent, a phone and a page timeout (`--time-limit`, `--sitemap`, `--user-agent`, `--mobile`, `--page-timeout`, and under Advanced in Create). Each is passed to zimit when its image knows the flag.
-- Manage, Creator holds standing defaults for these and for scope, max pages, max depth, size budget and delay; a capture's own value wins, and `zimi create` reads the same file.
+- A new install opens on one setup page: who can change settings, from where, with a password or without ([#107](https://github.com/epheterson/Zimi/issues/107)).
+- `ZIMI_MANAGE_EXTERNAL`: settings stay inside your network even with a password.
+- Site captures choose their reach: the section, the site, its subdomains or anywhere, plus include and exclude patterns and extra hops.
+- Site captures take a time limit, a sitemap, a user agent, a phone view and a page timeout.
+- Page and site captures can leave out video, audio, PDFs, archives or images, cap the largest file, and carry a signed-in session's cookies (sent to that site only, never saved); page captures also take the user agent, phone view and page timeout.
+- A ZIM's description, creator, publisher and tags from Create or the command line.
+- Standing capture defaults in Manage, Creator, including the engine and language; `zimi create` reads them too.
+- `--workers` for the zimit engine.
 
 ### Changed
 
-- Captures started from the web refuse private addresses (loopback, your network, link-local, carrier-grade NAT), judged by what a name resolves to, at every redirect, file and connection; zimit, whose browser runs in Docker, is not used for them. An admin can allow them in Manage, Creator; the command line is never restricted.
-- The zimit engine takes the same scope options and `--max-depth`, and speaks zimit 3's flag names to a zimit 3 image.
+- Create's options: one column, grouped, and grey means the default.
+- Reddot is off until an admin switches it on; Settings lists the apps by name.
+- Captures started from the web refuse private addresses unless an admin allows them, at every redirect, file and connection (zimit, whose browser runs in Docker, is not used for them). The command line is never restricted.
+- A fresh install's setup page can be answered from your home network without the setup key for its first hour; Docker bridges, tailnets and installs that ran unclaimed before 1.13.1 still need it.
+- The zimit engine takes the same options and speaks zimit 3.
 
 ### Fixed
 
-- Library search matches every word from the start of a word, and shows its count once ([#108](https://github.com/epheterson/Zimi/issues/108)).
+- Library search matches every word from its start, and shows its count once ([#108](https://github.com/epheterson/Zimi/issues/108)).
+- Offline mode refuses a capture in one plain sentence.
 - A search started while the library is still loading is no longer replaced by the home page.
 
 ## [1.13.0] - 2026-10-06
