@@ -12339,7 +12339,7 @@ function _fetchHasPw() {
 // mode 'setup' (the welcome card) or 'settings'. st is _setupState.
 function _setupFormHtml(st, mode) {
   var hasPw = st.access === 'password';
-  var needKey = mode === 'setup' && !st.host;
+  var needKey = mode === 'setup' && !st.keyless;
   var ext = !!st.external, req = hasPw || ext || st.direct === false || mode === 'setup';
   var lockReq = ext || st.direct === false || !!st.env_controlled;
   var input = function(id, type, auto, label, ph, val) {

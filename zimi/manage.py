@@ -7,6 +7,7 @@ history, stats, and admin authentication. Called from ZimHandler in http.py.
 import functools
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -377,6 +378,52 @@ def _end_setup_gate():
         _write_app_update_prefs(setup_gate=False)
 
 
+# The home networks a fresh install's setup page may be answered from without
+# the setup key: 10/8, 192.168/16 and IPv6 ULA. Not 172.16/12 (Docker's bridge
+# networks live there, and a neighbouring container is the advisory's
+# attacker), not 100.64/10 (tailnets), not link-local.
+FIRST_RUN_LAN_NETS = tuple(
+    ipaddress.ip_network(n) for n in ("10.0.0.0/8", "192.168.0.0/16", "fc00::/7")
+)
+
+
+def _first_run_lan_client(handler):
+    """A device on the home network answering a fresh install's setup page.
+
+    GHSA-5mw2-53vv-9pw6 was an install that worked unclaimed for good, so the
+    first-password door stood open on the LAN for months. Since 1.13.1 a fresh
+    install does nothing until its setup page is answered, so that door is open
+    only between first start and the owner's first visit, as in every other
+    self-hosted app, and the owner on their own network answers it without the
+    key. Only while the page is up, only directly (no proxy in front), only from
+    FIRST_RUN_LAN_NETS. An install that ran before the page existed never shows
+    it, and its LAN still needs the key."""
+    if not setup_pending():
+        return False
+    direct = getattr(handler, "_is_direct_private_client", None)
+    if not direct or not direct():
+        return False
+    peer = getattr(handler, "_socket_peer_ip", None)
+    try:
+        ip = ipaddress.ip_address(peer() if peer else handler.client_address[0])
+    except (ValueError, IndexError, TypeError):
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return any(ip in net for net in FIRST_RUN_LAN_NETS)
+
+
+def _owner_proof(handler):
+    """Who may act for the owner of a passwordless install: the host itself,
+    the holder of the setup key, or the home network while the first-run page
+    is up (_first_run_lan_client)."""
+    # getattr fallback is for test doubles only: the real ZimHandler always
+    # carries _is_loopback_client, so production always takes the strict
+    # loopback path, and test_bootstrap_takeover pins that.
+    is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
+    return is_local() or _bootstrap_key_ok(handler) or _first_run_lan_client(handler)
+
+
 def _bootstrap_key_ok(handler):
     """True when a remote bootstrap request carries the valid setup key, in
     the Authorization: Bearer header or an X-Zimi-Setup-Key header. Constant-
@@ -491,8 +538,7 @@ def _primary_admin_authorized(handler):
         # operator has opted into trusting the LAN (see _lan_admin_allowed).
         if _lan_admin_allowed():
             return _lan_client(handler)
-        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-        return is_local() or _bootstrap_key_ok(handler)
+        return _owner_proof(handler)
 
     # A primary-admin SESSION token (users.create_admin_session): minted when the
     # admin password verified, delivered as the HttpOnly zimi_session cookie so
@@ -576,22 +622,13 @@ def _check_manage_auth(handler):
         return None
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        # Bootstrap window (GHSA-5mw2-53vv-9pw6). Being ON the host is the one
-        # ownership proof that needs no secret; every remote client — LAN,
-        # Docker bridge, tailnet alike — must present the setup key the server
-        # printed to its log. Private-tier is no longer a free pass: it was
-        # wide enough for an adjacent device to race the owner to the first
-        # password. No password yet means no admin yet, so this same gate
-        # guards ALL of /manage, not just set-password.
-        # getattr fallback is for test doubles only: the real ZimHandler
-        # always carries _is_loopback_client, so production always takes the
-        # strict loopback path — and test_bootstrap_takeover pins that, so a
-        # refactor that lost the method would fail loudly rather than silently
-        # widen the door back to _is_private_client.
-        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-        if is_local():
-            return None
-        if _bootstrap_key_ok(handler):
+        # Bootstrap window (GHSA-5mw2-53vv-9pw6). The host, the setup key's
+        # holder, or the home network while a fresh install's setup page is up
+        # (_owner_proof). Private-tier as such is no free pass: it was wide
+        # enough for an adjacent device to race the owner to the first
+        # password on an install that stayed unclaimed. No password yet means
+        # no admin yet, so this same gate guards ALL of /manage.
+        if _owner_proof(handler):
             return None
         # The operator's explicit "my LAN is my trust boundary" (issue #59).
         # Off unless someone typed it, so the advisory's default stands; on, it
@@ -6186,9 +6223,12 @@ def access_answer(handler):
         # Through a proxy "anyone on my network" would lock this browser out,
         # so the page holds the password on (see _lan_client).
         "direct": _lan_client(handler),
-        # The machine running Zimi needs no setup key; inside the network a
-        # device is offered the key field, outside it only "being set up".
-        "host": bool(getattr(handler, "_is_loopback_client", lambda: False)()),
+        # Whether this device answers without the setup key: the machine
+        # running Zimi, or the home network while a fresh install's page is up
+        # (_first_run_lan_client). Elsewhere inside the network a device is
+        # offered the key field; outside it, only "being set up".
+        "keyless": bool(getattr(handler, "_is_loopback_client", lambda: False)())
+        or _first_run_lan_client(handler),
         "inside": handler._is_private_client(),
         # The account name, for the admin editing it: never to anyone else, or
         # it would be half the login handed out.

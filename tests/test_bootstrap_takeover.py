@@ -291,5 +291,61 @@ class BootstrapTakeoverTests(unittest.TestCase):
         self.assertEqual(status, 401, body)
 
 
+class FirstRunLanTests(unittest.TestCase):
+    """Since 1.13.1 a fresh install does nothing until its setup page is
+    answered, so the advisory's long-open door is only open between first
+    start and the owner's first visit. While the page is up, the owner's own
+    home network answers it without the key, as in every other self-hosted
+    app. Docker bridges, tailnets, proxied requests and installs that ran
+    before the page existed still need the key."""
+
+    setUp = BootstrapTakeoverTests.setUp
+    _as_peer = BootstrapTakeoverTests._as_peer
+    _post = BootstrapTakeoverTests._post
+    _get = BootstrapTakeoverTests._get
+
+    def tearDown(self):
+        manage._setup_gate = False
+        BootstrapTakeoverTests.tearDown(self)
+
+    # The setup page's answer: a password, kept inside the network.
+    ANSWER = {"require_password": True, "external": False, "password": "owner-pw-123"}
+
+    def _claim(self, ip, gate=True, headers=None):
+        manage._setup_gate = gate
+        self._as_peer(ip)
+        return self._post("/manage/access", self.ANSWER, headers=headers)
+
+    def test_the_home_network_answers_a_fresh_setup_page_without_the_key(self):
+        for ip in ("192.168.1.20", "10.0.0.31", "fd12:3456::7"):
+            with self.subTest(ip=ip):
+                manage._setup_gate = True
+                self._as_peer(ip)
+                status, body = self._get("/manage/has-password")
+                self.assertTrue(body.get("keyless"), body)
+        status, body = self._claim("192.168.1.20")
+        self.assertEqual(status, 200, body)
+        self.assertTrue(manage._get_manage_password_hash())
+
+    def test_a_docker_bridge_or_a_tailnet_still_needs_the_key(self):
+        for ip in ("172.17.0.5", TAILNET, "169.254.3.4"):
+            with self.subTest(ip=ip):
+                status, body = self._claim(ip)
+                self.assertEqual(status, 403, body)
+                self.assertFalse(manage._get_manage_password_hash())
+
+    def test_an_install_without_the_page_still_needs_the_key_from_the_lan(self):
+        """An install that ran before 1.13.1 never shows the page: unclaimed
+        for months is the advisory's case, and its LAN still needs the key."""
+        status, body = self._claim("192.168.1.20", gate=False)
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+
+    def test_a_proxied_request_is_not_the_home_network(self):
+        status, body = self._claim("192.168.1.20", headers={"X-Forwarded-For": "203.0.113.9"})
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+
+
 if __name__ == "__main__":
     unittest.main()
