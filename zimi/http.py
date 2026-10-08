@@ -4208,12 +4208,24 @@ class ZimHandler(BaseHTTPRequestHandler):
     # disqualifies a claim of being ON the host, so the list is deliberately
     # broader than the ones _client_ip actually reads: an unknown proxy that
     # announces itself in any of these is still a proxy.
+    # Any header a hop adds to say it passed a request along. Every
+    # X-Forwarded-* counts too (_was_forwarded), whichever one a proxy sends.
     _FORWARDED_HEADERS = (
         "X-Forwarded-For",
         "X-Real-IP",
         "Forwarded",
+        "Via",
         "CF-Connecting-IP",
+        "CF-Connecting-IPv6",
+        "CF-Ray",
         "True-Client-IP",
+        "X-Client-IP",
+        "X-Cluster-Client-IP",
+        "X-Original-Forwarded-For",
+        "Fastly-Client-IP",
+        "X-Envoy-External-Address",
+        "Tailscale-User-Login",
+        "Tailscale-User-Name",
     )
 
     def _was_forwarded(self):
@@ -4224,7 +4236,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         address — but the fact that a hop announced itself is information the
         hop had no reason to fake, and it is enough to know this request did
         not come straight off the local network."""
-        return any(self.headers.get(h) for h in self._FORWARDED_HEADERS)
+        return any(self.headers.get(h) for h in self._FORWARDED_HEADERS) or any(
+            k.lower().startswith("x-forwarded-") for k in self.headers.keys()
+        )
 
     def _is_direct_private_client(self):
         """A private-network peer that reached Zimi directly.

@@ -366,7 +366,7 @@ def init_setup_gate(host):
     loopback = host in ("localhost", "::1") or host.startswith("127.")
     _setup_gate = fresh and not loopback and access_mode() == "unset"
     if _setup_gate:
-        _write_app_update_prefs(setup_gate=True)
+        _write_app_update_prefs(setup_gate=True, setup_started=time.time())
         log.info("First-run setup: Zimi opens once its owner chooses who can change settings")
     return _setup_gate
 
@@ -381,10 +381,17 @@ def _end_setup_gate():
 # The home networks a fresh install's setup page may be answered from without
 # the setup key: 10/8, 192.168/16 and IPv6 ULA. Not 172.16/12 (Docker's bridge
 # networks live there, and a neighbouring container is the advisory's
-# attacker), not 100.64/10 (tailnets), not link-local.
+# attacker), not 100.64/10 (tailnets), not link-local, and not Tailscale's
+# IPv6 range inside ULA.
 FIRST_RUN_LAN_NETS = tuple(
     ipaddress.ip_network(n) for n in ("10.0.0.0/8", "192.168.0.0/16", "fc00::/7")
 )
+FIRST_RUN_NOT_LAN = (ipaddress.ip_network("fd7a:115c:a1e0::/48"),)
+# How long after a fresh install's first start the home network may answer
+# its page without the key. A proxy that adds no header (nginx proxy_pass
+# alone, a TCP forward, ssh -R) makes the internet look like the LAN; the
+# window bounds what that can cost. Recorded once; a restart does not reset it.
+FIRST_RUN_LAN_SECONDS = 3600
 
 
 def _first_run_lan_client(handler):
@@ -395,10 +402,14 @@ def _first_run_lan_client(handler):
     install does nothing until its setup page is answered, so that door is open
     only between first start and the owner's first visit, as in every other
     self-hosted app, and the owner on their own network answers it without the
-    key. Only while the page is up, only directly (no proxy in front), only from
-    FIRST_RUN_LAN_NETS. An install that ran before the page existed never shows
-    it, and its LAN still needs the key."""
+    key. Only while the page is up and for its first FIRST_RUN_LAN_SECONDS, only directly (no proxy in front), only from
+    FIRST_RUN_LAN_NETS, and never from the server's own container networks
+    (netguard.own_networks). An install that ran before the page existed never
+    shows it, and its LAN still needs the key."""
     if not setup_pending():
+        return False
+    started = _read_app_update_prefs().get("setup_started")
+    if not isinstance(started, (int, float)) or time.time() - started > FIRST_RUN_LAN_SECONDS:
         return False
     direct = getattr(handler, "_is_direct_private_client", None)
     if not direct or not direct():
@@ -410,7 +421,16 @@ def _first_run_lan_client(handler):
         return False
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    return any(ip in net for net in FIRST_RUN_LAN_NETS)
+    # A neighbouring container can sit inside a home-looking range (Docker
+    # Desktop's networks are 192.168.x), so the server's own container
+    # networks are never the home network.
+    from zimi import netguard
+
+    return (
+        any(ip in net for net in FIRST_RUN_LAN_NETS)
+        and not any(ip in net for net in FIRST_RUN_NOT_LAN)
+        and not netguard.on_own_network(ip)
+    )
 
 
 def _owner_proof(handler):
