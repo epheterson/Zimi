@@ -43,8 +43,10 @@ from zimi.creator import (
     CreateError,
     _finish_output,
     _fmt_bytes,
+    PrivateAddressRefused,
     _try_register,
     _zim_file_item_class,
+    check_public,
     language_tag_to_iso3,
 )
 from zimi.p2p import is_offline
@@ -356,7 +358,12 @@ def _flat_entries(mod, url, limit):
     unresponsive host is not bounded — it is just a slow job wearing a
     preview's name. yt-dlp's own default here is "wait", so the bound has to be
     stated. It applies to the real build too, which wants it for the same
-    reason on a Pi."""
+    reason on a Pi.
+
+    A web-started capture is held to public addresses here too (the address
+    asked for, and below each entry's own): yt-dlp then fetches the media
+    itself, so the rule stops at the addresses Zimi is given."""
+    check_public(url)
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -777,6 +784,13 @@ def create_video_zim(
                 skipped.append(label)
                 continue
             say(f"[{i}/{len(entries)}] {label}")
+            try:
+                for key in ("webpage_url", "url"):
+                    if str(entry.get(key) or "").lower().startswith(("http://", "https://")):
+                        check_public(entry[key])
+            except PrivateAddressRefused:
+                say(f"skipped {label}: it is at a private address")
+                continue
             workdir = os.path.join(staging, str(i))
             os.makedirs(workdir)
             info = _download_entry(

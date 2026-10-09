@@ -1298,7 +1298,8 @@ class RenderedSession:
 
     def _route(self, route):
         """One request, judged. Abort what is on the list, let everything else
-        through untouched.
+        through untouched. A capture held to public addresses fails closed: what
+        cannot be judged is aborted.
 
         ``continue_`` rather than ``fallback`` because this is the only handler
         on the context, and every exception here is swallowed for a reason that
@@ -1326,7 +1327,15 @@ class RenderedSession:
                     self.blocked_hosts.add(host)
                     return
         except Exception as e:
-            log.debug("ad blocker could not judge %s: %s", url or "a request", e)
+            log.debug("could not judge %s: %s", url or "a request", e)
+            if self._private_guard is not None:
+                # A capture held to public addresses fails closed: a request
+                # that could not be judged is not one that may go out.
+                try:
+                    route.abort(BLOCK_ABORT_CODE)
+                except Exception as abort_error:
+                    log.debug("could not abort %s: %s", url, abort_error)
+                return
         try:
             route.continue_()
         except Exception as e:

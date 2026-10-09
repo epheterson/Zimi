@@ -42,6 +42,7 @@ import os
 import pathlib
 import posixpath
 import re
+import socket
 import sys
 import tempfile
 import urllib.error
@@ -1367,6 +1368,53 @@ class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class _PeerChecked:
+    """A connection that looks at who it actually reached. The guard resolved
+    the name once, and the socket resolves it again; a name that answers
+    differently the second time (DNS rebinding) is caught here, on the
+    connected peer, before anything is sent."""
+
+    def _checked_create_connection(self, *args, **kwargs):
+        sock = socket.create_connection(*args, **kwargs)
+        guard = _PRIVATE_GUARD.get()
+        if guard is not None:
+            peer = sock.getpeername()[0].split("%")[0]
+            if guard.refuses(peer):
+                sock.close()
+                raise PrivateAddressRefused(
+                    PRIVATE_REFUSED.format(host=args[0][0])
+                )
+        return sock
+
+
+class _GuardedHTTPConnection(_PeerChecked, http.client.HTTPConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._create_connection = self._checked_create_connection
+
+
+class _GuardedHTTPSConnection(_PeerChecked, http.client.HTTPSConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._create_connection = self._checked_create_connection
+
+
+class _GuardedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_GuardedHTTPConnection, req)
+
+
+class _GuardedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_GuardedHTTPSConnection, req, context=self._context)
+
+
+def _peer_handlers():
+    """The handlers that check the connected peer, when a private-address rule
+    is in force and nothing otherwise."""
+    return [_GuardedHTTPHandler, _GuardedHTTPSHandler] if _PRIVATE_GUARD.get() is not None else []
+
+
 class _CaptureCookieScope(urllib.request.BaseHandler):
     """Sets the capture's cookie on every request an opener sends, redirect
     hops included, and only on the ones going to the seed's host (or a
@@ -1383,7 +1431,7 @@ def urlopen_guarded(req, timeout):
     in force (the address asked for and every redirect hop) and carrying the
     capture's cookie to the one host it belongs to."""
     guarded = _PRIVATE_GUARD.get() is not None
-    handlers = ([_GuardedRedirect] if guarded else []) + (
+    handlers = ([_GuardedRedirect, *_peer_handlers()] if guarded else []) + (
         [_CaptureCookieScope] if _gate.current_cookies() else []
     )
     if not handlers:
@@ -1456,7 +1504,7 @@ def _fetch_page(url, *, timeout, max_redirects):
         req = _gate.apply_cookie(
             urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         )
-        opener = urllib.request.build_opener(_NoRedirect)
+        opener = urllib.request.build_opener(_NoRedirect, *_peer_handlers())
         try:
             resp = opener.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:

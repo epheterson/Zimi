@@ -88,11 +88,12 @@ def test_a_name_is_judged_by_what_it_resolves_to():
     ]  # noqa: E731
     assert netguard.PrivateGuard(mixed).refuses("both.example")
 
-    # A name that does not resolve is the fetch's own failure, not a refusal.
+    # A name that does not resolve is not vouched for: a guarded capture
+    # refuses it rather than call it public.
     def gone(host, port):
         raise OSError("no such host")
 
-    assert not netguard.PrivateGuard(gone).refuses("nowhere.example")
+    assert netguard.PrivateGuard(gone).refuses("nowhere.example")
 
 
 def test_a_verdict_is_asked_of_the_resolver_once_per_job():

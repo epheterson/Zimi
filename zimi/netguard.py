@@ -24,13 +24,37 @@ import threading
 CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+# ::/96, the long-deprecated IPv4-compatible form: ::10.0.0.1
+_IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
+RESOLVE_TIMEOUT = 5.0  # seconds one name may take to resolve before it is refused
+
+
+def _embedded_addresses(ip):
+    """The IPv4 addresses an IPv6 one carries, which is where it really goes:
+    IPv4-mapped (``::ffff:10.0.0.1``), NAT64 (``64:ff9b::a00:1``), 6to4
+    (``2002:a00:1::``), Teredo (server and client) and the deprecated
+    IPv4-compatible form."""
+    if ip.version != 6:
+        return []
+    found = []
+    if ip.ipv4_mapped is not None:
+        found.append(ip.ipv4_mapped)
+    if ip.sixtofour is not None:
+        found.append(ip.sixtofour)
+    if ip.teredo is not None:
+        found.extend(ip.teredo)
+    if ip in _NAT64 or (ip in _IPV4_COMPATIBLE and int(ip) > 1):
+        found.append(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
+    return found
+
+
 def is_private_address(ip):
     """Whether an ``ipaddress`` object is one a web capture may not reach.
-    An IPv4 address wrapped in IPv6 (``::ffff:10.0.0.1``) is judged as the
-    IPv4 address it is."""
-    mapped = getattr(ip, "ipv4_mapped", None)
-    if mapped is not None:
-        ip = mapped
+    An IPv4 address carried inside an IPv6 one (mapped, NAT64, 6to4, Teredo) is
+    judged as the IPv4 address it is, as well as the IPv6 one."""
+    if any(is_private_address(inner) for inner in _embedded_addresses(ip)):
+        return True
     return bool(
         ip.is_private
         or ip.is_loopback
@@ -44,8 +68,9 @@ def is_private_address(ip):
 class PrivateGuard:
     """The rule for one job: ``refuses(host)`` for a name or an address."""
 
-    def __init__(self, resolve=None):
+    def __init__(self, resolve=None, timeout=RESOLVE_TIMEOUT):
         self._resolve = resolve or socket.getaddrinfo
+        self._timeout = timeout
         self._verdicts = {}
         self._lock = threading.Lock()
 
@@ -54,19 +79,39 @@ class PrivateGuard:
         if not host:
             return False
         with self._lock:
-            if host not in self._verdicts:
-                self._verdicts[host] = self._judge(host)
-            return self._verdicts[host]
+            known = self._verdicts.get(host)
+        if known is None:
+            # Outside the lock: one slow lookup must not hold up every other
+            # request the capture makes.
+            known = self._judge(host)
+            with self._lock:
+                self._verdicts[host] = known
+        return known
+
+    def _lookup(self, host):
+        """``getaddrinfo`` with a deadline: the entries, or None for an error or
+        a lookup that took too long."""
+        box = {}
+
+        def work():
+            try:
+                box["found"] = self._resolve(host, None)
+            except (OSError, UnicodeError):
+                pass
+
+        worker = threading.Thread(target=work, daemon=True, name="zimi-guard-resolve")
+        worker.start()
+        worker.join(self._timeout)
+        return box.get("found")
 
     def _judge(self, host):
         try:
             return is_private_address(ipaddress.ip_address(host))
         except ValueError:
             pass
-        try:
-            found = self._resolve(host, None)
-        except (OSError, UnicodeError):
-            return False  # unresolvable: the fetch fails on its own
+        found = self._lookup(host)
+        if not found:
+            return True  # a name that will not resolve, or not in time, is not vouched for
         for entry in found:
             try:
                 if is_private_address(ipaddress.ip_address(entry[4][0].split("%")[0])):
