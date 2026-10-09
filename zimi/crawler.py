@@ -57,6 +57,8 @@ import logging
 import mimetypes
 import os
 import re
+import re._constants as _sre
+import re._parser as _sre_parse
 import shutil
 import signal
 import subprocess
@@ -371,6 +373,52 @@ _NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*(?<!\()[*+?}](?:[^()\\]|\\.)
 MAX_MATCHED_URL_CHARS = 2048
 
 
+_sre_repeats = (_sre.MAX_REPEAT, _sre.MIN_REPEAT, getattr(_sre, "POSSESSIVE_REPEAT", _sre.MAX_REPEAT))
+
+
+def _repeats_a_choice(parsed):
+    """Whether a parsed pattern repeats, without bound, a group that holds an
+    alternation: ``(a|aa)+``, ``(x|x)*y``. Each pass can take either branch, so
+    the ways to match multiply with the text. A choice that is not repeated, or
+    only repeated up to a number, is fine: ``\\.(png|jpg)$``, ``(/en|/fr)?``."""
+    for op, av in parsed:
+        if op is _sre.BRANCH:
+            if any(_repeats_a_choice(branch) for branch in av[1]):
+                return True
+        elif op in _sre_repeats:
+            _lo, hi, sub = av
+            if hi == _sre.MAXREPEAT and _holds_a_choice(sub):
+                return True
+            if _repeats_a_choice(sub):
+                return True
+        elif op is _sre.SUBPATTERN:
+            if _repeats_a_choice(av[-1]):
+                return True
+        elif op is _sre.ATOMIC_GROUP:
+            if _repeats_a_choice(av):
+                return True
+        elif op in (_sre.ASSERT, _sre.ASSERT_NOT):
+            if _repeats_a_choice(av[1]):
+                return True
+        elif op is _sre.GROUPREF_EXISTS:
+            if _repeats_a_choice(av[1]) or (av[2] is not None and _repeats_a_choice(av[2])):
+                return True
+    return False
+
+
+def _holds_a_choice(parsed):
+    for op, av in parsed:
+        if op is _sre.BRANCH:
+            return True
+        if op in _sre_repeats and _holds_a_choice(av[2]):
+            return True
+        if op is _sre.SUBPATTERN and _holds_a_choice(av[-1]):
+            return True
+        if op is _sre.ATOMIC_GROUP and _holds_a_choice(av):
+            return True
+    return False
+
+
 def _patterns(values, flag):
     """Compiled regexes from a string or a list of them. A pattern that does
     not compile is the user's to fix, said with the pattern in it."""
@@ -391,7 +439,7 @@ def _patterns(values, flag):
             raise CreateError(
                 f"{flag} {text!r} is not a valid regular expression ({e})"
             )
-        if _NESTED_QUANTIFIER.search(text):
+        if _NESTED_QUANTIFIER.search(text) or _repeats_a_choice(_sre_parse.parse(text)):
             raise CreateError(
                 f"{flag} {text!r} repeats a group that itself repeats, which can hang the crawl; .* usually says the same"
             )
@@ -1081,7 +1129,6 @@ MAX_SITEMAP_URLS = 50_000  # in all, which is the protocol's own per-file ceilin
 MAX_SITEMAP_FILES = 25  # fetched, an index's children included
 MAX_SITEMAP_DEPTH = 2  # an index may list indexes, once
 DEFAULT_SITEMAP_PATH = "/sitemap.xml"
-_SITEMAP_LOC_RE = re.compile(r"<(?:[\w-]+:)?loc\b[^>]*>(.*?)</(?:[\w-]+:)?loc\s*>", re.I | re.S)
 _SITEMAP_INDEX_RE = re.compile(r"<(?:[\w-]+:)?sitemapindex\b", re.I)
 _CDATA_RE = re.compile(r"^\s*<!\[CDATA\[(.*?)\]\]>\s*$", re.S)
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -1104,11 +1151,36 @@ def _sitemap_text(data):
     return data.decode("utf-8", errors="replace")
 
 
+_LOC_OPEN = re.compile(r"<(?:[\w-]{1,40}:)?loc(?=[\s>/])[^<>]{0,300}>", re.I)
+_LOC_CLOSE = re.compile(r"</(?:[\w-]{1,40}:)?loc\s{0,16}>", re.I)
+
+
 def sitemap_locs(text):
-    """``(is_index, [url, ...])`` from a sitemap document."""
+    """``(is_index, [url, ...])`` from a sitemap document.
+
+    A linear scan, not one regex over the whole text: a pattern with ``.*?``
+    and a closing tag that never comes is quadratic or worse on hostile input,
+    and Python's ``re`` holds the GIL while it runs. Every tag is matched at a
+    position with a bounded pattern, so the cost is the text's length, and at
+    most ``MAX_SITEMAP_URLS`` addresses are taken."""
     locs = []
-    for found in _SITEMAP_LOC_RE.finditer(text):
-        raw = found.group(1)
+    pos = 0
+    while len(locs) < MAX_SITEMAP_URLS:
+        found = _LOC_OPEN.search(text, pos)
+        if not found:
+            break
+        start = found.end()
+        close = None
+        probe = text.find("</", start)
+        while probe != -1:
+            close = _LOC_CLOSE.match(text, probe)
+            if close:
+                break
+            probe = text.find("</", probe + 2)
+        if not close:
+            break  # nothing after this can close either
+        raw = text[start : close.start()]
+        pos = close.end()
         cdata = _CDATA_RE.match(raw)
         loc = _html.unescape(cdata.group(1) if cdata else raw).strip()
         if loc:
