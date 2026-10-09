@@ -132,6 +132,19 @@ class FirstRunAccessTests(_Harness):
         status, body = self._post("/login", {"username": "admin", "password": "hunter22"})
         self.assertEqual((status, body.get("error")), (403, "outside_network"), body)
 
+    def test_inside_only_walls_off_manage_but_not_create(self):
+        """Eric, 2026-10-09: "Create has nothing to do with manage." The
+        Creator section's defaults are settings and stay inside; Create's own
+        routes are using the app and answer from anywhere."""
+        token = self._post("/manage/access", INSIDE_PW)[1]["token"]
+        self._as_peer(INTERNET)
+        status, body = self._get("/manage/creator", self._bearer(token))
+        self.assertEqual((status, body.get("error")), (403, "outside_network"), body)
+        status, body = self._post("/manage/creator", {"delay": 1}, self._bearer(token))
+        self.assertEqual((status, body.get("error")), (403, "outside_network"), body)
+        status, body = self._get("/manage/create/log", self._bearer(token))
+        self.assertNotEqual(body.get("error"), "outside_network", body)
+
     def test_anywhere_lets_the_password_in_from_outside(self):
         token = self._post("/manage/access", ANYWHERE_PW)[1]["token"]
         self._as_peer(INTERNET)
