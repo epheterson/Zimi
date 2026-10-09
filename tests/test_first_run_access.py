@@ -217,6 +217,12 @@ class FreshInstallGateTests(_Harness):
         self._as_peer(takeover.ADJACENT)
         self.assertEqual(self._get("/list")[0], 200)
 
+    def test_an_untouched_install_from_before_the_setup_key_never_waits(self):
+        """Its metadata cache is all an old passwordless install that never
+        opened settings leaves behind, in the data dir or the ZIM folder."""
+        self.assertFalse(manage.init_setup_gate("0.0.0.0", ran_before=True))
+        self.assertTrue(manage.init_setup_gate("0.0.0.0", ran_before=False))
+
     def test_this_machine_only_or_an_answer_in_the_environment_never_waits(self):
         self.assertFalse(manage.init_setup_gate("127.0.0.1"))
         os.environ["ZIMI_LAN_ADMIN"] = "1"

@@ -343,12 +343,15 @@ def setup_pending():
     return _setup_gate
 
 
-def init_setup_gate(host):
+def init_setup_gate(host, ran_before=False):
     """At `zimi serve` start, before the setup key is made. Gates a FRESH
     install (nothing in its data dir yet) that other devices can reach and
     whose environment does not already answer the question. An install that
     ran before never gets the gate: its readers keep reading, and a
-    passwordless one is offered the page in Settings instead."""
+    passwordless one is offered the page in Settings instead. ``ran_before``
+    is the caller's word that a metadata cache existed before this start's
+    first scan wrote one: all an old passwordless install that never opened
+    settings leaves behind (`zimi serve` asks before load_cache)."""
     global _setup_gate
     prefs = _read_app_update_prefs()
     if "setup_gate" in prefs:
@@ -362,7 +365,7 @@ def init_setup_gate(host):
         _app_update_prefs_path(),
         _users._users_path(),
     )
-    fresh = not any(os.path.exists(p) for p in seen)
+    fresh = not ran_before and not any(os.path.exists(p) for p in seen)
     loopback = host in ("localhost", "::1") or host.startswith("127.")
     _setup_gate = fresh and not loopback and access_mode() == "unset"
     if _setup_gate:
@@ -5101,6 +5104,7 @@ def _probe_robots(final_url):
     }
 
 
+@_under_private_rule
 def _probe_video(source, limit):
     """List the playlist without downloading a frame of it."""
     from zimi.video import _flat_entries, _yt_dlp

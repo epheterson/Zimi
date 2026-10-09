@@ -5192,6 +5192,12 @@ def main():
     elif args.command == "serve":
         print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
+        # Asked before the first scan writes one: whether this install ran
+        # before, for the first-run page (manage.init_setup_gate).
+        ran_before = any(
+            os.path.exists(p)
+            for p in (_cache_file_path(), os.path.join(ZIM_DIR, ".zimi_cache.json"))
+        )
         load_cache()
         # Startup partial-download sweep. Keep partials that a download record
         # still wants (resume_pending_downloads() picks those up via Range).
@@ -5252,7 +5258,7 @@ def main():
                 # so freely; any other device needs the setup key below
                 # (GHSA-5mw2-53vv-9pw6). A fresh install opens only once it is
                 # answered.
-                gated = _mng_open.init_setup_gate(host)
+                gated = _mng_open.init_setup_gate(host, ran_before=ran_before)
                 key = _mng_open.ensure_setup_key()
                 log.info("Library management enabled — no admin password set yet.")
                 first = (
