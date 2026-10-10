@@ -3094,7 +3094,9 @@ async function init() {
   // Render immediately with what we have
   if (!history.state) history.replaceState({ mode: 'home' }, '', location.href);
   _applyI18nToDOM();
-  route(false);
+  // The shell is live during the load: a search or Manage opened meanwhile
+  // is what is on screen now, and drawing the address's page would wipe it.
+  if (mode === 'home') route(false);
   _desktopCheckOnboarding();
   // Register service worker
   if ('serviceWorker' in navigator) {

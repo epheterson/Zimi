@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Library search matches every word from the start of a word, and shows its count once ([#108](https://github.com/epheterson/Zimi/issues/108)).
+- A search started while the library is still loading is no longer replaced by the home page.
 
 ## [1.13.0] - 2026-10-06
 
