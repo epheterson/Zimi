@@ -25,6 +25,9 @@ CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
 
 
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
+# RFC 8215's local-use NAT64 prefix: a network's own translator, so a private
+# address behind it is as private as one behind the well-known prefix.
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
 # ::/96, the long-deprecated IPv4-compatible form: ::10.0.0.1
 _IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
 RESOLVE_TIMEOUT = 5.0  # seconds one name may take to resolve before it is refused
@@ -44,7 +47,7 @@ def _embedded_addresses(ip):
         found.append(ip.sixtofour)
     if ip.teredo is not None:
         found.extend(ip.teredo)
-    if ip in _NAT64 or (ip in _IPV4_COMPATIBLE and int(ip) > 1):
+    if ip in _NAT64 or ip in _NAT64_LOCAL or (ip in _IPV4_COMPATIBLE and int(ip) > 1):
         found.append(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
     return found
 
@@ -72,6 +75,7 @@ class PrivateGuard:
         self._resolve = resolve or socket.getaddrinfo
         self._timeout = timeout
         self._verdicts = {}
+        self._unresolved = set()
         self._lock = threading.Lock()
 
     def refuses(self, host):
@@ -83,10 +87,22 @@ class PrivateGuard:
         if known is None:
             # Outside the lock: one slow lookup must not hold up every other
             # request the capture makes.
-            known = self._judge(host)
+            known, final = self._judge(host)
             with self._lock:
-                self._verdicts[host] = known
+                if final:
+                    self._verdicts[host] = known
+                    self._unresolved.discard(host)
+                else:
+                    # Refused for now, and asked again next time: a resolver
+                    # that hiccuped once must not condemn a host for the job.
+                    self._unresolved.add(host)
         return known
+
+    def could_not_resolve(self, host):
+        """Whether the last refusal of ``host`` was for want of an answer
+        rather than for the address it gave."""
+        with self._lock:
+            return (host or "").strip("[]").lower() in self._unresolved
 
     def _lookup(self, host):
         """``getaddrinfo`` with a deadline: the entries, or None for an error or
@@ -105,20 +121,22 @@ class PrivateGuard:
         return box.get("found")
 
     def _judge(self, host):
+        """``(refused, final)``: a verdict from an address is final; a name that
+        would not resolve, or not in time, is refused but not remembered."""
         try:
-            return is_private_address(ipaddress.ip_address(host))
+            return is_private_address(ipaddress.ip_address(host)), True
         except ValueError:
             pass
         found = self._lookup(host)
         if not found:
-            return True  # a name that will not resolve, or not in time, is not vouched for
+            return True, False
         for entry in found:
             try:
                 if is_private_address(ipaddress.ip_address(entry[4][0].split("%")[0])):
-                    return True
+                    return True, True
             except ValueError:
                 continue
-        return False
+        return False, True
 
 
 # ── Container networks ──────────────────────────────────────────────────────

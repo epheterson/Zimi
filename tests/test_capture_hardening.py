@@ -82,19 +82,45 @@ def test_a_sitemap_takes_no_more_addresses_than_the_cap():
 
 @pytest.mark.parametrize(
     "pattern",
-    [r"(a|aa)+$", r"(x|x)*y", r"((a|aa))+", r"(?:ab|cd){2,}", r"(?:foo|bar)*$", r"((ab|cd)e)+"],
+    [r"(a|aa)+$", r"(x|x)*y", r"((a|aa))+", r"(?:ab|abc){2,}", r"((ab|abc)e)+", r"(.|a)*b"],
 )
-def test_a_repeated_choice_is_refused(pattern):
-    with pytest.raises(creator.CreateError, match="repeats a group that itself repeats"):
+def test_a_repeated_choice_whose_options_overlap_is_refused(pattern):
+    with pytest.raises(creator.CreateError, match="repeats a choice whose options can overlap"):
         crawler._patterns([pattern], "--exclude")
 
 
 @pytest.mark.parametrize(
     "pattern",
-    [r"\.(png|jpg)$", r"(?:/en|/fr)?/wiki/", r"(ab|cd){1,3}", r"/(news|blog)/\d+", r"^/docs/(v1|v2)/"],
+    [
+        r"\.(png|jpg)$",
+        r"(?:/en|/fr)?/wiki/",
+        r"(ab|cd){1,3}",
+        r"/(news|blog)/\d+",
+        r"^/(?:docs|guide)(?:/(?:v1|v2))*/",
+        r"(?:foo|bar)+",
+        r"(/en|/fr)*",
+        r"(?:ab|cd){2,}",
+    ],
 )
 def test_ordinary_patterns_still_work(pattern):
     assert crawler._patterns([pattern], "--exclude")
+
+
+def test_overlapping_classes_are_refused_by_one_rule_or_the_other():
+    with pytest.raises(creator.CreateError, match="can hang the crawl"):
+        crawler._patterns([r"(\w+|\d+)*"], "--exclude")
+
+
+def test_a_nested_repeat_keeps_its_own_sentence():
+    with pytest.raises(creator.CreateError, match="repeats a group that itself repeats"):
+        crawler._patterns([r"(a+)+$"], "--exclude")
+
+
+def test_the_pattern_rule_runs_on_python_3_10():
+    """The parser moved under ``re`` in 3.11 and two opcodes arrived with it.
+    Whatever this Python is, the checker reads its own parser."""
+    assert crawler._sre.MAXREPEAT and crawler._sre_parse.parse("(a|aa)+")
+    assert crawler._sre_atomic is None or crawler._sre_atomic == crawler._sre.ATOMIC_GROUP
 
 
 # ── video ───────────────────────────────────────────────────────────────────
@@ -217,7 +243,7 @@ def test_a_lookup_that_takes_too_long_is_refused():
     verdict, took = _timed(guard.refuses, "stuck.example")
     release.set()
     assert verdict is True and took < 2
-    assert guard.refuses("stuck.example") is True  # remembered, not asked again
+    assert guard.could_not_resolve("stuck.example")
 
 
 class _Route:
@@ -305,3 +331,87 @@ def test_the_same_connection_is_fine_when_nothing_holds_it(fixture_server, monke
         creator.urllib.request.Request(f"http://rebind.example:{PORT}/"), 5
     ) as resp:
         assert resp.status == 200
+
+
+# ── final review ────────────────────────────────────────────────────────────
+
+
+def test_a_timeout_is_not_remembered_as_a_refusal():
+    calls = []
+
+    def flaky(host, port):
+        calls.append(host)
+        if len(calls) == 1:
+            raise OSError("temporary failure in name resolution")
+        return [(2, 1, 6, "", (PUBLIC, 0))]
+
+    guard = netguard.PrivateGuard(flaky)
+    assert guard.refuses("blip.example") is True and guard.could_not_resolve("blip.example")
+    assert guard.refuses("blip.example") is False  # asked again, and answered
+    assert not guard.could_not_resolve("blip.example")
+    guard.refuses("blip.example")
+    assert len(calls) == 2  # now it is remembered
+
+
+def test_a_name_that_could_not_be_resolved_is_said_so_not_called_private():
+    def gone(host, port):
+        raise OSError("no such host")
+
+    with creator.private_addresses_refused(netguard.PrivateGuard(gone)):
+        with pytest.raises(creator.PrivateAddressRefused) as caught:
+            creator.check_public("http://nowhere.example/")
+    assert "could not resolve nowhere.example" in str(caught.value)
+    assert "private address" not in str(caught.value)
+    with creator.private_addresses_refused(netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.0.0.5", 0))])):
+        with pytest.raises(creator.PrivateAddressRefused, match="nowhere.example is a private address"):
+            creator.check_public("http://nowhere.example/")
+
+
+def test_a_proxy_hop_is_not_judged_by_the_proxys_own_address(fixture_server, monkeypatch):
+    # The "proxy" is the loopback fixture server: private, and the way out.
+    monkeypatch.setenv("http_proxy", f"http://{HOST}:{PORT}")
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    guard = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", (PUBLIC, 0))])
+    with creator.private_addresses_refused(guard):
+        with pytest.raises(creator.urllib.error.HTTPError) as caught:
+            creator.urlopen_guarded(creator.urllib.request.Request("http://target.example/x"), 5)
+    assert caught.value.code == 404  # it reached the proxy, which has no such page
+    # The name is still judged first.
+    private_name = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.0.0.5", 0))])
+    with creator.private_addresses_refused(private_name):
+        with pytest.raises(creator.PrivateAddressRefused):
+            creator.urlopen_guarded(creator.urllib.request.Request("http://inside.example/"), 5)
+
+
+def test_a_refusal_after_connect_names_the_target_host(fixture_server, monkeypatch):
+    _rebind(monkeypatch)
+    guard = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", (PUBLIC, 0))])
+    with creator.private_addresses_refused(guard):
+        with pytest.raises(creator.CreateError, match="rebind.example is a private address"):
+            creator._fetch_page(f"http://rebind.example:{PORT}/", timeout=5, max_redirects=0)
+
+
+def test_an_empty_loc_does_not_swallow_the_next_address():
+    assert crawler.sitemap_locs("<loc/><loc>https://a/</loc>")[1] == ["https://a/"]
+    assert crawler.sitemap_locs("<loc />\n<x:loc/><loc>https://b/</loc>")[1] == ["https://b/"]
+    assert crawler.sitemap_locs("<loc></loc><loc>https://c/</loc>")[1] == ["https://c/"]
+
+
+def test_the_local_use_nat64_prefix_is_judged_by_what_it_carries():
+    assert netguard.is_private_address(ipaddress.ip_address("64:ff9b:1::a00:1"))
+    assert netguard.is_private_address(ipaddress.ip_address("64:ff9b:1::7f00:1"))
+    assert [str(a) for a in netguard._embedded_addresses(ipaddress.ip_address("64:ff9b:1::a00:1"))] == ["10.0.0.1"]
+
+
+def test_a_playlist_whose_entries_are_all_private_ends_with_the_private_refusal(monkeypatch, tmp_path):
+    monkeypatch.setattr(video, "_yt_dlp", lambda: object())
+    monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
+    entries = [{"title": "a", "url": "http://10.0.0.5/a"}, {"title": "b", "webpage_url": "http://192.168.1.1/b"}]
+    monkeypatch.setattr(video, "_flat_entries", lambda mod, url, limit: ({"title": "L"}, entries))
+    monkeypatch.setattr(video, "_download_entry", lambda *a, **k: pytest.fail("downloaded"))
+    notes = []
+    with creator.private_addresses_refused(netguard.PrivateGuard()):
+        with pytest.raises(creator.CreateError, match="every video in the list is at a private address"):
+            video.create_video_zim("https://example.org/list", out_dir=str(tmp_path), progress=notes.append)
+    assert any("left out 2 videos at private addresses" in n for n in notes)

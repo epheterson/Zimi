@@ -1330,6 +1330,11 @@ PRIVATE_REFUSED = (
 )
 
 
+# A web capture does not go to a name it cannot place: said as what it is, since
+# nothing about the name was found to be private.
+UNRESOLVED_REFUSED = "could not resolve {host}, and captures started from the web only go where a name is known to lead."
+
+
 class PrivateAddressRefused(CreateError, OSError):
     """A fetch the private-address rule refused. An OSError too, so the readers
     that skip any asset that cannot be fetched skip this one the same way."""
@@ -1357,6 +1362,9 @@ def check_public(url, guard=None):
         return
     host = urllib.parse.urlsplit(url).hostname or ""
     if guard.refuses(host):
+        unresolved = getattr(guard, "could_not_resolve", None)
+        if unresolved is not None and unresolved(host):
+            raise PrivateAddressRefused(UNRESOLVED_REFUSED.format(host=host))
         raise PrivateAddressRefused(PRIVATE_REFUSED.format(host=host))
 
 
@@ -1372,41 +1380,59 @@ class _PeerChecked:
     """A connection that looks at who it actually reached. The guard resolved
     the name once, and the socket resolves it again; a name that answers
     differently the second time (DNS rebinding) is caught here, on the
-    connected peer, before anything is sent."""
+    connected peer, before anything is sent. A hop to a proxy is not that
+    name's address (the proxy may well be a private one), so it keeps the name
+    check made before the request and skips this."""
+
+    _proxied = False
 
     def _checked_create_connection(self, *args, **kwargs):
         sock = socket.create_connection(*args, **kwargs)
         guard = _PRIVATE_GUARD.get()
-        if guard is not None:
+        if guard is not None and not self._proxied:
             peer = sock.getpeername()[0].split("%")[0]
             if guard.refuses(peer):
                 sock.close()
-                raise PrivateAddressRefused(
-                    PRIVATE_REFUSED.format(host=args[0][0])
-                )
+                raise PrivateAddressRefused(PRIVATE_REFUSED.format(host=self.host))
         return sock
 
 
 class _GuardedHTTPConnection(_PeerChecked, http.client.HTTPConnection):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, proxied=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self._proxied = proxied
         self._create_connection = self._checked_create_connection
 
 
 class _GuardedHTTPSConnection(_PeerChecked, http.client.HTTPSConnection):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, proxied=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self._proxied = proxied
         self._create_connection = self._checked_create_connection
+
+
+def _goes_through_a_proxy(req):
+    """Whether urllib sent this request to a proxy: it repoints ``req.host`` at
+    the proxy and leaves ``full_url`` as the address asked for."""
+    return req.host != urllib.parse.urlsplit(req.full_url).netloc
 
 
 class _GuardedHTTPHandler(urllib.request.HTTPHandler):
     def http_open(self, req):
-        return self.do_open(_GuardedHTTPConnection, req)
+        proxied = _goes_through_a_proxy(req)
+        return self.do_open(
+            lambda *a, **k: _GuardedHTTPConnection(*a, proxied=proxied, **k), req
+        )
 
 
 class _GuardedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, req):
-        return self.do_open(_GuardedHTTPSConnection, req, context=self._context)
+        proxied = _goes_through_a_proxy(req)
+        return self.do_open(
+            lambda *a, **k: _GuardedHTTPSConnection(*a, proxied=proxied, **k),
+            req,
+            context=self._context,
+        )
 
 
 def _peer_handlers():

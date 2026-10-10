@@ -57,8 +57,12 @@ import logging
 import mimetypes
 import os
 import re
-import re._constants as _sre
-import re._parser as _sre_parse
+try:  # 3.11 moved the pattern parser under re
+    import re._constants as _sre
+    import re._parser as _sre_parse
+except ImportError:  # Python 3.10
+    import sre_constants as _sre
+    import sre_parse as _sre_parse
 import shutil
 import signal
 import subprocess
@@ -373,48 +377,75 @@ _NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*(?<!\()[*+?}](?:[^()\\]|\\.)
 MAX_MATCHED_URL_CHARS = 2048
 
 
-_sre_repeats = (_sre.MAX_REPEAT, _sre.MIN_REPEAT, getattr(_sre, "POSSESSIVE_REPEAT", _sre.MAX_REPEAT))
+def _sre_op(name):
+    """A parser opcode by name, or None where this Python has no such thing
+    (possessive repeats and atomic groups are 3.11 additions)."""
+    return getattr(_sre, name, None)
 
 
-def _repeats_a_choice(parsed):
-    """Whether a parsed pattern repeats, without bound, a group that holds an
-    alternation: ``(a|aa)+``, ``(x|x)*y``. Each pass can take either branch, so
-    the ways to match multiply with the text. A choice that is not repeated, or
-    only repeated up to a number, is fine: ``\\.(png|jpg)$``, ``(/en|/fr)?``."""
+_sre_repeats = tuple(
+    op for op in (_sre_op("MAX_REPEAT"), _sre_op("MIN_REPEAT"), _sre_op("POSSESSIVE_REPEAT")) if op
+)
+_sre_atomic = _sre_op("ATOMIC_GROUP")
+
+
+def _inner(op, av):
+    """The sub-patterns a parsed item holds, as a list of parsed lists."""
+    if op in _sre_repeats:
+        return [av[2]]
+    if op == _sre.SUBPATTERN:
+        return [av[-1]]
+    if _sre_atomic is not None and op == _sre_atomic:
+        return [av]
+    if op in (_sre.ASSERT, _sre.ASSERT_NOT):
+        return [av[1]]
+    if op == _sre.GROUPREF_EXISTS:
+        return [part for part in av[1:] if part is not None]
+    if op == _sre.BRANCH:
+        return list(av[1])
+    return []
+
+
+def _literal_text(parsed):
+    """The text of an alternative that is nothing but literal characters, or
+    None when it holds anything else (a class, a dot, a repeat, a group)."""
+    if all(op == _sre.LITERAL for op, _av in parsed):
+        return "".join(chr(av) for _op, av in parsed)
+    return None
+
+
+def _choice_can_overlap(options):
+    """Whether two alternatives of a choice could match the same text: equal,
+    one the start of another, or not plain literals so that nobody can say."""
+    texts = [_literal_text(option) for option in options]
+    if any(text is None for text in texts):
+        return True
+    return any(
+        a.startswith(b) or b.startswith(a)
+        for i, a in enumerate(texts)
+        for b in texts[i + 1 :]
+    )
+
+
+def _has_overlapping_choice(parsed):
     for op, av in parsed:
-        if op is _sre.BRANCH:
-            if any(_repeats_a_choice(branch) for branch in av[1]):
-                return True
-        elif op in _sre_repeats:
-            _lo, hi, sub = av
-            if hi == _sre.MAXREPEAT and _holds_a_choice(sub):
-                return True
-            if _repeats_a_choice(sub):
-                return True
-        elif op is _sre.SUBPATTERN:
-            if _repeats_a_choice(av[-1]):
-                return True
-        elif op is _sre.ATOMIC_GROUP:
-            if _repeats_a_choice(av):
-                return True
-        elif op in (_sre.ASSERT, _sre.ASSERT_NOT):
-            if _repeats_a_choice(av[1]):
-                return True
-        elif op is _sre.GROUPREF_EXISTS:
-            if _repeats_a_choice(av[1]) or (av[2] is not None and _repeats_a_choice(av[2])):
-                return True
+        if op == _sre.BRANCH and _choice_can_overlap(av[1]):
+            return True
+        if any(_has_overlapping_choice(part) for part in _inner(op, av)):
+            return True
     return False
 
 
-def _holds_a_choice(parsed):
+def _repeats_an_overlapping_choice(parsed):
+    """Whether a parsed pattern repeats, without bound, a group holding a choice
+    whose options can overlap: ``(a|aa)+``, ``(x|x)*y``, ``(\\w+|\\d+)*``. Each
+    pass can take either way, so the ways to match multiply with the text. A
+    repeated choice of distinct plain words is fine, and so is any choice that
+    is not repeated: ``(?:foo|bar)+``, ``(/en|/fr)*``, ``\\.(png|jpg)$``."""
     for op, av in parsed:
-        if op is _sre.BRANCH:
+        if op in _sre_repeats and av[1] == _sre.MAXREPEAT and _has_overlapping_choice(av[2]):
             return True
-        if op in _sre_repeats and _holds_a_choice(av[2]):
-            return True
-        if op is _sre.SUBPATTERN and _holds_a_choice(av[-1]):
-            return True
-        if op is _sre.ATOMIC_GROUP and _holds_a_choice(av):
+        if any(_repeats_an_overlapping_choice(part) for part in _inner(op, av)):
             return True
     return False
 
@@ -439,9 +470,14 @@ def _patterns(values, flag):
             raise CreateError(
                 f"{flag} {text!r} is not a valid regular expression ({e})"
             )
-        if _NESTED_QUANTIFIER.search(text) or _repeats_a_choice(_sre_parse.parse(text)):
+        if _NESTED_QUANTIFIER.search(text):
             raise CreateError(
                 f"{flag} {text!r} repeats a group that itself repeats, which can hang the crawl; .* usually says the same"
+            )
+        if _repeats_an_overlapping_choice(_sre_parse.parse(text)):
+            raise CreateError(
+                f"{flag} {text!r} repeats a choice whose options can overlap, which can hang the crawl; "
+                "list the options so that none starts another"
             )
     if len(out) > MAX_SCOPE_PATTERNS:
         raise CreateError(f"{flag}: at most {MAX_SCOPE_PATTERNS} patterns")
@@ -1170,6 +1206,9 @@ def sitemap_locs(text):
         if not found:
             break
         start = found.end()
+        if text[start - 2 : start] == "/>":
+            pos = start  # <loc/>: an empty tag, not one that opens
+            continue
         close = None
         probe = text.find("</", start)
         while probe != -1:

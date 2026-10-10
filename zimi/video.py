@@ -774,6 +774,7 @@ def create_video_zim(
     staging = tempfile.mkdtemp(prefix="zimi-video-", dir=work_dir)
     videos = []  # per-entry dicts carrying downloaded file paths
     skipped = []  # titles the budget kept out
+    private = 0  # entries a web capture may not reach
     used = 0
     budget_hit = False
     try:
@@ -790,6 +791,7 @@ def create_video_zim(
                         check_public(entry[key])
             except PrivateAddressRefused:
                 say(f"skipped {label}: it is at a private address")
+                private += 1
                 continue
             workdir = os.path.join(staging, str(i))
             os.makedirs(workdir)
@@ -816,6 +818,14 @@ def create_video_zim(
                     "sub_files": subs,
                     "thumb": thumb,
                 }
+            )
+        if private:
+            say(f"left out {_plural(private, 'video')} at private addresses")
+        if not videos and private == len(entries):
+            raise PrivateAddressRefused(
+                "every video in the list is at a private address, and captures "
+                "started from the web may not reach those. An admin can allow "
+                "private captures in Manage, under Creator."
             )
         if not videos:
             raise CreateError("nothing fit under the size budget — raise --max-bytes")
