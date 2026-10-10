@@ -49,6 +49,7 @@ boundary and the license boundary are the same boundary.
 """
 
 import contextlib
+import dataclasses
 import html as _html
 import itertools
 import json
@@ -56,6 +57,12 @@ import logging
 import mimetypes
 import os
 import re
+try:  # 3.11 moved the pattern parser under re
+    import re._constants as _sre
+    import re._parser as _sre_parse
+except ImportError:  # Python 3.10
+    import sre_constants as _sre
+    import sre_parse as _sre_parse
 import shutil
 import signal
 import subprocess
@@ -66,10 +73,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.robotparser
+import zlib
 from collections import deque
+from typing import Any, Callable, Optional
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
+    OFFERED_ENGINES,
     DEFAULT_ENGINE,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
@@ -84,7 +95,13 @@ from zimi.creator import (
     _HREF_RE,
     _page_title_from_html,
     _try_register,
+    _fetch_page,
+    current_private_guard,
+    urlopen_guarded,
     _user_agent,
+    MOBILE_VIEWPORT,
+    with_capture_identity,
+    zimi_user_agent,
     AssetSpool,
     capture_engine,
     CreateError,
@@ -96,14 +113,17 @@ from zimi.creator import (
     spool_target,
     looks_like_app,
 )
+from zimi import capturegate as _gate
 from zimi import subproc
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    MAX_DESCRIPTION_LENGTH,
     guess_mime,
     _plural,
     _slug,
     add_standard_metadata,
     atomic_zim_creator,
+    normalize_language,
     history_record,
     mask_raw_text,
     media_tags,
@@ -264,18 +284,30 @@ def crawl_scope(given_url, seed_url, seed_links, note=None):
     address = given_url
     # The widest the typed path could mean. The seed landing outside even
     # that is a redirect to another section, and the section is where it went.
-    widest = _folder_of(given) if "." in given.rsplit("/", 1)[-1] else given.rstrip("/") + "/"
+    widest = (
+        _folder_of(given)
+        if "." in given.rsplit("/", 1)[-1]
+        else given.rstrip("/") + "/"
+    )
     if not in_path_scope(seed_url, widest):
         address = seed_url
-        say(f"the site sent {given} to {_scope_path(urllib.parse.urlsplit(seed_url).path)}; following it")
+        say(
+            f"the site sent {given} to {_scope_path(urllib.parse.urlsplit(seed_url).path)}; following it"
+        )
     scope = path_scope(address, seed_links)
     path = _scope_path(urllib.parse.urlsplit(address).path)
     if scope is None:
-        say(f"capturing the whole site: {path} is a page, and nothing it links to is under it")
+        say(
+            f"capturing the whole site: {path} is a page, and nothing it links to is under it"
+        )
     elif scope.rstrip("/") == path.rstrip("/"):
-        say(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
+        say(
+            f"staying under {scope} (the path in the address); pages elsewhere on the site are left out"
+        )
     else:
-        say(f"staying under {scope}: {path} is a page there, and nothing it links to is under it")
+        say(
+            f"staying under {scope}: {path} is a page there, and nothing it links to is under it"
+        )
     return scope
 
 
@@ -322,6 +354,976 @@ def same_origin(url, origin):
     site is a different origin and stays external — the alternative is
     silently following a scheme downgrade."""
     return _origin_of(normalize_url(url)) == _origin_of(normalize_url(origin))
+
+
+# ── scope ───────────────────────────────────────────────────────────────────
+#
+# Which pages a site capture walks into. The kinds and the pattern flags are
+# browsertrix's own (zimit's --scopeType, --scopeIncludeRx, --scopeExcludeRx,
+# --extraHops), so a zimit command line translates to Zimi's one to one and
+# Zimi is never the narrower tool. "prefix" is the default and is Zimi's smart
+# reading of it: the seed's section, decided from the seed (crawl_scope).
+SCOPES = ("prefix", "host", "domain", "any")
+DEFAULT_SCOPE = "prefix"
+# A web form can send these, and every one is matched against every link the
+# crawl sees: enough for any real rule, few and short enough to stay cheap.
+MAX_SCOPE_PATTERNS = 20
+MAX_SCOPE_PATTERN_CHARS = 500
+MAX_EXTRA_HOPS = 10
+# Python's re has no timeout and holds the GIL, so a pattern that backtracks
+# without end, (a+)+ against the right link, stalls the whole server. A
+# quantified group that itself holds a quantifier is the shape that does it;
+# it is refused, read from the parsed pattern, and a link is matched on its
+# first characters only.
+MAX_MATCHED_URL_CHARS = 2048
+
+
+def _sre_op(name):
+    """A parser opcode by name, or None where this Python has no such thing
+    (possessive repeats and atomic groups are 3.11 additions)."""
+    return getattr(_sre, name, None)
+
+
+_sre_repeats = tuple(
+    op for op in (_sre_op("MAX_REPEAT"), _sre_op("MIN_REPEAT"), _sre_op("POSSESSIVE_REPEAT")) if op
+)
+_sre_atomic = _sre_op("ATOMIC_GROUP")
+
+
+def _inner(op, av):
+    """The sub-patterns a parsed item holds, as a list of parsed lists."""
+    if op in _sre_repeats:
+        return [av[2]]
+    if op == _sre.SUBPATTERN:
+        return [av[-1]]
+    if _sre_atomic is not None and op == _sre_atomic:
+        return [av]
+    if op in (_sre.ASSERT, _sre.ASSERT_NOT):
+        return [av[1]]
+    if op == _sre.GROUPREF_EXISTS:
+        return [part for part in av[1:] if part is not None]
+    if op == _sre.BRANCH:
+        return list(av[1])
+    return []
+
+
+def _literal_text(parsed):
+    """The text of an alternative that is nothing but literal characters, or
+    None when it holds anything else (a class, a dot, a repeat, a group)."""
+    if all(op == _sre.LITERAL for op, _av in parsed):
+        return "".join(chr(av) for _op, av in parsed)
+    return None
+
+
+def _choice_can_overlap(options):
+    """Whether two alternatives of a choice could match the same text: equal,
+    one the start of another, or not plain literals so that nobody can say."""
+    texts = [_literal_text(option) for option in options]
+    if any(text is None for text in texts):
+        return True
+    return any(
+        a.startswith(b) or b.startswith(a)
+        for i, a in enumerate(texts)
+        for b in texts[i + 1 :]
+    )
+
+
+def _has_overlapping_choice(parsed):
+    for op, av in parsed:
+        if op == _sre.BRANCH and _choice_can_overlap(av[1]):
+            return True
+        if any(_has_overlapping_choice(part) for part in _inner(op, av)):
+            return True
+    return False
+
+
+def _holds_a_repeat(parsed):
+    return any(
+        op in _sre_repeats or any(_holds_a_repeat(part) for part in _inner(op, av))
+        for op, av in parsed
+    )
+
+
+def _repeats_a_repeat(parsed):
+    """Whether a parsed pattern repeats, more than once, something that itself
+    repeats: ``(a+)+``, ``(\\w*)*``, ``(x?){2,}``. ``(ab)+`` and ``a+b+`` are fine."""
+    for op, av in parsed:
+        if op in _sre_repeats and av[1] > 1 and _holds_a_repeat(av[2]):
+            return True
+        if any(_repeats_a_repeat(part) for part in _inner(op, av)):
+            return True
+    return False
+
+
+def _repeats_an_overlapping_choice(parsed):
+    """Whether a parsed pattern repeats, more than once, a group holding a choice
+    whose options can overlap: ``(a|aa)+``, ``(x|x)*y``, ``(a|ab){1,50}``. Each
+    pass can take either way, so the ways to match multiply with the text. A
+    repeated choice of distinct plain words is fine, and so is any choice that
+    is not repeated: ``(?:foo|bar)+``, ``(/en|/fr)*``, ``\\.(png|jpg)$``."""
+    for op, av in parsed:
+        if op in _sre_repeats and av[1] > 1 and _has_overlapping_choice(av[2]):
+            return True
+        if any(_repeats_an_overlapping_choice(part) for part in _inner(op, av)):
+            return True
+    return False
+
+
+# Each unbounded wildcard multiplies the ways a link can be split between
+# them: two are instant on a long link, three take seconds per link, and
+# .*.*.* never finishes.
+MAX_WILDCARDS = 2
+
+
+def _wildcards(parsed):
+    """How many unbounded ``.`` repeats (``.*``, ``.+``) a parsed pattern holds."""
+    count = 0
+    for op, av in parsed:
+        if op in _sre_repeats and av[1] == _sre.MAXREPEAT and list(av[2]) == [(_sre.ANY, None)]:
+            count += 1
+        else:
+            count += sum(_wildcards(part) for part in _inner(op, av))
+    return count
+
+
+def _patterns(values, flag):
+    """Compiled regexes from a string or a list of them. A pattern that does
+    not compile is the user's to fix, said with the pattern in it."""
+    if isinstance(values, str):
+        values = [values]
+    out = []
+    for raw in values or ():
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        if len(text) > MAX_SCOPE_PATTERN_CHARS:
+            raise CreateError(
+                f"{flag}: a pattern is longer than {MAX_SCOPE_PATTERN_CHARS} characters"
+            )
+        try:
+            out.append(re.compile(text))
+            parsed = _sre_parse.parse(text)
+        except re.error as e:
+            raise CreateError(
+                f"{flag} {text!r} is not a valid regular expression ({e})"
+            )
+        if _repeats_a_repeat(parsed):
+            raise CreateError(
+                f"{flag} {text!r} repeats a group that itself repeats, which can hang the crawl; .* usually says the same"
+            )
+        if _repeats_an_overlapping_choice(parsed):
+            raise CreateError(
+                f"{flag} {text!r} repeats a choice whose options can overlap, which can hang the crawl; "
+                "list the options so that none starts another"
+            )
+        if _wildcards(parsed) > MAX_WILDCARDS:
+            raise CreateError(
+                f"{flag} {text!r} has more than {MAX_WILDCARDS} .* in it, which can hang the crawl; "
+                f"use {MAX_WILDCARDS} at most, or [^/]* for one part of the path"
+            )
+    if len(out) > MAX_SCOPE_PATTERNS:
+        raise CreateError(f"{flag}: at most {MAX_SCOPE_PATTERNS} patterns")
+    return out
+
+
+def _matches(patterns, url):
+    url = url[:MAX_MATCHED_URL_CHARS]
+    return any(p.search(url) for p in patterns)
+
+
+def _base_domain(host):
+    """The domain a ``domain`` scope covers: the host without a leading
+    ``www.``, which is what browsertrix strips before matching subdomains."""
+    host = (host or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+class CrawlScope:
+    """The pages a site capture may visit.
+
+    ``scope`` is one of ``SCOPES`` (kept as ``kind``). ``include`` patterns add pages to it,
+    ``exclude`` patterns take pages out of it and win over everything, and
+    ``extra_hops`` lets the crawl follow that many consecutive links out of it
+    (a page found that way is captured; its in-scope links start counting
+    again from nothing). Patterns match the normalized URL, anywhere in it.
+
+    Settled once the seed is in hand (``settle``), because "the seed's
+    section" and "the seed's host" are about the page the site actually
+    answered with, not the address that was typed."""
+
+    def __init__(self, scope=None, include=(), exclude=(), extra_hops=0):
+        kind = str(scope or DEFAULT_SCOPE).strip().lower()
+        if kind not in SCOPES:
+            raise CreateError(f"unknown scope {kind!r}: use one of {', '.join(SCOPES)}")
+        hops = int(extra_hops or 0)
+        if not 0 <= hops <= MAX_EXTRA_HOPS:
+            raise CreateError(f"extra hops must be between 0 and {MAX_EXTRA_HOPS}")
+        self.kind = kind
+        self.include = _patterns(include, "--include")
+        self.exclude = _patterns(exclude, "--exclude")
+        self.extra_hops = hops
+        self.origin = None
+        self.prefix = None  # the section, for kind "prefix"; None is the whole host
+        self.domain = None
+
+    @property
+    def custom(self):
+        """Whether anything beyond the default was asked for."""
+        return self.kind != DEFAULT_SCOPE or bool(
+            self.include or self.exclude or self.extra_hops
+        )
+
+    def settle(self, given_url, seed_url, seed_links, origin, note=None):
+        say = note or _noop
+        self.origin = origin
+        host = urllib.parse.urlsplit(seed_url).hostname or ""
+        if self.kind == "prefix":
+            self.prefix = crawl_scope(given_url, seed_url, seed_links, note)
+        elif self.kind == "host":
+            say(f"capturing the whole site: every page on {host}")
+        elif self.kind == "domain":
+            self.domain = _base_domain(host)
+            say(f"capturing {self.domain} and its subdomains")
+        else:
+            say("following links to any site; depth and the limits bound the capture")
+        if self.include:
+            say(
+                "also capturing pages matching "
+                + ", ".join(p.pattern for p in self.include)
+            )
+        if self.exclude:
+            say(
+                "never capturing pages matching "
+                + ", ".join(p.pattern for p in self.exclude)
+            )
+        if self.extra_hops:
+            say(
+                f"following links out of scope {_plural(self.extra_hops, 'page')} further"
+            )
+        return self
+
+    def excluded(self, url):
+        return _matches(self.exclude, url)
+
+    def contains(self, url):
+        """Whether a page is in scope on its own merits (no extra hops)."""
+        if self.excluded(url):
+            return False
+        if _matches(self.include, url):
+            return True
+        if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+            return False
+        if self.kind == "prefix":
+            return same_origin(url, self.origin) and in_path_scope(url, self.prefix)
+        if self.kind == "host":
+            return same_origin(url, self.origin)
+        if self.kind == "domain":
+            host = (urllib.parse.urlsplit(url).hostname or "").lower()
+            return host == self.domain or host.endswith("." + self.domain)
+        return True
+
+    def hops(self, url, from_hops):
+        """The hop count a page reached from a page ``from_hops`` out of scope
+        would carry: 0 in scope, one more out of it while extra hops allow,
+        else None (not visited)."""
+        if self.contains(url):
+            return 0
+        if self.excluded(url) or from_hops + 1 > self.extra_hops:
+            return None
+        return from_hops + 1
+
+
+# ── capture options ─────────────────────────────────────────────────────────
+#
+# One table names every capture option once: what its value is, what makes a
+# value valid, its CLI flag, zimit's name for it, which engines honor it and
+# whether an admin may store it as a standing default. The CLI, /manage/create,
+# /manage/creator, the Create page and the zimit argv all read it, so a new
+# option is a row and not a change to six validators.
+#
+# A parser takes what a surface has (a flag's text, a JSON value, a stored
+# one) and returns the value, or None for "nobody said"; it raises CreateError
+# with a plain sentence for a value that is wrong.
+
+MAX_TIME_LIMIT = 30 * 86400  # seconds: a month is a long enough "limit"
+MIN_PAGE_TIMEOUT = 1
+MAX_PAGE_TIMEOUT = 600  # seconds a single page may be waited on
+MAX_USER_AGENT_CHARS = 512
+MAX_SITEMAP_URL_CHARS = 2048
+MAX_DEPTH_CEILING = 50
+MAX_DELAY = 60.0  # seconds between page requests
+MOBILE_DEVICE = "iPhone 13"  # zimit's name for the phone a mobile capture is
+MAX_DETAIL_CHARS = 200  # an author or a publisher: one line, not a paragraph
+MAX_TAG_CHARS = 60
+MAX_TAGS = 30
+MIN_WORKERS = 1
+MAX_WORKERS = 16
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhd]?)$")
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def parse_duration(value):
+    """Seconds from ``90m``, ``8h``, ``1d``, ``45s`` or a plain number of
+    seconds. 0 is "no limit"; None is "not given"."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool):
+        raise CreateError("a time limit is a duration such as 90m or 8h")
+    if isinstance(value, (int, float)):
+        seconds = value
+    else:
+        found = _DURATION_RE.match(str(value).strip().lower())
+        if not found:
+            raise CreateError(
+                f"not a time limit: {str(value)[:40]} (try 90m, 8h or a number of seconds)"
+            )
+        seconds = float(found.group(1)) * _DURATION_UNITS[found.group(2) or "s"]
+    seconds = int(seconds)
+    if not 0 <= seconds <= MAX_TIME_LIMIT:
+        raise CreateError(
+            f"a time limit is between 1 second and {MAX_TIME_LIMIT // 86400} days (0 for none)"
+        )
+    return seconds
+
+
+def format_duration(seconds):
+    """``parse_duration``'s inverse, in the largest unit that divides evenly
+    up to hours: 28800 is 8h, 5400 is 90m."""
+    seconds = int(seconds or 0)
+    if not seconds:
+        return "0"
+    for unit, size in (("h", 3600), ("m", 60)):
+        if seconds % size == 0:
+            return f"{seconds // size}{unit}"
+    return f"{seconds}s"
+
+
+def _parse_int(low, high, what):
+    def parse(value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        try:
+            n = int(str(value).strip()) if not isinstance(value, bool) else None
+        except ValueError:
+            n = None
+        if n is None or not low <= n <= high:
+            raise CreateError(f"{what} is a whole number from {low} to {high}")
+        return n
+
+    return parse
+
+
+def _parse_delay(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        n = -1.0
+    if isinstance(value, bool) or not 0 <= n <= MAX_DELAY:
+        raise CreateError(f"the delay is from 0 to {MAX_DELAY:g} seconds")
+    return n
+
+
+def _parse_bool(what):
+    def parse(value):
+        if value is None:
+            return None
+        if not isinstance(value, bool):
+            raise CreateError(f"{what} must be true or false")
+        return value
+
+    return parse
+
+
+def _parse_scope(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    kind = str(value).strip().lower()
+    if kind not in SCOPES:
+        raise CreateError(f"unknown scope {kind[:20]!r}: use one of {', '.join(SCOPES)}")
+    return kind
+
+
+def _parse_bytes(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else parse_size(value)
+
+
+def _parse_user_agent(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > MAX_USER_AGENT_CHARS or _CONTROL_CHARS.search(text):
+        raise CreateError(
+            f"a user agent is one line of at most {MAX_USER_AGENT_CHARS} characters"
+        )
+    return text
+
+
+def _parse_line(what, limit):
+    """One line of text for the ZIM's own metadata; None when empty."""
+
+    def parse(value):
+        if value is None:
+            return None
+        text = " ".join(str(value).split())
+        if not text:
+            return None
+        if len(text) > limit or _CONTROL_CHARS.search(text):
+            raise CreateError(f"{what} is one line of at most {limit} characters")
+        return text
+
+    return parse
+
+
+def _parse_description(value):
+    """The ZIM description: the openZIM convention caps it, so a longer one is
+    refused with its length rather than cut where nobody chose."""
+    text = _parse_line("a description", 10**6)(value)
+    if text and len(text) > MAX_DESCRIPTION_LENGTH:
+        raise CreateError(
+            f"a ZIM description is at most {MAX_DESCRIPTION_LENGTH} characters "
+            f"and this one is {len(text)}"
+        )
+    return text
+
+
+def _parse_tags(value):
+    """Tags as a list: ``a;b`` from a flag or a form, or a list from the API."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    items = re.split(r"[;,]", value) if isinstance(value, str) else value
+    if not isinstance(items, (list, tuple)):
+        raise CreateError("tags are words separated by semicolons: news;health")
+    tags = []
+    for item in items:
+        tag = " ".join(str(item).split())
+        if not tag:
+            continue
+        if len(tag) > MAX_TAG_CHARS or _CONTROL_CHARS.search(tag):
+            raise CreateError(f"a tag is at most {MAX_TAG_CHARS} characters")
+        if tag not in tags:
+            tags.append(tag)
+    if len(tags) > MAX_TAGS:
+        raise CreateError(f"a ZIM has at most {MAX_TAGS} tags")
+    return tags or None
+
+
+def _parse_cookies(value):
+    """The cookies as one tidy Cookie header; the error never carries them."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    # What a request's echo shows in place of the cookies (see
+    # ``redacted_request``): sent back as it was, it means "none this time".
+    # A real Cookie header always has an "=", so the two cannot be confused.
+    if value == _gate.COOKIES_SET:
+        return None
+    try:
+        return _gate.normalize_cookies(value)
+    except _gate.GateError as e:
+        raise CreateError(str(e))
+
+
+def _parse_skip_types(value):
+    try:
+        return _gate.parse_skip_types(value)
+    except _gate.GateError as e:
+        raise CreateError(str(e))
+
+
+def _parse_engine(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    name = str(value).strip().lower()
+    if name not in OFFERED_ENGINES:
+        raise CreateError(f"unknown engine {name[:20]!r}: use one of {', '.join(OFFERED_ENGINES)}")
+    return name
+
+
+def _parse_language(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    code = str(value).strip().lower()
+    if code == LANGUAGE_AUTO:
+        return None
+    if not re.fullmatch(r"[a-z]{2,3}", code):
+        raise CreateError("a language is a code like eng, fra or ara")
+    # The code the ZIM will carry: a two-letter one translated, an unknown
+    # one refused here rather than when the ZIM is written.
+    try:
+        return normalize_language(code)
+    except ValueError:
+        raise CreateError("a language is a code like eng, fra or ara")
+
+
+def _show_list(sep):
+    return lambda v: sep.join(v)
+
+
+def _parse_sitemap(value):
+    """True (find it: robots.txt, else /sitemap.xml), a URL, or False (off)."""
+    if value is None or value is False or value is True:
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    parts = urllib.parse.urlsplit(text)
+    if (
+        parts.scheme.lower() not in ("http", "https")
+        or not parts.netloc
+        or len(text) > MAX_SITEMAP_URL_CHARS
+    ):
+        raise CreateError("a sitemap is an http(s) address, or just --sitemap to find it")
+    return text
+
+
+def _stored_sitemap(value):
+    """A standing default can say "look for one", never name a file: an address
+    describes one site."""
+    if not isinstance(value, bool):
+        raise CreateError("the stored sitemap default is on or off")
+    return value
+
+
+def _show_bytes(value):
+    return _fmt_bytes(value) if value else "0"
+
+
+def _show(value):
+    return "" if value is None else str(value)
+
+
+_BROWSER_ENGINES = ("rendered", "alive")
+_OWN_CRAWLER_ENGINES = ("builtin", "rendered", "singlefile", "alive")
+
+
+@dataclasses.dataclass(frozen=True)
+class CaptureOption:
+    key: str  # the option's name in code, the API and create_defaults.json
+    flag: str  # the CLI flag (the --no- spelling of a switch is argparse's)
+    parse: Callable[[Any], Any]
+    show: Callable[[Any], str] = _show  # a value as text, for placeholders and notes
+    engines: Optional[tuple] = None  # None: every engine honors it
+    zimit: Optional[str] = None  # zimit's flag for it, when it has one
+    storable: bool = True  # an admin may store it as a standing default
+    stored: Optional[Callable[[Any], Any]] = None  # a stricter parser for storing
+    needs: str = ""  # what a refused engine is told the option is for
+    never_stored: str = ""  # why a storable=False option is refused as a default
+
+    def honored_by(self, engine):
+        return self.engines is None or (engine or DEFAULT_ENGINE) in self.engines
+
+    def for_store(self, value):
+        return (self.stored or self.parse)(value)
+
+
+CAPTURE_OPTIONS = {
+    opt.key: opt
+    for opt in (
+        # The ZIM's own details. They reach the metadata of every mode that
+        # writes a ZIM, and zimit and warc2zim are handed the same words.
+        CaptureOption("description", "--description", _parse_description, zimit="--description", storable=False,
+                      never_stored="a description describes one ZIM"),
+        CaptureOption("creator", "--creator", _parse_line("an author", MAX_DETAIL_CHARS), zimit="--creator"),
+        CaptureOption("publisher", "--publisher", _parse_line("a publisher", MAX_DETAIL_CHARS), zimit="--publisher"),
+        CaptureOption("tags", "--tags", _parse_tags, _show_list(";"), zimit="--tags", storable=False,
+                      never_stored="tags describe one ZIM"),
+        CaptureOption("time_limit", "--time-limit", parse_duration, format_duration, zimit="--timeLimit"),
+        CaptureOption("sitemap", "--sitemap", _parse_sitemap, lambda v: "on" if v else "off", zimit="--useSitemap", stored=_stored_sitemap),
+        CaptureOption("user_agent", "--user-agent", _parse_user_agent, zimit="--userAgent"),
+        CaptureOption("mobile", "--mobile", _parse_bool("mobile"), lambda v: "on" if v else "off", zimit="--mobileDevice"),
+        CaptureOption(
+            "page_timeout", "--page-timeout",
+            _parse_int(MIN_PAGE_TIMEOUT, MAX_PAGE_TIMEOUT, "the page timeout"),
+            lambda v: f"{v}s", engines=_BROWSER_ENGINES + ("zimit",), zimit="--pageLoadTimeout",
+            needs="the engines that drive a browser",
+        ),
+        # A credential: sent to the seed's host and nowhere else, kept nowhere.
+        # zimit's browser runs outside Zimi and SingleFile has no scoped way to
+        # take one, so both refuse it: a capture that was meant to be signed in
+        # must not quietly run signed out.
+        CaptureOption(
+            "cookies", "--cookies", _parse_cookies, lambda v: _gate.COOKIES_SET,
+            engines=("builtin", "rendered", "alive"),
+            needs="the fast, rendered and alive engines",
+            storable=False, never_stored="cookies are a credential and are never stored",
+        ),
+        # What a capture does not carry. Zimit has no flag that means these.
+        CaptureOption(
+            "skip_types", "--skip", _parse_skip_types, _show_list(","),
+            engines=("builtin", "rendered", "alive", "zimit"),
+            needs="the fast, rendered and alive engines",
+        ),
+        CaptureOption(
+            "max_file_bytes", "--max-file-size", _parse_bytes, _show_bytes,
+            engines=("builtin", "rendered", "alive", "zimit"),
+            needs="the fast, rendered and alive engines",
+        ),
+        # The crawl's own frontier is one walk with one politeness clock; more
+        # at once is zimit's (browsertrix's) to do.
+        CaptureOption(
+            "workers", "--workers", _parse_int(MIN_WORKERS, MAX_WORKERS, "the number of workers"),
+            _show, engines=("zimit",), zimit="--workers", needs="the zimit engine",
+        ),
+        # What Create's pickers start on. Not options of a capture: the capture
+        # already has fields for both, and these are what silence means there.
+        CaptureOption("engine", "--engine", _parse_engine),
+        CaptureOption("language", "--language", _parse_language),
+        # Already options of their own, and now storable as defaults too. Their
+        # engines and flags are handled where they always were; the rows are
+        # what a stored value is checked by.
+        CaptureOption("scope", "--scope", _parse_scope),
+        CaptureOption("max_pages", "--max-pages", _parse_int(0, 10**9, "the page limit"), _show),
+        CaptureOption("max_depth", "--max-depth", _parse_int(0, MAX_DEPTH_CEILING, "the depth"), _show),
+        CaptureOption("max_bytes", "--max-bytes", _parse_bytes, _show_bytes, engines=_OWN_CRAWLER_ENGINES),
+        CaptureOption("delay", "--delay", _parse_delay, lambda v: f"{v:g}s", engines=_OWN_CRAWLER_ENGINES),
+        CaptureOption("block_ads", "--block-ads", _parse_bool("block_ads"), lambda v: "on" if v else "off", engines=_BROWSER_ENGINES),
+        CaptureOption("capture_variants", "", _parse_bool("capture_variants"), lambda v: "on" if v else "off", engines=("rendered",)),
+        # Not an option of a capture at all: whether the web may point one at
+        # a private address. Stored by an admin, never sent with a job.
+        CaptureOption("allow_private", "", _parse_bool("allow_private"), lambda v: "on" if v else "off"),
+    )
+}
+# What a request or a command line may carry per capture: the five options this
+# table was made for. The rest are stored defaults, or have their own fields.
+NEW_OPTION_KEYS = (
+    "time_limit", "sitemap", "user_agent", "mobile", "page_timeout",
+    "cookies", "skip_types", "max_file_bytes", "workers",
+)
+# The ones a capture of a single page, or of several, also has: how it presents
+# itself, how long a browser waits, what it sends and what it leaves out. The
+# rest (time limit, sitemap, workers) are about walking a site.
+PAGE_OPTION_KEYS = (
+    "user_agent", "mobile", "page_timeout", "cookies", "skip_types", "max_file_bytes",
+)
+# The ZIM's own details: options of any mode that writes a ZIM, not only of a
+# site capture.
+DETAIL_KEYS = ("description", "creator", "publisher", "tags")
+# Stored, but not applied to a capture by fill_stored_defaults: the pickers
+# that read them, and the admin's switch.
+PICKER_KEYS = ("engine", "language")
+
+
+def capture_option_value(key, raw):
+    """A per-capture value, checked: the parsed value or None for "not given"."""
+    return CAPTURE_OPTIONS[key].parse(raw)
+
+
+def _engines_phrase(opt):
+    return opt.needs or "every engine"
+
+
+def capture_options(raw, engine, *, strict, keys=NEW_OPTION_KEYS):
+    """The new options a surface was given, parsed, with the engine's say.
+
+    An option the engine cannot honor is refused when ``strict`` (a flag typed
+    on the command line describes something that will not happen) and dropped
+    otherwise (a web form whose engine picker moved on after the field was
+    filled). Only what was given comes back."""
+    out = {}
+    for key in keys:
+        value = capture_option_value(key, raw.get(key))
+        if value is None:
+            continue
+        opt = CAPTURE_OPTIONS[key]
+        if not opt.honored_by(engine):
+            if strict:
+                raise CreateError(
+                    f"{opt.flag} applies to {_engines_phrase(opt)}, which "
+                    f"{engine or DEFAULT_ENGINE} is not"
+                )
+            continue
+        out[key] = value
+    return out
+
+
+def create_defaults_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "create_defaults.json")
+
+
+def stored_defaults(path=None):
+    """Every stored default that is still valid, by key. A hand-edited value the
+    table does not accept falls back to the factory (it is not in the result),
+    the way a stored boolean that is not a boolean always has."""
+    try:
+        with open(path or create_defaults_path(), "r", encoding="utf-8") as fh:
+            saved = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    out = {}
+    for key, value in saved.items():
+        opt = CAPTURE_OPTIONS.get(key)
+        if opt is None or not opt.storable:
+            continue
+        try:
+            value = opt.for_store(value)
+        except CreateError:
+            continue
+        if value is not None and value != []:
+            out[key] = value
+    return out
+
+
+def validate_stored_defaults(updates):
+    """What ``/manage/creator`` was asked to store, checked by the same rows.
+    An empty string or null clears a default. Raises CreateError."""
+    out = {}
+    for key, value in updates.items():
+        opt = CAPTURE_OPTIONS.get(key)
+        if opt is None or not opt.storable:
+            raise CreateError(
+                (opt and opt.never_stored)
+                or f"{str(key)[:40]!r} is not a setting that can be stored"
+            )
+        out[key] = None if value is None or value in ("", []) else opt.for_store(value)
+    return out
+
+
+def fill_stored_defaults(opts, engine, defaults=None, keys=None):
+    """Capture value, then stored default, then factory: ``opts`` (what the
+    capture asked for) gets every stored default it said nothing about and the
+    engine honors. The factory is the absence of a key."""
+    stored = stored_defaults() if defaults is None else defaults
+    for key, value in stored.items():
+        if key == "allow_private" or key in PICKER_KEYS or opts.get(key) is not None:
+            continue
+        if keys is not None and key not in keys:
+            continue
+        if CAPTURE_OPTIONS[key].honored_by(engine):
+            opts[key] = value
+    return opts
+
+
+def storable_keys():
+    """The options an admin may store, in the table's order. ``allow_private``
+    is the admin's own switch and is not among them."""
+    return [k for k, o in CAPTURE_OPTIONS.items() if o.storable and k != "allow_private"]
+
+
+def factory_text():
+    """What a capture uses for each storable option when nothing is stored, as
+    display text; "" where the factory is none, no limit, the engine's own, or
+    detection (engine "" is the fast one, language "" is auto)."""
+    try:
+        from zimi.renderer import BLOCK_ADS_DEFAULT, NAV_TIMEOUT, VARIANT_SWEEP_DEFAULT
+    except Exception:
+        BLOCK_ADS_DEFAULT = VARIANT_SWEEP_DEFAULT = True
+        NAV_TIMEOUT = 45.0
+    onoff = lambda v: "on" if v else "off"  # noqa: E731
+    text = {
+        "creator": "Zimi",
+        "publisher": "Zimi",
+        "sitemap": "off",
+        "mobile": "off",
+        "user_agent": zimi_user_agent(),
+        "page_timeout": CAPTURE_OPTIONS["page_timeout"].show(int(NAV_TIMEOUT)),
+        "scope": DEFAULT_SCOPE,
+        "max_pages": str(DEFAULT_MAX_PAGES),
+        "max_depth": str(DEFAULT_MAX_DEPTH),
+        "max_bytes": _show_bytes(DEFAULT_MAX_BYTES),
+        "delay": CAPTURE_OPTIONS["delay"].show(DEFAULT_DELAY),
+        "block_ads": onoff(BLOCK_ADS_DEFAULT),
+        "capture_variants": onoff(VARIANT_SWEEP_DEFAULT),
+        "workers": "1",
+    }
+    return {k: text.get(k, "") for k in storable_keys()}
+
+
+def zim_details(raw, *, stored=True):
+    """The ZIM's own details a surface was given (description, creator,
+    publisher, tags), checked, with the stored defaults behind them for author
+    and publisher: the capture's value, then the stored default, then the
+    factory (which is the absence of a key). Only what is set comes back.
+
+    A folder asks for ``stored=False``: its zimi.txt comes between the two, so
+    ``create_folder_zim`` reads the stored default itself."""
+    out = {}
+    for key in DETAIL_KEYS:
+        value = CAPTURE_OPTIONS[key].parse(raw.get(key))
+        if value is not None:
+            out[key] = value
+    if stored:
+        fill_stored_defaults(out, None, {k: v for k, v in stored_defaults().items() if k in DETAIL_KEYS})
+    return out
+
+
+def detail_kwargs(details):
+    """``zim_details`` as the keyword arguments the ``create_*_zim`` functions
+    take (the author is ``creator_name`` there)."""
+    kwargs = {k: details[k] for k in DETAIL_KEYS if k != "creator" and details.get(k)}
+    if details.get("creator"):
+        kwargs["creator_name"] = details["creator"]
+    return kwargs
+
+
+def redacted_request(data):
+    """A copy of a capture request that is safe to keep and to show: any
+    cookies are replaced by the word ``set``."""
+    out = dict(data)
+    if out.get("cookies"):
+        out["cookies"] = _gate.COOKIES_SET
+    return out
+
+
+def default_placeholders(defaults=None):
+    """The stored defaults as text, for a form to show what silence means."""
+    stored = stored_defaults() if defaults is None else defaults
+    return {k: CAPTURE_OPTIONS[k].show(v) for k, v in stored.items()}
+
+
+class _RobotsBook:
+    """robots.txt for every origin a crawl reaches, read once each. A crawl
+    that keeps to its origin only ever holds the one the caller read."""
+
+    def __init__(self, origin, robots, ignore, timeout, note):
+        self._by_origin = {_origin_of(normalize_url(origin)): robots}
+        self._ignore = ignore
+        self._timeout = timeout
+        self._note = note
+
+    def allows(self, url):
+        if self._ignore:
+            return True
+        origin = _origin_of(normalize_url(url))
+        if origin not in self._by_origin:
+            self._by_origin[origin] = load_robots(
+                origin, timeout=self._timeout, note=self._note
+            )
+        return _robots_allows(self._by_origin[origin], url)
+
+
+# ── sitemap seeds ───────────────────────────────────────────────────────────
+#
+# A sitemap lists pages the links never reach (an orphaned page, a deep
+# archive). The pages it names are seeded at depth 1 when the crawl's scope
+# admits them, and are walked like any other link from there. It is read with a
+# regex for <loc>, not an XML parser: the file is the site's, the parser's
+# entity handling is not worth trusting with it, and <loc> is all there is to
+# read. Every bound below is a hard one.
+MAX_SITEMAP_BYTES = 10 * 1024**2  # per file, once decompressed
+MAX_SITEMAP_URLS = 50_000  # in all, which is the protocol's own per-file ceiling
+MAX_SITEMAP_FILES = 25  # fetched, an index's children included
+MAX_SITEMAP_DEPTH = 2  # an index may list indexes, once
+DEFAULT_SITEMAP_PATH = "/sitemap.xml"
+_SITEMAP_INDEX_RE = re.compile(r"<(?:[\w-]+:)?sitemapindex\b", re.I)
+_CDATA_RE = re.compile(r"^\s*<!\[CDATA\[(.*?)\]\]>\s*$", re.S)
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _sitemap_text(data):
+    """A sitemap's text: gunzipped when it is gzip (named .gz or not), and never
+    more than ``MAX_SITEMAP_BYTES`` of it, so a compressed bomb is refused
+    rather than expanded."""
+    if data[:2] == _GZIP_MAGIC:
+        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            data = inflater.decompress(data, MAX_SITEMAP_BYTES)
+        except zlib.error:
+            raise CreateError("a sitemap that is not valid gzip")
+        if inflater.unconsumed_tail:
+            raise CreateError(f"a sitemap over {_fmt_bytes(MAX_SITEMAP_BYTES)}")
+    elif len(data) > MAX_SITEMAP_BYTES:
+        raise CreateError(f"a sitemap over {_fmt_bytes(MAX_SITEMAP_BYTES)}")
+    return data.decode("utf-8", errors="replace")
+
+
+_LOC_OPEN = re.compile(r"<(?:[\w-]{1,40}:)?loc(?=[\s>/])[^<>]{0,300}>", re.I)
+_LOC_CLOSE = re.compile(r"</(?:[\w-]{1,40}:)?loc\s{0,16}>", re.I)
+
+
+def sitemap_locs(text):
+    """``(is_index, [url, ...])`` from a sitemap document.
+
+    A linear scan, not one regex over the whole text: a pattern with ``.*?``
+    and a closing tag that never comes is quadratic or worse on hostile input,
+    and Python's ``re`` holds the GIL while it runs. Every tag is matched at a
+    position with a bounded pattern, so the cost is the text's length, and at
+    most ``MAX_SITEMAP_URLS`` addresses are taken."""
+    locs = []
+    pos = 0
+    while len(locs) < MAX_SITEMAP_URLS:
+        found = _LOC_OPEN.search(text, pos)
+        if not found:
+            break
+        start = found.end()
+        if text[start - 2 : start] == "/>":
+            pos = start  # <loc/>: an empty tag, not one that opens
+            continue
+        close = None
+        probe = text.find("</", start)
+        while probe != -1:
+            close = _LOC_CLOSE.match(text, probe)
+            if close:
+                break
+            probe = text.find("</", probe + 2)
+        if not close:
+            break  # nothing after this can close either
+        raw = text[start : close.start()]
+        pos = close.end()
+        cdata = _CDATA_RE.match(raw)
+        loc = _html.unescape(cdata.group(1) if cdata else raw).strip()
+        if loc:
+            locs.append(loc)
+    return bool(_SITEMAP_INDEX_RE.search(text)), locs
+
+
+def sitemap_urls(spec, seed_url, robots, *, ignore_robots, timeout, note, fetch=None):
+    """The page addresses a site's sitemap lists, bounded.
+
+    ``spec`` is True (the robots.txt ``Sitemap:`` lines, else /sitemap.xml) or
+    the sitemap's own address. Every file that cannot be read is said and
+    skipped: a sitemap is a way to find more pages, never a reason to fail one
+    that was already going to work. ``fetch(url) -> bytes`` is the read, a
+    parameter so the private-address rule can wrap it."""
+    origin = _origin_of(seed_url)
+    if fetch is None:
+        def fetch(url):
+            return _fetch_page(url, timeout=timeout, max_redirects=DEFAULT_MAX_REDIRECTS)[1]
+    if spec is True:
+        # A crawl that ignores robots rules still reads what robots.txt says
+        # about sitemaps: reading a file is not obeying it.
+        book = robots or (load_robots(origin, timeout=timeout, note=note) if ignore_robots else None)
+        roots = list(book.site_maps() or []) if book else []
+        roots = roots or [origin + DEFAULT_SITEMAP_PATH]
+    else:
+        roots = [spec]
+    urls, seen_files, files = [], set(), 0
+    todo = deque((root, 0) for root in roots)
+    while todo and len(urls) < MAX_SITEMAP_URLS:
+        sitemap, level = todo.popleft()
+        if sitemap in seen_files:
+            continue
+        if files >= MAX_SITEMAP_FILES:
+            note(f"sitemap: stopped after {MAX_SITEMAP_FILES} files")
+            break
+        seen_files.add(sitemap)
+        files += 1
+        try:
+            is_index, locs = sitemap_locs(_sitemap_text(fetch(sitemap)))
+        except CreateError as e:
+            note(f"sitemap: could not read {sitemap} ({str(e).splitlines()[0]})")
+            continue
+        if is_index:
+            if level >= MAX_SITEMAP_DEPTH - 1:
+                note(f"sitemap: {sitemap} nests deeper than {MAX_SITEMAP_DEPTH} levels; not followed")
+                continue
+            # A child must live where its index does: a sitemap that sends the
+            # crawl to another host to read is not describing this site.
+            todo.extend((c, level + 1) for c in locs if same_origin(c, _origin_of(sitemap)))
+        else:
+            urls.extend(locs[: MAX_SITEMAP_URLS - len(urls)])
+    if not urls:
+        note("sitemap: no pages listed; crawling by links")
+    elif len(urls) >= MAX_SITEMAP_URLS:
+        note(f"sitemap: using the first {MAX_SITEMAP_URLS:,} pages it lists")
+    return urls
 
 
 def looks_like_a_page(url):
@@ -435,7 +1437,7 @@ def load_robots(origin, timeout=ROBOTS_TIMEOUT, note=_noop):
     url = origin + "/robots.txt"
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urlopen_guarded(req, timeout) as resp:
             raw = resp.read(MAX_ROBOTS_BYTES)
     except urllib.error.HTTPError as e:
         if e.code >= 500:
@@ -453,7 +1455,7 @@ def load_robots(origin, timeout=ROBOTS_TIMEOUT, note=_noop):
 
 
 def _robots_allows(robots, url):
-    return robots is None or robots.can_fetch(_user_agent(), url)
+    return robots is None or robots.can_fetch(zimi_user_agent(), url)
 
 
 def _robots_delay(robots, delay, note):
@@ -461,7 +1463,7 @@ def _robots_delay(robots, delay, note):
     if robots is None:
         return delay
     try:
-        asked = robots.crawl_delay(_user_agent())
+        asked = robots.crawl_delay(zimi_user_agent())
     except Exception:
         return delay
     if asked and float(asked) > delay:
@@ -496,9 +1498,15 @@ def _crawl(
     max_depth,
     delay,
     note,
+    scope=None,
+    ignore_robots=False,
+    timeout=ROBOTS_TIMEOUT,
+    time_limit=None,
+    sitemap=None,
 ):
-    """Breadth-first over one origin (and, when the address named one, one path
-    in it: see ``crawl_scope``), capturing each page COMPLETELY as it goes:
+    """Breadth-first over the pages ``scope`` admits (by default one origin
+    and, when the address named one, one path in it: see ``crawl_scope``),
+    capturing each page COMPLETELY as it goes:
     fetched, rendered, its assets pulled down, page and assets spooled.
 
     Returns ``(pages, reason, mimetypes)`` where each page is a dict of
@@ -533,21 +1541,21 @@ def _crawl(
     # request may go out at this time and not before. Asset traffic in the
     # meantime spends the interval instead of extending it.
     next_fetch_at = time.monotonic() + delay
+    # The time limit's clock starts with the walk: the seed is already in hand.
+    deadline = time.monotonic() + time_limit if time_limit else None
 
-    frontier_cap = min(max_pages * FRONTIER_FACTOR, FRONTIER_MAX) if max_pages else FRONTIER_MAX
+    frontier_cap = (
+        min(max_pages * FRONTIER_FACTOR, FRONTIER_MAX) if max_pages else FRONTIER_MAX
+    )
     frontier_full = [False]
 
-    def enqueue(links, depth):
+    def enqueue(links, depth, from_hops):
         for link in links:
             key = normalize_url(upgrade_scheme(link, origin))
-            if (
-                key in seen
-                or not same_origin(key, origin)
-                or not in_path_scope(key, scope)
-                or not looks_like_a_page(key)
-            ):
+            if key in seen or not looks_like_a_page(key):
                 continue
-            if not _robots_allows(robots, key):
+            hops = scope.hops(key, from_hops)
+            if hops is None:
                 continue
             if depth > max_depth:
                 # A page the crawl would have visited, one link too far. Said,
@@ -557,10 +1565,12 @@ def _crawl(
             if len(seen) >= frontier_cap:
                 if frontier_cap == FRONTIER_MAX and not frontier_full[0]:
                     frontier_full[0] = True
-                    note(f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those")
+                    note(
+                        f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those"
+                    )
                 return
             seen.add(key)
-            queue.append((key, depth))
+            queue.append((key, depth, hops))
 
     def capture(keys, final_url, depth, text):
         """Everything one page needs before the crawl may move on."""
@@ -593,8 +1603,24 @@ def _crawl(
         seed_keys.append(seed_final)  # the seed redirected; both keys are it
     seen.update(seed_keys)
     seed_links = extract_links(seed_text, seed_url)
-    scope = crawl_scope(seed_id, seed_url, seed_links, note)
-    enqueue(seed_links, 1)
+    scope = (scope or CrawlScope()).settle(seed_id, seed_url, seed_links, origin, note)
+    # robots was read for the address that was typed; a seed that redirected
+    # to another origin has that origin's robots.txt read like any other's.
+    robots_book = _RobotsBook(seed_id, robots, ignore_robots, timeout, note)
+    enqueue(seed_links, 1, 0)
+    if sitemap:
+        listed = sitemap_urls(
+            sitemap, seed_url, robots, ignore_robots=ignore_robots, timeout=timeout, note=note
+        )
+        # Only pages the scope admits on their own merits: a sitemap is not a
+        # way past the scope, and extra hops are for links.
+        before = len(queue)
+        enqueue(
+            [u for u in (upgrade_scheme(x, origin) for x in listed) if scope.contains(normalize_url(u))],
+            1,
+            0,
+        )
+        note(f"sitemap: {len(queue) - before} pages added to the capture")
     capture(seed_keys, seed_url, 0, seed_text)
 
     while queue:
@@ -607,7 +1633,17 @@ def _crawl(
         if budget.exhausted:
             reason = f"byte budget ({_fmt_bytes(budget.limit)})"
             break
-        url, depth = queue.popleft()
+        if deadline and time.monotonic() >= deadline:
+            reason = f"time limit ({format_duration(time_limit)})"
+            break
+        url, depth, hops = queue.popleft()
+        # Here, not when the link was queued: a new origin's robots.txt is a
+        # request like any other, made for a page the crawl is about to visit
+        # and after the stop and cap checks, never for every host a page
+        # happens to link to.
+        if not robots_book.allows(url):
+            log.debug("skipping %s: robots.txt disallows it", url)
+            continue
         waiting = next_fetch_at - time.monotonic()
         if waiting > 0:
             time.sleep(waiting)
@@ -620,29 +1656,37 @@ def _crawl(
             note(f"skipped {url}: {str(e).splitlines()[0]}")
             continue
         budget.spend(nbytes)
-        # A redirect can walk off the origin; the page it landed on is not
-        # ours to capture, and its own links certainly are not.
-        if not same_origin(final_url, origin):
-            log.debug("skipping %s: redirected off-origin to %s", url, final_url)
+        # A redirect can walk out of scope; the page it landed on is not ours
+        # to capture, and its own links certainly are not. Judged as a link
+        # from the page that led here, so extra hops still count.
+        landed = scope.hops(normalize_url(final_url), max(hops - 1, 0))
+        if landed is None:
+            log.debug("skipping %s: redirected out of scope to %s", url, final_url)
             note(f"skipped {url}: redirected off-origin")
             continue
-        keys = [url]
         final_key = normalize_url(final_url)
+        if final_key != url and not robots_book.allows(final_key):
+            log.debug("skipping %s: robots.txt disallows where it led, %s", url, final_url)
+            continue
+        # Where the page landed decides: a redirect back into scope resets
+        # the count, one further out spends a hop.
+        hops = landed
+        keys = [url]
         if final_key != url:
             if final_key in captured:
                 note(f"skipped {url}: already captured after its redirect")
                 continue
             seen.add(final_key)
             keys.append(final_key)
-        enqueue(extract_links(text, final_url), depth + 1)
+        enqueue(extract_links(text, final_url), depth + 1, hops)
         capture(keys, final_url, depth, text)
     if reason is None and too_deep[0]:
         reason = f"depth limit ({max_depth})"
-    if reason is None and scope and len(pages) == 1:
+    if reason is None and scope.prefix and len(pages) == 1 and not scope.custom:
         # Every link on the seed went somewhere else on the site. A one-page
         # "site" the card called complete was the defect; the card offers the
         # whole site instead.
-        reason = f"nothing under {scope}"
+        reason = f"nothing under {scope.prefix}"
     return pages, reason, engine.mimetypes
 
 
@@ -726,6 +1770,7 @@ def _link_resolver(by_key):
     return resolve
 
 
+@with_capture_identity
 def create_site_zim(
     url,
     *,
@@ -736,7 +1781,7 @@ def create_site_zim(
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
     max_pages=DEFAULT_MAX_PAGES,
-    max_depth=DEFAULT_MAX_DEPTH,
+    max_depth=None,
     max_bytes=DEFAULT_MAX_BYTES,
     delay=DEFAULT_DELAY,
     ignore_robots=False,
@@ -746,11 +1791,39 @@ def create_site_zim(
     block_ads=None,
     capture_variants=None,
     strip_links=False,
+    scope=None,
+    include=(),
+    exclude=(),
+    extra_hops=0,
+    time_limit=None,
+    sitemap=None,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
+    cookies=None,
+    skip_types=None,
+    max_file_bytes=None,
+    workers=None,
+    publisher=None,
+    tags=None,
     register=False,
     progress=None,
     stop=None,
 ):
-    """Capture a bounded same-origin crawl as one ZIM.
+    """Capture a bounded crawl as one ZIM.
+
+    ``time_limit`` (seconds) ends the crawl at the next page boundary once it
+    is spent, and what is captured is packaged. ``sitemap`` (True, or an
+    address) seeds the pages a sitemap lists. ``user_agent`` and ``mobile`` say
+    who the capture presents itself as, ``page_timeout`` how long a browser
+    engine waits on a page: see ``CAPTURE_OPTIONS``. ``cookies`` (a Cookie
+    header's text) go to the seed's host and its subdomains and nowhere else;
+    ``skip_types`` and ``max_file_bytes`` name what the capture does not carry;
+    ``workers`` is zimit's. ``publisher`` and ``tags`` are the ZIM's own, with
+    ``description`` and ``creator_name``.
+
+    ``scope``, ``include``, ``exclude`` and ``extra_hops`` say which pages it
+    walks into: see ``CrawlScope``. The default is the seed's own section.
 
     Returns the ``create_*_zim`` summary dict plus ``"url"`` (the seed's final
     URL), ``"bytes"`` (everything fetched), and ``"stopped"`` (the bound that
@@ -771,8 +1844,27 @@ def create_site_zim(
 
     note = progress or _noop
     name = str(engine or "").strip().lower()
+    # Refused before anything is fetched: a pattern that does not compile is a
+    # typo, and an hour of crawling is a bad way to find it.
+    walk = CrawlScope(scope, include, exclude, extra_hops)
+    capture_options_given = {
+        key: value
+        for key, value in dict(
+            time_limit=time_limit,
+            sitemap=sitemap,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
+            cookies=cookies,
+            skip_types=skip_types,
+            max_file_bytes=max_file_bytes,
+            workers=workers,
+        ).items()
+        if value
+    }
     # zimit is its own crawler in its own container: none of the frontier
-    # below applies, and the only bound Zimi can hand it is the page limit.
+    # below applies. What it is handed is the page limit, the depth and the
+    # scope, which are browsertrix's own options under their own names.
     # Routed by name, never by membership in ARCHIVE_ENGINES: that check once
     # sent a whole-site zimit request to the alive engine without a word.
     if name == "zimit":
@@ -786,6 +1878,11 @@ def create_site_zim(
             language=language,
             creator_name=creator_name,
             max_pages=max_pages,
+            max_depth=max_depth,
+            scope=walk,
+            capture_options=capture_options_given,
+            publisher=publisher,
+            tags=tags,
             register=register,
             progress=progress,
         )
@@ -812,22 +1909,33 @@ def create_site_zim(
             timeout=timeout,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            scope=walk,
+            time_limit=time_limit,
+            sitemap=sitemap,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
+            publisher=publisher,
+            tags=tags,
             register=register,
             progress=progress,
             stop=stop,
         )
+    # None until here so zimit can tell "not asked" (its own unlimited
+    # default) from a depth somebody chose.
+    max_depth = DEFAULT_MAX_DEPTH if max_depth is None else max_depth
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Site capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
-        raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
+        raise CreateError(
+            "crawl bounds must be positive (0 pages or 0 bytes means no limit)"
+        )
     if not max_pages and not max_bytes:
-        note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
+        note(
+            f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture"
+        )
 
     origin = _origin_of(url)
     robots = None
@@ -859,6 +1967,9 @@ def create_site_zim(
         pictures=False,
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     spool_dir = None
     blocked = {}
@@ -920,9 +2031,15 @@ def create_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=walk,
+                ignore_robots=ignore_robots,
+                timeout=timeout,
+                time_limit=time_limit,
+                sitemap=sitemap,
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
+            _gate.report_left_out(note)
             by_key = _assign_article_paths(pages)
             resolve = _link_resolver(by_key)
             note(f"packaging {_plural(len(pages), 'page')}…")
@@ -964,7 +2081,8 @@ def create_site_zim(
                     # The HOST alone: a re-crawl of the same site, however
                     # deep it goes this time, is a new edition of this ZIM.
                     name=zim_name(parsed.netloc, language),
-                    tags=media_tags(seen_mimetypes),
+                    tags=media_tags(seen_mimetypes) + list(tags or ()),
+                    publisher=publisher,
                     illustration=illustration,
                     history=history_record(
                         "created",
@@ -1052,7 +2170,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
     from zimi.p2p import is_offline
 
     if is_offline():
-        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
 
@@ -1237,21 +2355,31 @@ def _probe(cmd):
         return False
 
 
+_zimit_help_cache = {}
+
+
 def _image_supports_flag(docker, image, flag):
     """Whether the zimit image knows ``flag``. zimit forwards warc2zim's own
     options, but an older image predates the one Zimi wants — so ask, rather
     than let a provenance stamp be the thing that fails a two-hour crawl. Any
-    probe trouble reads as "no": the stamp is optional, the crawl is not."""
-    try:
-        done = subprocess.run(
-            [docker, "run", "--rm", image, "zimit", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=_ZIMIT_HELP_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return done.returncode == 0 and flag in (done.stdout or "") + (done.stderr or "")
+    probe trouble reads as "no": the stamp is optional, the crawl is not.
+
+    The help text is read once per image: every flag asked about after the
+    first costs nothing, where each used to start a container of its own."""
+    key = (docker, image)
+    if key not in _zimit_help_cache:
+        try:
+            done = subprocess.run(
+                [docker, "run", "--rm", image, "zimit", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=_ZIMIT_HELP_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False  # not cached: the next run may find a working daemon
+        text = (done.stdout or "") + (done.stderr or "")
+        _zimit_help_cache[key] = text if done.returncode == 0 else ""
+    return flag in _zimit_help_cache[key]
 
 
 def _ensure_image(docker, image, note):
@@ -1270,6 +2398,49 @@ def _ensure_image(docker, image, note):
         )
 
 
+def _zimit_capture_args(options, supports, note):
+    """zimit's argv for the capture options, each only when the image's help
+    lists the flag (``supports(flag)``): a flag it does not know would fail a
+    whole run, so that option is left out and a note says so."""
+    args = []
+    for key in NEW_OPTION_KEYS:
+        value = options.get(key)
+        opt = CAPTURE_OPTIONS[key]
+        if not value:
+            continue
+        if not opt.zimit:
+            # Said without the value: cookies are among the options zimit has
+            # no flag for.
+            note(f"note: zimit has no equivalent of {opt.flag}; it was not passed")
+            continue
+        if not supports(opt.zimit):
+            note(f"note: this zimit image does not know {opt.zimit}; {opt.flag} was not passed")
+            continue
+        if key == "sitemap":
+            args += [opt.zimit] + ([value] if isinstance(value, str) else [])
+        elif key == "mobile":
+            args += [opt.zimit, MOBILE_DEVICE]
+        else:
+            args += [opt.zimit, str(value)]
+    return args
+
+
+def _zimit_detail_args(details, supports, note):
+    """The ZIM details zimit is asked to write beyond the title, description
+    and creator it has always been handed: each only when the image's help
+    lists the flag, with a note when it does not."""
+    out = {}
+    for key, value in details.items():
+        if not value:
+            continue
+        opt = CAPTURE_OPTIONS[key]
+        if supports(opt.zimit):
+            out[key] = value
+        else:
+            note(f"note: this zimit image does not know {opt.zimit}; {opt.flag} was not passed")
+    return out
+
+
 def _zimit_command(docker, image, container, tmp_dir, url, opts):
     """The full ``docker run`` argv. Split out so a test can assert the
     contract without a daemon anywhere near it."""
@@ -1286,7 +2457,9 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
         f"{tmp_dir}:/output",
         image,
         "zimit",
-        "--url",
+        # zimit 3 took browsertrix's names (--seeds, --pageLimit,
+        # --scopeIncludeRx); zimit 2 had its own. Whichever the image knows.
+        "--seeds" if opts.get("v3") else "--url",
         url,
         "--name",
         opts["name"],
@@ -1299,6 +2472,8 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
         ("--title", opts.get("title")),
         ("--description", opts.get("description")),
         ("--creator", opts.get("creator")),
+        (CAPTURE_OPTIONS["publisher"].zimit, opts.get("publisher")),
+        (CAPTURE_OPTIONS["tags"].zimit, ";".join(opts.get("tags") or ())),
         ("--lang", opts.get("language")),
         # zimit writes the ZIM itself, so the Scraper string is the one piece
         # of provenance Zimi can reach — appended to zimit's own, never
@@ -1307,14 +2482,32 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
     ):
         if value:
             cmd += [flag, str(value)]
+    scope = opts.get("scope")
     if not opts.get("site"):
         # zimit crawls a prefix by default; a single page is a scope choice.
         cmd += ["--scopeType", "page"]
+    elif scope is not None:
+        # Zimi's scope options are browsertrix's, so they cross unchanged. The
+        # default (prefix) is left to zimit's own prefix rule. Several patterns
+        # become one alternation: zimit takes one regex per flag.
+        if scope.kind != DEFAULT_SCOPE:
+            cmd += ["--scopeType", scope.kind]
+        for flag, patterns in (
+            ("--scopeIncludeRx" if opts.get("v3") else "--include", scope.include),
+            ("--scopeExcludeRx" if opts.get("v3") else "--exclude", scope.exclude),
+        ):
+            if patterns:
+                cmd += [flag, "|".join(f"(?:{p.pattern})" for p in patterns)]
+        if scope.extra_hops:
+            cmd += ["--extraHops", str(scope.extra_hops)]
+    if opts.get("site") and opts.get("max_depth") is not None:
+        cmd += ["--depth", str(opts["max_depth"])]
     if opts.get("max_pages"):
         # browsertrix's page cap, which zimit forwards to the crawler. Only
         # sent when the user asked for one — zimit's flag surface is ~100
         # options wide and guessing at it fails a whole run.
-        cmd += ["--limit", str(opts["max_pages"])]
+        cmd += ["--pageLimit" if opts.get("v3") else "--limit", str(opts["max_pages"])]
+    cmd += list(opts.get("capture_args") or ())
     cmd += list(opts.get("engine_args") or ())
     return cmd
 
@@ -1345,6 +2538,13 @@ def _read_crawl_status(line, status):
         status["limit_max"] = limit.get("max")
 
 
+ZIMIT_PRIVATE_REFUSED = (
+    "the zimit engine's browser runs in Docker, where Zimi cannot keep it off "
+    "private addresses, so captures started from the web use another engine. "
+    "An admin can allow private captures in Manage, under Creator."
+)
+
+
 def create_zimit_zim(
     url,
     *,
@@ -1355,7 +2555,12 @@ def create_zimit_zim(
     description=None,
     language="eng",
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     max_pages=None,
+    max_depth=None,
+    scope=None,
+    capture_options=None,
     engine_args=(),
     image=ZIMIT_IMAGE,
     register=False,
@@ -1375,12 +2580,14 @@ def create_zimit_zim(
 
     note = progress or _noop
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "The zimit engine captures from the internet by definition."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
+    # zimit's browser runs in a container that cannot reach the capture proxy
+    # on this machine's loopback, so its requests (a redirect, a subresource)
+    # cannot be held to public addresses. Under the rule it does not run.
+    if current_private_guard() is not None:
+        raise CreateError(ZIMIT_PRIVATE_REFUSED)
 
     # "auto" is Zimi's word for "read the page and decide", and Zimi never reads
     # this page — zimit fetches it inside the container. Passing the sentiment
@@ -1421,9 +2628,24 @@ def create_zimit_zim(
             "title": title,
             "description": description,
             "creator": creator_name,
+            # Only what the image knows: an older one would fail the whole run
+            # over a flag, where a missing publisher costs one metadata field.
+            **_zimit_detail_args(
+                {"publisher": publisher, "tags": tags},
+                lambda flag: _image_supports_flag(docker, image, flag),
+                note,
+            ),
             "language": language,
             "site": site,
             "max_pages": max_pages,
+            "max_depth": max_depth,
+            "scope": scope,
+            "capture_args": _zimit_capture_args(
+                capture_options or {},
+                lambda flag: _image_supports_flag(docker, image, flag),
+                note,
+            ),
+            "v3": _image_supports_flag(docker, image, "--seeds"),
             "engine_args": engine_args,
             "scraper_suffix": (
                 scraper_string()
@@ -1508,5 +2730,7 @@ def parse_size(text):
     # Only a real 0 is "no limit". "0.5" with the unit left off truncated to 0
     # and read as no limit at all.
     if value == 0 and float(number) != 0:
-        raise CreateError(f"byte size is less than a byte: {text} (try 512M or 2G; 0 means no limit)")
+        raise CreateError(
+            f"byte size is less than a byte: {text} (try 512M or 2G; 0 means no limit)"
+        )
     return value

@@ -137,7 +137,17 @@ const timers = [];
 const fetches = [];      // queued answers: an object (the JSON), { __status } (a refusal), or 'fail'
 const requests = [];     // every request made: { url, method, body }
 let fetchCount = 0;
+// The star catalogue is its own request (stars-v1.bin), answered from the
+// shipped file, and kept out of the satellite-data queue and counts.
+const starRequests = [];
+let starsPlan = 'serve';   // 'serve' | 'fail'
 function fakeFetch(url, opts) {
+  if (/stars-v1\.bin$/.test(url)) {
+    starRequests.push(url);
+    if (starsPlan === 'fail') return Promise.reject(new TypeError('Failed to fetch'));
+    const b = fs.readFileSync(path.join(STATIC, 'earth', 'stars-v1.bin'));
+    return Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)) });
+  }
   fetchCount++;
   requests.push({ url, method: (opts && opts.method) || 'GET', body: opts && opts.body });
   const next = fetches.shift();
@@ -147,7 +157,7 @@ function fakeFetch(url, opts) {
 }
 
 const S = {
-  Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, Float32Array, Uint8Array,
+  Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, Float32Array, Uint8Array, Uint16Array, Int8Array, ArrayBuffer,
   document,
   window: { devicePixelRatio: 3, addEventListener() {} },
   performance: { now: () => Date.now() },
@@ -177,6 +187,11 @@ for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moo
   vm.runInContext(extractFn(read('app.js'), fn), S);
 vm.runInContext(require('./moon_model.cjs')(), S);
 vm.runInContext(read('almanac-orrery.js'), S);
+// The 2D Almanac's star lists, the first sky the 3D view draws.
+for (const name of ['_STARS', '_SKY_FIELD_STARS']) {
+  const sky = read('almanac-sky.js'), at = sky.indexOf('var ' + name + ' = [');
+  vm.runInContext(sky.slice(at, sky.indexOf('\n];', at) + 3), S);
+}
 vm.runInContext(read('almanac-earth.js'), S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
 S.window.SatelliteJS = S.SatelliteJS;
@@ -569,6 +584,32 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.target') === 'moon' && !run('_ae.fly') && Math.abs(run('_ae.dist') - run('_aeClampDist(_aeFitDist(AE_FIT_MOON))')) < 1e-9,
       'with reduced motion a tap arrives at once');
     run('_almReduceMotion = undefined;');
+  }
+
+  // ── 8. The star catalogue ─────────────────────────────────────────────
+  // Nothing asks for stars-v1.bin until the 3D view opens; the first sky is the
+  // 2D Almanac's 518 stars; the whole catalogue replaces it when it lands; and
+  // when it cannot be had the first sky stays and the next open asks again.
+  {
+    const FIRST_SKY = 518, CATALOGUE = 9096;
+    const openFresh = async () => {
+      run('_aeRelease()');
+      fetches.push(answer({}));
+      run('openAlmanacEarth()');
+      await flush();
+    };
+    starRequests.length = 0; starsPlan = 'fail';
+    await openFresh();
+    check(starRequests.length === 1 && run('_ae.gl.starsLoaded') === false, 'the view asks for the catalogue on open');
+    check(run('_ae.gl.starCloud.geometry.drawRange.count') === FIRST_SKY && run('_ae.gl.sky.children.length') === 1,
+      'offline, the first sky of ' + FIRST_SKY + ' stars is drawn and the view is not empty');
+    starsPlan = 'serve';
+    await reopen();
+    check(starRequests.length === 2 && run('_ae.gl.starsLoaded') === true, 'the next open asks again and gets it');
+    check(run('_ae.gl.starCloud.geometry.drawRange.count') === CATALOGUE && run('_ae.gl.sky.children.length') === 1,
+      'the catalogue (' + CATALOGUE + ' stars, one draw call) replaces the first sky');
+    await reopen();
+    check(starRequests.length === 2, 'once it is in, it is not asked for again');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

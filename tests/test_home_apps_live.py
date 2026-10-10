@@ -109,7 +109,8 @@ def served(tmp_path_factory):
     for filename, meta, _ in LIBRARY:
         build_fixture_zim(str(zdir / filename), meta)
     mp = pytest.MonkeyPatch()
-    mp.delenv("ZIMI_APPS", raising=False)
+    # Every app, Reddot (opt-in since 1.13.1) included.
+    mp.setenv("ZIMI_APPS", ",".join(srv.APP_NAMES))
     mp.setattr(srv, "ZIM_DIR", str(zdir))
     mp.setattr(srv, "ZIMI_DATA_DIR", str(tmp / "data"))
     os.makedirs(str(tmp / "data"), exist_ok=True)

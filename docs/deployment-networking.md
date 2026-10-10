@@ -225,6 +225,7 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `sso_proxy` | `ZIMI_SSO_PROXY` | list of CIDRs (a comma-separated string also works) — who may send the identity header; default any private peer |
 | `lan_admin` | `ZIMI_LAN_ADMIN` | boolean — treat any private-network client as the admin on a **passwordless** instance; off by default, see [Running without a password](#running-without-a-password) |
 | `manage_open` | `ZIMI_MANAGE_OPEN` | boolean — management asks for no credential at all; see [Running without a password](#running-without-a-password) |
+| `manage_external` | `ZIMI_MANAGE_EXTERNAL` | boolean: settings may be changed from outside the private network (needs a password); unset, the first-run page's answer, and on for an install that never answered it |
 
 
 ### Running without a password
@@ -233,7 +234,7 @@ A passwordless Zimi is a real way to run it: one household, one LAN, nothing to 
 
 That default had a hole ([GHSA-5mw2-53vv-9pw6](https://github.com/epheterson/Zimi/security/advisories)): "on a private network" includes every other device on the LAN, a Docker bridge, and anything on your tailnet, so an adjacent device could claim the first admin password before you did and lock you out of your own library. From 1.9.0 the bootstrap window is narrower: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints on its first start.
 
-If your threat model does not include the other devices on your own network, say so explicitly:
+From 1.13.1 a new install asks on its first page who can change settings; turning the password off there is this same choice, made by the host or the setup key's holder. To decide it in configuration instead:
 
 ```yaml
 # zimi.json

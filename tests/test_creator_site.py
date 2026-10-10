@@ -7,12 +7,14 @@ image is ever pulled. Real end-to-end otherwise: the built .zim is read back
 with libzim's Archive.
 """
 
+import gzip
 import http.server
 import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from typing import List, Optional
 
 import pytest
@@ -39,7 +41,14 @@ DEFAULT_ROBOTS = "User-agent: *\nDisallow: /private/\n"
 # Every request the fixture site served, so a test can assert what the crawl
 # did NOT fetch — the interesting half of a bounded crawler's behavior.
 REQUESTS = []
+# The same requests with the host they were made to: 127.0.0.1 and localhost
+# are one server and two sites, which is how the scope tests leave a site.
+HOSTED = []
 ROBOTS: List[Optional[str]] = [DEFAULT_ROBOTS]
+# The User-Agent of every request, in order, for the identity tests.
+AGENTS: List[Optional[str]] = []
+# Host, path and Cookie header of every request, for the cookie tests.
+COOKIES: List[tuple] = []
 
 
 def _page(body, *, css=True):
@@ -136,6 +145,85 @@ ROUTES.update(
     }
 )
 
+# Scope shapes: a section, the rest of the site, and another site (localhost is
+# this server under another name). The Kiwix forum case is /deep/start.html:
+# the whole host from a deep page, a set number of links deep.
+OTHER = f"http://localhost:{PORT}"
+ROUTES.update(
+    {
+        "/deep/start.html": (
+            "text/html; charset=utf-8",
+            _page(
+                '<a href="/deep/b.html">b</a><a href="/other/a.html">a</a>'
+                f'<a href="{OTHER}/far.html">far</a>'
+            ),
+        ),
+        "/deep/b.html": ("text/html; charset=utf-8", _page("<h1>B</h1>")),
+        "/other/a.html": ("text/html; charset=utf-8", _page('<a href="/other/a2.html">a2</a>')),
+        "/other/a2.html": ("text/html; charset=utf-8", _page("<h1>A2</h1>")),
+        "/far.html": (
+            "text/html; charset=utf-8",
+            _page(
+                f'<a href="{OTHER}/farther.html">farther</a>'
+                f'<a href="{OTHER}/private/secret.html">secret</a>'
+                '<a href="/deep/b.html">back in scope?</a>'
+            ),
+        ),
+        "/farther.html": ("text/html; charset=utf-8", _page("<h1>Farther</h1>")),
+    }
+)
+
+# Sitemaps. /orphan.html and /archive/old.html are linked from nowhere, so only a
+# sitemap reaches them; the rest of what a sitemap lists is something a crawl
+# must refuse to be sent to (another site, a page robots.txt disallows).
+_NS = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+
+
+def _urlset(*locs):
+    body = "".join(f"<url><loc>{loc}</loc></url>" for loc in locs)
+    return f'<?xml version="1.0"?><urlset {_NS}>{body}</urlset>'.encode()
+
+
+def _index(*locs):
+    body = "".join(f"<sitemap><loc>{loc}</loc></sitemap>" for loc in locs)
+    return f'<?xml version="1.0"?><sitemapindex {_NS}>{body}</sitemapindex>'.encode()
+
+
+ROUTES.update(
+    {
+        "/orphan.html": ("text/html; charset=utf-8", _page("<h1>Orphan</h1>")),
+        "/archive/old.html": ("text/html; charset=utf-8", _page("<h1>Old</h1>")),
+        "/sitemap.xml": (
+            "application/xml",
+            _urlset(
+                f"{BASE}/orphan.html",
+                f"{BASE}/docs/intro.html",
+                "https://elsewhere.invalid/x",
+                f"{BASE}/private/secret.html",
+            ),
+        ),
+        "/custom-map.xml": ("application/xml", _urlset(f"{BASE}/orphan.html")),
+        "/index-map.xml": (
+            "application/xml",
+            _index(f"{BASE}/part-one.xml", f"{BASE}/part-two.xml.gz"),
+        ),
+        "/part-one.xml": ("application/xml", _urlset(f"{BASE}/orphan.html")),
+        "/part-two.xml.gz": (
+            "application/gzip",
+            gzip.compress(_urlset(f"{BASE}/archive/old.html")),
+        ),
+        "/to-localhost": ("redirect", f"{OTHER}/far.html".encode()),
+        "/viewport.html": (
+            "text/html; charset=utf-8",
+            b"<html><head><title>V</title><meta name=viewport content=\"width=device-width\">"
+            b"</head><body><p id=v></p><script>"
+            b"document.getElementById('v').textContent='width='+innerWidth+"
+            b"' touch='+matchMedia('(pointer: coarse)').matches"
+            b"</script></body></html>",
+        ),
+    }
+)
+
 # A link chain deep enough to exercise --max-depth without the seed's other
 # links muddying the count.
 for _i in range(7):
@@ -148,6 +236,17 @@ for _i in range(7):
 class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         REQUESTS.append(self.path)
+        AGENTS.append(self.headers.get("User-Agent"))
+        COOKIES.append(
+            (
+                self.headers.get("Host", "").split(":")[0],
+                self.path,
+                self.headers.get("Cookie"),
+            )
+        )
+        if self.path == "/hang":
+            time.sleep(4)
+        HOSTED.append((self.headers.get("Host", "").split(":")[0], self.path))
         if self.path == "/robots.txt":
             body = ROBOTS[0]
             if body is None:
@@ -178,19 +277,29 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture(scope="module")
+# One server on one port for the whole run: other modules import this fixture
+# (capture options, the private rule) and pytest makes each import its own
+# instance, so the server is started once and shared. A daemon thread, so it
+# ends with the process.
+_SERVER = []
+
+
+@pytest.fixture(scope="session")
 def fixture_server():
-    srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield BASE
-    srv.shutdown()
-    srv.server_close()
+    if not _SERVER:
+        srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        _SERVER.append(srv)
+    return BASE
 
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
     REQUESTS.clear()
+    HOSTED.clear()
+    AGENTS.clear()
+    COOKIES.clear()
     ROBOTS[0] = DEFAULT_ROBOTS
     yield
 
@@ -983,11 +1092,13 @@ def test_zimit_command_contract(zimit_docker, tmp_path):
     assert "--shm-size=1g" in cmd  # a browser crawl dies without it
     assert crawler.ZIMIT_IMAGE in cmd
     assert cmd[cmd.index("-v") + 1].endswith(":/output")
-    assert cmd[cmd.index("--url") + 1] == "https://example.com/blog"
+    # zimit 3 names (the fixture's image knows every flag it is asked about).
+    assert cmd[cmd.index("--seeds") + 1] == "https://example.com/blog"
+    assert "--url" not in cmd
     assert cmd[cmd.index("--output") + 1] == "/output"
     assert cmd[cmd.index("--title") + 1] == "Blog"
     assert cmd[cmd.index("--lang") + 1] == "fra"
-    assert cmd[cmd.index("--limit") + 1] == "50"
+    assert cmd[cmd.index("--pageLimit") + 1] == "50"
     # Without --site, zimit is scoped to the one page.
     assert cmd[cmd.index("--scopeType") + 1] == "page"
     # The ZIM it produced is adopted under Zimi's name, not zimit's.
@@ -997,7 +1108,7 @@ def test_zimit_command_contract(zimit_docker, tmp_path):
     assert info["engine"] == "zimit" and info["pages"] is None
     # zimit writes the ZIM, so the Scraper suffix is the only provenance Zimi
     # can reach — asked for by name, appended to zimit's own string.
-    assert zimit_docker["flag_probes"] == [(crawler.ZIMIT_IMAGE, "--scraper-suffix")]
+    assert sorted(f for _i, f in zimit_docker["flag_probes"]) == ["--scraper-suffix", "--seeds"]
     assert cmd[cmd.index("--scraper-suffix") + 1] == f"Zimi {_srv.ZIMI_VERSION}"
 
 
@@ -1009,6 +1120,47 @@ def test_zimit_image_without_the_flag_still_runs(zimit_docker, tmp_path):
     assert "--scraper-suffix" not in zimit_docker["runs"][0]
 
 
+def test_a_zimit_2_image_gets_zimit_2_names(zimit_docker, tmp_path):
+    """zimit 3 renamed --url and --limit (to browsertrix's --seeds and
+    --pageLimit) and the include/exclude patterns. An image without --seeds
+    is zimit 2 and is spoken to in its own words."""
+    zimit_docker["flag_supported"] = False
+    crawler.create_zimit_zim(
+        "https://example.com/",
+        site=True,
+        max_pages=5,
+        scope=crawler.CrawlScope("host", include=["/a/"]),
+        out_dir=str(tmp_path / "zims"),
+    )
+    cmd = zimit_docker["runs"][0]
+    assert cmd[cmd.index("--url") + 1] == "https://example.com/"
+    assert cmd[cmd.index("--limit") + 1] == "5"
+    assert cmd[cmd.index("--include") + 1] == "(?:/a/)"
+    assert "--seeds" not in cmd and "--pageLimit" not in cmd
+
+
+def test_zimit_takes_the_same_scope_as_zimis_own_crawler(zimit_docker, tmp_path):
+    """The Kiwix forum case: the whole host from a deep page, two links deep.
+    Every scope option crosses to zimit under browsertrix's name, patterns
+    joined into one regex because zimit takes one per flag."""
+    crawler.create_site_zim(
+        "https://example.com/python/tutorial/",
+        engine="zimit",
+        max_depth=2,
+        scope="host",
+        include=["/a/", "/b/"],
+        exclude=["\\?print"],
+        extra_hops=1,
+        out_dir=str(tmp_path / "zims"),
+    )
+    cmd = zimit_docker["runs"][0]
+    assert cmd[cmd.index("--scopeType") + 1] == "host"
+    assert cmd[cmd.index("--depth") + 1] == "2"
+    assert cmd[cmd.index("--scopeIncludeRx") + 1] == "(?:/a/)|(?:/b/)"
+    assert cmd[cmd.index("--scopeExcludeRx") + 1] == "(?:\\?print)"
+    assert cmd[cmd.index("--extraHops") + 1] == "1"
+
+
 def test_zimit_site_scope_and_engine_arg_passthrough(zimit_docker, tmp_path):
     crawler.create_zimit_zim(
         "https://example.com/",
@@ -1018,7 +1170,8 @@ def test_zimit_site_scope_and_engine_arg_passthrough(zimit_docker, tmp_path):
     )
     cmd = zimit_docker["runs"][0]
     assert "--scopeType" not in cmd  # zimit's own prefix default applies
-    assert "--limit" not in cmd  # never guessed at when the user didn't ask
+    assert "--pageLimit" not in cmd  # never guessed at when the user didn't ask
+    assert "--depth" not in cmd  # nor a depth: zimit's own is unlimited
     assert cmd[-2:] == ["--workers", "2"]
 
 
@@ -1033,13 +1186,13 @@ def test_a_whole_site_asked_of_zimit_runs_zimit(zimit_docker, tmp_path):
     assert info["engine"] == "zimit"
     cmd = zimit_docker["runs"][0]
     assert "--scopeType" not in cmd
-    assert cmd[cmd.index("--limit") + 1] == str(crawler.DEFAULT_MAX_PAGES)
+    assert cmd[cmd.index("--pageLimit") + 1] == str(crawler.DEFAULT_MAX_PAGES)
 
     zimit_docker["runs"].clear()
     crawler.create_site_zim(
         "https://example.com/", engine="zimit", max_pages=0, out_dir=str(tmp_path / "zims")
     )
-    assert "--limit" not in zimit_docker["runs"][0]  # 0 is no limit
+    assert "--pageLimit" not in zimit_docker["runs"][0]  # 0 is no limit
 
 
 def test_zimit_says_when_its_page_limit_cut_it_short(zimit_docker, monkeypatch, tmp_path):
@@ -1407,3 +1560,163 @@ def test_an_http_link_on_an_https_site_is_upgraded_not_dropped():
     assert crawler.same_origin(
         crawler.upgrade_scheme("http://e.com/a", "https://e.com/"), "https://e.com/"
     )
+
+
+# ── scope: browsertrix's options in Zimi's crawler ──────────────────────────
+
+
+def _fetched(host="127.0.0.1"):
+    return {path for h, path in HOSTED if h == host and path.endswith(".html")}
+
+
+def test_the_default_scope_is_the_start_pages_section(fixture_server, tmp_path):
+    info = _site(tmp_path, "/deep/start.html")
+    assert info["pages"] == 2
+    assert _fetched() == {"/deep/start.html", "/deep/b.html"}
+    assert not _fetched("localhost")
+
+
+def test_host_scope_takes_the_whole_site_from_a_deep_page(fixture_server, tmp_path):
+    """The Kiwix forum case: start deep, keep to the host, two links deep."""
+    notes = []
+    info = _site(tmp_path, "/deep/start.html", scope="host", max_depth=2, progress=notes.append)
+    assert _fetched() == {"/deep/start.html", "/deep/b.html", "/other/a.html", "/other/a2.html"}
+    assert not _fetched("localhost")  # another host is another site
+    assert info["pages"] == 4 and info["stopped"] is None
+    assert any("every page on 127.0.0.1" in n for n in notes)
+
+
+def test_host_scope_still_keeps_to_its_depth(fixture_server, tmp_path):
+    info = _site(tmp_path, "/deep/start.html", scope="host", max_depth=1)
+    assert "/other/a2.html" not in _fetched()
+    assert info["stopped"] == "depth limit (1)"
+
+
+def test_any_scope_follows_links_to_other_sites(fixture_server, tmp_path):
+    info = _site(tmp_path, "/deep/start.html", scope="any", max_depth=2)
+    assert {"/far.html", "/farther.html"} <= _fetched("localhost")
+    # The other site's robots.txt was read and honored: /private/ is disallowed.
+    assert ("localhost", "/robots.txt") in HOSTED
+    assert "/private/secret.html" not in _fetched("localhost")
+    arc = Archive(info["path"])
+    # The captured page on the other site is a page of this ZIM, and the link
+    # to it is internal.
+    assert "A/far_html" in _paths(arc)
+    assert 'href="far_html"' in _text(arc, "A/index")
+
+
+def test_another_sites_robots_is_read_only_when_a_page_there_is_visited(
+    fixture_server, tmp_path
+):
+    """The seed links to the other site, but the page cap ends the crawl
+    first: nobody there is asked anything, robots.txt included."""
+    _site(tmp_path, "/deep/start.html", scope="any", max_pages=1)
+    assert not [h for h, _p in HOSTED if h == "localhost"]
+
+
+def test_extra_hops_follow_links_out_of_scope_one_page(fixture_server, tmp_path):
+    """One extra hop: the pages the section links to elsewhere are captured,
+    the pages they link to are not, unless those are back in scope."""
+    info = _site(tmp_path, "/deep/start.html", extra_hops=1)
+    assert _fetched() == {"/deep/start.html", "/deep/b.html", "/other/a.html"}
+    assert _fetched("localhost") == {"/far.html"}
+    assert info["pages"] == 4
+
+
+def test_include_adds_pages_and_exclude_takes_them_away(fixture_server, tmp_path):
+    _site(tmp_path, "/deep/start.html", include=[r"/other/a\.html$"], exclude=["/deep/b"])
+    assert _fetched() == {"/deep/start.html", "/other/a.html"}
+    assert "/deep/b.html" not in REQUESTS  # excluded is never fetched at all
+
+
+def test_exclude_wins_over_extra_hops_and_include():
+    s = crawler.CrawlScope("any", include=["keep"], exclude=["drop"], extra_hops=3)
+    s.settle("http://e.com/", "http://e.com/", [], "http://e.com")
+    assert s.hops("http://e.com/keep", 0) == 0
+    assert s.hops("http://e.com/keep/drop", 0) is None
+    assert s.hops("http://x.org/drop", 0) is None
+
+
+def test_the_scope_rules():
+    def settled(kind, seed="https://www.example.org/python/tut/", **kw):
+        s = crawler.CrawlScope(kind, **kw)
+        return s.settle(seed, seed, [], crawler._origin_of(seed))
+
+    host = settled("host")
+    assert host.contains("https://www.example.org/java/")
+    assert not host.contains("https://practice.example.org/")
+    dom = settled("domain")  # www. is dropped, as browsertrix does
+    assert dom.contains("https://practice.example.org/x")
+    assert dom.contains("https://example.org/x")
+    assert not dom.contains("https://notexample.org/x")
+    assert not dom.contains("https://example.org.evil.com/x")
+    pre = settled("prefix")
+    assert pre.contains("https://www.example.org/python/tut/2")
+    assert not pre.contains("https://www.example.org/java/")
+    anywhere = settled("any")
+    assert anywhere.contains("https://elsewhere.net/")
+    assert not anywhere.contains("ftp://elsewhere.net/")
+    hop = settled("prefix", extra_hops=2)
+    assert hop.hops("https://elsewhere.net/", 0) == 1
+    assert hop.hops("https://elsewhere.net/", 1) == 2
+    assert hop.hops("https://elsewhere.net/", 2) is None
+    assert hop.hops("https://www.example.org/python/tut/x", 2) == 0  # back in scope
+
+
+def test_a_bad_scope_is_refused_before_any_request(fixture_server, tmp_path):
+    for kw, said in (
+        ({"scope": "planet"}, "unknown scope"),
+        ({"include": ["(unclosed"]}, "--include"),
+        ({"exclude": ["x" * 501]}, "longer than"),
+        ({"extra_hops": 11}, "extra hops"),
+    ):
+        with pytest.raises(creator.CreateError, match=said):
+            _site(tmp_path, "/deep/start.html", **kw)
+    assert not REQUESTS
+
+
+def test_a_chosen_scope_never_calls_one_page_nothing_under(fixture_server, tmp_path):
+    """The retry the card offers for "nothing under" is a whole-site capture
+    of the same page; a capture that already chose its scope is complete."""
+    info = _site(tmp_path, "/lonely/", include=["matches-nothing"])
+    assert info["pages"] == 1 and info["stopped"] is None
+
+
+def test_cli_scope_flags(fixture_server, tmp_path):
+    out = tmp_path / "x.zim"
+    done = subprocess.run(
+        [sys.executable, "-m", "zimi", "create", BASE + "/deep/start.html", "--site",
+         "--scope", "host", "--max-depth", "2", "--exclude", "a2", "--delay", "0",
+         "--out", str(out)],
+        capture_output=True, text=True, cwd=REPO_ROOT, timeout=120,
+        env={**os.environ, "ZIMI_TORRENT": "0"},
+    )
+    assert done.returncode == 0, done.stderr
+    assert _fetched() == {"/deep/start.html", "/deep/b.html", "/other/a.html"}
+
+
+def test_cli_scope_flags_need_site(tmp_path):
+    done = subprocess.run(
+        [sys.executable, "-m", "zimi", "create", "https://example.com/", "--scope", "host",
+         "--out", str(tmp_path / "x.zim")],
+        capture_output=True, text=True, cwd=REPO_ROOT, timeout=60,
+        env={**os.environ, "ZIMI_TORRENT": "0", "ZIMI_OFFLINE": "1"},
+    )
+    assert done.returncode != 0
+    assert "--scope needs --site" in done.stdout + done.stderr
+
+
+def test_cli_scope_reaches_zimit(zimit_docker, tmp_path):
+    """--engine zimit takes the scope flags too, under browsertrix's names."""
+    import argparse
+
+    args = argparse.Namespace(
+        site=True, engine="zimit", title=None, description=None, language="eng",
+        creator="Zimi", out=str(tmp_path / "x.zim"), max_pages=None, max_depth=2,
+        scope="host", include=None, exclude=["/print/"], extra_hops=None,
+    )
+    creator._build_from_args(args, "https://example.com/python/", True)
+    cmd = zimit_docker["runs"][0]
+    assert cmd[cmd.index("--scopeType") + 1] == "host"
+    assert cmd[cmd.index("--depth") + 1] == "2"
+    assert cmd[cmd.index("--scopeExcludeRx") + 1] == "(?:/print/)"

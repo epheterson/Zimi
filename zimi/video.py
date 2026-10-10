@@ -37,13 +37,17 @@ import tempfile
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
     DEFAULT_LANGUAGE,
     LANGUAGE_AUTO,
     CreateError,
     _finish_output,
     _fmt_bytes,
+    PrivateAddressRefused,
     _try_register,
+    capture_proxy_url,
     _zim_file_item_class,
+    check_public,
     language_tag_to_iso3,
 )
 from zimi.p2p import is_offline
@@ -266,7 +270,7 @@ def wants_url(url, args):
     Explicit crawl intent (--site, --engine) always wins over extractor
     matching, and --max-bytes signals nothing by itself — the site crawl
     shares it."""
-    if getattr(args, "site", False) or getattr(args, "engine", "builtin") != "builtin":
+    if getattr(args, "site", False) or (getattr(args, "engine", None) or "builtin") != "builtin":
         return False
     if any(getattr(args, n, None) for n in _VIDEO_FLAG_NAMES):
         return True
@@ -355,13 +359,20 @@ def _flat_entries(mod, url, limit):
     unresponsive host is not bounded — it is just a slow job wearing a
     preview's name. yt-dlp's own default here is "wait", so the bound has to be
     stated. It applies to the real build too, which wants it for the same
-    reason on a Pi."""
+    reason on a Pi.
+
+    A web-started capture is held to public addresses here too: the address
+    asked for and each entry's own are refused plainly, and everything yt-dlp
+    then fetches goes through the capture proxy (None, its default, without
+    the rule)."""
+    check_public(url)
     opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "skip_download": True,
         "socket_timeout": FLAT_PROBE_SOCKET_TIMEOUT,
+        "proxy": capture_proxy_url(),
     }
     if limit:
         opts["playlistend"] = limit
@@ -428,6 +439,7 @@ def download_opts(workdir, *, fmt, audio_only, language=None, ffmpeg=None):
         "subtitlesformat": "vtt",
         "subtitleslangs": _subtitle_langs(language),
         "writethumbnail": not audio_only,
+        "proxy": capture_proxy_url(),
     }
     if ffmpeg and not audio_only:
         opts["merge_output_format"] = "mp4"
@@ -665,7 +677,7 @@ def probe_video(url, limit=None):
     if mod is None:
         raise CreateError(INSTALL_HINT)
     if is_offline():
-        raise CreateError("ZIMI_OFFLINE is set — refusing to fetch from the network.")
+        raise CreateError(OFFLINE_REFUSAL)
     head, entries = _flat_entries(
         mod, url, min(limit or PROBE_MAX_ENTRIES, PROBE_MAX_ENTRIES)
     )
@@ -733,6 +745,8 @@ def create_video_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     fmt=None,
     audio_only=False,
     limit=None,
@@ -749,10 +763,7 @@ def create_video_zim(
     if mod is None:
         raise CreateError(INSTALL_HINT)
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Video capture downloads media; it cannot run offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if max_bytes < 0:
         raise CreateError("--max-bytes cannot be negative (0 means no limit)")
     say = progress or (lambda _msg: None)
@@ -767,6 +778,7 @@ def create_video_zim(
     staging = tempfile.mkdtemp(prefix="zimi-video-", dir=work_dir)
     videos = []  # per-entry dicts carrying downloaded file paths
     skipped = []  # titles the budget kept out
+    private = 0  # entries a web capture may not reach
     used = 0
     budget_hit = False
     try:
@@ -777,6 +789,14 @@ def create_video_zim(
                 skipped.append(label)
                 continue
             say(f"[{i}/{len(entries)}] {label}")
+            try:
+                for key in ("webpage_url", "url"):
+                    if str(entry.get(key) or "").lower().startswith(("http://", "https://")):
+                        check_public(entry[key])
+            except PrivateAddressRefused:
+                say(f"skipped {label}: it is at a private address")
+                private += 1
+                continue
             workdir = os.path.join(staging, str(i))
             os.makedirs(workdir)
             info = _download_entry(
@@ -802,6 +822,14 @@ def create_video_zim(
                     "sub_files": subs,
                     "thumb": thumb,
                 }
+            )
+        if private:
+            say(f"left out {_plural(private, 'video')} at private addresses")
+        if not videos and private == len(entries):
+            raise PrivateAddressRefused(
+                "every video in the list is at a private address, and captures "
+                "started from the web may not reach those. An admin can allow "
+                "private captures in Manage, under Creator."
             )
         if not videos:
             raise CreateError("nothing fit under the size budget — raise --max-bytes")
@@ -946,11 +974,12 @@ def create_video_zim(
                 ),
                 language=language,
                 creator_name=creator_name,
+                publisher=publisher,
                 source=url,
                 # The playlist/channel URL itself: re-running it next month is
                 # a new edition of this ZIM.
                 name=zim_name(url, language),
-                tags=media_tags(media_mimes),
+                tags=media_tags(media_mimes) + list(tags or ()),
                 # An audio-only build of a playlist is a genuinely different
                 # edition of the same source — exactly what Flavour is for.
                 flavour="audio" if audio_only else None,
@@ -1001,14 +1030,15 @@ def build_video(args):
     turned out not to be a video. Printing and exit live in the CLI wrappers so
     ``creator.cli_create`` can catch a failed auto-detection and fall back to
     page capture."""
+    from zimi.crawler import DETAIL_KEYS, detail_kwargs
+
     max_bytes = parse_size(args.max_bytes) if args.max_bytes else DEFAULT_MAX_ZIM_BYTES
     return create_video_zim(
         args.source,
         title=args.title,
-        description=args.description,
         language=args.language,
-        creator_name=args.creator,
         out_path=args.out,
+        **detail_kwargs({k: getattr(args, k, None) for k in DETAIL_KEYS}),
         fmt=args.format,
         audio_only=bool(args.audio_only),
         limit=args.limit,

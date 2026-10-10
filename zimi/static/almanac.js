@@ -137,6 +137,11 @@ function _lc(name) { var s = _tc(name); var k = _CONST_KEYS[name]; return k ? _a
 function _lterm(suffix, html) { return _alLink('term:' + suffix, html); }
 // Link a season by its article key ('winter'|'spring'|'summer'|'autumn').
 function _lseason(key, html) { return key ? _alLink('season:' + key, html) : html; }
+// A star by its proper name (the sky's, or the Nautical Almanac's): its key is the
+// name lowercased, each run of other characters one underscore ("Al Na'ir" is
+// star:al_na_ir). Plain text where the name has no entry.
+function _almStarKey(name) { return 'star:' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+function _lstar(name, html) { return _alLink(_almStarKey(name), html == null ? _almEsc(name) : html); }
 
 function _dayOfYear(date) {
   // setFullYear, not new Date(year,…): the constructor folds years 0–99 into
@@ -211,6 +216,11 @@ function _openAlmanacInner(replaceState) {
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('almanac');
   _renderAlmanacContent();
+  // Zimi's header is in place under the Almanac: nothing in it slides the
+  // header, so one left away by the page before (an article scrolled on a
+  // phone) would keep the Almanac's own header, its date, behind the bar.
+  if (typeof _chromeReset === 'function') _chromeReset();
+  if (typeof _armTapRelay === 'function') _armTapRelay(true);
 }
 
 // Shared visual/animation teardown for leaving the almanac. Does NOT touch
@@ -221,6 +231,7 @@ function _almanacTeardown() {
   if (typeof _chromeReset === 'function') _chromeReset();
   _almHeroLiveStop();
   document.body.classList.remove('almanac-mode');
+  if (typeof _armTapRelay === 'function') _armTapRelay(false);
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
   // The 3D Earth (almanac-earth.js, loaded after this file) gives its GPU
   // memory back: a phone keeps a tab that holds less.
@@ -365,14 +376,14 @@ var _ON_THIS_DAY = {
   '02-15': [{ y: 1564, t: 'Galileo Galilei is born in Pisa.', w: 'ev:galileogalilei' }],
   '02-18': [{ y: 1930, t: 'Clyde Tombaugh discovers Pluto.', w: 'ev:pluto' }],
   '02-19': [{ y: 1473, t: 'Nicolaus Copernicus is born in Toruń — he moved the Sun to the centre.', w: 'ev:copernicus' }],
-  '02-20': [{ y: 1986, t: 'The Soviet Union launches the core of Mir, humanity’s home in orbit for 15 years.' }],
+  '02-20': [{ y: 1986, t: 'The Soviet Union launches the core of Mir, humanity’s home in orbit for 15 years.', w: 'ev:mir' }],
   '02-24': [{ y: 1968, t: 'Jocelyn Bell Burnell’s discovery of pulsars is announced.', w: 'ev:bellburnell' }],
   '03-13': [{ y: 1781, t: 'William Herschel discovers Uranus — the first planet found with a telescope.', w: 'ev:uranus' }],
   '03-14': [{ y: 1879, t: 'Albert Einstein is born in Ulm.', w: 'ev:einstein' }, { y: 2018, t: 'Stephen Hawking dies.', w: 'ev:hawking' }],
   '03-16': [{ y: 1926, t: 'Robert Goddard launches the first liquid-fuelled rocket.', w: 'ev:goddard' }],
   '03-18': [{ y: 1965, t: 'Alexei Leonov leaves his capsule for 12 minutes — the first spacewalk.', w: 'ev:leonov' }],
   '03-23': [{ y: 1882, t: 'Emmy Noether is born; her theorem ties every symmetry in physics to a conservation law.', w: 'ev:noether' },
-             { y: 2001, t: 'Mir is guided to a controlled fiery end over the Pacific.' }],
+             { y: 2001, t: 'Mir is guided to a controlled fiery end over the Pacific.', w: 'ev:mir' }],
   '04-12': [{ y: 1961, t: 'Yuri Gagarin orbits the Earth — the first human in space.', w: 'ev:gagarin' },
              { y: 1981, t: 'The first Space Shuttle, Columbia, launches.', w: 'ev:columbia' }],
   '04-13': [{ y: 1970, t: 'An oxygen tank explodes aboard Apollo 13; the crew improvise their way home.', w: 'ev:apollo13' }],
@@ -398,7 +409,7 @@ var _ON_THIS_DAY = {
   '07-15': [{ y: 1965, t: 'Mariner 4 sends back the first close-up photographs of Mars.', w: 'ev:mariner4' }],
   '07-16': [{ y: 1969, t: 'Apollo 11 launches from Kennedy Space Center.', w: 'ev:apollo11' }],
   '07-17': [{ y: 1894, t: 'Georges Lemaître is born in Belgium; the priest-physicist who proposed the expanding universe.', w: 'ev:lemaitre' },
-             { y: 1975, t: 'Apollo and Soyuz dock in orbit — Cold War rivals shaking hands in space.' }],
+             { y: 1975, t: 'Apollo and Soyuz dock in orbit — Cold War rivals shaking hands in space.', w: 'ev:astp' }],
   '07-18': [{ y: 1921, t: 'John Glenn, first American to orbit Earth, is born.', w: 'ev:glenn' }],
   '07-20': [{ y: 1969, t: 'Apollo 11 lands on the Moon; Armstrong and Aldrin walk its surface.', w: 'ev:apollo11' },
              { y: 1976, t: 'Viking 1 makes the first successful landing on Mars.', w: 'ev:viking1' }],
@@ -438,7 +449,7 @@ var _ON_THIS_DAY = {
   '12-17': [{ y: 1903, t: 'The Wright brothers fly for 12 seconds at Kitty Hawk.', w: 'ev:wright' }],
   '12-21': [{ y: 1968, t: 'Apollo 8 launches, carrying the first humans to orbit the Moon.', w: 'ev:apollo8' }],
   '12-22': [{ y: 1887, t: 'Srinivasa Ramanujan is born in Erode, India — self-taught, and still ahead of us.', w: 'ev:ramanujan' }],
-  '12-24': [{ y: 1979, t: 'Europe’s first Ariane rocket lifts off from French Guiana.' }],
+  '12-24': [{ y: 1979, t: 'Europe’s first Ariane rocket lifts off from French Guiana.', w: 'ev:ariane1' }],
   '12-25': [{ y: 1642, t: 'Isaac Newton is born (Old Style calendar).', w: 'ev:newton' },
              { y: 2021, t: 'The James Webb Space Telescope launches from French Guiana.', w: 'ev:jwst' }],
   '12-27': [{ y: 1571, t: 'Johannes Kepler is born; he replaced circles with ellipses.', w: 'ev:kepler' },
@@ -501,21 +512,14 @@ function _almIsToday(d) {
 // truth so the full header render and the lightweight scrub updater
 // (_almScrubClock) read time identically.
 //
-// The header clock always reads the VIEWER's own local time, travelling or
-// not. A stored almanac location drives the sky/sun math, but its derived zone
-// must never drive this clock: a stale or wrong-hemisphere stored location
-// (e.g. a western longitude persisted with the wrong sign) resolves to a
-// far-eastern zone and paints tomorrow morning onto today's sky.
-//
-// It must not switch zones on travel either, which it used to. The rest of the
-// instrument reads the focus instant in device-local fields -- the time
-// machine's readout via _almTmParts, the calendar grid via
-// _almSyncSelectedToFocus, the destination chooser via _almMakeInstant, which
-// is also what makes a typed destination round-trip unchanged. A header on the
-// location's zone therefore disagreed with all three, by a whole day within a
-// zone-offset of midnight: pick 23:50 from Los Angeles with Tokyo stored and
-// the grid highlights the 22nd while the header reads the 23rd. One zone for
-// the whole instrument, and it is the device's.
+// The header clock reads the chosen place's local time, with a hint naming it
+// ("3:09 PM · GMT+5:30 · Mumbai"), and the device's own time when no place is
+// chosen or the place keeps the device's zone. The hint is the guard against
+// a place resolving to a wrong zone going unnoticed: it says which place's
+// clock this is. The rest of the instrument (the time machine's readout, the
+// calendar grid, the destination chooser) still reads the focus instant in
+// device-local fields, so within a zone-offset of midnight the header's day
+// can differ from the grid's; the header's hint is what explains it.
 // Date options with the era added for a year before 1: Intl leaves the era
 // out unless asked, so -270000 read "January 1, 270001", the far future.
 // Asked only then, so an ordinary date does not gain an "AD".
@@ -529,7 +533,10 @@ function _almClockParts(focus) {
   var locTz = null;
   try { locTz = _almDisplayTz(loc); } catch (e) {}
   var live = _almIsToday(focus);
-  var displayTz = _almDeviceTz() || locTz;
+  var deviceTz = _almDeviceTz();
+  // A chosen place whose zone is not the device's: its time, and its name.
+  var placeTz = loc.stored && locTz && locTz !== deviceTz ? locTz : null;
+  var displayTz = placeTz || deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
@@ -537,7 +544,8 @@ function _almClockParts(focus) {
     loc: loc, locTz: locTz, lang: lang, live: live,
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
-    tz: _formatTimezone(lang, displayTz, focus)
+    tz: _formatTimezone(lang, displayTz, focus),
+    place: placeTz ? (loc.name || '').split(',')[0].trim() : ''
   };
 }
 
@@ -564,6 +572,7 @@ function _almHeadHtml(focus) {
   // text color is var(--text) already.
   html += '<div id="almanac-head-date"' + tmTap + ' style="font-size:22px;font-weight:600">' + cp.date + '</div>';
   html += '<div style="font-size:16px;color:var(--text2);margin-top:4px"><span id="almanac-head-time"' + tmTap + '>' + cp.time + '</span>' + (cp.tz ? ' &middot; ' + cp.tz : '') +
+    (cp.place ? ' &middot; <span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-head-here') : '') +
     (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
@@ -3656,7 +3665,7 @@ function _renderSunMap(now) {
   } else {
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += '<span onclick="_shareAlmanacLocation()" style="cursor:pointer;font-size:13px;color:var(--text3);opacity:0.7" title="' + t('alm_use_location') + '">\uD83D\uDCCD</span>';
+  html += _almHereBtnHtml('');
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
   html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
@@ -3948,8 +3957,7 @@ function _initTzClock(now) {
   // cities are offered to add, not all shown at once.
   var targetTz = _almSelectedTz || _almDisplayTz();
   var cards = _almClockCards(targetTz, now);
-  var localMatch = -1;
-  for (var ci = 0; ci < cards.length; ci++) if (cards[ci].tz === targetTz) { localMatch = ci; break; }
+  var localMatch = _almClockLit(cards, targetTz, now);
 
   // Render city cards with times
   var html = '';
@@ -4118,23 +4126,36 @@ function _almClockSheetClose(returnTo) {
 function _almSheetAboveKeyboard(pop) {
   pop._almUnfit = _sheetAboveKeyboard(pop);
 }
-// The cards: the place's zone (or the one selected), the device's when it
-// differs, the added ones; one each, sorted west to east by offset now.
+// The cards: the curated world tour (every city in _TZ_CITIES), then what the
+// reader brings to it: the place's zone and the device's when no card keeps
+// that offset already, and the clocks they added. One each, west to east by
+// offset now. The place's own city, when it is a curated one, carries the
+// place's name.
 function _almClockCards(targetTz, now) {
-  var out = [], seen = {}, home = _almDisplayTz(), named = _getLocation().stored;
-  function add(tz, added) {
+  var out = [], seen = {}, offs = {}, home = _almDisplayTz(), named = _getLocation().stored;
+  function add(tz, added, onlyIfNewOffset) {
     if (!tz || seen[tz]) return;
-    seen[tz] = 1;
     var off = 0;
     try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
+    if (onlyIfNewOffset && offs[off]) return;
+    seen[tz] = 1; offs[off] = 1;
     out.push({ tz: tz, added: added, off: off,
       label: tz === home && named ? _almTzCardLabel(tz) : _almTzCityLabel(tz) });
   }
-  add(home, false);
-  add(targetTz, false);
-  add(_almDeviceTz(), false);
+  _TZ_CITIES.forEach(function (c) { add(c.tz, false); });
+  add(home, false, true);
+  add(targetTz, false, true);
+  add(_almDeviceTz(), false, true);
   _almClocks().forEach(function (tz) { add(tz, true); });
   return out.sort(function (a, b) { return a.off - b.off; });
+}
+// The card a zone lights: its own, else the first keeping the same offset now.
+function _almClockLit(cards, tz, now) {
+  var off = null;
+  for (var i = 0; i < cards.length; i++) if (cards[i].tz === tz) return i;
+  try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return -1; }
+  for (var j = 0; j < cards.length; j++) if (cards[j].off === off) return j;
+  return -1;
 }
 
 // The name on a card for a zone that is not one of the curated cities: the
@@ -4171,15 +4192,15 @@ function _drawTzClock(now) {
   // it below), else this device's. It read the device's zone under the
   // place's name before.
   var tz = _almSelectedTz || _almDisplayTz();
-  var tzLabel = '';
+  var tzLabel = '', tzCityKey = '';
   for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); break; }
+    if (_TZ_CITIES[i].tz === tz) { tzLabel = t('alm_city_' + _TZ_CITIES[i].key); tzCityKey = _TZ_CITIES[i].key; break; }
   }
   // If the user searched a specific city whose timezone matches, use their city name
   var storedLoc = _getLocation();
   if (storedLoc.name && (!_almSelectedTz || _almSelectedTz === tz)) {
     var cityOnly = storedLoc.name.split(',')[0].trim();
-    if (cityOnly) tzLabel = cityOnly;
+    if (cityOnly) { if (cityOnly !== tzLabel) tzCityKey = ''; tzLabel = cityOnly; }
   }
 
   // Get time in selected timezone (the clock ticks on the second; see _startTzClock)
@@ -4301,6 +4322,9 @@ function _drawTzClock(now) {
     // Only a real abbreviation (PST, JST, CET) earns a slot next to the city
     // name; a GMT/UTC offset alias (GMT, GMT+4, UTC-5) says nothing new.
     if (/^(GMT|UTC)([+−-]|$)/.test(tzAbbr)) tzAbbr = '';
+    // The city's name links its article when it is a curated city's own name; the
+    // place's name ("Mumbai, Maharashtra" trimmed) links only when it is that city.
+    var tzNameHtml = (tzLabel ? (tzCityKey ? _alLink('city:' + tzCityKey, _almEsc(tzLabel)) : _almEsc(tzLabel)) : '') + (tzAbbr ? ' \u00b7 ' + _almEsc(tzAbbr) : '');
     // Only rebuild the shell when needed; the flip card ticks per second
     var secEl = document.getElementById('alm-clock-sec');
     if (!secEl || labelEl.dataset.tz !== tz) {
@@ -4310,7 +4334,7 @@ function _drawTzClock(now) {
           '<span class="alm-clock-sec" id="alm-clock-sec"></span>' +
           '<span class="alm-clock-ampm" id="alm-clock-ampm">' + ampm + '</span></div>' +
         '<div class="alm-clock-date" id="alm-clock-date">' + dateStr + '</div>' +
-        '<div class="alm-clock-sub"><span id="alm-clock-tzname">' + (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '') + '</span></div>';
+        '<div class="alm-clock-sub"><span id="alm-clock-tzname" data-h="' + _almEsc(tzNameHtml) + '">' + tzNameHtml + '</span></div>';
       _rollDigitStr(document.getElementById('alm-clock-hm'), hm);
       _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     } else {
@@ -4320,8 +4344,7 @@ function _drawTzClock(now) {
       var dEl = document.getElementById('alm-clock-date');
       if (dEl && dEl.textContent !== dateStr) dEl.textContent = dateStr;
       var tnEl = document.getElementById('alm-clock-tzname');
-      var tzText = (tzLabel || '') + (tzAbbr ? ' \u00b7 ' + tzAbbr : '');
-      if (tnEl && tnEl.textContent !== tzText) tnEl.textContent = tzText;
+      if (tnEl && tnEl.getAttribute('data-h') !== tzNameHtml) { tnEl.setAttribute('data-h', tzNameHtml); tnEl.innerHTML = tzNameHtml; }
       _rollDigitStr(document.getElementById('alm-clock-sec'), sec);
     }
   }
@@ -4671,13 +4694,19 @@ function _almShowCitySearch() {
 // (the 3D view's button too).
 var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
+// "Where I am": the button back to the device's own place (geolocation, else
+// the manual prompt), offered wherever a place is showing.
+function _almHereBtnHtml(cls) {
+  return '<button type="button" class="alm-invite-btn ' + cls + '" onclick="_shareAlmanacLocation()" title="' + _almEsc(t('alm_use_location')) + '" aria-label="' + _almEsc(t('alm_place_here')) + '">' +
+    ALM_LOCATE_SVG + '<span>' + _almEsc(t('alm_place_here')) + '</span></button>';
+}
+
 // No place chosen yet: one line asking for it, with the two ways to give it
 // (where I am, or a search on the map). The sky and the tides both say it;
 // nothing pretends to stand somewhere.
 function _almPlaceInviteHtml() {
   return '<p class="alm-place-invite"><span>' + _almEsc(t('alm_place_invite')) + '</span> ' +
-    '<button type="button" class="alm-invite-btn" onclick="_shareAlmanacLocation()">' + ALM_LOCATE_SVG +
-    '<span>' + _almEsc(t('alm_place_here')) + '</span></button> ' +
+    _almHereBtnHtml('') + ' ' +
     '<button type="button" class="alm-invite-btn" onclick="_almPlaceFind()">' + _almEsc(t('alm_place_find')) + '</button></p>';
 }
 // The search on the map, brought into view.
@@ -5810,6 +5839,7 @@ function _renderMeteorShowers(now, moon) {
       '<div>' +
       '<span class="almanac-eclipse-type">' + _alLink('shower:' + s.key, t('alm_shower_' + s.key)) + '</span>' +
       '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _lc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
+      ' &middot; ' + t('alm_shower_parent', { name: _alLink('parent:' + s.key, _almEsc(s.parent)) }) +
       ' &middot; <span style="color:' + condColor + '">' + s.moonIcon + ' ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="' + untilClass + '">' + untilStr + '</div></div>';
@@ -6230,14 +6260,14 @@ function _applyRegionHolidays(region, year, month, add, worldwide) {
   // Clock changes: labels hold both hemispheres (October IS spring in AU)
   var dst = pack.dst;
   if (dst === 'us') {
-    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal');
-    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal');
+    if (month === 3) add(_nthWeekday(year, 3, 0, 2), 'Spring Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 11) add(_nthWeekday(year, 11, 0, 1), 'Fall Back', 'seasonal', '', '', '', 'term:daylight_saving');
   } else if (dst === 'eu') {
-    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal');
-    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal');
+    if (month === 3) add(_lastWeekday(year, 3, 0), 'Clocks Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 10) add(_lastWeekday(year, 10, 0), 'Clocks Back', 'seasonal', '', '', '', 'term:daylight_saving');
   } else if (dst === 'au') {
-    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal');
-    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal');
+    if (month === 10) add(_nthWeekday(year, 10, 0, 1), 'Clocks Forward', 'seasonal', '', '', '', 'term:daylight_saving');
+    if (month === 4) add(_nthWeekday(year, 4, 0, 1), 'Clocks Back', 'seasonal', '', '', '', 'term:daylight_saving');
   }
 }
 
@@ -6328,7 +6358,7 @@ function _seasonEventsForYear(year) {
   for (var k = 0; k < 4; k++) {
     // JDE (TT ~ UTC at day precision) -> the user's local calendar date
     var d = new Date((_seasonInstantJDE(year, k) - 2440587.5) * 86400000);
-    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k] });
+    events.push({ month: d.getMonth() + 1, day: d.getDate(), label: names[k], link: k % 2 ? 'term:solstice' : 'term:equinox' });
   }
   _seasonCache = { year: year, events: events };
   return events;
@@ -6337,7 +6367,7 @@ function _seasonEventsForYear(year) {
 // Get almanac events for a given calendar system's month, keyed by day number
 function _getAlmanacEvents(sys, year, month) {
   var events = {};
-  function add(day, label, type, icon, src, region) {
+  function add(day, label, type, icon, src, region, link) {
     if (day < 1 || day > 31) return;
     if (!events[day]) events[day] = [];
     // Belt-and-suspenders: base set + one region pack should never
@@ -6347,7 +6377,7 @@ function _getAlmanacEvents(sys, year, month) {
     }
     // `region` (ISO code) lets a shared label like "Independence Day" deep-link
     // to the right country's article; '' for worldwide/native events.
-    events[day].push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '' });
+    events[day].push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '', link: link || '' });
   }
 
   // Base worldwide / regional / astronomical events are computed on absolute
@@ -6364,15 +6394,15 @@ function _getAlmanacEvents(sys, year, month) {
   var baseByJDN = {};
   for (var _gk in gregMonths) {
     (function (gy, gm) {
-      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src) {
+      _gregorianBaseEvents(gy, gm, function (gDay, label, type, icon, src, region, link) {
         var jdn = _gregorianToJDN(gy, gm, gDay);
-        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '' });
+        (baseByJDN[jdn] = baseByJDN[jdn] || []).push({ label: label, type: type, icon: icon || '', src: src || '', region: region || '', link: link || '' });
       });
     })(gregMonths[_gk].gy, gregMonths[_gk].gm);
   }
   for (var _dd = 1; _dd <= daysInMonth; _dd++) {
     var _be = baseByJDN[firstJDN + _dd - 1];
-    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src);
+    if (_be) for (var _bi = 0; _bi < _be.length; _bi++) add(_dd, _be[_bi].label, _be[_bi].type, _be[_bi].icon, _be[_bi].src, _be[_bi].region, _be[_bi].link);
   }
 
   _systemNativeEvents(sys, year, month, add);
@@ -6426,7 +6456,7 @@ function _gregorianBaseEvents(year, month, add) {
     var seasonEvents = _seasonEventsForYear(year);
     for (var sei = 0; sei < seasonEvents.length; sei++) {
       if (seasonEvents[sei].month === month) {
-        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro');
+        add(seasonEvents[sei].day, seasonEvents[sei].label, 'astro', '', '', '', seasonEvents[sei].link);
       }
     }
   }
@@ -6434,7 +6464,7 @@ function _gregorianBaseEvents(year, month, add) {
   // Meteor shower peaks — Gregorian dates, so part of the projected base.
   for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
     var s = _METEOR_SHOWERS[si];
-    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄'); }
+    if (s.peak[0] === month) { add(s.peak[1], _showerName(s), 'meteor', '☄', '', '', 'shower:' + s.key); }
   }
 }
 
@@ -6672,9 +6702,10 @@ function _drawAlmanacGrid() {
         var ev = selEvents[ei];
         var rawLabel = _th(ev.label);
         var escName = rawLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        // Holidays deep-link into the library (fail-soft); other event types stay plain text.
+        // Holidays deep-link into the library (fail-soft); a shower, a season or a clock change links its own entity (ev.link).
         var detailLabel = (ev.type === 'holiday' && window.AlmanacLinks)
-          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel, ev.region) : escName;
+          ? window.AlmanacLinks.wrapHoliday(escName, rawLabel, ev.region)
+          : (ev.link ? _alLink(ev.link, escName) : escName);
         if (ev.src) detailLabel += ' <span style="color:var(--text3)">\u00b7 ' + ev.src.replace(/</g,'&lt;') + '</span>';
         html += '<div class="alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '') + '" style="font-size:12px;padding:2px 0">' +
           (ev.icon ? ev.icon + ' ' : '') + detailLabel + '</div>';

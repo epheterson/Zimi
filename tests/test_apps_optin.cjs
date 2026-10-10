@@ -1,9 +1,9 @@
-// Zimipedia was a preview, off unless the server named it, until its reader
-// (1.12): it is on by default now, like every app. The shell with no stamp
-// is every app; a server that leaves Zimipedia out (ZIMI_APPS, a saved list)
-// stamps the shell without it, the pickers still list it, and /#wiki goes
-// home. The opt-in mechanism stays for a preview to come, empty. The
-// server half is tests/test_apps_switch.py.
+// Reddot is opt-in since 1.13.1: off unless the server names it, still listed
+// in Server settings so an admin can switch it on. Zimipedia was opt-in until
+// its reader (1.12) and is on by default, like every other app. A server that
+// leaves Zimipedia out (ZIMI_APPS, a saved list) stamps the shell without it,
+// the pickers still list it, and /#wiki goes home. The server half is
+// tests/test_apps_switch.py.
 //
 // Run: node tests/test_apps_optin.cjs   (exit 0 = pass)
 
@@ -44,13 +44,15 @@ vm.runInContext([
   extract(/function _appsAllowedByServer\(app\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
   extract(/function _appShown\(app\) \{[\s\S]*?\n\}/, '_appShown'),
   extract(/function _setAppsStamp\(stamp\) \{[\s\S]*?\n\}/, '_setAppsStamp'),
-  extract(/function _serverOfferable\(shown\) \{[\s\S]*?\n\}/, '_serverOfferable'),
   extract(/function openWiki\(replaceState\) \{[\s\S]*?\n\}/, 'openWiki'),
 ].join('\n'), ctx);
 
 // ── the shell's stamp ────────────────────────────────────────────────────
-ok('no preview app now: Zimipedia is not held back', ctx.APPS_OPT_IN.length === 0 && ctx.APPS_DEFAULT.join() === ctx.APP_NAMES.join());
-ok('no stamp: every app, Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === 'maps,tube,exchange,reddot,wiki,books,dictionary');
+ok('Reddot is the one opt-in app', ctx.APPS_OPT_IN.join() === 'reddot' && ctx.APPS_DEFAULT.join() === 'maps,tube,exchange,wiki,books,dictionary');
+ok('no stamp: every app but Reddot, Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === 'maps,tube,exchange,wiki,books,dictionary');
+ctx.document.body.dataset.zimiApps = 'reddot,maps';
+ok('a stamp naming Reddot offers it', ctx._appsAllowedByServer('reddot'));
+delete ctx.document.body.dataset.zimiApps;
 ok('no stamp: the apps row is still on', ctx._appsAllowedByServer() === true);
 ctx.document.body.dataset.zimiApps = 'maps,wiki';
 ok('a stamp naming wiki offers it', ctx._appsAllowedByServer('wiki') && !ctx._appsAllowedByServer('tube'));
@@ -59,12 +61,9 @@ ok('a stamp without wiki does not', !ctx._appsAllowedByServer('wiki') && ctx._ap
 delete ctx.document.body.dataset.zimiApps;
 
 // ── the pickers ──────────────────────────────────────────────────────────
-ok('Server settings lists every app, Zimipedia too, whatever the server offers now',
-  ctx._serverOfferable(['maps', 'tube']).join() === 'maps,tube,exchange,reddot,wiki,books,dictionary');
-ok('and lists Zimipedia while the server offers it', ctx._serverOfferable(['wiki']).indexOf('wiki') >= 0);
-ok('the Server settings picker and its All button draw from that list, not every app',
-  /return _appPicksHtml\(_serverOfferable\(shown\),/.test(src) &&
-  /function _setAppsForServerAll\(on\) \{ _postServerApps\(on \? _serverOfferable\(_serverAppsNow\(\)\) : \[\]\); \}/.test(src));
+ok('Server settings lists every app, Reddot too, and All switches every one on',
+  /return _appPicksHtml\(APP_NAMES, /.test(src) &&
+  /function _setAppsForServerAll\(on\) \{ _postServerApps\(on \? APP_NAMES : \[\]\); \}/.test(src));
 ok('the shell drops its stamp when the server is back to the default apps, not to every app',
   /_setAppsStamp\(d\.shown\.join\(','\) === APPS_DEFAULT\.join\(','\) \? null : d\.shown\.join\(','\) \|\| '0'\)/.test(src));
 ctx._setAppsStamp('books');

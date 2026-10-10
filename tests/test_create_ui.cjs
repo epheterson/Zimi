@@ -82,9 +82,10 @@ check(captureStopKind('') === null && captureStopKind(null) === null, 'no reason
     { stopped: 'byte budget (1.0 GB)' });
   eq([video.max_bytes, video.format, 'max_depth' in video], ['0', '720', false],
     'a video rerun lifts its budget, keeps its format and gains no depth');
-  // A path with nothing under it: the whole site, from where the capture landed.
+  // A path with nothing under it: the whole site, from the page the capture
+  // landed on, so the depth still counts from there.
   const whole = _createAgainRequest(asked, { stopped: 'nothing under /docs/', url: 'https://www.example.org/en/docs/' });
-  eq([whole.source, whole.max_pages], ['https://www.example.org/', 40],
+  eq([whole.source, whole.scope, whole.max_pages], ['https://www.example.org/en/docs/', 'host', 40],
     'a path with nothing under it reruns as the whole site, bounds as they were');
   check(_createAgainRequest(asked, { stopped: 'interrupted' }) === null, 'a Stop offers no rerun');
   check(_createAgainRequest(null, { stopped: 'page cap (40)' }) === null, 'no request, no rerun');
@@ -209,14 +210,58 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['block_ads', 'capture_variants', 'strip_links', 'language']],
-  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
-    'strip_links', 'language', 'ignore_robots']],
-  ['video', ['format', 'max_bytes', 'language']],
+  ['page', ['max_file_bytes', 'skip_types',
+    'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
+    'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']],
+  ['site', ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'sitemap',
+    'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay',
+    'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots',
+    'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']],
+  ['video', ['format', 'max_bytes', 'language', 'description', 'creator', 'publisher', 'tags']],
   ['bookmarks', []],
-  ['folder', ['language']],
-  ['import', []]
+  ['folder', ['language', 'description', 'creator', 'publisher', 'tags']],
+  ['import', ['description', 'creator', 'publisher', 'tags']]
 ], 'each mode advertises its documented advanced options');
+
+// Reach in the address's terms: the folder it sits in, its site, its domain.
+{
+  const said = [];
+  sandbox.t = (k, v) => { said.push([k, v]); return k + (v ? JSON.stringify(v) : ''); };
+  const w = sandbox._createScopeWords('https://www.example.org/python/tutorial/index.html');
+  check(w.prefix === 'create_scope_prefix_at{"path":"/python/tutorial/"}' &&
+    w.host === 'create_scope_host_at{"host":"example.org"}' &&
+    w.domain === 'create_scope_domain_at{"host":"example.org"}', 'reach names the folder, the site and the domain');
+  const root = sandbox._createScopeWords('example.org');
+  check(root.prefix === root.host, 'at the root the section is the whole site');
+  check(sandbox._createScopeWords('') === null, 'no address, no words of its own');
+  sandbox.t = (k) => k;
+}
+
+// A stored engine is where the form starts; choosing fast over it says so.
+check(sandbox._createEngineFor({ mode: 'site', spa: true }, true, 'alive') === 'alive' &&
+  sandbox._createEngineFor({ mode: 'site', spa: true }, true, '') === 'rendered' &&
+  sandbox._createEngineFor({ mode: 'site' }, true, 'rendered') === 'rendered',
+  'the probe lifts only the fast engine; a stored one stands');
+sandbox._createTakeDefaults({ defaults: { engine: 'rendered' } });
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: '' }),
+  { mode: 'site', source: 'https://e.org/', engine: 'builtin' }, 'fast over a stored engine is sent as builtin');
+sandbox._createTakeDefaults({});
+eq(_createBuildRequest('site', { source: 'https://e.org/', engine: '' }),
+  { mode: 'site', source: 'https://e.org/' }, 'with nothing stored, fast still says nothing');
+
+check(_createAgainRequest({ mode: 'site', source: 'https://e.org/', cookies: 'set' },
+  { stopped: 'page cap (10)' }) === null,
+  'a capture that carried cookies is not offered again: they were never kept');
+
+// Leave out: the ticked kinds as a list; nothing ticked says nothing, unless a
+// stored default leaves something out, and then the empty list overrides it.
+eq(_createBuildRequest('site', { source: 'https://e.org/', skip_types: ['video', 'pdf'],
+  cookies: 'a=1', description: ' A site ', creator: 'Me', tags: 'x;y' }),
+  { mode: 'site', source: 'https://e.org/', skip_types: ['video', 'pdf'],
+    cookies: 'a=1', description: 'A site', creator: 'Me', tags: 'x;y' },
+  'a site request carries leave-out, cookies and the details');
+eq(_createBuildRequest('site', { source: 'https://e.org/', skip_types: [] }),
+  { mode: 'site', source: 'https://e.org/' }, 'nothing ticked and nothing stored says nothing');
 
 // Quality is a closed list of preset NAMES. A yt-dlp format expression is an
 // instruction to a downloader, and it stays on the CLI — so this select must
@@ -477,7 +522,7 @@ eq(_createBuildRequest('site', {
   max_bytes: ' 2G ', delay: '1.5', language: 'fra', ignore_robots: true
 }), {
   mode: 'site', source: 'https://e.org/', max_pages: 50, max_depth: 2,
-  max_bytes: '2G', delay: 1.5, language: 'fra', ignore_robots: true
+  max_bytes: '2G', delay: 1.5, ignore_robots: true, language: 'fra'
 }, 'site sends its whole advanced set, sizes as typed and delays fractional');
 
 
@@ -586,9 +631,10 @@ eq(_createPreviewRows({ mode: 'page', final_url: 'http://x/', bytes: 8 }).map(r 
   ['create_pv_address'],
   'a missing title and language drop their rows entirely');
 
+// The title is the Title field's placeholder, not a row of its own.
 eq(_createPreviewRows({ mode: 'page', title: 'Handbuch', final_url: 'http://x/', bytes: 8 }).map(r => r.k),
-  ['create_pv_title', 'create_pv_address'],
-  'page rows, with no robots line when the server did not report one');
+  ['create_pv_address'],
+  'page rows: no title row, and no robots line when the server did not report one');
 
 check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowed: false })
   .create_pv_robots === 'create_pv_robots_no',
@@ -600,7 +646,7 @@ check(rowMap({ mode: 'site', title: 'T', final_url: 'u', bytes: 1, robots_allowe
 // counter during the run is the number, and it counts real responses.
 eq(_createPreviewRows({ mode: 'site', title: 'T', final_url: 'http://x/', bytes: 4096 })
   .map(r => r.k),
-  ['create_pv_title', 'create_pv_address'],
+  ['create_pv_address'],
   'site mode shows no size it cannot measure');
 // Eric, again, on a real CNN capture: the preview said 5.58MB and 36.3MB
 // arrived. `bytes` is the DOCUMENT's weight, and on a modern page the document
@@ -1028,6 +1074,53 @@ eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
 
 check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
   'the tree draws a bounded number of rows, whatever the crawl size');
+
+
+// ── capture options: time limit, sitemap, user agent, mobile, page timeout ──
+// Under Advanced, never beside the address: two controls outside it is the cap.
+check(CREATE_MODE_DEFS.every(d => (d.flags || []).length <= 2),
+  'no mode has more than two controls outside Advanced');
+for (const key of ['time_limit', 'sitemap', 'user_agent', 'mobile', 'page_timeout']) {
+  check(!(sandbox._createDef('site').flags || []).includes(key), `${key} is not outside Advanced`);
+}
+eq(sandbox._createBuildRequest('site', {
+  source: 'https://e.org/', time_limit: ' 8h ', sitemap: true, user_agent: 'Mine/1',
+  mobile: true, page_timeout: '30', engine: 'rendered' }),
+  { mode: 'site', source: 'https://e.org/', engine: 'rendered', sitemap: true, time_limit: '8h',
+    user_agent: 'Mine/1', mobile: true, page_timeout: 30 },
+  'a site request carries the new options');
+eq(sandbox._createBuildRequest('site', {
+  source: 'https://e.org/', time_limit: '', sitemap: false, user_agent: '', mobile: false, page_timeout: '' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'silent fields send nothing');
+eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', page_timeout: '30', engine: '' }),
+  { mode: 'site', source: 'https://e.org/' },
+  'a page timeout is not sent for the fast engine, which has no browser to wait on');
+eq(sandbox._createBuildRequest('page', { source: 'https://e.org/', mobile: true, time_limit: '1h' }),
+  { mode: 'page', source: 'https://e.org/', mobile: true },
+  'page mode takes the fetch options but not a site\'s time limit');
+
+// Stored defaults: placeholders, checkboxes that start where the default puts
+// them (and so can say "off" against it), and the two selects.
+sandbox._createTakeDefaults({
+  defaults: { sitemap: true, mobile: false, scope: 'host', max_bytes: 2000000000, time_limit: 28800 },
+  defaults_text: { time_limit: '8h', max_bytes: '2.0 GB', max_pages: '50' }
+});
+eq([CREATE_FIELDS.sitemap.on, CREATE_FIELDS.mobile.on], [true, false], 'checkboxes start where the stored default puts them');
+eq(sandbox.CREATE_STORED_TEXT, { time_limit: '8h', max_bytes: '2.0 GB', max_pages: '50' }, 'the text fields show the default as their placeholder');
+const siteDef = sandbox._createDef('site');
+eq([sandbox._createSelectDefaultText('scope', CREATE_FIELDS.scope, siteDef),
+    sandbox._createSelectDefaultText('max_bytes', CREATE_FIELDS.max_bytes, siteDef)],
+  ['create_scope_host', '2.0 GB'],
+  'a select names the stored default as its empty option, so leaving it sends the default');
+eq(sandbox._createBuildRequest('site', { source: 'https://e.org/', sitemap: false }),
+  { mode: 'site', source: 'https://e.org/', sitemap: false },
+  'unticking a box that a default turned on says so');
+sandbox._createTakeDefaults({});
+eq([CREATE_FIELDS.sitemap.on, Object.keys(sandbox.CREATE_STORED_TEXT).length,
+    sandbox._createSelectDefaultText('max_bytes', CREATE_FIELDS.max_bytes, siteDef),
+    sandbox._createSelectDefaultText('scope', CREATE_FIELDS.scope, siteDef)],
+  [false, 0, '4 GB', 'create_scope_prefix'], 'clearing the defaults in Manage clears them here, back to the mode\'s own');
 
 if (failures) {
   console.error(`\n${failures} failure(s)`);

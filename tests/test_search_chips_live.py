@@ -286,6 +286,42 @@ def test_a_search_that_lands_after_you_open_settings_leaves_settings_alone(
         br.close()
 
 
+def test_a_search_started_while_the_library_loads_is_not_wiped(served):
+    """The shell is live before /list answers. A search typed in that gap
+    was replaced by the home page once the library landed (a slow CI
+    runner caught it): the boot draws the address's page only when nothing
+    else has been opened."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport=PHONE, service_workers="block")
+        held = {"list": [], "search": []}
+        pg.route("**/list?*", lambda route: held["list"].append(route))
+        pg.route("**/search?*", lambda route: held["search"].append(route))
+
+        def wait_held(kind):
+            for _ in range(150):
+                if held[kind]:
+                    return
+                pg.wait_for_timeout(100)
+            raise AssertionError("never asked: " + kind)
+
+        pg.goto(served + "/")
+        wait_held("list")
+        pg.evaluate("() => { doSearch('water', true); }")
+        wait_held("search")
+        # The library lands first, the search's answer after it.
+        held["list"][0].continue_()
+        pg.wait_for_function("() => zimsCache && zimsCache.length > 0", timeout=15000)
+        pg.wait_for_timeout(300)
+        held["search"][0].continue_()
+        pg.wait_for_function("() => !!document.querySelector('#output .result')", timeout=15000)
+        assert pg.evaluate("() => mode") == "search"
+        assert pg.evaluate("() => !!document.querySelector('#output .result')"), "the search was wiped"
+        br.close()
+
+
 def test_an_older_search_landing_late_never_replaces_a_newer_one(served, monkeypatch):
     """'More from <source>' starts a scoped search while the all-sources
     search's full-text pass may still be on its way. Landing after, that pass

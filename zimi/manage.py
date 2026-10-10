@@ -4,8 +4,10 @@ Handles /manage/* routes: library status, downloads, catalog, settings,
 history, stats, and admin authentication. Called from ZimHandler in http.py.
 """
 
+import functools
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -267,18 +269,199 @@ def _lan_client(handler):
     return bool(direct() if direct else handler._is_private_client())
 
 
+def _env_flag(name):
+    """A boolean env var (or config-file setting, published into the
+    environment at startup) when someone set it, else None."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _lan_admin_env():
+    return _env_flag("ZIMI_LAN_ADMIN")
+
+
 def _lan_admin_allowed():
     """Whether the operator has said their LAN is their trust boundary.
+
+    The env var or config file when set; else the first-run choice "Anyone on
+    my network" (/manage/access), which only the host or the setup key's
+    holder can make: the same two doors GHSA-5mw2-53vv-9pw6 left for the
+    first password, so no adjacent device can make it for them.
 
     Read fresh rather than cached at import: `zimi config` publishes file
     settings into the environment at startup, and a test that sets it wants it
     to take effect."""
-    return os.environ.get("ZIMI_LAN_ADMIN", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    env = _lan_admin_env()
+    if env is not None:
+        return env
+    return _read_app_update_prefs().get("lan_admin") is True
+
+
+def access_mode():
+    """Who may change settings: open (ZIMI_MANAGE_OPEN), password, lan
+    (anyone directly on the network), or unset (first run: the host, or the
+    setup key, decides)."""
+    if manage_open():
+        return "open"
+    if _get_manage_password_hash():
+        return "password"
+    return "lan" if _lan_admin_allowed() else "unset"
+
+
+def manage_external():
+    """Whether settings may be changed from outside the private network.
+
+    ZIMI_MANAGE_EXTERNAL (config manage_external) when set, else the setup
+    page's answer. With neither it is on: every install that had a password
+    before the setup page existed reached its settings from anywhere, and an
+    upgrade must not lock its owner out. Without a password it means nothing:
+    `lan` and `unset` keep the outside out on their own."""
+    env = _env_flag("ZIMI_MANAGE_EXTERNAL")
+    if env is not None:
+        return env
+    saved = _read_app_update_prefs().get("manage_external")
+    return True if saved is None else bool(saved)
+
+
+def settings_reachable(handler):
+    """False for a client outside the network when the owner said settings
+    stay inside it. Asked of the resolved client, so the LAN behind a reverse
+    proxy is inside and a Cloudflare visitor is not. A wall on top of the
+    password, never instead of it: a proxy that strips every forwarding
+    header still leaves the password to pass."""
+    return manage_open() or handler._is_private_client() or manage_external()
+
+
+# A fresh self-hosted install is unusable until its owner has answered the
+# setup page (who can change settings). Held in memory: every request asks.
+_setup_gate = False
+
+
+def setup_pending():
+    return _setup_gate
+
+
+def init_setup_gate(host, ran_before=False):
+    """At `zimi serve` start, before the setup key is made. Gates a FRESH
+    install (nothing in its data dir yet) that other devices can reach and
+    whose environment does not already answer the question. An install that
+    ran before never gets the gate: its readers keep reading, and a
+    passwordless one is offered the page in Settings instead. ``ran_before``
+    is the caller's word that a metadata cache existed before this start's
+    first scan wrote one: all an old passwordless install that never opened
+    settings leaves behind (`zimi serve` asks before load_cache)."""
+    global _setup_gate
+    prefs = _read_app_update_prefs()
+    if "setup_gate" in prefs:
+        _setup_gate = bool(prefs["setup_gate"]) and access_mode() == "unset"
+        return _setup_gate
+    from zimi import users as _users
+
+    seen = (
+        _setup_key_file(),
+        _password_file(),
+        _app_update_prefs_path(),
+        _users._users_path(),
     )
+    fresh = not ran_before and not any(os.path.exists(p) for p in seen)
+    loopback = host in ("localhost", "::1") or host.startswith("127.")
+    _setup_gate = fresh and not loopback and access_mode() == "unset"
+    if _setup_gate:
+        _write_app_update_prefs(setup_gate=True, setup_started=time.time())
+        log.info("First-run setup: Zimi opens once its owner chooses who can change settings")
+    return _setup_gate
+
+
+def _end_setup_gate():
+    global _setup_gate
+    _setup_gate = False
+    if "setup_gate" in _read_app_update_prefs():
+        _write_app_update_prefs(setup_gate=False)
+
+
+# The home networks a fresh install's setup page may be answered from without
+# the setup key: 10/8, 192.168/16 and IPv6 ULA. Not 172.16/12 (Docker's bridge
+# networks live there, and a neighbouring container is the advisory's
+# attacker), not 100.64/10 (tailnets), not link-local, and not Tailscale's
+# IPv6 range inside ULA.
+FIRST_RUN_LAN_NETS = tuple(
+    ipaddress.ip_network(n) for n in ("10.0.0.0/8", "192.168.0.0/16", "fc00::/7")
+)
+FIRST_RUN_NOT_LAN = (ipaddress.ip_network("fd7a:115c:a1e0::/48"),)
+# How long after a fresh install's first start the home network may answer
+# its page without the key. A proxy that adds no header (nginx proxy_pass
+# alone, a TCP forward, ssh -R) makes the internet look like the LAN; the
+# window bounds what that can cost. Recorded once; a restart does not reset it.
+FIRST_RUN_LAN_SECONDS = 3600
+
+
+def _first_run_lan_client(handler):
+    """A device on the home network answering a fresh install's setup page.
+
+    GHSA-5mw2-53vv-9pw6 was an install that worked unclaimed for good, so the
+    first-password door stood open on the LAN for months. Since 1.13.1 a fresh
+    install does nothing until its setup page is answered, so that door is open
+    only between first start and the owner's first visit, as in every other
+    self-hosted app, and the owner on their own network answers it without the
+    key. Only while the page is up and for its first FIRST_RUN_LAN_SECONDS, only directly (no proxy in front), only from
+    FIRST_RUN_LAN_NETS, and never from the server's own container networks
+    (netguard.own_networks). An install that ran before the page existed never
+    shows it, and its LAN still needs the key."""
+    from zimi import netguard
+
+    if not _first_run_window_open() or netguard.orchestrated():
+        return False
+    direct = getattr(handler, "_is_direct_private_client", None)
+    if not direct or not direct():
+        return False
+    peer = getattr(handler, "_socket_peer_ip", None)
+    try:
+        ip = ipaddress.ip_address(peer() if peer else handler.client_address[0])
+    except (ValueError, IndexError, TypeError):
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    # A neighbouring container can sit inside a home-looking range (Docker
+    # Desktop's networks are 192.168.x), so the server's own container
+    # networks are never the home network.
+    return (
+        any(ip in net for net in FIRST_RUN_LAN_NETS)
+        and not any(ip in net for net in FIRST_RUN_NOT_LAN)
+        and not netguard.on_own_network(ip)
+    )
+
+
+def _first_run_window_open():
+    """A fresh install's setup page is up, inside its first hour. The hour is
+    recorded once, when a fresh data dir first starts; a page without it (an
+    older build's) counts as expired."""
+    if not setup_pending():
+        return False
+    started = _read_app_update_prefs().get("setup_started")
+    return isinstance(started, (int, float)) and time.time() - started <= FIRST_RUN_LAN_SECONDS
+
+
+def _owner_proof(handler):
+    """Who may act for the owner of a passwordless install: the host itself,
+    the holder of the setup key, or the home network while the first-run page
+    is up (_first_run_lan_client)."""
+    # getattr fallback is for test doubles only: the real ZimHandler always
+    # carries _is_loopback_client, so production always takes the strict
+    # loopback path, and test_bootstrap_takeover pins that.
+    is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
+    return (_host_is_owner() and is_local()) or _bootstrap_key_ok(handler) or _first_run_lan_client(handler)
+
+
+def _host_is_owner():
+    """Whether the machine running Zimi proves ownership by being it. Always,
+    except on a fresh install whose page has outlived its first hour: a proxy
+    on the same host that adds no header (nginx proxy_pass alone, socat, ssh
+    -R, a Funnel) makes the internet look like loopback, and whoever is
+    really on the host can read the setup key from the log. An install
+    without the page (the desktop app, one already set up) is unchanged."""
+    return not setup_pending() or _first_run_window_open()
 
 
 def _bootstrap_key_ok(handler):
@@ -373,6 +556,10 @@ def verify_admin_credentials(username, password):
 #: that the instance has NO password and the client is non-private. There is no
 #: password to enter, so the UI must explain rather than prompt (see issue #36).
 PUBLIC_LOCKED = "public_locked"
+#: The refusal when a password exists but the owner keeps settings inside the
+#: network, and this client is outside it. No password would help, so the UI
+#: explains instead of prompting.
+OUTSIDE_LOCKED = "outside_network"
 
 
 def _primary_admin_authorized(handler):
@@ -391,8 +578,7 @@ def _primary_admin_authorized(handler):
         # operator has opted into trusting the LAN (see _lan_admin_allowed).
         if _lan_admin_allowed():
             return _lan_client(handler)
-        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-        return is_local() or _bootstrap_key_ok(handler)
+        return _owner_proof(handler)
 
     # A primary-admin SESSION token (users.create_admin_session): minted when the
     # admin password verified, delivered as the HttpOnly zimi_session cookie so
@@ -476,22 +662,13 @@ def _check_manage_auth(handler):
         return None
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        # Bootstrap window (GHSA-5mw2-53vv-9pw6). Being ON the host is the one
-        # ownership proof that needs no secret; every remote client — LAN,
-        # Docker bridge, tailnet alike — must present the setup key the server
-        # printed to its log. Private-tier is no longer a free pass: it was
-        # wide enough for an adjacent device to race the owner to the first
-        # password. No password yet means no admin yet, so this same gate
-        # guards ALL of /manage, not just set-password.
-        # getattr fallback is for test doubles only: the real ZimHandler
-        # always carries _is_loopback_client, so production always takes the
-        # strict loopback path — and test_bootstrap_takeover pins that, so a
-        # refactor that lost the method would fail loudly rather than silently
-        # widen the door back to _is_private_client.
-        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-        if is_local():
-            return None
-        if _bootstrap_key_ok(handler):
+        # Bootstrap window (GHSA-5mw2-53vv-9pw6). The host, the setup key's
+        # holder, or the home network while a fresh install's setup page is up
+        # (_owner_proof). Private-tier as such is no free pass: it was wide
+        # enough for an adjacent device to race the owner to the first
+        # password on an install that stayed unclaimed. No password yet means
+        # no admin yet, so this same gate guards ALL of /manage.
+        if _owner_proof(handler):
             return None
         # The operator's explicit "my LAN is my trust boundary" (issue #59).
         # Off unless someone typed it, so the advisory's default stands; on, it
@@ -519,6 +696,11 @@ def _manage_auth_challenge(handler):
     - password/token required or wrong → ``401 unauthorized`` with
       ``needs_password: True`` (the UI prompts, exactly as before)
     """
+    # Settings kept inside the network: refused before the password is even
+    # looked at, so the outside has nothing to guess at. Only here, on the
+    # settings routes: an admin outside still reads the library.
+    if _get_manage_password_hash() and not settings_reachable(handler):
+        return (403, {"error": OUTSIDE_LOCKED, "needs_password": False})
     result = _check_manage_auth(handler)
     if result is None:
         return None
@@ -673,13 +855,26 @@ def _app_update_prefs_path(data_dir=None):
     return os.path.join(data_dir or _srv.ZIMI_DATA_DIR, "app_update_channel.json")
 
 
+_prefs_cache = {}  # path -> ((inode, mtime_ns, size), prefs); writes replace the inode
+
+
 def _read_app_update_prefs(data_dir=None):
+    """The saved prefs, as a fresh dict. Settings auth asks this on every
+    request (manage_external), so a parse is reused until the file changes."""
+    path = _app_update_prefs_path(data_dir)
     try:
-        with open(_app_update_prefs_path(data_dir), "r", encoding="utf-8") as f:
+        st = os.stat(path)
+        stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
+        hit = _prefs_cache.get(path)
+        if hit and hit[0] == stamp:
+            return dict(hit[1])
+        with open(path, "r", encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return {}
-    return saved if isinstance(saved, dict) else {}
+    saved = saved if isinstance(saved, dict) else {}
+    _prefs_cache[path] = (stamp, saved)
+    return dict(saved)
 
 
 def _write_app_update_prefs(**updates):
@@ -2109,6 +2304,9 @@ def activity_payload(type_filter=None, actor_filter=None):
 # picker over the create root like import's: no path is ever typed, and
 # every path the page sends is a relative one checked to stay inside.
 CREATE_MODES = ("folder", "page", "site", "video", "import", "reddit")
+# The modes that write a ZIM of their own and so take its description, author,
+# publisher and tags.
+CREATE_DETAIL_MODES = ("folder", "page", "site", "video", "import")
 # Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
 # name a person may ASK for, which is a wider set than the ones that build a
 # capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
@@ -2151,13 +2349,13 @@ CREATE_CAPTURE_VARIANTS = True
 # validator applying it to a silent request, and the payload reporting it.
 
 
-def _create_defaults_path():
-    return os.path.join(_srv.ZIMI_DATA_DIR, "create_defaults.json")
-
-
 def _read_create_defaults():
+    """The stored defaults as the file holds them, bad values and all: what a
+    write merges into. Readers that act on a value use ``_create_default``."""
+    from zimi.crawler import create_defaults_path
+
     try:
-        with open(_create_defaults_path(), "r", encoding="utf-8") as f:
+        with open(create_defaults_path(), "r", encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -2166,18 +2364,71 @@ def _read_create_defaults():
 
 def _create_default(key, fallback):
     """The stored default for ``key``, or ``fallback`` when nobody ever set
-    one. Only a real boolean in the file counts — a hand-edited string like
-    "yes" falls back rather than being guessed at."""
-    value = _read_create_defaults().get(key)
-    return value if isinstance(value, bool) else fallback
+    one. What counts as a valid value is the capture-option table's to say
+    (crawler.CAPTURE_OPTIONS): a hand-edited "yes" or a time limit nobody can
+    read falls back rather than being guessed at."""
+    from zimi.crawler import stored_defaults
+
+    return stored_defaults().get(key, fallback)
 
 
 def _write_create_defaults(**updates):
     """Merge into the defaults file — setting one switch must never drop the
-    other's stored answer."""
+    other's stored answer. A value of None clears that default."""
     prefs = _read_create_defaults()
-    prefs.update(updates)
-    _srv._atomic_write_json(_create_defaults_path(), prefs)
+    for key, value in updates.items():
+        if value is None:
+            prefs.pop(key, None)
+        else:
+            prefs[key] = value
+    from zimi.crawler import create_defaults_path
+
+    _srv._atomic_write_json(create_defaults_path(), prefs)
+
+
+def _create_defaults_view():
+    """The stored defaults for a form: the values, and each as the text a
+    placeholder shows. ``allow_private`` is the admin's alone and is not sent
+    to the Create page (see ``_create_defaults_payload``)."""
+    from zimi.crawler import (
+        default_placeholders,
+        factory_text,
+        storable_keys,
+        stored_defaults,
+    )
+
+    stored = stored_defaults()
+    return {
+        "defaults": stored,
+        "defaults_text": default_placeholders(stored),
+        "factory_text": factory_text(),
+        "storable_keys": storable_keys(),
+    }
+
+
+def _create_allows_private():
+    """Whether an admin has allowed web captures of private addresses."""
+    return bool(_create_default("allow_private", False))
+
+
+def _private_rule():
+    """The context a web capture (or its preview) runs in: held to public
+    addresses unless an admin allowed otherwise. The command line never comes
+    through here and is never held."""
+    import contextlib
+
+    from zimi.creator import private_addresses_refused
+
+    return contextlib.nullcontext() if _create_allows_private() else private_addresses_refused()
+
+
+def _under_private_rule(fn):
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        with _private_rule():
+            return fn(*args, **kwargs)
+
+    return run
 
 
 # Ring-buffer depth for job output. A long crawl emits a line per page, so the
@@ -2215,6 +2466,9 @@ CREATE_MAX_TITLE = 200
 # outgrew that five days later; on the desktop app the form IS the CLI. Any
 # number is taken, and 0 is none. With both at 0 only the depth and the disk
 # bound a crawl, and the job log says so.
+# These two mirror crawler.MAX_DEPTH_CEILING and crawler.MAX_DELAY, which check a
+# STORED default; this module cannot import the crawler at load (the writer
+# stack), and a test holds the pairs equal.
 CREATE_MAX_DEPTH_CEILING = 50
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
@@ -2981,13 +3235,19 @@ def _create_validate(data):
         opts["urls"] = page_urls
     if mode == "folder":
         opts["only"] = only
+    if mode in CREATE_DETAIL_MODES:
+        opts.update(_create_details(data, stored=mode != "folder"))
     if mode in ("folder", "page", "site", "video"):
-        opts["language"] = _create_language(data.get("language"))
+        # A folder reads the stored language itself, after its zimi.txt.
+        opts["language"] = _create_language(
+            data.get("language")
+            or (None if mode == "folder" else _create_default("language", None))
+        )
     if mode in ("page", "site"):
         # The two modes that capture a web page get to choose HOW. Refused
         # rather than clamped, like every other named value: silently capturing
         # the other way is the one outcome nobody asked for.
-        opts["engine"] = _create_engine(data.get("engine"))
+        opts["engine"] = _create_engine(data.get("engine")) or _create_stored_engine()
         # Ad and tracker blocking, but only for an engine that can do it. A
         # form left open while the engine radio moved back to the fast one can
         # send this; DROPPING it there is right where the CLI's refusal is
@@ -3011,6 +3271,13 @@ def _create_validate(data):
         # rewritten at replay, so the box would promise what it cannot do.
         if _create_unlink_engine(opts["engine"]):
             opts["strip_links"] = _create_bool(data.get("strip_links"), False)
+    if mode == "page":
+        # How a page capture presents itself and what it sends and leaves out:
+        # the site options that describe one fetch and not a walk.
+        from zimi.crawler import PAGE_OPTION_KEYS, fill_stored_defaults
+
+        opts.update(_create_capture_options(data, opts.get("engine"), PAGE_OPTION_KEYS))
+        fill_stored_defaults(opts, opts.get("engine"), keys=PAGE_OPTION_KEYS)
     if mode == "site":
         # Any number, and 0 for none: the byte budget bounds the capture. A
         # negative is a typo, not "no limit", so it falls back to the default.
@@ -3022,6 +3289,13 @@ def _create_validate(data):
         opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
         opts["delay"] = _create_float(data.get("delay"), 0.0, CREATE_MAX_DELAY)
         opts["ignore_robots"] = bool(data.get("ignore_robots"))
+        opts.update(_create_scope(data))
+        opts.update(_create_capture_options(data, opts.get("engine")))
+        # What the form left unsaid is the admin's stored default, then the
+        # engines' own: capture value, stored default, factory.
+        from zimi.crawler import fill_stored_defaults
+
+        fill_stored_defaults(opts, opts.get("engine"))
     elif mode == "video":
         opts["audio_only"] = bool(data.get("audio_only"))
         opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
@@ -3086,6 +3360,85 @@ def _create_int(value, low, high):
     except (TypeError, ValueError):
         return None
     return max(low, n if high is None else min(high, n))
+
+
+def _create_patterns(value):
+    """A pattern field as a list: one string, or a list of them (the API's
+    two shapes). Blank entries are not patterns."""
+    if value in (None, ""):
+        return []
+    items = value if isinstance(value, list) else [value]
+    return [str(v).strip() for v in items if isinstance(v, (str, int, float)) and str(v).strip()]
+
+
+def _create_scope(data):
+    """Which pages a site capture walks into, checked now (an unknown scope
+    or a regex that does not compile is refused here, not an hour into the
+    job). Only what was set goes into the options."""
+    from zimi.crawler import CrawlScope
+    from zimi.creator import CreateError
+
+    raw = {
+        "scope": (str(data.get("scope")).strip().lower() or None)
+        if data.get("scope") not in (None, "") else None,
+        "include": _create_patterns(data.get("include")),
+        "exclude": _create_patterns(data.get("exclude")),
+        "extra_hops": _create_int(data.get("extra_hops"), 0, None),
+    }
+    try:
+        CrawlScope(**raw)
+    except CreateError as e:
+        raise ValueError(str(e))
+    return {k: v for k, v in raw.items() if v not in (None, [], 0)}
+
+
+def _create_capture_options(data, engine, keys=None):
+    """The capture options the table owns (time limit, sitemap, user agent,
+    mobile, page timeout, cookies, what to leave out, workers), checked now
+    like the scope is. An option the chosen engine cannot honor is dropped, as
+    a stale block-ads box is: the form may have been filled before the engine
+    picker moved. Cookies are the exception: dropping them would run the
+    capture signed out, which nobody who typed them asked for."""
+    from zimi.crawler import NEW_OPTION_KEYS, capture_options
+    from zimi.creator import CreateError
+
+    keys = keys or NEW_OPTION_KEYS
+    try:
+        options = capture_options(data, engine, strict=False, keys=keys)
+        if data.get("cookies") and "cookies" not in options:
+            capture_options({"cookies": data["cookies"]}, engine, strict=True, keys=keys)
+        return options
+    except CreateError as e:
+        raise ValueError(str(e))
+
+
+def _create_details(data, *, stored):
+    """The ZIM's own description, author, publisher and tags, checked now:
+    the request's value, then the stored default for author and publisher."""
+    from zimi.crawler import DETAIL_KEYS, zim_details
+    from zimi.creator import CreateError
+
+    try:
+        return zim_details({k: data.get(k) for k in DETAIL_KEYS}, stored=stored)
+    except CreateError as e:
+        raise ValueError(str(e))
+
+
+def _create_stored_engine():
+    """The engine an admin stored as the default, when this machine can run it
+    (an engine that has since gone missing is the fast one, not a refusal of
+    every capture that said nothing)."""
+    try:
+        return _create_engine(_create_default("engine", None))
+    except ValueError:
+        return None
+
+
+def _create_detail_kwargs(opts):
+    """The ZIM's details in ``opts`` as the keyword arguments of the engines."""
+    from zimi.crawler import detail_kwargs
+
+    return detail_kwargs(opts)
 
 
 def _create_float(value, low, high):
@@ -3157,6 +3510,11 @@ def _create_engine(value):
             "the singlefile engine needs the SingleFile CLI, and this server "
             "does not have it installed"
         )
+    if name == "zimit" and not _create_allows_private():
+        # Its browser is in Docker, out of the capture proxy's reach.
+        from zimi.crawler import ZIMIT_PRIVATE_REFUSED
+
+        raise ValueError(ZIMIT_PRIVATE_REFUSED)
     if name == "zimit" and not _create_zimit_ready():
         raise ValueError(
             "the zimit engine runs openZIM's crawler in Docker, and this "
@@ -3233,6 +3591,7 @@ def _create_out_dir():
     return os.path.join(_srv.ZIM_DIR, "created")
 
 
+@_under_private_rule
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
@@ -3251,8 +3610,20 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(
-                opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
+                opts,
+                "language",
+                "engine",
+                "block_ads",
+                "capture_variants",
+                "strip_links",
+                "user_agent",
+                "mobile",
+                "page_timeout",
+                "cookies",
+                "skip_types",
+                "max_file_bytes",
             ),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "site":
         from zimi.crawler import _StopFlag, create_site_zim
@@ -3283,7 +3654,21 @@ def _create_run(job, opts):
                 "block_ads",
                 "capture_variants",
                 "strip_links",
+                "scope",
+                "include",
+                "exclude",
+                "extra_hops",
+                "time_limit",
+                "sitemap",
+                "user_agent",
+                "mobile",
+                "page_timeout",
+                "cookies",
+                "skip_types",
+                "max_file_bytes",
+                "workers",
             ),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "video":
         from zimi.video import create_video_zim
@@ -3296,6 +3681,7 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "reddit":
         from zimi.crawler import _StopFlag
@@ -3324,6 +3710,7 @@ def _create_run(job, opts):
             only=opts.get("only") or None,
             exclude=_create_folder_exclude(),
             **_create_kwargs(opts, "language"),
+            **_create_detail_kwargs(opts),
         )
     if job.mode == "import":
         from zimi.importer import import_archive
@@ -3334,6 +3721,7 @@ def _create_run(job, opts):
             out_dir=_create_out_dir(),
             register=True,
             sink=job.note,
+            **_create_detail_kwargs(opts),
         )
     # Only these reach here; validation refuses everything else. A job that
     # arrived with any other mode is a bug in the caller, not an input to run.
@@ -3619,7 +4007,9 @@ def _create_start(data, actor=None):
     # was SUBMITTED, so a rerun is this job with its bounds lifted. Not the
     # validated opts: those are the engine's spelling (``fmt`` for the form's
     # ``format``), and a rerun of them lost the chosen video quality.
-    job.request = dict(data)
+    from zimi.crawler import redacted_request
+
+    job.request = redacted_request(data)
     if actor:
         job.actor = actor
     position = 0
@@ -3722,6 +4112,13 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
                 "capture_variants", CREATE_CAPTURE_VARIANTS
             ),
         }
+        # Every stored default, and the text a field shows for it, so the
+        # Advanced fields say what silence means. allow_private is the
+        # admin's and stays out of this page.
+        view = _create_defaults_view()
+        view["defaults"].pop("allow_private", None)
+        view["defaults_text"].pop("allow_private", None)
+        payload.update(view)
         # None, not "", when no root is configured: the client reads it as a
         # yes/no about whether server-path capture exists on this instance at
         # all, and an empty string is a path that happens to be blank.
@@ -4380,6 +4777,7 @@ def _creator_payload():
         "capture_variants_default": _create_default(
             "capture_variants", CREATE_CAPTURE_VARIANTS
         ),
+        **_create_defaults_view(),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
     }
@@ -4607,6 +5005,7 @@ def _detect_html_language(text):
     return None
 
 
+@_under_private_rule
 def _probe_url(source, *, want_robots=False, engine=None):
     """Fetch ONE page and report what the capture would be working with: where
     it really landed, what it is called, whether it is an application shell
@@ -4710,6 +5109,7 @@ def _probe_robots(final_url):
     }
 
 
+@_under_private_rule
 def _probe_video(source, limit):
     """List the playlist without downloading a frame of it."""
     from zimi.video import _flat_entries, _yt_dlp
@@ -4887,6 +5287,7 @@ def handle_manage_get(handler, parsed, params):
             {
                 "has_password": bool(_get_manage_password_hash()),
                 "env_controlled": bool(os.environ.get("ZIMI_MANAGE_PASSWORD", "")),
+                **access_answer(handler),
             },
         )
     if parsed.path == "/manage/has-token":
@@ -5826,11 +6227,142 @@ def spend_dl_ticket(token, fname):
     return bool(entry and entry[1] >= now and entry[0] == fname)
 
 
+def _password_set_response(handler, data, body):
+    """After a new password is saved: the setup key's life ends with the
+    bootstrap it existed for, a password ends "Anyone on my network" and the
+    first-run gate, the sessions the old one opened end, and this browser gets
+    a fresh one (it keeps a session, never a password)."""
+    _clear_setup_key()
+    if _read_app_update_prefs().get("lan_admin"):
+        _write_app_update_prefs(lan_admin=False)
+    _end_setup_gate()
+    from zimi import users as _users_pw
+
+    _users_pw.drop_admin_sessions()
+    token = _users_pw.create_admin_session()
+    return handler._json_cookie(
+        200,
+        dict(body, token=token),
+        handler._session_cookie(token, bool(data.get("remember"))),
+    )
+
+
+def _set_manage_username(name):
+    """Rename the password account, keeping its hash. False when the file
+    cannot be written."""
+    stored = _get_manage_password_hash()
+    if not stored or os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
+        return True  # nothing in the file to rename
+    content = stored + ("\n" + name if name else "")
+    return _atomic_write_text(_password_file(), content)
+
+
+def access_answer(handler):
+    """The setup page's state, for /manage/has-password: what is decided, what
+    the environment owns, and where this browser stands."""
+    return {
+        "access": access_mode(),
+        "access_env": _lan_admin_env() is not None,
+        "external": manage_external() and bool(_get_manage_password_hash()),
+        "external_env": _env_flag("ZIMI_MANAGE_EXTERNAL") is not None,
+        "setup": setup_pending(),
+        # Through a proxy "anyone on my network" would lock this browser out,
+        # so the page holds the password on (see _lan_client).
+        "direct": _lan_client(handler),
+        # Whether this device answers without the setup key: the machine
+        # running Zimi, or the home network while a fresh install's page is up
+        # (_first_run_lan_client). Elsewhere inside the network a device is
+        # offered the key field; outside it, only "being set up".
+        "keyless": (_host_is_owner() and bool(getattr(handler, "_is_loopback_client", lambda: False)()))
+        or _first_run_lan_client(handler),
+        "inside": handler._is_private_client(),
+        # The account name, for the admin editing it: never to anyone else, or
+        # it would be half the login handed out.
+        "username": (
+            _get_manage_user()
+            if _get_manage_password_hash() and _check_manage_auth(handler) is None
+            else ""
+        ),
+    }
+
+
+def _handle_access(handler, data):
+    """POST /manage/access: the setup page, and the same rows in Settings.
+
+    {external, require_password, username, password}. Before a password
+    exists this is the bootstrap (GHSA-5mw2-53vv-9pw6): only the machine
+    running Zimi or the holder of the setup key it logged gets through, so a
+    neighbour cannot answer it for the owner. After, it is admin-only.
+    Changing an existing password stays with set-password, which asks for the
+    current one."""
+    if manage_open():
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
+    challenge = _manage_auth_challenge(handler)
+    if challenge:
+        return handler._json(*challenge)
+    external = data.get("external") is True
+    require = data.get("require_password") is True
+    username = str(data.get("username") or "").strip()[:64]
+    password = str(data.get("password") or "").strip()
+    env_pw = bool(os.environ.get("ZIMI_MANAGE_PASSWORD", ""))
+    env_ext = _env_flag("ZIMI_MANAGE_EXTERNAL")
+    stored = _get_manage_password_hash()
+    if env_ext is not None and external != env_ext:
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_EXTERNAL"})
+    if env_pw and (not require or password):
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"})
+    if not require and _lan_admin_env() is False:
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_LAN_ADMIN"})
+    if external and not require:
+        return handler._json(400, {"error": "needs_password"})
+    if require and not stored and not password:
+        return handler._json(400, {"error": "needs_password"})
+    if require and stored and password:
+        return handler._json(400, {"error": "change it with the current password"})
+    if not require:
+        # Through a reverse proxy the caller is not seen as on the network, so
+        # "anyone on my network" would lock them out the moment it was made.
+        if not _lan_client(handler):
+            return handler._json(409, {"error": "behind_proxy"})
+        if stored and _get_api_token():
+            return handler._json(
+                400, {"error": "Revoke the API token before removing the password"}
+            )
+    if os.environ.get("ZIMI_MANAGE_USER", "").strip():
+        username = None  # the environment names the account
+    if require and password:
+        if not _set_manage_password(password, username=username or ""):
+            return handler._json(
+                500, {"error": "Could not save the password (storage is not writable)"}
+            )
+    elif require and username is not None and username != _file_username():
+        if not _set_manage_username(username):
+            return handler._json(500, {"error": "Could not save the username"})
+    elif not require and stored and not _set_manage_password(""):
+        return handler._json(
+            500, {"error": "Could not save the password (storage is not writable)"}
+        )
+    _write_app_update_prefs(manage_external=external, lan_admin=not require)
+    _clear_setup_key()
+    _end_setup_gate()
+    log.info(
+        "Access: %s%s",
+        "password" if require else "anyone on the local network",
+        ", from outside the network too" if external else ", inside the network only",
+    )
+    if require and password:
+        return _password_set_response(handler, data, {"access": access_mode()})
+    return handler._json(200, {"access": access_mode()})
+
+
 def handle_manage_post(handler, parsed, data):
     """Handle all POST /manage/* requests. Called from ZimHandler.do_POST."""
     if not _srv.ZIMI_MANAGE:
         return handler._json(404, {"error": "Library management is disabled."})
     # Password management — browser only, not accessible via API
+    if parsed.path == "/manage/access":
+        return _handle_access(handler, data)
+
     if parsed.path == "/manage/set-password":
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
@@ -5872,20 +6404,11 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(
                 500, {"error": "Could not save the password (storage is not writable)"}
             )
-        # The setup key's life ends with the bootstrap it existed for.
         if new_pw:
-            _clear_setup_key()
-            # A new password ends the sessions the old one opened, and this
-            # browser gets a fresh one: it keeps a session, never a password.
-            from zimi import users as _users_pw
-
-            _users_pw.drop_admin_sessions()
-            token = _users_pw.create_admin_session()
-            return handler._json_cookie(
-                200,
-                {"status": "password set", "token": token},
-                handler._session_cookie(token, bool(data.get("remember"))),
-            )
+            return _password_set_response(handler, data, {"status": "password set"})
+        # No password and no outside: settings from outside need a password.
+        if _read_app_update_prefs().get("manage_external"):
+            _write_app_update_prefs(manage_external=False)
         return handler._json(200, {"status": "password cleared"})
 
     # API token management — requires existing auth + password must be set
@@ -5973,22 +6496,22 @@ def handle_manage_post(handler, parsed, data):
         return handler._json(*challenge)
 
     if parsed.path == "/manage/creator":
-        # The write half of the Creator section: the two capture defaults the
-        # Manage toggles set. Booleans only — a request that sends anything
-        # else is a caller confused about the contract, and refusing is kinder
-        # than storing junk a future job would silently obey. Admin-gated by
-        # the challenge above, like every other manage settings write.
-        updates = {}
-        for key in ("block_ads", "capture_variants"):
-            if key in data:
-                value = data.get(key)
-                if not isinstance(value, bool):
-                    return handler._json(
-                        400, {"error": f"'{key}' must be true or false"}
-                    )
-                updates[key] = value
-        if not updates:
+        # The write half of the Creator section: the standing capture
+        # defaults. What each may hold is the capture-option table's to say
+        # (crawler.CAPTURE_OPTIONS); a value it refuses is a 400 with a
+        # plain sentence, because storing junk a later job would obey is
+        # worse. null or "" clears one. Admin-gated by the challenge above,
+        # like every other manage settings write, which is also why
+        # allow_private can only be set here and never with a capture.
+        from zimi.crawler import validate_stored_defaults
+        from zimi.creator import CreateError
+
+        if not data:
             return handler._json(400, {"error": "nothing to change"})
+        try:
+            updates = validate_stored_defaults(data)
+        except CreateError as e:
+            return handler._json(400, {"error": str(e)})
         _write_create_defaults(**updates)
         return handler._json(
             200,
@@ -5997,6 +6520,7 @@ def handle_manage_post(handler, parsed, data):
                 "capture_variants_default": _create_default(
                     "capture_variants", CREATE_CAPTURE_VARIANTS
                 ),
+                **_create_defaults_view(),
             },
         )
 

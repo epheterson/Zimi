@@ -21,6 +21,7 @@ const PARTS = [
   /var _APP_TILES = [^\n]*\n/,
   /var _APP_SORT_DATE = \{[\s\S]*?\n\};/,
   /function _appSortValue\(app, mode\) \{[\s\S]*?\n\}/,
+  /function _appsByName\(apps\) \{[\s\S]*?\n\}/,
   /function _sortApps\(apps\) \{[\s\S]*?\n\}/,
   /function _shownApps\(\) \{[^\n]*\n/,
   /function _appsZimNames\(\) \{[\s\S]*?\n\}/,

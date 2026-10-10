@@ -1508,6 +1508,12 @@ let _managePwRequired = false; // server is password-protected and we have no to
 let _managePublicLocked = false;
 let _manageNeedsSetupKey = false;
 let _manageSetupKeyIssued = true;
+// A password exists but settings stay inside the network, and this browser
+// is outside it: nothing to enter, so the page explains.
+let _manageOutside = false;
+// Who may change settings (/manage/has-password's access): password, lan
+// (anyone directly on the network), open, or unset (first run).
+let _manageAccess = '';
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -2412,6 +2418,7 @@ function submitPw() {
   if (_pwLoginMode) {
     const remember = document.getElementById('pw-remember').checked;
     doLogin(uname, pw, remember).then(function(res) {
+      if (res.status === 403 && res.j.error === 'outside_network') { _showPwError(t('outside_locked_body')); return; }
       if (res.status !== 200) { _showPwError(t('wrong_password')); return; }
       if (res.j.role === 'user') {
         // Named user: no manage powers. Abandon any pending manage request
@@ -3043,7 +3050,11 @@ async function init() {
   // Initialize i18n before anything else
   _currentLang = _detectLanguage();
   _applyRTL(_currentLang);
+  _bootHasPw = _fetchHasPw();
   await _loadI18n(_currentLang);
+  // A fresh install opens once its owner says who can change settings.
+  var _hp = await _bootHasPw;
+  if (_hp.ok && _hp.j.setup) { _openSetup(_hp.j); return; }
 
   // Decide auth BEFORE any library chrome paints. On a private instance an
   // anonymous visitor gets the login form as the first frame (no empty flash),
@@ -3083,7 +3094,9 @@ async function init() {
   // Render immediately with what we have
   if (!history.state) history.replaceState({ mode: 'home' }, '', location.href);
   _applyI18nToDOM();
-  route(false);
+  // The shell is live during the load: a search or Manage opened meanwhile
+  // is what is on screen now, and drawing the address's page would wipe it.
+  if (mode === 'home') route(false);
   _desktopCheckOnboarding();
   // Register service worker
   if ('serviceWorker' in navigator) {
@@ -3106,13 +3119,16 @@ let _manageProbed = false;
 async function _probeManageAuth() {
   try {
     // Public pre-auth endpoint — learns password state without a 401 probe.
-    const hres = await serverFetch('/manage/has-password');
+    var boot = _bootHasPw; _bootHasPw = null;
+    const hres = await (boot || _fetchHasPw());
     if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
     // Enabled only once the password answer is read: in between, a Manage
     // link saw manageEnabled with no password required and opened Manage
     // unasked (a slow CI runner caught the gap).
-    const h = await hres.json();
+    const h = hres.j;
     manageEnabled = true;
+    _setupState = h;
+    _manageAccess = h.access || '';
     const saved = _readManageToken();
     if (saved) _manageToken = saved;
     if (h.has_password && !_manageToken) {
@@ -3134,6 +3150,7 @@ async function _probeManageAuth() {
       // the banner asks for the right thing.
       try {
         var _ld = await mres.clone().json();
+        _manageOutside = !!(_ld && _ld.error === 'outside_network');
         _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
         _manageSetupKeyIssued = !(_ld && _ld.setup_key_issued === false);
       } catch (e) { _manageNeedsSetupKey = false; }
@@ -3496,6 +3513,30 @@ function _wireTopbarTap() {
   });
 }
 _wireTopbarTap();
+
+// iOS scrolls only the page when its status bar is tapped, and the Almanac
+// scrolls in its own box (Eric, 2026-10-06: "tapping to scroll up didn't
+// work at least in PWA"). While it is open on a touch screen the page sits
+// one pixel down, so the tap has something to scroll; the page reaching the
+// top is that tap, passed on to the box, and the pixel is put back.
+var _TAP_RELAY_PX = 1, _TAP_RELAY_REARM_MS = 400, _tapRelayTimer = null;
+function _tapRelayBox() {
+  return document.body.classList.contains('almanac-mode') ? document.querySelector('#almanac-view .almanac-content') : null;
+}
+function _armTapRelay(on) {
+  var root = document.documentElement;
+  if (!on || !window.matchMedia('(pointer: coarse)').matches) { root.classList.remove('tap-relay'); return; }
+  root.classList.add('tap-relay');
+  requestAnimationFrame(function() { if (window.scrollY < _TAP_RELAY_PX) window.scrollTo(0, _TAP_RELAY_PX); });
+}
+window.addEventListener('scroll', function() {
+  if (window.scrollY > 0 || !document.documentElement.classList.contains('tap-relay')) return;
+  var box = _tapRelayBox();
+  if (!box) return;
+  box.scrollTo({ top: 0, behavior: _scrollBehavior() });
+  clearTimeout(_tapRelayTimer);
+  _tapRelayTimer = setTimeout(function() { if (_tapRelayBox()) window.scrollTo(0, _TAP_RELAY_PX); }, _TAP_RELAY_REARM_MS);
+}, { passive: true });
 
 // A new browser tab, or in the desktop app the system's browser (the
 // pywebview bridge): where Zimi sends anything that leaves it.
@@ -4354,7 +4395,8 @@ function renderHome(filter) {
   const n = baseZims.length;
   var statsHtml;
   if (filter && zims.length !== baseZims.length) {
-    statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
+    // The count once, lit, where the sentence puts it (#108: "4 4 of 59").
+    statsHtml = t('sources_matching', {n: '<span class="num">' + zims.length + '</span>', total: n, query: esc(filter)});
   } else {
     // The Apps page counts what each app shows on its own cards: a sum of
     // ZIM entries across books, videos and maps would count none of them.
@@ -10917,18 +10959,20 @@ const _searchFold = s => _searchUnaccent(s).toLowerCase();
 // Where a word part starts inside a word (query._PARTS): MediaWiki, fr_wiki.
 const _SEARCH_PARTS = /(?<=[a-z])(?=[A-Z])|_/g;
 
-// The whole query against one text, case and accents aside: a word anywhere
-// (so "wiki" still finds Wikipedia, as the catalog always did), a phrase from
-// the start of a word, an exclusion from the start of a word or a word part
-// (#94: -wiki drops MediaWiki; -ted still keeps United). query.excluded is the
+// The whole query against one text, case and accents aside: every term from
+// the start of a word or a word part, so "git" finds Git Docs and not
+// zimgit-knots (#108), and an exclusion the same way (#94: -wiki drops
+// MediaWiki; -ted still keeps United). query.excluded is the
 // server's half; tests/fixtures/search_query_cases.json holds both to it.
 function searchQueryMatches(parsed, text) {
   const bare = _searchUnaccent(text), low = bare.toLowerCase();
-  const hit = t => t.phrase ? _searchTermRe(_searchFold(t.text)).test(low) : low.includes(_searchFold(t.text));
-  if (!parsed.groups.every(g => g.some(hit))) return false;
-  if (!parsed.exclude.length) return true;
   const parts = bare.replace(_SEARCH_PARTS, ' ').toLowerCase();
-  return !parsed.exclude.some(t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); });
+  // Every term from the start of a word or a word part, as an exclusion
+  // always was: "git" finds Git Docs, not zimgit-knots (#108), and "wiki"
+  // still finds Wikipedia and MediaWiki.
+  const hit = t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); };
+  if (!parsed.groups.every(g => g.some(hit))) return false;
+  return !parsed.exclude.some(hit);
 }
 
 // Words too common to search for alone, or to mark in a result.
@@ -12257,24 +12301,14 @@ function _renderManagePublicLocked() {
     return;
   }
   if (_manageNeedsSetupKey) {
-    output.innerHTML =
-      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
-        '<div class="lang-welcome-text">' +
-          '<strong>' + tH('manage_setup_key_title') + '</strong>' +
-          '<p>' + tH('manage_setup_key_body') + '</p>' +
-          '<div class="ms-user-add" style="max-width:340px;margin-top:12px">' +
-            '<input type="text" id="setup-key-input" autocomplete="off" spellcheck="false" ' +
-              'autocapitalize="characters" placeholder="XXXX-XXXX-XXXX">' +
-            '<input type="password" id="setup-pw-input" autocomplete="new-password" ' +
-              'placeholder="' + escAttr(tH('manage_setup_key_pw_ph')) + '" style="margin-top:8px">' +
-            '<div class="pw-actions" style="margin-top:10px">' +
-              '<button class="ms-btn ms-btn-primary" onclick="_submitSetupKey()">' +
-                tH('manage_setup_key_submit') + '</button>' +
-            '</div>' +
-            '<div class="pw-error" id="setup-key-error"></div>' +
-          '</div>' +
-        '</div>' +
-      '</div></div>';
+    output.innerHTML = '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card setup-card">' +
+      '<div class="lang-welcome-text"><strong>' + tH('setup_settings_title') + '</strong><p>' + tH('setup_body') + '</p></div>' +
+      _setupFormHtml(_setupState, 'setup') + '</div></div>';
+    return;
+  }
+  if (_manageOutside) {
+    output.innerHTML = '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card"><div class="lang-welcome-text">' +
+      '<strong>' + tH('outside_locked_title') + '</strong><p>' + tH('outside_locked_body') + '</p></div></div></div>';
     return;
   }
   output.innerHTML =
@@ -12288,37 +12322,116 @@ function _renderManagePublicLocked() {
     '</div>';
 }
 
-// Spend the setup key: set the first admin password with the key as the
-// bearer authorization the bootstrap gate accepts, then sign in with the
-// password just set. One gesture from a locked remote client to full admin.
-async function _submitSetupKey() {
-  var key = (document.getElementById('setup-key-input') || {}).value || '';
-  var pw = (document.getElementById('setup-pw-input') || {}).value || '';
-  var err = document.getElementById('setup-key-error');
-  key = key.trim();
-  if (!key || !pw) {
-    if (err) { err.textContent = tH('manage_setup_key_needboth'); err.style.display = 'block'; }
-    return;
+// Who can change settings (#107): the setup page a fresh install opens on,
+// the second page of the desktop's welcome, and the same rows in Settings.
+// Two switches: settings from outside the network, which needs a password,
+// and the password itself; with it on, a username for password managers and
+// the admin to edit later, a password and its confirmation. Before a password
+// exists only the machine running Zimi, or a device with the setup key it
+// logged, may answer (GHSA-5mw2-53vv-9pw6), so no neighbour answers for you.
+var _setupState = {};  // /manage/has-password's answer
+// The setup gate, raced against the language load so it costs the boot no
+// round trip of its own; _probeManageAuth takes the same answer.
+var _bootHasPw = null;
+function _fetchHasPw() {
+  return serverFetch('/manage/has-password', { credentials: 'same-origin' })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }, function() { return { ok: r.ok, j: {} }; }); })
+    .catch(function() { return { ok: false, j: {} }; });
+}
+// mode 'setup' (the welcome card) or 'settings'. st is _setupState.
+function _setupFormHtml(st, mode) {
+  var hasPw = st.access === 'password';
+  var needKey = mode === 'setup' && !st.keyless;
+  var ext = !!st.external, req = hasPw || ext || st.direct === false || mode === 'setup';
+  var lockReq = ext || st.direct === false || !!st.env_controlled;
+  var input = function(id, type, auto, label, ph, val) {
+    return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + type + '" autocomplete="' + auto + '"' +
+      (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
+      ' spellcheck="false" autocapitalize="off"></label>';
+  };
+  var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '') +
+    (hasPw ? '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>'
+      : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
+  return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
+    (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
+    _switchRowsHtml([
+      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : 'setup_outside_desc'),
+        on: ext, disabled: !!st.external_env, onchange: '_setupSync()' },
+      { id: 'setup-req', title: tH('setup_password'), desc: tH(_setupReqDesc(st, ext)),
+        on: req, disabled: lockReq, onchange: '_setupSync()' }
+    ]) +
+    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' +
+    '<div class="pw-error" id="setup-error"></div>' +
+    '<div class="btn-row"><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
+    '</form>';
+}
+function _setupReqDesc(st, ext) {
+  if (st.env_controlled) return 'configured_via_env';
+  if (ext) return 'setup_password_needed_outside';
+  if (st.direct === false) return 'setup_password_needed_proxy';
+  return 'setup_password_desc';
+}
+// Outside on holds the password on; the description says why.
+function _setupSync() {
+  var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
+  if (!ext || !req) return;
+  var st = _setupState, lock = ext.checked || st.direct === false || !!st.env_controlled;
+  if (lock) req.checked = true;
+  req.disabled = lock;
+  req.closest('.share-row').classList.toggle('share-locked', lock);
+  var desc = req.closest('.share-row').querySelector('.share-row-desc');
+  if (desc) desc.textContent = t(_setupReqDesc(st, ext.checked));
+  var f = document.getElementById('setup-fields');
+  if (f) f.hidden = !req.checked;
+}
+var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
+  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body' };
+async function _setupSubmit(opts) {
+  var quiet = !!(opts && opts.quiet);
+  var form = document.getElementById('setup-form');
+  if (!form) return false;
+  var val = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var err = document.getElementById('setup-error');
+  var show = function(k) { err.textContent = t(k); err.style.display = 'block'; return false; };
+  var setup = form.dataset.mode === 'setup', st = _setupState;
+  var req = document.getElementById('setup-req').checked;
+  var body = { external: document.getElementById('setup-ext').checked, require_password: req,
+    username: val('setup-user'), remember: true };
+  var key = val('setup-key');
+  if (document.getElementById('setup-key') && !key) return show('setup_need_key');
+  if (req && st.access !== 'password') {
+    body.password = val('setup-pw');
+    if (!body.password) return show('setup_need_pw');
+    if (body.password !== val('setup-pw2')) return show('setup_mismatch');
   }
+  var headers = { 'Content-Type': 'application/json' };
+  if (key) headers['X-Zimi-Setup-Key'] = key;
+  var res;
   try {
-    var res = await fetch('/manage/set-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Zimi-Setup-Key': key },
-      body: JSON.stringify({ password: pw })
-    });
-    if (!res.ok) {
-      if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
-      return;
-    }
-    // Password is set; the key is spent. Authenticate with it and enter.
-    _manageNeedsSetupKey = false;
-    _managePublicLocked = false;
-    _manageToken = pw;
-    _saveManageToken(pw);
-    location.reload();
-  } catch (e) {
-    if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
-  }
+    res = await (setup ? fetch : manageFetch)('/manage/access', { method: 'POST', headers: headers,
+      credentials: 'same-origin', body: JSON.stringify(body) });
+  } catch (e) { return show('setup_failed'); }
+  var d = await res.json().catch(function() { return {}; });
+  if (!res.ok) return show(_SETUP_ERRORS[d.error] || 'setup_failed');
+  if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
+  if (quiet) return true;
+  if (setup) { location.reload(); return true; }
+  _manageAccess = d.access || _manageAccess;
+  _showToast(t('saved'));
+  renderManage();
+  return true;
+}
+// The welcome card for a fresh install. The internet sees only that it is
+// being set up: no field, nothing to guess at.
+function _openSetup(st) {
+  _setupState = st;
+  var card = document.getElementById('setup-card');
+  card.innerHTML = st.inside === false
+    ? '<h2>' + tH('setup_waiting_title') + '</h2><p class="subtitle">' + tH('setup_waiting_body') + '</p>'
+    : '<h2>' + tH('welcome') + '</h2><p class="subtitle">' + tH('setup_body') + '</p>' + _setupFormHtml(st, 'setup');
+  document.getElementById('setup-overlay').classList.add('open');
+  var first = card.querySelector('input:not([type=checkbox])');
+  if (first && first.id === 'setup-key') first.focus();
 }
 
 var _manageRenderId = 0;
@@ -12351,7 +12464,8 @@ async function renderManage() {
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
         '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
-        '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>' +
+        // Anyone on the network is the admin: no accounts, so no Users.
+        (_manageAccess === 'lan' ? '' : '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>') +
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
@@ -13204,11 +13318,41 @@ function _creatorRedditCell(d) {
 }
 
 
-// A capture-default switch row, wired to the admin-only POST half of
-// /manage/creator so the choice persists server-side.
-function _creatorDefaultRow(key, labelKey, on) {
-  return { id: 'ms-cr-' + key, title: tH(labelKey), on: on, onchange: '_setCreatorDefault(\'' + key + '\', this)' };
+// Whether captures from the web may reach a private address: an admin's switch,
+// not a capture default, so it sits apart from the form, wired to the same
+// admin-only POST half of /manage/creator.
+function _creatorPrivateRow(d) {
+  return { id: 'ms-cr-allow_private', title: tH('creator_private'), desc: tH('creator_private_hint'),
+    on: _creatorSwitchOn(d, 'allow_private'), onchange: '_setCreatorDefault(\'allow_private\', this)' };
 }
+// A stored switch, or the factory one the server answers for block_ads and
+// capture_variants (their *_default fields); the rest are off until stored.
+function _creatorSwitchOn(d, key) {
+  if ((key + '_default') in d) return !!d[key + '_default'];
+  return !!(d.defaults && d.defaults[key] === true);
+}
+
+// The defaults form is Create's own (create.js draws it from its field table),
+// so the pane fetches create.js the first time it needs it.
+function _creatorDefaultsHtml(d) {
+  if (typeof _createDefaultsFormHtml === 'function') return _createDefaultsFormHtml(d);
+  _creatorLoadForm();
+  return _loadingHtml();
+}
+function _creatorLoadForm() {
+  if (_creatorFormLoading) return;
+  _creatorFormLoading = true;
+  var el = document.createElement('script');
+  el.src = '/static/create.js?v=1';
+  el.onload = function() {
+    _createLoaded = true;
+    var slot = document.getElementById('ms-cr-defaults');
+    if (slot && _creatorData) slot.innerHTML = _createDefaultsFormHtml(_creatorData);
+  };
+  el.onerror = function() { _creatorFormLoading = false; };
+  document.head.appendChild(el);
+}
+var _creatorFormLoading = false;
 
 function _creatorQueueHtml(queue) {
   return queue
@@ -13221,9 +13365,9 @@ function _creatorHtml(d) {
 
   // Defaults a new capture starts with — the control you actually touch.
   var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _switchRowsHtml([_creatorDefaultRow('block_ads', 'create_block_ads', d.block_ads_default),
-      _creatorDefaultRow('capture_variants', 'create_capture_variants', d.capture_variants_default)]) +
-    '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
+    '<div class="ms-hint cr-defaults-hint">' + tH('creator_defaults_hint') + '</div>' +
+    '<div class="cr-defaults" id="ms-cr-defaults">' + _creatorDefaultsHtml(d) + '</div>' +
+    _switchRowsHtml([_creatorPrivateRow(d)]);
 
   // The queue, when it matters.
   h += sep + '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
@@ -13364,10 +13508,8 @@ function _patchCreatorSection(d) {
   put('ms-cr-reddit', _creatorRedditCell(d));
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
-  ['block_ads', 'capture_variants'].forEach(function(key) {
-    var input = document.getElementById('ms-cr-' + key);
-    if (input) input.checked = !!d[key + '_default'];
-  });
+  var priv = document.getElementById('ms-cr-allow_private');
+  if (priv) priv.checked = _creatorSwitchOn(d, 'allow_private');
 }
 
 // How long to wait before asking again while the server is still probing what
@@ -13418,20 +13560,75 @@ function _setCreatorDefault(key, input) {
   input.disabled = true;
   var body = {};
   body[key] = want;
-  manageFetch('/manage/creator', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(_msJson).then(function(d) {
-    if (_creatorData) {
-      _creatorData.block_ads_default = d.block_ads_default;
-      _creatorData.capture_variants_default = d.capture_variants_default;
-    }
-    input.checked = !!d[key + '_default'];
+  _postCreatorDefaults(body).then(function(d) {
+    input.checked = _creatorSwitchOn(d, key);
     _showToast(t('saved'));
   }).catch(function() {
     input.checked = !want;
     _showToast(t('error'));
   }).finally(function() { input.disabled = false; });
+}
+
+// A value default edited: stored when the server accepts it, and the field
+// settles on what the server kept (a time limit typed as 480m reads 8h). An
+// empty field clears the default. A refusal is shown as the server's own
+// sentence and the field goes back to what is stored.
+function _setCreatorField(key, input) {
+  var body = {};
+  body[key] = input.value.trim();
+  input.disabled = true;
+  _postCreatorDefaults(body).then(function(d) {
+    if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
+    else if (input.inputMode === 'decimal') input.value = d.defaults && d.defaults[key] != null ? String(d.defaults[key]) : '';
+    else input.value = (d.defaults_text && d.defaults_text[key]) || '';
+    _showToast(t('saved'));
+  }).catch(function(e) {
+    var d = _creatorData || {};
+    if (input.tagName === 'SELECT') input.value = (d.defaults && d.defaults[key]) || '';
+    else input.value = (d.defaults_text && d.defaults_text[key]) || '';
+    _showToast((e && e.serverMessage) || t('error'));
+  }).finally(function() {
+    input.disabled = false;
+    if (input.tagName === 'SELECT' && typeof _createMarkDefault === 'function') _createMarkDefault(input);
+  });
+}
+
+// A list default (the kinds a capture leaves out) ticked or unticked: the
+// whole list is stored, and the boxes settle on what the server kept.
+function _setCreatorList(key, name) {
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[name="' + name + '"]'));
+  var body = {};
+  body[key] = boxes.filter(function(b) { return b.checked; }).map(function(b) { return b.value; });
+  var settle = function(d) {
+    var kept = (d && d.defaults && d.defaults[key]) || [];
+    boxes.forEach(function(b) { b.checked = kept.indexOf(b.value) >= 0; });
+  };
+  _postCreatorDefaults(body).then(function(d) { settle(d); _showToast(t('saved')); })
+    .catch(function(e) { settle(_creatorData); _showToast((e && e.serverMessage) || t('error')); });
+}
+
+// POST /manage/creator and keep the pane's copy of the stored defaults in step.
+// A 400 carries the sentence to show, on the rejection as ``serverMessage``.
+function _postCreatorDefaults(body) {
+  return manageFetch('/manage/creator', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r) {
+    return r.json().catch(function() { return {}; }).then(function(d) {
+      if (!r.ok) {
+        var err = new Error('http ' + r.status);
+        err.serverMessage = d && d.error;
+        throw err;
+      }
+      if (_creatorData) {
+        _creatorData.block_ads_default = d.block_ads_default;
+        _creatorData.capture_variants_default = d.capture_variants_default;
+        _creatorData.defaults = d.defaults;
+        _creatorData.defaults_text = d.defaults_text;
+      }
+      return d;
+    });
+  });
 }
 
 // ── ZIM auto-update ─────────────────────────────────────────────────────────
@@ -14309,7 +14506,7 @@ var _serverAppsLocked = false;
 function _serverAppsNow() { return _serverApps || APP_NAMES.filter(_appsAllowedByServer); }
 function _serverAppsHtml() {
   var shown = _serverAppsNow();
-  return _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
+  return _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
     (_serverAppsLocked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
 }
 // All and None sit on the section's header line, out of the rows' way.
@@ -14318,12 +14515,8 @@ function _serverAppsAllHtml() {
     : '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
       '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button>';
 }
-// The apps the server switch lists: the default ones, and an opt-in one only
-// while the server already offers it (named in ZIMI_APPS or a saved list).
-function _serverOfferable(shown) {
-  return APP_NAMES.filter(function(a) { return !_appOptIn(a) || shown.indexOf(a) >= 0; });
-}
-function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverAppsNow()) : []); }
+// Every app is listed, an opt-in one (off until switched on) included.
+function _setAppsForServerAll(on) { _postServerApps(on ? APP_NAMES : []); }
 function _setAppForServer(app, on) {
   var shown = _serverAppsNow();
   _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : shown.indexOf(a) >= 0; }));
@@ -14472,14 +14665,17 @@ function _msServerHtml() {
   _renderNetSection();
   // Async fill security
   Promise.all([
-    fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
     manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
   ]).then(function(results) {
     var hasPw = results[0].has_password;
     var hasToken = results[1].has_token;
     var el = document.getElementById('ms-security');
     if (!el) return;
-    var sh = '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
+    // Who can change settings: the setup page's rows, in place.
+    _setupState = results[0];
+    var sh = _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('setup_settings_title') + '</div>' + _setupFormHtml(results[0], 'settings');
+    sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
       sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
         '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>';
@@ -21029,8 +21225,8 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary'];
 // Offered only when the server names them (a preview, while it is built):
-// none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
-var APPS_OPT_IN = [];
+// Reddot since 1.13.1. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = ['reddot'];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
 var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };
@@ -21114,7 +21310,7 @@ function _appCountLine(app) {
 // Each app a Settings switch row: its icon, its name, what the library holds
 // for it, and the switch. The same row every other on/off in Settings is.
 function _appPicksHtml(apps, checked, onchange, disabled) {
-  return _switchRowsHtml(apps.map(function(app) {
+  return _switchRowsHtml(_appsByName(apps).map(function(app) {
     return { cls: 'app-pick', icon: '<span class="set-row-icon">' + _appIcon(app) + '</span>',
       title: esc(_appTitle(app)), desc: esc(_appCountLine(app)), on: !!checked(app), disabled: disabled,
       onchange: onchange + '(\'' + app + '\', this.checked)' };
@@ -21147,13 +21343,15 @@ function _appSortValue(app, mode) {
   var date = _APP_SORT_DATE[mode];
   return zims.reduce(function(m, z) { return Math.max(m, date(z)); }, 0);
 }
+// Settings lists the apps by name, whatever the library's order.
+function _appsByName(apps) {
+  return apps.slice().sort(function(a, b) {
+    return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
+  });
+}
 function _sortApps(apps) {
   var mode = _librarySort();
-  if (!_APP_SORT_DATE[mode] && mode !== 'entries' && mode !== 'size') {
-    return apps.slice().sort(function(a, b) {
-      return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
-    });
-  }
+  if (!_APP_SORT_DATE[mode] && mode !== 'entries' && mode !== 'size') return _appsByName(apps);
   var value = {};
   apps.forEach(function(app) { value[app] = _appSortValue(app, mode); });
   return apps.slice().sort(function(a, b) { return value[b] - value[a]; });
@@ -27561,12 +27759,36 @@ async function desktopChooseFolder(inputId) {
   } catch(e) {}
 }
 
+// Page two: other devices on this network, off by default. On, the same
+// rows as a server's setup decide who among them can change settings.
+async function desktopOnboardShare() {
+  if (!IS_DESKTOP || !document.getElementById('onboard-path').value) return;
+  var h = await _fetchHasPw();
+  _setupState = Object.assign({}, h.j, { host: true });
+  var el = document.getElementById('onboard-share');
+  el.innerHTML = '<h2>' + tH('desktop_share_title') + '</h2><p class="subtitle">' + tH('desktop_share_body') + '</p>' +
+    _switchRowsHtml([{ id: 'onboard-lan', title: tH('desktop_lan_access'), desc: tH('desktop_lan_hint'),
+      on: false, onchange: "document.getElementById('onboard-access').hidden=!this.checked" }]) +
+    '<div id="onboard-access" hidden>' + _setupFormHtml(_setupState, 'setup') + '</div>' +
+    '<div class="btn-row" id="onboard-finish"><button type="button" class="btn-primary" onclick="desktopFinishOnboarding()">' + tH('get_started') + '</button></div>';
+  // One button: the form's own submit stands down for Get Started.
+  var own = el.querySelector('#setup-form .btn-row');
+  if (own) own.remove();
+  document.getElementById('onboard-folder').hidden = true;
+  el.hidden = false;
+}
+
 async function desktopFinishOnboarding() {
   if (!IS_DESKTOP) return;
   const path = document.getElementById('onboard-path').value;
   if (!path) return;
+  var lan = document.getElementById('onboard-lan');
+  var share = !!(lan && lan.checked);
+  // Who can change settings is saved before the restart that opens the
+  // server to the network, so it never answers anyone undecided.
+  if (share && !(await _setupSubmit({ quiet: true }))) return;
   try {
-    const needsRestart = await pywebview.api.save_config({ zim_dir: path });
+    const needsRestart = await pywebview.api.save_config({ zim_dir: path, lan_access: share });
     document.getElementById('desktop-onboarding').classList.remove('open');
     if (needsRestart) {
       await pywebview.api.restart();

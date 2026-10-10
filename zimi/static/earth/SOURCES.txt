@@ -35,3 +35,13 @@ three-r186.min.js (three-LICENSE.txt)
 satellite-7.1.0.min.js (satellite.js-LICENSE.txt)
   satellite.js 7.1.0, MIT License: SGP4/SDP4 only. The build line is in the
   file's first comment.
+
+stars-v1.bin
+  Yale Bright Star Catalogue, 5th revised edition (BSC5), Hoffleit and Warren,
+  1991 (Astronomical Data Center catalogue V/50). Public domain. 9,096 stars to
+  visual magnitude 7.96 with a J2000 position: right ascension and declination,
+  V magnitude and B-V, packed to 6 bytes a star (54,580 bytes) by
+  scripts/build_star_catalog.py, which documents the format. Drawn as the 3D
+  view's star sphere (almanac-earth.js _aeStarField), fetched the first time
+  that view opens.
+  http://tdc-www.harvard.edu/catalogs/bsc5.html

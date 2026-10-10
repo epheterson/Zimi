@@ -53,16 +53,19 @@ def test_the_shell_is_stamped_only_when_off():
     some = http._index_content(frozenset(["reddot", "maps"]))
     assert some.count('<body data-zimi-apps="maps,reddot">') == 1
     assert http._index_content(srv.APPS_DEFAULT) == on
-    # Every app, Zimipedia included, is the default: nothing to name.
-    assert http._index_content(frozenset(srv.APP_NAMES)) == on
+    # Every app is not the default now (Reddot is opt-in), so it is named.
+    assert http._index_content(frozenset(srv.APP_NAMES)).count(
+        '<body data-zimi-apps="maps,tube,exchange,reddot,wiki,books,dictionary">'
+    ) == 1
 
 
-# Zimipedia, with its reader, is on by default like the others (1.12).
-DEFAULT = set(srv.APP_NAMES)
+# Zimipedia, with its reader, is on by default like the others (1.12);
+# Reddot is opt-in since 1.13.1.
+DEFAULT = set(srv.APP_NAMES) - {"reddot"}
 
 
-def test_zimipedia_is_on_by_default():
-    assert srv.APPS_OPT_IN == frozenset()
+def test_zimipedia_is_on_by_default_and_reddot_is_not():
+    assert srv.APPS_OPT_IN == frozenset({"reddot"})
     assert srv.APPS_DEFAULT == frozenset(DEFAULT)
 
 
@@ -106,11 +109,11 @@ def test_the_default_shell_carries_no_stamp(data_dir):
         ("maps,tube", {"maps", "tube"}),
         (" Reddot , maps ", {"maps", "reddot"}),
         ("maps,bogus", {"maps"}),
-        ("all", set(srv.APP_NAMES)),
+        ("all", DEFAULT),
         ("maps,tube,exchange,reddot,wiki,books,dictionary", set(srv.APP_NAMES)),
         ("none", set()),
         (["exchange"], {"exchange"}),
-        (True, set(srv.APP_NAMES)),
+        (True, DEFAULT),
         (False, set()),
     ],
 )
@@ -124,7 +127,7 @@ def test_each_app_can_be_offered_or_not(data_dir, monkeypatch, value, shown):
         assert srv.set_apps_enabled(value) == (bool(shown), None)
         assert srv.apps_shown() == frozenset(shown)
         saved = manage._read_app_update_prefs()["apps"]
-        assert saved is (True if shown == set(srv.APP_NAMES) else False) if isinstance(saved, bool) else saved == sorted(shown, key=srv.APP_NAMES.index)
+        assert saved is (True if shown == DEFAULT else False) if isinstance(saved, bool) else saved == sorted(shown, key=srv.APP_NAMES.index)
 
 
 def test_a_saved_list_is_in_the_apps_order(data_dir):

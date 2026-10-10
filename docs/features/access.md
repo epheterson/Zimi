@@ -19,9 +19,16 @@ The mode lives in Zimi's state and is set from Manage or by `ZIMI_PUBLIC_ACCESS`
 **Secure first-run bootstrap (GHSA-5mw2-53vv-9pw6).** Setting the first admin password used to be "any private-tier client sets it" — on a LAN, a Docker bridge, or a tailnet, too many hands: an adjacent device could race the owner to claim admin. The fix splits the bootstrap door in two:
 
 - **Loopback (the host itself)** needs no secret — set the first password freely.
-- **Any remote client** must present a **one-time setup key** the server generates on first start and prints to its own log. LAN and tailnet peers without the key get the same locked response a public client does.
+- **A device on your home network** (10.x, 192.168.x, IPv6 ULA, reaching Zimi directly) answers a **fresh install's setup page** without a key for the **first hour** after it first starts, the way other self-hosted apps onboard: a fresh install does nothing until that page is answered, so it is never left claimable for long. Not from the server's own container networks (Docker Desktop's are 192.168.x), not from Tailscale's IPv6 range, and never through a proxy: any forwarding header (`X-Forwarded-*`, `Forwarded`, `Via`, `X-Real-IP`, Cloudflare's, Tailscale's) makes it a remote client. A proxy in front of a fresh install must add `X-Forwarded-For`, or the internet looks like your network for that hour. The machine running Zimi has the same hour on a fresh install (a header-less proxy on the same host makes the internet look like loopback); after it, the host reads the key from its own log. Under Kubernetes no network counts as home: a NodePort can make the internet look like 10.x. Virtual bridges (Docker, libvirt, LXD, Podman, CNI) never count as home either.
+- **Any other remote client** (a Docker bridge, a tailnet, a proxied request, or any device on an install that ran before 1.13.1 and so never shows the page) must present a **one-time setup key** the server generates on first start and prints to its own log. Without it they get the same locked response a public client does.
 
 The key is a CSPRNG value shaped like `7Q2K-9F4M-XR8T`, stored `0600` in `ZIMI_DATA_DIR/setup-key`, sent as `Authorization: Bearer <key>` or the `X-Zimi-Setup-Key` header, and constant-time compared. It persists across restarts until spent, and is cleared the moment a password is set — its whole life is the bootstrap window.
+
+**Who can change settings.** A new self-hosted install opens on one page before anything else: may settings be changed from outside your network (off by default), and is a password required (held on when they may). With a password you also choose a username, which password managers save and the admin can edit later in Settings > Server; left empty it is `admin`. Without a password, anyone directly on your network can change settings, as `lan_admin` allows. The same page is the desktop app's second welcome page when you open Zimi to other devices, and its rows stay in Settings > Server.
+
+The page is the first-run bootstrap, so the rules above hold: the machine running Zimi and devices on your home network answer it freely, any other device brings the setup key, and a visitor from the internet sees only that Zimi is being set up. Until it is answered, a fresh install serves other devices nothing but the page; the host's own API keeps working. An install that ran before 1.13.1 never waits, and one with a password keeps reaching its settings from anywhere. Environment variables that already answer the question (`ZIMI_MANAGE_PASSWORD`, `ZIMI_LAN_ADMIN`, `ZIMI_MANAGE_OPEN`) skip the page.
+
+"Outside your network" is decided from the client's resolved address: a LAN client behind your reverse proxy is inside, a client arriving through Cloudflare is outside. With settings kept inside, an outside client is refused before the password is checked, and the admin sign-in says why. It is a wall on top of the password, not instead of it.
 
 ## Configure
 
@@ -34,10 +41,13 @@ The key is a CSPRNG value shaped like `7Q2K-9F4M-XR8T`, stored `0600` in `ZIMI_D
 | `ZIMI_API_TOKEN` | env / config | token file | Bearer token for programmatic access (else the generated token file) |
 | `ZIMI_MANAGE_OPEN` | env | `0` | `1` turns management authentication off entirely: no password, no setup key. Only for a network you control; it warns at every boot. |
 | `ZIMI_LAN_ADMIN` | env | `0` | `1` makes any direct private-network client the admin while no password is set, as before 1.9.0. Not through a proxy. |
+| `ZIMI_MANAGE_EXTERNAL` | env / config `manage_external` | the setup page's answer; on if never answered | `0` keeps settings inside the private network even with the password; `1` allows them from anywhere (needs a password) |
 | setup key | `ZIMI_DATA_DIR/setup-key` | auto-generated | One-time remote bootstrap secret; printed to the server log |
 
 ## Troubleshoot
 
+- **Every page says `setup_pending` (503)**: a fresh install waiting for its setup page. Open Zimi on the machine running it or on a device on your home network (or anywhere else with the setup key from the log), and answer it. Or set `ZIMI_MANAGE_PASSWORD` / `ZIMI_LAN_ADMIN` and restart.
+- **Signing in from outside says settings stay inside this network**: the owner chose that. Change it from inside the network in Settings > Server, or set `ZIMI_MANAGE_EXTERNAL=1`.
 - **Remote first-run says `needs_setup_key`** — by design. Read the setup key from the server's own log and present it as `X-Zimi-Setup-Key` (or a Bearer token). Or set the first password from a loopback shell on the host, which needs no key.
 - **Lost the setup key** — it's in the server log, and in `ZIMI_DATA_DIR/setup-key` while unspent. If a password is already set, the key is gone on purpose; reset via the password file / `ZIMI_MANAGE_PASSWORD`.
 - **Can't generate an API token** — you must set an admin password first; a passwordless instance refuses. If token generation returns a 500, the data dir isn't writable.

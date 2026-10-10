@@ -121,22 +121,27 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: ['engine'], advanced: ['block_ads', 'capture_variants', 'strip_links', 'language']
+    flags: ['engine'],
+    advanced: ['max_file_bytes', 'skip_types',
+      'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants',
+      'language', 'description', 'creator', 'publisher', 'tags', 'strip_links']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
-      'strip_links', 'language', 'ignore_robots'],
-    pick: { max_bytes: '4G' }
+    advanced: ['scope', 'include', 'exclude', 'extra_hops', 'max_depth', 'sitemap',
+      'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay',
+      'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots',
+      'language', 'description', 'creator', 'publisher', 'tags', 'strip_links'],
+    sizeDefault: '4 GB'
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
-    advanced: ['format', 'max_bytes', 'language'],
-    pick: { max_bytes: '16G' }
+    advanced: ['format', 'max_bytes', 'language', 'description', 'creator', 'publisher', 'tags'],
+    sizeDefault: '16 GB'
   },
   // No subreddit tile. A reddit.com/r/<name> address under Web page is a
   // subreddit, and the server says so (Eric: "let's be coy. You put in the
@@ -149,7 +154,7 @@ var CREATE_MODE_DEFS = [
   {
     id: 'folder', network: false, tree: true, serverPath: true,
     label: 'create_label_folder', placeholder: 'create_label_folder',
-    flags: [], advanced: ['language']
+    flags: [], advanced: ['language', 'description', 'creator', 'publisher', 'tags']
   },
   // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
   // address field becomes a list of the archives in the library folder; no
@@ -157,7 +162,7 @@ var CREATE_MODE_DEFS = [
   {
     id: 'import', network: false, sidecar: true, picker: true, serverPath: true,
     label: 'create_label_import', placeholder: 'create_ph_import',
-    flags: [], advanced: []
+    flags: [], advanced: ['description', 'creator', 'publisher', 'tags']
   }
 ];
 
@@ -304,6 +309,10 @@ function _createSidecarCommand() {
   return base + ' --data-dir ' + _createShellQuote(dir);
 }
 
+// The instance's stored defaults, each as the text its field shows as a
+// placeholder (see _createTakeDefaults). Empty until the server has said.
+var CREATE_STORED_TEXT = {};
+
 var CREATE_FIELDS = {
   engine: {
     id: 'create-engine', control: 'engine', label: 'create_engine',
@@ -311,7 +320,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 0, ph: '10000', note: 'create_max_pages_note'
+    kind: 'int', min: 0, ph: '10000'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -325,17 +334,106 @@ var CREATE_FIELDS = {
     id: 'create-max-depth', control: 'number', label: 'create_max_depth',
     kind: 'int', min: 0, max: 50, ph: '10'
   },
+  // Which pages a site capture walks into: browsertrix's scope types, so what
+  // a zimit user already knows works here (and under the zimit engine too).
+  // The section is the default and says nothing; the server decides it from
+  // the page.
+  scope: {
+    id: 'create-scope', control: 'select', label: 'create_scope', kind: 'text',
+    options: [
+      { v: '', k: 'create_scope_prefix' },
+      { v: 'host', k: 'create_scope_host' },
+      { v: 'domain', k: 'create_scope_domain' },
+      { v: 'any', k: 'create_scope_any' }
+    ]
+  },
+  // One regular expression each; the API and the command line take several.
+  include: {
+    id: 'create-include', control: 'text', label: 'create_include',
+    kind: 'text', ph: '', note: 'create_include_note'
+  },
+  exclude: {
+    id: 'create-exclude', control: 'text', label: 'create_exclude',
+    kind: 'text', ph: ''
+  },
+  extra_hops: {
+    id: 'create-extra-hops', control: 'number', label: 'create_extra_hops',
+    kind: 'int', min: 0, max: 10, ph: '0'
+  },
   delay: {
     id: 'create-delay', control: 'number', label: 'create_delay',
     kind: 'num', min: 0, max: 60, step: '0.1', ph: '0.5'
   },
   max_bytes: {
     id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
-    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true, note: 'create_max_bytes_note'
+    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true
+  },
+  // How a site capture ends, finds its pages and presents itself. Each of these
+  // can be a stored default (Manage, Creator): the text fields show it as their
+  // placeholder and the two checkboxes start where it puts them, so a person
+  // sees what saying nothing means. An unticked box under a default that is on
+  // sends false, which is why `on` is how these boxes carry a default.
+  time_limit: {
+    id: 'create-time-limit', control: 'text', label: 'create_time_limit',
+    kind: 'text', phKey: 'create_none'
+  },
+  sitemap: {
+    id: 'create-sitemap', control: 'check', label: 'create_sitemap',
+    kind: 'bool'
+  },
+  // The placeholder is the agent's product token ("Zimi/1.13.1"): the whole
+  // string runs past any field and was cut mid-address. The rest is its title.
+  user_agent: {
+    id: 'create-user-agent', control: 'text', label: 'create_user_agent',
+    kind: 'text', ph: 'Zimi', phToken: true
+  },
+  mobile: {
+    id: 'create-mobile', control: 'check', label: 'create_mobile',
+    kind: 'bool'
+  },
+  // A signed-in session's cookies, pasted as the Cookie header reads in the
+  // browser's tools. A credential: the server sends it to this site alone and
+  // keeps it nowhere, so it is never a stored default and the note says so.
+  cookies: {
+    id: 'create-cookies', control: 'text', label: 'create_cookies', wide: true,
+    kind: 'text', ph: 'name=value; other=value', note: 'create_cookies_note'
+  },
+  // Kinds of file a capture leaves out, ticked from a fixed set. Its value is
+  // the ticked names joined with commas, the way the command line takes them.
+  skip_types: {
+    id: 'create-skip-types', control: 'checks', label: 'create_skip_types',
+    kind: 'text', options: ['video', 'audio', 'pdf', 'archives', 'images']
+  },
+  max_file_bytes: {
+    id: 'create-max-file-bytes', control: 'text', label: 'create_max_file_bytes',
+    kind: 'text', phKey: 'create_none'
+  },
+  // The ZIM's own details, written into its metadata. A folder's zimi.txt
+  // fills them when the field is left empty.
+  description: {
+    id: 'create-description', control: 'text', label: 'create_pv_description', wide: true,
+    kind: 'text', ph: '', maxlength: 80
+  },
+  creator: {
+    id: 'create-creator', control: 'text', label: 'create_pv_creator',
+    kind: 'text', ph: 'Zimi'
+  },
+  publisher: {
+    id: 'create-publisher', control: 'text', label: 'create_pv_publisher',
+    kind: 'text', ph: 'Zimi'
+  },
+  tags: {
+    id: 'create-tags', control: 'text', label: 'create_pv_tags', wide: true,
+    kind: 'text', ph: ''
+  },
+  page_timeout: {
+    id: 'create-page-timeout', control: 'number', label: 'create_page_timeout',
+    kind: 'int', min: 1, max: 600, ph: '45', needsEngine: ['rendered', 'alive']
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',
-    kind: 'bool', note: 'create_ignore_robots_note'
+    kind: 'bool', note: 'create_ignore_robots_note', noteWhenOn: true,
+    onchange: '_createNoteWhenOn(this)'
   },
   // The only checkbox on this page that starts CHECKED, which is why it is a
   // kind of its own: every other one is off until you turn it on, so it can say
@@ -348,8 +446,7 @@ var CREATE_FIELDS = {
   // field is not sent — see _createFieldApplies.
   block_ads: {
     id: 'create-block-ads', control: 'check', label: 'create_block_ads',
-    kind: 'bool', on: true, needsEngine: ['rendered', 'alive'],
-    note: 'create_block_ads_note'
+    kind: 'bool', on: true, needsEngine: ['rendered', 'alive']
   },
   // The responsive-image sweep, which is the second default-CHECKED box and
   // reads the same way as the first: silence means the row never drew, and an
@@ -364,8 +461,7 @@ var CREATE_FIELDS = {
   // the rendered engine would be a switch over nothing.
   capture_variants: {
     id: 'create-capture-variants', control: 'check', label: 'create_capture_variants',
-    kind: 'bool', on: true, needsEngine: ['alive'],
-    note: 'create_capture_variants_note'
+    kind: 'bool', on: true, needsEngine: ['alive']
   },
   // "Remove links that lead outside the ZIM" (#99): links that leave the site become
   // plain text in the written ZIM, for the readers that are not Zimi. Off until
@@ -373,7 +469,7 @@ var CREATE_FIELDS = {
   // rendered); an alive capture's links are rewritten when it is replayed.
   strip_links: {
     id: 'create-strip-links', control: 'check', label: 'create_strip_links',
-    kind: 'bool', needsEngine: ['', 'rendered'], note: 'create_strip_links_note'
+    kind: 'bool', needsEngine: ['', 'rendered']
   },
   // Auto first, and the probe fills it in: the page you are capturing already
   // declares its language, so making someone recall an ISO 639-3 code was the
@@ -559,6 +655,72 @@ function _createFieldApplies(f, engine) {
   return f.needsEngine.indexOf(String(engine || '')) >= 0;
 }
 
+// The instance's stored defaults, taken from the server's status reply. Text
+// fields show theirs as the placeholder, the two checkboxes that can be a
+// default start where it puts them, and a select names it as its empty first
+// option, so the form says what saying nothing means and saying nothing is
+// what sends it. Called with every reply: clearing a default in Manage clears
+// it here at the next poll.
+var CREATE_STORED_VALUES = {};
+// What a capture gets when nothing is stored either, as the server words it
+// (the user agent it really sends, not a nickname for it).
+var CREATE_FACTORY_TEXT = {};
+function _createTakeDefaults(data) {
+  var values = (data && data.defaults) || {};
+  CREATE_FACTORY_TEXT = (data && data.factory_text) || {};
+  var text = (data && data.defaults_text) || {};
+  CREATE_STORED_TEXT = {};
+  for (var key in text) {
+    if (Object.prototype.hasOwnProperty.call(text, key)) CREATE_STORED_TEXT[key] = String(text[key]);
+  }
+  CREATE_STORED_VALUES = values;
+  CREATE_FIELDS.sitemap.on = values.sitemap === true;
+  CREATE_FIELDS.mobile.on = values.mobile === true;
+}
+
+// Reach, in the address's own terms: "Under /docs/", "All of example.org",
+// "example.org and its subdomains". The section is the folder the address
+// sits in, as the crawl works it out; at the root it is the whole site, so
+// the two say the same and the select keeps one. Null without an address.
+function _createScopeWords(address) {
+  var text = String(address || '').trim().split(/\s+/)[0];
+  if (!text) return null;
+  var u;
+  try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : 'https://' + text); } catch (e) { return null; }
+  if (!u.hostname) return null;
+  var host = u.hostname.replace(/^www\./, '');
+  var dir = u.pathname.replace(/[^\/]*$/, '') || '/';
+  return {
+    prefix: dir === '/' ? t('create_scope_host_at', { host: host }) : t('create_scope_prefix_at', { path: dir }),
+    host: t('create_scope_host_at', { host: host }),
+    domain: t('create_scope_domain_at', { host: host })
+  };
+}
+
+// A stored default that is a list (the kinds a capture leaves out), as one.
+function _createStoredList(key) {
+  var v = CREATE_STORED_VALUES[key];
+  return Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(',') : []);
+}
+
+// What a select's empty first option stands for: the stored default, else
+// the mode's own (a site's size budget is 4 GB, a channel's 16 GB), else the
+// field's first word ("This section", "Auto-detect").
+function _createSelectDefaultText(key, f, def) {
+  if (key === 'max_bytes') {
+    return CREATE_STORED_TEXT.max_bytes || (def && def.sizeDefault) || t('create_size_default');
+  }
+  var stored = CREATE_STORED_VALUES[key];
+  if (typeof stored === 'string' && stored) {
+    for (var i = 0; i < f.options.length; i++) {
+      var o = f.options[i];
+      if (typeof o !== 'string' && o.v === stored) return o.k ? t(o.k) : o.t;
+    }
+  }
+  var first = f.options[0];
+  return typeof first === 'string' ? t(f.label + '_' + first) : (first.k ? t(first.k) : first.t);
+}
+
 // One raw form value → what belongs in the request body, or undefined for
 // "say nothing and let the engine use its own default". Blank, unparseable and
 // below-minimum all collapse to that same silence: they are the same statement.
@@ -575,6 +737,12 @@ function _createFieldValue(key, fields) {
     return (raw === undefined || raw === null || raw === '') ? undefined : !!raw;
   }
   if (f.kind === 'bool') return raw ? true : undefined;
+  // A checks row says what is ticked. Nothing ticked is silence, unless a
+  // stored default ticks something: then the empty list is the decision.
+  if (f.control === 'checks') {
+    if (!Array.isArray(raw)) return undefined;
+    return raw.length ? raw.slice() : (_createStoredList(key).length ? [] : undefined);
+  }
   var text = String(raw === undefined || raw === null ? '' : raw).trim();
   if (!text) return undefined;
   if (f.kind === 'int' || f.kind === 'num') {
@@ -601,6 +769,10 @@ function _createBuildRequest(modeId, fields) {
     var value = _createFieldValue(keys[i], fields);
     if (value !== undefined) body[keys[i]] = value;
   }
+  // The fast engine says nothing, which a stored engine would answer: so
+  // when one is stored, choosing fast says so.
+  if (keys.indexOf('engine') >= 0 && body.engine === undefined &&
+      CREATE_STORED_VALUES.engine && CREATE_STORED_VALUES.engine !== 'builtin') body.engine = 'builtin';
   // Audio-only picks the format itself, so a quality preset alongside it would
   // describe a preference nothing reads. The server drops it too.
   if (body.audio_only) delete body.format;
@@ -796,9 +968,11 @@ function _createPreviewRows(p) {
     add('create_pv_what', t('create_pv_reddit_what'));
     add('create_pv_helper', t(p.reddot_ready ? 'create_pv_ready' : 'create_pv_installs'));
   } else {
+    // The title is the Title field's placeholder, not a row; the address is
+    // said only when it is news: several pages, or a redirect somewhere else.
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
-    add('create_pv_title', p.title);
-    add(p.urls > 1 ? 'create_pv_first' : 'create_pv_address', p.final_url);
+    if (p.urls > 1) add('create_pv_first', p.final_url);
+    else if (_createLandedElsewhere(p.final_url)) add('create_pv_address', p.final_url);
     // NO size row, for a page either. The probe fetches the HTML and nothing
     // else, so `bytes` is the document's own weight — and on a modern page the
     // document is the small part. CNN's is 5.6MB against a 36MB ZIM: the
@@ -818,9 +992,8 @@ function _createPreviewRows(p) {
     // and the run's own counter is right seconds later. So the preview says
     // what it knows for certain — the title, the address, the language — and
     // stops guessing.
-    if (p.robots_allowed !== undefined) {
-      add('create_pv_robots', t(p.robots_allowed ? 'create_pv_robots_ok' : 'create_pv_robots_no'));
-    }
+    // Only a refusal is worth a line.
+    if (p.robots_allowed === false) add('create_pv_robots', t('create_pv_robots_no'));
     // Say what kind of page this is, because it is what decides the engine.
     // An empty shell announces itself the moment you look at the capture; an
     // application that server-rendered its text does not, and finding out
@@ -828,8 +1001,16 @@ function _createPreviewRows(p) {
     if (p.spa) add('create_pv_kind', t('create_pv_kind_shell'));
     else if (p.app) add('create_pv_kind', t('create_pv_kind_app'));
   }
-  if (p.language) add('create_pv_language', p.language + ' ' + t('create_pv_detected'));
+  // A detected language goes into the Language control (_createApplyDetectedLanguage).
   return rows;
+}
+
+// Whether the probe landed somewhere other than what was typed: scheme, a
+// trailing slash and case aside, the same address is not news.
+function _createLandedElsewhere(finalUrl) {
+  var typed = (document.getElementById('create-source') || {}).value || '';
+  var bare = function(u) { return String(u || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/+$/, ''); };
+  return !!finalUrl && bare(finalUrl) !== bare(typed.split('\n')[0]);
 }
 
 // Text a one-line header can hold. Neither a URL with a long query nor a title
@@ -1512,14 +1693,20 @@ function _createT(key) {
 function _createAgainRequest(request, result) {
   var kind = request && result && captureStopKind(result.stopped);
   if (!kind) return null;
+  // Cookies are never kept (the request echoes them as "set"), so a rerun
+  // would run signed out; it is not offered, and the form is the way back.
+  if (request.cookies) return null;
   if (kind === 'depth') {
     var hit = String(result.stopped).match(/^depth limit \((\d+)\)/);
     if (hit && Number(hit[1]) >= CREATE_FIELDS.max_depth.max) return null;
   }
   var body = Object.assign({}, request);
+  // Nothing was under the section: the page the capture landed on, with the
+  // whole site as its scope. Starting again at the home page lost the page
+  // that was asked for, and with it the depth counted from there.
   if (kind === 'scope') {
-    var landed = result.url || request.source || '';
-    try { body.source = new URL(landed).origin + '/'; } catch (e) { return null; }
+    body.source = result.url || body.source;
+    body.scope = 'host';
     return body;
   }
   body.max_pages = 0;
@@ -1582,9 +1769,23 @@ function _createChipTarget(what, n, s) {
 // ordinary page, and Fast was offered for something whose palette, theme
 // switch and search are all JavaScript (Eric: "why did it recommend fast
 // instead of something better!?").
-function _createEngineFor(p, browserReady) {
-  if (!p || (p.mode !== 'page' && p.mode !== 'site')) return '';
-  return (p.spa || p.app) && browserReady ? 'rendered' : '';
+function _createEngineFor(p, browserReady, base) {
+  base = base || '';
+  if (!p || (p.mode !== 'page' && p.mode !== 'site')) return base;
+  // A stored engine is where the form starts; the probe only lifts the fast
+  // one to a browser for a page that is built by JavaScript.
+  return !base && (p.spa || p.app) && browserReady ? 'rendered' : base;
+}
+
+// The stored engine as the picker spells it: '' for the fast one (and for an
+// engine the picker does not offer, zimit or singlefile, which the request
+// then overrides with an explicit 'builtin').
+function _createStoredEngine() {
+  var v = CREATE_STORED_VALUES.engine;
+  for (var i = 0; i < CREATE_ENGINE_OPTIONS.length; i++) {
+    if (v && CREATE_ENGINE_OPTIONS[i].v === v) return v;
+  }
+  return '';
 }
 
 // ── the surface ─────────────────────────────────────────────────────────────
@@ -1896,6 +2097,7 @@ function _createStashMode() {
     if (!node) continue;
     state.values[keys[i]] = f.control === 'check' ? !!node.checked
       : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : f.control === 'checks' ? _createTickedValues(f.id)
       : node.value;
   }
   state.preview = _createPreview;
@@ -1922,6 +2124,7 @@ function _createRestoreMode() {
     if (!node) continue;
     if (f.control === 'check') node.checked = !!state.values[key];
     else if (f.control === 'engine') _createSetRadio(f.id, state.values[key]);
+    else if (f.control === 'checks') _createSetTicked(f.id, state.values[key]);
     else node.value = state.values[key];
   }
 }
@@ -1937,12 +2140,23 @@ function _createFieldHtml(key, def) {
   var label = tH(f.label);
   if (f.control === 'engine') return _createEngineHtml(f);
   if (f.control === 'check') {
-    // The row carries an id of its own so a field that only applies to some
-    // engines can be hidden whole — label and all — rather than left as a
-    // dangling word beside a checkbox that went away.
-    return '<label class="create-flag" id="' + f.id + '-row">' +
-      '<input type="checkbox" id="' + f.id + '"' + (f.on ? ' checked' : '') +
-      (f.onchange ? ' onchange="' + f.onchange + '"' : '') + '>' + label + '</label>';
+    // Every row carries an id of its own (here and below) so a field that only
+    // applies to some engines can be hidden whole, label and all, rather than
+    // left as a dangling word beside a control that went away.
+    // On and off is a switch in the field's own row, its name in the label
+    // column like every other field's (Settings draws the same row).
+    return '<label class="create-flag" id="' + f.id + '-row">' + label +
+      _createSwitchHtml(' id="' + f.id + '"' + (f.on ? ' checked' : '') +
+        (f.onchange ? ' onchange="' + f.onchange + '"' : '')) + '</label>';
+  }
+  if (f.control === 'checks') {
+    var boxes = '';
+    for (var c = 0; c < f.options.length; c++) {
+      boxes += _createChipHtml(' name="' + f.id + '" value="' + f.options[c] + '"' +
+        (_createStoredList(key).indexOf(f.options[c]) >= 0 ? ' checked' : ''), tH(f.label + '_' + f.options[c]));
+    }
+    return '<div class="create-flag" id="' + f.id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '">' +
+      '<span>' + label + '</span><span class="create-checks" id="' + f.id + '">' + boxes + '</span></div>';
   }
   if (f.control === 'select') {
     // Options are either bare strings, whose label is an i18n key built from
@@ -1950,13 +2164,21 @@ function _createFieldHtml(key, def) {
     // {v, t|k} rows carrying a literal label or a key of their own. Language
     // and size names are literals on purpose: "Français" and "500 MB" read the
     // same in every UI language, and translating them would be inventing work.
+    // The empty first option is the default and says what it is; an option
+    // that would only repeat it is left out.
     var opts = '';
+    var plain = '';
     for (var i = 0; i < f.options.length; i++) {
       var o = f.options[i];
       var value = typeof o === 'string' ? o : o.v;
-      var text = typeof o === 'string' ? tH(f.label + '_' + o) : (o.k ? tH(o.k) : esc(o.t));
-      var pre = (def && def.pick && def.pick[key] === value) ? ' selected' : '';
-      opts += '<option value="' + escAttr(value) + '"' + pre + '>' + text + '</option>';
+      var words = typeof o === 'string' ? t(f.label + '_' + o) : (o.k ? t(o.k) : o.t);
+      if (value === '') {
+        plain = _createSelectDefaultText(key, f, def);
+        words = plain;
+      } else if (words === plain) {
+        continue;
+      }
+      opts += '<option value="' + escAttr(value) + '">' + esc(words) + '</option>';
     }
     // A select that carries the custom-size hatch grows a free-entry box that
     // shows only while "Custom…" is chosen. The value crosses in the same
@@ -1966,20 +2188,47 @@ function _createFieldHtml(key, def) {
         ' hidden placeholder="2G" spellcheck="false" autocapitalize="none" autocorrect="off"' +
         ' aria-label="' + escAttr(tH('create_size_custom')) + '">'
       : '';
-    var change = f.customSize ? ' onchange="_createSizeSelect(this)"' : '';
-    return '<label class="create-flag">' + label +
-      '<select class="create-field create-pick" id="' + f.id + '"' + change + '>' + opts + '</select></label>' + extra;
+    var change = ' onchange="' + (f.customSize ? '_createSizeSelect(this);' : '') + '_createMarkDefault(this)"';
+    return '<label class="create-flag" id="' + f.id + '-row">' + label +
+      '<select class="create-field create-pick' + (plain ? ' is-default' : '') + '" id="' + f.id + '"' + change + '>' +
+      opts + '</select></label>' + extra;
   }
-  var ph = (def && def.hints && def.hints[key]) || f.ph || '';
   var number = f.control === 'number';
-  return '<label class="create-flag">' + label +
-    '<input type="' + (number ? 'number' : 'text') + '"' +
+  // A number field's label names its unit, so it shows the bare number; the
+  // server's words ("0.5s") are for the fields that take text.
+  var ph = (def && def.hints && def.hints[key]) || (number ? '' : CREATE_STORED_TEXT[key] || CREATE_FACTORY_TEXT[key]) ||
+    (number && CREATE_STORED_VALUES[key] != null ? String(CREATE_STORED_VALUES[key]) : '') ||
+    (f.phKey ? t(f.phKey) : f.ph) || '';
+  return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + f.id + '-row">' + label +
+    '<input type="' + (number ? 'number' : 'text') + '"' + _createPhAttrs(f, ph) +
+    (f.maxlength ? ' maxlength="' + f.maxlength + '"' : '') +
     ' class="create-field ' + (number ? 'create-num' : 'create-short') + '" id="' + f.id + '"' +
     (f.min !== undefined ? ' min="' + f.min + '"' : '') +
     (f.max !== undefined ? ' max="' + f.max + '"' : '') +
     (f.step ? ' step="' + f.step + '"' : '') +
-    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
-    ' placeholder="' + escAttr(ph) + '"></label>';
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"></label>';
+}
+
+// A placeholder, cut to its first word when the field asks (the user agent),
+// the whole of it then the field's title.
+function _createPhAttrs(f, ph) {
+  if (f.phToken && ph.indexOf(' ') > 0) {
+    return ' placeholder="' + escAttr(ph.split(' ')[0]) + '" title="' + escAttr(ph) + '"';
+  }
+  return ' placeholder="' + escAttr(ph) + '"';
+}
+
+// A note that only matters once its box is ticked (overriding robots.txt)
+// shows then and not before.
+function _createNoteWhenOn(box) {
+  var note = document.getElementById(box.id + '-note');
+  if (note) note.hidden = !box.checked;
+}
+
+// A select still on its first, empty option is on the default, and reads grey
+// like a placeholder; anything chosen reads as chosen.
+function _createMarkDefault(sel) {
+  sel.classList.toggle('is-default', sel.value === '');
 }
 
 // Whether the server has reported a capability as usable. The server's own
@@ -2015,9 +2264,15 @@ function _createEngineHtml(f) {
   // Folded: the probe picks the engine (see _createAutoPickEngine), and the
   // summary states the pick. The three options, thirty words each, used to be
   // the largest thing on the form, on a decision most people cannot make.
+  // It starts on the stored engine, or the fast one when that is not here.
+  var first = f.options[0];
+  f.options.forEach(function(o) {
+    if (o.v === _createStoredEngine() && !(o.needs && _createCapabilityMissing(o.needs))) first = o;
+  });
+  var start = first.v;
   var html = '<details class="create-seg-field create-engine-fold" id="create-engine-fold">' +
     '<summary class="create-seg-label"><span>' + tH(f.label) + '</span> ' +
-      '<b id="create-engine-pick">' + tH(f.options[0].k) + '</b> ' +
+      '<b id="create-engine-pick">' + tH(first.k) + '</b> ' +
       '<span class="create-engine-change">' + tH('create_engine_change') + '</span></summary>' +
     '<div class="create-seg" id="' + f.id + '" role="radiogroup"' +
     ' aria-label="' + escAttr(t(f.label)) + '">';
@@ -2028,7 +2283,7 @@ function _createEngineHtml(f) {
     if (off) _createAddCommands(commands, o.needs);
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
-      (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') +
+      (o.v === start ? ' checked' : '') + (off ? ' disabled' : '') +
       ' onchange="_createEngineChosen()">' +
       '<span class="create-seg-name">' + tH(o.k) + '</span>' +
       '<span class="create-seg-desc">' + tH(o.d) + '</span>' +
@@ -2065,21 +2320,123 @@ function _createAddCommands(into, capability) {
   }
 }
 
-// A row of controls plus any warnings they carry. The notes sit under the row
-// rather than in it: a sentence wrapped inside a flex row of short fields reads
-// as a broken control, not as a caution.
-function _createFieldsHtml(keys, def) {
-  var controls = '';
-  var notes = '';
+// The form's one rule: a column of names and one edge every control starts
+// on. Advanced options are many, so they come in the three questions they
+// answer, in that order (which pages, how much, how it is fetched) and what
+// the ZIM itself carries. A key no group names goes last, untitled. A mode
+// whose options fall in one group shows no heading at all.
+var CREATE_GROUPS = [
+  { k: 'create_group_pages', keys: ['scope', 'max_depth', 'include', 'exclude', 'extra_hops', 'sitemap'] },
+  { k: 'create_group_limits', keys: ['max_pages', 'max_bytes', 'max_file_bytes', 'skip_types', 'time_limit', 'delay'] },
+  { k: 'create_group_fetch', keys: ['format', 'user_agent', 'cookies', 'mobile', 'page_timeout', 'block_ads', 'capture_variants', 'ignore_robots'] },
+  { k: 'create_group_zim', keys: ['language', 'description', 'creator', 'publisher', 'tags', 'strip_links'] }
+];
+
+function _createGroupsOf(keys) {
+  var left = keys.slice();
+  var out = [];
+  for (var g = 0; g < CREATE_GROUPS.length; g++) {
+    var mine = CREATE_GROUPS[g].keys.filter(function(k) { return left.indexOf(k) >= 0; });
+    if (!mine.length) continue;
+    left = left.filter(function(k) { return mine.indexOf(k) < 0; });
+    out.push({ k: CREATE_GROUPS[g].k, keys: mine });
+  }
+  if (left.length) out.push({ k: '', keys: left });
+  return out;
+}
+
+// One field and its note, the note right under it: a note gathered elsewhere
+// is a long way from what it explains.
+function _createRowsHtml(keys, def) {
+  var html = '';
   for (var i = 0; i < keys.length; i++) {
-    controls += _createFieldHtml(keys[i], def);
+    html += _createFieldHtml(keys[i], def);
     var f = CREATE_FIELDS[keys[i]];
     if (f && f.note) {
-      notes += '<div class="create-caption" id="' + f.id + '-note">' +
-        tH(f.note) + '</div>';
+      html += '<div class="create-caption create-row-note" id="' + f.id + '-note"' +
+        (f.noteWhenOn ? ' hidden' : '') + '>' + tH(f.note) + '</div>';
     }
   }
-  return controls ? '<div class="create-flags">' + controls + '</div>' + notes : '';
+  return html;
+}
+
+function _createFormHtml(keys, def, grouped) {
+  if (!keys.length) return '';
+  var groups = grouped ? _createGroupsOf(keys) : [{ k: '', keys: keys }];
+  var titled = groups.length > 1;
+  return groups.map(function(g) {
+    return '<div class="create-form">' +
+      (titled && g.k ? '<div class="create-group-h">' + tH(g.k) + '</div>' : '') +
+      _createRowsHtml(g.keys, def) + '</div>';
+  }).join('');
+}
+
+// Manage, Creator: the stored defaults, drawn from the fields Create draws, in
+// Create's groups and columns, so the two pages are one design and a field
+// added here is added there. A stored value fills its control; the factory
+// value is the grey placeholder (or the empty option), so grey means "what a
+// capture gets when you say nothing", as it does in Create.
+var CREATE_DEFAULTS_ID = 'ms-cr-f-';
+function _createDefaultsFormHtml(d) {
+  var keys = (d.storable_keys || []).filter(function(k) { return k !== 'allow_private' && CREATE_FIELDS[k]; });
+  var head = keys.indexOf('engine') >= 0 ? _createDefaultRowHtml('engine', d) : '';
+  var groups = _createGroupsOf(keys.filter(function(k) { return k !== 'engine'; }));
+  return (head ? '<div class="create-form">' + head + '</div>' : '') + groups.map(function(g) {
+    return '<div class="create-form">' + (g.k ? '<div class="create-group-h">' + tH(g.k) + '</div>' : '') +
+      g.keys.map(function(k) { return _createDefaultRowHtml(k, d); }).join('') + '</div>';
+  }).join('');
+}
+
+// One of several kinds, picked or not: a chip that reads as a word.
+function _createChipHtml(attrs, words) {
+  return '<label class="create-chip create-pick-chip"><input type="checkbox"' + attrs + '><span>' + words + '</span></label>';
+}
+
+function _createSwitchHtml(attrs) {
+  return '<span class="switch switch-sm"><input type="checkbox" role="switch"' + attrs + '><span class="switch-slider"></span></span>';
+}
+
+function _createDefaultRowHtml(key, d) {
+  var f = CREATE_FIELDS[key];
+  var id = CREATE_DEFAULTS_ID + key;
+  var stored = (d.defaults || {})[key];
+  var factory = (d.factory_text || {})[key];
+  var label = tH(f.label);
+  if (f.control === 'check') {
+    // Settings says on and off with a switch, everywhere; in the label column's
+    // grid like every other field here.
+    var on = typeof stored === 'boolean' ? stored : !!f.on;
+    return '<label class="create-flag" id="' + id + '-row">' + label +
+      _createSwitchHtml(' id="' + id + '"' + (on ? ' checked' : '') + ' onchange="_setCreatorDefault(\'' + key + '\', this)"') + '</label>';
+  }
+  if (f.control === 'checks') {
+    var ticked = Array.isArray(stored) ? stored : [];
+    return '<div class="create-flag" id="' + id + '-row" role="group" aria-label="' + escAttr(t(f.label)) + '"><span>' + label + '</span>' +
+      '<span class="create-checks">' + f.options.map(function(o) {
+        return _createChipHtml(' name="' + id + '" value="' + o + '"' + (ticked.indexOf(o) >= 0 ? ' checked' : '') +
+          ' onchange="_setCreatorList(\'' + key + '\', \'' + id + '\')"', tH(f.label + '_' + o));
+      }).join('') + '</span></div>';
+  }
+  var choices = f.control === 'engine' || (f.control === 'select' && !f.customSize) ? f.options : null;
+  if (choices) {
+    var now = typeof stored === 'string' ? stored : '';
+    return '<label class="create-flag" id="' + id + '-row">' + label +
+      '<select class="create-field create-pick' + (now ? '' : ' is-default') + '" id="' + id + '"' +
+      ' onchange="_createMarkDefault(this);_setCreatorField(\'' + key + '\', this)">' +
+      choices.map(function(o) {
+        var words = typeof o === 'string' ? t(f.label + '_' + o) : (o.k ? t(o.k) : o.t);
+        var v = typeof o === 'string' ? o : o.v;
+        return '<option value="' + escAttr(v) + '"' + (v === now ? ' selected' : '') + '>' + esc(words) + '</option>';
+      }).join('') + '</select></label>';
+  }
+  var number = f.control === 'number';
+  var shown = number ? (stored == null ? '' : String(stored)) : (d.defaults_text || {})[key] || '';
+  var ph = number ? f.ph : factory ? factory : (factory === '' ? t('create_none') : (f.phKey ? t(f.phKey) : f.ph || ''));
+  return '<label class="create-flag' + (f.wide ? ' create-flag-wide' : '') + '" id="' + id + '-row">' + label +
+    '<input type="text" class="create-field create-short" id="' + id + '" value="' + escAttr(shown) + '"' +
+    (number ? ' inputmode="decimal"' : '') + _createPhAttrs(f, ph) +
+    ' spellcheck="false" autocapitalize="none" autocorrect="off"' +
+    ' onchange="_setCreatorField(\'' + key + '\', this)"></label>';
 }
 
 // The credit line for a mode whose work is really another project's.
@@ -2118,6 +2475,7 @@ function _createWireAddress() {
   // could've clicked create right away and missed that step"). Typing now asks
   // too, after a pause, so the answer is usually there before the button is.
   src.addEventListener('input', function() {
+    _createSyncScopeWords();
     clearTimeout(_createProbeTimer);
     _createProbeTimer = setTimeout(ask, CREATE_PROBE_DEBOUNCE_MS);
   });
@@ -2127,6 +2485,27 @@ function _createWireAddress() {
   });
 }
 var _createProbeTimer = null;
+
+// The Reach select's options, reworded for the address on screen; back to
+// the general words when there is none. A select still on its default keeps
+// naming it, so the empty option is reworded too.
+function _createSyncScopeWords() {
+  var sel = document.getElementById(CREATE_FIELDS.scope.id);
+  if (!sel) return;
+  var words = _createScopeWords((document.getElementById('create-source') || {}).value);
+  // The empty option is the default: a stored reach, else this section.
+  var stored = CREATE_STORED_VALUES.scope;
+  var blank = stored && CREATE_FIELDS.scope.options.some(function(o) { return o.v === stored; }) ? stored : 'prefix';
+  for (var i = 0; i < sel.options.length; i++) {
+    var o = sel.options[i];
+    var key = o.value || blank;
+    var plain = t('create_scope_' + key);
+    var said = words && words[key] ? words[key] : plain;
+    if (o.textContent !== said) o.textContent = said;
+    // At the root the section is the whole site: one option says it.
+    o.hidden = !!(words && blank === 'prefix' && o.value === 'host' && words.host === words.prefix);
+  }
+}
 
 // Whether the address on screen has been answered by the probe. The engine and
 // the mode are chosen from that answer, so starting a job without it is
@@ -2477,13 +2856,15 @@ function _renderCreatePanel() {
     return;
   }
   if (def.client) { host.innerHTML = '<div class="create-panel">' + _createBookmarksBodyHtml() + '</div>'; return; }
-  var advanced = _createFieldsHtml(def.advanced || [], def);
+  var advanced = _createFormHtml(def.advanced || [], def, true);
   host.innerHTML =
     '<div class="create-panel">' +
       '<div id="create-preview"></div>' +
-      '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
-      '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
-      _createFieldsHtml(def.flags || [], def) +
+      '<div class="create-form">' +
+        '<label class="create-flag create-flag-wide" id="create-title-row">' + tH('create_pv_title') +
+          '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '"></label>' +
+        _createRowsHtml(def.flags || [], def) +
+      '</div>' +
       (advanced
         ? '<details class="create-adv">' +
             '<summary>' + tH('create_advanced') + '</summary>' + advanced +
@@ -2499,6 +2880,7 @@ function _renderCreatePanel() {
   _createRestoreMode();
   _createSyncFormat();
   _createSyncEngine();
+  _createSyncScopeWords();
   _renderCreatePreview();
 }
 
@@ -2548,7 +2930,7 @@ var _createAutoProbing = false;
 
 function _createAutoPickEngine(p) {
   if (_createEngineTouched || _createAutoProbing) return false;
-  var want = _createEngineFor(p, _createCapabilityReady('browser') === true);
+  var want = _createEngineFor(p, _createCapabilityReady('browser') === true, _createStoredEngine());
   var have = _createCheckedRadio(CREATE_FIELDS.engine.id);
   if (want === have) return false;
   var input = document.querySelector('input[name="' + CREATE_FIELDS.engine.id + '"][value="' + want + '"]');
@@ -2615,6 +2997,7 @@ function _createFormFields() {
     fields[key] = !node ? ''
       : f.control === 'check' ? !!node.checked
       : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : f.control === 'checks' ? _createTickedValues(f.id)
       : f.customSize && node.value === '__custom'
         ? ((document.getElementById(f.id + '-custom') || {}).value || '').trim()
       : node.value;
@@ -2633,6 +3016,19 @@ function _createSizeSelect(sel) {
 }
 
 // A radio group has no value of its own — the checked input has it.
+// The values of a checks row's ticked boxes, in their drawn order.
+function _createTickedValues(name) {
+  var boxes = document.querySelectorAll('input[name="' + name + '"]');
+  var out = [];
+  for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
+  return out;
+}
+
+function _createSetTicked(name, values) {
+  var boxes = document.querySelectorAll('input[name="' + name + '"]');
+  for (var i = 0; i < boxes.length; i++) boxes[i].checked = (values || []).indexOf(boxes[i].value) >= 0;
+}
+
 function _createCheckedRadio(name) {
   var hit = document.querySelector('input[name="' + name + '"]:checked');
   return hit ? hit.value : '';
@@ -2689,8 +3085,12 @@ function _renderCreatePreview() {
         return '<li><bdi>' + esc(u.path) + '</bdi> \u00b7 ' + tH('create_folder_why_' + u.reason) + '</li>';
       }).join('') + '</ul>';
   }
-  host.innerHTML = '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' +
-    warn + html + note + '</div>';
+  // What the probe found for the title is what an empty Title field means.
+  var title = document.getElementById('create-title');
+  if (title) title.placeholder = p.title || t('create_ph_title');
+  host.innerHTML = (warn || html || note)
+    ? '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' + warn + html + note + '</div>'
+    : '';
 }
 
 // Ask the server what is actually there. Fired when the source stops changing,
@@ -3120,6 +3520,7 @@ function _createIngest(data) {
   // the checkboxes' initial state, so a default the admin flipped there is
   // what a fresh form shows. An explicit choice stashed for this mode still
   // wins when the stash restores over the render.
+  _createTakeDefaults(data);
   if (data.capture_defaults) {
     if (typeof data.capture_defaults.block_ads === 'boolean') {
       CREATE_FIELDS.block_ads.on = data.capture_defaults.block_ads;
@@ -3434,7 +3835,7 @@ function _createSyncPhases(s) {
   for (var i = 0; i < kids.length; i++) {
     var failed = s.done && !s.ok && !s.cancelled;
     var state = i < step ? 'done'
-      : (i === step ? (failed ? 'failed' : (s.done ? 'done' : 'active')) : 'pending');
+      : (i === step ? (failed ? 'failed' : (s.done ? (s.ok ? 'complete' : 'done') : 'active')) : 'pending');
     kids[i].setAttribute('data-state', state);
     if (state === 'active') kids[i].setAttribute('aria-current', 'step');
     else kids[i].removeAttribute('aria-current');
@@ -3484,6 +3885,10 @@ function _createSyncPhases(s) {
 function _createSyncMetrics(s) {
   var host = document.getElementById('create-metrics');
   if (!host) return;
+  // Once the ZIM is in the library its card carries the count and the size,
+  // and What's inside the breakdown; live counters beside them would be the
+  // same numbers a third time.
+  if (s.done && s.ok) { host.innerHTML = ''; return; }
   var counts = _createViz.counts;
   var html = '';
   for (var i = 0; i < CREATE_COUNT_KEYS.length; i++) {
@@ -4087,7 +4492,7 @@ function _renderCreateRecent() {
           '<span class="create-hist-why">' +
             (h.gone ? tH('create_hist_gone')
               : (CREATE_HISTORY_KEYS[state] ? tH(CREATE_HISTORY_KEYS[state]) : '')) +
-            (state === 'failed' && h.error ? ' — ' + esc(h.error) : '') +
+            (state === 'failed' && h.error ? '. ' + esc(h.error) : '') +
           '</span>' +
         '</span>' +
         (state === 'ok' && h.result && !h.gone

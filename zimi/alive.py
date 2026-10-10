@@ -61,6 +61,7 @@ import urllib.parse
 
 import zimi.server as _srv
 from zimi.creator import (
+    OFFLINE_REFUSAL,
     CreateError,
     LANGUAGE_AUTO,
     _finish_output,
@@ -71,6 +72,7 @@ from zimi.creator import (
     scratch_dir,
 )
 from zimi import zimpatch
+from zimi.capturegate import report_left_out
 from zimi.warc import WarcWriter
 from zimi.zimwriter import _slug, announce_shot, scraper_string, shot_verdict
 
@@ -186,6 +188,9 @@ class AliveCapture:
         warc_path=None,
         block_ads=None,
         capture_variants=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
         from zimi.renderer import ALIVE_EXTRA_WAIT, RenderedSession
 
@@ -221,6 +226,9 @@ class AliveCapture:
                 # came out 41% smaller and replayed no worse.
                 block_ads=block_ads,
                 capture_variants=capture_variants,
+                user_agent=user_agent,
+                mobile=mobile,
+                page_timeout=page_timeout,
             )
         except BaseException:
             # A half-constructed engine is one nobody will ever close, so the
@@ -347,7 +355,9 @@ def _convert(archive, out, *, zim_name, note, **fields):
     return out
 
 
-def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None, stopped=None):
+def finish_zim(
+    out, *, seed_url, pages, assets, live_shot, note=None, stopped=None, publisher=None
+):
     """Put into the ZIM what only this capture could know.
 
     warc2zim wrote the file and takes no arbitrary metadata, so this is where
@@ -385,7 +395,14 @@ def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None, stopped=No
             log.debug("no packaged picture for %s: %s", out, e)
         return taken.get("shot")
 
-    patched = zimpatch.patch(out, record, live_shot=live_shot, shoot=shoot, note=say)
+    patched = zimpatch.patch(
+        out,
+        record,
+        live_shot=live_shot,
+        shoot=shoot,
+        publisher=publisher or "Zimi",
+        note=say,
+    )
     packaged = taken.get("shot")
     if patched and packaged and live_shot:
         _, short = shot_verdict(live_shot, packaged)
@@ -455,11 +472,12 @@ def _capped(text, limit, fallback=None):
     return value[:limit].strip() or None
 
 
-def _tags():
-    """The tag that says what kind of ZIM this is. A replay behaves unlike an
-    article ZIM — it opens into a replay shell, its search is warc2zim's, and a
-    reader that knows which it is holding can say so."""
-    return "_ftindex:yes;_category:other;zimi:alive"
+def _tags(extra=()):
+    """The tag that says what kind of ZIM this is, and the ones the capture was
+    given. A replay behaves unlike an article ZIM — it opens into a replay
+    shell, its search is warc2zim's, and a reader that knows which it is
+    holding can say so."""
+    return ";".join(["_ftindex:yes", "_category:other", "zimi:alive", *(extra or ())])
 
 
 def create_alive_page_zim(
@@ -471,9 +489,14 @@ def create_alive_page_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     extra_wait=None,
     block_ads=None,
     capture_variants=None,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
     register=False,
     progress=None,
     **_ignored,
@@ -490,11 +513,7 @@ def create_alive_page_zim(
 
     note = progress or (lambda _m: None)
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Alive capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     require_alive()
@@ -506,6 +525,9 @@ def create_alive_page_zim(
         extra_wait=extra_wait,
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     out = None
     blocked = {}
@@ -525,6 +547,7 @@ def create_alive_page_zim(
         # archive — so the archive has to be closed first. Closing the session
         # here rather than in the `finally` also means the conversion, which is
         # the long part, does not run with a Chromium sitting idle beside it.
+        report_left_out(note)
         capture.close()
         _convert(
             capture.warc_path,
@@ -535,8 +558,9 @@ def create_alive_page_zim(
             description=_capped(description, MAX_ZIM_DESCRIPTION, parsed.netloc),
             main_url=final_url,
             language=language,
-            tags=_tags(),
+            tags=_tags(tags),
             creator_name=creator_name,
+            publisher=publisher,
             source=final_url,
         )
         pictures = finish_zim(
@@ -546,6 +570,7 @@ def create_alive_page_zim(
             assets=capture.count,
             live_shot=capture.last_shot,
             note=note,
+            publisher=publisher,
         )
     except BaseException:
         capture.discard()
@@ -578,6 +603,8 @@ def create_alive_site_zim(
     description=None,
     language=LANGUAGE_AUTO,
     creator_name="Zimi",
+    publisher=None,
+    tags=None,
     max_pages=None,
     max_depth=None,
     max_bytes=None,
@@ -587,6 +614,12 @@ def create_alive_site_zim(
     extra_wait=None,
     block_ads=None,
     capture_variants=None,
+    scope=None,
+    time_limit=None,
+    sitemap=None,
+    user_agent=None,
+    mobile=False,
+    page_timeout=None,
     register=False,
     progress=None,
     stop=None,
@@ -633,11 +666,7 @@ def create_alive_site_zim(
     timeout = DEFAULT_FETCH_TIMEOUT if timeout is None else timeout
 
     if is_offline():
-        raise CreateError(
-            "ZIMI_OFFLINE is set — refusing to fetch from the network. "
-            "Alive capture needs internet access; folder mode "
-            "(zimi create <folder>) works fully offline."
-        )
+        raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
@@ -669,6 +698,9 @@ def create_alive_site_zim(
         extra_wait=extra_wait,
         block_ads=block_ads,
         capture_variants=capture_variants,
+        user_agent=user_agent,
+        mobile=mobile,
+        page_timeout=page_timeout,
     )
     spool_dir = None
     out = None
@@ -715,6 +747,11 @@ def create_alive_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=scope,
+                ignore_robots=ignore_robots,
+                timeout=timeout,
+                time_limit=time_limit,
+                sitemap=sitemap,
             )
             del seed_text
             note(
@@ -722,6 +759,7 @@ def create_alive_site_zim(
                 f"({capture.count} responses, {capture.warc.records} records)"
             )
             blocked = report_blocked(capture, note)
+            report_left_out(note)
             capture.close()  # the archive must be closed before it is read
             _convert(
                 capture.warc_path,
@@ -732,8 +770,9 @@ def create_alive_site_zim(
                 description=_capped(description, MAX_ZIM_DESCRIPTION, parsed.netloc),
                 main_url=seed_url,
                 language=language,
-                tags=_tags(),
+                tags=_tags(tags),
                 creator_name=creator_name,
+                publisher=publisher,
                 source=seed_url,
             )
             # The seed page's live picture, taken on the first fetch of the
@@ -750,6 +789,7 @@ def create_alive_site_zim(
                 live_shot=capture.last_shot,
                 note=note,
                 stopped=reason,
+                publisher=publisher,
             )
     except BaseException:
         capture.discard()

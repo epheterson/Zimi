@@ -257,7 +257,7 @@ function _starLinkKey(idx) {
   var nm = _STAR_NAMES[idx];
   if (!nm) return null;
   if (_STAR_LINK_OVERRIDES[nm]) return _STAR_LINK_OVERRIDES[nm];
-  return 'star:' + nm.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+  return _almStarKey(nm);
 }
 
 // "r,g,b" tint for a star from its B–V colour index: hot blue-white stars have
@@ -1597,7 +1597,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   var loc = _getLocation();
   var s = {
     canvas: canvas, dpr: dpr, W: canvas.width, H: canvas.height, cssW: w, scale: _skyClamp(w / 600, 0.85, 1.15),
-    lat: lat, lon: lon, center: _skyHeading != null ? _skyHeading : (lat >= 0 ? 180 : 0),
+    lat: lat, lon: lon, center: lat >= 0 ? 180 : 0,
     stored: loc.stored && loc.lat === lat && loc.lon === lon, name: loc.name || '',
     moonAnim: null, twinkle: 0, bodies: [], baseBodies: [],
     actors: prev ? prev.actors : [], base: prev ? prev.base : null, baseDirty: true,
@@ -1741,9 +1741,11 @@ function _skyBodyKey(b) {
   if (b.type === 'planet') return 'planet:' + b.name.toLowerCase();
   if (b.type === 'star') return _starLinkKey(b.idx);
   if (b.type === 'iss') return 'term:iss';
-  if (b.type === 'meteor') return 'term:meteor_shower';
-  return null;
+  return SKY_LIFE_KEYS[b.type] || null;
 }
+// What lives on the horizon and in the air, and its article (almanac-links.js SKY).
+var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', birds: 'sky:birds',
+  meteor: 'sky:meteor', aurora: 'sky:aurora' };
 var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
   boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
@@ -1832,68 +1834,15 @@ function _skyTapAt(clientX, clientY) {
   return _skyAct(hit);
 }
 
-// Looking round: a sideways drag turns the view the whole way round (the
-// compass on the horizon turns with it); an up or down swipe still scrolls
-// the page (touch-action: pan-y). The bearing faced is kept while the
-// Almanac is open. Arrow keys turn it from the keyboard.
-var _skyHeading = null;
-var SKY_DRAG_SLOP_PX = 6, SKY_KEY_TURN_DEG = 15, SKY_CLICK_AFTER_TURN_MS = 400;
-function _skyTurn(dDeg) {
-  var s = _skyState;
-  if (!s) return;
-  s.center = _skyHeading = ((s.center + dDeg) % 360 + 360) % 360;
-  s.baseDirty = true;
-  _skyHideTip();
-  _skyCaption(s);
-  _skyKick();
-}
-function _skyBindLook(canvas) {
-  var press = null;
-  canvas.addEventListener('pointerdown', function (e) {
-    if (e.button != null && e.button !== 0) return;
-    press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, turning: false };
-  });
-  canvas.addEventListener('pointermove', function (e) {
-    if (!press || e.pointerId !== press.id) return;
-    var dx = e.clientX - press.x, dy = e.clientY - press.y;
-    if (!press.turning) {
-      if (Math.hypot(dx, dy) < SKY_DRAG_SLOP_PX) return;
-      if (Math.abs(dy) > Math.abs(dx)) { press = null; return; }   // the page's scroll
-      press.turning = true;
-      canvas.classList.add('alm-sky-turning');
-      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-    }
-    var s = _skyState;
-    if (s) _skyTurn(-(e.clientX - press.lx) / s.cssW * SKY_SPAN_DEG);
-    press.lx = e.clientX;
-  });
-  function end(e) {
-    if (!press || e.pointerId !== press.id) return;
-    // A turn is not a tap: the click that follows it is not one either.
-    if (press.turning) canvas._skyTurnedAt = performance.now();
-    canvas.classList.remove('alm-sky-turning');
-    press = null;
-  }
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('keydown', function (e) {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    _skyTurn(e.key === 'ArrowLeft' ? -SKY_KEY_TURN_DEG : SKY_KEY_TURN_DEG);
-  });
-}
-
 function _skyBindTaps(canvas) {
   if (canvas._skyTaps) return;
   canvas._skyTaps = true;
-  _skyBindLook(canvas);
   canvas.addEventListener('click', function (e) {
-    if (performance.now() - (canvas._skyTurnedAt || -1e9) < SKY_CLICK_AFTER_TURN_MS) return;
     _skyTapAt(e.clientX, e.clientY);
   });
   canvas.addEventListener('mousemove', function (e) {
     var r = canvas.getBoundingClientRect(), hit = _skyHitTest(e.clientX - r.left, e.clientY - r.top);
-    canvas.style.cursor = hit ? 'pointer' : 'grab';
+    canvas.style.cursor = hit ? 'pointer' : '';
   });
   var tip = document.getElementById('almanac-sky-tip');
   if (tip && !tip._skyBound) {

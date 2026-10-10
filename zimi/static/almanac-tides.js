@@ -564,14 +564,14 @@ function _atSkySeaLines(sea) {
 // Re-render for a new focus instant or place (almanac.js _almRepaintFocus).
 function _atRepaint() { _atRender(); }
 
-function _atSection(title, body, cls) {
+function _atSection(title, body, cls, link) {
   return '<section class="almanac-section at-section' + (cls ? ' ' + cls : '') + '">' +
-    '<div class="almanac-section-title">' + _almEsc(title) + '</div>' + body + '</section>';
+    '<div class="almanac-section-title">' + (link ? _alLink(link, _almEsc(title)) : _almEsc(title)) + '</div>' + body + '</section>';
 }
 
 function _atEmptyHtml() {
   return _atSection(t('alm_tide_title'),
-    _almPlaceInviteHtml() + _atSearchHtml());
+    _almPlaceInviteHtml() + _atSearchHtml(), '', 'term:tide');
 }
 
 function _atSearchHtml() {
@@ -695,7 +695,7 @@ function _atTideHtml(st, far) {
   var focus = _almFocusInstant().getTime();
   var farHtml = far ? '<p class="at-quiet at-far">' + _almEsc(t('alm_tide_nearest', { name: _atTideName(st), d: _atDistance(st.km) })) + '</p>' : '';
   if (_atBeyond(focus)) {
-    return _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_tide_beyond', { n: AT_TIDE_YEARS })) + '</p>', 'at-tides');
+    return _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_tide_beyond', { n: AT_TIDE_YEARS })) + '</p>', 'at-tides', 'term:tide');
   }
   var day = _atTideDay(st, focus);
   var next = day.p.extremes(focus, focus + AT_NEXT_WINDOW_MS)[0];
@@ -717,7 +717,7 @@ function _atTideHtml(st, far) {
     _atStationLine('tide', _atTideName(st), st.km, true) +
     (_at.picking === 'tide' ? _atPickerHtml('tide') : '') +
     '<p class="at-note">' + _almEsc(note) + ' <button type="button" class="at-link" onclick="_almRefOpen(\'tides\')">' + _almEsc(t('alm_tide_month')) + '</button></p>';
-  return _atSection(t('alm_tide_title'), body, 'at-tides');
+  return _atSection(t('alm_tide_title'), body, 'at-tides', 'term:tide');
 }
 
 // The day's water as one shape: midnight to midnight in the harbour's time,
@@ -965,7 +965,7 @@ function _atWhyHtml(st, focus) {
   var s = _atWhyState(st, focus);
   return '<div class="at-why">' +
     '<div class="at-fig" id="at-fig">' + _atFigSvg(st, focus) + '</div>' +
-    '<div class="at-why-text"><div class="at-why-k">' + _almEsc(t('alm_tide_why_' + s.kind)) + '</div>' +
+    '<div class="at-why-text"><div class="at-why-k">' + (s.kind === 'spring' || s.kind === 'neap' ? _lterm('tide', _almEsc(t('alm_tide_why_' + s.kind))) : _almEsc(t('alm_tide_why_' + s.kind))) + '</div>' +
     '<p class="at-why-d">' + _almEsc(t(s.desc, s.phase ? { phase: _localMoonName(s.phase) } : undefined)) + '</p></div></div>' +
     '<p class="at-why-n">' + _almEsc(t('alm_tide_fig_note')) + '</p>';
 }

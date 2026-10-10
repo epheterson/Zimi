@@ -178,10 +178,19 @@ Eric: "Using language selector should affect the content like in dictionary if a
 - A Speaking switch (Eric, 2026-10-06: "a Speaking toggle or something to turn all this off and hide it and offer to delete any download stuff. Some way that hides it from everywhere even reader view"): off hides Say, the voice menus, Discover's speaker, Read aloud and Settings > Voices, and offers to remove the downloaded voices. Next drop.
 - Device voice under the ringer switch (Eric, 2026-10-06: "I can't get device to play right now we gotta find a way to bust that ringer toggle"): iOS mutes speechSynthesis when the phone is silenced; find a way through, or say so on the Device row. Next drop.
 - Books read aloud (Eric, 2026-10-06: "book reading someday with highlighting place in book while reading"): the book reader speaks a chapter in the chosen voice and highlights the sentence being read, keeping your place. Builds on Read aloud in the natural voice.
+- Almanac tables: every entry links to its article, and a second accuracy pass (Eric, 2026-10-06: "We should link all the stuff in the tables to their wikis and do another accuracy check, but later on both").
 - A shorter apps list (Eric, 2026-10-03: "Apps list is getting big maybe when it's all it's a short view? Not sure what I mean"): when every app is shown, a compact view of them.
 - Reader View's own voice (Eric, 2026-10-03: "We could actually drop both preferred and remember toggle by just remembering… one for dictionary and one for reader views and that's that."): 1.13.0 drops Settings' Preferred voice and its remember switch; Say remembers the voice last used in the Dictionary. Reader View (Read aloud) gets its own remembered voice, picked where it plays, when Read aloud moves to the server's voices.
 - Tables that show how to use them (Eric: "like a lil sundial visualizer in that page that can print out too"): a visualization per table, printable.
 - The live sky by season (Eric, 2026-10-03: "Where do we say the season and maybe the live sky should change by season"): the season is said in the live sky's caption from 1.13.0; the scene itself (bare trees, snow, long summer grass, by hemisphere and latitude) is parked.
+
+## From 1.13.1 (Eric, 2026-10-08)
+
+- Places across the whole app. "Someday we can align on destinations travel and places across the whole app and do another pass to link them somewhere then." Maps, the Almanac's 494 cities, the chosen place, travel guides (Wikivoyage) and wiki articles agree on one notion of a place and link to it. The Almanac Q-ID pass left its cities unlinked for this (docs/plans/2026-10-08-almanac-qids.md).
+- Signed-in capture: a remote browser view in Create, the person signs in, that session drives one capture (1.14 lead candidate; docs/plans/2026-10-07-capture-options.md). Cookies are the stopgap.
+- Parallel fetching in the builtin crawler: `--workers` is zimit-only until the crawl keeps one politeness clock, robots policy and exact page and byte budgets across workers.
+- Deploy skew: a stale cached shell with a freshly served lazy module (create.js) shows raw string keys until a reload. The server ignores the `?v=` hash it rewrote, so an old shell gets new code with old strings.
+- Fast-engine live picture: honors the user agent, not phone mode, and still loads media the capture leaves out.
 
 ## Killed, and staying killed
 

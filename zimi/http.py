@@ -26,6 +26,8 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
 from zimi import bookpages as _bookpages
+from zimi import manage as _manage_mod
+from zimi import netguard as _netguard
 from zimi import sso as _sso
 from zimi import users as _users
 from zimi import zimblob as _zimblob
@@ -78,8 +80,9 @@ _TRUSTED_PROXY_CIDRS = _load_trusted_proxy_cidrs()
 # from the public routing table. Python's ipaddress.is_private is False for it,
 # so without this Zimi classifies Tailscale peers as PUBLIC and locks management
 # on them (#36 — the lock "came and went" as the reporter switched between LAN
-# and Tailscale).
-CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+# and Tailscale). Defined in zimi.netguard, which also keeps web captures
+# off it.
+CGNAT_NET = _netguard.CGNAT_NET
 
 # Default on. An inbound TCP connection with a 100.64/10 source cannot complete a
 # handshake from the public internet — the return path to that range is
@@ -313,6 +316,8 @@ _PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
     )
 )
 _PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
+# What a fresh install answers before its setup is done: the page itself.
+_SETUP_SURFACE = frozenset(("/manage/has-password", "/manage/access", "/manifest.json", "/sw.js"))
 
 
 # Asked by the shell once for every wiki article opened (its language menu,
@@ -2122,6 +2127,31 @@ class ZimHandler(BaseHTTPRequestHandler):
         self._json(401, {"error": "authentication required", "login_required": True})
         return True
 
+    def _setup_gate_block(self, parsed):
+        """A fresh install answers nothing but its setup until its owner has
+        said who can change settings (manage.init_setup_gate). Returns True
+        (and sends a 503) when this request has to wait. The shell, its files
+        and the setup endpoints stay open so the page can be shown; whoever
+        proves ownership (manage._owner_proof: this machine in the first
+        hour, the setup key's holder, the home network in the first hour)
+        keeps the API."""
+        if not _manage_mod.setup_pending():
+            return False
+        path = parsed.path
+        if (
+            path in _PRIVATE_LOGIN_SURFACE_EXACT
+            or path.startswith("/static/")
+            or path in _SETUP_SURFACE
+        ):
+            return False
+        if _manage_mod._owner_proof(self):
+            return False
+        if self._wants_html():
+            self._html(503, SEARCH_UI_HTML, vary="Accept, Sec-Fetch-Dest")
+            return True
+        self._json(503, {"error": "setup_pending"})
+        return True
+
     def _wants_html(self):
         """Whether this request came from a browser navigating, not a fetch.
 
@@ -2153,6 +2183,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         # way out, including the early returns below.
         _srv.set_request_allow(_users.request_allow(self))
 
+        if self._setup_gate_block(parsed):
+            return
         # Private mode: block anonymous reads before any handler runs.
         try:
             if self._private_access_block(parsed):
@@ -3166,6 +3198,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         if self._sso_block():
             return
         _srv.set_request_allow(_users.request_allow(self))
+        if self._setup_gate_block(parsed):
+            return
         try:
             if self._private_access_block(parsed):
                 return
@@ -3380,6 +3414,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         _sso.clear_request_cache(self)
         if self._sso_block():
+            return
+        if self._setup_gate_block(parsed):
             return
         # Rate limit write endpoints
         retry_after = _check_rate_limit(
@@ -4173,12 +4209,25 @@ class ZimHandler(BaseHTTPRequestHandler):
     # disqualifies a claim of being ON the host, so the list is deliberately
     # broader than the ones _client_ip actually reads: an unknown proxy that
     # announces itself in any of these is still a proxy.
+    # Any header a hop adds to say it passed a request along. Every
+    # X-Forwarded-* counts too (_was_forwarded), whichever one a proxy sends.
     _FORWARDED_HEADERS = (
         "X-Forwarded-For",
         "X-Real-IP",
         "Forwarded",
+        "Via",
         "CF-Connecting-IP",
+        "CF-Connecting-IPv6",
+        "CF-Ray",
         "True-Client-IP",
+        "X-Client-IP",
+        "X-Cluster-Client-IP",
+        "X-Original-Forwarded-For",
+        "Fastly-Client-IP",
+        "X-Envoy-External-Address",
+        "Tailscale-User-Login",
+        "Tailscale-User-Name",
+        "Tailscale-Funnel-Request",
     )
 
     def _was_forwarded(self):
@@ -4189,7 +4238,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         address — but the fact that a hop announced itself is information the
         hop had no reason to fake, and it is enough to know this request did
         not come straight off the local network."""
-        return any(self.headers.get(h) for h in self._FORWARDED_HEADERS)
+        return any(self.headers.get(h) for h in self._FORWARDED_HEADERS) or any(
+            k.lower().startswith("x-forwarded-") for k in self.headers.keys()
+        )
 
     def _is_direct_private_client(self):
         """A private-network peer that reached Zimi directly.
@@ -5030,6 +5081,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         # password as its manage Bearer token (unchanged).
         from zimi import manage as _manage
 
+        # Settings kept inside the network: the admin password is not even
+        # checked from outside it (a user account above still signs in), and
+        # the answer says why rather than "wrong password".
+        if _manage._get_manage_password_hash() and not _manage.settings_reachable(self):
+            return self._json(403, {"error": _manage.OUTSIDE_LOCKED})
         if _manage.verify_admin_credentials(username, password):
             token = _users.create_admin_session()
             log.info("Admin login (password account)")

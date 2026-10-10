@@ -75,7 +75,17 @@ import time
 import urllib.parse
 
 from zimi.blocklist import host_of as _host_of, load as _load_blocklist
+from zimi.capturegate import current_cookies, current_leave_out
+from zimi.captureproxy import CHROMIUM_PROXIED_ARGS
 from zimi.creator import (
+    MOBILE_VIEWPORT,
+    capture_user_agent,
+    PRIVATE_REFUSED,
+    PrivateAddressRefused,
+    capture_proxy_refused,
+    capture_proxy_url,
+    check_public,
+    current_private_guard,
     CreateError,
     _CSS_URL_RE,
     _fmt_bytes,
@@ -553,17 +563,23 @@ _LAUNCH_ARGS = ["--disable-dev-shm-usage", "--disable-gpu", "--mute-audio"]
 _NO_SANDBOX = "--no-sandbox"
 
 
-def _launch(chromium):
-    """Launch with the sandbox; fall back without it, loudly, once."""
+def _launch(chromium, proxy=None):
+    """Launch with the sandbox; fall back without it, loudly, once. With
+    ``proxy``, every request the browser makes goes through it."""
+    args = list(_LAUNCH_ARGS)
+    options = {}
+    if proxy:
+        args += CHROMIUM_PROXIED_ARGS
+        options["proxy"] = {"server": proxy}
     try:
-        return chromium.launch(args=_LAUNCH_ARGS)
+        return chromium.launch(args=args, **options)
     except Exception as e:
         log.info(
             "chromium would not start sandboxed (%s) — retrying without the "
             "sandbox, which is expected inside a container",
             _playwright_reason(e),
         )
-        return chromium.launch(args=_LAUNCH_ARGS + [_NO_SANDBOX])
+        return chromium.launch(args=args + [_NO_SANDBOX], **options)
 
 
 # ── the page preparation script ─────────────────────────────────────────────
@@ -1056,6 +1072,11 @@ class RenderedSession:
     thread is wedged inside a navigation. It signals the driver process
     instead, which is a thing any thread may do."""
 
+    # What a capture was given to hold back or to send (see zimi.capturegate);
+    # none unless __init__ found some in force.
+    _cookies = None
+    _leave_out = None
+
     def __init__(
         self,
         *,
@@ -1068,7 +1089,27 @@ class RenderedSession:
         block_ads=None,
         capture_variants=None,
         color_scheme=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
+        # How this session presents itself and how long it waits on a page.
+        # ``user_agent`` replaces the whole string (the default is Chromium's
+        # own with Zimi's appended, see _user_agent); ``mobile`` renders at a
+        # phone's size with touch, and sends a phone's UA unless one was typed.
+        self._mobile = bool(mobile)
+        self._typed_user_agent = capture_user_agent(user_agent, mobile)
+        if self._mobile:
+            viewport = MOBILE_VIEWPORT
+        self._nav_timeout = float(page_timeout) if page_timeout else NAV_TIMEOUT
+        # The private-address rule in force where this session was made (a web
+        # job), or None. Asked of every request the browser makes.
+        self._private_guard = current_private_guard()
+        # The cookies this capture was given, for the seed's host and its
+        # subdomains only (the browser does the matching), and what it leaves
+        # out. Both ride the capture's context; see zimi.capturegate.
+        self._cookies = current_cookies()
+        self._leave_out = current_leave_out()
         # Which face of the site to capture. A site with its own dark mode
         # serves a different page depending on this, and a capture taken in
         # light while the person browses in dark comes out looking nothing
@@ -1171,7 +1212,7 @@ class RenderedSession:
             # only other launch in this module is the one-shot availability
             # probe, cached for the life of the process.)
             self._pw = sync_playwright().start()
-            self._browser = _launch(self._pw.chromium)
+            self._browser = _launch(self._pw.chromium, capture_proxy_url())
         except Exception as e:
             self._cleanup_spool()
             self._stop_playwright()
@@ -1190,17 +1231,52 @@ class RenderedSession:
         self._driver_pid = _driver_pid(self._pw)
         context_options = {
             "viewport": {"width": self._viewport[0], "height": self._viewport[1]},
-            "user_agent": self._user_agent(),
+            "user_agent": self._typed_user_agent or self._user_agent(),
             "ignore_https_errors": False,
         }
+        if self._mobile:
+            context_options.update(is_mobile=True, has_touch=True)
         if self._color_scheme in ("dark", "light"):
             context_options["color_scheme"] = self._color_scheme
         self._context = self._browser.new_context(**context_options)
-        self._context.set_default_timeout(int(NAV_TIMEOUT * 1000))
+        self._context.set_default_timeout(int(self._nav_timeout * 1000))
+        self._install_cookies()
         self._install_blocking()
         with _sessions_lock:
             _sessions.append(self)
         return self
+
+    def _install_cookies(self):
+        """Give the context its cookies, bound to the seed's host. Said
+        without them: an error from here must not carry a credential."""
+        if not self._cookies:
+            return
+        # One at a time: a browser refuses a cookie its rules reject (a
+        # __Host- one on a plain-http seed, say), and one refusal must not
+        # cost the capture the rest. Said without any value.
+        taken = 0
+        for cookie in self._cookies.for_browser():
+            try:
+                self._context.add_cookies([cookie])
+                taken += 1
+            except Exception:
+                log.debug("the browser refused the cookie %r", cookie["name"])
+        if taken < len(self._cookies.for_browser()):
+            self._note(
+                f"note: the browser took {taken} of {len(self._cookies.for_browser())} cookies"
+            )
+        if not taken:
+            raise CreateError("the browser would not take those cookies")
+
+    def _left_out(self, response, url):
+        """Whether the capture leaves this resource out: by its address, then by
+        the type and size its headers declare. Judged before a body is read."""
+        leave = self._leave_out
+        if leave is None:
+            return False
+        return leave.skips_url(url) or leave.skips_response(
+            _mimetype_of(response, url), _declared_size(response) or None, url
+        )
 
     def _install_blocking(self):
         """Refuse the ad and tracker traffic, on the CONTEXT rather than on
@@ -1214,21 +1290,27 @@ class RenderedSession:
         A failure to install is a capture without blocking, logged — never a
         capture that does not happen. Blocking makes a capture better and it is
         not what anyone asked for when they asked for a capture."""
-        if not self._block_ads or self._context is None:
+        if self._context is None:
             return
-        self._blocklist = _load_blocklist()
-        if not self._blocklist:
-            log.info("ad blocking is on but the list is empty; nothing to refuse")
+        if self._block_ads:
+            self._blocklist = _load_blocklist()
+            if not self._blocklist:
+                log.info("ad blocking is on but the list is empty; nothing to refuse")
+        if not self._blocklist and self._private_guard is None:
             return
         try:
             self._context.route("**/*", self._route)
         except Exception as e:
-            log.warning("could not install the ad blocker: %s", _playwright_reason(e))
+            log.warning("could not install the request filter: %s", _playwright_reason(e))
             self._blocklist = None
+            if self._private_guard is not None:
+                # A web capture that cannot be held to the rule does not run.
+                raise CreateError("could not restrict this capture to public addresses")
 
     def _route(self, route):
         """One request, judged. Abort what is on the list, let everything else
-        through untouched.
+        through untouched. A capture held to public addresses fails closed: what
+        cannot be judged is aborted.
 
         ``continue_`` rather than ``fallback`` because this is the only handler
         on the context, and every exception here is swallowed for a reason that
@@ -1239,6 +1321,11 @@ class RenderedSession:
         a request this cannot even ask about is one it must still answer."""
         url = ""
         try:
+            if self._private_guard is not None:
+                url = route.request.url or ""
+                if self._private_guard.refuses(_host_of(url)):
+                    route.abort(BLOCK_ABORT_CODE)
+                    return
             if self._blocklist is not None:
                 url = route.request.url or ""
                 host = _host_of(url)
@@ -1251,7 +1338,15 @@ class RenderedSession:
                     self.blocked_hosts.add(host)
                     return
         except Exception as e:
-            log.debug("ad blocker could not judge %s: %s", url or "a request", e)
+            log.debug("could not judge %s: %s", url or "a request", e)
+            if self._private_guard is not None:
+                # A capture held to public addresses fails closed: a request
+                # that could not be judged is not one that may go out.
+                try:
+                    route.abort(BLOCK_ABORT_CODE)
+                except Exception as abort_error:
+                    log.debug("could not abort %s: %s", url, abort_error)
+                return
         try:
             route.continue_()
         except Exception as e:
@@ -1389,18 +1484,27 @@ class RenderedSession:
         asked for this capture could act on."""
         if self._context is None:
             raise CreateError(RENDERER_MISSING)
+        # Said plainly, up front, for the address that was asked for; every
+        # later request (a redirect, a subresource) is refused by the route.
+        check_public(url, self._private_guard)
         page = self._context.new_page()
         responses = []
         # A plain function, not `responses.append`: Playwright decorates the
         # handler it is given, and a builtin method has nowhere to keep the
         # attribute it wants to put there.
         page.on("response", lambda response: responses.append(response))
+        refused_before = capture_proxy_refused()
         try:
             try:
                 landed = page.goto(
-                    url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                    url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
                 )
             except Exception as e:
+                # A redirect the capture proxy refused fails the navigation; it
+                # is said as the rule, not as a network error.
+                refused = sorted(capture_proxy_refused() - refused_before)
+                if refused:
+                    raise PrivateAddressRefused(PRIVATE_REFUSED.format(host=refused[0]))
                 raise CreateError(f"cannot render {url}: {_playwright_reason(e)}")
             # The page's own bytes, taken now rather than after the settling.
             #
@@ -1584,7 +1688,7 @@ class RenderedSession:
             responses = []
             page.on("response", lambda response: responses.append(response))
             page.goto(
-                url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
             )
             self._quiet(page, QUIET_TIMEOUT)
             # A site that honours the media query has already changed by now.
@@ -1643,7 +1747,7 @@ class RenderedSession:
         try:
             page = self._context.new_page()
             page.goto(
-                url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
+                url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
             )
             self._quiet(page, QUIET_TIMEOUT)
             self._reveal(page)
@@ -1722,7 +1826,7 @@ class RenderedSession:
             page.goto(
                 origin + mainpath,
                 wait_until="domcontentloaded" if settle else "load",
-                timeout=int(NAV_TIMEOUT * 1000),
+                timeout=int(self._nav_timeout * 1000),
             )
             if settle:
                 # The same chain shoot_live walks, with one deliberate
@@ -2090,6 +2194,10 @@ class RenderedSession:
             # skipped for its size or its budget is not one the variant sweep
             # should go and fetch again for the same reasons.
             self._archived.add(url)
+            # A page is never left out: the archive needs its documents, and
+            # the leave-out rule is about what a page carries.
+            if kind != "document" and self._left_out(response, url):
+                continue
             if status == 206:
                 # A RANGE. Not the resource — a slice of it, and a browser
                 # fetching a video sends several: an opening probe that it
@@ -2149,6 +2257,12 @@ class RenderedSession:
                         continue
                 if len(body) > ALIVE_MAX_RESPONSE_BYTES:
                     log.debug("not archiving %s: %d bytes", url, len(body))
+                    continue
+                if (
+                    kind != "document"
+                    and self._leave_out is not None
+                    and self._leave_out.skips_size(len(body), url)
+                ):
                     continue
             if self._budget is not None and body and not self._budget.spend(len(body)):
                 log.debug("byte budget spent; not archiving %s", url)
@@ -2324,7 +2438,10 @@ class RenderedSession:
         if self._context is None or self._recorder is None:
             return 0
         self._archived.add(url)
+        if self._leave_out is not None and self._leave_out.skips_url(url):
+            return 0
         try:
+            check_public(url, self._private_guard)
             reply = self._context.request.get(url, timeout=int(timeout * 1000))
             status = reply.status
             body = reply.body()
@@ -2337,6 +2454,11 @@ class RenderedSession:
             return 0
         if len(body) > ALIVE_MAX_RESPONSE_BYTES:
             log.debug("not archiving %s: %d bytes", url, len(body))
+            return 0
+        leave = self._leave_out
+        if leave is not None and leave.skips_response(
+            headers.get("content-type"), len(body), url
+        ):
             return 0
         if self._budget is not None and not self._budget.spend(len(body)):
             log.debug("byte budget spent; not archiving %s", url)
@@ -2380,6 +2502,8 @@ class RenderedSession:
                 continue
             if kind not in KEPT_RESOURCE_TYPES or url in resources or url in skip:
                 continue
+            if self._left_out(response, url):
+                continue
             mime = _mimetype_of(response, url)
             try:
                 body = None if status == PARTIAL_CONTENT else _body(response)
@@ -2408,6 +2532,8 @@ class RenderedSession:
                 body, refetched_mime = got
                 mime = refetched_mime or mime
             if not body or len(body) > MAX_ASSET_BYTES:
+                continue
+            if self._leave_out is not None and self._leave_out.skips_size(len(body), url):
                 continue
             if self._budget is not None and not self._budget.spend(len(body)):
                 # The job's byte budget is spent. Later pages still render —
@@ -2448,7 +2574,8 @@ class RenderedSession:
         if self._context is None:
             return None
         try:
-            reply = self._context.request.get(url, timeout=int(NAV_TIMEOUT * 1000))
+            check_public(url, self._private_guard)
+            reply = self._context.request.get(url, timeout=int(self._nav_timeout * 1000))
             if not (200 <= reply.status < 300):
                 return None
             body = reply.body()
@@ -2769,10 +2896,13 @@ def _request_headers_of(response):
     the JPEG, and a record that omits the question keeps only half the
     exchange."""
     try:
-        return response.request.headers or {}
+        headers = response.request.headers or {}
     except Exception as e:
         log.debug("could not read request headers: %s", e)
         return {}
+    # The cookies the browser sent are the capture's credential; the archive
+    # keeps what was asked, never who was asking.
+    return {k: v for k, v in headers.items() if str(k).lower() != "cookie"}
 
 
 def _status_text_of(response):
@@ -3159,6 +3289,9 @@ class RenderedCapture:
         note=None,
         block_ads=None,
         capture_variants=None,
+        user_agent=None,
+        mobile=False,
+        page_timeout=None,
     ):
         self._session = RenderedSession(
             work_dir=work_dir,
@@ -3166,6 +3299,9 @@ class RenderedCapture:
             note=note,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            user_agent=user_agent,
+            mobile=mobile,
+            page_timeout=page_timeout,
         )
         self._budget = budget
         self._note = note or (lambda _m: None)

@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import zimi.crawler as crawler  # noqa: E402
 import zimi.http as zhttp  # noqa: E402
 import zimi.manage as manage  # noqa: E402
 import zimi.server as server  # noqa: E402
@@ -98,6 +99,10 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "create_root",
         "block_ads_default",
         "capture_variants_default",
+        "defaults",  # every stored default, for the Creator fields
+        "defaults_text",  # and each as the text a placeholder shows
+        "factory_text",  # what a capture gets when nothing is stored
+        "storable_keys",  # which fields the form draws, in order
         "queue",
         "offline",
         "data_dir",  # for the setup commands the pane prints (#61)
@@ -279,10 +284,13 @@ def test_a_stored_default_wins_over_the_factory_constant(monkeypatch):
     monkeypatch.setattr(manage, "_create_alive_ready", lambda: False)
     h = _post("/manage/creator", {"block_ads": False})
     assert h.status == 200
-    assert h.body == {
+    assert {k: v for k, v in h.body.items() if k not in ("factory_text", "storable_keys")} == {
         "block_ads_default": False,
         "capture_variants_default": manage.CREATE_CAPTURE_VARIANTS,
+        "defaults": {"block_ads": False},
+        "defaults_text": {"block_ads": "off"},
     }
+    assert h.body["factory_text"]["block_ads"] == "on"
     body = _get("/manage/creator").body
     assert body["block_ads_default"] is False
     assert body["capture_variants_default"] is manage.CREATE_CAPTURE_VARIANTS
@@ -300,7 +308,7 @@ def test_the_stored_default_survives_the_write_path_it_rides(tmp_path):
     """Atomic file in the data dir, same discipline as every other manage-set
     preference — and a fresh read of the file agrees with the endpoint."""
     _post("/manage/creator", {"block_ads": False, "capture_variants": True})
-    path = manage._create_defaults_path()
+    path = crawler.create_defaults_path()
     assert os.path.dirname(path) == server.ZIMI_DATA_DIR
     import json
 
@@ -312,7 +320,7 @@ def test_a_non_boolean_default_is_refused_not_coerced():
     assert _post("/manage/creator", {"block_ads": "yes"}).status == 400
     assert _post("/manage/creator", {"capture_variants": 1}).status == 400
     # Nothing was stored by either refusal.
-    assert not os.path.exists(manage._create_defaults_path())
+    assert not os.path.exists(crawler.create_defaults_path())
 
 
 def test_an_empty_defaults_write_is_a_400_not_a_silent_ok():

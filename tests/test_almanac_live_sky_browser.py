@@ -330,32 +330,20 @@ def _drag(pg, dx, dy, steps=8):
     pg.mouse.up()
 
 
-def test_dragging_looks_round_the_whole_horizon(browser, served):
+def test_the_sky_stays_facing_the_equator(browser, served):
+    """The scene is one fixed view: a drag or an arrow key does not turn it
+    (turning it showed sea in every direction)."""
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
-        c0 = pg.evaluate("_skyState.center")
-        assert c0 == 180  # facing the equator to begin with
+        assert pg.evaluate("_skyState.center") == 180
         assert "facing S" in pg.inner_text("#almanac-sky-cap")
         width = pg.evaluate("_skyState.cssW")
-        span = pg.evaluate("SKY_SPAN_DEG")
-        _drag(pg, -width / 2, 0)  # drag left: the view turns right (west)
-        c1 = pg.evaluate("_skyState.center")
-        turned = ((c1 - c0) + 540) % 360 - 180
-        assert abs(turned - span / 2) < span * 0.08, turned
-        # 180 + 120 = 300 degrees: the compass word follows (no fixed heading).
-        assert "facing NW" in pg.inner_text("#almanac-sky-cap")
-        # The south point has moved left by what was turned.
-        x = pg.evaluate("_skyX(_skyState, 180) / _skyState.dpr")
-        assert abs(x - (width / 2 - turned / span * width)) < 2, x
-        # A drag is not a tap: no tip opened.
-        assert not pg.locator("#almanac-sky-tip").is_visible()
-        # The keyboard turns it too.
+        _drag(pg, -width / 2, 0)
         pg.focus("#almanac-sky-canvas")
         pg.keyboard.press("ArrowRight")
-        assert (
-            abs(((pg.evaluate("_skyState.center") - c1) + 540) % 360 - 180 - 15) < 1e-6
-        )
+        assert pg.evaluate("_skyState.center") == 180
+        assert "facing S" in pg.inner_text("#almanac-sky-cap")
         assert not errors, errors
     finally:
         ctx.close()

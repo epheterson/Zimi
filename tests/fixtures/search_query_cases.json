@@ -1,5 +1,5 @@
 {
-  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. plain (nothing in the query was syntax) is the server's only. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json. exclude: one -term against one text (#94), the same in query.excluded and the client's searchQueryMatches: from the start of a word or of a word part (MediaWiki is Media + Wiki, fr_wiki is fr + wiki), case and accents aside, never from just anywhere (-ted keeps United). Inclusions are unchanged: a word anywhere, a phrase from the start of a word.",
+  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. plain (nothing in the query was syntax) is the server's only. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json. exclude: one -term against one text (#94), the same in query.excluded and the client's searchQueryMatches: from the start of a word or of a word part (MediaWiki is Media + Wiki, fr_wiki is fr + wiki), case and accents aside, never from just anywhere (-ted keeps United). match: the library and catalog filter (searchQueryMatches), every term from the start of a word or a word part (#108: git finds Git Docs, not zimgit-knots).",
   "parse": [
     {"q": "water filter", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
     {"q": "Water  Filter ", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
@@ -36,6 +36,11 @@
     {"q": "size:big", "groups": [["size:big"]], "exclude": [], "filters": [], "plain": true}
   ],
   "match": [
+    {"q": "git", "text": "A Library of Knots\u0001zimgit-knots_en_2024-08\u0001How to tie knots", "match": false},
+    {"q": "git", "text": "Git Docs\u0001devdocs_en_git\u0001Git documentation", "match": true},
+    {"q": "wiki", "text": "MediaWiki\u0001mediawiki_en_all", "match": true},
+    {"q": "wiki", "text": "Wikipedia\u0001wikipedia_en_all", "match": true},
+    {"q": "pedia", "text": "Wikipedia\u0001wikipedia_en_all", "match": false},
     {"q": "-ted", "text": "TED Talks: Science", "match": false},
     {"q": "-ted", "text": "ted_en_science", "match": false},
     {"q": "-ted", "text": "TEDx Berlin", "match": false},

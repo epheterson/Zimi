@@ -126,7 +126,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.13.0"
+ZIMI_VERSION = "1.13.1"
 
 
 def bundled(module):
@@ -904,6 +904,10 @@ CONFIG_ENV_SETTINGS = (
     # want an admin password at all", which is a real way people run this and
     # which 1.9.0 removed with nothing in its place (issue #59).
     ConfigSetting("lan_admin", "ZIMI_LAN_ADMIN", "bool", "0", None, False),
+    # Settings from outside the private network. Off on the setup page by
+    # default; unset here and never answered there, it is on, which is what
+    # every install with a password had before the page existed.
+    ConfigSetting("manage_external", "ZIMI_MANAGE_EXTERNAL", "bool", "", "setup page", False),
     # The opt out. Management asks for nothing at all: no password, no setup
     # key, no question about where the request came from.
     #
@@ -2316,11 +2320,10 @@ def _read_map_facts(path):
 
 APPS_ENV = "ZIMI_APPS"
 APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books", "dictionary")
-# Apps offered only when named (a preview, while it is built): a comma list
-# in ZIMI_APPS (or a saved list) that names one turns it on; "1", "all", the
-# default and a saved True leave it off. None now: Zimipedia was one until
-# its reader (1.12).
-APPS_OPT_IN = frozenset()
+# Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
+# that names one turns it on; "1", "all", the default and a saved True leave
+# it off. Reddot since 1.13.1 (Eric: "kinda niche in hindsight").
+APPS_OPT_IN = frozenset({"reddot"})
 APPS_ALL = frozenset(APP_NAMES)
 APPS_DEFAULT = APPS_ALL - APPS_OPT_IN
 _APPS_OFF = ("0", "false", "no", "off", "none")
@@ -2396,7 +2399,7 @@ def apps_shown():
     """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
     setting saved from Server settings, else all of them but the opt-in ones
-    (``APPS_OPT_IN``, none now). A signed-in user
+    (``APPS_OPT_IN``: Reddot). A signed-in user
     can also hide any of them for themselves (their account's preferences).
     Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
@@ -4814,7 +4817,20 @@ def main():
         "when the source declares nothing",
     )
     p_create.add_argument(
-        "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
+        "--creator",
+        default=None,
+        help="Author metadata (default: the stored default, else Zimi)",
+    )
+    p_create.add_argument(
+        "--publisher",
+        default=None,
+        help="Publisher metadata (default: the stored default, else Zimi)",
+    )
+    p_create.add_argument(
+        "--tags",
+        default=None,
+        metavar="A;B",
+        help="Tags added to the ZIM's own, separated by semicolons",
     )
     p_create.add_argument(
         "--only",
@@ -4849,8 +4865,9 @@ def main():
     p_create.add_argument(
         "--engine",
         choices=("builtin", "rendered", "alive", "singlefile", "zimit"),
-        default="builtin",
-        help="Capture engine: builtin (no JavaScript, no install), rendered "
+        default=None,
+        help="Capture engine (default: the stored default, else builtin): "
+        "builtin (no JavaScript, no install), rendered "
         "(runs a headless Chromium in this process — needs "
         "`pip install 'zimi[browser]'` and `playwright install chromium`), "
         "alive (records the browser session to a web archive and converts it "
@@ -4889,6 +4906,114 @@ def main():
         default=None,
         help="Link hops from the starting page "
         f"(--site default: {_crawler.DEFAULT_MAX_DEPTH})",
+    )
+    # Which pages a --site capture walks into. browsertrix's names, so a zimit
+    # command translates one to one (all substance in crawler.CrawlScope).
+    p_create.add_argument(
+        "--scope",
+        choices=_crawler.SCOPES,
+        default=None,
+        help="Pages a --site capture visits: prefix (the start page's section, "
+        "the default), host (the whole site), domain (the site and its "
+        "subdomains) or any (wherever links lead; depth bounds it)",
+    )
+    p_create.add_argument(
+        "--include",
+        action="append",
+        default=None,
+        metavar="REGEX",
+        help="Also capture pages whose URL matches, repeatable (--site only)",
+    )
+    p_create.add_argument(
+        "--exclude",
+        action="append",
+        default=None,
+        metavar="REGEX",
+        help="Never capture pages whose URL matches, repeatable; wins over "
+        "--scope and --include (--site only)",
+    )
+    p_create.add_argument(
+        "--extra-hops",
+        type=int,
+        default=None,
+        help="Follow links out of scope this many pages further (--site only; "
+        f"0-{_crawler.MAX_EXTRA_HOPS})",
+    )
+    # How a --site capture presents itself and when it stops. The table that
+    # says what each means and which engines honor it is crawler.CAPTURE_OPTIONS.
+    p_create.add_argument(
+        "--time-limit",
+        default=None,
+        metavar="DURATION",
+        help="Stop crawling after this long and keep what is captured: 90m, 8h, "
+        "or seconds (--site only)",
+    )
+    p_create.add_argument(
+        "--sitemap",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="URL",
+        help="Also visit the pages a sitemap lists: bare, the one named in "
+        "robots.txt or /sitemap.xml; or give its address (--site only)",
+    )
+    p_create.add_argument(
+        "--no-sitemap",
+        dest="sitemap",
+        action="store_const",
+        const=False,
+        help="Do not read a sitemap, whatever the stored default says",
+    )
+    p_create.add_argument(
+        "--user-agent",
+        default=None,
+        metavar="STRING",
+        help="The User-Agent to present instead of Zimi's own (--site only)",
+    )
+    p_create.add_argument(
+        "--mobile",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Capture as a phone: a mobile user agent, and with a browser "
+        "engine a 390px touch screen (--site only)",
+    )
+    p_create.add_argument(
+        "--page-timeout",
+        default=None,
+        metavar="SECONDS",
+        help="How long a browser engine waits for one page (--site only; "
+        "--engine rendered, alive or zimit)",
+    )
+    p_create.add_argument(
+        "--cookies",
+        default=None,
+        metavar="COOKIES",
+        help="Cookies to send, as a Cookie header copied from your browser's "
+        "developer tools: \"a=1; b=2\". Sent only to the page's own host and its "
+        "subdomains, never stored or written down (--site only; not zimit or "
+        "singlefile)",
+    )
+    p_create.add_argument(
+        "--skip",
+        dest="skip_types",
+        default=None,
+        metavar="KINDS",
+        help="Kinds of file to leave out, separated by commas: "
+        "video,audio,pdf,archives,images (--site only; not singlefile)",
+    )
+    p_create.add_argument(
+        "--max-file-size",
+        dest="max_file_bytes",
+        default=None,
+        metavar="SIZE",
+        help="Leave out any one file larger than this, e.g. 50M (--site only; "
+        "not singlefile)",
+    )
+    p_create.add_argument(
+        "--workers",
+        default=None,
+        metavar="N",
+        help="Pages fetched at once, 1 to 16 (--site only; --engine zimit)",
     )
     # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
     p_create.add_argument(
@@ -4950,6 +5075,11 @@ def main():
     )
     p_import.add_argument("--title", default=None, help="ZIM title")
     p_import.add_argument("--description", default=None, help="ZIM description")
+    p_import.add_argument("--creator", default=None, help="Author metadata")
+    p_import.add_argument("--publisher", default=None, help="Publisher metadata")
+    p_import.add_argument(
+        "--tags", default=None, metavar="A;B", help="Tags, separated by semicolons"
+    )
     p_import.add_argument(
         "--out",
         default=None,
@@ -5062,6 +5192,12 @@ def main():
     elif args.command == "serve":
         print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
+        # Asked before the first scan writes one: whether this install ran
+        # before, for the first-run page (manage.init_setup_gate).
+        ran_before = any(
+            os.path.exists(p)
+            for p in (_cache_file_path(), os.path.join(ZIM_DIR, ".zimi_cache.json"))
+        )
         load_cache()
         # Startup partial-download sweep. Keep partials that a download record
         # still wants (resume_pending_downloads() picks those up via Range).
@@ -5115,24 +5251,33 @@ def main():
                 )
             elif _get_manage_password_hash():
                 log.info("Library management enabled (password protected)")
+            elif _mng_open.access_mode() == "lan":
+                log.info("Library management enabled: anyone on the local network")
             else:
-                # No admin password yet. Set one from THIS machine freely; any
-                # other device needs the setup key below (GHSA-5mw2-53vv-9pw6).
-                from zimi import manage as _mng
-
-                key = _mng.ensure_setup_key()
+                # Nobody has said who can change settings. This machine may say
+                # so freely; any other device needs the setup key below
+                # (GHSA-5mw2-53vv-9pw6). A fresh install opens only once it is
+                # answered.
+                gated = _mng_open.init_setup_gate(host, ran_before=ran_before)
+                key = _mng_open.ensure_setup_key()
                 log.info("Library management enabled — no admin password set yet.")
+                first = (
+                    "  │  Zimi opens once you choose who can change settings.\n"
+                    if gated
+                    else "  │  Choose who can change settings from this machine,\n"
+                )
                 print(
                     _printable(
                         "\n"
                         "  ┌─ Zimi first-run setup ──────────────────────────────\n"
-                        "  │  Set the admin password from this machine, or from\n"
-                        "  │  another device using this one-time setup key:\n"
+                        + first
+                        + "  │  Open Zimi on this machine, or on another device\n"
+                        "  │  with this one-time setup key:\n"
                         "  │\n"
                         f"  │      SETUP KEY:  {key}\n"
                         "  │\n"
                         "  │  (also saved to the setup-key file in the data dir;\n"
-                        "  │   it stops working the moment a password is set)\n"
+                        "  │   it stops working once setup is done)\n"
                         "  └─────────────────────────────────────────────────────\n",
                     ),
                     flush=True,

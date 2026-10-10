@@ -291,5 +291,146 @@ class BootstrapTakeoverTests(unittest.TestCase):
         self.assertEqual(status, 401, body)
 
 
+class FirstRunLanTests(unittest.TestCase):
+    """Since 1.13.1 a fresh install does nothing until its setup page is
+    answered, so the advisory's long-open door is only open between first
+    start and the owner's first visit. While the page is up, the owner's own
+    home network answers it without the key, as in every other self-hosted
+    app. Docker bridges, tailnets, proxied requests and installs that ran
+    before the page existed still need the key."""
+
+    setUp = BootstrapTakeoverTests.setUp
+    _as_peer = BootstrapTakeoverTests._as_peer
+    _post = BootstrapTakeoverTests._post
+    _get = BootstrapTakeoverTests._get
+
+    def tearDown(self):
+        manage._setup_gate = False
+        BootstrapTakeoverTests.tearDown(self)
+
+    # The setup page's answer: a password, kept inside the network.
+    ANSWER = {"require_password": True, "external": False, "password": "owner-pw-123"}
+
+    def _claim(self, ip, gate=True, headers=None, started_ago=60):
+        manage._setup_gate = gate
+        manage._write_app_update_prefs(setup_started=__import__("time").time() - started_ago)
+        self._as_peer(ip)
+        return self._post("/manage/access", self.ANSWER, headers=headers)
+
+    def test_the_home_network_answers_a_fresh_setup_page_without_the_key(self):
+        for ip in ("192.168.1.20", "10.9.8.31", "fd12:3456::7"):
+            with self.subTest(ip=ip):
+                manage._setup_gate = True
+                manage._write_app_update_prefs(setup_started=__import__("time").time())
+                self._as_peer(ip)
+                status, body = self._get("/manage/has-password")
+                self.assertTrue(body.get("keyless"), body)
+        status, body = self._claim("192.168.1.20")
+        self.assertEqual(status, 200, body)
+        self.assertTrue(manage._get_manage_password_hash())
+
+    def test_a_docker_bridge_or_a_tailnet_still_needs_the_key(self):
+        for ip in ("172.17.0.5", TAILNET, "169.254.3.4", "fd7a:115c:a1e0::12"):
+            with self.subTest(ip=ip):
+                status, body = self._claim(ip)
+                self.assertEqual(status, 403, body)
+                self.assertFalse(manage._get_manage_password_hash())
+
+    def test_an_install_without_the_page_still_needs_the_key_from_the_lan(self):
+        """An install that ran before 1.13.1 never shows the page: unclaimed
+        for months is the advisory's case, and its LAN still needs the key."""
+        status, body = self._claim("192.168.1.20", gate=False)
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+
+    def test_a_proxied_request_is_not_the_home_network(self):
+        for headers in ({"X-Forwarded-For": "203.0.113.9"}, {"Via": "1.1 nginx"},
+                        {"X-Forwarded-Proto": "https"}, {"CF-Ray": "8a1b"}):
+            with self.subTest(headers=headers):
+                status, body = self._claim("192.168.1.20", headers=headers)
+                self.assertEqual(status, 403, body)
+                self.assertFalse(manage._get_manage_password_hash())
+
+    def test_after_the_first_hour_the_home_network_needs_the_key(self):
+        """A proxy that adds no header makes the internet look like the LAN;
+        the window bounds what that can cost."""
+        status, body = self._claim("192.168.1.20", started_ago=manage.FIRST_RUN_LAN_SECONDS + 5)
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+
+    def test_after_the_first_hour_the_host_needs_the_key_too(self):
+        """A proxy on the same host that adds no header makes the internet
+        look like loopback; past the hour, the host reads the key from the log."""
+        status, body = self._claim("127.0.0.1", started_ago=manage.FIRST_RUN_LAN_SECONDS + 5)
+        self.assertEqual(status, 403, body)
+        self.assertFalse(manage._get_manage_password_hash())
+        status, body = self._claim("127.0.0.1")
+        self.assertEqual(status, 200, body)
+
+    def test_under_kubernetes_no_network_is_the_home_network(self):
+        """A NodePort can hand the internet a 10.x node address."""
+        os.environ["KUBERNETES_SERVICE_HOST"] = "10.96.0.1"
+        try:
+            status, body = self._claim("10.9.8.31")
+            self.assertEqual(status, 403, body)
+        finally:
+            del os.environ["KUBERNETES_SERVICE_HOST"]
+
+    def test_the_servers_own_container_network_is_not_the_home_network(self):
+        """Docker Desktop hands compose networks 192.168.x: a neighbour there
+        is the advisory's attacker in a home-looking range."""
+        from zimi import netguard
+        import ipaddress as ipa
+
+        real = netguard._own_networks
+        netguard._own_networks = (ipa.ip_network("192.168.61.0/24"),)
+        try:
+            status, body = self._claim("192.168.61.7")
+            self.assertEqual(status, 403, body)
+            self.assertFalse(manage._get_manage_password_hash())
+        finally:
+            netguard._own_networks = real
+
+
+class OwnNetworksTests(unittest.TestCase):
+    """Which subnets a neighbouring container comes from."""
+
+    def setUp(self):
+        import ipaddress as ipa
+        from zimi import netguard
+
+        self.ng, self.net = netguard, ipa.ip_network
+        self.lan = ("eth0", self.net("192.168.1.0/24"))
+        self.bridge = ("docker0", self.net("172.17.0.0/16"))
+        self.compose = ("br-1a2b", self.net("192.168.61.0/24"))
+
+    def test_a_bridge_network_container_distrusts_every_subnet_it_is_on(self):
+        nets = self.ng.own_networks(routes=[("eth0", self.net("192.168.61.0/24"))], addrs=[], in_container=True)
+        self.assertEqual(nets, (self.net("192.168.61.0/24"),))
+
+    def test_a_host_network_container_distrusts_only_the_bridges(self):
+        nets = self.ng.own_networks(routes=[self.lan, self.bridge, self.compose], addrs=[], in_container=True)
+        self.assertNotIn(self.lan[1], nets)
+        self.assertIn(self.compose[1], nets)
+
+    def test_every_kind_of_virtual_bridge_counts(self):
+        libvirt = ("virbr0", self.net("192.168.122.0/24"))
+        nets = self.ng.own_networks(routes=[self.lan, libvirt], addrs=[], in_container=False)
+        self.assertEqual(nets, (libvirt[1],))
+
+    def test_a_bare_host_keeps_its_lan(self):
+        self.assertEqual(self.ng.own_networks(routes=[self.lan], addrs=[], in_container=False), ())
+
+    def test_proc_net_route_is_read_little_endian(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as fh:
+            fh.write("Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n")
+            fh.write("eth0\t00000000\t0101A8C0\t0003\t0\t0\t0\t00000000\n")
+            fh.write("eth0\t0001A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\n")
+        self.assertEqual(self.ng._ipv4_routes(fh.name), [("eth0", self.net("192.168.1.0/24"))])
+        os.remove(fh.name)
+
+
 if __name__ == "__main__":
     unittest.main()
