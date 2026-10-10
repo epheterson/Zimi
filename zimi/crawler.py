@@ -372,8 +372,8 @@ MAX_EXTRA_HOPS = 10
 # Python's re has no timeout and holds the GIL, so a pattern that backtracks
 # without end, (a+)+ against the right link, stalls the whole server. A
 # quantified group that itself holds a quantifier is the shape that does it;
-# it is refused, and a link is matched on its first characters only.
-_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*(?<!\()[*+?}](?:[^()\\]|\\.)*\)\s*[*+{]")
+# it is refused, read from the parsed pattern, and a link is matched on its
+# first characters only.
 MAX_MATCHED_URL_CHARS = 2048
 
 
@@ -436,6 +436,24 @@ def _has_overlapping_choice(parsed):
     return False
 
 
+def _holds_a_repeat(parsed):
+    return any(
+        op in _sre_repeats or any(_holds_a_repeat(part) for part in _inner(op, av))
+        for op, av in parsed
+    )
+
+
+def _repeats_a_repeat(parsed):
+    """Whether a parsed pattern repeats, more than once, something that itself
+    repeats: ``(a+)+``, ``(\\w*)*``, ``(x?){2,}``. ``(ab)+`` and ``a+b+`` are fine."""
+    for op, av in parsed:
+        if op in _sre_repeats and av[1] > 1 and _holds_a_repeat(av[2]):
+            return True
+        if any(_repeats_a_repeat(part) for part in _inner(op, av)):
+            return True
+    return False
+
+
 def _repeats_an_overlapping_choice(parsed):
     """Whether a parsed pattern repeats, without bound, a group holding a choice
     whose options can overlap: ``(a|aa)+``, ``(x|x)*y``, ``(\\w+|\\d+)*``. Each
@@ -466,15 +484,16 @@ def _patterns(values, flag):
             )
         try:
             out.append(re.compile(text))
+            parsed = _sre_parse.parse(text)
         except re.error as e:
             raise CreateError(
                 f"{flag} {text!r} is not a valid regular expression ({e})"
             )
-        if _NESTED_QUANTIFIER.search(text):
+        if _repeats_a_repeat(parsed):
             raise CreateError(
                 f"{flag} {text!r} repeats a group that itself repeats, which can hang the crawl; .* usually says the same"
             )
-        if _repeats_an_overlapping_choice(_sre_parse.parse(text)):
+        if _repeats_an_overlapping_choice(parsed):
             raise CreateError(
                 f"{flag} {text!r} repeats a choice whose options can overlap, which can hang the crawl; "
                 "list the options so that none starts another"

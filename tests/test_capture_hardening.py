@@ -114,9 +114,11 @@ def test_overlapping_classes_are_refused_by_one_rule_or_the_other():
         crawler._patterns([r"(\w+|\d+)*"], "--exclude")
 
 
-def test_a_nested_repeat_keeps_its_own_sentence():
+@pytest.mark.parametrize("pattern", [r"(a+)+$", r"((a+)b)+", r"(x?){2,}", r"(?:\w*)*"])
+def test_a_nested_repeat_keeps_its_own_sentence(pattern):
+    """Read from the parsed pattern, so a repeat two groups down counts too."""
     with pytest.raises(creator.CreateError, match="repeats a group that itself repeats"):
-        crawler._patterns([r"(a+)+$"], "--exclude")
+        crawler._patterns([pattern], "--exclude")
 
 
 def test_the_pattern_rule_runs_on_python_3_10():
