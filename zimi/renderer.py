@@ -76,9 +76,14 @@ import urllib.parse
 
 from zimi.blocklist import host_of as _host_of, load as _load_blocklist
 from zimi.capturegate import current_cookies, current_leave_out
+from zimi.captureproxy import CHROMIUM_PROXIED_ARGS
 from zimi.creator import (
     MOBILE_VIEWPORT,
     capture_user_agent,
+    PRIVATE_REFUSED,
+    PrivateAddressRefused,
+    capture_proxy_refused,
+    capture_proxy_url,
     check_public,
     current_private_guard,
     CreateError,
@@ -558,17 +563,23 @@ _LAUNCH_ARGS = ["--disable-dev-shm-usage", "--disable-gpu", "--mute-audio"]
 _NO_SANDBOX = "--no-sandbox"
 
 
-def _launch(chromium):
-    """Launch with the sandbox; fall back without it, loudly, once."""
+def _launch(chromium, proxy=None):
+    """Launch with the sandbox; fall back without it, loudly, once. With
+    ``proxy``, every request the browser makes goes through it."""
+    args = list(_LAUNCH_ARGS)
+    options = {}
+    if proxy:
+        args += CHROMIUM_PROXIED_ARGS
+        options["proxy"] = {"server": proxy}
     try:
-        return chromium.launch(args=_LAUNCH_ARGS)
+        return chromium.launch(args=args, **options)
     except Exception as e:
         log.info(
             "chromium would not start sandboxed (%s) — retrying without the "
             "sandbox, which is expected inside a container",
             _playwright_reason(e),
         )
-        return chromium.launch(args=_LAUNCH_ARGS + [_NO_SANDBOX])
+        return chromium.launch(args=args + [_NO_SANDBOX], **options)
 
 
 # ── the page preparation script ─────────────────────────────────────────────
@@ -1201,7 +1212,7 @@ class RenderedSession:
             # only other launch in this module is the one-shot availability
             # probe, cached for the life of the process.)
             self._pw = sync_playwright().start()
-            self._browser = _launch(self._pw.chromium)
+            self._browser = _launch(self._pw.chromium, capture_proxy_url())
         except Exception as e:
             self._cleanup_spool()
             self._stop_playwright()
@@ -1482,12 +1493,18 @@ class RenderedSession:
         # handler it is given, and a builtin method has nowhere to keep the
         # attribute it wants to put there.
         page.on("response", lambda response: responses.append(response))
+        refused_before = capture_proxy_refused()
         try:
             try:
                 landed = page.goto(
                     url, wait_until="domcontentloaded", timeout=int(self._nav_timeout * 1000)
                 )
             except Exception as e:
+                # A redirect the capture proxy refused fails the navigation; it
+                # is said as the rule, not as a network error.
+                refused = sorted(capture_proxy_refused() - refused_before)
+                if refused:
+                    raise PrivateAddressRefused(PRIVATE_REFUSED.format(host=refused[0]))
                 raise CreateError(f"cannot render {url}: {_playwright_reason(e)}")
             # The page's own bytes, taken now rather than after the settling.
             #

@@ -1340,18 +1340,59 @@ class PrivateAddressRefused(CreateError, OSError):
     that skip any asset that cannot be fetched skip this one the same way."""
 
 
+# The browser engines and the downloaders Zimi shells out to cannot be asked
+# about each URL (a redirect's next hop never reaches Chromium's interception),
+# so under the rule they go through a proxy that judges each connection
+# (zimi.captureproxy). Started by the first engine that needs it, stopped with
+# the capture; a capture that never needs it never starts one.
+_CAPTURE_PROXY = contextvars.ContextVar("zimi_capture_proxy", default=None)
+
+
 @contextlib.contextmanager
 def private_addresses_refused(guard=None):
     """Hold every fetch made inside to public addresses."""
     token = _PRIVATE_GUARD.set(guard or _netguard.PrivateGuard())
+    holder = {}
+    proxy_token = _CAPTURE_PROXY.set(holder)
     try:
         yield
     finally:
+        _CAPTURE_PROXY.reset(proxy_token)
         _PRIVATE_GUARD.reset(token)
+        if holder.get("proxy") is not None:
+            holder["proxy"].close()
 
 
 def current_private_guard():
     return _PRIVATE_GUARD.get()
+
+
+def capture_proxy_url():
+    """The proxy this capture's browser or downloader must use, or None when
+    no private-address rule is in force."""
+    guard = _PRIVATE_GUARD.get()
+    if guard is None:
+        return None
+    holder = _CAPTURE_PROXY.get()
+    if holder is None:
+        # A rule set without the context that owns a proxy (a test, a caller
+        # of its own): one for this guard, kept on the guard itself.
+        holder = guard.__dict__.setdefault("_zimi_proxy_holder", {})
+    if holder.get("proxy") is None:
+        from zimi.captureproxy import CaptureProxy
+
+        holder["proxy"] = CaptureProxy(guard)
+    return holder["proxy"].url
+
+
+def capture_proxy_refused():
+    """The hosts this capture's proxy has refused so far, in no order."""
+    holder = _CAPTURE_PROXY.get()
+    if holder is None:
+        guard = _PRIVATE_GUARD.get()
+        holder = getattr(guard, "_zimi_proxy_holder", None) or {}
+    proxy = holder.get("proxy")
+    return set(proxy.refused) if proxy is not None else set()
 
 
 def check_public(url, guard=None):

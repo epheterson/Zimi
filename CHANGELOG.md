@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Captures started from the web refuse private addresses (loopback, your network, link-local, carrier-grade NAT), judged by what a name resolves to. An admin can allow them in Manage, Creator; the command line is never restricted.
+- Captures started from the web refuse private addresses (loopback, your network, link-local, carrier-grade NAT), judged by what a name resolves to, at every redirect, file and connection; zimit, whose browser runs in Docker, is not used for them. An admin can allow them in Manage, Creator; the command line is never restricted.
 - The zimit engine takes the same scope options and `--max-depth`, and speaks zimit 3's flag names to a zimit 3 image.
 
 ### Fixed

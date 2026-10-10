@@ -96,7 +96,7 @@ from zimi.creator import (
     _page_title_from_html,
     _try_register,
     _fetch_page,
-    check_public,
+    current_private_guard,
     urlopen_guarded,
     _user_agent,
     MOBILE_VIEWPORT,
@@ -2538,6 +2538,13 @@ def _read_crawl_status(line, status):
         status["limit_max"] = limit.get("max")
 
 
+ZIMIT_PRIVATE_REFUSED = (
+    "the zimit engine's browser runs in Docker, where Zimi cannot keep it off "
+    "private addresses, so captures started from the web use another engine. "
+    "An admin can allow private captures in Manage, under Creator."
+)
+
+
 def create_zimit_zim(
     url,
     *,
@@ -2576,10 +2583,11 @@ def create_zimit_zim(
         raise CreateError(OFFLINE_REFUSAL)
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
-    # Only the seed can be judged: zimit's browser runs in a container whose own
-    # requests are out of Zimi's sight, so a web capture's rule stops at the
-    # address it was given.
-    check_public(url)
+    # zimit's browser runs in a container that cannot reach the capture proxy
+    # on this machine's loopback, so its requests (a redirect, a subresource)
+    # cannot be held to public addresses. Under the rule it does not run.
+    if current_private_guard() is not None:
+        raise CreateError(ZIMIT_PRIVATE_REFUSED)
 
     # "auto" is Zimi's word for "read the page and decide", and Zimi never reads
     # this page — zimit fetches it inside the container. Passing the sentiment

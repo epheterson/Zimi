@@ -309,14 +309,32 @@ def test_the_browser_engines_are_told_the_rule():
     assert seen == [("continue",)]
 
 
-def test_zimit_and_singlefile_refuse_a_private_seed(monkeypatch, tmp_path):
-    import zimi.singlefile as singlefile
-
+def test_zimit_does_not_run_under_the_rule(monkeypatch, tmp_path):
+    """Its browser is in Docker, out of the capture proxy's reach: a public
+    seed is refused as well as a private one."""
     monkeypatch.setattr(crawler, "_docker_cli", lambda: "/usr/local/bin/docker")
     with creator.private_addresses_refused():
-        with pytest.raises(creator.PrivateAddressRefused, match="private address"):
-            crawler.create_zimit_zim(
-                "http://192.168.1.10/", site=True, out_dir=str(tmp_path)
-            )
+        for seed in ("http://192.168.1.10/", "https://example.org/"):
+            with pytest.raises(creator.CreateError, match="runs in Docker"):
+                crawler.create_zimit_zim(seed, site=True, out_dir=str(tmp_path))
+
+
+def test_singlefile_refuses_a_private_seed(tmp_path):
+    import zimi.singlefile as singlefile
+
+    with creator.private_addresses_refused():
         with pytest.raises(creator.PrivateAddressRefused, match="private address"):
             singlefile.capture_page("http://192.168.1.10/", work_dir=str(tmp_path))
+
+
+def test_the_web_refuses_zimit_under_the_rule_and_offers_it_once_allowed(monkeypatch):
+    """Refused when the form is sent, not when the job starts: its browser is in
+    Docker, where the capture proxy cannot reach it."""
+    monkeypatch.setattr(manage, "_create_zimit_ready", lambda: True)
+    with pytest.raises(ValueError, match="runs in Docker"):
+        manage._create_validate(dict(SITE, engine="zimit"))
+    assert _post("/manage/creator", {"allow_private": True}).status == 200
+    try:
+        assert manage._create_validate(dict(SITE, engine="zimit"))[3]["engine"] == "zimit"
+    finally:
+        assert _post("/manage/creator", {"allow_private": False}).status == 200

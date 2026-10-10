@@ -45,6 +45,7 @@ from zimi.creator import (
     _fmt_bytes,
     PrivateAddressRefused,
     _try_register,
+    capture_proxy_url,
     _zim_file_item_class,
     check_public,
     language_tag_to_iso3,
@@ -360,9 +361,10 @@ def _flat_entries(mod, url, limit):
     stated. It applies to the real build too, which wants it for the same
     reason on a Pi.
 
-    A web-started capture is held to public addresses here too (the address
-    asked for, and below each entry's own): yt-dlp then fetches the media
-    itself, so the rule stops at the addresses Zimi is given."""
+    A web-started capture is held to public addresses here too: the address
+    asked for and each entry's own are refused plainly, and everything yt-dlp
+    then fetches goes through the capture proxy (None, its default, without
+    the rule)."""
     check_public(url)
     opts = {
         "quiet": True,
@@ -370,6 +372,7 @@ def _flat_entries(mod, url, limit):
         "extract_flat": "in_playlist",
         "skip_download": True,
         "socket_timeout": FLAT_PROBE_SOCKET_TIMEOUT,
+        "proxy": capture_proxy_url(),
     }
     if limit:
         opts["playlistend"] = limit
@@ -436,6 +439,7 @@ def download_opts(workdir, *, fmt, audio_only, language=None, ffmpeg=None):
         "subtitlesformat": "vtt",
         "subtitleslangs": _subtitle_langs(language),
         "writethumbnail": not audio_only,
+        "proxy": capture_proxy_url(),
     }
     if ffmpeg and not audio_only:
         opts["merge_output_format"] = "mp4"

@@ -239,6 +239,8 @@ def test_the_web_drops_page_timeout_for_the_fast_engine_and_keeps_it_for_a_brows
 def test_the_web_refuses_page_cookies_an_engine_cannot_take(data_dir, monkeypatch):
     monkeypatch.setattr(manage, "_create_singlefile_ready", lambda: True)
     monkeypatch.setattr(manage, "_create_zimit_ready", lambda: True)
+    # zimit is offered to the web only once private captures are allowed.
+    (data_dir / "create_defaults.json").write_text('{"allow_private": true}', encoding="utf-8")
     for engine in ("singlefile", "zimit"):
         with pytest.raises(ValueError, match="which %s is not" % engine):
             _opts(engine=engine, cookies="a=1")

@@ -3510,6 +3510,11 @@ def _create_engine(value):
             "the singlefile engine needs the SingleFile CLI, and this server "
             "does not have it installed"
         )
+    if name == "zimit" and not _create_allows_private():
+        # Its browser is in Docker, out of the capture proxy's reach.
+        from zimi.crawler import ZIMIT_PRIVATE_REFUSED
+
+        raise ValueError(ZIMIT_PRIVATE_REFUSED)
     if name == "zimit" and not _create_zimit_ready():
         raise ValueError(
             "the zimit engine runs openZIM's crawler in Docker, and this "

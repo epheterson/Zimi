@@ -90,7 +90,8 @@ def test_no_default_and_no_value_is_the_factory(data_dir):
 
 
 def test_a_default_an_engine_cannot_honor_is_not_applied(data_dir, zimit_docker):
-    _store(data_dir, page_timeout=60, max_bytes=1000)
+    # allow_private: zimit is not offered to the web under the private rule.
+    _store(data_dir, page_timeout=60, max_bytes=1000, allow_private=True)
     assert "page_timeout" not in _opts() and "max_bytes" in _opts()
     assert _opts(engine="zimit")["page_timeout"] == 60
     assert _opts(engine="zimit")["max_bytes"] is None

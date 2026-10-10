@@ -30,6 +30,7 @@ the same browser the rendered engine already installs. Absent, the engine
 refuses with the two commands that fix it and every other engine is untouched.
 """
 
+import json
 import logging
 import os
 import shutil
@@ -38,7 +39,8 @@ import sys
 import tempfile
 import urllib.parse
 
-from zimi.creator import CreateError, check_public
+from zimi.creator import CreateError, capture_proxy_url, check_public
+from zimi.captureproxy import CHROMIUM_PROXIED_ARGS
 
 log = logging.getLogger("zimi.singlefile")
 
@@ -203,9 +205,10 @@ def capture_page(
     """
     say = note or (lambda _m: None)
     _check_url(url)
-    # Only the address asked for: SingleFile is its own browser in its own
-    # process, and what its page then requests is out of Zimi's sight.
+    # Said plainly, up front, for the address asked for; under the rule every
+    # later request (a redirect, a subresource) goes through the capture proxy.
     check_public(url)
+    proxy = capture_proxy_url()
     exe = shutil.which(SINGLEFILE_BIN)
     if not exe:
         raise CreateError(INSTALL_HINT)
@@ -228,6 +231,10 @@ def capture_page(
 
     if user_agent:
         cmd.append(f"--user-agent={user_agent}")
+    if proxy:
+        cmd.append(
+            "--browser-args=" + json.dumps([f"--proxy-server={proxy}", *CHROMIUM_PROXIED_ARGS])
+        )
 
     say("capturing with SingleFile…")
     try:
