@@ -22,7 +22,7 @@ const path = require('path');
 const vm = require('vm');
 
 const STATIC = path.join(__dirname, '..', 'zimi', 'static');
-const read = (f) => fs.readFileSync(path.join(STATIC, f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(STATIC, f), 'utf8').replace(/\r\n/g, '\n');
 let failures = 0;
 function check(ok, label) {
   if (!ok) { console.error('FAIL: ' + label); failures++; } else console.log('ok: ' + label);

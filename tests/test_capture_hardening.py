@@ -65,6 +65,9 @@ def test_a_sitemap_is_read_in_every_form_it_comes_in():
         "<loc>" + "</" * 300_000,
         "<a:loc>" * 150_000,
     ],
+    # Short ids: pytest puts the id in an environment variable, which Windows
+    # caps at 32,767 characters.
+    ids=["loc-8k", "loc-200k", "open-tags", "wrong-close", "close-run", "prefixed"],
 )
 def test_a_hostile_sitemap_is_read_in_linear_time(hostile):
     (_index, locs), took = _timed(crawler.sitemap_locs, hostile)

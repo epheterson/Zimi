@@ -58,9 +58,13 @@ def _setup_state(seed_cache):
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=2)
         for p in (zim_dir, data_dir):
             shutil.rmtree(p, ignore_errors=True)
-        os.remove(log_path)
+        try:
+            os.remove(log_path)
+        except OSError:  # Windows holds the log a moment after the server exits
+            pass
 
 
 @pytest.mark.parametrize("seed_cache, waits", [(False, True), (True, False)])

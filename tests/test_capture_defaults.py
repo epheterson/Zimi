@@ -89,7 +89,7 @@ def test_no_default_and_no_value_is_the_factory(data_dir):
         assert key not in opts
 
 
-def test_a_default_an_engine_cannot_honor_is_not_applied(data_dir):
+def test_a_default_an_engine_cannot_honor_is_not_applied(data_dir, zimit_docker):
     _store(data_dir, page_timeout=60, max_bytes=1000)
     assert "page_timeout" not in _opts() and "max_bytes" in _opts()
     assert _opts(engine="zimit")["page_timeout"] == 60
