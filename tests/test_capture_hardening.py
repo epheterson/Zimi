@@ -162,7 +162,7 @@ def test_the_video_job_is_held_to_it_and_the_cli_is_not(monkeypatch, tmp_path):
 def test_an_entry_at_a_private_address_is_skipped_and_never_downloaded(monkeypatch, tmp_path):
     monkeypatch.setattr(video, "_yt_dlp", lambda: object())
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
-    entries = [{"title": "inside", "url": "http://10.0.0.5/v.mp4"}]
+    entries = [{"title": "inside", "url": "http://10.9.8.5/v.mp4"}]
     monkeypatch.setattr(video, "_flat_entries", lambda mod, url, limit: ({"title": "L"}, entries))
     downloaded = []
     monkeypatch.setattr(video, "_download_entry", lambda *a, **k: downloaded.append(a))
@@ -181,19 +181,19 @@ def test_an_entry_at_a_private_address_is_skipped_and_never_downloaded(monkeypat
 @pytest.mark.parametrize(
     "address, private",
     [
-        ("64:ff9b::a00:1", True),  # NAT64 of 10.0.0.1
+        ("64:ff9b::a09:801", True),  # NAT64 of 10.9.8.1
         ("64:ff9b::7f00:1", True),  # NAT64 of 127.0.0.1
         ("64:ff9b::a9fe:a9fe", True),  # NAT64 of 169.254.169.254
         ("64:ff9b::5db8:d822", False),  # NAT64 of a public address
-        ("2002:a00:1::", True),  # 6to4 of 10.0.0.1
+        ("2002:a09:801::", True),  # 6to4 of 10.9.8.1
         ("2002:c0a8:101::1", True),  # 6to4 of 192.168.1.1
         # Python lists the 6to4 and Teredo ranges as not global, so they are
         # refused whatever they carry: no public host needs either.
         ("2002:5db8:d822::1", True),
         ("2001:0:4136:e378:8000:63bf:3fff:fdd2", True),
-        ("2001:0:a00:1:8000:63bf:f5ff:fffe", True),  # Teredo server 10.0.0.1
-        ("::10.0.0.1", True),
-        ("::ffff:10.0.0.1", True),
+        ("2001:0:a09:801:8000:63bf:f5f6:f7fe", True),  # Teredo server 10.9.8.1
+        ("::10.9.8.1", True),
+        ("::ffff:10.9.8.1", True),
         ("2606:4700:4700::1111", False),
     ],
 )
@@ -202,8 +202,8 @@ def test_an_ipv4_address_inside_an_ipv6_one_is_judged_as_what_it_is(address, pri
 
 
 def test_a_teredo_client_is_judged_too():
-    # Client 10.0.0.1 is obfuscated (XOR 0xffffffff) in the last 32 bits.
-    assert netguard.is_private_address(ipaddress.ip_address("2001:0:4136:e378:8000:63bf:f5ff:fffe"))
+    # Client 10.9.8.1 is obfuscated (XOR 0xffffffff) in the last 32 bits.
+    assert netguard.is_private_address(ipaddress.ip_address("2001:0:4136:e378:8000:63bf:f5f6:f7fe"))
 
 
 def test_a_name_that_does_not_resolve_is_refused():
@@ -362,7 +362,7 @@ def test_a_name_that_could_not_be_resolved_is_said_so_not_called_private():
             creator.check_public("http://nowhere.example/")
     assert "could not resolve nowhere.example" in str(caught.value)
     assert "private address" not in str(caught.value)
-    with creator.private_addresses_refused(netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.0.0.5", 0))])):
+    with creator.private_addresses_refused(netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.9.8.5", 0))])):
         with pytest.raises(creator.PrivateAddressRefused, match="nowhere.example is a private address"):
             creator.check_public("http://nowhere.example/")
 
@@ -378,7 +378,7 @@ def test_a_proxy_hop_is_not_judged_by_the_proxys_own_address(fixture_server, mon
             creator.urlopen_guarded(creator.urllib.request.Request("http://target.example/x"), 5)
     assert caught.value.code == 404  # it reached the proxy, which has no such page
     # The name is still judged first.
-    private_name = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.0.0.5", 0))])
+    private_name = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.9.8.5", 0))])
     with creator.private_addresses_refused(private_name):
         with pytest.raises(creator.PrivateAddressRefused):
             creator.urlopen_guarded(creator.urllib.request.Request("http://inside.example/"), 5)
@@ -399,15 +399,15 @@ def test_an_empty_loc_does_not_swallow_the_next_address():
 
 
 def test_the_local_use_nat64_prefix_is_judged_by_what_it_carries():
-    assert netguard.is_private_address(ipaddress.ip_address("64:ff9b:1::a00:1"))
+    assert netguard.is_private_address(ipaddress.ip_address("64:ff9b:1::a09:801"))
     assert netguard.is_private_address(ipaddress.ip_address("64:ff9b:1::7f00:1"))
-    assert [str(a) for a in netguard._embedded_addresses(ipaddress.ip_address("64:ff9b:1::a00:1"))] == ["10.0.0.1"]
+    assert [str(a) for a in netguard._embedded_addresses(ipaddress.ip_address("64:ff9b:1::a09:801"))] == ["10.9.8.1"]
 
 
 def test_a_playlist_whose_entries_are_all_private_ends_with_the_private_refusal(monkeypatch, tmp_path):
     monkeypatch.setattr(video, "_yt_dlp", lambda: object())
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
-    entries = [{"title": "a", "url": "http://10.0.0.5/a"}, {"title": "b", "webpage_url": "http://192.168.1.1/b"}]
+    entries = [{"title": "a", "url": "http://10.9.8.5/a"}, {"title": "b", "webpage_url": "http://192.168.1.1/b"}]
     monkeypatch.setattr(video, "_flat_entries", lambda mod, url, limit: ({"title": "L"}, entries))
     monkeypatch.setattr(video, "_download_entry", lambda *a, **k: pytest.fail("downloaded"))
     notes = []

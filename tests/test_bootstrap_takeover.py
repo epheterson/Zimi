@@ -318,7 +318,7 @@ class FirstRunLanTests(unittest.TestCase):
         return self._post("/manage/access", self.ANSWER, headers=headers)
 
     def test_the_home_network_answers_a_fresh_setup_page_without_the_key(self):
-        for ip in ("192.168.1.20", "10.0.0.31", "fd12:3456::7"):
+        for ip in ("192.168.1.20", "10.9.8.31", "fd12:3456::7"):
             with self.subTest(ip=ip):
                 manage._setup_gate = True
                 manage._write_app_update_prefs(setup_started=__import__("time").time())
@@ -371,7 +371,7 @@ class FirstRunLanTests(unittest.TestCase):
         """A NodePort can hand the internet a 10.x node address."""
         os.environ["KUBERNETES_SERVICE_HOST"] = "10.96.0.1"
         try:
-            status, body = self._claim("10.0.0.31")
+            status, body = self._claim("10.9.8.31")
             self.assertEqual(status, 403, body)
         finally:
             del os.environ["KUBERNETES_SERVICE_HOST"]
