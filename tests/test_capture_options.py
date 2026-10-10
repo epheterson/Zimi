@@ -460,11 +460,8 @@ def _zimit(zimit_docker, tmp_path, **kw):
 def test_zimit_gets_each_flag_the_image_knows(zimit_docker, tmp_path):
     cmd, notes = _zimit(zimit_docker, tmp_path, capture_options=OPTIONS)
     assert cmd[cmd.index("--timeLimit") + 1] == "28800"
-    assert (
-        "--useSitemap" in cmd
-        and cmd[cmd.index("--useSitemap") + 1].startswith("--") is False
-        or True
-    )
+    after = cmd[cmd.index("--useSitemap") + 1 :]
+    assert not after or after[0].startswith("--"), "a bare --useSitemap takes no value"
     assert cmd[cmd.index("--userAgent") + 1] == "Mine/1"
     assert cmd[cmd.index("--mobileDevice") + 1] == crawler.MOBILE_DEVICE
     assert cmd[cmd.index("--pageLoadTimeout") + 1] == "60"

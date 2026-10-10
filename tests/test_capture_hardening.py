@@ -121,6 +121,23 @@ def test_a_nested_repeat_keeps_its_own_sentence(pattern):
         crawler._patterns([pattern], "--exclude")
 
 
+@pytest.mark.parametrize("pattern", [r".*a.*b.*c", r".*.*.*z", r".+x.+y.+"])
+def test_three_wildcards_are_refused(pattern):
+    """Each .* multiplies the ways to split a link: three take seconds a link."""
+    with pytest.raises(creator.CreateError, match=r"more than 2 \.\*"):
+        crawler._patterns([pattern], "--exclude")
+
+
+def test_a_bounded_repeat_of_an_overlapping_choice_is_refused():
+    with pytest.raises(creator.CreateError, match="can overlap"):
+        crawler._patterns([r"(a|ab){1,50}z"], "--exclude")
+
+
+@pytest.mark.parametrize("pattern", [r"/docs/.*/v2/.*\.html", r"/[^/]+/[^/]+/x", r"(?:/en|/fr){0,2}/"])
+def test_two_wildcards_and_bounded_plain_choices_still_work(pattern):
+    assert crawler._patterns([pattern], "--exclude")
+
+
 def test_the_pattern_rule_runs_on_python_3_10():
     """The parser moved under ``re`` in 3.11 and two opcodes arrived with it.
     Whatever this Python is, the checker reads its own parser."""
@@ -368,7 +385,7 @@ def test_a_name_that_could_not_be_resolved_is_said_so_not_called_private():
     assert "could not resolve nowhere.example" in str(caught.value)
     assert "private address" not in str(caught.value)
     with creator.private_addresses_refused(netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", ("10.9.8.5", 0))])):
-        with pytest.raises(creator.PrivateAddressRefused, match="nowhere.example is a private address"):
+        with pytest.raises(creator.PrivateAddressRefused, match=r"nowhere\.example is a private address"):
             creator.check_public("http://nowhere.example/")
 
 
@@ -393,7 +410,7 @@ def test_a_refusal_after_connect_names_the_target_host(fixture_server, monkeypat
     _rebind(monkeypatch)
     guard = netguard.PrivateGuard(lambda h, p: [(2, 1, 6, "", (PUBLIC, 0))])
     with creator.private_addresses_refused(guard):
-        with pytest.raises(creator.CreateError, match="rebind.example is a private address"):
+        with pytest.raises(creator.CreateError, match=r"rebind\.example is a private address"):
             creator._fetch_page(f"http://rebind.example:{PORT}/", timeout=5, max_redirects=0)
 
 

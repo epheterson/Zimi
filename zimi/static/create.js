@@ -2097,6 +2097,7 @@ function _createStashMode() {
     if (!node) continue;
     state.values[keys[i]] = f.control === 'check' ? !!node.checked
       : f.control === 'engine' ? _createCheckedRadio(f.id)
+      : f.control === 'checks' ? _createTickedValues(f.id)
       : node.value;
   }
   state.preview = _createPreview;
@@ -2123,6 +2124,7 @@ function _createRestoreMode() {
     if (!node) continue;
     if (f.control === 'check') node.checked = !!state.values[key];
     else if (f.control === 'engine') _createSetRadio(f.id, state.values[key]);
+    else if (f.control === 'checks') _createSetTicked(f.id, state.values[key]);
     else node.value = state.values[key];
   }
 }
@@ -2491,14 +2493,17 @@ function _createSyncScopeWords() {
   var sel = document.getElementById(CREATE_FIELDS.scope.id);
   if (!sel) return;
   var words = _createScopeWords((document.getElementById('create-source') || {}).value);
+  // The empty option is the default: a stored reach, else this section.
+  var stored = CREATE_STORED_VALUES.scope;
+  var blank = stored && CREATE_FIELDS.scope.options.some(function(o) { return o.v === stored; }) ? stored : 'prefix';
   for (var i = 0; i < sel.options.length; i++) {
     var o = sel.options[i];
-    var key = o.value || 'prefix';
+    var key = o.value || blank;
     var plain = t('create_scope_' + key);
     var said = words && words[key] ? words[key] : plain;
     if (o.textContent !== said) o.textContent = said;
     // At the root the section is the whole site: one option says it.
-    o.hidden = !!(words && key === 'host' && words.host === words.prefix);
+    o.hidden = !!(words && blank === 'prefix' && o.value === 'host' && words.host === words.prefix);
   }
 }
 
@@ -3017,6 +3022,11 @@ function _createTickedValues(name) {
   var out = [];
   for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) out.push(boxes[i].value);
   return out;
+}
+
+function _createSetTicked(name, values) {
+  var boxes = document.querySelectorAll('input[name="' + name + '"]');
+  for (var i = 0; i < boxes.length; i++) boxes[i].checked = (values || []).indexOf(boxes[i].value) >= 0;
 }
 
 function _createCheckedRadio(name) {

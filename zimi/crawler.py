@@ -123,6 +123,7 @@ from zimi.zimwriter import (
     _slug,
     add_standard_metadata,
     atomic_zim_creator,
+    normalize_language,
     history_record,
     mask_raw_text,
     media_tags,
@@ -455,17 +456,34 @@ def _repeats_a_repeat(parsed):
 
 
 def _repeats_an_overlapping_choice(parsed):
-    """Whether a parsed pattern repeats, without bound, a group holding a choice
-    whose options can overlap: ``(a|aa)+``, ``(x|x)*y``, ``(\\w+|\\d+)*``. Each
+    """Whether a parsed pattern repeats, more than once, a group holding a choice
+    whose options can overlap: ``(a|aa)+``, ``(x|x)*y``, ``(a|ab){1,50}``. Each
     pass can take either way, so the ways to match multiply with the text. A
     repeated choice of distinct plain words is fine, and so is any choice that
     is not repeated: ``(?:foo|bar)+``, ``(/en|/fr)*``, ``\\.(png|jpg)$``."""
     for op, av in parsed:
-        if op in _sre_repeats and av[1] == _sre.MAXREPEAT and _has_overlapping_choice(av[2]):
+        if op in _sre_repeats and av[1] > 1 and _has_overlapping_choice(av[2]):
             return True
         if any(_repeats_an_overlapping_choice(part) for part in _inner(op, av)):
             return True
     return False
+
+
+# Each unbounded wildcard multiplies the ways a link can be split between
+# them: two are instant on a long link, three take seconds per link, and
+# .*.*.* never finishes.
+MAX_WILDCARDS = 2
+
+
+def _wildcards(parsed):
+    """How many unbounded ``.`` repeats (``.*``, ``.+``) a parsed pattern holds."""
+    count = 0
+    for op, av in parsed:
+        if op in _sre_repeats and av[1] == _sre.MAXREPEAT and list(av[2]) == [(_sre.ANY, None)]:
+            count += 1
+        else:
+            count += sum(_wildcards(part) for part in _inner(op, av))
+    return count
 
 
 def _patterns(values, flag):
@@ -497,6 +515,11 @@ def _patterns(values, flag):
             raise CreateError(
                 f"{flag} {text!r} repeats a choice whose options can overlap, which can hang the crawl; "
                 "list the options so that none starts another"
+            )
+        if _wildcards(parsed) > MAX_WILDCARDS:
+            raise CreateError(
+                f"{flag} {text!r} has more than {MAX_WILDCARDS} .* in it, which can hang the crawl; "
+                f"use {MAX_WILDCARDS} at most, or [^/]* for one part of the path"
             )
     if len(out) > MAX_SCOPE_PATTERNS:
         raise CreateError(f"{flag}: at most {MAX_SCOPE_PATTERNS} patterns")
@@ -830,7 +853,12 @@ def _parse_language(value):
         return None
     if not re.fullmatch(r"[a-z]{2,3}", code):
         raise CreateError("a language is a code like eng, fra or ara")
-    return code
+    # The code the ZIM will carry: a two-letter one translated, an unknown
+    # one refused here rather than when the ZIM is written.
+    try:
+        return normalize_language(code)
+    except ValueError:
+        raise CreateError("a language is a code like eng, fra or ara")
 
 
 def _show_list(sep):
@@ -1636,11 +1664,14 @@ def _crawl(
             log.debug("skipping %s: redirected out of scope to %s", url, final_url)
             note(f"skipped {url}: redirected off-origin")
             continue
+        final_key = normalize_url(final_url)
+        if final_key != url and not robots_book.allows(final_key):
+            log.debug("skipping %s: robots.txt disallows where it led, %s", url, final_url)
+            continue
         # Where the page landed decides: a redirect back into scope resets
         # the count, one further out spends a hop.
         hops = landed
         keys = [url]
-        final_key = normalize_url(final_url)
         if final_key != url:
             if final_key in captured:
                 note(f"skipped {url}: already captured after its redirect")

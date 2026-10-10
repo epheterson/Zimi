@@ -3826,8 +3826,11 @@ def _apply_engine_default(args, sources):
 
     if getattr(args, "engine", None) is None:
         engine = crawler.stored_defaults().get("engine")
-        # Several pages cannot go to zimit, so a stored zimit is not theirs.
-        if engine == "zimit" and len(sources) > 1:
+        # A folder has no engine, and several pages cannot go to an engine
+        # that writes its own ZIM: a stored one of those is not theirs.
+        if not all(_is_http_url(s) for s in sources) or (
+            engine in ARCHIVE_ENGINES and len(sources) > 1
+        ):
             engine = None
         args.engine = engine or DEFAULT_ENGINE
 
