@@ -133,6 +133,7 @@ SOURCES = {
     "creator": ("create",),
     "crawler": ("create",),
     "renderer": ("create",),
+    "captureproxy": ("create",),
     "alive": ("create",),
     "singlefile": ("create",),
     "importer": ("create",),

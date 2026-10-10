@@ -457,9 +457,11 @@ def test_an_engine_the_web_does_not_offer_is_refused():
 def test_zimit_is_offered_and_refused_by_readiness_not_by_hiding(monkeypatch):
     """The refusal a person gets should name the missing thing. Hiding a
     working engine from everyone who has Docker, to spare the people who do not
-    from a bad error message, is fixing the wrong end of the problem."""
+    from a bad error message, is fixing the wrong end of the problem. (With
+    private captures allowed: under that rule the web refuses zimit outright.)"""
+    monkeypatch.setattr(manage, "_create_allows_private", lambda: True)
     monkeypatch.setattr(manage, "_create_zimit_ready", lambda: False)
-    with pytest.raises(ValueError, match="Docker"):
+    with pytest.raises(ValueError, match="has no Docker"):
         manage._create_validate(
             {"mode": "page", "source": "https://e.com/", "engine": "zimit"}
         )
