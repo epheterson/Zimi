@@ -141,9 +141,9 @@ def test_the_cookie_scope_is_the_seeds_host_and_its_subdomains():
         "ftp://docs.example.org/",
     ):
         assert jar.header_for(other) is None, other
-    ip = gate.CaptureCookies("a=1", "http://10.0.0.1/x")
-    assert ip.header_for("http://10.0.0.1/") == "a=1"
-    assert ip.header_for("http://x.10.0.0.1/") is None
+    ip = gate.CaptureCookies("a=1", "http://10.9.8.1/x")
+    assert ip.header_for("http://10.9.8.1/") == "a=1"
+    assert ip.header_for("http://x.10.9.8.1/") is None
     assert SESSION not in repr(gate.CaptureCookies(f"s={SESSION}", "http://h/")) + str(
         gate.CaptureCookies(f"s={SESSION}", "http://h/")
     )

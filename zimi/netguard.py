@@ -28,14 +28,14 @@ _NAT64 = ipaddress.ip_network("64:ff9b::/96")
 # RFC 8215's local-use NAT64 prefix: a network's own translator, so a private
 # address behind it is as private as one behind the well-known prefix.
 _NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
-# ::/96, the long-deprecated IPv4-compatible form: ::10.0.0.1
+# ::/96, the long-deprecated IPv4-compatible form: ::10.9.8.1
 _IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
 RESOLVE_TIMEOUT = 5.0  # seconds one name may take to resolve before it is refused
 
 
 def _embedded_addresses(ip):
     """The IPv4 addresses an IPv6 one carries, which is where it really goes:
-    IPv4-mapped (``::ffff:10.0.0.1``), NAT64 (``64:ff9b::a00:1``), 6to4
+    IPv4-mapped (``::ffff:10.9.8.1``), NAT64 (``64:ff9b::a09:801``), 6to4
     (``2002:a00:1::``), Teredo (server and client) and the deprecated
     IPv4-compatible form."""
     if ip.version != 6:

@@ -54,7 +54,7 @@ PUBLIC = "93.184.216.34"
         "::",
         "224.0.0.1",
         "ff02::1",
-        "::ffff:10.0.0.1",
+        "::ffff:10.9.8.1",
         "::ffff:127.0.0.1",
     ],
 )
@@ -74,7 +74,7 @@ def _resolving_to(address):
 
 
 def test_a_name_is_judged_by_what_it_resolves_to():
-    assert netguard.PrivateGuard(_resolving_to("10.0.0.5")).refuses(
+    assert netguard.PrivateGuard(_resolving_to("10.9.8.5")).refuses(
         "looks-public.example"
     )
     assert netguard.PrivateGuard(_resolving_to("127.0.0.1")).refuses(
@@ -84,7 +84,7 @@ def test_a_name_is_judged_by_what_it_resolves_to():
     # One private answer among public ones is enough.
     mixed = lambda host, port: [
         (2, 1, 6, "", (PUBLIC, 0)),
-        (2, 1, 6, "", ("10.0.0.5", 0)),
+        (2, 1, 6, "", ("10.9.8.5", 0)),
     ]  # noqa: E731
     assert netguard.PrivateGuard(mixed).refuses("both.example")
 
@@ -282,18 +282,18 @@ def test_the_browser_engines_are_told_the_rule():
     from zimi.renderer import RenderedSession
 
     assert RenderedSession()._private_guard is None
-    with creator.private_addresses_refused(_Guard("10.0.0.1")):
+    with creator.private_addresses_refused(_Guard("10.9.8.1")):
         session = RenderedSession()
     assert session._private_guard is not None and session._private_guard.refuses(
-        "10.0.0.1"
+        "10.9.8.1"
     )
     with pytest.raises(creator.PrivateAddressRefused):
-        creator.check_public("http://10.0.0.1/", session._private_guard)
+        creator.check_public("http://10.9.8.1/", session._private_guard)
     seen = []
 
     class Route:
         class request:  # noqa: N801
-            url = "http://10.0.0.1/admin"
+            url = "http://10.9.8.1/admin"
 
         def abort(self, code):
             seen.append(("abort", code))
