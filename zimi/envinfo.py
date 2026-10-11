@@ -112,6 +112,11 @@ VARS: dict[str, tuple[str, str]] = {
     "ZIMI_MIRROR": ("Seeds the whole library and mirrors the catalog", "Mirror"),
     "ZIMI_MIRROR_RATIO": ("Seed ratio while mirroring", "Mirror"),
     "ZIMI_MIRROR_UPLOAD_KB": ("Upload limit while mirroring, KB/s", "Mirror"),
+    "ZIMI_QBT_URL": ("An existing qBittorrent to download and seed with, instead of the built-in engine", "BitTorrent"),
+    "ZIMI_QBT_USER": ("qBittorrent username", "BitTorrent"),
+    "ZIMI_QBT_PASSWORD": ("qBittorrent password", "BitTorrent"),
+    "ZIMI_QBT_CATEGORY": ("qBittorrent category Zimi's torrents go in (zimi)", "BitTorrent"),
+    "ZIMI_QBT_PATHS": ("qBittorrent path mappings: remote=local, separated by ;", "BitTorrent"),
     # ── sharing: the local network ────────────────────────────────────────
     "ZIMI_NEARBY": ("Nearby sharing settings, as one blob", "Nearby"),
     "ZIMI_PEER_DISCOVERY": ("Announces this Zimi on the local network", "Nearby"),

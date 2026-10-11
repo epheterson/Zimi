@@ -5999,7 +5999,7 @@ def handle_manage_get(handler, parsed, params):
         from zimi import p2p
 
         enabled = p2p.is_torrent_enabled()
-        engine_importable = p2p._lt() is not None
+        engine_importable = p2p._lt() is not None or p2p.engine_name() == "qbittorrent"
 
         # Live state — peek only. A status view must never start the
         # engine (with BT on by default that would mean every settings
@@ -6060,7 +6060,8 @@ def handle_manage_get(handler, parsed, params):
             {
                 "status": status,
                 "enabled": enabled,
-                "backend": "libtorrent",
+                "backend": p2p.engine_name(),
+                "qbt": _qbt_view(),
                 "bt_port": p2p.get_bt_port(),
                 "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
                 "engine_importable": engine_importable,
@@ -6408,6 +6409,88 @@ def _open_to_anyone(handler, data):
         "change settings turns it off)."
     )
     return handler._json(200, {"access": access_mode()})
+
+
+def _qbt_locked():
+    """Why the qBittorrent connection cannot be changed here, or None. The
+    environment owns it when ZIMI_QBT_URL is set; and while "Anyone, anywhere"
+    is on it could only come from there, or anyone could point Zimi's requests
+    at the operator's own network."""
+    from zimi import qbittorrent as _qbt
+
+    if _qbt.env_locked():
+        return "ZIMI_QBT_URL"
+    if manage_open() and not manage_open_env():
+        return "open"
+    return None
+
+
+def _qbt_view():
+    """The connection for Settings. Never the password: only whether one is
+    saved."""
+    from zimi import qbittorrent as _qbt
+
+    cfg = _qbt.config() or {}
+    return {
+        "url": cfg.get("url", ""),
+        "user": cfg.get("user", ""),
+        "password_set": bool(cfg.get("password")),
+        "category": cfg.get("category", _qbt.DEFAULT_CATEGORY),
+        "paths": _qbt.format_paths(cfg.get("paths", [])),
+        "locked": _qbt_locked(),
+    }
+
+
+def _handle_qbittorrent(handler, data):
+    """POST /manage/qbittorrent: {url, user, password?, category, paths, test?}.
+
+    ``test`` only probes and saves nothing. A missing password keeps the saved
+    one; an empty url goes back to the built-in engine."""
+    from zimi import p2p
+    from zimi import qbittorrent as _qbt
+
+    locked = _qbt_locked()
+    if locked:
+        return handler._json(403, {"error": "env_controlled" if locked != "open" else "open_locked", "var": locked})
+    old = _qbt.config() or {}
+    url = str(data.get("url") or "").strip().rstrip("/")
+    if url and not _qbt.valid_url(url):
+        return handler._json(400, {"error": "bad_url"})
+    password = data.get("password")
+    if password is None:
+        password = old.get("password", "")
+    cfg = {
+        "url": url,
+        "user": str(data.get("user") or "").strip()[:128],
+        "password": str(password)[:256],
+        "category": str(data.get("category") or "").strip()[:64] or _qbt.DEFAULT_CATEGORY,
+        "paths": _qbt.parse_paths(data.get("paths") or ""),
+    }
+    if data.get("test"):
+        if not url:
+            return handler._json(400, {"error": "bad_url"})
+        return handler._json(200, _qbt.probe(cfg, library_dir=_srv.ZIM_DIR))
+    saved = all(
+        p2p.set_pref(_qbt.PREF[k], v)
+        for k, v in (
+            ("url", url),
+            ("user", cfg["user"]),
+            ("password", cfg["password"] if url else ""),
+            ("category", cfg["category"]),
+            ("paths", _qbt.format_paths(cfg["paths"])),
+        )
+    )
+    if not saved:
+        return handler._json(500, {"error": "could not save setting (config dir not writable)"})
+    log.info("BitTorrent engine: %s", f"qBittorrent at {url}" if url else "built in")
+
+    def _switch():
+        p2p.shutdown_backend()
+        if p2p.is_torrent_enabled():
+            p2p.get_backend(data_dir=_srv.ZIMI_DATA_DIR)
+
+    threading.Thread(target=_switch, daemon=True).start()
+    return handler._json(200, {"engine": "qbittorrent" if url else "libtorrent", "qbt": _qbt_view()})
 
 
 def handle_manage_post(handler, parsed, data):
@@ -7391,6 +7474,9 @@ def handle_manage_post(handler, parsed, data):
             p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled(), check_reachable=True
         )
         return handler._json(200, {"nat": result})
+
+    elif parsed.path == "/manage/qbittorrent":
+        return _handle_qbittorrent(handler, data)
 
     elif parsed.path == "/manage/bt-settings":
         # Seed/mirror toggles. An env var locks its field — UI changes would
