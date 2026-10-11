@@ -290,6 +290,21 @@ _CHECKING_STATES = {
 }
 
 
+def _added(out):
+    """Whether torrents/add took it. Up to 5.1 the answer is "Ok." or
+    "Fails."; 5.2 answers JSON counts ({"success_count": 1, ...})."""
+    text = out.strip()
+    if text in (b"Ok.", b""):
+        return True
+    try:
+        counts = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(counts, dict) and (
+        counts.get("success_count", 0) + counts.get("pending_count", 0) > 0
+    )
+
+
 def _magnet_hash(uri):
     m = re.search(r"xt=urn:btih:([0-9a-fA-F]{40})", uri)
     return m.group(1).lower() if m else None
@@ -433,7 +448,10 @@ class QBittorrentBackend(BTBackend):
         if self._info(tid):
             return tid  # already there: a restart picking up its download
         out = self.client.call("torrents/add", fields, files)
-        if out.strip() not in (b"Ok.", b""):
+        # Its own listing is the last word: an answer this version words in a
+        # way not read here must not leave a torrent behind while Zimi falls
+        # back to HTTP for the same file.
+        if not _added(out) and not self._info(tid):
             raise QbtError(
                 "qBittorrent refused the torrent: "
                 + out.decode("utf-8", "replace")[:200]

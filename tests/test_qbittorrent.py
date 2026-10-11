@@ -147,6 +147,9 @@ class FakeQbt:
                 "progress": 0.0, "size": 11, "completed": 0, "uploaded": 0,
                 "num_seeds": 1, "num_leechs": 0, "skip": form.get("skip_checking"),
             }
+            # 5.2 answers with counts; earlier versions with "Ok.".
+            if self.v5:
+                return h._send(200, {"added_torrent_ids": [tid], "failure_count": 0, "pending_count": 0, "success_count": 1})
             return h._send(200, "Ok.")
         if path == "torrents/info":
             rows = list(self.torrents.values())
@@ -455,3 +458,11 @@ def test_while_anyone_can_change_settings_the_connection_comes_only_from_the_env
     assert manage._qbt_locked() == "open"
     monkeypatch.setattr(manage, "manage_open_env", lambda: True)
     assert manage._qbt_locked() is None
+
+
+def test_reads_both_answers_to_an_add():
+    assert qbt._added(b"Ok.")
+    assert qbt._added(b'{"added_torrent_ids":["ab"],"failure_count":0,"pending_count":0,"success_count":1}')
+    assert qbt._added(b'{"failure_count":0,"pending_count":1,"success_count":0}')
+    assert not qbt._added(b"Fails.")
+    assert not qbt._added(b'{"failure_count":1,"pending_count":0,"success_count":0}')
