@@ -303,7 +303,7 @@ def _update_sidecar(venv, exe, say):
 
 def ensure_sidecar(sink=None):
     """The arcticzim console script, installing the sidecar venv on first
-    use. Needs the internet once (it is a git install), and git."""
+    use. Needs the internet once (a source archive from GitHub)."""
     say = sink or (lambda _line: None)
     venv = sidecar_dir()
     exe = _exe()

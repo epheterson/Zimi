@@ -5104,6 +5104,17 @@ def main():
         help="Start server and open in a native desktop window (requires pywebview)",
     )
 
+    p_doctor = sub.add_parser(
+        "doctor", help="Which optional features this install has, and how to get the rest"
+    )
+    p_doctor.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit 1 when a feature this kind of install should include is missing",
+    )
+    p_doctor.add_argument("--kind", choices=("docker", "desktop", "pip"), help=argparse.SUPPRESS)
+    add_boot_flags(p_doctor)
+
     args = parser.parse_args()
 
     settings, config_path, data_dir_problem = _resolve_boot(args)
@@ -5168,6 +5179,11 @@ def main():
         from zimi import creator as _creator
 
         _creator.cli_create(args)
+
+    elif args.command == "doctor":
+        from zimi import runtimes as _runtimes
+
+        _runtimes.cli_doctor(args)
 
     elif args.command == "import":
         from zimi import importer as _importer

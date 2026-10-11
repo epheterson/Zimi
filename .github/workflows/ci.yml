@@ -327,6 +327,36 @@ jobs:
           ZIMI_OFFLINE: "1"
         run: /tmp/zimi-mcp/bin/python packaging/zimi-mcp/smoke.py /tmp/zimi-mcp/bin/zimi-mcp --check-excluded
 
+  # `pip install zimi` with nothing else, the way #113's reporter installed it.
+  # Voices worked in Docker and the desktop app and offered nothing here, and
+  # no job installed Zimi this way. zimi doctor prints where every optional
+  # feature comes from on this kind of install (zimi/runtimes.py) and --check
+  # fails if one declared bundled is missing.
+  pip-clean:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the wheel in a bare venv
+        run: |
+          pip install build
+          python -m build --wheel
+          python -m venv /tmp/bare
+          /tmp/bare/bin/pip install dist/zimi-*.whl
+
+      - name: Every feature has a way here
+        env:
+          ZIMI_TORRENT: "0"
+          ZIMI_OFFLINE: "1"
+        run: |
+          mkdir -p /tmp/zims
+          /tmp/bare/bin/zimi doctor --check --zim-dir /tmp/zims
+
   # The same image under rootless Podman, the way a Fedora or RHEL self-hoster
   # runs it. Two things Docker never made us get right: the image's user must
   # map to the person (or every downloaded ZIM lands owned by a subordinate
@@ -441,6 +471,9 @@ jobs:
           echo "Testing /static/pdfjs/web/viewer.html..."
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8899/static/pdfjs/web/viewer.html)
           [ "$STATUS" = "200" ] && echo "  OK" || { echo "FAIL: $STATUS"; exit 1; }
+
+          echo "Testing every feature the image should include (zimi doctor)..."
+          docker compose exec -T zimi zimi doctor --check
 
           echo "All Docker smoke tests passed!"
 
