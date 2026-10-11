@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- BitTorrent can use a qBittorrent you already run, set up the way Sonarr and Radarr do: address, login, category and path mappings ([#53](https://github.com/epheterson/Zimi/issues/53)).
+- Who can change settings has a third answer, Anyone, anywhere: no password from outside your network, confirmed with the current password and reversible ([#112](https://github.com/epheterson/Zimi/issues/112)).
+- `zimi doctor` lists the optional features, whether each is ready, and how this kind of install gets the rest.
+
+### Fixed
+
+- Cancelling a voice download during first-time setup stops the setup at once.
+- An active choice in Settings shows as selected.
+
 ## [1.13.2] - 2026-10-11
 
 ### Added

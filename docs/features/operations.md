@@ -77,6 +77,8 @@ What reaches nothing:
 
 ## Troubleshoot
 
+- **A feature is missing on this install.** `zimi doctor` lists every optional feature (BitTorrent, voices, PDF, MCP, each Create engine), whether it is ready here, and how this kind of install (Docker, desktop app, pip) gets it.
+
 - **A setting isn't taking effect** — run `zimi config` and read the provenance column. Remember a config-file value loses to the same environment variable and to a CLI flag.
 - **Config file ignored** — check the resolution order: `--config`, then `ZIMI_CONFIG`, then `<data-dir>/zimi.json`. An unknown key warns but never fails the boot; a typo silently does nothing.
 - **Data dir not writable** — for the default location (under the ZIM directory) Zimi logs the reason and falls back to a per-library cache dir. A data dir you set yourself (`--data-dir`/`ZIMI_DATA_DIR`) that is not writable stops Zimi at startup (exit 2), since quietly keeping state elsewhere would lose it. Fix the permissions or point it somewhere writable.
