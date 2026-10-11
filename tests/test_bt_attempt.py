@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.library as library  # noqa: E402
+from tests.engine_fakes import engine_mock  # noqa: E402
 
 
 def _mk_dl(tmp_path, name="wikipedia_en_top_2026-02.zim"):
@@ -38,7 +39,7 @@ def _mk_dl(tmp_path, name="wikipedia_en_top_2026-02.zim"):
 def _mk_backend(*, status_sequence):
     """Mock backend that returns the given status dicts in order on each
     .status() call. Each status dict represents one poll tick."""
-    backend = MagicMock()
+    backend = engine_mock()
     backend.add_torrent.return_value = "gid-001"
     iter_status = iter(status_sequence)
     backend.status.side_effect = lambda tid: next(iter_status)
@@ -320,7 +321,7 @@ def test_cancelled_mid_download(tmp_path):
             "info_hash": "abc",
         }
 
-    backend = MagicMock()
+    backend = engine_mock()
     backend.add_torrent.return_value = "gid"
     backend.status.side_effect = status_with_cancel
     result = library._try_bt_download(
@@ -382,7 +383,7 @@ def test_add_failure_falls_back_cleanly(tmp_path):
     """If add_torrent itself raises (e.g. network blip fetching .torrent),
     we fall back to HTTP rather than failing loud."""
     dl = _mk_dl(tmp_path)
-    backend = MagicMock()
+    backend = engine_mock()
     backend.add_torrent.side_effect = RuntimeError("torrent metadata fetch failed")
     result = library._try_bt_download(
         backend,

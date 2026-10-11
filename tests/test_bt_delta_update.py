@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.library as library  # noqa: E402
+from tests.engine_fakes import engine_mock  # noqa: E402
 
 OLD = "wikipedia_en_top_2026-01.zim"
 NEW = "wikipedia_en_top_2026-02.zim"
@@ -37,7 +38,7 @@ def _mk_dl(zim_dir, staging_dir, name=NEW, is_update=True):
 
 
 def _mk_backend(*, status_sequence):
-    backend = MagicMock()
+    backend = engine_mock()
     backend.add_torrent.return_value = "gid-001"
     it = iter(status_sequence)
     backend.status.side_effect = lambda tid: next(it)

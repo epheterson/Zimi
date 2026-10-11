@@ -712,6 +712,29 @@ class BTBackend(ABC):
         existence is liveness."""
         return True
 
+    # An engine Zimi does not run (qbittorrent.QBittorrentBackend): it keeps
+    # seeding what it downloaded, owns its own limits and port, and its files
+    # cross into the library through path mappings.
+    external = False
+
+    def payload_path(self, tid: str, filename: str, staging_dir: str) -> str:
+        """Where a finished download is, as Zimi sees it."""
+        return os.path.join(staging_dir, filename)
+
+    def install(self, tid: str, src: str, dest: str) -> str:
+        """Put a finished, validated download at ``dest`` and return the id
+        that now seeds it (the same one when the engine keeps it). The
+        built-in engine downloads into staging and Zimi moves the file."""
+        try:
+            os.replace(src, dest)
+        except OSError:
+            # Cross-filesystem rename: copy, then remove.
+            import shutil as _shutil
+
+            _shutil.copyfile(src, dest)
+            os.remove(src)
+        return tid
+
     def change_options(self, tid: str, options: dict) -> bool:
         """Change per-torrent options on a live transfer (e.g. seed-ratio).
         Returns True on success. Backends without live-option support may
@@ -730,6 +753,19 @@ _lt_import_failed = False
 # balloon memory. Real Kiwix .torrent files are tens of KB.
 TORRENT_FETCH_TIMEOUT_S = 30
 TORRENT_FETCH_MAX_BYTES = 10 * 1024 * 1024
+
+
+def fetch_torrent_bytes(url: str) -> bytes:
+    """Bounded .torrent metadata fetch, done before the torrent joins the
+    engine. Holding the full metadata up front is what makes 'complete'
+    unambiguously mean the *content* is complete — a two-phase add can
+    report complete on metadata alone and hand back a truncated ZIM."""
+    req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
+    with urllib.request.urlopen(req, timeout=TORRENT_FETCH_TIMEOUT_S) as resp:
+        data = resp.read(TORRENT_FETCH_MAX_BYTES + 1)
+    if len(data) > TORRENT_FETCH_MAX_BYTES:
+        raise RuntimeError(f".torrent metadata too large from {url}")
+    return data
 
 
 def _user_agent():
@@ -1091,16 +1127,7 @@ class LibtorrentBackend(BTBackend):
         raise last_exc if last_exc is not None else RuntimeError("add_torrent failed")
 
     def _fetch_torrent_bytes(self, url: str) -> bytes:
-        """Bounded .torrent metadata fetch, done before the torrent joins the
-        session. Holding the full metadata up front is what makes 'complete'
-        unambiguously mean the *content* is complete — a two-phase add can
-        report complete on metadata alone and hand back a truncated ZIM."""
-        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
-        with urllib.request.urlopen(req, timeout=TORRENT_FETCH_TIMEOUT_S) as resp:
-            data = resp.read(TORRENT_FETCH_MAX_BYTES + 1)
-        if len(data) > TORRENT_FETCH_MAX_BYTES:
-            raise RuntimeError(f".torrent metadata too large from {url}")
-        return data
+        return fetch_torrent_bytes(url)
 
     def pause(self, tid: str) -> None:
         h = self._handles.get(tid)
@@ -1296,12 +1323,22 @@ def resume_dir(data_dir: str) -> str:
     return os.path.join(data_dir, "bt", "resume")
 
 
-def get_backend(*, data_dir: str) -> BTBackend | None:
-    """Return the libtorrent backend, or None (→ HTTP floor).
+def engine_name() -> str:
+    """"qbittorrent" when an external qBittorrent is configured, else the
+    built-in "libtorrent"."""
+    from zimi import qbittorrent as _qbt
 
-    None when: BT disabled, libtorrent unimportable on this install, or
-    the session fails to start. Never crashes Zimi for a BT problem —
-    HTTP is the universal transport underneath.
+    return "qbittorrent" if _qbt.config() else "libtorrent"
+
+
+def get_backend(*, data_dir: str) -> BTBackend | None:
+    """Return the engine: the operator's qBittorrent when one is configured,
+    else libtorrent; or None (→ HTTP floor).
+
+    None when: BT disabled, the engine unusable here (libtorrent not
+    importable, qBittorrent unreachable), or its session fails to start.
+    Never crashes Zimi for a BT problem — HTTP is the universal transport
+    underneath.
     """
     global _backend_singleton
     with _backend_lock:
@@ -1309,6 +1346,19 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
             return None
         if _backend_singleton is not None:
             return _backend_singleton
+        from zimi import qbittorrent as _qbt
+
+        cfg = _qbt.config()
+        if cfg:
+            from zimi import server as _srv
+
+            qb = _qbt.QBittorrentBackend(
+                cfg, library_dir=_srv.ZIM_DIR, staging_dir=get_staging_dir(data_dir)
+            )
+            if not qb.available():
+                return None
+            _backend_singleton = qb
+            return qb
         backend = LibtorrentBackend(
             bt_port=get_bt_port(),
             data_dir=data_dir,

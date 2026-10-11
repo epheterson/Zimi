@@ -2761,7 +2761,8 @@ def _try_bt_download(
     # hash check below salvages every unchanged piece. Fail-soft — a no-op on
     # anything but a genuine update with room to copy.
     try:
-        _prepare_delta_staging(dl, staging_dir)
+        if not backend.external:  # an external engine saves where it saves
+            _prepare_delta_staging(dl, staging_dir)
     except Exception as e:
         log.debug("delta-update pre-seed skipped for %s: %s", dl["filename"], e)
 
@@ -2875,12 +2876,18 @@ def _try_bt_download(
 
         state = status.get("state")
         if state == "complete":
-            staged = os.path.join(staging_dir, dl["filename"])
-            if not os.path.exists(staged):
+            try:
+                staged = backend.payload_path(tid, dl["filename"], staging_dir)
+            except Exception as e:
+                log.warning("BT payload lookup failed for %s: %s", dl["filename"], e)
+                staged = ""
+            if not staged or not os.path.exists(staged):
                 log.warning(
                     "BT reported complete but staged file missing: %s"
-                    " — falling back",
+                    " — falling back%s",
                     staged,
+                    " (can Zimi see qBittorrent's download folder? Settings > "
+                    "BitTorrent > Path mappings)" if backend.external else "",
                 )
                 try:
                     backend.remove(tid, delete_files=True)
@@ -2906,17 +2913,10 @@ def _try_bt_download(
                 return "fallback"
             try:
                 os.makedirs(os.path.dirname(dl["dest"]), exist_ok=True)
-                os.replace(staged, dl["dest"])
-            except OSError as e:
-                # Cross-filesystem rename — fall back to copy + remove
-                try:
-                    import shutil as _shutil
-
-                    _shutil.copyfile(staged, dl["dest"])
-                    os.remove(staged)
-                except Exception as e2:
-                    log.warning("BT staging→dest failed: %s / %s", e, e2)
-                    return "fallback"
+                tid = backend.install(tid, staged, dl["dest"]) or tid
+            except Exception as e:
+                log.warning("BT staging→dest failed for %s: %s", dl["filename"], e)
+                return "fallback"
             # Post-world resilience: remember how to seed this file with
             # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR
             # even after the sidecar forgets the download.
@@ -2935,10 +2935,25 @@ def _try_bt_download(
             # No re-hash needed: libtorrent seeds the existing file when
             # save_path points at it, and libzim just validated it.
             _cap = _p2p.get_seed_ratio_cap()
+            _seed = _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled())
+            if backend.external:
+                # It keeps seeding the file it has (moved into the library, or
+                # its own copy); the ledger caps it like any other seed. Not
+                # seeding: let it go, and its own copy with it (remove never
+                # deletes a library file).
+                if _seed:
+                    record_seed(dl["filename"])
+                    dl["bt_gid"] = tid
+                else:
+                    try:
+                        backend.remove(tid, delete_files=True)
+                    except Exception as e:
+                        log.debug("external engine remove failed: %s", e)
+                return "success"
             # Zimi's "ratio 0" means never seed; the engine seeds without a
             # cap and the ledger enforces the user's. Only mirror mode or a
             # positive cap re-adds the library seed.
-            if _p2p.is_seeding_enabled() and (_cap > 0 or _p2p.is_mirror_enabled()):
+            if _seed:
                 # Remove the staging torrent FIRST. It still holds this
                 # info-hash as an active seeder (now pointing at the moved-away
                 # staging path), so adding the library-path torrent before
