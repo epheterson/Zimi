@@ -20,7 +20,7 @@ Zimi has two LAN-aware features that depend on how the container is networked:
 
 ```yaml
 services:
-  zim-reader:
+  zimi:
     network_mode: host
     # no ports: section needed
     # 8899 (HTTP), 6881 (BT), 5353/udp (mDNS) all bind on the host directly
@@ -36,7 +36,7 @@ If you can't use host mode (e.g., port conflicts on the host):
 
 ```yaml
 services:
-  zim-reader:
+  zimi:
     ports:
       - "8899:8899"
       - "6881:6881/tcp"
@@ -374,7 +374,7 @@ Compose:
 
 ```yaml
 services:
-  zim-reader:
+  zimi:
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8899/health"]
       interval: 30s

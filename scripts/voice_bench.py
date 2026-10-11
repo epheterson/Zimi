@@ -12,7 +12,7 @@ Runs beside a live Zimi, with its own workers (the server's are left alone):
 
     python3 scripts/voice_bench.py [DATA_DIR]
     # on the NAS, from a checkout (the container needs nothing new):
-    ssh nas "timeout 600 /usr/local/bin/docker exec -i zim-reader python3 -" < scripts/voice_bench.py
+    ssh nas "timeout 600 /usr/local/bin/docker exec -i zimi python3 -" < scripts/voice_bench.py
 """
 
 import os

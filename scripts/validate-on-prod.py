@@ -5,13 +5,13 @@ Fast engine). Born from his 2026-08-31 gate run, which found three defects in
 ten minutes that a suite, a release gate and a container-side paint gate had
 all missed: no favicon on the captured page, a second header, slow loading.
 
-Runs INSIDE the zim-reader container, where Playwright, the token and the
+Runs INSIDE the zimi container, where Playwright, the token and the
 real library are:
 
-  docker cp scripts/validate-on-prod.py zim-reader:/tmp/v.py
-  docker exec -e PYTHONPATH=/app -w /app zim-reader python3 /tmp/v.py
+  docker cp scripts/validate-on-prod.py zimi:/tmp/v.py
+  docker exec -e PYTHONPATH=/app -w /app zimi python3 /tmp/v.py
   # reuse the last capture instead of making one:
-  docker exec -e PYTHONPATH=/app -w /app -e REUSE_CAPTURE=www_cnn_com-2 zim-reader python3 /tmp/v.py
+  docker exec -e PYTHONPATH=/app -w /app -e REUSE_CAPTURE=www_cnn_com-2 zimi python3 /tmp/v.py
 
 Prints one PASS/FAIL line per complaint plus the numbers behind it. Run it
 after every deploy, once the container is warm (title indexes take ~80 s

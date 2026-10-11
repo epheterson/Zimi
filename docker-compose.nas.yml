@@ -20,9 +20,9 @@
 # the host, which the DSM reverse proxy already targets. BT uses 16881
 # because gluetun/qBittorrent owns host 6881.
 services:
-  zim-reader:
+  zimi:
     build: .
-    container_name: zim-reader
+    container_name: zimi
     restart: unless-stopped
     # PID 1 in a container is expected to reap orphans, and PID 1 here is
     # `python3 -m zimi serve`, which reaps nothing. Docker's own init (tini)
@@ -35,11 +35,22 @@ services:
     volumes:
       - /volume1/docker/kiwix:/zims
       - /volume1/docker/kiwix/zimi-data:/data
+      # qBittorrent's downloads, at the path qBittorrent itself uses, so the
+      # BitTorrent engine below needs no path mapping beyond the identity one.
+      # Finished ZIMs are copied into /zims (Synology shares are separate
+      # btrfs subvolumes, so no hardlink); relinkarr then swaps qBittorrent's
+      # seeding copy for a reflink, so nothing is stored twice.
+      - /volume1/downloads:/downloads
     environment:
       - ZIM_DIR=/zims
       - ZIMI_DATA_DIR=/data
       - ZIMI_MANAGE=1
       - ZIMI_BT=port=16881  # gluetun owns host 6881; on/off stays UI-controlled
+      # BitTorrent through the qBittorrent behind gluetun (the VPN). Host
+      # network, so 127.0.0.1:8080 is gluetun's published Web UI, which lets
+      # local clients in without a login.
+      - ZIMI_QBT_URL=http://127.0.0.1:8080
+      - ZIMI_QBT_PATHS=/downloads=/downloads
       # Folder/import creation from the web is confined to this one directory
       # (drop source folders in over SMB: /volume1/docker/kiwix/created).
       - ZIMI_CREATE_ROOT=/zims/sources   # what you drop in to make a ZIM from; what you make goes to /zims/created

@@ -21,7 +21,7 @@ visible only as prose that read `data-fave-thumbnails="{"big":...`.
 Run it where a browser and the network both work; on a Mac with a Gatekeeper-
 rejected Chromium that means inside the container:
 
-    docker exec zim-reader python3 /app/scripts/paint-real-captures.py
+    docker exec zimi python3 /app/scripts/paint-real-captures.py
 """
 
 import http.server

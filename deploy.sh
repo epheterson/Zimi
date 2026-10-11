@@ -51,7 +51,7 @@ ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 |
 
 # Say it only when it is true. A container that exited on boot is not a deploy.
 sleep 10
-if ssh nas "/usr/local/bin/docker ps --filter name=zim-reader --format '{{.Names}}'" | grep -q zim-reader; then
+if ssh nas "/usr/local/bin/docker ps --filter name=^zimi$ --format '{{.Names}}'" | grep -qx zimi; then
   echo "  NAS deployed"
 else
   echo "  NAS DEPLOY FAILED — container is not running" >&2
