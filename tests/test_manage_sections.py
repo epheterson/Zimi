@@ -105,6 +105,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "storable_keys",  # which fields the form draws, in order
         "queue",
         "offline",
+        "private_locked",  # held off while Anyone, anywhere is on
         "data_dir",  # for the setup commands the pane prints (#61)
     }
     # What needs no probe is in the first answer, which is the whole point of

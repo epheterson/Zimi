@@ -12419,7 +12419,7 @@ function _setupFormHtml(st, mode) {
   // The third answer: from outside, with no password. Only in Settings, never
   // on a first run, and it names its cost before it can be chosen.
   var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req ? '' : ' hidden') + '>' +
-    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label>' +
+    _switchRowsHtml([{ id: 'setup-open-ok', title: tH('setup_open_cost'), on: isOpen, onchange: '' }]) +
     (hasPw && !isOpen ? input('setup-open-pw', 'password', 'current-password', 'current_password') : '') +
     '</div>';
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
