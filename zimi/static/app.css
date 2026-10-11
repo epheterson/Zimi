@@ -1894,9 +1894,9 @@
   }
   .set-btn:focus-visible, .ms-pane .pill:focus-visible, .ms-pane .ms-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .set-btn:disabled { opacity: 0.45; cursor: default; }
-  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active,
+  .set-btn.primary, .ms-pane .ms-btn-primary, .ms-pane .pill.active:not(.cat-pill):not(.reorder-add),
   .ms-pane .manage-btn-action { background: var(--amber); color: var(--on-amber); border-color: transparent; font-weight: 600; }
-  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
+  .set-btn.primary:hover:not(:disabled), .ms-pane .ms-btn-primary:hover, .ms-pane .pill.active:not(.cat-pill):not(.reorder-add):hover { color: var(--on-amber); background: var(--amber); filter: brightness(1.06); }
   .ms-pane .manage-btn-action { min-height: var(--set-ctl-h); border-radius: 999px; font-size: 13px; padding: 0 16px; }
   .ms-pane select {
     min-height: var(--set-ctl-h); box-sizing: border-box; padding: 0 30px 0 12px; border-radius: var(--radius);
@@ -2326,6 +2326,17 @@
      overrun the narrow phone column; border-box so padding stays inside. */
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
   .share-bt-controls.share-controls-off { opacity: 0.4; }
+  .qbt-engine { display: flex; gap: 6px; flex-wrap: wrap; }
+  .qbt-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .qbt-form[hidden] { display: none; }
+  .qbt-form .ms-hint { margin: 0; }
+  .qbt-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qbt-paths { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  .qbt-result { font-size: 13px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+  .qbt-result:empty { display: none; }
+  .qbt-result .qbt-bad, .qbt-result.qbt-bad { color: var(--error); }
+  .qbt-form .btn-row { display: flex; justify-content: flex-end; gap: 8px; }
+  @media (max-width: 480px) { .qbt-pair { grid-template-columns: 1fr; } }
   .share-bt-controls.share-controls-off .share-port-dot { opacity: 0.5; }
   /* Dim what is inert, not the whole row: the note that says WHY the row is
      inactive lives outside .share-row-dim and stays at full strength. */

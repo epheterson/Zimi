@@ -15506,8 +15506,13 @@ async function _renderMirrorSection() {
 
   // Controls always present; the wrapper dims + disables them when BT is off,
   // so toggling never adds/removes rows (no layout jump).
+  // An external qBittorrent owns its own limits, connections and port, so
+  // those rows go; the ratio (Zimi's ledger), the queue and the name stay.
+  const ext = !!(bt && bt.backend === 'qbittorrent');
+  window._qbtSaved = (bt && bt.qbt) || {};
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
-    ratioRow + limitRow + dlRow + connRow + portRow + nameRow + '</div>';
+    _qbtEngineRow(bt, ext) + ratioRow + (ext ? '' : limitRow) + dlRow + (ext ? '' : connRow + portRow) + nameRow + '</div>' +
+    _qbtFormHtml(bt, ext);
 
   // Mirror status sits under its toggle in the right column — the SAME spot
   // as the BitTorrent "ready" dot — so both cards' status lights line up.
@@ -15534,7 +15539,7 @@ async function _renderMirrorSection() {
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
       // line already gives it — claiming ZIMI_BT did this would be a lie.
-      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + _upnpHtml(bt || {}, btOn),
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + (ext ? '' : _upnpHtml(bt || {}, btOn)),
       // Reason first, then the fields it explains. Both sit outside the dimmed
       // block: the reason so it stays readable, the fields because `disabled`
       // already greys them and dimming twice reads as damage.
@@ -15553,6 +15558,83 @@ async function _renderMirrorSection() {
   _natCheckOnOpen(btOn);
 }
 
+
+// ── The engine: built in, or a qBittorrent the operator already runs (#53) ──
+// The *arr apps' download-client form: URL, login, category, path mappings.
+function _qbtEngineRow(bt, ext) {
+  return '<div class="share-field"><label>' + tH('bt_engine') + '</label><span class="qbt-engine" role="group" aria-label="' + escAttr(t('bt_engine')) + '">' +
+    '<button type="button" class="pill' + (ext ? '' : ' active') + '" data-nogate="1" onclick="_qbtEngine(false)">' + tH('bt_engine_builtin') + '</button>' +
+    '<button type="button" class="pill' + (ext ? ' active' : '') + '" data-nogate="1" onclick="_qbtEngine(true)">qBittorrent</button></span></div>';
+}
+function _qbtFormHtml(bt, ext) {
+  var q = (bt && bt.qbt) || {}, lock = q.locked;
+  var dis = lock ? ' disabled' : '';
+  var field = function(id, label, val, ph, type, auto) {
+    return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + (type || 'text') + '"' +
+      ' autocomplete="' + (auto || 'off') + '" spellcheck="false" autocapitalize="off"' +
+      (val ? ' value="' + escAttr(val) + '"' : '') + (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + dis + '></label>';
+  };
+  var note = lock === 'open' ? tH('qbt_locked_open') : lock ? tH('configured_via_env') : tH('qbt_desc');
+  return '<div class="qbt-form" id="ms-qbt"' + (ext ? '' : ' hidden') + '>' +
+    '<div class="ms-hint">' + note + ' ' + tH('qbt_password_none') + '</div>' +
+    field('qbt-url', 'qbt_url', q.url, 'http://qbittorrent:8080') +
+    '<div class="qbt-pair">' + field('qbt-user', 'setup_username', q.user, '', 'text', 'off') +
+    field('qbt-pw', 'qbt_password', '', q.password_set ? t('qbt_password_saved') : '', 'password', 'new-password') + '</div>' +
+    field('qbt-cat', 'qbt_category', q.category && q.category !== 'zimi' ? q.category : '', 'zimi') +
+    '<label class="setup-field"><span>' + tH('qbt_paths') + '</span><textarea id="qbt-paths" class="create-field qbt-paths" rows="2" spellcheck="false"' +
+      ' placeholder="/downloads=/data/downloads"' + dis + '>' + esc(q.paths || '') + '</textarea></label>' +
+    '<div class="ms-hint">' + tH('qbt_paths_hint') + '</div>' +
+    '<div class="qbt-result" id="qbt-result" role="status"></div>' +
+    (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_qbtSubmit(true)">' + tH('qbt_test') + '</button>' +
+      '<button type="button" class="set-btn primary" onclick="_qbtSubmit(false)">' + tH('save') + '</button></div>') +
+    '</div>';
+}
+async function _qbtEngine(on) {
+  var form = document.getElementById('ms-qbt');
+  if (!form) return;
+  var row = document.querySelector('.qbt-engine');
+  if (row) row.querySelectorAll('.pill').forEach(function(b, i) { b.classList.toggle('active', (i === 1) === on); });
+  if (on) { form.hidden = false; var u = document.getElementById('qbt-url'); if (u && !u.value) u.focus(); return; }
+  form.hidden = true;
+  var q = (window._qbtSaved || {});
+  if (!q.url || q.locked) return;
+  // Back to the built-in engine: forget the URL, keep nothing to undo.
+  await _qbtPost({ url: '' });
+  _renderMirrorSection();
+}
+function _qbtBody() {
+  var v = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var body = { url: v('qbt-url'), user: v('qbt-user'), category: v('qbt-cat'), paths: document.getElementById('qbt-paths').value };
+  var pw = document.getElementById('qbt-pw').value;
+  if (pw) body.password = pw;
+  return body;
+}
+async function _qbtPost(body) {
+  var r = await manageFetch('/manage/qbittorrent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return { ok: r.ok, d: await r.json().catch(function() { return {}; }) };
+}
+async function _qbtSubmit(test) {
+  var out = document.getElementById('qbt-result');
+  var body = _qbtBody();
+  if (!body.url) { out.className = 'qbt-result qbt-bad'; out.textContent = t('qbt_need_url'); return; }
+  if (test) body.test = true;
+  out.className = 'qbt-result'; out.textContent = t(test ? 'qbt_testing' : 'saving');
+  var res;
+  try { res = await _qbtPost(body); } catch (e) { out.className = 'qbt-result qbt-bad'; out.textContent = t('error'); return; }
+  var d = res.d;
+  if (!res.ok) { out.className = 'qbt-result qbt-bad'; out.textContent = d.error === 'bad_url' ? t('qbt_bad_url') : (d.error || t('error')); return; }
+  if (!test) { _showToast(t('saved')); _renderMirrorSection(); return; }
+  if (!d.ok) { out.className = 'qbt-result qbt-bad'; out.textContent = d.error; return; }
+  // What works, then what each mapping would add: the test is where a person
+  // finds out the two containers do not see the same disk.
+  // The downloads folder is the one that must be visible; the library is a
+  // choice (seed in place, or copy in), so it is said plainly, not as an error.
+  var lines = [[t('qbt_ok', { version: d.version }), ''],
+    d.visible ? [t('qbt_sees_downloads', { path: d.save_path }), ''] : [t('qbt_no_downloads', { path: d.save_path }), 'qbt-bad'],
+    [t(d.library_mapped ? 'qbt_library_mapped' : 'qbt_library_unmapped'), '']];
+  out.className = 'qbt-result';
+  out.innerHTML = lines.map(function(l) { return '<div class="' + l[1] + '">' + esc(l[0]) + '</div>'; }).join('');
+}
 
 // ── Download scheduling card (nightly window + global download speed cap) ──
 async function _renderDownloadSchedule() {
