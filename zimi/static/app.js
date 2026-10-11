@@ -12400,52 +12400,74 @@ function _fetchHasPw() {
 }
 // mode 'setup' (the welcome card) or 'settings'. st is _setupState.
 function _setupFormHtml(st, mode) {
-  var hasPw = st.access === 'password';
+  var settings = mode === 'settings', isOpen = st.access === 'open';
+  // While "Anyone, anywhere" is on the password is kept, not gone: turning the
+  // switch back on returns to it, so it shows as a password that exists.
+  var hasPw = st.access === 'password' || (isOpen && !!st.kept_password);
   var needKey = mode === 'setup' && !st.keyless;
-  var ext = !!st.external, req = hasPw || ext || st.direct === false || mode === 'setup';
-  var lockReq = ext || st.direct === false || !!st.env_controlled;
+  var ext = !!st.external || isOpen;
+  var req = !isOpen && (hasPw || ext || st.direct === false || mode === 'setup');
+  var lockReq = _setupReqLocked(st, ext, mode);
   var input = function(id, type, auto, label, ph, val) {
     return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + type + '" autocomplete="' + auto + '"' +
       (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
       ' spellcheck="false" autocapitalize="off"></label>';
   };
   var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '') +
-    (hasPw ? '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>'
+    (hasPw ? (isOpen ? '' : '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>')
       : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
+  // The third answer: from outside, with no password. Only in Settings, never
+  // on a first run, and it names its cost before it can be chosen.
+  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req ? '' : ' hidden') + '>' +
+    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label>' +
+    (hasPw && !isOpen ? input('setup-open-pw', 'password', 'current-password', 'current_password') : '') +
+    '</div>';
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
     _switchRowsHtml([
-      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : 'setup_outside_desc'),
+      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
         on: ext, disabled: !!st.external_env, onchange: '_setupSync()' },
-      { id: 'setup-req', title: tH('setup_password'), desc: tH(_setupReqDesc(st, ext)),
+      { id: 'setup-req', title: tH('setup_password'), desc: tH(_setupReqDesc(st, ext, mode)),
         on: req, disabled: lockReq, onchange: '_setupSync()' }
     ]) +
-    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' +
+    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' + open +
     '<div class="pw-error" id="setup-error"></div>' +
     '<div class="btn-row"><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
     '</form>';
 }
-function _setupReqDesc(st, ext) {
+// On the setup page, outside holds the password on. In Settings it does not:
+// outside without a password is "Anyone, anywhere". Through a proxy "anyone on
+// my network" would lock this browser out, so inside-only keeps it on.
+function _setupReqLocked(st, ext, mode) {
+  if (st.env_controlled) return true;
+  if (mode === 'settings') return !ext && st.direct === false;
+  return ext || st.direct === false;
+}
+function _setupReqDesc(st, ext, mode) {
   if (st.env_controlled) return 'configured_via_env';
+  if (mode === 'settings') return ext ? 'setup_password_desc_anywhere' : st.direct === false ? 'setup_password_needed_proxy' : 'setup_password_desc';
   if (ext) return 'setup_password_needed_outside';
   if (st.direct === false) return 'setup_password_needed_proxy';
   return 'setup_password_desc';
 }
-// Outside on holds the password on; the description says why.
 function _setupSync() {
   var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
-  if (!ext || !req) return;
-  var st = _setupState, lock = ext.checked || st.direct === false || !!st.env_controlled;
+  var form = document.getElementById('setup-form');
+  if (!ext || !req || !form) return;
+  var st = _setupState, mode = form.dataset.mode, lock = _setupReqLocked(st, ext.checked, mode);
   if (lock) req.checked = true;
   req.disabled = lock;
   req.closest('.share-row').classList.toggle('share-locked', lock);
   var desc = req.closest('.share-row').querySelector('.share-row-desc');
-  if (desc) desc.textContent = t(_setupReqDesc(st, ext.checked));
+  if (desc) desc.textContent = t(_setupReqDesc(st, ext.checked, mode));
   var f = document.getElementById('setup-fields');
   if (f) f.hidden = !req.checked;
+  var o = document.getElementById('setup-open');
+  if (o) o.hidden = !(ext.checked && !req.checked);
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
-  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body' };
+  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body',
+  open_unconfirmed: 'setup_open_need_ok', wrong_password: 'wrong_password' };
 async function _setupSubmit(opts) {
   var quiet = !!(opts && opts.quiet);
   var form = document.getElementById('setup-form');
@@ -12459,7 +12481,15 @@ async function _setupSubmit(opts) {
     username: val('setup-user'), remember: true };
   var key = val('setup-key');
   if (document.getElementById('setup-key') && !key) return show('setup_need_key');
-  if (req && st.access !== 'password') {
+  if (body.external && !req && !setup) {
+    var ok = document.getElementById('setup-open-ok');
+    if (!ok || !ok.checked) return show('setup_open_need_ok');
+    body.open_confirm = true;
+    if (document.getElementById('setup-open-pw')) {
+      body.current_password = document.getElementById('setup-open-pw').value;
+      if (!body.current_password) return show('setup_need_pw');
+    }
+  } else if (req && st.access !== 'password' && !(st.access === 'open' && st.kept_password)) {
     body.password = val('setup-pw');
     if (!body.password) return show('setup_need_pw');
     if (body.password !== val('setup-pw2')) return show('setup_mismatch');
@@ -12494,6 +12524,13 @@ function _openSetup(st) {
   if (first && first.id === 'setup-key') first.focus();
 }
 
+// While anyone can change settings, every admin page says so, and how to stop it.
+function _openBannerHtml() {
+  if (_manageAccess !== 'open') return '';
+  return '<div class="manage-open-banner" role="status"><span>' + tH('open_banner') + '</span>' +
+    '<button type="button" class="pill" onclick="switchManageTab(\'settings\');switchMs(\'server\')">' + tH('open_banner_change') + '</button></div>';
+}
+
 var _manageRenderId = 0;
 async function renderManage() {
   if (_managePublicLocked) { _renderManagePublicLocked(); return; }
@@ -12518,6 +12555,7 @@ async function renderManage() {
       '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
     '</div>' +
+    _openBannerHtml() +
 '<div id="manage-status" class="manage-settings' + (manageTab === 'settings' ? ' as-tab-active' : '') + '">' +
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
@@ -13382,8 +13420,9 @@ function _creatorRedditCell(d) {
 // not a capture default, so it sits apart from the form, wired to the same
 // admin-only POST half of /manage/creator.
 function _creatorPrivateRow(d) {
-  return { id: 'ms-cr-allow_private', title: tH('creator_private'), desc: tH('creator_private_hint'),
-    on: _creatorSwitchOn(d, 'allow_private'), onchange: '_setCreatorDefault(\'allow_private\', this)' };
+  var locked = !!d.private_locked;
+  return { id: 'ms-cr-allow_private', title: tH('creator_private'), desc: tH(locked ? 'creator_private_locked_open' : 'creator_private_hint'),
+    on: !locked && _creatorSwitchOn(d, 'allow_private'), disabled: locked, onchange: '_setCreatorDefault(\'allow_private\', this)' };
 }
 // A stored switch, or the factory one the server answers for block_ads and
 // capture_variants (their *_default fields); the rest are off until stored.
@@ -14734,7 +14773,8 @@ function _msServerHtml() {
     if (!el) return;
     // Who can change settings: the setup page's rows, in place.
     _setupState = results[0];
-    var sh = _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('setup_settings_title') + '</div>' + _setupFormHtml(results[0], 'settings');
+    // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
+    var sh = results[0].open_env && _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('setup_settings_title') + '</div>' + _setupFormHtml(results[0], 'settings');
     sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
       sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +

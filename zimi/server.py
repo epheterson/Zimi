@@ -5262,7 +5262,8 @@ def main():
                 log.warning(
                     "Library management is OPEN: no password, no setup key, "
                     "anyone who can reach this server can administer it "
-                    "(manage_open / ZIMI_MANAGE_OPEN). Turn it off if this "
+                    "(Settings > Who can change settings, or manage_open / "
+                    "ZIMI_MANAGE_OPEN). Turn it off if this "
                     "instance is reachable from anywhere you do not control."
                 )
             elif _get_manage_password_hash():

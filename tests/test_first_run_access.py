@@ -194,6 +194,72 @@ class FirstRunAccessTests(_Harness):
         self.assertEqual(self._post("/manage/access", ANYWHERE_PW)[0], 200)
 
 
+ANYONE = {"external": True, "require_password": False, "open_confirm": True}
+
+
+class AnyoneAnywhereTests(_Harness):
+    """Settings' third answer: from outside, with no password (#112). It costs
+    a confirmation and the current password, purges nothing, and gives way to
+    ZIMI_MANAGE_OPEN when that is set."""
+
+    def _admin(self):
+        return self._bearer(self._post("/manage/access", ANYWHERE_PW)[1]["token"])
+
+    def test_it_takes_the_box_and_the_current_password(self):
+        admin = self._admin()
+        status, body = self._post("/manage/access", dict(ANYONE, open_confirm=False), admin)
+        self.assertEqual((status, body.get("error")), (400, "open_unconfirmed"), body)
+        status, body = self._post("/manage/access", dict(ANYONE, current_password="nope"), admin)
+        self.assertEqual((status, body.get("error")), (403, "wrong_password"), body)
+        self.assertEqual(self._state()["access"], "password")
+        status, body = self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self.assertEqual((status, body.get("access")), (200, "open"), body)
+
+    def test_then_anyone_anywhere_is_the_admin_and_the_password_waits(self):
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self._as_peer(INTERNET)
+        self.assertEqual(self._get("/manage/status")[0], 200)
+        state = self._state()
+        self.assertEqual(state["access"], "open")
+        self.assertTrue(state["kept_password"])
+        self.assertFalse(state["open_env"])
+        # Turning it off from anywhere returns to the same password.
+        back = {"external": True, "require_password": True, "username": "eric"}
+        self.assertEqual(self._post("/manage/access", back)[0], 200)
+        self.assertEqual(self._state()["access"], "password")
+        self.assertEqual(self._get("/manage/status")[0], 401)
+        status, body = self._post("/login", {"username": "eric", "password": "hunter22"})
+        self.assertEqual(status, 200, body)
+
+    def test_never_on_a_first_run(self):
+        status, body = self._post("/manage/access", ANYONE)
+        self.assertEqual((status, body.get("error")), (400, "needs_password"), body)
+        self.assertEqual(self._state()["access"], "unset")
+
+    def test_the_environment_wins_and_locks_it(self):
+        admin = self._admin()
+        os.environ["ZIMI_MANAGE_OPEN"] = "0"
+        status, body = self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self.assertEqual((status, body.get("var")), (403, "ZIMI_MANAGE_OPEN"), body)
+        self.assertTrue(self._state(admin)["open_env"])
+        os.environ.pop("ZIMI_MANAGE_OPEN")
+        os.environ["ZIMI_MANAGE_EXTERNAL"] = "0"
+        status, body = self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self.assertEqual((status, body.get("var")), (403, "ZIMI_MANAGE_EXTERNAL"), body)
+
+    def test_captures_of_private_addresses_stay_off_while_it_is_on(self):
+        admin = self._admin()
+        self.assertEqual(self._post("/manage/creator", {"allow_private": True}, admin)[0], 200)
+        self.assertTrue(manage._create_allows_private())
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self.assertFalse(manage._create_allows_private())
+        self.assertTrue(manage._creator_payload()["private_locked"])
+        # The operator's own ZIMI_MANAGE_OPEN keeps their choice.
+        os.environ["ZIMI_MANAGE_OPEN"] = "1"
+        self.assertTrue(manage._create_allows_private())
+
+
 class FreshInstallGateTests(_Harness):
     def test_a_fresh_reachable_install_waits_for_its_setup(self):
         self.assertTrue(manage.init_setup_gate("0.0.0.0"))
