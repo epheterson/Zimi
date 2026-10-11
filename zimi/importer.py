@@ -216,7 +216,8 @@ def build_venv(venv, python, requirements, ready, say, run=None, uv=None):
     it) exists afterwards; otherwise the venv is removed, so a half-built one
     is never taken for an install. Whatever is at ``venv`` goes first: call it
     only where there is no working install to keep. ``run`` streams each command's output to
-    ``say`` (a caller passes its own, for its tests)."""
+    ``say`` (a caller passes its own, for its tests); ``say`` raising stops
+    the install and removes what it built."""
     run = run or _run_stream
     if os.path.isdir(venv):
         # A venv can't be repaired in place with any confidence.
@@ -229,9 +230,15 @@ def build_venv(venv, python, requirements, ready, say, run=None, uv=None):
     else:
         create = [python, "-m", "venv", venv]
         install = [own, "-m", "pip", "install", "--upgrade", *requirements]
-    rc = run(create, say)
-    if rc == 0:
-        rc = run(install, say)
+    try:
+        rc = run(create, say)
+        if rc == 0:
+            rc = run(install, say)
+    except BaseException:
+        # ``say`` may raise to stop the install (a cancel); the runner has
+        # already stopped the command, and a half-built venv must not stay.
+        shutil.rmtree(venv, ignore_errors=True)
+        raise
     if rc == 0 and os.path.exists(ready):
         return True
     shutil.rmtree(venv, ignore_errors=True)

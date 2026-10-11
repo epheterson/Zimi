@@ -542,9 +542,19 @@ def _set_up_engines():
     plan = _setup_plan()
     python, requirements, engines = plan.python, plan.requirements, plan.engines
     tail = collections.deque(maxlen=20)
+
+    def say(line):
+        # Every line of pip's output is a checkpoint: a Cancel stops the
+        # install there (the runner kills pip, build_venv removes the venv)
+        # instead of after a minute and a half of installing.
+        tail.append(line)
+        with _lock:
+            if _download.get("cancel"):
+                raise _Cancelled()
+
     log.info("Voices: setting up %s with Python %s in %s", ", ".join(engines), python, venv)
     ok = build_venv(
-        venv, python, requirements, _venv_bin(venv, "python"), tail.append,
+        venv, python, requirements, _venv_bin(venv, "python"), say,
         run=_run_stream, uv=plan.uv,
     )
     if not ok:

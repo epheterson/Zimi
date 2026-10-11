@@ -1452,3 +1452,28 @@ def test_the_engine_pins_agree_everywhere():
         installs = [ln for ln in f if ln.startswith("RUN pip install")]
     docker = {pin for ln in installs for pin in re.findall(r'"([^"]+)"', ln)}
     assert set(voices.ENGINE_REQUIREMENTS) <= docker
+
+
+def test_a_cancel_during_setup_stops_pip_and_leaves_nothing(bare, monkeypatch):
+    """Cancel during first-time setup used to wait out the whole install
+    (about 77 s) before it was honoured. Every line pip prints is now a
+    checkpoint: the command is stopped and the half-built venv removed."""
+    from zimi import importer
+
+    ran = []
+
+    def run(cmd, say):
+        os.makedirs(voices.engines_dir(), exist_ok=True)
+        ran.append(cmd)
+        say("Collecting piper-tts")
+        voices.cancel_download()
+        say("Collecting kokoro-onnx")  # raises: the cancel is seen here
+        raise AssertionError("pip ran on after the cancel")
+
+    monkeypatch.setattr(importer, "_run_stream", run)
+    assert voices.start_download("fr")[0]
+    voices._fetcher.join(10)
+    assert len(ran) == 1, "the install command never started"
+    assert not os.path.exists(voices.engines_dir())
+    assert voices.downloading() == {} and "fr" not in voices.installed()
+    assert voices.piper_command() is None
