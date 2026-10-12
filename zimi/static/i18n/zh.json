@@ -3019,6 +3019,7 @@
   "setup_password_desc": "你网络中的任何人都能管理 Zimi。",
   "setup_open_go": "关闭密码",
   "setup_open_cost": "任何能访问此地址的人都将可以下载和删除 ZIM、更改任何设置，甚至把你锁在外面。你的密码会保留，以防你重新开启。",
+  "setup_password_open_none": "要设置密码，请先在你的网络内关闭“允许从我的网络之外管理”。",
   "setup_password_desc_anywhere": "任何能访问此地址的人都可以管理 Zimi。",
   "setup_outside_needed_here": "你在网络外管理 Zimi 时保持开启。",
   "setup_outside_desc_settings": "来自互联网，或通过代理。",

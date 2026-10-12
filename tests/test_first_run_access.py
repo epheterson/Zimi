@@ -201,6 +201,15 @@ class FirstRunAccessTests(_Harness):
         self.assertEqual((status, body.get("error")), (403, "open_locked"), body)
         self.assertEqual(self._state()["access"], "open")
 
+    def test_while_open_the_account_name_is_not_handed_out(self):
+        token = self._post("/manage/access", ANYWHERE_PW)[1]["token"]
+        status, body = self._post(
+            "/manage/access", dict(ANYONE, current_password="hunter22"), self._bearer(token)
+        )
+        self.assertEqual(status, 200, body)
+        self._as_peer(INTERNET)
+        self.assertEqual(self._state()["username"], "")
+
     def test_a_save_without_a_username_keeps_the_name(self):
         # The switches save without the username when the field is in Your
         # account and not on screen; that must not rename the account.

@@ -3019,6 +3019,7 @@
   "setup_password_desc": "Jeder in deinem Netzwerk kann Zimi verwalten.",
   "setup_open_go": "Passwort ausschalten",
   "setup_open_cost": "Jeder, der diese Adresse erreicht, kann dann ZIMs herunterladen und löschen und jede Einstellung ändern, dich sogar aussperren. Dein Passwort bleibt für den Fall, dass du es wieder einschaltest.",
+  "setup_password_open_none": "Um eins festzulegen, schalte zuerst „Verwalten von außerhalb meines Netzwerks erlauben“ aus, von innerhalb deines Netzwerks.",
   "setup_password_desc_anywhere": "Jeder, der diese Adresse erreicht, kann Zimi verwalten.",
   "setup_outside_needed_here": "An, solange du Zimi von außerhalb deines Netzwerks verwaltest.",
   "setup_outside_desc_settings": "Aus dem Internet oder über einen Proxy.",

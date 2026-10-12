@@ -3019,6 +3019,7 @@
   "setup_password_desc": "Tout le monde sur votre réseau peut gérer Zimi.",
   "setup_open_go": "Désactiver le mot de passe",
   "setup_open_cost": "Toute personne qui atteint cette adresse pourra télécharger et supprimer des ZIM et modifier n'importe quel réglage, jusqu'à vous empêcher d'entrer. Votre mot de passe est conservé au cas où vous le réactiveriez.",
+  "setup_password_open_none": "Pour en définir un, désactivez d'abord « Autoriser la gestion hors de mon réseau », depuis votre réseau.",
   "setup_password_desc_anywhere": "Toute personne qui atteint cette adresse peut gérer Zimi.",
   "setup_outside_needed_here": "Activé tant que vous gérez Zimi depuis l'extérieur de votre réseau.",
   "setup_outside_desc_settings": "Depuis internet ou via un proxy.",

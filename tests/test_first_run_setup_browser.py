@@ -164,3 +164,55 @@ def test_turning_off_the_password_is_one_named_press(served, browser):
     assert "can manage Zimi" in desc.inner_text()
     assert page.locator("#ms-users-body").inner_text().strip() == "", "no accounts to edit while open"
     assert page.is_visible("#ms-security")
+
+
+def _signed_in_access(browser, base, username):
+    ctx = browser.new_context(viewport=VIEW)
+    page = ctx.new_page()
+    page.goto(base)
+    tok = page.evaluate(
+        """u => fetch('/manage/access', {method: 'POST', headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({external: true, require_password: true, username: u,
+                                   password: 'hunter22', remember: true})})
+           .then(r => r.json()).then(j => j.token)""",
+        username,
+    )
+    page.evaluate("t => localStorage.setItem('zimi_manage_token', t)", tok)
+    page.goto(base + "/?manage=users")
+    page.wait_for_selector(".ms-user-account-self #setup-user", timeout=15000)
+    return page
+
+
+def test_a_switch_does_not_name_an_unnamed_account(served, browser):
+    """No username stored: Your account shows "admin", and flipping a switch
+    must not save that as the name (it would change how the password logs in)."""
+    from zimi import manage
+
+    base, _ = served
+    page = _signed_in_access(browser, base, "")
+    assert page.input_value("#setup-user") == "admin"
+    page.locator("#setup-ext").evaluate("e => e.click()")
+    page.wait_for_function(
+        "fetch('/manage/has-password').then(r => r.json()).then(j => j.external === false)"
+    )
+    assert manage._get_manage_user() == ""
+
+
+def test_open_with_no_kept_password_says_how_out(served, browser):
+    """Anyone, anywhere chosen from the network alone has no password to go
+    back to: the password switch is held, with the way out on its line."""
+    base, _ = served
+    ctx = browser.new_context(viewport=VIEW)
+    page = ctx.new_page()
+    page.goto(base)
+    for body in ('{"external": false, "require_password": false}',
+                 '{"external": true, "require_password": false, "open_confirm": true}'):
+        page.evaluate(
+            "b => fetch('/manage/access', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: b})",
+            body,
+        )
+    page.goto(base + "/?manage=users")
+    page.wait_for_selector("#setup-req", state="attached", timeout=15000)
+    assert page.is_disabled("#setup-req")
+    row = page.locator("#setup-req").locator("xpath=ancestor::*[contains(@class,'share-row')][1]")
+    assert "first turn off Allow managing from outside" in row.inner_text()

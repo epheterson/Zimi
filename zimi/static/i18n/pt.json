@@ -3019,6 +3019,7 @@
   "setup_password_desc": "Qualquer pessoa na sua rede pode gerenciar o Zimi.",
   "setup_open_go": "Desligar senha",
   "setup_open_cost": "Qualquer pessoa que alcance este endereço poderá baixar e apagar ZIMs e alterar qualquer configuração, chegando a bloquear você. Sua senha fica guardada caso você a religue.",
+  "setup_password_open_none": "Para definir uma, primeiro desligue \"Permitir gerenciar de fora da minha rede\", de dentro da sua rede.",
   "setup_password_desc_anywhere": "Qualquer pessoa que alcance este endereço pode gerenciar o Zimi.",
   "setup_outside_needed_here": "Ligado enquanto você gerencia o Zimi de fora da sua rede.",
   "setup_outside_desc_settings": "Da internet ou através de um proxy.",

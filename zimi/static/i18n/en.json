@@ -3019,6 +3019,7 @@
   "setup_password_desc": "Anyone on your network can manage Zimi.",
   "setup_open_go": "Turn off password",
   "setup_open_cost": "Anyone who can reach this address will be able to download and delete ZIMs and change any setting, even lock you out. Your password is kept in case you turn it back on.",
+  "setup_password_open_none": "To set one, first turn off Allow managing from outside my network, from inside your network.",
   "setup_password_desc_anywhere": "Anyone who can reach this address can manage Zimi.",
   "setup_outside_needed_here": "On while you manage Zimi from outside your network.",
   "setup_outside_desc_settings": "From the internet, or through a proxy.",

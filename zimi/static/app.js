@@ -12441,7 +12441,7 @@ function _setupFormHtml(st, mode) {
       { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : _setupExtLocked(st, ext) ? 'setup_outside_needed_here' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
         on: ext, disabled: !!st.external_env || _setupExtLocked(st, ext), onchange: '_setupSync(true)' },
       { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
-        on: req, disabled: lockReq, onchange: '_setupSync(true)' }
+        on: req, disabled: lockReq || _setupOpenNoPw(st, mode), onchange: '_setupSync(true)' }
     ]).replace(/<\/div>$/, open + '</div>') +
     (fields ? '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' : '') +
     '<div class="pw-error" id="setup-error"></div>' +
@@ -12474,6 +12474,7 @@ function _setupReqLocked(st, ext, mode) {
 // why it is held on, or who can manage Zimi while it is off.
 function _setupReqDesc(st, ext, req, mode) {
   if (st.env_controlled) return 'configured_via_env';
+  if (_setupOpenNoPw(st, mode)) return 'setup_password_open_none';
   if (_setupReqLocked(st, ext, mode)) return ext ? 'setup_password_needed_outside' : 'setup_password_needed_proxy';
   if (req || (mode === 'settings' && _setupChoosingOpen(st, ext, req))) return '';
   return ext ? 'setup_password_desc_anywhere' : 'setup_password_desc';
@@ -12481,6 +12482,12 @@ function _setupReqDesc(st, ext, req, mode) {
 function _setupReqDescHtml(st, ext, req, mode) {
   var k = _setupReqDesc(st, ext, req, mode);
   return k ? tH(k) : '';
+}
+// Anyone, anywhere chosen from the network alone: there is no kept password
+// to return to, and none can be made while it is on, so the way out is the
+// outside switch, from inside the network.
+function _setupOpenNoPw(st, mode) {
+  return mode === 'settings' && st.access === 'open' && !st.kept_password;
 }
 // Anyone, anywhere switched on here but not saved yet.
 function _setupChoosingOpen(st, ext, req) {
@@ -12531,8 +12538,9 @@ function _setupSync(changed) {
   if (!ext || !req || !form) return;
   var st = _setupState, mode = form.dataset.mode, lock = _setupReqLocked(st, ext.checked, mode);
   if (lock) req.checked = true;
-  req.disabled = lock;
-  req.closest('.share-row').classList.toggle('share-locked', lock);
+  var held = lock || _setupOpenNoPw(st, mode);
+  req.disabled = held;
+  req.closest('.share-row').classList.toggle('share-locked', held);
   var row = req.closest('.share-row'), desc = row.querySelector('.share-row-desc');
   var k = _setupReqDesc(st, ext.checked, req.checked, mode);
   if (desc && !k) desc.remove();
@@ -12570,8 +12578,10 @@ async function _setupSubmit(opts) {
   var req = document.getElementById('setup-req').checked;
   var body = { external: document.getElementById('setup-ext').checked, require_password: req, remember: true };
   // The username field is the form's until a password exists, then Your
-  // account's; a save without it on screen leaves the name as it is.
-  if (document.getElementById('setup-user')) body.username = val('setup-user');
+  // account's, where it is sent only once edited: an untouched field (shown
+  // as "admin" when none is stored) must not rename the account.
+  var user = document.getElementById('setup-user');
+  if (user && (form.contains(user) || user.value !== user.defaultValue)) body.username = val('setup-user');
   var key = val('setup-key');
   if (document.getElementById('setup-key') && !key) return show('setup_need_key');
   // Reached only by pressing the button that names it.

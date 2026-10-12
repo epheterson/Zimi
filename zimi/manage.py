@@ -6327,7 +6327,9 @@ def access_answer(handler):
         # it would be half the login handed out.
         "username": (
             _get_manage_user()
-            if _get_manage_password_hash() and _check_manage_auth(handler) is None
+            if _get_manage_password_hash()
+            and not manage_open()  # everyone passes the check while open
+            and _check_manage_auth(handler) is None
             else ""
         ),
     }
