@@ -11,9 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - BitTorrent can use a qBittorrent or Transmission you already run, set up the way Sonarr and Radarr do: address, login, category and folders ([#53](https://github.com/epheterson/Zimi/issues/53)).
 - Changing the BitTorrent engine takes effect at once: downloads carry on with the new engine and seeds follow it.
+- In a client you run, Zimi's torrents follow Zimi's seed ratio, not the client's own seeding limits, and Zimi never touches a torrent outside its category.
 - Who can manage Zimi has a third answer, Anyone, anywhere: no password from outside your network, confirmed with the current password and reversible ([#112](https://github.com/epheterson/Zimi/issues/112)).
 - The BitTorrent card closes to one line, the engine and whether its port is open or its client connected; the settings open beneath it.
 - `zimi doctor` lists the optional features, whether each is ready, and how this kind of install gets the rest.
+
+### Changed
+
+- Settings > Server opens on Access: who can manage Zimi, and the API token.
+- Removing the password asks for it.
+- While anyone can manage Zimi, no API token, account or password can be made.
+- `source:` and `lang:` filter the library as they do the catalog; `source:` also reads file names (`source:nopic`).
 
 ### Fixed
 
