@@ -2170,6 +2170,13 @@ class TestSetPasswordAuthGate(unittest.TestCase):
                 "_verify_password",
                 side_effect=lambda cand, stored: cand == "right",
             ),
+            # The current password, asked again before a change, is checked
+            # by _verify_current (PBKDF2 only).
+            _patch.object(
+                manage,
+                "_verify_current",
+                side_effect=lambda cand, stored: cand == "right",
+            ),
             _patch.object(
                 manage,
                 "_set_manage_password",
