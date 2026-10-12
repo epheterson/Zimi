@@ -15506,13 +15506,13 @@ async function _renderMirrorSection() {
 
   // Controls always present; the wrapper dims + disables them when BT is off,
   // so toggling never adds/removes rows (no layout jump).
-  // An external qBittorrent owns its own limits, connections and port, so
+  // A client the operator runs owns its own limits, connections and port, so
   // those rows go; the ratio (Zimi's ledger), the queue and the name stay.
-  const ext = !!(bt && bt.backend === 'qbittorrent');
-  window._qbtSaved = (bt && bt.qbt) || {};
+  const ext = !!(bt && bt.backend && bt.backend !== 'libtorrent');
+  window._btcSaved = (bt && bt.client) || {};
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
-    _qbtEngineRow(bt, ext) + ratioRow + (ext ? '' : limitRow) + dlRow + (ext ? '' : connRow + portRow) + nameRow + '</div>' +
-    _qbtFormHtml(bt, ext);
+    _btcEngineRow(bt) + ratioRow + (ext ? '' : limitRow) + dlRow + (ext ? '' : connRow + portRow) + nameRow + '</div>' +
+    _btcFormHtml(bt);
 
   // Mirror status sits under its toggle in the right column — the SAME spot
   // as the BitTorrent "ready" dot — so both cards' status lights line up.
@@ -15559,91 +15559,122 @@ async function _renderMirrorSection() {
 }
 
 
-// ── The engine: built in, or a qBittorrent the operator already runs (#53) ──
+// ── The engine: built in, or a client the operator already runs (#53) ──
 // The *arr apps' download-client form: URL, login, category, path mappings.
-function _qbtEngineRow(bt, ext) {
+// kind: [name, the address it usually answers on]
+var BT_CLIENTS = { qbittorrent: ['qBittorrent', 'http://qbittorrent:8080'], transmission: ['Transmission', 'http://transmission:9091'] };
+function _btcName(kind) { return (BT_CLIENTS[kind] || [''])[0]; }
+function _btcEngineRow(bt) {
   // A selector, as every either/or in Settings is; the environment's choice
   // locks it.
-  var lock = !!(bt && bt.qbt && bt.qbt.locked === 'ZIMI_QBT_URL');
-  var btn = function(on, val, label) {
+  var c = (bt && bt.client) || {}, kind = c.kind || '';
+  var lock = !!(c.locked && c.locked !== 'open');
+  var btn = function(val, label) {
+    var on = val === kind;
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
-      (lock ? ' disabled' : '') + ' data-nogate="1" onclick="_qbtEngine(' + val + ')"><span>' + label + '</span></button>';
+      (lock ? ' disabled' : '') + ' data-nogate="1" data-kind="' + val + '" onclick="_btcEngine(\'' + val + '\')"><span>' + label + '</span></button>';
   };
   return '<div class="share-field"><label>' + tH('bt_engine') + '</label>' +
-    '<div class="app-theme-seg qbt-engine" role="radiogroup" aria-label="' + escAttr(t('bt_engine')) + '">' +
-    btn(!ext, 'false', tH('bt_engine_builtin')) + btn(ext, 'true', 'qBittorrent') + '</div></div>';
+    '<div class="app-theme-seg btc-engine" role="radiogroup" aria-label="' + escAttr(t('bt_engine')) + '">' +
+    btn('', tH('bt_engine_builtin')) + Object.keys(BT_CLIENTS).map(function(k) { return btn(k, _btcName(k)); }).join('') + '</div></div>';
 }
-function _qbtFormHtml(bt, ext) {
-  var q = (bt && bt.qbt) || {}, lock = q.locked;
+function _btcFormHtml(bt) {
+  var c = (bt && bt.client) || {}, lock = c.locked, kind = c.kind || '';
   var dis = lock ? ' disabled' : '';
   var field = function(id, label, val, ph, type, auto) {
     return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + (type || 'text') + '"' +
       ' autocomplete="' + (auto || 'off') + '" spellcheck="false" autocapitalize="off"' +
       (val ? ' value="' + escAttr(val) + '"' : '') + (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + dis + '></label>';
   };
-  var note = lock === 'open' ? tH('qbt_locked_open') : lock ? tH('configured_via_env') : tH('qbt_desc');
-  return '<div class="qbt-form" id="ms-qbt"' + (ext ? '' : ' hidden') + '>' +
-    '<div class="ms-hint">' + note + ' ' + tH('qbt_password_none') + '</div>' +
-    field('qbt-url', 'qbt_url', q.url, 'http://qbittorrent:8080') +
-    '<div class="qbt-pair">' + field('qbt-user', 'setup_username', q.user, '', 'text', 'off') +
-    field('qbt-pw', 'qbt_password', '', q.password_set ? t('qbt_password_saved') : '', 'password', 'new-password') + '</div>' +
-    field('qbt-cat', 'qbt_category', q.category && q.category !== 'zimi' ? q.category : '', 'zimi') +
-    '<label class="setup-field"><span>' + tH('qbt_paths') + '</span><textarea id="qbt-paths" class="create-field qbt-paths" rows="2" spellcheck="false"' +
-      ' placeholder="/downloads=/data/downloads"' + dis + '>' + esc(q.paths || '') + '</textarea></label>' +
-    '<div class="ms-hint">' + tH('qbt_paths_hint') + '</div>' +
-    '<div class="qbt-result" id="qbt-result" role="status"></div>' +
-    (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_qbtSubmit(true)">' + tH('qbt_test') + '</button>' +
-      '<button type="button" class="set-btn primary" onclick="_qbtSubmit(false)">' + tH('save') + '</button></div>') +
+  return '<div class="btc-form" id="ms-btc" data-kind="' + kind + '"' + (kind ? '' : ' hidden') + '>' +
+    '<div class="ms-hint" id="btc-note">' + _btcNote(kind, lock) + '</div>' +
+    field('btc-url', 'btc_url', c.url, kind ? BT_CLIENTS[kind][1] : '') +
+    '<div class="btc-pair">' + field('btc-user', 'setup_username', c.user, '', 'text', 'off') +
+    field('btc-pw', 'btc_password', '', c.password_set ? t('btc_password_saved') : '', 'password', 'new-password') + '</div>' +
+    field('btc-cat', 'btc_category', c.category && c.category !== 'zimi' ? c.category : '', 'zimi') +
+    '<label class="setup-field"><span>' + tH('btc_paths') + '</span><textarea id="btc-paths" class="create-field btc-paths" rows="2" spellcheck="false"' +
+      ' placeholder="/downloads=/data/downloads"' + dis + '>' + esc(c.paths || '') + '</textarea></label>' +
+    '<div class="ms-hint" id="btc-paths-hint">' + tH('btc_paths_hint', { client: _btcName(kind) }) + '</div>' +
+    '<div class="btc-result" id="btc-result" role="status"></div>' +
+    (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_btcSubmit(true)">' + tH('btc_test') + '</button>' +
+      '<button type="button" class="set-btn primary" onclick="_btcSubmit(false)">' + tH('save') + '</button></div>') +
     '</div>';
 }
-async function _qbtEngine(on) {
-  var form = document.getElementById('ms-qbt');
+function _btcNote(kind, lock) {
+  var client = { client: _btcName(kind) };
+  var note = lock === 'open' ? tH('btc_locked_open') : lock ? tH('configured_via_env') : tH('btc_desc', client);
+  return note + ' ' + tH('btc_password_none', client);
+}
+async function _btcEngine(kind) {
+  var form = document.getElementById('ms-btc');
   if (!form) return;
-  var row = document.querySelector('.qbt-engine');
-  if (row) row.querySelectorAll('.app-theme-btn').forEach(function(b, i) {
-    var sel = (i === 1) === on;
+  var row = document.querySelector('.btc-engine');
+  if (row) row.querySelectorAll('.app-theme-btn').forEach(function(b) {
+    var sel = b.getAttribute('data-kind') === kind;
     b.classList.toggle('active', sel);
     b.setAttribute('aria-checked', sel);
   });
-  if (on) { form.hidden = false; var u = document.getElementById('qbt-url'); if (u && !u.value) u.focus(); return; }
+  var saved = window._btcSaved || {};
+  if (kind) {
+    // The form follows the client picked; what was typed for another one
+    // (its address, its login) does not carry over.
+    if (form.getAttribute('data-kind') !== kind) {
+      form.setAttribute('data-kind', kind);
+      var same = saved.kind === kind;
+      var u = document.getElementById('btc-url');
+      u.value = same ? (saved.url || '') : '';
+      u.placeholder = BT_CLIENTS[kind][1];
+      document.getElementById('btc-user').value = same ? (saved.user || '') : '';
+      var pw = document.getElementById('btc-pw');
+      pw.value = '';
+      pw.placeholder = same && saved.password_set ? t('btc_password_saved') : '';
+      document.getElementById('btc-note').innerHTML = _btcNote(kind, saved.locked);
+      document.getElementById('btc-paths-hint').innerHTML = tH('btc_paths_hint', { client: _btcName(kind) });
+      document.getElementById('btc-result').textContent = '';
+    }
+    form.hidden = false;
+    var url = document.getElementById('btc-url');
+    if (url && !url.value) url.focus();
+    return;
+  }
   form.hidden = true;
-  var q = (window._qbtSaved || {});
-  if (!q.url || q.locked) return;
-  // Back to the built-in engine: forget the URL, keep nothing to undo.
-  await _qbtPost({ url: '' });
+  if (!saved.kind || saved.locked) return;
+  // Back to the built-in engine: forget the client, keep nothing to undo.
+  await _btcPost({ kind: '' });
   _renderMirrorSection();
 }
-function _qbtBody() {
+function _btcBody() {
   var v = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
-  var body = { url: v('qbt-url'), user: v('qbt-user'), category: v('qbt-cat'), paths: document.getElementById('qbt-paths').value };
-  var pw = document.getElementById('qbt-pw').value;
+  var body = { kind: document.getElementById('ms-btc').getAttribute('data-kind'), url: v('btc-url'), user: v('btc-user'),
+    category: v('btc-cat'), paths: document.getElementById('btc-paths').value };
+  var pw = document.getElementById('btc-pw').value;
   if (pw) body.password = pw;
   return body;
 }
-async function _qbtPost(body) {
-  var r = await manageFetch('/manage/qbittorrent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+async function _btcPost(body) {
+  var r = await manageFetch('/manage/bt-client', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { ok: r.ok, d: await r.json().catch(function() { return {}; }) };
 }
-async function _qbtSubmit(test) {
-  var out = document.getElementById('qbt-result');
-  var body = _qbtBody();
-  if (!body.url) { out.className = 'qbt-result qbt-bad'; out.textContent = t('qbt_need_url'); return; }
+async function _btcSubmit(test) {
+  var out = document.getElementById('btc-result');
+  var body = _btcBody(), client = { client: _btcName(body.kind) };
+  if (!body.url) { out.className = 'btc-result btc-bad'; out.textContent = t('btc_need_url', client); return; }
   if (test) body.test = true;
-  out.className = 'qbt-result'; out.textContent = t(test ? 'qbt_testing' : 'saving');
+  out.className = 'btc-result'; out.textContent = t(test ? 'btc_testing' : 'saving');
   var res;
-  try { res = await _qbtPost(body); } catch (e) { out.className = 'qbt-result qbt-bad'; out.textContent = t('error'); return; }
+  try { res = await _btcPost(body); } catch (e) { out.className = 'btc-result btc-bad'; out.textContent = t('error'); return; }
   var d = res.d;
-  if (!res.ok) { out.className = 'qbt-result qbt-bad'; out.textContent = d.error === 'bad_url' ? t('qbt_bad_url') : (d.error || t('error')); return; }
+  if (!res.ok) { out.className = 'btc-result btc-bad'; out.textContent = d.error === 'bad_url' ? t('btc_bad_url') : (d.error || t('error')); return; }
   if (!test) { _showToast(t('saved')); _renderMirrorSection(); return; }
-  if (!d.ok) { out.className = 'qbt-result qbt-bad'; out.textContent = d.error; return; }
+  if (!d.ok) { out.className = 'btc-result btc-bad'; out.textContent = d.error; return; }
   // What works, then what each mapping would add: the test is where a person
   // finds out the two containers do not see the same disk.
   // The downloads folder is the one that must be visible; the library is a
   // choice (seed in place, or copy in), so it is said plainly, not as an error.
-  var lines = [[t('qbt_ok', { version: d.version }), ''],
-    d.visible ? [t('qbt_sees_downloads', { path: d.save_path }), ''] : [t('qbt_no_downloads', { path: d.save_path }), 'qbt-bad'],
-    [t(d.library_mapped ? 'qbt_library_mapped' : 'qbt_library_unmapped'), '']];
-  out.className = 'qbt-result';
+  var lines = [[t('btc_ok', { client: client.client, version: d.version }), ''],
+    d.visible ? [t('btc_sees_downloads', { path: d.save_path }), ''] : [t('btc_no_downloads', { path: d.save_path }), 'btc-bad'],
+    [d.library_mapped ? t('btc_library_mapped', client) : t('btc_library_unmapped'), '']];
+  out.className = 'btc-result';
   out.innerHTML = lines.map(function(l) { return '<div class="' + l[1] + '">' + esc(l[0]) + '</div>'; }).join('');
 }
 
