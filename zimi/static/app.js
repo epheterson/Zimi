@@ -12405,7 +12405,7 @@ function _setupFormHtml(st, mode) {
   var settings = mode === 'settings', isOpen = st.access === 'open';
   // While "Anyone, anywhere" is on the password is kept, not gone: turning the
   // switch back on returns to it, so it shows as a password that exists.
-  var hasPw = st.access === 'password' || (isOpen && !!st.kept_password);
+  var hasPw = _setupHasStoredPw(st);
   var needKey = mode === 'setup' && !st.keyless;
   var ext = !!st.external || isOpen;
   var req = !isOpen && (hasPw || ext || st.direct === false || mode === 'setup');
@@ -12424,9 +12424,9 @@ function _setupFormHtml(st, mode) {
   // while it is being chosen; once on, that switch's own line says who can
   // manage Zimi and nothing else repeats it.
   var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req && !isOpen ? '' : ' hidden') + '>' +
-    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label>' +
-    (hasPw && !isOpen ? input('setup-open-pw', 'password', 'current-password', 'current_password') : '') +
-    '</div>';
+    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label></div>' +
+    (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, ext, req) ? '' : ' hidden') + '>' +
+      input('setup-cur-pw', 'password', 'current-password', 'current_password') + '</div>' : '');
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
     _switchRowsHtml([
@@ -12464,9 +12464,31 @@ function _setupReqDescHtml(st, ext, req, mode) {
 }
 // A new password, or the cost of Anyone, anywhere, has to be typed or
 // confirmed before Zimi can save; anything else saves on the switch.
+// A password exists: in use, or kept while Anyone, anywhere is on.
+function _setupHasStoredPw(st) {
+  return st.access === 'password' || (st.access === 'open' && !!st.kept_password);
+}
+// Taking an existing password away (to the network, or to Anyone, anywhere)
+// asks for it; staying in Anyone, anywhere does not.
+function _setupNeedsCurrent(st, ext, req) {
+  return !req && _setupHasStoredPw(st) && !(st.access === 'open' && ext);
+}
+// A new password, the current one, or the cost of Anyone, anywhere has to
+// be typed or confirmed before Zimi can save; anything else saves on the
+// switch. A first answer (unset) is always a deliberate Save.
 function _setupNeedsInput(st, ext, req) {
+  if (st.access === 'unset' || _setupNeedsCurrent(st, ext, req)) return true;
   if (ext && !req) return st.access !== 'open';
-  return req && st.access !== 'password' && !(st.access === 'open' && st.kept_password);
+  return req && !_setupHasStoredPw(st);
+}
+// The switches as the saved state draws them: where a failed save puts them back.
+function _setupRevert() {
+  var st = _setupState, isOpen = st.access === 'open';
+  var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
+  if (!ext || !req) return;
+  ext.checked = !!st.external || isOpen;
+  req.checked = !isOpen && (_setupHasStoredPw(st) || ext.checked || st.direct === false);
+  _setupSync();
 }
 function _setupAuto() {
   var form = document.getElementById('setup-form');
@@ -12502,6 +12524,8 @@ function _setupSync(changed) {
     if (show && o.hidden) document.getElementById('setup-open-ok').checked = false;
     o.hidden = !show;
   }
+  var cur = document.getElementById('setup-cur');
+  if (cur) cur.hidden = !_setupNeedsCurrent(st, ext.checked, req.checked);
   if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
@@ -12512,8 +12536,12 @@ async function _setupSubmit(opts) {
   var form = document.getElementById('setup-form');
   if (!form) return false;
   var val = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
-  var err = document.getElementById('setup-error');
-  var show = function(k) { err.textContent = t(k); err.style.display = 'block'; return false; };
+  var err = document.getElementById('setup-error'), auto = !!(opts && opts.auto);
+  var show = function(k) {
+    err.textContent = t(k); err.style.display = 'block';
+    if (auto) _setupRevert();  // nothing was saved, so the switches say so
+    return false;
+  };
   var setup = form.dataset.mode === 'setup', st = _setupState;
   var req = document.getElementById('setup-req').checked;
   var body = { external: document.getElementById('setup-ext').checked, require_password: req,
@@ -12524,11 +12552,13 @@ async function _setupSubmit(opts) {
     var ok = document.getElementById('setup-open-ok');
     if (!ok || !ok.checked) return show('setup_open_need_ok');
     body.open_confirm = true;
-    if (document.getElementById('setup-open-pw')) {
-      body.current_password = document.getElementById('setup-open-pw').value;
-      if (!body.current_password) return show('setup_need_pw');
-    }
-  } else if (req && st.access !== 'password' && !(st.access === 'open' && st.kept_password)) {
+  }
+  var cur = document.getElementById('setup-cur');
+  if (cur && !cur.hidden) {
+    body.current_password = document.getElementById('setup-cur-pw').value;
+    if (!body.current_password) return show('setup_need_pw');
+  }
+  if (req && !_setupHasStoredPw(st)) {
     body.password = val('setup-pw');
     if (!body.password) return show('setup_need_pw');
     if (body.password !== val('setup-pw2')) return show('setup_mismatch');
@@ -12548,10 +12578,9 @@ async function _setupSubmit(opts) {
   var was = _manageAccess;
   _manageAccess = d.access || _manageAccess;
   _showToast(t('saved'));
-  // A switch that saved itself stays where it is; only a change that adds or
-  // removes fields (a new password, Anyone, anywhere) redraws Manage.
-  if (opts && opts.auto && was === _manageAccess) return true;
-  if (opts && opts.auto) { _setupState.access = _manageAccess; _setupSync(); return true; }
+  // A switch that saved itself stays where it is; a change of mode redraws,
+  // since the fields under the switches belong to the mode.
+  if (auto && was === _manageAccess) { if (err) err.style.display = 'none'; return true; }
   // Drawn again where the switches are, as a language switch does.
   var y = window.scrollY;
   _pendingMsSection = _msSection;
@@ -13028,7 +13057,7 @@ function _setUserPassword(name) {
       _refreshUsersPane();
       _showToast(t('users_password_set').replace('{name}', name));
     } else {
-      _showToast(t('users_create_failed'));
+      _showToast(_openLockedOr(r.j, 'users_create_failed'));
     }
   });
 }
@@ -13241,6 +13270,11 @@ function _publicAccessPost(payload) {
   });
 }
 
+// The server's refusal while anyone can manage Zimi, in the reader's
+// words; else the given key's text.
+function _openLockedOr(j, key) {
+  return j && j.error === 'open_locked' ? t('open_locked') : t(key);
+}
 function _usersPost(payload) {
   return manageFetch('/manage/users', {
     method: 'POST',
@@ -13267,7 +13301,7 @@ function _createUser() {
   var cb = document.getElementById('new-user-can-create');
   var grantCreate = !!(cb && cb.checked && role !== 'admin');
   _usersPost(payload).then(function(r) {
-    if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
+    if (!r.ok) { errEl.textContent = _openLockedOr(r.j, 'users_create_failed'); errEl.style.display = 'block'; return; }
     if (!grantCreate) { _usersData = r.j; _refreshUsersPane(); return; }
     // The form's Creation checkbox rides the existing set-can-create action —
     // the account exists either way, so refresh from whichever answer is last.
@@ -15201,9 +15235,7 @@ function _applyTorrentToggleInPlace(on) {
   if (controls) {
     controls.classList.toggle('share-controls-off', !on);
     Array.from(controls.querySelectorAll('input, button')).concat(upnp ? [upnp] : []).forEach(function(el) {
-      // data-nogate stays editable with BT off: it governs HTTP downloads too
-      // (e.g. the concurrent-download cap), not just the BT engine.
-      if (el.dataset.envlock === '1' || el.dataset.nogate === '1') return;
+      if (el.dataset.envlock === '1') return;
       el.disabled = !on;
     });
   }
@@ -15600,8 +15632,8 @@ async function _renderMirrorSection() {
       // Closed, the card says how BitTorrent is doing in one line; the
       // settings open under it, by themselves when something needs fixing.
       '<div class="ms-hint bt-why" id="ms-bt-why" hidden></div>' +
-      '<details class="bt-more" id="ms-bt-more"' + (btOn ? '' : ' hidden') + ' ontoggle="window._btMoreTouched=true">' +
-        '<summary class="bt-summary" id="ms-bt-status">' + (window._btStatusHtml || '') + '</summary>' + btControls + '</details>') +
+      '<details class="bt-more" id="ms-bt-more"' + (btOn ? '' : ' hidden') + '>' +
+        '<summary class="bt-summary" id="ms-bt-status" onclick="window._btMoreTouched=true">' + (window._btStatusHtml || '') + '</summary>' + btControls + '</details>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
@@ -15610,7 +15642,11 @@ async function _renderMirrorSection() {
       false, '', '<div id="ms-peer-name"' + (m.peer_share ? '' : ' hidden') + '><div class="share-bt-controls">' + nameRow + '</div></div>') +
   '</div>';
   if (prog.phase) _scheduleMirrorProgressPoll();
+  // A redraw (a saved port, UPnP, a client saved) keeps the settings open
+  // that the person was working in.
+  var wasOpen = !!(document.getElementById('ms-bt-more') || {}).open;
   el.innerHTML = h;
+  if (wasOpen) document.getElementById('ms-bt-more').open = true;
   try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
@@ -15624,15 +15660,16 @@ async function _renderMirrorSection() {
 var BT_CLIENTS = { qbittorrent: ['qBittorrent', 'http://qbittorrent:8080'], transmission: ['Transmission', 'http://transmission:9091'] };
 function _btcName(kind) { return (BT_CLIENTS[kind] || [''])[0]; }
 function _btcEngineRow(bt) {
-  // A dropdown, as the other either/ors in Settings are; the environment's
-  // choice locks it.
+  // A dropdown, as the other either/ors in Settings are. Locked by the
+  // environment, or while anyone can manage Zimi; the reason is its title.
   var c = (bt && bt.client) || {}, kind = c.kind || '';
-  var lock = !!(c.locked && c.locked !== 'open');
+  var lock = !!c.locked;
+  var why = c.locked === 'open' ? t('btc_locked_open') : lock ? t('env_controlled', { v: c.locked }) : '';
   var opt = function(val, label) {
     return '<option value="' + val + '"' + (val === kind ? ' selected' : '') + '>' + label + '</option>';
   };
   return '<div class="share-field"><label for="btc-engine">' + tH('bt_engine') + '</label>' +
-    '<select id="btc-engine" class="btc-engine" data-nogate="1"' + (lock ? ' disabled' : '') + ' onchange="_btcEngine(this.value)">' +
+    '<select id="btc-engine" class="btc-engine"' + (lock ? ' disabled title="' + escAttr(why) + '"' : '') + ' onchange="_btcEngine(this.value)">' +
     opt('', tH('bt_engine_builtin')) + Object.keys(BT_CLIENTS).map(function(k) { return opt(k, _btcName(k)); }).join('') + '</select></div>';
 }
 function _btcFormHtml(bt) {
@@ -15699,11 +15736,18 @@ function _btcPathDel(btn) {
   if (rows.length > 1) { btn.parentNode.remove(); return; }
   btn.parentNode.querySelectorAll('input').forEach(function(i) { i.value = ''; });
 }
+// The rows as remote=local lines, or null when a row has only one side (it
+// is marked, rather than silently left out of what is saved).
 function _btcPathsText() {
-  return Array.prototype.map.call(document.querySelectorAll('#btc-paths .btc-path-row:not(.btc-path-head)'), function(r) {
-    var a = r.querySelector('.btc-path-remote').value.trim(), b = r.querySelector('.btc-path-local').value.trim();
+  var half = false;
+  var lines = Array.prototype.map.call(document.querySelectorAll('#btc-paths .btc-path-row:not(.btc-path-head)'), function(r) {
+    var ins = r.querySelectorAll('input'), a = ins[0].value.trim(), b = ins[1].value.trim();
+    var bad = !a !== !b;
+    ins.forEach(function(i) { i.classList.toggle('btc-path-bad', bad && !i.value.trim()); });
+    half = half || bad;
     return a && b ? a + '=' + b : '';
-  }).filter(Boolean).join('\n');
+  });
+  return half ? null : lines.filter(Boolean).join('\n');
 }
 // Only a locked form explains itself: why its fields cannot be changed.
 function _btcNote(lock) {
@@ -15731,7 +15775,7 @@ async function _btcEngine(kind) {
       pw.placeholder = same && saved.password_set ? t('btc_password_saved') : t('btc_optional');
 
       document.querySelector('.btc-paths-field > label').title = t('btc_paths_hint', { client: _btcName(kind) });
-      document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind);
+      document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind, saved.locked);
       document.getElementById('btc-result').textContent = '';
     }
     form.hidden = false;
@@ -15762,14 +15806,16 @@ async function _btcPost(body) {
 }
 // The server's reason in the reader's language: a key with its values, or
 // Zimi's own sentence (a refused login, a client too old).
+var _BTC_ERRORS = { bad_url: 'btc_bad_url', open_locked: 'btc_locked_open', env_controlled: 'configured_via_env', bad_kind: 'error' };
 function _btcErr(d, client) {
   if (d.error_key) return t(d.error_key, { client: client.client, code: d.code });
-  return d.error === 'bad_url' ? t('btc_bad_url') : (d.error || t('error'));
+  return _BTC_ERRORS[d.error] ? t(_BTC_ERRORS[d.error]) : (d.error || t('error'));
 }
 async function _btcSubmit(test) {
   var out = document.getElementById('btc-result');
   var body = _btcBody(), client = { client: _btcName(body.kind) };
   if (!body.url) { out.className = 'btc-result btc-bad'; out.textContent = t('btc_need_url', client); return; }
+  if (body.paths === null) { out.className = 'btc-result btc-bad'; out.textContent = t('btc_paths_half'); return; }
   if (test) body.test = true;
   out.className = 'btc-result'; out.textContent = t(test ? 'btc_testing' : 'saving');
   var res;
@@ -16706,7 +16752,7 @@ async function manageClearPassword() {
   });
   if (!res.ok) {
     var err = await res.json().catch(function() { return {}; });
-    if (err.error) _showToast(err.error);
+    if (err.error) _showToast(err.error === 'open_locked' ? t('open_locked') : err.error);
     return;
   }
   if (res.ok) {
@@ -16721,7 +16767,7 @@ async function _generateToken() {
   var res = await manageFetch('/manage/generate-token', { method: 'POST' });
   if (!res.ok) {
     var err = await res.json().catch(function() { return {}; });
-    if (err.error) _showToast(err.error);
+    if (err.error) _showToast(err.error === 'open_locked' ? t('open_locked') : err.error);
     return;
   }
   var data = await res.json();

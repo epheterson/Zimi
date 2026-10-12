@@ -113,6 +113,32 @@ class _KiwixRedirectHandler(urllib.request.HTTPRedirectHandler):
 _KIWIX_REDIRECT_OPENER = urllib.request.build_opener(_KiwixRedirectHandler)
 
 
+class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to a public address. An import from a URL while
+    anyone can manage Zimi: the URL's own host is checked before the request,
+    and this keeps a public URL from bouncing the fetch into the operator's
+    own network."""
+
+    def __init__(self, guard):
+        super().__init__()
+        self.guard = guard
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if self.guard.refuses(urlparse(newurl).hostname or ""):
+            raise urllib.error.HTTPError(
+                req.full_url, code, "Redirect blocked (private address)", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _imports_public_only():
+    """Whether an import may reach only public addresses: while Settings'
+    Anyone, anywhere is on, as for captures (manage._create_allows_private)."""
+    from zimi import manage as _mng
+
+    return not _mng._create_allows_private()
+
+
 def _is_trusted_kiwix_url(url):
     """Return True if `url` points to a known-good Kiwix-controlled host.
 
@@ -3475,6 +3501,14 @@ def _download_from_url(dl, url, tmp_dest):
             # Peer pulls are plain HTTP to a LAN IP literal; refuse redirects
             # so a peer can't bounce us off-LAN. No SSL context needed.
             resp = _NO_REDIRECT_OPENER.open(req, timeout=600)
+        elif dl.get("_public_only"):
+            from zimi import netguard as _ng
+
+            opener = urllib.request.build_opener(
+                _PublicOnlyRedirectHandler(_ng.PrivateGuard()),
+                urllib.request.HTTPSHandler(context=_srv.SSL_CTX),
+            )
+            resp = opener.open(req, timeout=600)
         else:
             resp = urllib.request.urlopen(req, timeout=600, context=_srv.SSL_CTX)
     except urllib.error.HTTPError as e:
@@ -4136,6 +4170,12 @@ def _start_import(url, size_bytes=None, actor=None):
         return None, "Only .zim files can be imported"
     if not re.match(r"^[\w.\-]+$", filename):
         return None, "Invalid characters in filename"
+    public_only = _imports_public_only()
+    if public_only:
+        from zimi import netguard as _ng
+
+        if _ng.PrivateGuard().refuses(urlparse(url).hostname or ""):
+            return None, "That address is on a private network"
     dest = os.path.join(_srv.ZIM_DIR, filename)
 
     space_err = _refuse_for_disk_space(size_bytes, dest=dest)
@@ -4159,6 +4199,7 @@ def _start_import(url, size_bytes=None, actor=None):
             # An import is its own kind of event in the activity journal: the
             # admin pointed at a URL nobody's catalog knows about.
             "_activity": {"actor": actor, "type": "import"},
+            "_public_only": public_only,
         }
         _enqueue_or_start(dl)
     return dl_id, None

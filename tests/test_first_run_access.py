@@ -248,6 +248,52 @@ class AnyoneAnywhereTests(_Harness):
         status, body = self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
         self.assertEqual((status, body.get("var")), (403, "ZIMI_MANAGE_EXTERNAL"), body)
 
+    def test_nothing_made_while_it_is_on_outlives_it(self):
+        """While anyone can manage Zimi, anyone could otherwise mint an API
+        token, add an admin account or set a password that still works once
+        it is turned off."""
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self._as_peer(INTERNET)
+        for path, body in (
+            ("/manage/generate-token", {}),
+            ("/manage/users", {"action": "create", "name": "mallory", "password": "x" * 12, "role": "admin"}),
+            ("/manage/set-password", {"password": "mallory-was-here", "current": ""}),
+        ):
+            status, got = self._post(path, body)
+            self.assertEqual((status, got.get("error")), (403, "open_locked"), (path, got))
+
+    def test_an_environment_that_forbids_it_closes_a_saved_one(self):
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        self.assertTrue(manage.manage_open())
+        os.environ["ZIMI_MANAGE_EXTERNAL"] = "0"
+        self.assertFalse(manage.manage_open())
+
+    def test_zimi_manage_open_0_forbids_only_this_answer(self):
+        admin = self._admin()
+        os.environ["ZIMI_MANAGE_OPEN"] = "0"
+        inside = {"external": False, "require_password": True, "username": "eric"}
+        status, body = self._post("/manage/access", inside, admin)
+        self.assertEqual(status, 200, body)
+
+    def test_removing_a_password_takes_the_password(self):
+        admin = self._admin()
+        status, body = self._post("/manage/access", LAN_ONLY, admin)
+        self.assertEqual((status, body.get("error")), (403, "wrong_password"), body)
+        self.assertEqual(self._state(admin)["access"], "password")
+        status, body = self._post("/manage/access", dict(LAN_ONLY, current_password="hunter22"), admin)
+        self.assertEqual(status, 200, body)
+
+    def test_imports_of_private_addresses_stay_off_while_it_is_on(self):
+        from zimi import library
+
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        dl_id, err = library._start_import("https://10.0.0.1/wiki.zim")
+        self.assertIsNone(dl_id)
+        self.assertIn("private", err)
+
     def test_captures_of_private_addresses_stay_off_while_it_is_on(self):
         admin = self._admin()
         self.assertEqual(self._post("/manage/creator", {"allow_private": True}, admin)[0], 200)

@@ -252,7 +252,22 @@ def manage_open():
     env = manage_open_env()
     if env is not None:
         return env
-    return _read_app_update_prefs().get("manage_open") is True
+    if not _read_app_update_prefs().get("manage_open") is True:
+        return False
+    # Set in Settings, it gives way to an environment set since that forbids
+    # it: a password there, outside access off, or the LAN not trusted.
+    return not (
+        os.environ.get("ZIMI_MANAGE_PASSWORD", "")
+        or _env_flag("ZIMI_MANAGE_EXTERNAL") is False
+        or _lan_admin_env() is False
+    )
+
+
+def open_from_settings():
+    """Anyone, anywhere as chosen in Settings (not by ZIMI_MANAGE_OPEN): while
+    it is on, nothing that outlives it can be made (an API token, an account,
+    a password), and the BitTorrent client and private captures are fenced."""
+    return manage_open() and not manage_open_env()
 
 
 def manage_open_env():
@@ -2419,7 +2434,7 @@ def _create_allows_private():
     internet is the admin, and this would let them read the operator's own
     network through Zimi. An operator who opened Zimi with ZIMI_MANAGE_OPEN
     made that call in their own config and keeps the choice."""
-    if manage_open() and not manage_open_env():
+    if open_from_settings():
         return False
     return bool(_create_default("allow_private", False))
 
@@ -4794,7 +4809,7 @@ def _creator_payload():
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
         # Held off while "Anyone, anywhere" is on (_create_allows_private).
-        "private_locked": manage_open() and not manage_open_env(),
+        "private_locked": open_from_settings(),
     }
 
 
@@ -6144,6 +6159,9 @@ def _handle_users_post(handler, data):
     name = data.get("name", "")
     kind = admin_kind(handler)  # 'primary' | 'secondary' (auth already passed)
     role = data.get("role")
+    # While anyone can manage Zimi, no one may make a way in that outlives it.
+    if open_from_settings() and action in ("create", "set-password", "set-role"):
+        return handler._json(403, {"error": "open_locked"})
 
     # The primary admin is a synthetic row — no CRUD action may target it.
     primary_name = _get_manage_user() or "admin"
@@ -6316,7 +6334,8 @@ def _handle_access(handler, data):
     neighbour cannot answer it for the owner. After, it is admin-only.
     Changing an existing password stays with set-password, which asks for the
     current one."""
-    if manage_open_env() is not None:
+    env_open = manage_open_env()
+    if env_open:  # the environment opened it; only the environment closes it
         return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
     challenge = _manage_auth_challenge(handler)
     if challenge:
@@ -6324,6 +6343,8 @@ def _handle_access(handler, data):
     external = data.get("external") is True
     require = data.get("require_password") is True
     if external and not require:
+        if env_open is False:  # ZIMI_MANAGE_OPEN=0 forbids only this answer
+            return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
         return _open_to_anyone(handler, data)
     username = str(data.get("username") or "").strip()[:64]
     password = str(data.get("password") or "").strip()
@@ -6347,6 +6368,10 @@ def _handle_access(handler, data):
         # "anyone on my network" would lock them out the moment it was made.
         if not _lan_client(handler):
             return handler._json(409, {"error": "behind_proxy"})
+        # Removing a password is not a switch flipped by accident or by a
+        # borrowed session: it takes the password.
+        if stored and not _verify_password(str(data.get("current_password") or ""), stored):
+            return handler._json(403, {"error": "wrong_password"})
         if stored and _get_api_token():
             return handler._json(
                 400, {"error": "Revoke the API token before removing the password"}
@@ -6421,7 +6446,7 @@ def _btc_locked():
     var = btclient.env_var()
     if var:
         return var
-    if manage_open() and not manage_open_env():
+    if open_from_settings():
         return "open"
     return None
 
@@ -6522,6 +6547,8 @@ def handle_manage_post(handler, parsed, data):
         return _handle_access(handler, data)
 
     if parsed.path == "/manage/set-password":
+        if open_from_settings():
+            return handler._json(403, {"error": "open_locked"})
         # Env var controls password — UI changes would be silently overridden
         if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
             return handler._json(
@@ -6574,6 +6601,8 @@ def handle_manage_post(handler, parsed, data):
         challenge = _manage_auth_challenge(handler)
         if challenge:
             return handler._json(*challenge)
+        if open_from_settings():
+            return handler._json(403, {"error": "open_locked"})
         if not _get_manage_password_hash():
             return handler._json(
                 400, {"error": "Set a password before generating an API token"}

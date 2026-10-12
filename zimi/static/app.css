@@ -2333,6 +2333,8 @@
   .bt-summary b { font-weight: 600; color: var(--text); }
   .bt-summary::after { content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin-left: 2px; transition: transform 150ms; }
   .bt-more[open] > .bt-summary::after { transform: rotate(45deg); }
+  [dir="rtl"] .bt-summary::after { transform: rotate(135deg); margin-left: 0; margin-right: 2px; }
+  [dir="rtl"] .bt-more[open] > .bt-summary::after { transform: rotate(45deg); }
   .bt-summary:hover { color: var(--text); }
   .bt-summary .share-port-dot { width: 8px; height: 8px; }
   /* BitTorrent off: nothing of it to set, so none of it shows. */
@@ -2362,14 +2364,17 @@
   .btc-path-del { width: 28px; height: 24px; border: 0; background: none; color: var(--text3); font-size: 16px; cursor: pointer; border-radius: 6px; }
   .btc-path-del:hover { color: var(--amber); background: var(--amber-glow); }
   .btc-path-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .btc-path-cell > span { display: none; font-size: 11px; color: var(--text3); }
+  /* Named for screen readers always; shown on a phone, where the column
+     heads above the rows give way to it. */
+  .btc-path-cell > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; font-size: 11px; color: var(--text3); }
+  .btc-path-row input.btc-path-bad { border-color: var(--error); }
   .btc-path-add { margin-top: 4px; padding: 2px 0; border: 0; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
   .btc-path-add:hover { color: var(--amber); }
   @media (max-width: 600px) {
     .btc-path-row { grid-template-columns: 1fr 28px; row-gap: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
     .btc-path-head, .btc-path-arrow { display: none; }
     .btc-path-cell { grid-column: 1; }
-    .btc-path-cell > span { display: block; }
+    .btc-path-cell > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
     .btc-path-del { grid-column: 2; grid-row: 1 / span 2; }
   }
   /* A switch row with fields under it: the switch keeps the title's line and
