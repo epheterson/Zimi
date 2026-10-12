@@ -178,6 +178,16 @@ class FirstRunAccessTests(_Harness):
             manage._get_manage_user(), "eric", "the username is edited in place"
         )
 
+    def test_from_outside_the_outside_switch_stays_on(self):
+        # Keeping settings inside the network, chosen from outside it, would
+        # lock out the one choosing it; refused, and nothing changes.
+        token = self._post("/manage/access", ANYWHERE_PW)[1]["token"]
+        self._as_peer(INTERNET)
+        inside = {"external": False, "require_password": True}
+        status, body = self._post("/manage/access", inside, self._bearer(token))
+        self.assertEqual((status, body.get("error")), (409, "outside_here"), body)
+        self.assertTrue(self._state(self._bearer(token))["external"])
+
     def test_a_save_without_a_username_keeps_the_name(self):
         # The switches save without the username when the field is in Your
         # account and not on screen; that must not rename the account.

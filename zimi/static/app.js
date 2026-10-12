@@ -12438,8 +12438,8 @@ function _setupFormHtml(st, mode) {
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
     _switchRowsHtml([
-      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
-        on: ext, disabled: !!st.external_env, onchange: '_setupSync(true)' },
+      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : _setupExtLocked(st, ext) ? 'setup_outside_needed_here' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
+        on: ext, disabled: !!st.external_env || _setupExtLocked(st, ext), onchange: '_setupSync(true)' },
       { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
         on: req, disabled: lockReq, onchange: '_setupSync(true)' }
     ]).replace(/<\/div>$/, open + '</div>') +
@@ -12456,6 +12456,11 @@ function _setupUserFieldHtml(name, autosave) {
   return '<label class="setup-field"><span>' + tH('setup_username') + '</span><input id="setup-user" type="text" autocomplete="username" placeholder="admin"' +
     (name ? ' value="' + escAttr(name) + '"' : '') + (autosave ? ' onchange="_setupAuto()"' : '') +
     ' spellcheck="false" autocapitalize="off"></label>';
+}
+// Managed from outside the network, the outside switch stays on: turning it
+// off would lock out the one turning it off.
+function _setupExtLocked(st, ext) {
+  return ext && st.inside === false;
 }
 // On the setup page, outside holds the password on. In Settings it does not:
 // outside without a password is "Anyone, anywhere". Through a proxy "anyone on
@@ -12548,7 +12553,7 @@ function _setupSync(changed) {
   if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
-  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body',
+  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body', outside_here: 'setup_outside_needed_here',
   wrong_password: 'wrong_password' };
 async function _setupSubmit(opts) {
   var quiet = !!(opts && opts.quiet);

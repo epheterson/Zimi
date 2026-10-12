@@ -6350,6 +6350,10 @@ def _handle_access(handler, data):
         return handler._json(*challenge)
     external = data.get("external") is True
     require = data.get("require_password") is True
+    # Keeping settings inside the network, asked from outside it, would shut
+    # the door on the one asking: the switch stays on until they are inside.
+    if not external and not handler._is_private_client():
+        return handler._json(409, {"error": "outside_here"})
     if external and not require:
         if env_open is False:  # ZIMI_MANAGE_OPEN=0 forbids only this answer
             return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
