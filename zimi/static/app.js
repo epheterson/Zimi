@@ -12471,16 +12471,15 @@ function _setupReqDescHtml(st, ext, req, mode) {
   var k = _setupReqDesc(st, ext, req, mode);
   return k ? tH(k) : '';
 }
-// A new password, or the cost of Anyone, anywhere, has to be typed or
-// confirmed before Zimi can save; anything else saves on the switch.
 // A password exists: in use, or kept while Anyone, anywhere is on.
 function _setupHasStoredPw(st) {
   return st.access === 'password' || (st.access === 'open' && !!st.kept_password);
 }
 // Taking an existing password away (to the network, or to Anyone, anywhere)
-// asks for it; staying in Anyone, anywhere does not.
+// asks for it; from Anyone, anywhere it does not (everyone is the admin
+// there already, and a forgotten kept password must not trap the owner).
 function _setupNeedsCurrent(st, ext, req) {
-  return !req && _setupHasStoredPw(st) && !(st.access === 'open' && ext);
+  return !req && _setupHasStoredPw(st) && st.access !== 'open';
 }
 // A new password, the current one, or the cost of Anyone, anywhere has to
 // be typed or confirmed before Zimi can save; anything else saves on the

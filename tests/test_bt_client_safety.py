@@ -269,3 +269,20 @@ def test_a_qbittorrent_too_old_to_say_where_files_are_is_refused(world):
     cfg = {"kind": "qbittorrent", "url": fake.url, "user": "", "password": "", "category": "zimi", "paths": []}
     got = btclient.probe(cfg, library_dir=str(lib_local))
     assert not got["ok"] and "4.3.2" in got["error"]
+
+
+def test_a_move_queued_behind_others_is_not_a_stall(world, tmp_path, monkeypatch):
+    """qBittorrent moves one torrent at a time: a queued one says "moving"
+    while nothing has arrived. That is a wait, never a reason to give up (and
+    a give-up used to delete the finished download)."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    tid = _add(fake, b, tmp_path, "queued.zim", staging)
+    fake.finish(tid)
+    monkeypatch.setattr(btclient, "MOVE_POLL_S", 0)
+    monkeypatch.setattr(btclient, "MOVE_STALL_S", 0.01)
+    monkeypatch.setattr(btclient, "MOVE_LIMIT_S", 0.3)
+    monkeypatch.setattr(b, "_move", lambda tid, remote_dir: fake.torrents[tid].update(state="moving"))
+    with pytest.raises(btclient.ClientError) as e:
+        b.install(tid, "", str(lib_local / "queued.zim"))
+    assert "did not finish" in str(e.value)  # waited out the whole limit, not the stall

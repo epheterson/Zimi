@@ -45,10 +45,11 @@ REQUEST_TIMEOUT_S = 20
 # volumes takes minutes. Polled at this interval, given up after the limit.
 MOVE_POLL_S = 2.0
 MOVE_LIMIT_S = 6 * 3600
-# A move nothing comes of (the client refused it, or reports "moving" for a
-# path it wrote differently) gives up once the file at the destination has
-# not changed for this long. A real move, even of a huge ZIM across disks,
-# changes it as it writes.
+# A move nothing comes of gives up once the file at the destination has not
+# changed for this long: a real move, even of a huge ZIM across disks, changes
+# it as it writes. While the client still says "moving" and nothing has
+# arrived, the move may be queued behind others (qBittorrent moves one at a
+# time), so only MOVE_LIMIT_S applies.
 MOVE_STALL_S = 600
 
 # kind: (the name people know it by, module, class)
@@ -422,7 +423,8 @@ class ExternalBackend(BTBackend):
                     now = (st.st_size, st.st_mtime_ns, getattr(st, "st_blocks", 0))
                 except OSError:
                     now = None
-                if now != seen:
+                queued = row["moving"] and now is None
+                if now != seen or queued:
                     seen, changed_at = now, time.monotonic()
                 elif time.monotonic() - changed_at > MOVE_STALL_S:
                     raise ClientError(f"{self.name} is not moving the file")

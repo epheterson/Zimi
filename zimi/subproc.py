@@ -105,6 +105,17 @@ def stop(proc, grace=TERMINATE_GRACE):
         _close_pipes(proc)
 
 
+def terminate(proc):
+    """Ask the child's whole group to stop, from any thread, without reaping it
+    or closing its pipes: the thread that owns them (its ``finally`` calls
+    ``stop``) does that. Never raises."""
+    try:
+        if proc is not None and proc.poll() is None:
+            _signal_group(proc, False)
+    except Exception:
+        pass
+
+
 def _signal_group(proc, hard):
     """Ask the child's whole group to stop, or make it.
 

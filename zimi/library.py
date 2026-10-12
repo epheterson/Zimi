@@ -2783,8 +2783,8 @@ def note_exiting():
 # next two a person switches to while it runs.
 ENGINE_RESTARTS = 3
 # A client the operator runs (in its own container, behind a VPN) restarts now
-# and then: this many failed status polls in a row before HTTP takes over.
-STATUS_FAIL_LIMIT = 5
+# and then: this long of failed status polls in a row before HTTP takes over.
+STATUS_FAIL_S = 120
 
 
 def _try_bt_download(
@@ -2840,6 +2840,7 @@ def _try_bt_download(
     last_bytes = 0
     last_progress_t = started
     poll_fails = 0
+    failing_since = None
     while True:
         if dl.get("cancelled"):
             try:
@@ -2905,7 +2906,8 @@ def _try_bt_download(
             if backend.retired:
                 return "restart"  # taken apart between the check and the poll
             poll_fails += 1
-            if getattr(backend, "external", False) and poll_fails < STATUS_FAIL_LIMIT:
+            failing_since = failing_since or time.monotonic()
+            if getattr(backend, "external", False) and time.monotonic() - failing_since < STATUS_FAIL_S:
                 log.info("BT status poll failed for %s (%d): %s", dl["filename"], poll_fails, e)
                 time.sleep(poll_interval)
                 continue
@@ -2918,7 +2920,7 @@ def _try_bt_download(
                 pass
             return "fallback"
 
-        poll_fails = 0
+        poll_fails, failing_since = 0, None
         if backend.retired:
             return "restart"
         # Surface progress to the existing UI.
@@ -2994,12 +2996,15 @@ def _try_bt_download(
                 if backend.retired:
                     return "restart"  # the next engine picks it up
                 log.warning("BT staging→dest failed for %s: %s", dl["filename"], e)
-                # HTTP brings the file now; the engine's copy must not land on
-                # top of it later (remove never touches the library).
+                # HTTP brings the file now; the engine's torrent must not land
+                # on top of it later. Its finished files stay where they are
+                # (a move the client never made is not a reason to delete a
+                # whole download); remove never touches the library.
                 try:
-                    backend.remove(tid, delete_files=True)
+                    backend.remove(tid, delete_files=False)
                 except Exception:
                     pass
+                log.warning("BT: %s stays where the engine put it: %s", dl["filename"], staged)
                 return "fallback"
             # Post-world resilience: remember how to seed this file with
             # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR
@@ -3806,11 +3811,14 @@ def _download_thread(dl):
             # Out of restarts: HTTP brings the file, so the torrent the last
             # engine may still hold goes (remove never touches the library).
             _bt_outcome = "fallback"
-            if dl.get("bt_info_hash") and _backend is not None:
-                try:
-                    _backend.remove(dl["bt_info_hash"], delete_files=True)
-                except Exception as e:
-                    log.debug("BT: could not drop %s after restarts: %s", dl["filename"], e)
+            if dl.get("bt_info_hash"):
+                # The retired engine, and the live one when it is the same
+                # client restarted, may each still hold it.
+                for engine in {id(e): e for e in (_backend, _p2p.peek_backend()) if e is not None}.values():
+                    try:
+                        engine.remove(dl["bt_info_hash"], delete_files=True)
+                    except Exception as e:
+                        log.debug("BT: could not drop %s after restarts: %s", dl["filename"], e)
         if _bt_outcome is not None:
             if _bt_outcome == "success":
                 dl["done"] = True

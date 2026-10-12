@@ -285,6 +285,20 @@ class AnyoneAnywhereTests(_Harness):
         status, body = self._post("/manage/access", dict(LAN_ONLY, current_password="hunter22"), admin)
         self.assertEqual(status, 200, body)
 
+    def test_an_owner_who_forgot_the_kept_password_can_still_close_it(self):
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        status, body = self._post("/manage/access", LAN_ONLY)
+        self.assertEqual((status, body.get("access")), (200, "lan"), body)
+
+    def test_a_saved_one_cleared_by_the_environment_stays_closed_after(self):
+        admin = self._admin()
+        self._post("/manage/access", dict(ANYONE, current_password="hunter22"), admin)
+        os.environ["ZIMI_MANAGE_EXTERNAL"] = "0"
+        self.assertFalse(manage.manage_open())
+        os.environ.pop("ZIMI_MANAGE_EXTERNAL")
+        self.assertFalse(manage.manage_open())
+
     def test_imports_of_private_addresses_stay_off_while_it_is_on(self):
         from zimi import library
 

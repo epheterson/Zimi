@@ -255,8 +255,16 @@ def manage_open():
     if not _read_app_update_prefs().get("manage_open") is True:
         return False
     # Set in Settings, it gives way to an environment set since that forbids
-    # it: a password there, outside access off, or the LAN not trusted.
-    return not (
+    # it (a password there, outside access off, the LAN not trusted), and is
+    # cleared, so removing that variable later does not quietly reopen it.
+    if _open_env_forbids():
+        _write_app_update_prefs(manage_open=False)
+        return False
+    return True
+
+
+def _open_env_forbids():
+    return bool(
         os.environ.get("ZIMI_MANAGE_PASSWORD", "")
         or _env_flag("ZIMI_MANAGE_EXTERNAL") is False
         or _lan_admin_env() is False
@@ -6369,8 +6377,10 @@ def _handle_access(handler, data):
         if not _lan_client(handler):
             return handler._json(409, {"error": "behind_proxy"})
         # Removing a password is not a switch flipped by accident or by a
-        # borrowed session: it takes the password.
-        if stored and not _verify_password(str(data.get("current_password") or ""), stored):
+        # borrowed session: it takes the password. Leaving Anyone, anywhere
+        # does not: there everyone is the admin already, and an owner who
+        # forgot the kept password must still be able to close it.
+        if stored and not open_from_settings() and not _verify_password(str(data.get("current_password") or ""), stored):
             return handler._json(403, {"error": "wrong_password"})
         if stored and _get_api_token():
             return handler._json(
@@ -6421,6 +6431,8 @@ def _open_to_anyone(handler, data):
         return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_EXTERNAL"})
     if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
         return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"})
+    if _lan_admin_env() is False:
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_LAN_ADMIN"})
     stored = _get_manage_password_hash()
     if not manage_open() and stored:
         current = str(data.get("current_password") or "")
