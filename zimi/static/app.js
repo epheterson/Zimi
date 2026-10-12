@@ -12420,10 +12420,11 @@ function _setupFormHtml(st, mode) {
       : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
   // The third answer: from outside, with no password. Only in Settings, never
   // on a first run, and it names its cost before it can be chosen.
-  // Shown while choosing it; once chosen, the password switch's own line
-  // says who can manage Zimi, and nothing else repeats it.
+  // Anyone, anywhere is confirmed under the password switch, in its card, only
+  // while it is being chosen; once on, that switch's own line says who can
+  // manage Zimi and nothing else repeats it.
   var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req && !isOpen ? '' : ' hidden') + '>' +
-    _switchRowsHtml([{ id: 'setup-open-ok', title: tH('setup_open_cost'), on: isOpen, onchange: '' }]) +
+    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label>' +
     (hasPw && !isOpen ? input('setup-open-pw', 'password', 'current-password', 'current_password') : '') +
     '</div>';
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
@@ -12433,8 +12434,8 @@ function _setupFormHtml(st, mode) {
         on: ext, disabled: !!st.external_env, onchange: '_setupSync(true)' },
       { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
         on: req, disabled: lockReq, onchange: '_setupSync(true)' }
-    ]) +
-    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' + open +
+    ]).replace(/<\/div>$/, open + '</div>') +
+    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' +
     '<div class="pw-error" id="setup-error"></div>' +
     // In Manage the switches save themselves, as every other switch there
     // does; the button shows only while something must be typed first.
@@ -14794,10 +14795,10 @@ function _msServerHtml() {
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
 
-  // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
-  // just before the API Token, Hot ZIMs + cache, the environment, and
-  // Internet use last (Eric's final pass for 1.12).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
+  // Access (who can manage Zimi, the API token) first: the most consequential
+  // setting here. Then Sharing, Downloads, Storage, My Data / Server Backups,
+  // App Updates, Hot ZIMs + cache, the environment, and Internet use last.
+  var h = [tokenSec, sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
   _renderNetSection();
   // Async fill security
@@ -14812,7 +14813,7 @@ function _msServerHtml() {
     // Who can change settings: the setup page's rows, in place.
     _setupState = results[0];
     // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
-    var sh = results[0].open_env && _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('setup_settings_title') + '</div>' + _setupFormHtml(results[0], 'settings');
+    var sh = results[0].open_env && _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('access_title') + '</div>' + _setupFormHtml(results[0], 'settings');
     sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
     if (hasToken) {
       sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +

@@ -1112,10 +1112,10 @@
   .setup-form .btn-row { display: flex; justify-content: flex-end; }
   .setup-form .btn-primary { padding: 9px 24px; font-size: 14px; font-weight: 600; }
   .setup-form .pw-error { margin: 0; color: var(--error); font-size: 13px; display: none; }
-  .setup-open { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--amber-border); background: var(--amber-glow); border-radius: var(--radius); }
+  .setup-open { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
   .setup-open[hidden] { display: none; }
-  .setup-open .set-rows { margin: 0; }
-  .setup-open .share-row-title { white-space: normal; font-weight: 400; }
+  .setup-open-ok { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; color: var(--text); cursor: pointer; }
+  .setup-open-ok input { margin: 2px 0 0; accent-color: var(--amber); flex: none; }
   #onboard-access { margin-top: 12px; }
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }

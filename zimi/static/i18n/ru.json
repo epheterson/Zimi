@@ -3032,6 +3032,7 @@
   "setup_failed": "Не получилось. Попробуйте ещё раз.",
   "setup_waiting_title": "Zimi настраивается",
   "setup_waiting_body": "Он откроется, когда владелец закончит настройку.",
+  "access_title": "Доступ",
   "setup_settings_title": "Кто может управлять Zimi?",
   "outside_locked_title": "Управление остаётся в этой сети",
   "outside_locked_body": "Управлять Zimi можно только из сети, в которой он работает.",

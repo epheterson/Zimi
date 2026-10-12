@@ -3032,6 +3032,7 @@
   "setup_failed": "זה לא עבד. נסו שוב.",
   "setup_waiting_title": "Zimi בהגדרה",
   "setup_waiting_body": "הוא ייפתח כשהבעלים יסיימו להגדיר אותו.",
+  "access_title": "גישה",
   "setup_settings_title": "מי יכול לנהל את Zimi?",
   "outside_locked_title": "הניהול נשאר ברשת הזו",
   "outside_locked_body": "אפשר לנהל את Zimi רק מהרשת שהוא נמצא בה.",

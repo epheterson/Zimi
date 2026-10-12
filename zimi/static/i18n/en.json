@@ -3032,6 +3032,7 @@
   "setup_failed": "That didn't work. Try again.",
   "setup_waiting_title": "Zimi is being set up",
   "setup_waiting_body": "It opens once its owner finishes setting it up.",
+  "access_title": "Access",
   "setup_settings_title": "Who can manage Zimi?",
   "outside_locked_title": "Managing stays inside this network",
   "outside_locked_body": "Zimi can only be managed from the network it is on.",
