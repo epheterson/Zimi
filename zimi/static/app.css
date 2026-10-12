@@ -2348,6 +2348,10 @@
   .btc-form .ms-hint { margin: 0; }
   /* Sized like the fields beside it: one row among the others, not a headline. */
   .ms-pane .share-bt-controls select.btc-engine { width: auto; justify-self: start; min-height: 0; height: 24px; font-size: 12px; border-radius: 6px; padding: 0 26px 0 8px; }
+  [dir="rtl"] .ms-pane .share-bt-controls select.btc-engine { padding: 0 8px 0 26px; }
+  /* Paths read left to right in every language; the arrow follows the page. */
+  [dir="rtl"] .btc-path-arrow { transform: scaleX(-1); }
+  [dir="rtl"] .btc-form input[dir="ltr"] { text-align: left; }
   /* The engine's rows and the client's share one label column, so every field
      starts at the same x though the note between them splits the grid. */
   .ms-pane .share-bt-controls { grid-template-columns: 7.5rem minmax(0, 1fr); }

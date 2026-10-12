@@ -15641,9 +15641,9 @@ function _btcFormHtml(bt) {
       (val ? ' value="' + escAttr(val) + '"' : '') + (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + dis + '></div>';
   };
   return '<div class="btc-form" id="ms-btc" data-kind="' + kind + '"' + (kind ? '' : ' hidden') + '>' +
-    '<div class="ms-hint" id="btc-note">' + _btcNote(kind, lock) + '</div>' +
+    '<div class="ms-hint" id="btc-note"' + (lock ? '' : ' hidden') + '>' + _btcNote(lock) + '</div>' +
     '<div class="share-bt-controls">' +
-      row('btc-url', 'btc_url', c.url, kind ? BT_CLIENTS[kind][1] : '') +
+      row('btc-url', 'btc_url', c.url, kind ? BT_CLIENTS[kind][1] : '').replace('<input ', '<input dir="ltr" ') +
       row('btc-user', 'setup_username', c.user, t('btc_optional')) +
       row('btc-pw', 'btc_password', '', c.password_set ? t('btc_password_saved') : t('btc_optional'), 'password', 'new-password') +
       row('btc-cat', 'btc_category', c.category && c.category !== 'zimi' ? c.category : '', 'zimi') +
@@ -15663,7 +15663,7 @@ function _btcPathRow(remote, local, kind, dis) {
   // Each field carries its own name for the phone, where the two stack and
   // the column heads above them go.
   var inp = function(cls, val, ph, label) {
-    return '<label class="btc-path-cell"><span>' + esc(label) + '</span><input type="text" class="peer-name-input ' + cls + '" value="' + escAttr(val || '') + '" placeholder="' + escAttr(ph) + '"' +
+    return '<label class="btc-path-cell"><span>' + esc(label) + '</span><input type="text" dir="ltr" class="peer-name-input ' + cls + '" value="' + escAttr(val || '') + '" placeholder="' + escAttr(ph) + '"' +
       ' spellcheck="false" autocapitalize="off" autocomplete="off"' + (dis ? ' disabled' : '') + '></label>';
   };
   return '<div class="btc-path-row">' +
@@ -15699,9 +15699,9 @@ function _btcPathsText() {
     return a && b ? a + '=' + b : '';
   }).filter(Boolean).join('\n');
 }
-function _btcNote(kind, lock) {
-  var client = { client: _btcName(kind) };
-  return lock === 'open' ? tH('btc_locked_open') : lock ? tH('configured_via_env') : tH('btc_desc', client);
+// Only a locked form explains itself: why its fields cannot be changed.
+function _btcNote(lock) {
+  return lock === 'open' ? tH('btc_locked_open') : lock ? tH('configured_via_env') : '';
 }
 async function _btcEngine(kind) {
   var form = document.getElementById('ms-btc');
@@ -15722,7 +15722,7 @@ async function _btcEngine(kind) {
       var pw = document.getElementById('btc-pw');
       pw.value = '';
       pw.placeholder = same && saved.password_set ? t('btc_password_saved') : t('btc_optional');
-      document.getElementById('btc-note').innerHTML = _btcNote(kind, saved.locked);
+
       document.querySelector('.btc-paths-field > label').title = t('btc_paths_hint', { client: _btcName(kind) });
       document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind);
       document.getElementById('btc-result').textContent = '';
@@ -15768,7 +15768,7 @@ async function _btcSubmit(test) {
   // choice (seed in place, or copy in), so it is said plainly, not as an error.
   var lines = [[t('btc_ok', { client: client.client, version: d.version }), ''],
     d.visible ? [t('btc_sees_downloads', { path: d.save_path }), ''] : [t('btc_no_downloads', { path: d.save_path }), 'btc-bad'],
-    [d.library_mapped ? t('btc_library_mapped', client) : t('btc_library_unmapped'), '']];
+    [d.library_mapped ? t('btc_library_mapped', client) : t('btc_library_unmapped', client), '']];
   out.className = 'btc-result';
   out.innerHTML = lines.map(function(l) { return '<div class="' + l[1] + '">' + esc(l[0]) + '</div>'; }).join('');
 }
