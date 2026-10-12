@@ -376,7 +376,7 @@ def init_setup_gate(host, ran_before=False):
     _setup_gate = fresh and not loopback and access_mode() == "unset"
     if _setup_gate:
         _write_app_update_prefs(setup_gate=True, setup_started=time.time())
-        log.info("First-run setup: Zimi opens once its owner chooses who can change settings")
+        log.info("First-run setup: Zimi opens once its owner chooses who can manage it")
     return _setup_gate
 
 
@@ -6405,8 +6405,8 @@ def _open_to_anyone(handler, data):
     _clear_setup_key()
     log.warning(
         "Access: anyone, anywhere. Nobody is asked for a password; anyone who "
-        "can reach this server can change its settings (Settings > Who can "
-        "change settings turns it off)."
+        "can reach this server can manage it (Manage > Settings > Who can "
+        "manage Zimi turns it off)."
     )
     return handler._json(200, {"access": access_mode()})
 

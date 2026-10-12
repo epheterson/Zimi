@@ -12427,7 +12427,7 @@ function _setupFormHtml(st, mode) {
     _switchRowsHtml([
       { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
         on: ext, disabled: !!st.external_env, onchange: '_setupSync()' },
-      { id: 'setup-req', title: tH('setup_password'), desc: tH(_setupReqDesc(st, ext, mode)),
+      { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
         on: req, disabled: lockReq, onchange: '_setupSync()' }
     ]) +
     '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' + open +
@@ -12443,12 +12443,17 @@ function _setupReqLocked(st, ext, mode) {
   if (mode === 'settings') return !ext && st.direct === false;
   return ext || st.direct === false;
 }
-function _setupReqDesc(st, ext, mode) {
+// A line under the switch only when it says something the title does not:
+// why it is held on, or who can manage Zimi while it is off.
+function _setupReqDesc(st, ext, req, mode) {
   if (st.env_controlled) return 'configured_via_env';
-  if (mode === 'settings') return ext ? 'setup_password_desc_anywhere' : st.direct === false ? 'setup_password_needed_proxy' : 'setup_password_desc';
-  if (ext) return 'setup_password_needed_outside';
-  if (st.direct === false) return 'setup_password_needed_proxy';
-  return 'setup_password_desc';
+  if (_setupReqLocked(st, ext, mode)) return ext ? 'setup_password_needed_outside' : 'setup_password_needed_proxy';
+  if (req) return '';
+  return ext ? 'setup_password_desc_anywhere' : 'setup_password_desc';
+}
+function _setupReqDescHtml(st, ext, req, mode) {
+  var k = _setupReqDesc(st, ext, req, mode);
+  return k ? tH(k) : '';
 }
 function _setupSync() {
   var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
@@ -12458,8 +12463,15 @@ function _setupSync() {
   if (lock) req.checked = true;
   req.disabled = lock;
   req.closest('.share-row').classList.toggle('share-locked', lock);
-  var desc = req.closest('.share-row').querySelector('.share-row-desc');
-  if (desc) desc.textContent = t(_setupReqDesc(st, ext.checked, mode));
+  var row = req.closest('.share-row'), desc = row.querySelector('.share-row-desc');
+  var k = _setupReqDesc(st, ext.checked, req.checked, mode);
+  if (desc && !k) desc.remove();
+  if (k && !desc) {
+    desc = document.createElement('span');
+    desc.className = 'share-row-desc';
+    row.querySelector('.share-row-text').appendChild(desc);
+  }
+  if (k) desc.textContent = t(k);
   var f = document.getElementById('setup-fields');
   if (f) f.hidden = !req.checked;
   var o = document.getElementById('setup-open');
@@ -15471,7 +15483,7 @@ async function _renderMirrorSection() {
   // this too. The DOWNLOAD cap lives in the Downloads card below (one global
   // number governs HTTP + BT) so it isn't rendered twice.
   const upMb = m.bt_up_kb ? +(m.bt_up_kb / 1024).toFixed(2) : 0;
-  const limitRow = '<div class="share-field"><label title="' + escAttr(t('bt_limit_hint')) + '">' + tH('bt_up_limit_label') + '</label>' +
+  const limitRow = '<div class="share-field btc-builtin"><label title="' + escAttr(t('bt_limit_hint')) + '">' + tH('bt_up_limit_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="0" step="0.5" value="' + upMb + '"' + disA(m.bt_up_env_locked) + lockA(m.bt_up_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" title="' + escAttr(t('bt_limit_hint')) + '" onchange="_setBtLimit(this,\'up\')">' +
@@ -15489,14 +15501,14 @@ async function _renderMirrorSection() {
 
   // Max connections: libtorrent's global socket cap (real, enforced). Pure BT
   // engine setting, so it greys with the engine.
-  const connRow = '<div class="share-field"><label title="' + escAttr(t('bt_max_conn_hint')) + '">' + tH('bt_max_conn_label') + '</label>' +
+  const connRow = '<div class="share-field btc-builtin"><label title="' + escAttr(t('bt_max_conn_hint')) + '">' + tH('bt_max_conn_label') + '</label>' +
     '<span class="share-port-group">' +
     '<input type="number" min="10" max="2000" step="10" value="' + (m.bt_max_connections != null ? m.bt_max_connections : 200) + '"' +
     disA(m.bt_max_connections_env_locked) + lockA(m.bt_max_connections_env_locked) +
     ' class="share-num-input" aria-label="' + escAttr(t('bt_max_conn_label')) + '" title="' + escAttr(t('bt_max_conn_hint')) + '" onchange="_setBtMaxConn(this)">' +
     '</span></div>';
 
-  const portRow = '<div class="share-field share-port-row" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
+  const portRow = '<div class="share-field share-port-row btc-builtin" id="share-port-row">' + _portRowInner(bt || {}, btOn) + '</div>';
 
   const selfName = (peers && peers.self) || '';
   const nameRow = '<div class="share-field"><label title="' + escAttr(t('peer_name_hint')) + '">' + tH('peer_advertising_as') + '</label>' +
@@ -15507,11 +15519,12 @@ async function _renderMirrorSection() {
   // Controls always present; the wrapper dims + disables them when BT is off,
   // so toggling never adds/removes rows (no layout jump).
   // A client the operator runs owns its own limits, connections and port, so
-  // those rows go; the ratio (Zimi's ledger), the queue and the name stay.
-  const ext = !!(bt && bt.backend && bt.backend !== 'libtorrent');
+  // those rows hide (.btc-ext) as soon as one is picked, before it is saved;
+  // the ratio (Zimi's ledger), the queue and the name stay.
   window._btcSaved = (bt && bt.client) || {};
-  const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + '" id="ms-bt-controls">' +
-    _btcEngineRow(bt) + ratioRow + (ext ? '' : limitRow) + dlRow + (ext ? '' : connRow + portRow) + nameRow + '</div>' +
+  const ext = !!window._btcSaved.kind;
+  const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + (ext ? ' btc-ext' : '') + '" id="ms-bt-controls">' +
+    _btcEngineRow(bt) + ratioRow + limitRow + dlRow + connRow + portRow + nameRow + '</div>' +
     _btcFormHtml(bt);
 
   // Mirror status sits under its toggle in the right column — the SAME spot
@@ -15539,7 +15552,7 @@ async function _renderMirrorSection() {
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
       // line already gives it — claiming ZIMI_BT did this would be a lie.
-      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + (ext ? '' : _upnpHtml(bt || {}, btOn)),
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + '<div id="ms-bt-upnp"' + (ext ? ' hidden' : '') + '>' + _upnpHtml(bt || {}, btOn) + '</div>',
       // Reason first, then the fields it explains. Both sit outside the dimmed
       // block: the reason so it stays readable, the fields because `disabled`
       // already greys them and dimming twice reads as damage.
@@ -15614,6 +15627,10 @@ async function _btcEngine(kind) {
     b.classList.toggle('active', sel);
     b.setAttribute('aria-checked', sel);
   });
+  var controls = document.getElementById('ms-bt-controls');
+  if (controls) controls.classList.toggle('btc-ext', !!kind);
+  var upnp = document.getElementById('ms-bt-upnp');
+  if (upnp) upnp.hidden = !!kind;
   var saved = window._btcSaved || {};
   if (kind) {
     // The form follows the client picked; what was typed for another one

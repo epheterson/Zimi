@@ -5262,7 +5262,7 @@ def main():
                 log.warning(
                     "Library management is OPEN: no password, no setup key, "
                     "anyone who can reach this server can administer it "
-                    "(Settings > Who can change settings, or manage_open / "
+                    "(Manage > Settings > Who can manage Zimi, or manage_open / "
                     "ZIMI_MANAGE_OPEN). Turn it off if this "
                     "instance is reachable from anywhere you do not control."
                 )
@@ -5279,9 +5279,9 @@ def main():
                 key = _mng_open.ensure_setup_key()
                 log.info("Library management enabled — no admin password set yet.")
                 first = (
-                    "  │  Zimi opens once you choose who can change settings.\n"
+                    "  │  Zimi opens once you choose who can manage it.\n"
                     if gated
-                    else "  │  Choose who can change settings from this machine,\n"
+                    else "  │  Choose who can manage Zimi from this machine,\n"
                 )
                 print(
                     _printable(

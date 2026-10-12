@@ -2327,6 +2327,8 @@
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
   .share-bt-controls.share-controls-off { opacity: 0.4; }
   .btc-engine .app-theme-btn { white-space: nowrap; }
+  /* A client the operator runs owns its limits, connections and port. */
+  .share-bt-controls.btc-ext .btc-builtin { display: none; }
   /* Three engines do not fit the phone's narrow control column: the selector
      takes its own row under its label, the full width of the card. */
   @media (max-width: 600px) { .share-bt-controls .btc-engine { grid-column: 1 / -1; max-width: none; } }
