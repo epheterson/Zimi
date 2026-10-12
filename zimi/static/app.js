@@ -15562,9 +15562,16 @@ async function _renderMirrorSection() {
 // ── The engine: built in, or a qBittorrent the operator already runs (#53) ──
 // The *arr apps' download-client form: URL, login, category, path mappings.
 function _qbtEngineRow(bt, ext) {
-  return '<div class="share-field"><label>' + tH('bt_engine') + '</label><span class="qbt-engine" role="group" aria-label="' + escAttr(t('bt_engine')) + '">' +
-    '<button type="button" class="pill' + (ext ? '' : ' active') + '" data-nogate="1" onclick="_qbtEngine(false)">' + tH('bt_engine_builtin') + '</button>' +
-    '<button type="button" class="pill' + (ext ? ' active' : '') + '" data-nogate="1" onclick="_qbtEngine(true)">qBittorrent</button></span></div>';
+  // A selector, as every either/or in Settings is; the environment's choice
+  // locks it.
+  var lock = !!(bt && bt.qbt && bt.qbt.locked === 'ZIMI_QBT_URL');
+  var btn = function(on, val, label) {
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
+      (lock ? ' disabled' : '') + ' data-nogate="1" onclick="_qbtEngine(' + val + ')"><span>' + label + '</span></button>';
+  };
+  return '<div class="share-field"><label>' + tH('bt_engine') + '</label>' +
+    '<div class="app-theme-seg qbt-engine" role="radiogroup" aria-label="' + escAttr(t('bt_engine')) + '">' +
+    btn(!ext, 'false', tH('bt_engine_builtin')) + btn(ext, 'true', 'qBittorrent') + '</div></div>';
 }
 function _qbtFormHtml(bt, ext) {
   var q = (bt && bt.qbt) || {}, lock = q.locked;
@@ -15593,7 +15600,11 @@ async function _qbtEngine(on) {
   var form = document.getElementById('ms-qbt');
   if (!form) return;
   var row = document.querySelector('.qbt-engine');
-  if (row) row.querySelectorAll('.pill').forEach(function(b, i) { b.classList.toggle('active', (i === 1) === on); });
+  if (row) row.querySelectorAll('.app-theme-btn').forEach(function(b, i) {
+    var sel = (i === 1) === on;
+    b.classList.toggle('active', sel);
+    b.setAttribute('aria-checked', sel);
+  });
   if (on) { form.hidden = false; var u = document.getElementById('qbt-url'); if (u && !u.value) u.focus(); return; }
   form.hidden = true;
   var q = (window._qbtSaved || {});

@@ -2326,7 +2326,6 @@
      overrun the narrow phone column; border-box so padding stays inside. */
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
   .share-bt-controls.share-controls-off { opacity: 0.4; }
-  .qbt-engine { display: flex; gap: 6px; flex-wrap: wrap; }
   .qbt-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
   .qbt-form[hidden] { display: none; }
   .qbt-form .ms-hint { margin: 0; }
