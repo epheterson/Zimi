@@ -15608,23 +15608,27 @@ function _btcEngineRow(bt) {
     opt('', tH('bt_engine_builtin')) + Object.keys(BT_CLIENTS).map(function(k) { return opt(k, _btcName(k)); }).join('') + '</select></div>';
 }
 function _btcFormHtml(bt) {
+  // The client's fields sit in the same label | field grid as the engine's
+  // rows above them, so the card reads as one list.
   var c = (bt && bt.client) || {}, lock = c.locked, kind = c.kind || '';
   var dis = lock ? ' disabled' : '';
-  var field = function(id, label, val, ph, type, auto) {
-    return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + (type || 'text') + '"' +
+  var row = function(id, label, val, ph, type, auto) {
+    return '<div class="share-field"><label for="' + id + '">' + tH(label) + '</label><input id="' + id + '" class="peer-name-input" type="' + (type || 'text') + '"' +
       ' autocomplete="' + (auto || 'off') + '" spellcheck="false" autocapitalize="off"' +
-      (val ? ' value="' + escAttr(val) + '"' : '') + (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + dis + '></label>';
+      (val ? ' value="' + escAttr(val) + '"' : '') + (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + dis + '></div>';
   };
   return '<div class="btc-form" id="ms-btc" data-kind="' + kind + '"' + (kind ? '' : ' hidden') + '>' +
     '<div class="ms-hint" id="btc-note">' + _btcNote(kind, lock) + '</div>' +
-    field('btc-url', 'btc_url', c.url, kind ? BT_CLIENTS[kind][1] : '') +
-    '<div class="btc-pair">' + field('btc-user', 'setup_username', c.user, '', 'text', 'off') +
-    field('btc-pw', 'btc_password', '', c.password_set ? t('btc_password_saved') : '', 'password', 'new-password') + '</div>' +
-    field('btc-cat', 'btc_category', c.category && c.category !== 'zimi' ? c.category : '', 'zimi') +
-    '<div class="setup-field"><span>' + tH('btc_paths') + '</span><div class="btc-paths" id="btc-paths">' +
-      _btcPathRows(c.paths, kind, lock) + '</div>' +
-      (lock ? '' : '<button type="button" class="pill btc-path-add" onclick="_btcPathAdd()">' + tH('btc_path_add') + '</button>') + '</div>' +
-    '<div class="ms-hint" id="btc-paths-hint">' + tH('btc_paths_hint', { client: _btcName(kind) }) + '</div>' +
+    '<div class="share-bt-controls">' +
+      row('btc-url', 'btc_url', c.url, kind ? BT_CLIENTS[kind][1] : '') +
+      row('btc-user', 'setup_username', c.user, t('btc_optional')) +
+      row('btc-pw', 'btc_password', '', c.password_set ? t('btc_password_saved') : t('btc_optional'), 'password', 'new-password') +
+      row('btc-cat', 'btc_category', c.category && c.category !== 'zimi' ? c.category : '', 'zimi') +
+      '<div class="share-field btc-paths-field"><label title="' + escAttr(t('btc_paths_hint', { client: _btcName(kind) })) + '">' + tH('btc_paths') + '</label>' +
+        '<div><div class="btc-paths" id="btc-paths">' + _btcPathRows(c.paths, kind, lock) + '</div>' +
+        (lock ? '' : '<button type="button" class="btc-path-add" onclick="_btcPathAdd()">+ ' + tH('btc_path_add') + '</button>') +
+        '<div class="ms-hint" id="btc-paths-hint">' + tH('btc_paths_hint', { client: _btcName(kind) }) + '</div></div></div>' +
+    '</div>' +
     '<div class="btc-result" id="btc-result" role="status"></div>' +
     (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_btcSubmit(true)">' + tH('btc_test') + '</button>' +
       '<button type="button" class="set-btn primary" onclick="_btcSubmit(false)">' + tH('save') + '</button></div>') +
@@ -15636,7 +15640,7 @@ function _btcPathRow(remote, local, kind, dis) {
   // Each field carries its own name for the phone, where the two stack and
   // the column heads above them go.
   var inp = function(cls, val, ph, label) {
-    return '<label class="btc-path-cell"><span>' + esc(label) + '</span><input type="text" class="' + cls + '" value="' + escAttr(val || '') + '" placeholder="' + escAttr(ph) + '"' +
+    return '<label class="btc-path-cell"><span>' + esc(label) + '</span><input type="text" class="peer-name-input ' + cls + '" value="' + escAttr(val || '') + '" placeholder="' + escAttr(ph) + '"' +
       ' spellcheck="false" autocapitalize="off" autocomplete="off"' + (dis ? ' disabled' : '') + '></label>';
   };
   return '<div class="btc-path-row">' +
@@ -15674,8 +15678,7 @@ function _btcPathsText() {
 }
 function _btcNote(kind, lock) {
   var client = { client: _btcName(kind) };
-  var note = lock === 'open' ? tH('btc_locked_open') : lock ? tH('configured_via_env') : tH('btc_desc', client);
-  return note + ' ' + tH('btc_password_none', client);
+  return lock === 'open' ? tH('btc_locked_open') : lock ? tH('configured_via_env') : tH('btc_desc', client);
 }
 async function _btcEngine(kind) {
   var form = document.getElementById('ms-btc');
@@ -15696,7 +15699,7 @@ async function _btcEngine(kind) {
       document.getElementById('btc-user').value = same ? (saved.user || '') : '';
       var pw = document.getElementById('btc-pw');
       pw.value = '';
-      pw.placeholder = same && saved.password_set ? t('btc_password_saved') : '';
+      pw.placeholder = same && saved.password_set ? t('btc_password_saved') : t('btc_optional');
       document.getElementById('btc-note').innerHTML = _btcNote(kind, saved.locked);
       document.getElementById('btc-paths-hint').innerHTML = tH('btc_paths_hint', { client: _btcName(kind) });
       document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind);
