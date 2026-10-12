@@ -12433,7 +12433,7 @@ function _setupFormHtml(st, mode) {
   // while it is being chosen; once on, that switch's own line says who can
   // manage Zimi and nothing else repeats it.
   var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req && !isOpen ? '' : ' hidden') + '>' +
-    '<label class="setup-open-ok"><input type="checkbox" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span>' + tH('setup_open_cost') + '</span></label></div>' +
+    '<label class="setup-open-ok"><span>' + tH('setup_open_cost') + '</span><span class="switch switch-sm"><input type="checkbox" role="switch" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span class="switch-slider"></span></span></label></div>' +
     (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, ext, req) ? '' : ' hidden') + '>' +
       input('setup-cur-pw', 'password', 'current-password', 'current_password') + '</div>' : '');
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
@@ -15266,8 +15266,9 @@ function _applyTorrentToggleInPlace(on) {
 // Shared status line for the Mirror card's right column — same shape as the
 // BT "ready" dot so the two cards' lights sit in identical spots.
 function _mirrorStatusHtml(active) {
-  return '<span class="share-port-dot" style="background:' + (active ? '#6abf69' : 'var(--text3)') + '"></span>' +
-    esc(active ? t('seeding_state_active') : t('bt_state_off'));
+  // Off, the switch already says so; only "active" adds anything.
+  if (!active) return '';
+  return '<span class="share-port-dot" style="background:#6abf69"></span>' + esc(t('seeding_state_active'));
 }
 
 function _applyMirrorToggleInPlace(on) {

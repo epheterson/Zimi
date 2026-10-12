@@ -1114,8 +1114,8 @@
   .setup-form .pw-error { margin: 0; color: var(--error); font-size: 13px; display: none; }
   .setup-open { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
   .setup-open[hidden] { display: none; }
-  .setup-open-ok { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; color: var(--text); cursor: pointer; }
-  .setup-open-ok input { margin: 2px 0 0; accent-color: var(--amber); flex: none; }
+  .setup-open-ok { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 1.45; color: var(--text); cursor: pointer; }
+  .setup-open-ok .switch { flex: none; margin-top: 1px; }
   #onboard-access { margin-top: 12px; }
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
@@ -2220,6 +2220,7 @@
   }
   .ms-dl-window input[type="time"]:disabled { opacity: 0.6; }
   .ms-dl-speed { margin-top: 12px; }
+  .ms-dl-speed > label { min-width: 9.5rem; }
   .dl-window-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .dl-window-chip.dl-window-in { color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); }
   .dl-window-chip.dl-window-out { color: var(--text2); background: var(--surface2); border: 1px solid var(--border); }
@@ -2371,6 +2372,7 @@
   .btc-path-add { margin-top: 4px; padding: 2px 0; border: 0; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
   .btc-path-add:hover { color: var(--amber); }
   @media (max-width: 600px) {
+    .share-bt-controls .btc-paths-field > label, .share-bt-controls .btc-paths-field > div { grid-column: 1 / -1; }
     .btc-path-row { grid-template-columns: 1fr 28px; row-gap: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
     .btc-path-head, .btc-path-arrow { display: none; }
     .btc-path-cell { grid-column: 1; }

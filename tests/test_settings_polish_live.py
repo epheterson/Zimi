@@ -381,22 +381,24 @@ def test_three_way_choices_are_selector_rows_that_set_their_setting(served, phon
     assert not pg.errors, pg.errors
 
 
-def test_upnp_sits_under_the_bittorrent_switch(served, phone):
-    """Eric, 2026-10-03: "UPnP toggle should be able to float under on.off bt
-    toggle on mobile to avoid line break". UPnP is in the BitTorrent card's
-    right column, under its switch; the port row is one line."""
+def test_upnp_is_a_row_of_the_built_in_engines_settings(served, phone):
+    """Eric, 2026-10-03: the port row must not break onto a second line on a
+    phone ("UPnP toggle should be able to float under on.off bt toggle"). Since
+    1.14 the BitTorrent card closes to one line (Eric, 2026-10-11: "closed
+    gives just the right info") and UPnP is a row of the built-in engine's
+    settings beneath it, so the port row stays one line and the closed card
+    stays clean."""
     pg = phone
     pg.goto(served + "/?manage=server")
     pg.wait_for_selector("#ms-bt-upnp", state="attached", timeout=15000)
     got = pg.evaluate(
-        """() => { var u = document.getElementById('ms-bt-upnp'), right = u.closest('.share-row-right');
-      var sw = right && right.querySelector('.switch:not(.switch-sm)');
+        """() => { var u = document.getElementById('ms-bt-upnp');
       var port = document.getElementById('share-port-row');
       var kids = [...port.querySelectorAll('input, button')].map(e => Math.round(e.getBoundingClientRect().top));
-      return { inRight: !!right, below: sw ? u.getBoundingClientRect().top > sw.getBoundingClientRect().bottom - 1 : false,
-        inPort: !!port.querySelector('#ms-bt-upnp'), oneLine: Math.max(...kids) - Math.min(...kids) <= 4,
+      return { inSettings: !!u.closest('#ms-bt-more .share-bt-controls'), inRight: !!u.closest('.share-row-right'),
+        inPort: !!port.querySelector('#ms-bt-upnp'), oneLine: kids.length < 2 || Math.max(...kids) - Math.min(...kids) <= 4,
         wide: document.documentElement.scrollWidth }; }"""
     )
-    assert got["inRight"] and got["below"] and not got["inPort"], got
+    assert got["inSettings"] and not got["inRight"] and not got["inPort"], got
     assert got["oneLine"] and got["wide"] <= 390, got
     assert not pg.errors, pg.errors
