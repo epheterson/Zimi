@@ -35,11 +35,10 @@ services:
     volumes:
       - /volume1/docker/kiwix:/zims
       - /volume1/docker/kiwix/zimi-data:/data
-      # qBittorrent's downloads, at the path qBittorrent itself uses, so the
-      # BitTorrent engine below needs no path mapping beyond the identity one.
-      # Finished ZIMs are copied into /zims (Synology shares are separate
-      # btrfs subvolumes, so no hardlink); relinkarr then swaps qBittorrent's
-      # seeding copy for a reflink, so nothing is stored twice.
+      # qBittorrent's downloads, at the path qBittorrent itself uses.
+      # qBittorrent mounts the library at /zims too, so it moves finished
+      # ZIMs into the library and seeds them there; both mappings below are
+      # the identity one.
       - /volume1/downloads:/downloads
     environment:
       - ZIM_DIR=/zims
@@ -51,7 +50,7 @@ services:
       # local clients in without a login.
       - ZIMI_BT_CLIENT=qbittorrent
       - ZIMI_BT_CLIENT_URL=http://127.0.0.1:8080
-      - ZIMI_BT_CLIENT_PATHS=/downloads=/downloads
+      - ZIMI_BT_CLIENT_PATHS=/downloads=/downloads;/zims=/zims
       # Folder/import creation from the web is confined to this one directory
       # (drop source folders in over SMB: /volume1/docker/kiwix/created).
       - ZIMI_CREATE_ROOT=/zims/sources   # what you drop in to make a ZIM from; what you make goes to /zims/created
