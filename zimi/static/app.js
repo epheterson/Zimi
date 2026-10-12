@@ -12544,7 +12544,10 @@ async function _setupSubmit(opts) {
   // removes fields (a new password, Anyone, anywhere) redraws Manage.
   if (opts && opts.auto && was === _manageAccess) return true;
   if (opts && opts.auto) { _setupState.access = _manageAccess; _setupSync(); return true; }
-  renderManage();
+  // Drawn again where the switches are, as a language switch does.
+  var y = window.scrollY;
+  _pendingMsSection = _msSection;
+  renderManage().then(function() { window.scrollTo(0, y); });
   return true;
 }
 // The welcome card for a fresh install. The internet sees only that it is
