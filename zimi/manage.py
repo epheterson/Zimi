@@ -549,6 +549,13 @@ def _revoke_api_token():
         pass
 
 
+def _verify_pbkdf2(candidate, stored_pw):
+    if not stored_pw or "$" not in stored_pw:
+        return False
+    salt = stored_pw.split("$")[0]
+    return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
+
+
 def _verify_password(candidate, stored_pw):
     """Verify a password against the stored hash. Handles legacy and PBKDF2."""
     if _is_legacy_hash(stored_pw):
@@ -556,17 +563,14 @@ def _verify_password(candidate, stored_pw):
             _upgrade_legacy_hash(candidate)
             return True
         return False
-    if "$" not in stored_pw:
-        return False
-    salt = stored_pw.split("$")[0]
-    return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
+    return _verify_pbkdf2(candidate, stored_pw)
 
 
 def _verify_current(candidate, stored_pw):
     """The current password, asked again before a change. Only a PBKDF2 hash
     can answer: signing in already moved a v1.5 hash to PBKDF2, so the legacy
     check (and its SHA-256) stays on the sign-in path alone."""
-    return not _is_legacy_hash(stored_pw) and _verify_password(candidate, stored_pw)
+    return _verify_pbkdf2(candidate, stored_pw)
 
 
 def verify_admin_credentials(username, password):
