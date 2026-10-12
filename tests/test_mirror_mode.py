@@ -164,6 +164,8 @@ def test_torrent_metadata_roundtrip(tmp_path, monkeypatch):
 
 
 class _FakeBackend:
+    external = False
+
     def __init__(self, managed=None):
         self.managed = managed or []
         self.added = []

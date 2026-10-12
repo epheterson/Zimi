@@ -10,6 +10,7 @@ from zimi.p2p import BTBackend
 def engine_mock():
     m = MagicMock()
     m.external = False
+    m.retired = False
     m.payload_path.side_effect = lambda tid, filename, staging_dir: os.path.join(staging_dir, filename)
     m.install.side_effect = lambda tid, src, dest: BTBackend.install(m, tid, src, dest)
     return m
