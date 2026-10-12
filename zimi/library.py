@@ -3802,6 +3802,15 @@ def _download_thread(dl):
                 _bt_outcome = "fallback"
             if _bt_outcome != "restart":
                 break
+        if _bt_outcome == "restart":
+            # Out of restarts: HTTP brings the file, so the torrent the last
+            # engine may still hold goes (remove never touches the library).
+            _bt_outcome = "fallback"
+            if dl.get("bt_info_hash") and _backend is not None:
+                try:
+                    _backend.remove(dl["bt_info_hash"], delete_files=True)
+                except Exception as e:
+                    log.debug("BT: could not drop %s after restarts: %s", dl["filename"], e)
         if _bt_outcome is not None:
             if _bt_outcome == "success":
                 dl["done"] = True

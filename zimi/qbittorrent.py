@@ -27,6 +27,11 @@ _CHECKING_STATES = {
 }
 
 
+# content_path (where a torrent's files are) arrived with Web API 2.6.1,
+# qBittorrent 4.3.2; Zimi cannot install or hand over without it.
+MIN_WEBAPI = (2, 6, 1)
+
+
 class Client:
     """A qBittorrent Web API session. Logs in on the first 401/403 and again when
     the cookie expires; a client that bypasses authentication for this
@@ -142,8 +147,10 @@ class QBittorrentBackend(ExternalBackend):
         return str((self.client.json("app/preferences") or {}).get("save_path") or "")
 
     def _prepare(self):
-        api = self.client.text("app/webapiVersion")
-        self._v5 = tuple(int(x) for x in re.findall(r"\d+", api)[:2]) >= (2, 11)
+        api = tuple(int(x) for x in re.findall(r"\d+", self.client.text("app/webapiVersion"))[:3])
+        if api < MIN_WEBAPI:
+            raise ClientError("Zimi needs qBittorrent 4.3.2 or newer (it reads where each torrent's files are)")
+        self._v5 = api[:2] >= (2, 11)
         try:
             self.client.call("torrents/createCategory", {"category": self.category})
         except urllib.error.HTTPError as e:

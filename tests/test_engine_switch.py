@@ -308,3 +308,27 @@ def test_a_clients_copy_of_a_deleted_zim_is_retired(world, monkeypatch, tmp_path
         assert "old.zim" not in library.seed_ledger_snapshot()
     finally:
         p2p._backend_singleton = None
+
+
+def test_out_of_restarts_the_last_engine_lets_go_of_the_torrent(world, monkeypatch):
+    """Every engine retired under it: HTTP brings the file, and the torrent the
+    last engine holds goes, so it cannot land on top later."""
+    fake, dl_local, lib_local, data = world
+    dropped = []
+
+    class Engine:
+        def remove(self, tid, *, delete_files=False):
+            dropped.append((tid, delete_files))
+
+    monkeypatch.setattr(p2p, "get_backend", lambda data_dir: Engine())
+    monkeypatch.setattr(library, "_resolve_torrent_url", lambda url: "https://x/wiki.zim.torrent")
+
+    def attempt(backend, dl, **kw):
+        dl["bt_info_hash"] = "ab" * 20
+        return "restart"
+
+    monkeypatch.setattr(library, "_try_bt_download", attempt)
+    monkeypatch.setattr(library, "_download_from_url", lambda dl, url, tmp: (False, "offline in this test"))
+    dl = {"id": "1", "filename": "wiki.zim", "url": "https://x/wiki.zim", "dest": str(lib_local / "wiki.zim")}
+    library._download_thread(dl)
+    assert dropped == [("ab" * 20, True)]

@@ -254,3 +254,18 @@ def test_a_new_category_relabels_instead_of_handing_over(world, tmp_path, monkey
     monkeypatch.setattr(b, "release", lambda: released.append(1))
     p2p.switch_engine(data_dir=str(tmp_path))
     assert not released and fake.torrents[tid]["category"] == "library"
+
+
+def test_a_qbittorrent_too_old_to_say_where_files_are_is_refused(world):
+    fake, dl_local, lib_local, staging = world
+    real = fake.handle
+
+    def old(h, path, q, form):
+        if path == "app/webapiVersion":
+            return h._send(200, "2.5.1")  # qBittorrent 4.2: no content_path
+        return real(h, path, q, form)
+
+    fake.handle = old
+    cfg = {"kind": "qbittorrent", "url": fake.url, "user": "", "password": "", "category": "zimi", "paths": []}
+    got = btclient.probe(cfg, library_dir=str(lib_local))
+    assert not got["ok"] and "4.3.2" in got["error"]
