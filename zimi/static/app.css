@@ -1114,8 +1114,7 @@
   .setup-form .pw-error { margin: 0; color: var(--error); font-size: 13px; display: none; }
   .setup-open { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
   .setup-open[hidden] { display: none; }
-  .setup-open-ok { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 12px; line-height: 1.45; color: var(--text); cursor: pointer; }
-  .setup-open-ok .switch { flex: none; margin-top: 1px; }
+  .setup-open-cost { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text2); }
   #onboard-access { margin-top: 12px; }
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }

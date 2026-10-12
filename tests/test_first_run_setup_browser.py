@@ -127,3 +127,36 @@ def test_the_passwords_must_match(served, browser):
         )
         is True
     )
+
+
+def test_turning_off_the_password_is_one_named_press(served, browser):
+    """Anyone, anywhere: its cost shows only while it is being chosen, and the
+    button that saves it is the confirmation; no second switch to tick, and
+    once on only the switch's own line remains."""
+    base, _ = served
+    ctx = browser.new_context(viewport=VIEW)
+    page = ctx.new_page()
+    page.goto(base)
+    tok = page.evaluate(
+        """() => fetch('/manage/access', {method: 'POST', headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({external: true, require_password: true, username: 'admin',
+                                   password: 'hunter22', remember: true})})
+           .then(r => r.json()).then(j => j.token)"""
+    )
+    page.evaluate("t => localStorage.setItem('zimi_manage_token', t)", tok)
+    page.goto(base + "/?manage=server")
+    page.wait_for_selector("#setup-req", state="attached", timeout=15000)
+    assert page.is_hidden("#setup-open")
+    page.locator("#setup-req").evaluate("e => e.click()")
+    assert page.is_visible("#setup-open")
+    assert page.locator("#setup-open input").count() == 0, "no switch to tick"
+    assert page.inner_text("#setup-save button") == "Turn off password"
+    page.fill("#setup-cur-pw", "hunter22")
+    page.click("#setup-save button")
+    page.wait_for_function(
+        "fetch('/manage/has-password').then(r => r.json()).then(j => j.access === 'open')"
+    )
+    page.wait_for_selector("#setup-open", state="hidden")
+    assert page.is_hidden("#setup-save")
+    desc = page.locator("#setup-req").locator("xpath=ancestor::*[contains(@class,'share-row')][1]")
+    assert "can manage Zimi" in desc.inner_text()

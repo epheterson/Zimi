@@ -12428,12 +12428,11 @@ function _setupFormHtml(st, mode) {
     (hasPw ? (isOpen ? '' : '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>')
       : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
   // The third answer: from outside, with no password. Only in Settings, never
-  // on a first run, and it names its cost before it can be chosen.
-  // Anyone, anywhere is confirmed under the password switch, in its card, only
-  // while it is being chosen; once on, that switch's own line says who can
-  // manage Zimi and nothing else repeats it.
-  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req && !isOpen ? '' : ' hidden') + '>' +
-    '<label class="setup-open-ok"><span>' + tH('setup_open_cost') + '</span><span class="switch switch-sm"><input type="checkbox" role="switch" id="setup-open-ok"' + (isOpen ? ' checked' : '') + '><span class="switch-slider"></span></span></label></div>' +
+  // on a first run. While it is being chosen its cost sits under the switch
+  // and the button that saves it says what it does: pressing it is the
+  // confirmation. Once on, the switch's own line is all that remains.
+  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (_setupChoosingOpen(st, ext, req) ? '' : ' hidden') + '>' +
+    '<p class="setup-open-cost">' + tH('setup_open_cost') + '</p></div>' +
     (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, ext, req) ? '' : ' hidden') + '>' +
       input('setup-cur-pw', 'password', 'current-password', 'current_password') + '</div>' : '');
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
@@ -12448,7 +12447,7 @@ function _setupFormHtml(st, mode) {
     '<div class="pw-error" id="setup-error"></div>' +
     // In Manage the switches save themselves, as every other switch there
     // does; the button shows only while something must be typed first.
-    '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, ext, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
+    '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, ext, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(_setupSaveLabel(st, ext, req, mode)) + '</button></div>' +
     '</form>';
 }
 // On the setup page, outside holds the password on. In Settings it does not:
@@ -12464,12 +12463,20 @@ function _setupReqLocked(st, ext, mode) {
 function _setupReqDesc(st, ext, req, mode) {
   if (st.env_controlled) return 'configured_via_env';
   if (_setupReqLocked(st, ext, mode)) return ext ? 'setup_password_needed_outside' : 'setup_password_needed_proxy';
-  if (req) return '';
+  if (req || (mode === 'settings' && _setupChoosingOpen(st, ext, req))) return '';
   return ext ? 'setup_password_desc_anywhere' : 'setup_password_desc';
 }
 function _setupReqDescHtml(st, ext, req, mode) {
   var k = _setupReqDesc(st, ext, req, mode);
   return k ? tH(k) : '';
+}
+// Anyone, anywhere switched on here but not saved yet.
+function _setupChoosingOpen(st, ext, req) {
+  return ext && !req && st.access !== 'open';
+}
+function _setupSaveLabel(st, ext, req, mode) {
+  if (mode === 'setup') return 'setup_continue';
+  return _setupChoosingOpen(st, ext, req) ? 'setup_open_go' : 'save';
 }
 // A password exists: in use, or kept while Anyone, anywhere is on.
 function _setupHasStoredPw(st) {
@@ -12481,8 +12488,8 @@ function _setupHasStoredPw(st) {
 function _setupNeedsCurrent(st, ext, req) {
   return !req && _setupHasStoredPw(st) && st.access !== 'open';
 }
-// A new password, the current one, or the cost of Anyone, anywhere has to
-// be typed or confirmed before Zimi can save; anything else saves on the
+// A new password, the current one, or the press that turns on Anyone,
+// anywhere comes before Zimi can save; anything else saves on the
 // switch. A first answer (unset) is always a deliberate Save.
 function _setupNeedsInput(st, ext, req) {
   if (st.access === 'unset' || _setupNeedsCurrent(st, ext, req)) return true;
@@ -12526,19 +12533,16 @@ function _setupSync(changed) {
   var f = document.getElementById('setup-fields');
   if (f) f.hidden = !req.checked;
   var o = document.getElementById('setup-open');
-  if (o) {
-    var show = ext.checked && !req.checked && st.access !== 'open';
-    // Each time it is chosen again, it is confirmed again.
-    if (show && o.hidden) document.getElementById('setup-open-ok').checked = false;
-    o.hidden = !show;
-  }
+  if (o) o.hidden = !_setupChoosingOpen(st, ext.checked, req.checked);
+  var btn = document.querySelector('#setup-save button');
+  if (btn) btn.textContent = t(_setupSaveLabel(st, ext.checked, req.checked, mode));
   var cur = document.getElementById('setup-cur');
   if (cur) cur.hidden = !_setupNeedsCurrent(st, ext.checked, req.checked);
   if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
   needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body',
-  open_unconfirmed: 'setup_open_need_ok', wrong_password: 'wrong_password' };
+  wrong_password: 'wrong_password' };
 async function _setupSubmit(opts) {
   var quiet = !!(opts && opts.quiet);
   var form = document.getElementById('setup-form');
@@ -12556,11 +12560,8 @@ async function _setupSubmit(opts) {
     username: val('setup-user'), remember: true };
   var key = val('setup-key');
   if (document.getElementById('setup-key') && !key) return show('setup_need_key');
-  if (body.external && !req && !setup) {
-    var ok = document.getElementById('setup-open-ok');
-    if (!ok || !ok.checked) return show('setup_open_need_ok');
-    body.open_confirm = true;
-  }
+  // Reached only by pressing the button that names it.
+  if (body.external && !req && !setup) body.open_confirm = true;
   var cur = document.getElementById('setup-cur');
   if (cur && !cur.hidden) {
     body.current_password = document.getElementById('setup-cur-pw').value;
@@ -14837,10 +14838,10 @@ function _msServerHtml() {
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
 
-  // Access (who can manage Zimi, the API token) first: the most consequential
-  // setting here. Then Sharing, Downloads, Storage, My Data / Server Backups,
-  // App Updates, Hot ZIMs + cache, the environment, and Internet use last.
-  var h = [tokenSec, sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, envSec, netSec].join(sep);
+  // Sharing, Downloads, Storage, My Data / Server Backups, App Updates, then
+  // Access (who can manage Zimi, the API token), Hot ZIMs + cache, the
+  // environment, and Internet use last.
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
   _renderNetSection();
   // Async fill security

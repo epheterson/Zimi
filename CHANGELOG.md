@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Settings > Server opens on Access: who can manage Zimi, and the API token.
+- Settings > Server has an Access section: who can manage Zimi, and the API token.
 - Removing the password asks for it.
 - While anyone can manage Zimi, no API token, account or password can be made.
 - `source:` and `lang:` filter the library as they do the catalog; `source:` also reads file names (`source:nopic`).
