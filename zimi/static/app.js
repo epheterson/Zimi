@@ -8806,11 +8806,13 @@ function renderSearchResults(data, scope) {
   }
 
   // Real places first. The offer to type into the map's own box is for when
-  // the shards had nothing, not a second row under every hit.
+  // the shards had nothing, so the words are most likely not a place: it
+  // follows the results ("black hole" read the map first), and leads only
+  // when there is nothing else.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
   let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results' + (groups ? ' grouped' : '') + '">' +
-    placesHtml + mapFindHtml + listHtml + '</div>';
+    placesHtml + (listHtml ? listHtml + mapFindHtml : mapFindHtml) + '</div>';
 
   if (remaining > 0) {
     html += '<div class="load-more"><button onclick="showMoreResults()">' +

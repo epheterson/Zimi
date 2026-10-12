@@ -64,8 +64,10 @@ ok('it fires the input event the box listens for', /dispatchEvent\(new Event\('i
 ok('and stops asking after a bounded wait', /_MAP_FIND_TRIES/.test(hook) && /_pendingMapFind = null; return;/.test(hook));
 ok('it types again while the index has not answered, boundedly', /_MAP_TYPE_TRIES/.test(hook) && /querySelector\('\.search-result'\)/.test(hook));
 ok('openArticle carries opts.find into the hand-off', /_pendingMapFind = \(opts && opts\.find\)/.test(src));
-ok('the rows sit above the results on a global search, and only when no place answered',
+ok('the rows come on a global search only when no place answered',
   /const mapFindHtml = \(!scope && !placesHtml\) \? _mapFindRowsHtml/.test(src));
+ok('they follow the results ("black hole" read the map first), leading only when nothing else came',
+  /\(listHtml \? listHtml \+ mapFindHtml : mapFindHtml\)/.test(src));
 
 // Places the server found on a map's own index render as rows that open the
 // map at the place. Real answers, above the Find-on-map offer.
@@ -81,7 +83,7 @@ ok('the row says what and where', /city · Honolulu/.test(rows));
 ok('the row names the map', /OSM - Hawaii/.test(rows));
 ok('no groups, no rows', ctx._mapPlaceRowsHtml([]) === '');
 ok('a hostile place name is escaped', !/<img/.test(ctx._mapPlaceRowsHtml([{ zim: 'z', title: 't', main_path: 'i', places: [{ name: '<img src=x onerror=1>', lat: 0, lng: 0 }] }])));
-ok('places render above the Find-on-map offer', /const placesHtml = _mapPlaceRowsHtml\(data\.places \|\| \[\]\);/.test(src) && /placesHtml \+ mapFindHtml/.test(src));
+ok('places render above the Find-on-map offer', /const placesHtml = _mapPlaceRowsHtml\(data\.places \|\| \[\]\);/.test(src) && /placesHtml \+ \(listHtml/.test(src));
 
 // The search runs in two phases and the second's payload is merged into the
 // first's; the places group must survive the merge.
