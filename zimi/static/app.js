@@ -15074,6 +15074,24 @@ function _toggleAllHotZims(checked) {
 // port reachability dot, in place. No seeding list (that lives in the
 // Downloads tab; rendering it here changed height and made the pane jump),
 // no full-section rebuild. Kept the name so the many callers don't churn.
+// One line for the closed card: which engine, and whether it is reachable
+// (the built-in engine's port) or connected (a client). One dot for both.
+function _btSummaryHtml(bt, starting, stColor) {
+  var kind = (bt.client || {}).kind, running = bt.status === 'ready' && bt.sidecar_running;
+  var engine = kind ? _btcName(kind) : t('bt_engine_builtin');
+  var detail, color = stColor;
+  if (starting || !running) {
+    detail = t(starting ? 'bt_state_starting' : kind ? 'btc_not_connected' : 'bt_state_' + bt.status);
+    if (kind && !starting) color = 'var(--error)';
+  }
+  else if (kind) detail = t('btc_connected');
+  else {
+    var reach = bt.nat ? bt.nat.reachable : null;
+    detail = t('bt_port_word') + ' ' + (bt.bt_port || '') + ' ' + t(reach == null ? 'bt_port_unknown' : reach ? 'bt_port_open' : 'bt_port_closed');
+    if (reach === false) color = '#d9a13d';
+  }
+  return '<span class="share-port-dot" style="background:' + color + '"></span><span class="bt-summary-text"><b>' + esc(engine) + '</b> · ' + esc(detail) + '</span>';
+}
 async function _renderSeedingSection() {
   let bt;
   try {
@@ -15091,8 +15109,11 @@ async function _renderSeedingSection() {
   const stColor = bt.status === 'ready'
     ? (bt.sidecar_running ? '#6abf69' : 'var(--text3)')
     : bt.status === 'unavailable' ? '#d9a13d' : 'var(--text3)';
-  const stateLabel = starting ? t('bt_state_starting') : t('bt_state_' + bt.status);
-  statusEl.innerHTML = '<span class="share-port-dot" style="background:' + stColor + '"></span>' + esc(stateLabel);
+  statusEl.innerHTML = _btSummaryHtml(bt, starting, stColor);
+  // Open by itself when the client it should use does not answer.
+  const more = document.getElementById('ms-bt-more');
+  const kind = (bt.client || {}).kind;
+  if (more && kind && bt.enabled && !bt.sidecar_running && !starting && !window._btMoreTouched) more.open = true;
   // The server already works out WHY it is off — no wheel for this Python, or
   // the switch is set by the environment. Saying only "unavailable" leaves the
   // person with nothing to do about it (#70).
@@ -15171,7 +15192,7 @@ var _BT_SETTLE_POLL_MAX = 10;
 function _applyTorrentToggleInPlace(on) {
   const controls = document.getElementById('ms-bt-controls');
   const upnp = document.getElementById(_UPNP_ID);
-  _showIfOn('ms-bt-upnp', on && !(window._btcSaved || {}).kind);
+  _showIfOn('ms-bt-more', on);
   if (controls) {
     controls.classList.toggle('share-controls-off', !on);
     Array.from(controls.querySelectorAll('input, button')).concat(upnp ? [upnp] : []).forEach(function(el) {
@@ -15337,15 +15358,13 @@ function _portRowInner(bt, btOn) {
     '</span>';
 }
 
-// UPnP: under BitTorrent's own switch, in the card's right column. Beside
-// the port it wrapped onto a broken line of its own on a phone (Eric,
-// 2026-10-03: "UPnP toggle should be able to float under on.off bt toggle").
+// UPnP: a row of the built-in engine's own, under its port.
 var _UPNP_ID = 'ms-bt-upnp';
 function _upnpHtml(bt, btOn) {
   var lock = bt.upnp_env_locked;
-  return '<label class="share-upnp"' + (lock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-    'UPnP <span class="switch switch-sm"><input type="checkbox" role="switch" id="' + _UPNP_ID + '"' + (bt.upnp_enabled ? ' checked' : '') +
-    ((lock || !btOn) ? ' disabled' : '') + (lock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span></label>';
+  return '<div class="share-field btc-builtin"><label for="' + _UPNP_ID + '"' + (lock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>UPnP</label>' +
+    '<span><span class="switch switch-sm"><input type="checkbox" role="switch" id="' + _UPNP_ID + '"' + (bt.upnp_enabled ? ' checked' : '') +
+    ((lock || !btOn) ? ' disabled' : '') + (lock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span></span></div>';
 }
 
 async function _setBtPort(inp) {
@@ -15541,7 +15560,7 @@ async function _renderMirrorSection() {
   window._btcSaved = (bt && bt.client) || {};
   const ext = !!window._btcSaved.kind;
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + (ext ? ' btc-ext' : '') + '" id="ms-bt-controls">' +
-    _btcEngineRow(bt) + ratioRow + limitRow + connRow + portRow + '</div>' +
+    _btcEngineRow(bt) + ratioRow + limitRow + connRow + portRow + _upnpHtml(bt || {}, btOn) + '</div>' +
     _btcFormHtml(bt);
 
   // Mirror status sits under its toggle in the right column — the SAME spot
@@ -15569,11 +15588,15 @@ async function _renderMirrorSection() {
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
       // line already gives it — claiming ZIMI_BT did this would be a lie.
-      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + '<div id="ms-bt-upnp"' + (ext || !btOn ? ' hidden' : '') + '>' + _upnpHtml(bt || {}, btOn) + '</div>',
+      !btUsable, '',
       // Reason first, then the fields it explains. Both sit outside the dimmed
       // block: the reason so it stays readable, the fields because `disabled`
       // already greys them and dimming twice reads as damage.
-      '<div class="ms-hint bt-why" id="ms-bt-why" hidden></div>' + btControls) +
+      // Closed, the card says how BitTorrent is doing in one line; the
+      // settings open under it, by themselves when something needs fixing.
+      '<div class="ms-hint bt-why" id="ms-bt-why" hidden></div>' +
+      '<details class="bt-more" id="ms-bt-more"' + (btOn ? '' : ' hidden') + ' ontoggle="window._btMoreTouched=true">' +
+        '<summary class="bt-summary" id="ms-bt-status">' + (window._btStatusHtml || '') + '</summary>' + btControls + '</details>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
@@ -15627,7 +15650,7 @@ function _btcFormHtml(bt) {
       '<div class="share-field btc-paths-field"><label title="' + escAttr(t('btc_paths_hint', { client: _btcName(kind) })) + '">' + tH('btc_paths') + '</label>' +
         '<div><div class="btc-paths" id="btc-paths">' + _btcPathRows(c.paths, kind, lock) + '</div>' +
         (lock ? '' : '<button type="button" class="btc-path-add" onclick="_btcPathAdd()">+ ' + tH('btc_path_add') + '</button>') +
-        '<div class="ms-hint" id="btc-paths-hint">' + tH('btc_paths_hint', { client: _btcName(kind) }) + '</div></div></div>' +
+        '</div></div>' +
     '</div>' +
     '<div class="btc-result" id="btc-result" role="status"></div>' +
     (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_btcSubmit(true)">' + tH('btc_test') + '</button>' +
@@ -15685,7 +15708,6 @@ async function _btcEngine(kind) {
   if (!form) return;
   var controls = document.getElementById('ms-bt-controls');
   if (controls) controls.classList.toggle('btc-ext', !!kind);
-  _showIfOn('ms-bt-upnp', !kind && !(controls && controls.classList.contains('share-controls-off')));
   var saved = window._btcSaved || {};
   if (kind) {
     // The form follows the client picked; what was typed for another one
@@ -15701,7 +15723,7 @@ async function _btcEngine(kind) {
       pw.value = '';
       pw.placeholder = same && saved.password_set ? t('btc_password_saved') : t('btc_optional');
       document.getElementById('btc-note').innerHTML = _btcNote(kind, saved.locked);
-      document.getElementById('btc-paths-hint').innerHTML = tH('btc_paths_hint', { client: _btcName(kind) });
+      document.querySelector('.btc-paths-field > label').title = t('btc_paths_hint', { client: _btcName(kind) });
       document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind);
       document.getElementById('btc-result').textContent = '';
     }

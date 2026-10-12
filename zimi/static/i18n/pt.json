@@ -992,6 +992,8 @@
   "bt_engine_builtin": "Integrado",
   "btc_desc": "Os torrents do Zimi ficam numa categoria própria no {client}; ele nunca mexe no resto.",
   "btc_optional": "Opcional",
+  "btc_connected": "conectado",
+  "btc_not_connected": "não conecta",
   "btc_locked_open": "Desligado enquanto qualquer pessoa pode gerenciar o Zimi: a conexão só pode vir de ZIMI_BT_CLIENT.",
   "btc_url": "Endereço da interface web",
   "btc_password": "Senha",

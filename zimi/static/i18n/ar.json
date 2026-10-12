@@ -992,6 +992,8 @@
   "bt_engine_builtin": "مدمج",
   "btc_desc": "تذهب ملفات تورنت الخاصة بـ Zimi إلى فئة خاصة بها في {client}، ولا يمسّ الباقي.",
   "btc_optional": "اختياري",
+  "btc_connected": "متصل",
+  "btc_not_connected": "تعذّر الاتصال",
   "btc_locked_open": "متوقف ما دام بإمكان أي شخص إدارة Zimi: لا يمكن أن يأتي الاتصال إلا من ZIMI_BT_CLIENT.",
   "btc_url": "عنوان واجهة الويب",
   "btc_password": "كلمة المرور",

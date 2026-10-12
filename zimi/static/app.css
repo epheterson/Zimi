@@ -2325,6 +2325,17 @@
   /* Server name fills its grid cell rather than a fixed 130-160px that would
      overrun the narrow phone column; border-box so padding stays inside. */
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
+  /* The closed card: one line, the engine and how it is doing; a chevron
+     opens the settings beneath it. */
+  .bt-more { margin-top: 6px; }
+  .bt-more[hidden] { display: none; }
+  .bt-summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; font-size: 12px; color: var(--text2); padding: 2px 0; width: fit-content; }
+  .bt-summary::-webkit-details-marker { display: none; }
+  .bt-summary b { font-weight: 600; color: var(--text); }
+  .bt-summary::after { content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin-left: 2px; transition: transform 150ms; }
+  .bt-more[open] > .bt-summary::after { transform: rotate(45deg); }
+  .bt-summary:hover { color: var(--text); }
+  .bt-summary .share-port-dot { width: 8px; height: 8px; }
   /* BitTorrent off: nothing of it to set, so none of it shows. */
   .share-bt-controls.share-controls-off, .share-controls-off + .btc-form { display: none; }
   /* A client the operator runs owns its limits, connections and port. */
@@ -2351,7 +2362,6 @@
   .btc-path-cell > span { display: none; font-size: 11px; color: var(--text3); }
   .btc-path-add { margin-top: 4px; padding: 2px 0; border: 0; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
   .btc-path-add:hover { color: var(--amber); }
-  #btc-paths-hint { margin-top: 4px; }
   @media (max-width: 600px) {
     .btc-path-row { grid-template-columns: 1fr 28px; row-gap: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
     .btc-path-head, .btc-path-arrow { display: none; }

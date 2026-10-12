@@ -992,6 +992,8 @@
   "bt_engine_builtin": "内置",
   "btc_desc": "Zimi 的种子在 {client} 中放在自己的分类里，从不碰其余内容。",
   "btc_optional": "可选",
+  "btc_connected": "已连接",
+  "btc_not_connected": "无法连接",
   "btc_locked_open": "在任何人都能管理 Zimi 时关闭：连接只能来自 ZIMI_BT_CLIENT。",
   "btc_url": "Web UI 地址",
   "btc_password": "密码",

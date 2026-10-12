@@ -992,6 +992,8 @@
   "bt_engine_builtin": "מובנה",
   "btc_desc": "הטורנטים של Zimi נכנסים לקטגוריה משלהם ב-{client}; הוא לא נוגע בשאר.",
   "btc_optional": "אופציונלי",
+  "btc_connected": "מחובר",
+  "btc_not_connected": "אין חיבור",
   "btc_locked_open": "כבוי כל עוד כל אחד יכול לנהל את Zimi: החיבור יכול להגיע רק מ-ZIMI_BT_CLIENT.",
   "btc_url": "כתובת ממשק הווב",
   "btc_password": "סיסמה",
