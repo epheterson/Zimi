@@ -1103,7 +1103,7 @@
   .setup-form .set-rows { margin: 0; }
   .setup-form .share-row-desc { white-space: normal; }
   .setup-fields { display: flex; flex-direction: column; gap: 10px; }
-  .setup-fields[hidden] { display: none; }
+  .setup-fields[hidden], .setup-form .btn-row[hidden] { display: none; }
   .setup-field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
   .setup-field > span { font-size: 12px; font-weight: 600; color: var(--text2); }
   .setup-field input::placeholder { color: var(--text3); }
@@ -2325,18 +2325,41 @@
   /* Server name fills its grid cell rather than a fixed 130-160px that would
      overrun the narrow phone column; border-box so padding stays inside. */
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
-  .share-bt-controls.share-controls-off { opacity: 0.4; }
-  .btc-engine .app-theme-btn { white-space: nowrap; }
+  /* BitTorrent off: nothing of it to set, so none of it shows. */
+  .share-bt-controls.share-controls-off, .share-controls-off + .btc-form { display: none; }
   /* A client the operator runs owns its limits, connections and port. */
   .share-bt-controls.btc-ext .btc-builtin { display: none; }
-  /* Three engines do not fit the phone's narrow control column: the selector
-     takes its own row under its label, the full width of the card. */
-  @media (max-width: 600px) { .share-bt-controls .btc-engine { grid-column: 1 / -1; max-width: none; } }
   .btc-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
   .btc-form[hidden] { display: none; }
   .btc-form .ms-hint { margin: 0; }
+  .share-bt-controls select.btc-engine { width: auto; justify-self: start; }
   .btc-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .btc-paths { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  .btc-paths { display: grid; gap: 6px; }
+  .btc-path-row { display: grid; grid-template-columns: 1fr auto 1fr 28px; gap: 8px; align-items: center; }
+  .btc-path-row input { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 0; }
+  .btc-path-head { font-size: 11px; color: var(--text3); }
+  .btc-path-arrow { color: var(--text3); }
+  .btc-path-del { width: 28px; height: 28px; border: 0; background: none; color: var(--text3); font-size: 16px; cursor: pointer; border-radius: 6px; }
+  .btc-path-del:hover { color: var(--amber); background: var(--amber-glow); }
+  .btc-path-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .btc-path-cell > span { display: none; font-size: 11px; color: var(--text3); }
+  .btc-path-add { align-self: flex-start; margin-top: 6px; }
+  @media (max-width: 600px) {
+    .btc-path-row { grid-template-columns: 1fr 28px; row-gap: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .btc-path-head, .btc-path-arrow { display: none; }
+    .btc-path-cell { grid-column: 1; }
+    .btc-path-cell > span { display: block; }
+    .btc-path-del { grid-column: 2; grid-row: 1 / span 2; }
+  }
+  /* A switch row with fields under it: on a phone the switch keeps the title's
+     line and the fields take the card's full width below both. */
+  @media (max-width: 600px) {
+    .share-row:has(> .share-row-text > .share-row-dim + *) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: start; }
+    .share-row:has(> .share-row-text > .share-row-dim + *) > .share-row-text { display: contents; }
+    .share-row:has(> .share-row-text > .share-row-dim + *) .share-row-dim { grid-column: 1; grid-row: 1; }
+    .share-row:has(> .share-row-text > .share-row-dim + *) > .share-row-right { grid-column: 2; grid-row: 1; }
+    .share-row:has(> .share-row-text > .share-row-dim + *) > .share-row-text > :not(.share-row-dim) { grid-column: 1 / -1; }
+  }
   .btc-result { font-size: 13px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
   .btc-result:empty { display: none; }
   .btc-result .btc-bad, .btc-result.btc-bad { color: var(--error); }

@@ -584,6 +584,9 @@ def _download_schedule_status():
         "upload_trickle_kb": sched["upload_trickle_kb"],
         "upload_kb": _p2p.get_bt_up_limit_kb(),
         "upload_kb_locked": _p2p.is_bt_up_env_locked(),
+        # How many downloads run at once, HTTP and BitTorrent alike.
+        "max_active_downloads": _p2p.get_max_active_downloads(),
+        "max_active_downloads_locked": _p2p.is_max_active_downloads_env_locked(),
         # True right now: uploads are actively trickled (restrict on + outside).
         "upload_throttled": sched["upload_restrict"] and not _in_window_now(sched),
     }

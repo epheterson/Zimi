@@ -12413,7 +12413,7 @@ function _setupFormHtml(st, mode) {
       (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
       ' spellcheck="false" autocapitalize="off"></label>';
   };
-  var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '') +
+  var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '').replace('<input ', settings ? '<input onchange="_setupAuto()" ' : '<input ') +
     (hasPw ? (isOpen ? '' : '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>')
       : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
   // The third answer: from outside, with no password. Only in Settings, never
@@ -12426,13 +12426,15 @@ function _setupFormHtml(st, mode) {
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
     _switchRowsHtml([
       { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
-        on: ext, disabled: !!st.external_env, onchange: '_setupSync()' },
+        on: ext, disabled: !!st.external_env, onchange: '_setupSync(true)' },
       { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
-        on: req, disabled: lockReq, onchange: '_setupSync()' }
+        on: req, disabled: lockReq, onchange: '_setupSync(true)' }
     ]) +
     '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' + open +
     '<div class="pw-error" id="setup-error"></div>' +
-    '<div class="btn-row"><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
+    // In Manage the switches save themselves, as every other switch there
+    // does; the button shows only while something must be typed first.
+    '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, ext, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(mode === 'setup' ? 'setup_continue' : 'save') + '</button></div>' +
     '</form>';
 }
 // On the setup page, outside holds the password on. In Settings it does not:
@@ -12455,7 +12457,21 @@ function _setupReqDescHtml(st, ext, req, mode) {
   var k = _setupReqDesc(st, ext, req, mode);
   return k ? tH(k) : '';
 }
-function _setupSync() {
+// A new password, or the cost of Anyone, anywhere, has to be typed or
+// confirmed before Zimi can save; anything else saves on the switch.
+function _setupNeedsInput(st, ext, req) {
+  if (ext && !req) return st.access !== 'open';
+  return req && st.access !== 'password' && !(st.access === 'open' && st.kept_password);
+}
+function _setupAuto() {
+  var form = document.getElementById('setup-form');
+  if (!form || form.dataset.mode !== 'settings') return;
+  var ext = document.getElementById('setup-ext').checked, req = document.getElementById('setup-req').checked;
+  var need = _setupNeedsInput(_setupState, ext, req);
+  document.getElementById('setup-save').hidden = !need;
+  if (!need) _setupSubmit({ auto: true });
+}
+function _setupSync(changed) {
   var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
   var form = document.getElementById('setup-form');
   if (!ext || !req || !form) return;
@@ -12476,6 +12492,7 @@ function _setupSync() {
   if (f) f.hidden = !req.checked;
   var o = document.getElementById('setup-open');
   if (o) o.hidden = !(ext.checked && !req.checked);
+  if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
   needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body',
@@ -12518,8 +12535,13 @@ async function _setupSubmit(opts) {
   if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
   if (quiet) return true;
   if (setup) { location.reload(); return true; }
+  var was = _manageAccess;
   _manageAccess = d.access || _manageAccess;
   _showToast(t('saved'));
+  // A switch that saved itself stays where it is; only a change that adds or
+  // removes fields (a new password, Anyone, anywhere) redraws Manage.
+  if (opts && opts.auto && was === _manageAccess) return true;
+  if (opts && opts.auto) { _setupState.access = _manageAccess; _setupSync(); return true; }
   renderManage();
   return true;
 }
@@ -15144,12 +15166,12 @@ var _btSettlePollsLeft = 0;
 var _BT_SETTLE_POLL_MS = 1500;
 var _BT_SETTLE_POLL_MAX = 10;
 
-// Enable/disable the BT card's inner controls in place — no re-render, no
-// height change (they're always in the DOM; a toggle only flips `disabled`
-// and dims the group). Env-locked fields stay locked.
+// Show/hide and enable/disable the BT card's inner controls in place, no
+// re-render (they're always in the DOM). Env-locked fields stay locked.
 function _applyTorrentToggleInPlace(on) {
   const controls = document.getElementById('ms-bt-controls');
   const upnp = document.getElementById(_UPNP_ID);
+  _showIfOn('ms-bt-upnp', on && !(window._btcSaved || {}).kind);
   if (controls) {
     controls.classList.toggle('share-controls-off', !on);
     Array.from(controls.querySelectorAll('input, button')).concat(upnp ? [upnp] : []).forEach(function(el) {
@@ -15187,6 +15209,12 @@ function _applyMirrorToggleInPlace(on) {
   if (mact) mact.innerHTML = _mirrorStatusHtml(on);
 }
 
+function _showIfOn(id, on) { var e = document.getElementById(id); if (e) e.hidden = !on; }
+function _undoBtSetting(key, on) {
+  if (key === 'torrent') _applyTorrentToggleInPlace(on);
+  else if (key === 'mirror') _applyMirrorToggleInPlace(on);
+  else if (key === 'peer_share') _showIfOn('ms-peer-name', on);
+}
 async function _setBtSetting(key, cb) {
   const on = cb.checked;
   cb.disabled = true;
@@ -15196,6 +15224,7 @@ async function _setBtSetting(key, cb) {
   // delayed and jumpy"). The server write happens in the background.
   if (key === 'torrent') _applyTorrentToggleInPlace(on);
   else if (key === 'mirror') _applyMirrorToggleInPlace(on);
+  else if (key === 'peer_share') _showIfOn('ms-peer-name', on);
   try {
     const body = {}; body[key] = on;
     const r = await manageFetch('/manage/bt-settings', {
@@ -15205,13 +15234,11 @@ async function _setBtSetting(key, cb) {
     });
     if (!r.ok) {
       cb.checked = !on; _showToast(t('save_failed'));
-      if (key === 'torrent') _applyTorrentToggleInPlace(!on);
-      else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
+      _undoBtSetting(key, !on);
     }
   } catch (e) {
     cb.checked = !on; _showToast(t('save_failed'));
-    if (key === 'torrent') _applyTorrentToggleInPlace(!on);
-    else if (key === 'mirror') _applyMirrorToggleInPlace(!on);
+    _undoBtSetting(key, !on);
   }
   cb.disabled = false;
   _btSettingInFlight = false;
@@ -15489,16 +15516,6 @@ async function _renderMirrorSection() {
     ' class="share-num-input" aria-label="' + escAttr(t('bt_limit_up')) + '" title="' + escAttr(t('bt_limit_hint')) + '" onchange="_setBtLimit(this,\'up\')">' +
     '<span class="share-field-note">↑ MB/s</span></span></div>';
 
-  // Concurrent downloads: how many run at once, the rest queue. Governs HTTP
-  // and BT alike, so it stays editable even with the BT engine off
-  // (data-nogate) — only an env var locks it.
-  const dlRow = '<div class="share-field"><label title="' + escAttr(t('bt_max_dl_hint')) + '">' + tH('bt_max_dl_label') + '</label>' +
-    '<span class="share-port-group">' +
-    '<input type="number" min="1" max="20" step="1" value="' + (m.max_active_downloads != null ? m.max_active_downloads : 4) + '"' +
-    (m.max_active_downloads_env_locked ? ' disabled' : '') + lockA(m.max_active_downloads_env_locked) + ' data-nogate="1"' +
-    ' class="share-num-input" aria-label="' + escAttr(t('bt_max_dl_label')) + '" title="' + escAttr(t('bt_max_dl_hint')) + '" onchange="_setBtMaxDl(this)">' +
-    '</span></div>';
-
   // Max connections: libtorrent's global socket cap (real, enforced). Pure BT
   // engine setting, so it greys with the engine.
   const connRow = '<div class="share-field btc-builtin"><label title="' + escAttr(t('bt_max_conn_hint')) + '">' + tH('bt_max_conn_label') + '</label>' +
@@ -15516,15 +15533,15 @@ async function _renderMirrorSection() {
     (m.peer_name_env_locked ? ' disabled' : '') + lockA(m.peer_name_env_locked) +
     ' title="' + escAttr(t('peer_name_hint')) + '" aria-label="' + escAttr(t('peer_advertising_as')) + '" onchange="_setPeerName(this)"></div>';
 
-  // Controls always present; the wrapper dims + disables them when BT is off,
-  // so toggling never adds/removes rows (no layout jump).
+  // Controls always in the DOM; with BT off the wrapper hides them
+  // (.share-controls-off) and a toggle flips them in place, no re-render.
   // A client the operator runs owns its own limits, connections and port, so
   // those rows hide (.btc-ext) as soon as one is picked, before it is saved;
   // the ratio (Zimi's ledger), the queue and the name stay.
   window._btcSaved = (bt && bt.client) || {};
   const ext = !!window._btcSaved.kind;
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + (ext ? ' btc-ext' : '') + '" id="ms-bt-controls">' +
-    _btcEngineRow(bt) + ratioRow + limitRow + dlRow + connRow + portRow + nameRow + '</div>' +
+    _btcEngineRow(bt) + ratioRow + limitRow + connRow + portRow + '</div>' +
     _btcFormHtml(bt);
 
   // Mirror status sits under its toggle in the right column — the SAME spot
@@ -15552,7 +15569,7 @@ async function _renderMirrorSection() {
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
       // line already gives it — claiming ZIMI_BT did this would be a lie.
-      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + '<div id="ms-bt-upnp"' + (ext ? ' hidden' : '') + '>' + _upnpHtml(bt || {}, btOn) + '</div>',
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>' + '<div id="ms-bt-upnp"' + (ext || !btOn ? ' hidden' : '') + '>' + _upnpHtml(bt || {}, btOn) + '</div>',
       // Reason first, then the fields it explains. Both sit outside the dimmed
       // block: the reason so it stays readable, the fields because `disabled`
       // already greys them and dimming twice reads as damage.
@@ -15561,7 +15578,8 @@ async function _renderMirrorSection() {
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc') +
-        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : '')) +
+        (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : ''),
+      false, '', '<div id="ms-peer-name"' + (m.peer_share ? '' : ' hidden') + '><div class="share-bt-controls">' + nameRow + '</div></div>') +
   '</div>';
   if (prog.phase) _scheduleMirrorProgressPoll();
   el.innerHTML = h;
@@ -15578,18 +15596,16 @@ async function _renderMirrorSection() {
 var BT_CLIENTS = { qbittorrent: ['qBittorrent', 'http://qbittorrent:8080'], transmission: ['Transmission', 'http://transmission:9091'] };
 function _btcName(kind) { return (BT_CLIENTS[kind] || [''])[0]; }
 function _btcEngineRow(bt) {
-  // A selector, as every either/or in Settings is; the environment's choice
-  // locks it.
+  // A dropdown, as the other either/ors in Settings are; the environment's
+  // choice locks it.
   var c = (bt && bt.client) || {}, kind = c.kind || '';
   var lock = !!(c.locked && c.locked !== 'open');
-  var btn = function(val, label) {
-    var on = val === kind;
-    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
-      (lock ? ' disabled' : '') + ' data-nogate="1" data-kind="' + val + '" onclick="_btcEngine(\'' + val + '\')"><span>' + label + '</span></button>';
+  var opt = function(val, label) {
+    return '<option value="' + val + '"' + (val === kind ? ' selected' : '') + '>' + label + '</option>';
   };
-  return '<div class="share-field"><label>' + tH('bt_engine') + '</label>' +
-    '<div class="app-theme-seg btc-engine" role="radiogroup" aria-label="' + escAttr(t('bt_engine')) + '">' +
-    btn('', tH('bt_engine_builtin')) + Object.keys(BT_CLIENTS).map(function(k) { return btn(k, _btcName(k)); }).join('') + '</div></div>';
+  return '<div class="share-field"><label for="btc-engine">' + tH('bt_engine') + '</label>' +
+    '<select id="btc-engine" class="btc-engine" data-nogate="1"' + (lock ? ' disabled' : '') + ' onchange="_btcEngine(this.value)">' +
+    opt('', tH('bt_engine_builtin')) + Object.keys(BT_CLIENTS).map(function(k) { return opt(k, _btcName(k)); }).join('') + '</select></div>';
 }
 function _btcFormHtml(bt) {
   var c = (bt && bt.client) || {}, lock = c.locked, kind = c.kind || '';
@@ -15605,13 +15621,56 @@ function _btcFormHtml(bt) {
     '<div class="btc-pair">' + field('btc-user', 'setup_username', c.user, '', 'text', 'off') +
     field('btc-pw', 'btc_password', '', c.password_set ? t('btc_password_saved') : '', 'password', 'new-password') + '</div>' +
     field('btc-cat', 'btc_category', c.category && c.category !== 'zimi' ? c.category : '', 'zimi') +
-    '<label class="setup-field"><span>' + tH('btc_paths') + '</span><textarea id="btc-paths" class="create-field btc-paths" rows="2" spellcheck="false"' +
-      ' placeholder="/downloads=/data/downloads"' + dis + '>' + esc(c.paths || '') + '</textarea></label>' +
+    '<div class="setup-field"><span>' + tH('btc_paths') + '</span><div class="btc-paths" id="btc-paths">' +
+      _btcPathRows(c.paths, kind, lock) + '</div>' +
+      (lock ? '' : '<button type="button" class="pill btc-path-add" onclick="_btcPathAdd()">' + tH('btc_path_add') + '</button>') + '</div>' +
     '<div class="ms-hint" id="btc-paths-hint">' + tH('btc_paths_hint', { client: _btcName(kind) }) + '</div>' +
     '<div class="btc-result" id="btc-result" role="status"></div>' +
     (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_btcSubmit(true)">' + tH('btc_test') + '</button>' +
       '<button type="button" class="set-btn primary" onclick="_btcSubmit(false)">' + tH('save') + '</button></div>') +
     '</div>';
+}
+// Path mappings, the *arr way: one row per folder, the client's path beside
+// Zimi's. Sent as the "remote=local" lines the server keeps.
+function _btcPathRow(remote, local, kind, dis) {
+  // Each field carries its own name for the phone, where the two stack and
+  // the column heads above them go.
+  var inp = function(cls, val, ph, label) {
+    return '<label class="btc-path-cell"><span>' + esc(label) + '</span><input type="text" class="' + cls + '" value="' + escAttr(val || '') + '" placeholder="' + escAttr(ph) + '"' +
+      ' spellcheck="false" autocapitalize="off" autocomplete="off"' + (dis ? ' disabled' : '') + '></label>';
+  };
+  return '<div class="btc-path-row">' +
+    inp('btc-path-remote', remote, '/downloads', t('btc_path_remote', { client: _btcName(kind) })) +
+    '<span class="btc-path-arrow" aria-hidden="true">→</span>' +
+    inp('btc-path-local', local, '/data/downloads', t('btc_path_local')) +
+    (dis ? '' : '<button type="button" class="btc-path-del" aria-label="' + escAttr(t('remove')) + '" onclick="_btcPathDel(this)">×</button>') +
+    '</div>';
+}
+function _btcPathRows(text, kind, dis) {
+  var pairs = String(text || '').split(/[;\n]/).map(function(l) {
+    var i = l.indexOf('=');
+    return i < 0 ? null : [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+  }).filter(Boolean);
+  if (!pairs.length) pairs = [['', '']];
+  var head = '<div class="btc-path-row btc-path-head"><span>' + tH('btc_path_remote', { client: _btcName(kind) }) + '</span><span></span><span>' +
+    tH('btc_path_local') + '</span>' + (dis ? '' : '<span></span>') + '</div>';
+  return head + pairs.map(function(p) { return _btcPathRow(p[0], p[1], kind, dis); }).join('');
+}
+function _btcPathAdd() {
+  var box = document.getElementById('btc-paths');
+  box.insertAdjacentHTML('beforeend', _btcPathRow('', '', document.getElementById('ms-btc').getAttribute('data-kind')));
+  box.lastElementChild.querySelector('input').focus();
+}
+function _btcPathDel(btn) {
+  var rows = document.querySelectorAll('#btc-paths .btc-path-row:not(.btc-path-head)');
+  if (rows.length > 1) { btn.parentNode.remove(); return; }
+  btn.parentNode.querySelectorAll('input').forEach(function(i) { i.value = ''; });
+}
+function _btcPathsText() {
+  return Array.prototype.map.call(document.querySelectorAll('#btc-paths .btc-path-row:not(.btc-path-head)'), function(r) {
+    var a = r.querySelector('.btc-path-remote').value.trim(), b = r.querySelector('.btc-path-local').value.trim();
+    return a && b ? a + '=' + b : '';
+  }).filter(Boolean).join('\n');
 }
 function _btcNote(kind, lock) {
   var client = { client: _btcName(kind) };
@@ -15621,16 +15680,9 @@ function _btcNote(kind, lock) {
 async function _btcEngine(kind) {
   var form = document.getElementById('ms-btc');
   if (!form) return;
-  var row = document.querySelector('.btc-engine');
-  if (row) row.querySelectorAll('.app-theme-btn').forEach(function(b) {
-    var sel = b.getAttribute('data-kind') === kind;
-    b.classList.toggle('active', sel);
-    b.setAttribute('aria-checked', sel);
-  });
   var controls = document.getElementById('ms-bt-controls');
   if (controls) controls.classList.toggle('btc-ext', !!kind);
-  var upnp = document.getElementById('ms-bt-upnp');
-  if (upnp) upnp.hidden = !!kind;
+  _showIfOn('ms-bt-upnp', !kind && !(controls && controls.classList.contains('share-controls-off')));
   var saved = window._btcSaved || {};
   if (kind) {
     // The form follows the client picked; what was typed for another one
@@ -15647,6 +15699,7 @@ async function _btcEngine(kind) {
       pw.placeholder = same && saved.password_set ? t('btc_password_saved') : '';
       document.getElementById('btc-note').innerHTML = _btcNote(kind, saved.locked);
       document.getElementById('btc-paths-hint').innerHTML = tH('btc_paths_hint', { client: _btcName(kind) });
+      document.getElementById('btc-paths').innerHTML = _btcPathRows(same ? saved.paths : '', kind);
       document.getElementById('btc-result').textContent = '';
     }
     form.hidden = false;
@@ -15663,7 +15716,7 @@ async function _btcEngine(kind) {
 function _btcBody() {
   var v = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
   var body = { kind: document.getElementById('ms-btc').getAttribute('data-kind'), url: v('btc-url'), user: v('btc-user'),
-    category: v('btc-cat'), paths: document.getElementById('btc-paths').value };
+    category: v('btc-cat'), paths: _btcPathsText() };
   var pw = document.getElementById('btc-pw').value;
   if (pw) body.password = pw;
   return body;
@@ -15756,7 +15809,16 @@ async function _renderDownloadSchedule() {
         (s.upload_throttled ? '<div class="ms-hint">' + tH('dl_upload_throttled_now') + '</div>' : '')
       : '');
 
-  el.innerHTML = toggle + lockNote + windowBlock + speedRow + uploadRow;
+  // How many downloads run at once, HTTP and BitTorrent alike; the rest queue.
+  var maxLocked = !!s.max_active_downloads_locked;
+  var maxRow = '<div class="share-field ms-dl-speed"><label title="' + escAttr(t('bt_max_dl_hint')) + '">' + tH('bt_max_dl_label') + '</label>' +
+    '<span class="share-port-group">' +
+    '<input type="number" min="1" max="20" step="1" value="' + (s.max_active_downloads != null ? s.max_active_downloads : 4) + '"' +
+      (maxLocked ? ' disabled' : '') + ' class="share-num-input" aria-label="' + escAttr(t('bt_max_dl_label')) +
+      '" title="' + escAttr(t('bt_max_dl_hint')) + '" onchange="_setBtMaxDl(this)">' +
+    '</span></div>';
+
+  el.innerHTML = toggle + lockNote + windowBlock + maxRow + speedRow + uploadRow;
 }
 
 async function _postDownloadSchedule(body) {
