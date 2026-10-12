@@ -125,3 +125,17 @@ class TestLanguagesRespectsAllowlist(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_a_v15_hash_answers_only_at_sign_in():
+    """A v1.5 SHA-256 hash still signs in (and is migrated there); a password
+    asked again before a change is checked against PBKDF2 only."""
+    import hashlib
+
+    from zimi import manage
+
+    legacy = hashlib.sha256(b"hunter22").hexdigest()
+    assert manage._verify_current("hunter22", legacy) is False
+    modern = manage._hash_pw("hunter22")
+    assert manage._verify_current("hunter22", modern) is True
+    assert manage._verify_current("wrong", modern) is False

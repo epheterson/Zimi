@@ -562,6 +562,13 @@ def _verify_password(candidate, stored_pw):
     return hmac.compare_digest(_hash_pw(candidate, salt), stored_pw)
 
 
+def _verify_current(candidate, stored_pw):
+    """The current password, asked again before a change. Only a PBKDF2 hash
+    can answer: signing in already moved a v1.5 hash to PBKDF2, so the legacy
+    check (and its SHA-256) stays on the sign-in path alone."""
+    return not _is_legacy_hash(stored_pw) and _verify_password(candidate, stored_pw)
+
+
 def verify_admin_credentials(username, password):
     """Verify a (username, password) pair against the ADMIN account, header-free.
 
@@ -6393,7 +6400,7 @@ def _handle_access(handler, data):
         # borrowed session: it takes the password. Leaving Anyone, anywhere
         # does not: there everyone is the admin already, and an owner who
         # forgot the kept password must still be able to close it.
-        if stored and not open_from_settings() and not _verify_password(str(data.get("current_password") or ""), stored):
+        if stored and not open_from_settings() and not _verify_current(str(data.get("current_password") or ""), stored):
             return handler._json(403, {"error": "wrong_password"})
         if stored and _get_api_token():
             return handler._json(
@@ -6449,7 +6456,7 @@ def _open_to_anyone(handler, data):
     stored = _get_manage_password_hash()
     if not manage_open() and stored:
         current = str(data.get("current_password") or "")
-        if not current or not _verify_password(current, stored):
+        if not current or not _verify_current(current, stored):
             return handler._json(403, {"error": "wrong_password"})
     _write_app_update_prefs(manage_open=True, manage_external=True)
     _clear_setup_key()
@@ -6587,7 +6594,7 @@ def handle_manage_post(handler, parsed, data):
         stored = _get_manage_password_hash()
         if stored:
             cur = data.get("current", "")
-            if not cur or not _verify_password(cur, stored):
+            if not cur or not _verify_current(cur, stored):
                 return handler._json(401, {"error": "Current password is incorrect"})
         else:
             # Initial setup: there is no current password to verify, so the
