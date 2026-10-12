@@ -172,6 +172,10 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
                 try:
                     sink(f"still converting… {int(time.monotonic() - started)}s")
                 except Exception:
+                    # A cancel: stop the command now rather than at its next
+                    # line, which a silent pip download may not print for
+                    # minutes; the job thread then sees the cancel.
+                    subproc.stop(proc)
                     return
                 last[0] = time.monotonic()
 

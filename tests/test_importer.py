@@ -353,3 +353,20 @@ def test_cli_status_subprocess(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "not installed" in r.stdout
     assert "--setup" in r.stdout
+
+
+def test_a_cancel_stops_a_silent_command_without_waiting_for_its_next_line():
+    """pip can download for minutes without a word; a Cancel used to wait for
+    the next line. The heartbeat's checkpoint now stops the command itself."""
+    import sys
+    import time
+
+    from zimi import importer
+
+    def sink(line):
+        if line.startswith("still"):
+            raise RuntimeError("cancelled")  # what a job's note() does on Cancel
+
+    started = time.monotonic()
+    importer._run_stream([sys.executable, "-c", "import time; time.sleep(30)"], sink, heartbeat_s=0.4)
+    assert time.monotonic() - started < 10

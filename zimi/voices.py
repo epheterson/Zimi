@@ -1587,6 +1587,9 @@ def _fetch_voice(tag):
             with _lock:
                 _download["setup"] = True
             if not _set_up_engines():
+                with _lock:
+                    if _download.get("cancel"):  # stopped, not failed
+                        raise _Cancelled()
                 raise RuntimeError("the engines could not be installed")
             with _lock:
                 if _download.get("cancel"):
