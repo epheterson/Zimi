@@ -45,9 +45,11 @@ Two independent ways to move ZIMs between machines: BitTorrent (an accelerator f
 
 **BitTorrent seeding.** When enabled, Zimi runs an in-process libtorrent backend (default port 6881 TCP+UDP) that both accelerates catalog downloads and can seed the ZIMs you host back to the Kiwix swarm. Seeding is on by default when BT is enabled; a seed ratio, up/down rate caps, active-torrent and connection limits, DHT, and UPnP port mapping are all tunable. `mirror` mode makes the node an indefinite mirror.
 
-**Your own qBittorrent.** Settings > Server > BitTorrent > Engine picks the built-in engine or a qBittorrent you already run, for instance behind a VPN. It is the download-client setup Sonarr and Radarr use: the Web UI address, a username and password (blank when qBittorrent lets Zimi's address in without one), a category (`zimi`), and path mappings. Zimi only lists, changes or deletes torrents in its category. A mapping is `qBittorrent's path=Zimi's path`, one per line, for a folder the two see at different paths; with none, a path is taken to be the same on both sides. Test says whether Zimi can see qBittorrent's downloads and whether qBittorrent can see the library.
+**Your own qBittorrent or Transmission.** Settings > Server > BitTorrent > Engine picks the built-in engine or a client you already run, for instance behind a VPN. It is the download-client setup Sonarr and Radarr use: the address, a username and password (blank when the client lets Zimi's address in without one), a category (`zimi`; Transmission calls it a label and needs version 3.00 or newer), and path mappings. Zimi only lists, changes or deletes torrents with its category. A mapping is `the client's path=Zimi's path`, one per line, for a folder the two see at different paths; with none, a path is taken to be the same on both sides. Test says whether Zimi can see the client's downloads and whether the client can see the library.
 
-When a download finishes, Zimi checks the file with libzim and installs it. If qBittorrent can see the library (map it too), qBittorrent moves the file in and seeds it from there, with no second copy. If not, Zimi hardlinks the file in, or copies it when the two are on different filesystems, and qBittorrent keeps seeding its own copy until the seed ratio is reached, when Zimi removes the torrent and that copy. Seeding what is already in the library (Mirror, or a re-seed after a restart) needs the library mapped. With qBittorrent as the engine its own upload limit, connection limit and port apply; Zimi's seed ratio, download queue and Mirror still do.
+When a download finishes, Zimi checks the file with libzim and installs it. If the client can see the library (map it too), it moves the file in and seeds it from there, with no second copy. If not, Zimi hardlinks the file in, or copies it when the two are on different filesystems, and the client keeps seeding its own copy until the seed ratio is reached, when Zimi removes the torrent and that copy. Seeding what is already in the library (Mirror, or a re-seed after a restart) needs the library mapped. With a client as the engine its own upload limit, connection limit and port apply; Zimi's seed ratio, download queue and Mirror still do.
+
+**Changing engines.** Switching in Settings takes effect at once, in either direction. A download in progress carries on with the new engine; one engine restarting (a new port, edited mappings) picks it up where it was. Seeds follow: the new engine seeds the library from the list of what Zimi means to seed. A client that cannot see the library leaves those seeds waiting, and the log says which mapping to add; switching back seeds them again. The old engine is left with nothing of Zimi's: its unfinished downloads and their partial files go, its copies of files the library has go, and library files stay. Leaving the built-in engine also clears its saved state and partial downloads.
 
 **Nearby (mDNS LAN discovery).** Zimi advertises itself on `_zimi._tcp.local` (multicast UDP 5353) and discovers other Zimi instances on the same LAN. It is off until you turn Nearby on: a default install announces nothing to the network. On, it announces and serves your library to the LAN, and works on a fully air-gapped network ("offline" means no *internet*, not no *network*). Discovery feeds host:port + filename into an HTTP pull (`_start_peer_download`); it never uses BitTorrent. Serving to public (non-private) clients is a further opt-in on top of that.
 
@@ -83,22 +85,24 @@ The documented surface is two compact env blobs. Any field you set in a blob is 
 | `public=` | Also serve to public (non-private) clients |
 | `ip=` | Address peers are told to connect to |
 
-**qBittorrent.** Set `ZIMI_QBT_URL` and the connection comes from the environment, locking the Settings form:
+**Your own client.** Set `ZIMI_BT_CLIENT` or `ZIMI_BT_CLIENT_URL` and the engine comes from the environment, locking the Settings form:
 
 | Variable | Meaning |
 | --- | --- |
-| `ZIMI_QBT_URL` | Web UI address, e.g. `http://gluetun:8080` |
-| `ZIMI_QBT_USER` / `ZIMI_QBT_PASSWORD` | Login; leave both unset when qBittorrent bypasses authentication for Zimi's address |
-| `ZIMI_QBT_CATEGORY` | Category for Zimi's torrents (default `zimi`) |
-| `ZIMI_QBT_PATHS` | Path mappings, `remote=local` separated by `;`, e.g. `/downloads=/data/downloads;/media/zims=/zims` |
+| `ZIMI_BT_CLIENT` | `qbittorrent` or `transmission`; `builtin` pins the built-in engine. A URL without it is a qBittorrent |
+| `ZIMI_BT_CLIENT_URL` | Its address, e.g. `http://gluetun:8080` (qBittorrent) or `http://transmission:9091` (Transmission) |
+| `ZIMI_BT_CLIENT_USER` / `ZIMI_BT_CLIENT_PASSWORD` | Login; leave both unset when the client lets Zimi's address in without one |
+| `ZIMI_BT_CLIENT_CATEGORY` | Category (qBittorrent) or label (Transmission) for Zimi's torrents (default `zimi`) |
+| `ZIMI_BT_CLIENT_PATHS` | Path mappings, `remote=local` separated by `;`, e.g. `/downloads=/data/downloads;/media/zims=/zims` |
 
 Legacy per-feature vars (`ZIMI_TORRENT`, `ZIMI_SEED`, `ZIMI_SEED_RATIO`, `ZIMI_BT_PORT`, `ZIMI_BT_UP_KB`, `ZIMI_BT_DOWN_KB`, `ZIMI_DHT`, `ZIMI_MIRROR`, `ZIMI_PEER_DISCOVERY`, `ZIMI_PEER_SHARE`, `ZIMI_PEER_SHARE_PUBLIC`, `ZIMI_PEER_NAME`) still work as undocumented fallbacks. `ZIMI_TRUST_CGNAT=0` narrows the private-tier trust set (drops CGNAT/overlay). `ZIMI_OFFLINE=1` disables BitTorrent entirely but **leaves mDNS on** — LAN sharing is the point of offline.
 
 ### Troubleshoot
 
 - **BitTorrent unavailable** — libtorrent is soft-imported. Absent (a plain `pip install`) means HTTP-only downloads; that's expected. Docker and the desktop builds bundle it.
-- **qBittorrent finishes a download but Zimi falls back to HTTP.** Zimi cannot see the finished file. Mount qBittorrent's download folder into Zimi's container and add a path mapping; Test in Settings says when Zimi can see it.
-- **Mirror seeds nothing with qBittorrent.** qBittorrent cannot see the library. Mount the library into qBittorrent's container and map it.
+- **Your client finishes a download but Zimi falls back to HTTP.** Zimi cannot see the finished file. Mount the client's download folder into Zimi's container and add a path mapping; Test in Settings says when Zimi can see it.
+- **Mirror seeds nothing with your client.** It cannot see the library. Mount the library into its container and map it.
+- **Transmission refuses Zimi (403).** Add Zimi's address to `rpc-whitelist` in Transmission's settings, or turn the whitelist off.
 - **Nearby peers don't appear** — mDNS multicast doesn't cross Docker bridge boundaries. Use `network_mode: host` (or macvlan). See [Networking & deployment modes](../deployment-networking.md).
 - **A peer is discovered but the pull fails** — the advertised `ip=` may be wrong (a bridge address the puller can't reach). Set `ZIMI_NEARBY`'s `ip=` field to the reachable LAN address.
 - **BT port unreachable from the WAN** — open/forward 6881 TCP+UDP, or rely on UPnP (`upnp=`). Behind CGNAT, inbound may never work; downloads still function.

@@ -49,8 +49,9 @@ services:
       # BitTorrent through the qBittorrent behind gluetun (the VPN). Host
       # network, so 127.0.0.1:8080 is gluetun's published Web UI, which lets
       # local clients in without a login.
-      - ZIMI_QBT_URL=http://127.0.0.1:8080
-      - ZIMI_QBT_PATHS=/downloads=/downloads
+      - ZIMI_BT_CLIENT=qbittorrent
+      - ZIMI_BT_CLIENT_URL=http://127.0.0.1:8080
+      - ZIMI_BT_CLIENT_PATHS=/downloads=/downloads
       # Folder/import creation from the web is confined to this one directory
       # (drop source folders in over SMB: /volume1/docker/kiwix/created).
       - ZIMI_CREATE_ROOT=/zims/sources   # what you drop in to make a ZIM from; what you make goes to /zims/created

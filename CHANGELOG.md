@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- BitTorrent can use a qBittorrent you already run, set up the way Sonarr and Radarr do: address, login, category and path mappings ([#53](https://github.com/epheterson/Zimi/issues/53)).
+- BitTorrent can use a qBittorrent or Transmission you already run, set up the way Sonarr and Radarr do: address, login, category and path mappings ([#53](https://github.com/epheterson/Zimi/issues/53)).
+- Changing the BitTorrent engine takes effect at once: downloads carry on with the new engine and seeds follow it.
 - Who can change settings has a third answer, Anyone, anywhere: no password from outside your network, confirmed with the current password and reversible ([#112](https://github.com/epheterson/Zimi/issues/112)).
 - `zimi doctor` lists the optional features, whether each is ready, and how this kind of install gets the rest.
 
