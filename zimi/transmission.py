@@ -115,6 +115,7 @@ class TransmissionBackend(ExternalBackend):
         self.client = Client(cfg["url"], cfg["user"], cfg["password"])
         self._session = None
         self._moves = {}  # tid -> the folder it is being moved to
+        self._moves_lock = threading.Lock()  # status polls and installs share it
 
     def _session_info(self):
         self._session = self.client.call("session-get")
@@ -150,10 +151,11 @@ class TransmissionBackend(ExternalBackend):
         else:
             s = "downloading"
         save = t.get("downloadDir") or ""
-        target = self._moves.get(tid)
-        moving = target is not None and save.rstrip("/\\") != target.rstrip("/\\")
-        if target is not None and not moving:
-            self._moves.pop(tid, None)
+        with self._moves_lock:
+            target = self._moves.get(tid)
+            moving = target is not None and save.rstrip("/\\") != target.rstrip("/\\")
+            if target is not None and not moving:
+                self._moves.pop(tid, None)
         sep = "\\" if "\\" in save and "/" not in save else "/"
         ratio = float(t.get("uploadRatio") or 0.0)
         return {
@@ -217,7 +219,8 @@ class TransmissionBackend(ExternalBackend):
         )
 
     def _move(self, tid, remote_dir):
-        self._moves[tid] = remote_dir
+        with self._moves_lock:
+            self._moves[tid] = remote_dir
         self.client.call(
             "torrent-set-location", ids=[tid], location=remote_dir, move=True
         )

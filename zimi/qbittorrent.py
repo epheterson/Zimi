@@ -28,7 +28,7 @@ _CHECKING_STATES = {
 
 
 class Client:
-    """A qBittorrent Web API session. Logs in on the first 403 and again when
+    """A qBittorrent Web API session. Logs in on the first 401/403 and again when
     the cookie expires; a client that bypasses authentication for this
     address (a common LAN setting) never needs the password."""
 
@@ -79,7 +79,7 @@ class Client:
             try:
                 return self._open(path, data, ctype)
             except urllib.error.HTTPError as e:
-                if e.code != 403:
+                if e.code not in (401, 403):  # 5.x may say 401 for an expired session
                     raise
             self.login()
             return self._open(path, data, ctype)

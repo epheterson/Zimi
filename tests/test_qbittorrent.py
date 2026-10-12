@@ -278,7 +278,8 @@ def test_probe_reports_what_zimi_can_see(world):
     got = btclient.probe(cfg, library_dir=str(lib_local))
     assert got["visible"] and got["library_mapped"]
     bad = btclient.probe(dict(cfg, url="http://127.0.0.1:9"), library_dir=None)
-    assert not bad["ok"] and "Could not reach qBittorrent" in bad["error"]
+    # A key the page words in its own language; the details stay in the log.
+    assert not bad["ok"] and bad["error_key"] == "btc_err_unreachable" and "error" not in bad
 
 
 # ── the engine ──────────────────────────────────────────────────────────

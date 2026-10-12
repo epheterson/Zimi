@@ -45,6 +45,9 @@ REQUEST_TIMEOUT_S = 20
 # volumes takes minutes. Polled at this interval, given up after the limit.
 MOVE_POLL_S = 2.0
 MOVE_LIMIT_S = 6 * 3600
+# A move the client is not doing (it refused, or lost the torrent's name)
+# gives up after this many polls with nothing moving and nothing arrived.
+MOVE_STALL_POLLS = 30
 
 # kind: (the name people know it by, module, class)
 KINDS = {
@@ -126,6 +129,26 @@ def valid_url(url):
     return parts.scheme in ("http", "https") and bool(parts.netloc)
 
 
+def same_url(a, b):
+    """The same client typed two ways: scheme and host case, a trailing
+    slash, Transmission's /transmission/web or /rpc, or nothing."""
+
+    def norm(u):
+        parts = urllib.parse.urlsplit((u or "").strip())
+        path = re.sub(r"/(transmission(/web|/rpc)?)?/*$", "", parts.path)
+        return (parts.scheme.lower(), parts.netloc.lower(), path)
+
+    return norm(a) == norm(b)
+
+
+def identity(cfg):
+    """What makes two configurations the same engine: switching between them
+    hands nothing over."""
+    parts = urllib.parse.urlsplit(cfg["url"])
+    path = re.sub(r"/(transmission(/web|/rpc)?)?/*$", "", parts.path)
+    return (cfg["kind"], parts.scheme.lower(), parts.netloc.lower(), path, cfg["category"])
+
+
 def backend_class(kind):
     _, module, cls = KINDS[kind]
     return getattr(importlib.import_module(module), cls)
@@ -158,6 +181,8 @@ def format_paths(pairs):
 
 
 def _under(path, root, sep):
+    if sep == "\\":  # Windows paths: C:\Dl and c:\dl are one folder
+        path, root = path.lower(), root.lower()
     return path == root or path.startswith(root.rstrip(sep) + sep)
 
 
@@ -198,14 +223,14 @@ def to_remote(local, pairs):
 
 
 def _reason(cfg, e):
-    """What went wrong reaching the client, in a sentence."""
-    name = label(cfg["kind"])
+    """What went wrong reaching the client, as a key the browser words in
+    its own language; the details go to the log, never to the page."""
+    log.info("%s at %s: %s", label(cfg["kind"]), cfg["url"], e)
     if isinstance(e, ClientError):
-        return str(e)
+        return {"error": str(e)}  # our own sentence (login refused, too old)
     if isinstance(e, urllib.error.HTTPError):
-        return f"{name} answered HTTP {e.code} at {cfg['url']}"
-    reason = getattr(e, "reason", e)
-    return f"Could not reach {name} at {cfg['url']}: {reason}"
+        return {"error_key": "btc_err_http", "code": e.code}
+    return {"error_key": "btc_err_unreachable"}
 
 
 def probe(cfg, library_dir=None):
@@ -217,8 +242,8 @@ def probe(cfg, library_dir=None):
     try:
         version = b.version()
         save = b.default_save_path()
-    except (ClientError, urllib.error.URLError, OSError, ValueError) as e:
-        return {"ok": False, "error": _reason(cfg, e)}
+    except Exception as e:  # anything a client can answer: a sentence, not a 500
+        return {"ok": False, **_reason(cfg, e)}
     local = to_local(save, cfg["paths"])
     return {
         "ok": True,
@@ -266,7 +291,7 @@ class ExternalBackend(BTBackend):
         return label(self.kind)
 
     def identity(self):
-        return (self.kind, self.cfg["url"], self.category)
+        return identity(self.cfg)
 
     # ── lifecycle ──
 
@@ -306,8 +331,15 @@ class ExternalBackend(BTBackend):
         how many it took out."""
         n = 0
         for row in self._rows():
+            if row["moving"] or row["checking"]:
+                # Moving into the library or rechecking: the path still names
+                # the old folder, and deleting with files would lose it.
+                continue
             local = to_local(row["content_path"], self.paths)
-            if row["state"] != "complete":
+            complete = row["state"] == "complete" or (
+                row["total"] and row["done"] >= row["total"]
+            )
+            if not complete:
                 files = not self._in_library(local)
             elif self._in_library(local):
                 files = False
@@ -315,7 +347,12 @@ class ExternalBackend(BTBackend):
                 lib = os.path.join(self.library_dir or "", os.path.basename(local))
                 if not (os.path.isfile(lib) and os.path.getsize(lib) == row["total"]):
                     continue  # not one Zimi installed: leave it be
-                files = True
+                # Its own copy goes with its files only when Zimi can see it
+                # is a second file, never the library's under another name.
+                try:
+                    files = os.path.isfile(local) and not os.path.samefile(local, lib)
+                except OSError:
+                    files = False
             try:
                 self._delete(row["hash"], files)
                 n += 1
@@ -355,22 +392,30 @@ class ExternalBackend(BTBackend):
         """Put the finished file at ``dest``. The client moves it itself when
         it can see the library, and keeps seeding it there; otherwise a
         hardlink, else a copy, and the client keeps seeding its own."""
+        self._owned_row(tid)
         remote_dir = to_remote(os.path.dirname(dest), self.paths)
         if remote_dir is not None:
             self._move(tid, remote_dir)
             deadline = time.monotonic() + MOVE_LIMIT_S
+            stalled = 0
             while time.monotonic() < deadline:
                 row = self._row(tid)
                 if row is None:
                     raise ClientError(
                         f"the torrent left {self.name} while it was being moved"
                     )
-                if (
-                    not row["moving"]
-                    and os.path.exists(dest)
-                    and (not row["total"] or os.path.getsize(dest) == row["total"])
-                ):
+                if row["state"] == "error":
+                    raise ClientError(f"{self.name} could not move it: {row['error']}")
+                arrived = os.path.exists(dest) and (
+                    not row["total"] or os.path.getsize(dest) == row["total"]
+                )
+                if not row["moving"] and arrived:
                     return tid
+                if self.retired:
+                    raise ClientError(f"{self.name} is no longer the engine")
+                stalled = 0 if row["moving"] or os.path.exists(dest) else stalled + 1
+                if stalled >= MOVE_STALL_POLLS:
+                    raise ClientError(f"{self.name} is not moving the file")
                 time.sleep(MOVE_POLL_S)
             raise ClientError(
                 f"{self.name} did not finish moving the file into the library"
@@ -414,7 +459,14 @@ class ExternalBackend(BTBackend):
                 f"{self.name} cannot see the library: add a path mapping for "
                 + os.path.abspath(dest_dir)
             )
-        if self._row(tid):
+        row = self._row(tid)
+        if row:
+            if not row["owned"]:
+                # The same file under someone else's category: theirs. Zimi
+                # neither adopts nor moves it; the download goes over HTTP.
+                raise ClientError(
+                    f"{self.name} already has this torrent outside the {self.category} category"
+                )
             return tid  # already there: a restart picking up its download
         self._add(
             tid,
@@ -430,11 +482,23 @@ class ExternalBackend(BTBackend):
             time.sleep(0.1)
         raise ClientError(f"{self.name} accepted the torrent but never listed it")
 
+    def _owned_row(self, tid):
+        row = self._row(tid)
+        if row is not None and not row["owned"]:
+            raise ClientError(f"not in the {self.category} category")
+        return row
+
+    def _owned(self, tid):
+        row = self._row(tid)
+        return bool(row and row["owned"])
+
     def pause(self, tid):
-        self._stop(tid)
+        if self._owned(tid):  # never someone else's torrent
+            self._stop(tid)
 
     def resume(self, tid):
-        self._start(tid)
+        if self._owned(tid):
+            self._start(tid)
 
     def remove(self, tid, *, delete_files=False):
         """Only Zimi's category; files only when they are not in the library."""

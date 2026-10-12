@@ -134,8 +134,15 @@ def _read_pref(key: str, default):
 def set_pref(key: str, value) -> bool:
     """Persist a UI preference. Returns False (and logs) when the config
     dir isn't writable — callers surface that instead of a 500."""
+    return set_prefs({key: value})
+
+
+def set_prefs(values: dict) -> bool:
+    """Persist several preferences in one write, so a reader never sees
+    half of them (a client's new kind with its old address)."""
     if not _prefs_path:
         return False
+    key = ", ".join(values)
     with _prefs_lock:
         prefs = {}
         try:
@@ -143,7 +150,7 @@ def set_pref(key: str, value) -> bool:
                 prefs = json.load(f)
         except (OSError, ValueError):
             pass
-        prefs[key] = value
+        prefs.update(values)
         try:
             os.makedirs(os.path.dirname(_prefs_path), exist_ok=True)
             tmp = _prefs_path + ".tmp"
@@ -1366,14 +1373,22 @@ _switch_done = threading.Event()
 _switch_done.set()
 _switch_lock = threading.Lock()
 SWITCH_WAIT_S = 120.0
+# A client that did not answer is not asked again (a 20 s timeout, inside
+# the backend lock) on every status poll; its configuration is remembered.
+UNREACHABLE_RETRY_S = 30.0
+_unreachable = (None, 0.0)
 
 
-def purge_builtin_leftovers(data_dir: str) -> None:
+def purge_builtin_leftovers(data_dir: str, keep_staging: bool = False) -> None:
     """What the built-in engine leaves when it is not the engine: resume
     files (they would bring its torrents back on its next start) and the
     partial downloads in the default staging folder. A staging folder the
-    operator named is theirs and left alone."""
-    for d in (resume_dir(data_dir), os.path.join(data_dir, "staging")):
+    operator named is theirs and left alone, and so is the default one when
+    a client sees it (keep_staging): its files are the client's then."""
+    dirs = [resume_dir(data_dir)]
+    if not keep_staging:
+        dirs.append(os.path.join(data_dir, "staging"))
+    for d in dirs:
         try:
             names = os.listdir(d)
         except OSError:
@@ -1398,42 +1413,61 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
     Never crashes Zimi for a BT problem — HTTP is the universal transport
     underneath.
     """
-    global _backend_singleton
-    _switch_done.wait(SWITCH_WAIT_S)
-    with _backend_lock:
-        if not is_torrent_enabled():
-            return None
-        if _backend_singleton is not None:
-            return _backend_singleton
-        from zimi import btclient
+    deadline = time.monotonic() + SWITCH_WAIT_S
+    while True:
+        _switch_done.wait(max(0.0, deadline - time.monotonic()))
+        with _backend_lock:
+            # Checked under the lock switch_engine clears it under, so no
+            # caller slips in between and builds an engine mid hand-over.
+            if not _switch_done.is_set() and time.monotonic() < deadline:
+                continue
+            return _get_backend_locked(data_dir)
 
-        cfg = btclient.config()
-        if cfg:
-            from zimi import server as _srv
 
-            ext = btclient.make_backend(
-                cfg, library_dir=_srv.ZIM_DIR, staging_dir=get_staging_dir(data_dir)
-            )
-            if not ext.available():
-                return None
-            purge_builtin_leftovers(data_dir)
-            _backend_singleton = ext
-            return ext
-        backend = LibtorrentBackend(
-            bt_port=get_bt_port(),
-            data_dir=data_dir,
-            staging_dir=get_staging_dir(data_dir),
-        )
-        if not backend.available():
-            log.info("BT unavailable (libtorrent missing?) — HTTP downloads only")
+def _get_backend_locked(data_dir: str) -> BTBackend | None:
+    """get_backend's body, under _backend_lock."""
+    global _backend_singleton, _unreachable
+    if not is_torrent_enabled():
+        return None
+    if _backend_singleton is not None:
+        return _backend_singleton
+    from zimi import btclient
+
+    cfg = btclient.config()
+    if cfg:
+        from zimi import server as _srv
+
+        ident = btclient.identity(cfg)
+        if _unreachable[0] == ident and time.monotonic() - _unreachable[1] < UNREACHABLE_RETRY_S:
             return None
-        log.info(
-            "BT engine libtorrent ready on port %d (staging=%s)",
-            backend.bt_port,
-            backend.staging_dir,
+        ext = btclient.make_backend(
+            cfg, library_dir=_srv.ZIM_DIR, staging_dir=get_staging_dir(data_dir)
         )
-        _backend_singleton = backend
-        return backend
+        if not ext.available():
+            _unreachable = (ident, time.monotonic())
+            return None
+        _unreachable = (None, 0.0)
+        purge_builtin_leftovers(
+            data_dir,
+            keep_staging=btclient.to_remote(os.path.join(data_dir, "staging"), cfg["paths"]) is not None,
+        )
+        _backend_singleton = ext
+        return ext
+    backend = LibtorrentBackend(
+        bt_port=get_bt_port(),
+        data_dir=data_dir,
+        staging_dir=get_staging_dir(data_dir),
+    )
+    if not backend.available():
+        log.info("BT unavailable (libtorrent missing?) — HTTP downloads only")
+        return None
+    log.info(
+        "BT engine libtorrent ready on port %d (staging=%s)",
+        backend.bt_port,
+        backend.staging_dir,
+    )
+    _backend_singleton = backend
+    return backend
 
 
 def _next_identity() -> tuple:
@@ -1442,7 +1476,7 @@ def _next_identity() -> tuple:
     cfg = btclient.config()
     if not cfg:
         return (LibtorrentBackend.__name__,)
-    return (cfg["kind"], cfg["url"], cfg["category"])
+    return btclient.identity(cfg)
 
 
 def switch_engine(*, data_dir: str) -> BTBackend | None:
@@ -1454,10 +1488,11 @@ def switch_engine(*, data_dir: str) -> BTBackend | None:
     Zimi's torrents out of the old one (release); the same one restarted
     hands nothing over, and its downloads carry on where they were. Seeds
     follow the ledger: the caller re-seeds on the new engine."""
-    global _backend_singleton
+    global _backend_singleton, _unreachable
     with _switch_lock:
         with _backend_lock:
             old, _backend_singleton = _backend_singleton, None
+            _unreachable = (None, 0.0)
             _switch_done.clear()
         try:
             if old is not None:

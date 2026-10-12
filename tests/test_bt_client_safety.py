@@ -1,0 +1,196 @@
+"""What a BitTorrent client the operator runs must never suffer from Zimi.
+
+Each test is one way the first version could hurt someone: adopting and
+moving a torrent that is not Zimi's, deleting a finished file mid-move,
+waiting hours on a move nobody is doing, sending a saved password to a new
+address, switching to a client that does not answer, and asking a dead
+client again on every status poll.
+"""
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from zimi import btclient, manage, p2p  # noqa: E402
+from tests.test_qbittorrent import (
+    REMOTE_DL,
+    REMOTE_LIB,
+    _backend,
+    _torrent,
+    world,
+)  # noqa: E402,F401
+
+
+def _add(fake, b, tmp_path, name, dest):
+    data, tid = _torrent(name)
+    p = tmp_path / (name + ".torrent")
+    p.write_bytes(data)
+    b.add_torrent(str(p), dest_dir=str(dest))
+    return tid
+
+
+def test_someone_elses_torrent_is_neither_adopted_nor_moved(world, tmp_path):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(
+        fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}"
+    )
+    data, tid = _torrent("wiki.zim")
+    fake.torrents[tid] = {
+        "hash": tid,
+        "name": "wiki.zim",
+        "category": "mine",
+        "save_path": f"{REMOTE_DL}/mine",
+        "content_path": f"{REMOTE_DL}/mine/wiki.zim",
+        "state": "uploading",
+        "progress": 1.0,
+        "size": 11,
+        "completed": 11,
+        "uploaded": 0,
+        "num_seeds": 0,
+        "num_leechs": 0,
+    }
+    p = tmp_path / "wiki.torrent"
+    p.write_bytes(data)
+    with pytest.raises(btclient.ClientError):
+        b.add_torrent(str(p), dest_dir=str(staging))
+    with pytest.raises(btclient.ClientError):
+        b.install(tid, "", str(lib_local / "wiki.zim"))
+    b.pause(tid)
+    assert fake.torrents[tid]["category"] == "mine"
+    assert fake.torrents[tid]["save_path"] == f"{REMOTE_DL}/mine"
+    assert fake.torrents[tid]["state"] == "uploading"
+
+
+def test_a_finished_download_being_moved_is_not_handed_over(world, tmp_path):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(
+        fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}"
+    )
+    tid = _add(fake, b, tmp_path, "moving.zim", staging)
+    fake.finish(tid)
+    fake.torrents[tid]["state"] = "moving"
+    assert b.release() == 0
+    assert tid in fake.torrents
+    assert os.path.exists(fake.local(fake.torrents[tid]["content_path"]))
+
+
+def test_a_move_nobody_is_doing_gives_up(world, tmp_path, monkeypatch):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(
+        fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}"
+    )
+    tid = _add(fake, b, tmp_path, "stuck.zim", staging)
+    fake.finish(tid)
+    monkeypatch.setattr(btclient, "MOVE_POLL_S", 0)
+    monkeypatch.setattr(btclient, "MOVE_STALL_POLLS", 3)
+    monkeypatch.setattr(
+        b, "_move", lambda tid, remote_dir: None
+    )  # the client refuses quietly
+    with pytest.raises(btclient.ClientError):
+        b.install(tid, "", str(lib_local / "stuck.zim"))
+    b.retired = True
+    monkeypatch.setattr(btclient, "MOVE_STALL_POLLS", 10**6)
+    with pytest.raises(btclient.ClientError):
+        b.install(tid, "", str(lib_local / "stuck.zim"))
+
+
+def test_one_client_typed_two_ways_is_one_engine():
+    assert btclient.same_url("http://Host:9091/transmission/web/", "http://host:9091")
+    assert btclient.identity(
+        {
+            "kind": "transmission",
+            "url": "http://host:9091/transmission/rpc",
+            "category": "zimi",
+        }
+    ) == btclient.identity(
+        {"kind": "transmission", "url": "http://HOST:9091/", "category": "zimi"}
+    )
+    assert not btclient.same_url("http://host:9091", "http://other:9091")
+
+
+def test_windows_paths_map_whatever_their_case():
+    pairs = btclient.parse_paths(r"C:\Dl=/downloads")
+    assert btclient.to_local(r"c:\dl\a.zim", pairs) == "/downloads/a.zim"
+
+
+# ── saving a client ──────────────────────────────────────────────────────
+
+
+class _Handler:
+    def _json(self, code, body):
+        self.code, self.body = code, body
+        return body
+
+
+@pytest.fixture
+def saved(tmp_path, monkeypatch):
+    monkeypatch.setattr(p2p, "_prefs_path", str(tmp_path / "prefs.json"))
+    for k in btclient.ENV.values():
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(manage, "_btc_locked", lambda: None)
+    switched = []
+    monkeypatch.setattr(p2p, "switch_engine", lambda **kw: switched.append(kw))
+    p2p.set_prefs(
+        {
+            btclient.PREF["kind"]: "qbittorrent",
+            btclient.PREF["url"]: "http://qbt:8080",
+            btclient.PREF["user"]: "admin",
+            btclient.PREF["password"]: "s3cret",
+        }
+    )
+    return switched
+
+
+def test_the_saved_password_goes_only_to_its_own_address(saved, monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        btclient,
+        "probe",
+        lambda cfg, library_dir=None: sent.append(cfg["password"]) or {"ok": False},
+    )
+    manage._handle_bt_client(
+        _Handler(),
+        {"kind": "qbittorrent", "url": "http://elsewhere:8080", "test": True},
+    )
+    manage._handle_bt_client(
+        _Handler(), {"kind": "qbittorrent", "url": "http://QBT:8080/", "test": True}
+    )
+    assert sent == ["", "s3cret"]
+
+
+def test_a_client_that_does_not_answer_is_not_switched_to(saved, monkeypatch):
+    monkeypatch.setattr(
+        btclient,
+        "probe",
+        lambda cfg, library_dir=None: {"ok": False, "error_key": "btc_err_unreachable"},
+    )
+    h = _Handler()
+    manage._handle_bt_client(h, {"kind": "transmission", "url": "http://nowhere:9091"})
+    assert h.code == 409 and h.body["error_key"] == "btc_err_unreachable"
+    assert btclient.config()["kind"] == "qbittorrent" and not saved
+
+
+def test_a_dead_client_is_not_asked_again_on_every_poll(tmp_path, monkeypatch):
+    monkeypatch.setattr(p2p, "_prefs_path", str(tmp_path / "prefs.json"))
+    for k in btclient.ENV.values():
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(p2p, "_backend_singleton", None)
+    monkeypatch.setattr(p2p, "_unreachable", (None, 0.0))
+    monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: True)
+    p2p.set_prefs(
+        {btclient.PREF["kind"]: "qbittorrent", btclient.PREF["url"]: "http://dead:8080"}
+    )
+    asked = []
+
+    class Dead:
+        def available(self):
+            asked.append(1)
+            return False
+
+    monkeypatch.setattr(btclient, "make_backend", lambda cfg, **kw: Dead())
+    for _ in range(3):
+        assert p2p.get_backend(data_dir=str(tmp_path)) is None
+    assert len(asked) == 1

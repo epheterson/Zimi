@@ -15208,8 +15208,8 @@ function _applyTorrentToggleInPlace(on) {
     });
   }
   const st = document.getElementById('ms-bt-status');
-  if (st) st.innerHTML = '<span class="share-port-dot" style="background:var(--text3)"></span>' +
-    esc(t(on ? 'bt_state_starting' : 'bt_state_off'));
+  // The same one line as when it is running, saying it is starting.
+  if (st && on) st.innerHTML = _btSummaryHtml({ client: window._btcSaved || {} }, true, 'var(--text3)');
   // Mirror depends on BT: grey its card + disable its switch instantly.
   const mrow = document.querySelector('#ms-mirror-status input[onchange*="\'mirror\'"]');
   const mcard = mrow && mrow.closest('.share-row');
@@ -15660,7 +15660,8 @@ function _btcFormHtml(bt) {
     '<div class="btc-result" id="btc-result" role="status"></div>' +
     (lock ? '' : '<div class="btn-row"><button type="button" class="set-btn" onclick="_btcSubmit(true)">' + tH('btc_test') + '</button>' +
       '<button type="button" class="set-btn primary" onclick="_btcSubmit(false)">' + tH('save') + '</button></div>') +
-    '</div>';
+    '</div>' +
+    '<div class="btn-row btc-back" id="btc-back" hidden><button type="button" class="set-btn primary" onclick="_btcBackToBuiltin()">' + tH('btc_use_builtin') + '</button></div>';
 }
 // Path mappings, the *arr way: one row per folder, the client's path beside
 // Zimi's. Sent as the "remote=local" lines the server keeps.
@@ -15714,6 +15715,7 @@ async function _btcEngine(kind) {
   var controls = document.getElementById('ms-bt-controls');
   if (controls) controls.classList.toggle('btc-ext', !!kind);
   var saved = window._btcSaved || {};
+  _showIfOn('btc-back', false);
   if (kind) {
     // The form follows the client picked; what was typed for another one
     // (its address, its login) does not carry over.
@@ -15738,8 +15740,11 @@ async function _btcEngine(kind) {
     return;
   }
   form.hidden = true;
-  if (!saved.kind || saved.locked) return;
-  // Back to the built-in engine: forget the client, keep nothing to undo.
+  // Back to the built-in engine takes Zimi's torrents out of the client, so
+  // it waits for a deliberate press instead of happening on the pick.
+  _showIfOn('btc-back', !!saved.kind && !saved.locked);
+}
+async function _btcBackToBuiltin() {
   await _btcPost({ kind: '' });
   _renderMirrorSection();
 }
@@ -15755,6 +15760,12 @@ async function _btcPost(body) {
   var r = await manageFetch('/manage/bt-client', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { ok: r.ok, d: await r.json().catch(function() { return {}; }) };
 }
+// The server's reason in the reader's language: a key with its values, or
+// Zimi's own sentence (a refused login, a client too old).
+function _btcErr(d, client) {
+  if (d.error_key) return t(d.error_key, { client: client.client, code: d.code });
+  return d.error === 'bad_url' ? t('btc_bad_url') : (d.error || t('error'));
+}
 async function _btcSubmit(test) {
   var out = document.getElementById('btc-result');
   var body = _btcBody(), client = { client: _btcName(body.kind) };
@@ -15764,9 +15775,8 @@ async function _btcSubmit(test) {
   var res;
   try { res = await _btcPost(body); } catch (e) { out.className = 'btc-result btc-bad'; out.textContent = t('error'); return; }
   var d = res.d;
-  if (!res.ok) { out.className = 'btc-result btc-bad'; out.textContent = d.error === 'bad_url' ? t('btc_bad_url') : (d.error || t('error')); return; }
+  if (!res.ok || !d.ok && test) { out.className = 'btc-result btc-bad'; out.textContent = _btcErr(d, client); return; }
   if (!test) { _showToast(t('saved')); _renderMirrorSection(); return; }
-  if (!d.ok) { out.className = 'btc-result btc-bad'; out.textContent = d.error; return; }
   // What works, then what each mapping would add: the test is where a person
   // finds out the two containers do not see the same disk.
   // The downloads folder is the one that must be visible; the library is a

@@ -6467,7 +6467,10 @@ def _handle_bt_client(handler, data):
         return handler._json(400, {"error": "bad_url"})
     password = data.get("password")
     if password is None:
-        password = old.get("password", "") if old.get("kind") == kind else ""
+        # The saved password goes only to the client it was saved for: a new
+        # address with a blank password must not send it somewhere else.
+        same = old.get("kind") == kind and btclient.same_url(old.get("url", ""), url)
+        password = old.get("password", "") if same else ""
     cfg = {
         "kind": kind,
         "url": url,
@@ -6480,16 +6483,21 @@ def _handle_bt_client(handler, data):
         if not kind:
             return handler._json(400, {"error": "bad_url"})
         return handler._json(200, btclient.probe(cfg, library_dir=_srv.ZIM_DIR))
-    saved = all(
-        p2p.set_pref(btclient.PREF[k], v)
-        for k, v in (
-            ("kind", kind),
-            ("url", url),
-            ("user", cfg["user"] if kind else ""),
-            ("password", cfg["password"] if kind else ""),
-            ("category", cfg["category"]),
-            ("paths", btclient.format_paths(cfg["paths"])),
-        )
+    if kind:
+        # A client that does not answer is not switched to: the engine in
+        # use keeps its downloads and seeds, and the form says why.
+        found = btclient.probe(cfg, library_dir=_srv.ZIM_DIR)
+        if not found.get("ok"):
+            return handler._json(409, found)
+    saved = p2p.set_prefs(
+        {
+            btclient.PREF["kind"]: kind,
+            btclient.PREF["url"]: url,
+            btclient.PREF["user"]: cfg["user"] if kind else "",
+            btclient.PREF["password"]: cfg["password"] if kind else "",
+            btclient.PREF["category"]: cfg["category"],
+            btclient.PREF["paths"]: btclient.format_paths(cfg["paths"]),
+        }
     )
     if not saved:
         return handler._json(500, {"error": "could not save setting (config dir not writable)"})

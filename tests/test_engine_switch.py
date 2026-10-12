@@ -203,7 +203,8 @@ def test_the_same_engine_restarted_hands_nothing_over(world, monkeypatch):
     fake, dl_local, lib_local, data = world
     p2p.set_pref(btclient.PREF["kind"], "qbittorrent")
     p2p.set_pref(btclient.PREF["url"], fake.url)
-    old = _Old(ident=("qbittorrent", fake.url, "zimi"))
+    # The same client typed with a trailing slash is still the same engine.
+    old = _Old(ident=btclient.identity({"kind": "qbittorrent", "url": fake.url + "/", "category": "zimi"}))
     p2p._backend_singleton = old
     try:
         new = p2p.switch_engine(data_dir=str(data))

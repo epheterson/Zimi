@@ -270,7 +270,7 @@ def test_probe_reports_what_zimi_can_see(world):
     )
     assert got["visible"] and got["library_mapped"]
     bad = btclient.probe(_cfg(fake, url="http://127.0.0.1:9"), library_dir=None)
-    assert not bad["ok"] and "Could not reach Transmission" in bad["error"]
+    assert not bad["ok"] and bad["error_key"] == "btc_err_unreachable" and "error" not in bad
 
 
 def test_a_download_carries_zimis_label_and_pauses(world, tmp_path):

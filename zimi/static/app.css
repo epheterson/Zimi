@@ -2382,7 +2382,9 @@
   .btc-result { font-size: 13px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
   .btc-result:empty { display: none; }
   .btc-result .btc-bad, .btc-result.btc-bad { color: var(--error); }
-  .btc-form .btn-row { display: flex; justify-content: flex-end; gap: 8px; }
+  .btc-form .btn-row, .btc-back { display: flex; justify-content: flex-end; gap: 8px; }
+  .btc-back { margin-top: 8px; }
+  .btc-back[hidden] { display: none; }
   .share-bt-controls.share-controls-off .share-port-dot { opacity: 0.5; }
   /* Dim what is inert, not the whole row: the note that says WHY the row is
      inactive lives outside .share-row-dim and stays at full strength. */
