@@ -118,8 +118,9 @@ class FetchPolicy:
 # accounts for it. The coverage test reads this.
 SOURCES = {
     "library": ("catalog", "downloads", "bittorrent"),
-    # The operator's own qBittorrent, as the BitTorrent engine (#53).
+    # The operator's own client, as the BitTorrent engine (#53).
     "qbittorrent": ("bittorrent",),
+    "transmission": ("bittorrent",),
     "p2p": ("bittorrent",),
     "p2p_nat": ("portcheck", "bittorrent"),
     "p2p_discovery": ("nearby",),
