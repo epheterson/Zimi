@@ -133,7 +133,7 @@ def config():
 
 
 def label(kind):
-    return KINDS.get(kind, (kind,))[0]
+    return KINDS[kind][0] if kind in KINDS else loggable(kind)
 
 
 def valid_url(url):

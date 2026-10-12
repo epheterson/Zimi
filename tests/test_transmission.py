@@ -79,8 +79,9 @@ class FakeTransmission:
     def local(self, remote):
         for r, l in self.disk.items():
             if remote == r or remote.startswith(r + "/"):
-                path = os.path.realpath(l + remote[len(r) :])
-                if path == os.path.realpath(l) or path.startswith(os.path.realpath(l) + os.sep):
+                root = os.path.normpath(l)
+                path = os.path.normpath(l + remote[len(r) :])
+                if path == root or path.startswith(root + os.sep):
                     return path
         raise AssertionError(f"fake Transmission cannot see {remote}")
 

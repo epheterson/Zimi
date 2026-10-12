@@ -646,7 +646,12 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
                     return
                 voices._download["done"] = total * i // 10
         with voices._lock:
+            # A Cancel that lands after the last step still cancels, as the
+            # real fetch's per-chunk check does.
+            cancelled = voices._download.get("cancel")
             voices._download.clear()
+            if cancelled:
+                return
             if steps["fail"]:
                 voices._download.update({"tag": None, "error": tag})
                 return

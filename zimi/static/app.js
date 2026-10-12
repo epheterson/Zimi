@@ -15627,7 +15627,7 @@ async function _renderMirrorSection() {
   const ext = !!window._btcSaved.kind;
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + (ext ? ' btc-ext' : '') + '" id="ms-bt-controls">' +
     _btcEngineRow(bt) + ratioRow + limitRow + connRow + portRow + _upnpHtml(bt || {}, btOn) + '</div>' +
-    '<!--btc-->' + _btcFormHtml(bt) + '<!--/btc-->';
+    '<!--btc-->';
 
   // Mirror status sits under its toggle in the right column — the SAME spot
   // as the BitTorrent "ready" dot — so both cards' status lights line up.
@@ -15674,12 +15674,11 @@ async function _renderMirrorSection() {
   // A redraw (a saved port, UPnP, a client saved) keeps the settings open
   // that the person was working in.
   var wasOpen = !!(document.getElementById('ms-bt-more') || {}).open;
-  el.innerHTML = h;
+  el.innerHTML = h.replace('<!--btc-->', _btcFormHtml(bt));
   if (wasOpen) document.getElementById('ms-bt-more').open = true;
-  // The first-paint copy keeps the client's kind but not its address or
-  // login: browser storage is no place for them.
-  var bare = { client: { kind: window._btcSaved.kind, locked: window._btcSaved.locked } };
-  try { localStorage.setItem(SK.SHARE_ROWS, h.replace(/<!--btc-->[\s\S]*<!--\/btc-->/, _btcFormHtml(bare))); } catch (e) {}
+  // The first-paint copy leaves out the client's form (its address and
+  // login): browser storage is no place for them, and the real paint follows.
+  try { localStorage.setItem(SK.SHARE_ROWS, h.replace('<!--btc-->', '')); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
   _natCheckOnOpen(btOn);
