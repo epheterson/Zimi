@@ -36,6 +36,20 @@ def _voices():
     return bool(voices.runtime(voices.PIPER) or voices.runtime(voices.KOKORO))
 
 
+def _voices_can_set_up():
+    """Whether the first voice download could install the engines here: a
+    Python install that can make a venv with pip in it (Debian's python3
+    without python3-venv cannot), or uv to make one."""
+    from zimi import voices
+
+    return voices._can_set_up() and bool(shutil.which("uv") or _module("ensurepip")())
+
+
+# For a feature that sets itself up: whether it could, on this install. Not
+# ready is fine (it has not been used yet); unable is a dead end (#113).
+CAN_SET_UP = {"voices": _voices_can_set_up}
+
+
 def _bt():
     from zimi import p2p
 
@@ -78,7 +92,7 @@ FEATURES = (
             DESKTOP: Way(BUNDLED, ""),
             PIP: Way(
                 EXTRA,
-                'pip install "zimi[bt]" (no wheel for Python 3.14 yet), or use an external qBittorrent',
+                'pip install "zimi[bt]" (no wheel for Python 3.14 yet), or use a qBittorrent or Transmission you run',
             ),
         },
     ),
@@ -236,9 +250,21 @@ def report(kind=None):
 
 
 def problems(rows):
-    """The features declared bundled that are not ready: the table is wrong
-    about this install, or the install is broken."""
-    return [f.key for f, way, ready in rows if way.how == BUNDLED and not ready]
+    """The features declared bundled that are not ready, and those that set
+    themselves up but could not here: the table is wrong about this install,
+    or the install is broken."""
+
+    def stuck(f):
+        try:
+            return not CAN_SET_UP.get(f.key, lambda: True)()
+        except Exception:
+            return True
+
+    return [
+        f.key
+        for f, way, ready in rows
+        if not ready and (way.how == BUNDLED or (way.how == SETS_UP and stuck(f)))
+    ]
 
 
 _HOW_TEXT = {

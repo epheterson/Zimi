@@ -331,7 +331,8 @@ jobs:
   # Voices worked in Docker and the desktop app and offered nothing here, and
   # no job installed Zimi this way. zimi doctor prints where every optional
   # feature comes from on this kind of install (zimi/runtimes.py) and --check
-  # fails if one declared bundled is missing.
+  # fails if one declared bundled is missing, or one that sets itself up
+  # could not here (voices: a venv with pip, or uv).
   pip-clean:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest

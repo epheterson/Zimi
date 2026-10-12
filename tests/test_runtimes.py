@@ -72,3 +72,14 @@ def test_zimi_doctor_prints_the_table(tmp_path):
     assert "Zimi features on this install (pip)" in out.stdout
     for f in runtimes.FEATURES:
         assert f.name in out.stdout
+
+
+def test_a_feature_that_cannot_set_itself_up_is_a_problem(monkeypatch):
+    """Not ready is fine for a feature that sets itself up on first use;
+    unable to is the dead end #113 was (voices offered nothing on pip)."""
+    feats = (runtimes.Feature("v", "V", lambda: False, {k: runtimes.Way(runtimes.SETS_UP, "") for k in runtimes.KINDS}),)
+    monkeypatch.setattr(runtimes, "FEATURES", feats)
+    monkeypatch.setattr(runtimes, "CAN_SET_UP", {"v": lambda: True})
+    assert runtimes.problems(runtimes.report(runtimes.PIP)) == []
+    monkeypatch.setattr(runtimes, "CAN_SET_UP", {"v": lambda: False})
+    assert runtimes.problems(runtimes.report(runtimes.PIP)) == ["v"]
