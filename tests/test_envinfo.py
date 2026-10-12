@@ -135,7 +135,7 @@ def test_every_masked_variable_in_the_table_is_deliberate():
     the panel silently stops being useful for it. Naming them here means that
     shows up as a failing test rather than as a blank column."""
     masked = {name for name in envinfo.VARS if envinfo.is_secret(name)}
-    assert masked == {"ZIMI_MANAGE_PASSWORD", "ZIMI_API_TOKEN", "ZIMI_QBT_PASSWORD"}
+    assert masked == {"ZIMI_MANAGE_PASSWORD", "ZIMI_API_TOKEN", "ZIMI_BT_CLIENT_PASSWORD"}
 
 
 def test_the_real_environment_is_readable():
