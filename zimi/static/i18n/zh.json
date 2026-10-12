@@ -3014,7 +3014,7 @@
   "setup_password": "管理需要密码",
   "setup_password_desc": "你网络中的任何人都能管理 Zimi。",
   "setup_open_need_ok": "请勾选以确认。",
-  "setup_open_cost": "我明白：任何能访问此地址的人都可以更改所有设置并删除 ZIM，账户也不再限制任何内容。密码会保留，以便我关闭此项时使用。",
+  "setup_open_cost": "我明白：任何能访问此地址的人都可以下载和删除 ZIM、更改任何设置（包括这一项），甚至把我锁在外面。关闭此项时我的密码仍会保留。",
   "setup_password_desc_anywhere": "任何能访问此地址的人都可以管理 Zimi。",
   "setup_outside_desc_settings": "来自互联网，或通过代理。",
   "setup_password_needed_outside": "允许从网络之外管理 Zimi 时必须设置密码。",
