@@ -53,7 +53,8 @@ CAN_SET_UP = {"voices": _voices_can_set_up}
 def _bt():
     from zimi import p2p
 
-    return p2p._lt() is not None
+    # libtorrent here, or a qBittorrent / Transmission chosen as the engine.
+    return p2p._lt() is not None or p2p.engine_name() != "libtorrent"
 
 
 def _sidecar(module):

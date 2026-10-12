@@ -83,3 +83,13 @@ def test_a_feature_that_cannot_set_itself_up_is_a_problem(monkeypatch):
     assert runtimes.problems(runtimes.report(runtimes.PIP)) == []
     monkeypatch.setattr(runtimes, "CAN_SET_UP", {"v": lambda: False})
     assert runtimes.problems(runtimes.report(runtimes.PIP)) == ["v"]
+
+
+def test_a_chosen_client_engine_makes_bittorrent_ready(monkeypatch):
+    from zimi import p2p
+
+    monkeypatch.setattr(p2p, "_lt", lambda: None)
+    monkeypatch.setattr(p2p, "engine_name", lambda: "libtorrent")
+    assert runtimes._bt() is False
+    monkeypatch.setattr(p2p, "engine_name", lambda: "qbittorrent")
+    assert runtimes._bt() is True

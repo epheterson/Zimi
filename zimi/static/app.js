@@ -12553,7 +12553,7 @@ function _setupSync(changed) {
   if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
-  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body', outside_here: 'setup_outside_needed_here',
+  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body', outside_here: 'setup_outside_needed_here', open_locked: 'open_locked',
   wrong_password: 'wrong_password' };
 async function _setupSubmit(opts) {
   var quiet = !!(opts && opts.quiet);
@@ -15627,7 +15627,7 @@ async function _renderMirrorSection() {
   const ext = !!window._btcSaved.kind;
   const btControls = '<div class="share-bt-controls' + (btOn ? '' : ' share-controls-off') + (ext ? ' btc-ext' : '') + '" id="ms-bt-controls">' +
     _btcEngineRow(bt) + ratioRow + limitRow + connRow + portRow + _upnpHtml(bt || {}, btOn) + '</div>' +
-    _btcFormHtml(bt);
+    '<!--btc-->' + _btcFormHtml(bt) + '<!--/btc-->';
 
   // Mirror status sits under its toggle in the right column — the SAME spot
   // as the BitTorrent "ready" dot — so both cards' status lights line up.
@@ -15676,7 +15676,10 @@ async function _renderMirrorSection() {
   var wasOpen = !!(document.getElementById('ms-bt-more') || {}).open;
   el.innerHTML = h;
   if (wasOpen) document.getElementById('ms-bt-more').open = true;
-  try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
+  // The first-paint copy keeps the client's kind but not its address or
+  // login: browser storage is no place for them.
+  var bare = { client: { kind: window._btcSaved.kind, locked: window._btcSaved.locked } };
+  try { localStorage.setItem(SK.SHARE_ROWS, h.replace(/<!--btc-->[\s\S]*<!--\/btc-->/, _btcFormHtml(bare))); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
   _natCheckOnOpen(btOn);

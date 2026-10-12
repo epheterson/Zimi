@@ -121,14 +121,19 @@ def set_prefs_path(path: str) -> None:
     _prefs_path = path
 
 
-def _read_pref(key: str, default):
+def _read_prefs() -> dict:
     if not _prefs_path:
-        return default
+        return {}
     try:
         with open(_prefs_path, encoding="utf-8") as f:
-            return json.load(f).get(key, default)
+            prefs = json.load(f)
     except (OSError, ValueError):
-        return default
+        return {}
+    return prefs if isinstance(prefs, dict) else {}
+
+
+def _read_pref(key: str, default):
+    return _read_prefs().get(key, default)
 
 
 def set_pref(key: str, value) -> bool:

@@ -34,6 +34,7 @@ import shutil
 import time
 import urllib.error
 import urllib.parse
+import urllib.request
 
 from zimi.p2p import BTBackend
 
@@ -69,17 +70,22 @@ ENV = {
 PREF = {k: "bt_client" if k == "kind" else "bt_client_" + k for k in ENV}
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A client that redirects (a forward-auth proxy's login page) is an
+    error to report, never a host to send the login on to."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
 class ClientError(RuntimeError):
     """A plain sentence for the operator: what failed and what to change."""
 
 
 # ── configuration ───────────────────────────────────────────────────────────
-
-
-def _pref(key):
-    from zimi import p2p
-
-    return p2p._read_pref(PREF[key], "")
 
 
 def env_locked():
@@ -103,7 +109,10 @@ def config():
     if env_locked():
         raw = {k: os.environ.get(v, "") for k, v in ENV.items()}
     else:
-        raw = {k: _pref(k) for k in ENV}
+        from zimi import p2p
+
+        prefs = p2p._read_prefs()
+        raw = {k: prefs.get(PREF[k], "") for k in ENV}
     url = str(raw["url"] or "").strip().rstrip("/")
     kind = str(raw["kind"] or "").strip().lower() or ("qbittorrent" if url else "")
     if kind not in KINDS or not url:
@@ -138,7 +147,11 @@ def same_url(a, b):
 
     def norm(u):
         parts = urllib.parse.urlsplit((u or "").strip())
-        path = re.sub(r"/(transmission(/web|/rpc)?)?/*$", "", parts.path)
+        path = parts.path.rstrip("/")
+        for tail in ("/transmission/web", "/transmission/rpc", "/transmission"):
+            if path.endswith(tail):
+                path = path[: -len(tail)].rstrip("/")
+                break
         return (parts.scheme.lower(), parts.netloc.lower(), path)
 
     return norm(a) == norm(b)
@@ -208,7 +221,9 @@ def to_local(remote, pairs):
     rs = _sep(remote)
     for r, l in sorted(pairs, key=lambda p: -len(p[0])):
         if _under(remote, r, rs):
-            return _swap(remote, r, l, rs, os.sep)
+            # normpath: on Windows a local half typed with / still comes back
+            # as one path with one separator.
+            return os.path.normpath(_swap(remote, r, l, rs, os.sep))
     return remote
 
 
@@ -225,10 +240,15 @@ def to_remote(local, pairs):
 # ── the probe Settings runs ─────────────────────────────────────────────────
 
 
+def loggable(value):
+    """A value the admin typed (an address), safe on one log line."""
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _reason(cfg, e):
     """What went wrong reaching the client, as a key the browser words in
     its own language; the details go to the log, never to the page."""
-    log.info("%s at %s: %s", label(cfg["kind"]), cfg["url"], e)
+    log.info("%s at %s: %s", label(cfg["kind"]), loggable(cfg["url"]), loggable(e))
     if isinstance(e, ClientError):
         return {"error": str(e)}  # our own sentence (login refused, too old)
     if isinstance(e, urllib.error.HTTPError):
@@ -305,7 +325,7 @@ class ExternalBackend(BTBackend):
             version = self.version()
             self._prepare()
         except Exception as e:
-            log.warning("%s at %s not usable: %s", self.name, self.cfg["url"], e)
+            log.warning("%s at %s not usable: %s", self.name, loggable(self.cfg["url"]), loggable(e))
             return False
         log.info(
             "%s %s at %s is the BitTorrent engine (category %s)",

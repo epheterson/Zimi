@@ -190,6 +190,11 @@ a = Analysis(
         'zimi.previews',
         'zimi.p2p',
         'zimi.p2p_discovery',
+        # Imported by name (p2p's engine choice, zimi doctor).
+        'zimi.btclient',
+        'zimi.qbittorrent',
+        'zimi.transmission',
+        'zimi.runtimes',
         'libzim',
         # Soft BT dependency: guarantees the extension is bundled when a
         # wheel is present. Absent → PyInstaller warns, does not fail.

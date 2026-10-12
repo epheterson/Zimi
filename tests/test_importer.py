@@ -368,5 +368,6 @@ def test_a_cancel_stops_a_silent_command_without_waiting_for_its_next_line():
             raise RuntimeError("cancelled")  # what a job's note() does on Cancel
 
     started = time.monotonic()
-    importer._run_stream([sys.executable, "-c", "import time; time.sleep(30)"], sink, heartbeat_s=0.4)
+    rc = importer._run_stream([sys.executable, "-c", "import time; time.sleep(30)"], sink, heartbeat_s=0.4)
     assert time.monotonic() - started < 10
+    assert rc != 0, "stopped, not finished"

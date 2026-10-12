@@ -474,7 +474,7 @@ jobs:
           [ "$STATUS" = "200" ] && echo "  OK" || { echo "FAIL: $STATUS"; exit 1; }
 
           echo "Testing every feature the image should include (zimi doctor)..."
-          docker compose exec -T zimi zimi doctor --check
+          docker compose exec -T zimi python3 -m zimi doctor --check
 
           echo "All Docker smoke tests passed!"
 

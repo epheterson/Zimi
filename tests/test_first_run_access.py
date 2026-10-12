@@ -188,6 +188,19 @@ class FirstRunAccessTests(_Harness):
         self.assertEqual((status, body.get("error")), (409, "outside_here"), body)
         self.assertTrue(self._state(self._bearer(token))["external"])
 
+    def test_while_open_no_new_password_can_be_set(self):
+        # Opened from the network alone there is no kept password; a stranger
+        # must not set one and lock the owner out with it.
+        self._post("/manage/access", LAN_ONLY)
+        status, body = self._post("/manage/access", ANYONE)
+        self.assertEqual(status, 200, body)
+        self._as_peer(INTERNET)
+        status, body = self._post(
+            "/manage/access", {"external": True, "require_password": True, "password": "mine"}
+        )
+        self.assertEqual((status, body.get("error")), (403, "open_locked"), body)
+        self.assertEqual(self._state()["access"], "open")
+
     def test_a_save_without_a_username_keeps_the_name(self):
         # The switches save without the username when the field is in Your
         # account and not on screen; that must not rename the account.

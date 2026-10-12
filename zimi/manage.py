@@ -6375,6 +6375,11 @@ def _handle_access(handler, data):
         return handler._json(400, {"error": "needs_password"})
     if require and not stored and not password:
         return handler._json(400, {"error": "needs_password"})
+    # While anyone can manage Zimi nothing that outlives it is made: leaving
+    # returns to the kept password, or to the network alone, never to a new
+    # password a stranger could set and lock the owner out with.
+    if require and password and open_from_settings():
+        return handler._json(403, {"error": "open_locked"})
     if require and stored and password:
         return handler._json(400, {"error": "change it with the current password"})
     if not require:
@@ -6499,6 +6504,8 @@ def _handle_bt_client(handler, data):
     locked = _btc_locked()
     if locked:
         return handler._json(403, {"error": "env_controlled" if locked != "open" else "open_locked", "var": locked})
+    if p2p.is_offline():  # BitTorrent is off, and Settings hides the card
+        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_OFFLINE"})
     old = btclient.config() or {}
     kind = str(data.get("kind") or "").strip().lower()
     url = str(data.get("url") or "").strip().rstrip("/")
@@ -6544,7 +6551,7 @@ def _handle_bt_client(handler, data):
     )
     if not saved:
         return handler._json(500, {"error": "could not save setting (config dir not writable)"})
-    log.info("BitTorrent engine: %s", f"{btclient.label(kind)} at {url}" if kind else "built in")
+    log.info("BitTorrent engine: %s", f"{btclient.label(kind)} at {btclient.loggable(url)}" if kind else "built in")
 
     def _switch():
         from zimi import library as _lib

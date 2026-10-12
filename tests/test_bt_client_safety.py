@@ -113,7 +113,7 @@ def test_one_client_typed_two_ways_is_one_engine():
 
 def test_windows_paths_map_whatever_their_case():
     pairs = btclient.parse_paths(r"C:\Dl=/downloads")
-    assert btclient.to_local(r"c:\dl\a.zim", pairs) == "/downloads/a.zim"
+    assert btclient.to_local(r"c:\dl\a.zim", pairs) == os.path.normpath("/downloads/a.zim")
 
 
 # ── saving a client ──────────────────────────────────────────────────────
@@ -286,3 +286,49 @@ def test_a_move_queued_behind_others_is_not_a_stall(world, tmp_path, monkeypatch
     with pytest.raises(btclient.ClientError) as e:
         b.install(tid, "", str(lib_local / "queued.zim"))
     assert "did not finish" in str(e.value)  # waited out the whole limit, not the stall
+
+
+def test_offline_saves_and_probes_no_client(saved, monkeypatch):
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    monkeypatch.setattr(btclient, "probe", lambda *a, **k: pytest.fail("probed while offline"))
+    h = _Handler()
+    manage._handle_bt_client(h, {"kind": "transmission", "url": "http://t:9091", "test": True})
+    assert (h.code, h.body.get("var")) == (403, "ZIMI_OFFLINE")
+
+
+def test_a_redirecting_transmission_gets_no_login(tmp_path):
+    """A forward-auth proxy's 302 to a login host is an error, and the
+    Authorization header never follows it there."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from zimi import transmission
+
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            seen.append((self.path, self.headers.get("Authorization")))
+            if self.path.startswith("/login"):
+                self.send_response(200)
+                self.end_headers()
+                return
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:%d/login" % self.server.server_address[1])
+            self.end_headers()
+
+        do_GET = do_POST
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = transmission.Client("http://127.0.0.1:%d/transmission/rpc" % srv.server_address[1], "u", "p")
+        with pytest.raises(Exception):
+            c.call("session-get")
+    finally:
+        srv.shutdown()
+    assert [p for p, _ in seen] == ["/transmission/rpc"], seen

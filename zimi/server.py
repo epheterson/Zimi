@@ -5262,7 +5262,7 @@ def main():
                 log.warning(
                     "Library management is OPEN: no password, no setup key, "
                     "anyone who can reach this server can administer it "
-                    "(Manage > Settings > Who can manage Zimi, or manage_open / "
+                    "(Settings > Access > Managing Zimi, or manage_open / "
                     "ZIMI_MANAGE_OPEN). Turn it off if this "
                     "instance is reachable from anywhere you do not control."
                 )

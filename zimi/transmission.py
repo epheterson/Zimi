@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from zimi.btclient import REQUEST_TIMEOUT_S, ClientError, ExternalBackend
+from zimi.btclient import NO_REDIRECT, REQUEST_TIMEOUT_S, ClientError, ExternalBackend
 
 RPC_PATH = "/transmission/rpc"
 MIN_RPC_VERSION = 16  # labels, Transmission 3.00
@@ -73,7 +73,7 @@ class Client:
             req.add_header(SESSION_HEADER, self._session)
         if self._auth:
             req.add_header("Authorization", self._auth)
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
+        with NO_REDIRECT.open(req, timeout=REQUEST_TIMEOUT_S) as resp:
             return resp.read()
 
     def call(self, method, **arguments):

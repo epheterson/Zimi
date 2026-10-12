@@ -81,13 +81,10 @@ class FakeQbt:
                     boundary = ctype.split("boundary=")[1].encode()
                     out = {}
                     for part in raw.split(b"--" + boundary):
-                        m = re.search(
-                            rb'name="([^"]+)"(?:; filename="[^"]*")?.*?\r\n\r\n(.*)\r\n$',
-                            part,
-                            re.S,
-                        )
-                        if m:
-                            out[m.group(1).decode()] = m.group(2)
+                        head, sep, body = part.partition(b"\r\n\r\n")
+                        m = re.search(rb'name="([^"]+)"', head)
+                        if sep and m:
+                            out[m.group(1).decode()] = body[:-2] if body.endswith(b"\r\n") else body
                     return out
                 return {k: v[0] for k, v in urllib.parse.parse_qs(raw.decode()).items()}
 
@@ -250,8 +247,8 @@ def test_path_mappings_go_both_ways_and_prefer_the_longest(tmp_path):
         f"/downloads={tmp_path}/dl; /downloads/zimi={tmp_path}/z\n junk \n"
     )
     assert len(pairs) == 2
-    assert btclient.to_local("/downloads/zimi/a.zim", pairs) == f"{tmp_path}/z/a.zim"
-    assert btclient.to_local("/downloads/other/a.zim", pairs) == f"{tmp_path}/dl/other/a.zim"
+    assert btclient.to_local("/downloads/zimi/a.zim", pairs) == os.path.join(str(tmp_path), "z", "a.zim")
+    assert btclient.to_local("/downloads/other/a.zim", pairs) == os.path.join(str(tmp_path), "dl", "other", "a.zim")
     assert btclient.to_remote(f"{tmp_path}/z/a.zim", pairs) == "/downloads/zimi/a.zim"
     # Unmapped: the same path locally (the *arr default), unknown remotely.
     assert btclient.to_local("/elsewhere/a.zim", pairs) == "/elsewhere/a.zim"
