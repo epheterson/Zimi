@@ -584,6 +584,11 @@
      separates it from the other-users section. */
   .ms-user-account-self { margin-top: 0; border-top: none; padding-top: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
   .ms-user-account-self .ms-user-row { border-bottom: none; }
+  .ms-access-who { padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .ms-access-who[hidden] { display: none; }
+  .ms-access-token { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 12px; }
+  /* No accounts (no password): the line under Managing Zimi is the only one. */
+  #ms-users-body:empty + .ms-access-token { margin-top: 0; border-top: none; padding-top: 0; }
   /* Your-account actions: visible Change password / Log out buttons, not a ⋯. */
   .ms-user-self-actions { flex-shrink: 0; display: flex; gap: 8px; }
   /* Role badges in the users list. Muted by default; admin gets amber. */
@@ -1108,7 +1113,6 @@
   .setup-field > span { font-size: 12px; font-weight: 600; color: var(--text2); }
   .setup-field input::placeholder { color: var(--text3); }
   .setup-hint { font-size: 12px; color: var(--text2); margin: -6px 0 0; }
-  .setup-change { display: flex; }
   .setup-form .btn-row { display: flex; justify-content: flex-end; }
   .setup-form .btn-primary { padding: 9px 24px; font-size: 14px; font-weight: 600; }
   .setup-form .pw-error { margin: 0; color: var(--error); font-size: 13px; display: none; }

@@ -12424,9 +12424,9 @@ function _setupFormHtml(st, mode) {
       (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
       ' spellcheck="false" autocapitalize="off"></label>';
   };
-  var fields = input('setup-user', 'text', 'username', 'setup_username', 'admin', st.username || '').replace('<input ', settings ? '<input onchange="_setupAuto()" ' : '<input ') +
-    (hasPw ? (isOpen ? '' : '<div class="setup-change"><button type="button" class="pill" onclick="managePassword()">' + tH('change_password') + '</button></div>')
-      : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
+  // Once a password exists the username is Your account's, under Access.
+  var fields = hasPw ? '' : _setupUserFieldHtml(st.username || '', false) +
+    input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm');
   // The third answer: from outside, with no password. Only in Settings, never
   // on a first run. While it is being chosen its cost sits under the switch
   // and the button that saves it says what it does: pressing it is the
@@ -12443,12 +12443,19 @@ function _setupFormHtml(st, mode) {
       { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
         on: req, disabled: lockReq, onchange: '_setupSync(true)' }
     ]).replace(/<\/div>$/, open + '</div>') +
-    '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' +
+    (fields ? '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' : '') +
     '<div class="pw-error" id="setup-error"></div>' +
     // In Manage the switches save themselves, as every other switch there
     // does; the button shows only while something must be typed first.
     '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, ext, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(_setupSaveLabel(st, ext, req, mode)) + '</button></div>' +
     '</form>';
+}
+// The account's name: in the setup form before a password exists, in Your
+// account after, where a change saves itself.
+function _setupUserFieldHtml(name, autosave) {
+  return '<label class="setup-field"><span>' + tH('setup_username') + '</span><input id="setup-user" type="text" autocomplete="username" placeholder="admin"' +
+    (name ? ' value="' + escAttr(name) + '"' : '') + (autosave ? ' onchange="_setupAuto()"' : '') +
+    ' spellcheck="false" autocapitalize="off"></label>';
 }
 // On the setup page, outside holds the password on. In Settings it does not:
 // outside without a password is "Anyone, anywhere". Through a proxy "anyone on
@@ -12556,8 +12563,10 @@ async function _setupSubmit(opts) {
   };
   var setup = form.dataset.mode === 'setup', st = _setupState;
   var req = document.getElementById('setup-req').checked;
-  var body = { external: document.getElementById('setup-ext').checked, require_password: req,
-    username: val('setup-user'), remember: true };
+  var body = { external: document.getElementById('setup-ext').checked, require_password: req, remember: true };
+  // The username field is the form's until a password exists, then Your
+  // account's; a save without it on screen leaves the name as it is.
+  if (document.getElementById('setup-user')) body.username = val('setup-user');
   var key = val('setup-key');
   if (document.getElementById('setup-key') && !key) return show('setup_need_key');
   // Reached only by pressing the button that names it.
@@ -12639,8 +12648,9 @@ async function renderManage() {
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
         '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
-        // Anyone on the network is the admin: no accounts, so no Users.
-        (_manageAccess === 'lan' ? '' : '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>') +
+        // Access: who can manage Zimi, your account, who can read, the users
+        // and the API token. Without a password it holds the first and last.
+        '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('access_title') + '</button>' +
       '</div>' +
       '<div id="ms-pane" class="ms-pane"><div class="loading"><span class="spinner-inline"></span>Loading\u2026</div></div>' +
     '</div>' +
@@ -12837,12 +12847,41 @@ var _usersData = null;  // { users:[...], zims:[names] } from /manage/users
 function _renderMsUsers() {
   var pane = document.getElementById('ms-pane');
   if (!pane) return;
-  pane.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
+  // Accounts matter only behind a password: on the network alone there are
+  // none, and while anyone can manage Zimi none can be made or changed.
+  var accounts = _manageAccess === 'password';
+  pane.innerHTML = '<div id="ms-who" class="ms-access-who"></div>' +
+    '<div id="ms-users-body">' + (accounts ? '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>' : '') + '</div>' +
+    '<div id="ms-security" class="ms-access-token"></div>';
+  _renderAccessCards();
+  if (!accounts) return;
   manageFetch('/manage/users').then(function(res) { return res.json(); }).then(function(data) {
     _usersData = data;
-    if (_msSection === 'users') pane.innerHTML = _msUsersHtml();
+    _refreshUsersPane();
   }).catch(function() {
-    pane.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
+    var b = document.getElementById('ms-users-body');
+    if (b) b.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
+  });
+}
+// Who can manage Zimi (the setup page's rows, in place) and the API token.
+function _renderAccessCards() {
+  Promise.all([
+    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
+  ]).then(function(results) {
+    var who = document.getElementById('ms-who'), tok = document.getElementById('ms-security');
+    if (!who || !tok) return;
+    _setupState = results[0];
+    // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
+    who.innerHTML = results[0].open_env && _manageAccess === 'open' ? '' :
+      '<div class="ms-section-label">' + tH('access_manage') + '</div>' + _setupFormHtml(results[0], 'settings');
+    who.hidden = !who.innerHTML;
+    tok.innerHTML = '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">' +
+      (results[1].has_token
+        ? '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
+          '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>'
+        : '<button class="pill" onclick="_generateToken()">' + tH('generate') + '</button>') +
+      '</span></div>';
   });
 }
 
@@ -12872,13 +12911,13 @@ function _msUsersHtml() {
   var isPrimary = d.self_kind === 'primary';
   var selfName = _manageAccountName();
 
-  // (a) Your Account FIRST — the signed-in admin, with Change password and Log
-  // out as visible buttons (no ⋯ for your own row). This is where password/logout
-  // live, moved out of Preferences → Security.
-  var h = '<div class="ms-user-account ms-user-account-self">' +
+  // Your account, under Public access: the primary admin's name is edited
+  // here (it saves itself), with Change password and Log out beside it.
+  var self = '<div class="ms-user-account ms-user-account-self">' +
     '<div class="ms-section-label">' + tH('users_your_account') + '</div>' +
+    (isPrimary ? _setupUserFieldHtml(selfName, true) : '') +
     '<div class="ms-user-row">' +
-      '<span class="ms-user-main"><strong>' + esc(selfName) + '</strong> ' + _roleBadge('admin') + '</span>' +
+      (isPrimary ? '' : '<span class="ms-user-main"><strong>' + esc(selfName) + '</strong> ' + _roleBadge('admin') + '</span>') +
       '<span class="ms-user-self-actions">' +
         '<button class="ms-btn" onclick="managePassword()">' + tH('change_password') + '</button>' +
         (_hasStoredManageToken()
@@ -12900,9 +12939,9 @@ function _msUsersHtml() {
     others.push(u);
   });
 
-  // Public access card — governs what an ANONYMOUS visitor sees. Sits above the
-  // user list because it is the broadest policy on the page.
-  h += _publicAccessCard();
+  // Public access card — governs what an ANONYMOUS visitor sees: the
+  // broadest policy here, so first.
+  var h = _publicAccessCard() + self;
 
   h += '<div class="ms-users-section">';
   // Titled like the two cards above it (Your account / Public access), so the
@@ -13295,8 +13334,8 @@ function _usersPost(payload) {
 // Re-render the Users pane in place after a mutation (shared by every action).
 function _refreshUsersPane() {
   if (_msSection !== 'users') return;
-  var pane = document.getElementById('ms-pane');
-  if (pane) pane.innerHTML = _msUsersHtml();
+  var body = document.getElementById('ms-users-body');
+  if (body) body.innerHTML = _msUsersHtml();
 }
 
 function _createUser() {
@@ -14816,8 +14855,6 @@ function _msServerHtml() {
   // The server's backup; My data, this browser's, is under Preferences.
   var backupSec = '<div id="ms-backup" class="ms-backup">' + _serverBackupCardHtml() + '</div>';
 
-  var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
-
   var hotSec = '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
     '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
     '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
@@ -14838,35 +14875,12 @@ function _msServerHtml() {
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
 
-  // Sharing, Downloads, Storage, My Data / Server Backups, App Updates, then
-  // Access (who can manage Zimi, the API token), Hot ZIMs + cache, the
-  // environment, and Internet use last.
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
+  // Sharing, Downloads, Storage, My Data / Server Backups, App Updates, Hot
+  // ZIMs + cache, the environment, and Internet use last. Who can manage
+  // Zimi and the API token are under Access.
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
   _renderNetSection();
-  // Async fill security
-  Promise.all([
-    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
-  ]).then(function(results) {
-    var hasPw = results[0].has_password;
-    var hasToken = results[1].has_token;
-    var el = document.getElementById('ms-security');
-    if (!el) return;
-    // Who can change settings: the setup page's rows, in place.
-    _setupState = results[0];
-    // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
-    var sh = results[0].open_env && _manageAccess === 'open' ? '' : '<div class="ms-section-label">' + tH('access_title') + '</div>' + _setupFormHtml(results[0], 'settings');
-    sh += '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">';
-    if (hasToken) {
-      sh += '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
-        '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>';
-    } else {
-      sh += '<button class="pill" onclick="_generateToken()">' + tH('generate') + '</button>';
-    }
-    sh += '</span></div>';
-    el.innerHTML = sh;
-  });
   // These populate elements by id, so they must run AFTER this HTML is in
   // the DOM — not mid-string. Deferring one tick also lets the cached
   // sharing rows paint first, so the section never flashes empty.
@@ -16789,7 +16803,7 @@ async function _generateToken() {
       '<span>' + esc(data.token) + '</span>' +
       '<button class="pill" data-token="' + escAttr(data.token) + '" onclick="_copyText(this.dataset.token)">' + tH('copy') + '</button>' +
       '</div></div>' +
-      '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">' + tH('done') + '</button>';
+      '<button class="pill" style="margin-top:8px" onclick="_renderAccessCards()">' + tH('done') + '</button>';
   }
 }
 
@@ -16802,7 +16816,7 @@ async function _regenerateToken() {
 async function _revokeToken() {
   if (!(await _appConfirm(t('confirm_revoke_token')))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
-  switchMs('server');
+  _renderAccessCards();
 }
 
 function getFlavorVariants(installedZim) {

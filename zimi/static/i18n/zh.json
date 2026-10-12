@@ -3036,6 +3036,7 @@
   "setup_failed": "没有成功，请重试。",
   "setup_waiting_title": "Zimi 正在设置中",
   "setup_waiting_body": "所有者完成设置后即可使用。",
+  "access_manage": "管理 Zimi",
   "access_title": "访问",
   "setup_settings_title": "谁可以管理 Zimi？",
   "outside_locked_title": "管理仅限此网络",

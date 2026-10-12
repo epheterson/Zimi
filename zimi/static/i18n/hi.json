@@ -3036,6 +3036,7 @@
   "setup_failed": "यह काम नहीं किया। फिर से कोशिश करें।",
   "setup_waiting_title": "Zimi सेट किया जा रहा है",
   "setup_waiting_body": "मालिक के सेटअप पूरा करने पर यह खुल जाएगा।",
+  "access_manage": "Zimi का प्रबंधन",
   "access_title": "एक्सेस",
   "setup_settings_title": "Zimi कौन मैनेज कर सकता है?",
   "outside_locked_title": "मैनेज करना इसी नेटवर्क में रहता है",

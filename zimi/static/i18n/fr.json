@@ -3036,6 +3036,7 @@
   "setup_failed": "Cela n'a pas fonctionné. Réessayez.",
   "setup_waiting_title": "Zimi est en cours de configuration",
   "setup_waiting_body": "Il s'ouvrira quand son propriétaire aura terminé la configuration.",
+  "access_manage": "Gérer Zimi",
   "access_title": "Accès",
   "setup_settings_title": "Qui peut gérer Zimi ?",
   "outside_locked_title": "La gestion reste dans ce réseau",

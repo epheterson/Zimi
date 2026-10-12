@@ -6354,7 +6354,9 @@ def _handle_access(handler, data):
         if env_open is False:  # ZIMI_MANAGE_OPEN=0 forbids only this answer
             return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
         return _open_to_anyone(handler, data)
-    username = str(data.get("username") or "").strip()[:64]
+    # No username sent leaves the stored one alone (only a form showing the
+    # field can rename the account).
+    username = str(data.get("username") or "").strip()[:64] if "username" in data else None
     password = str(data.get("password") or "").strip()
     env_pw = bool(os.environ.get("ZIMI_MANAGE_PASSWORD", ""))
     env_ext = _env_flag("ZIMI_MANAGE_EXTERNAL")

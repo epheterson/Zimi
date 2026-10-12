@@ -3036,6 +3036,7 @@
   "setup_failed": "لم ينجح ذلك. حاول مرة أخرى.",
   "setup_waiting_title": "يجري إعداد Zimi",
   "setup_waiting_body": "سيفتح بعد أن ينتهي مالكه من إعداده.",
+  "access_manage": "إدارة Zimi",
   "access_title": "الوصول",
   "setup_settings_title": "من يمكنه إدارة Zimi؟",
   "outside_locked_title": "تبقى الإدارة داخل هذه الشبكة",

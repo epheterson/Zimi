@@ -178,6 +178,16 @@ class FirstRunAccessTests(_Harness):
             manage._get_manage_user(), "eric", "the username is edited in place"
         )
 
+    def test_a_save_without_a_username_keeps_the_name(self):
+        # The switches save without the username when the field is in Your
+        # account and not on screen; that must not rename the account.
+        token = self._post("/manage/access", ANYWHERE_PW)[1]["token"]
+        status, body = self._post(
+            "/manage/access", {"external": False, "require_password": True}, self._bearer(token)
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(manage._get_manage_user(), "eric")
+
     def test_only_the_admin_sees_the_username(self):
         token = self._post("/manage/access", ANYWHERE_PW)[1]["token"]
         self.assertEqual(self._state()["username"], "")

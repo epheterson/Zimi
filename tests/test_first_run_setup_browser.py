@@ -144,9 +144,11 @@ def test_turning_off_the_password_is_one_named_press(served, browser):
            .then(r => r.json()).then(j => j.token)"""
     )
     page.evaluate("t => localStorage.setItem('zimi_manage_token', t)", tok)
-    page.goto(base + "/?manage=server")
+    page.goto(base + "/?manage=users")
     page.wait_for_selector("#setup-req", state="attached", timeout=15000)
     assert page.is_hidden("#setup-open")
+    page.wait_for_selector(".ms-user-account-self #setup-user", timeout=15000)
+    assert page.locator("#setup-form #setup-user").count() == 0, "the name is Your account's"
     page.locator("#setup-req").evaluate("e => e.click()")
     assert page.is_visible("#setup-open")
     assert page.locator("#setup-open input").count() == 0, "no switch to tick"
@@ -160,3 +162,5 @@ def test_turning_off_the_password_is_one_named_press(served, browser):
     assert page.is_hidden("#setup-save")
     desc = page.locator("#setup-req").locator("xpath=ancestor::*[contains(@class,'share-row')][1]")
     assert "can manage Zimi" in desc.inner_text()
+    assert page.locator("#ms-users-body").inner_text().strip() == "", "no accounts to edit while open"
+    assert page.is_visible("#ms-security")
