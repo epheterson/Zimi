@@ -73,14 +73,6 @@ else
 fi
 
 echo ""
-echo "=== Syncing vault ==="
-mkdir -p ~/vault/infra/zim-reader/zimi/templates
-# Mirror the package with the same exclusions used for NAS deploy.
-rsync -a --delete --exclude='__pycache__' --exclude='*.pyc' \
-  zimi/ ~/vault/infra/zim-reader/zimi/
-echo "  Vault synced"
-
-echo ""
 echo "=== Building desktop app ==="
 pkill -9 -f "dist/Zimi" 2>/dev/null || true
 sleep 1
