@@ -2756,6 +2756,9 @@ def note_exiting():
 # How many engines one download will try before HTTP: the first, and the
 # next two a person switches to while it runs.
 ENGINE_RESTARTS = 3
+# A client the operator runs (in its own container, behind a VPN) restarts now
+# and then: this many failed status polls in a row before HTTP takes over.
+STATUS_FAIL_LIMIT = 5
 
 
 def _try_bt_download(
@@ -2810,6 +2813,7 @@ def _try_bt_download(
     was_paused = False
     last_bytes = 0
     last_progress_t = started
+    poll_fails = 0
     while True:
         if dl.get("cancelled"):
             try:
@@ -2874,6 +2878,11 @@ def _try_bt_download(
         except Exception as e:
             if backend.retired:
                 return "restart"  # taken apart between the check and the poll
+            poll_fails += 1
+            if getattr(backend, "external", False) and poll_fails < STATUS_FAIL_LIMIT:
+                log.info("BT status poll failed for %s (%d): %s", dl["filename"], poll_fails, e)
+                time.sleep(poll_interval)
+                continue
             log.warning(
                 "BT status poll failed for %s: %s — falling back", dl["filename"], e
             )
@@ -2883,6 +2892,7 @@ def _try_bt_download(
                 pass
             return "fallback"
 
+        poll_fails = 0
         if backend.retired:
             return "restart"
         # Surface progress to the existing UI.
@@ -2955,7 +2965,15 @@ def _try_bt_download(
                 os.makedirs(os.path.dirname(dl["dest"]), exist_ok=True)
                 tid = backend.install(tid, staged, dl["dest"]) or tid
             except Exception as e:
+                if backend.retired:
+                    return "restart"  # the next engine picks it up
                 log.warning("BT staging→dest failed for %s: %s", dl["filename"], e)
+                # HTTP brings the file now; the engine's copy must not land on
+                # top of it later (remove never touches the library).
+                try:
+                    backend.remove(tid, delete_files=True)
+                except Exception:
+                    pass
                 return "fallback"
             # Post-world resilience: remember how to seed this file with
             # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR

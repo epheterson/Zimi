@@ -45,9 +45,11 @@ REQUEST_TIMEOUT_S = 20
 # volumes takes minutes. Polled at this interval, given up after the limit.
 MOVE_POLL_S = 2.0
 MOVE_LIMIT_S = 6 * 3600
-# A move the client is not doing (it refused, or lost the torrent's name)
-# gives up after this many polls with nothing moving and nothing arrived.
-MOVE_STALL_POLLS = 30
+# A move nothing comes of (the client refused it, or reports "moving" for a
+# path it wrote differently) gives up once the file at the destination has
+# not changed for this long. A real move, even of a huge ZIM across disks,
+# changes it as it writes.
+MOVE_STALL_S = 600
 
 # kind: (the name people know it by, module, class)
 KINDS = {
@@ -241,6 +243,7 @@ def probe(cfg, library_dir=None):
     b = make_backend(cfg, library_dir=library_dir, staging_dir=None)
     try:
         version = b.version()
+        b._prepare()  # what Save needs: new enough, the category made
         save = b.default_save_path()
     except Exception as e:  # anything a client can answer: a sentence, not a 500
         return {"ok": False, **_reason(cfg, e)}
@@ -267,7 +270,8 @@ class ExternalBackend(BTBackend):
     A client adapter supplies ``version``, ``default_save_path``, ``_prepare``
     (check it is new enough, make the category), ``_row``/``_rows`` (one
     torrent, or all of Zimi's, as the normalized row below), ``_add``,
-    ``_start``, ``_stop``, ``_delete`` and ``_move``.
+    ``_start``, ``_stop``, ``_delete``, ``_move``, ``_unlimit`` (no seeding
+    limits of the client's own) and ``_relabel`` (another category).
 
     The normalized row: hash, owned (in Zimi's category), state
     (downloading | paused | complete | error), stopped, checking, moving,
@@ -397,7 +401,7 @@ class ExternalBackend(BTBackend):
         if remote_dir is not None:
             self._move(tid, remote_dir)
             deadline = time.monotonic() + MOVE_LIMIT_S
-            stalled = 0
+            seen, changed_at = None, time.monotonic()
             while time.monotonic() < deadline:
                 row = self._row(tid)
                 if row is None:
@@ -413,8 +417,14 @@ class ExternalBackend(BTBackend):
                     return tid
                 if self.retired:
                     raise ClientError(f"{self.name} is no longer the engine")
-                stalled = 0 if row["moving"] or os.path.exists(dest) else stalled + 1
-                if stalled >= MOVE_STALL_POLLS:
+                try:
+                    st = os.stat(dest)
+                    now = (st.st_size, st.st_mtime_ns, getattr(st, "st_blocks", 0))
+                except OSError:
+                    now = None
+                if now != seen:
+                    seen, changed_at = now, time.monotonic()
+                elif time.monotonic() - changed_at > MOVE_STALL_S:
                     raise ClientError(f"{self.name} is not moving the file")
                 time.sleep(MOVE_POLL_S)
             raise ClientError(
@@ -467,7 +477,12 @@ class ExternalBackend(BTBackend):
                 raise ClientError(
                     f"{self.name} already has this torrent outside the {self.category} category"
                 )
-            return tid  # already there: a restart picking up its download
+            # Already there: a restart picking up its download, running again
+            # if Zimi had paused it, and kept clear of the client's limits.
+            self._keep_unlimited(tid)
+            if row["stopped"] and row["state"] != "complete":
+                self._start(tid)
+            return tid
         self._add(
             tid,
             data=data,
@@ -478,6 +493,7 @@ class ExternalBackend(BTBackend):
         # The add can be asynchronous; wait for it to show so status() is honest.
         for _ in range(50):
             if self._row(tid):
+                self._keep_unlimited(tid)
                 return tid
             time.sleep(0.1)
         raise ClientError(f"{self.name} accepted the torrent but never listed it")
@@ -487,6 +503,21 @@ class ExternalBackend(BTBackend):
         if row is not None and not row["owned"]:
             raise ClientError(f"not in the {self.category} category")
         return row
+
+    def _keep_unlimited(self, tid):
+        try:
+            self._unlimit(tid)
+        except Exception as e:
+            log.warning("%s: could not lift its seeding limits on %s: %s", self.name, tid, e)
+
+    def recategorize(self, new):
+        """Only the category changed: relabel Zimi's torrents in place. Nothing
+        is handed over, re-added or re-checked."""
+        hashes = [r["hash"] for r in self._rows()]
+        if hashes:
+            self._relabel(hashes, new)
+        log.info("%s: %d torrent(s) moved from category %s to %s", self.name, len(hashes), self.category, new)
+        self.category = self.cfg["category"] = new
 
     def _owned(self, tid):
         row = self._row(tid)

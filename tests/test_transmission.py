@@ -130,7 +130,9 @@ class FakeTransmission:
             ok["arguments"] = {"torrent-added": {"hashString": tid}}
         elif method == "torrent-set":
             for t in self._pick(args):
-                t["labels"] = args["labels"]
+                for k in ("labels", "seedRatioMode", "seedIdleMode"):
+                    if k in args:
+                        t[k] = args[k]
         elif method in ("torrent-stop", "torrent-start"):
             for t in self._pick(args):
                 t["status"] = (

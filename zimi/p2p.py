@@ -1497,11 +1497,21 @@ def switch_engine(*, data_dir: str) -> BTBackend | None:
         try:
             if old is not None:
                 old.retired = True
-                if old.identity() != _next_identity():
-                    try:
-                        old.release()
-                    except Exception as e:
-                        log.warning("BT: the old engine did not hand over cleanly: %s", e)
+                cur, nxt = old.identity(), _next_identity()
+                if cur != nxt:
+                    relabeled = False
+                    if cur[:-1] == nxt[:-1] and hasattr(old, "recategorize"):
+                        # The same client, only another category: relabel.
+                        try:
+                            old.recategorize(nxt[-1])
+                            relabeled = True
+                        except Exception as e:
+                            log.warning("BT: could not relabel, handing over instead: %s", e)
+                    if not relabeled:
+                        try:
+                            old.release()
+                        except Exception as e:
+                            log.warning("BT: the old engine did not hand over cleanly: %s", e)
                 try:
                     old.stop()
                 except Exception:

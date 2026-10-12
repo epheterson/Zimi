@@ -207,6 +207,17 @@ class TransmissionBackend(ExternalBackend):
         # Labels on torrent-add arrived with RPC 17; torrent-set has them from 16.
         self.client.call("torrent-set", ids=[tid], labels=[self.category])
 
+    def _unlimit(self, tid):
+        # 2: unlimited. Zimi keeps its own ratio cap; the session's ratio or
+        # idle limit would stop or remove a seed Zimi still wants.
+        self.client.call("torrent-set", ids=[tid], seedRatioMode=2, seedIdleMode=2)
+
+    def _relabel(self, hashes, new):
+        got = self.client.call("torrent-get", ids=list(hashes), fields=["hashString", "labels"])
+        for t in got.get("torrents") or []:
+            labels = [x for x in (t.get("labels") or []) if x != self.category] + [new]
+            self.client.call("torrent-set", ids=[t["hashString"]], labels=labels)
+
     def _start(self, tid):
         self.client.call("torrent-start", ids=[tid])
 

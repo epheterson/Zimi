@@ -85,14 +85,14 @@ def test_a_move_nobody_is_doing_gives_up(world, tmp_path, monkeypatch):
     tid = _add(fake, b, tmp_path, "stuck.zim", staging)
     fake.finish(tid)
     monkeypatch.setattr(btclient, "MOVE_POLL_S", 0)
-    monkeypatch.setattr(btclient, "MOVE_STALL_POLLS", 3)
+    monkeypatch.setattr(btclient, "MOVE_STALL_S", 0.05)
     monkeypatch.setattr(
         b, "_move", lambda tid, remote_dir: None
     )  # the client refuses quietly
     with pytest.raises(btclient.ClientError):
         b.install(tid, "", str(lib_local / "stuck.zim"))
     b.retired = True
-    monkeypatch.setattr(btclient, "MOVE_STALL_POLLS", 10**6)
+    monkeypatch.setattr(btclient, "MOVE_STALL_S", 10**6)
     with pytest.raises(btclient.ClientError):
         b.install(tid, "", str(lib_local / "stuck.zim"))
 
@@ -194,3 +194,63 @@ def test_a_dead_client_is_not_asked_again_on_every_poll(tmp_path, monkeypatch):
     for _ in range(3):
         assert p2p.get_backend(data_dir=str(tmp_path)) is None
     assert len(asked) == 1
+
+
+# ── from the second review ─────────────────────────────────────────────
+
+
+def test_zimis_torrents_are_clear_of_the_clients_own_seeding_limits(world, tmp_path):
+    """A client rule like "at ratio 2, remove torrent and files" would delete a
+    library ZIM: Zimi's torrents opt out, and Zimi's own cap applies."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    tid = _add(fake, b, tmp_path, "limits.zim", staging)
+    assert fake.torrents[tid]["limits"] == ("-1", "-1")
+
+
+def test_a_sub_category_is_not_zimis(world, tmp_path):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
+    _, tid = _torrent("other.zim")
+    fake.torrents[tid] = {
+        "hash": tid, "name": "other.zim", "category": "zimi/old", "save_path": f"{REMOTE_DL}/x",
+        "content_path": f"{REMOTE_DL}/x/other.zim", "state": "downloading", "progress": 0.1,
+        "size": 11, "completed": 1, "uploaded": 0, "num_seeds": 0, "num_leechs": 0,
+    }
+    real = fake.handle
+
+    def by_prefix(h, path, q, form):  # qBittorrent lists sub-categories too
+        if path == "torrents/info" and "category" in q:
+            rows = [t for t in fake.torrents.values() if t["category"].split("/")[0] == q["category"]]
+            return h._send(200, rows)
+        return real(h, path, q, form)
+
+    fake.handle = by_prefix
+    assert b.release() == 0 and tid in fake.torrents
+
+
+def test_a_download_zimi_paused_runs_again_after_a_restart(world, tmp_path):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
+    tid = _add(fake, b, tmp_path, "paused.zim", staging)
+    b.pause(tid)
+    assert fake.torrents[tid]["state"] != "downloading"
+    _add(fake, b, tmp_path, "paused.zim", staging)  # Zimi restarted, asks again
+    assert fake.torrents[tid]["state"] == "downloading"
+
+
+def test_a_new_category_relabels_instead_of_handing_over(world, tmp_path, monkeypatch):
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    tid = _add(fake, b, tmp_path, "keep.zim", staging)
+    monkeypatch.setattr(p2p, "_prefs_path", str(tmp_path / "prefs.json"))
+    for k in btclient.ENV.values():
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: False)  # no new engine needed here
+    p2p.set_prefs({btclient.PREF["kind"]: "qbittorrent", btclient.PREF["url"]: fake.url,
+                   btclient.PREF["category"]: "library"})
+    monkeypatch.setattr(p2p, "_backend_singleton", b)
+    released = []
+    monkeypatch.setattr(b, "release", lambda: released.append(1))
+    p2p.switch_engine(data_dir=str(tmp_path))
+    assert not released and fake.torrents[tid]["category"] == "library"

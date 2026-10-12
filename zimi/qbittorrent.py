@@ -189,10 +189,28 @@ class QBittorrentBackend(ExternalBackend):
         return self._normalize(rows[0]) if rows else None
 
     def _rows(self):
-        return [
-            self._normalize(r)
-            for r in self.client.json("torrents/info", category=self.category)
-        ]
+        # category=zimi also lists zimi/sub; only the exact category is Zimi's.
+        rows = map(self._normalize, self.client.json("torrents/info", category=self.category))
+        return [r for r in rows if r["owned"]]
+
+    def _unlimit(self, tid):
+        # -1: no limit. Zimi keeps its own ratio cap; a client rule such as
+        # "at ratio 2, remove torrent and files" would delete a library ZIM.
+        self.client.call(
+            "torrents/setShareLimits",
+            {"hashes": tid, "ratioLimit": "-1", "seedingTimeLimit": "-1", "inactiveSeedingTimeLimit": "-1"},
+        )
+
+    def _relabel(self, hashes, new):
+        try:
+            self.client.call("torrents/createCategory", {"category": new})
+        except urllib.error.HTTPError as e:
+            if e.code != 409:
+                raise
+        joined = "|".join(hashes)
+        # Off automatic management first, so a new category cannot move files.
+        self.client.call("torrents/setAutoManagement", {"hashes": joined, "enable": "false"})
+        self.client.call("torrents/setCategory", {"hashes": joined, "category": new})
 
     def _add(self, tid, *, data, magnet, save_dir, skip_check):
         if magnet:

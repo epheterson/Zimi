@@ -171,6 +171,18 @@ class FakeQbt:
             t["content_path"] = f"{form['location']}/{t['name']}"
             os.replace(src, self.local(t["content_path"]))
             return h._send(200)
+        if path == "torrents/setShareLimits":
+            for h in form["hashes"].split("|"):
+                self.torrents[h]["limits"] = (form["ratioLimit"], form["seedingTimeLimit"])
+            return h._send(200)
+        if path == "torrents/setAutoManagement":
+            return h._send(200)
+        if path == "torrents/setCategory":
+            if form["category"] not in self.categories:
+                return h._send(409, "no such category")
+            for x in form["hashes"].split("|"):
+                self.torrents[x]["category"] = form["category"]
+            return h._send(200)
         if path in ("torrents/stop", "torrents/start") and not self.v5:
             return h._send(404)
         if path in ("torrents/stop", "torrents/pause"):
