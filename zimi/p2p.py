@@ -712,10 +712,25 @@ class BTBackend(ABC):
         existence is liveness."""
         return True
 
-    # An engine Zimi does not run (qbittorrent.QBittorrentBackend): it keeps
+    # An engine Zimi does not run (btclient.ExternalBackend): it keeps
     # seeding what it downloaded, owns its own limits and port, and its files
     # cross into the library through path mappings.
     external = False
+    # Set when another engine is taking over (switch_engine): a download
+    # running on this one stops polling it and asks for the new engine.
+    retired = False
+
+    def identity(self) -> tuple:
+        """What makes two engines the same one: a switch between equals
+        (mappings edited, a port changed) hands nothing over."""
+        return (type(self).__name__,)
+
+    def release(self) -> int:
+        """Another engine takes over: take Zimi's torrents out of this one,
+        so nothing is left running or comes back on its next start. The
+        library's seed intents stay; the next engine seeds them. Returns how
+        many torrents it took out."""
+        return 0
 
     def payload_path(self, tid: str, filename: str, staging_dir: str) -> str:
         """Where a finished download is, as Zimi sees it."""
@@ -1302,6 +1317,19 @@ class LibtorrentBackend(BTBackend):
         self._ensure_session()
         self._ses.apply_settings({"connections_limit": max(10, int(n))})
 
+    def release(self) -> int:
+        """Every torrent out, with its resume file: staging partials with
+        their data (remove() never deletes outside staging), library seeds
+        without. Nothing comes back the next time this engine starts."""
+        n = 0
+        for tid in list(self._handles):
+            self.remove(tid, delete_files=True)
+            n += 1
+        purge_builtin_leftovers(self.data_dir)
+        if n:
+            log.info("libtorrent: handed over %d torrent(s)", n)
+        return n
+
     def purge_stopped(self, keep_errors: bool = True) -> None:
         """No-op: libtorrent has no stopped-results ledger to groom.
         Finished downloads keep seeding on their live handle; policy
@@ -1324,41 +1352,73 @@ def resume_dir(data_dir: str) -> str:
 
 
 def engine_name() -> str:
-    """"qbittorrent" when an external qBittorrent is configured, else the
-    built-in "libtorrent"."""
-    from zimi import qbittorrent as _qbt
+    """The engine Settings has chosen: "libtorrent" (built in), or the kind
+    of client the operator runs ("qbittorrent", "transmission")."""
+    from zimi import btclient
 
-    return "qbittorrent" if _qbt.config() else "libtorrent"
+    cfg = btclient.config()
+    return cfg["kind"] if cfg else "libtorrent"
+
+
+# A switch in progress: get_backend waits for it, so a download asking for
+# the engine gets the new one, never the one being taken apart.
+_switch_done = threading.Event()
+_switch_done.set()
+_switch_lock = threading.Lock()
+SWITCH_WAIT_S = 120.0
+
+
+def purge_builtin_leftovers(data_dir: str) -> None:
+    """What the built-in engine leaves when it is not the engine: resume
+    files (they would bring its torrents back on its next start) and the
+    partial downloads in the default staging folder. A staging folder the
+    operator named is theirs and left alone."""
+    for d in (resume_dir(data_dir), os.path.join(data_dir, "staging")):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            path = os.path.join(d, n)
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+            except OSError as e:
+                log.debug("could not purge %s: %s", path, e)
 
 
 def get_backend(*, data_dir: str) -> BTBackend | None:
-    """Return the engine: the operator's qBittorrent when one is configured,
+    """Return the engine: the operator's own client when one is configured,
     else libtorrent; or None (→ HTTP floor).
 
     None when: BT disabled, the engine unusable here (libtorrent not
-    importable, qBittorrent unreachable), or its session fails to start.
+    importable, the client unreachable), or its session fails to start.
     Never crashes Zimi for a BT problem — HTTP is the universal transport
     underneath.
     """
     global _backend_singleton
+    _switch_done.wait(SWITCH_WAIT_S)
     with _backend_lock:
         if not is_torrent_enabled():
             return None
         if _backend_singleton is not None:
             return _backend_singleton
-        from zimi import qbittorrent as _qbt
+        from zimi import btclient
 
-        cfg = _qbt.config()
+        cfg = btclient.config()
         if cfg:
             from zimi import server as _srv
 
-            qb = _qbt.QBittorrentBackend(
+            ext = btclient.make_backend(
                 cfg, library_dir=_srv.ZIM_DIR, staging_dir=get_staging_dir(data_dir)
             )
-            if not qb.available():
+            if not ext.available():
                 return None
-            _backend_singleton = qb
-            return qb
+            purge_builtin_leftovers(data_dir)
+            _backend_singleton = ext
+            return ext
         backend = LibtorrentBackend(
             bt_port=get_bt_port(),
             data_dir=data_dir,
@@ -1374,6 +1434,46 @@ def get_backend(*, data_dir: str) -> BTBackend | None:
         )
         _backend_singleton = backend
         return backend
+
+
+def _next_identity() -> tuple:
+    from zimi import btclient
+
+    cfg = btclient.config()
+    if not cfg:
+        return (LibtorrentBackend.__name__,)
+    return (cfg["kind"], cfg["url"], cfg["category"])
+
+
+def switch_engine(*, data_dir: str) -> BTBackend | None:
+    """The engine setting changed: move to the engine it names now.
+
+    The old engine is retired first, so a download running on it stops
+    polling it and asks get_backend for the new one (which waits for this
+    to finish) instead of falling back to HTTP. A different engine takes
+    Zimi's torrents out of the old one (release); the same one restarted
+    hands nothing over, and its downloads carry on where they were. Seeds
+    follow the ledger: the caller re-seeds on the new engine."""
+    global _backend_singleton
+    with _switch_lock:
+        with _backend_lock:
+            old, _backend_singleton = _backend_singleton, None
+            _switch_done.clear()
+        try:
+            if old is not None:
+                old.retired = True
+                if old.identity() != _next_identity():
+                    try:
+                        old.release()
+                    except Exception as e:
+                        log.warning("BT: the old engine did not hand over cleanly: %s", e)
+                try:
+                    old.stop()
+                except Exception:
+                    pass
+        finally:
+            _switch_done.set()
+    return get_backend(data_dir=data_dir) if is_torrent_enabled() else None
 
 
 def peek_backend() -> "BTBackend | None":

@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from zimi import library, p2p  # noqa: E402
+from zimi import btclient  # noqa: E402
 from zimi import qbittorrent as qbt  # noqa: E402
 from zimi.metalink import bencode  # noqa: E402
 
@@ -160,7 +161,7 @@ class FakeQbt:
             return h._send(200, rows)
         if path == "torrents/delete":
             t = self.torrents.pop(form["hashes"])
-            if form["deleteFiles"] == "true":
+            if form["deleteFiles"] == "true" and os.path.exists(self.local(t["content_path"])):
                 os.remove(self.local(t["content_path"]))
             return h._send(200)
         if path == "torrents/setLocation":
@@ -208,11 +209,12 @@ def world(tmp_path):
 
 def _backend(fake, lib_local, staging, paths):
     cfg = {
+        "kind": "qbittorrent",
         "url": fake.url,
         "user": "",
         "password": "",
         "category": "zimi",
-        "paths": qbt.parse_paths(paths),
+        "paths": btclient.parse_paths(paths),
     }
     b = qbt.QBittorrentBackend(
         cfg, library_dir=str(lib_local), staging_dir=str(staging)
@@ -232,24 +234,24 @@ def _write_torrent(tmp_path, name):
 
 
 def test_path_mappings_go_both_ways_and_prefer_the_longest(tmp_path):
-    pairs = qbt.parse_paths(
+    pairs = btclient.parse_paths(
         f"/downloads={tmp_path}/dl; /downloads/zimi={tmp_path}/z\n junk \n"
     )
     assert len(pairs) == 2
-    assert qbt.to_local("/downloads/zimi/a.zim", pairs) == f"{tmp_path}/z/a.zim"
-    assert qbt.to_local("/downloads/other/a.zim", pairs) == f"{tmp_path}/dl/other/a.zim"
-    assert qbt.to_remote(f"{tmp_path}/z/a.zim", pairs) == "/downloads/zimi/a.zim"
+    assert btclient.to_local("/downloads/zimi/a.zim", pairs) == f"{tmp_path}/z/a.zim"
+    assert btclient.to_local("/downloads/other/a.zim", pairs) == f"{tmp_path}/dl/other/a.zim"
+    assert btclient.to_remote(f"{tmp_path}/z/a.zim", pairs) == "/downloads/zimi/a.zim"
     # Unmapped: the same path locally (the *arr default), unknown remotely.
-    assert qbt.to_local("/elsewhere/a.zim", pairs) == "/elsewhere/a.zim"
-    assert qbt.to_remote("/elsewhere/a.zim", pairs) is None
+    assert btclient.to_local("/elsewhere/a.zim", pairs) == "/elsewhere/a.zim"
+    assert btclient.to_remote("/elsewhere/a.zim", pairs) is None
 
 
 def test_a_windows_qbittorrent_maps_to_posix_paths(tmp_path):
-    pairs = qbt.parse_paths(f"D:\\Torrents={tmp_path}/t")
-    assert qbt.to_local("D:\\Torrents\\zimi\\a.zim", pairs) == os.path.join(
+    pairs = btclient.parse_paths(f"D:\\Torrents={tmp_path}/t")
+    assert btclient.to_local("D:\\Torrents\\zimi\\a.zim", pairs) == os.path.join(
         str(tmp_path), "t", "zimi", "a.zim"
     )
-    assert qbt.to_remote(f"{tmp_path}/t/zimi", pairs) == "D:\\Torrents\\zimi"
+    assert btclient.to_remote(f"{tmp_path}/t/zimi", pairs) == "D:\\Torrents\\zimi"
 
 
 # ── the client ──────────────────────────────────────────────────────────
@@ -260,7 +262,7 @@ def test_logs_in_when_asked_and_says_so_when_the_password_is_wrong(tmp_path):
     try:
         assert qbt.Client(fake.url, "admin", "s3cret").text("app/version") == "v5.2.3"
         assert fake.logins == 1
-        with pytest.raises(qbt.QbtError, match="refused the username or password"):
+        with pytest.raises(btclient.ClientError, match="refused the username or password"):
             qbt.Client(fake.url, "admin", "wrong").text("app/version")
     finally:
         fake.close()
@@ -268,14 +270,14 @@ def test_logs_in_when_asked_and_says_so_when_the_password_is_wrong(tmp_path):
 
 def test_probe_reports_what_zimi_can_see(world):
     fake, dl_local, lib_local, _ = world
-    cfg = {"url": fake.url, "user": "", "password": "", "category": "zimi", "paths": []}
-    got = qbt.probe(cfg, library_dir=str(lib_local))
+    cfg = {"kind": "qbittorrent", "url": fake.url, "user": "", "password": "", "category": "zimi", "paths": []}
+    got = btclient.probe(cfg, library_dir=str(lib_local))
     assert got["ok"] and got["version"] == "v5.2.3"
     assert not got["visible"] and not got["library_mapped"]
-    cfg["paths"] = qbt.parse_paths(f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
-    got = qbt.probe(cfg, library_dir=str(lib_local))
+    cfg["paths"] = btclient.parse_paths(f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    got = btclient.probe(cfg, library_dir=str(lib_local))
     assert got["visible"] and got["library_mapped"]
-    bad = qbt.probe(dict(cfg, url="http://127.0.0.1:9"), library_dir=None)
+    bad = btclient.probe(dict(cfg, url="http://127.0.0.1:9"), library_dir=None)
     assert not bad["ok"] and "Could not reach qBittorrent" in bad["error"]
 
 
@@ -361,7 +363,7 @@ def test_seeding_the_library_needs_qbittorrent_to_see_it(world, tmp_path):
     fake, dl_local, lib_local, staging = world
     b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
     src, _ = _write_torrent(tmp_path, "wiki.zim")
-    with pytest.raises(qbt.QbtError, match="cannot see the library"):
+    with pytest.raises(btclient.ClientError, match="cannot see the library"):
         b.add_torrent(src, dest_dir=str(lib_local))
     b = _backend(
         fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}"
@@ -422,42 +424,42 @@ def test_the_download_loop_installs_through_qbittorrent(world, tmp_path, monkeyp
 def test_settings_pick_the_engine_and_never_hand_back_the_password(
     tmp_path, monkeypatch
 ):
-    for k in qbt.ENV.values():
+    for k in btclient.ENV.values():
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(p2p, "_prefs_path", str(tmp_path / "prefs.json"))
-    assert qbt.config() is None and p2p.engine_name() == "libtorrent"
+    assert btclient.config() is None and p2p.engine_name() == "libtorrent"
     for k, v in (
         ("url", "http://qbt:8080/"),
         ("password", "pw"),
         ("paths", "/downloads=/data/dl"),
     ):
-        p2p.set_pref(qbt.PREF[k], v)
-    cfg = qbt.config()
+        p2p.set_pref(btclient.PREF[k], v)
+    cfg = btclient.config()
     assert cfg["url"] == "http://qbt:8080" and cfg["category"] == "zimi"
     assert cfg["paths"] == [("/downloads", "/data/dl")]
     assert p2p.engine_name() == "qbittorrent"
     from zimi import manage
 
-    view = manage._qbt_view()
+    view = manage._btc_view()
     assert view["password_set"] is True and "pw" not in json.dumps(view)
     # The environment owns it when set.
-    monkeypatch.setenv("ZIMI_QBT_URL", "http://other:8080")
+    monkeypatch.setenv("ZIMI_BT_CLIENT_URL", "http://other:8080")
     assert (
-        qbt.config()["url"] == "http://other:8080"
-        and manage._qbt_locked() == "ZIMI_QBT_URL"
+        btclient.config()["url"] == "http://other:8080"
+        and manage._btc_locked() == "ZIMI_BT_CLIENT_URL"
     )
 
 
 def test_while_anyone_can_change_settings_the_connection_comes_only_from_the_environment(monkeypatch):
     from zimi import manage
 
-    for k in qbt.ENV.values():
+    for k in btclient.ENV.values():
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(manage, "manage_open", lambda: True)
     monkeypatch.setattr(manage, "manage_open_env", lambda: None)
-    assert manage._qbt_locked() == "open"
+    assert manage._btc_locked() == "open"
     monkeypatch.setattr(manage, "manage_open_env", lambda: True)
-    assert manage._qbt_locked() is None
+    assert manage._btc_locked() is None
 
 
 def test_reads_both_answers_to_an_add():
