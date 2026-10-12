@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Settings > Users is now Access: who can manage Zimi, public access, your account (with its username), users and the API token.
 - Removing the password asks for it.
+- From outside your network, Allow managing from outside stays on: turning it off there would lock you out.
 - While anyone can manage Zimi, no API token, account or password can be made.
 - `source:` and `lang:` filter the library as they do the catalog; `source:` also reads file names (`source:nopic`).
 
