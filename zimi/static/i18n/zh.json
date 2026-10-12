@@ -3013,8 +3013,6 @@
   "setup_outside_desc": "来自互联网或经由代理。需要密码。",
   "setup_password": "管理需要密码",
   "setup_password_desc": "你网络中的任何人都能管理 Zimi。",
-  "open_banner_change": "更改",
-  "open_banner": "任何能访问此 Zimi 的人都可以管理它。",
   "setup_open_need_ok": "请勾选以确认。",
   "setup_open_cost": "我明白：任何能访问此地址的人都可以更改所有设置并删除 ZIM，账户也不再限制任何内容。密码会保留，以便我关闭此项时使用。",
   "setup_password_desc_anywhere": "任何能访问此地址的人都可以管理 Zimi。",

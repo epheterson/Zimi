@@ -3013,8 +3013,6 @@
   "setup_outside_desc": "From the internet, or through a proxy. Needs a password.",
   "setup_password": "Require a password to manage",
   "setup_password_desc": "Anyone on your network can manage Zimi.",
-  "open_banner_change": "Change",
-  "open_banner": "Anyone who can reach this Zimi can manage it.",
   "setup_open_need_ok": "Tick the box to confirm.",
   "setup_open_cost": "I understand: anyone who can reach this address can change every setting and delete ZIMs, and accounts stop limiting anything. The password is kept for when I turn this off.",
   "setup_password_desc_anywhere": "Anyone who can reach this address can manage Zimi.",

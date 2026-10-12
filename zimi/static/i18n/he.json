@@ -3013,8 +3013,6 @@
   "setup_outside_desc": "מהאינטרנט או דרך שרת proxy. דורש סיסמה.",
   "setup_password": "לדרוש סיסמה לניהול",
   "setup_password_desc": "כל מי שברשת שלכם יכול לנהל את Zimi.",
-  "open_banner_change": "שינוי",
-  "open_banner": "כל מי שמגיע ל-Zimi הזה יכול לנהל אותו.",
   "setup_open_need_ok": "סמנו את התיבה לאישור.",
   "setup_open_cost": "אני מבין: כל מי שמגיע לכתובת הזו יכול לשנות כל הגדרה ולמחוק קובצי ZIM, וחשבונות כבר לא מגבילים דבר. הסיסמה נשמרת למקרה שאכבה את זה.",
   "setup_password_desc_anywhere": "כל מי שמגיע לכתובת הזו יכול לנהל את Zimi.",

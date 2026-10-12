@@ -1116,7 +1116,6 @@
   .setup-open[hidden] { display: none; }
   .setup-open .set-rows { margin: 0; }
   .setup-open .share-row-title { white-space: normal; font-weight: 400; }
-  .manage-open-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; font-size: 13px; color: var(--text); border: 1px solid var(--amber-border); background: var(--amber-glow); border-radius: var(--radius); }
   #onboard-access { margin-top: 12px; }
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }

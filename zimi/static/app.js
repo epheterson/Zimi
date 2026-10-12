@@ -12420,7 +12420,9 @@ function _setupFormHtml(st, mode) {
       : input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm'));
   // The third answer: from outside, with no password. Only in Settings, never
   // on a first run, and it names its cost before it can be chosen.
-  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req ? '' : ' hidden') + '>' +
+  // Shown while choosing it; once chosen, the password switch's own line
+  // says who can manage Zimi, and nothing else repeats it.
+  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (ext && !req && !isOpen ? '' : ' hidden') + '>' +
     _switchRowsHtml([{ id: 'setup-open-ok', title: tH('setup_open_cost'), on: isOpen, onchange: '' }]) +
     (hasPw && !isOpen ? input('setup-open-pw', 'password', 'current-password', 'current_password') : '') +
     '</div>';
@@ -12493,7 +12495,12 @@ function _setupSync(changed) {
   var f = document.getElementById('setup-fields');
   if (f) f.hidden = !req.checked;
   var o = document.getElementById('setup-open');
-  if (o) o.hidden = !(ext.checked && !req.checked);
+  if (o) {
+    var show = ext.checked && !req.checked && st.access !== 'open';
+    // Each time it is chosen again, it is confirmed again.
+    if (show && o.hidden) document.getElementById('setup-open-ok').checked = false;
+    o.hidden = !show;
+  }
   if (changed) _setupAuto();
 }
 var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
@@ -12563,13 +12570,6 @@ function _openSetup(st) {
   if (first && first.id === 'setup-key') first.focus();
 }
 
-// While anyone can change settings, every admin page says so, and how to stop it.
-function _openBannerHtml() {
-  if (_manageAccess !== 'open') return '';
-  return '<div class="manage-open-banner" role="status"><span>' + tH('open_banner') + '</span>' +
-    '<button type="button" class="pill" onclick="switchManageTab(\'settings\');switchMs(\'server\')">' + tH('open_banner_change') + '</button></div>';
-}
-
 var _manageRenderId = 0;
 async function renderManage() {
   if (_managePublicLocked) { _renderManagePublicLocked(); return; }
@@ -12594,7 +12594,6 @@ async function renderManage() {
       '<button class="manage-tab' + (manageTab === 'downloads' ? ' active' : '') + '" data-tab="downloads" onclick="switchManageTab(\'downloads\')">' + tH('downloads') + '<span id="dl-tab-badge" class="dl-tab-badge" style="display:none"></span></button>' +
       '<button class="manage-tab' + (manageTab === 'history' ? ' active' : '') + '" data-tab="history" onclick="switchManageTab(\'history\')">' + tH('activity_tab') + '</button>' +
     '</div>' +
-    _openBannerHtml() +
 '<div id="manage-status" class="manage-settings' + (manageTab === 'settings' ? ' as-tab-active' : '') + '">' +
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
