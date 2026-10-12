@@ -3014,7 +3014,7 @@
   "setup_password": "Exigir senha para gerenciar",
   "setup_password_desc": "Qualquer pessoa na sua rede pode gerenciar o Zimi.",
   "setup_open_need_ok": "Marque a caixa para confirmar.",
-  "setup_open_cost": "Entendo: qualquer pessoa que alcance este endereço pode baixar e apagar ZIMs e alterar qualquer configuração, inclusive esta, chegando a me bloquear. Minha senha fica guardada para quando eu desligar isto.",
+  "setup_open_cost": "Entendo: qualquer pessoa que alcance este endereço pode baixar e apagar ZIMs e alterar qualquer configuração, inclusive esta, chegando a me bloquear. Minha senha fica guardada caso eu desligue isto.",
   "setup_password_desc_anywhere": "Qualquer pessoa que alcance este endereço pode gerenciar o Zimi.",
   "setup_outside_desc_settings": "Da internet ou através de um proxy.",
   "setup_password_needed_outside": "Necessária enquanto o Zimi puder ser gerenciado de fora da sua rede.",
