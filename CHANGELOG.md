@@ -9,15 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- BitTorrent can use a qBittorrent or Transmission you already run, set up the way Sonarr and Radarr do: address, login, category and path mappings ([#53](https://github.com/epheterson/Zimi/issues/53)).
+- BitTorrent can use a qBittorrent or Transmission you already run, set up the way Sonarr and Radarr do: address, login, category and folders ([#53](https://github.com/epheterson/Zimi/issues/53)).
 - Changing the BitTorrent engine takes effect at once: downloads carry on with the new engine and seeds follow it.
 - Who can manage Zimi has a third answer, Anyone, anywhere: no password from outside your network, confirmed with the current password and reversible ([#112](https://github.com/epheterson/Zimi/issues/112)).
+- The BitTorrent card closes to one line, the engine and whether its port is open or its client connected; the settings open beneath it.
 - `zimi doctor` lists the optional features, whether each is ready, and how this kind of install gets the rest.
 
 ### Fixed
 
 - Cancelling a voice download during first-time setup stops the setup at once.
 - An active choice in Settings shows as selected.
+- Library and catalog search match titles and descriptions, not file names: "git" no longer finds zimgit ZIMs, nor "en" every English one ([#108](https://github.com/epheterson/Zimi/issues/108)).
+- The access switches save as you flip them, like every other switch in Manage.
 
 ## [1.13.2] - 2026-10-11
 
