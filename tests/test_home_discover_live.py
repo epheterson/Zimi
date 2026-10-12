@@ -216,3 +216,31 @@ def test_the_quote_card_says_its_quote_and_stays(served, scheme):
             assert box["x"] >= 0 and box["x"] + box["width"] <= 390
         finally:
             br.close()
+
+
+def test_discover_drawn_before_the_library_fills_in_when_it_arrives(served):
+    """A home drawn while the library list is still on its way (a reader just
+    signed in) gets Discover with Today alone. When the list arrives and home
+    draws again, the row is chosen afresh, not kept as it was."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _phone(pw)
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(READY, timeout=30000)
+            pg.evaluate(
+                """() => { window.__asked = 0; const load = _loadDiscover;
+                     window._loadDiscover = function() { window.__asked++; return load.apply(this, arguments); }; }"""
+            )
+            # The list not in yet: home draws Discover from nothing.
+            pg.evaluate("() => { window.__lib = zimsCache; zimsCache = []; _rebuildZimsMap(); renderHome(); }")
+            assert pg.evaluate("() => window.__asked") == 1
+            # It arrives: Discover is chosen again, for this library.
+            pg.evaluate("() => { zimsCache = window.__lib; _rebuildZimsMap(); renderHome(); }")
+            assert pg.evaluate("() => window.__asked") == 2, "kept the row drawn before the library"
+            # A redraw of the same library keeps its row (no flash).
+            pg.evaluate("() => renderHome()")
+            assert pg.evaluate("() => window.__asked") == 2
+        finally:
+            br.close()

@@ -4732,7 +4732,10 @@ function renderHome(filter) {
   var _prevDiscoverScroll = 0;
   if (_showDiscover) {
     var _prevRow = document.getElementById('discover-row');
-    if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang) {
+    // ...and only a row drawn for this library: one drawn while the list was
+    // still loading holds only Today, and reused it would stay that way.
+    if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang
+        && _prevRow.dataset.lib === _discoverLibKey()) {
       _prevDiscoverHtml = _prevRow.innerHTML;
       // scrollLeft is a live DOM property, not serialized by innerHTML — capture
       // it so the strip keeps its place across a home re-render (e.g. Back from
@@ -6956,7 +6959,12 @@ function _loadDiscover() {
     if (el2 && !_getStorageFlag(SK.HIDE_DISCOVER)) _renderDiscover(el2, all);
   });
 }
+// Which library a drawn Discover row was chosen from.
+function _discoverLibKey() {
+  return String((zimsCache || []).length);
+}
 function _renderDiscover(el, items) {
+  el.dataset.lib = _discoverLibKey();
   var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '" aria-label="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
