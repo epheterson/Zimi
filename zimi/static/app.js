@@ -11088,14 +11088,16 @@ function _catalogText(s) {
 
 // An installed ZIM's text for the library filters (home, Settings > Library,
 // the sources a search matched): fields apart, so a phrase cannot run across.
+// Title and description only: a file name is a machine's word, and "git"
+// found zimgit-knots_en, "en" every English ZIM (#108).
 function _libraryFilterText(z) {
-  return (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || '');
+  return (z.title || '') + '\u0001' + (z.description || '');
 }
 
 function catalogItemMatches(parsed, item) {
   // Fields joined by a separator that is not a space, so a phrase cannot
   // run from the end of the title into the summary.
-  const text = [_catalogText(item.title), _catalogText(item.summary), item.name].join('\u0001');
+  const text = [_catalogText(item.title), _catalogText(item.summary)].join('\u0001');
   return searchQueryMatches(parsed, text) &&
     parsed.filters.every(f => _CATALOG_FILTER_TESTS[f.key](f.value, item) !== f.negate);
 }
