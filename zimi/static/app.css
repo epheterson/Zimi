@@ -2220,7 +2220,7 @@
   }
   .ms-dl-window input[type="time"]:disabled { opacity: 0.6; }
   .ms-dl-speed { margin-top: 12px; }
-  .ms-dl-speed > label { min-width: 9.5rem; }
+  .share-field.ms-dl-speed > label { min-width: 9.5rem; }
   .dl-window-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .dl-window-chip.dl-window-in { color: var(--amber); background: var(--amber-glow); border: 1px solid var(--amber-border); }
   .dl-window-chip.dl-window-out { color: var(--text2); background: var(--surface2); border: 1px solid var(--border); }
