@@ -18,7 +18,7 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 | `"two words"` | the words together, in that order (straight or curly quotes) |
 | `-word`, `-"two words"` | leave out anything containing it |
 | `cats OR dogs` | either one; `OR` in capitals, between two terms |
-| `in:wikipedia` or `source:wikipedia` | only sources whose name or title contains it (the catalog also matches the category) |
+| `in:wikipedia` or `source:wikipedia` | only sources whose file name, title or category contains it (`source:nopic`); plain words match titles and descriptions only |
 | `lang:fr` | only sources in that language, two or three letters (`lang:fra`) |
 | `-in:ted`, `-lang:en` | a filter, the other way round |
 

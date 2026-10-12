@@ -4438,7 +4438,7 @@ function renderHome(filter) {
   if (filter) {
     // The search grammar, as the catalog has it: "-wiki" leaves the wikis out (#94).
     const parsed = parseSearchQuery(filter);
-    zims = baseZims.filter(z => searchQueryMatches(parsed, _libraryFilterText(z)));
+    zims = baseZims.filter(z => _libraryMatches(parsed, z));
   }
 
   // The recency + language pills also make sense scoped to a section (#37) —
@@ -8734,8 +8734,7 @@ function renderSearchResults(data, scope) {
   let zimMatchHtml = '';
   if (!scope && zimsCache && data._query) {
     const parsed = parseSearchQuery(data._query);
-    const matches = parsed.groups.length ? zimsCache.filter(z =>
-      searchQueryMatches(parsed, _libraryFilterText(z))) : [];
+    const matches = parsed.groups.length ? zimsCache.filter(z => _libraryMatches(parsed, z)) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
@@ -11092,6 +11091,16 @@ function _catalogText(s) {
 // found zimgit-knots_en, "en" every English ZIM (#108).
 function _libraryFilterText(z) {
   return (z.title || '') + '\u0001' + (z.description || '');
+}
+// The catalog's operators on an installed ZIM: source: also reads the file
+// name, the one way to ask for it on purpose ("source:nopic").
+const _LIBRARY_FILTER_TESTS = {
+  source: (v, z) => [z.name, z.title, z.category].some(s => (s || '').toLowerCase().includes(v)),
+  lang: (v, z) => (z.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
+};
+function _libraryMatches(parsed, z, extra) {
+  return searchQueryMatches(parsed, _libraryFilterText(z) + (extra ? '\u0001' + extra : '')) &&
+    parsed.filters.every(f => _LIBRARY_FILTER_TESTS[f.key](f.value, z) !== f.negate);
 }
 
 function catalogItemMatches(parsed, item) {
@@ -16514,7 +16523,7 @@ function renderInstalled(filterText) {
     const cat = _zimCat(z);  // real category or OTHER_CAT — matches the home grouping
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
     if (manageLangFilter && !_zimMatchesLang(z, manageLangFilter)) continue;
-    if (installedParsed && !searchQueryMatches(installedParsed, _libraryFilterText(z) + '\u0001' + cat)) continue;
+    if (installedParsed && !_libraryMatches(installedParsed, z, cat)) continue;
     if (_availableUpdates[z.file]) {
       pendingUpdates.push(z);
       continue;

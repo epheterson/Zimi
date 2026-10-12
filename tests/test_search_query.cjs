@@ -31,10 +31,10 @@ function grab(name, kind) {
 
 const sandbox = { console, tH: (k) => k };
 vm.createContext(sandbox);
-for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES']) {
+for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES', '_LIBRARY_FILTER_TESTS']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
-for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText']) {
+for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
   vm.runInContext(grab(f), sandbox);
 }
 
@@ -129,6 +129,9 @@ const lib = (q) => installed.filter(z => sandbox.searchQueryMatches(sandbox.pars
 check(same(lib('git'), ['devdocs_en_git']), 'library: "git" finds Git, not zimgit file names');
 check(same(lib('en'), []), 'library: "en" does not match every _en file name');
 check(same(lib('knots'), ['zimgit-knots_en']), 'library: a title word still finds its ZIM');
+const libOp = (q) => installed.filter(z => sandbox._libraryMatches(sandbox.parseSearchQuery(q, sandbox.SEARCH_FILTERS), z)).map(z => z.name);
+check(same(libOp('source:zimgit'), ['zimgit-knots_en', 'zimgit-water_en']), 'library: source: finds a ZIM by its file name, on purpose');
+check(same(libOp('-source:zimgit'), ['devdocs_en_git']), 'library: -source: leaves them out');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all passed');
