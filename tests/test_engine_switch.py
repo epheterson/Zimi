@@ -127,15 +127,17 @@ def test_leaving_the_built_in_engine_leaves_nothing_to_come_back(tmp_path, monke
     assert os.listdir(data / "staging") == []
 
 
-def test_an_operators_staging_folder_is_theirs(tmp_path):
-    own = tmp_path / "theirs"
-    own.mkdir()
-    (own / "keep.zim").write_bytes(b"x")
+def test_a_staging_folder_a_client_sees_is_the_clients(tmp_path):
     data = tmp_path / "data"
+    staging = data / "staging"
+    staging.mkdir(parents=True)
+    (staging / "keep.zim").write_bytes(b"x")
     os.makedirs(p2p.resume_dir(str(data)))
     open(os.path.join(p2p.resume_dir(str(data)), "ab.fastresume"), "w").close()
+    p2p.purge_builtin_leftovers(str(data), keep_staging=True)
+    assert os.listdir(p2p.resume_dir(str(data))) == [] and (staging / "keep.zim").exists()
     p2p.purge_builtin_leftovers(str(data))
-    assert os.listdir(p2p.resume_dir(str(data))) == [] and (own / "keep.zim").exists()
+    assert os.listdir(staging) == []
 
 
 # ── the switch ───────────────────────────────────────────────────────────

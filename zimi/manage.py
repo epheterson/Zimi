@@ -6378,6 +6378,9 @@ def _handle_access(handler, data):
         if open_from_settings():
             return handler._json(403, {"error": "open_locked"})
         return handler._json(400, {"error": "change it with the current password"})
+    if stored and open_from_settings() and username is not None and username != _file_username():
+        # Nor a new name for it: the kept password would no longer log in.
+        return handler._json(403, {"error": "open_locked"})
     if os.environ.get("ZIMI_MANAGE_USER", "").strip():
         username = None  # the environment names the account
     if password:

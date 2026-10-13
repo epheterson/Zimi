@@ -12879,6 +12879,8 @@ function _renderMsUsers() {
   // the switch moved three times when the password came back on.
   var users = accounts ? manageFetch('/manage/users').then(function(r) { return r.json(); }).catch(function() { return null; }) : null;
   return Promise.all([_accessAnswers(), users]).then(function(got) {
+    // Another section may have opened meanwhile; #ms-pane is every section's.
+    if (_msSection !== 'users' || !document.body.contains(pane)) return;
     if (accounts) _usersData = got[1];
     // The password switch follows the accounts it guards, with the API token
     // under it; with the password off it stands alone.

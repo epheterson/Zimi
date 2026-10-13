@@ -236,6 +236,17 @@ class PasswordOffTests(_Harness):
         self.assertEqual(self._post("/login", {"username": "eric", "password": "mine"})[0], 401)
         self.assertEqual(self._post("/login", {"username": "eric", "password": "hunter22"})[0], 200)
 
+    def test_with_a_kept_password_the_account_cannot_be_renamed(self):
+        # A new name would leave the kept password logging in to nothing.
+        admin = self._admin()
+        self._post("/manage/access", dict(NO_PW, current_password="hunter22"), admin)
+        self._as_peer(INTERNET)
+        status, body = self._post("/manage/access", {"require_password": True, "username": "x"})
+        self.assertEqual((status, body.get("error")), (403, "open_locked"), body)
+        self.assertEqual(self._state()["access"], "open")
+        self._post("/manage/access", {"require_password": True})
+        self.assertEqual(self._post("/login", {"username": "eric", "password": "hunter22"})[0], 200)
+
     def test_with_none_kept_one_can_be_set(self):
         self._post("/manage/access", NO_PW)
         status, body = self._post("/manage/access", PW)
