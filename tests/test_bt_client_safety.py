@@ -9,6 +9,7 @@ client again on every status poll.
 
 import os
 import sys
+import urllib.error
 
 import pytest
 
@@ -327,8 +328,9 @@ def test_a_redirecting_transmission_gets_no_login(tmp_path):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         c = transmission.Client("http://127.0.0.1:%d/transmission/rpc" % srv.server_address[1], "u", "p")
-        with pytest.raises(Exception):
+        with pytest.raises(urllib.error.HTTPError) as refused:
             c.call("session-get")
+        assert refused.value.code == 302
     finally:
         srv.shutdown()
     assert [p for p, _ in seen] == ["/transmission/rpc"], seen

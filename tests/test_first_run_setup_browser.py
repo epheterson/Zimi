@@ -216,6 +216,22 @@ def test_a_switch_does_not_name_an_unnamed_account(served, browser):
     assert manage._get_manage_user() == ""
 
 
+def test_renaming_your_account_saves_itself(served, browser):
+    """Your account's name saves on change, with the switch where it is."""
+    import time
+
+    from zimi import manage
+
+    base, _ = served
+    page = _signed_in_access(browser, base, "eric")
+    page.fill("#setup-user", "erica")
+    page.locator("#setup-user").dispatch_event("change")
+    deadline = time.monotonic() + 15
+    while manage._get_manage_user() != "erica" and time.monotonic() < deadline:
+        page.wait_for_timeout(100)
+    assert manage._get_manage_user() == "erica"
+
+
 def _post_access(page, body):
     page.evaluate(
         "b => fetch('/manage/access', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: b})",

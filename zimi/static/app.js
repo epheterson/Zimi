@@ -12524,8 +12524,11 @@ function _setupAuto() {
   var need = _setupNeedsInput(_setupState, req);
   document.getElementById('setup-save').hidden = !need;
   // Back where it was saved: nothing to send (off on the network alone must
-  // not become off for everyone without the press that says so).
-  if (!need && req !== _setupReqSaved(_setupState)) _setupSubmit({ auto: true });
+  // not become off for everyone without the press that says so), unless Your
+  // account's name was changed.
+  var user = document.getElementById('setup-user');
+  var renamed = user && !form.contains(user) && user.value !== user.defaultValue;
+  if (!need && (renamed || req !== _setupReqSaved(_setupState))) _setupSubmit({ auto: true });
 }
 function _setupSync(changed) {
   var req = document.getElementById('setup-req'), form = document.getElementById('setup-form');
@@ -12598,6 +12601,7 @@ async function _setupSubmit(opts) {
   } catch (e) { return show('setup_failed'); }
   var d = await res.json().catch(function() { return {}; });
   if (!res.ok) return show(_SETUP_ERRORS[d.error] || 'setup_failed');
+  if (user && body.username) user.defaultValue = user.value;
   if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
   if (quiet) return true;
   if (setup) { location.reload(); return true; }
