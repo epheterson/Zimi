@@ -12442,7 +12442,11 @@ function _setupFormHtml(st, mode) {
   // confirmation. Once off, the switch's own line is all that remains.
   var open = '<div class="setup-open" id="setup-open"' + (_setupChoosingOpen(st, req) ? '' : ' hidden') + '>' +
     '<p class="setup-open-cost">' + tH(hasPw ? 'setup_open_cost' : 'setup_open_cost_new') + '</p></div>' +
+    // The account's name rides along unseen: a lone password field reads to
+    // a password manager as a new account, so it offered to make one instead
+    // of filling the saved login.
     (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, req) ? '' : ' hidden') + '>' +
+      '<input class="sr-only" type="text" autocomplete="username" tabindex="-1" aria-hidden="true" value="' + escAttr(st.username || 'admin') + '">' +
       input('setup-cur-pw', 'password', 'current-password', 'current_password') + '</div>' : '');
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
@@ -12600,11 +12604,23 @@ async function _setupSubmit(opts) {
   // A switch that saved itself stays where it is; a change of mode redraws,
   // since the fields under the switches belong to the mode.
   if (auto && was === _manageAccess) { if (err) err.style.display = 'none'; return true; }
-  // Drawn again where the switches are, as a language switch does.
-  var y = window.scrollY;
-  _pendingMsSection = _msSection;
-  renderManage().then(function() { window.scrollTo(0, y); });
+  // Drawn again with the switch held where it was on screen: the accounts
+  // the password brings arrive above it, in two steps (the pane, then the
+  // users list), and the page jumped at each.
+  _holdAccessAnchor();
+  _renderMsUsers();
   return true;
+}
+var _accessAnchor = null;
+function _holdAccessAnchor() {
+  var el = document.getElementById('setup-req');
+  _accessAnchor = el ? el.getBoundingClientRect().top : null;
+}
+function _keepAccessAnchor() {
+  var el = document.getElementById('setup-req');
+  if (_accessAnchor === null || !el) return;
+  window.scrollBy(0, el.getBoundingClientRect().top - _accessAnchor);
+  _accessAnchor = null;
 }
 // The welcome card for a fresh install. The internet sees only that it is
 // being set up: no field, nothing to guess at.
@@ -12847,47 +12863,52 @@ var _usersData = null;  // { users:[...], zims:[names] } from /manage/users
 
 function _renderMsUsers() {
   var pane = document.getElementById('ms-pane');
-  if (!pane) return;
+  if (!pane) return Promise.resolve();
   // Accounts matter only behind a password: on the network alone there are
   // none, and while anyone can manage Zimi none can be made or changed.
   var accounts = _manageAccess === 'password';
-  // The password switch follows the accounts it guards, with the API token
-  // under it; with the password off it stands alone.
-  pane.innerHTML = '<div id="ms-users-body">' + (accounts ? '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>' : '') + '</div>' +
-    '<div id="ms-who" class="ms-access-who"></div>' +
-    '<div id="ms-security" class="ms-access-token"></div>';
-  _renderAccessCards();
-  if (!accounts) return;
-  manageFetch('/manage/users').then(function(res) { return res.json(); }).then(function(data) {
-    _usersData = data;
-    _refreshUsersPane();
-  }).catch(function() {
-    var b = document.getElementById('ms-users-body');
-    if (b) b.innerHTML = '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>';
+  if (!pane.querySelector('#ms-who')) pane.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>';
+  // Everything is asked for first and drawn once: drawn as each answer came,
+  // the switch moved three times when the password came back on.
+  var users = accounts ? manageFetch('/manage/users').then(function(r) { return r.json(); }).catch(function() { return null; }) : null;
+  return Promise.all([_accessAnswers(), users]).then(function(got) {
+    if (accounts) _usersData = got[1];
+    // The password switch follows the accounts it guards, with the API token
+    // under it; with the password off it stands alone.
+    pane.innerHTML = '<div id="ms-users-body">' + (!accounts ? '' : got[1] ? _msUsersHtml() :
+        '<div style="color:var(--text2);font-size:13px">' + tH('could_not_load_stats') + '</div>') + '</div>' +
+      '<div id="ms-who" class="ms-access-who"></div>' +
+      '<div id="ms-security" class="ms-access-token"></div>';
+    _drawAccessCards(got[0]);
+    _keepAccessAnchor();
   });
+}
+function _accessAnswers() {
+  return Promise.all([
+    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
+  ]);
 }
 // Who can manage Zimi (the setup page's rows, in place) and the API token.
 function _renderAccessCards() {
-  Promise.all([
-    manageFetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    manageFetch('/manage/has-token').then(function(r) { return r.json(); }).catch(function() { return {}; })
-  ]).then(function(results) {
-    var who = document.getElementById('ms-who'), tok = document.getElementById('ms-security');
-    if (!who || !tok) return;
-    _setupState = results[0];
-    // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
-    who.innerHTML = results[0].open_env && _manageAccess === 'open' ? '' :
-      '<div class="ms-section-label">' + tH('access_manage') + '</div>' + _setupFormHtml(results[0], 'settings');
-    who.hidden = !who.innerHTML;
-    // The token is for programs, and only a password makes them ask for it:
-    // while it is off the token is kept, unused, until it comes back on.
-    tok.innerHTML = results[0].access !== 'password' ? '' : '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">' +
-      (results[1].has_token
-        ? '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
-          '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>'
-        : '<button class="pill" onclick="_generateToken()">' + tH('generate') + '</button>') +
-      '</span></div>';
-  });
+  return _accessAnswers().then(_drawAccessCards);
+}
+function _drawAccessCards(results) {
+  var who = document.getElementById('ms-who'), tok = document.getElementById('ms-security');
+  if (!who || !tok) return;
+  _setupState = results[0];
+  // Opened by ZIMI_MANAGE_OPEN: the environment owns it, so no rows.
+  who.innerHTML = results[0].open_env && _manageAccess === 'open' ? '' :
+    '<div class="ms-section-label">' + tH('access_manage') + '</div>' + _setupFormHtml(results[0], 'settings');
+  who.hidden = !who.innerHTML;
+  // The token is for programs, and only a password makes them ask for it:
+  // while it is off the token is kept, unused, until it comes back on.
+  tok.innerHTML = results[0].access !== 'password' ? '' : '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">' +
+    (results[1].has_token
+      ? '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
+        '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>'
+      : '<button class="pill" onclick="_generateToken()">' + tH('generate') + '</button>') +
+    '</span></div>';
 }
 
 // Role → localized badge. Admin gets the amber badge; user/limited are muted.

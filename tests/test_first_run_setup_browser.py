@@ -265,6 +265,9 @@ def test_through_a_proxy_the_password_turns_off(served, browser):
     assert not page.is_disabled("#setup-req")
     page.locator("#setup-req").evaluate("e => e.click()")
     assert "Your password is kept" in page.inner_text("#setup-open")
+    # A lone password field reads to a password manager as a new account
+    # (Eric, 2026-10-13: it "offers to create new"); the name rides with it.
+    assert page.locator("#setup-cur input[autocomplete=username]").input_value() == "admin"
     page.fill("#setup-cur-pw", "hunter22")
     page.click("#setup-save button")
     _wait_access(page, "access", "open")
