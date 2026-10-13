@@ -3511,7 +3511,8 @@ def _download_from_url(dl, url, tmp_dest):
 
             opener = urllib.request.build_opener(
                 _PublicOnlyRedirectHandler(_ng.PrivateGuard()),
-                urllib.request.HTTPSHandler(context=_srv.SSL_CTX),
+                _ng.PublicOnlyHTTPHandler(),
+                _ng.PublicOnlyHTTPSHandler(context=_srv.SSL_CTX),
             )
             resp = opener.open(req, timeout=600)
         else:

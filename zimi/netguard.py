@@ -13,10 +13,12 @@ too. Resolution is cached per guard (one guard per job) so a crawl does not
 ask the resolver once per asset.
 """
 
+import http.client
 import ipaddress
 import os
 import socket
 import threading
+import urllib.request
 
 # Carrier-grade NAT / overlay-network shared address space (RFC 6598): Tailscale
 # gives every node one. Python's ipaddress.is_private is False for it, so it is
@@ -237,3 +239,42 @@ def on_own_network(ip):
     if mapped is not None:
         ip = mapped
     return any(ip.version == net.version and ip in net for net in own_networks())
+
+
+def _refuse_private_peer(conn):
+    """After connecting: the address actually reached, not the one a name
+    resolved to at the check (a name can answer public, then private). A
+    tunnel's peer is the proxy, which resolves the name itself."""
+    if getattr(conn, "_tunnel_host", None):
+        return
+    peer = ipaddress.ip_address(conn.sock.getpeername()[0].split("%")[0])
+    if is_private_address(peer):
+        conn.sock.close()
+        raise OSError("connection to a private address refused")
+
+
+class _PublicHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        _refuse_private_peer(self)
+
+
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        _refuse_private_peer(self)
+
+
+class PublicOnlyHTTPHandler(urllib.request.HTTPHandler):
+    """urllib's HTTP handler that connects only to public addresses."""
+
+    def http_open(self, req):
+        return self.do_open(_PublicHTTPConnection, req)
+
+
+class PublicOnlyHTTPSHandler(urllib.request.HTTPSHandler):
+    """urllib's HTTPS handler that connects only to public addresses, for
+    the first request and every redirect."""
+
+    def https_open(self, req):
+        return self.do_open(_PublicHTTPSConnection, req, context=self._context)
