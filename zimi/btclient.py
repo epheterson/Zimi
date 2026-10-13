@@ -31,6 +31,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -52,6 +53,10 @@ MOVE_LIMIT_S = 6 * 3600
 # arrived, the move may be queued behind others (qBittorrent moves one at a
 # time), so only MOVE_LIMIT_S applies.
 MOVE_STALL_S = 600
+# The torrent list a poll reads (Activity, every 5 s per open tab) is at most
+# this old; a background refresh fetches the next, so no poll waits on the
+# client or its lock.
+ROWS_FRESH_S = 10.0
 
 # kind: (the name people know it by, module, class)
 KINDS = {
@@ -310,6 +315,9 @@ class ExternalBackend(BTBackend):
         self.library_dir = library_dir
         self.staging_dir = staging_dir
         self._stopped = False
+        self._snap = (float("-inf"), [])
+        self._snap_lock = threading.Lock()
+        self._snap_busy = False
 
     @property
     def name(self):
@@ -599,6 +607,28 @@ class ExternalBackend(BTBackend):
                 f"{self.name} reports {row['error']}" if s == "error" else ""
             ),
         }
+
+    def list_managed_cached(self):
+        """list_managed for a poll: the last list (empty until the first
+        arrives), refreshed in the background once stale. Never a round trip
+        of its own."""
+        with self._snap_lock:
+            at, rows = self._snap
+            if time.monotonic() - at > ROWS_FRESH_S and not self._snap_busy:
+                self._snap_busy = True
+                threading.Thread(target=self._refresh_snap, daemon=True, name="btclient-rows").start()
+        return rows
+
+    def _refresh_snap(self):
+        try:
+            rows = self.list_managed()
+        except Exception as e:
+            log.debug("%s: torrent list for Activity: %s", self.name, loggable(e))
+            rows = None
+        with self._snap_lock:
+            if rows is not None:
+                self._snap = (time.monotonic(), rows)
+            self._snap_busy = False
 
     def list_managed(self):
         out = []

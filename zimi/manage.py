@@ -5695,10 +5695,11 @@ def handle_manage_get(handler, parsed, params):
                 # peek only — a 5s poll must never spawn (or retry) the sidecar
                 backend = _p2p.peek_backend()
                 if backend:
+                    # A client engine answers from its last list, refreshed in
+                    # the background; the built-in one from memory.
+                    rows = getattr(backend, "list_managed_cached", backend.list_managed)()
                     seeding_count = sum(
-                        1
-                        for raw in backend.list_managed()
-                        if raw.get("state") in ("seeding", "complete")
+                        1 for raw in rows if raw.get("seeder") == "true" and raw.get("status") == "active"
                     )
         except Exception:
             pass

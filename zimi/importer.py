@@ -159,6 +159,7 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
     started = time.monotonic()
     last = [started]
     done = threading.Event()
+    stopped = []  # the cancel the heartbeat met, for the job thread to raise
 
     def beat():
         while not done.wait(heartbeat_s / 4):
@@ -171,10 +172,11 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
                 # instead — the job thread is about to notice on its own.
                 try:
                     sink(f"still converting… {int(time.monotonic() - started)}s")
-                except Exception:
+                except Exception as e:
                     # A cancel: stop the command now rather than at its next
                     # line, which a silent pip download may not print for
-                    # minutes; the job thread then sees the cancel.
+                    # minutes; the job thread raises it once the command ends.
+                    stopped.append(e)
                     subproc.terminate(proc)
                     return
                 last[0] = time.monotonic()
@@ -187,7 +189,10 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
             hit = watch(line) if watch is not None else False
             if hit:
                 return 1 if hit == "fail" else 0
-        return proc.wait()
+        rc = proc.wait()
+        if stopped:
+            raise stopped[0]
+        return rc
     finally:
         done.set()
         # In the finally, not after it. `sink` is the job's note(), which is

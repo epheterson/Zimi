@@ -334,3 +334,32 @@ def test_out_of_restarts_the_last_engine_lets_go_of_the_torrent(world, monkeypat
     dl = {"id": "1", "filename": "wiki.zim", "url": "https://x/wiki.zim", "dest": str(lib_local / "wiki.zim")}
     library._download_thread(dl)
     assert dropped == [("ab" * 20, True)]
+
+
+def test_a_poll_reads_the_clients_last_list_and_never_waits_on_it(world, monkeypatch):
+    """Activity polls every 5 s per tab: a client engine answers from its last
+    list, refreshed in the background, so a slow or down client never holds a
+    poll (or the lock the downloads poll under)."""
+    import threading
+    import time
+
+    fake, dl_local, lib_local, data = world
+    b = _qbt(fake, lib_local, data, "")
+    gate = threading.Event()
+    calls = []
+
+    def slow():
+        calls.append(1)
+        gate.wait(5)
+        return [{"gid": "ab", "status": "active", "seeder": "true"}]
+
+    monkeypatch.setattr(b, "list_managed", slow)
+    started = time.monotonic()
+    assert b.list_managed_cached() == []  # nothing yet, and no wait
+    assert b.list_managed_cached() == []  # one refresh in flight, not two
+    assert time.monotonic() - started < 1 and calls == [1]
+    gate.set()
+    deadline = time.monotonic() + 5
+    while not b.list_managed_cached() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert b.list_managed_cached()[0]["gid"] == "ab"

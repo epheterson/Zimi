@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Library and catalog search match titles and descriptions, not file names: "git" no longer finds zimgit ZIMs, nor "en" every English one ([#108](https://github.com/epheterson/Zimi/issues/108)).
 - The access switch saves as you flip it, like every other switch in Manage.
 - Discover shows the day's picks for a reader who has just signed in, not Today alone.
+- The activity bar counts the ZIMs being seeded; it always said none.
+- An import cancelled while its converter is silent ends as cancelled, not failed.
 
 ## [1.13.2] - 2026-10-11
 

@@ -303,6 +303,24 @@ def test_the_live_activity_poll_is_untouched():
     assert "records" not in body
 
 
+
+def test_the_poll_counts_what_is_seeding(monkeypatch):
+    """Rows say seeder and status (the list_managed contract); the count read
+    a "state" no engine sets, so Activity never said anything was seeding."""
+    from zimi import p2p
+
+    class Engine:
+        def list_managed(self):
+            return [
+                {"gid": "a", "status": "active", "seeder": "true"},
+                {"gid": "b", "status": "paused", "seeder": "true"},
+                {"gid": "c", "status": "active", "seeder": "false"},
+            ]
+
+    monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: True)
+    monkeypatch.setattr(p2p, "peek_backend", lambda: Engine())
+    assert _get("/manage/activity").body["seeding"] == {"torrents": 1}
+
 # ── the stamps ──────────────────────────────────────────────────────────────
 
 

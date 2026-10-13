@@ -7,12 +7,15 @@ back on every request; a username and password go as Basic auth.
 
 import base64
 import json
+import logging
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from zimi.btclient import NO_REDIRECT, REQUEST_TIMEOUT_S, ClientError, ExternalBackend
+
+log = logging.getLogger("zimi.transmission")
 
 RPC_PATH = "/transmission/rpc"
 MIN_RPC_VERSION = 16  # labels, Transmission 3.00
@@ -103,7 +106,9 @@ class Client:
         except ValueError:
             raise ClientError(f"no Transmission RPC at {self.url}") from None
         if answer.get("result") != "success":
-            raise ClientError("Transmission: " + str(answer.get("result"))[:200])
+            # The client's own words go to the log; the page gets ours.
+            log.info("Transmission answered %s: %s", method, str(answer.get("result"))[:200])
+            raise ClientError(f"Transmission refused the request ({method})")
         return answer.get("arguments") or {}
 
 
