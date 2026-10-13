@@ -12,15 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - BitTorrent can use a qBittorrent or Transmission you already run, set up the way Sonarr and Radarr do: address, login, category and folders ([#53](https://github.com/epheterson/Zimi/issues/53)).
 - Changing the BitTorrent engine takes effect at once: downloads carry on with the new engine and seeds follow it.
 - In a client you run, Zimi's torrents follow Zimi's seed ratio, not the client's own seeding limits, and Zimi never touches a torrent outside its category.
-- Who can manage Zimi has a third answer, Anyone, anywhere: no password from outside your network, confirmed with the current password and reversible ([#112](https://github.com/epheterson/Zimi/issues/112)).
+- The password to manage Zimi can be turned off, from anywhere, confirmed with the current password and reversible: the password is kept for when it comes back on ([#112](https://github.com/epheterson/Zimi/issues/112)).
 - The BitTorrent card closes to one line, the engine and whether its port is open or its client connected; the settings open beneath it.
 - `zimi doctor` lists the optional features, whether each is ready, and how this kind of install gets the rest.
 
 ### Changed
 
 - Settings > Users is now Access: who can manage Zimi, public access, your account (with its username), users and the API token.
-- Removing the password asks for it.
-- From outside your network, Allow managing from outside stays on: turning it off there would lock you out.
+- Who can manage Zimi is one switch, Require a password to manage. The switch for managing from outside your network is gone, and Zimi no longer guesses where a visitor is: behind a reverse proxy the password could not be turned off. A saved "anyone on my network" keeps working. A saved "manage only from inside my network" is no longer read: with a password, settings are reachable from anywhere, and `ZIMI_MANAGE_EXTERNAL=0` keeps the old wall.
+- `ZIMI_MANAGE_EXTERNAL` is deprecated: it still applies, with a warning at startup. Keep `/manage/` off the internet at your proxy instead.
+- Turning the password off asks for it, and an API token no longer stands in the way. The token row shows only while a password is on.
 - While anyone can manage Zimi, no API token, account or password can be made.
 - `source:` and `lang:` filter the library as they do the catalog; `source:` also reads file names (`source:nopic`).
 
@@ -29,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Cancelling a voice download during first-time setup stops the setup at once.
 - An active choice in Settings shows as selected.
 - Library and catalog search match titles and descriptions, not file names: "git" no longer finds zimgit ZIMs, nor "en" every English one ([#108](https://github.com/epheterson/Zimi/issues/108)).
-- The access switches save as you flip them, like every other switch in Manage.
+- The access switch saves as you flip it, like every other switch in Manage.
 - Discover shows the day's picks for a reader who has just signed in, not Today alone.
 
 ## [1.13.2] - 2026-10-11
