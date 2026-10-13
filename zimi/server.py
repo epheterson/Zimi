@@ -904,10 +904,9 @@ CONFIG_ENV_SETTINGS = (
     # want an admin password at all", which is a real way people run this and
     # which 1.9.0 removed with nothing in its place (issue #59).
     ConfigSetting("lan_admin", "ZIMI_LAN_ADMIN", "bool", "0", None, False),
-    # Settings from outside the private network. Off on the setup page by
-    # default; unset here and never answered there, it is on, which is what
-    # every install with a password had before the page existed.
-    ConfigSetting("manage_external", "ZIMI_MANAGE_EXTERNAL", "bool", "", "setup page", False),
+    # Settings from outside the private network: on unless this says 0. The
+    # page no longer asks (one switch, a password; manage.manage_external).
+    ConfigSetting("manage_external", "ZIMI_MANAGE_EXTERNAL", "bool", "", "on", False),
     # The opt out. Management asks for nothing at all: no password, no setup
     # key, no question about where the request came from.
     #
@@ -5254,6 +5253,15 @@ def main():
         if ZIMI_MANAGE:
             from zimi import manage as _mng_open
 
+            if os.environ.get("ZIMI_MANAGE_EXTERNAL") is not None:
+                # Deprecated with the outside switch: whether a visitor is
+                # outside is a guess a reverse proxy breaks. Still honoured, so
+                # an operator's 0 does not quietly open settings to the web.
+                log.warning(
+                    "ZIMI_MANAGE_EXTERNAL (manage_external) is deprecated and will "
+                    "be removed: keep /manage/ off the internet at your proxy "
+                    "instead. It still applies for now."
+                )
             if _mng_open.manage_open():
                 # Never quietly. A switch that turns authentication off has to
                 # be visible in the log of anyone who inherits this instance,
