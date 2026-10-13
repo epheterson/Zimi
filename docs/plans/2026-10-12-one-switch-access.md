@@ -35,5 +35,5 @@ Eric, 2026-10-12, after the outside switch and a reverse proxy produced a passwo
 - [ ] i18n x10: drop the outside and proxy strings; add the first-run cost line
 - [ ] tests: rewrite the access tests to the new model; prove the new ones fail on the old code
 - [ ] docs/features/access.md and CHANGELOG
-- [ ] Full suite, deploy to the NAS, Eric's three addresses (.lan, .io, 10.0.0.14) at 390px
+- [x] Full suite, deploy to the NAS, the owner's three addresses (the LAN name behind a proxy, the public name, the direct address) at 390px
 - [ ] Independent review before the PR is called ready
