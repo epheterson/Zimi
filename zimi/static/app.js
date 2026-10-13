@@ -15854,7 +15854,11 @@ async function _btcEngine(kind) {
   _showIfOn('btc-back', !!saved.kind && !saved.locked);
 }
 async function _btcBackToBuiltin() {
-  await _btcPost({ kind: '' });
+  var res = null;
+  try { res = await _btcPost({ kind: '' }); } catch (e) { /* said below */ }
+  // Refused (the environment owns it, or the password is off): say so, or
+  // the card redraws as it was and the button looks broken.
+  if (!res || !res.ok) _showToast(_btcErr((res && res.d) || {}, { client: _btcName((window._btcSaved || {}).kind) }));
   _renderMirrorSection();
 }
 function _btcBody() {

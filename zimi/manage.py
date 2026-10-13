@@ -7636,9 +7636,10 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["torrent"] = on
             if not on:
-                # Switch off means OFF — stop the sidecar (and its seeds) now.
+                # Switch off means OFF — stop the engine and its seeds now,
+                # in a client the operator runs too.
                 try:
-                    p2p.shutdown_backend()
+                    p2p.shutdown_backend(release=True)
                 except Exception:
                     pass
             else:

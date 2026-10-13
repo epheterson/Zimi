@@ -363,3 +363,22 @@ def test_a_poll_reads_the_clients_last_list_and_never_waits_on_it(world, monkeyp
     while not b.list_managed_cached() and time.monotonic() < deadline:
         time.sleep(0.05)
     assert b.list_managed_cached()[0]["gid"] == "ab"
+
+
+def test_turning_bittorrent_off_takes_zimis_torrents_out_of_a_client(world, tmp_path):
+    """The client keeps running after Zimi stops talking to it; left in, Zimi's
+    seeds would upload on with no ratio cap enforced. The library stays."""
+    import time
+
+    fake, dl_local, lib_local, data = world
+    b = _qbt(fake, lib_local, data, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    tid = _add(fake, b, tmp_path, "wiki.zim", data / "staging")
+    p2p._backend_singleton = b
+    try:
+        p2p.shutdown_backend(release=True)
+        deadline = time.monotonic() + 10
+        while tid in fake.torrents and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert tid not in fake.torrents and p2p.peek_backend() is None
+    finally:
+        p2p._backend_singleton = None

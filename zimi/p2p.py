@@ -1537,13 +1537,34 @@ def peek_backend() -> "BTBackend | None":
         return _backend_singleton
 
 
-def shutdown_backend() -> None:
-    """Stop the running engine (if any). Safe to call repeatedly."""
+def shutdown_backend(*, release: bool = False) -> None:
+    """Stop the running engine (if any). Safe to call repeatedly.
+
+    ``release``: BitTorrent is being turned off. A client the operator runs
+    keeps its torrents after Zimi stops talking to it, seeding past the cap
+    Zimi no longer enforces, so Zimi's are taken out of it as an engine switch
+    does (library files stay), off the caller's thread: the client may be
+    slow or down."""
     global _backend_singleton
     with _backend_lock:
-        if _backend_singleton is not None:
+        old, _backend_singleton = _backend_singleton, None
+    if old is None:
+        return
+    if release and getattr(old, "external", False):
+
+        def out():
             try:
-                _backend_singleton.stop()
+                old.release()
+            except Exception as e:
+                log.warning("BT: Zimi's torrents stay in the client: %s", e)
+            try:
+                old.stop()
             except Exception:
                 pass
-        _backend_singleton = None
+
+        threading.Thread(target=out, daemon=True, name="bt-release").start()
+        return
+    try:
+        old.stop()
+    except Exception:
+        pass
