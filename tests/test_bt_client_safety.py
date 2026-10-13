@@ -206,7 +206,8 @@ def test_zimis_torrents_are_clear_of_the_clients_own_seeding_limits(world, tmp_p
     fake, dl_local, lib_local, staging = world
     b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
     tid = _add(fake, b, tmp_path, "limits.zim", staging)
-    assert fake.torrents[tid]["limits"] == ("-1", "-1")
+    # qBittorrent 5.2 refuses the call without an action; Stop never deletes.
+    assert fake.torrents[tid].get("limits") == ("-1", "-1", "Stop")
 
 
 def test_a_sub_category_is_not_zimis(world, tmp_path):

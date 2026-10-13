@@ -169,8 +169,15 @@ class FakeQbt:
             os.replace(src, self.local(t["content_path"]))
             return h._send(200)
         if path == "torrents/setShareLimits":
-            for h in form["hashes"].split("|"):
-                self.torrents[h]["limits"] = (form["ratioLimit"], form["seedingTimeLimit"])
+            # qBittorrent 5.2 refuses the call without these (a real 5.2.3
+            # answered "Missing required parameters: shareLimitAction").
+            missing = [k for k in ("inactiveSeedingTimeLimit", "shareLimitAction") if k not in form]
+            if self.v5 and missing:
+                return h._send(400, "Missing required parameters: " + ", ".join(missing))
+            for x in form["hashes"].split("|"):
+                self.torrents[x]["limits"] = (
+                    form["ratioLimit"], form["seedingTimeLimit"], form.get("shareLimitAction")
+                )
             return h._send(200)
         if path == "torrents/setAutoManagement":
             return h._send(200)

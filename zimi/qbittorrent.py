@@ -203,9 +203,17 @@ class QBittorrentBackend(ExternalBackend):
     def _unlimit(self, tid):
         # -1: no limit. Zimi keeps its own ratio cap; a client rule such as
         # "at ratio 2, remove torrent and files" would delete a library ZIM.
+        # 5.2 requires the action too (older versions ignore it): Stop, so
+        # even a limit that did apply could never remove files.
         self.client.call(
             "torrents/setShareLimits",
-            {"hashes": tid, "ratioLimit": "-1", "seedingTimeLimit": "-1", "inactiveSeedingTimeLimit": "-1"},
+            {
+                "hashes": tid,
+                "ratioLimit": "-1",
+                "seedingTimeLimit": "-1",
+                "inactiveSeedingTimeLimit": "-1",
+                "shareLimitAction": "Stop",
+            },
         )
 
     def _relabel(self, hashes, new):
