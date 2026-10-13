@@ -225,7 +225,7 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `sso_proxy` | `ZIMI_SSO_PROXY` | list of CIDRs (a comma-separated string also works) — who may send the identity header; default any private peer |
 | `lan_admin` | `ZIMI_LAN_ADMIN` | boolean — treat any private-network client as the admin on a **passwordless** instance; off by default, see [Running without a password](#running-without-a-password) |
 | `manage_open` | `ZIMI_MANAGE_OPEN` | boolean — management asks for no credential at all; see [Running without a password](#running-without-a-password) |
-| `manage_external` | `ZIMI_MANAGE_EXTERNAL` | boolean: settings may be changed from outside the private network (needs a password); unset, the first-run page's answer, and on for an install that never answered it |
+| `manage_external` | `ZIMI_MANAGE_EXTERNAL` | boolean, deprecated: `0` keeps settings inside the private network even with the password; default on. Keep `/manage/` off the internet at your proxy instead |
 
 
 ### Running without a password

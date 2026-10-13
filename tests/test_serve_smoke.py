@@ -60,9 +60,10 @@ def _wait_for_ready(proc: subprocess.Popen, log_path: str) -> int:
 
 
 @pytest.fixture
-def serve_subprocess():
+def serve_subprocess(request):
     """Start `python -m zimi serve --port 0` with an empty ZIM dir, yield
-    (port, log_path), and clean up on teardown."""
+    (port, log_path), and clean up on teardown. Indirect parametrization
+    passes extra environment."""
     tmp_zim_dir = tempfile.mkdtemp(prefix="zimi-smoke-zims-")
     tmp_data_dir = tempfile.mkdtemp(prefix="zimi-smoke-data-")
     log_fd, log_path = tempfile.mkstemp(prefix="zimi-smoke-log-")
@@ -78,6 +79,7 @@ def serve_subprocess():
     # PYTHONUNBUFFERED ensures the READY print isn't held in stdio buffers
     # — without flush=True or this env var, CI runners can stall.
     env["PYTHONUNBUFFERED"] = "1"
+    env.update(getattr(request, "param", None) or {})
 
     with open(log_path, "w") as log_f:
         proc = subprocess.Popen(
@@ -278,3 +280,18 @@ def test_health_counts_the_servers_zims_not_the_callers(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "current_allow", lambda: {"alpha"})
     assert len(server.get_zim_files()) == 1
     assert server.server_zim_count() == 2
+
+
+@pytest.mark.parametrize("serve_subprocess", [{"ZIMI_MANAGE_EXTERNAL": "0"}], indirect=True)
+def test_zimi_manage_external_says_it_is_deprecated(serve_subprocess):
+    """The page stopped asking whether settings stay inside the network (a
+    reverse proxy hides where a visitor is); the variable still applies, and
+    whoever set it is told at startup to keep /manage/ off at their proxy."""
+    _port, log_path = serve_subprocess
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            if "ZIMI_MANAGE_EXTERNAL (manage_external) is deprecated" in f.read():
+                return
+        time.sleep(0.2)
+    pytest.fail("no deprecation warning for ZIMI_MANAGE_EXTERNAL")
