@@ -210,6 +210,19 @@ def test_zimis_torrents_are_clear_of_the_clients_own_seeding_limits(world, tmp_p
     assert fake.torrents[tid].get("limits") == ("-1", "-1", "Stop")
 
 
+def test_torrents_already_in_the_client_are_cleared_at_start_too(world, tmp_path, monkeypatch):
+    """Lifting limits only on add left torrents an earlier run had added (a
+    real qBittorrent 5.2 had refused that call) under the client's rule."""
+    from zimi import library
+
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    tid = _add(fake, b, tmp_path, "earlier.zim", staging)
+    fake.torrents[tid]["limits"] = ("-2", "-2", "Default")  # the client's own rule
+    monkeypatch.setattr(p2p, "peek_backend", lambda: b)
+    library.reseed_from_ledger()
+    assert fake.torrents[tid]["limits"] == ("-1", "-1", "Stop")
+
 def test_a_sub_category_is_not_zimis(world, tmp_path):
     fake, dl_local, lib_local, staging = world
     b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")

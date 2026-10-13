@@ -536,6 +536,14 @@ class ExternalBackend(BTBackend):
             raise ClientError(f"not in the {self.category} category")
         return row
 
+    def lift_limits(self):
+        """Every torrent of Zimi's clear of the client's own seeding limits:
+        the ones already there when the engine starts too, not only those it
+        adds (an earlier version, or a client upgrade, may have left them
+        under a rule that removes files)."""
+        for row in self._rows():
+            self._keep_unlimited(row["hash"])
+
     def _keep_unlimited(self, tid):
         try:
             self._unlimit(tid)

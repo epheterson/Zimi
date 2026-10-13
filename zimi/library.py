@@ -1211,6 +1211,11 @@ def reseed_from_ledger():
     backend = _p2p.peek_backend()
     if backend is None:
         return 0
+    if backend.external:
+        try:
+            backend.lift_limits()
+        except Exception as e:
+            log.debug("reseed: could not lift the client's limits: %s", e)
     if not _p2p.is_seeding_enabled():
         return 0
     mirror = _p2p.is_mirror_enabled()
