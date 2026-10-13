@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Discover shows the day's picks for a reader who has just signed in, not Today alone.
 - The activity bar counts the ZIMs being seeded; it always said none.
 - An import cancelled while its converter is silent ends as cancelled, not failed.
+- With a client you run, stopping a seed never lets the client delete a library ZIM, even after its folder mapping is removed or mistyped.
 
 ## [1.13.2] - 2026-10-11
 

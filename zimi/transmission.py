@@ -210,7 +210,17 @@ class TransmissionBackend(ExternalBackend):
         if not (out.get("torrent-added") or out.get("torrent-duplicate")):
             raise ClientError("Transmission refused the torrent")
         # Labels on torrent-add arrived with RPC 17; torrent-set has them from 16.
-        self.client.call("torrent-set", ids=[tid], labels=[self.category])
+        try:
+            self.client.call("torrent-set", ids=[tid], labels=[self.category])
+        except Exception:
+            # Unlabelled it is no torrent Zimi may touch again: take it back
+            # out (its files stay) rather than leave it running unmanaged.
+            if out.get("torrent-added"):
+                try:
+                    self._delete(tid, False)
+                except Exception as e:
+                    log.warning("Transmission: an unlabelled torrent %s stays: %s", tid, e)
+            raise
 
     def _unlimit(self, tid):
         # 2: unlimited. Zimi keeps its own ratio cap; the session's ratio or
@@ -237,6 +247,12 @@ class TransmissionBackend(ExternalBackend):
     def _move(self, tid, remote_dir):
         with self._moves_lock:
             self._moves[tid] = remote_dir
-        self.client.call(
-            "torrent-set-location", ids=[tid], location=remote_dir, move=True
-        )
+        try:
+            self.client.call(
+                "torrent-set-location", ids=[tid], location=remote_dir, move=True
+            )
+        except Exception:
+            # Refused: no move is coming, so the torrent must not read as moving.
+            with self._moves_lock:
+                self._moves.pop(tid, None)
+            raise

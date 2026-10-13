@@ -369,6 +369,24 @@ def test_without_the_library_mapped_zimi_links_it_out_and_qbittorrent_keeps_its_
     assert not os.path.exists(payload) and os.path.exists(dest)
 
 
+def test_a_library_mapping_removed_later_never_lets_the_client_delete_the_zim(world, tmp_path):
+    """Seeding a library ZIM in place, then the library folder's mapping is
+    removed (or mistyped) in Settings: the client's path no longer translates,
+    and a seed stop with files must not delete the ZIM through its mount."""
+    fake, dl_local, lib_local, staging = world
+    both = f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}"
+    b = _backend(fake, lib_local, staging, both)
+    removed, mistyped = f"{REMOTE_DL}={dl_local}", f"{REMOTE_DL}={dl_local};{REMOTE_LIB}x={lib_local}"
+    for name, paths in (("wiki.zim", removed), ("other.zim", mistyped)):
+        src, tid = _write_torrent(tmp_path, name)
+        b.add_torrent(src, dest_dir=str(staging))
+        fake.finish(tid)
+        dest = str(lib_local / name)
+        b.install(tid, b.payload_path(tid, name, str(staging)), dest)
+        _backend(fake, lib_local, staging, paths).remove(tid, delete_files=True)
+        assert tid not in fake.torrents and os.path.exists(dest), paths
+
+
 def test_seeding_the_library_needs_qbittorrent_to_see_it(world, tmp_path):
     fake, dl_local, lib_local, staging = world
     b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")

@@ -37,6 +37,7 @@ class FakeTransmission:
         self.rpc_version = rpc_version
         self.torrents = {}
         self.calls = []
+        self.refuse = set()  # methods this fake answers with a failure
         fake = self
 
         class H(http.server.BaseHTTPRequestHandler):
@@ -90,6 +91,8 @@ class FakeTransmission:
         return [t for h, t in self.torrents.items() if ids is None or h in ids]
 
     def handle(self, method, args):
+        if method in self.refuse:
+            return {"result": "refused by the test"}
         ok = {"result": "success", "arguments": {}}
         if method == "session-get":
             ok["arguments"] = {
@@ -396,3 +399,29 @@ def test_settings_name_the_client(tmp_path, monkeypatch):
     assert btclient.config()["kind"] == "transmission"
     monkeypatch.setenv("ZIMI_BT_CLIENT", "builtin")
     assert btclient.config() is None and btclient.env_var() == "ZIMI_BT_CLIENT"
+
+
+def test_a_torrent_that_could_not_be_labelled_is_taken_back_out(world, tmp_path):
+    """Added but not labelled, it would run on in the client as nobody's:
+    Zimi refuses to touch an unlabelled torrent, so it never could again."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
+    src, tid = _write_torrent(tmp_path, "wiki.zim")
+    fake.refuse.add("torrent-set")
+    with pytest.raises(btclient.ClientError):
+        b.add_torrent(src, dest_dir=str(staging))
+    assert tid not in fake.torrents
+
+
+def test_a_refused_move_is_not_left_moving(world, tmp_path):
+    """A move the client refused never comes, so the torrent must not read as
+    moving: a hand-over skips moving torrents and would leave it behind."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    src, tid = _write_torrent(tmp_path, "wiki.zim")
+    b.add_torrent(src, dest_dir=str(staging))
+    fake.finish(tid)
+    fake.refuse.add("torrent-set-location")
+    with pytest.raises(btclient.ClientError):
+        b.install(tid, b.payload_path(tid, "wiki.zim", str(staging)), str(lib_local / "wiki.zim"))
+    assert not b._row(tid)["moving"]

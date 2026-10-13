@@ -562,13 +562,16 @@ class ExternalBackend(BTBackend):
             self._start(tid)
 
     def remove(self, tid, *, delete_files=False):
-        """Only Zimi's category; files only when they are not in the library."""
+        """Only Zimi's category; files only when Zimi can see them and they
+        are not in the library. A folder mapping removed or mistyped leaves the
+        client's path untranslated, pointing nowhere Zimi can see, while the
+        client may still reach a library ZIM through it: what Zimi cannot
+        confirm is outside the library stays."""
         row = self._row(tid)
         if row is None or not row["owned"]:
             return
-        if delete_files and self._in_library(
-            to_local(row["content_path"] or "", self.paths)
-        ):
+        local = to_local(row["content_path"] or "", self.paths)
+        if delete_files and (not local or not os.path.exists(local) or self._in_library(local)):
             delete_files = False
         self._delete(tid, delete_files)
 
