@@ -246,7 +246,7 @@ def manage_open():
     nothing to get wrong.
 
     The environment (or config file, published into it at startup) wins when
-    set; else Settings' "Anyone, anywhere" (_handle_access). Read on each call
+    set; else the password switched off in Settings (_handle_access). Read on each call
     so a test's value and a Settings change both land; the prefs read is the
     cached one manage_external already pays for."""
     env = manage_open_env()
@@ -272,7 +272,7 @@ def _open_env_forbids():
 
 
 def open_from_settings():
-    """Anyone, anywhere as chosen in Settings (not by ZIMI_MANAGE_OPEN): while
+    """The password switched off in Settings (not by ZIMI_MANAGE_OPEN): while
     it is on, nothing that outlives it can be made (an API token, an account,
     a password), and the BitTorrent client and private captures are fenced."""
     return manage_open() and not manage_open_env()
@@ -2446,7 +2446,7 @@ def _create_defaults_view():
 def _create_allows_private():
     """Whether an admin has allowed web captures of private addresses.
 
-    Never while Settings' "Anyone, anywhere" is on: then anyone on the
+    Never while the password is off in Settings: then anyone on the
     internet is the admin, and this would let them read the operator's own
     network through Zimi. An operator who opened Zimi with ZIMI_MANAGE_OPEN
     made that call in their own config and keeps the choice."""
@@ -4824,7 +4824,7 @@ def _creator_payload():
         **_create_defaults_view(),
         "queue": len(_create_queue_view()),
         "offline": _is_offline_mode(),
-        # Held off while "Anyone, anywhere" is on (_create_allows_private).
+        # Held off while the password is off (_create_allows_private).
         "private_locked": open_from_settings(),
     }
 
@@ -6314,7 +6314,7 @@ def access_answer(handler):
     return {
         "access": access_mode(),
         "access_env": _lan_admin_env() is not None,
-        # "Anyone, anywhere": set in the environment (the switch is locked and
+        # The password off: set in the environment (the switch is locked and
         # the rows are not shown), and whether a password is kept for when it
         # is turned off again.
         "open_env": manage_open_env() is not None,
@@ -6402,7 +6402,7 @@ def _handle_access(handler, data):
 
 
 def _open_to_anyone(handler, data):
-    """Settings' "Anyone, anywhere": nobody is asked for anything, from
+    """The password switched off in Settings: nobody is asked for anything, from
     anywhere. The answer to "I do not want a password" for an instance that is
     reachable from outside, which used to need ZIMI_MANAGE_OPEN in a config.
 
@@ -6429,7 +6429,7 @@ def _open_to_anyone(handler, data):
     _clear_setup_key()
     _end_setup_gate()
     log.warning(
-        "Access: anyone, anywhere. Nobody is asked for a password; anyone who "
+        "Access: password off. Nobody is asked for a password; anyone who "
         "can reach this server can manage it (Settings > Access > Managing "
         "Zimi turns it off)."
     )
@@ -6438,8 +6438,8 @@ def _open_to_anyone(handler, data):
 
 def _btc_locked():
     """Why the engine cannot be changed here, or None. The environment owns
-    it when ZIMI_BT_CLIENT or its URL is set; and while "Anyone, anywhere" is
-    on a client could only come from there, or anyone could point Zimi's
+    it when ZIMI_BT_CLIENT or its URL is set; and while the password is off
+    a client could only come from there, or anyone could point Zimi's
     requests at the operator's own network."""
     from zimi import btclient
 

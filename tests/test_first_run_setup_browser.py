@@ -146,7 +146,7 @@ def test_the_passwords_must_match(served, browser):
 
 
 def test_turning_off_the_password_is_one_named_press(served, browser):
-    """Anyone, anywhere: its cost shows only while it is being chosen, and the
+    """Password off: its cost shows only while it is being chosen, and the
     button that saves it is the confirmation; no second switch to tick, and
     once on only the switch's own line remains."""
     base, _ = served
@@ -310,7 +310,7 @@ def test_a_first_run_without_a_password_is_a_choice_with_its_cost(served, browse
 
 def test_on_the_network_alone_flipping_on_and_back_off_saves_nothing(served, browser):
     """A saved network-only answer draws the switch off. On and back off is
-    where it started: nothing is sent, and above all not "anyone, anywhere"
+    where it started: nothing is sent, and above all not open to everyone
     without the press that names it."""
     from zimi import manage
 

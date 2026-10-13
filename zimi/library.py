@@ -175,7 +175,7 @@ class _PublicOnlyHTTPSHandler(urllib.request.HTTPSHandler):
 
 def _imports_public_only():
     """Whether an import may reach only public addresses: while Settings'
-    Anyone, anywhere is on, as for captures (manage._create_allows_private)."""
+    the password to manage is off, as for captures (manage._create_allows_private)."""
     from zimi import manage as _mng
 
     return not _mng._create_allows_private()
