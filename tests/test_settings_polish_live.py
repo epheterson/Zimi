@@ -384,7 +384,7 @@ def test_three_way_choices_are_selector_rows_that_set_their_setting(served, phon
 def test_upnp_is_a_row_of_the_built_in_engines_settings(served, phone):
     """Eric, 2026-10-03: the port row must not break onto a second line on a
     phone ("UPnP toggle should be able to float under on.off bt toggle"). Since
-    1.14 the BitTorrent card closes to one line (Eric, 2026-10-11: "closed
+    1.13.3 the BitTorrent card closes to one line (Eric, 2026-10-11: "closed
     gives just the right info") and UPnP is a row of the built-in engine's
     settings beneath it, so the port row stays one line and the closed card
     stays clean."""
