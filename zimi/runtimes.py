@@ -75,8 +75,18 @@ def _zimit():
     return shutil.which("docker") is not None
 
 
+def _browser():
+    # The package alone is not a browser: doctor launches Chromium once, as
+    # the renderer does before a capture (a CLI, so the 2-3 s is fine).
+    if not _module("playwright")():
+        return False
+    from zimi.renderer import browser_available
+
+    return browser_available()
+
+
 def _alive():
-    return _module("playwright")() and _sidecar("importer")()
+    return _browser() and _sidecar("importer")()
 
 
 Feature = namedtuple("Feature", "key name ready ways")
@@ -135,7 +145,7 @@ FEATURES = (
     Feature(
         "rendered",
         "Create: pages built by JavaScript",
-        _module("playwright"),
+        _browser,
         {
             DOCKER: Way(BUNDLED, ""),
             DESKTOP: Way(
