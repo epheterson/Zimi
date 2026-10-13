@@ -19,6 +19,7 @@ import ssl
 import threading
 import time
 import xml.etree.ElementTree as ET
+import http.client
 import urllib.error
 import urllib.request
 from urllib.parse import urlparse, urlencode, quote
@@ -129,6 +130,47 @@ class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
                 req.full_url, code, "Redirect blocked (private address)", headers, fp
             )
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _refuse_private_peer(conn):
+    """After connecting: the address actually reached, not the one a name
+    resolved to at the check (a name can answer public, then private). A
+    tunnel's peer is the proxy, which resolves the name itself."""
+    if getattr(conn, "_tunnel_host", None):
+        return
+    peer = ipaddress.ip_address(conn.sock.getpeername()[0].split("%")[0])
+    from zimi import netguard as _ng
+
+    if _ng.is_private_address(peer):
+        conn.sock.close()
+        raise OSError("connection to a private address refused")
+
+
+class _PublicHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        _refuse_private_peer(self)
+
+
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        _refuse_private_peer(self)
+
+
+class _PublicOnlyHTTPHandler(urllib.request.HTTPHandler):
+    """urllib's HTTP handler that connects only to public addresses."""
+
+    def http_open(self, req):
+        return self.do_open(_PublicHTTPConnection, req)
+
+
+class _PublicOnlyHTTPSHandler(urllib.request.HTTPSHandler):
+    """urllib's HTTPS handler that connects only to public addresses, for
+    the first request and every redirect."""
+
+    def https_open(self, req):
+        return self.do_open(_PublicHTTPSConnection, req, context=self._context)
 
 
 def _imports_public_only():
@@ -3511,8 +3553,8 @@ def _download_from_url(dl, url, tmp_dest):
 
             opener = urllib.request.build_opener(
                 _PublicOnlyRedirectHandler(_ng.PrivateGuard()),
-                _ng.PublicOnlyHTTPHandler(),
-                _ng.PublicOnlyHTTPSHandler(context=_srv.SSL_CTX),
+                _PublicOnlyHTTPHandler(),
+                _PublicOnlyHTTPSHandler(context=_srv.SSL_CTX),
             )
             resp = opener.open(req, timeout=600)
         else:

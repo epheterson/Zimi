@@ -13762,7 +13762,11 @@ function _patchCreatorSection(d) {
   put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   var priv = document.getElementById('ms-cr-allow_private');
-  if (priv) priv.checked = _creatorSwitchOn(d, 'allow_private');
+  if (priv) {
+    // The same rule as _creatorPrivateRow: off and held while anyone manages Zimi.
+    priv.checked = !d.private_locked && _creatorSwitchOn(d, 'allow_private');
+    priv.disabled = !!d.private_locked;
+  }
 }
 
 // How long to wait before asking again while the server is still probing what
