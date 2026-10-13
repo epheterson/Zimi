@@ -252,7 +252,7 @@ def manage_open():
     env = manage_open_env()
     if env is not None:
         return env
-    if not _read_app_update_prefs().get("manage_open") is True:
+    if _read_app_update_prefs().get("manage_open") is not True:
         return False
     # Set in Settings, it gives way to an environment set since that forbids
     # it (a password there, outside access off, the LAN not trusted), and is

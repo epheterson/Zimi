@@ -231,6 +231,10 @@ class PasswordOffTests(_Harness):
         status, body = self._post("/manage/access", dict(PW, password="mine"))
         self.assertEqual((status, body.get("error")), (403, "open_locked"), body)
         self.assertEqual(self._state()["access"], "open")
+        # Refused before anything was written: the owner's password is the one back.
+        self._post("/manage/access", {"require_password": True})
+        self.assertEqual(self._post("/login", {"username": "eric", "password": "mine"})[0], 401)
+        self.assertEqual(self._post("/login", {"username": "eric", "password": "hunter22"})[0], 200)
 
     def test_with_none_kept_one_can_be_set(self):
         self._post("/manage/access", NO_PW)

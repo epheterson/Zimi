@@ -4755,7 +4755,7 @@ function renderHome(filter) {
       // Restore cached discover DOM — avoid re-fetch flash
       var newRow = document.getElementById('discover-row');
       if (newRow) {
-        newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang;
+        newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang; newRow.dataset.lib = _discoverLibKey();
         if (_prevDiscoverScroll) {
           var _newScrollEl = newRow.querySelector('.discover-scroll');
           if (_newScrollEl) _newScrollEl.scrollLeft = _prevDiscoverScroll;
@@ -12520,9 +12520,12 @@ function _setupRevert() {
 function _setupAuto() {
   var form = document.getElementById('setup-form');
   if (!form || form.dataset.mode !== 'settings') return;
-  var need = _setupNeedsInput(_setupState, document.getElementById('setup-req').checked);
+  var req = document.getElementById('setup-req').checked;
+  var need = _setupNeedsInput(_setupState, req);
   document.getElementById('setup-save').hidden = !need;
-  if (!need) _setupSubmit({ auto: true });
+  // Back where it was saved: nothing to send (off on the network alone must
+  // not become off for everyone without the press that says so).
+  if (!need && req !== _setupReqSaved(_setupState)) _setupSubmit({ auto: true });
 }
 function _setupSync(changed) {
   var req = document.getElementById('setup-req'), form = document.getElementById('setup-form');

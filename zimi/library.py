@@ -2964,8 +2964,8 @@ def _try_bt_download(
                     "BT reported complete but staged file missing: %s"
                     " — falling back%s",
                     staged,
-                    " (can Zimi see qBittorrent's download folder? Settings > "
-                    "BitTorrent > Path mappings)" if backend.external else "",
+                    f" (can Zimi see {backend.name}'s download folder? Settings > "
+                    "BitTorrent > Folders)" if backend.external else "",
                 )
                 try:
                     backend.remove(tid, delete_files=True)

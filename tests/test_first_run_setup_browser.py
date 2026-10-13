@@ -290,3 +290,23 @@ def test_a_first_run_without_a_password_is_a_choice_with_its_cost(served, browse
         page.evaluate("fetch('/manage/has-password').then(r => r.json()).then(j => j.access)")
         == "open"
     )
+
+
+def test_on_the_network_alone_flipping_on_and_back_off_saves_nothing(served, browser):
+    """A saved network-only answer draws the switch off. On and back off is
+    where it started: nothing is sent, and above all not "anyone, anywhere"
+    without the press that names it."""
+    from zimi import manage
+
+    base, _ = served
+    manage._write_app_update_prefs(lan_admin=True)
+    manage._end_setup_gate()
+    page = browser.new_context(viewport=VIEW).new_page()
+    page.goto(base + "/?manage=users")
+    page.wait_for_selector("#setup-req", state="attached", timeout=15000)
+    _wait_access(page, "access", "lan")
+    assert not page.is_checked("#setup-req")
+    page.locator("#setup-req").evaluate("e => e.click()")
+    page.locator("#setup-req").evaluate("e => e.click()")
+    page.wait_for_timeout(1000)
+    _wait_access(page, "access", "lan")
