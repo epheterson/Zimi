@@ -298,6 +298,6 @@ def cli_doctor(args):
     print(format_report(rows, kind))
     missing = problems(rows)
     if missing:
-        print(f"\nmissing though bundled here: {', '.join(missing)}")
+        print(f"\nnot ready, though this install should have them: {', '.join(missing)}")
         if args.check:
             raise SystemExit(1)

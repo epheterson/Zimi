@@ -373,7 +373,9 @@ class ExternalBackend(BTBackend):
                 row["total"] and row["done"] >= row["total"]
             )
             if not complete:
-                files = not self._in_library(local)
+                # Partial files go only when Zimi sees them outside the
+                # library: an unmapped path may still be a library ZIM.
+                files = bool(local) and os.path.exists(local) and not self._in_library(local)
             elif self._in_library(local):
                 files = False
             else:

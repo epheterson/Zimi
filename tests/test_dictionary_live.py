@@ -669,6 +669,12 @@ def test_the_download_line_moves_cancels_fails_and_goes(piper_here, monkeypatch)
         "() => (%s)() === 'Clearer voice for French: Download (63 MB)'" % LINE_FR,
         timeout=DL_WAIT_MS,
     )
+    # The page shows the offer as soon as Cancel is asked; the cancelled fetch
+    # ends at its next step. A download started before then would share
+    # _download with it, and its last clear() would wipe the new one's state.
+    deadline = time.monotonic() + DL_WAIT_MS / 1000
+    while voices._download and time.monotonic() < deadline:
+        time.sleep(0.05)
     # A failure: said, with Retry.
     steps["fail"] = True
     f.wait_for_function(

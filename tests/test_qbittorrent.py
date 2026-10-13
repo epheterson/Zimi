@@ -387,6 +387,35 @@ def test_a_library_mapping_removed_later_never_lets_the_client_delete_the_zim(wo
         assert tid not in fake.torrents and os.path.exists(dest), paths
 
 
+def test_a_hand_over_with_the_library_unmapped_keeps_an_unfinished_library_seed(world, tmp_path):
+    """A library seed that is not whole (a recheck found it differs) is
+    in-flight to release(); with the library's mapping gone its path does not
+    translate, and the hand-over must not have the client delete it."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local};{REMOTE_LIB}={lib_local}")
+    src, tid = _write_torrent(tmp_path, "wiki.zim")
+    b.add_torrent(src, dest_dir=str(staging))
+    fake.finish(tid)
+    dest = str(lib_local / "wiki.zim")
+    b.install(tid, b.payload_path(tid, "wiki.zim", str(staging)), dest)
+    fake.torrents[tid].update(state="downloading", progress=0.5, completed=5)
+    _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}").release()
+    assert tid not in fake.torrents and os.path.exists(dest)
+
+
+def test_a_finished_copy_paused_in_the_client_is_still_a_seeder(world, tmp_path):
+    """Complete is about the data, not the run state: a paused finished copy
+    still counts against the ratio cap and is retired with its library file."""
+    fake, dl_local, lib_local, staging = world
+    b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
+    src, tid = _write_torrent(tmp_path, "wiki.zim")
+    b.add_torrent(src, dest_dir=str(staging))
+    fake.finish(tid)
+    b.pause(tid)
+    (row,) = b.list_managed()
+    assert (row["status"], row["seeder"]) == ("paused", "true")
+
+
 def test_seeding_the_library_needs_qbittorrent_to_see_it(world, tmp_path):
     fake, dl_local, lib_local, staging = world
     b = _backend(fake, lib_local, staging, f"{REMOTE_DL}={dl_local}")
