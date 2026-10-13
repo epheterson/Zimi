@@ -582,13 +582,14 @@
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
      separates it from the other-users section. */
-  .ms-user-account-self { margin-top: 0; border-top: none; padding-top: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .ms-user-account-self { margin-top: 0; border-top: none; padding-top: 0; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
   .ms-user-account-self .ms-user-row { border-bottom: none; }
-  .ms-access-who { padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  /* Accounts, then the password switch that guards them, then the API token:
+     one rule between sections. Password off: the switch stands alone. */
+  #ms-users-body:not(:empty) + .ms-access-who { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; }
   .ms-access-who[hidden] { display: none; }
-  .ms-access-token { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 12px; }
-  /* No accounts (no password): the line under Managing Zimi is the only one. */
-  #ms-users-body:empty + .ms-access-token { margin-top: 0; border-top: none; padding-top: 0; }
+  .ms-access-token { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
+  .ms-access-token:empty { display: none; }
   /* Your-account actions: visible Change password / Log out buttons, not a ⋯. */
   .ms-user-self-actions { flex-shrink: 0; display: flex; gap: 8px; }
   /* Role badges in the users list. Muted by default; admin gets amber. */
@@ -621,7 +622,7 @@
   .ms-allow-empty { color: var(--text2); font-size: 12px; padding: 4px 0; }
 
   /* ── Public access card ── governs the anonymous view; sits atop the pane. */
-  .ms-pa-card { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .ms-pa-card { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
   .ms-pa-sub { color: var(--text2); font-size: 13px; margin: 2px 0 12px; }
   .ms-pa-env { font-size: 12px; color: var(--text2); background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 12px; }
   .ms-pa-env code { font-size: 11px; color: var(--amber); }
@@ -1122,7 +1123,7 @@
   #onboard-access { margin-top: 12px; }
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
-  .ms-pane .setup-form { margin-bottom: 16px; }
+  .ms-pane .setup-form { margin-bottom: 0; }
   /* Nothing behind a fresh install's setup is usable yet: no half-seen app. */
   .desktop-overlay.setup-overlay { background: var(--bg); }
   .setup-overlay .desktop-card { max-height: calc(100dvh - 32px); overflow-y: auto; }

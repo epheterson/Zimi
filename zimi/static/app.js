@@ -12404,12 +12404,14 @@ function _renderManagePublicLocked() {
 }
 
 // Who can change settings (#107): the setup page a fresh install opens on,
-// the second page of the desktop's welcome, and the same rows in Settings.
-// Two switches: settings from outside the network, which needs a password,
-// and the password itself; with it on, a username for password managers and
-// the admin to edit later, a password and its confirmation. Before a password
-// exists only the machine running Zimi, or a device with the setup key it
-// logged, may answer (GHSA-5mw2-53vv-9pw6), so no neighbour answers for you.
+// the second page of the desktop's welcome, and the same row in Settings.
+// One switch, a password to manage. On, a username for password managers and
+// the admin to edit later, a password and its confirmation; off, anyone who
+// can reach Zimi manages it, chosen with a press under its cost. Zimi does
+// not guess where a visitor is: a guess behind a reverse proxy is what kept
+// owners from turning their own password off. Before a password exists only
+// the machine running Zimi, or a device with the setup key it logged, may
+// answer (GHSA-5mw2-53vv-9pw6), so no neighbour answers for you.
 var _setupState = {};  // /manage/has-password's answer
 // The setup gate, raced against the language load so it costs the boot no
 // round trip of its own; _probeManageAuth takes the same answer.
@@ -12421,14 +12423,12 @@ function _fetchHasPw() {
 }
 // mode 'setup' (the welcome card) or 'settings'. st is _setupState.
 function _setupFormHtml(st, mode) {
-  var settings = mode === 'settings', isOpen = st.access === 'open';
-  // While "Anyone, anywhere" is on the password is kept, not gone: turning the
-  // switch back on returns to it, so it shows as a password that exists.
+  var settings = mode === 'settings';
+  // While the password is off it is kept, not gone: turning the switch back
+  // on returns to it, so it shows as a password that exists.
   var hasPw = _setupHasStoredPw(st);
   var needKey = mode === 'setup' && !st.keyless;
-  var ext = !!st.external || isOpen;
-  var req = !isOpen && (hasPw || ext || st.direct === false || mode === 'setup');
-  var lockReq = _setupReqLocked(st, ext, mode);
+  var req = _setupReqSaved(st);
   var input = function(id, type, auto, label, ph, val) {
     return '<label class="setup-field"><span>' + tH(label) + '</span><input id="' + id + '" type="' + type + '" autocomplete="' + auto + '"' +
       (ph ? ' placeholder="' + escAttr(ph) + '"' : '') + (val ? ' value="' + escAttr(val) + '"' : '') +
@@ -12437,27 +12437,24 @@ function _setupFormHtml(st, mode) {
   // Once a password exists the username is Your account's, under Access.
   var fields = hasPw ? '' : _setupUserFieldHtml(st.username || '', false) +
     input('setup-pw', 'password', 'new-password', 'setup_password_field') + input('setup-pw2', 'password', 'new-password', 'setup_confirm');
-  // The third answer: from outside, with no password. Only in Settings, never
-  // on a first run. While it is being chosen its cost sits under the switch
-  // and the button that saves it says what it does: pressing it is the
-  // confirmation. Once on, the switch's own line is all that remains.
-  var open = !settings ? '' : '<div class="setup-open" id="setup-open"' + (_setupChoosingOpen(st, ext, req) ? '' : ' hidden') + '>' +
-    '<p class="setup-open-cost">' + tH('setup_open_cost') + '</p></div>' +
-    (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, ext, req) ? '' : ' hidden') + '>' +
+  // While no password is being chosen its cost sits under the switch, and
+  // the button that saves it says what it does: pressing it is the
+  // confirmation. Once off, the switch's own line is all that remains.
+  var open = '<div class="setup-open" id="setup-open"' + (_setupChoosingOpen(st, req) ? '' : ' hidden') + '>' +
+    '<p class="setup-open-cost">' + tH(hasPw ? 'setup_open_cost' : 'setup_open_cost_new') + '</p></div>' +
+    (hasPw ? '<div class="setup-open" id="setup-cur"' + (_setupNeedsCurrent(st, req) ? '' : ' hidden') + '>' +
       input('setup-cur-pw', 'password', 'current-password', 'current_password') + '</div>' : '');
   return '<form class="setup-form" id="setup-form" data-mode="' + mode + '" onsubmit="event.preventDefault();_setupSubmit()">' +
     (needKey ? input('setup-key', 'text', 'off', 'setup_key', 'XXXX-XXXX-XXXX') + '<p class="setup-hint">' + tH('setup_key_hint') + '</p>' : '') +
     _switchRowsHtml([
-      { id: 'setup-ext', title: tH('setup_outside'), desc: tH(st.external_env ? 'configured_via_env' : _setupExtLocked(st, ext) ? 'setup_outside_needed_here' : settings ? 'setup_outside_desc_settings' : 'setup_outside_desc'),
-        on: ext, disabled: !!st.external_env || _setupExtLocked(st, ext), onchange: '_setupSync(true)' },
-      { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, ext, req, mode),
-        on: req, disabled: lockReq || _setupOpenNoPw(st, mode), onchange: '_setupSync(true)' }
+      { id: 'setup-req', title: tH('setup_password'), desc: _setupReqDescHtml(st, req),
+        on: req, disabled: !!st.env_controlled, onchange: '_setupSync(true)' }
     ]).replace(/<\/div>$/, open + '</div>') +
     (fields ? '<div class="setup-fields" id="setup-fields"' + (req ? '' : ' hidden') + '>' + fields + '</div>' : '') +
     '<div class="pw-error" id="setup-error"></div>' +
-    // In Manage the switches save themselves, as every other switch there
-    // does; the button shows only while something must be typed first.
-    '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, ext, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(_setupSaveLabel(st, ext, req, mode)) + '</button></div>' +
+    // In Manage the switch saves itself, as every other switch there does;
+    // the button shows only while something must be typed or pressed first.
+    '<div class="btn-row" id="setup-save"' + (settings && !_setupNeedsInput(st, req) ? ' hidden' : '') + '><button type="submit" class="btn-primary">' + tH(_setupSaveLabel(st, req, mode)) + '</button></div>' +
     '</form>';
 }
 // The account's name: in the setup form before a password exists, in Your
@@ -12467,92 +12464,68 @@ function _setupUserFieldHtml(name, autosave) {
     (name ? ' value="' + escAttr(name) + '"' : '') + (autosave ? ' onchange="_setupAuto()"' : '') +
     ' spellcheck="false" autocapitalize="off"></label>';
 }
-// Managed from outside the network, the outside switch stays on: turning it
-// off would lock out the one turning it off.
-function _setupExtLocked(st, ext) {
-  return ext && st.inside === false;
-}
-// On the setup page, outside holds the password on. In Settings it does not:
-// outside without a password is "Anyone, anywhere". Through a proxy "anyone on
-// my network" would lock this browser out, so inside-only keeps it on.
-function _setupReqLocked(st, ext, mode) {
-  if (st.env_controlled) return true;
-  if (mode === 'settings') return !ext && st.direct === false;
-  return ext || st.direct === false;
+// The switch as the saved answer draws it: on with a password and on a first
+// run (a password is the suggested answer), off while open or on the network
+// alone (lan, from before this page asked, or ZIMI_LAN_ADMIN).
+function _setupReqSaved(st) {
+  return st.access !== 'open' && st.access !== 'lan';
 }
 // A line under the switch only when it says something the title does not:
-// why it is held on, or who can manage Zimi while it is off.
-function _setupReqDesc(st, ext, req, mode) {
+// who can manage Zimi while it is off.
+function _setupReqDesc(st, req) {
   if (st.env_controlled) return 'configured_via_env';
-  if (_setupOpenNoPw(st, mode)) return 'setup_password_open_none';
-  if (_setupReqLocked(st, ext, mode)) return ext ? 'setup_password_needed_outside' : 'setup_password_needed_proxy';
-  if (req || (mode === 'settings' && _setupChoosingOpen(st, ext, req))) return '';
-  return ext ? 'setup_password_desc_anywhere' : 'setup_password_desc';
+  if (req || _setupChoosingOpen(st, req)) return '';
+  return st.access === 'lan' ? 'setup_password_desc' : 'setup_password_desc_anywhere';
 }
-function _setupReqDescHtml(st, ext, req, mode) {
-  var k = _setupReqDesc(st, ext, req, mode);
+function _setupReqDescHtml(st, req) {
+  var k = _setupReqDesc(st, req);
   return k ? tH(k) : '';
 }
-// Anyone, anywhere chosen from the network alone: there is no kept password
-// to return to, and none can be made while it is on, so the way out is the
-// outside switch, from inside the network.
-function _setupOpenNoPw(st, mode) {
-  return mode === 'settings' && st.access === 'open' && !st.kept_password;
+// No password chosen here but not saved yet.
+function _setupChoosingOpen(st, req) {
+  return !req && _setupReqSaved(st);
 }
-// Anyone, anywhere switched on here but not saved yet.
-function _setupChoosingOpen(st, ext, req) {
-  return ext && !req && st.access !== 'open';
+function _setupSaveLabel(st, req, mode) {
+  if (_setupChoosingOpen(st, req)) return 'setup_open_go';
+  return mode === 'setup' ? 'setup_continue' : 'save';
 }
-function _setupSaveLabel(st, ext, req, mode) {
-  if (mode === 'setup') return 'setup_continue';
-  return _setupChoosingOpen(st, ext, req) ? 'setup_open_go' : 'save';
-}
-// A password exists: in use, or kept while Anyone, anywhere is on.
+// A password exists: in use, or kept while the switch is off.
 function _setupHasStoredPw(st) {
   return st.access === 'password' || (st.access === 'open' && !!st.kept_password);
 }
-// Taking an existing password away (to the network, or to Anyone, anywhere)
-// asks for it; from Anyone, anywhere it does not (everyone is the admin
-// there already, and a forgotten kept password must not trap the owner).
-function _setupNeedsCurrent(st, ext, req) {
-  return !req && _setupHasStoredPw(st) && st.access !== 'open';
+// Taking a password away asks for it; turning it back on does not (everyone
+// manages Zimi while it is off, and a forgotten kept password must not trap
+// the owner).
+function _setupNeedsCurrent(st, req) {
+  return !req && st.access === 'password';
 }
-// A new password, the current one, or the press that turns on Anyone,
-// anywhere comes before Zimi can save; anything else saves on the
-// switch. A first answer (unset) is always a deliberate Save.
-function _setupNeedsInput(st, ext, req) {
-  if (st.access === 'unset' || _setupNeedsCurrent(st, ext, req)) return true;
-  if (ext && !req) return st.access !== 'open';
+// A new password, the current one, or the press that turns the password off
+// comes before Zimi can save; anything else saves on the switch. A first
+// answer (unset) is always a deliberate press.
+function _setupNeedsInput(st, req) {
+  if (st.access === 'unset' || _setupChoosingOpen(st, req)) return true;
   return req && !_setupHasStoredPw(st);
 }
-// The switches as the saved state draws them: where a failed save puts them back.
+// The switch as the saved state draws it: where a failed save puts it back.
 function _setupRevert() {
-  var st = _setupState, isOpen = st.access === 'open';
-  var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
-  if (!ext || !req) return;
-  ext.checked = !!st.external || isOpen;
-  req.checked = !isOpen && (_setupHasStoredPw(st) || ext.checked || st.direct === false);
+  var req = document.getElementById('setup-req');
+  if (!req) return;
+  req.checked = _setupReqSaved(_setupState);
   _setupSync();
 }
 function _setupAuto() {
   var form = document.getElementById('setup-form');
   if (!form || form.dataset.mode !== 'settings') return;
-  var ext = document.getElementById('setup-ext').checked, req = document.getElementById('setup-req').checked;
-  var need = _setupNeedsInput(_setupState, ext, req);
+  var need = _setupNeedsInput(_setupState, document.getElementById('setup-req').checked);
   document.getElementById('setup-save').hidden = !need;
   if (!need) _setupSubmit({ auto: true });
 }
 function _setupSync(changed) {
-  var ext = document.getElementById('setup-ext'), req = document.getElementById('setup-req');
-  var form = document.getElementById('setup-form');
-  if (!ext || !req || !form) return;
-  var st = _setupState, mode = form.dataset.mode, lock = _setupReqLocked(st, ext.checked, mode);
-  if (lock) req.checked = true;
-  var held = lock || _setupOpenNoPw(st, mode);
-  req.disabled = held;
-  req.closest('.share-row').classList.toggle('share-locked', held);
+  var req = document.getElementById('setup-req'), form = document.getElementById('setup-form');
+  if (!req || !form) return;
+  var st = _setupState, mode = form.dataset.mode, on = req.checked;
   var row = req.closest('.share-row'), desc = row.querySelector('.share-row-desc');
-  var k = _setupReqDesc(st, ext.checked, req.checked, mode);
+  var k = _setupReqDesc(st, on);
   if (desc && !k) desc.remove();
   if (k && !desc) {
     desc = document.createElement('span');
@@ -12561,18 +12534,21 @@ function _setupSync(changed) {
   }
   if (k) desc.textContent = t(k);
   var f = document.getElementById('setup-fields');
-  if (f) f.hidden = !req.checked;
+  if (f) f.hidden = !on;
   var o = document.getElementById('setup-open');
-  if (o) o.hidden = !_setupChoosingOpen(st, ext.checked, req.checked);
+  if (o) o.hidden = !_setupChoosingOpen(st, on);
   var btn = document.querySelector('#setup-save button');
-  if (btn) btn.textContent = t(_setupSaveLabel(st, ext.checked, req.checked, mode));
+  if (btn) btn.textContent = t(_setupSaveLabel(st, on, mode));
   var cur = document.getElementById('setup-cur');
-  if (cur) cur.hidden = !_setupNeedsCurrent(st, ext.checked, req.checked);
-  if (changed) _setupAuto();
+  if (cur) cur.hidden = !_setupNeedsCurrent(st, on);
+  if (changed) {
+    var err = document.getElementById('setup-error');
+    if (err) err.textContent = '';
+    _setupAuto();
+  }
 }
-var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', behind_proxy: 'setup_password_needed_proxy',
-  needs_password: 'setup_need_pw', env_controlled: 'configured_via_env', outside_network: 'outside_locked_body', outside_here: 'setup_outside_needed_here', open_locked: 'open_locked',
-  wrong_password: 'wrong_password' };
+var _SETUP_ERRORS = { needs_setup_key: 'setup_bad_key', needs_password: 'setup_need_pw', env_controlled: 'configured_via_env',
+  outside_network: 'outside_locked_body', open_locked: 'open_locked', wrong_password: 'wrong_password' };
 async function _setupSubmit(opts) {
   var quiet = !!(opts && opts.quiet);
   var form = document.getElementById('setup-form');
@@ -12586,7 +12562,7 @@ async function _setupSubmit(opts) {
   };
   var setup = form.dataset.mode === 'setup', st = _setupState;
   var req = document.getElementById('setup-req').checked;
-  var body = { external: document.getElementById('setup-ext').checked, require_password: req, remember: true };
+  var body = { require_password: req, remember: true };
   // The username field is the form's until a password exists, then Your
   // account's, where it is sent only once edited: an untouched field (shown
   // as "admin" when none is stored) must not rename the account.
@@ -12595,7 +12571,7 @@ async function _setupSubmit(opts) {
   var key = val('setup-key');
   if (document.getElementById('setup-key') && !key) return show('setup_need_key');
   // Reached only by pressing the button that names it.
-  if (body.external && !req && !setup) body.open_confirm = true;
+  if (!req) body.open_confirm = true;
   var cur = document.getElementById('setup-cur');
   if (cur && !cur.hidden) {
     body.current_password = document.getElementById('setup-cur-pw').value;
@@ -12875,8 +12851,10 @@ function _renderMsUsers() {
   // Accounts matter only behind a password: on the network alone there are
   // none, and while anyone can manage Zimi none can be made or changed.
   var accounts = _manageAccess === 'password';
-  pane.innerHTML = '<div id="ms-who" class="ms-access-who"></div>' +
-    '<div id="ms-users-body">' + (accounts ? '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>' : '') + '</div>' +
+  // The password switch follows the accounts it guards, with the API token
+  // under it; with the password off it stands alone.
+  pane.innerHTML = '<div id="ms-users-body">' + (accounts ? '<div class="loading"><span class="spinner-inline"></span>' + tH('loading') + '</div>' : '') + '</div>' +
+    '<div id="ms-who" class="ms-access-who"></div>' +
     '<div id="ms-security" class="ms-access-token"></div>';
   _renderAccessCards();
   if (!accounts) return;
@@ -12901,7 +12879,9 @@ function _renderAccessCards() {
     who.innerHTML = results[0].open_env && _manageAccess === 'open' ? '' :
       '<div class="ms-section-label">' + tH('access_manage') + '</div>' + _setupFormHtml(results[0], 'settings');
     who.hidden = !who.innerHTML;
-    tok.innerHTML = '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">' +
+    // The token is for programs, and only a password makes them ask for it:
+    // while it is off the token is kept, unused, until it comes back on.
+    tok.innerHTML = results[0].access !== 'password' ? '' : '<div class="mc-row"><span class="mc-label">' + tH('api_token') + '</span><span class="mc-value">' +
       (results[1].has_token
         ? '<button class="pill" onclick="_regenerateToken()">' + tH('roll') + '</button> ' +
           '<button class="pill" onclick="_revokeToken()">' + tH('revoke') + '</button>'
