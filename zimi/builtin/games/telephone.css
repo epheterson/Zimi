@@ -1,0 +1,21 @@
+/* Wikipedia Telephone: the secret, the clue, the search. Shared tokens: games.css, play.css, library.css. */
+.tp-main { width: min(520px, 100%); margin: 0 auto; }
+.tp-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); }
+.tp-card { width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); display: grid; gap: 12px; }
+.tp-card h2 { margin: 0; font-size: var(--fs-sheet); }
+.tp-card p { margin: 0; }
+.tp-card .tp-label { font-size: var(--fs-small); font-weight: 600; color: var(--accent); }
+.tp-secret { font-size: 26px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.tp-blurb { color: var(--ink2); line-height: 1.45; }
+.tp-clue { font-family: Georgia, "Iowan Old Style", serif; font-style: italic; font-size: var(--fs-sheet); line-height: 1.45; }
+.tp-field { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-body); }
+textarea.tp-field { min-height: 88px; resize: vertical; }
+.tp-field:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tp-counter { font-size: var(--fs-small); color: var(--ink2); text-align: end; }
+.tp-results { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tp-results button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; }
+.tp-results button:hover { border-color: var(--accent); }
+.tp-tries { display: flex; gap: 6px; flex-wrap: wrap; }
+.tp-try { padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: var(--fs-small); text-decoration: line-through; color: var(--ink2); }
+.tp-answer { color: var(--ok); font-weight: 700; }
+.tp-main .ar-btn[aria-disabled="true"] { color: var(--ink3); cursor: default; }

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Code Breaker - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="codebreaker.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Code Breaker</h1>
+  <button class="ar-btn" id="cb-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="cb-secret" id="cb-secret" role="img" aria-label="The hidden code" data-t-aria="cb.hidden"></div>
+  <ol class="cb-rows" id="cb-rows" aria-label="Your guesses" data-t-aria="cb.guessesLabel"></ol>
+  <p class="pl-msg" id="cb-msg"></p>
+  <div class="pl-row" id="cb-palette" role="group" aria-label="Colors" data-t-aria="cb.colors"></div>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="cb-undo" type="button" data-t="cb.erase">Erase</button>
+    <button class="ar-btn" id="cb-check" type="button" aria-pressed="true" disabled data-t="cb.check">Check</button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="handoff.js"></script>
+<script src="codebreaker.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q6498850">About Code Breaker</a></footer><!-- /zimi-about -->
+</body>
+</html>

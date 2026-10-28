@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Drop Pin - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="droppin.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Drop Pin</h1>
+  <span class="ar-stat" id="dp-score" aria-live="polite"></span>
+  <button class="ar-btn" id="dp-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main dp-main">
+  <p class="dp-n" id="dp-n"></p>
+  <p class="dp-ask" id="dp-ask"></p>
+  <div class="dp-stage" id="dp-stage">
+    <iframe class="dp-frame" id="dp-frame" title="Map" data-t-title="drop.mapTitle" hidden></iframe>
+    <svg class="dp-world" id="dp-world" viewBox="0 0 800 400" role="img" aria-label="World map" data-t-aria="drop.worldAria" hidden></svg>
+    <div class="dp-cross" id="dp-cross" aria-hidden="true" hidden></div>
+    <div class="dp-zoom" id="dp-zoom" hidden>
+      <button class="ar-btn" id="dp-zin" type="button" aria-label="Zoom in" data-t-aria="drop.zoomIn">+</button>
+      <button class="ar-btn" id="dp-zout" type="button" aria-label="Zoom out" data-t-aria="drop.zoomOut">&minus;</button>
+    </div>
+  </div>
+  <p class="pl-msg" id="dp-msg"></p>
+  <a class="gl-learn" id="dp-map" href="#" hidden></a>
+  <div class="gs-actionrow">
+    <button class="ar-btn gm-play" id="dp-drop" type="button" data-t="drop.drop">Drop pin</button>
+    <button class="ar-btn gm-play" id="dp-next" type="button" hidden></button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="world-land.js"></script>
+<script src="droppin-data.js"></script>
+<script src="droppin.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q13576160">About Drop Pin</a></footer><!-- /zimi-about -->
+</body>
+</html>

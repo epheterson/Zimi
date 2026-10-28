@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quizzical - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="quizzical.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Quizzical</h1>
+  <span class="ar-stat" id="qz-score" aria-live="polite"></span>
+  <button class="ar-btn" id="qz-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main qz-main">
+  <p class="qz-n" id="qz-n"></p>
+  <section class="qz-card" id="qz-card" aria-live="polite">
+    <p class="qz-kind" id="qz-kind"></p>
+    <img class="qz-pic" id="qz-pic" alt="" hidden>
+    <p class="qz-prompt" id="qz-prompt"></p>
+  </section>
+  <div class="qz-choices" id="qz-choices" role="group" aria-label="Choices" data-t-aria="quizzical.choices"></div>
+  <p class="pl-msg" id="qz-msg"></p>
+  <div class="gs-actionrow">
+    <a class="ar-btn" id="qz-read" href="#" hidden></a>
+    <button class="ar-btn gm-play" id="qz-next" type="button" hidden></button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="quizzical-data.js"></script>
+<script src="quizzical.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q274079">About Quizzical</a></footer><!-- /zimi-about -->
+</body>
+</html>

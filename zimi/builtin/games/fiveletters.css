@@ -1,0 +1,39 @@
+/* Five Letters: tiles, keyboard, the record sheet. Shared tokens: games.css, play.css. */
+:root { --fl-correct: #2f7d56; --fl-present: #c98a24; --fl-absent: #7a766b; --fl-on: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fl-correct: #2f8a5a; --fl-present: #b8801f; --fl-absent: #3a3a40; }
+}
+:root[data-theme="dark"] { --fl-correct: #2f8a5a; --fl-present: #b8801f; --fl-absent: #3a3a40; }
+
+.fl-board { --tile: 58px; display: grid; gap: 6px; }
+.fl-row { display: grid; grid-template-columns: repeat(5, var(--tile)); gap: 6px; }
+.fl-tile { display: grid; place-items: center; width: var(--tile); height: var(--tile); border: 2px solid var(--line); border-radius: var(--r-chip); background: var(--surface2);
+  font: 700 calc(var(--tile) * 0.5)/1 var(--font); text-transform: uppercase; color: var(--ink); }
+.fl-tile.filled { border-color: var(--line-strong); }
+.fl-tile.correct, .fl-tile.present, .fl-tile.absent { border-color: transparent; color: var(--fl-on); }
+.fl-tile.correct { background: var(--fl-correct); }
+.fl-tile.present { background: var(--fl-present); }
+.fl-tile.absent { background: var(--fl-absent); }
+.fl-tile.pop { animation: fl-pop 0.1s ease-out; }
+.fl-tile.flip { animation: fl-flip 0.23s ease-in-out; }
+.fl-tile.hop { animation: fl-hop 0.45s ease-in-out both; }
+@keyframes fl-pop { 50% { scale: 1.1; } }
+@keyframes fl-flip { 50% { transform: scaleY(0); } }
+@keyframes fl-hop { 40% { transform: translateY(calc(var(--tile) * -0.22)); } 70% { transform: translateY(2px); } }
+
+/* Keys are at least 36 by 44: ten across at 390 wide, in 2px gaps, a little wider than the page's text column. */
+.fl-keys { display: flex; flex-direction: column; gap: var(--sp-2); width: min(calc(100% + 12px), 520px); }
+.fl-krow { display: flex; gap: 2px; justify-content: center; }
+.fl-key { flex: 1 1 0; min-width: 0; height: 52px; padding: 0; border: 0; border-radius: var(--r-chip); background: var(--tile); color: var(--ink); font: 700 var(--fs-title) var(--font); text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+.fl-key.wide { flex: 1.6 1 0; font-size: var(--fs-small); }
+@media (hover: hover) { .fl-key:hover { filter: brightness(0.95); } }
+.fl-key:active { filter: brightness(0.85); transform: scale(0.94); }
+/* The answer buttons come after the keyboard, so the keys never move when a round ends. */
+#fl-actions { order: 3; }
+/* The letters are a to z whatever the page's direction. */
+.fl-board, .fl-keys { direction: ltr; }
+.fl-key.correct, .fl-key.present, .fl-key.absent { color: var(--fl-on); }
+.fl-key.correct { background: var(--fl-correct); }
+.fl-key.present { background: var(--fl-present); }
+.fl-key.absent { background: var(--fl-absent); }
+@media (prefers-reduced-motion: reduce) { .fl-tile.pop, .fl-tile.flip, .fl-tile.hop { animation: none; } }

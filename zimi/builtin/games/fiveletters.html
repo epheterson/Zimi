@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Five Letters - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="fiveletters.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Five Letters</h1>
+  <button class="ar-btn" id="fl-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <p class="pl-msg" id="fl-msg"></p>
+  <div class="fl-board" id="fl-board" role="grid" aria-label="Guesses" data-t-aria="fiveletters.board"></div>
+  <div class="gs-actionrow" id="fl-actions" hidden>
+    <button class="ar-btn" id="fl-mean" type="button" hidden></button>
+    <a class="ar-btn" id="fl-learn" href="#" hidden></a>
+    <button class="ar-btn" id="fl-share" type="button" data-t="fiveletters.copy">Copy result</button>
+  </div>
+  <div class="fl-keys" id="fl-keys" role="group" aria-label="Keyboard" data-t-aria="fiveletters.keyboard"></div>
+</main>
+
+<script src="fiveletters-words.js"></script>
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="fiveletters.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q110367996">About Five Letters</a></footer><!-- /zimi-about -->
+</body>
+</html>

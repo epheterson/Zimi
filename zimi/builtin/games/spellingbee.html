@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spelling Bee - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="spellingbee.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Spelling Bee</h1>
+  <span class="ar-stat" id="bee-points" aria-live="polite"></span>
+  <button class="ar-btn" id="bee-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main bee-main">
+  <div class="bee-rank">
+    <span class="bee-rankname" id="bee-rankname"></span>
+    <div class="bee-track" id="bee-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progress" data-t-aria="bee.progress"><i id="bee-fill"></i></div>
+  </div>
+  <p class="bee-input" id="bee-input" aria-label="Your word" data-t-aria="bee.yourWord"></p>
+  <p class="pl-msg" id="bee-msg"></p>
+  <div class="bee-hive" id="bee-hive" role="group" aria-label="Letters" data-t-aria="bee.letters"></div>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="bee-delete" type="button" data-t="bee.delete">Delete</button>
+    <button class="ar-btn" id="bee-shuffle" type="button" data-t="bee.shuffle">Shuffle</button>
+    <button class="ar-btn gm-play" id="bee-enter" type="button" data-t="bee.enter">Enter</button>
+  </div>
+  <details class="bee-found" id="bee-found">
+    <summary id="bee-count"></summary>
+    <ul class="bee-words" id="bee-words"></ul>
+  </details>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="spellingbee-data.js"></script>
+<script src="spellingbee.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1949268">About Spelling Bee</a></footer><!-- /zimi-about -->
+</body>
+</html>

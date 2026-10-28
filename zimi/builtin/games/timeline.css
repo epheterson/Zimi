@@ -1,0 +1,19 @@
+/* Timeline: the events to put in order. Shared tokens: games.css, play.css, library.css. */
+.tl-main { width: min(560px, 100%); margin: 0 auto; }
+.tl-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.tl-how { margin: 0; font-size: var(--fs-body); text-align: center; text-wrap: balance; }
+.tl-list { display: grid; gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.tl-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); color: var(--ink); text-align: start; font: inherit; font-size: var(--fs-body); cursor: pointer; touch-action: manipulation; }
+@media (hover: hover) { .tl-item:hover:not(:disabled) { border-color: var(--accent); } }
+.tl-item .tl-pos { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid var(--ink2); border-radius: 50%; font: 600 var(--fs-small) var(--mono); color: var(--ink2); }
+.tl-item.placed { border-color: var(--accent); background: var(--accent-glow); }
+.tl-item.placed .tl-pos { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.tl-item .tl-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tl-item .tl-year { flex: none; font: 600 var(--fs-small) var(--mono); color: var(--ink2); }
+.tl-item:disabled { cursor: default; color: var(--ink); }
+.tl-item.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--surface)); }
+.tl-item.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--surface)); }
+.tl-item.right .tl-pos { border-color: var(--ok); background: var(--ok); color: #fff; }
+.tl-item.wrong .tl-pos { border-color: var(--bad); background: var(--bad); color: #fff; }
+.tl-item.right .tl-year, .tl-item.wrong .tl-year { color: var(--ink); }
+.tl-main .ar-btn[aria-disabled="true"] { color: var(--ink3); cursor: default; }

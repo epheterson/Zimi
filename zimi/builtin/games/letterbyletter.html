@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Letter by Letter - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="letterbyletter.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Letter by Letter</h1>
+  <button class="ar-btn" id="lb-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main lb-main">
+  <p class="pl-msg" id="lb-msg"></p>
+  <div class="lb-fig" id="lb-fig"></div>
+  <div class="lb-air" id="lb-air" role="img"></div>
+  <p class="lb-clue" id="lb-clue" hidden></p>
+  <div class="lb-word" id="lb-word" role="group" aria-label="The word" data-t-aria="letters.theWord"></div>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="lb-hint" type="button" title="Show one letter. It costs some air." data-t="letters.hint" data-t-title="letters.hintTitle">Hint</button>
+    <a class="ar-btn" id="lb-entry" href="#" hidden data-t="letters.entry">Read the entry</a>
+  </div>
+  <div class="lb-keys" id="lb-keys" role="group" aria-label="Letters" data-t-aria="letters.letters"></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="letterbyletter-words.js"></script>
+<script src="letterbyletter.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q460875">About Letter by Letter</a></footer><!-- /zimi-about -->
+</body>
+</html>

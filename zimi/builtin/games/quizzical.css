@@ -1,0 +1,23 @@
+/* Quizzical: the question card and the four choices. Shared tokens: games.css, play.css, library.css. */
+.qz-main { width: min(560px, 100%); margin: 0 auto; }
+.qz-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); }
+.qz-card { width: 100%; padding: 18px 16px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); text-align: center; }
+.qz-kind { margin: 0 0 10px; font-size: var(--fs-small); font-weight: 600; color: var(--accent); }
+.qz-kind.gl-loading { color: var(--ink2); }
+.qz-prompt { margin: 0; font-size: var(--fs-sheet); line-height: 1.45; text-wrap: balance; }
+.qz-pic { display: block; max-width: 100%; max-height: 38svh; margin: 0 auto; border-radius: var(--r-chip); object-fit: contain; background: var(--cell); }
+.qz-pic[hidden] { display: none; }
+.qz-pic + .qz-prompt { margin-top: 10px; }
+.qz-choices { display: grid; gap: 8px; width: 100%; }
+.qz-choice { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); text-align: start; font-size: var(--fs-body); cursor: pointer; touch-action: manipulation; }
+@media (hover: hover) { .qz-choice:hover:not(:disabled) { border-color: var(--accent); } }
+.qz-choice:not(:disabled) .qz-num { background: var(--surface); }
+.qz-choice .qz-num { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cell); font: 600 var(--fs-small) var(--mono); color: var(--ink2); }
+.qz-choice .qz-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.qz-choice:disabled { cursor: default; color: var(--ink2); }
+.qz-choice.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, var(--surface)); color: var(--ink); }
+.qz-choice.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--ink); }
+.qz-choice.right .qz-num { background: var(--ok); color: #fff; }
+.qz-choice.wrong .qz-num { background: var(--bad); color: #fff; }
+.qz-read { text-decoration: none; }
+a.ar-btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }

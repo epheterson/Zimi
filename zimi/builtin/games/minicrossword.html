@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini Crossword - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="minicrossword.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Mini Crossword</h1>
+  <button class="ar-btn" id="cw-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main cw-main">
+  <p class="cw-clue" id="cw-clue" aria-live="polite"></p>
+  <div class="cw-grid" id="cw-grid" role="grid" aria-label="Crossword" data-t-aria="minicw.grid"></div>
+  <p class="pl-msg" id="cw-msg"></p>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="cw-hint" type="button" data-t="minicw.hint">Hint</button>
+    <button class="ar-btn" id="cw-check" type="button" data-t="minicw.check">Check</button>
+  </div>
+  <div class="cw-keys" id="cw-keys" role="group" aria-label="Keyboard" data-t-aria="minicw.keyboard"></div>
+  <details class="cw-clues" id="cw-clues">
+    <summary data-t="minicw.allClues">All clues</summary>
+    <div class="cw-cols"><div><h2 data-t="minicw.across">Across</h2><ol id="cw-across"></ol></div><div><h2 data-t="minicw.down">Down</h2><ol id="cw-down"></ol></div></div>
+  </details>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="minicrossword-data.js"></script>
+<script src="minicrossword.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q83207">About Mini Crossword</a></footer><!-- /zimi-about -->
+</body>
+</html>

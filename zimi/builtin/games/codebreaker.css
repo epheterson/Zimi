@@ -1,0 +1,18 @@
+/* Code Breaker: the guess rows and their score dots. Pegs come from play.css. */
+.cb-secret { display: flex; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
+.cb-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.cb-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-3); border: 1px solid transparent; border-radius: var(--radius); }
+.cb-row.cb-now { border-color: var(--accent); background: var(--accent-glow); }
+.cb-row .cb-n { width: 18px; font: 600 var(--fs-small) var(--mono); color: var(--ink2); text-align: right; }
+.cb-row .pl-peg { --peg: 38px; }
+.cb-row .pl-peg:not([data-c]) { background: var(--cell); border-style: dashed; }
+.cb-pegs { display: flex; gap: var(--sp-2); }
+.cb-fb { display: grid; grid-template: repeat(2, 1fr) / repeat(2, 1fr); gap: 3px; width: 32px; height: 32px; padding: 2px; margin-left: 4px; }
+.cb-fb i { display: block; border-radius: 50%; border: 2px solid transparent; }
+.cb-fb i.cb-x { background: var(--ink); border-color: var(--ink); }
+.cb-fb i.cb-c { border-color: var(--ink); }
+.cb-fb i.cb-0 { border-color: var(--line); border-width: 1px; }
+#cb-palette { --peg: 48px; gap: 10px; }
+#cb-palette .pl-peg:disabled { opacity: 0.3; }
+.cb-secret .pl-peg { --peg: 38px; }
+@media (max-width: 380px) { .cb-row { gap: 6px; padding: 3px 6px; } .cb-pegs { gap: 6px; } .cb-row .pl-peg { --peg: 36px; } #cb-palette { --peg: 44px; gap: 8px; } }

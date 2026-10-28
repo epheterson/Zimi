@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Higher or Lower - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="roundkit.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Higher or Lower</h1>
+  <span class="ar-stat" id="rk-score" aria-live="polite"></span>
+  <button class="ar-btn" id="rk-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main rk-main">
+  <p class="rk-n" id="rk-n"></p>
+  <section class="rk-card" id="rk-card" aria-live="polite">
+    <p class="rk-kind" id="rk-kind"></p>
+    <img class="rk-pic rk-flag" id="rk-pic" alt="" hidden>
+    <p class="rk-quote" id="rk-quote" hidden></p>
+    <p class="rk-prompt" id="rk-prompt" hidden></p>
+    <p class="rk-detail" id="rk-detail" hidden></p>
+  </section>
+  <div class="rk-choices" id="rk-choices" role="group" aria-label="Choices" data-t-aria="round.choices"></div>
+  <p class="pl-msg" id="rk-msg"></p>
+  <div class="gs-actionrow">
+    <a class="ar-btn" id="rk-read" href="#" hidden></a>
+    <button class="ar-btn gm-play" id="rk-next" type="button" hidden></button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="roundkit.js"></script>
+<script src="higherlower-data.js"></script>
+<script src="higherlower.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q328076">About Higher or Lower</a></footer><!-- /zimi-about -->
+</body>
+</html>

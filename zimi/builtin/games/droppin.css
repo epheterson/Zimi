@@ -1,0 +1,18 @@
+/* Drop Pin: a real map to pan, or the world to tap, with a cross to aim. Shared tokens: games.css, play.css, library.css. */
+.dp-main { width: min(560px, 100%); margin: 0 auto; }
+.dp-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); }
+.dp-ask { margin: 0; font-size: var(--fs-sheet); font-weight: 600; text-align: center; text-wrap: balance; }
+.dp-stage { position: relative; width: 100%; height: min(58svh, 460px); border: 1px solid var(--line); border-radius: var(--r-sheet); overflow: hidden; background: var(--surface2); }
+.dp-frame { width: 100%; height: 100%; border: 0; }
+.dp-world { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; background: #16233f; }
+.dp-world .land { fill: #3c5a4a; stroke: #56786a; stroke-width: 0.4; vector-effect: non-scaling-stroke; }
+.dp-world .grid line { stroke: rgba(255, 255, 255, 0.08); vector-effect: non-scaling-stroke; }
+.dp-world .pin { fill: #f59e0b; stroke: #fff; vector-effect: non-scaling-stroke; }
+.dp-world .truth { fill: #2fa05f; stroke: #fff; vector-effect: non-scaling-stroke; }
+.dp-world .miss { stroke: #fff; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.dp-cross { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; }
+.dp-cross::before, .dp-cross::after { content: ""; position: absolute; background: #f59e0b; box-shadow: 0 0 0 1.5px #fff; }
+.dp-cross::before { left: 13px; top: 0; width: 2px; height: 28px; }
+.dp-cross::after { top: 13px; left: 0; height: 2px; width: 28px; }
+.dp-zoom { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }
+.dp-zoom .ar-btn { min-width: 44px; min-height: 44px; padding: 0; font-size: var(--fs-sheet); }

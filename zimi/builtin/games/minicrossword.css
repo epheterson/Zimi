@@ -1,0 +1,35 @@
+/* Mini Crossword: the grid, the clue, the keys. Shared tokens: games.css, play.css, library.css.
+   The paper, the black squares and the rules are the palette's own: surface, ink and line in light, and in dark the
+   paper a step above the panel, the black squares the ground, the rules ink mixed into the panel. */
+:root { --cw-paper: var(--surface); --cw-block: var(--ink); --cw-rule: var(--line-strong); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cw-paper: color-mix(in srgb, var(--ink) 8%, var(--surface2)); --cw-block: var(--ground); --cw-rule: color-mix(in srgb, var(--ink) 30%, var(--surface2)); } }
+:root[data-theme="dark"] { --cw-paper: color-mix(in srgb, var(--ink) 8%, var(--surface2)); --cw-block: var(--ground); --cw-rule: color-mix(in srgb, var(--ink) 30%, var(--surface2)); }
+.cw-main { width: min(420px, 100%); margin: 0 auto; }
+.cw-clue { width: 100%; min-height: 2.9em; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); font-size: var(--fs-body); line-height: 1.35; }
+.cw-clue b { color: var(--accent); margin-inline-end: 6px; }
+.cw-grid { --cell: 60px; display: grid; grid-template-columns: repeat(5, var(--cell)); gap: 2px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
+.cw-cell, .cw-block { position: relative; width: var(--cell); height: var(--cell); }
+.cw-block { border-radius: 4px; background: var(--cw-block); }
+.cw-cell { display: grid; place-items: center; padding: 0; border: 1px solid var(--cw-rule); border-radius: 4px; background: var(--cw-paper); color: var(--ink); font: 700 var(--fs-brand)/1 var(--font); text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+.cw-cell .cw-n { position: absolute; top: 2px; left: 4px; font: 600 11px/1 var(--font); color: var(--ink2); }
+.cw-cell.in-word { background: var(--accent-glow); border-color: var(--accent-line); }
+.cw-cell.sel { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.cw-cell.sel .cw-n { color: var(--accent-ink); }
+.cw-cell.wrong { color: var(--bad); text-decoration: line-through; }
+.cw-cell.hinted { color: var(--accent); }
+.cw-cell.sel.hinted { color: var(--accent-ink); }
+.cw-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cw-keys { display: flex; flex-direction: column; gap: 6px; width: min(calc(100% + 12px), 520px); }
+.cw-krow { display: flex; gap: 3px; justify-content: center; }
+.cw-key { flex: 1 1 0; min-width: 0; height: 48px; padding: 0; border: 0; border-radius: var(--r-chip); background: var(--cell); color: var(--ink); font: 700 var(--fs-title) var(--font); text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+.cw-key.wide { flex: 1.6 1 0; font-size: var(--fs-small); }
+.cw-clues { width: 100%; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
+.cw-clues summary { display: flex; align-items: center; min-height: 44px; padding: 0 14px; cursor: pointer; font-size: var(--fs-body); }
+.cw-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 14px 14px; }
+.cw-cols h2 { margin: 0 0 6px; font-size: var(--fs-small); color: var(--ink2); font-weight: 600; }
+.cw-cols ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.cw-cols li button { display: block; width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-small); text-align: start; cursor: pointer; }
+.cw-cols li button b { color: var(--accent); margin-inline-end: 4px; }
+.cw-cols li button.done { color: var(--ink2); }
+.cw-main .ar-btn[aria-disabled="true"] { color: var(--ink3); cursor: default; }
+@media (max-width: 380px) { .cw-grid { --cell: 54px; } }

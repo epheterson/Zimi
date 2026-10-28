@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quest - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="pixel.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Quest</h1>
+  <button class="ar-btn" id="qs-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="qs-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small data-t="quest.hearts">Hearts</small><b id="qs-hearts">3</b></div>
+    <div class="pl-stat"><small data-t="quest.keys">Keys</small><b id="qs-keys">0</b></div>
+    <div class="pl-stat"><small data-t="quest.sword">Sword</small><b id="qs-sword">No</b></div>
+    <div class="pl-stat"><small data-t="quest.place">Place</small><b id="qs-where">Meadow</b></div>
+  </div>
+  <canvas class="px-screen" id="qs-screen" role="img" aria-label="A small knight exploring a screen of meadow, forest, lake, caves or castle" data-t-aria="quest.screen"></canvas>
+  <p class="pl-msg" id="qs-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="pixelkit.js"></script>
+<script src="quest.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q343568">About Quest</a></footer><!-- /zimi-about -->
+</body>
+</html>

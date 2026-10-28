@@ -1,0 +1,31 @@
+/* ZimiGames: what the library games (Wiki Race, Letter by Letter, Quizzical, Jigsaw, Where in the World) share.
+   Tokens come from games.css and play.css. */
+.gl-card { width: min(520px, 100%); padding: 18px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); text-align: center; }
+.gl-card h2 { margin: 0 0 var(--sp-2); font-size: var(--fs-sheet); }
+.gl-card p { margin: 0 0 10px; color: var(--ink2); }
+.gl-card .gm-play { min-height: 44px; padding: 0 22px; }
+.gl-loading::after { content: ""; display: block; width: 22px; height: 22px; margin: 12px auto 0; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: gl-spin 0.8s linear infinite; }
+@keyframes gl-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .gl-loading::after { animation: none; } }
+/* A hidden button stays hidden whatever else styles it (the games' accent buttons set a display). */
+.ar-btn[hidden] { display: none !important; }
+/* The accent button keeps its label on hover (the plain button turns its text accent, which would vanish on it). */
+.gm-play:hover { color: var(--accent-ink); filter: brightness(1.08); }
+.gs-actionrow[hidden] { display: none; }
+/* A link that looks like a button (Read about ..., after an answer). */
+a.ar-btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
+/* A learn-more link under a round (the place on the map, ...): one quiet line, never a button in the way of Next. */
+a.gl-learn { align-self: center; color: var(--accent); font-size: var(--fs-small); font-weight: 600; text-decoration: none; }
+a.gl-learn:hover { text-decoration: underline; }
+a.gl-learn[hidden] { display: none; }
+/* The one-line note that a game's content is English (Lib.englishNote). */
+.gl-note { margin: 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.gl-note[hidden] { display: none; }
+/* A right answer lifts the score a little. */
+.gl-bump { display: inline-block; animation: gl-bump 0.35s ease-out; }
+@keyframes gl-bump { 40% { transform: scale(1.35); color: var(--accent); } }
+@media (prefers-reduced-motion: reduce) { .gl-bump { animation: none; } }
+/* Every answer and key answers a press at once: the lift is on press, not on hover (a touch screen has none). */
+.rk-choice:active:not(:disabled), .qz-choice:active:not(:disabled), .bl-option:active:not(:disabled), .tl-item:active:not(:disabled) { background: var(--accent-glow); border-color: var(--accent); }
+.cw-key:active, .bee-hex:active { filter: brightness(0.88); }
+.cw-key:active { transform: scale(0.94); }

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wikipedia Telephone - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="passkit.css">
+<link rel="stylesheet" href="telephone.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Telephone</h1>
+  <span class="ar-stat" id="tp-score" aria-live="polite"></span>
+  <button class="ar-btn" id="tp-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main tp-main">
+  <p class="tp-n" id="tp-n"></p>
+  <section class="tp-card" id="tp-card" aria-live="polite"></section>
+  <p class="pl-msg" id="tp-msg"></p>
+  <div class="gs-actionrow" id="tp-actions"></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="passkit.js"></script>
+<script src="wikirace-data.js"></script>
+<script src="telephone.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q151939">About Telephone</a></footer><!-- /zimi-about -->
+</body>
+</html>

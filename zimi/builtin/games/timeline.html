@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Timeline - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="timeline.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Timeline</h1>
+  <span class="ar-stat" id="tl-score" aria-live="polite"></span>
+  <button class="ar-btn" id="tl-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main tl-main">
+  <p class="tl-n" id="tl-n"></p>
+  <p class="tl-how" id="tl-how"></p>
+  <ol class="tl-list" id="tl-list" aria-label="Events" data-t-aria="timeline.events"></ol>
+  <p class="pl-msg" id="tl-msg"></p>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="tl-clear" type="button" data-t="timeline.clear">Clear</button>
+    <button class="ar-btn gm-play" id="tl-check" type="button" data-t="timeline.check">Check</button>
+    <button class="ar-btn gm-play" id="tl-next" type="button" hidden></button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="timeline-data.js"></script>
+<script src="timeline.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q186117">About Timeline</a></footer><!-- /zimi-about -->
+</body>
+</html>

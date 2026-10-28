@@ -1,0 +1,15 @@
+/* Echo: four big pads. Each has its own colour, shape, corner and note, so none depends on colour alone. */
+.ec-board { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); width: min(100%, 380px); aspect-ratio: 1; }
+.ec-pad { position: relative; display: grid; place-items: center; padding: 0; border: 3px solid rgba(0, 0, 0, 0.35); border-radius: var(--r-sheet); color: #fff; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; filter: saturate(0.72) brightness(0.8); transition: filter 0.06s, transform 0.06s; }
+.ec-pad[data-c="0"] { background: var(--g-red); border-top-left-radius: 90px; }
+.ec-pad[data-c="1"] { background: var(--g-blue); border-top-right-radius: 90px; }
+.ec-pad[data-c="2"] { background: var(--g-green); border-bottom-left-radius: 90px; }
+.ec-pad[data-c="3"] { background: var(--g-gold); color: #26241f; border-bottom-right-radius: 90px; }
+.ec-pad svg { width: 38%; height: 38%; opacity: 0.9; }
+.ec-pad.on { filter: saturate(1.25) brightness(1.25); transform: scale(1.03); box-shadow: 0 0 0 4px var(--accent); }
+.ec-pad:disabled { cursor: default; }
+.ec-pad:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .ec-pad { transition: none; } .ec-pad.on { transform: none; } }
+/* A slip: the pad you pressed goes dark and grey with an ink ring, which reads on all four colours (red included) and is not colour alone:
+   the board also jolts and the status says so. The pad it should have been lights after it. */
+.ec-pad.miss { filter: grayscale(0.85) brightness(0.55); box-shadow: 0 0 0 4px var(--ink); }

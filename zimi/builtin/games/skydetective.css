@@ -1,0 +1,8 @@
+/* Sky Detective: the dome and what is asked about it. Shared tokens: games.css, play.css, library.css; the choices are roundkit.css's.
+   The sky is a material (a dark dome with light stars in light and dark themes alike), so its colors are hex. */
+.sk-main { width: min(460px, 100%); margin: 0 auto; }
+.sk-where { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.sk-dome { width: min(100%, 420px, 40svh); aspect-ratio: 1; border-radius: 50%; touch-action: manipulation; cursor: crosshair; background: #0b1226; box-shadow: 0 0 0 2px var(--line); }
+.sk-dome:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.sk-q { margin: 0; font-size: var(--fs-sheet); font-weight: 600; text-align: center; text-wrap: balance; }
+.sk-fact { margin: 0; text-align: center; color: var(--ink2); text-wrap: balance; }

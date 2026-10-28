@@ -1,0 +1,28 @@
+/* Letter by Letter: the balloon, the word, the keys. Shared tokens: games.css, play.css, library.css. */
+.lb-main { width: min(560px, 100%); margin: 0 auto; }
+.lb-fig { width: min(230px, 52vw); }
+.lb-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lb-fig path, .lb-fig ellipse, .lb-fig circle { transition: d 0.3s ease, cx 0.3s ease, cy 0.3s ease, rx 0.3s ease, ry 0.3s ease; }
+.lb-air { display: flex; gap: 6px; justify-content: center; }
+.lb-air i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.lb-air i.gone { background: transparent; box-shadow: inset 0 0 0 2px var(--line); }
+.lb-clue { margin: 0; max-width: 40ch; text-align: center; font-size: var(--fs-body); font-style: italic; color: var(--ink2); text-wrap: balance; }
+.lb-word { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 48px; }
+.lb-slot { display: grid; place-items: end center; min-width: 30px; height: 44px; padding: 0 2px 2px; border-bottom: 3px solid var(--ink3); font: 700 var(--fs-brand)/1 var(--font); text-transform: uppercase; color: var(--ink); }
+.lb-slot.on { border-bottom-color: var(--accent); }
+/* A wrong letter shakes the balloon; keeping it up lifts it. */
+.lb-fig.lb-wobble { animation: lb-wobble 0.4s ease-in-out; transform-origin: 50% 80%; }
+.lb-fig.lb-rise { animation: lb-rise 0.6s ease-out; }
+@keyframes lb-wobble { 20% { rotate: -6deg; } 50% { rotate: 5deg; } 80% { rotate: -2deg; } }
+@keyframes lb-rise { 40% { translate: 0 -14px; } }
+.lb-slot.pop { animation: lb-pop 0.25s ease-out; }
+@keyframes lb-pop { 40% { transform: translateY(-6px) scale(1.2); } }
+.lb-keys { display: flex; flex-direction: column; gap: var(--sp-2); width: min(calc(100% + 12px), 500px); }
+.lb-krow { display: flex; gap: 2px; justify-content: center; }
+.lb-key { flex: 1 1 0; min-width: 0; max-width: 46px; height: 48px; padding: 0; border: 0; border-radius: var(--r-chip); background: var(--tile); color: var(--ink); font: 700 var(--fs-title) var(--font); text-transform: uppercase; cursor: pointer; touch-action: manipulation; }
+@media (hover: hover) { .lb-key:hover:not(:disabled) { filter: brightness(0.95); } }
+.lb-key.hit { background: var(--ok); color: var(--accent-ink); }
+.lb-key.miss { background: transparent; color: var(--ink3); box-shadow: inset 0 0 0 1px var(--line); }
+.lb-key:active:not(:disabled) { filter: brightness(0.85); transform: scale(0.94); }
+.lb-key:disabled { cursor: default; }
+@media (prefers-reduced-motion: reduce) { .lb-fig path, .lb-fig ellipse, .lb-fig circle { transition: none; } }

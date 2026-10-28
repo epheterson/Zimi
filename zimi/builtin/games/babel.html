@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Babel - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="babel.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Babel</h1>
+  <span class="ar-stat" id="bb-score" aria-live="polite"></span>
+  <button class="ar-btn" id="bb-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main bb-main">
+  <p class="bb-n" id="bb-n"></p>
+  <p class="bb-how" id="bb-how"></p>
+  <ol class="bb-clues" id="bb-clues" aria-label="Clues" data-t-aria="babel.clues"></ol>
+  <form class="bb-form" id="bb-form" autocomplete="off">
+    <input class="bb-field" id="bb-field" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="The English word" data-t-aria="babel.fieldLabel">
+    <button class="ar-btn gm-play" id="bb-guess" type="submit" data-t="babel.guess">Guess</button>
+  </form>
+  <p class="pl-msg" id="bb-msg"></p>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="bb-more" type="button" data-t="babel.more">Another clue</button>
+    <a class="ar-btn" id="bb-read" href="#" hidden></a>
+    <button class="ar-btn gm-play" id="bb-next" type="button" hidden></button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="babel-data.js"></script>
+<script src="babel.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q41213">About Babel</a></footer><!-- /zimi-about -->
+</body>
+</html>

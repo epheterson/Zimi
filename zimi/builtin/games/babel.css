@@ -1,0 +1,18 @@
+/* Babel: the clues, one word in each of several languages. Shared tokens: games.css, play.css, library.css. */
+.bb-main { width: min(520px, 100%); margin: 0 auto; }
+.bb-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); }
+.bb-how { margin: 0; min-height: 3em; text-align: center; text-wrap: balance; }   /* two lines kept, so the clues do not jump when the line clears */
+.bb-clues { display: grid; gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.bb-clue { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); }
+.bb-clue .bb-lang { flex: none; min-width: 5.5em; font-size: var(--fs-small); font-weight: 600; color: var(--accent); }
+.bb-clue .bb-word { flex: 1; font-size: var(--fs-brand); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; text-align: end; }
+.bb-clue .bb-tr { display: block; font-size: var(--fs-small); font-weight: 400; color: var(--ink2); }
+.bb-clue.new { border-color: var(--accent); background: var(--accent-glow); }
+.bb-clue.hidden { opacity: 0.55; border-style: dashed; }
+.bb-clue.hidden .bb-word { font-size: var(--fs-body); font-weight: 400; color: var(--ink2); }
+.bb-form { display: flex; gap: 8px; width: 100%; }
+.bb-field { flex: 1; min-width: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); color: var(--ink); font: inherit; font-size: var(--fs-title); }
+.bb-field:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bb-field:disabled { opacity: 0.6; }
+.bb-form .ar-btn { min-height: 44px; }
+.bb-answer { color: var(--ok); font-weight: 700; }

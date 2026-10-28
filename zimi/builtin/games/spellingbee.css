@@ -1,0 +1,32 @@
+/* Spelling Bee: the hive, the word being made, the words found. Shared tokens: games.css, play.css, library.css. */
+.bee-main { width: min(420px, 100%); margin: 0 auto; }
+.bee-rank { display: flex; align-items: center; gap: 12px; width: 100%; }
+.bee-rankname { flex: none; min-width: 6.5em; font-weight: 650; }
+.bee-track { position: relative; flex: 1; height: 8px; border-radius: 999px; background: var(--cell); overflow: hidden; }
+.bee-track i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: var(--accent); transition: width 0.2s ease-out; }
+.bee-input { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; margin: 0; font: 700 32px/1 var(--font); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.bee-input .mid { color: var(--accent); }
+.bee-input .off { color: var(--ink3); }
+.bee-input.empty::before { content: "\200b"; }
+.bee-input .caret { display: inline-block; width: 2px; height: 1em; margin-inline-start: 2px; background: var(--accent); animation: bee-blink 1s steps(1) infinite; }
+@keyframes bee-blink { 50% { opacity: 0; } }
+.bee-hive { position: relative; width: 240px; height: 232px; margin: 0 auto; }
+.bee-hex { position: absolute; left: calc(50% + var(--x) * 1px - 42px); top: calc(50% + var(--y) * 1px - 38px); width: 84px; height: 76px; padding: 0; border: 0; background: none; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; outline: none; }
+.bee-hex svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bee-hex polygon { fill: var(--surface2); stroke: var(--line-strong); stroke-width: 1.5; stroke-linejoin: round; }
+.bee-hex.mid polygon { fill: var(--accent); stroke: var(--accent); }
+.bee-hex:active polygon { fill: var(--cell); }
+.bee-hex.mid:active polygon { filter: brightness(0.92); fill: var(--accent); }
+.bee-hex:focus-visible polygon { stroke: var(--accent); stroke-width: 4; }
+.bee-hex.mid:focus-visible polygon { stroke: var(--ink); }
+.bee-hex span { position: relative; display: grid; place-items: center; height: 100%; font: 700 var(--fs-brand)/1 var(--font); text-transform: uppercase; color: var(--ink); }
+.bee-hex.mid span { color: var(--accent-ink); }
+.bee-found { width: 100%; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
+.bee-found summary { display: flex; align-items: center; min-height: 44px; padding: 0 14px; cursor: pointer; font-size: var(--fs-body); }
+.bee-words { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 4px 14px 14px; list-style: none; font-size: var(--fs-body); }
+.bee-words li.pangram { font-weight: 700; color: var(--accent); }
+.bee-main .ar-btn[aria-disabled="true"] { color: var(--ink3); cursor: default; }
+/* A found word rises and fades from where it was typed. */
+.bee-ghost { position: absolute; inset: 0; display: grid; place-items: center; color: var(--accent); pointer-events: none; animation: bee-rise 0.7s ease-out forwards; }
+@keyframes bee-rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-28px) scale(1.15); } }
+@media (prefers-reduced-motion: reduce) { .bee-ghost { animation: none; opacity: 0; } .bee-track i { transition: none; } .bee-input .caret { animation: none; } }

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where in the World - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="whereintheworld.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Where in the World</h1>
+  <span class="ar-stat" id="wm-score" aria-live="polite"></span>
+  <button class="ar-btn" id="wm-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main wm-main">
+  <p class="wm-n" id="wm-n"></p>
+  <div class="wm-q">
+    <h2 id="wm-ask">&nbsp;</h2>
+    <p id="wm-kind"></p>
+  </div>
+  <p class="pl-msg" id="wm-msg"></p>
+  <div class="wm-frame" id="wm-frame" tabindex="0" role="application" aria-label="World map" data-t-aria="world.map">
+    <svg id="wm-svg" class="wm-svg" preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 400"></svg>
+    <div class="wm-zoom">
+      <button class="ar-btn" id="wm-zin" type="button" aria-label="Zoom in" data-t-aria="world.zoomIn">+</button>
+      <button class="ar-btn" id="wm-zout" type="button" aria-label="Zoom out" data-t-aria="world.zoomOut">&minus;</button>
+    </div>
+  </div>
+  <div class="gs-actionrow">
+    <button class="ar-btn gm-play" id="wm-guess" type="button" disabled data-t="world.guess">Guess</button>
+    <button class="ar-btn gm-play" id="wm-next" type="button" hidden></button>
+  </div>
+  <p class="wm-info" id="wm-info" hidden></p>
+  <a class="gl-learn" id="wm-map" href="#" hidden></a>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="world-land.js"></script>
+<script src="whereintheworld-data.js"></script>
+<script src="whereintheworld.js"></script>
+<!-- zimi-about --><!-- /zimi-about -->
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+</body>
+</html>
