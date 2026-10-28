@@ -1,0 +1,6 @@
+/* Crazy Eights: the badge under the discard pile that says which suit to match. */
+.ce-suit { position: absolute; z-index: 30; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.34); color: #fff; font-size: var(--fs-small); line-height: 1.5; white-space: nowrap; pointer-events: none; }
+.ce-glyph { font-size: var(--fs-title); line-height: 1; }
+.ce-red .ce-glyph { color: #ff8a80; }
+.ce-wild { background: var(--accent); color: var(--accent-ink); }
+.ce-wild.ce-red .ce-glyph { color: #8f1d1d; }

@@ -1,0 +1,9 @@
+/* The cover that hides the screen between people (passkit.js). Shared tokens: games.css. It stops below the bar (56px), so Back and Menu stay in reach. */
+.pk-cover { position: fixed; inset: 56px 0 0 0; z-index: 60; display: grid; place-items: stretch center; padding: var(--sp-3) var(--gutter) max(var(--sp-4), env(safe-area-inset-bottom)); background: var(--ground); }
+/* The card is the screen: the name large and centred in the room above, the one amber button full width at the thumb's end. */
+.pk-card { width: min(480px, 100%); display: flex; flex-direction: column; justify-content: center; gap: var(--sp-3); padding: var(--sp-5) var(--sp-4) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); text-align: center; }
+.pk-card h2 { margin: 0; font-size: var(--fs-display); font-weight: 650; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+.pk-card p { margin: 0; font-size: var(--fs-sheet); color: var(--ink2); text-wrap: balance; }
+.pk-card .gm-play { align-self: stretch; justify-content: center; text-align: center; margin-top: auto; min-height: 56px; padding: 0 22px; font-size: var(--fs-sheet); }
+.pk-card h2 { margin-top: auto; } .pk-card p { margin-bottom: auto; }
+@media (min-width: 700px) { .pk-cover { place-items: center; } .pk-card { min-height: 420px; } }

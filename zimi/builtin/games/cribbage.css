@@ -1,0 +1,10 @@
+/* Cribbage: the peg board and the little labels under the piles. */
+.cb-board { position: absolute; z-index: 20; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35)); }
+.cb-svg { display: block; width: 100%; height: auto; }
+.cb-wood { fill: var(--wood); stroke: var(--wood-dark); }
+.cb-holes circle { fill: rgba(var(--wood-grain), 0.7); }
+.cb-tick { fill: rgba(255, 255, 255, 0.7); font: 600 6px var(--font); }
+.cb-peg { stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.8; }
+.cb-front { stroke: #fff; stroke-width: 0.9; }
+.cb-tag { position: absolute; z-index: 5; text-align: center; font-size: var(--fs-caption); color: rgba(255, 255, 255, 0.78); pointer-events: none; white-space: nowrap; }
+.cb-tag[hidden] { display: none; }

@@ -1,0 +1,2 @@
+/* Teen Patti: who each computer player is and what it is doing (blind, seen, packed), under its cards. */
+.tp-tag { position: absolute; z-index: 25; transform: translateX(-50%); padding: 2px 8px; border-radius: 10px; background: rgba(0, 0, 0, 0.3); color: #fff; font: 600 var(--fs-caption)/1.25 var(--font); text-align: center; white-space: pre-line; pointer-events: none; }

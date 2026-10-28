@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FreeCell</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="cards.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body class="zc-game">
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&#8249;</a>
+  <h1>FreeCell<small id="zc-sub"></small></h1>
+  <button class="ar-btn zc-hintbtn" id="zc-hint" type="button" title="Show a winning move" aria-label="Hint"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
+  <button class="ar-btn" id="zc-undo" type="button" disabled>Undo</button>
+  <button class="ar-btn" id="zc-new" type="button">New</button>
+  <button class="ar-btn" id="zc-menu" type="button" aria-label="Menu">&#9776;</button>
+  <span class="ar-stat" id="zc-stat">0:00</span>
+</header>
+<main class="zc-table" id="zc-table"></main>
+<script src="cardbacks.js"></script>
+<script src="courts.js"></script>
+<script src="cards.js"></script>
+<script src="freecell-solver.js"></script>
+<script src="freecell.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1050614">About FreeCell</a></footer><!-- /zimi-about -->
+</body>
+</html>

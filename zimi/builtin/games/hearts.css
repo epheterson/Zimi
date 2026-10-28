@@ -1,0 +1,2 @@
+/* Hearts wears the shared card table: the score chips and the status line are cardtable.css's. */
+@import url("cardtable.css");

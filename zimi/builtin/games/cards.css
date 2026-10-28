@@ -1,0 +1,159 @@
+/* ZimiGames cards: the table, the cards, the animated backs, the sheets'
+   extras. Colours come from games.css tokens; the felt stays green and the
+   cards stay cream in both themes. */
+
+/* ── The page: a bar over a felt table ─────────────────────────────────── */
+/* A double tap on a card sends it home: never a zoom, and a pinch never zooms Zimi's page around the game (pan-x pan-y: no zoom of either kind). iOS zooms the page on a double tap anywhere that is not told otherwise, and a
+   zoomed page leaves the table off screen (the bar clipped, the first and last columns cut). The cards and the table carry their
+   own touch-action below; this covers the bar, the gaps and the sheets. */
+html { touch-action: pan-x pan-y; }
+body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hidden; overscroll-behavior: none; }
+.ar-bar h1 { line-height: 1.1; min-width: 0; }
+/* A card game's title has no second line: one fact at most goes in the status line, in words. */
+.ar-bar h1 small, html.gs-ready body.zc-game .ar-bar h1 small { display: none; }
+.ar-bar { flex: none; }
+.ar-bar .ar-stat { min-width: 3.4em; text-align: right; }
+@media (max-width: 440px) {
+  .ar-bar { gap: 4px; }
+  .ar-bar .ar-btn { padding: 0 var(--sp-3) 1px; }
+}
+
+.zc-table { position: relative; isolation: isolate; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; touch-action: pan-x pan-y;
+  background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-deep) 100%); -webkit-user-select: none; user-select: none; }
+/* A soft vignette: the felt falls off toward the edges. */
+.zc-table::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.22) 100%); }
+.zc-stage { position: relative; width: 100%; min-height: 100%; }
+
+/* ── Piles ─────────────────────────────────────────────────────────────── */
+.zc-slot { position: absolute; left: 0; top: 0; z-index: 0; outline: none; -webkit-tap-highlight-color: transparent; }
+.zc-slot::before { content: ""; position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4);
+  border-radius: calc(var(--cw) * 0.075); border: 2px solid var(--felt-line); background: rgba(0, 0, 0, 0.08); }
+/* A goal pile (the foundations, Spider's finished runs) is the brightest outline on the felt, not the dimmest. */
+.zc-slot[data-goal]::before { border-color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.1); }
+.zc-slot[data-goal][data-mark]::after { color: rgba(255, 255, 255, 0.62); }
+.zc-slot[data-quiet]::before { display: none; }
+.zc-slot[data-cards]:focus-visible::before { border-color: var(--felt-line); box-shadow: none; }
+.zc-slot:focus-visible::before { border-color: var(--select-ring); box-shadow: 0 0 0 2px var(--select-ring); }
+.zc-slot[data-mark]::after { content: attr(data-mark); position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4);
+  display: grid; place-items: center; color: rgba(255, 255, 255, 0.28); font: 650 calc(var(--cw) * 0.46)/1 var(--font); letter-spacing: -0.02em; pointer-events: none; }
+.zc-slot[data-mark="\21BB"]::after { font-family: var(--font); font-weight: 400; }
+
+/* ── A card ────────────────────────────────────────────────────────────── */
+.zc-card { position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4); z-index: 1;
+  border-radius: calc(var(--cw) * 0.075); background: var(--card); color: var(--suit-black);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--card-edge);
+  transition: transform 0.17s cubic-bezier(0.25, 0.8, 0.35, 1); touch-action: none; cursor: grab; overflow: hidden; }
+.zc-card.zc-red { color: var(--suit-red); }
+.zc-card.zc-off { visibility: hidden; }
+.zc-card.zc-instant, .zc-instant .zc-card { transition: none; }
+.zc-card.zc-drag { transition: none; cursor: grabbing; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--card-edge); }
+.zc-card.zc-focus { outline: 2px solid var(--select-ring); outline-offset: 2px; }
+/* A card you cannot play is not greyed: the cards you can play are lifted (their layout puts them higher). */
+.zc-card.zc-glow { box-shadow: 0 0 0 1px var(--select-ring), 0 0 10px 2px var(--legal); }
+.zc-card.zc-sel { box-shadow: var(--select), 0 4px 10px rgba(0, 0, 0, 0.4); }
+.zc-dealing .zc-card { pointer-events: none; }
+.zc-card.zc-flip { animation: zc-flip 0.2s ease-out; }
+.zc-card.zc-hint { animation: zc-nudge 0.28s ease-in-out; }
+@keyframes zc-flip { from { transform: var(--zc-t) scaleX(0.05); } to { transform: var(--zc-t) scaleX(1); } }
+@keyframes zc-nudge { 0%, 100% { margin-left: 0; } 30% { margin-left: -4px; } 70% { margin-left: 4px; } }
+.zc-card { container-type: inline-size; }
+.zc-face, .zc-back { position: absolute; inset: 0; }
+
+/* One face, three sizes: below ~64 px the fine detail goes, below ~41 px the
+   index becomes one large row and the body a single big suit or figure. */
+@container (max-width: 64px) { .zc-fine { display: none; } }
+@container (max-width: 100px) { .zc-hatch { display: none; } }
+@container (max-width: 41px) {
+  .zc-idx-std, .zc-big { display: none; }
+  .zc-idx-row, .zc-small { display: inline; }
+}
+/* The straight rules (the courts' frame, the backs' band) are whole device pixels, never smeared across two: --zc-px is one
+   device pixel, set by the board; a rule drawn thicker than that at this size keeps its drawn width (units of the 100-wide face). */
+.zc-rule { vector-effect: non-scaling-stroke; shape-rendering: crispEdges; stroke-width: max(var(--zc-px, 1px), calc(var(--rule-w, 0.45) * var(--cw, 100px) / 100)); }
+.zc-bk .zc-rule { --rule-w: 1.2; }
+.zc-bk .zc-rule + .zc-rule { --rule-w: 0.5; }
+/* The cream cut that keeps parts of one colour apart is under a pixel on a small card: it keeps a pixel. */
+@container (max-width: 56px) { .zc-face [stroke="#fdfcf8"][stroke-width="0.9"] { stroke-width: 1.4; } }
+.zc-face svg, .zc-back svg { display: block; width: 100%; height: 100%; }
+.zc-card.zc-down .zc-face { display: none; }
+.zc-card:not(.zc-down) .zc-back { display: none; }
+
+/* ── Animated backs: transforms and opacity only, paused with the tab ──── */
+/* Only the parts that animate about their own centre take fill-box. It must not be on every element of a back: under fill-box
+   the default transform-origin (0 0) moves from the user-space origin to each element's own top-left corner, so every transform
+   attribute in the art (the half-turn of the lower half, the Z's translate and scale, a rose's rotations) would run about the
+   wrong point and land shifted by that element's offset. */
+.zc-boat, .zc-eye, .zc-arm, .zc-wing { transform-box: fill-box; }
+.zc-paused .zc-bk * { animation-play-state: paused !important; }
+.zc-tw { animation: zc-twinkle 3.4s ease-in-out infinite; }
+.zc-tw2 { animation-delay: -1.1s; animation-duration: 4.1s; }
+.zc-tw3 { animation-delay: -2.3s; animation-duration: 2.8s; }
+@keyframes zc-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.zc-wv { animation: zc-wave 5s linear infinite; }
+.zc-wv2 { animation-duration: 7s; animation-direction: reverse; }
+.zc-wv3 { animation-duration: 3.6s; }
+@keyframes zc-wave { from { transform: translateX(0); } to { transform: translateX(-46px); } }
+.zc-boat { animation: zc-bob 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes zc-bob { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-1.5px); } }
+.zc-eye { animation: zc-blink 5s infinite; transform-origin: 50% 50%; }
+@keyframes zc-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.08); } }
+.zc-arm { animation: zc-wave-arm 7s ease-in-out infinite; transform-origin: 8% 10%; }
+@keyframes zc-wave-arm { 0%, 60%, 100% { transform: rotate(0); } 66% { transform: rotate(-38deg); } 72% { transform: rotate(8deg); } 78% { transform: rotate(-38deg); } 84% { transform: rotate(0); } }
+.zc-bulb { animation: zc-twinkle 1.6s ease-in-out infinite; }
+.zc-bat { animation: zc-fly 11s linear infinite; }
+.zc-bat2 { animation-delay: -5.5s; animation-duration: 13s; }
+@keyframes zc-fly { 0% { transform: translate(-16px, 34px); } 18% { transform: translate(30px, 16px); } 34% { transform: translate(112px, 30px); } 100% { transform: translate(112px, 30px); } }
+.zc-wing { animation: zc-flap 0.32s ease-in-out infinite alternate; transform-origin: 50% 50%; }
+@keyframes zc-flap { from { transform: scaleY(1); } to { transform: scaleY(0.35); } }
+.zc-lit { animation: zc-twinkle 2.6s ease-in-out infinite; }
+
+/* ── Sheets: backs picker, menus, the win ──────────────────────────────── */
+.ar-sheet { animation: zc-fadein 0.18s ease-out; }
+@keyframes zc-fadein { from { opacity: 0; } to { opacity: 1; } }
+.zc-row { margin: var(--sp-2) 0; }
+.zc-note { margin: 6px 0 0; font-size: var(--fs-small); color: var(--ink2); }
+/* A hand's summary: the headline, then a score table (name, this hand, total) that follows the text direction. */
+.zc-sum-head-line { margin: 0; font-size: var(--fs-body); font-weight: 650; color: var(--ink); }
+.zc-sum { margin: var(--sp-3) 0 0; border: 1px solid var(--line); border-radius: var(--radius-lg, 14px); overflow: hidden; }
+.zc-sum-row { display: grid; grid-template-columns: 1fr minmax(4.5em, auto) minmax(3.5em, auto); align-items: center; gap: var(--sp-2); padding: 8px 12px; font-size: var(--fs-small); color: var(--ink2); }
+.zc-sum-row + .zc-sum-row { border-top: 1px solid var(--line); }
+.zc-sum-head { white-space: nowrap; padding-block: 4px; font-size: 11px; background: var(--surface); }
+.zc-sum-head span:not(:first-child), .zc-sum-delta, .zc-sum-total { text-align: end; font-variant-numeric: tabular-nums; }
+.zc-sum.zc-grid .zc-sum-row { grid-template-columns: minmax(0, 1fr) minmax(5.6em, auto) minmax(5.6em, auto); }
+.zc-sum.zc-grid .zc-sum-row span:not(:first-child) { text-align: end; font-variant-numeric: tabular-nums; }
+.zc-sum.zc-grid .zc-sum-head span:not(:first-child) { font-size: 13px; color: var(--ink); text-transform: none; overflow-wrap: anywhere; }
+.zc-zero { opacity: 0.4; }
+.zc-sum-strong { color: var(--ink); font-weight: 650; }
+.zc-sum-name { display: grid; min-width: 0; }
+.zc-sum-name b { color: var(--ink); font-weight: 600; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.zc-sum-name small { font-size: var(--fs-small); color: var(--ink2); }
+.zc-sum-total { color: var(--ink); font-weight: 650; font-size: var(--fs-body); }
+.zc-lead { background: var(--accent-glow); }
+/* Records: 13px sans in ink2 on one line, hidden until the first game (the full record is in Stats). */
+.zc-stats { margin: 0; padding: 0; background: none; font: var(--fs-small) var(--font); color: var(--ink2); }
+.zc-stats[hidden] { display: none; }
+.zc-input { min-height: 36px; width: 8em; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: var(--fs-body) var(--mono); }
+.zc-backs { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 12px; margin: 4px 0; }
+.zc-pick { display: grid; justify-items: center; gap: 6px; padding: 8px 4px; border: 2px solid transparent; border-radius: var(--radius); background: none; cursor: pointer; color: var(--ink2); font-size: var(--fs-small); }
+.zc-pick:hover { border-color: var(--line); }
+.zc-pick[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); }
+.zc-pick .zc-card { position: relative; --cw: 64px; cursor: pointer; }
+.zc-win-big { margin: 0 0 4px; font-size: var(--fs-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* An opponent's hand of more than five cards is one back and a count. */
+.ct-count { position: absolute; z-index: 1100; display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 var(--sp-2); border-radius: 999px; background: rgba(0, 0, 0, 0.6); color: #fff; font: 650 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; pointer-events: none; transform: translate(-50%, -50%); }
+/* The cascade's canvas, above the table and below the sheets. */
+.zc-cascade { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 40; touch-action: none; }
+.zc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* FreeCell's hint: an icon button in the bar, and a note over the table that goes by itself. */
+.zc-hintbtn { display: inline-grid; place-items: center; width: 38px; padding: 0; }
+.zc-toast { pointer-events: none; position: fixed; left: 50%; bottom: max(56px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30; width: max-content; max-width: min(92vw, 420px); padding: 9px 14px; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); font-size: var(--fs-small); text-align: center; }
+.zc-toast[hidden] { display: none; }
+
+/* The fact line over the top of the table (Draw 1, Deal #, Streak): nothing shows when there is nothing to say. */
+.zc-fact { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); z-index: 30; max-width: calc(100% - 16px); padding: 2px var(--sp-3); border-radius: 999px; background: rgba(0, 0, 0, 0.34); color: #fff; font-size: var(--fs-small); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.zc-fact:empty { display: none; }
+
+/* A card that cannot be played now (a covered Pyramid card, an illegal card in a hand): a light veil, so it still reads as a card. */
+.zc-card.zc-dim::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgba(0, 0, 0, 0.12); pointer-events: none; }
