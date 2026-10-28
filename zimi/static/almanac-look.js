@@ -77,6 +77,19 @@ function _lookViewFromEuler(alpha, beta, gamma, screenDeg) {
 // iOS gives a heading of its own, true to the compass, with alpha relative to
 // wherever the phone woke. The difference carries the one onto the other.
 function _lookHeadingOffset(rawAz, compassAz) { return _lookDelta(rawAz, compassAz); }
+// The held compass offset after one reading. `prev` is null before the first
+// one; `altDeg` is the line of sight's altitude. Slow, so a noisy compass does
+// not shake the view; fast when it is far off (the first readings, a phone
+// picked up after being still), so it is not wrong for long; held while the
+// phone points high, and never moved by the half-turn flip.
+function _lookNextOffset(prev, off, altDeg, dtMs) {
+  if (prev == null) return off;
+  if (Math.abs(altDeg) > LOOK_COMPASS_TRUST_ALT_DEG) return prev;
+  var d = _lookDelta(prev, off);
+  if (Math.abs(d) > 180 - LOOK_OFFSET_FLIP_DEG) return prev;
+  var tau = Math.abs(d) > LOOK_OFFSET_JUMP_DEG ? LOOK_OFFSET_FAST_TAU_MS : LOOK_OFFSET_TAU_MS;
+  return prev + d * (1 - Math.exp(-dtMs / tau));
+}
 function _lookApplyOffset(view, offsetDeg) { return { az: _lookNorm360(view.az + offsetDeg), alt: view.alt, roll: view.roll }; }
 
 // `reading`: {accuracy: iOS's figure in degrees (-1 when it has none) or
@@ -121,6 +134,15 @@ var LOOK_SENSOR_WAIT_MS = 1500;        // no reading by then: this device has no
 var LOOK_OFFSET_JUMP_DEG = 25;
 var LOOK_OFFSET_FAST_TAU_MS = 60;
 var LOOK_OFFSET_TAU_MS = 400;          // the compass's correction settles slower than the view
+// iOS's webkitCompassHeading is the heading of the phone's top edge while it
+// is near flat and swings by half a turn as the phone tips up past its
+// usable range, which pointed high at the Moon read as the sky spinning
+// round. Its correction is taken only while the line of sight is within
+// this of level; above it the last good offset holds (alpha alone is smooth).
+var LOOK_COMPASS_TRUST_ALT_DEG = 50;
+// A reading this close to the opposite of the held offset is that flip, not
+// a turned phone (alpha already turns the view), so it is never followed.
+var LOOK_OFFSET_FLIP_DEG = 45;
 var LOOK_NOTE_AFTER_MS = 1500;         // a calibration note appears only if the compass stays poor this long
 var LOOK_MAX_STEP_MS = 250;            // a late frame still takes its whole step (the smoothing is exact for any step)
 var LOOK_SETTLED_DEG = 0.05;           // the view has caught up with the reading
@@ -198,13 +220,7 @@ function _lookOnOrientation(e, absolute) {
   if (ios) {
     // alpha is from wherever the phone woke; the heading says where north is.
     var nat = _lookViewFromEuler(alpha, beta, gamma, 0);
-    var off = _lookHeadingOffset(nat.az, e.webkitCompassHeading);
-    // Slow, so a noisy compass does not shake the view; fast when it is far off
-    // (the first readings, a phone picked up after being still), so it is not
-    // wrong for long.
-    var tau = sn.offset != null && Math.abs(_lookDelta(sn.offset, off)) > LOOK_OFFSET_JUMP_DEG ? LOOK_OFFSET_FAST_TAU_MS : LOOK_OFFSET_TAU_MS;
-    var k = sn.offset == null ? 1 : 1 - Math.exp(-(now - sn.lastEvent) / tau);
-    sn.offset = sn.offset == null ? off : sn.offset + _lookDelta(sn.offset, off) * k;
+    sn.offset = _lookNextOffset(sn.offset, _lookHeadingOffset(nat.az, e.webkitCompassHeading), nat.alt, now - sn.lastEvent);
     view = _lookApplyOffset(view, sn.offset);
   }
   sn.lastEvent = now;

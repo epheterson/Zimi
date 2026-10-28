@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="zimi-app">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Zimi Almanac</title>
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="almanac.css">
+<script src="local.js"></script>
+<style>
+  /* The Almanac keeps its dark night-sky look in every reader. These are the
+     tokens Zimi's app.css gives it; almanac.css reads them. */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20;
+    --border: #27272b; --border-strong: var(--border); --text: #e8e8ed; --text2: #8a8a94;
+    --accent: #f5f5f7; --amber: #f59e0b; --amber2: #d97706; --on-amber: #000;
+    --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
+    --text3: #6e6e7a; --text-dim: #6e6e7a; --hover: rgba(245, 158, 11, 0.08);
+    --error: #ef4444; --card-bg: #1a1a1a; --success: #6ec56e; --success-strong: #84d684;
+    --topbar-bg: rgba(10, 10, 11, 0.85); --radius: 10px; --shadow-popup: 0 8px 32px rgba(0,0,0,0.5);
+    color-scheme: dark;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* No header above it here: the Almanac is the whole page. */
+  .almanac-view { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .almanac-view:not(.open) { visibility: hidden; }
+  .almanac-view.open { animation: almIn 0.15s ease; }
+  @keyframes almIn { from { opacity: 0; } to { opacity: 1; } }
+  #almanac-boot { margin: auto; color: var(--text2); font-size: 14px; padding: 24px; text-align: center; }
+  .zimi-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; color: var(--text2); z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+</style>
+</head>
+<body class="almanac-mode">
+<div id="main-view" hidden></div>
+<!-- zimi-almanac: Zimi, reading this page, leaves its own pages alone (it clears fixed full-screen walls from captured sites). -->
+<div id="almanac-view" class="almanac-view zimi-almanac open">
+  <div class="almanac-content" id="almanac-content"><p id="almanac-boot">Loading the Almanac...</p></div>
+</div>
+<div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
+<script>
+// The Almanac is Zimi's own page (the same files Zimi serves, packed into this
+// ZIM at build time); it calls a few things that belong to Zimi's app shell.
+// build: shell.js carries the ones taken from app.js by name; what follows is
+// what needs a Zimi server or a library, and what stands in for it here.
+//
+// Not in this page, said plainly: links into an article library, the almanac's
+// age table, the PDF reader, the account and settings sync, other languages than
+// English. The satellites and the tide stations are packed in (data/, local.js).
+
+var _almanacOpen = false;
+var zimsCache = [];          // no library here: every name in the Almanac stays plain text
+var _currentLang = 'en';
+var _i18n = {};
+var _i18nFallback = {};
+var _ALM_TIDES_JS = 'almanac-tides.js';
+var _ALM_TIDES_CSS = 'almanac-tides.css';
+var _ALMANAC_REF_ASSETS = ['almanac-reference.css', 'almanac-navdata.js', 'almanac-reference.js', 'almanac-tables.js'];
+
+function t(key, vars) {
+  var s = _i18n[key] || _i18nFallback[key] || key;
+  if (vars) for (var k in vars) s = s.replaceAll('{' + k + '}', vars[k]);
+  return s;
+}
+function _htmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function tH(key, vars) { return _htmlEsc(t(key, vars)); }
+function tPlural(base, n, vars) {
+  var cat = 'other';
+  try { cat = new Intl.PluralRules('en').select(Number(n) || 0); } catch (e) {}
+  var key = base + '_' + cat;
+  if (_i18n[key] === undefined && _i18nFallback[key] === undefined) key = base + '_other';
+  var v = { n: typeof n === 'number' ? n.toLocaleString('en') : n };
+  if (vars) for (var k in vars) v[k] = vars[k];
+  return t(key, v);
+}
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+function cmpText(a, b) { return new Intl.Collator('en', { numeric: true }).compare(a == null ? '' : String(a), b == null ? '' : String(b)); }
+function _langPrimary(tag) { return String(tag || '').split('-')[0]; }
+function _uiLangPrimary() { return 'en'; }
+function _uiLocale() {
+  var phone = (typeof navigator !== 'undefined' && navigator.language) || '';
+  return _langPrimary(phone).toLowerCase() === 'en' ? phone : 'en';
+}
+function _setWindowTitle(title) { document.title = title; }
+function _showToast(msg) {
+  var el = document.createElement('div');
+  el.className = 'zimi-toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  var live = document.getElementById('a11y-toast-region');
+  if (live) live.textContent = msg;
+  setTimeout(function() { el.remove(); }, 3000);
+}
+
+// What the Almanac asks of a Zimi server is answered here, the same in every reader. The satellite tracks and
+// a place's tide stations come from files packed in this ZIM (local.js); the age table, the library links and the
+// PDF are "not here" (a 404) and the page says so. Its own files are relative.
+// Inside Zimi's own reader (the page that holds this frame is Zimi's, same origin) the PDF is Zimi's too: its headless
+// Chromium lays the book out and Zimi's reader shows the file. So there the PDF's address goes through and the
+// reader's two functions are the page's; anywhere else (Kiwix, a file, offline) the Print button is the browser's dialog.
+var HOSTED_IN_ZIMI = (function() {
+  try {
+    var f = window.parent !== window && window.parent.document.getElementById('reader-frame');
+    return !!f && f.contentWindow === window && typeof window.parent.openReader === 'function';
+  } catch (e) { return false; }
+})();
+var PDF_URL = '/almanac/pdf';
+if (HOSTED_IN_ZIMI) {
+  window.openReader = function(url) { window.parent.openReader(url); };
+  window._pdfViewerUrl = function(url) { return window.parent._pdfViewerUrl(url); };
+}
+(function() {
+  var real = window.fetch;
+  window.fetch = function(url, opts) {
+    var u = typeof url === 'string' ? url : (url && url.url) || '';
+    if (HOSTED_IN_ZIMI && u === PDF_URL) return real.call(window, url, opts);
+    if (u.charAt(0) === '/' && u.charAt(1) !== '/') {
+      return window.ZimiAlmanacLocal.answer(u) || Promise.resolve(new Response('', { status: 404 }));
+    }
+    return real.call(window, url, opts);
+  };
+})();
+
+// The page's own files, in the order the Almanac needs them (they share one global scope).
+var ALMANAC_SCRIPTS = [
+  'almanac-links.js', 'almanac-orrery.js', 'almanac-sky.js', 'almanac-skygl.js',
+  'zone-places.js', 'almanac-skyfacts.js', 'almanac.js'
+];
+var ALMANAC_AFTER_OPEN = ['almanac-ephem.js', 'almanac-earth.js'];
+
+function loadScripts(list) {
+  return new Promise(function(resolve, reject) {
+    list.forEach(function(src, i) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      s.onerror = function() { reject(new Error(src)); };
+      if (i === list.length - 1) s.onload = resolve;
+      document.head.appendChild(s);
+    });
+  });
+}
+
+(function() {
+  var strings = fetch('i18n/en.json').then(function(r) { return r.json(); }).then(function(d) { _i18n = d; }, function() {});
+  strings.then(function() { return loadScripts(['shell.js'].concat(ALMANAC_SCRIPTS)); }).then(function() {
+    _openAlmanacInner(true);
+    return loadScripts(ALMANAC_AFTER_OPEN);
+  }).catch(function(e) {
+    var el = document.getElementById('almanac-content');
+    if (el) el.innerHTML = '<p id="almanac-boot">The Almanac could not start (' + _htmlEsc(e && e.message) + ').</p>';
+    console.error(e);
+  });
+})();
+</script>
+</body>
+</html>

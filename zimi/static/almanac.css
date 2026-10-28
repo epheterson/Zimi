@@ -150,6 +150,7 @@
 .alm-secbar .pill { transition: none; }
 .alm-secbar .pills-row { padding-bottom: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); }
 [dir="rtl"] .alm-secbar .pills-row { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 20px), transparent); }
+.alm-secbar .pills-row::after { content: ""; flex: 0 0 100%; } /* room for the last pills to reach the start edge */
 .alm-secbar .pill:focus-visible, .alm-secbar-more:focus-visible, .alm-secbar-list button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .alm-secbar-more { flex: none; position: relative; }
 .alm-secbar-more::before { content: ""; position: absolute; inset: -8px -4px; }

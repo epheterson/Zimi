@@ -671,7 +671,9 @@ function _aeBuildDom() {
 var _aeThreePromise = null;
 function _aeLoadThree() {
   if (!_aeThreePromise) {
-    _aeThreePromise = import(AE_THREE_URL);
+    // import() takes a URL, not a path: against the page, so it is the same file under Zimi ("/static/...") and in the
+    // Almanac's ZIM, where the stage made the path relative ("earth/..." would be read as a module name and refused).
+    _aeThreePromise = import(new URL(AE_THREE_URL, document.baseURI).href);
     _aeThreePromise.catch(function () { _aeThreePromise = null; });
   }
   return _aeThreePromise;
@@ -3008,7 +3010,11 @@ function _aeShow(fromHero) {
   _aeMessage(_aeT('alm_earth_loading'));
   _aePrepare().then(function (ok) {
     if (!_aeIsOpen) return;
-    if (!ok) { _aeMessage(_aeT(_ae.failed ? 'alm_earth_nogl' : 'alm_earth_unavailable')); return; }
+    if (!ok) {
+      // "Reconnect" only when the device is offline; connected, the files did not load, and the way on is to try again.
+      _aeMessage(_aeT(_ae.failed ? 'alm_earth_nogl' : navigator.onLine === false ? 'alm_earth_unavailable' : 'alm_earth_failed'));
+      return;
+    }
     _aeMessage('');
     _aeResize();
     _aeEnter();

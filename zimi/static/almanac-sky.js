@@ -2548,10 +2548,31 @@ function _skyLabelRank(b) {
   if (b.type === 'star' && b.idx >= 0 && _STAR_NAMES[b.idx] && b.mag != null && b.mag <= SKY_LABEL_STAR_MAG) return 2 + b.mag / 10;
   return null;
 }
+// What a name must never be written over, in device px: every other body drawn (its disc, with a margin; a ring-marked planet
+// such as Uranus has no name of its own to hide behind) and the letters and ticks of the compass along the horizon.
+var SKY_LABEL_OBSTACLE_PAD_PX = 2, SKY_COMPASS_STEP_DEG = 45, SKY_COMPASS_LINE = 1.25;
+function _skyLabelObstacles(s, measure, pad) {
+  var dpr = s.dpr, out = [], m = SKY_LABEL_OBSTACLE_PAD_PX * dpr, i;
+  for (i = 0; i < s.bodies.length; i++) {
+    var b = s.bodies[i];
+    if ((b.type !== 'planet' && b.type !== 'moon' && b.type !== 'sun' && b.type !== 'dso' && !(b.type === 'star' && b.idx >= 0)) || !isFinite(b.x) || !isFinite(b.y)) continue;
+    var r = (b.r || 3) * dpr + m;
+    out.push({ x0: b.x * dpr - r, x1: b.x * dpr + r, y0: b.y * dpr - r, y1: b.y * dpr + r, of: b });
+  }
+  if (typeof _skyScreen === 'function' && s.eph) {
+    for (var az = 0; az < 360; az += SKY_COMPASS_STEP_DEG) {
+      var q = _skyScreen(s, az, 0, 2 * dpr);
+      if (!q.visible) continue;
+      var w = measure(_azCompass(az)) * SKY_HOSTED_POINT_PX / SKY_LABEL_PX + 2 * m, top = q.y + SKY_TICK_PX[2] * dpr;
+      out.push({ x0: q.x - w / 2, x1: q.x + w / 2, y0: q.y, y1: top + (2 + SKY_COMPASS_LINE * SKY_HOSTED_POINT_PX) * dpr + m });
+    }
+  }
+  return out;
+}
 // [{text, x, y, align, box}] for the bodies drawn, in device px; pure but for the names.
 function _skyLabelPlan(s, measure) {
   var dpr = s.dpr, pad = SKY_LABEL_PAD_PX * dpr, top = SKY_LABEL_TOP_PX * dpr, ph = SKY_LABEL_PX * dpr * 1.25;
-  var cands = [], out = [], taken = [], i;
+  var cands = [], out = [], taken = _skyLabelObstacles(s, measure, pad), i;
   for (i = 0; i < s.bodies.length; i++) {
     var rk = _skyLabelRank(s.bodies[i]);
     if (rk !== null) cands.push({ b: s.bodies[i], rank: rk });
@@ -2564,7 +2585,7 @@ function _skyLabelPlan(s, measure) {
     for (var k = 0; k < 2 && !put; k++) {
       var x0 = sides[k] > 0 ? cx + gap : cx - gap - w, box = { x0: x0, x1: x0 + w, y0: cy - ph / 2, y1: cy + ph / 2 };
       if (box.x0 < pad || box.x1 > s.W - pad) continue;
-      if (taken.some(function (t) { return box.x0 < t.x1 && box.x1 > t.x0 && box.y0 < t.y1 && box.y1 > t.y0; })) continue;
+      if (taken.some(function (t) { return t.of !== b && box.x0 < t.x1 && box.x1 > t.x0 && box.y0 < t.y1 && box.y1 > t.y0; })) continue;
       put = { text: text, x: box.x0, y: cy, box: box, under: !!b.under };
     }
     if (put) { out.push(put); taken.push(put.box); }

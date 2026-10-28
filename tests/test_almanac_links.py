@@ -86,12 +86,13 @@ class _QidFixtureMixin:
                 pass
         _interlang._qid_db_pool.clear()
         _interlang._qid_db_pool.update(self._saved_pool)
-        if _interlang._qid_cache_conn is not None:
-            try:
-                _interlang._qid_cache_conn.close()
-            except Exception:
-                pass
-        _interlang._qid_cache_conn = self._saved_cache_conn
+        with _interlang._qid_cache_op_lock:  # a background build may be mid-query on it
+            if _interlang._qid_cache_conn is not None:
+                try:
+                    _interlang._qid_cache_conn.close()
+                except Exception:
+                    pass
+            _interlang._qid_cache_conn = self._saved_cache_conn
         _srv._zim_list_cache = self._saved_zim_list
         self._patch_dir.stop()
 

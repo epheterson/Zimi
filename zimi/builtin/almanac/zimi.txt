@@ -1,0 +1,7 @@
+Title: Zimi Almanac
+Description: Explore the sky, your planet and the universe, for any place and day, offline
+Language: eng
+Creator: Zimi
+Publisher: Zimi
+Tags: _category:education;astronomy;zimi;zimi:own
+Icon: icon.png

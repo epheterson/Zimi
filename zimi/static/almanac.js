@@ -1906,7 +1906,7 @@ function _almSecBarSync() {
   if (cur && cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
 // The bar's face for the current section: shown past the first, the current
-// pill lit and brought into the row, the list's current item marked.
+// pill lit and brought to the row's start, the list's current item marked.
 function _almSecBarPaint() {
   var st = _almSecBar, bar = document.getElementById('alm-secbar');
   if (!st || !bar) return;
@@ -1922,8 +1922,9 @@ function _almSecBarPaint() {
   });
   var row = document.getElementById('alm-secbar-pills');
   if (on && row && show) {
+    // The lit pill always rests at the row's start edge, so the strip moves one way and the eye keeps one place.
     var a = on.getBoundingClientRect(), b = row.getBoundingClientRect();
-    var d = (a.left + a.width / 2) - (b.left + b.width / 2);
+    var d = getComputedStyle(row).direction === 'rtl' ? a.right - b.right : a.left - b.left;
     if (Math.abs(d) > 1) row.scrollBy({ left: d, behavior: _scrollBehavior() });
   }
 }

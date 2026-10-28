@@ -168,6 +168,7 @@ const S = {
   setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
   clearTimeout() {},
   fetch: fakeFetch,
+  navigator: { onLine: true },
 };
 vm.createContext(S);
 vm.runInContext(
@@ -402,7 +403,11 @@ const run = (code) => vm.runInContext(code, S);
     const r = renderers[renderers.length - 1];
     check(run('_ae.gl') === null && r.did('dispose') && r.did('forceContextLoss'),
       'without the day map the view gives its GPU back');
-    check(msg().textContent === 'alm_earth_unavailable' && !msg().hidden, 'and says it is unavailable');
+    check(msg().textContent === 'alm_earth_failed' && !msg().hidden, 'and says it could not be loaded, while the device is online');
+    S.navigator.onLine = false;
+    await openFresh();
+    check(msg().textContent === 'alm_earth_unavailable' && !msg().hidden, 'and says it is unavailable when the device is offline');
+    S.navigator.onLine = true;
     check(document.getElementById('ae-lbl-iss').hidden === true, 'with no label left over from the last scene');
     delete mapPlan[S.AE_TEX_DAY];
     const built = renderers.length;

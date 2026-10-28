@@ -101,6 +101,16 @@ const fix = L('_lookHeadingOffset');
   check(angNear(again.az, 75) && near(again.alt, raw.alt), 'applying the offset turns the heading and leaves the altitude');
 }
 {
+  // Pointing high at the Moon, iOS's heading swings half a turn; the view must not.
+  const next = L('_lookNextOffset');
+  check(next(null, 30, 10, 16) === 30, 'the first reading is taken as it is');
+  check(next(30, 210, 10, 16) === 30, 'a half-turn flip near level is ignored');
+  check(next(30, 200, 70, 16) === 30 && next(30, 60, 70, 1000) === 30, 'pointing high, the held offset stays whatever the compass says');
+  const settled = next(30, 40, 10, 400);
+  check(settled > 30 && settled < 40, 'near level, a small difference settles toward the compass');
+  check(next(30, 100, 10, 1000) > 95, 'near level, a real large difference (a phone woken elsewhere) is followed quickly');
+}
+{
   const trust = L('_lookCompassNeedsCalibrating');
   check(trust({ accuracy: -1 }) === true, 'iOS accuracy -1: needs calibrating');
   check(trust({ accuracy: 45 }) === true, 'iOS accuracy 45 degrees: needs calibrating');
