@@ -11,8 +11,7 @@ zeroconf>=0.149.16
 # has_image_support() is False and every created ZIM ships iconless — which is
 # exactly what happened on the Docker image, where Pillow was absent (Eric: CNN
 # capture "no favicon" on prod, present locally where Pillow is installed).
-Pillow>=13.0.0; python_version >= "3.11"
-Pillow>=12.3.0; python_version < "3.11"
+Pillow>=13.0.0
 # BitTorrent accelerator. Marker-gated below 3.14 (no wheel there yet, and no
 # sdist) so a plain `pip install -r requirements.txt` never breaks on new
 # interpreters; missing = HTTP-only. Wheels cover manylinux + musllinux, macOS

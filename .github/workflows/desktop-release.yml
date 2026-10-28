@@ -607,19 +607,19 @@ jobs:
     # Tag pushes and explicit tag dispatches release; a bare dispatch (e.g.
     # validating a branch build) stops after the build jobs.
     if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
-    runs-on: macos-latest  # Need macOS for Sparkle sign_update tool
+    runs-on: macos-latest
     permissions:
-      contents: write # the draft release, and the appcast/cask commits (via RELEASE_TOKEN)
+      contents: write # the draft release
       id-token: write # OIDC: the provenance attestation
       attestations: write # store the provenance attestation
 
     steps:
+      # The tagged source: the SBOM describes it and the notes come from its
+      # CHANGELOG.
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: main
-          # RELEASE_TOKEN is a fine-grained PAT that can push to main (bypasses branch protection)
-          token: ${{ secrets.RELEASE_TOKEN }}
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       # An SBOM of the source tree the builds came from (SPDX), made before the
       # builds are downloaded so it describes the source, not 1 GB of
@@ -645,8 +645,8 @@ jobs:
       # The builds keep their short internal names; what people download is
       # named here, once: Zimi-<version>-<os>-<arch>. The AppImage is the one
       # exception: it and its .zsync arrive named from their build, since the
-      # .zsync records the AppImage's name. Everything below (the signatures,
-      # the appcasts, the cask, the release) reads release/. The five builds
+      # .zsync records the AppImage's name. The release gets release/, and
+      # Post-Publish signs the update feeds and the cask from it. The five builds
       # and the .zsync must all be there; the snap may not be (its build is
       # allowed to fail, and one that will not open is never uploaded).
       - name: Name the files for the release
@@ -664,7 +664,6 @@ jobs:
           for snap in Zimi-Linux-snap/*.snap; do
             if [ -e "$snap" ]; then cp "$snap" "release/Zimi-$V-linux-x64.snap"; fi
           done
-          echo "ZIMI_STEM=Zimi-$V" >> "$GITHUB_ENV"
           # The SBOM ships when it was made and is skipped when it was not:
           # the upload below fails on any pattern that matches nothing, and
           # the SBOM may never be the reason the builds stay off the release.
@@ -673,153 +672,9 @@ jobs:
           else
             echo "::warning::no SBOM this release; the builds ship without it"
           fi
+          # Zimi's own ZIMs (zimi/ownzims.py), for Kiwix and any other reader.
+          cp zimi/builtin/*.zim release/
           ls -la release
-
-      # ── Sparkle/WinSparkle EdDSA signing + appcasts ─────────────────
-      - name: Sign updates and update appcasts
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
-            echo "SPARKLE_PRIVATE_KEY not set, skipping update signing"
-            exit 0
-          fi
-
-          # Download Sparkle tools. sign_update produces EdDSA (ed25519)
-          # signatures that WinSparkle verifies too, so one keypair signs the
-          # mac DMGs and the Windows installer alike.
-          curl -sL --retry 5 --retry-all-errors --retry-delay 5 "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz" -o /tmp/sparkle.tar.xz
-          tar -xf /tmp/sparkle.tar.xz -C /tmp
-
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
-          REPO="epheterson/Zimi"
-
-          # Sign one enclosure and write its appcast.
-          #   $1 label  $2 file-to-sign  $3 release-asset  $4 outfile  $5 min-sys line
-          #   $6 extra enclosure attributes (e.g. sparkle:installerArguments)
-          generate_appcast() {
-            local LABEL="$1" FILE="$2" ASSET="$3" OUTFILE="$4" MINSYS="$5" ENC_EXTRA="$6"
-            if [ ! -f "$FILE" ]; then
-              echo "WARNING: No $LABEL enclosure found at $FILE"
-              return 1
-            fi
-
-            echo "Signing $FILE ($LABEL)..."
-            local SIG=$(/tmp/bin/sign_update "$FILE" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY") 2>&1)
-            local ED_SIG=$(echo "$SIG" | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"//')
-            local LENGTH=$(echo "$SIG" | grep -o 'length="[^"]*"' | sed 's/length="//;s/"//')
-
-            if [ -z "$ED_SIG" ]; then
-              echo "ERROR: Failed to sign $LABEL enclosure"
-              return 1
-            fi
-
-            cat > "$OUTFILE" << APPCAST
-          <?xml version="1.0" encoding="utf-8"?>
-          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
-            <channel>
-              <title>Zimi Updates</title>
-              <link>https://github.com/${REPO}</link>
-              <description>Offline knowledge server for ZIM files</description>
-              <language>en</language>
-              <item>
-                <title>Version ${VERSION}</title>
-                <sparkle:version>${VERSION}</sparkle:version>
-                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>${MINSYS}
-                <pubDate>$(date -R)</pubDate>
-                <enclosure
-                  url="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
-                  length="${LENGTH}"
-                  type="application/octet-stream"
-                  sparkle:edSignature="${ED_SIG}"${ENC_EXTRA}
-                />
-              </item>
-            </channel>
-          </rss>
-          APPCAST
-            sed -i '' 's/^          //' "$OUTFILE"
-            echo "Generated $OUTFILE:"
-            cat "$OUTFILE"
-          }
-
-          MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
-          generate_appcast "Intel" "release/$ZIMI_STEM-mac-x64.dmg" "$ZIMI_STEM-mac-x64.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
-          generate_appcast "Apple Silicon" "release/$ZIMI_STEM-mac-arm64.dmg" "$ZIMI_STEM-mac-arm64.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
-          # Windows enclosure is the Inno Setup installer; WinSparkle (0.9.4)
-          # downloads it, runs it with sparkle:installerArguments via
-          # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
-          # click-free progress-only update and the installer's [Run] entry does
-          # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
-          # prompt. Per-user install (no UAC), so silent is safe.
-          WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
-          generate_appcast "Windows" "release/$ZIMI_STEM-windows-x64-setup.exe" "$ZIMI_STEM-windows-x64-setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
-
-          # Commit and push to main
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appcast-intel.xml appcast-arm64.xml appcast-windows.xml
-          git diff --cached --quiet && echo "No appcast changes" || {
-            git commit -m "Update appcasts for ${TAG}"
-            git push origin main
-          }
-
-      - name: Update Homebrew cask
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
-            echo "HOMEBREW_TAP_TOKEN not set, skipping cask update"
-            exit 0
-          fi
-
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
-
-          # Compute SHA256 for both DMGs
-          SHA_ARM=$(shasum -a 256 "release/$ZIMI_STEM-mac-arm64.dmg" | awk '{print $1}')
-          SHA_INTEL=$(shasum -a 256 "release/$ZIMI_STEM-mac-x64.dmg" | awk '{print $1}')
-          echo "Apple Silicon SHA256: $SHA_ARM"
-          echo "Intel SHA256: $SHA_INTEL"
-
-          # Clone the tap repo
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/epheterson/homebrew-zimi.git" /tmp/homebrew-zimi
-          cd /tmp/homebrew-zimi
-
-          # Generate updated cask
-          cat > Casks/zimi.rb << CASK
-          cask "zimi" do
-            arch arm: "arm64", intel: "x64"
-
-            version "${VERSION}"
-            sha256 arm:   "${SHA_ARM}",
-                   intel: "${SHA_INTEL}"
-
-            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{version}-mac-#{arch}.dmg"
-            name "Zimi"
-            desc "Offline knowledge server for ZIM files"
-            homepage "https://github.com/epheterson/Zimi"
-
-            depends_on macos: ">= :ventura"
-
-            app "Zimi.app"
-
-            zap trash: [
-              "~/.config/zimi",
-              "~/Library/Preferences/com.epheterson.zimi.plist",
-            ]
-          end
-          CASK
-          sed -i '' 's/^          //' Casks/zimi.rb
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/zimi.rb
-          git diff --cached --quiet && echo "No cask changes" || {
-            git commit -m "Update zimi to ${VERSION}"
-            git push origin main
-          }
-          echo "Homebrew cask updated to ${VERSION}"
 
       # A GitHub build-provenance attestation for every file that ships.
       # Verify a download with: gh attestation verify <file> --repo epheterson/Zimi
@@ -829,13 +684,33 @@ jobs:
         with:
           subject-path: release/*
 
-      - name: Create draft release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          draft: true
-          # release/ holds exactly what ships: the five builds, the .zsync, the snap
-          # when it built and opened, and the SBOM when it was made (all checked
-          # when release/ was filled).
-          fail_on_unmatched_files: true
-          files: release/*
+      # The draft appears only now, with every file already on it: a draft
+      # made earlier (Auto Release used to make it at merge) sat empty for the
+      # half hour of builds and was published that way more than once (1.14.1).
+      # A release that already exists (a curated draft, or a re-run) keeps its
+      # notes and gets the files.
+      - name: Create the draft release with its files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+            exit 0
+          fi
+          # The Highlights block (or, without one, the whole section) for this
+          # version; the rules live in scripts/release_notes.py.
+          python3 scripts/release_notes.py "${TAG#v}" > notes.md
+          cat >> notes.md << 'ENDNOTES'
+
+          ### Upgrade
+
+          ```bash
+          docker pull epheterson/zimi:latest
+          docker compose down && docker compose up -d
+          ```
+
+          Or `pip install --upgrade zimi` for Python installs.
+          ENDNOTES
+          gh release create "$TAG" release/* --draft --verify-tag --title "Zimi $TAG" --notes-file notes.md

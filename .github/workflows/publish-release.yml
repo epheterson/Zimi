@@ -82,8 +82,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event.release.tag_name }}
         run: |
-          # The snap is attached by the Desktop Release workflow, which is
-          # usually still building when the release-published event fires.
+          # Desktop Release attaches the snap before it makes the draft, but
+          # a curated draft can be published while the builds still run.
           # Poll for up to 60 minutes instead of racing it (the 1.8.0 snap
           # silently missed the store because of this exact race).
           for i in $(seq 1 30); do
@@ -110,3 +110,188 @@ jobs:
           release: stable
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
+
+  # The update feeds the apps read (appcasts on main) and the Homebrew cask
+  # change only now, when the release is public: written at build time they
+  # offered an update whose download was still a draft's (404).
+  publish-update-feeds:
+    runs-on: macos-latest  # Sparkle's sign_update is a macOS tool
+    permissions:
+      contents: read # the release's files; the commits go through RELEASE_TOKEN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          # RELEASE_TOKEN is a fine-grained PAT that can push to main (bypasses branch protection)
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      # The files the feeds sign, from the release itself, so the signatures
+      # are of exactly what people download. A draft published before its
+      # builds finished gets them when they land (waits up to 60 minutes).
+      - name: Download the update files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          STEM="Zimi-${TAG#v}"
+          for i in $(seq 1 30); do
+            gh release download "$TAG" --repo epheterson/Zimi -D release --skip-existing \
+              -p "$STEM-mac-arm64.dmg" -p "$STEM-mac-x64.dmg" -p "$STEM-windows-x64-setup.exe" || true
+            if [ -f "release/$STEM-mac-arm64.dmg" ] && [ -f "release/$STEM-mac-x64.dmg" ] && [ -f "release/$STEM-windows-x64-setup.exe" ]; then
+              echo "ZIMI_STEM=$STEM" >> "$GITHUB_ENV"
+              ls -la release
+              exit 0
+            fi
+            echo "Update files not attached yet (attempt $i/30), waiting 2m"
+            sleep 120
+          done
+          echo "::error::$TAG has no mac and Windows builds after 60m; the feeds and cask are unchanged"
+          exit 1
+
+      # ── Sparkle/WinSparkle EdDSA signing + appcasts ─────────────────
+      - name: Sign updates and update appcasts
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY not set, skipping update signing"
+            exit 0
+          fi
+
+          # Download Sparkle tools. sign_update produces EdDSA (ed25519)
+          # signatures that WinSparkle verifies too, so one keypair signs the
+          # mac DMGs and the Windows installer alike.
+          curl -sL --retry 5 --retry-all-errors --retry-delay 5 "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz" -o /tmp/sparkle.tar.xz
+          tar -xf /tmp/sparkle.tar.xz -C /tmp
+
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          REPO="epheterson/Zimi"
+
+          # Sign one enclosure and write its appcast.
+          #   $1 label  $2 file-to-sign  $3 release-asset  $4 outfile  $5 min-sys line
+          #   $6 extra enclosure attributes (e.g. sparkle:installerArguments)
+          generate_appcast() {
+            local LABEL="$1" FILE="$2" ASSET="$3" OUTFILE="$4" MINSYS="$5" ENC_EXTRA="$6"
+            if [ ! -f "$FILE" ]; then
+              echo "WARNING: No $LABEL enclosure found at $FILE"
+              return 1
+            fi
+
+            echo "Signing $FILE ($LABEL)..."
+            local SIG=$(/tmp/bin/sign_update "$FILE" --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY") 2>&1)
+            local ED_SIG=$(echo "$SIG" | grep -o 'sparkle:edSignature="[^"]*"' | sed 's/sparkle:edSignature="//;s/"//')
+            local LENGTH=$(echo "$SIG" | grep -o 'length="[^"]*"' | sed 's/length="//;s/"//')
+
+            if [ -z "$ED_SIG" ]; then
+              echo "ERROR: Failed to sign $LABEL enclosure"
+              return 1
+            fi
+
+            cat > "$OUTFILE" << APPCAST
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+              <title>Zimi Updates</title>
+              <link>https://github.com/${REPO}</link>
+              <description>Offline knowledge server for ZIM files</description>
+              <language>en</language>
+              <item>
+                <title>Version ${VERSION}</title>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>${MINSYS}
+                <pubDate>$(date -R)</pubDate>
+                <enclosure
+                  url="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
+                  length="${LENGTH}"
+                  type="application/octet-stream"
+                  sparkle:edSignature="${ED_SIG}"${ENC_EXTRA}
+                />
+              </item>
+            </channel>
+          </rss>
+          APPCAST
+            sed -i '' 's/^          //' "$OUTFILE"
+            echo "Generated $OUTFILE:"
+            cat "$OUTFILE"
+          }
+
+          MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
+          generate_appcast "Intel" "release/$ZIMI_STEM-mac-x64.dmg" "$ZIMI_STEM-mac-x64.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
+          generate_appcast "Apple Silicon" "release/$ZIMI_STEM-mac-arm64.dmg" "$ZIMI_STEM-mac-arm64.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
+          # Windows enclosure is the Inno Setup installer; WinSparkle (0.9.4)
+          # downloads it, runs it with sparkle:installerArguments via
+          # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
+          # click-free progress-only update and the installer's [Run] entry does
+          # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
+          # prompt. Per-user install (no UAC), so silent is safe.
+          WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
+          generate_appcast "Windows" "release/$ZIMI_STEM-windows-x64-setup.exe" "$ZIMI_STEM-windows-x64-setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
+
+          # Commit and push to main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast-intel.xml appcast-arm64.xml appcast-windows.xml
+          git diff --cached --quiet && echo "No appcast changes" || {
+            git commit -m "Update appcasts for ${TAG}"
+            git push origin main
+          }
+
+      - name: Update Homebrew cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set, skipping cask update"
+            exit 0
+          fi
+
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+
+          # Compute SHA256 for both DMGs
+          SHA_ARM=$(shasum -a 256 "release/$ZIMI_STEM-mac-arm64.dmg" | awk '{print $1}')
+          SHA_INTEL=$(shasum -a 256 "release/$ZIMI_STEM-mac-x64.dmg" | awk '{print $1}')
+          echo "Apple Silicon SHA256: $SHA_ARM"
+          echo "Intel SHA256: $SHA_INTEL"
+
+          # Clone the tap repo
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/epheterson/homebrew-zimi.git" /tmp/homebrew-zimi
+          cd /tmp/homebrew-zimi
+
+          # Generate updated cask
+          cat > Casks/zimi.rb << CASK
+          cask "zimi" do
+            arch arm: "arm64", intel: "x64"
+
+            version "${VERSION}"
+            sha256 arm:   "${SHA_ARM}",
+                   intel: "${SHA_INTEL}"
+
+            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{version}-mac-#{arch}.dmg"
+            name "Zimi"
+            desc "Offline knowledge server for ZIM files"
+            homepage "https://github.com/epheterson/Zimi"
+
+            depends_on macos: ">= :ventura"
+
+            app "Zimi.app"
+
+            zap trash: [
+              "~/.config/zimi",
+              "~/Library/Preferences/com.epheterson.zimi.plist",
+            ]
+          end
+          CASK
+          sed -i '' 's/^          //' Casks/zimi.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/zimi.rb
+          git diff --cached --quiet && echo "No cask changes" || {
+            git commit -m "Update zimi to ${VERSION}"
+            git push origin main
+          }
+          echo "Homebrew cask updated to ${VERSION}"

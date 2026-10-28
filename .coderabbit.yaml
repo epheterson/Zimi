@@ -35,7 +35,19 @@ reviews:
     - "!zimi/static/golden-record/**"
     - "!screenshots/**"
     - "!**/*.min.js"
-    - "!**/*.{png,jpg,jpeg,gif,webp,ico,icns,woff2,ttf,bin,gz,tar,torrent,zim,meta4}"
+    - "!**/*.{png,jpg,jpeg,gif,svg,webp,ico,icns,woff2,ttf,wasm,bin,gz,tar,torrent,zim,source,meta4}"
+    # Vendored or generated games assets: Simon Tatham's puzzles (wasm, js,
+    # per-puzzle pages, docs, icons), Fairy-Stockfish, thumbnails, the
+    # generated text bundle, shipped datasets and recorded fixtures.
+    - "!zimi/builtin/games/puzzles/**"
+    - "!zimi/builtin/games/engines/**"
+    - "!zimi/builtin/games/thumbs/**"
+    - "!zimi/builtin/games/text/*.json"
+    - "!zimi/builtin/games/text.js"
+    - "!zimi/builtin/games/data/**"
+    - "!tests/fixtures/**"
+    - "!**/*.lock"
+    - "!**/package-lock.json"
   path_instructions:
     - path: "zimi/**/*.py"
       instructions: >-

@@ -38,14 +38,14 @@ Before tagging, verify these on the feature branch:
 
 ### Release notes
 
-Auto Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block of one to three short one-line bullets, before `### Added` and the rest. When it does, the release body is those bullets plus a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no headings or stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
+Desktop Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block of one to three short one-line bullets, before `### Added` and the rest. When it does, the release body is those bullets plus a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no headings or stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
 
 ### Phase 1: Tag and build
 
-1. Squash merge feature branch to `main`
-2. Tag on main: `git tag v1.X.0 && git push origin main --tags`
-3. CI auto-triggers: `desktop-release.yml` (DMGs, AppImage, Snap) and `docker-publish.yml`
-4. Desktop release creates a **draft** GitHub release with assets
+1. Squash merge the release branch to `main` with the version bumped in `pyproject.toml`
+2. Auto Release tags `vX.Y.Z` (never by hand)
+3. The tag triggers `desktop-release.yml` (DMGs, AppImage, Snap, Windows) and `docker-publish.yml`
+4. Once every build is in, Desktop Release creates the **draft** GitHub release with all its files attached. No draft means the builds are still running
 
 **If desktop builds fail:** The workflow YAML runs from the ref. If you dispatch manually, omit `--ref` to use main's workflow: `gh workflow run desktop-release.yml -f tag=v1.X.0`. Workflow fixes on main won't help if `--ref` points to the old tag.
 
@@ -63,9 +63,9 @@ Before publishing, verify on real hardware:
 
 When QA passes:
 
-- [ ] Edit draft release: set title `Zimi vX.X.X — Title`, paste release notes
+- [ ] Read the draft's notes and check its files are all there
 - [ ] Publish release
-- [ ] This triggers: PyPI publish, Snap Store publish, Sparkle appcast update, Homebrew cask update
+- [ ] This triggers: PyPI publish, Snap Store publish, the apps' update feeds (appcasts), Homebrew cask update
 
 ### Post-release
 

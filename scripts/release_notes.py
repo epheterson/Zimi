@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The GitHub release body for a version, from CHANGELOG.md.
 
-Auto Release calls this: ``release_notes.py 1.14.1 > notes.md``.
+Desktop Release calls this: ``release_notes.py 1.14.1 > notes.md``.
 
 A version's section may open with a ``### Highlights`` block of one to three
 short sentences. The release body is then that block plus one line linking the

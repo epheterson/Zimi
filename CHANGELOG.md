@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.15.0]
+
+### Highlights
+
+- ZimiGames: over 100 offline games and 38 of Simon Tatham's puzzles, with learn-more links into your library.
+- The Almanac and the games are real ZIMs, in their own Zimi section of the library.
+- Settings and library changes appear live in every open window.
+
+### Added
+
+- Settings and saved things changed on one device appear in the account's other open windows right away, without a reload.
+- An open window or the installed app updates itself to a new version of Zimi: right away on the home page, otherwise the next time it is in the background, with an open article back where it was.
+- ZIMs added or removed show up in every open window without a reload.
+- Discover shows the next day's cards in a window left open overnight.
+- Patience, in Settings > Language > Voices and in Read aloud's voice menu while Natural reads: Read aloud keeps a slow voice, gets ahead before it starts (the bar counts down with a closing ring) and pauses to catch up, instead of switching to a faster voice.
+- ZimiGames, an Apps tile on Home: over 100 offline games from around the world, among them cards (Solitaire, Hearts, Bridge, Cribbage, Scopa, Koi-Koi), boards (Chess, Go, Xiangqi, Shogi, Backgammon, Mahjong), arcade and kids' games, each with a computer opponent where the game has one. The opponent is named Zimi.
+- Simon Tatham's puzzles are first class: 38 on the shelf as a Logic puzzles family, with How to play, the puzzle's manual, Undo and Redo in the bar, the puzzle's own settings, best times and a win sheet.
+- Play feel across the games: a hint and a glide on every board move, the reason for every refused tap, felt hits and clears in the arcade, full-width touch pads, and the page never shifts or zooms around a game.
+- Long press (or right click) on a game's tile opens Favorite, Open in new tab, How to play, About and Reset progress.
+- Games played on your library: Wiki Race, Quizzical, Five Letters, Spelling Bee, Mini Crossword, Sky Detective, Drop Pin, Telephone, Dictionary Bluff, Babel and more, from your own Wikipedia, Wiktionary, maps and the Almanac's sky; with built-in content in Kiwix, and your library on kiwix-serve.
+- Learn-more links lead from a game into your library (one quiet link per round or end sheet), and are hidden when the ZIM is deleted.
+- Sky Detective studies the Almanac's sky before it asks.
+- Wikipedia articles get a Play button when a game matches them, and an Almanac button on a sky object.
+- Every game keeps your place when you leave and come back, and two people can play on one device.
+- A Zimi deck: traditional court art (French, Spanish and Hanafuda), twelve card backs, and the Zimi mark on the Ace of Spades.
+- Controllers, swipe on arrow-pad games, and the games in all ten of Zimi's languages, right to left included.
+- ZimiGames and the Almanac ship as real ZIM files, attached to each release for Kiwix and other readers; `ZIMI_BUILTIN_ZIMS=0` hides them.
+- A Zimi section in the library holds both: delete either from Manage and add it back from the Catalog like any ZIM.
+- Home: the games and the Almanac are Apps tiles with their own icons, and new or updated ZIMs show as dots on the status row.
+- An open article, game or Almanac reloads in place when its ZIM is replaced.
+- The Almanac ZIM works on its own: the 3D Earth, satellites and tides in Kiwix, and its PDF through Zimi when hosted.
+
+### Changed
+
+- Discover's cards are the same on every device for the day.
+- Settings has a Language tab: the languages shown and the voices, moved out of Preferences.
+- Python 3.11 or newer is required (3.10 reaches end of life this month). On 3.10, pip keeps installing 1.14.1.
+
+### Security
+
+- Pillow 13.0 or newer everywhere, which fixes 39 advisories in the 12.x line.
+
+### Fixed
+
+- qBittorrent versions after 5.1 connect: Zimi read their reply to a correct login as a wrong password (#122).
+- Read aloud on Automatic gives way to a faster server voice when a slow one stalls after only a title or fails twice, instead of falling to the browser's voice, and asks a voice whose speed is not measured yet for one chunk ahead instead of three (#121).
+- The draft release appears only once every build is attached to it.
+- The apps' update feeds and the Homebrew cask change when the release is published, not while it is a draft.
+- Read aloud's speed is measured on the server once a voice is warm, in one fixed sentence that never goes ahead of a reading, so the first tap already has it (#121).
+- Read aloud reads the World Factbook, Stack Exchange, devdocs and Gutenberg pages' content, not their menus, votes, code blocks or page numbers.
+- Look in the Almanac no longer spins half a turn when the phone points high.
+- Zimi's own ZIMs never mix old and new files after an update.
+- No Reader View or tap-to-full-size image viewer inside an app ZIM's pages (ZimiGames, the Almanac).
+- A game page no longer shifts, zooms or scrolls sideways on a phone.
+
 ## [1.14.1] - 2026-10-22
 
 ### Highlights

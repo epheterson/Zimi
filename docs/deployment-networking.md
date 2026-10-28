@@ -219,6 +219,7 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `offline` | `ZIMI_OFFLINE` | boolean — the air-gap switch: no BT, no NAT probe, no appcast |
 | `hot_zims` | `ZIMI_HOT_ZIMS` | list of strings (a comma-separated string also works) |
 | `index_throttle` | `ZIMI_INDEX_THROTTLE` | boolean — false stops index builds yielding to system load |
+| `builtin_zims` | `ZIMI_BUILTIN_ZIMS` | boolean — false serves none of Zimi's own ZIMs (ZimiGames and the Almanac) |
 | `sso_team` | `ZIMI_SSO_TEAM` | string — Cloudflare Access team domain; with `sso_aud`, turns on [trusted-header SSO](#sso) |
 | `sso_aud` | `ZIMI_SSO_AUD` | string — the Access application's AUD tag |
 | `sso_role` | `ZIMI_SSO_ROLE` | string — `user` (default), `limited` or `admin`, given to an account on first sign-in |

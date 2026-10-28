@@ -170,6 +170,16 @@ if platform.system() == 'Windows':
         'webview.platforms.winforms',
     ]
 
+# Zimi's own ZIMs (zimi/ownzims.py), committed built, and what the server reads
+# of the games' source (zimi/gamelinks.py: games.json and the tile pictures).
+# Not the rest of the source folders: they are what the ZIMs were built from.
+_BUILTIN = os.path.join(REPO_ROOT, 'zimi/builtin')
+builtin_datas = [(z, 'zimi/builtin') for z in sorted(glob.glob(os.path.join(_BUILTIN, '*.zim')))] + [
+    (os.path.join(_BUILTIN, 'games/games.json'), 'zimi/builtin/games'),
+    (os.path.join(_BUILTIN, 'games/thumbs'), 'zimi/builtin/games/thumbs'),
+    (os.path.join(_BUILTIN, 'games/puzzles/icons'), 'zimi/builtin/games/puzzles/icons'),
+]
+
 a = Analysis(
     [os.path.join(DESKTOP_DIR, 'zimi_desktop.py')],
     pathex=[REPO_ROOT, DESKTOP_DIR],
@@ -178,7 +188,7 @@ a = Analysis(
         (os.path.join(REPO_ROOT, 'zimi/templates'), 'zimi/templates'),
         (os.path.join(REPO_ROOT, 'zimi/assets'), 'zimi/assets'),
         (os.path.join(REPO_ROOT, 'zimi/static'), 'zimi/static'),
-    ] + pythonnet_datas + webkit_datas,
+    ] + builtin_datas + pythonnet_datas + webkit_datas,
     hiddenimports=[
         'zimi',
         'zimi.server',
@@ -195,6 +205,7 @@ a = Analysis(
         'zimi.qbittorrent',
         'zimi.transmission',
         'zimi.runtimes',
+        'zimi.ownzims',
         'libzim',
         # Soft BT dependency: guarantees the extension is bundled when a
         # wheel is present. Absent → PyInstaller warns, does not fail.

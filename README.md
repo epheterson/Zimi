@@ -24,6 +24,7 @@ Use as much as you need:
 
 - **Search everything.** One query across every ZIM, 100M+ articles, with `-word`, `"exact words"`, `OR`, `lang:` and `in:` when you need them.
 - **Apps over your library.** Zimipedia for every wiki, the Dictionary for every Wiktionary, Bookshelf for every book, ZimiTube for video, ZimiExchange for Q&A, Reddot for subreddits, and offline street Maps.
+- **Games and the Almanac.** ZimiGames has over 100 offline games and Simon Tatham's puzzles, some played on your own Wikipedia and Wiktionary; the Almanac is a sky, Earth and calendar reference. Both are ZIM files you can delete and re-add from the Catalog.
 - **Keep what you find.** Bookmarks, lists, likes and highlights in every app, synced across devices when you sign in.
 - **A real library.** The whole Kiwix catalog one click away, even offline, with auto-updates and BitTorrent downloads that seed back.
 - **Make your own ZIMs.** A web page, a whole site, a video playlist, a subreddit, a web archive or a folder of your files.

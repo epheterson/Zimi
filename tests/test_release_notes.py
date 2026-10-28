@@ -1,4 +1,4 @@
-"""The release body Auto Release builds from CHANGELOG.md (scripts/release_notes.py)."""
+"""The release body Desktop Release builds from CHANGELOG.md (scripts/release_notes.py)."""
 
 import importlib.util
 import pathlib

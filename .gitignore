@@ -9,6 +9,7 @@ __pycache__/
 # ZIM data
 zims/
 *.zim
+!zimi/builtin/*.zim
 .zimi_cache.json
 
 # OS

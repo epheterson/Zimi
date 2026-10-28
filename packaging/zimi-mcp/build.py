@@ -32,7 +32,9 @@ SRC = ROOT / "zimi"
 MODULES = (
     "__init__",
     "server",
+    "changes",
     "libfolders",
+    "ownzims",
     "mcp_server",
     "search",
     "query",

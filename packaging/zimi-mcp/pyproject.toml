@@ -10,7 +10,7 @@ version = "@VERSION@"
 description = "Zimi's MCP server and search alone: search and read Wikipedia, Stack Overflow and other ZIM files offline, for AI agents"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 authors = [{name = "Eric Pheterson"}]
 keywords = ["zim", "kiwix", "offline", "wikipedia", "search", "mcp", "rag", "llm"]
 classifiers = [

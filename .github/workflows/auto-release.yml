@@ -1,21 +1,16 @@
 name: Auto Release
 
-# ── Single-draft release flow (there must be exactly ONE draft per tag) ──────
+# ── Release flow ─────────────────────────────────────────────────────────
 # When a push to main changes the version in pyproject.toml:
-#   1. this workflow tags vX.Y.Z and creates/updates the draft release, with
-#      notes pulled from CHANGELOG.md (scripts/release_notes.py);
-#   2. the tag push triggers desktop-release.yml, which builds every platform,
-#      signs the update enclosures, refreshes the appcasts, and attaches the
-#      built assets to the SAME draft (softprops matches the release by tag).
-#   3. the maintainer reviews that one draft and publishes it;
-#   4. publish-release.yml then ships PyPI + snap.
-#
-# The draft step below is IDEMPOTENT on purpose: `gh release create` would
-# happily make a SECOND draft for a tag that already has one (GitHub does not
-# enforce tag-uniqueness on drafts), which is exactly the duplicate "Zimi
-# vX.Y.Z" draft that showed up next to a hand-curated one after PR #39. So if a
-# release for the tag already exists (a maintainer-curated draft, or a re-run),
-# we EDIT it instead of creating a duplicate.
+#   1. this workflow tags vX.Y.Z, and nothing else;
+#   2. the tag push triggers desktop-release.yml, which builds every platform
+#      and then makes the draft release, its notes from CHANGELOG.md
+#      (scripts/release_notes.py), with every file already attached. The draft
+#      used to be made here, at merge, and sat empty for the half hour of
+#      builds, and was published that way more than once;
+#   3. the maintainer reviews the draft and publishes it;
+#   4. publish-release.yml then ships PyPI, the snap, the update feeds the
+#      apps read and the Homebrew cask.
 
 on:
   push:
@@ -23,7 +18,7 @@ on:
     paths:
       - 'pyproject.toml'
 
-# Read-only by default; create-release asks for the write it needs, job-level.
+# Read-only by default; create-tag asks for the write it needs, job-level.
 permissions:
   contents: read
 
@@ -51,7 +46,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  create-release:
+  create-tag:
     needs: check-version
     if: needs.check-version.outputs.changed == 'true'
     runs-on: ubuntu-latest
@@ -70,38 +65,3 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v${VERSION}"
           git push origin "v${VERSION}"
-
-      - name: Extract changelog and create draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # The Highlights block (or, without one, the whole section) for this
-          # version; the rules live in scripts/release_notes.py.
-          python3 scripts/release_notes.py "${VERSION}" > /tmp/release-notes.md
-          # Append upgrade instructions
-          cat >> /tmp/release-notes.md << 'ENDNOTES'
-
-          ### Upgrade
-
-          ```bash
-          docker pull epheterson/zimi:latest
-          docker compose down && docker compose up -d
-          ```
-
-          Or `pip install --upgrade zimi` for Python installs.
-          ENDNOTES
-          # One draft per tag: update an existing release (curated draft or a
-          # re-run) instead of creating a duplicate. `gh release view` finds
-          # drafts by tag too.
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            # A curated draft already exists (a human wrote the release body).
-            # Preserve it — do NOT overwrite the notes with the changelog
-            # extract. The tag was created above; the draft binds to it on
-            # publish. This is the one-draft-per-tag path.
-            echo "Release v${VERSION} already exists — preserving its curated notes"
-          else
-            gh release create "v${VERSION}" \
-              --draft \
-              --title "Zimi v${VERSION}" \
-              --notes-file /tmp/release-notes.md
-          fi

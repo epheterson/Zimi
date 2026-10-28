@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install Pillow
+      - run: pip install "Pillow>=13.0.0"
 
       - name: Build the snapshot
         # Through env, not interpolated into the command. Only a maintainer can

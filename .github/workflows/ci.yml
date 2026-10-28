@@ -67,7 +67,7 @@ jobs:
       # FastMCP, and their MCP server refused to start.
       # Pillow as requirements.txt has it (favicons; the Red contrast test reads pixels).
       - name: Install package
-        run: pip install -e ".[pdf,mcp]" pytest "Pillow>=12.3.0"
+        run: pip install -e ".[pdf,mcp]" pytest "Pillow>=13.0.0"
 
       # A real browser, so the paint gate actually runs somewhere.
       #
