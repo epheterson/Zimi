@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minesweeper - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="minesweeper.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Minesweeper</h1>
+  <button class="ar-btn" id="ms-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="ms-main">
+  <div class="ms-win" id="ms-win">
+    <div class="pl-hud ms-hud">
+      <div class="pl-stat"><small data-t="mines.minesLeft">Mines left</small><b id="ms-mines">0</b></div>
+      <div class="ms-face" id="ms-face" role="img" aria-label="Playing"></div>
+      <div class="pl-stat"><small data-t="play.time">Time</small><b id="ms-time">0</b></div>
+    </div>
+    <div class="ms-box">
+      <div class="ms-board" id="ms-board" role="grid"></div>
+    </div>
+  </div>
+  <div class="gs-actionrow">
+    <button class="ar-btn ms-flagbtn" id="ms-flagmode" type="button" aria-pressed="false" data-t-title="mines.flagTitle"><span data-t="mines.flag">Flag</span></button>
+  </div>
+  <p class="ms-msg" id="ms-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="minesweeper.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q126194">About Minesweeper</a></footer><!-- /zimi-about -->
+</body>
+</html>

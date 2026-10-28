@@ -1,0 +1,6 @@
+/* ZimiGames: the pixel-art games' look. The canvas is drawn in its own pixels and shown at a whole multiple of them, so it
+   never blurs. The page around it is the shared arcade page (play.css: .pl-main, the HUD strip, the one touch pad). */
+/* A dark playfield is a material: near-black and neutral, never navy. */
+.px-screen { display: block; touch-action: none; user-select: none; -webkit-user-select: none; max-width: 100%; border-radius: var(--r-chip); border: 1px solid var(--line); background: #0e0e10; image-rendering: pixelated; image-rendering: crisp-edges; }
+/* Pet still lays its page out with .px-main; the others use .pl-main. */
+.px-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-3) var(--sp-5); }

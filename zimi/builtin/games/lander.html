@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lander - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Lander</h1>
+  <button class="ar-btn" id="ld2-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="ld2-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+      <div class="pl-stat"><small data-t="lander.fuel">Fuel</small><b id="ld2-fuel">100</b></div>
+    <div class="pl-stat"><small data-t="lander.down">Down</small><b id="ld2-vy">0</b></div>
+    <div class="pl-stat"><small data-t="lander.side">Side</small><b id="ld2-vx">0</b></div>
+    <div class="pl-stat"><small data-t="play.lives">Lives</small><b id="ld2-lives">3</b></div>
+  </div>
+  <canvas class="pl-arena" id="ld2-board" role="img" aria-label="A lander above rough ground with landing pads" data-t-aria="lander.board"></canvas>
+  <p class="pl-msg" id="ld2-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="lander.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q2590391">About Lander</a></footer><!-- /zimi-about -->
+</body>
+</html>

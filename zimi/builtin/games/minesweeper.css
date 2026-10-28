@@ -1,0 +1,69 @@
+/* Minesweeper: tiles are the one raised thing (a bevel is a material); the board sits in the shared frame, the counters are Zimi mono.
+   Shared tokens (--tile, --bevel-hi, --bevel-lo) come from games.css. */
+:root {
+  --ms-open: #ece8de; --ms-ink: #1b1b1b;
+  --n1: #1565c0; --n2: #2e7d32; --n3: #c62828; --n4: #283593; --n5: #8e1b1b; --n6: #00838f; --n7: #1b1b1b; --n8: #4b4b4b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ms-open: #1c1c20; --ms-ink: #e8e8ed;
+    --n1: #64b5f6; --n2: #81c784; --n3: #ef5350; --n4: #9fa8da; --n5: #ff8a65; --n6: #4dd0e1; --n7: #e8e8ed; --n8: #9a9aa4;
+  }
+}
+:root[data-theme="dark"] {
+  --ms-open: #1c1c20; --ms-ink: #e8e8ed;
+  --n1: #64b5f6; --n2: #81c784; --n3: #ef5350; --n4: #9fa8da; --n5: #ff8a65; --n6: #4dd0e1; --n7: #e8e8ed; --n8: #9a9aa4;
+}
+
+.ms-flagbtn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); }
+.ms-flagbtn svg { width: 16px; height: 16px; }
+.ms-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-4); }
+
+.ms-win { --cs: 36px; max-width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; }
+/* The counters sit either side of a status face (a picture of how the game stands, not a button). */
+.ms-hud { align-items: center; max-width: 360px; }
+.ms-hud .pl-stat b { font-family: var(--mono); letter-spacing: 0; }
+.ms-face { flex: none; width: 44px; height: 44px; }
+.ms-face svg { display: block; width: 100%; height: 100%; }
+
+.ms-box { overflow: auto; max-width: 100%; overscroll-behavior-x: contain; }
+.ms-board { display: grid; width: max-content; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
+
+.ms-c { position: relative; display: grid; place-items: center; width: var(--cs); height: var(--cs); background: var(--tile); font: 700 var(--fs-sheet)/1 var(--mono); cursor: default; color: var(--ms-ink);
+  box-shadow: inset 3px 3px 0 var(--bevel-hi), inset -3px -3px 0 var(--bevel-lo); }
+.ms-c svg { width: 68%; height: 68%; pointer-events: none; }
+.ms-c.open, .ms-c.pressed { background: var(--ms-open); box-shadow: inset 1px 1px 0 var(--line); }
+.ms-c.q { color: var(--ink); }
+.ms-c.boom { background: #b3261e; color: #fff; }
+.ms-c.wrong { background: var(--ms-open); box-shadow: inset 1px 1px 0 var(--line); }
+.ms-c.mine svg, .ms-c.boom svg, .ms-c.wrong svg { width: 74%; height: 74%; }
+.ms-c.cursor { outline: 2px solid var(--accent); outline-offset: -3px; z-index: 1; }
+.ms-c.pop { animation: ms-pop 0.14s ease-out; }
+@keyframes ms-pop { from { transform: scale(0.82); } to { transform: scale(1); } }
+.n1 { color: var(--n1); } .n2 { color: var(--n2); } .n3 { color: var(--n3); } .n4 { color: var(--n4); }
+.n5 { color: var(--n5); } .n6 { color: var(--n6); } .n7 { color: var(--n7); } .n8 { color: var(--n8); }
+
+.ms-msg { min-height: 1.4em; margin: 0; font-size: var(--fs-body); font-weight: 500; color: var(--ink); text-align: center; }
+
+/* A custom board's size, in the New game pane. */
+.ms-custom { display: flex; gap: var(--sp-2); padding: 0 0 var(--sp-2); }
+.ms-custom label { flex: 1; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-small); color: var(--ink2); }
+.ms-num { width: 100%; min-height: var(--target); padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; }
+
+@media (max-width: 420px) { .ms-main { padding: var(--sp-3) var(--sp-4); } }
+@media (prefers-reduced-motion: reduce) { .ms-c.pop { animation: none; } }
+
+/* Moments: an opening spreads from the tap, a cell held for a flag sinks first, the mines go off outward from the one that did, and a win plants its flags. */
+.ms-c { transition: scale 0.18s ease-out; }
+.ms-c.holding { scale: 0.86; }
+.ms-c.pop { animation: ms-pop 0.16s ease-out both; }
+.ms-c.reveal { animation: ms-reveal 0.28s ease-out both; }
+.ms-c.boom { animation: ms-boom 0.4s ease-out; }
+.ms-c.planted { animation: ms-plant 0.24s ease-out both; }
+@keyframes ms-reveal { from { opacity: 0; scale: 0.6; } to { opacity: 1; scale: 1; } }
+@keyframes ms-boom { 0% { scale: 1; } 35% { scale: 1.45; } 100% { scale: 1; } }
+@keyframes ms-plant { from { opacity: 0; scale: 1.6; } to { opacity: 1; scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .ms-c { transition: none; } .ms-c.pop, .ms-c.reveal, .ms-c.boom, .ms-c.planted { animation: none; } }
+
+/* Flag mode is a toggle, so it reads as a selection (glow and amber line), never as a second filled amber button. */
+.ms-flagbtn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; }

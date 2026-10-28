@@ -1,0 +1,9 @@
+/* Stacker: the well and its side column. Shared tokens, the HUD and the pad: games.css, play.css. */
+.st-wrap { display: flex; gap: var(--sp-3); align-items: flex-start; justify-content: center; }
+.st-side { width: var(--side, 96px); display: flex; flex-direction: column; gap: var(--sp-2); }
+/* Hold and Next share the well's one border style: a 1px line, radius 10, the dark field inside. */
+.st-box { display: block; width: 100%; padding: var(--sp-1) 0 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink2); font: inherit; text-align: center; overflow: hidden; }
+button.st-box { cursor: pointer; touch-action: manipulation; }
+button.st-box:hover { border-color: var(--accent); }
+.st-box small { display: block; font-size: var(--fs-small); color: var(--ink2); }
+.st-box canvas { display: block; margin: var(--sp-1) auto 0; }

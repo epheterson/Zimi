@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Circuit - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="circuit.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Circuit</h1>
+  <button class="ar-btn" id="cr-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="cr-reset" type="button" disabled data-t="circuit.reset">Back on track</button>
+  <button class="ar-btn" id="cr-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud" id="cr-hud">
+    <div class="pl-stat"><small data-t="circuit.lap">Lap</small><b id="cr-lap">1/3</b></div>
+    <div class="pl-stat"><small data-t="circuit.place">Place</small><b id="cr-pos">1/5</b></div>
+    <div class="pl-stat"><small data-t="play.time">Time</small><b id="cr-time">0:00.0</b></div>
+  </div>
+  <canvas class="pl-arena" id="cr-board" role="img" aria-label="The track from above, your car and the computer cars" data-t-aria="circuit.board"></canvas>
+  <p class="pl-msg" id="cr-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="circuit.js"></script>
+<script src="circuit-page.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q5386">About Circuit</a></footer><!-- /zimi-about -->
+</body>
+</html>

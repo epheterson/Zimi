@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZimiKart - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="kart.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>ZimiKart</h1>
+  <button class="ar-btn" id="kt-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="kt-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="kt-main">
+  <div class="kt-stage" id="kt-stage">
+    <canvas class="kt-board" id="kt-board" role="img" aria-label="The race from behind your kart: the track, the other karts and the item cubes" data-t-aria="kart.board"></canvas>
+    <p class="pl-msg" id="kt-msg"></p>
+    <div class="kt-pads" id="kt-pads"></div>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="kart.js"></script>
+<script src="kart-art.js"></script>
+<script src="kart-view.js"></script>
+<script src="kart-page.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q18759108">About ZimiKart</a></footer><!-- /zimi-about -->
+</body>
+</html>

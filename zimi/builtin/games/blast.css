@@ -1,0 +1,4 @@
+/* Blast: the rounds each bomber has won, one stat per bomber under its own colour and name (the same colours as the arena). */
+.bl-wins { display: contents; }
+.bl-wins .pl-stat small { display: flex; align-items: center; justify-content: center; gap: var(--sp-1); white-space: nowrap; }
+.bl-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.45); }

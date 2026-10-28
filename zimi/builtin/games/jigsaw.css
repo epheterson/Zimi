@@ -1,0 +1,19 @@
+/* Jigsaw: the board with its faint picture, the tray and the pieces. Shared tokens: games.css, play.css, library.css. */
+.jg-main { width: min(720px, 100%); margin: 0 auto; }
+.jg-area { position: relative; isolation: isolate; touch-action: none; user-select: none; -webkit-user-select: none; min-height: 200px; }
+.jg-board { position: absolute; left: 0; top: 0; border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--cell); overflow: hidden; }
+.jg-ghost { position: absolute; inset: 0; background-repeat: no-repeat; opacity: 0.16; }
+.jg-board.peek { z-index: 5000; overflow: hidden; }
+.jg-board.peek .jg-ghost { opacity: 1; }
+.jg-piece { position: absolute; background-repeat: no-repeat; border-radius: 2px; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3); cursor: grab; touch-action: none; }
+.jg-piece.lifted { cursor: grabbing; box-shadow: 0 0 0 1px var(--accent), 0 8px 18px rgba(0, 0, 0, 0.4); scale: 1.04; }
+.jg-piece.locked { cursor: default; box-shadow: none; border-radius: 0; animation: jg-click 0.16s ease-out; }
+@keyframes jg-click { 50% { filter: brightness(1.25); } }
+.jg-credit { margin: 0; min-height: 1.2em; max-width: 52ch; text-align: center; font-size: var(--fs-small); color: var(--ink2); }
+@media (prefers-reduced-motion: reduce) { .jg-piece.locked { animation: none; } .jg-piece.lifted { scale: 1; } }
+/* A piece that snaps glides the last few pixels into its place; a finished picture lifts once. */
+.jg-piece.locked { transition: left 0.09s ease-out, top 0.09s ease-out; }
+.jg-area.whole { animation: jg-whole 0.6s ease-out; }
+.jg-area.whole .jg-ghost { opacity: 0; }
+@keyframes jg-whole { 0% { scale: 1; } 35% { scale: 1.025; filter: brightness(1.12); } 100% { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .jg-piece.locked { transition: none; } .jg-area.whole { animation: none; } }

@@ -1,0 +1,2 @@
+/* Snake: the whole page takes the swipe, so a thumb never has to find the board. */
+@media (orientation: portrait) { .sn-main { min-height: calc(100dvh - var(--bar-h, 56px)); touch-action: none; user-select: none; -webkit-user-select: none; } }

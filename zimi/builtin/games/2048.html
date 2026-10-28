@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2048 - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="2048.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>2048</h1>
+  <span class="ar-stat" id="tf-stat"></span>
+  <button class="ar-btn" id="tf-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="tf-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main tf-main" id="tf-main">
+  <div class="tf-board" id="tf-board" role="grid" aria-label="The board" data-t-aria="play.board"></div>
+  <p class="pl-msg" id="tf-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="2048.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q15967616">About 2048</a></footer><!-- /zimi-about -->
+</body>
+</html>

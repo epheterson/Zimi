@@ -1,0 +1,21 @@
+/* Sokoban: the board is one svg drawn from the state (our own art), the pad and the level picker. Stone, wood and floor are materials,
+   kept neutral and warm; tokens come from games.css and play.css. */
+:root { --sk-floor: #e7dcc4; --sk-floor2: #dfd2b6; --sk-wall: #77736a; --sk-wall-hi: #98948a; --sk-wall-lo: #53504a; --sk-crate: var(--wood); --sk-crate-hi: #cfa570; --sk-crate-lo: var(--wood-dark); --sk-crate-on: #5aa469; --sk-crate-on-lo: #2f6f3f; --sk-goal: #b3261e; --sk-me: #4a73a3; --sk-me-hi: #8aaed4; --sk-me-edge: #2c2a26; --sk-eye: #26241f; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --sk-floor: #2b2a2e; --sk-floor2: #26252a; --sk-wall: #5c5a55; --sk-wall-hi: #77746d; --sk-wall-lo: #3b3a36; --sk-crate: #a8703a; --sk-crate-hi: #c8925a; --sk-crate-lo: #6e4719; --sk-crate-on: #4c9b5e; --sk-crate-on-lo: #2a6a3a; --sk-goal: #ef6a60; --sk-me: #6a95c6; --sk-me-hi: #a4c4e6; }
+}
+:root[data-theme="dark"] { --sk-floor: #2b2a2e; --sk-floor2: #26252a; --sk-wall: #5c5a55; --sk-wall-hi: #77746d; --sk-wall-lo: #3b3a36; --sk-crate: #a8703a; --sk-crate-hi: #c8925a; --sk-crate-lo: #6e4719; --sk-crate-on: #4c9b5e; --sk-crate-on-lo: #2a6a3a; --sk-goal: #ef6a60; --sk-me: #6a95c6; --sk-me-hi: #a4c4e6; }
+
+.sk-board { --bs: min(100vw - 24px, 100svh - 330px, 520px); width: var(--bs); height: var(--bs); display: grid; place-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sk-board:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sk-board svg { width: 100%; height: 100%; display: block; }
+/* A touch screen gets the shared pad; a mouse and keyboard do not need it. */
+@media (hover: hover) and (pointer: fine) { .sk-main .pl-pad-l { display: none; } .sk-board { --bs: min(100vw - 24px, 100svh - 260px, 560px); } }
+@media (orientation: landscape) and (max-height: 520px) { .sk-board { --bs: min(100svh - 190px, 100vw - 420px, 520px); } }
+
+/* The level picker, in the New game pane. */
+.sk-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: var(--sp-2); max-height: 32vh; overflow: auto; padding: 2px; margin: var(--sp-2) 0; }
+.sk-lv { position: relative; min-height: var(--target); border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--surface); font: 600 var(--fs-small) var(--mono); font-variant-numeric: tabular-nums; cursor: pointer; color: var(--ink); }
+.sk-lv:hover { border-color: var(--accent); }
+.sk-lv.done::after { content: ""; position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.sk-lv.now { background: var(--accent-glow); border-color: var(--accent); font-weight: 700; }

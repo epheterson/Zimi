@@ -1,0 +1,75 @@
+/* ZimiKart: the race is a canvas (it keeps its own colours in light and dark); the touch pad and the setup sheet are extra. */
+.kt-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-3); }
+.kt-stage { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 100%; }
+.kt-board { display: block; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: var(--radius); border: 1px solid var(--line); background: #0e0e10; max-width: 100%; }
+.kt-main .pl-msg { min-height: 1.2em; }
+.kt-pads { width: 100%; }
+.kt-pad { display: none; width: 100%; justify-content: space-between; align-items: flex-end; gap: 8px; padding: 8px 6px 0; pointer-events: none; }
+body.touch .kt-pad { display: flex; }
+.kt-pad > div { display: flex; gap: 10px; align-items: flex-end; pointer-events: none; }
+.kt-btn { pointer-events: auto; min-width: 64px; min-height: 64px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.45); border-radius: var(--radius); background: rgba(14, 14, 16, 0.82); color: #fff; font: 700 var(--fs-body) var(--font); touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.kt-btn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
+.kt-steer .kt-btn { font-size: 26px; min-width: 88px; }
+.kt-drift { min-width: 88px; min-height: 88px; border-radius: 50%; }
+.kt-item { min-width: 64px; min-height: 64px; border-radius: 50%; }
+.kt-brake { min-width: 64px; min-height: 64px; border-radius: 50%; font-size: var(--fs-small); }
+.kt-split .kt-btn, body.touch .kt-split .kt-btn { min-width: 56px; min-height: 56px; font-size: var(--fs-small); border-radius: var(--radius); background: rgba(14, 14, 16, 0.6); }
+.kt-split .kt-steer .kt-btn, body.touch .kt-split .kt-steer .kt-btn { font-size: var(--fs-body); min-width: 56px; }
+.kt-split .kt-drift, body.touch .kt-split .kt-drift { min-width: 56px; min-height: 56px; }
+.kt-split .kt-item, body.touch .kt-split .kt-item { min-width: 56px; min-height: 56px; }
+.kt-split .kt-brake { display: none; }
+.kt-pads.over { position: absolute; inset: 0; pointer-events: none; }
+.kt-pads.over .kt-pad { position: absolute; left: 0; right: 0; padding-bottom: 6px; }
+@media (orientation: landscape) { body.touch .kt-pads { position: absolute; inset: 0; pointer-events: none; } body.touch .kt-pad { position: absolute; left: 0; right: 0; bottom: 4px; padding-bottom: 4px; } body.touch .kt-btn { min-height: 76px; } body.touch .kt-drift { min-height: 88px; min-width: 88px; } }
+/* Portrait on a phone, one player: the pad is the rest of the screen under the race, in full-width rows (Left and Right, half each;
+   then the actions split evenly), each key at least --pad-key tall, the status line above them. Split screen and landscape keep their own. */
+@media (orientation: portrait) {
+  body:has(> .kt-main) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
+  .kt-main { flex: 1 0 auto; width: 100%; }
+  body.touch .kt-stage:not(.kt-split) { flex: 1 1 auto; width: 100%; align-items: stretch; }
+  body.touch .kt-stage:not(.kt-split) .kt-board { align-self: center; }
+  body.touch .kt-stage:not(.kt-split) .pl-msg { align-self: center; margin: var(--sp-1) 0; }
+  body.touch .kt-stage:not(.kt-split) .kt-pads { flex: 1 1 0; display: flex; flex-direction: column; max-width: 560px; align-self: center; padding-bottom: env(safe-area-inset-bottom); }
+  body.touch .kt-stage:not(.kt-split) .kt-pad { flex: 1 1 0; flex-direction: column; align-items: stretch; gap: var(--sp-2); padding: 0; }
+  body.touch .kt-stage:not(.kt-split) .kt-pad > div { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; gap: var(--sp-2); }
+  body.touch .kt-stage:not(.kt-split) .kt-steer { flex: 3 1 0; min-height: calc(var(--pad-key) + var(--sp-4)); }
+  body.touch .kt-stage:not(.kt-split) .kt-act { flex: 2 1 0; min-height: var(--pad-key); max-height: 110px; }
+  body.touch .kt-stage:not(.kt-split) .kt-pad .kt-btn { width: 100%; min-width: 0; min-height: var(--pad-key); height: 100%; border-radius: var(--radius); font-size: var(--fs-body); }
+  body.touch .kt-stage:not(.kt-split) .kt-steer .kt-btn { font-size: 30px; }
+}
+/* Portrait, two people on a touch screen: face to face. Player 2's pad (turned half way round) is above the race, player 1's below it,
+   each with its own view between; one row of four keys per player: steer left, the actions right. */
+@media (orientation: portrait) {
+  body.touch .kt-stage.kt-face { flex: 1 1 auto; width: 100%; align-items: stretch; }
+  body.touch .kt-face .kt-board { align-self: center; }
+  body.touch .kt-face .pl-msg { align-self: center; margin: var(--sp-1) 0; }
+  body.touch .kt-face .kt-pads { display: contents; }
+  body.touch .kt-face .kt-pad { position: static; display: flex; flex-direction: row; gap: var(--sp-3); padding: 0 var(--sp-2); }
+  body.touch .kt-face .kt-pad[data-p="1"] { order: -1; transform: rotate(180deg); }
+  body.touch .kt-face .kt-pad > div { display: flex; flex: 1 1 0; gap: var(--sp-2); }
+  body.touch .kt-face .kt-pad .kt-btn { flex: 1 1 0; min-width: 0; min-height: calc(var(--pad-key) + var(--sp-2)); border-radius: var(--radius); background: rgba(14, 14, 16, 0.82); }
+  body.touch .kt-face .kt-steer .kt-btn { font-size: 26px; }
+}
+.kt-note { margin: var(--sp-2) 0 0; font-size: var(--fs-small); color: var(--ink2); }
+.kt-cast { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); margin-top: var(--sp-2); }
+.kt-pick { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 4px 2px 3px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.kt-pick canvas { width: 48px; height: 48px; display: block; }
+.kt-pick small { font-size: var(--fs-small); color: var(--ink2); }
+.kt-pick[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.kt-pick:disabled { color: var(--ink3); cursor: default; }
+.kt-table { width: 100%; border-collapse: collapse; margin: var(--sp-2) 0 0; font-size: var(--fs-small); }
+.kt-table td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.kt-table td:last-child, .kt-table td:nth-last-child(2) { text-align: right; font: 600 var(--fs-small) var(--mono); font-variant-numeric: tabular-nums; }
+.kt-table tr.me td { font-weight: 700; color: var(--accent); }
+.kt-sel { min-height: var(--target); padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; max-width: 62%; }
+@media (max-width: 480px) { .kt-pad { gap: 4px; padding: 8px 4px 0; } .kt-pad > div { gap: 6px; } .kt-btn { min-width: 64px; min-height: 72px; } .kt-steer .kt-btn { min-width: 66px; font-size: var(--fs-brand); } .kt-drift { min-width: 78px; min-height: 78px; } .kt-item { min-width: 62px; min-height: 62px; } .kt-brake { min-width: 52px; min-height: 52px; font-size: var(--fs-small); } }
+@media (orientation: landscape) { body.touch .pl-msg { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); min-height: 0; } body.touch .kt-main { padding-top: 4px; padding-bottom: 4px; } }
+.kt-note + .gs-row, .kt-cast + .gs-row { margin-top: var(--sp-3); }
+
+/* The setup rows sit label left, choice right (as Circuit's do), so the whole sheet and its Start fit a phone screen. */
+.kt-detail .gs-row { flex-wrap: nowrap; }
+.kt-detail .gs-seg { flex: 0 0 auto; }
+.kt-detail .gs-seg .ar-btn { flex: 0 0 auto; min-width: 44px; }
+/* The sheet is long on a phone: Start stays in reach at the bottom of the card as the rows scroll. */
+.ar-sheet-card:has(.kt-detail) .ar-sheet-actions { position: sticky; z-index: 2; bottom: -20px; margin: var(--sp-3) -20px -20px; padding: var(--sp-2) 20px 20px; background: var(--surface2); }
+.ar-sheet-card:has(.kt-detail) { max-height: calc(100vh - var(--bar-h, 0px) - 2 * var(--gutter, 16px)); }

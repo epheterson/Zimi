@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rocks - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Rocks</h1>
+  <button class="ar-btn" id="rk-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="rk-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small data-t="play.score">Score</small><b id="rk-score">0</b></div>
+    <div class="pl-stat"><small data-t="play.best">Best</small><b id="rk-best">0</b></div>
+    <div class="pl-stat"><small data-t="rocks.ships">Ships</small><b id="rk-lives">3</b></div>
+    <div class="pl-stat"><small data-t="play.wave">Wave</small><b id="rk-wave">1</b></div>
+  </div>
+  <canvas class="pl-arena" id="rk-board" role="img" aria-label="Space: your ship, drifting rocks and the saucer" data-t-aria="rocks.board"></canvas>
+  <p class="pl-msg" id="rk-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="burstkit.js"></script>
+<script src="rocks.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q748890">About Rocks</a></footer><!-- /zimi-about -->
+</body>
+</html>

@@ -1,0 +1,15 @@
+/* Zimi Pet: the care panel under the room. The room itself is a canvas (its colors are art, not UI). */
+.pt-who { font-size: var(--fs-title); }
+.pt-who span { color: var(--ink2); font-size: var(--fs-small); margin-left: var(--sp-2); }
+.pt-name { padding: 0 var(--sp-2); min-height: var(--target); border: 0; border-bottom: 0; border-radius: var(--radius); background: none; color: var(--ink); font: 650 var(--fs-title) var(--font); cursor: pointer; }
+.pt-tabs { flex: 0 0 auto; }   /* games.css gives a phone-width .gs-seg flex: 1 1 100%, which in this column means all the height */
+.pt-tabs .ar-btn { min-width: 64px; }
+.pt-bars { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2) var(--sp-4); width: 100%; max-width: 360px; }
+.pt-barwrap { display: grid; gap: var(--sp-1); font-size: var(--fs-small); color: var(--ink2); }
+.pt-bar { --v: 50%; height: 10px; border-radius: var(--r-chip); background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
+.pt-bar::after { content: ""; display: block; width: var(--v); height: 100%; background: var(--ok); }
+.pt-bar[data-low="1"]::after { background: var(--warn); }
+.pt-actions { width: 100%; max-width: 360px; }
+.pt-actions .ar-btn { flex: 1 1 0; }
+.pt-egg { margin: 0; color: var(--ink2); }
+.pt-input { width: 100%; min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; }

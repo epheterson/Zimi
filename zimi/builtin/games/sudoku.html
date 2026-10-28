@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sudoku - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="sudoku.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Sudoku</h1>
+  <span class="ar-stat" id="su-clock" role="timer" aria-label="Time" data-t-aria="play.time">0:00</span>
+  <button class="ar-btn" id="su-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="su-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="su-board" id="su-board" role="grid" aria-label="Sudoku board" data-t-aria="sudoku.board"></div>
+  <p class="pl-msg" id="su-msg"></p>
+  <div class="gs-actionrow su-tools" role="group" aria-label="Tools" data-t-aria="sudoku.tools">
+    <button class="ar-btn" id="su-hint" type="button" data-t="sudoku.hint">Hint</button>
+    <button class="ar-btn" id="su-pencil" type="button" aria-pressed="false" data-t="sudoku.pencil">Pencil</button>
+  </div>
+  <div class="su-pad" id="su-pad" role="group" aria-label="Digits" data-t-aria="sudoku.digits"></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="sudoku.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q44914">About Sudoku</a></footer><!-- /zimi-about -->
+</body>
+</html>

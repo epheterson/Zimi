@@ -1,0 +1,41 @@
+/* 2048: the board and the tiles. Tiles are a material: warm stone at the low numbers, then amber deepening to the high ones. */
+:root {
+  --t2: #ece7dc; --t4: #e5dcc4; --t8: #f0c98a; --t16: #eab25c; --t32: #e39a3a; --t64: #d1771a;
+  --t128: #c0650c; --t256: #b45309; --t512: #9d4a08; --t1024: #8a4007; --t2048: #75360a; --tbig: #4a3a2a;
+  --tf-ink-dark: #26241f; --tf-ink-light: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --t2: #2e2e34; --t4: #3a3a42; --t8: #8a5c1f; --t16: #a8661a; --t32: #c27a14; --t64: #d98a0c;
+    --t128: #f0a020; --t256: #f5a82a; --t512: #f7b440; --t1024: #f8c060; --t2048: #fad080; --tbig: #fce4b0;
+    --tf-ink-dark: #e8e8ed; --tf-ink-light: #ffffff; --tf-ink-on-bright: #0a0a0b;
+  }
+}
+:root[data-theme="dark"] {
+  --t2: #2e2e34; --t4: #3a3a42; --t8: #8a5c1f; --t16: #a8661a; --t32: #c27a14; --t64: #d98a0c;
+  --t128: #f0a020; --t256: #f5a82a; --t512: #f7b440; --t1024: #f8c060; --t2048: #fad080; --tbig: #fce4b0;
+  --tf-ink-dark: #e8e8ed; --tf-ink-light: #ffffff; --tf-ink-on-bright: #0a0a0b;
+}
+
+.tf-board { position: relative; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); touch-action: none; user-select: none; -webkit-user-select: none; }
+.tf-slot { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); border-radius: var(--r-chip); background: var(--cell-bg, var(--tile)); opacity: 0.55; }
+
+/* Tile numerals are the 32px display size; four digits step to 26 and five to 20 so they still fit. */
+.tf-tile { position: absolute; left: 0; top: 0; z-index: 2; width: var(--cell); height: var(--cell); display: grid; place-items: center; border-radius: var(--r-chip);
+  font: 800 min(var(--fs-display), calc(var(--cell) * 0.42))/1 var(--font); font-variant-numeric: tabular-nums; color: var(--tf-ink-dark); transition: transform 0.11s ease-out; }
+.tf-tile.pop { animation: tf-pop 0.16s ease-out; }
+.tf-tile.new { animation: tf-in 0.16s ease-out; }
+@keyframes tf-pop { 0% { scale: 0.85; } 60% { scale: 1.12; } 100% { scale: 1; } }
+@keyframes tf-in { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
+.t2 { background: var(--t2); } .t4 { background: var(--t4); } .t8 { background: var(--t8); } .t16 { background: var(--t16); }
+.t32 { background: var(--t32); } .t64 { background: var(--t64); } .t128 { background: var(--t128); } .t256 { background: var(--t256); } .t512 { background: var(--t512); }
+.t1024 { background: var(--t1024); font-size: min(var(--fs-brand), calc(var(--cell) * 0.34)); } .t2048 { background: var(--t2048); font-size: min(var(--fs-brand), calc(var(--cell) * 0.34)); }
+.tbig { background: var(--tbig); font-size: min(var(--fs-sheet), calc(var(--cell) * 0.28)); }
+.t32, .t64, .t128, .t256, .t512, .t1024, .t2048, .tbig { color: var(--tf-ink-light); }
+:root[data-theme="dark"] :is(.t128, .t256, .t512, .t1024, .t2048, .tbig) { color: var(--tf-ink-on-bright); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.t128, .t256, .t512, .t1024, .t2048, .tbig) { color: var(--tf-ink-on-bright); } }
+@media (prefers-reduced-motion: reduce) { .tf-tile { transition: none; } .tf-tile.pop, .tf-tile.new { animation: none; } }
+
+/* The whole page takes the swipe, so a thumb never has to find the board. */
+@media (orientation: portrait) { .tf-main { min-height: calc(100dvh - var(--bar-h, 56px)); touch-action: none; user-select: none; -webkit-user-select: none; } }
+.tf-board .pl-float { transform: translateX(-50%); font-size: var(--fs-sheet); }

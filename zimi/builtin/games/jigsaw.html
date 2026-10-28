@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jigsaw - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="jigsaw.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Jigsaw</h1>
+  <span class="ar-stat" id="jg-time" data-gs-timer>0:00</span>
+  <button class="ar-btn" id="jg-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main jg-main">
+  <p class="pl-msg" id="jg-msg"></p>
+  <div class="jg-area" id="jg-area">
+    <div class="jg-board" id="jg-board"><div class="jg-ghost" id="jg-ghost"></div></div>
+  </div>
+  <div class="gs-actionrow">
+    <button class="ar-btn" id="jg-peek" type="button" title="Hold to see the whole picture" data-t="jigsaw.peek" data-t-title="jigsaw.peekTitle">Peek</button>
+    <a class="ar-btn" id="jg-read" href="#" hidden data-t="jigsaw.read">Read the article</a>
+  </div>
+  <p class="jg-credit" id="jg-credit"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script src="jigsaw.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q181008">About Jigsaw</a></footer><!-- /zimi-about -->
+</body>
+</html>

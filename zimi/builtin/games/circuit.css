@@ -1,0 +1,17 @@
+/* Circuit: the track is a canvas (it keeps its own colours in light and dark); the setup sheet's track list and note are extra. */
+.pl-main:has(#cr-board) { justify-content: flex-start; }
+.pl-arena#cr-board { background: #2f5a3a; }
+.cr-tracks { margin-bottom: var(--sp-2); }
+/* Only the chosen track explains itself: four tracks with two lines each pushed the real choices off a phone screen. */
+.cr-tracks .pl-opt small { display: none; }
+.cr-tracks .pl-opt:has(input:checked) small { display: block; }
+.cr-note { margin: var(--sp-2) 0 0; font-size: var(--fs-small); color: var(--ink2); }
+.pl-hud[hidden] { display: none; }
+/* The setup rows stay on one line at phone width: a label and its control. */
+.cr-setup .gs-row { flex-wrap: nowrap; }
+.cr-setup .gs-seg { flex: 0 0 auto; }
+.cr-setup .gs-seg .ar-btn { flex: 0 0 auto; min-width: 44px; padding: 0 var(--sp-3) 1px; }
+.cr-setup .gs-row > label { min-width: 0; }
+/* The sheet is long on a phone: Start stays in reach at the bottom of the card as the rows scroll. */
+.ar-sheet-card:has(.cr-setup) .ar-sheet-actions { position: sticky; z-index: 2; bottom: -20px; margin: var(--sp-3) -20px -20px; padding: var(--sp-2) 20px 20px; background: var(--surface2); box-shadow: 0 -12px 10px -2px var(--surface2); }
+.ar-sheet-card:has(.cr-setup) { max-height: calc(100vh - var(--bar-h, 0px) - 2 * var(--gutter, 16px)); }

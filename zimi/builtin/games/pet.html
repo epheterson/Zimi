@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zimi Pet - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="pixel.css">
+<link rel="stylesheet" href="pet.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Zimi Pet</h1>
+</header>
+
+<main class="pl-main">
+  <div class="gs-seg pt-tabs" id="pt-tabs" role="group" aria-label="Your pets" data-t-aria="pet.pets"></div>
+  <div class="pt-who"><button class="pt-name" id="pt-name" type="button">Mip</button> <span id="pt-age">Egg</span></div>
+  <canvas class="px-screen" id="pt-screen" role="img" aria-label="A cozy room with your pet in it" data-t-aria="pet.room"></canvas>
+  <p class="pt-egg" id="pt-egg" hidden></p>
+  <div class="pt-bars" role="group" aria-label="How your pet is" data-t-aria="pet.how">
+    <div class="pt-barwrap"><span data-t="pet.bar.food">Fullness</span><div class="pt-bar" id="pt-food" role="progressbar" aria-label="Fullness" data-t-aria="pet.bar.food" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"></div></div>
+    <div class="pt-barwrap"><span data-t="pet.bar.joy">Joy</span><div class="pt-bar" id="pt-joy" role="progressbar" aria-label="Joy" data-t-aria="pet.bar.joy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"></div></div>
+    <div class="pt-barwrap"><span data-t="pet.bar.clean">Clean</span><div class="pt-bar" id="pt-wash" role="progressbar" aria-label="Clean" data-t-aria="pet.bar.clean" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"></div></div>
+    <div class="pt-barwrap"><span data-t="pet.bar.energy">Energy</span><div class="pt-bar" id="pt-energy" role="progressbar" aria-label="Energy" data-t-aria="pet.bar.energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"></div></div>
+  </div>
+  <div class="gs-actionrow pt-actions" id="pt-actions" role="group" aria-label="Care" data-t-aria="pet.care"></div>
+  <p class="pl-msg" id="pt-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="pixelkit.js"></script>
+<script src="pet.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1187635">About Zimi Pet</a></footer><!-- /zimi-about -->
+</body>
+</html>

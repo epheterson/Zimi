@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="snake.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Snake</h1>
+  <span class="ar-stat" id="sn-stat" aria-live="off"></span>
+  <button class="ar-btn" id="sn-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="sn-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main sn-main" id="sn-main">
+  <canvas class="pl-canvas" id="sn-board" role="img" aria-label="The board" data-t-aria="play.board"></canvas>
+  <p class="pl-msg" id="sn-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="snake.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q125177944">About Snake</a></footer><!-- /zimi-about -->
+</body>
+</html>

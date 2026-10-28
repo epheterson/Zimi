@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hopper - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="pixel.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Hopper</h1>
+  <button class="ar-btn" id="hp-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="hp-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small data-t="play.level">Level</small><b id="hp-level">1</b></div>
+    <div class="pl-stat"><small data-t="hopper.coins">Coins</small><b id="hp-coins">0</b></div>
+    <div class="pl-stat"><small data-t="hopper.hearts">Hearts</small><b id="hp-hearts">3</b></div>
+    <div class="pl-stat"><small data-t="play.time">Time</small><b id="hp-time">0:00</b></div>
+  </div>
+  <canvas class="px-screen" id="hp-screen" role="img" aria-label="A small critter running and jumping across platforms, coins and crawlers" data-t-aria="hopper.screen"></canvas>
+  <p class="pl-msg" id="hp-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="pixelkit.js"></script>
+<script src="hopper.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q828322">About Hopper</a></footer><!-- /zimi-about -->
+</body>
+</html>

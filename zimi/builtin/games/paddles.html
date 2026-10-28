@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paddles - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Paddles</h1>
+  <button class="ar-btn" id="pd-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="pd-pause" type="button" disabled data-t="play.pause">Pause</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small id="pd-top-name" data-t="paddles.computer">Zimi</small><b id="pd-top">0</b></div>
+    <div class="pl-stat"><small id="pd-bot-name" data-t="paddles.you">You</small><b id="pd-bot">0</b></div>
+    <div class="pl-stat"><small data-t="paddles.firstTo">First to</small><b id="pd-goal">7</b></div>
+  </div>
+  <canvas class="pl-arena" id="pd-board" role="img" aria-label="A court seen from above: a paddle at the top, a paddle at the bottom, a ball between them" data-t-aria="paddles.board"></canvas>
+  <p class="pl-msg" id="pd-msg"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="paddles.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q216293">About Paddles</a></footer><!-- /zimi-about -->
+</body>
+</html>
