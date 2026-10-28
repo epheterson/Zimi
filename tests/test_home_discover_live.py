@@ -182,6 +182,10 @@ def test_the_quote_card_says_its_quote_and_stays(served, scheme):
                 timeout=20000,
             )
             pg.wait_for_timeout(500)
+            # The quote's ZIM is in the library: a card whose ZIM is gone is not drawn (a3551603).
+            pg.evaluate(
+                """() => { zimsCache.push({ name: 'wikiquote_de_all_nopic_2026-01', title: 'Wikiquote', main_path: 'index' }); _rebuildZimsMap(); }"""
+            )
             pg.evaluate(
                 """q => _renderDiscover(document.getElementById('discover-row'), [{
                   zim: 'wikiquote_de_all_nopic_2026-01', path: 'Albert_Einstein',

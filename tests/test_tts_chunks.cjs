@@ -17,6 +17,9 @@ for (const name of ['_ttsPlanChunks', '_ttsChunkText']) {
   eval(pick(new RegExp('function ' + name + '\\([\\s\\S]*?\\n}'), name));
 }
 eval(pick(/var _TTS_CHUNK_MAX = [^\n]*/, '_TTS_CHUNK_MAX'));
+eval(pick(/var _TTS_SMALL_WORDS = [^\n]*/, '_TTS_SMALL_WORDS'));
+eval(pick(/var _TTS_UNITS = [^\n]*/, '_TTS_UNITS'));
+eval(pick(/function _ttsSpoken\([\s\S]*?\n}/, '_ttsSpoken'));
 
 let failures = 0;
 function ok(label, cond, got) { console.log((cond ? '  ok: ' : '  FAIL: ') + label + (cond ? '' : '  ' + JSON.stringify(got))); if (!cond) failures++; }
@@ -55,6 +58,19 @@ ok('a spoken chunk never ends at "Dr."', _ttsChunkText('It is. Dr. Smith was sur
 const longFirst = 'A widely reported anecdote about this eclipse, one of the earliest recorded in history, found in the Book of Documents, involves two Chinese court astronomers, named Hsi and Ho. They failed.';
 const lf = _ttsChunkText(longFirst, _TTS_CHUNK_MAX, _TTS_FIRST_CHUNK_MAX, 'en');
 ok('a long first sentence is not cut at the first cap', lf[0].endsWith('named Hsi and Ho.') && lf[1] === 'They failed.', lf);
+
+// What a voice is given: capitals are words, "::" a pause, units said out (the World Factbook).
+const spoken = (t) => _ttsChunkText(t, _TTS_CHUNK_MAX, _TTS_FIRST_CHUNK_MAX, 'en');
+ok('an all-capitals heading is read as words, not letters', JSON.stringify(spoken('THE WORLD FACTBOOK ARCHIVE')) === JSON.stringify(['the world factbook archive.']), spoken('THE WORLD FACTBOOK ARCHIVE'));
+ok('...an acronym in a sentence, a short one alone, and a mixed word are left', spoken('The FBI and NASA agree.')[0] === 'The FBI and NASA agree.' && spoken('FBI')[0] === 'FBI.' && spoken('FAQs')[0] === 'FAQs.', [spoken('The FBI and NASA agree.'), spoken('FBI'), spoken('FAQs')]);
+ok('"::" is a pause, not two colons', spoken('Africa\n :: Mali')[0] === 'Africa, Mali.', spoken('Africa\n :: Mali'));
+ok('a line break in the source is a space, not a sentence end', spoken('Africa\nMali')[0] === 'Africa Mali.', spoken('Africa\nMali'));
+ok('English units are said out; other languages are left', spoken('Area: 1,240,192 sq km and 7 km.')[0] === 'Area: 1,240,192 square kilometers and 7 kilometers.' &&
+  _ttsChunkText('Fläche: 7 km.', _TTS_CHUNK_MAX, _TTS_FIRST_CHUNK_MAX, 'de')[0] === 'Fläche: 7 km.', spoken('Area: 1,240,192 sq km and 7 km.'));
+
+ok('a sentence with nothing to say (an anchor\'s zero-width space) is not a chunk', JSON.stringify(spoken('One.' + _TTS_BLOCK + '\u200b \u200b' + _TTS_BLOCK + 'Two.')) === JSON.stringify(['One.', 'Two.']), spoken('One.' + _TTS_BLOCK + '\u200b \u200b' + _TTS_BLOCK + 'Two.'));
+
+ok('a dash left hanging at the end (a comment\'s \u201c\u2013 author\u201d) is dropped', spoken('Is it so? \u2013')[0] === 'Is it so?', spoken('Is it so? \u2013'));
 
 if (failures) { console.log(failures + ' failed'); process.exit(1); }
 console.log('\nall chunk checks passed');

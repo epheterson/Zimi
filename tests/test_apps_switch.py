@@ -110,7 +110,7 @@ def test_the_default_shell_carries_no_stamp(data_dir):
         ("maps,bogus", {"maps"}),
         ("maps,earth", {"maps"}),  # a dev build retired app id is ignored
         ("all", DEFAULT),
-        ("maps,tube,exchange,reddot,wiki,books,dictionary", set(srv.APP_NAMES)),
+        ("maps,tube,exchange,reddot,wiki,books,dictionary,games,almanac", set(srv.APP_NAMES)),
         ("none", set()),
         (["exchange"], {"exchange"}),
         (True, DEFAULT),

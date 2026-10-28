@@ -18,7 +18,8 @@ import { test, expect } from '@playwright/test';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function waitForApp(page) {
-  await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto('/', { waitUntil: 'load', timeout: 30000 });
+  await page.waitForFunction(() => _swPrimed, null, { timeout: 30000 }); // not networkidle: /events stays open
   await page.waitForSelector('#output', { timeout: 20000 });
   await page.waitForSelector('.topbar', { timeout: 5000 });
   await page.waitForTimeout(1500);
@@ -552,7 +553,8 @@ test.describe('7 — MCP Server', () => {
 test.describe('8 — Library Manager', () => {
   async function openManage(page) {
     // Navigate to manage URL, then ensure manage mode activates
-    await page.goto('/?manage', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('/?manage', { waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => _swPrimed, null, { timeout: 30000 });
     // The ?manage param may not activate if manageEnabled isn't set yet from API
     // (especially if /manage/ endpoints are rate-limited from earlier tests)
     const manageTabs = page.locator('.manage-tab');
@@ -864,7 +866,8 @@ test.describe('Visual Captures', () => {
   test('Library Manager — All tabs', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     // Use goto with ?manage directly
-    await page.goto('/?manage', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('/?manage', { waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => _swPrimed, null, { timeout: 30000 });
     const manageTabs = page.locator('.manage-tab');
     let loaded = await manageTabs.first().isVisible({ timeout: 8000 }).catch(() => false);
     if (!loaded) {
@@ -972,7 +975,8 @@ test.describe('11 — v1.6.10 Fixes', () => {
   test('11.6 — Flavor popup options stretch full width', async ({ page }) => {
     await waitForApp(page);
     // Open manage → catalog to find a flavor picker
-    await page.goto('/?manage', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('/?manage', { waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => _swPrimed, null, { timeout: 30000 });
     await page.waitForTimeout(3000);
     await page.evaluate(() => { if (typeof enterManage === 'function' && manageEnabled) enterManage(); });
     await page.waitForTimeout(1500);

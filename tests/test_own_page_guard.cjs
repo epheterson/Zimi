@@ -107,8 +107,8 @@ const settleBlock = src.slice(
   src.indexOf('var _settlePasses = function()'),
   src.indexOf('if (_replayAlive) setTimeout(_settlePasses')
 );
-check(/_frameIsOurOwnPage\(frame\)(\s*\|\|\s*_bookDoc)?(\s*\|\|\s*_wikiOn)?\s*\)\s*return;/.test(settleBlock),
-      'the settle passes ask before touching the document (and pass a book and Zimipedia\'s reader by)');
+check(/_frameIsOurOwnPage\(frame\)(\s*\|\|\s*_bookDoc)?(\s*\|\|\s*_wikiOn)?(\s*\|\|\s*_docIsApp\(frame\.contentDocument\))?\s*\)\s*return;/.test(settleBlock),
+      'the settle passes ask before touching the document (and pass a book, Zimipedia\'s reader and an app by)');
 check(settleBlock.indexOf('_frameIsOurOwnPage') <
       settleBlock.indexOf('_sweepBlockingOverlays'),
       'and they ask FIRST, before either pass runs');

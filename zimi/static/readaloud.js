@@ -36,10 +36,62 @@ function _ttsStartWait(engine) {
 }
 var _TTS_CHUNK_MAX = 240, _TTS_FIRST_CHUNK_MAX = 120; // characters
 var _TTS_AHEAD = 3; // chunks asked for ahead of the one playing, so the voice never waits
+// Until this server has measured a voice's pace, one chunk ahead: the server
+// makes one at a time, so three asked of a voice slower than speech queue in
+// front of the one about to play until it gives up (#121).
+var _TTS_AHEAD_UNMEASURED = 1;
+// Words heard before a voice stays for the rest of the article: a title of a
+// second is not yet "mid-article", and a voice that said only that may still
+// give way to a faster one (#121: "Epistemology.", then 36 s of silence).
+var _TTS_SETTLED_CHARS = 100;
 var _ttsAudio = (typeof _ttsUnlockedAudio !== 'undefined' && _ttsUnlockedAudio) || null; // started in the first tap (app.js)
 var _ttsRun = 0; // bumped by every start and stop: callbacks of an older run do nothing
 var _TTS_SUGGEST_MS = 9000;
 var _TTS_WARM_ENGINES = ['kokoro', 'piper']; // the voices that load a model
+// Settings > Voices' "Wait for the best voice" (Eric, 2026-10-23: "offer
+// natural voice read aloud by buffering ahead not just stumbling and saying
+// no. optionally"). A voice too slow to keep up still reads: the reading gets
+// far enough ahead before it starts that the rest plays without a pause, as
+// far as _TTS_WAIT_MAX_S of waiting allows, and when it runs dry it waits to
+// get ahead again. The server makes one chunk at a time, so one is asked for
+// at a time, without a break, from the first tap to the end.
+var _TTS_WAIT_MAX_S = 60;
+// Speech kept ready at most, in seconds: about 14 MB of a natural voice's
+// audio, and well past the most a minute of making can get ahead.
+var _TTS_WAIT_KEEP_S = 300;
+var _TTS_CPS = 14; // characters a voice says a second at 1x, before this server measured it
+var _TTS_WORK_MIN_S = 0.3; // quicker than this was the server's cache, not the voice
+var _TTS_WORK_MIN_CHARS = 200; // made by this reading before its own pace replaces the server's
+function _ttsWaits() {
+  return !!_voicePrefs().wait;
+}
+// A voice's pace here: seconds of work and of speech per character (work
+// null until it was measured).
+function _ttsPace(engine) {
+  var tm = _voiceTimings(_ttsVoices && _ttsVoices.timings)[engine] || {};
+  var cps = tm.cps || _TTS_CPS;
+  return { work: tm.rtf ? tm.rtf / cps : null, audio: 1 / cps };
+}
+// The last chunk that must be ready before chunk ``from`` plays, so that
+// what follows plays without a pause while the rest is made one after
+// another (as far as _TTS_WAIT_MAX_S of making allows). From = the voice
+// keeps up, or its pace is not known yet. It depends on nothing that moves
+// while the reading waits, so the wait it names only shortens.
+function _ttsLeadEnd(chunks, from, pace, rate) {
+  if (!pace.work) return from;
+  var made = 0, heard = 0, start = 0, k;
+  for (k = from; k < chunks.length; k++) {
+    made += pace.work * chunks[k].length;
+    start = Math.max(start, made - heard);
+    heard += pace.audio * chunks[k].length / rate;
+  }
+  start = Math.min(start, _TTS_WAIT_MAX_S);
+  for (made = 0, k = from; k < chunks.length - 1; k++) {
+    made += pace.work * chunks[k].length;
+    if (made >= start) break;
+  }
+  return k;
+}
 var _ttsWarmed = {};
 // The voice Read aloud reads in when the person chose one: its own (Settings >
 // Voices) or else the default there. '' is Automatic.
@@ -61,6 +113,7 @@ function _ttsServerEngines(lang) {
   if (!row || chosen === _DEVICE_VOICE) return [];
   var order = _ttsRowOrder(row, prefs);
   if (chosen && order.indexOf(chosen) >= 0) return [chosen];
+  if (_ttsWaits()) return order; // the best first, however slow: it is waited for
   // Those that keep up, then those only this browser found slow, and last those
   // the server measured too slow: a guess never outranks a measurement.
   var quick = order.filter(function(e) { return !_ttsTooSlow(e); });
@@ -184,7 +237,7 @@ function _ttsSentenceSpans(text, from, to, lang) {
   for (var a = from; a < to;) {
     var b = text.indexOf(_TTS_BLOCK, a);
     if (b < 0 || b > to) b = to;
-    var first = out.length, seg = text.slice(a, b);
+    var first = out.length, seg = text.slice(a, b).replace(/[\n\r]/g, ' '); // a line break in the source is a space, not a sentence end
     _ttsSegments(seg, lang).forEach(function(r) {
       var s = a + r[0], e = a + r[1];
       while (s < e && /\s/.test(text[s])) s++;
@@ -209,10 +262,12 @@ function _ttsPlanChunks(text, maxLen, first, from, to, lang) {
   var stop = /^(zh|ja)$/.test(_langPrimary(lang || '')) ? '\u3002' : '.';
   _ttsSentenceSpans(text, from || 0, to, lang).forEach(function(sp) {
     var piece = text.slice(sp[0], sp[1]), s = piece.replace(/\s+/g, ' ');
+    if (!/[\p{L}\p{N}]/u.test(s)) return; // nothing to say: an anchor's zero-width space, a rule
     // A heading or list item ends where its block does, with no stop of its
     // own: the voice is given one, or it runs on into the next block.
     var gap = text.slice(sp[1], to).match(/^\s*/)[0];
     var blockEnds = sp[1] + gap.length >= to || gap.indexOf(_TTS_BLOCK) >= 0;
+    s = _ttsSpoken(s, lang);
     if (!_TTS_SAID_END.test(s) && blockEnds) s += stop;
     // A single sentence longer than maxLen: hard-split on word boundaries. The
     // first chunk's smaller cap only keeps a second sentence out of it (a
@@ -257,7 +312,41 @@ var _TTS_SKIP_TAGS = ' script style noscript template svg canvas iframe object a
 var _TTS_SKIP_SEL = 'sup.reference,.mw-ref,.mw-editsection,.hatnote,.metadata,.ambox,.navbox,.sidebar,' +
   'table,figure,.thumb,.mw-references-wrap,ol.references,.reflist,.catlinks,.zim-footer,' +
   // Zimipedia's own: the folded Quick facts (its infobox) and its bars and sheets.
-  '.zw-facts,.zb-bar,.zb-sheet';
+  '.zw-facts,.zb-bar,.zb-sheet,' +
+  // Page chrome and what only a screen reader is given: menus, buttons, a
+  // tooltip's glossary text, "Show" and "Panel - Collapsed" (Eric, 2026-10-25:
+  // the Factbook "is very rough").
+  // A book's page numbers, transcriber's note, contents list and licence boilerplate; a docs page's browser-support badge; a question page's own: votes, tags, who asked and when, a comment's author and date.
+  '.pagenum,.pageno,.transnote,.toc,.pgheader,.pgfooter,.pg-boilerplate,#pg-header,#pg-footer,.baseline-indicator,.votecell,.post-taglist,.post-signature,.s-user-card,.comment-user,.comment-date,' +
+  'nav,[role="navigation"],[role="menu"],[role="search"],button,.tooltip-content,.expandcollapse-all,.sr-only,.visually-hidden,.visuallyhidden,.screen-reader-text';
+// Chrome by its class words (nav, menu, toolbar...), whatever the site calls the rest.
+var _TTS_CHROME_CLASS = /(?:^|[\s_-])(?:nav|navbar|navigation|menu|dropdown|breadcrumbs?|toolbar|pagination)(?:$|[\s_-])/i;
+// Code is not read: its symbols come out as noise. A <pre> of prose (a poem) is.
+function _ttsCode(el) { return el.localName === 'pre' && (!!el.querySelector('code') || !!(el.hasAttribute && el.hasAttribute('data-language')) || /[{}\[\]|&<>=;$\\]|\w\(/.test(el.textContent || '')); }
+function _ttsChrome(el) { return typeof el.className === 'string' && _TTS_CHROME_CLASS.test(el.className); }
+// A collapsed section (an accordion's closed panel) is still the article's text:
+// hidden by the page's script until opened, and opened when the reading gets there.
+var _TTS_PANEL_SEL = '.collapse,.collapsing,.accordion-collapse,.accordion-body,.panel-collapse';
+var _TTS_PANEL_HEAD = '.tabHead,.accordion-header,.accordion-button,summary,[aria-expanded]';
+function _ttsPanelHead(el) {
+  var head = el.previousElementSibling;
+  return head && (head.matches(_TTS_PANEL_HEAD) ? head : head.querySelector(_TTS_PANEL_HEAD));
+}
+function _ttsPanel(el) { return el.matches(_TTS_PANEL_SEL) || !!_ttsPanelHead(el); }
+// "Label:" then its value in the next block reads as one sentence, not two stops.
+var _TTS_LABEL_MAX = 60;
+var _TTS_PANEL_OPEN_MS = 450; // a panel slides open before the sentence in it can be found
+// What a voice says of a sentence: a heading in capitals is words, not letters
+// ("THE WORLD FACTBOOK" is not T-H-E), "::" a pause, "sq km" what it is.
+var _TTS_SMALL_WORDS = ' THE AND FOR OF OR IN ON TO BY AT IS AS AN ';
+var _TTS_UNITS = [[/\bsq km\b/g, 'square kilometers'], [/\bsq mi\b/g, 'square miles'], [/(\d) ?km\b/g, '$1 kilometers']]; // English, where a number gives them away
+function _ttsSpoken(s, lang) {
+  s = s.replace(/\s*::\s*/g, ', ');
+  s = s.replace(/\s+[\u2013\u2014]$/, ''); // a comment's dash before its author, which is not read
+  if (_langPrimary(lang || 'en') === 'en') _TTS_UNITS.forEach(function(u) { s = s.replace(u[0], u[1]); });
+  if (/\p{Ll}/u.test(s) || !/\p{Lu}{2}/u.test(s)) return s;
+  return s.replace(/\p{Lu}+/gu, function(w) { return w.length > 3 || _TTS_SMALL_WORDS.indexOf(' ' + w + ' ') >= 0 ? w.toLowerCase() : w; });
+}
 // A table that holds paragraphs is the page's layout (older captures, some
 // crawled sites put the whole article in one), not a table of facts: it is read.
 function _ttsLayoutTable(el) { return el.tagName === 'TABLE' && !!el.querySelector('p'); }
@@ -292,13 +381,17 @@ var _ttsRead = null; // the reading in progress: its plan, its document, whether
 // style or hidden text), a _TTS_BLOCK between blocks and at each <br>. A
 // piece is a text node and where it starts in the text.
 function _ttsReadModel(doc, main, all) {
-  var win = doc.defaultView, parts = [], pieces = [], index = new Map(), len = 0;
-  function split() { if (len && parts[parts.length - 1] !== _TTS_BLOCK) { parts.push(_TTS_BLOCK); len++; } }
+  var win = doc.defaultView, parts = [], pieces = [], index = new Map(), len = 0, said = 0, blockAt = 0, fresh = true, label = false; // said: letters so far, without the page's indentation
+  function split() {
+    if (label && said - blockAt <= _TTS_LABEL_MAX) { if (len && /\S$/.test(parts[parts.length - 1])) { parts.push(' '); len++; } return; } // "Area:" and its value are one sentence
+    fresh = true;
+    if (len && parts[parts.length - 1] !== _TTS_BLOCK) { parts.push(_TTS_BLOCK); len++; }
+  }
   function walk(el) {
     var cs = win.getComputedStyle(el), tag = el.localName;
-    // A book lays out one section at a time and hides the others: they are still its text.
-    if (_TTS_SKIP_TAGS.indexOf(' ' + tag + ' ') >= 0 || (cs.display === 'none' && !el.classList.contains('zb-sec'))) return;
-    if (!all && el !== main && el.matches && el.matches(_TTS_SKIP_SEL) && !_ttsLayoutTable(el)) return;
+    // A book lays out one section at a time and hides the others: they are still its text, as is a closed panel's.
+    if (_TTS_SKIP_TAGS.indexOf(' ' + tag + ' ') >= 0 || (cs.display === 'none' && !el.classList.contains('zb-sec') && !(!all && _ttsPanel(el)))) return;
+    if (!all && el !== main && ((el.matches && el.matches(_TTS_SKIP_SEL)) || _ttsChrome(el) || _ttsCode(el)) && !_ttsLayoutTable(el)) return;
     var block = cs.display.indexOf('inline') !== 0 && cs.display !== 'contents', shown = cs.visibility === 'visible';
     if (block || tag === 'br') split();
     for (var n = el.firstChild; n; n = n.nextSibling) {
@@ -306,7 +399,10 @@ function _ttsReadModel(doc, main, all) {
       else if (n.nodeType === 3 && shown && n.data) {
         index.set(n, pieces.length);
         pieces.push({ node: n, at: len });
-        parts.push(n.data); len += n.data.length;
+        var solid = n.data.replace(/\s+/g, '').length;
+        if (fresh && solid) { blockAt = said; fresh = false; }
+        parts.push(n.data); len += n.data.length; said += solid;
+        if (solid) label = /:\s*$/.test(n.data);
       }
     }
     if (block) split();
@@ -457,19 +553,15 @@ function _ttsAlongChar(idx, ch) {
   var st = _ttsRead, chunk = st && st.plan.chunks[idx];
   if (chunk) _ttsAlongAt(idx, _ttsSpanAtChar(chunk, ch));
 }
-// The nearest ancestor that scrolls by itself, or null (the page scrolls).
-// The body counts only when it scrolls itself: with the root's overflow left
-// visible, the body's is the window's (the window scrolls, null); the reader
-// on an iPhone sets the root's, and there the body is what scrolls (Eric,
-// 2026-10-20: "highlight and scroll isn't done").
-function _ttsScroller(el, win) {
-  var doc = el && el.ownerDocument, root = doc && doc.documentElement;
-  for (; el && el.nodeType === 1 && el !== root; el = el.parentElement) {
-    var oy = win.getComputedStyle(el).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1 &&
-        (el !== doc.body || win.getComputedStyle(root).overflowY !== 'visible')) return el;
+// A sentence inside a closed panel has no place on the page: open the panel as
+// a tap on its heading does. True when one was opened.
+function _ttsOpenPanel(range) {
+  var win = range.startContainer.ownerDocument.defaultView;
+  for (var el = range.startContainer.parentElement; el; el = el.parentElement) {
+    var head = _ttsPanelHead(el);
+    if (head && win.getComputedStyle(el).display === 'none') { head.click(); return true; }
   }
-  return null;
+  return false;
 }
 // Keep the sentence in view. Only while following; once the person has moved
 // the page, the reading follows again when it comes back to what is in view.
@@ -485,7 +577,8 @@ function _ttsFollow(force) {
       if (doc.__zbShowRange) { doc.__zbShowRange(rs[0]); moved = true; }
     } else {
       var box = rs[0].getBoundingClientRect(), end = rs[rs.length - 1].getBoundingClientRect();
-      var scr = _ttsScroller(rs[0].startContainer.parentElement, win), cr = scr ? scr.getBoundingClientRect() : { top: 0, height: win.innerHeight };
+      if (!box.width && !box.height && _ttsOpenPanel(rs[0])) { setTimeout(function() { if (_ttsRead === st) _ttsFollow(false); }, _TTS_PANEL_OPEN_MS); return; }
+      var scr = _scrollerOf(rs[0].startContainer.parentElement, win), cr = scr ? scr.getBoundingClientRect() : { top: 0, height: win.innerHeight };
       var by = _ttsScrollBy({ top: box.top - cr.top, bottom: end.bottom - cr.top }, cr.height);
       if (!by && !force) { st.following = true; return; }
       if (!force && !st.following) return;
@@ -606,6 +699,7 @@ function _ttsStop() {
   _ttsRun++;
   _ttsLetGoAll();
   _ttsPaused = false;
+  _ttsHeld = null;
   if (_ttsAudio) {
     try { _ttsAudio.pause(); _ttsAudio.removeAttribute('src'); _ttsAudio.load(); } catch(e) {}
   }
@@ -638,7 +732,7 @@ function _ttsSpeak(from, plan) {
   // a slow voice can take seconds over a sentence, and the page sat unmarked
   // (Eric, 2026-10-21: "tapping to another spot highlight is gone").
   _ttsAlongAt(from, 0);
-  _ttsNow = { at: from, engine: engines[0] || _DEVICE_VOICE, playing: false, spin: false, lang: lang };
+  _ttsNow = { at: from, engine: engines[0] || _DEVICE_VOICE, playing: false, spin: false, lang: lang, ahead: 0, readyAt: 0, aheadOf: 0 };
   _ttsHold();
   if (engines.length) _ttsSpeakServer(chunks, lang, engines, ++_ttsRun, chosen ? function(e) { _ttsSuggestFaster(lang, e); } : null, from);
   else _ttsSpeakDevice(chunks, lang, from);
@@ -678,12 +772,17 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
   _ttsLetGoAll();
   var audio = _ttsAudio || (_ttsAudio = new Audio());
   var i = from || 0, eng = 0, retried = false, waiting = null, told = false;
-  var started = false; // a word has been heard: from then on the voice stays
+  var started = false; // a word has been heard in this engine
+  var heard = 0; // characters this engine has said; past _TTS_SETTLED_CHARS it stays
   var asked = {}; // chunk index -> true once the server has said it (or failed to)
   // The audio of chunks asked for ahead, kept in this page: the next sentence
   // starts from memory, not with a request of its own (Eric, 2026-10-22: "no
   // zero gap sentence ... we can get them ready in advance").
   var ready = {};
+  var waits = _ttsWaits(), pace = _ttsPace(engines[0]), making = false, holding = -1;
+  var tookS = 0, tookChars = 0; // what this reading's chunks took to make, in all
+  // The requests asked of the engine reading now, called off when it gives way.
+  var calls = typeof AbortController !== 'undefined' ? new AbortController() : null;
   function live() { return run === _ttsRun; }
   function letGo(below) {
     Object.keys(ready).forEach(function(k) { if (below == null || +k < below) { try { URL.revokeObjectURL(ready[k]); } catch (e) {} delete ready[k]; } });
@@ -695,8 +794,11 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     _ttsMarkSlow(engines[eng]);
     eng++;
     asked = {};
+    started = false; heard = 0; retried = false;
+    if (calls) { calls.abort(); calls = new AbortController(); }
     letGo();
   }
+  function settled() { return heard >= _TTS_SETTLED_CHARS; }
   // Ask for chunk ``idx`` ahead of time; the server keeps what it said, so
   // the <audio> element then gets it at once.
   // A chosen voice (``onSlow``) keeps reading; the person is told once.
@@ -709,28 +811,83 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     if (!onSlow) _ttsMarkSlow(engines[eng]);
     tooSlow();
   }
-  function ask(idx) {
+  // ``done`` (waiting for the voice): called once the server answered, so
+  // the next chunk is asked for.
+  function ask(idx, done) {
     if (idx >= chunks.length || asked[idx] !== undefined) return;
-    var engine = engines[eng];
+    var engine = engines[eng], began = Date.now();
+    var next = function() { if (done && live()) done(); };
+    var later = function() { setTimeout(function() { if (!live()) return; if (done) done(); else ask(idx); }, _TTS_SERVER_RETRY_MS); };
     asked[idx] = false;
-    authedFetch(_ttsSpeakUrl(chunks[idx], lang, engine)).then(function(r) {
+    authedFetch(_ttsSpeakUrl(chunks[idx], lang, engine), calls ? { signal: calls.signal } : undefined).then(function(r) {
       if (!live()) return;
       if (r.status === 503) {
         delete asked[idx]; // busy: ask again shortly
-        setTimeout(function() { if (live()) ask(idx); }, _TTS_SERVER_RETRY_MS);
+        later();
         return;
       }
       if (engines[eng] !== engine) return;
       asked[idx] = true;
-      if (!r.ok || typeof URL === 'undefined' || !URL.createObjectURL) return;
+      if (!r.ok || typeof URL === 'undefined' || !URL.createObjectURL) { next(); if (waits) hold(); return; }
       return r.blob().then(function(b) {
-        if (live() && engines[eng] === engine && idx > i) ready[idx] = URL.createObjectURL(b);
+        if (!live() || engines[eng] !== engine) return;
+        if (idx > i || (waits && idx >= i)) ready[idx] = URL.createObjectURL(b);
+        if (!waits) return;
+        // This server's pace, as this reading finds it: time over
+        // characters in all, so a short chunk's fixed cost counts as often
+        // as it is paid without one heading swinging the estimate.
+        var took = (Date.now() - began) / 1000;
+        if (took >= _TTS_WORK_MIN_S) {
+          tookS += took; tookChars += chunks[idx].length;
+          if (tookChars >= _TTS_WORK_MIN_CHARS) pace.work = tookS / tookChars;
+        }
+        next();
+        hold();
       });
-    }).catch(function() { if (live()) delete asked[idx]; });
+    }).catch(function(e) {
+      if (!live() || (e && e.name === 'AbortError')) return; // gave way: asked anew of the next
+      delete asked[idx]; if (done) later();
+    });
+  }
+  // Waiting for the voice: the server is never idle while there is a chunk
+  // to make and room to keep it.
+  function make() {
+    if (!waits || making || !live()) return;
+    for (var j = i, kept = 0; j < chunks.length; j++) {
+      if (ready[j]) { kept += pace.audio * chunks[j].length; if (kept >= _TTS_WAIT_KEEP_S) return; continue; }
+      if (asked[j] !== undefined) continue; // made and lost, or being made
+      making = true;
+      ask(j, function() { making = false; make(); });
+      return;
+    }
+  }
+  // Waiting for the voice: chunk ``idx`` plays once enough is ready ahead of
+  // it; until then the bar says how long, and the chunks are made.
+  function hold(idx) {
+    if (!live()) return;
+    if (idx === undefined) { if (holding < 0) return; idx = holding; }
+    make();
+    var end = _ttsLeadEnd(chunks, idx, pace, _ttsRate()), left = 0;
+    for (var k = idx; k <= end; k++) if (!ready[k] && asked[k] !== true) left += (pace.work || 0) * chunks[k].length;
+    if (left > 0 || (!ready[idx] && asked[idx] !== true) || _ttsPaused) {
+      // The wait from here: counted down each second between chunks, and
+      // the whole of it kept, so the ring says how much is done.
+      var fresh = holding !== idx || !_ttsNow.readyAt;
+      _ttsNow.readyAt = Date.now() + left * 1000;
+      _ttsNow.aheadOf = fresh ? left : Math.max(_ttsNow.aheadOf, left);
+      holding = idx; _ttsHeld = function() { hold(idx); };
+      if (_ttsNow.at !== idx || _ttsNow.playing || _ttsNow.ahead !== Math.ceil(left)) {
+        _ttsNow.at = idx; _ttsNow.ahead = Math.ceil(left); _ttsHold();
+      }
+      _ttsAheadTick();
+      return;
+    }
+    holding = -1; _ttsHeld = null; _ttsNow.ahead = 0; _ttsNow.readyAt = 0;
+    play(idx);
   }
   function play(idx) {
-    // Not ready when it is needed: the voice waits. Once words were heard
-    // it stays (a new voice mid-article is worse than a pause, Eric
+    // Not ready when it is needed: the voice waits. Once a sentence's worth
+    // was heard (_TTS_SETTLED_CHARS) it stays (a new voice mid-article is worse than a pause, Eric
     // 2026-10-19: "can sound different between them"), and only a silence
     // as long as the start wait marks it slow: a heading is a clip of a
     // second, often over before the next is made (Eric, 2026-10-21: "clear
@@ -745,13 +902,13 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     // AbortError: this play() was cut short by the next src (a switch of
     // engine, or the next chunk), which is not a failure.
     if (p && p.catch) p.catch(function(e) { if (live() && !(e && e.name === 'AbortError')) fail(); });
-    // Still silent after a while: before the first word, the next engine
-    // says it instead; after, the voice stays and is marked slow.
+    // Still silent after a while: until it settled, the next engine says it
+    // instead; after, the voice stays and is marked slow.
     clearTimeout(waiting);
-    if (eng + 1 < engines.length || onSlow) {
+    if (!waits && (eng + 1 < engines.length || onSlow)) {
       waiting = setTimeout(function() {
         if (!live() || i !== idx || !audio.paused || _ttsPaused) return;
-        if (!started && eng + 1 < engines.length) { slower(); play(idx); }
+        if (!settled() && eng + 1 < engines.length) { slower(); play(idx); }
         else if (started) late(); else tooSlow();
       }, started ? _TTS_START_WAIT_MS : _ttsStartWait(engines[eng]));
     }
@@ -764,6 +921,9 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
       setTimeout(function() { if (live()) play(i); }, _TTS_SERVER_RETRY_MS);
       return;
     }
+    // Then the next of the server's voices, before this browser's (#121: a
+    // busy Natural gave the article to the browser while Clear was ready).
+    if (eng + 1 < engines.length) { slower(); play(i); return; }
     _ttsRun++;
     letGo();
     if (_TTS_AVAILABLE) _ttsSpeakDevice(chunks, lang, i);
@@ -772,7 +932,8 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
   audio.onplaying = function() {
     if (!live()) return;
     clearTimeout(waiting); retried = false; started = true;
-    for (var k = 1; k <= _TTS_AHEAD; k++) ask(i + k);
+    if (waits) make();
+    else for (var k = 1, n = _ttsPace(engines[eng]).work === null ? _TTS_AHEAD_UNMEASURED : _TTS_AHEAD; k <= n; k++) ask(i + k);
     clearTimeout(_ttsSpinTimer);
     _ttsNow.playing = true; _ttsNow.spin = false; _ttsBarSync();
     _ttsAlongAudio(i, audio);
@@ -780,12 +941,33 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
   audio.ontimeupdate = function() { if (live()) _ttsAlongAudio(i, audio); };
   audio.onended = function() {
     if (!live()) return;
+    heard += chunks[i].length;
     i++;
     if (i >= chunks.length) { letGo(); _ttsRun++; _ttsSetSpeaking(false); return; }
-    play(i);
+    if (waits && !ready[i]) hold(i); // ran dry: get ahead again
+    else play(i);
   };
   audio.onerror = function() { if (live() && audio.getAttribute('src')) fail(); };
-  play(i);
+  if (waits) hold(i);
+  else play(i);
+}
+// Waiting for the voice to get ahead: what Resume does instead of playing
+// the clip that ended (set by _ttsSpeakServer while it holds).
+var _ttsHeld = null;
+// The countdown between chunks: a second at a time toward readyAt, never
+// below 1 s until the chunks say it is ready.
+var _ttsAheadTimer = 0;
+function _ttsAheadTick() {
+  clearTimeout(_ttsAheadTimer);
+  if (!_ttsSpeaking || _ttsNow.playing || !_ttsNow.readyAt) return;
+  _ttsNow.ahead = Math.max(1, Math.ceil((_ttsNow.readyAt - Date.now()) / 1000));
+  _ttsBarSync();
+  _ttsAheadTimer = setTimeout(_ttsAheadTick, 1000);
+}
+// How much of the wait is done, 0 to 1, for the ring.
+function _ttsAheadDone() {
+  if (!_ttsNow.aheadOf) return 0;
+  return Math.min(1, Math.max(0, 1 - (_ttsNow.readyAt - Date.now()) / 1000 / _ttsNow.aheadOf));
 }
 function _ttsToggle() {
   if (_ttsSpeaking) _ttsStop();
@@ -798,7 +980,7 @@ function _ttsToggle() {
 // which voice it was. The bar says all three (a turning ring until the first
 // sound, then the voice), offers this language's voices where it plays
 // (remembered as Read aloud's own, Settings > Voices), and stops it.
-var _ttsNow = { at: 0, engine: '', playing: false, spin: false, lang: '' };
+var _ttsNow = { at: 0, engine: '', playing: false, spin: false, lang: '', ahead: 0, readyAt: 0, aheadOf: 0 }; // ahead: seconds until it has got far enough ahead (at readyAt, of aheadOf in all)
 // Between sentences, or a sentence started again, the bar holds still; the
 // ring turns only for a wait long enough to notice (Eric, 2026-10-22:
 // "should hide unless it's a longer wait (seamless ui)").
@@ -824,6 +1006,8 @@ var _TTS_PLAY_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 
 // Back a sentence: a turning arrow, as a player's replay, not a skip (Eric,
 // 2026-10-21: "just one back rewindish circle to restart from previous sentence").
 var _TTS_BACK_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v6h6"/><path d="M3.5 15a8.5 8.5 0 1 0 2-8.8L3 10"/></svg>';
+// Where the reading is: shown in place of the bars once the page was moved away from it.
+var _TTS_LOCATE_ICON = '<svg class="tts-locate" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
 var _TTS_CLOSE_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 // The voices this article's language can be read in: the server's, in its
 // order (none Settings turned off), then this browser's.
@@ -835,8 +1019,11 @@ function _ttsVoicesFor(lang) {
 }
 // The voice reading, by its name alone: (Too slow) is for choosing one, in
 // the voice list, not the bar, where it has no room (Eric, 2026-10-21).
+// Paused is paused: the bar says getting ahead only while the reading is going on.
+function _ttsAheadShown() { return _ttsNow.ahead > 0 && !_ttsNow.playing && !_ttsPaused; }
 function _ttsVoiceLabel() {
-  return _voiceEngineName(_ttsNow.engine);
+  var name = _voiceEngineName(_ttsNow.engine);
+  return _ttsAheadShown() ? t('tts_getting_ahead', { voice: name, s: fmtNum(_ttsNow.ahead) }) : name;
 }
 // The speed sheet: a slider (the bar's button says the speed), the marks
 // under it each a tap away. Arrow keys step 0.05 and never snap.
@@ -858,12 +1045,14 @@ function _ttsBarHtml() {
   var btn = function(cls, label, onclick, inner, extra) {
     return '<button type="button" class="' + cls + '" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '" onclick="' + onclick + '"' + (extra || '') + '>' + inner + '</button>';
   };
-  var h = '<span class="tts-bar-state' + (_ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '" aria-hidden="true"><i></i><i></i><i></i></span>';
+  var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
+  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    (ahead ? ' style="--p:' + _ttsAheadDone().toFixed(3) + '"' : '') + ' aria-hidden="true"><i></i><i></i><i></i>' + _TTS_LOCATE_ICON + '</span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
     return '<div class="tts-bar-menu tts-bar-menu-' + which + '" role="menu">' + items.map(function(it) {
-      return '<button type="button" role="menuitemradio" aria-checked="' + it[0] + '"' + (it[3] ? ' data-slow' : '') +
+      return '<button type="button" role="' + (it[4] || 'menuitemradio') + '" aria-checked="' + it[0] + '"' + (it[3] ? ' data-slow' : '') + (it[4] ? ' class="tts-menu-check"' : '') +
         ' onclick="' + escAttr(it[1]) + '">' + esc(it[2] + (it[3] ? ' ' + t('tts_too_slow') : '')) + '</button>';
     }).join('') + '</div>';
   };
@@ -872,8 +1061,10 @@ function _ttsBarHtml() {
       '<span>' + esc(_ttsVoiceLabel()) + '</span>' + _TTS_CHEVRON + '</button>' +
       menu('voice', [['' === pick, '_ttsPickVoice("")', t('voices_default_auto')]].concat(voices.map(function(e) {
         // Still pickable, but said (Eric, 2026-10-19: "a lil (Too Slow) beside the previous voice").
-        return [e === pick, '_ttsPickVoice(' + JSON.stringify(e) + ')', _voiceEngineName(e), _ttsTooSlow(e)];
-      }))) + '</span>';
+        return [e === pick, '_ttsPickVoice(' + JSON.stringify(e) + ')', _voiceEngineName(e), !_ttsWaits() && _ttsTooSlow(e)];
+      }).concat(_ttsNow.engine === 'kokoro' || pick === 'kokoro'
+        // Natural reading or picked: Patience, beside it (Eric, 2026-10-23).
+        ? [[_ttsWaits(), '_ttsPickPatience(' + !_ttsWaits() + ')', t('voices_wait'), false, 'menuitemcheckbox']] : []))) + '</span>';
   } else {
     h += '<span class="tts-bar-voice">' + esc(_ttsVoiceLabel()) + '</span>';
   }
@@ -912,6 +1103,7 @@ function _ttsBarSync() {
   if (mark) {
     mark.classList.toggle('tts-lost', lost);
     if (lost) { mark.setAttribute('role', 'button'); mark.setAttribute('title', t('tts_follow')); mark.setAttribute('aria-label', t('tts_follow')); mark.removeAttribute('aria-hidden'); }
+    else if (mark.classList.contains('ahead')) { mark.setAttribute('role', 'img'); mark.setAttribute('title', t('tts_ahead_label')); mark.setAttribute('aria-label', t('tts_ahead_label')); mark.removeAttribute('aria-hidden'); }
     else { ['role', 'title', 'aria-label'].forEach(function(a) { mark.removeAttribute(a); }); mark.setAttribute('aria-hidden', 'true'); }
   }
   bar.hidden = false;
@@ -939,7 +1131,11 @@ function _ttsPauseToggle() {
   var device = _ttsNow.engine === _DEVICE_VOICE;
   try {
     if (device) { if (_ttsPaused) window.speechSynthesis.pause(); else window.speechSynthesis.resume(); }
-    else if (_ttsAudio) { if (_ttsPaused) _ttsAudio.pause(); else _ttsAudio.play().catch(function() {}); }
+    else if (_ttsAudio) {
+      if (_ttsPaused) _ttsAudio.pause();
+      else if (_ttsHeld) _ttsHeld(); // still getting ahead: not the clip that ended
+      else _ttsAudio.play().catch(function() {});
+    }
   } catch (e) {}
   _ttsBarSync();
 }
@@ -990,7 +1186,7 @@ function _ttsApplySpeed(r) {
 function _ttsSpeedSettled() {
   if (!_ttsSpeaking) return; // stopped while the taps settled
   var r = _ttsRate(), e = _ttsNow.engine;
-  if (e && _ttsKeepsUp(e, r) === false) {
+  if (e && !_ttsWaits() && _ttsKeepsUp(e, r) === false) {
     var next = _ttsServerEngines(_ttsNow.lang)[0];
     if (next && next !== e) { _ttsSpeak(_ttsNow.at); _ttsBarSync(); return; }
     var faster = _ttsFasterThan(_ttsNow.lang, e);
@@ -1006,6 +1202,12 @@ function _ttsSpeedSettled() {
 // sentence it was at, in the new voice (inside this tap, as iOS needs).
 function _ttsPickVoice(engine) {
   _setVoicePrefs({ read: engine });
+  _ttsMenuOpen = '';
+  _ttsSpeak(_ttsNow.at);
+}
+// Patience from the bar: the reading starts again from here, keeping its voice.
+function _ttsPickPatience(on) {
+  _setVoicePrefs({ wait: on });
   _ttsMenuOpen = '';
   _ttsSpeak(_ttsNow.at);
 }

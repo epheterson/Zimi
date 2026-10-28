@@ -52,6 +52,9 @@ IDENTITY_ENDPOINTS = [
     "/fieldguide/match",
     "/fieldguide/print",
     "/fieldguide/library",
+    # Filtered by the account's ZIM allowlist and by the library: a kept copy
+    # would outlive a sign-out (and answer after an account change, offline).
+    "/games-links",
 ]
 
 # Query strings must not change the classification (the SW keys off pathname).

@@ -54,7 +54,7 @@ ok('the bookmarks panel and the map switcher stay in the bar', /getElementById\(
 // ── the dice ─────────────────────────────────────────────────────────────
 ok('the dice say "Random place" on a map', /t\(_isMapPage\(\) \? 'random_place' : 'random_article'\)/.test(topbar));
 const dice = extract(/async function randomArticle\(event\) \{[\s\S]*?\n\}/, 'randomArticle');
-ok('on a map the dice stay on this map', /randomScope = _isMapPage\(\) \? currentArticle\.zim : currentSource/.test(dice));
+ok('on a map the dice stay on this map', /randomScope = _isMapPage\(\)( \|\| _isGamesZimOpen\(\))? \? currentArticle\.zim : currentSource/.test(dice));
 ok('a place opens where it is', /openArticle\(data\.zim, data\.path, data\.title, data\.pos \? \{pos: data\.pos\} : undefined\)/.test(dice));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));

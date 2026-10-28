@@ -112,7 +112,11 @@ def test_bookshelf_switched_in_server_settings_holds_after_leaving(served, on):
         # 1. enable (or disable) Bookshelf, in Server settings
         pg.goto(served + "/?manage=preferences")
         pick = pg.locator("#ms-apps .app-pick", has_text="Bookshelf")
-        pick.wait_for(timeout=15000)
+        pick.wait_for(state="attached", timeout=15000)
+        # The list is shut until Edit.
+        assert not pick.is_visible()
+        pg.locator("#ms-apps .apps-sum").click()
+        pick.wait_for(timeout=5000)
         # Each app is a row with the Settings switch; a tap anywhere on it flips it.
         assert pick.locator("input[role=switch]").is_checked() is (not on)
         pick.click()

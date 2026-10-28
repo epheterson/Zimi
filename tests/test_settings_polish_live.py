@@ -109,7 +109,8 @@ def phone():
 def test_preferences_are_one_row_shape(served, phone):
     pg = phone
     pg.goto(served + "/?manage=preferences")
-    pg.wait_for_selector("#ms-apps .app-pick", timeout=15000)
+    pg.wait_for_selector("#ms-apps .app-pick", state="attached", timeout=15000)
+    pg.locator("#ms-apps .apps-sum").click()
     pane = pg.evaluate("""() => {
       var p = document.getElementById('ms-pane');
       var labels = Array.from(p.querySelectorAll('.ms-section-label')).map(l => l.firstChild.textContent.trim());
@@ -119,7 +120,7 @@ def test_preferences_are_one_row_shape(served, phone):
         labels: labels,
         apps: p.querySelectorAll('#ms-apps .set-row.app-pick').length,
         appsWithSwitch: p.querySelectorAll('#ms-apps .set-row.app-pick .switch input[role=switch]').length,
-        rowHeights: Array.from(p.querySelectorAll('#ms-apps .set-row')).map(r => Math.round(r.getBoundingClientRect().height)),
+        rowHeights: Array.from(p.querySelectorAll('#ms-apps .set-row.app-pick')).map(r => Math.round(r.getBoundingClientRect().height)),
         looseChecks: p.querySelectorAll('.ms-check').length,
         openBeforeDisplay: !!(openRow.compareDocumentPosition(display) & Node.DOCUMENT_POSITION_FOLLOWING),
         readingSwitches: ['ms-reader-auto', 'ms-darken-articles'].every(id => document.getElementById(id).closest('.set-row')),

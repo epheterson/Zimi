@@ -22,7 +22,7 @@
     --error: #ef4444;
     /* Translucent bar/menu surface (topbar frosted glass). Tokenised so the
        light theme can flip it without every backdrop rule carrying a literal. */
-    --topbar-bg: rgba(10, 10, 11, 0.85);
+    --topbar-bg: #0a0a0b;
     /* Raised popover/menu fill (context menus, drawers). One token so the
        three call sites can't drift, and the light theme flips it in one place. */
     --card-bg: #1a1a1a;
@@ -83,7 +83,7 @@
        a soft warm shadow, so tiles/detail cards read as cards, not loose blocks. */
     --card-border: #ddd6c8;
     --card-shadow: 0 1px 2px rgba(66, 54, 30, 0.06), 0 3px 8px rgba(66, 54, 30, 0.05);
-    --topbar-bg: rgba(250, 249, 246, 0.85);
+    --topbar-bg: #faf9f6;
     --card-bg: #ffffff;
     --success: #2f7d32; --success-strong: #256428;
     --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
@@ -134,7 +134,7 @@
     /* Dark-only tokens the light root overrides above: the topbar (and its
        menu) read these, so they must flip back with the rest of the set. */
     --on-amber: #000; --border-strong: var(--border);
-    --topbar-bg: rgba(10, 10, 11, 0.85);
+    --topbar-bg: #0a0a0b;
     --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
     /* Light-only card tokens return to their dark-theme fallbacks (usage is
        var(--card-border, var(--border)) / var(--card-shadow, none)). */
@@ -167,9 +167,13 @@
   html.manage-boot #main-view { visibility: hidden; }
 
   /* Pulled past an edge, the page shows its own background, not the
-     browser's white, and does not spring: no bounce either way, no sideways
-     scroll. */
-  html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; background: var(--bg); }
+     browser's white, and never scrolls sideways. On a touch screen it does
+     not spring either. Not with a mouse or trackpad: Safari on macOS stops
+     wheel scrolling altogether when the root's vertical overscroll-behavior
+     is anything but auto (Eric, 2026-10-24: "scroll isn't working in my
+     safari on macos"). */
+  html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior-x: none; background: var(--bg); }
+  @media (hover: none) and (pointer: coarse) { html { overscroll-behavior: none; } }
   /* A pinch zooms; nothing zooms on its own. A double tap is a tap, not a
      zoom; the text keeps its size when the
      phone turns; and a field or menu gets 16px type on a touch screen,
@@ -180,7 +184,7 @@
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
     select, textarea { font-size: 16px !important; }
   }
-  body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
+  body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; overflow-x: clip; }
 
   /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
      (re)applies the theme, then removes it on the next committed paint. While it
@@ -233,10 +237,12 @@
   .topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
     height: 56px; display: flex; align-items: center; gap: 10px;
-    padding: 0 16px; background: var(--topbar-bg); backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    /* Opaque: the page scrolling under a translucent bar showed through ("APPS" and the view toggle ghosting behind the logo). */
+    padding: 0 16px; background: var(--topbar-bg);
     border-bottom: 1px solid var(--border);
   }
+  /* A game's sheet is open: the bar takes the game's veil but stays tappable (Menu closes the sheet). */
+  body.game-sheet .topbar::after { content: ''; position: absolute; inset: 0; background: var(--game-scrim, rgba(0, 0, 0, 0.5)); pointer-events: none; }
   .topbar .logo {
     font-size: 18px; font-weight: 700; letter-spacing: -0.5px;
     text-decoration: none; white-space: nowrap; flex-shrink: 0; cursor: pointer;
@@ -453,6 +459,17 @@
   }
 
   .topbar-search { flex: 1; position: relative; margin-left: 4px; }
+  /* A ZimiGames page: the game's name where the box is, its Undo or Pause and Menu beside it (_syncGameHead).
+     Plain text, not a box: nothing here can be typed into. */
+  .game-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; margin-inline-start: 4px; }
+  .game-head[hidden] { display: none; }
+  [dir=rtl] #game-act-btn[data-kind=undo] svg { transform: scaleX(-1); }
+  .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game-head .reader-btn[hidden] { display: none; }
+  .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
+  body.game-page .topbar-search { display: none; }
+  /* The shelf is not a game: nothing to keep as a favorite. */
+  body.game-shelf #library-btn { display: none !important; }
   .topbar-search input {
     width: 100%; padding-block: 9px; padding-inline: 36px 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -532,7 +549,19 @@
   .tts-bar-state i:nth-child(3) { animation-delay: -0.6s; }
   .tts-bar-state.playing i, .tts-bar-state.paused i, .tts-bar-state.hold i { display: block; }
   .tts-bar-state.paused i, .tts-bar-state.hold i { animation: none; transform: scaleY(0.35); }
-  .tts-bar-state:not(.playing):not(.paused):not(.hold) { border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; width: 14px; height: 14px; animation: spin 0.8s linear infinite; }
+  /* Paused with nothing pending: no mark. Paused while the voice still gets ahead: the same ring, a slow arc turning (a pulse under reduced motion). */
+  .tts-bar-state.paused { visibility: hidden; }
+  .tts-bar-state.paused.tts-lost { visibility: visible; }
+  .tts-bar-state.ahead.working { --p: 0.28; animation: spin 1.8s linear infinite; }
+  @keyframes tts-pulse { 50% { opacity: 0.35; } }
+  .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; width: 14px; height: 14px; animation: spin 0.8s linear infinite; }
+  /* Getting ahead: a ring that closes as the wait runs out (--p, 0 to 1). */
+  .tts-bar-state.ahead { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(currentColor calc(var(--p, 0) * 1turn), var(--border) 0);
+                         -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); }
+  .tts-locate { display: none; }
+  .tts-bar-state.tts-lost { width: 22px; height: 22px; }
+  .tts-bar-state.tts-lost i { display: none !important; }
+  .tts-bar-state.tts-lost .tts-locate { display: block; }
   .tts-bar-state.tts-lost { cursor: pointer; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--amber); }
   @keyframes tts-bars { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
   .tts-bar-voice { unicode-bidi: plaintext; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: inherit; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -568,7 +597,13 @@
   .tts-bar-menu .tts-speed-marks button[aria-current] { color: var(--amber); font-weight: 600; }
   .tts-bar-menu button[aria-checked="true"] { color: var(--amber); font-weight: 600; }
   .tts-bar-menu button:hover { background: var(--surface2); }
-  @media (prefers-reduced-motion: reduce) { .tts-bar-state i, .tts-bar-state:not(.playing):not(.paused):not(.hold) { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
+  /* Patience: an on/off under the voices, set apart: its name, then a switch at the far end. */
+  .tts-bar-menu .tts-menu-check { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 6px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
+  .tts-bar-menu .tts-menu-check[aria-checked="true"] { color: var(--text); font-weight: inherit; }
+  .tts-menu-check::after { content: ''; flex: none; width: 32px; height: 18px; border-radius: 9px; transition: background 0.15s;
+                           background: radial-gradient(circle at 9px 50%, var(--surface) 6px, transparent 6.5px) var(--border); }
+  .tts-menu-check[aria-checked="true"]::after { background: radial-gradient(circle at 23px 50%, var(--surface) 6px, transparent 6.5px) var(--amber); }
+  @media (prefers-reduced-motion: reduce) { .tts-bar-state.ahead.working { animation: tts-pulse 1.8s ease-in-out infinite; } .tts-bar-state i, .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
   .manage-btn { position: relative; }
   .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .random-btn:hover .dice { transform: rotate(20deg) scale(1.15); }
@@ -586,6 +621,13 @@
   /* ── Stats bar ── */
   .stats-bar { text-align: center; padding: 12px 0; font-size: 14px; color: var(--text2); }
   .stats-bar .num { color: var(--amber); font-weight: 600; }
+  /* The status row's dots (_recencyDotsHtml): solid amber for added, a ring for updated; and the same mark on an own
+     app's tile (_ownTileDotHtml). Subtle: small, no label, the count beside it. */
+  .rc-dot { display: inline-flex; align-items: center; gap: 5px; margin-inline-end: 12px; padding: 2px 8px 2px 6px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--text2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; vertical-align: 1px; }
+  .rc-dot i { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-sizing: border-box; }
+  .rc-dot.updated i { background: transparent; border: 2px solid var(--amber); }
+  .rc-dot:hover, .rc-dot.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .rc-dot.tile { position: absolute; top: 5px; inset-inline-end: 5px; margin: 0; padding: 3px; cursor: default; pointer-events: none; background: var(--surface); }
 
   /* ── Pills (categories + search source filters) ── */
   .pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-bottom: 20px; }
@@ -1598,7 +1640,6 @@
      The top band is tight (20px pad): the chips sit high enough to slightly
      overlap the icon's top corners, which reads as intentional and reclaims a
      few px of tile height. */
-  .stats-grid.tiles .new-badge { position: absolute; top: 6px; left: 8px; margin: 0; z-index: 1; }
   /* Bottom right, as in the list. A tile is 112px wide, so the button is 34px, not 44,
      and the tile keeps a band at its foot so the language chip never runs under it. */
   .stats-grid.tiles .card-foot { position: absolute; inset-inline: 10px 0; bottom: 0; height: 32px; justify-content: space-between; }
@@ -1689,6 +1730,10 @@
   .reader-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  /* Play, over a wiki article that is a ZimiGames game (_gamePlayCheck). */
+  .game-play { position: absolute; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 2; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--surface2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+  .game-play[hidden] { display: none; }
+  .game-play:hover { background: var(--amber-glow); color: var(--amber); }
   /* Find in page (find.js): floats over the article's top corner, the width
      of the reader on a phone. */
   .find-bar {
@@ -1718,6 +1763,9 @@
      whatever of the frame shows past the page (iOS's bounce at the top, a
      part pixel as the header slides) was a white hairline in either theme. */
   body.app-page #reader-frame { background: var(--bg); }
+  /* A game is played, not read: a pinch or a double tap inside it must never zoom Zimi's own page (the fixed bar ends up clipped
+     and the table cut off, and the page stays that way on the shelf). Articles keep their pinch zoom. */
+  body.game-page #reader-frame { touch-action: pan-x pan-y; }
   /* The header steps aside on a phone while an app or the Almanac is read
      (body.chrome-away, set by _chromeScroll in app.js): it slides up and
      the page takes its room. Keyboard focus in it brings it back. */
@@ -2023,9 +2071,21 @@
   .set-row-icon { display: flex; flex-shrink: 0; color: var(--amber); }
   .set-row-icon svg { width: 22px; height: 22px; }
   .set-row.share-locked { cursor: default; }
-  /* A section header with its actions at the far end (Apps: All, None). */
-  .ms-section-head { display: flex; align-items: center; gap: 4px; }
-  .ms-section-head > span { margin-inline-start: auto; display: flex; gap: 2px; }
+  /* Apps: shut, one disclosure row (title, how many are on, a chevron);
+     open, the rows, tighter than the other switch rows. */
+  button.apps-sum { width: 100%; font: inherit; color: inherit; text-align: start; background: none; border: 0; cursor: pointer; align-items: center; gap: 10px; }
+  .apps-sum .share-row-title { flex: 1 1 auto; font-weight: 500; font-size: 14px; }
+  .apps-sum-count { font-size: 13px; color: var(--text2); white-space: nowrap; }
+  .apps-chev { flex-shrink: 0; color: var(--text2); transition: transform 0.15s; }
+  [dir=rtl] .apps-chev { transform: scaleX(-1); }
+  .apps-card.open > .apps-sum .apps-chev { transform: rotate(90deg); }
+  .apps-sum:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .apps-card:not(.open) > .app-pick, .apps-card:not(.open) > .apps-head { display: none; }
+  .apps-head { display: flex; justify-content: flex-end; gap: 2px; padding: 2px 8px; border-top: 1px solid var(--border); }
+  .apps-card .app-pick { padding-top: 7px; padding-bottom: 7px; min-height: 0; }
+  .apps-card .app-pick .set-row-icon svg { width: 20px; height: 20px; }
+  .apps-card .app-pick .share-row-desc { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .apps-card .app-pick .share-row-text { min-width: 0; }
   .set-head-btn {
     font: inherit; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
     color: var(--amber); background: none; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;
@@ -3247,6 +3307,8 @@
     /* On a map the picker takes the panel openers' place (it keeps the
        map's places); H and B still open History and Saved. */
     body.map-page #bm-panel-btn, body.map-page #history-btn { display: none !important; }
+    /* A game gives the room to its name, Undo and Menu; H and B still open History and Saved. */
+    body.game-page #bm-panel-btn, body.game-page #history-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
@@ -3388,23 +3450,6 @@
      inherits to the card's children). */
   .lp-armed .stat-card, .lp-armed .catalog-item {
     -webkit-user-select: none; user-select: none;
-  }
-  /* "New"/"Updated" flag for recently-installed or changed ZIMs (#34). In the
-     full list it sits inline at the head of the title — it can never cover the
-     left icon. A subtle outlined amber pill in small caps, matching the app's
-     accent tokens. */
-  .new-badge {
-    display: inline-block; vertical-align: middle;
-    margin-inline-end: 6px; z-index: 2;
-    background: var(--amber); color: var(--on-amber); font-size: 9px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    padding: 2px 6px; border-radius: 5px; line-height: 1.2; pointer-events: none;
-  }
-  /* "Updated" is the quieter sibling — an outlined amber pill, so a brand-new
-     ZIM (solid amber) still reads louder than one that merely changed. */
-  .new-badge.updated-badge {
-    background: var(--amber-glow); color: var(--amber);
-    box-shadow: inset 0 0 0 1px var(--amber-border);
   }
   /* Provenance type badge — what a Zimi-made ZIM IS (folder, page, site, video,
      bookmarks, import, alive), derived from its metadata and never from its
@@ -4284,7 +4329,7 @@
    turned to red monochrome so no other colour is left on the screen. */
 :root.night-red, :root.night-red .almanac-view, :root.night-red body.almanac-mode, :root.night-red.almanac-boot body { --bg: #000; --surface: #0d0000; --surface2: #160000; --border: #5c0e06; --border-strong: #7c1408; --text: #ff2a14; --text2: #f01a0a;
   --text3: #f01a0a; --text-dim: #f01a0a; --accent: #ff2a14; --amber: #ff2010; --amber2: #f01a0a; --on-amber: #000; --amber-glow: rgba(255,32,16,0.16); --amber-border: rgba(255,32,16,0.4);
-  --hover: rgba(255,32,16,0.1); --topbar-bg: rgba(0,0,0,0.92); --card-bg: #0d0000; --success: #f01a0a; --success-strong: #ff2a14; --error: #ff3a1e; --green: #f01a0a; color-scheme: dark; }
+  --hover: rgba(255,32,16,0.1); --topbar-bg: #000; --card-bg: #0d0000; --success: #f01a0a; --success-strong: #ff2a14; --error: #ff3a1e; --green: #f01a0a; color-scheme: dark; }
 :root.night-red:has(> body.almanac-mode), :root.night-red.almanac-boot { background: #000; }
 /* Pictures to red monochrome with CSS filter functions only: iOS Safari drops an SVG url() filter on
    any layer it composites on the GPU (the Today card's moon), so the picture shows in its own colours.

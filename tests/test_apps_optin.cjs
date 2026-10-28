@@ -49,7 +49,7 @@ vm.runInContext([
 
 // ── the shell's stamp ────────────────────────────────────────────────────
 ok('no app is opt-in', ctx.APPS_OPT_IN.length === 0 && ctx.APPS_DEFAULT.join() === ctx.APP_NAMES.join());
-ok('no stamp: every app, Reddot and Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === 'maps,tube,exchange,reddot,wiki,books,dictionary');
+ok('no stamp: every app, Reddot and Zimipedia too', ctx.APP_NAMES.filter(ctx._appsAllowedByServer).join() === ctx.APP_NAMES.join() && ctx.APP_NAMES.indexOf('games') >= 0 && ctx.APP_NAMES.indexOf('almanac') >= 0);
 ctx.document.body.dataset.zimiApps = 'reddot,maps';
 ok('a stamp naming Reddot offers it', ctx._appsAllowedByServer('reddot'));
 delete ctx.document.body.dataset.zimiApps;
@@ -73,7 +73,7 @@ ok('and none is the default apps', !('zimiApps' in ctx.document.body.dataset) &&
 ok('every boot takes the stamp from /whoami, so a shell kept by Back is corrected (#98)',
   /if \(j && 'apps' in j\) _setAppsStamp\(j\.apps\);/.test(src));
 ok('an account\'s own picker lists only what the server offers',
-  /_appPicksHtml\(APP_NAMES\.filter\(_appsAllowedByServer\), _appShown, '_setUserApp'\)/.test(src));
+  /_appPicksHtml\(APP_NAMES\.filter\(_appsAllowedByServer\), _appShown, '_setUserApp'[,)]/.test(src));
 ctx._userSession = { name: 'eric' };
 ok('a signed-in account with no preference sees Zimipedia by default', ctx._appShown('wiki') && ctx._appShown('books'));
 ctx._userSession = null;

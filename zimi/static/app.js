@@ -1054,7 +1054,8 @@ function _paintLangPrefs() {
   el.innerHTML = open ? _AVAILABLE_LANGS.map(_langRowHtml).join('') : '';
 }
 function _languagesCardHtml() {
-  return '<div class="ms-section-label" id="ms-languages">' + tH('languages_section') + '</div>' +
+  // No heading: the tab already says Language. The empty anchor keeps #languages.
+  return '<div id="ms-languages"></div>' +
     '<div class="share-rows set-rows lang-card">' +
       _switchRowHtml({ id: 'ms-lang-filters', title: tH('show_lang_chooser'),
         desc: tH('show_langs_desc', { lang: _langOwnName(_uiLangPrimary()) }),
@@ -1099,6 +1100,7 @@ function _voicePrefs() {
     off: Array.isArray(p.off) ? p.off.filter(function(e) { return _VOICE_ENGINES.indexOf(e) >= 0; }) : [] };
   if (p.quiet === true) out.quiet = true; // kept only when it says something
   if (typeof p.read === 'string' && p.read) out.read = p.read; // Read aloud's own voice; absent = Automatic
+  if (p.wait === true) out.wait = true; // Read aloud waits for a slow voice to get ahead (readaloud.js _ttsWaits)
   return out;
 }
 // Speaking, Settings > Voices' first switch (Eric, 2026-10-06: "a Speaking
@@ -1128,7 +1130,8 @@ function _setVoicePrefs(change) {
   if (p.read && p.off.indexOf(p.read) >= 0) p.read = '';
   if (!p.quiet) delete p.quiet;
   if (!p.read) delete p.read;
-  if (!p.voice && !p.off.length && !p.quiet && !p.read) _prefWrite(SK.VOICE_PREFS, null);
+  if (!p.wait) delete p.wait;
+  if (!p.voice && !p.off.length && !p.quiet && !p.read && !p.wait) _prefWrite(SK.VOICE_PREFS, null);
   else _setStorageJSON(SK.VOICE_PREFS, p);
   _voicesTellDictionary();
   _paintVoices();
@@ -1579,8 +1582,23 @@ function _voiceDefaultHtml(on) {
   return _voicePickHtml(on, 'voices_default', _voicePrefs().voice, 'voice', 'voice-default');
 }
 // Read aloud's own voice, beside it: Automatic follows the default above.
+// Under it, always, Patience: a reading keeps a voice that may not keep up
+// (Natural, or one measured too slow) and waits for it to get ahead instead
+// of giving way (Eric, 2026-10-23: "a Patience toggle ... when I want the
+// good audio but need patience to get it" and "No hidden toggle in voices
+// always show it").
 function _voiceReadHtml(on) {
-  return _voicePickHtml(on, 'tts_speak', _voicePrefs().read || '', 'read', 'voice-read', true);
+  return _voicePickHtml(on, 'tts_speak', _voicePrefs().read || '', 'read', 'voice-read', true) +
+    '<div class="share-rows set-rows voice-prefs">' +
+    _voiceSwitchRow('voices_wait', 'voices-wait', !!_voicePrefs().wait, '_setVoicePrefs({ wait: this.checked })') + '</div>';
+}
+// A switch row of Settings > Voices: its title, what it covers, the switch.
+function _voiceSwitchRow(key, id, on, onchange) {
+  return '<div class="share-row set-row">' +
+    '<span class="share-row-text"><span class="share-row-title">' + tH(key) + '</span>' +
+    '<span class="share-row-desc">' + tH(key + '_desc') + '</span></span>' +
+    '<label class="switch"><input type="checkbox" role="switch" id="' + id + '" aria-label="' + escAttr(t(key)) + '"' +
+    (on ? ' checked' : '') + ' onchange="' + onchange + '"><span class="switch-slider"></span></label></div>';
 }
 // One row of voice choices: Automatic and every voice here, ``cur`` marked,
 // a pick saved as prefs[field].
@@ -1590,7 +1608,7 @@ function _voicePickHtml(on, labelKey, cur, field, cls, reads) {
   if (cur && !on.some(function(x) { return x.engine === cur; })) cur = '';
   var opt = function(e, label) {
     var sel = e === cur, change = {};
-    var slow = reads && e && _ttsKeepsUp(e, _ttsRate(), _voiceTimings(_voicesHere && _voicesHere.timings)) === false;
+    var slow = reads && e && !_voicePrefs().wait && _ttsKeepsUp(e, _ttsRate(), _voiceTimings(_voicesHere && _voicesHere.timings)) === false;
     change[field] = e;
     return '<button type="button" class="app-theme-btn' + (sel ? ' active' : '') + '" role="radio" aria-checked="' + sel + '"' +
       (slow ? ' data-slow title="' + escAttr(t('voices_pace_behind')) + '"' : '') +
@@ -1604,11 +1622,7 @@ function _voicePickHtml(on, labelKey, cur, field, cls, reads) {
 // for removal (an admin's): nothing else of Voices shows.
 function _speakingHtml() {
   var on = _speakingOn();
-  var h = '<div class="share-rows set-rows voice-prefs"><div class="share-row set-row">' +
-    '<span class="share-row-text"><span class="share-row-title">' + tH('voices_speaking') + '</span>' +
-    '<span class="share-row-desc">' + tH('voices_speaking_desc') + '</span></span>' +
-    '<label class="switch"><input type="checkbox" role="switch" id="voices-speaking" aria-label="' + escAttr(t('voices_speaking')) + '"' +
-    (on ? ' checked' : '') + ' onchange="_setSpeaking(this.checked)"><span class="switch-slider"></span></label></div>';
+  var h = '<div class="share-rows set-rows voice-prefs">' + _voiceSwitchRow('voices_speaking', 'voices-speaking', on, '_setSpeaking(this.checked)');
   var kept = ((_voicesHere && _voicesHere.voices) || []).filter(function(v) { return v.installed; });
   if (!on && kept.length && _voicesHere.can_change) {
     var mb = _voiceMb(kept.reduce(function(n, v) { return n + (v.bytes || 0); }, 0));
@@ -1733,18 +1747,18 @@ function _voicesPost(path, tag, btn) {
 function _voicesSetMode(mode) {
   _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' }));
 }
-// Settings > Voices (or Languages), from elsewhere: the Dictionary's
-// Voices… and its front's speaker, /?manage=preferences#voices (or
-// #languages), the network list's row.
+// Settings > Languages, at Voices or Languages, from elsewhere: the
+// Dictionary's Voices… and its front's speaker, /?manage=languages#voices
+// (or #languages; Preferences' old address too), the network list's row.
 var _msScrollTo = null;
 var _MS_HASH_TARGETS = { '#voices': 'ms-voices', '#languages': 'ms-languages' };
 function _openSettingsAt(id) {
   _msScrollTo = id;
-  if (mode === 'manage') switchMs('preferences');
-  else enterManage(null, 'preferences');
+  if (mode === 'manage') switchMs('languages');
+  else enterManage(null, 'languages');
 }
 // The boot's own address changes drop the fragment before Settings draws.
-if (_MS_HASH_TARGETS[location.hash] && new URLSearchParams(location.search).get('manage') === 'preferences') {
+if (_MS_HASH_TARGETS[location.hash] && ['preferences', 'languages'].indexOf(new URLSearchParams(location.search).get('manage')) >= 0) {
   _msScrollTo = _MS_HASH_TARGETS[location.hash];
 }
 function _msScrollPending() {
@@ -1895,7 +1909,7 @@ let _domainZimMap = {}; // {domain: zim_name} — for cross-ZIM link classificat
 let _resolveCache = {}; // {url: {found, zim, path}} — cached batch resolve results
 let zimsCache = null;
 let _zimsByName = new Map();
-function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z.name, z])); }
+function _rebuildZimsMap() { _zimsByName = new Map((zimsCache || []).map(z => [z.name, z])); _keepOwnForget(); }
 function _zimInfo(name) { return _zimsByName.get(name) || null; }
 let manageEnabled = false;
 let _managePwRequired = false; // server is password-protected and we have no token yet
@@ -2981,7 +2995,6 @@ function submitPw() {
 
 // Breadcrumb identity for the Almanac — a calendar-with-a-star glyph, sized to
 // match a ZIM's 22px icon, tinted by the chrome via currentColor.
-var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/></svg>';
 
 // Breadcrumb identity for the Create page — the + that opens it, at a ZIM
 // icon's 22px. Same reason the Almanac has one: it opens over whatever you
@@ -3050,7 +3063,7 @@ function updateTopbar() {
   const backTo = _backLabel();
   // Offline an app's page may not be here at all (the worker answers with its own "You're offline" page, which never
   // tells the topbar it is at the app's top or not): the arrow stays so there is always a way back to where you were.
-  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK));
+  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK)) || _gameHasShelfBehind();
   backBtn.style.display = showBack ? 'flex' : 'none';
   var nightBtn = document.getElementById('night-btn');
   // The red night light where it is used in the dark: the Field Guide and the Almanac's sky.
@@ -3075,7 +3088,7 @@ function updateTopbar() {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
-    bcIcon.innerHTML = _ALMANAC_BC_ICON;
+    bcIcon.innerHTML = _ownIconHtml(_ALMANAC_ZIM, _ALMANAC_SVG.replace('width="26" height="26"', 'width="22" height="22"'), 22);
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
   } else if (_isWikiPage() || _isBooksPage() || _isDictPage()) {
@@ -3192,7 +3205,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isAppPage() && !_isPdfPage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isAppPage() && !_isPdfPage() && !_isGamePage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Places and maps: the places kept, and the same place on another map.
@@ -3267,6 +3280,7 @@ function updateTopbar() {
   document.getElementById('lang-selector-btn').style.display = _langMenuHidden() ? 'none' : '';
   _updateLibraryBtnIcon();
 
+  _syncGameHead();
   // Search placeholder: fitted once the ? has taken (or given back) its room.
   _syncSearchHelp();
   _updateSearchPlaceholder();
@@ -3300,6 +3314,8 @@ function bcClick(e) {
   if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
   // An app's icon is the way to its front page, from anywhere inside it.
   if (_isAppPage()) { _appEntryHome(); return; }
+  // In ZimiGames the icon is the way to every game: the shelf, from any game (a Discover card or a link lands mid-shelf).
+  if (_isGamesZimOpen()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -4284,6 +4300,8 @@ function _appEntryHome() {
 }
 
 function goBack() {
+  // The sky a game is studying (almanac-gamesky.js) closes first, and the game stays.
+  if (typeof ZimiGameSky !== 'undefined' && ZimiGameSky.isOpen()) { ZimiGameSky.close(); return; }
   // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
   if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
@@ -4318,6 +4336,8 @@ function goBack() {
       history.back();
       return;
     }
+    // A game with nothing behind it (the page was reloaded): the shelf it came from.
+    if (_gameHasShelfBehind()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
     closeReader();
     // Only go home if reader was auto-opened by enterSource AND user hasn't searched
     if (sourceAutoReader) {
@@ -5092,8 +5112,8 @@ function renderHome(filter) {
   // compose (AND). The counts drive the pill labels; an ACTIVE recency pill then
   // narrows `sorted` in place so the existing sections filter down to just those
   // ZIMs — exactly like a language pill — rather than spawning a separate view.
-  var _recentAdded = _langSorted.filter(_zimRecentAdded).sort(_byFirstSeenDesc);
-  var _recentUpdated = _langSorted.filter(_zimRecentUpdated).sort(_byUpdatedDesc);
+  var _recentAdded = _langSorted.filter(function(z) { return _unseenKind(z) === 'new'; }).sort(_byFirstSeenDesc);
+  var _recentUpdated = _langSorted.filter(function(z) { return _unseenKind(z) === 'updated'; }).sort(_byUpdatedDesc);
   // A language narrowing can empty the active recency list — its pill is hidden
   // then, so fall back to All rather than strand the view on an empty filter.
   if (homeRecentFilter === 'added' && !_recentAdded.length) homeRecentFilter = null;
@@ -5107,6 +5127,7 @@ function renderHome(filter) {
 
   const groups = {};
   sorted.forEach(z => {
+    if (_ownZimInApps(z.name)) return;   // the games and the Almanac are Apps tiles, not library cards
     const key = _zimCat(z);  // real category, or OTHER_CAT for the catch-all
     if (!groups[key]) groups[key] = [];
     groups[key].push(z);
@@ -5120,20 +5141,6 @@ function renderHome(filter) {
   // while a filter is active (and in the search dropdown), so un-filtering stays
   // reachable.
   var _rows = '';
-  var _hasRecency = !filter && (_recentAdded.length || _recentUpdated.length);
-  if (_hasRecency) {
-    _rows += '<div class="pills-row" role="group" aria-label="' + escAttr(t('filter_by_recency')) + '">';
-    _rows += _recentPill(null, tH('filter_all'), homeRecentFilter === null);
-    if (_recentAdded.length) {
-      _rows += _recentPill('added', tH('filter_recently_added') +
-        ' <span class="pill-count">' + _recentAdded.length + '</span>', homeRecentFilter === 'added');
-    }
-    if (_recentUpdated.length) {
-      _rows += _recentPill('updated', tH('recently_updated') +
-        ' <span class="pill-count">' + _recentUpdated.length + '</span>', homeRecentFilter === 'updated');
-    }
-    _rows += '</div>';
-  }
   if (_showLangPills) {
     _rows += '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">';
     _rows += _allResetPill(homeLangFilter.size === 0, 'clearHomeLang()');
@@ -5155,8 +5162,7 @@ function renderHome(filter) {
     // organize home.
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     _pillsAreHomeFilters = false;
-    homeRecentFilter = null; // guard: pill row gone, so no stale filter state
-    homeLangFilter.clear();
+    homeLangFilter.clear();   // (the recency filter has its own way out: the status row's dots)
   }
 
   let h = '';
@@ -5445,6 +5451,24 @@ function _markZimOpened(name) {
 // NEW is for what came after the library's first day: on a library set up
 // this week every ZIM arrived together, and a NEW on every card and every
 // app's child said nothing. Updated is always news.
+// The games and the Almanac are Zimi's own apps: Apps tiles (with their own dot), not cards in the library grid.
+// Still in search and in Manage. Only while the Apps row shows them, so there is always a way in.
+var _OWN_ZIM_APP = { zimi_games: 'games', zimi_almanac: 'almanac' };
+function _ownZimInApps(name) {
+  var app = _OWN_ZIM_APP[name];
+  return !!app && _appsEnabled() && _shownApps().indexOf(app) >= 0;
+}
+// 'new', 'updated' or null: what has landed that you have not opened yet (the card's own badge).
+function _unseenKind(z) {
+  if (_ownZimInApps(z.name)) return null;   // theirs is on the tile
+  var b = _zimBadge(z);
+  return b ? b.label : null;
+}
+// An own app's tile wears the same mark when its ZIM is new or updated since you opened it.
+function _ownTileDotHtml(zim) {
+  var b = _zimBadge(_zimInfo(zim));
+  return b ? '<span class="rc-dot tile ' + (b.label === 'updated' ? 'updated' : 'added') + '" title="' + escAttr(t(b.label === 'updated' ? 'recently_updated' : 'recently_installed')) + '"><i aria-hidden="true"></i></span>' : '';
+}
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
@@ -5468,24 +5492,6 @@ function _libraryFirstSeen() {
   return _libStart.at;
 }
 
-// ── #34 library filter pills: "Recently added" / "Recently updated" ──
-// A distinct window from _ZIM_BADGE_BACKSTOP_DAYS on purpose: the badge is a
-// short nudge that clears the moment you open a ZIM, whereas these pills are a
-// durable "what landed this month" lens for someone managing a large library.
-var _ZIM_RECENT_WINDOW_DAYS = 30;
-function _zimRecentAdded(z) {
-  var fs = z && z.first_seen;
-  if (!fs) return false;
-  return (Date.now() / 1000 - fs) < _ZIM_RECENT_WINDOW_DAYS * 86400;
-}
-function _zimRecentUpdated(z) {
-  // An update means the file changed after first install (updated_at > first_seen).
-  // A fresh install has updated_at unset (or == first_seen) and counts as "added",
-  // not "updated" — matching how _zimBadge distinguishes the two.
-  var ua = z && z.updated_at;
-  if (!ua || ua <= (z.first_seen || 0)) return false;
-  return (Date.now() / 1000 - ua) < _ZIM_RECENT_WINDOW_DAYS * 86400;
-}
 // When a ZIM last changed in the library: its update, or its arrival when it
 // has not been updated since. Recently updated orders the cards and the apps
 // (_APP_SORT_DATE) by it alike, so the Apps page agrees with the sources.
@@ -5493,22 +5499,6 @@ function _zimChangedAt(z) { return Math.max(z.updated_at || 0, z.first_seen || 0
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
 function _byUpdatedDesc(a, b) { return _zimChangedAt(b) - _zimChangedAt(a); }
 
-// One recency filter pill. kind=null is the "All" reset; aria-pressed reflects
-// state so the row is usable from the keyboard (each pill is a real <button>).
-function _recentPill(kind, labelHtml, active) {
-  return '<button class="pill' + (active ? ' active' : '') + '"' +
-    ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
-    ' onclick="filterHomeRecent(' + (kind ? "'" + kind + "'" : 'null') + ')">' + labelHtml + '</button>';
-}
-
-// Toggle the recency filter: clicking the active pill (or "All") returns to the
-// full library. Narrows the existing home sections in place — same model as the
-// language pills.
-function filterHomeRecent(kind) {
-  hideSuggest(); // the pill may have been picked from the search dropdown
-  homeRecentFilter = (homeRecentFilter === kind) ? null : kind;
-  renderHome();
-}
 
 // One language filter pill for the home library. Multi-select toggle; the
 // native language name matches the search-results lang pills (_langOwnName).
@@ -6343,12 +6333,48 @@ function _keepAlmanac() {
     if (reg.active) reg.active.postMessage({ type: 'keep-almanac' });
   }).catch(function() {});
 }
+// The games are kept whole by the worker (sw.js keepOwnZim) once opened or once the phone keeps anything: asked here
+// for the second reason. A ZIM the library no longer lists (removed, or not this account's) takes its kept pages with it.
+function _keepOwnApps() { _swSay({ type: 'keep-own-apps' }); }
+var _OWN_KEPT_ZIMS = ['zimi_games', 'zimi_almanac'];
+var _ownForgotten = {};
+function _keepOwnForget() {
+  if (!_libraryKnown || _connState !== CONN_OK) return;
+  _OWN_KEPT_ZIMS.forEach(function(zim) {
+    if (_zimsByName.has(zim)) { _ownForgotten[zim] = false; return; }   // here again: the next removal is forgotten afresh
+    if (_ownForgotten[zim]) return;
+    _ownForgotten[zim] = true;
+    _swSay({ type: 'forget-own', zim: zim });
+  });
+}
+// ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet): all under one prefix.
+var _GAMES_STORE_PREFIX = 'zimi.games.';
+// What deleting a ZIM asks first: ZimiGames also takes this browser's play with it, and says so.
+function _deleteConfirmText(zim, title) {
+  return zim === _GAMES_ZIM ? t('delete_games_confirm') : t('delete_zim_confirm', {name: title || zim});
+}
+// A ZIM that was deleted: ZimiGames' saved games, stats and settings go, and the worker drops the copy it kept, so adding
+// it again starts fresh. The next delete is forgotten again too.
+function _afterZimDeleted(zim) {
+  if (zim !== _GAMES_ZIM) return;
+  try {
+    Object.keys(localStorage).filter(function(k) { return k.indexOf(_GAMES_STORE_PREFIX) === 0; })
+      .forEach(function(k) { localStorage.removeItem(k); });
+  } catch (e) {}
+  _ownForgotten[zim] = true;
+  _swSay({ type: 'forget-own', zim: zim });
+}
+function _swSay(msg) {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.ready.then(function(reg) { if (reg.active) reg.active.postMessage(msg); }).catch(function() {});
+}
 var _KEEP_OFFLINE_FILES = ['/static/libzim/libzim-wasm.js', '/static/libzim/libzim-wasm.wasm',
   '/static/pdfjs/web/viewer.html', '/static/pdfjs/web/viewer.mjs', '/static/pdfjs/web/viewer.css',
   '/static/pdfjs/build/pdf.mjs', '/static/pdfjs/build/pdf.worker.mjs', '/static/pdfjs/web/locale/locale.json',
   '/static/pdfjs/web/images/loading-icon.gif'];
 function _keepPrimeOffline(pulling) {
   _keepAlmanac();
+  _keepOwnApps();
   var files = _KEEP_OFFLINE_FILES.concat(['/static/pdfjs/web/locale/' + (_pdfLocale() || 'en-US') + '/viewer.ftl']);
   var fetchMissing = function(u, exact) {
     var have = window.caches ? caches.match(u, exact ? undefined : { ignoreSearch: true }).catch(function() { return null; }) : Promise.resolve(null);
@@ -7019,27 +7045,20 @@ function renderCardGrid(items, showStars, showCategory, countOf, tail) {
     const qidIcon = _canSwitchLanguage(z)
       ? '<span class="qid-badge" title="' + escAttr(t('cross_lang_linking')) + '"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l-3 3 3 3"/><path d="M1 9h10"/><path d="M12 10l3-3-3-3"/><path d="M15 7H5"/></svg></span>'
       : '';
-    const badgeInfo = _zimBadge(z);
-    const isUpd = badgeInfo && badgeInfo.label === 'updated';
-    const newHtml = badgeInfo
-      ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
-      : '';
-    // Every card is a real link (#49): right/middle/modifier clicks open the
+        // Every card is a real link (#49): right/middle/modifier clicks open the
     // source natively. Downloading the raw .zim is a rare, deliberate act —
     // it lives on right-click and the Manage row's ⋯ menu, never as a pill
     // taking space on the card (Eric: "no big buttons... it's rare to need").
     const cardTag = 'a';
     const cardNav = ' href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)"';
     const onPhone = _keepNames.has(z.name);
-    return '<' + cardTag + ' class="stat-card' + (newHtml ? ' is-new' : '') + (onPhone ? ' kept' : '') + '" data-zim="' + escAttr(z.name) + '"' + cardNav + '>' +
+    return '<' + cardTag + ' class="stat-card' + (onPhone ? ' kept' : '') + '" data-zim="' + escAttr(z.name) + '"' + cardNav + '>' +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
-        // new-badge lives in the title row (list) — never over the left icon;
-        // CSS lifts it to a tile corner in compact view (icon is centred there).
         // The title text is wrapped in .zt so the tile layout can clamp it to two
         // lines independently and drop the language chip onto its own line below
         // (in the list the .zt span is inline, so nothing changes there).
-        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
+        '<div class="name"><span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + [countOf(z), fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ') +
         // Both dates carry their own separator, so either can be taken out
@@ -8025,6 +8044,7 @@ function openAlmanac(replaceState) {
     window.open('/#almanac', '_blank');
     return;
   }
+  _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
   if (!_almanacLoaded) {
     _loadAlmanacModules().then(function() {
       _almanacLoaded = true;
@@ -8139,6 +8159,14 @@ function _dismissDiscover() {
 // each card type is a separate file with its own render/fetch logic.
 // See FEATURED_ZIMS for the content slot registry.
 // ─────────────────────────────────────────────────────────────────────────
+// A page root that never scrolls sideways and, on a touch screen, does not
+// spring past an edge. Only touch: Safari on macOS stops wheel scrolling
+// altogether when a root's vertical overscroll-behavior is not auto (Eric,
+// 2026-10-24: "scroll isn't working in my safari on macos").
+function _noBounceCss(root) {
+  return root + '{overscroll-behavior-x:none}@media (hover:none) and (pointer:coarse){' + root + '{overscroll-behavior:none}}';
+}
+
 // Only a dated cache key, never a setting that happens to share a prefix.
 // The stamp is a hex build fragment today. The class is wider than that on
 // purpose: if its shape ever changes, a too-narrow pattern stops matching
@@ -8203,6 +8231,37 @@ function _featuredZimFor(feat, names) {
   }
   return best;
 }
+// The LOCAL date as YYYY-MM-DD, not toISOString's (UTC): an evening render
+// used to store today's cards under tomorrow-UTC's key, serving yesterday's
+// Picture of the Day all the next day.
+function _localDay(d) {
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+// A seed's own dice (FNV-1a into mulberry32): the same numbers on every device.
+function _dayRandom(seed) {
+  var h = 2166136261;
+  for (var i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return function() {
+    h = (h + 0x6D2B79F5) | 0;
+    var x = Math.imul(h ^ (h >>> 15), h | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// The day the Discover row was drawn for. A window left open across
+// midnight draws the new day's: at midnight, and on coming back to it.
+var _discoverDay = '';
+var _MIDNIGHT_SLACK_MS = 5000; // past midnight, so the clock reads the new day
+function _discoverDayCheck() {
+  if (_discoverDay && _discoverDay !== _localDay(new Date()) && document.getElementById('discover-row')) _loadDiscover();
+}
+function _discoverAtMidnight() {
+  var n = new Date();
+  setTimeout(function() { _discoverDayCheck(); _discoverAtMidnight(); },
+    new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1) - n + _MIDNIGHT_SLACK_MS);
+}
+document.addEventListener('visibilitychange', function() { if (!document.hidden) _discoverDayCheck(); });
+_discoverAtMidnight();
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
@@ -8212,10 +8271,8 @@ function _loadDiscover() {
   }
   if (!el) return;
   var now = new Date();
-  // LOCAL date, not toISOString (UTC): an evening render used to store
-  // today's cards under tomorrow-UTC's key, serving yesterday's Picture
-  // of the Day all the next day.
-  var today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
+  var today = _localDay(now);
+  _discoverDay = today;
   // The cards are chosen for the interface's language, so the day's cache is
   // kept per language: switching it chooses again rather than showing
   // another language's picks.
@@ -8304,9 +8361,13 @@ function _loadDiscover() {
     return typeof z.entries === 'number' && z.entries > 100 && z.kind !== 'map'
       && !skipPattern.test(z.name) && !skipCats[z.category] && !usedNames[z.name];
   });
-  // Shuffle and pick
+  // Shuffled with the day's own dice, from the library's order by name: the
+  // same library shows the same cards on every device all day (Eric,
+  // 2026-10-23: "EVERYTHING should always be the same everywhere").
+  visualZims.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+  var dice = _dayRandom(today);
   for (var ri = visualZims.length - 1; ri > 0; ri--) {
-    var rj = Math.floor(Math.random() * (ri + 1));
+    var rj = Math.floor(dice() * (ri + 1));
     var tmp = visualZims[ri]; visualZims[ri] = visualZims[rj]; visualZims[rj] = tmp;
   }
   for (var k = 0; k < randomNeeded && k < visualZims.length; k++) {
@@ -8393,9 +8454,11 @@ function _loadDiscover() {
 function _discoverLibKey() {
   // Offline the row is drawn from what is on the phone: a change to that is a
   // different row.
-  return String((zimsCache || []).length) + (_connState !== CONN_OK ? ':off:' + Array.from(_keepNames).sort().join(',') : '');
+  return (zimsCache || []).map(function(z) { return z.name; }).join(',') + (_connState !== CONN_OK ? ':off:' + Array.from(_keepNames).sort().join(',') : '');
 }
 function _renderDiscover(el, items) {
+  // A card whose ZIM is gone (deleted, in this window or another) is not drawn from a day's cache.
+  items = items.filter(function(it) { return !(it && it.zim && _zimsByName.size && !_zimInfo(it.zim)); });
   _discoverDrawn = { el: el, items: items };
   el.dataset.lib = _discoverLibKey();
   var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '" aria-label="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
@@ -9319,7 +9382,7 @@ function _moveZimTo(zim, category) {
       closeCtx();
       var zinfo = _zimInfo(zim);
       if (!zinfo || !zinfo.file) return;
-      _appConfirm(t('delete_zim_confirm', {name: zinfo.title || zim}), t('delete')).then(function(sure) {
+      _appConfirm(_deleteConfirmText(zim, zinfo.title), t('delete')).then(function(sure) {
       if (!sure) return;
       // Optimistic: remove card immediately
       if (card) card.style.display = 'none';
@@ -9329,6 +9392,7 @@ function _moveZimTo(zim, category) {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({filename: zinfo.file})
       }).then(function() {
+        _afterZimDeleted(zim);
         renderHome();
       });
       });
@@ -11213,6 +11277,8 @@ const BROWSE_CATEGORIES = [
   { key: 'gaming',         i18n: 'cat_gaming',         icon: _catIcon('<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13.5" r="1" fill="currentColor" stroke="none"/>'), descKey: 'cat_gaming_desc' },
   { key: 'maps',           i18n: 'cat_maps',           icon: _catIcon('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>'), descKey: 'cat_maps_desc' },
   { key: 'other',          i18n: 'cat_other',          icon: _catIcon('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'), descKey: 'cat_other_desc' },
+  // Zimi's own ZIMs come last, marked with its pebble and Z in one stroke.
+  { key: 'zimi',           i18n: 'cat_zimi',           icon: _catIcon('<path d="M12 3.5c5 0 9 3.4 9 8.5 0 5.2-4.2 8.5-9.3 8.5C6.4 20.5 3 17 3 12.2 3 7 7 3.5 12 3.5z"/><path d="M8.8 9h6.4l-6.4 6h6.4"/>'), descKey: 'cat_zimi_desc' },
 ];
 
 // Category key → localized display name
@@ -11441,7 +11507,7 @@ function _scheduleCatalogRevalidate() {
         // Fresh copy is ready — rebuild the full catalog and quietly repaint
         // the current view (only if the user hasn't scrolled away).
         _catalogCache = null;
-        _catalogStaleAt = 0;
+        _setCatalogOrigin(false, 0, '', '');
         await loadFullCatalog();
         _rerenderCatalogIfSafe();
         done = true;
@@ -11469,6 +11535,15 @@ function _rerenderCatalogIfSafe() {
 // Where the catalog on screen came from, when it was not a live fetch.
 var _catalogSource = '';
 var _catalogAsOf = '';
+var CATALOG_FRESH_S = 86400; // a copy younger than the server's 24h TTL is current, not worth a note
+
+// One place sets where the catalog on screen came from, so a refreshed copy
+// clears the source and date along with the stale flag.
+function _setCatalogOrigin(stale, fetchedAt, source, asOf) {
+  _catalogStaleAt = stale ? fetchedAt : 0;
+  _catalogSource = stale ? source : '';
+  _catalogAsOf = stale ? asOf : '';
+}
 
 function _catalogStaleNote() {
   // A catalog that may be months old says so. The shipped snapshot gets its
@@ -11485,10 +11560,10 @@ function _catalogStaleNote() {
       tH('catalog_snapshot_note', {d: shown}) + '</div>';
   }
   var at = _catalogStaleAt || (_catalogAsOf ? Date.parse(_catalogAsOf) / 1000 : 0);
-  if (!at) return '';
+  if (!at || Date.now() / 1000 - at < CATALOG_FRESH_S) return '';
   var when = fmtDate(at * 1000);
   return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
-    tH('catalog_offline_note', {d: when}) + '</div>';
+    tH('catalog_stale_note', {d: when}) + '</div>';
 }
 
 // Session-persisted catalog so a page reload / PWA relaunch paints the library
@@ -11520,6 +11595,7 @@ async function _fetchCatalogItems() {
     for (const page of pages) items.push(...page);
   }
   for (const item of items) item.category = autoCategorize(item);
+  items.push(...await _loadOwnCatalogRows());
   return {
     items: items,
     stale: !!data.stale,
@@ -11575,8 +11651,7 @@ function _revalidateSessionCatalog() {
   setTimeout(async function() {
     try {
       const fresh = await _fetchCatalogItems();
-      _catalogStaleAt = fresh.stale ? fresh.fetchedAt : 0;
-      _catalogSource = fresh.source; _catalogAsOf = fresh.asOf;
+      _setCatalogOrigin(fresh.stale, fresh.fetchedAt, fresh.source, fresh.asOf);
       _enrichCatalogItems(fresh.items);
       _catalogCache = fresh.items;
       if (!fresh.stale) _saveCatalogSession(fresh.items);
@@ -11605,8 +11680,7 @@ async function loadFullCatalog() {
 
   const { items, stale, fetchedAt, source, asOf } = await _fetchCatalogItems();
   // Offline: server returned its last-good catalog — note it quietly
-  _catalogStaleAt = stale ? fetchedAt : 0;
-  _catalogSource = source; _catalogAsOf = asOf;
+  _setCatalogOrigin(stale, fetchedAt, source, asOf);
   _enrichCatalogItems(items);
   _catalogCache = items;
   if (!stale) _saveCatalogSession(items);
@@ -12089,6 +12163,7 @@ const FEATURED_ZIMS = [
   { match: 'wikiquote',     type: 'random',    i18nLabel: 'quote_of_day',       icon: _FEAT_SVG.quote, promo: 'Wikiquote' },
   { match: 'ted',           type: 'random',    i18nLabel: 'talk_of_day',        icon: _FEAT_SVG.play, promo: 'TED Talks' },
   { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: _FEAT_SVG.pen, promo: 'xkcd' },
+  { match: 'zimi_games',  type: 'random',    i18nLabel: 'game_of_day',        icon: _FEAT_SVG.play, promo: 'ZimiGames' },
   { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: _FEAT_SVG.map, promo: 'CIA World Factbook' },
 ];
 
@@ -12278,7 +12353,7 @@ function renderBrowseGallery() {
     for (const cat of BROWSE_CATEGORIES) {
       if (cat.key === 'other') continue;
       const count = catCounts[cat.key] || 0;
-      if (count > 0 && count < MIN_BROWSE_CAT) {
+      if (count > 0 && count < MIN_BROWSE_CAT && cat.key !== OWN_CATALOG_CAT) {
         _mergedToOther.add(cat.key);
         catCounts['other'] = (catCounts['other'] || 0) + count;
         catInstalled['other'] = (catInstalled['other'] || 0) + (catInstalled[cat.key] || 0);
@@ -12957,7 +13032,7 @@ const MANAGE_CATEGORIES = [
 const _CAT_TO_BROWSE_KEY = {
   'Wikimedia': 'wikipedia', 'Stack Exchange': 'stack_exchange', 'Dev Docs': 'devdocs',
   'Education': 'education', 'Medical': 'medical', 'How-To': 'survival',
-  'Books': 'gutenberg', 'Maps': 'maps', 'Other': 'other'
+  'Books': 'gutenberg', 'Maps': 'maps', 'Games': 'gaming', 'Other': 'other'
 };
 
 function categorizeZim(name) {
@@ -13114,7 +13189,7 @@ function renderCatalogItem(group) {
   // would ask the server to fetch from itself, which is exactly the network
   // round trip an offline machine cannot make.
   const iconSrc = !item.icon_url ? ''
-    : item.icon_url.startsWith('/catalog-icon/') ? item.icon_url
+    : item.icon_url.startsWith('/catalog-icon/') || item.icon_url.startsWith('data:') ? item.icon_url
     : '/manage/thumb?url=' + encodeURIComponent(item.icon_url);
   // StreetZim's regions have no icon on the Archive; a pin says what they
   // are better than the first letter of "Alaska".
@@ -13145,6 +13220,8 @@ function renderCatalogItem(group) {
     if (instVariant._installedFile) {
       actionsHtml += _zimDeleteBtn(instVariant._installedFile, instVariant._installedExternal);
     }
+  } else if (item.own) {
+    actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();_addOwnZim(\'' + escJs(item.name) + '\')">' + tH('add_own') + '</button>';
   } else {
     // Sibling URLs disambiguate colliding labels (unsuffixed vs maxi → both
     // "Full" without them, see variantLabel).
@@ -14254,6 +14331,7 @@ async function renderManage() {
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
+        '<button class="ms-nav-item" data-ms="languages" onclick="switchMs(\'languages\')">' + tH('languages_section') + '</button>' +
         '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
         // Access: who can manage Zimi, your account, who can read, the users
@@ -14409,8 +14487,12 @@ function _prefetchServerSettings() {
 
 // Manage settings sections + the URL/session plumbing that lets a reload (or a
 // fresh tap on Manage) land back on the section the user last had open.
-var _MS_SECTIONS = ['library', 'preferences', 'creator', 'server', 'users'];
-function _validMsSection(s) { return _MS_SECTIONS.indexOf(s) >= 0 ? s : null; }
+var _MS_SECTIONS = ['library', 'preferences', 'languages', 'creator', 'server', 'users'];
+function _validMsSection(s) {
+  // Languages and Voices were in Preferences: its old links still land on them.
+  if (s === 'preferences' && _MS_HASH_TARGETS[location.hash]) return 'languages';
+  return _MS_SECTIONS.indexOf(s) >= 0 ? s : null;
+}
 function _msSectionUrl(section) { return (!section || section === 'library') ? '/?manage' : '/?manage=' + section; }
 function _lastMsSection() {
   try { return _validMsSection(sessionStorage.getItem(SK.MANAGE_SECTION)); } catch (e) { return null; }
@@ -14434,7 +14516,9 @@ function switchMs(section) {
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
     case 'preferences':
-      pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); _paintLangPrefs(); _renderVoicePrefs(); _msScrollPending(); break;
+      pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); break;
+    case 'languages':
+      pane.innerHTML = _msLanguagesHtml(); _paintLangPrefs(); _renderVoicePrefs(); _msScrollPending(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -15075,7 +15159,7 @@ var _creatorData = null;
 
 function _msCreatorHtml() {
   // No technical "Capture engines / decided by what is installed" lead — the
-  // nav tab already says Creator, and that engine-status block reads as debug
+  // nav tab already says Capture, and that engine-status block reads as debug
   // output (Eric: "starts with CAPTURE ENGINES... very weird"). The pane now
   // opens with what you've made and the defaults; capabilities sit last.
   var h = '<div id="ms-creator" class="ms-creator">' +
@@ -15914,18 +15998,26 @@ function _switchRowsHtml(rows) {
   return '<div class="share-rows set-rows">' + rows.map(_switchRowHtml).join('') + '</div>';
 }
 
-function _msPreferencesHtml() {
+// Languages: the languages shown, and the voices that say them (Eric,
+// 2026-10-23: "a Languages tab under settings and group all this stuff,
+// it's getting large").
+function _msLanguagesHtml() {
   _vgAllOpen = false;
+  return _languagesCardHtml() +
+    '<div class="ms-section-label" id="ms-voices">' + tH('voices_section') + '</div>' +
+    '<div id="' + _VOICES_WRAP_ID + '">' + _voicePrefsHtml() + '</div>';
+}
+
+function _msPreferencesHtml() {
+  _appsCardOpen = {};
   // Apps: every app a row of the same shape, and whether results open in
   // them right under it. The rows offered to everyone (the server's choice)
   // paint from its answer into #ms-apps; an account that may not set them
   // sees none. A signed-in account's own choice follows, titled so the two
   // cards are not mistaken for one.
-  var h = '<div class="ms-section-label ms-section-head">' + tH('apps_section') + '<span id="ms-apps-all">' + _serverAppsAllHtml() + '</span></div>' +
-    '<div id="ms-apps-wrap"><div id="ms-apps">' + _serverAppsHtml() + '</div></div>' +
+  var h = '<div id="ms-apps-wrap"><div id="ms-apps">' + _serverAppsHtml() + '</div></div>' +
     (_appsAllowedByServer() && _userSession
-      ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
-        _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
+      ? _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp', false, 'user', tH('show_apps'))
       : '') +
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
       on: _openInApps() && _openInAppsPossible(), disabled: !_openInAppsPossible(), onchange: '_setOpenInApps(this.checked)' },
@@ -15957,14 +16049,10 @@ function _msPreferencesHtml() {
         onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
     ]) +
 
-    // Default download flavor (above languages: reached more often): one
-    // selector row, like the theme.
+    // Default download flavor: one selector row, like the theme.
     '<div class="ms-section-label">' + tH('default_flavor') + '</div>' +
     _segHtml('ms-flavor-seg', 'default_flavor', _flavorSegInner()) +
-    '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
-    _languagesCardHtml() +
-    '<div class="ms-section-label" id="ms-voices">' + tH('voices_section') + '</div>' +
-    '<div id="' + _VOICES_WRAP_ID + '">' + _voicePrefsHtml() + '</div>';
+    '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>';
   // My data is this browser's (bookmarks, history, these preferences): it
   // lives with the preferences, not with the server's settings.
   h += '<div class="ms-mydata" style="margin-top:24px">' + _myDataCardHtml() + '</div>';
@@ -16326,12 +16414,11 @@ async function _renderAppsSection() {
   try { d = await _msFetch('/manage/apps'); } catch (e) {}
   var wrap = document.getElementById('ms-apps-wrap');
   if (!document.getElementById('ms-apps')) return;
-  if (!d) { if (wrap) wrap.hidden = true; _setHtmlIfChanged('ms-apps-all', ''); return; }
+  if (!d) { if (wrap) wrap.hidden = true; return; }
   if (wrap) wrap.hidden = false;
   _serverApps = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
   _serverAppsLocked = !!d.env_locked;
   _setHtmlIfChanged('ms-apps', _serverAppsHtml());
-  _setHtmlIfChanged('ms-apps-all', _serverAppsAllHtml());
   _syncOpenInAppsRow();
 }
 // What the server offers, as far as the page knows: the stamp it booted with
@@ -16341,7 +16428,7 @@ var _serverAppsLocked = false;
 function _serverAppsNow() { return _serverApps || APP_NAMES.filter(_appsAllowedByServer); }
 function _serverAppsHtml() {
   var shown = _serverAppsNow();
-  return _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
+  return _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked, 'server', tH('apps_section'), _serverAppsAllHtml()) +
     (_serverAppsLocked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
 }
 // All and None sit on the section's header line, out of the rows' way.
@@ -18800,6 +18887,36 @@ async function downloadZim(url, btn, isUpdate) {
   }
 }
 
+// ── Zimi's own ZIMs (the Almanac, Games) in the Catalog ──
+// Deleting one is an ordinary delete (the server records it as removed: the file is part of the
+// package and stays). The Catalog lists them from the package (/manage/own-zims), offline too,
+// as normal rows in the Zimi category; a removed one offers Add, instantly, with no download.
+var OWN_CATALOG_CAT = 'zimi';
+async function _loadOwnCatalogRows() {
+  try {
+    var d = await (await manageFetch('/manage/own-zims')).json();
+    return (d.zims || []).map(function(r) {
+      return { name: r.name, title: r.title, summary: r.description, icon_url: r.icon, size_bytes: r.size_bytes,
+        article_count: r.entries, date: r.date, language: 'eng', category: OWN_CATALOG_CAT, own: true };
+    });
+  } catch (e) { return []; }
+}
+async function _addOwnZim(name) {
+  try {
+    var d = await (await manageFetch('/manage/own-zims', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name, removed: false})
+    })).json();
+    if (d.error) { _showToast(t('error') + ': ' + d.error); return; }
+  } catch (e) { _showToast(t('error')); return; }
+  zimsCache = await _fetchList();
+  _rebuildZimsMap();
+  _enrichCatalogItems(_catalogCache || []);
+  var count = document.getElementById('ms-zim-count');
+  if (count) count.textContent = String(zimsCache.length);
+  if (mode === 'manage') _rerenderCatalogIfSafe();
+}
+
 // A catalog row offers Update when its catalog edition is newer than the file
 // installed. Never for a ZIM in a folder another program owns: an update would
 // download a second full copy into Zimi's own library beside the original.
@@ -18818,6 +18935,13 @@ function _zimDeleteBtn(file, external) {
 function _ownedNote(el) { _showToast(t('folder_not_ours', { label: el.getAttribute('data-label') })); }
 async function deleteZim(filename, btn) {
   if (!btn) return;
+  var gone = (zimsCache || []).filter(function(z) { return z.file === filename; })[0];
+  var goneName = gone && gone.name;
+  // ZimiGames takes this browser's play with it: a dialog says so, in place of the two clicks.
+  if (goneName === _GAMES_ZIM) {
+    if (!await _appConfirm(_deleteConfirmText(goneName), t('delete'))) return;
+    btn.classList.add('confirming');
+  }
   // Two-click confirmation: first click shows "Delete?", second click confirms
   if (!btn.classList.contains('confirming')) {
     btn.classList.add('confirming');
@@ -18859,6 +18983,7 @@ async function deleteZim(filename, btn) {
       return;
     }
     if (card) card.remove();
+    _afterZimDeleted(goneName);
     _catalogCache = null;
     // A deleted ZIM may be one Zimi made — drop the cached made-here inventory
     // so it (and the freed capture name) refresh, instead of lingering in the
@@ -20312,6 +20437,8 @@ function _readerViewAvailable() {
   // laid out in Zimi's own colours. Restyled, the primary button's label
   // went brown on brown.
   if (_docIsOurOwnPage(doc)) return false;
+  // An app ZIM's page (ZimiGames, the Almanac) is played, not read: no reading mode over a game board.
+  if (_docIsApp(doc)) return false;
   // When already applied, the stash proves it was readerable — keep it offered.
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
@@ -20447,7 +20574,8 @@ function _readerViewInjectStyle(doc) {
     'body.zimi-reader-active.rv-font-sans{--rv-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
     // Pulled past the top or an edge, the page shows the theme under it (the
     // ZIM's skin paints html white), and does not spring or scroll sideways.
-    'html:has(> body.zimi-reader-active){overscroll-behavior:none;overflow-x:hidden}',
+    'html:has(> body.zimi-reader-active){overflow-x:hidden}',
+    _noBounceCss('html:has(> body.zimi-reader-active)'),
   ].concat(READER_THEMES.map(function(th) {
     return 'html:has(> body.zimi-reader-active.rv-theme-' + th + '){background:' + READER_THEME_BG[th] + '!important}';
   })).concat([
@@ -20884,6 +21012,9 @@ function _bindVideoError(frame) {
 function _bindNormalReaderLightbox(frame) {
   var doc = frame.contentDocument;
   if (!doc || !doc.body) return;
+  // An app (ZimiGames, the Almanac) is not an article: its pictures are tiles and buttons. A tap on a shelf
+  // tile's picture opened it full size instead of the game.
+  if (_docIsApp(doc)) return;
   var body = doc.body;
   if (!doc.getElementById('zimi-normal-lightbox-css')) {
     var style = doc.createElement('style');
@@ -23585,6 +23716,17 @@ window.addEventListener('message', function(e) {
     if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'game' && _gameFrameIs(e.source)) {
+    clearTimeout(_gameGoneTimer);
+    _gameHead = _gameHeadFrom(d);
+    updateTopbar();
+  } else if (d.zimi === 'game-gone' && _gameFrameWindow(e.source)) {
+    clearTimeout(_gameGoneTimer);
+    _gameGoneTimer = setTimeout(function() { _gameHead = null; updateTopbar(); }, GAME_GONE_MS);
+  } else if (d.zimi === 'game-sky' && _gameFrameIs(e.source)) {
+    _gameSkyOpen(d, e.source);
+  } else if (d.zimi === 'game-app' && d.app === 'dictionary' && typeof d.w === 'string' && d.w && _gameFrameIs(e.source)) {
+    openDictionary(false, d.w.slice(0, 200));
   } else if (d.zimi === 'ready') {
     _appReady(e.source);
   } else if (d.zimi === 'top') {
@@ -23757,7 +23899,7 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary'];
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary', 'games', 'almanac'];
 // Offered only when the server names them (none now). Mirrors server.APPS_OPT_IN.
 var APPS_OPT_IN = [];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
@@ -23786,7 +23928,7 @@ function _appShown(app) {
 function _appsEnabled() {
   return APP_NAMES.some(_appShown);
 }
-function _appTitle(app) { return t(app === 'maps' ? 'cat_maps' : app); }
+function _appTitle(app) { return t(app === 'maps' ? 'cat_maps' : _OWN_APP_TITLE[app] || app); }
 function _readPrefs(d) {
   _userPrefs = { apps: d.apps !== false, shown: Array.isArray(d.shown) ? d.shown : null };
 }
@@ -23814,13 +23956,16 @@ async function _setUserPref(key, value) {
 // never has to guess what the others were.
 function _setUserApp(app, on) {
   var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
-  _setUserPref('apps', shown);
+  Promise.resolve(_setUserPref('apps', shown)).then(function() {
+    var card = document.querySelector('.apps-card[data-card="user"]');
+    if (card) card.outerHTML = _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp', false, 'user', tH('show_apps'));
+  });
 }
 // The apps to choose from, as the tiles they are on the home page: an icon
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
 function _appIcon(app) {
-  return app === 'fieldguide' ? _FIELDGUIDE_SVG : app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : app === 'dictionary' ? _DICT_SVG : _REDDOT_SVG;
+  return app === 'games' ? _GAMES_SVG : app === 'almanac' ? _ALMANAC_SVG : app === 'fieldguide' ? _FIELDGUIDE_SVG : app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : app === 'dictionary' ? _DICT_SVG : _REDDOT_SVG;
 }
 // The ZIMs inside each app: the ones its tile names and its page reads.
 function _appZims(app) {
@@ -23830,29 +23975,52 @@ function _appZims(app) {
     : app === 'wiki' ? _installedWikiZims()
     : app === 'books' ? _installedBookZims()
     : app === 'dictionary' ? _installedDictZims()
+    : app === 'games' ? _installedGamesZims()
+    : app === 'almanac' ? []
     : _installedRedditZims();
 }
 // What the library holds for each app, in a line under its name.
 function _appCountLine(app) {
+  if (_OWN_APP_TITLE[app]) return t('apps_count_' + app);
   var zims = _appZims(app);
   var n = app === 'reddot'
     ? zims.reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0)
     : zims.length;
   return tPlural('apps_count_' + app, n);
 }
+// Settings lists the apps with the line glyphs Home's tiles wear.
+function _appSettingsIcon(app) { return _appIcon(app); }
+// Whether each apps card is open for editing. It starts shut every time the
+// Settings pane is drawn, so leaving and coming back finds it collapsed.
+var _appsCardOpen = {};
+function _toggleAppsCard(btn) {
+  var card = btn.closest('.apps-card');
+  var open = !card.classList.contains('open');
+  _appsCardOpen[card.dataset.card] = open;
+  card.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
 // Each app a Settings switch row: its icon, its name, what the library holds
-// for it, and the switch. The same row every other on/off in Settings is.
-function _appPicksHtml(apps, checked, onchange, disabled) {
-  return _switchRowsHtml(_appsByName(apps).map(function(app) {
-    return { cls: 'app-pick', icon: '<span class="set-row-icon">' + _appIcon(app) + '</span>',
+// for it, and the switch. Shut, one disclosure row: the title, how many are
+// on, a chevron. card names the list ('server' or 'user'); head is All/None.
+var _CHEVRON_SVG = '<svg class="apps-chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+function _appPicksHtml(apps, checked, onchange, disabled, card, title, head) {
+  var sorted = _appsByName(apps), on = sorted.filter(checked), open = !!_appsCardOpen[card];
+  var rows = sorted.map(function(app) {
+    return _switchRowHtml({ cls: 'app-pick', icon: '<span class="set-row-icon">' + _appSettingsIcon(app) + '</span>',
       title: esc(_appTitle(app)), desc: esc(_appCountLine(app)), on: !!checked(app), disabled: disabled,
-      onchange: onchange + '(\'' + app + '\', this.checked)' };
-  }));
+      onchange: onchange + '(\'' + app + '\', this.checked)' });
+  }).join('');
+  return '<div class="share-rows set-rows apps-card' + (open ? ' open' : '') + '" data-card="' + card + '">' +
+    '<button type="button" class="share-row set-row apps-sum" aria-expanded="' + open + '" onclick="_toggleAppsCard(this)">' +
+      '<span class="share-row-title">' + title + '</span>' +
+      '<span class="apps-sum-count">' + tH('apps_on_summary', { n: on.length, total: sorted.length }) + '</span>' + _CHEVRON_SVG + '</button>' +
+    rows + (head ? '<div class="apps-head" id="ms-apps-all">' + head + '</div>' : '') + '</div>';
 }
 
 // Each app's tile and its door, by name, so the row and the Apps page can
 // take the apps in any order.
-var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml, dictionary: _dictionaryTileHtml };
+var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml, dictionary: _dictionaryTileHtml, games: _gamesTileHtml, almanac: _almanacTileHtml };
 
 // The apps follow the library's order, as the sources do (#100). Eric: "sort
 // the apps by recently updated (i.e. contains zims that were recently
@@ -23912,7 +24080,7 @@ function _appsRowHtml(withHelp) {
   if (!_appsEnabled()) return withHelp ? _helpNowHtml() : '';
   // Home shows the apps that have something inside; the Apps page and
   // Settings list every app, with how to fill an empty one.
-  var tiles = _shownApps().filter(function(app) { return _appZims(app).length > 0; })
+  var tiles = _shownApps().filter(_appHasHome)
     .map(function(app) { return _APP_TILES[app](); }).join('');
   if (!tiles) return withHelp ? _helpNowHtml() : '';
   var pill = withHelp ? _helpNowPillHtml() : '';
@@ -23940,6 +24108,7 @@ function _appsPageHtml(shown) {
   var narrowed = !!(homeRecentFilter || homeLangFilter.size);
   var groups = _shownApps().map(function(app) {
     var inside = _appZims(app);
+    if (!inside.length && app === 'games') return '';
     if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
     return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false, function(z) { return _appItemsHtml(app, z); })) : '';
@@ -23996,6 +24165,39 @@ function _appTileHtml(app, title, icon, names, openFn) {
     '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
 }
 
+// Two apps that are Zimi's own: the games and the Almanac. ZimiGames is the
+// games ZIM's shelf in the reader (Eric: "show there AND as apps"), so it
+// appears when that ZIM is installed and allowed for this account; the
+// Almanac is part of Zimi and always opens its own page, not the ZIM.
+// Their count lines are fixed strings: nothing is read to draw them.
+var _GAMES_ZIM = 'zimi_games';
+var _ALMANAC_ZIM = 'zimi_almanac';
+// A Zimi app wears its ZIM's own icon where the ZIM is named (the breadcrumb); its tile on Home and its Settings row
+// wear the line glyph, as every other app does.
+function _ownIconHtml(zim, glyph, px) {
+  var z = _zimInfo(zim);
+  return z && z.has_icon ? '<img src="/w/' + encodeURIComponent(zim) + '/-/icon" alt="" width="' + px + '" height="' + px + '">' : glyph;
+}
+var _OWN_APP_TITLE = { games: 'app_games', almanac: 'app_almanac' };
+var _GAMES_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><clipPath id="zgc"><path clip-rule="evenodd" d="M-4 -4H28V28H-4z M18.67 2.94L19.42 3.11L20.12 3.42L20.74 3.86L21.27 4.41L21.68 5.06L21.96 5.77L22.09 6.53L22.07 7.29L20.83 17.42L20.66 18.16L20.35 18.86L19.91 19.49L19.36 20.01L18.71 20.42L18.00 20.70L17.24 20.83L16.48 20.81L10.33 20.06L9.58 19.89L8.88 19.58L8.26 19.14L7.73 18.59L7.32 17.94L7.04 17.23L6.91 16.47L6.93 15.71L8.17 5.58L8.34 4.84L8.65 4.14L9.09 3.51L9.64 2.99L10.29 2.58L11.00 2.30L11.76 2.17L12.52 2.19z"/></clipPath><g clip-path="url(#zgc)"><rect x="4.5" y="5" width="11" height="15" rx="2.5" transform="rotate(-10 10 12.5)"/></g><rect x="9" y="4" width="11" height="15" rx="2.5" transform="rotate(7 14.5 11.5)"/><path d="M14.5 8.8l1.9 2.7-1.9 2.7-1.9-2.7z" fill="currentColor" stroke="none" transform="rotate(7 14.5 11.5)"/></svg>';
+var _ALMANAC_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.2A8 8 0 0 1 9.8 4.5a8 8 0 1 0 9.7 9.7z"/><path d="M17.6 2.8l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke="none"/></svg>';
+function _installedGamesZims() {
+  return (zimsCache || []).filter(function(z) { return z.name === _GAMES_ZIM && z.main_path; });
+}
+// Whether an app has a tile on Home: one with something inside, or the Almanac.
+function _appHasHome(app) { return app === 'almanac' ? !!_zimInfo(_ALMANAC_ZIM) : _appZims(app).length > 0; }
+function openGames() {
+  var z = _installedGamesZims()[0];
+  if (z) openArticle(z.name, z.main_path, z.title || z.name);
+}
+function _gamesTileHtml() {
+  if (!_installedGamesZims().length) return '';
+  return _appTileHtml('games', t('app_games'), _GAMES_SVG + _ownTileDotHtml(_GAMES_ZIM), [t('apps_count_games')], 'openGames');
+}
+function _almanacTileHtml() {
+  return _appTileHtml('almanac', t('app_almanac'), _ALMANAC_SVG + _ownTileDotHtml(_ALMANAC_ZIM), [t('apps_count_almanac')], 'openAlmanac');
+}
+
 function _tubeTileHtml() {
   return _appTileHtml('tube', t('tube'), _TUBE_PLAY_SVG, _installedVideoZims().map(function(z) { return z.title || z.name; }), 'openTube');
 }
@@ -24028,6 +24230,121 @@ function _isMapZim(name) {
 // bookmarks and history are places, and its language is the map's own.
 function _isMapPage() {
   return !!(readerOpen && !_almanacOpen && !_createOpen && currentArticle && _isMapZim(currentArticle.zim));
+}
+
+// A ZimiGames page has no bar of its own in the reader (Eric: "the game zim into zimi more like almanac
+// doesn't have two headers neither should we"): its name stands where the search box is, with its Undo or
+// Pause and its Menu beside it. The page says what it has ({zimi: 'game'}, builtin/games/shell.js) and Zimi
+// asks it to act ({zimi: 'game-do'}). A page that says nothing (a Tatham puzzle) keeps its bar and the box.
+var _gameHead = null;          // {title, act: {kind, label, disabled}, menu}, from the page on screen
+var _gameGoneTimer = 0;        // a page that left: the header waits a moment for the next one's word
+var GAME_GONE_MS = 600;
+var _GAME_ICON_SIZE = ' width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+var _GAME_ACT_SVG = {
+  undo: '<svg aria-hidden="true"' + _GAME_ICON_SIZE + '><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+  pause: '<svg aria-hidden="true"' + _GAME_ICON_SIZE + '><path d="M8 5v14M16 5v14"/></svg>',
+  resume: '<svg aria-hidden="true"' + _GAME_ICON_SIZE + '><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>'
+};
+var _GAME_ACT_KEY = { undo: 'game_undo', pause: 'game_pause', resume: 'game_resume' };
+function _isGamesZimOpen() {
+  return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && currentArticle.zim === _GAMES_ZIM);
+}
+function _isGamePage() { return !!(_gameHead && _isGamesZimOpen()); }
+// A game (a page with a Menu) always has the shelf behind it. A reload empties the article history, and with it the arrow
+// that led there, which left the game's tile as the only way back.
+function _gameHasShelfBehind() { return !!(_isGamePage() && _gameHead.menu); }
+function _gameFrame() { return document.getElementById('reader-frame'); }
+function _gameFrameWindow(win) { var f = _gameFrame(); return !!(f && win && f.contentWindow === win); }
+// Only while the games ZIM is what the reader shows: an article of any other ZIM (a capture's scripts, a hostile ZIM) may not drive the header, the sky or the Dictionary.
+// The frame's own page decides, not currentArticle: it trails the frame while a game opens from the shelf, from Back or from a
+// reload, and a game that spoke in that gap (Sky Detective's study sky, asked once at its start) was dropped for good.
+function _gameFrameZim() {
+  try { var m = /^\/w\/([^/]+)\//.exec(_gameFrame().contentWindow.location.pathname); return m ? decodeURIComponent(m[1]) : ''; } catch (e) { return ''; }
+}
+function _gameFrameIs(win) {
+  return _gameFrameWindow(win) && readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && _gameFrameZim() === _GAMES_ZIM;
+}
+// What a ZimiGames page may ask of Zimi besides its header (builtin/games/librarykit.js Lib.leadOut, skydetective.js):
+//   {zimi: 'open', zim, path}                 an article (a map path may end in #map=zoom/lat/lon), the handler above
+//   {zimi: 'game-app', app: 'dictionary', w}  a word in the Dictionary, as its own tile opens it (Back returns to the game)
+//   {zimi: 'game-sky', place, ms, ...}        the Almanac's sky over the page, to study (static/almanac-gamesky.js, loaded on
+//                                             first use); answered {zimi: 'game-sky-done', started}
+// Only the frame showing the game, while the games ZIM is open, may ask (game-gone only clears the header, so the frame alone); the page already holds what each asks for, so nothing here is new state.
+var _GAMESKY_JS = '/static/almanac-gamesky.js?v=1';
+function _gameSkyOpen(d, win) {
+  var answer = function(started) { try { win.postMessage({ zimi: 'game-sky-done', started: !!started }, location.origin); } catch (e) {} };
+  Promise.all([_loadAlmanacModules(), _loadScript(_GAMESKY_JS)]).then(function(r) {
+    if (r[1] && typeof ZimiGameSky !== 'undefined') ZimiGameSky.open(d, answer); else answer(false);
+  }, function() { answer(false); });
+}
+// A game's sheet (Menu, Settings, Stats) veils the game; Zimi's own bar takes the same veil, still tappable (the
+// Menu button is how the sheet closes). Zimi reads the sheet from the page it shows, as it reads that page's title.
+var _GAME_SHEET_SELECTOR = '.ar-sheet:not([hidden])';
+var _gameSheetWatch = null;
+function _gameSheetOpen() {
+  try { return !!(_isGamesZimOpen() && _gameFrame().contentDocument.querySelector(_GAME_SHEET_SELECTOR)); } catch (e) { return false; }
+}
+function _syncGameSheet() {
+  var open = _gameSheetOpen();
+  document.body.classList.toggle('game-sheet', open);
+  if (!open) return;
+  try {
+    var veil = getComputedStyle(_gameFrame().contentDocument.documentElement).getPropertyValue('--scrim').trim();
+    if (veil) document.body.style.setProperty('--game-scrim', veil);
+  } catch (e) {}
+}
+function _watchGameSheets(frame) {
+  if (_gameSheetWatch) { _gameSheetWatch.disconnect(); _gameSheetWatch = null; }
+  _syncGameSheet();
+  var doc = null; try { doc = frame.contentDocument; } catch (e) {}
+  if (!doc || !doc.body || !window.MutationObserver) return;
+  _gameSheetWatch = new MutationObserver(_syncGameSheet);
+  _gameSheetWatch.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+}
+function _gameDo(what) {
+  var f = _gameFrame();
+  // Menu is a toggle: a second tap closes the sheet the first opened.
+  if (what === 'menu' && _gameSheetOpen()) {
+    try { f.contentWindow.ZimiShell.closeMenu(); return; } catch (e) {}
+  }
+  try { f.contentWindow.postMessage({ zimi: 'game-do', what: what }, location.origin); } catch (e) {}
+}
+// What the page said, as much as can be trusted: a name, an Undo or a Pause, whether there is a Menu.
+function _gameHeadFrom(d) {
+  var act = d.act && typeof d.act === 'object' && (d.act.kind === 'undo' || d.act.kind === 'pause') ? d.act : null;
+  return { title: String(d.title || '').slice(0, 120), menu: !!d.menu,
+    act: act && { kind: act.kind, label: String(act.label || ''), disabled: !!act.disabled } };
+}
+// A page iOS has zoomed stays zoomed (the bar clipped at the left) until the viewport is set again: say the same thing twice, once pinned.
+function _unzoomPage() {
+  var vv = window.visualViewport, meta = document.querySelector('meta[name=viewport]');
+  if (!meta || !vv || vv.scale <= 1.001) return;
+  var kept = meta.content;
+  meta.content = kept + ', maximum-scale=1';
+  setTimeout(function () { meta.content = kept; }, 50);
+}
+// Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
+function _syncGameHead() {
+  var on = _isGamePage();
+  document.body.classList.toggle('game-page', on);
+  if (on) _unzoomPage();
+  document.body.classList.toggle('game-shelf', on && !_gameHead.menu);
+  var head = document.getElementById('game-head');
+  if (!head) return;
+  head.hidden = !on;
+  if (!on) return;
+  document.getElementById('game-title').textContent = _gameHead.title;
+  var act = document.getElementById('game-act-btn'), a = _gameHead.act;
+  act.hidden = !a;
+  if (a) {
+    // A Pause button reads Resume while the game waits: the page's own word tells which.
+    var kind = a.kind === 'pause' && /^(resume|play|continue)/i.test(a.label) ? 'resume' : a.kind;
+    if (act.dataset.kind !== kind) { act.dataset.kind = kind; act.innerHTML = _GAME_ACT_SVG[kind]; }
+    act.title = t(_GAME_ACT_KEY[kind]);
+    act.setAttribute('aria-label', act.title);
+    act.disabled = a.disabled;
+  }
+  document.getElementById('game-menu-btn').hidden = !_gameHead.menu;
 }
 
 // Where the open map is, as a hash fragment, read from the map itself so it
@@ -24580,6 +24897,7 @@ function _whenFrameDocReady(frame, prevDoc, fn) {
 }
 function openReader(url) {
   _chromeReset(); // a new page starts with the header in place
+  _gamePlayHide();
   // Same-document fragment scroll fast-path. When the frame already holds the
   // target document and only the #fragment differs, a location.replace() below
   // performs a SAME-DOCUMENT scroll and fires NO load event — so the loading
@@ -24710,6 +25028,7 @@ function openReader(url) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
+    _watchGameSheets(frame);
     // Links out of the library, marked (or made plain text) before anything
     // is shown or copied: Reader View and the book reader clone the marks.
     _extHide();
@@ -24801,8 +25120,9 @@ function openReader(url) {
     var _settlePasses = function() {
       // A book is no capture: nothing of a web page's chrome to put back;
       // nor is a wiki's article in Zimipedia's reader (a style read for every
-      // element of a long one, for nothing).
-      if (_frameIsOurOwnPage(frame) || _bookDoc || _wikiOn) return;
+      // element of a long one, for nothing); nor is an app, whose menus and
+      // result sheets are fixed full-screen boxes the sweep would delete.
+      if (_frameIsOurOwnPage(frame) || _bookDoc || _wikiOn || _docIsApp(frame.contentDocument)) return;
       try { _sweepBlockingOverlays(frame); } catch(e) {}
       try { _settleCapturedChrome(frame); } catch(e) {}
     };
@@ -24859,7 +25179,8 @@ function openReader(url) {
         MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
-        'html{overscroll-behavior:none}',
+        // On touch screens only: with a wheel, Safari would not scroll at all (app.css).
+        _noBounceCss('html'),
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
       // A page with no viewport meta was laid out for a desktop: scaled to
@@ -24882,6 +25203,7 @@ function openReader(url) {
       _topBtn.innerHTML = '\u2191';
       _topBtn.onclick = function() { frame.contentWindow.scrollTo({top:0,behavior:'smooth'}); };
       frame.contentDocument.body.appendChild(_topBtn);
+      _updateResumeApply(frame.contentWindow);
       var _scrollTicking = false;
       frame.contentWindow.addEventListener('scroll', function() {
         if (!_scrollTicking) { _scrollTicking = true; requestAnimationFrame(function() {
@@ -24955,6 +25277,10 @@ function openReader(url) {
           e.preventDefault();
           var linkZim = _decodeSafe(wMatch[1]);
           var linkPath = _decodeSafe(wMatch[2]).replace(/\?.*$/, ''); // strip query params, keep hash
+          // A game's "About" link: the encyclopedia article when Zimi has one.
+          var aboutQid = linkPath.slice(-_GAMES_ABOUT_PAGE.length) === _GAMES_ABOUT_PAGE &&
+                         (fullUrl.match(/[?&]qid=(Q\d+)/) || [])[1];
+          if (aboutQid) { _gamesAbout(aboutQid, linkZim, linkPath); return; }
           openArticle(linkZim, linkPath);
           return;
         }
@@ -25096,6 +25422,7 @@ function openReader(url) {
     if (currentArticle) {
       _checkReaderLangBanner();
       _prefetchArticleLangs(true);
+      _gamePlayCheck();
     }
     // Reader View: reapply the session preference to the freshly-loaded article
     // (same pattern as _applyReaderFont), then sync the toggle's availability.
@@ -27385,6 +27712,7 @@ function _accountSet(id, boot) {
   var st = _prefState();
   if (st.owner !== id) _prefSaveState({ owner: id, pending: {}, seeded: st.seeded || !!st.owner });
   if (id && !boot) _savedPull();
+  _liveRestart();
 }
 // /userdata's address, naming the account this browser follows.
 function _accountUrl(path) { return path + '?account=' + encodeURIComponent(_accountId || ''); }
@@ -27457,7 +27785,7 @@ function _savedPush(leaving) {
   if (_savedPushing && !leaving) { _savedPushAgain = true; return _savedPushing; }
   var delta = _savedDelta();
   if (!delta) return _savedPushing || Promise.resolve(true);
-  var account = Saved.account(), body = JSON.stringify({ saved: delta, account: _accountId });
+  var account = Saved.account(), body = JSON.stringify({ saved: delta, account: _accountId, client: _liveClient });
   if (leaving) {
     if (body === _savedLeftBody) return _savedPushing || Promise.resolve(true);
     _savedLeftBody = body;
@@ -27537,7 +27865,7 @@ function _prefPush(leaving, fill) {
     if (fill ? _rawGet(k) !== null : st.pending[k]) { changes[k] = { v: _rawGet(k) }; n++; }
   });
   if (!n) return Promise.resolve(true);
-  var account = _accountId, body = JSON.stringify(fill ? { changes: changes, fill: true, account: account } : { changes: changes, account: account });
+  var account = _accountId, body = JSON.stringify({ changes: changes, fill: fill ? true : undefined, account: account, client: _liveClient });
   var sent = fetch('/userdata/settings', {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
     keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
@@ -27682,8 +28010,11 @@ function _savedFlush(leaving) {
 // what it has not had is sent on leaving it.
 function _savedStart() {
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { _savedFlush(true); _prefPush(true); }
-    else if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
+    if (document.hidden) { _savedFlush(true); _prefPush(true); _liveClose(); return; }
+    // Back on the page: the stream picks up where it left off (since), so a
+    // change made meanwhile on another device arrives as it reopens.
+    if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
+    _liveOpen();
   });
   window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); });
   // A setting written in another page of this browser (another tab, an app
@@ -27707,9 +28038,216 @@ function _savedStart() {
   // The store is read while the page is idle, so the first app home or
   // article that asks what is kept does not wait on reading it.
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
+  _liveOpen();
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
+}
+
+// ── Live: what changes for the account elsewhere, heard while this page shows ──
+// One stream (GET /events) per page while it is visible and signed in. A
+// change names its topic and the page that made it; this page re-reads only
+// that topic, and skips its own. Other tabs of this browser follow through
+// the storage events above. The stream resumes from the last change it heard
+// (since), across the server's own recycling of it and a hidden spell alike.
+var _liveClient = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+var _liveSource = null, _liveSince = '', _liveRetryTimer = null;
+var _LIVE_RETRY_MS = 60000;  // a refused or failed stream: tried again after this
+// Every window holds one while it is shown: the library and a new build are
+// everyone's to hear, an account's own changes its signed-in windows'.
+function _liveOpen() {
+  if (_liveSource || document.hidden || typeof EventSource !== 'function') return;
+  clearTimeout(_liveRetryTimer); _liveRetryTimer = null;
+  var url = _accountId ? _accountUrl('/events') : '/events';
+  if (_liveSince) url += (_accountId ? '&' : '?') + 'since=' + encodeURIComponent(_liveSince);
+  var src = new EventSource(url);
+  _liveSource = src;
+  src.addEventListener('change', function (e) {
+    if (e.lastEventId) _liveSince = e.lastEventId;
+    var c = null;
+    try { c = JSON.parse(e.data); } catch (err) {}
+    if (!c || c.by === _liveClient) return;
+    if (c.topic === 'settings') _prefPull();
+    else if (c.topic === 'saved') _savedPull();
+    else if (c.topic === 'library') _libraryHeard();
+  });
+  // Each write says where the stream is (lastEventId): kept for reopening,
+  // and which build the server serves now.
+  src.addEventListener('tick', function (e) {
+    if (e.lastEventId) _liveSince = e.lastEventId;
+    var d = null;
+    try { d = JSON.parse(e.data); } catch (err) {}
+    if (d && d.build) _buildHeard(d.build);
+  });
+  src.onerror = function () {
+    // Closed by the server's answer (401/409: not this account any more, or an
+    // error page): asked whose this is, and tried again later. A dropped
+    // connection is the browser's to reopen (readyState CONNECTING).
+    if (src.readyState !== 2 || _liveSource !== src) return;
+    _liveSource = null;
+    if (_accountId) _accountRecheck();
+    _liveRetryTimer = setTimeout(_liveOpen, _LIVE_RETRY_MS);
+  };
+}
+function _liveClose() {
+  if (!_liveSource) return;
+  _liveSource.close();
+  _liveSource = null;
+}
+// Another account (or none): its stream, from now on.
+function _liveRestart() { _liveClose(); _liveSince = ''; _liveOpen(); }
+
+// A ZIM added, removed or replaced on the server: the library this window
+// draws is fetched again, and drawn again where it is on screen.
+// What makes a ZIM the same file: the open article is stale when this changes under it.
+function _zimIdentity(z) { return [z.file, z.size_bytes, z.updated_at || 0].join('|'); }
+function _changedZims(before, after) {
+  var was = {};
+  (before || []).forEach(function (z) { was[z.name] = _zimIdentity(z); });
+  return after.filter(function (z) { return was[z.name] !== undefined && was[z.name] !== _zimIdentity(z); }).map(function (z) { return z.name; });
+}
+// The ZIM under the page on screen was replaced (auto-update, a rebuilt own ZIM): the frame is loaded again where
+// it is, quietly, with a word that it was. An article comes back to the same place; a game restores itself
+// (ZimiShell.persist); the Almanac opens again. Not while a PDF or an app's page is up (they are not this ZIM's).
+function _reloadOpenZim(changed) {
+  var f = document.getElementById('reader-frame');
+  if (!readerOpen || !currentArticle || changed.indexOf(currentArticle.zim) < 0 || !f || _isAppPage() || _isPdfPage()) return;
+  var win, y = 0;
+  try { win = f.contentWindow; y = win.scrollY || 0; win.location.reload(); } catch (e) { return; }
+  f.addEventListener('load', function () {
+    try { if (y) f.contentWindow.scrollTo(0, y); } catch (e) {}
+    _showToast(t('updated_badge'));
+  }, { once: true });
+}
+function _libraryHeard() {
+  var before = zimsCache;
+  _fetchList().then(function (list) {
+    zimsCache = list;
+    var changed = _changedZims(before, list);
+    if (changed.length) _reloadOpenZim(changed);
+    _rebuildZimsMap();
+    _libraryKnown = true;
+    _catalogCache = null;
+    _gamesLinks = null; // the library changed: which articles are games' may have
+    if (window.AlmanacLinks) { AlmanacLinks.reset(); if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent(); } // its Q-ID links follow the library
+    if (readerOpen) _gamePlayCheck();
+    if (mode === 'manage') {
+      if (manageTab === 'installed') renderInstalled();
+      else if (manageTab === 'browse' && _browseView === 'gallery') renderBrowseGallery();
+    }
+    else if (mode === 'home' && !readerOpen && !currentSource && !readerSource) renderHome();
+  }).catch(function () {});
+}
+
+// ── A new build, while a window is open ──
+// Eric, 2026-10-23: "I like leave tabs open ... EVERYTHING should always be
+// the same everywhere regardless of whether i reload the page ... Maybe you
+// can even handle like site deployments" and "the pwa relaunch dance gets
+// annoying". A window still on the build it was opened with hears another in
+// /events' ticks (the stream reopens by itself after the server restarts):
+// the new service worker is fetched and takes charge (sw.js: skipWaiting,
+// claim), then the page reloads itself where nobody loses anything. Hidden,
+// at once; shown, only on the home page with nothing in hand, else the next
+// time it is hidden. An article open keeps its place (_updateResume).
+var _BUILD = (window.__ZIMI_CONFIG && __ZIMI_CONFIG.build) || '';
+var _buildWaiting = ''; // the newer build heard: the page reloads when it may
+var _BUILD_SW_WAIT_MS = 15000; // a worker that never takes charge does not hold the reload
+var _UPDATE_RESUME_KEY = 'zimi_update_resume'; // sessionStorage: the article's place across the reload
+// sessionStorage: the build this tab last reloaded for. Reloaded and still on
+// the old one (a worker that never took charge served the old page), it does
+// not reload again for the same build: one try, never a loop.
+var _UPDATE_TRIED_KEY = 'zimi_update_tried';
+function _buildHeard(build) {
+  if (!_BUILD || build === _BUILD || _buildWaiting) return;
+  try { if (sessionStorage.getItem(_UPDATE_TRIED_KEY) === build) return; } catch (e) {}
+  _buildWaiting = build;
+  _buildWorker().then(_buildReload);
+}
+// The new build's worker in charge (its cache is the new page), or a moment's wait for it.
+function _buildWorker() {
+  var sw = navigator.serviceWorker;
+  if (!sw || !sw.controller) return Promise.resolve();
+  return new Promise(function (done) {
+    sw.addEventListener('controllerchange', done, { once: true });
+    setTimeout(done, _BUILD_SW_WAIT_MS);
+    sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done(); }).catch(done);
+  });
+}
+// Now if nothing is lost by it; else the next time the page is hidden.
+function _buildReload() {
+  var go = function () {
+    try { sessionStorage.setItem(_UPDATE_TRIED_KEY, _buildWaiting); } catch (e) {}
+    _updateResumeKeep();
+    location.reload();
+  };
+  if (_buildSafe()) { go(); return; }
+  // Hidden with a game, article or app open is not safe: iOS reloaded the tab
+  // under the player on every switch away after a deploy (Eric, 2026-10-27:
+  // "a lot of safari reloads on games when switching away and back"). It waits
+  // for a hide with the home page or a ZIM's page up, or for the page to be left.
+  document.addEventListener('visibilitychange', function _again() {
+    if (!document.hidden || !_buildSafe()) return;
+    document.removeEventListener('visibilitychange', _again);
+    go();
+  });
+}
+// Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
+function _buildSafe() {
+  return _buildQuiet() || (document.hidden && !readerOpen && !_almanacOpen && !_createOpen && !_ttsSpeaking);
+}
+// Shown, with nothing in hand: the home page or a ZIM's (the reload draws
+// the same one again), no field being typed in, no reading aloud, no media
+// playing, nothing open over it.
+function _buildQuiet() {
+  if ((mode !== 'home' && mode !== 'source') || readerOpen || _almanacOpen || _createOpen || _ttsSpeaking) return false;
+  var el = document.activeElement;
+  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return false;
+  return !Array.prototype.some.call(document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+}
+// The nearest ancestor that scrolls by itself, or null (the page scrolls).
+// The body counts only when it scrolls itself: with the root's overflow left
+// visible, the body's is the window's (the window scrolls, null); the reader
+// on an iPhone sets the root's, and there the body is what scrolls (Eric,
+// 2026-10-20: "highlight and scroll isn't done").
+function _scrollerOf(el, win) {
+  var doc = el && el.ownerDocument, root = doc && doc.documentElement;
+  for (; el && el.nodeType === 1 && el !== root; el = el.parentElement) {
+    var oy = win.getComputedStyle(el).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1 &&
+        (el !== doc.body || win.getComputedStyle(root).overflowY !== 'visible')) return el;
+  }
+  return null;
+}
+// What scrolls an article: the page (null) when it scrolls, else the
+// tallest box that scrolls by itself (a DevDocs page scrolls its ._content,
+// beside a sidebar that scrolls too). Looked for only around a reload.
+function _articleScroller(win) {
+  var root = win.document.scrollingElement || win.document.documentElement, best = null;
+  if (root.scrollHeight > root.clientHeight + 1) return null;
+  win.document.querySelectorAll('body *').forEach(function (el) {
+    if (el.scrollHeight - el.clientHeight > (best ? best.scrollHeight - best.clientHeight : 1) && _scrollerOf(el, win) === el) best = el;
+  });
+  return best;
+}
+// The open article's place, kept for the page the reload brings back.
+function _updateResumeKeep() {
+  if (!readerOpen) return;
+  try {
+    var w = document.getElementById('reader-frame').contentWindow, box = _articleScroller(w);
+    sessionStorage.setItem(_UPDATE_RESUME_KEY, JSON.stringify({ at: location.href, y: box ? box.scrollTop : w.scrollY }));
+  } catch (e) {}
+}
+// The article opened again after an update: back where it was read, once
+// it is drawn and again once its pictures have their size.
+function _updateResumeApply(win) {
+  var kept = null;
+  try { kept = JSON.parse(sessionStorage.getItem(_UPDATE_RESUME_KEY)); sessionStorage.removeItem(_UPDATE_RESUME_KEY); } catch (e) {}
+  if (!kept || kept.at !== location.href || !(kept.y > 0)) return;
+  var go = function () {
+    try { var box = _articleScroller(win); if (box) box.scrollTop = kept.y; else win.scrollTo(0, kept.y); } catch (e) {}
+  };
+  go();
+  if (win.document.readyState !== 'complete') win.addEventListener('load', go, { once: true });
 }
 
 // ── Find in page ───────────────────────────────────────────────────────────
@@ -27719,7 +28257,8 @@ function _savedStart() {
 // /static/find.js, fetched the first time a find is asked for.
 var _findLoading = null;
 function _findApplies() {
-  return readerOpen && !_almanacOpen && !_createOpen && !_isMapPage() && !_isAppPage() && !_isPdfPage();
+  // Not in Zimi's apps or an app ZIM (ZimiGames, the Almanac): a game board has no text to find.
+  return readerOpen && !_almanacOpen && !_createOpen && !_isMapPage() && !_isAppPage() && !_isPdfPage() && !_docIsApp(_readerFrameDoc());
 }
 function _findIsOpen() { return !!(window.ZimiFind && window.ZimiFind.isOpen()); }
 function _findClose() { if (_findIsOpen()) window.ZimiFind.close(); }
@@ -27904,7 +28443,7 @@ function _hlReaderAttach(frame) {
   if (_hlReader && _hlReader.doc !== doc) _hlReader.detach();
   _hlReader = null;
   var ref = currentArticle && !_frameIsOurOwnPage(frame) ? _savedRefOnScreen() : null;
-  if (!doc || !doc.body || !ref || ref.kind === 'place') return;
+  if (!doc || !doc.body || !ref || ref.kind === 'place' || _docIsApp(doc)) return;
   // Read in the book reader (an EPUB's chapters too): a book, in Bookshelf.
   if (_bookReading && ref.kind !== 'book') { ref.kind = 'book'; ref.app = 'books'; }
   var dc = doc.querySelector('meta[name="dc.title"]');
@@ -28166,6 +28705,8 @@ function _savedRefOnScreen() {
   var zim = currentArticle.zim, path = _splitPathFragment(currentArticle.path).base;
   var title = document.title.replace(/ — Zimi$/, '');
   if (title === 'Zimi' || !title) title = _titleFromPath(path);
+  // A game is kept by its own name ("Checkers"), not its page's ("Checkers · ZimiGames").
+  if (_isGamePage() && _gameHead.title) title = _gameHead.title;
   if (_isMapZim(zim)) {
     // Where the map is: read from the map at this moment rather than from
     // the URL, so it is right even if the debounce has not fired yet.
@@ -28227,6 +28768,9 @@ var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="non
 // that saves the page beside it. The bookmark is the verb (Save, here and in
 // every app); this is the place, in the family of the apps' Lists glyph.
 var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8M3 12h8M3 18h18"/><path d="M15 3v10l3-2.5 3 2.5V3z"/></svg>';
+// On a game the same button keeps a favorite: a heart, since a game is not something you bookmark.
+var _libHeartSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+var _libHeartFilledSvg = _libHeartSvg.replace('fill="none"', 'fill="currentColor"');
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
@@ -28236,12 +28780,22 @@ function _updateLibraryBtnIcon() {
   document.body.classList.toggle('own-page', _onOwnPage());
   var ref = readerOpen ? _savedRefOnScreen() : null;
   var state = !readerOpen ? 'library' : ref && Saved.has(ref) ? 'saved' : 'save';
+  var heart = state !== 'library' && _isGamePage();
+  if (heart) state += '-game';
   // Called on every change to what is kept (a book's place moves every few
   // seconds while it is read): the button is only rebuilt when it changes.
   if (btn.dataset.state !== state || btn.dataset.lang !== _currentLang) {
     btn.dataset.state = state;
     btn.dataset.lang = _currentLang;
-    if (state === 'saved') {
+    if (state === 'saved-game') {
+      btn.innerHTML = _libHeartFilledSvg;
+      btn.style.color = 'var(--amber)';
+      btn.title = t('remove_from_favorites');
+    } else if (state === 'save-game') {
+      btn.innerHTML = _libHeartSvg;
+      btn.style.color = '';
+      btn.title = t('add_to_favorites');
+    } else if (state === 'saved') {
       btn.innerHTML = _libBookmarkFilledSvg;
       btn.style.color = 'var(--amber)';
       btn.title = t('bookmarked_remove');
@@ -28433,6 +28987,113 @@ function closeReader() {
   _setWindowTitle('Zimi');
 }
 
+
+// ── ZimiGames and the encyclopedia, linked both ways ──
+//
+// /games-links says which installed article carries each game's Wikidata Q-ID
+// (the server works it out in the background, zimi/gamelinks.py). It is asked
+// for the first time a wiki article is shown, never on page load, and kept in
+// memory until the library changes. A wiki article that is one of those shows
+// Play; a game page's "About" link (about.html?qid=) opens the article instead.
+var _GAMES_LINKS_URL = '/games-links';
+var _GAMES_ABOUT_PAGE = 'about.html';
+var _GAMES_WIKI_RE = /^(wikipedia|vikidia)/i;
+var _gamesLinks = null; // Promise of {games, articles}, or null until asked
+var _gamesAskedAt = 0;
+// The server learns an article's Q-ID as it is read, so a minute on, ask again.
+var _GAMES_LINKS_TTL_MS = 60 * 1000;
+
+function _gamesLoad() {
+  if (_gamesLinks && Date.now() - _gamesAskedAt > _GAMES_LINKS_TTL_MS) _gamesLinks = null;
+  if (!_gamesLinks) {
+    _gamesAskedAt = Date.now();
+    _gamesLinks = fetch(_GAMES_LINKS_URL)
+      .then(function(r) { return r.ok ? r.json() : { games: {}, articles: {} }; })
+      .catch(function() { return { games: {}, articles: {} }; });
+  }
+  return _gamesLinks;
+}
+
+// Q-ID of the article in `zim` at `path`, as the data lists it ('' when none).
+function _gamesQidOf(data, zim, path) {
+  var bare = function(p) { return p.replace(/^A\//, ''); };
+  var want = bare(_splitPathFragment(path).base);
+  for (var qid in data.articles) {
+    var found = data.articles[qid];
+    for (var i = 0; i < found.length; i++) {
+      if (found[i].zim === zim && bare(found[i].path) === want) return qid;
+    }
+  }
+  return '';
+}
+
+function _gamePlayHide() {
+  var b = document.getElementById('game-play');
+  if (b) b.hidden = true;
+}
+
+// An article on screen that an app of Zimi's has a view of gets one quiet button (#game-play): "Play Chess"
+// for a game, "See it in the Almanac" for a sky object. One data path: /games-links answers, for the
+// article's Q-ID, which apps have a view of it (their ZIMs are in the library, else the answer leaves them out).
+var _ALMANAC_EARTH_TARGETS = { 'planet:moon': 'moon', 'planet:sun': 'sun', 'planet:earth': 'earth' };
+var _ALMANAC_TARGET_WAIT_MS = 8000;
+function _openAlmanacFor(key) {
+  var target = _ALMANAC_EARTH_TARGETS[key];
+  closeReader();
+  openAlmanac();
+  if (!target) return;
+  // The Earth view's module follows the Almanac's open; it takes the object once both are here.
+  var until = Date.now() + _ALMANAC_TARGET_WAIT_MS;
+  var wait = setInterval(function() {
+    if (_almanacOpen && typeof window.openAlmanacEarth === 'function') { clearInterval(wait); window.openAlmanacEarth({ target: target }); }
+    else if (Date.now() > until) clearInterval(wait);
+  }, 100);
+}
+function _appViewFor(data, qid) {
+  var game = data.games[qid];
+  if (game) {
+    return { label: t('games_play', { game: game.title }), icon: '/w/' + encodeURIComponent(game.zim) + '/-/icon',
+      open: function() { openArticle(game.zim, game.path, game.title); } };
+  }
+  var key = data.almanac && data.almanac[qid];
+  if (key) {
+    return { label: t('almanac_see_it'), icon: '/w/' + encodeURIComponent(_ALMANAC_ZIM) + '/-/icon',
+      open: function() { _openAlmanacFor(key); } };
+  }
+  return null;
+}
+function _gamePlayCheck() {
+  _gamePlayHide();
+  if (!currentArticle || !_GAMES_WIKI_RE.test(currentArticle.zim)) return;
+  var key = currentArticle.zim + ':' + currentArticle.path;
+  _gamesLoad().then(function(data) {
+    if (!currentArticle || currentArticle.zim + ':' + currentArticle.path !== key) return;
+    var view = _appViewFor(data, _gamesQidOf(data, currentArticle.zim, currentArticle.path));
+    var b = document.getElementById('game-play');
+    if (!view || !b) return;
+    b.onclick = view.open;
+    b.querySelector('.gp-label').textContent = view.label;
+    b.querySelector('img').src = view.icon;
+    b.hidden = false;
+  });
+}
+
+// The best article for `qid` in the reader's language, else English, else any.
+function _gamesArticleFor(data, qid) {
+  var found = data.articles[qid] || [];
+  return found.filter(function(a) { return a.lang === _currentLang; })[0] ||
+         found.filter(function(a) { return a.lang === 'en'; })[0] || found[0] || null;
+}
+
+// A game page's "About" link: the encyclopedia article when Zimi has one, else
+// the game's own plain About page (which is all Kiwix ever shows).
+function _gamesAbout(qid, zim, aboutPath) {
+  _gamesLoad().then(function(data) {
+    var a = _gamesArticleFor(data, qid);
+    if (a) openArticle(a.zim, a.path);
+    else openArticle(zim, aboutPath + '#qid=' + qid);
+  });
+}
 
 // ── Language selector dropdown ──
 
@@ -28743,7 +29404,7 @@ function _buildTopbarMenuHtml() {
         ' <span class="tbm-label">' + tH('find_in_page') + '</span></button>';
     }
     // 4. Read aloud.
-    if (_ttsOffered() && !_isMapPage() && !_isAppPage() && !_isPdfPage()) {
+    if (_ttsOffered() && !_isMapPage() && !_isAppPage() && !_isPdfPage() && !_isGamePage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="_closeTopbarMenu();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -28925,8 +29586,10 @@ async function randomArticle(event) {
   try {
     // On a map the dice stay on the map, whatever source the search bar is
     // scoped to: a random place here, not a random article from the library.
-    var randomScope = _isMapPage() ? currentArticle.zim : currentSource;
+    var randomScope = _isMapPage() || _isGamesZimOpen() ? currentArticle.zim : currentSource;
     var zimParam = randomScope ? '?zim=' + encodeURIComponent(randomScope) : '';
+    // A game's dice roll another game (the server leaves out the page being played).
+    if (_isGamesZimOpen() && randomScope === _GAMES_ZIM) zimParam += '&not=' + encodeURIComponent(_splitPathFragment(currentArticle.path).base);
     // Unscoped rolls retry a couple of times — right after startup the
     // ZIM list/archives may not be warm yet and the first roll can 500
     // or come back empty; a silent no-op reads as a dead button.
@@ -29062,6 +29725,8 @@ window.addEventListener('popstate', async (e) => {
   if (typeof _almTablesPop === 'function' && _almTablesPop(e)) return;
   // Pointing the phone is a step too (almanac-look.js): Back closes it, not the Almanac.
   if (typeof _lookPop === 'function' && _lookPop(e)) return;
+  // So is the sky a game studies (almanac-gamesky.js): Back closes it and stays in the game.
+  if (typeof ZimiGameSky !== 'undefined' && ZimiGameSky.pop(e)) return;
   // So are the 3D Earth and the flown solar system (almanac-earth.js).
   if (typeof _aeStepPop === 'function' && _aeStepPop(e)) return;
   hideSuggest();
@@ -30100,6 +30765,7 @@ function _defineConsider(frame) {
 // request is sent. The element being deleted is one whose buttons call scripts
 // that no longer exist.
 var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
+var PAGE_OUTSIDE_SHARE = 0.15;       // so must this: less page text than this outside a box, and it is the page
 var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
 var OVERLAY_SWEEP_GAP_MS = 250;      // the least time between two sweeps
 
@@ -30192,6 +30858,11 @@ function _frameIsOurOwnPage(frame) {
 // capture): it says so in its head.
 function _docIsOurOwnPage(doc) {
   try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-page"]')); } catch (e) { return false; }
+}
+// A ZIM page that is an app, not something to read (ZimiGames, the Almanac):
+// it says so in its head, and the reader offers it no highlight, note or lookup.
+function _docIsApp(doc) {
+  try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-app"]')); } catch (e) { return false; }
 }
 
 function _settleCapturedChrome(frame) {
@@ -30335,6 +31006,15 @@ function _isTransparent(color) {
 // captured sites never do.
 var _ZIMI_OWN_CHROME = '[class^="zimi-"], [class*=" zimi-"]';
 
+// A big fixed box that holds the page itself (an app's or a slideshow's fixed
+// full-screen root) is not a wall over it: it contains the main content, or
+// almost none of the page's text is outside it. renderer.py asks the same.
+function _holdsThePage(doc, el, pageText) {
+  if (el.querySelector('main, article, [role="main"]')) return true;
+  var inside = (el.innerText || '').trim().length;
+  return pageText > 0 && pageText - inside < pageText * PAGE_OUTSIDE_SHARE;
+}
+
 function _sweepBlockingOverlays(frame) {
   var doc = frame.contentDocument;
   var win = frame.contentWindow;
@@ -30342,7 +31022,7 @@ function _sweepBlockingOverlays(frame) {
 
   var sweep = function() {
     var covered = win.innerWidth * win.innerHeight * OVERLAY_VIEWPORT_SHARE;
-    var hit = 0;
+    var hit = 0, pageText = -1;
     var all = doc.querySelectorAll('body *');
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
@@ -30356,6 +31036,10 @@ function _sweepBlockingOverlays(frame) {
       var r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var blocking = r.width * r.height >= covered;
+      if (blocking) {
+        if (pageText < 0) pageText = (doc.body.innerText || '').trim().length;
+        if (_holdsThePage(doc, el, pageText)) blocking = false;
+      }
       if (!blocking && !_isHollow(el)) continue;
       el.remove();
       hit++;
@@ -30403,7 +31087,7 @@ function _sayMissingVideos(frame) {
 
 function _defineAttachToDoc(frame) {
   var doc = frame.contentDocument;
-  if (!doc) return;
+  if (!doc || _docIsApp(doc)) return;
   var onSel = function() {
     clearTimeout(_defineDebounce);
     // Touch devices wait out the OS selection-callout's own animation before the
@@ -30818,7 +31502,10 @@ async function _pollActivity() {
   try { await _manageProbe; } catch (e) {}
   if (!_canPollManage()) { _scheduleNextActivityPoll(true); return; }
   try {
-    const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
+    // redirect: 'manual': behind a login gate (Cloudflare Access) the poll is answered by a redirect to another
+    // origin, which a followed fetch turns into a blocked request ("access control checks") logged every few
+    // seconds. Seen as an opaque redirect it is just "not signed in": idle cadence, nothing logged.
+    const res = await authedFetch('/manage/activity', { credentials: 'same-origin', redirect: 'manual' });
     if (res.ok) {
       const data = await res.json();
       // What the LAST poll saw, read before this one repaints the badge.

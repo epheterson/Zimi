@@ -33,6 +33,9 @@ const ctx = {
   ],
   esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.', app_empty_exchange: 'No Q&A site yet.', exchange: 'ZimiExchange', reddot: 'Reddot', app_empty_reddot: 'No subreddits yet.', apps_section: 'Apps' })[k] || k, tH: k => k === 'apps_section' ? 'Apps' : k, _getLibraryView: () => 'list',
   _userSession: null, document: { body: { dataset: {} } },
+  _zimInfo: name => ctx.zimsCache.find(z => z.name === name) || null,
+  // Zimi's own tiles: the ZIM's icon, its new-dot and the pet's peek are not what this file judges.
+  _ownIconHtml: (zim, glyph) => glyph, _ownTileDotHtml: () => '', OWN_TILE_ICON_PX: 42, _petPeekSchedule() {}, _petPeek: null,
 };
 vm.createContext(ctx);
 vm.runInContext(require("./app_source.cjs").localeHelpers(src), ctx);
@@ -83,7 +86,22 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: home leaves ZimiTube out, its tile still the door to the Video category', !/tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._tubeTileHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._tubeTileHtml()));
 ctx.zimsCache = [];
-ok('a fresh install: nothing inside any app, so home has no apps row; Zimipedia and Reddot offered', ctx._appsRowHtml() === '' && ctx._shownApps().includes('wiki') && ctx._shownApps().includes('reddot'));
+ok('a fresh install: nothing inside any app, so no row; Zimipedia and Reddot offered', ctx._appsRowHtml() === '' && ctx._shownApps().includes('wiki') && ctx._shownApps().includes('reddot'));
+// ZimiGames and the Zimi Almanac: Zimi's own ZIMs, in the row once installed (they delete and come back from the Catalog).
+const ALMANAC_ZIM = { name: 'zimi_almanac', title: 'Zimi Almanac', main_path: 'index.html' };
+ctx.zimsCache = [ALMANAC_ZIM];
+ok('with its ZIM installed the row holds the Almanac alone', ctx._appsRowHtml().match(/data-app="(\w+)"/g).join() === 'data-app="almanac"');
+ok('the Almanac tile opens the Almanac page, not its ZIM', /openAlmanac/.test(ctx._almanacTileHtml()) && /almanac-tile/.test(ctx._almanacTileHtml()) && /apps_count_almanac/.test(ctx._almanacTileHtml()));
+ok('ZimiGames is not in the row until its ZIM is installed', !/games-tile/.test(ctx._appsRowHtml()) && ctx._gamesTileHtml() === '');
+ctx.zimsCache = [ALMANAC_ZIM, { name: 'zimi_games', title: 'ZimiGames', main_path: 'index.html' }];
+ok('with the games ZIM installed its tile opens the shelf and the row holds both', /games-tile/.test(ctx._appsRowHtml()) && /openGames/.test(ctx._gamesTileHtml()) && /almanac-tile/.test(ctx._appsRowHtml()));
+ctx.zimsCache = [ALMANAC_ZIM, { name: 'zimi_games', title: 'ZimiGames' }];
+ok('a ZIM the account is not allowed is not in the list, so no tile', ctx._gamesTileHtml() === '');
+ctx.zimsCache = [ALMANAC_ZIM];
+ctx.document.body.dataset.zimiApps = 'maps';
+ok('a server that leaves the Almanac out hides it', !/almanac-tile/.test(ctx._appsRowHtml()));
+delete ctx.document.body.dataset.zimiApps;
+ok('both apps have a glyph, one 24-grid mark in the same stroke', ['_GAMES_SVG', '_ALMANAC_SVG'].every(n => new RegExp('<svg[^>]*viewBox="0 0 24 24"[^>]*stroke-width="1.8"').test(ctx[n])));
 ctx.document.body.dataset.zimiApps = 'maps,tube,exchange,reddot,wiki,books';
 ok('a server that names wiki offers it', ctx._shownApps().length === 6 && ctx._shownApps().includes('wiki'));
 delete ctx.document.body.dataset.zimiApps;
@@ -121,7 +139,7 @@ ok('a menu with nothing in it is no menu: the ⋯ button goes when the open page
 ok('the "cannot be played" line links the page by its path (a bare `page` was once referenced there and threw)', !/esc\(page\)/.test(page) && /noMedia = function\(missing\)[^\n]*esc\(zpath\(v\.zim, v\.page\)\)/.test(page));
 ok("the two truths of a video that will not play: not in the ZIM, or not decodable here", /m\.missing\) \{ noMedia\(!!\(m && m\.missing\)\); return; \}/.test(page) && /missing \? STR\.missing : STR\.no_media/.test(page) && /'tube_missing'[,\]]/.test(src) && /function _videoFileMissing\(v\)/.test(src) && /t\('video_not_playable'\)/.test(src));
 const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8');
-ok("the header's arrow shows on every app page: a video is a history step back, a list asks the page, the home leaves the app", /homeScope \|\| \(_isAppPage\(\) && \(!_appTop \|\| _connState !== CONN_OK\)\);/.test(src) && /if \(_isAppPage\(\)\) \{[\s\S]*?if \(st && \(st\.play \|\| st\.q \|\| st\.p \|\| st\.fg\)\) \{ if \(st\.entry\) _appEntryHome\(\); else history\.back\(\); return; \}[\s\S]*?postMessage\(\{ zimi: 'back-request' \}/.test(src) && /d\.zimi === 'at-home'[\s\S]*?if \(_isAppPage\(\)\) closeReader\(\);/.test(src) && /e\.data\.zimi === 'back-request'[\s\S]*?window\.__back\(\)[\s\S]*?tell\(\{ zimi: 'at-home' \}\)/.test(shared) && /window\.__back = function\(\) \{\s*if \(_now >= 0\) \{ closePlayer\(\); return true; \}/.test(page));
+ok("the header's arrow shows on every app page: a video is a history step back, a list asks the page, the home leaves the app", /homeScope \|\| \(_isAppPage\(\) && \(!_appTop \|\| _connState !== CONN_OK\)\) \|\| _gameHasShelfBehind\(\);/.test(src) && /if \(_isAppPage\(\)\) \{[\s\S]*?if \(st && \(st\.play \|\| st\.q \|\| st\.p \|\| st\.fg\)\) \{ if \(st\.entry\) _appEntryHome\(\); else history\.back\(\); return; \}[\s\S]*?postMessage\(\{ zimi: 'back-request' \}/.test(src) && /d\.zimi === 'at-home'[\s\S]*?if \(_isAppPage\(\)\) closeReader\(\);/.test(src) && /e\.data\.zimi === 'back-request'[\s\S]*?window\.__back\(\)[\s\S]*?tell\(\{ zimi: 'at-home' \}\)/.test(shared) && /window\.__back = function\(\) \{\s*if \(_now >= 0\) \{ closePlayer\(\); return true; \}/.test(page));
 ok('a video, a question, a post is bookmarked and remembered as the app\'s, and opens back into it', /function _appItemOpened\(app, id, title\)/.test(src) && /_histPushArticle\(zim, path, title, null, app\)/.test(src) && /var _APP_ITEM_APPS = \['tube', 'exchange', 'reddot'[^\]]*\];/.test(src) && /if \(!currentArticle && _appItem\) \{[\s\S]*?if \(own && own\.zim === _appItem\.zim && own\.path === _appItem\.path\) return Object\.assign\(\{\}, own\);\n\s*return \{ kind: _appItemKind\(_appItem\.app\) \|\| 'article', app: _appItem\.app/.test(src) && /if \(_savedOpensInApp\(it\)\) \{ _openAppItem\(it\.app, it\.zim, it\.path\); return; \}/.test(src));
 ok('an app page has no header bookmark (its item saves from its own page), but the Saved panel opens from it (on the app\'s own); a map has neither', /body\.app-page #library-btn, body\.map-page #bm-panel-btn, body\.map-page #library-btn \{ display: none !important; \}/.test(css) && !/body\.app-page #bm-panel-btn/.test(css) && /if \(!isOpen\) _bmScope = _savedCurrentApp\(\);/.test(src));
 ok('"Open the original page" is a step: the shell opens the article with the app behind it, and the arrow (or Back) returns to the video', /function openLink\(a, zim, page, label\)/.test(shared) && /tell\(\{ zimi: 'open', zim: zim, path: page \}\)/.test(shared) && /openLink\(document\.getElementById\('w-open'\), v\.zim, v\.page, STR\.open_page\)/.test(page) && /d\.zimi === 'open'[\s\S]*?openArticle\(d\.zim, d\.path\);\n\s*if \(fromApp\) \{ articleHistory\.push\(\{ app: true \}\); updateTopbar\(\); \}/.test(src) && /if \(prev\.app\) \{ history\.back\(\); return; \}/.test(src) && /if \(replaceState && play\) st\.entry = true;/.test(src) && /if \(st\.entry\) _appEntryHome\(\); else history\.back\(\);/.test(src) && /var toApp = app && app\.mode === 'reader' && \(app\.tube \|\| app\.exchange \|\| app\.reddot \|\| app\.wiki \|\| app\.books[^;\n]*\);/.test(src) && /if \(readerOpen && articleHistory\.length > 0 && !toApp\) \{/.test(src));

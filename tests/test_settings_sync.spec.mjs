@@ -99,6 +99,39 @@ for (const who of ['admin', USER]) {
   });
 }
 
+test('live: a change reaches the other open browser while it stays on the page, and the one that made it re-reads nothing', async ({ browser }) => {
+  const a = await signedIn(browser, USER, 0);
+  const b = await signedIn(browser, USER, 1);
+  // Each page holds its stream before anything changes.
+  for (const x of [a, b]) await x.page.waitForFunction(() => _liveSource && _liveSource.readyState === 1 && _liveSince);
+  const reads = [];
+  a.page.on('request', (r) => { const u = new URL(r.url()); if (r.method() === 'GET' && u.pathname.startsWith('/userdata')) reads.push(u.pathname); });
+  await a.page.evaluate(() => _setReaderTheme('dark'));
+  // No refocus: the open page hears it.
+  await expect.poll(() => raw(b.page, 'zimi_reader_theme'), { timeout: 10000 }).toBe('dark');
+  await a.page.evaluate(() => { Saved.save({ zim: 'w', path: 'A/Live', title: 'Saved while the other watched' }); return _savedFlush(); });
+  await expect.poll(() => b.page.evaluate(() => Saved.all().map((i) => i.title)), { timeout: 10000 }).toContain('Saved while the other watched');
+  await a.page.waitForTimeout(1500);
+  expect(reads, 'its own changes are not read back').toEqual([]);
+  await a.context.close(); await b.context.close();
+});
+
+test('live: a page that was hidden hears what changed meanwhile as it shows again', async ({ browser }) => {
+  const a = await signedIn(browser, USER, 0);
+  const b = await signedIn(browser, USER, 1);
+  await b.page.waitForFunction(() => _liveSource && _liveSince);
+  // Hidden: the stream closes (a phone in a pocket holds nothing open).
+  await b.page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  expect(await b.page.evaluate(() => _liveSource)).toBe(null);
+  await a.page.evaluate(() => _setLibraryView('list'));
+  await expect.poll(() => value(a.page, 'zimi_library_view'), { timeout: 10000 }).toBe('list');
+  // Shown again before the pull-on-return interval: the stream resumes from
+  // its place and the change arrives through it.
+  await b.page.evaluate(() => { _savedPulledAt = Date.now(); Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+  await expect.poll(() => raw(b.page, 'zimi_library_view'), { timeout: 10000 }).toBe('list');
+  await a.context.close(); await b.context.close();
+});
+
 test('the interface language and the reading speed follow, into the page that is open', async ({ browser }) => {
   const a = await signedIn(browser, USER, 0);
   const b = await signedIn(browser, USER, 1);

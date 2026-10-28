@@ -43,7 +43,7 @@ function browser() {
     timers: [], sent: [], applied: [], answer: null,
     _SAVED_PUSH_MS: 2000, _SAVED_PUSH_OFTEN_MS: 20000, _SAVED_KEEPALIVE_MAX: 60000,
     Saved: { use: () => false }, _savedBase: null,
-    _savedChanged() {}, _savedPull() {},
+    _savedChanged() {}, _savedPull() {}, _liveRestart() {}, _liveClient: 'tab-1',
     status: 200, down: false, rechecks: 0,
   };
   ctx._accountRecheck = () => { ctx.rechecks++; };
@@ -96,7 +96,7 @@ const THEME = 'zimi_reader_theme', LANGS = 'zimi_pref_languages', VIEW = 'zimi_l
     b.answer = { rev: 7, settings: { [THEME]: { v: 'sepia', r: 7 } } };
     await b.fire();
     const body = b.sent[0].body;
-    ok('what goes up is the value and whose it is: no time, no revision of this device\'s', b.sent[0].url === '/userdata/settings' && JSON.stringify(body) === JSON.stringify({ changes: { [THEME]: { v: 'sepia' } }, account: 'kid' }), body);
+    ok('what goes up is the value, whose it is and which page sent it (so it skips its own echo): no time, no revision of this device\'s', b.sent[0].url === '/userdata/settings' && JSON.stringify(body) === JSON.stringify({ changes: { [THEME]: { v: 'sepia' } }, account: 'kid', client: 'tab-1' }), body);
     ok('taken, it is no longer pending', !Object.keys(b._prefState().pending).length);
     await b.fire();
     ok('and nothing more goes: no loop', b.sent.length === 1, b.sent.length);

@@ -30,7 +30,9 @@ html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.
 /* A double tap is a tap, as in the shell; no pinch either (apps.js). */
 html { touch-action: manipulation; }
 /* Pulled past an edge: the page's own background, no bounce, no sideways scroll. */
-html { overscroll-behavior: none; overflow-x: hidden; }
+html { overscroll-behavior-x: none; overflow-x: hidden; }
+/* No spring on a touch screen; with a wheel, Safari would not scroll at all (see app.css). */
+@media (hover: none) and (pointer: coarse) { html { overscroll-behavior: none; } }
 a { color: var(--amber); text-decoration: none; }
 button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
