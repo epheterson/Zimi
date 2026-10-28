@@ -355,7 +355,8 @@ def index_wikipedias():
         for c in interlang._qid_db_pool.values():
             c.close()
         interlang._qid_db_pool.clear()
-    with interlang._qid_cache_lock:
+    # Under the op lock too: a background games-links build may be mid-query on it.
+    with interlang._qid_cache_lock, interlang._qid_cache_op_lock:
         if interlang._qid_cache_conn is not None:
             interlang._qid_cache_conn.close()
         interlang._qid_cache_conn = None

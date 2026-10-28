@@ -947,7 +947,7 @@ CELL = GRID + " .vg-row[data-lang='%s'] .vg-cell:nth-child(%d) > *"
 
 
 def _settings_voices(pg, served):
-    pg.goto(served + "/?manage=preferences")
+    pg.goto(served + "/?manage=languages")
     pg.wait_for_function("() => window._voicesHere", timeout=20000)
     pg.eval_on_selector(VOICES_WRAP, "e => e.scrollIntoView({ block: 'center' })")
 
@@ -969,6 +969,9 @@ def _in_flight(pg):
 # Playwright although the page has its answers (_swPrimed), so networkidle
 # alone waits forever on a first visit.
 PRIMING = ("/list?layout=1", "/whoami", "/manage/has-password")
+# The page's live stream (/events) stays open while it is shown, by design:
+# never "finished", so never waited for.
+STREAMS = ("/events",)
 
 
 def _quiet(pg, flying, timeout=30.0, ms=500):
@@ -979,7 +982,7 @@ def _quiet(pg, flying, timeout=30.0, ms=500):
     pg.wait_for_function("() => _swPrimed", timeout=timeout * 1000)
     end, calm = time.time() + timeout, None
     while time.time() < end:
-        busy = [u for u in flying.values() if not u.split("/", 3)[-1].startswith(tuple(p[1:] for p in PRIMING))]
+        busy = [u for u in flying.values() if not u.split("/", 3)[-1].startswith(tuple(p[1:] for p in PRIMING + STREAMS))]
         calm = None if busy else (calm or time.time())
         if calm and time.time() - calm >= ms / 1000:
             return
@@ -990,7 +993,7 @@ def _quiet(pg, flying, timeout=30.0, ms=500):
 def _settings_languages(pg, served, open_list=True):
     """Settings > Languages, the checklist open."""
     flying = _in_flight(pg)
-    pg.goto(served + "/?manage=preferences")
+    pg.goto(served + "/?manage=languages")
     pg.wait_for_function("() => window._voicesHere", timeout=20000)
     # Settings draws again as its answers come in (a slow runner sees the
     # fold replaced under a click): wait until nothing is still coming.
@@ -1089,7 +1092,7 @@ def test_show_languages_off_hides_the_pills_the_top_bar_and_the_list(
     assert pg.is_hidden(FOLD) and pg.is_hidden(LIST) and pg.is_hidden("#ms-lang-hint")
     _shots(pg, "languages-off")
     # Drawn again, still off and still English.
-    pg.goto(served + "/?manage=preferences")
+    pg.goto(served + "/?manage=languages")
     pg.wait_for_selector(SHOW, state="attached", timeout=20000)
     assert pg.is_hidden(FOLD) and pg.evaluate("() => _currentLang") == "en"
     assert pg.evaluate(LANG_BTN) == "none"
@@ -1461,7 +1464,8 @@ def test_system_and_device_are_one_on_the_servers_own_mac(
 
 def test_the_dictionarys_voices_opens_settings_voices(piper_here, served):
     """The Dictionary's doors to its voices (Say's Voices… and the front's
-    speaker) lead to Settings > Voices; so does /?manage=preferences#voices."""
+    speaker) lead to Settings > Languages at Voices; so does
+    /?manage=languages#voices, and Preferences' old address."""
     open_eau, errors = piper_here
     tv.install("fr")
     f = open_eau()
@@ -1478,12 +1482,15 @@ def test_the_dictionarys_voices_opens_settings_voices(piper_here, served):
     f.click(".vdoor")
     pg.wait_for_selector(GRID, timeout=20000)
     pg.goto("about:blank")
-    pg.goto(served + "/?manage=preferences#voices")
-    pg.wait_for_selector(GRID, timeout=20000)
-    pg.wait_for_function(
-        "() => { const t = document.getElementById('ms-voices').getBoundingClientRect().top; return t >= -1 && t < 844; }",
-        timeout=5000,
-    )
+    for address in ("/?manage=languages#voices", "/?manage=preferences#voices"):
+        pg.goto("about:blank")
+        pg.goto(served + address)
+        pg.wait_for_selector(GRID, timeout=20000)
+        pg.wait_for_function(
+            "() => { const t = document.getElementById('ms-voices').getBoundingClientRect().top; return t >= -1 && t < 844; }",
+            timeout=5000,
+        )
+        assert "manage=languages" in pg.url, (address, pg.url)
     assert not errors, errors
 
 
@@ -1724,7 +1731,7 @@ def test_the_default_voice_shows_only_the_voices_on_here(piper_here, served):
 def test_overlapping_settings_draws_keep_the_section(piper_here, served):
     """Two draws of Settings in flight (two language switches in a row): the
     older one answering last used to land on Library, so Settings left
-    Preferences under the person's finger. Only the newest draw lands."""
+    Languages under the person's finger. Only the newest draw lands."""
     open_eau, errors = piper_here
     pg = open_eau().page
     _settings_languages(pg, served, open_list=False)
@@ -1738,11 +1745,11 @@ def test_overlapping_settings_draws_keep_the_section(piper_here, served):
 
     pg.route("**/manage/status*", slow_first)
     pg.evaluate(
-        "() => { _pendingMsSection = 'preferences'; renderManage();"
-        " _pendingMsSection = 'preferences'; renderManage(); }"
+        "() => { _pendingMsSection = 'languages'; renderManage();"
+        " _pendingMsSection = 'languages'; renderManage(); }"
     )
     pg.wait_for_timeout(3000)
-    assert "manage=preferences" in pg.url, pg.url
+    assert "manage=languages" in pg.url, pg.url
     pg.wait_for_selector(FOLD, state="attached", timeout=5000)
     pg.unroute("**/manage/status*")
     assert not errors, errors

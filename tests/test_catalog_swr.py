@@ -142,3 +142,17 @@ def test_fresh_cache_returns_without_network(_env, monkeypatch):
     assert lib._catalog_stale_ts is None
     assert calls == []  # never touched the network
     assert key not in lib._opds_refreshing
+
+
+def test_cold_page_answered_from_disk_is_dated_by_that_copy_not_by_now(_env, monkeypatch):
+    """The "Offline, showing catalog from <today>" bug: a cold page answered from
+    the saved catalog was stamped stale at time.time(), so a machine that was
+    online said it was offline and gave today's date. The stamp is the saved
+    copy's own."""
+    saved_at = 1_700_000_000.0
+    items = [{"name": "kept_zim", "title": "Kept"}]
+    monkeypatch.setattr(lib, "_load_full_catalog", lambda: (items, saved_at))
+    monkeypatch.setattr(lib, "_kick_catalog_refresh", lambda *a, **k: None)
+    total, got, err = lib._fetch_kiwix_catalog("", "eng", 500, 0)
+    assert err is None and got == items
+    assert lib._catalog_stale_ts == saved_at

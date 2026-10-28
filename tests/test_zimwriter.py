@@ -406,6 +406,8 @@ def test_tags_follow_the_semicolon_convention():
     assert zw.tags_string(["_videos:yes", "_category:other"]) == (
         "_category:other;_ftindex:yes;_videos:yes"
     )
+    # A category given takes the default's place: readers take the first.
+    assert zw.tags_string(["_category:games", "games"]) == "_category:games;_ftindex:yes;games"
     assert zw.media_tags(["image/png", "text/css"]) == ["_pictures:yes", "_videos:no"]
     assert zw.media_tags([]) == ["_pictures:no", "_videos:no"]
     assert zw.media_tags(["video/mp4"]) == ["_pictures:no", "_videos:yes"]

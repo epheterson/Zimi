@@ -42,7 +42,9 @@ class FakeQbt:
     """State plus a threaded HTTP server. ``disk`` maps a remote root to the
     local directory it really is."""
 
-    def __init__(self, disk, password=None, v5=True):
+    def __init__(self, disk, password=None, v5=True, bare_login=False):
+        # bare_login: qBittorrent after 5.1 answers a good login with no body and a bad one with 401 (#122).
+        self.bare_login = bare_login
         self.disk = disk
         self.password = password
         self.v5 = v5
@@ -104,8 +106,8 @@ class FakeQbt:
                     fake.logins += 1
                     if form.get("password") == fake.password:
                         self._cookie = "SID=good; path=/"
-                        return self._send(200, "Ok.")
-                    return self._send(200, "Fails.")
+                        return self._send(200, "" if fake.bare_login else "Ok.")
+                    return self._send(401, "Unauthorized") if fake.bare_login else self._send(200, "Fails.")
                 if not self._authed():
                     return self._send(403, "Forbidden")
                 return fake.handle(self, path, q, form)
@@ -273,8 +275,9 @@ def test_a_windows_qbittorrent_maps_to_posix_paths(tmp_path):
 # ── the client ──────────────────────────────────────────────────────────
 
 
-def test_logs_in_when_asked_and_says_so_when_the_password_is_wrong(tmp_path):
-    fake = FakeQbt({REMOTE_DL: str(tmp_path)}, password="s3cret")
+@pytest.mark.parametrize("bare_login", [False, True], ids=["Ok. and Fails.", "empty and 401 (#122)"])
+def test_logs_in_when_asked_and_says_so_when_the_password_is_wrong(tmp_path, bare_login):
+    fake = FakeQbt({REMOTE_DL: str(tmp_path)}, password="s3cret", bare_login=bare_login)
     try:
         assert qbt.Client(fake.url, "admin", "s3cret").text("app/version") == "v5.2.3"
         assert fake.logins == 1

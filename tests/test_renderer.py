@@ -1082,6 +1082,37 @@ def test_a_consent_wall_does_not_go_into_the_archive(tmp_path):
     assert "overflow: visible" in html or "overflow:visible" in html
 
 
+APP_PAGE = b"""<!doctype html><html><head><style>
+  body { margin: 0; }
+  #app { position: fixed; inset: 0; overflow: auto; background: #fafafa; }
+  .cookie { position: fixed; inset: 0; z-index: 99; background: rgba(0,0,0,.6); }
+</style></head><body>
+  <div id="app"><nav>Home Docs Blog</nav><h1>THE APP</h1>
+    <p>Everything this site shows lives inside one fixed, full-screen root.</p>
+    <p>A slideshow, a map or a web app is often built exactly like this.</p></div>
+  <div class="cookie"><p>We use cookies.</p><button>OK</button></div>
+</body></html>"""
+
+
+@browser
+def test_a_site_built_inside_one_fixed_box_keeps_it(tmp_path):
+    """The wall rule is "a fixed box over most of the screen", and some sites
+    are exactly that box: their whole page lives in one fixed root. A box that
+    holds nearly all of the page's text is the page, not a wall over it; the
+    cookie veil on top of it still goes."""
+    srv, url = _server({"/": ("text/html", APP_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session.start()
+        page = session.capture(url)
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    assert "THE APP" in page.html, "the site itself has to survive the cleaning"
+    assert 'class="cookie"' not in page.html
+
+
 # ── the comma bug, in the browser ──────────────────────────────────────────
 
 COMMA_SRCSET_PAGE = b"""<!doctype html><html><body>

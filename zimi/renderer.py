@@ -768,6 +768,9 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
 # High on purpose: a floating share bar or a sticky footer is under this, and
 # only a modal or its backdrop is over it.
 _OVERLAY_VIEWPORT_SHARE = 0.55
+# A full-screen fixed box with less than this share of the page's text outside
+# it is the page itself (an app's fixed root), not a wall over it.
+_PAGE_OUTSIDE_SHARE = 0.15
 
 _PREPARE_JS = r"""() => {
   SRCSET_SPLIT
@@ -789,14 +792,26 @@ _PREPARE_JS = r"""() => {
   // z-index 9998 and belongs in the capture. And an EMPTY fixed box goes too,
   // whatever its size — that is an ad slot whose ad was blocked at capture
   // time, and it renders in the archive as a black bar over the headline.
+  //
+  // A big fixed box that holds the page itself is not over it: some sites,
+  // web apps and slideshows put everything in one fixed full-screen root. It
+  // holds the page when it contains the main content, or when almost none of
+  // the page's text is outside it.
   const covered = window.innerWidth * window.innerHeight * OVERLAY_SHARE;
+  let pageText = -1;
+  const holdsThePage = el => {
+    if (el.querySelector('main, article, [role="main"]')) return true;
+    if (pageText < 0) pageText = (document.body.innerText || '').trim().length;
+    const inside = (el.innerText || '').trim().length;
+    return pageText > 0 && pageText - inside < pageText * PAGE_OUTSIDE_SHARE;
+  };
   const overlays = [];
   document.querySelectorAll('body *').forEach(el => {
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed') return;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;
-    const blocking = r.width * r.height >= covered;
+    const blocking = r.width * r.height >= covered && !holdsThePage(el);
     const hollow = !(el.innerText || '').trim() && !el.querySelector('img, video, canvas, svg');
     if (blocking || hollow) overlays.push(el);
   });
@@ -901,7 +916,9 @@ _PREPARE_JS = r"""() => {
 # home in Python rather than a bare number buried in a JavaScript string. The
 # srcset splitter is spliced into both scripts that read a srcset, for the same
 # reason: one implementation, not one per script that happens to need it.
-_PREPARE_JS = _PREPARE_JS.replace("OVERLAY_SHARE", repr(_OVERLAY_VIEWPORT_SHARE))
+_PREPARE_JS = _PREPARE_JS.replace("OVERLAY_SHARE", repr(_OVERLAY_VIEWPORT_SHARE)).replace(
+    "PAGE_OUTSIDE_SHARE", repr(_PAGE_OUTSIDE_SHARE)
+)
 _PREPARE_JS = _PREPARE_JS.replace("SRCSET_SPLIT", _SRCSET_SPLIT_JS)
 _IMAGE_CANDIDATES_JS = _IMAGE_CANDIDATES_JS.replace("SRCSET_SPLIT", _SRCSET_SPLIT_JS)
 

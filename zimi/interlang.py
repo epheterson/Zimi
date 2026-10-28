@@ -160,6 +160,17 @@ _QID_FULL_SCAN_MAX_ENTRIES = 6_000_000  # Full-scan all Wikipedia ZIMs up to ~6M
 _qid_passive_cache = True  # passively extract Q-IDs from every article viewed
 
 
+def _games_note_index_change(qid=None):
+    """The Q-ID answers changed (an index was built, or a viewed article's Q-ID
+    was learned): rework the games' encyclopedia links, in the background.
+    A learned Q-ID that is no game's changes nothing."""
+    if not _srv.bundled("gamelinks"):  # zimi-mcp ships no games
+        return
+    from zimi import gamelinks
+
+    gamelinks.qids_changed(qid)
+
+
 def _qid_passive_extract(zim_name, article_path):
     """Extract and cache Q-ID from an article viewed in the reader.
     Called in a background thread on every iframe article load.
@@ -186,6 +197,7 @@ def _qid_passive_extract(zim_name, article_path):
             del archive  # drop our handle promptly; don't pool it
         if qid is not None:
             _qid_cache_store(zim_name, article_path, qid)
+            _games_note_index_change(qid)
     except Exception:
         pass  # background task, never fail visibly
 
@@ -323,6 +335,7 @@ def _build_qid_index(zim_name, zim_path):
         conn.close()
         _close_qid_db(zim_name)
         os.replace(tmp_path, db_path)
+        _games_note_index_change()
         dt = time.time() - t0
         log.info(
             "Q-ID index: built %s (%d Q-IDs from %d articles, %.1fs)",

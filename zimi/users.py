@@ -71,6 +71,7 @@ import threading
 import time
 
 import zimi.server as _srv
+from zimi import changes as _changes
 
 log = logging.getLogger("zimi")
 
@@ -1168,12 +1169,13 @@ def _write_settings(name, doc):
         return bool(_srv._atomic_write_json(_settings_path(name), doc))
 
 
-def change_settings(name, changes, fill_only=False):
+def change_settings(name, changes, fill_only=False, by=None):
     """What POST /userdata/settings does: each change ({key: {"v": value}})
     is taken and given the account's next rev; the same value again is no
     change. ``fill_only`` (a browser's first sync into an account that never
     held a setting): only keys the account lacks. Written only when something
-    changed. Returns (ok, error, doc)."""
+    changed, and then announced to the account's open windows (``by``: the
+    window that sent it). Returns (ok, error, doc)."""
     if _safe_userdata_key(name) is None:
         return False, "invalid user", None
     if not isinstance(changes, dict):
@@ -1206,6 +1208,8 @@ def change_settings(name, changes, fill_only=False):
         doc = {"rev": rev, "settings": kept}
         if moved and not _write_settings(name, doc):
             return False, "write failed", None
+    if moved:
+        _changes.announce("settings", name, by)
     return True, None, doc
 
 
@@ -1344,12 +1348,14 @@ def save_user_data(name, blob):
     return _write_user_data(name, _user_data_doc(blob, _now_ms()))
 
 
-def sync_user_data(name, patch, now_ms=None):
+def sync_user_data(name, patch, now_ms=None, by=None):
     """What POST /userdata does: each plain field given (bookmarks, folders,
     history, preferences) replaces the kept one, a field not given is left as
     it was, and ``saved`` is MERGED with the kept store, so two devices writing
     in turn lose nothing and a delete on either one holds. Load, merge and
-    write happen under one lock. Returns (ok, error, doc as kept)."""
+    write happen under one lock. A saved store that changed is announced to
+    the account's open windows (``by``: the window that sent it). Returns (ok,
+    error, doc as kept)."""
     if _safe_userdata_key(name) is None:
         return False, "invalid user", None
     if not isinstance(patch, dict):
@@ -1374,8 +1380,11 @@ def sync_user_data(name, patch, now_ms=None):
             kept = _merge_saved(kept, sent, now_ms)
         else:
             kept = _saved_normalize(kept, now_ms)
+        moved = kept != _clean_saved(cur.get("saved"))
         doc = _user_data_doc(blob, now_ms, saved=kept)
         ok, err = _write_user_data(name, doc)
+    if ok and moved:
+        _changes.announce("saved", name, by)
     return ok, err, (doc if ok else None)
 
 

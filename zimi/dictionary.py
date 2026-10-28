@@ -34,12 +34,14 @@ a word visited again costs nothing.
 """
 
 import collections
+import hashlib
 import html as _html
 import logging
 import posixpath
 import random
 import re
 import threading
+import unicodedata
 from urllib.parse import unquote
 
 from zimi import server as _srv
@@ -1594,6 +1596,141 @@ def random_words(langs=()):
         if len(out) >= _wiki.MORE_WORDS:
             break
     return {"words": out[: _wiki.MORE_WORDS]}
+
+
+# ── five-letter words (ZimiGames' Five Letters in the player's language) ───
+#
+# Five Letters needs a word of five letters a to z, the same for everyone on a
+# server for the day, and a way to ask whether a guess is a word. Both come
+# from the Wiktionary itself: the answer is the first good page among random
+# five-letter titles drawn in an order seeded by the Wiktionary and the day
+# (as the day's word is, wiki._pages_of_day), judged as the day's word is
+# (wiki._judge: a word of the language, not an inflection); a guess is a
+# word when the Wiktionary has the page, or a title that is that word without
+# its accents. Only titles are looked at to find candidates, never pages.
+
+FIVE_LEN = 5
+FIVE_PROBES = 6000  # random entries looked at for candidates, per answer
+FIVE_PROBE_BATCH = 500  # per hold of the library lock
+FIVE_JUDGED = 40  # candidate pages read, at most, before giving up
+FIVE_SUGGEST = 10
+_FIVE_PLAIN = re.compile(r"[a-z]{5}")
+_FIVE_CHANCE = "chance"
+
+
+def fold_letters(text):
+    """``text`` lower-cased with its accents taken off ("École" is "ecole")."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", text) if not unicodedata.combining(c)
+    ).lower()
+
+
+def _five_titles(archive, rng):
+    """Up to FIVE_JUDGED ``(path, title)`` of entries whose title is five
+    lower-case letters that fold to a to z, in the order ``rng`` draws them."""
+    out, seen = [], set()
+    total = archive.entry_count
+    probes = 0
+    while total and probes < FIVE_PROBES and len(out) < FIVE_JUDGED:
+        with _srv._zim_lock:
+            for _ in range(FIVE_PROBE_BATCH):
+                probes += 1
+                try:
+                    entry = archive._get_entry_by_id(rng.randrange(total))
+                    title = entry.title or ""
+                except Exception:
+                    continue
+                if (
+                    title in seen
+                    or len(title) != FIVE_LEN
+                    or title != title.lower()
+                    or not _FIVE_PLAIN.fullmatch(fold_letters(title))
+                ):
+                    continue
+                seen.add(title)
+                out.append((entry.path, title))
+                if len(out) >= FIVE_JUDGED:
+                    break
+    return out
+
+
+def five_letters(name, day):
+    """A five-letter word of this Wiktionary: ``{word, title, zim, lang,
+    blurb}`` (``word`` is ``title`` without accents, a to z), or {} when the
+    Wiktionary has none. The same for ``name`` and ``day`` (YYYYMMDD), so it
+    is the day's word for everyone; any other ``day`` ("chance") draws
+    afresh. None when ``name`` is not a Wiktionary this request may read."""
+    from zimi import wiki as _wiki
+
+    if not is_dictionary(name):
+        return None
+    if day == _FIVE_CHANCE:
+        rng = random.Random()
+    else:
+        seed = hashlib.md5(("five|%s|%s" % (name, day)).encode()).hexdigest()[:12]
+        rng = random.Random(int(seed, 16))
+    lang = _wiki._language(_record(name))
+    archive = _wiki._archive(name)
+    for path, title in _five_titles(archive, rng):
+        with _srv._zim_lock:
+            page = _wiki._read_page(archive, path)
+        if not page:
+            continue
+        got, _ = _wiki._judge("word", name, lang, page[0], title, page[2])
+        if got and got.get("blurb"):
+            return {
+                "word": fold_letters(title),
+                "title": title,
+                "zim": name,
+                "lang": lang,
+                "blurb": got["blurb"],
+            }
+    return {}
+
+
+def define_five_letter_word(name, word):
+    """What a five-letter word means in this Wiktionary, for the end of a
+    round of Five Letters: ``{title, blurb}`` (the first sense, as the word of
+    the day's card gives it), or {} when the Wiktionary has no page for it.
+    None when ``name`` is not a Wiktionary this request may read."""
+    from zimi import wiki as _wiki
+
+    if not is_dictionary(name):
+        return None
+    if not _FIVE_PLAIN.fullmatch(word or ""):
+        return {}
+    archive = _wiki._archive(name)
+    with _srv._zim_lock:
+        page = _wiki._read_page(archive, word)
+    if not page:
+        return {}
+    got, _ = _wiki._judge("word", name, _wiki._language(_record(name)), page[0], word, page[2])
+    return {"title": word, "blurb": got["blurb"]} if got and got.get("blurb") else {}
+
+
+def is_five_letter_word(name, word):
+    """Is ``word`` (a to z) a word of this Wiktionary: its page, or a title
+    that is the word with its accents. None when ``name`` is not a
+    Wiktionary this request may read."""
+    from zimi import search as _search
+    from zimi import wiki as _wiki
+
+    if not is_dictionary(name):
+        return None
+    if not _FIVE_PLAIN.fullmatch(word or ""):
+        return False
+    archive = _wiki._archive(name)
+    with _srv._zim_lock:
+        try:
+            archive.get_entry_by_path(word)
+            return True
+        except KeyError:
+            pass
+        found = _search.suggest_search_zim(archive, word, FIVE_SUGGEST)
+    return any(
+        len(r["title"]) == FIVE_LEN and fold_letters(r["title"]) == word
+        for r in found
+    )
 
 
 def _reset_for_tests():

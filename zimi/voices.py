@@ -238,6 +238,17 @@ FIRST_CHARS_MAX = 120  # the page's first chunk (_TTS_FIRST_CHUNK_MAX): "first w
 RTF_MIN_AUDIO_S = 2.0  # shorter speech is mostly start-up, not speed
 TIMING_WEIGHT = 0.3  # a read's sample in the moving average; a Test replaces it
 TIMINGS_FLUSH_S = 15  # a reading's samples reach timings.json this long after the first
+# One fixed sentence of about 150 characters per language: the speed sample a
+# warmed engine says once so rtf exists before the first tap (_sample_speed).
+SPEED_SAMPLES = {
+    "en": "The kettle sat on the stove while the rain tapped softly at the window, and nobody in the quiet house felt any need to hurry.",
+    "es": "El agua hervía despacio en la cocina mientras la lluvia golpeaba suavemente la ventana, y nadie en la casa tenía ninguna prisa por moverse.",
+    "fr": "La bouilloire chantait doucement sur le poêle pendant que la pluie tapotait la fenêtre, et personne dans la maison ne semblait pressé.",
+    "it": "L'acqua bolliva lentamente sul fuoco mentre la pioggia batteva piano contro la finestra, e nessuno in casa aveva fretta di muoversi.",
+    "pt": "A chaleira cantava baixinho no fogão enquanto a chuva batia de leve na janela, e ninguém naquela casa tinha qualquer pressa de se mexer.",
+    "hi": "चूल्हे पर रखी केतली धीरे धीरे उबल रही थी और खिड़की पर बारिश की हल्की बूँदें गिर रही थीं, घर में किसी को कोई जल्दी नहीं थी।",
+    "zh": "水壶在炉子上慢慢地烧着，雨点轻轻敲打着窗户，安静的屋子里没有人觉得需要着急，大家都在等着天色慢慢变亮。",
+}
 TEST_DIR = "test"  # a Test's audio, said and deleted, never the cache
 TEST_CHUNKS_MAX = 8  # a Test's reading: a paragraph, as the page chunks it
 # The speeds a Test works out the pauses for: the page's presets and steps
@@ -311,6 +322,8 @@ _HOME_REGION = {"en": "US", "pt": "BR", "zh": "CN", "nb": "NO", "sv": "SE", "da"
 _lock = threading.Lock()  # the engine discovery memo and the download state
 _synth_lock = threading.Lock()  # one synthesis at a time
 _synth_slots = threading.BoundedSemaphore(1 + SYNTH_QUEUE)  # said or waiting
+_synth_waiting = 0  # requests waiting for _synth_lock (under _lock)
+_sampled = {}  # engine -> the fingerprint it was last given a speed sample under
 _found = {}
 _download = {}
 _fetcher = None  # the thread fetching a voice, while one is
@@ -328,6 +341,7 @@ def _reset_for_tests():
         _found.clear()
         _download.clear()
         _failures.clear()
+        _sampled.clear()
         _choices = None
     with _timings_lock:
         _timings = None
@@ -701,8 +715,8 @@ def versions():
 # between releases and or hardware changes or changes to these components)".
 # Per engine: ``first_s``, a first chunk said with its model loaded;
 # ``cold_s``, the same while the model loads; ``rtf``, seconds of work per
-# second of speech. Every sentence read aloud adds a sample, a Test replaces
-# them. Kept under a fingerprint of Zimi's version, the engines and their
+# second of speech; ``cps``, characters said per second of speech. Every
+# sentence read aloud adds a sample, a Test replaces them. Kept under a fingerprint of Zimi's version, the engines and their
 # models, and the machine: any of those changes and they start over.
 
 
@@ -769,7 +783,7 @@ def _timings_now():
 
 
 def timings():
-    """{engine: {"first_s", "cold_s", "rtf", "n"}} measured on this machine,
+    """{engine: {"first_s", "cold_s", "rtf", "cps", "n"}} measured on this machine,
     as far as they are known."""
     with _timings_lock:
         got = json.loads(json.dumps(_timings_now()["engines"]))
@@ -795,6 +809,7 @@ def _note_timing(engine, seconds, audio_s, chars, cold, weight=TIMING_WEIGHT):
             mix("cold_s" if cold else "first_s", seconds)
         if not cold and audio_s >= RTF_MIN_AUDIO_S:
             mix("rtf", seconds / audio_s)
+            mix("cps", chars / audio_s)
         rec["n"] += 1
         _save_timings_soon()
 
@@ -879,6 +894,19 @@ def _rate_key(rate):
     return "%g" % rate  # "1", "1.25": as the page writes its speeds
 
 
+def _acquire_synth(timeout=SYNTH_WAIT_S):
+    """Wait for _synth_lock as a request does; a speed sample starts only
+    while nobody is in this queue. False when it was not got in time."""
+    global _synth_waiting
+    with _lock:
+        _synth_waiting += 1
+    try:
+        return _synth_lock.acquire(timeout=timeout)
+    finally:
+        with _lock:
+            _synth_waiting -= 1
+
+
 def _test_engine(engine, lang, texts):
     """One engine, as a reading uses it: the first chunk with nothing
     loaded, again warm, then the rest back to back. Its timings."""
@@ -886,7 +914,7 @@ def _test_engine(engine, lang, texts):
     if not picked or picked[0] != engine:
         return
     voice = picked[1]
-    if not _synth_lock.acquire(timeout=SYNTH_WAIT_S):
+    if not _acquire_synth():
         raise Busy("waited %ss" % SYNTH_WAIT_S)
     try:
         if engine in DOWNLOADED:
@@ -917,8 +945,13 @@ def _test_engine(engine, lang, texts):
         # The first chunk came after a rest, also for an engine with no
         # model to load (eSpeak): then a rest costs it nothing.
         rec["cold_s"] = round(said[0][0], 3)
+        # The warm first chunk, as _note_timing would take it were it short
+        # enough to count as first words: the Test's is whatever opened its
+        # reading.
+        rec["first_s"] = round(said[1][0], 3)
         if audio:
             rec["rtf"] = round(work / audio, 3)
+            rec["cps"] = round(sum(len(x) for x in texts[1:]) / audio, 3)
         rec["gaps"] = {_rate_key(r): round(_gaps(reading, r), 1) for r in TEST_RATES}
         rec["tested"] = int(time.time())
         _srv_write(t)
@@ -948,7 +981,10 @@ def start_test(lang, chunks):
     None when a Test is already running."""
     if not isinstance(chunks, list) or not 2 <= len(chunks) <= TEST_CHUNKS_MAX:
         return False
-    texts = [clean_text(c, FIRST_CHARS_MAX if not i else SENTENCE_MAX) for i, c in enumerate(chunks)]
+    # Every chunk up to a sentence's length: the page's chunker keeps a first
+    # sentence whole when it has no break to cut at, so it may pass
+    # FIRST_CHARS_MAX (the reading Settings sends opened at 133 characters).
+    texts = [clean_text(c, SENTENCE_MAX) for c in chunks]
     lang = lang if isinstance(lang, str) and valid_lang(lang) else "en"
     if not all(texts):
         return False
@@ -1502,7 +1538,7 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
     if not _synth_slots.acquire(blocking=False):
         raise Busy("queue full")
     try:
-        if not _synth_lock.acquire(timeout=SYNTH_WAIT_S):
+        if not _acquire_synth():
             raise Busy("waited %ss" % SYNTH_WAIT_S)
         try:
             got = _cached(path)  # another request may have said it while we waited
@@ -1632,12 +1668,15 @@ def warm(langs, engine=None):
         req = _request(*picked)
         key = _load_key(req)
         with _workers_lock:
-            if key in worker.loaded or key in worker.warming:
+            if key in worker.loaded:
+                _sample_in_background(picked[0], lang)  # a lock that was busy at the last warm
+                continue
+            if key in worker.warming:
                 continue
             worker.warming.add(key)
         started.append(picked[0])
         threading.Thread(
-            target=_warm_one, args=(worker, req, key), daemon=True, name="voice-warm"
+            target=_warm_one, args=(worker, req, key, lang), daemon=True, name="voice-warm"
         ).start()
     return started
 
@@ -1672,7 +1711,7 @@ def _presay_all(todo):
             pass  # busy or failed now: the tap asks again
 
 
-def _warm_one(worker, req, key):
+def _warm_one(worker, req, key, lang=None):
     timeout = KOKORO_TIMEOUT_S if worker.engine == KOKORO else SYNTH_TIMEOUT_S
     try:
         if worker.ask(req, timeout) == OK:
@@ -1680,6 +1719,60 @@ def _warm_one(worker, req, key):
     finally:
         with _workers_lock:
             worker.warming.discard(key)
+    if lang and key in worker.loaded:
+        _sample_speed(worker.engine, lang)
+
+
+def _speed_sample(engine, lang):
+    """(voice, sentence) for the engine's speed sample in ``lang``, or None:
+    the language's own sentence, else English where the engine speaks it."""
+    for tag in (lang, "en"):
+        text = SPEED_SAMPLES.get(_primary(tag))
+        picked = choose(tag, "", engine) if text else None
+        if picked and picked[0] == engine:
+            return picked[1], text
+    return None
+
+
+def _sample_speed(engine, lang):
+    """Once per engine per fingerprint, when it has no rtf: say one fixed
+    sentence, timed and noted as a reading's is, so Read aloud's first tap
+    has the number. Never ahead of a request: skipped while one waits for
+    the lock or the lock is busy (the next warm tries again); once tried,
+    success or not, left alone until the fingerprint changes. Returns True
+    when it said it."""
+    with _timings_lock:
+        t = _timings_now()
+        fp = t["fp"]
+        if "rtf" in t["engines"].get(engine, {}):
+            return False
+    with _lock:
+        if _sampled.get(engine) == fp or _synth_waiting:
+            return False
+    picked = _speed_sample(engine, lang)
+    if picked is None or not _synth_lock.acquire(blocking=False):
+        return False
+    try:
+        with _lock:
+            if _sampled.get(engine) == fp or _synth_waiting:
+                return False
+            _sampled[engine] = fp
+        os.makedirs(_dir(TEST_DIR), exist_ok=True)
+        out = _dir(TEST_DIR, "%s-speed.wav" % engine)
+        try:
+            return _timed(engine, picked[0], picked[1], out) == OK
+        except Exception as e:  # a sample is a courtesy: it never raises
+            log.debug("Voices: %s speed sample failed: %s", engine, e)
+            return False
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+    finally:
+        _synth_lock.release()
+
+
+def _sample_in_background(engine, lang):
+    threading.Thread(target=_sample_speed, args=(engine, lang), daemon=True, name="voice-sample").start()
 
 
 def _load_key(req):

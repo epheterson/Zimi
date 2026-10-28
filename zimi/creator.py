@@ -730,6 +730,19 @@ def _scan_folder(root):
     yield from _folderfiles.walk(root)
 
 
+# A licence file anywhere in a folder, or a README below its top: reachable (a page can link to it), never one of the
+# ZIM's articles. The folder's own README stays what it is, often the page a documents-only folder opens on.
+_NOTICE_FILE = re.compile(r"(licen[cs]e|copying|notice)([.-][a-z0-9-]+)?(\.(txt|md))?$", re.I)
+_NESTED_README = re.compile(r"readme([.-][a-z0-9-]+)?(\.(txt|md))?$", re.I)
+
+
+def _is_notice_file(zim_path):
+    base = posixpath.basename(zim_path)
+    if base.lower().endswith((".html", ".htm", ".xhtml")):
+        return False  # a page is a page, whatever its name
+    return bool(_NOTICE_FILE.match(base) or ("/" in zim_path and _NESTED_README.match(base)))
+
+
 # Root-level entry-point candidates, best first. Extensionless README is
 # treated as Markdown — that's what it almost always is.
 _MAIN_CANDIDATES = (
@@ -1343,7 +1356,9 @@ def _create_folder_zim(
                 else:
                     content, page_title = _render_markdown_page(text, fallback)
                     page_title = named or page_title
-                part_of_page = zim_path in owned
+                # A licence is served (a page can link to it) but is not an article: it would turn up in
+                # search and in a random pick.
+                part_of_page = zim_path in owned or _is_notice_file(zim_path)
                 creator.add_item(
                     static_cls(
                         zim_path,

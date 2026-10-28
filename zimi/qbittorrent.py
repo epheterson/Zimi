@@ -61,16 +61,29 @@ class Client:
         body = urllib.parse.urlencode(
             {"username": self.user, "password": self.password}
         ).encode()
+        # Up to 5.1 a login answers "Ok." or "Fails." with 200; later versions answer a good one with an empty
+        # 200 and a bad one with 401 (#122). Either way the session cookie is what matters, so a reply that is
+        # neither "Ok." nor "Fails." is proven by one call that needs the session.
         try:
-            out = self._open("auth/login", body, "application/x-www-form-urlencoded")
+            out = self._open("auth/login", body, "application/x-www-form-urlencoded").strip()
         except urllib.error.HTTPError as e:
             if e.code == 403:
                 raise ClientError(
                     "qBittorrent refused the login: too many failed attempts, so it has banned this address for a while"
                 ) from None
+            if e.code == 401:
+                raise ClientError("qBittorrent refused the username or password") from None
             raise
-        if out.strip() != b"Ok.":
+        if out == b"Ok.":
+            return
+        if out == b"Fails.":
             raise ClientError("qBittorrent refused the username or password")
+        try:
+            self._open("app/webapiVersion")
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                raise ClientError("qBittorrent refused the username or password") from None
+            raise
 
     def call(self, path, fields=None, files=None):
         """GET (no fields) or POST form/multipart; returns the body bytes."""

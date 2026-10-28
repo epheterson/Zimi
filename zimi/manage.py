@@ -5894,6 +5894,13 @@ def handle_manage_get(handler, parsed, params):
             {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
         )
 
+    elif parsed.path == "/manage/own-zims":
+        # Zimi's own ZIMs (Almanac, Games) for the Catalog's Zimi group: from
+        # the package, so an offline or air-gapped install lists them too.
+        from zimi import ownzims
+
+        return handler._json(200, {"zims": ownzims.catalog()})
+
     elif parsed.path == "/manage/outbound":
         # "What Zimi fetches from the internet": every destination, what sets
         # it off and whether it is on now. Read-only; each row names the
@@ -7004,12 +7011,36 @@ def handle_manage_post(handler, parsed, data):
             log.error("FTS build failed for %s: %s", zim_name, e)
             return handler._json(500, {"error": "FTS build failed"})
 
+    elif parsed.path == "/manage/own-zims":
+        # Remove one of Zimi's own ZIMs from this server, or add it back from
+        # the Catalog. The file is part of the package and is never deleted.
+        name, gone = data.get("name"), data.get("removed")
+        if not isinstance(gone, bool) or not _srv.set_own_zim_removed(str(name), gone):
+            return handler._json(400, {"error": "name is zimi_games or zimi_almanac, removed is true or false"})
+        log.info("%s %s", "Removed" if gone else "Added back", str(name).replace("\r", "").replace("\n", ""))
+        from zimi import ownzims
+
+        return handler._json(200, {"zims": ownzims.catalog()})
+
     elif parsed.path == "/manage/delete":
         filename = data.get("filename", "")
         if not filename or ".." in filename or "/" in filename:
             return handler._json(400, {"error": "Invalid filename"})
         if not filename.endswith(".zim"):
             return handler._json(400, {"error": "Only .zim files can be deleted"})
+        # One of Zimi's own ZIMs is part of the package: Delete removes it from
+        # this server (the Catalog adds it back) and never touches the file.
+        from zimi import ownzims as _own
+
+        # Only the package's file: a copy of the same name in the library is an
+        # ordinary ZIM (deleted below), unless the package's file holds the name.
+        own_name = _own.name_of_file(filename)
+        served = (_srv.get_zim_files() or {}).get(own_name) if own_name else None
+        if served and not _own.is_own_path(served):
+            own_name = None
+        if own_name:
+            _srv.set_own_zim_removed(own_name, True)
+            return handler._json(200, {"status": "removed", "own": own_name})
         # A ZIM in a SUBFOLDER (everything `zimi create` writes lands in
         # created/, and folders are categories now) is listed by its basename,
         # so joining it onto ZIM_DIR looked in the wrong directory: the delete

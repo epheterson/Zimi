@@ -1520,6 +1520,7 @@ def test_timings_outlive_a_restart_and_start_over_on_a_new_fingerprint(data, mon
     voices._flush_timings()  # what exit does
     voices._reset_for_tests()  # a restart: read back from disk
     assert voices.timings()["kokoro"]["rtf"] == 0.5
+    assert voices.timings()["kokoro"]["cps"] == 50, "how fast it speaks: Read aloud's wait"
     monkeypatch.setattr(voices, "_fingerprint", lambda: "a-new-release-or-machine")
     voices._forget_fingerprint()
     assert voices.timings() == {}
@@ -1574,6 +1575,19 @@ def test_test_all_reads_like_a_reading_and_leaves_the_audio_cache_alone(piper, m
     assert voices.manage_payload()["timings"]["piper"]["gaps"] == got["gaps"]
 
 
+def test_test_all_takes_the_reading_settings_sends_with_a_long_first_sentence(piper):
+    """Settings' reading opens with a 133 character sentence the page's chunker
+    cannot cut: the Test used to refuse it (400, no numbers at all) and, taken,
+    would have left the warm first words empty."""
+    install("en-US")
+    long_first = "Water boils at about 100 degrees at sea level, but at only about 90 degrees at three thousand metres, so food takes longer to cook there."
+    assert len(long_first) > voices.FIRST_CHARS_MAX
+    assert voices.start_test("en", [long_first, SENTENCE]) is True
+    assert _finish_test() == {}
+    got = voices.timings()["piper"]
+    assert got["first_s"] > 0 and got["cold_s"] > 0 and "gaps" in got
+
+
 def test_test_all_says_a_language_the_voice_has(piper):
     install("en-US")
     assert voices.start_test("de", ["Hallo.", "Wasser kocht in den Bergen früher."]) is True  # no German voice: English, for its speed
@@ -1584,7 +1598,7 @@ def test_test_all_says_a_language_the_voice_has(piper):
 def test_test_all_needs_its_texts_and_runs_once_at_a_time(piper):
     install("en-US")
     assert voices.start_test("en", ["", SENTENCE]) is False
-    assert voices.start_test("en", ["x" * (voices.FIRST_CHARS_MAX + 1), SENTENCE]) is False
+    assert voices.start_test("en", ["x" * (voices.SENTENCE_MAX + 1), SENTENCE]) is False
     assert voices.start_test("en", [SENTENCE]) is False, "one chunk is no reading"
     assert voices.start_test("en", [SENTENCE] * (voices.TEST_CHUNKS_MAX + 1)) is False
     assert voices.start_test("en", "Hello. " + SENTENCE) is False, "chunks, not a string"
@@ -1709,3 +1723,114 @@ def test_a_flush_outside_the_timer_disarms_the_timer(data):
     assert voices._timings_timer is None
     armed.join(1)
     assert not armed.is_alive() and armed.finished.is_set(), "the armed timer was cancelled, not left to fire later"
+
+
+# ── the speed sample: rtf before the first tap (#121) ─────────────────────
+
+
+def _warmed(lang="en"):
+    """warm(), and the wait for its worker (and so its sample) to finish."""
+    voices.warm([lang])
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if not any(w.warming for w in voices._workers.values()) and not any(
+            t.name == "voice-warm" and t.is_alive() for t in threading.enumerate()
+        ):
+            return
+        time.sleep(0.02)
+
+
+def test_a_warmed_engine_with_no_rtf_says_one_sentence_and_records_it(worker, monkeypatch):
+    monkeypatch.setattr(voices, "RTF_MIN_AUDIO_S", 0.1)  # the stand-in says a quarter second
+    assert "rtf" not in voices.timings().get("piper", {})
+    _warmed()
+    got = voices.timings()["piper"]
+    assert got["rtf"] > 0 and got["cps"] > 0 and got["n"] == 1
+    assert [x for x in worker() if x.startswith("said")] == ["said " + voices.SPEED_SAMPLES["en"]]
+    assert not os.path.exists(voices._dir(voices.TEST_DIR, "piper-speed.wav"))
+
+
+def test_the_sample_follows_the_rtf_rules_and_is_skipped_when_rtf_exists(worker):
+    # The stand-in's quarter second is under RTF_MIN_AUDIO_S: no rtf, as for a real read.
+    _warmed()
+    assert "rtf" not in voices.timings()["piper"]
+    said_before = len([x for x in worker() if x.startswith("said")])
+    voices._reset_for_tests()
+    voices._note_timing("piper", 2.0, 4.0, 200, cold=False)
+    _warmed()
+    assert len([x for x in worker() if x.startswith("said")]) == said_before, "a number exists: nothing is said"
+
+
+def test_the_sample_is_skipped_while_the_lock_is_busy_and_tried_again_at_the_next_warm(worker, monkeypatch):
+    monkeypatch.setattr(voices, "RTF_MIN_AUDIO_S", 0.1)
+    voices._synth_lock.acquire()
+    try:
+        _warmed()
+        assert "rtf" not in voices.timings().get("piper", {})
+        assert [x for x in worker() if x.startswith("said")] == []
+    finally:
+        voices._synth_lock.release()
+    _warmed()  # already loaded: the warm still looks for the missing number
+    deadline = time.time() + 10
+    while time.time() < deadline and "rtf" not in voices.timings().get("piper", {}):
+        time.sleep(0.02)
+    assert voices.timings()["piper"]["rtf"] > 0
+
+
+def test_a_failed_sample_is_not_repeated_under_the_same_fingerprint(piper, monkeypatch):
+    install("en-US")
+    calls = []
+    monkeypatch.setattr(voices, "_timed", lambda *a, **k: calls.append(a) or voices.FAILED)
+    assert voices._sample_speed("piper", "en") is False
+    assert voices._sample_speed("piper", "en") is False
+    assert len(calls) == 1, "remembered until the next fingerprint"
+    monkeypatch.setattr(voices, "_fingerprint", lambda: "another version")
+    voices._forget_fingerprint()
+    voices._sample_speed("piper", "en")
+    assert len(calls) == 2
+
+
+def test_a_sample_never_starts_ahead_of_a_queued_request_and_never_delays_one(piper, monkeypatch):
+    install("en-US")
+    calls = []
+    monkeypatch.setattr(voices, "_timed", lambda *a, **k: calls.append(a) or voices.OK)
+    voices._synth_lock.acquire()  # a synthesis is under way
+    queued = threading.Thread(target=lambda: voices._acquire_synth(5), daemon=True)
+    queued.start()
+    while not voices._synth_waiting:
+        time.sleep(0.005)
+    voices._synth_lock.release()  # the request is about to take it; a sample must not barge in
+    start = time.monotonic()
+    assert voices._sample_speed("piper", "en") is False and not calls
+    queued.join(5)
+    voices._synth_lock.release()
+    assert time.monotonic() - start < 1
+    assert voices._sample_speed("piper", "en") is True, "nobody waiting: it runs"
+
+
+def test_a_sample_in_progress_costs_a_request_only_its_own_time(piper, monkeypatch):
+    """The stated cost: a request that arrives mid-sample waits for the lock
+    as before, and then goes first in line (nothing else is queued)."""
+    install("en-US")
+    gate = threading.Event()
+    monkeypatch.setattr(voices, "_timed", lambda *a, **k: gate.wait(5) and voices.OK)
+    t = threading.Thread(target=voices._sample_speed, args=("piper", "en"), daemon=True)
+    t.start()
+    while not voices._synth_lock.locked():
+        time.sleep(0.005)
+    got = []
+    r = threading.Thread(target=lambda: got.append(voices._acquire_synth(5)), daemon=True)
+    r.start()
+    gate.set()
+    r.join(5)
+    assert got == [True]
+    voices._synth_lock.release()
+
+
+def test_a_sample_is_said_in_the_voices_language_with_english_only_where_it_speaks_it(piper):
+    install("en-US")
+    assert voices._speed_sample("piper", "en-GB")[1] == voices.SPEED_SAMPLES["en"]
+    assert voices._speed_sample("piper", "fr")[1] == voices.SPEED_SAMPLES["en"], "no French voice: English, which Piper speaks"
+    assert voices._speed_sample("piper", "xx") is None or voices._speed_sample("piper", "xx")[1]
+    assert voices._speed_sample("espeak", "en") is None, "an engine that is not here says nothing"
+    assert all(100 <= len(s) <= 160 or p == "zh" for p, s in voices.SPEED_SAMPLES.items())

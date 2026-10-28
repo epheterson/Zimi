@@ -1932,6 +1932,21 @@ def offline_catalog():
     return [], "none", ""
 
 
+def _offline_catalog_stamp():
+    """Epoch seconds of the catalog offline_catalog() would hand back: when the
+    cache was fetched, or the snapshot's build date. 0 when unknown."""
+    _items, fetched_at = _load_full_catalog()
+    if _items and fetched_at:
+        return fetched_at
+    _items, source, as_of = offline_catalog()
+    if source == "snapshot" and as_of:
+        try:
+            return datetime.datetime.fromisoformat(as_of).timestamp()
+        except ValueError:
+            pass
+    return 0
+
+
 def _offline_catalog_matching(query):
     """The catalog on disk (or the package's snapshot), narrowed to `query`."""
     items, _source, _as_of = offline_catalog()
@@ -2011,7 +2026,7 @@ def _fetch_kiwix_catalog(
         # and cached why did it take a while when I clicked maps").
         fallback = _offline_catalog_matching(query)
         if fallback:
-            _catalog_stale_ts = _catalog_stale_ts or time.time()
+            _catalog_stale_ts = _offline_catalog_stamp() or time.time()
             _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
             return len(fallback), fallback[start : start + count], None
 

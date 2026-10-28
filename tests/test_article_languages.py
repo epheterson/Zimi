@@ -966,6 +966,36 @@ class TestAPIResponse:
         assert "error" in data
 
 
+def _server_has_the_inventory():
+    """True only when the server answers and holds every ZIM this file names.
+
+    The file is written against the NAS's Wikipedia set. No server, or a stray
+    local one with other ZIMs, is a machine this suite cannot judge: skip.
+    """
+    try:
+        if USE_SSH:
+            base = _HOST_MAP["nas"]
+            out = subprocess.check_output(
+                f"ssh {SSH_ALIAS} \"curl -s -m 5 '{base}/list'\"", shell=True, timeout=20
+            ).decode()
+            data = json.loads(out)
+        else:
+            base = _HOST_MAP.get(TEST_HOST, f"http://{TEST_HOST}")
+            with urllib.request.urlopen(f"{base}/list", timeout=5) as resp:
+                data = json.loads(resp.read())
+    except Exception:
+        return False
+    items = data if isinstance(data, list) else data.get("zims", []) if isinstance(data, dict) else []
+    names = {z.get("name") for z in items if isinstance(z, dict)}
+    return set(ZIMS.values()) <= names
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _needs_the_nas_inventory():
+    if not _server_has_the_inventory():
+        pytest.skip("no server at the test host with the Wikipedia ZIM inventory this file is written against")
+
+
 # ---------------------------------------------------------------------------
 # Summary fixture
 # ---------------------------------------------------------------------------
