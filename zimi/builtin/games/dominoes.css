@@ -1,0 +1,49 @@
+/* Dominoes: ivory tiles on felt. The chain wraps like a snake, so it never needs sideways scrolling. */
+:root { --dm-tile: #fbf7ea; --dm-tile-edge: #b9b09a; --dm-pip: var(--disc-b); --dm-back: #5a554e; --dm-hs: 38px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --dm-tile: #e6e0cc; --dm-tile-edge: #7d745f; --dm-back: #6a655d; } }
+:root[data-theme="dark"] { --dm-tile: #e6e0cc; --dm-tile-edge: #7d745f; --dm-back: #6a655d; }
+@media (min-width: 700px) { :root { --dm-hs: 46px; } }
+
+.dm-main { width: 100%; max-width: 640px; margin: 0 auto; }
+/* The chips are the shared pills (world.css); the others' tile counts follow the points with a small tile. */
+.dm-scores { flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
+.dm-scores .wk-who { gap: 4px; padding: 0 var(--sp-2); }
+.dm-tl { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.dm-tl::before { content: ""; width: 7px; height: 12px; border-radius: 2px; background: var(--dm-back); border: 1px solid rgba(0, 0, 0, 0.3); }
+.dm-sep { opacity: 0.5; }
+
+.dm-table { width: 100%; min-height: 150px; padding: 10px 8px; border-radius: 14px; background: radial-gradient(circle at 50% 35%, var(--felt), var(--felt-deep)); box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.dm-empty { margin: 0; text-align: center; color: var(--disc-w); opacity: 0.7; }
+.dm-row { display: flex; align-items: center; gap: 0; }
+.dm-row.rev { flex-direction: row-reverse; }
+.dm-row:only-child { justify-content: center; }
+
+.dm-tile { --s: 24px; display: flex; flex: none; width: calc(var(--s) * 2); height: var(--s); border-radius: 5px; background: var(--dm-tile); border: 1px solid var(--dm-tile-edge); box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4); overflow: hidden; }
+.dm-table .dm-tile { --s: inherit; }
+.dm-table .dm-tile { width: calc(var(--s) * 2); height: var(--s); margin: 0 -0.5px; }
+.dm-table .dm-tile.double { flex-direction: column; width: var(--s); height: calc(var(--s) * 2); }
+.dm-row.rev .dm-tile:not(.double) { flex-direction: row-reverse; }
+.dm-half { flex: 1; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 13%; }
+.dm-half + .dm-half { border-left: 1.5px solid var(--dm-tile-edge); }
+.dm-tile.double .dm-half + .dm-half, .dm-tile.vert .dm-half + .dm-half { border-left: 0; border-top: 1.5px solid var(--dm-tile-edge); }
+.dm-row.rev .dm-tile:not(.double) .dm-half + .dm-half { border-left: 0; border-right: 1.5px solid var(--dm-tile-edge); }
+.dm-half i { border-radius: 50%; }
+.dm-half i.on { background: var(--dm-pip); box-shadow: inset 0 -0.5px 1px rgba(255, 255, 255, 0.3); }
+.dm-tile.last { outline: 2px solid var(--select-ring); outline-offset: 1px; z-index: 1; }
+.dm-tile.endL .dm-half:first-child, .dm-tile.endR .dm-half:last-child { background: color-mix(in srgb, var(--select-ring) 22%, transparent); }
+.dm-tile.ghost { width: calc(var(--s) * 2); height: var(--s); background: transparent; border: 2px dashed var(--select-ring); color: var(--disc-w); font: 700 var(--fs-small) var(--font); box-shadow: none; cursor: pointer; align-items: center; justify-content: center; }
+.dm-tile.ghost:hover { background: rgba(255, 255, 255, 0.15); }
+.dm-tile.ghost:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 2px; }
+
+.dm-mine { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+.dm-hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: calc(var(--dm-hs) * 2 + 8px); }
+.dm-card { padding: 3px; border: 2px solid transparent; border-radius: var(--radius); background: transparent; cursor: pointer; }
+.dm-card:disabled, .dm-card[aria-disabled="true"] { cursor: default; opacity: 0.5; }
+.dm-card.can { border-color: color-mix(in srgb, var(--select-ring) 55%, transparent); }
+.dm-card.sel { border-color: var(--select-ring); background: color-mix(in srgb, var(--select-ring) 25%, transparent); transform: translateY(-4px); }
+.dm-card:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 2px; }
+.dm-card .dm-tile { --s: var(--dm-hs); width: var(--dm-hs); height: calc(var(--dm-hs) * 2); flex-direction: column; border-radius: 6px; }
+.dm-tally { font-weight: 600; font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--ink2); }
+@media (prefers-reduced-motion: reduce) { .dm-card.sel { transform: none; } }
+html[data-anim="off"] .dm-card.sel { transform: none; }
+.dm-tile.dm-hidden { background: var(--dm-back); }

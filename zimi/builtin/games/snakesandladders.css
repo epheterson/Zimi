@@ -1,0 +1,26 @@
+/* Snakes and Ladders: a plain pale board, ladders as rails and rungs, snakes as swinging ribbons, geometric tokens. */
+:root { --sl-a: #f4ecd2; --sl-b: #e6dcb8; --sl-edge: #a98d56; --sl-num: #7a6a45; --sl-ladder: #8a5a2b; --sl-start: #cfe3c8; --sl-end: #f4d98a; --sl-strip: #d9c9a3; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sl-a: #8b8260; --sl-b: #787052; --sl-edge: #2c2416; --sl-num: #2f2a1c; --sl-ladder: #d9a36a; --sl-start: #5d7a56; --sl-end: #b59a3c; --sl-strip: #4a3f2c; } }
+:root[data-theme="dark"] { --sl-a: #8b8260; --sl-b: #787052; --sl-edge: #2c2416; --sl-num: #2f2a1c; --sl-ladder: #d9a36a; --sl-start: #5d7a56; --sl-end: #b59a3c; --sl-strip: #4a3f2c; }
+
+.sl-board { --bs: min(100vw - 24px, 100svh - 330px, 560px); border-radius: var(--r-sheet); overflow: hidden; }
+.sl-sq { fill: var(--sl-a); stroke: var(--sl-edge); stroke-width: 1.2; }
+.sl-sq.alt { fill: var(--sl-b); } .sl-sq.start { fill: var(--sl-start); } .sl-sq.end { fill: var(--sl-end); }
+.sl-n { font: 700 11px var(--font); fill: var(--sl-num); paint-order: stroke; stroke: var(--sl-a); stroke-width: 3.2px; stroke-linejoin: round; }
+.bg-score { flex-wrap: wrap; justify-content: center; }
+.sl-strip { fill: var(--sl-strip); }
+.sl-start { font: 700 13px var(--font); letter-spacing: 0.12em; fill: var(--ink2); }
+.sl-ladder { fill: none; stroke: var(--sl-ladder); stroke-width: 4; stroke-linecap: round; opacity: 0.95; }
+.sl-star { fill: #fff6dc; stroke: #8a6410; stroke-width: 2; }
+.sl-token { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45)); }
+/* The die is the roll button: tap it. It is a material (an ivory die with black pips) and has the shared focus ring. */
+.sl-roll { display: flex; align-items: center; justify-content: center; min-height: 76px; }
+.sl-dieb { padding: var(--sp-1); border: 0; border-radius: var(--radius); background: none; cursor: pointer; touch-action: manipulation; }
+.sl-dieb:disabled { cursor: default; }
+.sl-dieb:not(:disabled) .sl-die { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.sl-die { display: block; width: 64px; height: 64px; }
+.sl-die rect { fill: var(--card); stroke: var(--card-edge); stroke-width: 3; }
+.sl-die circle { fill: var(--suit-black); }
+.sl-die.tumble { animation: sl-tumble 0.16s linear infinite; }
+@keyframes sl-tumble { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .sl-die.tumble { animation: none; } }

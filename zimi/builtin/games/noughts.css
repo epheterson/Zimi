@@ -1,0 +1,10 @@
+/* Tic-Tac-Toe: the board. A cross is two strokes and a nought a ring, so the marks differ by shape. */
+.nc-board { display: grid; grid-template-columns: repeat(3, var(--nc, 104px)); grid-auto-rows: var(--nc, 104px); gap: var(--sp-2); --nc: min(104px, calc((100vw - 64px) / 3)); }
+.nc-cell { position: relative; padding: 0; border: 2px solid var(--line); border-radius: var(--r-sheet); background: var(--surface); cursor: pointer; touch-action: manipulation; }
+.nc-cell:not([aria-disabled="true"]):hover { border-color: var(--accent); }
+.nc-cell[aria-disabled="true"] { cursor: default; }
+.nc-cell[data-m="X"]::before, .nc-cell[data-m="X"]::after { content: ""; position: absolute; left: 22%; right: 22%; top: calc(50% - 5px); height: 10px; border-radius: 5px; background: var(--g-red); transform: rotate(45deg); }
+.nc-cell[data-m="X"]::after { transform: rotate(-45deg); }
+.nc-cell[data-m="O"]::before { content: ""; position: absolute; inset: 20%; border: 10px solid var(--g-blue); border-radius: 50%; }
+.nc-cell.nc-win { border-color: var(--accent); box-shadow: var(--select); }
+@media (prefers-reduced-motion: no-preference) { .nc-cell[data-m] { animation: nc-pop 0.14s ease-out; } @keyframes nc-pop { from { transform: scale(0.88); } to { transform: scale(1); } } }

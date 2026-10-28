@@ -1,0 +1,28 @@
+/* Fleet: two grids of squares. A hit is a cross, a miss a dot, a ship a solid block: no colour alone. */
+.fl-board { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fl-board[hidden] { display: none; }
+.fl-board h2 { margin: 0; font-size: var(--fs-small); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink2); }
+.fl-grid { --cs: min(34px, calc((100vw - 40px) / 10)); display: grid; grid-template-columns: repeat(10, var(--cs)); grid-auto-rows: var(--cs); gap: 1px; padding: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.fl-grid.fl-small { --cs: 17px; }
+.fl-grid.fl-small .fl-c::before { transform: scale(0.8); }
+.fl-c { position: relative; display: block; padding: 0; border: 0; border-radius: 0; background: #cfe3ee; cursor: pointer; touch-action: manipulation; }
+:root[data-theme="dark"] .fl-c { background: #1e3a4c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fl-c { background: #1e3a4c; } }
+.fl-c:disabled { cursor: default; }
+.fl-c.fl-ship { background: #5e5953; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25); }
+.fl-c.fl-ghost { background: #8a857d; }
+.fl-c.fl-bad { background: #e0b4b0; }
+.fl-c.fl-miss::before { content: ""; position: absolute; left: 50%; top: 50%; width: 38%; height: 38%; margin: -19% 0 0 -19%; border-radius: 50%; background: var(--disc-w); box-shadow: 0 0 0 1.5px #7a766e; }
+.fl-c.fl-hit::before, .fl-c.fl-hit::after { content: ""; position: absolute; left: 15%; right: 15%; top: calc(50% - 1.5px); height: 3px; background: #c62828; border-radius: 2px; transform: rotate(45deg); }
+.fl-c.fl-hit::after { transform: rotate(-45deg); }
+.fl-c.fl-sunk { background: #35322e; }
+.fl-c.fl-sunk::before, .fl-c.fl-sunk::after { background: #ff8a80; }
+.fl-c.fl-last { box-shadow: inset 0 0 0 2px var(--select-ring); }
+.fl-grid.fl-aim .fl-c:not(:disabled):hover { box-shadow: inset 0 0 0 2px var(--select-ring); }
+.fl-tray, .fl-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 420px; }
+.fl-tray { max-width: 300px; }   /* five ships wrap three and two, not four and one */
+.fl-tray:empty, .fl-tools:empty { display: none; }
+.fl-tray .ar-btn[aria-pressed="true"], .fl-tools .ar-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.fl-tray .ar-btn.fl-done { text-decoration: line-through; opacity: 0.6; }
+.fl-ships { margin: 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.fl-ships s { color: var(--ink3); }

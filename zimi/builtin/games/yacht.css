@@ -1,0 +1,25 @@
+/* Yacht: the score card. Dice and buttons come from play.css. */
+.yc-card { border-collapse: collapse; width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: var(--fs-small); }
+.yc-card th, .yc-card td { padding: 0; border-bottom: 1px solid var(--line); text-align: right; height: 34px; }
+.yc-card th[scope="row"] { text-align: left; padding: 0 10px; font-weight: 500; }
+.yc-card thead th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink3); text-align: center; height: 30px; }
+.yc-card thead th.yc-turn { color: var(--accent); }
+.yc-card td { text-align: center; min-width: 54px; font: 600 var(--fs-small) var(--mono); font-variant-numeric: tabular-nums; }
+.yc-card td.yc-open { padding: 0; }
+.yc-card td button { width: 100%; height: 34px; border: 0; background: transparent; font: inherit; color: var(--ink3); cursor: pointer; }
+.yc-card td button.yc-can { color: var(--accent); background: rgba(217, 119, 6, 0.1); }
+.yc-card td button.yc-can:hover, .yc-card td button.yc-can:focus-visible { background: var(--accent); color: var(--accent-ink); }
+.yc-card td button:disabled { cursor: default; }
+.yc-card tr.yc-sum th, .yc-card tr.yc-sum td { background: var(--ground); color: var(--ink2); font-size: 13px; }
+.yc-card tr.yc-total th, .yc-card tr.yc-total td { background: var(--ground); font-size: 15px; font-weight: 700; color: var(--ink); }
+.yc-roll { min-width: 96px; min-height: 44px; font-weight: 650; }
+.yc-dice-gap { height: 12px; }
+#yc-dice { min-height: 70px; padding-top: 10px; --die-size: 54px; }
+@media (max-width: 380px) { #yc-dice { --die-size: 50px; gap: 6px; } }
+.yc-card td.yc-fresh { animation: yc-pulse 900ms ease-out; }
+.pl-die.yc-tumble { animation: yc-tumble 320ms ease-out; }
+@keyframes yc-pulse { from { background: var(--accent-line); } }
+@keyframes yc-tumble { 0% { transform: translateY(-14px) rotate(-24deg) scale(0.9); } 60% { transform: translateY(2px) rotate(8deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .yc-card td.yc-fresh, .pl-die.yc-tumble { animation: none; } }
+.yc-card td.yc-fresh { background: var(--accent-glow); }
+.pl-die[aria-disabled="true"] { cursor: default; }

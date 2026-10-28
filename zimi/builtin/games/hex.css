@@ -1,0 +1,18 @@
+/* Hex: pale cells on a warm board, red sides upper right and lower left, blue sides upper left and lower right. */
+:root { --hx-cell: #ece6d9; --hx-line: #a79e8b; --hx-red: #bd594f; --hx-blue: #5172b1; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --hx-cell: #2d2a26; --hx-line: #11100e; --hx-red: #c9695f; --hx-blue: #6d8ec3; } }
+:root[data-theme="dark"] { --hx-cell: #2d2a26; --hx-line: #11100e; --hx-red: #c9695f; --hx-blue: #6d8ec3; }
+
+.hx-board { --bs: min(100vw - 12px, (100svh - 205px) * var(--ratio, 0.6), 640px); }
+.hx-cell { fill: var(--hx-cell); stroke: var(--hx-line); stroke-width: 1.4; stroke-linejoin: round; }
+.hx-cell.s1 { fill: var(--hx-red); stroke: rgba(0, 0, 0, 0.35); }
+.hx-cell.s2 { fill: var(--hx-blue); stroke: rgba(0, 0, 0, 0.35); }
+.hx-side { fill: none; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
+.hx-side.r { stroke: var(--hx-red); }
+.hx-side.b { stroke: var(--hx-blue); }
+.hx-last { fill: none; stroke: var(--disc-w); stroke-width: 3; }
+.hx-last-ring { fill: none; stroke: var(--disc-w); stroke-width: 2; opacity: 0.9; }
+.hx-path { fill: none; stroke: var(--disc-w); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+.hx-win { fill: var(--disc-w); stroke: rgba(0, 0, 0, 0.4); stroke-width: 1; }
+.hx-hint { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 5 3; }
+.hx-pt:hover:not([aria-disabled="true"]) { background: var(--legal); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }

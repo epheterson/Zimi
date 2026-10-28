@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yacht - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="yacht.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.yacht.title">Yacht</h1>
+  <button class="ar-btn" id="yc-new" type="button" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-row" id="yc-dice" role="group" data-t-aria="yacht.dice.aria" aria-label="Your dice. Tap a die to keep it."></div>
+  <div class="pl-row">
+    <button class="ar-btn yc-roll" id="yc-roll" type="button" aria-pressed="true" data-t="backgammon.roll">Roll</button>
+    <span class="ar-stat" id="yc-rolls" aria-live="polite"></span>
+  </div>
+  <p class="pl-msg" id="yc-msg" role="status" aria-live="polite"></p>
+  <table class="yc-card" id="yc-card"><caption class="pl-sr" data-t="yacht.card.aria">Score card. Tap a row in your column to score it.</caption></table>
+  <p class="pl-help" data-t="yacht.help">Roll up to 3 times a turn, keeping the dice you tap (or keys 1 to 5). Space rolls. Then score one open row. Three of a kind, Four of a kind, Full house and Choice score the total of all 5 dice. The straights score 30 and a Yacht 50. A total of 63 or more in the top 6 rows earns 35.</p>
+</main>
+
+<div class="ar-sheet" id="yc-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="yc-sheet-title">
+  <div class="ar-sheet-card">
+    <h2 id="yc-sheet-title" data-t="game.yacht.title">Yacht</h2>
+    <p id="yc-sheet-text" data-t="yacht.intro">13 rows, 13 turns. Play alone for a high score, or against computers.</p>
+    <p class="pl-row"><span id="yc-opp-label" data-t="seats.players">Players</span><span class="pl-seg" id="yc-opp" role="group" aria-labelledby="yc-opp-label"></span></p>
+    <div id="yc-seats"></div>
+    <div class="ar-sheet-actions"><button class="ar-btn" id="yc-go" type="button" aria-pressed="true" data-t="shell.start">Start</button></div>
+  </div>
+</div>
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="handoff.js"></script>
+<script src="yacht.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q8046426">About Yacht</a></footer><!-- /zimi-about -->
+</body>
+</html>

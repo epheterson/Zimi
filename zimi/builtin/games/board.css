@@ -1,0 +1,72 @@
+/* ZimiGames: what the board games share. Tokens come from games.css. */
+/* Boards: wood is a frame (one pair, games.css --wood), squares are a material. The select and legal tokens
+   (games.css --select, --legal) are what every board draws its selection and its moves with. */
+:root {
+  --sq-light: #ecd9b0; --sq-dark: #a97d50; --sq-edge: var(--wood-dark);
+  --sel: rgba(245, 158, 11, 0.5); --last: rgba(245, 158, 11, 0.34); --hint: var(--legal); --danger: #b3261e;
+  --disc-b: #1e2430; --disc-w: #f6f3ea; --disc-edge: rgba(0, 0, 0, 0.35);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --sq-light: #a89a7e; --sq-dark: #5d4630; --sel: rgba(245, 158, 11, 0.55); --danger: #ef5350; --disc-b: #0b0d12; --disc-w: #e4e0d4; --disc-edge: rgba(0, 0, 0, 0.6); }
+}
+:root[data-theme="dark"] { --sq-light: #a89a7e; --sq-dark: #5d4630; --sel: rgba(245, 158, 11, 0.55); --danger: #ef5350; --disc-b: #0b0d12; --disc-w: #e4e0d4; --disc-edge: rgba(0, 0, 0, 0.6); }
+
+.bg-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--gutter) var(--sp-5); }
+.bg-status { min-height: 1.5em; margin: 0; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.bg-score { display: flex; gap: var(--sp-3); align-items: center; font: 600 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; color: var(--ink2); }
+.bg-score b { color: var(--ink); }
+.bg-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; border: 1px solid var(--disc-edge); }
+.bg-dot.b { background: var(--disc-b); } .bg-dot.w { background: var(--disc-w); }
+.bg-help { margin: 0; max-width: 46ch; text-align: center; font-size: var(--fs-small); color: var(--ink2); }
+.bg-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: bg-spin 0.8s linear infinite; }
+@keyframes bg-spin { to { transform: rotate(360deg); } }
+
+/* The square board: as wide as the room allows, never taller than the screen. */
+.bg-main, .bg-board { --bs: min(100vw - 2 * var(--gutter), 100svh - var(--bs-chrome, 220px), var(--board-max)); }
+.bg-board { width: var(--bs); height: var(--bs); display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border: 3px solid var(--sq-edge); border-radius: 4px; user-select: none; -webkit-user-select: none; touch-action: manipulation; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+.bg-sq { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: var(--sq-light); cursor: pointer; }
+.bg-sq.dk { background: var(--sq-dark); }
+.bg-sq::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: transparent; }
+.bg-sq.last::before { background: var(--last); }
+.bg-sq.sel::before { background: var(--sel); }
+/* Selection is two rings, so it reads on any wood: a 3px amber ring over a dark 1px stroke inside it (games.css --select, inset). */
+.bg-sq.sel { box-shadow: inset 0 0 0 3px var(--select-ring), inset 0 0 0 4px rgba(26, 18, 9, 0.85); }
+.bg-sq:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
+.bg-sq.hint::after { content: ""; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: var(--legal); pointer-events: none; }
+.bg-sq.hint.cap::after { width: 86%; height: 86%; background: transparent; border: 4px solid var(--legal); }
+.bg-sq.bad::before { background: radial-gradient(circle, rgba(229, 57, 53, 0.85), rgba(229, 57, 53, 0) 72%); }
+
+/* Controls row and result lines. */
+.bg-controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.bg-stats { margin: 0; font: var(--fs-small) var(--font); color: var(--ink2); text-align: center; }
+.bg-stats[hidden] { display: none; }
+
+/* Sheets: option chips. */
+.bg-field { border: 0; margin: 0 0 14px; padding: 0; min-width: 0; }
+.bg-field legend { padding: 0; margin-bottom: 6px; font-size: var(--fs-small); font-weight: 600; color: var(--ink2); }
+.bg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bg-chip { position: relative; }
+.bg-chip input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.bg-chip span { display: flex; align-items: center; justify-content: center; min-height: var(--target); padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.bg-chip input:checked + span { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; }
+.bg-chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bg-check { display: flex; align-items: center; gap: 8px; min-height: var(--target); margin: 0 0 8px; font-size: var(--fs-body); }
+.bg-note { margin: 0 0 8px; font-size: var(--fs-small); color: var(--ink2); }
+
+/* A board page that spends the whole screen on the game (the chess family): the status, then the board at the full width, the
+   actions in a row directly under it, and the quiet lines and the move list in the room below. */
+.bg-main.is-rail { --bs-chrome: 330px; gap: var(--sp-2); min-height: calc(100svh - var(--bar-h)); }
+.is-rail > :is(.bg-controls, .bg-stats, .bu-quiet, .bg-status) { width: var(--bs); }
+.is-rail .bg-status { min-height: 1.5em; }
+.is-rail .bg-controls { flex-wrap: nowrap; }
+.is-rail .bg-controls .ar-btn { flex: 1 1 0; min-width: 0; }
+/* A strip over or under the board: the pieces that side has taken, a small icon each, and how far ahead it is. */
+.bg-caps { display: flex; align-items: center; gap: 1px; width: var(--bs); height: 28px; padding: 0 var(--sp-2); box-sizing: border-box; border-radius: 6px; background: var(--sq-light); font: 600 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; color: var(--ink2); }
+.bg-caps { color: #2b2118; }
+.bg-caps svg { width: 22px; height: 22px; margin-right: -7px; flex: none; }
+.bg-caps svg:last-of-type { margin-right: 0; }
+.bg-caps svg.gap { margin-left: 10px; }
+.bg-who { margin-right: var(--sp-2); font-weight: 650; color: #2b2118; }
+.bg-caps b { margin-left: var(--sp-2); font-weight: 650; }
+
+@media (max-width: 420px) { .bg-main { padding: var(--sp-2) var(--sp-3) var(--sp-5); } }

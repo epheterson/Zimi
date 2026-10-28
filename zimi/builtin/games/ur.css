@@ -1,0 +1,32 @@
+/* The Royal Game of Ur: our own drawn board (cut stone squares, a gold star on the rosettes), blue and red pieces, four tetrahedral dice. */
+:root { --ur-ground: #d9c9a3; --ur-sq: #efe3c4; --ur-sq-edge: #a98d56; --ur-blue: #3d5f9c; --ur-blue-lo: #2f4572; --ur-red: #a94a3b; --ur-red-lo: #7c352b; --ur-gold: #d49a1a; --ur-tint-b: rgba(47, 90, 168, 0.2); --ur-tint-r: rgba(181, 64, 47, 0.2); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ur-ground: #4a3f2c; --ur-sq: #a89870; --ur-sq-edge: #2c2416; --ur-blue: #5377b9; --ur-red: #c15d51; } }
+:root[data-theme="dark"] { --ur-ground: #4a3f2c; --ur-sq: #a89870; --ur-sq-edge: #2c2416; --ur-blue: #5377b9; --ur-red: #c15d51; }
+
+.ur-board { --bs: min(100vw - 24px, 760px); border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); }
+.ur-sq { fill: var(--ur-sq); stroke: var(--ur-sq-edge); stroke-width: 3; }
+.ur-sq.b { fill: color-mix(in srgb, var(--ur-sq) 66%, var(--ur-blue)); } .ur-sq.r { fill: color-mix(in srgb, var(--ur-sq) 66%, var(--ur-red)); }
+.ur-star { fill: var(--ur-gold); stroke: rgba(0, 0, 0, 0.28); stroke-width: 1.5; }
+.ur-mark { fill: none; stroke: var(--ur-sq-edge); stroke-width: 2.5; stroke-linecap: round; opacity: 0.55; }
+.ur-slot { fill: rgba(0, 0, 0, 0.1); stroke: var(--ur-sq-edge); stroke-width: 1.5; }
+.ur-hl { fill: none; stroke: var(--select-ring); stroke-width: 6; }
+.ur-hl.src { stroke: var(--select-ring); }
+.ur-hl.last { stroke: var(--select-ring); stroke-width: 4; stroke-dasharray: 10 8; }
+.ur-hl.tip { stroke: var(--select-ring); stroke-dasharray: 4 6; }
+.ur-pc.b { fill: var(--ur-blue); stroke: var(--ur-blue-lo); } .ur-pc.r { fill: var(--ur-red); stroke: var(--ur-red-lo); }
+.ur-pc { stroke-width: 3; filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.4)); }
+.ur-pc-ring { fill: none; stroke: var(--disc-w); stroke-opacity: 0.55; stroke-width: 3; }
+.ur-pt { border-radius: var(--r-chip); }
+
+.ur-dice { display: flex; align-items: center; gap: 10px; min-height: 58px; }
+.ur-die { width: 48px; height: 48px; }
+.ur-die polygon { fill: var(--disc-w); stroke: #8c8880; stroke-width: 2.5; stroke-linejoin: round; }
+.ur-die circle { fill: var(--disc-b); }
+.ur-die.up polygon { fill: #fff6dc; stroke: var(--ur-gold); }
+.ur-die.up circle { fill: #c0392b; }
+.ur-die.tumble { animation: ur-tumble 0.14s linear infinite; }
+@keyframes ur-tumble { from { transform: rotate(-14deg) translateY(-2px); } to { transform: rotate(14deg) translateY(2px); } }
+.ur-total { min-width: 2ch; padding-left: 4px; font: 800 var(--fs-display) var(--mono); color: var(--ink); text-align: center; }
+@media (prefers-reduced-motion: reduce) { .ur-die.tumble { animation: none; } }
+html[data-anim="off"] .ur-die.tumble { animation: none; }
+@media (max-width: 420px) { .ur-die { width: 42px; height: 42px; } .ur-dice { gap: 6px; } }

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tic-Tac-Toe - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="noughts.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>Tic-Tac-Toe</h1>
+  <button class="ar-btn" id="nc-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small id="nc-a-name">You</small><b id="nc-a">0</b></div>
+    <div class="pl-stat"><small data-t="noughts.draws">Draws</small><b id="nc-d">0</b></div>
+    <div class="pl-stat"><small id="nc-b-name">Zimi</small><b id="nc-b">0</b></div>
+  </div>
+  <p class="pl-msg" id="nc-msg"></p>
+  <div class="nc-board" id="nc-board" role="grid" aria-label="The board, three by three" data-t-aria="noughts.board"></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="noughts.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q210339">About Tic-Tac-Toe</a></footer><!-- /zimi-about -->
+</body>
+</html>

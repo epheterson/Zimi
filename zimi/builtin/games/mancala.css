@@ -1,0 +1,16 @@
+/* Mancala: a carved wooden board, round pits, seeds in four colours. */
+:root { --mc-wood: #b8804a; --mc-pit: #6e4524; --mc-pit-hi: #8a5a31; --mc-count: #fdf3e0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --mc-wood: #6f4a2b; --mc-pit: #2c1b0e; --mc-pit-hi: #3d2815; --mc-count: #f3e2c4; } }
+:root[data-theme="dark"] { --mc-wood: #6f4a2b; --mc-pit: #2c1b0e; --mc-pit-hi: #3d2815; --mc-count: #f3e2c4; }
+
+.mc-board { --bs: min(100vw - 16px, 640px); }
+.mc-wood { fill: var(--mc-wood); }
+.mc-pit { fill: var(--mc-pit); stroke: rgba(0, 0, 0, 0.35); stroke-width: 2; }
+.mc-seed { stroke: rgba(0, 0, 0, 0.35); stroke-width: 0.8; }
+.mc-count { font: 700 13px var(--mono); fill: var(--mc-count); paint-order: stroke; stroke: rgba(0, 0, 0, 0.45); stroke-width: 3px; }
+.mc-count.z { opacity: 0.55; }
+.mc-ok { fill: none; stroke: var(--disc-w); opacity: 0.5; stroke-width: 2; stroke-dasharray: 3 4; }
+.mc-last { fill: none; stroke: var(--select-ring); stroke-width: 3.5; }
+.mc-cap { fill: none; stroke: var(--danger); stroke-width: 3.5; }
+.mc-hint { fill: none; stroke: var(--select-ring); stroke-width: 4; stroke-dasharray: 6 4; }
+.mc-pit-btn[aria-disabled="false"]:hover { background: var(--accent-glow); border-radius: 12px; }

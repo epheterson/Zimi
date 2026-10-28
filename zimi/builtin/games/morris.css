@@ -1,0 +1,22 @@
+/* Nine Men's Morris: a wooden board, three squares of ink lines, pale and dark men. */
+:root { --mo-wood: #d9b27a; --mo-line: #4a3418; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --mo-wood: #8a6a3e; --mo-line: #1f160a; } }
+:root[data-theme="dark"] { --mo-wood: #8a6a3e; --mo-line: #1f160a; }
+
+.mo-board { --bs: min(100vw - 16px, 100svh - 240px, 560px); }
+.mo-wood { fill: var(--mo-wood); }
+.mo-lines { stroke: var(--mo-line); stroke-width: 3; fill: none; stroke-linejoin: round; }
+.mo-node { fill: var(--mo-line); }
+.mo-shadow { fill: rgba(0, 0, 0, 0.4); }
+.mo-hand { stroke: rgba(0, 0, 0, 0.35); stroke-width: 0.8; }
+.mo-sel { stroke: var(--select-ring); stroke-width: 4; }
+.mo-last { fill: none; stroke: var(--select-ring); stroke-width: 3.5; }
+.mo-from { fill: var(--select-ring); }
+.mo-taken { fill: none; stroke: var(--danger); stroke-width: 3; stroke-dasharray: 3 3; }
+.mo-target { fill: var(--legal); stroke: none; }
+.mo-remove { fill: rgba(179, 38, 30, 0.2); stroke: var(--danger); stroke-width: 3.5; animation: mo-pulse 0.8s ease-in-out infinite alternate; }
+.mo-hint { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 6 4; }
+.mo-pt:hover:not([aria-disabled="true"]) { background: rgba(255, 255, 255, 0.22); border-radius: 50%; }
+@keyframes mo-pulse { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mo-remove { animation: none; } }
+html[data-anim="off"] .mo-remove { animation: none; }

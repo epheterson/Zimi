@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fleet - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="fleet.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Fleet</h1>
+  <button class="ar-btn" id="fl-new" type="button" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <p class="pl-msg" id="fl-msg"></p>
+  <div class="fl-tray" id="fl-tray"></div>
+  <section class="fl-board" id="fl-enemy-wrap" aria-labelledby="fl-enemy-h" hidden>
+    <h2 id="fl-enemy-h" data-t="fleet.enemy">Enemy waters</h2>
+    <div class="fl-grid" id="fl-enemy" role="grid" data-t-aria="fleet.enemyGrid" aria-label="Enemy waters. Choose a square to fire on."></div>
+    <p class="fl-ships" id="fl-enemy-ships"></p>
+  </section>
+  <section class="fl-board" aria-labelledby="fl-mine-h">
+    <h2 id="fl-mine-h" data-t="fleet.yourFleet">Your fleet</h2>
+    <div class="fl-grid" id="fl-mine" role="grid" data-t-aria="fleet.yourFleet" aria-label="Your fleet"></div>
+  </section>
+  <div class="fl-tools" id="fl-tools"></div>
+</main>
+
+<script src="boardui.js"></script>
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="handoff.js"></script>
+<script src="fleet.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q953491">About Fleet</a></footer><!-- /zimi-about -->
+</body>
+</html>

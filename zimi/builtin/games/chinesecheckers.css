@@ -1,0 +1,24 @@
+/* Chinese Checkers: a wooden star, round holes, glass-bead marbles. */
+:root { --cc-board: #d9b97a; --cc-hole: rgba(60, 36, 12, 0.34); --cc-hole-edge: rgba(60, 36, 12, 0.5); --cc-trail: #7a4a00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cc-board: #6b5333; --cc-hole: rgba(0, 0, 0, 0.45); --cc-hole-edge: rgba(0, 0, 0, 0.6); --cc-trail: #f5c15a; } }
+:root[data-theme="dark"] { --cc-board: #6b5333; --cc-hole: rgba(0, 0, 0, 0.45); --cc-hole-edge: rgba(0, 0, 0, 0.6); --cc-trail: #f5c15a; }
+
+.cc-svg { --cw: min(100vw - 20px, (100svh - 250px) * 0.88, 600px); width: var(--cw); height: auto; display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; outline: none; }
+.cc-star { fill: var(--cc-board); stroke: var(--cc-board); stroke-width: 1.25px; stroke-linejoin: round; }
+.cc-hole { fill: var(--cc-hole); stroke: var(--cc-hole-edge); stroke-width: 0.05px; }
+.cc-hole.camp-0 { fill: rgba(211, 47, 47, 0.38); } .cc-hole.camp-1 { fill: rgba(242, 176, 30, 0.45); } .cc-hole.camp-2 { fill: rgba(46, 158, 79, 0.4); }
+.cc-hole.camp-3 { fill: rgba(30, 99, 201, 0.4); } .cc-hole.camp-4 { fill: rgba(30, 30, 36, 0.5); } .cc-hole.camp-5 { fill: rgba(255, 255, 255, 0.5); }
+.cc-marble circle:first-child { stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.06px; filter: drop-shadow(0 0.05px 0.05px rgba(0, 0, 0, 0.5)); }
+.cc-marble.m4 circle:first-child { stroke: rgba(255, 255, 255, 0.45); }
+.cc-marble .shine { fill: rgba(255, 255, 255, 0.55); }
+.cc-marble.m4 .shine { fill: rgba(255, 255, 255, 0.28); }
+.cc-ring { fill: none; stroke-width: 0.12px; }
+.cc-ring.sel { stroke: var(--select-ring); stroke-width: 0.16px; }
+.cc-ring.last { stroke: var(--cc-trail); stroke-dasharray: 0.2 0.12; }
+.cc-trail { fill: none; stroke: var(--cc-trail); stroke-width: 0.14px; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 0.01 0.3; opacity: 0.95; }
+.cc-hint { fill: var(--select-ring); opacity: 0.9; }
+.cc-cursor { fill: none; stroke: var(--select-ring); stroke-width: 0.12px; stroke-dasharray: 0.25 0.12; }
+
+/* Up to six player chips: the shared pill, tighter, wrapping. */
+.cc-scores { flex-wrap: wrap; justify-content: center; gap: var(--sp-2); max-width: 440px; }
+.cc-scores .wk-who { gap: 4px; padding: 0 var(--sp-2); }

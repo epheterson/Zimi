@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chinese Checkers - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="chinesecheckers.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Chinese Checkers</h1>
+  <button class="ar-btn" id="cc-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="cc-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="cc-status"></p>
+  <div class="bg-score cc-scores" id="cc-scores" data-t-aria="cc.home" aria-label="Marbles home"></div>
+  <svg class="cc-svg" id="cc-svg" tabindex="0" role="application" data-t-aria="cc.boardLabel" aria-label="Chinese Checkers board"></svg>
+  <p class="bg-stats" id="cc-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="chinesecheckers.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1045090">About Chinese Checkers</a></footer><!-- /zimi-about -->
+</body>
+</html>

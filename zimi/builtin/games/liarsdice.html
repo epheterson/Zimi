@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Liar's Dice - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="liarsdice.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.liarsdice.title">Liar's Dice</h1>
+  <button class="ar-btn" id="ld-new" type="button" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="ld-opps" id="ld-opps" role="list" data-t-aria="liarsdice.opps.aria" aria-label="The other players"></div>
+  <section class="ld-bid" data-t-aria="liarsdice.bid.aria" aria-label="The bid on the table">
+    <small id="ld-who">Nobody has bid yet</small>
+    <div class="ld-bidrow" id="ld-bid"></div>
+  </section>
+  <p class="pl-msg" id="ld-msg" role="status" aria-live="polite"></p>
+  <div class="pl-row" id="ld-mine" role="group" data-t-aria="liarsdice.mine.aria" aria-label="Your dice, hidden from the others"></div>
+  <div class="ld-ctl" id="ld-ctl">
+    <div class="pl-row">
+      <button class="pl-key" id="ld-minus" type="button" data-t-aria="liarsdice.fewer" aria-label="One fewer">&minus;</button>
+      <b class="ld-qty" id="ld-qty" aria-live="polite">1</b>
+      <button class="pl-key" id="ld-plus" type="button" data-t-aria="liarsdice.more" aria-label="One more">+</button>
+      <span class="ld-times" aria-hidden="true">&times;</span>
+      <span class="ld-faces" id="ld-faces" role="group" data-t-aria="liarsdice.faces.aria" aria-label="Face to bid on"></span>
+    </div>
+    <div class="pl-row">
+      <button class="ar-btn ld-act" id="ld-bidbtn" type="button" aria-pressed="true" data-t="liarsdice.bidBtn">Bid</button>
+      <button class="ar-btn ld-act" id="ld-liar" type="button" data-t="liarsdice.liar">Call liar</button>
+    </div>
+  </div>
+  <p class="pl-help" data-t="liarsdice.help">Everyone has 5 dice under a cup and sees only their own. Take turns raising the bid on how many dice show one number on the whole table, or call Liar. Ones are wild, unless ones are the number bid. If you lose a challenge, you lose a die. The last player with dice wins. Keys: Up and Down change the count, 1 to 6 pick the number, Enter bids, L calls Liar.</p>
+</main>
+
+<div class="ar-sheet" id="ld-reveal" hidden role="dialog" aria-modal="true" aria-labelledby="ld-reveal-title">
+  <div class="ar-sheet-card">
+    <h2 id="ld-reveal-title" data-t="liarsdice.reveal.title">Cups up</h2>
+    <p id="ld-reveal-text"></p>
+    <div class="ld-cups" id="ld-cups"></div>
+    <div class="ar-sheet-actions"><button class="ar-btn" id="ld-next" type="button" aria-pressed="true" data-t="liarsdice.next">Next round</button></div>
+  </div>
+</div>
+
+<div class="ar-sheet" id="ld-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="ld-sheet-title">
+  <div class="ar-sheet-card">
+    <h2 id="ld-sheet-title" data-t="game.liarsdice.title">Liar's Dice</h2>
+    <p id="ld-sheet-text" data-t="liarsdice.intro">Bluff, read the table and call the lie. You play against computers.</p>
+    <p class="pl-row"><span id="ld-n-label" data-t="seats.players">Players</span><span class="pl-seg" id="ld-n" role="group" aria-labelledby="ld-n-label"></span></p>
+    <div id="ld-seats"></div>
+    <div class="ar-sheet-actions"><button class="ar-btn" id="ld-go" type="button" aria-pressed="true" data-t="shell.start">Start</button></div>
+  </div>
+</div>
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="handoff.js"></script>
+<script src="liarsdice.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q20825977">About Liar&#x27;s Dice</a></footer><!-- /zimi-about -->
+</body>
+</html>

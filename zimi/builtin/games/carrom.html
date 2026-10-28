@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Carrom - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="carrom.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Carrom</h1>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="carrom.coins" aria-label="Coins left"></div>
+  <div class="cr-wrap" id="cr-wrap"><canvas class="cr-canvas" id="cr-canvas" tabindex="0" role="application" data-t-aria="carrom.keys" aria-label="Carrom board. Left and right arrows move the striker, A and D turn the aim, W and S set the power, Enter shoots."></canvas></div>
+  <div class="bg-controls"><button class="ar-btn" id="cr-shoot" type="button" aria-pressed="true" data-t="carrom.shootBtn">Shoot</button><button class="ar-btn" id="cr-slide" type="button" aria-expanded="false" aria-controls="cr-sliders" data-t="carrom.sliders">Aim with sliders</button></div>
+  <div class="cr-sliders" id="cr-sliders" hidden>
+    <label><span data-t="carrom.position">Position</span> <input id="cr-pos" type="range" min="0" max="100" value="50"></label>
+    <label><span data-t="carrom.angle">Angle</span> <input id="cr-ang" type="range" min="-80" max="80" value="0"></label>
+    <label><span data-t="carrom.power">Power</span> <input id="cr-pow" type="range" min="5" max="100" value="55"></label>
+  </div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="enginekit.js"></script>
+<script src="carrom-engine.js"></script>
+<script src="carrom.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q900489">About Carrom</a></footer><!-- /zimi-about -->
+</body>
+</html>

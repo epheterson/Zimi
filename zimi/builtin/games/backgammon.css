@@ -1,0 +1,35 @@
+/* Backgammon: a walnut frame round green felt, ochre and bone points, white and slate checkers. */
+:root { --bk-frame: #6b4528; --bk-felt: var(--felt); --bk-a: #d2b074; --bk-b: #8f3b30; --bk-bar: #54351d; --bk-tray: rgba(0, 0, 0, 0.22); --bk-die: #faf6ea; --bk-pip: var(--disc-b); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bk-frame: #4a2f1a; --bk-felt: var(--felt); --bk-a: #a08555; --bk-b: #6c2c25; --bk-bar: #3a2412; --bk-die: #e4dfd0; } }
+:root[data-theme="dark"] { --bk-frame: #4a2f1a; --bk-felt: var(--felt); --bk-a: #a08555; --bk-b: #6c2c25; --bk-bar: #3a2412; --bk-die: #e4dfd0; }
+
+.bk-board { --bs: min(100vw - 12px, (100svh - 250px) * 1.4, 700px); }
+.bk-board.bk-portrait { --bs: min(100vw - 12px, (100svh - 205px) * var(--ratio, 0.64), 480px); }
+.bk-frame { fill: var(--bk-frame); }
+.bk-felt { fill: var(--bk-felt); }
+.bk-tri.a { fill: var(--bk-a); }
+.bk-tri.b { fill: var(--bk-b); }
+.bk-bar { fill: var(--bk-bar); }
+.bk-tray { fill: var(--bk-tray); stroke: rgba(0, 0, 0, 0.35); stroke-width: 1.5; }
+.bk-shadow { fill: rgba(0, 0, 0, 0.35); }
+.bk-ck { stroke: rgba(0, 0, 0, 0.45); stroke-width: 1; }
+.bk-ck.sel { stroke: var(--select-ring); stroke-width: 3.5; }
+.bk-ring { fill: none; stroke-width: 1.4; opacity: 0.45; }
+.bk-ring.on-w { stroke: var(--ink2); }
+.bk-ring.on-b { stroke: var(--disc-w); }
+.bk-pn { font: 700 10px var(--mono); fill: #fff; stroke: rgba(0, 0, 0, 0.55); stroke-width: 2.4; paint-order: stroke; stroke-linejoin: round; pointer-events: none; }
+.bk-n { font: 700 13px var(--mono); }
+.bk-n.on-w { fill: var(--disc-b); }
+.bk-n.on-b { fill: var(--disc-w); }
+.bk-off { stroke: rgba(0, 0, 0, 0.4); stroke-width: 0.8; }
+.bk-off.w { fill: var(--disc-w); }
+.bk-off.b { fill: var(--disc-b); }
+.bk-die-face { fill: var(--bk-die); stroke: rgba(0, 0, 0, 0.4); stroke-width: 1.2; }
+.bk-pip { fill: var(--bk-pip); }
+.bk-die.used { opacity: 0.3; }
+.bk-last { fill: var(--accent-glow); stroke: var(--select-ring); stroke-width: 2; }
+.bk-target { fill: var(--legal); fill-opacity: 0.35; stroke: var(--legal); stroke-width: 2.5; }
+.bk-hint { fill: none; stroke: var(--select-ring); stroke-width: 3; stroke-dasharray: 6 4; }
+.bk-cube rect { fill: #f7f3e6; stroke: #5a4a2a; stroke-width: 1.5; }
+.bk-cube text { font: 800 14px var(--mono); fill: var(--disc-b); }
+.bk-pt:hover:not([aria-disabled="true"]) { background: rgba(255, 255, 255, 0.14); }

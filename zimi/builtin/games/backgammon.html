@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Backgammon - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="backgammon.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Backgammon</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="go.score" aria-label="Score"></div>
+  <div class="wk-board bk-board" id="wk-board" role="group" data-t-aria="backgammon.boardLabel" aria-label="Backgammon board"></div>
+  <div class="bg-controls"><button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button><button class="ar-btn" id="bk-roll" type="button" aria-pressed="true" data-t="backgammon.roll">Roll</button><button class="ar-btn" id="bk-double" type="button" hidden data-t="backgammon.double">Double</button><button class="ar-btn" id="bk-take" type="button" hidden aria-pressed="true" data-t="backgammon.take">Take</button><button class="ar-btn" id="bk-drop" type="button" hidden data-t="backgammon.dropBtn">Drop</button></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="backgammon.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q11411">About Backgammon</a></footer><!-- /zimi-about -->
+</body>
+</html>

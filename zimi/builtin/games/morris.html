@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nine Men's Morris - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="morris.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Nine Men's Morris</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="go.score" aria-label="Score"></div>
+  <div class="wk-board mo-board" id="wk-board" role="group" data-t-aria="morris.boardLabel" aria-label="Nine Men's Morris board"></div>
+  <div class="bg-controls"><button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="morris.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q209669">About Nine Men&#x27;s Morris</a></footer><!-- /zimi-about -->
+</body>
+</html>

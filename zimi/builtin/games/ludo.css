@@ -1,0 +1,41 @@
+/* Ludo: a cross of squares, four yards, one die. */
+:root { --ld-ground: #f6f1e3; --ld-cell: #fffdf6; --ld-line: #8c826d; --ld-yard-in: #fffdf6; --ld-star: #8c6b1f; --ld-pip: var(--disc-b); --ld-die: var(--disc-w); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ld-ground: #2b2a27; --ld-cell: #d9d4c4; --ld-line: #0c0b0a; --ld-yard-in: #d9d4c4; --ld-star: #5a4308; --ld-die: #e8e4d6; } }
+:root[data-theme="dark"] { --ld-ground: #2b2a27; --ld-cell: #d9d4c4; --ld-line: #0c0b0a; --ld-yard-in: #d9d4c4; --ld-star: #5a4308; --ld-die: #e8e4d6; }
+
+.ld-svg { --lw: min(100vw - 16px, 100svh - 280px, 580px); width: var(--lw); height: var(--lw); display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22)); }
+.ld-ground { fill: var(--ld-ground); stroke: var(--ld-line); stroke-width: 0.06px; }
+.ld-yard { opacity: 0.92; stroke: var(--ld-line); stroke-width: 0.05px; }
+.ld-yard-in { fill: var(--ld-yard-in); }
+.ld-spot { stroke: rgba(0, 0, 0, 0.25); stroke-width: 0.05px; }
+.ld-cell { fill: var(--ld-cell); stroke: var(--ld-line); stroke-width: 0.05px; }
+.ld-star { font: 700 0.8px var(--font); text-anchor: middle; dominant-baseline: central; fill: var(--ld-star); pointer-events: none; }
+.ld-center { stroke: var(--ld-line); stroke-width: 0.05px; stroke-linejoin: round; }
+
+.ld-token { cursor: default; }
+.ld-token.can { cursor: pointer; }
+.ld-hit { fill: transparent; }
+.ld-halo { fill: none; stroke: var(--select-ring); stroke-width: 0.12px; stroke-dasharray: 0.22 0.14; transform-box: fill-box; transform-origin: center; animation: ld-spin 6s linear infinite; }
+.ld-token.can:focus-visible { outline: none; }
+.ld-token.can:focus-visible .ld-halo { stroke-width: 0.22px; stroke-dasharray: none; animation: none; }
+.ld-disc { stroke: rgba(0, 0, 0, 0.6); stroke-width: 0.06px; filter: drop-shadow(0 0.04px 0.05px rgba(0, 0, 0, 0.5)); }
+.ld-disc-in { fill: rgba(255, 255, 255, 0.22); }
+.ld-num { text-anchor: middle; dominant-baseline: central; font-family: var(--font); font-weight: 800; fill: var(--disc-w); pointer-events: none; paint-order: stroke; stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.07px; }
+.ld-num.c2 { fill: #2a1d00; stroke: none; }
+@keyframes ld-spin { to { transform: rotate(360deg); } }
+
+.ld-dice { display: flex; align-items: center; gap: 12px; min-height: 76px; }
+.ld-die { width: 68px; height: 68px; padding: 0; border: 0; background: transparent; cursor: default; border-radius: 14px; }
+.ld-die svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3)); }
+.ld-die-face { fill: var(--ld-die); stroke: var(--ld-line); stroke-width: 1.5px; }
+.ld-pip { fill: var(--ld-pip); }
+.ld-die.ready { cursor: pointer; box-shadow: 0 0 0 3px var(--select-ring); animation: ld-glow 1.4s ease-in-out infinite; }
+.ld-die:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 5px; }
+@keyframes ld-glow { 50% { box-shadow: 0 0 0 8px var(--accent-glow); } }
+.ld-die-hint { min-width: 3em; font-weight: 700; color: var(--ink); }
+
+/* Up to four player chips: the shared pill, two to a row when there are more than two. */
+.ld-scores { flex-wrap: wrap; justify-content: center; gap: var(--sp-2); max-width: 270px; margin: 0 auto; }
+.ld-scores .wk-who { white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .ld-halo, .ld-die.ready { animation: none; } }
+html[data-anim="off"] :is(.ld-halo, .ld-die.ready) { animation: none; }

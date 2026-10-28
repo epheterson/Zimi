@@ -1,0 +1,31 @@
+/* ZimiGames: the board games' shared extras (boardui.js). Tokens come from games.css. */
+
+/* The status line is one slot. Ahead of the text sits a dot's worth of room that is always there, so the opponent's
+   turn (the dot pulses amber) never moves the line. */
+.bu-status::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.bu-status.is-thinking::before { background: var(--accent); animation: bu-pulse 1s ease-in-out infinite; }
+@keyframes bu-pulse { 50% { opacity: 0.25; } }
+html[data-anim="off"] .bu-status.is-thinking::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .bu-status.is-thinking::before { animation: none; } }
+
+/* A quiet line under the board: a name, a move list, a count. 13px, ink2, no box. */
+.bu-quiet { width: min(100vw - 2 * var(--gutter), 600px); margin: 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.bu-quiet:empty { display: none; }
+
+/* An option that does not apply keeps its place, with its label in ink3. */
+.gs-row.is-off > label { color: var(--ink3); }
+
+/* The New game pane's rows fit the card, and a row of more than three choices wraps as separate buttons. */
+.gs-options { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+.gs-row .gs-seg { max-width: 100%; }
+.gs-row .gs-seg .ar-btn { min-width: 0; padding: 0 var(--sp-3); }
+.gs-seg.is-wrap { flex-wrap: wrap; gap: var(--sp-2); }
+.gs-seg.is-wrap .ar-btn { flex: 0 0 auto; }
+.gs-seg.is-wrap .ar-btn, .gs-seg.is-wrap .ar-btn:first-child, .gs-seg.is-wrap .ar-btn:last-child { margin-left: 0; border-radius: var(--radius); }
+
+/* A select or a search box in the New game pane: the row's label above, a 44px control, tokens only. */
+.gs-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+.gs-field > label { font-size: var(--fs-small); color: var(--ink2); }
+.gs-field :is(select, input) { width: 100%; min-height: 44px; padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: var(--fs-body) var(--font); }
+.gs-field :is(select, input):focus-visible { outline: 2px solid var(--select-ring); outline-offset: 2px; }
+.gs-options .bu-quiet { width: auto; text-align: left; }

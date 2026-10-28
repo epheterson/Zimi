@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mahjong - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="mahjong.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body class="mj-body">
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Mahjong</h1>
+  <span class="ar-stat" id="mj-time" data-t-aria="mahjong.timeLabel" aria-label="Time">0:00</span>
+  <button class="ar-btn" id="mj-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="mj-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="mj-main">
+  <p class="bg-status" id="mj-status"></p>
+  <div class="mj-table" id="mj-scroll"><div class="mj-stage" id="mj-stage" role="group" data-t-aria="mahjong.tiles" aria-label="Tiles"></div></div>
+  <div class="bg-controls">
+    <button class="ar-btn" id="mj-hint" type="button" data-t="board.hint">Hint</button>
+    <button class="ar-btn" id="mj-shuffle" type="button" data-t="mahjong.shuffle">Shuffle</button>
+    <button class="ar-btn" id="mj-zoom" type="button" aria-pressed="false" data-t="mahjong.zoom">Zoom</button>
+  </div>
+  <p class="bg-score"><span><span data-t="mahjong.left">Tiles left</span> <b id="mj-left">144</b></span></p>
+  <p class="bg-stats" id="mj-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="mahjong-tiles.js"></script>
+<script src="mahjong.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q953673">About Mahjong</a></footer><!-- /zimi-about -->
+</body>
+</html>

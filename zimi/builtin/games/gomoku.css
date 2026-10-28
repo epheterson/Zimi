@@ -1,0 +1,18 @@
+/* Gomoku: a pale wooden board, ink lines, black and white stones. */
+:root { --gm-wood: #dcb26b; --gm-line: #5a4020; --gm-star: #4a3418; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gm-wood: #9a7a46; --gm-line: #2c2010; --gm-star: #2c2010; } }
+:root[data-theme="dark"] { --gm-wood: #9a7a46; --gm-line: #2c2010; --gm-star: #2c2010; }
+
+.gm-board { --bs: min(100vw - 16px, 100svh - 230px, 580px); }
+.gm-wood { fill: var(--gm-wood); }
+.gm-grid { stroke: var(--gm-line); stroke-width: 1.2; fill: none; }
+.gm-star { fill: var(--gm-star); }
+.gm-shadow { fill: rgba(0, 0, 0, 0.35); }
+.gm-new { animation: gm-pop 0.18s ease-out; transform-box: fill-box; transform-origin: center; }
+.gm-last { fill: var(--danger); stroke: var(--disc-w); stroke-width: 1.2; }
+.gm-win { fill: none; stroke: var(--danger); stroke-width: 3; }
+.gm-hint { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 4 3; }
+.gm-pt:hover:not([aria-disabled="true"])::after { content: ""; position: absolute; inset: 22%; border-radius: 50%; background: rgba(0, 0, 0, 0.28); }
+@keyframes gm-pop { from { transform: scale(0.6); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gm-new { animation: none; } }
+html[data-anim="off"] .gm-new { animation: none; }

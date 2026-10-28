@@ -1,0 +1,21 @@
+/* Four in a Row: a teal frame standing on a foot (pulled 20 percent toward neutral in light, 30 in dark), amber and crimson discs. */
+:root { --fr-frame: color-mix(in srgb, #2f6f86 80%, #6f6a62); --fr-foot: color-mix(in srgb, #1f4a5b 80%, #4a4640); --fr-rim: rgba(0, 0, 0, 0.18); --fr-amber: #d29f39; --fr-crimson: #bd554c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fr-frame: color-mix(in srgb, #245568 70%, #54504a); --fr-foot: color-mix(in srgb, #163845 70%, #34312d); --fr-rim: rgba(0, 0, 0, 0.3); --fr-amber: #c59638; --fr-crimson: #b15148; } }
+:root[data-theme="dark"] { --fr-frame: color-mix(in srgb, #245568 70%, #54504a); --fr-foot: color-mix(in srgb, #163845 70%, #34312d); --fr-rim: rgba(0, 0, 0, 0.3); --fr-amber: #c59638; --fr-crimson: #b15148; }
+
+.fr-board { --bs: min(100vw - 24px, (100svh - 260px) * 1.1, 520px); }
+.fr-frame { fill: var(--fr-frame); filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25)); }
+.fr-foot { fill: var(--fr-foot); }
+.fr-rim { fill: none; stroke: var(--fr-rim); stroke-width: 3; }
+.fr-last { fill: none; stroke: var(--disc-w); stroke-width: 3; opacity: 0.9; }
+.fr-hintarrow { fill: none; stroke: var(--disc-w); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; animation: fr-bob 0.9s ease-in-out infinite alternate; }
+.fr-disc.drop { animation: fr-drop 0.42s cubic-bezier(0.5, 0, 0.9, 0.6); }
+.fr-disc.win .fr-rim { stroke: var(--disc-w); stroke-width: 6; }
+.fr-disc.win { animation: fr-pulse 0.9s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+.fr-col:hover:not([aria-disabled="true"]), .fr-col:focus-visible { background: rgba(255, 255, 255, 0.16); }
+.fr-col:focus-visible { outline-offset: -4px; }
+@keyframes fr-drop { from { transform: translateY(var(--from)); } 82% { transform: translateY(0); } 90% { transform: translateY(-9px); } to { transform: translateY(0); } }
+@keyframes fr-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+@keyframes fr-bob { from { transform: translateY(0); } to { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .fr-disc.drop, .fr-disc.win, .fr-hintarrow { animation: none; } }
+html[data-anim="off"] :is(.fr-disc.drop, .fr-disc.win, .fr-hintarrow) { animation: none; }

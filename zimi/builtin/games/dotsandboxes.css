@@ -1,0 +1,19 @@
+/* Dots and Boxes: a sheet of paper, ink dots and lines, boxes filled in each side's colour. */
+:root { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(38, 36, 31, 0.16); --db-a: #4f76bd; --db-b: #d4693f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(232, 232, 237, 0.16); --db-a: #6f93d3; --db-b: #d97a52; } }
+:root[data-theme="dark"] { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(232, 232, 237, 0.16); --db-a: #6f93d3; --db-b: #d97a52; }
+
+.db-board { --bs: min(100vw - 24px, 100svh - 240px, 520px); }
+.db-paper { fill: var(--db-paper); stroke: var(--line); stroke-width: 1.5; }
+.db-dot { fill: var(--db-ink); }
+.db-slot { stroke: var(--db-slot); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1 9; }
+.db-slot.hint { stroke: var(--select-ring); stroke-width: 6; stroke-dasharray: 7 7; opacity: 1; }
+.db-line { stroke: var(--db-ink); stroke-width: 7; stroke-linecap: round; }
+.db-line.new { stroke: var(--select-ring); }
+.db-box { opacity: 0.88; animation: db-fill 0.3s ease-out; transform-box: fill-box; transform-origin: center; }
+.db-glyph { fill: var(--disc-w); pointer-events: none; }
+.db-edge:hover:not([aria-disabled="true"]) { background: var(--accent-glow); border-radius: 10px; }
+.db-edge:focus-visible { outline-offset: -2px; }
+@keyframes db-fill { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 0.88; } }
+@media (prefers-reduced-motion: reduce) { .db-box { animation: none; } }
+html[data-anim="off"] .db-box { animation: none; }

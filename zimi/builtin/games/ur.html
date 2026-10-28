@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Royal Game of Ur - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="ur.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Royal Game of Ur</h1>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="makruk.pieces" aria-label="Pieces"></div>
+  <div class="wk-board ur-board" id="ur-board" role="group" data-t-aria="ur.boardLabel" aria-label="Royal Game of Ur board"></div>
+  <div class="ur-dice" id="ur-dice" aria-hidden="true"></div>
+  <div class="bg-controls"><button class="ar-btn" id="ur-roll" type="button" aria-pressed="true" data-t="backgammon.roll">Roll</button><button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="ur-engine.js"></script>
+<script src="ur.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q937315">About Royal Game of Ur</a></footer><!-- /zimi-about -->
+</body>
+</html>

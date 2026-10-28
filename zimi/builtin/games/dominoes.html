@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dominoes - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="dominoes.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Dominoes</h1>
+  <button class="ar-btn" id="dm-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main dm-main">
+  <p class="bg-status" id="dm-status"></p>
+  <div class="bg-score dm-scores" id="dm-scores" data-t-aria="dominoes.scores" aria-label="Scores"></div>
+  <div class="dm-table" id="dm-chain" role="group" data-t-aria="dominoes.chain" aria-label="The chain of tiles"></div>
+  <div class="dm-mine">
+    <div class="dm-hand" id="dm-hand" role="group" data-t-aria="dominoes.yourTiles" aria-label="Your tiles"></div>
+    <p class="bg-stats" id="dm-hand-count"></p>
+    <p class="bg-stats" id="dm-target"></p>
+  </div>
+  <p class="bg-stats" id="dm-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="handoff.js"></script>
+<script src="dominoes.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q32907">About Dominoes</a></footer><!-- /zimi-about -->
+</body>
+</html>

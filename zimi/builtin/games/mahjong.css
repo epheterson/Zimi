@@ -1,0 +1,25 @@
+/* Mahjong solitaire: ivory tiles with a green back, stacked on a felt table. */
+:root { --mj-cloth: var(--felt); --mj-face: #f8f3e3; --mj-edge: #2d6a46; --mj-edge-dark: #1b4d31; --mj-dim: 0.78; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --mj-cloth: var(--felt); --mj-face: #ece6d2; --mj-edge: #2a6a46; --mj-edge-dark: #12402a; --mj-dim: 0.66; } }
+:root[data-theme="dark"] { --mj-cloth: var(--felt); --mj-face: #ece6d2; --mj-edge: #2a6a46; --mj-edge-dark: #12402a; --mj-dim: 0.66; }
+
+.mj-main { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 12px 24px; }
+.mj-table { width: 100%; max-width: 1140px; padding: 10px 8px 14px; border-radius: var(--r-sheet); background: var(--mj-cloth); background-image: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.18)); display: flex; justify-content: center; overflow-x: auto; box-shadow: inset 0 0 0 3px var(--felt-deep); }
+.mj-table.zoomed { justify-content: flex-start; }
+.mj-stage { position: relative; flex: none; isolation: isolate; }
+
+.mj-t { position: absolute; display: block; padding: 3px 2px; border: 1px solid #b9b19a; border-radius: 12%/9%; background: linear-gradient(160deg, #fffdf6, var(--mj-face)); cursor: pointer; color: #222;
+  box-shadow: 2px 2px 0 var(--mj-edge), 3px 3px 0 var(--mj-edge-dark), 3px 5px 7px rgba(0, 0, 0, 0.35); transition: filter 0.15s, transform 0.15s, opacity 0.25s; }
+.mj-t[hidden] { display: none; }
+.mj-t svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.mj-t.blocked { filter: brightness(var(--mj-dim)); cursor: default; }
+.mj-t.sel { background: linear-gradient(160deg, #ffe6a3, #f6c75a); outline: 2px solid var(--select-ring); outline-offset: 0; transform: translateY(-2px); filter: none; }
+.mj-t.hint { outline: 3px solid var(--select-ring); outline-offset: 1px; animation: mj-pulse 0.7s ease-in-out infinite alternate; filter: none; }
+.mj-t:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 2px; filter: none; }
+.mj-t.going { opacity: 0; transform: scale(0.8); pointer-events: none; }
+@keyframes mj-pulse { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+
+.ar-btn.pulse { border-color: var(--select-ring); font-weight: 650; }
+
+@media (max-width: 420px) { .mj-main { padding: 8px 6px 20px; } .mj-table { padding: 8px 2px 12px; } .mj-t { padding: 2px 1px; } }
+@media (prefers-reduced-motion: reduce) { .mj-t, .mj-t.hint, html[data-anim="off"] .mj-t { animation: none; transition: none; }

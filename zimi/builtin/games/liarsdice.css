@@ -1,0 +1,31 @@
+/* Liar's Dice: the table. Dice and buttons come from play.css. */
+.ld-opps { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; width: 100%; max-width: 440px; }
+.ld-opp { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
+.ld-opp b { font-size: 13px; }
+.ld-opp.ld-turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ld-opp.ld-out { opacity: 0.5; }
+.ld-opp .ld-dots { display: flex; gap: 3px; min-height: 14px; align-items: center; }
+.ld-opp .ld-dots i { width: 12px; height: 12px; border-radius: 3px; background: var(--ink2); }
+.ld-opp small { color: var(--ink2); min-height: 1.2em; }
+.ld-opp.ld-top small { color: var(--ink); font-weight: 600; }
+.ld-bid { width: 100%; max-width: 440px; padding: 10px; text-align: center; border: 1px dashed var(--line); border-radius: var(--r-sheet); background: var(--surface); }
+.ld-bid small { display: block; color: var(--ink2); }
+.ld-bidrow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; font: 700 var(--fs-display) var(--mono); }
+.ld-bidrow .pl-die { --die-size: 44px; cursor: default; }
+.ld-ctl { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.ld-qty { min-width: 2ch; text-align: center; font: 700 26px var(--mono); }
+.ld-times { color: var(--ink2); font-size: 20px; }
+.ld-faces { display: inline-flex; gap: 5px; }
+.ld-faces .pl-die { --die-size: 36px; padding: 4px; }
+.ld-faces .pl-die[aria-pressed="true"] { transform: none; box-shadow: none; outline-offset: 1px; }
+.ld-faces .pl-die:disabled { opacity: 0.4; }
+.ld-act { min-width: 110px; min-height: 46px; font-weight: 650; }
+#ld-mine { --die-size: 48px; min-height: 52px; }
+.ld-cups { display: flex; flex-direction: column; gap: 8px; }
+.ld-cup { display: flex; align-items: center; gap: 8px; }
+.ld-cup > b { width: 54px; font-size: 13px; }
+.ld-cup .pl-die { --die-size: 30px; padding: 3px; }
+.ld-cup .pl-die.ld-hit { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ld-ctl.ld-wait { opacity: 0.45; }
+.ld-hid { background: var(--line); opacity: .7; }
+.ld-hid i { visibility: hidden; }

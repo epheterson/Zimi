@@ -1,0 +1,12 @@
+/* Carrom: a drawn board on a canvas (colours are read from these variables), and a small slider panel for aiming without a pointer. */
+:root { --cr-board: #ecd199; --cr-frame: #7a4b22; --cr-line: #6a3b1a; --cr-pocket: #15100b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cr-board: #b79a62; --cr-frame: #3f2812; --cr-line: #3a210d; } }
+:root[data-theme="dark"] { --cr-board: #b79a62; --cr-frame: #3f2812; --cr-line: #3a210d; }
+
+.cr-wrap { --cs: min(100vw - 20px, 100svh - 300px, 600px); width: var(--cs); height: var(--cs); }
+.cr-canvas { display: block; width: 100%; height: 100%; border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; background: var(--cr-frame); }
+.cr-canvas:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 3px; }
+.cr-sliders { width: min(100vw - 24px, 420px); font-size: var(--fs-body); }
+.cr-sliders label { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+.cr-sliders input[type="range"] { width: 100%; min-height: 28px; accent-color: var(--accent); }
+.cr-sliders .ar-btn { margin-top: 6px; }
