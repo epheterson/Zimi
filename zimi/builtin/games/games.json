@@ -1,0 +1,2276 @@
+[
+ {
+  "qid": "Q1191033",
+  "wiki": "Klondike (solitaire)",
+  "path": "solitaire.html",
+  "title": "Solitaire",
+  "blurb": "Klondike, draw one or three",
+  "why": "It came with Windows 3.0 in 1990.",
+  "origin": {
+   "year": 1890,
+   "era": "1890s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q2056928",
+  "wiki": "Solitaire",
+  "path": "solitaire.html",
+  "title": "Solitaire",
+  "blurb": "Klondike, draw one or three",
+  "why": "It came with Windows 3.0 in 1990."
+ },
+ {
+  "qid": "Q1050614",
+  "wiki": "FreeCell",
+  "path": "freecell.html",
+  "title": "FreeCell",
+  "blurb": "Numbered deals, nearly all winnable",
+  "why": "Microsoft numbered its deals. Only one of the first 32,000 cannot be won.",
+  "origin": {
+   "year": 1978,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q648228",
+  "wiki": "Spider (solitaire)",
+  "path": "spider.html",
+  "title": "Spider",
+  "blurb": "Two decks, eight runs of one suit",
+  "why": "Build eight runs from king down to ace, using two decks.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q867799",
+  "wiki": "Hearts (card game)",
+  "path": "hearts.html",
+  "title": "Hearts",
+  "blurb": "Four players, avoid hearts and the queen",
+  "why": "A trick-taking game. The aim is to take as few points as you can.",
+  "origin": {
+   "year": 1750,
+   "era": "c. 1750"
+  },
+  "region": "Europe",
+  "players": "4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q3411255",
+  "wiki": "Pyramid (solitaire)",
+  "path": "pyramid.html",
+  "title": "Pyramid",
+  "blurb": "Pairs that add to 13",
+  "why": "Remove pairs that add to 13 from a pyramid of 28 cards.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5580559",
+  "wiki": "Golf (patience)",
+  "path": "golf.html",
+  "title": "Golf",
+  "blurb": "One rank up or down, no wrapping",
+  "why": "Clear seven columns of five cards before the deck runs out.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q27792408",
+  "wiki": "Tri Peaks",
+  "path": "tripeaks.html",
+  "title": "TriPeaks",
+  "blurb": "Three peaks, wrap around, keep a streak",
+  "why": "Clear three peaks of cards. Each card in a row adds to your streak.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q2121032",
+  "wiki": "Spades (card game)",
+  "path": "spades.html",
+  "title": "Spades",
+  "blurb": "Partners bid tricks, spades are trump",
+  "why": "A partner game from 1930s America. Spades are always trump.",
+  "origin": {
+   "year": 1930,
+   "era": "1930s"
+  },
+  "region": "Americas",
+  "players": "4",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q3059474",
+  "wiki": "Euchre",
+  "path": "euchre.html",
+  "title": "Euchre",
+  "blurb": "24 cards, trump, first to 10",
+  "why": "A trick-taking game from the American Midwest, played with 24 cards.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q11082926",
+  "wiki": "Gin rummy",
+  "path": "gin.html",
+  "title": "Gin Rummy",
+  "blurb": "Two players, make melds, then knock",
+  "why": "A two-player rummy game from the early 1900s.",
+  "origin": {
+   "year": 1909,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "2",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q1139885",
+  "wiki": "Cribbage",
+  "path": "cribbage.html",
+  "title": "Cribbage",
+  "blurb": "Score to 121 on a peg board",
+  "why": "Said to be invented by the poet Sir John Suckling in the 1600s. It is scored with pegs on a board.",
+  "origin": {
+   "year": 1630,
+   "era": "1630s"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q2739146",
+  "wiki": "Crazy Eights",
+  "path": "crazyeights.html",
+  "title": "Crazy Eights",
+  "blurb": "Match suit or rank, eights are wild",
+  "why": "The game behind Uno. Every eight is wild.",
+  "origin": {
+   "year": null,
+   "era": "1940s"
+  },
+  "region": "Americas",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q911725",
+  "wiki": "Durak",
+  "path": "durak.html",
+  "title": "Durak",
+  "blurb": "Beat the attack, don't be left holding cards",
+  "why": "Russia's best-loved card game. The last player with cards is the durak, the fool.",
+  "origin": {
+   "year": null,
+   "era": "1700s"
+  },
+  "region": "Europe",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q1955846",
+  "wiki": "Scopa",
+  "path": "scopa.html",
+  "title": "Scopa",
+  "blurb": "The Italian card game, with an Italian deck",
+  "why": "Italy's national card game, played with 40 cards.",
+  "origin": {
+   "year": null,
+   "era": "1700s"
+  },
+  "region": "Europe",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q748139",
+  "wiki": "Reversi",
+  "path": "reversi.html",
+  "title": "Reversi",
+  "blurb": "Flip discs to own the board",
+  "why": "Invented in England in 1883. Othello is a modern version.",
+  "origin": {
+   "year": 1883,
+   "era": "1880s"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q2180601",
+  "wiki": "English draughts",
+  "path": "checkers.html",
+  "title": "Checkers",
+  "blurb": "English draughts, jumps are compulsory",
+  "why": "In 2007, English draughts was proved to be a draw with perfect play.",
+  "origin": {
+   "year": 1150,
+   "era": "c. AD 1150"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q718",
+  "wiki": "Chess",
+  "path": "chess.html",
+  "title": "Chess",
+  "blurb": "The standard game, six levels",
+  "why": "Its modern rules took shape in Europe around 1500.",
+  "origin": {
+   "year": 600,
+   "era": "c. AD 600"
+  },
+  "region": "South Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q11413",
+  "wiki": "Go (game)",
+  "path": "go.html",
+  "title": "Go",
+  "blurb": "Surround territory on 9x9 and 13x13 boards",
+  "why": "Over 2,500 years old. One of the oldest board games still played.",
+  "origin": {
+   "year": -500,
+   "era": "c. 500 BC"
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q191448",
+  "wiki": "Xiangqi",
+  "path": "xiangqi.html",
+  "title": "Xiangqi",
+  "blurb": "Chinese chess with a river in the middle",
+  "why": "China's chess, with a river across the middle of the board.",
+  "origin": {
+   "year": 850,
+   "era": "c. AD 850"
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q131375",
+  "wiki": "Shogi",
+  "path": "shogi.html",
+  "title": "Shogi",
+  "blurb": "Japanese chess, captured pieces can be dropped",
+  "why": "Japan's chess. Captured pieces change sides and can be dropped back on the board.",
+  "origin": {
+   "year": 1500,
+   "era": "1500s"
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q844874",
+  "wiki": "Hex (board game)",
+  "path": "hex.html",
+  "title": "Hex",
+  "blurb": "Link your two sides, no draws",
+  "why": "Invented by Piet Hein in 1942 and, separately, by John Nash in 1948.",
+  "origin": {
+   "year": 1942,
+   "era": "1940s"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q908381",
+  "wiki": "Gomoku",
+  "path": "gomoku.html",
+  "title": "Gomoku",
+  "blurb": "Five in a row on a 15x15 board",
+  "why": "Played with Go stones. The first to make five in a row wins.",
+  "origin": {
+   "year": null,
+   "era": "c. 1700"
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q209669",
+  "wiki": "Nine men's morris",
+  "path": "morris.html",
+  "title": "Nine Men's Morris",
+  "blurb": "Make mills, fly when you have three",
+  "why": "An ancient game. Boards have been cut into stone since Roman times.",
+  "origin": {
+   "year": 1,
+   "era": "c. AD 1"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q17254",
+  "wiki": "Connect Four",
+  "path": "fourinarow.html",
+  "title": "Four in a Row",
+  "blurb": "Drop discs, line up four",
+  "why": "Sold as Connect Four since 1974. With perfect play, the first player wins.",
+  "origin": {
+   "year": 1974,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "2",
+  "length": "5 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1142531",
+  "wiki": "Dots and boxes",
+  "path": "dotsandboxes.html",
+  "title": "Dots and Boxes",
+  "blurb": "Close boxes and move again",
+  "why": "A pencil-and-paper game that the mathematician Edouard Lucas described in 1889.",
+  "origin": {
+   "year": 1889,
+   "era": "1880s"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q11411",
+  "wiki": "Backgammon",
+  "path": "backgammon.html",
+  "title": "Backgammon",
+  "blurb": "Race home with an optional doubling cube",
+  "why": "Its ancestors go back about 5,000 years.",
+  "origin": {
+   "year": -3000,
+   "era": "c. 3000 BC"
+  },
+  "region": "Middle East",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q267989",
+  "wiki": "Mancala",
+  "path": "mancala.html",
+  "title": "Mancala",
+  "blurb": "Oware and Kalah, sow seeds and capture",
+  "why": "One of the oldest games still played. Boards are found across Africa and Asia.",
+  "origin": {
+   "year": 600,
+   "era": "c. AD 600"
+  },
+  "region": "Africa",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1030283",
+  "wiki": "Ludo",
+  "path": "ludo.html",
+  "title": "Ludo",
+  "blurb": "Roll a six to start, race home",
+  "why": "From India's Pachisi. Patented in England in 1896.",
+  "origin": {
+   "year": 500,
+   "era": "c. AD 500"
+  },
+  "region": "South Asia",
+  "players": "2 to 4",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1045090",
+  "wiki": "Chinese checkers",
+  "path": "chinesecheckers.html",
+  "title": "Chinese Checkers",
+  "blurb": "Hop marbles across the star",
+  "why": "Not Chinese. It came from Germany in 1892 as Sternhalma.",
+  "origin": {
+   "year": 1892,
+   "era": "1890s"
+  },
+  "region": "Europe",
+  "players": "2 to 6",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q32907",
+  "wiki": "Dominoes",
+  "path": "dominoes.html",
+  "title": "Dominoes",
+  "blurb": "Draw and Block games, match the ends",
+  "why": "Tiles with dots. Played across Europe since the 1700s.",
+  "origin": {
+   "year": 1120,
+   "era": "c. AD 1120"
+  },
+  "region": "East Asia",
+  "players": "2 to 4",
+  "length": "15 min",
+  "kind": "tiles",
+  "computer": true
+ },
+ {
+  "qid": "Q953673",
+  "wiki": "Mahjong solitaire",
+  "path": "mahjong.html",
+  "title": "Mahjong",
+  "blurb": "Match pairs of tiles, every deal can be cleared",
+  "why": "This solo game matches tiles from a pile. The four-player game is different.",
+  "origin": {
+   "year": 1981,
+   "era": "1980s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "tiles",
+  "computer": false
+ },
+ {
+  "qid": "Q126194",
+  "wiki": "Minesweeper (video game)",
+  "path": "minesweeper.html",
+  "title": "Minesweeper",
+  "blurb": "Clear the board without hitting a mine",
+  "why": "A Windows favourite since the early 1990s.",
+  "origin": {
+   "year": 1989,
+   "era": "1980s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q44914",
+  "wiki": "Sudoku",
+  "path": "sudoku.html",
+  "title": "Sudoku",
+  "blurb": "Fill every row, column and box",
+  "why": "Named in Japan in 1984. Every puzzle here has exactly one solution.",
+  "origin": {
+   "year": 1979,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q15967616",
+  "wiki": "2048 (video game)",
+  "path": "2048.html",
+  "title": "2048",
+  "blurb": "Slide and join tiles to reach 2048",
+  "why": "Written in a weekend in 2014 by Gabriele Cirulli.",
+  "origin": {
+   "year": 2014,
+   "era": "2010s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q110367996",
+  "wiki": "Wordle",
+  "path": "fiveletters.html",
+  "title": "Five Letters",
+  "blurb": "Guess the word in six tries, daily or practice",
+  "why": "Find the five-letter word in six tries.",
+  "origin": {
+   "year": 2021,
+   "era": "2020s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "word",
+  "computer": false
+ },
+ {
+  "qid": "Q7999881",
+  "wiki": "Wikiracing",
+  "path": "wikirace.html",
+  "title": "Wiki Race",
+  "blurb": "Reach one article from another using links only",
+  "why": "Players race between Wikipedia articles using only links. Here it uses your Wikipedia.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q460875",
+  "wiki": "Hangman (game)",
+  "path": "letterbyletter.html",
+  "title": "Letter by Letter",
+  "blurb": "Guess the word letter by letter from your Wiktionary",
+  "why": "Keep the balloon up by guessing the letters of a word.",
+  "origin": {
+   "year": 1894,
+   "era": "1890s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q274079",
+  "wiki": "Quiz",
+  "path": "quizzical.html",
+  "title": "Quizzical",
+  "blurb": "Questions made from your Wikipedia",
+  "why": "Questions made from the articles in your Wikipedia.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q181008",
+  "wiki": "Jigsaw puzzle",
+  "path": "jigsaw.html",
+  "title": "Jigsaw",
+  "blurb": "A picture from your Wikipedia, cut into pieces",
+  "why": "Jigsaw puzzles began in the 1760s as maps cut into pieces to teach geography.",
+  "origin": {
+   "year": 1760,
+   "era": "1760s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "15 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q125177944",
+  "wiki": "Snake (video game genre)",
+  "path": "snake.html",
+  "title": "Snake",
+  "blurb": "Eat to grow and go faster. Walls or wrap-around.",
+  "why": "Based on the 1976 arcade game Blockade. On Nokia phones from 1997.",
+  "origin": {
+   "year": 1976,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q177491",
+  "wiki": "Breakout (video game)",
+  "path": "bricks.html",
+  "title": "Bricks",
+  "blurb": "Paddle and ball against a wall of bricks",
+  "why": "Based on Atari's Breakout of 1976.",
+  "origin": {
+   "year": 1976,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q191024",
+  "wiki": "15 puzzle",
+  "path": "puzzles/fifteen.html",
+  "title": "Fifteen",
+  "blurb": "Slide the tiles into order",
+  "why": "The 15 puzzle craze swept America and Europe in 1880.",
+  "origin": {
+   "year": 1874,
+   "era": "1870s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q224905",
+  "wiki": "SameGame",
+  "path": "puzzles/samegame.html",
+  "title": "Same Game",
+  "blurb": "Clear blocks of the same colour",
+  "why": "Invented in 1985 by Kuniaki Moribe as Chain Shot.",
+  "origin": {
+   "year": 1985,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1411087",
+  "wiki": "Peg solitaire",
+  "path": "puzzles/pegs.html",
+  "title": "Pegs",
+  "blurb": "Jump pegs over pegs until one is left",
+  "why": "Peg solitaire, a game for one player. It dates back to at least 17th-century France.",
+  "origin": {
+   "year": 1697,
+   "era": "1690s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q835894",
+  "wiki": "Nonogram",
+  "path": "puzzles/pattern.html",
+  "title": "Pattern",
+  "blurb": "Use the row and column clues to reveal a picture",
+  "why": "Nonograms, a picture puzzle that became popular in Japan in the late 1980s.",
+  "origin": {
+   "year": 1987,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q5578074",
+  "wiki": "Gokigen Naname",
+  "path": "puzzles/slant.html",
+  "title": "Slant",
+  "blurb": "Draw diagonal lines, each number counting those touching it",
+  "why": "Known in Japan as Gokigen Naname.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q815412",
+  "wiki": "Light Up (puzzle)",
+  "path": "puzzles/lightup.html",
+  "title": "Light Up",
+  "blurb": "Place lamps to light every square, none lighting another",
+  "why": "Known in Japan as Akari.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q2120242",
+  "wiki": "Slitherlink",
+  "path": "puzzles/loopy.html",
+  "title": "Loopy",
+  "blurb": "Draw one loop that uses the right sides of each number",
+  "why": "Known in Japan as Slitherlink.",
+  "origin": {
+   "year": 1989,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q673276",
+  "wiki": "Hashiwokakero",
+  "path": "puzzles/bridges.html",
+  "title": "Bridges",
+  "blurb": "Join the islands with the bridges each number asks for",
+  "why": "Known in Japan as Hashiwokakero.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q108795440",
+  "wiki": "Tentai Show",
+  "path": "puzzles/galaxies.html",
+  "title": "Galaxies",
+  "blurb": "Split the grid into regions that look the same upside down",
+  "why": "Known in Japan as Tentaisho, meaning heavenly bodies.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q478093",
+  "wiki": "Shikaku",
+  "path": "puzzles/rect.html",
+  "title": "Rectangles",
+  "blurb": "Divide the grid into rectangles of the numbered areas",
+  "why": "Known in Japan as Shikaku, meaning square.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q372499",
+  "wiki": "KenKen",
+  "path": "puzzles/keen.html",
+  "title": "Keen",
+  "blurb": "Fill the grid so each cage makes its number",
+  "why": "Like KenKen, invented in 2004 by Tetsuya Miyamoto.",
+  "origin": {
+   "year": 2004,
+   "era": "2000s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1402407",
+  "wiki": "Futoshiki",
+  "path": "puzzles/unequal.html",
+  "title": "Unequal",
+  "blurb": "Fill the grid, obeying the greater-than and less-than signs",
+  "why": "Known as Futoshiki, Japanese for inequality.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q477458",
+  "wiki": "Masyu",
+  "path": "puzzles/pearl.html",
+  "title": "Pearl",
+  "blurb": "Draw a loop through the pearls as shown",
+  "why": "Known in Japan as Masyu.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q570944",
+  "wiki": "Kuromasu",
+  "path": "puzzles/range.html",
+  "title": "Range",
+  "blurb": "Shade squares so each number sees the right count",
+  "why": "Known in Japan as Kuromasu.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q971467",
+  "wiki": "Hitori",
+  "path": "puzzles/singles.html",
+  "title": "Singles",
+  "blurb": "Shade repeated numbers, with no shaded squares touching",
+  "why": "Known in Japan as Hitori, meaning alone.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1414219",
+  "wiki": "Fillomino",
+  "path": "puzzles/filling.html",
+  "title": "Filling",
+  "blurb": "Fill in numbers so each region's size matches its number",
+  "why": "Known in Japan as Fillomino.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q880104",
+  "wiki": "Black Box (game)",
+  "path": "puzzles/blackbox.html",
+  "title": "Black Box",
+  "blurb": "Fire beams in to find the hidden balls",
+  "why": "Created by the games designer Eric Solomon in the 1970s.",
+  "origin": {
+   "year": 1976,
+   "era": "1970s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1765175",
+  "wiki": "Lights Out (game)",
+  "path": "puzzles/flip.html",
+  "title": "Flip",
+  "blurb": "Light every square by flipping groups of squares",
+  "why": "Related to Lights Out.",
+  "origin": {
+   "year": 1995,
+   "era": "1990s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1950892",
+  "wiki": "Takuzu",
+  "path": "puzzles/unruly.html",
+  "title": "Unruly",
+  "blurb": "Fill with two colours: balanced lines, no three in a row",
+  "why": "Also called Binairo or Takuzu.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q8046426",
+  "wiki": "Yacht (dice game)",
+  "path": "yacht.html",
+  "title": "Yacht",
+  "blurb": "Five dice, 13 rows. Play alone or against computers.",
+  "why": "A public-domain dice game. It later became Yahtzee.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1 to 4",
+  "length": "15 min",
+  "kind": "dice",
+  "computer": true
+ },
+ {
+  "qid": "Q20825977",
+  "wiki": "Liar's dice",
+  "path": "liarsdice.html",
+  "title": "Liar's Dice",
+  "blurb": "Bid, bluff and call. 2 to 6 players.",
+  "why": "A bluffing game with dice under cups. Played in South America as Perudo.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Americas",
+  "players": "2 to 6",
+  "length": "15 min",
+  "kind": "dice",
+  "computer": true
+ },
+ {
+  "qid": "Q953491",
+  "wiki": "Battleship (game)",
+  "path": "fleet.html",
+  "title": "Fleet",
+  "blurb": "Hide your ships, find the computer's",
+  "why": "Finding hidden ships on a grid began as a pencil-and-paper game before the First World War.",
+  "origin": {
+   "year": 1931,
+   "era": "1930s"
+  },
+  "region": "Americas",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q6498850",
+  "wiki": "Bulls and cows",
+  "path": "codebreaker.html",
+  "title": "Code Breaker",
+  "blurb": "Crack a hidden code from the clues",
+  "why": "Guessing a hidden code from clues goes back to the paper game Bulls and Cows.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q17286",
+  "wiki": "Mastermind (board game)",
+  "path": "codebreaker.html",
+  "title": "Code Breaker",
+  "blurb": "Crack a hidden code from the clues",
+  "why": "Guessing a hidden code from clues goes back to the paper game Bulls and Cows."
+ },
+ {
+  "qid": "Q653928",
+  "wiki": "Pinball",
+  "path": "pinball.html",
+  "title": "Pinball",
+  "blurb": "Flippers, bumpers, lanes and multiball",
+  "why": "Flippers arrived in 1947. Before that, pinball was mostly luck.",
+  "origin": {
+   "year": 1947,
+   "era": "1940s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q748890",
+  "wiki": "Asteroids (video game)",
+  "path": "rocks.html",
+  "title": "Rocks",
+  "blurb": "Turn, thrust and shoot rocks that split",
+  "why": "Every rock you hit splits into smaller rocks.",
+  "origin": {
+   "year": 1979,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q220665",
+  "wiki": "Space Invaders",
+  "path": "lastline.html",
+  "title": "Last Line",
+  "blurb": "Drones march down and shields wear away",
+  "why": "Rows of invaders moving down the screen made this kind of shooter popular in 1978.",
+  "origin": {
+   "year": 1978,
+   "era": "1970s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q2590391",
+  "wiki": "Lunar Lander (1979 video game)",
+  "path": "lander.html",
+  "title": "Lander",
+  "blurb": "Land softly on a pad before the fuel runs out",
+  "why": "Land gently with the fuel you have, as Apollo crews did on the Moon.",
+  "origin": {
+   "year": 1979,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q216293",
+  "wiki": "Pong",
+  "path": "paddles.html",
+  "title": "Paddles",
+  "blurb": "Two-paddle tennis against the computer or a friend",
+  "why": "Two paddles and a ball. It started the video game industry in 1972.",
+  "origin": {
+   "year": 1972,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1 to 2",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": true
+ },
+ {
+  "qid": "Q20825866",
+  "wiki": "Concentration (card game)",
+  "path": "memory.html",
+  "title": "Memory",
+  "blurb": "Match the pairs of pictures",
+  "why": "A game of turning over cards to find pairs. Children play it everywhere.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": false
+ },
+ {
+  "qid": "Q813197",
+  "wiki": "Simon (game)",
+  "path": "echo.html",
+  "title": "Echo",
+  "blurb": "Repeat the growing sequence of pads",
+  "why": "Repeat the growing sequence of colours and tones.",
+  "origin": {
+   "year": 1978,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": false
+ },
+ {
+  "qid": "Q210339",
+  "wiki": "Tic-tac-toe",
+  "path": "noughts.html",
+  "title": "Tic-Tac-Toe",
+  "blurb": "Three in a row, against the computer or a friend",
+  "why": "Played perfectly, tic-tac-toe is always a draw.",
+  "origin": {
+   "year": 1,
+   "era": "c. AD 1"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q713675",
+  "wiki": "Koi-Koi",
+  "path": "koikoi.html",
+  "title": "Koi-Koi",
+  "blurb": "Hanafuda flower cards, make yaku, call koi-koi",
+  "why": "Hanafuda are Japan's flower cards. They began when Western playing cards were banned in the 1600s.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q957572",
+  "wiki": "Truco",
+  "path": "truco.html",
+  "title": "Truco",
+  "blurb": "Argentine bluffing game, envido, play to 15 or 30",
+  "why": "The bluffing card game of Argentina and Uruguay, played with a Spanish deck.",
+  "origin": {
+   "year": null,
+   "era": "1500s"
+  },
+  "region": "Europe",
+  "players": "2 to 4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q6433358",
+  "wiki": "Belote",
+  "path": "belote.html",
+  "title": "Belote",
+  "blurb": "Partners, trump, belote and rebelote",
+  "why": "France's most played card game. Partners bid for trump.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Europe",
+  "players": "4",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q504577",
+  "wiki": "Skat (card game)",
+  "path": "skat.html",
+  "title": "Skat",
+  "blurb": "Three players, bid, take the skat, name a game",
+  "why": "Germany's national card game, invented in Altenburg around 1810.",
+  "origin": {
+   "year": 1813,
+   "era": "1810s"
+  },
+  "region": "Europe",
+  "players": "3",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q7694358",
+  "wiki": "Teen patti",
+  "path": "teenpatti.html",
+  "title": "Teen Patti",
+  "blurb": "Blind or seen, side show, play with chips",
+  "why": "India's three-card game. It is like three-card brag.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "South Asia",
+  "players": "2 to 6",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q188966",
+  "wiki": "Contract bridge",
+  "path": "bridge.html",
+  "title": "Bridge",
+  "blurb": "Bid, play and defend with a computer partner",
+  "why": "Contract bridge took its modern form with Harold Vanderbilt in 1925.",
+  "origin": {
+   "year": 1925,
+   "era": "1920s"
+  },
+  "region": "Americas",
+  "players": "4",
+  "length": "30 min+",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q214536",
+  "wiki": "Texas hold 'em",
+  "path": "holdem.html",
+  "title": "Texas Hold’em",
+  "blurb": "Chips, blinds, all-in and side pots",
+  "why": "Played for chips only.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "2 to 6",
+  "length": "30 min+",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q228044",
+  "wiki": "Blackjack",
+  "path": "blackjack.html",
+  "title": "Blackjack",
+  "blurb": "Closer to 21 than the dealer, split and double",
+  "why": "Twenty-one against the dealer. A strategy hint is optional.",
+  "origin": {
+   "year": null,
+   "era": "1700s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q278854",
+  "wiki": "Canasta",
+  "path": "canasta.html",
+  "title": "Canasta",
+  "blurb": "Meld cards, freeze the pile, play to 5000",
+  "why": "Canasta came from Uruguay in the 1940s and spread worldwide within ten years.",
+  "origin": {
+   "year": 1939,
+   "era": "1930s"
+  },
+  "region": "Americas",
+  "players": "4",
+  "length": "30 min+",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q2334025",
+  "wiki": "Big Two",
+  "path": "bigtwo.html",
+  "title": "Big Two",
+  "blurb": "Beat the last play, twos are high",
+  "why": "A climbing game played across southern China and Taiwan.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "East Asia",
+  "players": "4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q7801040",
+  "wiki": "Tiến lên",
+  "path": "tienlen.html",
+  "title": "Tien Len",
+  "blurb": "Runs, pairs in a row and chops",
+  "why": "Vietnam's national card game, where the two is the highest card.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Southeast Asia",
+  "players": "4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q715883",
+  "wiki": "Janggi",
+  "path": "janggi.html",
+  "title": "Janggi",
+  "blurb": "Korean chess with palaces and cannons",
+  "why": "Korean chess. The generals stay in their palaces. Cannons must jump over one piece.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "East Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q631557",
+  "wiki": "Makruk",
+  "path": "makruk.html",
+  "title": "Makruk",
+  "blurb": "Thai chess, slower than chess",
+  "why": "Thai chess, close to the Indian game that chess grew from.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Southeast Asia",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q989473",
+  "wiki": "International draughts",
+  "path": "draughts.html",
+  "title": "International Draughts",
+  "blurb": "10x10 with flying kings, take the most pieces",
+  "why": "International draughts is played on a 10 by 10 board across Europe and Africa.",
+  "origin": {
+   "year": 1723,
+   "era": "1720s"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q750693",
+  "wiki": "Tafl games",
+  "path": "hnefatafl.html",
+  "title": "Hnefatafl",
+  "blurb": "Copenhagen rules, the king runs for a corner",
+  "why": "The Viking board game. The king escapes to a corner or is captured.",
+  "origin": {
+   "year": 400,
+   "era": "c. AD 400"
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "30 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q17663922",
+  "wiki": "Hnefatafl",
+  "path": "hnefatafl.html",
+  "title": "Hnefatafl",
+  "blurb": "Copenhagen rules, the king runs for a corner",
+  "why": "The Viking board game. The king escapes to a corner or is captured."
+ },
+ {
+  "qid": "Q937315",
+  "wiki": "Royal Game of Ur",
+  "path": "ur.html",
+  "title": "Royal Game of Ur",
+  "blurb": "A race game 4,500 years old, four dice",
+  "why": "Played in Mesopotamia 4,500 years ago. Its rules survive on a clay tablet.",
+  "origin": {
+   "year": -2600,
+   "era": "c. 2600 BC"
+  },
+  "region": "Middle East",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q697302",
+  "wiki": "Snakes and ladders",
+  "path": "snakesandladders.html",
+  "title": "Snakes and Ladders",
+  "blurb": "Race to square 100, up ladders and down snakes",
+  "why": "Snakes and Ladders began in India as Moksha Patam, a game about good and bad deeds.",
+  "origin": {
+   "year": null,
+   "era": "1200s"
+  },
+  "region": "South Asia",
+  "players": "2 to 4",
+  "length": "15 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q900489",
+  "wiki": "Carrom",
+  "path": "carrom.html",
+  "title": "Carrom",
+  "blurb": "Flick the striker, pocket coins, cover the queen",
+  "why": "Flick and pocket on a wooden board. Played in homes across South Asia.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "South Asia",
+  "players": "2",
+  "length": "15 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q12263",
+  "wiki": "Mahjong",
+  "path": "mahjong4.html",
+  "title": "Mahjong for Four",
+  "blurb": "Hong Kong style against computers",
+  "why": "The four-player tile game played across China and beyond.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "East Asia",
+  "players": "4",
+  "length": "30 min+",
+  "kind": "tiles",
+  "computer": true
+ },
+ {
+  "qid": "Q5386",
+  "wiki": "Auto racing",
+  "path": "circuit.html",
+  "title": "Circuit",
+  "blurb": "Four tracks, rival cars and a ghost of your best lap",
+  "why": "Atari's Gran Trak 10 put a wheel and pedals on an arcade machine in 1974.",
+  "origin": {
+   "year": 1894,
+   "era": "1890s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q860750",
+  "wiki": "Racing video game",
+  "path": "roadrush.html",
+  "title": "Road Rush",
+  "blurb": "Hills, curves and traffic against the clock",
+  "why": "1980s arcade racers made a 3D road by scaling flat strips.",
+  "origin": {
+   "year": 1974,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q828322",
+  "wiki": "Platform game",
+  "path": "hopper.html",
+  "title": "Hopper",
+  "blurb": "Run, jump and stomp through six short levels",
+  "why": "In platform games, jumping between ledges is the whole game.",
+  "origin": {
+   "year": 1981,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "15 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q13717398",
+  "wiki": "Maze video game",
+  "path": "muncher.html",
+  "title": "Muncher",
+  "blurb": "Eat every dot while four chasers follow you",
+  "why": "Maze chase games were common in arcades by 1980. Each chaser moves in its own way.",
+  "origin": {
+   "year": 1980,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": true
+ },
+ {
+  "qid": "Q524267",
+  "wiki": "Frogger",
+  "path": "crossing.html",
+  "title": "Crossing",
+  "blurb": "Hop across roads and rivers",
+  "why": "A 1981 arcade game about getting across a road.",
+  "origin": {
+   "year": 1981,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q2583040",
+  "wiki": "Bomberman",
+  "path": "blast.html",
+  "title": "Blast",
+  "blurb": "Drop bombs, break blocks and set off chains",
+  "why": "Bombs that blast in four directions and set each other off started a whole kind of game.",
+  "origin": {
+   "year": 1983,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1 to 2",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": true
+ },
+ {
+  "qid": "Q343568",
+  "wiki": "Action-adventure game",
+  "path": "quest.html",
+  "title": "Quest",
+  "blurb": "A small adventure: find a sword, then beat the boss",
+  "why": "A sword, a key and a locked door. Top-down adventures have used these since the early 1980s.",
+  "origin": {
+   "year": 1979,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "30 min+",
+  "kind": "arcade",
+  "computer": true
+ },
+ {
+  "qid": "Q18759108",
+  "wiki": "Kart racing game",
+  "path": "kart.html",
+  "title": "ZimiKart",
+  "blurb": "Eight racers, six tracks, drift for a boost",
+  "why": "Kart games make a 3D road by tilting one flat picture of the track. 1990s consoles did this in hardware.",
+  "origin": {
+   "year": 1992,
+   "era": "1990s"
+  },
+  "region": "East Asia",
+  "players": "1 to 2",
+  "length": "15 min",
+  "kind": "arcade",
+  "computer": true
+ },
+ {
+  "qid": "Q2891654",
+  "wiki": "Chess puzzle",
+  "path": "chesspuzzles.html",
+  "title": "Chess Puzzles",
+  "blurb": "15,000 rated Lichess puzzles, your own rating",
+  "why": "Lichess rates each puzzle by how many players solved it. All puzzles are open data.",
+  "origin": {
+   "year": 1849,
+   "era": "1840s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q103632",
+  "wiki": "Chess opening",
+  "path": "chessopenings.html",
+  "title": "Opening Trainer",
+  "blurb": "3,800 named openings, play your side",
+  "why": "Chess players have named opening moves for generations. ECO codes run from A00 to E99.",
+  "origin": {
+   "year": 1966,
+   "era": "1960s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1058074",
+  "wiki": "Tsumego",
+  "path": "goproblems.html",
+  "title": "Go Problems",
+  "blurb": "Make a group live, or kill it",
+  "why": "Tsumego are Go's life-and-death problems. They teach you to plan moves ahead.",
+  "origin": {
+   "year": 1347,
+   "era": "1340s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q605445",
+  "wiki": "Sokoban",
+  "path": "sokoban.html",
+  "title": "Sokoban",
+  "blurb": "Push the crates onto the rings",
+  "why": "Sokoban is Japanese for warehouse keeper. Thinking Rabbit published it in 1982.",
+  "origin": {
+   "year": 1982,
+   "era": "1980s"
+  },
+  "region": "East Asia",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1161138",
+  "wiki": "Incipit",
+  "path": "firstlines.html",
+  "title": "First Lines",
+  "blurb": "Name the book from its first line",
+  "why": "Old books were once known by their first words, called the incipit. Here you name a book from its opening line, read from your Gutenberg library.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q14660",
+  "wiki": "Flag",
+  "path": "flags.html",
+  "title": "Flags",
+  "blurb": "Name the country from its flag",
+  "why": "National flags in their modern form date from the late 1700s. Here you name countries from the flags in your Wikipedia.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q328076",
+  "wiki": "Card Sharks",
+  "path": "higherlower.html",
+  "title": "Higher or Lower",
+  "blurb": "Compare places and things from your Wikipedia",
+  "why": "Guessing whether the next number is higher or lower is an old card game. Here you compare people, areas, heights and river lengths from your Wikipedia.",
+  "origin": {
+   "year": 1978,
+   "era": "1970s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q186117",
+  "wiki": "Timeline",
+  "path": "timeline.html",
+  "title": "Timeline",
+  "blurb": "Put events from your Wikipedia in order",
+  "why": "Timelines that put events in order were drawn by Joseph Priestley in the 1760s. Here you rebuild one from the events of your Wikipedia.",
+  "origin": {
+   "year": 1765,
+   "era": "1760s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q1949268",
+  "wiki": "Spelling bee",
+  "path": "spellingbee.html",
+  "title": "Spelling Bee",
+  "blurb": "Words from seven letters, checked in your Wiktionary",
+  "why": "Spelling bees began in the United States in the 1800s. Here you make words from seven letters, and your Wiktionary decides which are words.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "15 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q83207",
+  "wiki": "Crossword",
+  "path": "minicrossword.html",
+  "title": "Mini Crossword",
+  "blurb": "A small crossword clued by your Wiktionary",
+  "why": "The first newspaper crossword ran in New York in 1913. This small one takes its clues from the definitions in your Wiktionary.",
+  "origin": {
+   "year": 1913,
+   "era": "1910s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q151939",
+  "wiki": "Telephone game",
+  "path": "telephone.html",
+  "title": "Telephone",
+  "blurb": "Write a clue; your friend finds the article",
+  "why": "Telephone, or Chinese whispers, passes a message along and it changes on the way. Here the message is a clue, and the library holds the answer.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q1792503",
+  "wiki": "Balderdash",
+  "path": "bluff.html",
+  "title": "Dictionary Bluff",
+  "blurb": "Fake meanings for real rare words, passed round",
+  "why": "Balderdash and Fictionary are games of invented definitions. Here the real words and meanings come from your own Wiktionary.",
+  "origin": {
+   "year": 1984,
+   "era": "1980s"
+  },
+  "region": "Americas",
+  "players": "2 to 6",
+  "length": "15 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q41213",
+  "wiki": "Tower of Babel",
+  "path": "babel.html",
+  "title": "Babel",
+  "blurb": "One word in five languages: name it in English",
+  "why": "The story of the Tower of Babel explains why people speak many languages. Many words still show that languages share ancestors.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q560575",
+  "wiki": "Amateur astronomy",
+  "path": "skydetective.html",
+  "title": "Sky Detective",
+  "blurb": "Name what is in tonight’s real sky",
+  "why": "Stargazers have named the bright stars and planets for thousands of years. This game works out the real sky for your place and time.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q13576160",
+  "wiki": "GeoGuessr",
+  "path": "droppin.html",
+  "title": "Drop Pin",
+  "blurb": "Pin a place on your own offline map",
+  "why": "Finding a place on a map became a popular game in 2013. Here the map can be your own offline one.",
+  "origin": {
+   "year": 2013,
+   "era": "2010s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "5 min",
+  "kind": "library",
+  "computer": false
+ },
+ {
+  "qid": "Q71910",
+  "wiki": "Tetris",
+  "path": "stacker.html",
+  "title": "Stacker",
+  "blurb": "Fit falling pieces into rows. Hold a piece and see where it will land.",
+  "why": "Falling-block stacking began with Tetris, written in Moscow in 1984.",
+  "origin": {
+   "year": 1984,
+   "era": "1980s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "5 min",
+  "kind": "arcade",
+  "computer": false
+ },
+ {
+  "qid": "Q7200966",
+  "wiki": "Planarity",
+  "path": "puzzles/untangle.html",
+  "title": "Untangle",
+  "blurb": "Drag the points until no lines cross",
+  "why": "Based on Planarity, a graph puzzle from 2005.",
+  "origin": {
+   "year": 2005,
+   "era": "2000s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q184410",
+  "wiki": "Four color theorem",
+  "path": "puzzles/map.html",
+  "title": "Map",
+  "blurb": "Colour the map in four colours, no neighbours alike",
+  "why": "The four colour problem was posed in 1852 and settled by computer in 1976.",
+  "origin": {
+   "year": 1852,
+   "era": "1850s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1546924",
+  "wiki": "Cayley table",
+  "path": "puzzles/group.html",
+  "title": "Group",
+  "blurb": "Fill a grid so it follows a group table",
+  "why": "Group tables are named for Arthur Cayley, who set them out in 1854.",
+  "origin": {
+   "year": 1854,
+   "era": "1850s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q1067889",
+  "wiki": "Sliding puzzle",
+  "path": "puzzles/sixteen.html",
+  "title": "Sixteen",
+  "blurb": "Slide whole rows and columns to sort the grid",
+  "why": "A cousin of the 15 puzzle, which swept America and Europe in 1880.",
+  "origin": {
+   "year": null,
+   "era": "1870s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "5 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q4045246",
+  "wiki": "NetWalk",
+  "path": "puzzles/net.html",
+  "title": "Net",
+  "blurb": "Turn the tiles until the network joins up",
+  "why": "Based on NetWalk, a puzzle video game from 1996.",
+  "origin": {
+   "year": 1996,
+   "era": "1990s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/cube.html",
+  "title": "Cube",
+  "blurb": "Roll a cube over the grid to pick up blue squares",
+  "why": "Based on a Java web game by Paul Scott.",
+  "origin": {
+   "year": 2004,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/dominosa.html",
+  "title": "Dominosa",
+  "blurb": "Tile the grid so every number pair is used once",
+  "why": "Widely credited to O. S. Adler, whose initials gave it part of its name.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/flood.html",
+  "title": "Flood",
+  "blurb": "Flood the grid with one colour in few moves",
+  "why": "Based on a web game called Flood-It.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/inertia.html",
+  "title": "Inertia",
+  "blurb": "Slide around collecting gems, and avoid the mines",
+  "why": "Originally written for Windows by Ben Olmstead.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/magnets.html",
+  "title": "Magnets",
+  "blurb": "Place magnets so every line has the right poles",
+  "why": "Credited to the puzzle site Janko, and added to the collection by James Harvey.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/mosaic.html",
+  "title": "Mosaic",
+  "blurb": "Each number counts the shaded squares around it",
+  "why": "Also known as Fill-a-Pix.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/netslide.html",
+  "title": "Netslide",
+  "blurb": "Slide rows and columns to join up the network",
+  "why": "Joins the networks of Net to the sliding rows of Sixteen.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/palisade.html",
+  "title": "Palisade",
+  "blurb": "Draw walls to make regions of the right size",
+  "why": "Based on Five Cells, a puzzle from the Japanese publisher Nikoli.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/signpost.html",
+  "title": "Signpost",
+  "blurb": "Link the squares in order by following the arrows",
+  "why": "Credited to the puzzle site Janko, which calls it Pfeilpfad, arrow path.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/tents.html",
+  "title": "Tents",
+  "blurb": "Pitch a tent by every tree, with no tents touching",
+  "why": "A tree-and-tent pencil puzzle found on many websites.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/towers.html",
+  "title": "Towers",
+  "blurb": "Build towers; each clue counts those you can see",
+  "why": "Also known as Skyscrapers.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/tracks.html",
+  "title": "Tracks",
+  "blurb": "Lay a railway from one end to the other",
+  "why": "Added to the collection by James Harvey.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/twiddle.html",
+  "title": "Twiddle",
+  "blurb": "Turn blocks of tiles to sort the grid",
+  "why": "Generalises a door puzzle from the game Metroid Prime 2.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "path": "puzzles/undead.html",
+  "title": "Undead",
+  "blurb": "Place ghosts, vampires and zombies by what mirrors show",
+  "why": "Invented by David Millar as Haunted Mirror Maze.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "puzzle",
+  "computer": false
+ }
+]

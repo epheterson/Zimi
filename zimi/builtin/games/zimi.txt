@@ -1,0 +1,7 @@
+Title: ZimiGames
+Description: Over 100 games from around the world, offline: cards, boards, arcade, puzzles
+Language: eng
+Creator: Zimi
+Publisher: Zimi
+Tags: _category:games;games;zimi;zimi:own
+Icon: icon.png

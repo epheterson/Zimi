@@ -1,0 +1,125 @@
+/* ZimiGames: what the puzzle and arcade pages share (layout, the HUD, the touch pad, piece colours).
+   Tokens come from games.css; each game's own sheet adds only what is special to it. Piece and material colours below are
+   materials (the games' own pieces, dice and pegs), pulled toward neutral; UI neutrals are only ever games.css tokens. */
+:root {
+  --pad-key: 56px;
+  --p-i: #1e9ec4; --p-o: #d4a40f; --p-t: #8a55c9; --p-s: #3d9a4a; --p-z: #d1473f; --p-j: #3a63c9; --p-l: #dc7a1b;
+  --ok: #2e7d4f; --warn: #b7791f; --bad: #c0392b;
+  --cell: #ece8de; --cell-line: #e1dccf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --p-i: #3fc1e8; --p-o: #f0c52e; --p-t: #b184ee; --p-s: #62c470; --p-z: #ef6a60; --p-j: #6f93f0; --p-l: #f59a45;
+    --ok: #4cae78; --warn: #e0a84a; --bad: #ec6b5c; --cell: #1c1c20; --cell-line: #232328;
+  }
+}
+:root[data-theme="dark"] {
+  --p-i: #3fc1e8; --p-o: #f0c52e; --p-t: #b184ee; --p-s: #62c470; --p-z: #ef6a60; --p-j: #6f93f0; --p-l: #f59a45;
+  --ok: #4cae78; --warn: #e0a84a; --bad: #ec6b5c; --cell: #1c1c20; --cell-line: #232328;
+}
+
+.pl-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-3) var(--sp-5); }
+.pl-canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+/* The status line: one sentence, 15px, in ink. The long rule lives in How to play, never in a footnote. */
+.pl-msg { min-height: 1.4em; margin: 0; font-size: var(--fs-body); font-weight: 500; text-align: center; }
+/* The HUD: one strip directly above the playfield, at most four values, each a 13px label over a 32px tabular value. */
+.pl-hud { display: flex; gap: var(--sp-2); justify-content: space-between; width: 100%; max-width: 420px; }
+.pl-stat { flex: 1 1 auto; min-width: 0; text-align: center; line-height: 1.1; }
+.pl-stat small { display: block; font-size: var(--fs-small); color: var(--ink2); }
+.pl-stat b { display: block; font: 650 var(--fs-display)/1.15 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
+/* Keys: the pad's, and a puzzle's own. 56px on the pad; a held key is a selection (glow and amber line), never a second amber fill. */
+.pl-keys { display: flex; gap: var(--sp-2); justify-content: center; flex-wrap: wrap; }
+.pl-key { min-width: var(--target); min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: 600 var(--fs-body) var(--font); cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.pl-key:hover { border-color: var(--accent); color: var(--accent); }
+.pl-key:active, .pl-key[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); }
+.pl-key:disabled { color: var(--ink3); border-color: var(--line); cursor: default; }
+/* The one touch pad. Portrait: the field, then the pad row (d-pad left, actions right). Landscape on a phone: the two halves
+   sit on either side of the field. Every key is 56px. */
+.pl-stage { display: grid; grid-template-columns: auto auto; grid-template-areas: "field field" "padl padr"; justify-content: space-between; row-gap: var(--sp-3); width: fit-content; min-width: min(100%, 300px); max-width: 100%; }
+.pl-stage > :not(.pl-pad) { grid-area: field; justify-self: center; }
+.pl-pad { display: contents; }
+.pl-pad-l, .pl-pad-r { display: grid; gap: var(--sp-2); align-content: start; }
+.pl-pad-l { grid-area: padl; grid-template-columns: repeat(3, 56px); grid-template-areas: ". up ." "left down right"; }
+.pl-pad-l[data-n="2"] { grid-template-columns: repeat(2, 56px); grid-template-areas: "left right"; }
+.pl-pad-l[data-n="3"] { grid-template-areas: "left down right"; }
+.pl-pad-r { grid-area: padr; grid-auto-flow: column; justify-content: end; align-content: end; }
+.pl-pad .pl-key { width: 56px; height: 56px; min-width: 56px; min-height: 56px; padding: 0; font-size: var(--fs-body); }
+.pl-pad .pl-act { width: auto; min-width: 72px; padding: 0 var(--sp-3); border-radius: 999px; }
+.pl-pad [data-pad="up"] { grid-area: up; } .pl-pad [data-pad="down"] { grid-area: down; } .pl-pad [data-pad="left"] { grid-area: left; } .pl-pad [data-pad="right"] { grid-area: right; }
+/* Portrait: the pad is the rest of the screen under the field, in full-width rows (arrows, then the actions split evenly),
+   each key at least 56px tall. The status line sits between the field and the pad. */
+@media not all and (orientation: landscape) and (max-height: 520px) {
+  .pl-main:has(.pl-stage) { align-items: stretch; }
+  .pl-stage { grid-template-columns: 100%; grid-template-rows: auto auto 1fr; grid-template-areas: "field" "msg" "pad"; justify-content: stretch; width: 100%; min-width: 0; flex: 1 1 auto; row-gap: var(--sp-2); }
+  .pl-stage > .pl-msg { grid-area: msg; justify-self: center; }
+  .pl-pad { display: flex; flex-direction: column; gap: var(--sp-2); grid-area: pad; align-self: stretch; width: 100%; max-width: 560px; max-height: 420px; justify-self: center; }
+  .pl-pad-l, .pl-pad-r { align-content: stretch; gap: var(--sp-2); }
+  .pl-pad-l { grid-area: auto; flex: 2 1 0; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; min-height: calc(var(--pad-key) * 2 + var(--sp-2)); }
+  .pl-pad-l[data-n="2"] { grid-template-columns: 1fr 1fr; }
+  .pl-pad-l[data-n="2"], .pl-pad-l[data-n="3"] { grid-template-rows: 1fr; min-height: var(--pad-key); }
+  .pl-pad-r { grid-area: auto; flex: 1 1 0; grid-auto-flow: column; grid-auto-columns: 1fr; min-height: var(--pad-key); max-height: 96px; }
+  .pl-pad-r:empty { display: none; }
+  .pl-pad .pl-key, .pl-pad .pl-act { width: 100%; height: 100%; min-width: 0; min-height: var(--pad-key); border-radius: var(--radius); }
+  .pl-pad .pl-dir { font-size: 26px; }
+}
+/* A desktop with a keyboard and a mouse has no use for the pad. */
+@media (min-width: 700px) and (pointer: fine) { .pl-pad { display: none; } }
+@media (orientation: landscape) and (max-height: 520px) {
+  .pl-stage { grid-template-columns: auto 1fr auto; grid-template-areas: "padl field padr"; width: 100%; max-width: none; align-items: center; column-gap: var(--sp-4); }
+  .pl-pad-r { align-content: center; grid-auto-flow: row; }
+  .pl-pad-l { align-content: center; }
+  .pl-main { gap: var(--sp-1); padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+  .pl-msg { min-height: 0; }
+  /* With a pad, the HUD moves into the free corner above the left half of the pad (two by two), so the playfield gets the height. */
+  .pl-main:has(.pl-stage) { position: relative; }
+  .pl-main:has(.pl-stage) .pl-hud { position: absolute; left: var(--gutter); top: var(--sp-2); width: calc(56px * 3 + var(--sp-2) * 2); display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sp-2); }
+  .pl-main:has(.pl-stage) .pl-stat b { font-size: var(--fs-display); }
+  .pl-pad-l { align-content: end; align-self: end; }
+}
+.pl-pick { display: flex; flex-direction: column; gap: 6px; }
+.pl-opt { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-chip); cursor: pointer; }
+.pl-opt:has(input:checked) { border-color: var(--accent); }
+.pl-opt span { flex: 1; display: flex; flex-direction: column; }
+.pl-opt small { color: var(--ink2); font-size: var(--fs-small); }
+.pl-opt em { font: 600 var(--fs-small) var(--mono); color: var(--ink2); font-style: normal; }
+
+/* Dice, colour pegs, hold keys and the shared board bits (the dice, arcade and kids games). */
+:root { --g-red: #d1473f; --g-blue: #3a63c9; --g-green: #3d9a4a; --g-gold: #d4a40f; --g-purple: #8a55c9; --g-teal: #1e9ec4; --die: #fbfaf5; --die-pip: #26241f; --die-edge: #b9b4a6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --g-red: #ef6a60; --g-blue: #6f93f0; --g-green: #62c470; --g-gold: #f0c52e; --g-purple: #b184ee; --g-teal: #3fc1e8; } }
+:root[data-theme="dark"] { --g-red: #ef6a60; --g-blue: #6f93f0; --g-green: #62c470; --g-gold: #f0c52e; --g-purple: #b184ee; --g-teal: #3fc1e8; }
+.pl-die { position: relative; width: var(--die-size, 52px); height: var(--die-size, 52px); padding: calc(var(--die-size, 52px) * 0.12); display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); border: 1px solid var(--die-edge); border-radius: calc(var(--die-size, 52px) * 0.2); background: var(--die); box-shadow: 0 2px 0 var(--die-edge); cursor: pointer; touch-action: manipulation; }
+.pl-die i { display: block; place-self: center; width: 78%; height: 78%; border-radius: 50%; background: transparent; }
+.pl-die i.on { background: var(--die-pip); }
+.pl-die:disabled { cursor: default; opacity: 1; }
+.pl-die[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: 2px; transform: translateY(-5px); box-shadow: 0 7px 0 var(--die-edge); }
+.pl-die.pl-mini { --die-size: 30px; cursor: default; box-shadow: none; }
+.pl-die.pl-back { background: var(--ink2); border-color: var(--ink); box-shadow: none; }
+.pl-die.pl-back i.on { background: transparent; }
+.pl-peg { display: inline-grid; place-items: center; width: var(--peg, 40px); height: var(--peg, 40px); border-radius: 50%; border: 2px solid var(--line); background: var(--cell); padding: 0; cursor: pointer; color: var(--ink); touch-action: manipulation; }
+.pl-peg[data-c="0"] { background: var(--g-red); } .pl-peg[data-c="1"] { background: var(--g-blue); } .pl-peg[data-c="2"] { background: var(--g-green); }
+.pl-peg[data-c="3"] { background: var(--g-gold); } .pl-peg[data-c="4"] { background: var(--g-purple); } .pl-peg[data-c="5"] { background: var(--g-teal); }
+.pl-peg[data-c] { border-color: rgba(0, 0, 0, 0.35); color: #fff; }
+.pl-peg[data-c="3"], .pl-peg[data-c="5"] { color: #111; }
+.pl-peg:disabled { cursor: default; opacity: 1; }
+.pl-row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.pl-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pl-seg button { border: 0; border-right: 1px solid var(--line); background: var(--surface); min-height: var(--target); padding: 0 var(--sp-3); cursor: pointer; }
+.pl-seg button:last-child { border-right: 0; }
+.pl-seg button[aria-pressed="true"] { background: var(--accent-glow); color: var(--ink); font-weight: 650; }
+.pl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* A dark playfield is a material (space, night road): near-black and neutral, never navy. */
+.pl-arena { display: block; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: var(--radius); border: 1px solid var(--line); background: #0e0e10; max-width: 100%; }
+/* Option rows inside a sheet (players, level): the label over its segmented control, spaced. */
+.ar-sheet-card .gs-row { margin-bottom: var(--sp-2); }
+/* A mouse and a keyboard need no pad. */
+@media (min-width: 700px) and (pointer: fine) { .pl-pad { display: none; } }
+/* A segmented control of four or more long choices: two columns of separate buttons, so the row never outgrows its sheet. */
+.gs-seg.pl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); width: 100%; }
+.gs-seg.pl-grid .ar-btn { margin: 0; border-radius: var(--radius); }
+
+/* A touch screen has no hover: a key that was just tapped must not stay amber. */
+@media (hover: none) { .pl-main .ar-btn:not(.gm-play):hover:not(:disabled):not([aria-pressed="true"]) { border-color: var(--line); color: var(--ink); } }
+/* A figure that rises off a score and fades (Play.float). */
+.pl-float { position: absolute; z-index: 5; pointer-events: none; font: 800 var(--fs-body)/1 var(--font); font-variant-numeric: tabular-nums; color: var(--accent); text-shadow: 0 0 6px var(--surface); animation: pl-float 0.8s ease-out forwards; }
+@keyframes pl-float { 0% { opacity: 0; translate: 0 6px; } 15% { opacity: 1; } 100% { opacity: 0; translate: 0 -34px; } }
+@media (prefers-reduced-motion: reduce) { .pl-float { animation: pl-float-fade 1s ease-out forwards; } @keyframes pl-float-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } } }

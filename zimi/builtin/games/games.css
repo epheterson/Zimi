@@ -1,0 +1,584 @@
+/* ZimiGames: one stylesheet for the shelf and every game. Self-contained:
+   the ZIM opens in Kiwix too, where nothing of Zimi's own styles exists. */
+/* Tokens. Neutrals, amber and the type, radius and spacing steps are Zimi's own (zimi/static/app.css) under the
+   names the games already use, so a game's CSS follows them without changing. A game's CSS uses a hex literal only
+   for a material (felt, wood, card faces, suits, pieces, tiles), never for a UI neutral: docs/design/games.md. */
+:root {
+  --ground: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff; --line: #e4dfd4; --line-strong: #8c826f;
+  --ink: #26241f; --ink2: #6a675e; --ink3: #6f6b60;
+  /* Amber, the only accent. Text and outlines use #9d4a08; white text on it is 7:1, so it also fills a button. */
+  --accent: #9d4a08; --accent-ink: #ffffff;
+  --accent-glow: rgba(180, 83, 9, 0.10); --accent-line: rgba(180, 83, 9, 0.28);
+  --select-ring: #f59e0b; --legal: rgba(245, 158, 11, 0.3);
+  /* Selection: a dark 1px inner stroke and a 3px amber outer ring, so it reads on wood, felt and amber alike. */
+  --select: 0 0 0 1px rgba(26, 18, 9, 0.85), 0 0 0 4px var(--select-ring);
+  --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
+  --scrim: rgba(242, 239, 232, 0.55);
+  /* Felt is the cards' table: one hue, deep and quiet, with a soft vignette. Dark is darker, never brighter. */
+  --felt: #285c43; --felt-deep: #1a4130; --felt-line: rgba(255, 255, 255, 0.12);
+  --card: #fdfcf8; --card-edge: #c9c4b8; --suit-red: #b3261e; --suit-black: #1b1b1b;
+  --bevel-hi: #ffffff; --bevel-lo: #8a8478; --tile: #d9d3c4;
+  /* Wood is a board frame: one pair for every board. */
+  --wood: #b88a58; --wood-dark: #8f6538; --wood-grain: 70, 40, 14; --wood-veil: transparent;
+  /* Shape, space, type: three radii (6 chips and cells, 10 buttons and cards, 14 sheets and panels), a 4px grid,
+     six type steps and the display size. */
+  --r-chip: 6px; --radius: 10px; --r-sheet: 14px; --gap: 12px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --gutter: 16px;
+  --fs-caption: 11px; --fs-small: 13px; --fs-body: 15px; --fs-title: 17px; --fs-sheet: 20px; --fs-brand: 26px; --fs-display: 32px;
+  --target: 44px; --bar-h: 56px; --column: 960px; --board-max: 720px;
+  --font: -apple-system, Inter, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0a0a0b; --surface: #141416; --surface2: #1c1c20; --line: #27272b; --line-strong: #27272b;
+    --ink: #e8e8ed; --ink2: #8a8a94; --ink3: #6e6e7a;
+    --accent: #f59e0b; --accent-ink: #0a0a0b; --accent-glow: rgba(245, 158, 11, 0.08); --accent-line: rgba(245, 158, 11, 0.25);
+    --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5); --scrim: rgba(0, 0, 0, 0.6);
+    --felt: #17382a; --felt-deep: #0e2219; --felt-line: rgba(255, 255, 255, 0.1);
+    --wood: #4a3524; --wood-dark: #2e2015; --wood-grain: 0, 0, 0; --wood-veil: rgba(18, 10, 4, 0.5);
+    --bevel-hi: #5a5a62; --bevel-lo: #0c0c0e; --tile: #2e2e34;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0a0a0b; --surface: #141416; --surface2: #1c1c20; --line: #27272b; --line-strong: #27272b;
+  --ink: #e8e8ed; --ink2: #8a8a94; --ink3: #6e6e7a;
+  --accent: #f59e0b; --accent-ink: #0a0a0b; --accent-glow: rgba(245, 158, 11, 0.08); --accent-line: rgba(245, 158, 11, 0.25);
+  --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5); --scrim: rgba(0, 0, 0, 0.6);
+  --felt: #17382a; --felt-deep: #0e2219; --felt-line: rgba(255, 255, 255, 0.1);
+  --wood: #4a3524; --wood-dark: #2e2015; --wood-grain: 0, 0, 0; --wood-veil: rgba(18, 10, 4, 0.5);
+  --bevel-hi: #5a5a62; --bevel-lo: #0c0c0e; --tile: #2e2e34;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--ground); color: var(--ink); font: var(--fs-body)/1.45 var(--font); -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; }
+/* Focus is a 2px amber ring at a 2px offset on everything. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* A game's bar: back to the shelf, the game's name, one stat, Undo (or Pause), Menu. 56px tall; the bar and the page share
+   one centred column on wide screens (960px), so Back and Menu never sit a whole desktop apart. */
+.ar-bar { flex: none; display: flex; align-items: center; gap: var(--sp-2); min-height: var(--bar-h); padding: 0 max(var(--gutter), calc((100% - var(--column)) / 2)); background: var(--surface); border-bottom: 1px solid var(--line); }
+.ar-bar > * { flex: none; }
+.ar-bar h1 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The way back is the ZimiGames mark and a chevron: one 44px target. The page's own text (a single chevron) stays
+   for screen readers and is not drawn. */
+.ar-back { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: var(--target); min-height: var(--target); margin-left: -8px; font-size: 0; line-height: 0; text-decoration: none; color: var(--ink2); padding: 0 8px 0 6px; border-radius: var(--radius); }
+.ar-back::before { content: ""; width: 8px; height: 8px; margin-right: -1px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) scale(0.9); }
+.ar-back::after { content: ""; width: 24px; height: 24px; background: url(mark.svg) center / contain no-repeat; }
+.ar-back:hover { color: var(--accent); }
+/* In dark the pebble gets a 1px ring so it never vanishes into the bar: the one allowed change to it. The ground is no lighter than
+   the bar, so the ring is the ink at 28 percent. */
+:root { --mark-ring: color-mix(in srgb, var(--ink) 28%, transparent); }
+:root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }
+/* Inside Zimi's reader the shell already has a way back (its arrow and the ZimiGames crumb):
+   the page's own would be a second one (recent.js sets .in-zimi). */
+.in-zimi .ar-back { display: none; }
+.in-zimi .ar-bar { padding-left: var(--gutter); }
+
+/* Buttons: ghost by default (a 1px line, radius 10); 44px on touch, 36px on a fine pointer. One filled amber button per screen. */
+.ar-btn { min-height: 36px; padding: 0 var(--sp-3) 1px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; white-space: nowrap; }
+@media (pointer: coarse) { .ar-btn { min-height: var(--target); } }
+.ar-btn[hidden] { display: none; }
+/* Hover is for a pointer: on a touch screen the last tap leaves the finger's place "hovered" and a second option looks chosen. */
+@media (hover: hover) { .ar-btn:hover { border-color: var(--accent); color: var(--accent); } }
+.ar-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* Disabled controls keep their place: ink3 text on the line border (the state is also in disabled / aria-disabled). */
+.ar-btn:disabled, .ar-btn[aria-disabled="true"] { color: var(--ink3); background: var(--surface); border-color: var(--line); cursor: default; }
+.ar-btn:disabled:hover, .ar-btn[aria-disabled="true"]:hover { color: var(--ink3); border-color: var(--line); }
+/* The bar's one stat: a single value in 13px tabular sans. */
+.ar-stat { font: 600 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; color: var(--ink2); white-space: nowrap; }
+
+/* Pages that are not a felt table: the content starts under the bar, in one centred column. Space falls below it. */
+.pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom)); }
+@media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
+body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
+body.zc-game { padding-bottom: env(safe-area-inset-bottom); }
+/* Bare grids (2048, Sudoku, Minesweeper, Sokoban) sit in one frame: radius 14, a 1px line, surface2, 12px padding.
+   A wood board is its own frame and gets no card around it; felt tables stay full bleed. */
+.gs-frame, .pl-main :is(.tf-board, .su-board, .sk-board), .ms-main .ms-box { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
+
+/* A sheet over the game: a menu, a start, an end, a choice of backs. One anatomy: the title (20px), one line
+   of text, option rows, actions last with the primary last. The scrim is the ground at 55 percent (black at 60 in dark);
+   in dark the sheet is surface2 with a visible line. */
+.ar-sheet { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--gutter); background: var(--scrim); z-index: 50; }
+.ar-sheet[hidden] { display: none; }
+/* The veil covers the game, never the bar: Back, the stat and Menu stay at full strength (Menu is how the sheet closes). */
+body:has(> .ar-bar) .ar-sheet { top: var(--bar-h); }
+.ar-sheet-card { width: min(420px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: var(--sp-5) 20px 20px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); }
+.ar-sheet-card:focus { outline: none; }
+.ar-sheet-card h2 { margin: 0 0 var(--sp-3); font-size: var(--fs-sheet); font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
+/* No pebble on a sheet: the bar above it already carries it, and two on one screen is wallpaper. A sheet on a page with no bar (the shelf's) keeps it, 20px. */
+body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inline-block; width: 20px; height: 20px; margin: -3px 8px 0 0; vertical-align: middle; background: url(mark.svg) center / contain no-repeat; }
+.ar-sheet-card > p { margin: 0 0 var(--sp-3); color: var(--ink2); }
+/* One action anatomy on every sheet: a single 44px row across the card. The quiet actions (ghost, a third) sit left and the
+   primary (amber, two thirds) last; a row with no primary shares the width equally. */
+.ar-sheet-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
+.ar-sheet-actions .ar-btn { flex: 1 1 0; min-width: 0; min-height: var(--target); padding: 0 var(--sp-2) 1px; }
+.ar-sheet-actions .ar-btn[aria-pressed="true"] { flex-grow: 2; }
+.ar-sheet-actions:has([aria-pressed="true"]) .ar-btn:not([aria-pressed="true"]) { background: transparent; border-color: transparent; color: var(--ink2); }
+.ar-sheet-actions:has([aria-pressed="true"]) .ar-btn:not([aria-pressed="true"]):hover { color: var(--accent); }
+@media (max-width: 520px) { .gs-actions .ar-btn[aria-pressed="true"] { flex: 1 1 100%; } }
+/* Option rows: a 13px sentence-case label on the left, a 44px segmented control on the right. */
+.gs-row, .zc-row { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--target); }
+.gs-row > label, .zc-row > label { flex: 1 1 auto; font-size: var(--fs-small); font-weight: 600; color: var(--ink2); text-transform: none; letter-spacing: 0; }
+.gs-seg, .zc-seg { display: inline-flex; flex: 0 0 auto; }
+.gs-seg .ar-btn, .zc-seg .ar-btn { min-height: var(--target); padding: 0 var(--sp-3) 1px; border-radius: 0; margin-left: -1px; }
+.gs-seg .ar-btn:first-child, .zc-seg .ar-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
+.gs-seg .ar-btn:last-child, .zc-seg .ar-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.gs-seg .ar-btn:only-child, .zc-seg .ar-btn:only-child { border-radius: var(--radius); }
+/* A chosen segment is a selection, not the screen's one amber button: accent glow, accent line, ink text. */
+.gs-seg .ar-btn[aria-pressed="true"], .zc-seg .ar-btn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; position: relative; z-index: 1; }
+@media (max-width: 420px) { .gs-row, .zc-row { flex-wrap: wrap; } .gs-seg, .zc-seg { flex: 1 1 100%; } .gs-seg .ar-btn, .zc-seg .ar-btn { flex: 1; } }
+
+/* The player chip: 13px, 28px tall, a pill with a dot, the name and a number. The current player has an amber outline and
+   glow with the name in ink, never white on amber. D marks the dealer; a suit chip marks trump. */
+.gs-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.gs-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink2); font-size: var(--fs-small); white-space: nowrap; }
+.gs-chip b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.gs-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot, var(--line-strong)); }
+.gs-chips .gs-chip::before { display: none; }
+.gs-chip[aria-current="true"], .gs-chip.is-turn { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); color: var(--ink); }
+.gs-chip .gs-dealer { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-glow); color: var(--ink); font-size: var(--fs-caption); font-weight: 700; }
+
+/* Action rows hold moves only (Hint first, at most four); a tray on felt is the same on translucent black. */
+.gs-actionrow, .bg-controls, .pl-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; }
+.gs-actionrow .ar-btn, .gs-tray .ar-btn { min-height: var(--target); }
+.gs-tray { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; padding: var(--sp-2); border-radius: var(--r-sheet); background: rgba(0, 0, 0, 0.34); }
+
+/* The status line is one slot: one sentence, 15px, in ink (shell.js makes it aria-live). */
+.gs-status, .bg-status, .pl-msg, .ms-msg { font-size: var(--fs-body); font-weight: 500; color: var(--ink); }
+.gs-shake { animation: gs-shake 0.12s ease-out; }
+/* translate, not transform: a card keeps its place (its position is a transform) while it shakes. */
+@keyframes gs-shake { 0%, 100% { translate: 0 0; } 30% { translate: -4px 0; } 70% { translate: 4px 0; } }
+.gs-flash { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Reduced motion, once. The shell sets data-anim="off" when the device asks for less motion (unless Animation was chosen),
+   so this one rule serves every game; a page without the shell falls back to the media query. */
+html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] *::after { animation-duration: 0.001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim]) *, html:not([data-anim]) *::before, html:not([data-anim]) *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; } }
+
+/* The shelf (ZimiGames' main page). Plain HTML lists every game; shelf.js adds the
+   views: Lobby (a feed of art tiles) and Index (search first, one section at a
+   time as thumbnail rows). With no data-view the page is Lobby's grid. */
+.ar-shelf { max-width: 1180px; margin: 0 auto; padding: 16px 16px 48px; --glow: var(--accent-glow); }
+.ar-shelf header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 16px; }
+.ar-brand { display: flex; align-items: center; gap: 12px; margin: 0; font-size: var(--fs-brand); font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.ar-brand .ar-lockup { display: block; flex: none; width: 40px; height: 40px; }
+/* The wordmark's cap height is centred on the icon: the line box centres the em box, and the caps sit 0.67px below it at 26px. */
+.ar-brand span { padding-bottom: 1.33px; }
+.ar-shelf header p { flex: 1 0 100%; margin: 0; color: var(--ink2); max-width: 60ch; }
+.sh-on header p { display: none; }
+.sh-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1 1 0; min-width: 0; }
+.sh-search { position: relative; display: flex; align-items: center; flex: 1 1 auto; max-width: 340px; color: var(--ink3); }
+.sh-search svg { position: absolute; left: 11px; pointer-events: none; }
+.sh-search input { width: 100%; height: 36px; padding: 0 12px 0 33px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; }
+.sh-search input::placeholder { color: var(--ink3); }
+.sh-search input:focus-visible { outline-offset: 0; border-color: var(--accent); }
+@media (min-width: 700px) { .sh-search input { font-size: var(--fs-body); } }
+
+/* The view toggle: Zimi's own Home control (list and grid, one pressed). */
+.ar-view-toggle { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.ar-view-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 34px; padding: 0; background: none; border: none; color: var(--ink2); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.ar-view-btn + .ar-view-btn { border-left: 1px solid var(--line); }
+.ar-view-btn:hover { color: var(--ink); background: var(--ground); }
+.ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
+@media (pointer: coarse) { .ar-view-btn { width: 44px; height: 42px; } .sh-search input { height: 42px; } }
+
+/* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
+.sh-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 18px; padding: 2px 16px; }
+.sh-nav::-webkit-scrollbar { display: none; }
+.sh-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.sh-chip:hover { border-color: var(--accent); }
+/* The chosen chip is a selection, as in Zimi: accent glow, accent line, ink text. */
+.sh-chip[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); }
+.sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.6; }
+.sh-count { margin-inline-start: 8px; letter-spacing: 0; }
+.sh-rail-head, .sh-chip-recent { display: none; }
+.sh-empty { margin: 32px 0; text-align: center; color: var(--ink2); }
+.sh-empty[hidden] { display: none; }
+
+/* Sections and tiles. */
+.ar-section[hidden] { display: none; }
+.ar-section + .ar-section { margin-top: 28px; }
+.ar-section h2 { margin: 0 0 12px; font-size: var(--fs-small); font-weight: 650; letter-spacing: 0.04em; color: var(--ink2); }
+.ar-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+.ar-game { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: var(--r-sheet); overflow: hidden; background: var(--surface2); border: 1px solid var(--line); transition: transform 0.15s, border-color 0.15s; }
+.ar-game[hidden] { display: none; }
+.ar-game:hover { transform: translateY(-2px); border-color: var(--accent); }
+.ar-game-art { aspect-ratio: 16 / 9; display: block; width: 100%; }
+.ar-game-live { object-fit: cover; }
+.ar-game-icon { object-fit: contain; background: var(--tile); padding: 6px; }
+.ar-game-text { min-width: 0; padding: 10px 12px 12px; }
+.ar-game-text strong { display: block; font-size: 15px; line-height: 1.3; }
+.ar-game-text span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--ink2); font-size: var(--fs-small); line-height: 1.35; }
+@media (max-width: 560px) { .ar-games { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .ar-game-text { padding: 9px 10px 11px; } }
+
+/* Families: a card that opens to its variants. Without the shelf script the wrapper vanishes and the tiles flow as ever. */
+.ar-family, .sh-fam { display: contents; }
+.sh-fam-card { box-sizing: border-box; min-width: 0; font: inherit; text-align: left; cursor: pointer; padding: 0; position: relative; box-shadow: 5px 5px 0 -1px var(--surface), 5px 5px 0 0 var(--line); }
+.sh-fam-art { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); overflow: hidden; }
+.sh-fam-art img { display: block; width: 100%; height: 100%; object-fit: cover; aspect-ratio: 16 / 9; }
+.sh-fam-panel { display: none; }
+/* The disclosure: how many games it holds and a chevron that turns when it is open. */
+.sh-fam-tag { position: absolute; top: 8px; inset-inline-end: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-size: var(--fs-small); font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.sh-fam-tag svg { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s; }
+.sh-fam.sh-open .sh-fam-tag svg { transform: rotate(180deg); }
+.sh-fam-card:hover .sh-fam-tag, .sh-fam-card:focus-visible .sh-fam-tag { border-color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .sh-fam.sh-open .sh-fam-panel { animation: sh-fam-in 0.24s ease-out; } @keyframes sh-fam-in { from { opacity: 0; transform: translateY(-8px); } } }
+.sh-fam.sh-open { display: block; grid-column: 1 / -1; }
+.sh-fam.sh-open .sh-fam-card { flex-direction: row; align-items: center; width: 100%; margin-bottom: 14px; box-shadow: none; border-color: var(--accent-line); }
+.sh-fam.sh-open .sh-fam-art { flex: 0 0 min(34%, 160px); width: min(34%, 160px); aspect-ratio: 16 / 9; }
+.sh-fam.sh-open .sh-fam-card .ar-game-text { flex: 1; }
+.sh-fam.sh-open .sh-fam-card .ar-game-text span { -webkit-line-clamp: 3; }
+.sh-fam.sh-open .sh-fam-panel { display: grid; }
+[data-sec="search"] .sh-fam, [data-sec="search"] .sh-fam.sh-open, [data-sec="search"] .sh-fam .sh-fam-panel, [data-sec="search"] .sh-fam.sh-open .sh-fam-panel { display: contents; }
+[data-sec="search"] .sh-fam .sh-fam-card { display: none; }
+[data-view="index"] .sh-fam-card { box-shadow: none; }
+[data-view="index"] .sh-fam-art { flex: 0 0 96px; width: 96px; height: 54px; aspect-ratio: auto; border-radius: var(--r-chip); }
+[data-view="index"] .sh-fam.sh-open .sh-fam-art { flex-basis: 96px; width: 96px; }
+[data-view="index"] .sh-fam.sh-open .sh-fam-card { margin-bottom: 8px; }
+[data-view="index"] .sh-fam-panel { padding-left: 14px; }
+[data-view="index"] .sh-fam-card { width: 100%; }
+[data-view="index"] .sh-fam-card::after { display: none; }
+[data-view="index"] .sh-fam-tag { position: static; margin-inline-start: auto; flex: none; }
+.sh-fam[hidden] { display: none; }
+
+/* Lobby: Continue is a row you scroll, the day's game sits beside it. */
+.sh-top { display: flex; flex-wrap: wrap; align-items: stretch; gap: 18px; margin-bottom: 26px; }
+.sh-top[hidden] { display: none; }
+.sh-top .ar-section { margin: 0; }
+.ar-today { flex: 1 1 340px; max-width: 460px; display: flex; flex-direction: column; }
+.ar-today[hidden], .ar-continue[hidden] { display: none; }
+.ar-today .ar-games { display: block; flex: 1; }
+.ar-today .ar-game { flex-direction: row; align-items: stretch; height: 100%; }
+.ar-today .ar-game-art { flex: 0 0 44%; width: 44%; height: auto; aspect-ratio: auto; min-height: 112px; }
+.ar-today .ar-game-text { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 14px; }
+.ar-today .ar-game-text strong { font-size: var(--fs-title); }
+.ar-today > h2 { color: var(--accent); }
+.ar-today .ar-game-text span { -webkit-line-clamp: 4; color: var(--ink); font-size: 13px; }
+.ar-today .ar-game-text::after { content: var(--play-label, "Play"); align-self: flex-start; margin-top: 8px; padding: 5px 16px; border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-small); font-weight: 650; }
+@media (max-width: 699px) { .ar-today { max-width: none; } }
+
+/* Index: rows, one section at a time. */
+[data-view="index"] .sh-nav { margin-bottom: 14px; padding: 0 16px; gap: 2px; border-bottom: 1px solid var(--line); }
+[data-view="index"] .sh-chip { height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink2); }
+[data-view="index"] .sh-chip[aria-pressed="true"] { background: none; color: var(--ink); border-bottom-color: var(--accent); }
+[data-view="index"] .sh-chip:hover { border-bottom-color: var(--line); }
+[data-view="index"] .sh-chip[aria-pressed="true"]:hover { border-bottom-color: var(--accent); }
+@media (max-width: 899px) {
+  [data-view="index"] .sh-tools { display: contents; }
+  [data-view="index"] .ar-view-toggle { margin-left: auto; }
+  [data-view="index"] .sh-search { order: 3; flex: 1 0 100%; max-width: none; }
+}
+[data-view="index"] .sh-top { display: block; margin-bottom: 18px; }
+[data-view="index"] .sh-top[hidden] { display: none; }
+[data-view="index"] .ar-games { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+[data-view="index"] .ar-game { flex-direction: row; align-items: center; gap: 12px; padding: 6px 12px 6px 6px; border-radius: var(--r-sheet); }
+[data-view="index"] .ar-game:hover { transform: none; }
+[data-view="index"] .ar-game-art, [data-view="index"] .ar-game-icon { flex: 0 0 96px; width: 96px; height: 54px; aspect-ratio: auto; border-radius: var(--r-chip); }
+[data-view="index"] .ar-game-icon { padding: 4px; }
+[data-view="index"] .ar-game-text { flex: 1; padding: 0; }
+[data-view="index"] .ar-game-text strong { font-size: 15px; }
+[data-view="index"] .ar-game-text span { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+[data-view="index"] .ar-game::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 4px 0 2px; border-top: 2px solid var(--ink3); border-right: 2px solid var(--ink3); transform: rotate(45deg); }
+/* The day's game, under the tabs on a phone: one row, on All only. */
+[data-view="index"] .ar-today { max-width: none; margin-bottom: 14px; }
+[data-view="index"] .ar-today .ar-game { height: auto; align-items: center; }
+[data-view="index"] .ar-today .ar-game-art { flex-basis: 96px; width: 96px; min-height: 0; height: 54px; }
+[data-view="index"] .ar-today .ar-game-text { justify-content: center; padding: 0; }
+[data-view="index"] .ar-today .ar-game-text span { display: block; }
+[data-view="index"] .ar-today .ar-game-text::after { display: none; }
+[data-view="index"]:not([data-sec="all"]):not([data-sec="search"]) .ar-today { display: none; }
+@media (min-width: 900px) {
+  [data-view="index"] .sh-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
+  [data-view="index"] .sh-rail { position: sticky; top: 16px; }
+  [data-view="index"] .sh-nav { flex-direction: column; gap: 2px; margin: 0 0 22px; padding: 0; border: 0; overflow: visible; }
+  [data-view="index"] .sh-chip { height: 34px; width: 100%; justify-content: space-between; padding: 0 12px; border: 0; border-radius: var(--r-chip); }
+  [data-view="index"] .sh-chip[aria-pressed="true"], [data-view="index"] .sh-chip[aria-pressed="true"]:hover { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+  [data-view="index"] .sh-chip:hover { background: var(--surface); }
+  [data-view="index"] .sh-chip-recent:not([hidden]) { display: inline-flex; }
+  [data-view="index"] .sh-rail-head { display: block; margin: 14px 12px 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
+  [data-view="index"] .ar-games { grid-template-columns: 1fr 1fr; }
+  [data-view="index"] .ar-today { margin: 0; display: flex !important; }
+  [data-view="index"] .ar-today[hidden] { display: none !important; }
+  [data-view="index"] .ar-today .ar-game { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+  [data-view="index"] .ar-today .ar-game::after { display: none; }
+  [data-view="index"] .ar-today .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
+  [data-view="index"] .ar-today .ar-game-text { padding: 10px 12px 12px; }
+  [data-view="index"] .ar-today .ar-game-text span { white-space: normal; display: -webkit-box; }
+}
+.ar-foot { margin-top: 32px; color: var(--ink2); font-size: var(--fs-small); }
+/* The credits: closed until asked for, the long list of licences out of the way of the games. */
+.ar-foot > summary { display: inline-flex; align-items: center; gap: 6px; min-height: var(--target); cursor: pointer; font-weight: 650; list-style: none; }
+.ar-foot > summary::-webkit-details-marker { display: none; }
+.ar-foot > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--ink3); border-bottom: 2px solid var(--ink3); transform: translateY(-2px) rotate(45deg); transition: transform 0.2s; }
+.ar-foot[open] > summary::after { transform: translateY(1px) rotate(225deg); }
+.ar-foot > summary:hover { color: var(--ink); }
+.ar-foot > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-chip); }
+.ar-foot > p { margin: 0 0 8px; line-height: 1.5; }
+@media (prefers-reduced-motion: no-preference) { .ar-foot[open] > p { animation: sh-fam-in 0.24s ease-out; } }
+
+/* The order control: Zimi's Home sort (a mark, the order it is in; the native select lies over it unseen). */
+.sh-sort-wrap { position: relative; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: var(--r-chip); font-size: var(--fs-small); font-weight: 500; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+.sh-sort-wrap[hidden] { display: none; }
+.sh-sort-wrap:hover, .sh-sort-wrap:focus-within { color: var(--ink); }
+.sh-sort-wrap:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sh-sort { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
+.ar-shelf:not([data-sort="sections"]) .sh-sort-wrap { color: var(--accent); }
+@media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; } }
+/* A phone's lobby header has room for the mark only. */
+@media (max-width: 699px) { [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
+@media (max-width: 899px) { [data-view="index"] .sh-sort-wrap { margin-left: auto; } [data-view="index"] .ar-view-toggle { margin-left: 0; } }
+.sh-wait .sh-list { visibility: hidden; }
+
+/* What and when, on a tile: small chips. Index shows them on every row; any other order shows them in Lobby too. */
+.sh-meta { display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px; font-size: 11px; line-height: 1.3; }
+[data-view="index"] .sh-meta, .ar-shelf:not([data-sort="sections"]) .sh-meta { display: flex; }
+[data-view="index"] .sh-meta { flex-wrap: nowrap; overflow: hidden; margin-top: 3px; }
+.sh-meta em { font-style: normal; padding: 1px 7px; border-radius: 999px; background: var(--ground); border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
+.sh-meta .sh-m-age { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-sort="oldest"] .sh-m-age, [data-sort="quick"] .sh-m-length { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+[data-sort="region"] .sh-m-region, [data-sort="players"] .sh-m-players { display: none; }
+.ar-today .sh-meta { display: flex; }
+
+/* Groups of an order: a header with a note, and for Oldest first a spine with a dot per era; for By region the world with the region lit. */
+.sh-group h2 { position: relative; display: flex; align-items: center; gap: 8px; }
+.sh-group .sh-count { margin-inline-start: 0; }
+.sh-gt { color: var(--ink); }
+.sh-note { font-size: var(--fs-small); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink2); }
+[data-sort="oldest"] .sh-group { margin-left: 6px; padding-left: 18px; border-left: 2px solid var(--line); }
+[data-sort="oldest"] .sh-group h2::before { content: ""; position: absolute; left: -26px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--ground); }
+[data-sort="oldest"] .sh-gt, [data-sort="region"] .sh-gt { font-size: 15px; letter-spacing: 0; text-transform: none; }
+[data-sort="region"] .sh-group h2 { gap: 12px; }
+.sh-map { flex: none; width: 120px; height: 60px; color: var(--ink3); border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.sh-land { fill: currentColor; opacity: 0.45; }
+.sh-spot { fill: var(--accent); opacity: 0.75; stroke: var(--accent); stroke-width: 10; stroke-opacity: 0.35; }
+.sh-map-all .sh-land { fill: var(--accent); opacity: 0.4; }
+
+
+/* The game table: what was played lately, as boxes left out after game night.
+   recent.js draws it over the shelf's own tiles; each box lies at an angle that
+   is a function of its page, so it is the same every visit. */
+.ar-table { --bw: 128px; --ov: 34px; position: relative; display: block; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-radius: var(--r-sheet); padding: 24px 20px 28px; color: #2a2118;
+  background:
+    radial-gradient(120% 140% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.28)),
+    linear-gradient(var(--wood-veil), var(--wood-veil)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='240'%3E%3Cfilter id='w' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .09' numOctaves='3' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.27 0 0 0 0 0.157 0 0 0 0 0.055 3 0 0 0 -1.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E") 0 0 / 360px 240px,
+    repeating-linear-gradient(180deg, transparent 0 79px, rgba(var(--wood-grain), 0.22) 79px 80px),
+    linear-gradient(180deg, var(--wood), var(--wood-dark));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22), inset 0 3px 14px rgba(0, 0, 0, 0.3); }
+.ar-table::-webkit-scrollbar { display: none; }
+.ar-table-in { display: flex; width: max-content; margin: 0 auto; padding-right: var(--ov); }
+.ar-box { position: relative; flex: none; display: block; width: var(--bw); margin-right: calc(var(--ov) * -1); padding: 5px; border-radius: var(--r-chip); text-decoration: none; color: inherit; background: #f7f2e7;
+  z-index: var(--z); transform: translateY(var(--dy)) rotate(var(--rot)) scale(var(--s));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 3px 0 #b8ad96, 0 5px 9px rgba(0, 0, 0, 0.38), 3px 8px 16px rgba(0, 0, 0, 0.18);
+  transition: transform 0.18s cubic-bezier(0.25, 1, 0.5, 1); }
+.ar-box:hover, .ar-box:focus-visible { z-index: 20; transform: translateY(calc(var(--dy) - 6px)) rotate(0deg) scale(1.04); }
+.ar-box:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ar-box-lid { display: block; overflow: hidden; border-radius: 2px; box-shadow: 0 0 0 1px rgba(42, 33, 24, 0.25); }
+.ar-box-lid .ar-game-art { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; }
+.ar-box-lid .ar-game-icon { padding: 4px; }
+.ar-box-label { display: block; padding: 6px 2px 2px; }
+.ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
+.ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ar-continue h2 { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.ar-continue.ar-table-idle h2 { font-weight: 500; color: var(--ink3); }
+.ar-continue { flex: 1 1 360px; min-width: 0; }
+/* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
+@media (max-width: 699px) {
+  .ar-table { --bw: 116px; --ov: 54px; padding: 22px 12px 26px; }
+  .ar-box-label small { white-space: normal; min-height: 2.6em; }
+  .ar-box:not(:first-child) .ar-box-label { padding-right: 0; padding-left: calc(var(--ov) + 1px); }
+  .ar-box:not(:first-child) .ar-box-label strong { font-size: 12px; }
+  .ar-box:not(:first-child) .ar-box-label small { display: none; }
+}
+@media (min-width: 700px) { .ar-table { --bw: 168px; --ov: 36px; padding: 30px 32px 34px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .ar-box.ar-settle { animation: ar-settle 0.45s cubic-bezier(0.25, 1, 0.5, 1) backwards; animation-delay: calc(var(--i) * 70ms); }
+  @keyframes ar-settle { from { opacity: 0; transform: translateY(calc(var(--dy) - 18px)) rotate(calc(var(--rot) * 2.5)) scale(1.05); } }
+}
+
+/* The "About <game>" link scripts/games_links.py writes at the foot of a page is not shown: the Menu has the row
+   (shell.js clicks this link, which Zimi's reader catches to open the article). */
+.gm-about { display: none; }
+.gs-about .gs-text + .gs-text { margin-top: var(--sp-2); }
+.gm-about-page { max-width: 62ch; margin: 0 auto; padding: 24px 16px; }
+.gm-play { display: inline-flex; align-items: center; text-decoration: none; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* ── The shell (shell.js): one bar, one Menu sheet, the settings it applies ── */
+.gs-ready .ar-bar { gap: 8px; }
+.gs-ready .ar-bar .ar-stat { flex: none; }
+html[data-timer="hide"] [data-gs-timer], html[data-timer="hide"] #zc-stat:empty { display: none; }
+html.gs-help .bg-help { display: none; }
+
+/* Hints off: the dots, rings and ringed points a game draws, and its Hint button. */
+html[data-hints="off"] :is([id$="-hint"], .bk-hint, .cc-hint, .gm-hint, .go-hint, .hx-hint, .mc-hint, .mo-hint, .fr-hintarrow, .db-slot.hint) { display: none !important; }
+html[data-hints="off"] .hint::after { display: none !important; }
+html[data-hints="off"] .mj-t.hint { outline: 0; animation: none; }
+
+/* Animation: fast shortens every transition, off removes them (and follows reduced motion until chosen). */
+html[data-anim="fast"] :not(.bg-spin, .gs-turn i) { transition-duration: 0.1s !important; animation-duration: 0.12s !important; animation-delay: 0s !important; }
+
+.gs-turn { display: flex; align-items: center; gap: 10px; padding: 4px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.gs-turn[hidden] { display: none; }
+.gs-turn i { flex: 1; height: 4px; border-radius: 2px; background: var(--accent); transform-origin: left; transition: transform 0.25s linear; }
+.gs-turn-n { flex: none; min-width: 3ch; text-align: right; font: 600 var(--fs-small) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink2); }
+.gs-turn.gs-low i { background: var(--danger, #b3261e); }
+.gs-turn.gs-low .gs-turn-n { color: var(--danger, #b3261e); }
+
+/* The Menu sheet. Same card as every sheet; panes swap inside it. */
+.gs-card { display: flex; flex-direction: column; gap: 12px; }
+.gs-head { display: flex; align-items: center; gap: 8px; min-height: var(--target); }
+.gs-head h2 { flex: 1; margin: 0; font-size: var(--fs-sheet); letter-spacing: -0.01em; }
+.gs-back, .gs-x { flex: none; position: relative; width: var(--target); height: var(--target); margin: 0; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--ink2); cursor: pointer; }
+.gs-back { margin-left: -12px; }
+.gs-x { margin-right: -12px; }
+.gs-back:hover, .gs-x:hover { background: var(--ground); color: var(--ink); }
+.gs-back::before { content: ""; position: absolute; left: 18px; top: 17px; width: 8px; height: 8px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.gs-x::before, .gs-x::after { content: ""; position: absolute; left: 15px; top: 21px; width: 14px; height: 2px; background: currentColor; border-radius: 1px; transform: rotate(45deg); }
+.gs-x::after { transform: rotate(-45deg); }
+.gs-list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.gs-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 0 16px; border: 0; background: var(--surface); text-align: left; cursor: pointer; font-size: var(--fs-body); }
+.gs-item + .gs-item { border-top: 1px solid var(--line); }
+.gs-item:hover { background: var(--ground); }
+.gs-item-l { font-weight: 600; }
+.gs-item-r { flex: 1; text-align: right; font-size: var(--fs-small); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-item::after { content: ""; flex: none; width: 7px; height: 7px; border-top: 2px solid var(--ink3); border-right: 2px solid var(--ink3); transform: rotate(45deg); }
+.gs-extras { margin: 0; }
+.gs-extras .ar-btn { flex: 1 1 auto; }
+.gs-text { margin: 0; color: var(--ink2); }
+.gs-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.gs-options { display: grid; gap: 4px; }
+.gs-more { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--target); margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r-chip); background: none; color: var(--ink); text-decoration: none; }
+.gs-more:visited { color: var(--ink); }
+.gs-more:hover, .gs-more:focus-visible { border-color: var(--accent); }
+.gs-more-text { display: grid; gap: 2px; min-width: 0; font-size: var(--fs-small); line-height: 1.3; }
+.gs-more-text small { font-size: 12px; font-weight: 650; letter-spacing: 0.02em; color: var(--ink2); }
+.gs-more-chev { flex: none; color: var(--ink3); }
+.gs-more:hover .gs-more-chev { color: var(--accent); }
+[dir="rtl"] .gs-more-chev { transform: scaleX(-1); }
+.gs-note { flex: 1 1 100%; margin: 0; font-size: var(--fs-small); color: var(--ink2); }
+.gs-scope { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.gs-scope > span { font-size: var(--fs-small); font-weight: 600; color: var(--ink2); }
+.gs-scope .gs-seg { display: flex; } .gs-scope .gs-seg .ar-btn { flex: 1; }
+.gs-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--ink2); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-link:hover { color: var(--accent); }
+dl.gs-help { margin: 0; }
+.gs-help dt { margin: 0 0 2px; font-size: var(--fs-small); font-weight: 650; color: var(--ink2); }
+.gs-help dd { margin: 0 0 12px; }
+.gs-help dd:last-child { margin-bottom: 0; }
+/* The piece key in How to play (ZimiPieceIcons.key): the board's own figure beside its name. The --xw and --jw feed the characters' size. */
+.pi-keybox { margin-top: var(--sp-3); }
+.pi-keytitle { margin: 0 0 var(--sp-1); font-size: var(--fs-small); font-weight: 650; color: var(--ink2); }
+.pi-key { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sp-3); }
+.pi-k { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-small); color: var(--ink); }
+.pi-kp { flex: none; position: relative; display: grid; place-items: center; width: 40px; height: 40px; --xw: 333px; --jw: 355px; }
+.pi-kn { min-width: 0; overflow-wrap: anywhere; }
+.gs-stats { padding: var(--sp-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.gs-statlist { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: var(--fs-small); }
+.gs-statlist dt { color: var(--ink2); } .gs-statlist dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.gs-statlist .gs-stat-alone { grid-column: 1 / -1; }
+.gs-card .zc-row { margin: 6px 0; }
+.gs-card .zs-seats { margin: 6px 0; }
+.gs-seats { display: grid; gap: var(--sp-2); }
+.gs-subhead { margin: 0; font-size: var(--fs-small); font-weight: 650; color: var(--ink2); text-transform: none; letter-spacing: 0; }
+.gs-seat-row { flex-wrap: wrap; }
+.gs-seat-row > label { flex: 0 0 64px; }
+.gs-seat-row > .gs-seg { flex: 1 1 0; min-width: 0; }
+@media (max-width: 420px) { .gs-seat-row { flex-wrap: wrap; } .gs-seat-row > .gs-seg { flex: 1 1 0; } .gs-seat-row .gs-seat-name { flex: 1 1 100%; } }
+.gs-seat-name { flex: 1 1 100%; min-width: 0; min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; -webkit-appearance: none; }
+.gs-seat-name:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.gs-note { margin: 0; font-size: var(--fs-small); color: var(--ink3); }
+.gs-card .zc-note { margin: 0; }
+
+/* Watch and learn: one sentence under the bar, and the controls. */
+.gs-watch { display: grid; gap: 8px; padding: 10px 16px 12px; background: var(--accent-glow); border-bottom: 1px solid var(--line); }
+.gs-watch[hidden] { display: none; }
+.gs-watch-eyebrow { font-size: var(--fs-small); font-weight: 650; color: var(--ink2); }
+.gs-watch-text { margin: 0; min-height: 2.8em; font-size: 15px; line-height: 1.4; }
+.gs-watch-ctl { display: flex; flex-wrap: wrap; gap: 6px; }
+.gs-watch-ctl .ar-btn { padding: 0 12px; }
+@media (max-width: 420px) { .gs-watch { padding: 8px 12px 10px; } }
+.gs-history { color: var(--ink); }
+.gs-meta:empty { display: none; }
+dl.gs-meta { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* The bar's second line gives way (with an ellipsis) before the clock or the buttons do. */
+.gs-ready .ar-bar h1 { min-width: 0; }
+.gs-ready .ar-bar h1 small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A controller is in use: show where focus is, whatever moved it. */
+html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Right to left (Arabic, Hebrew): the bar, sheets and Menu mirror through flex order; the Back chevron turns to point the other way. */
+[dir="rtl"] .ar-back { margin-left: 0; margin-right: -8px; padding: 0 6px 0 8px; }
+[dir="rtl"] .ar-back::before { margin-right: 0; margin-left: -1px; transform: rotate(-135deg) scale(0.9); }
+/* Boards, grids, number pads, hands and card tables are not text: files, ranks, digits and the order of a hand keep their place in a mirrored page. */
+[dir="rtl"] :is([class*="-board"], [class*="-grid"], [class*="-pad"], [class*="-keys"], [class*="-hand"], [class*="-felt"], [class$="-table"], [class*="-rows"], [class*="-secret"], [class*="-dice"], [class*="-rack"]):not([class^="gs-"], [class^="ar-"]) { direction: ltr; }
+/* The header score ("3 · Best 12") and clocks read left to right as one figure. */
+[dir="rtl"] .ar-stat { direction: ltr; unicode-bidi: isolate; }
+
+/* The menu on a game's tile (tilemenu.js): a popup at the pointer for a mouse and the keyboard, a sheet from the bottom for a finger.
+   Zimi's card menu in the shelf's own tokens. The native link callout is off on tiles only, and a pressed tile does not select. */
+.ar-game, .ar-box { -webkit-touch-callout: none; }
+.gs-lp-armed .ar-game, .gs-lp-armed .ar-box { -webkit-user-select: none; user-select: none; }
+.gs-tm-back { position: fixed; inset: 0; z-index: 60; }
+.gs-tm-sheetback { background: var(--scrim); }
+.gs-tm { position: fixed; min-width: 190px; padding: 4px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); user-select: none; -webkit-user-select: none; }
+.gs-tm:focus { outline: none; }
+.gs-tm-item { display: block; width: 100%; padding: 8px 16px; border: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-small); text-align: start; white-space: nowrap; cursor: pointer; }
+.gs-tm-item:hover, .gs-tm-item:focus-visible { background: var(--accent-glow); color: var(--accent); outline: none; }
+.gs-tm-danger:hover, .gs-tm-danger:focus-visible { background: rgba(179, 38, 30, 0.1); color: var(--danger, #b3261e); }
+.gs-tm-head { display: none; }
+.gs-tm-sheet { left: 0; right: 0; bottom: 0; min-width: 0; max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: var(--sp-2) 0 calc(12px + env(safe-area-inset-bottom)); animation: gs-tm-up 0.2s cubic-bezier(0.25, 1, 0.5, 1); }
+.gs-tm-sheet::before { content: ""; display: block; width: 36px; height: 4px; margin: 0 auto 6px; border-radius: 2px; background: var(--line-strong); opacity: 0.5; }
+.gs-tm-sheet .gs-tm-head { display: flex; align-items: center; gap: 12px; padding: 6px 20px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.gs-tm-head img { flex: none; width: 64px; height: 36px; border-radius: var(--r-chip); object-fit: cover; }
+.gs-tm-head b { min-width: 0; font-size: var(--fs-body); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-tm-sheet .gs-tm-item { min-height: 48px; padding: 13px 20px; font-size: var(--fs-body); white-space: normal; }
+@keyframes gs-tm-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .gs-tm-sheet { animation: none; } }
+
+/* The end of a game. A win: a pebble stamps the middle of the game under the sheet's scrim level, a ring opens from it and a few
+   pebbles scatter and confetti falls (shell.js, about 1.8 s); the sheet's title is heavier. A loss: the sheet settles in, nothing moves over the
+   board. Reduced motion never reaches this: shell.js adds nothing then. */
+.gs-moment { position: fixed; inset: 0; z-index: 49; pointer-events: none; overflow: hidden; }
+body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
+.gs-moment { transition: opacity 280ms ease-out; }
+.gs-m-at { position: absolute; left: 50%; top: 62%; width: 84px; height: 84px; margin: -42px 0 0 -42px; display: grid; place-items: center; }
+.gs-moment.gs-m-out { opacity: 0; }
+.gs-m-at > * { grid-area: 1 / 1; }
+.gs-m-stamp { width: 84px; height: 84px; opacity: 0; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28)); animation: gs-stamp 520ms cubic-bezier(0.2, 0.9, 0.25, 1.15) 60ms forwards; }
+.gs-m-ring { width: 84px; height: 84px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: gs-ring 700ms ease-out 260ms forwards; }
+.gs-m-bit { width: var(--s); height: var(--s); border-radius: 50%; background: var(--accent); opacity: 0; animation: gs-bit 640ms cubic-bezier(0.1, 0.8, 0.3, 1) 280ms forwards; }
+.gs-m-bit1 { background: var(--ink2); }
+.gs-m-bit2 { background: var(--ink); }
+@keyframes gs-stamp { 0% { opacity: 0; transform: scale(1.9) rotate(-9deg); } 55% { opacity: 1; transform: scale(0.94) rotate(1deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes gs-ring { 0% { opacity: 0.9; transform: scale(0.8); } 100% { opacity: 0; transform: scale(3.2); } }
+@keyframes gs-bit { 0% { opacity: 1; transform: translate(0, 0) scale(0.6); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }
+/* Confetti: the mark's own colours (red, amber, orange) and the ink, falling for about 1.5 s from the top of the game behind the stamp. */
+.gs-m-rain { position: absolute; inset: 0; overflow: hidden; }
+.gs-m-conf { position: absolute; top: -14px; left: var(--x); width: 7px; height: 12px; border-radius: 1.5px; opacity: 0; animation: gs-conf var(--fall) cubic-bezier(0.3, 0.55, 0.5, 1) var(--delay) both; }
+.gs-m-conf0 { background: #ef4444; }
+.gs-m-conf1 { background: #f59e0b; }
+.gs-m-conf2 { background: #f97316; }
+.gs-m-conf3 { background: var(--ink); width: 6px; height: 6px; border-radius: 50%; }
+.gs-m-conf4 { background: #fdfcf8; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); }
+@keyframes gs-conf { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--sway), 105vh) rotate(var(--turn)); } }
+/* The result and a big New game stay on a finished board once its sheet is closed (shell.js, showRest): never a dead end. */
+.gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), env(safe-area-inset-bottom)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
+.gs-rest p { margin: 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
+.gs-rest .gs-rest-new { width: 100%; min-height: 56px; font-size: var(--fs-title); font-weight: 650; }
+@media (prefers-reduced-motion: no-preference) { .gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } } }
+.gs-end-win h2 { font-weight: 800; animation: gs-title-pop 360ms cubic-bezier(0.2, 0.9, 0.25, 1.2); transform-origin: left center; }
+.gs-end-win .gs-chip b { color: var(--accent); }
+@keyframes gs-title-pop { 0% { transform: scale(0.88); opacity: 0.4; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+.gs-end-lose { animation: gs-settle 480ms ease-out; }
+@keyframes gs-settle { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
