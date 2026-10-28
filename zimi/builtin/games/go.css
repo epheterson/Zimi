@@ -1,0 +1,32 @@
+/* Go: a kaya-coloured board, ink lines, slate and shell stones, territory shown as small squares. */
+:root { --go-wood: #e0b86f; --go-line: #4b3a1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --go-wood: #a07f48; --go-line: #2a1e0c; } }
+:root[data-theme="dark"] { --go-wood: #a07f48; --go-line: #2a1e0c; }
+
+.go-board { --bs: min(100vw - 16px, 100svh - 250px, 580px); }
+.go-wood { fill: var(--go-wood); }
+.go-grid { stroke: var(--go-line); stroke-width: 1.3; fill: none; }
+.go-star { fill: var(--go-line); }
+.go-shadow { fill: rgba(0, 0, 0, 0.32); }
+.go-last.on-b { fill: var(--disc-w); }
+.go-last.on-w { fill: var(--disc-b); }
+.go-ko { fill: none; stroke: var(--danger); stroke-width: 2.4; }
+.go-hint { fill: none; stroke: var(--accent); stroke-width: 3.5; stroke-dasharray: 5 3; }
+.go-dead { opacity: 0.5; }
+.go-x { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+.go-x.on-b { stroke: var(--disc-w); }
+.go-x.on-w { stroke: var(--disc-b); }
+.go-terr.b { fill: var(--disc-b); opacity: 0.85; }
+.go-terr.w { fill: var(--disc-w); stroke: var(--disc-b); stroke-width: 1; opacity: 0.92; }
+.go-pt.bad { background: radial-gradient(circle, rgba(229, 57, 53, 0.7), rgba(229, 57, 53, 0) 70%); }
+.go-pt:hover:not([aria-disabled="true"])::after { content: ""; position: absolute; inset: 20%; border-radius: 50%; background: rgba(0, 0, 0, 0.28); }
+
+/* A stone lands with a small settle, and a taken stone fades where it stood. */
+.go-new, .go-gone { transform-box: fill-box; transform-origin: center; pointer-events: none; }
+.go-new { animation: go-settle 160ms ease-out; }
+.go-gone { animation: go-fade 300ms ease-out forwards; }
+@keyframes go-settle { from { transform: scale(1.25); opacity: 0.5; } }
+@keyframes go-fade { to { transform: scale(0.8); opacity: 0; } }
+html[data-anim="off"] :is(.go-new, .go-gone) { animation: none; }
+html[data-anim="off"] .go-gone { display: none; }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) :is(.go-new, .go-gone) { animation: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .go-gone { display: none; } }

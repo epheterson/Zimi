@@ -1,0 +1,25 @@
+/* Chess: the board, the cburnett pieces (they carry their own colours), the move list. */
+
+.cs-pc { width: 90%; height: 90%; pointer-events: none; filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.4)); }
+.cs-pc.b { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)) drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.4)); }
+
+.cs-board .bg-sq.hint::after { width: 28%; height: 28%; }
+.cs-board .bg-sq.hint.cap::after { width: 90%; height: 90%; border-width: 5px; }
+.cs-co { position: absolute; font: 700 var(--fs-caption)/1 var(--font); font-style: normal; pointer-events: none; opacity: 0.8; }
+.cs-co.f { right: 3px; bottom: 2px; } .cs-co.r { left: 3px; top: 2px; }
+.cs-board .bg-sq { color: var(--sq-dark); } .cs-board .bg-sq.dk { color: var(--sq-light); }
+.cs-board .bg-sq > svg { position: relative; z-index: 1; }
+
+/* The move list is a quiet line under the board: 13px, ink2, no box, nothing that looks like an input. */
+.cs-moves { overflow: auto; line-height: 1.7; font-size: var(--fs-small); color: var(--ink2); text-align: center; border: 0; background: none; padding: 0; }
+.cs-n { color: var(--ink2); opacity: 0.7; margin-right: 3px; }
+.cs-m { margin-right: 3px; font-variant-numeric: tabular-nums; }
+.cs-m.now { font-weight: 700; color: var(--ink); }
+
+.cs-promo-choices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cs-promo-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 84px; padding: 6px 2px; font-size: var(--fs-small); background: var(--sq-light); }
+.cs-promo-btn svg { width: 52px; height: 52px; }
+.cs-opening { font-weight: 600; }
+
+/* On the rail the move list takes the space between the status and the actions and scrolls inside it. */
+.is-rail > .cs-moves { flex: 1 1 0; min-height: 0; width: var(--bs); }

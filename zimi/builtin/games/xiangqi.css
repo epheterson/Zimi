@@ -1,0 +1,35 @@
+/* Xiangqi: a wooden board with lines, round discs on the crossings. */
+:root { --xq-wood: #e4c98f; --xq-rule: #4a3420; --xq-disc: #f3e7c6; --xq-disc-edge: #8a6b3d; --xq-red: #b3261e; --xq-black: #1c1c1c; --xq-river: rgba(74, 52, 32, 0.55); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --xq-wood: #a98f5c; --xq-rule: #2a1d10; --xq-disc: #e9dcba; --xq-river: rgba(42, 29, 16, 0.65); } }
+:root[data-theme="dark"] { --xq-wood: #a98f5c; --xq-rule: #2a1d10; --xq-disc: #e9dcba; --xq-river: rgba(42, 29, 16, 0.65); }
+
+.xq-board { --xw: min(100vw - 24px, (100svh - 230px) * 0.9, 540px); position: relative; width: var(--xw); height: calc(var(--xw) * 10 / 9); background: var(--xq-wood); border: 3px solid var(--sq-edge); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.xq-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.xq-lines line, .xq-lines rect { stroke: var(--xq-rule); stroke-width: 1.4px; vector-effect: non-scaling-stroke; fill: none; stroke-linecap: square; }
+.xq-lines .fat { stroke-width: 3px; }
+.xq-lines .mark { stroke-width: 1.2px; }
+.xq-river { position: absolute; left: 0; right: 0; top: 45%; height: 10%; display: flex; justify-content: space-around; align-items: center; padding: 0 9%; pointer-events: none; color: var(--xq-river); font: 700 calc(var(--xw) * 0.052)/1 "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; letter-spacing: 0.4em; }
+.xq-river span:empty { display: none; }
+
+.xq-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(10, 1fr); }
+.xq-pt { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 50%; }
+.xq-pt:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+.xq-pt::before { content: ""; position: absolute; width: 92%; height: 92%; border-radius: 50%; pointer-events: none; }
+.xq-pt.last::before { background: var(--last); }
+.xq-pt.sel::before { background: var(--sel); box-shadow: var(--select); }
+.xq-pt.bad::before { background: radial-gradient(circle, rgba(229, 57, 53, 0.85), rgba(229, 57, 53, 0) 72%); }
+.xq-pt.hint::after { content: ""; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: var(--xq-rule); opacity: 0.55; pointer-events: none; }
+.xq-pt.hint.cap::after { width: 92%; height: 92%; background: transparent; border: 4px solid var(--danger); opacity: 0.85; }
+
+.xq-pc { position: relative; z-index: 1; width: 88%; height: 88%; border-radius: 50%; display: grid; place-items: center; pointer-events: none; background: radial-gradient(circle at 35% 30%, #fffaf0, var(--xq-disc) 62%, #d9c79a); border: 2px solid var(--xq-disc-edge); box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.12); }
+.xq-pc::after { content: ""; position: absolute; inset: 7%; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0.55; }
+.xq-pc.r { color: var(--xq-red); } .xq-pc.b { color: var(--xq-black); }
+.xq-pc span { position: relative; z-index: 1; font: 700 calc(var(--xw) * 0.066)/1 "Noto Serif CJK SC", "Songti SC", "STKaiti", "KaiTi", "SimSun", "Microsoft YaHei", serif; }
+.xq-pc.icon span { display: grid; place-items: center; width: 76%; height: 76%; }
+.xq-pc.icon svg { display: block; width: 100%; height: 100%; }
+
+.xq-moves { max-height: 66px; overflow: auto; line-height: 1.7; }
+.xq-n { color: var(--ink3); margin-right: 3px; }
+.xq-m { margin-right: 9px; font-variant-numeric: tabular-nums; }
+.xq-m.now { font-weight: 700; color: var(--ink); }
+.bg-dot.r { background: var(--xq-red); } .bg-dot.k { background: var(--xq-black); }

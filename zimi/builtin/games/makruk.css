@@ -1,0 +1,15 @@
+/* Makruk: the plain 8 x 8 board, our own drawn pieces (ivory and ink). */
+:root { --mk-w: #f6f1e2; --mk-w-line: #3b3326; --mk-b: #2a2723; --mk-b-line: #0b0a09; --mk-b-edge: #0b0a09; --mk-b-detail: #d4d0c6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --mk-w: #eee8d6; --mk-b: #2d2a26; --mk-b-line: #060505; --mk-b-edge: #97918a; } }
+:root[data-theme="dark"] { --mk-w: #eee8d6; --mk-b: #2d2a26; --mk-b-line: #060505; --mk-b-edge: #97918a; }
+
+.mk-pc { width: 88%; height: 88%; pointer-events: none; filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, 0.4)); overflow: visible; }
+.mk-pc .body { stroke-width: 1.6; stroke-linejoin: round; }
+.mk-pc .line { fill: none; stroke-width: 1.4; stroke-linecap: round; }
+.mk-pc.w .body { fill: var(--mk-w); stroke: var(--mk-w-line); } .mk-pc.w .line { stroke: var(--mk-w-line); }
+.mk-pc.b .body { fill: var(--mk-b); stroke: var(--mk-b-edge); } .mk-pc.b .line { stroke: var(--mk-b-detail); }
+.bg-dot.mw { background: var(--mk-w); } .bg-dot.mb { background: var(--mk-b); }
+.mk-board .co { position: absolute; font: 600 var(--fs-caption) var(--mono); color: var(--sq-edge); opacity: 0.8; pointer-events: none; }
+.mk-board .co.r { top: 2px; left: 3px; } .mk-board .co.f { bottom: 1px; right: 3px; }
+.mk-board .dk .co { color: var(--sq-light); }
+.mk-pc.w .eye { fill: var(--mk-w-line); } .mk-pc.b .eye { fill: var(--mk-b-detail); }

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Go Problems - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="goproblems.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Go Problems</h1>
+  <button class="ar-btn" id="gp-undo" type="button" disabled data-t="board.undo" data-t-title="gp.undoTitle" title="Undo (Z)">Undo</button>
+  <button class="ar-btn" id="gp-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main gp-main">
+  <p class="gp-title" id="gp-title"></p>
+  <p class="gp-goal" id="gp-goal"></p>
+  <p class="pl-msg" id="gp-msg"></p>
+  <div class="gp-board" id="gp-board" tabindex="0" role="application" data-t-aria="gp.boardKeys" aria-label="Go board. Arrow keys move, Enter plays."></div>
+  <div class="bg-controls gp-controls">
+    <button class="ar-btn" id="gp-hint" type="button" data-t="board.hint" data-t-title="gp.hintTitle" title="Show the key point (H)">Hint</button>
+    <button class="ar-btn" id="gp-reset" type="button" data-t="openings.restart" data-t-title="gp.restartTitle" title="Restart (R)">Restart</button>
+    <button class="ar-btn" id="gp-show" type="button" data-t="gp.showAnswer">Show answer</button>
+    <button class="ar-btn" id="gp-next" type="button" aria-pressed="false" data-t="gp.next" data-t-title="gp.nextTitle" title="Next problem (N)">Next</button>
+  </div>
+  <p class="bg-stats" id="gp-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="go-engine.js"></script>
+<script src="tsumego-solver.js"></script>
+<script src="data/go-problems.js"></script>
+<script src="goproblems.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1058074">About Go Problems</a></footer><!-- /zimi-about -->
+</body>
+</html>

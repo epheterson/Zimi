@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Xiangqi - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="xiangqi.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Xiangqi</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="xq-board" id="xq-board" role="group" data-t-aria="xiangqi.board" aria-label="Xiangqi board">
+    <svg class="xq-lines" viewBox="0 0 9 10" preserveAspectRatio="none" aria-hidden="true" id="xq-lines"></svg>
+    <div class="xq-river" aria-hidden="true"><span id="xq-river-l">楚河</span><span id="xq-river-r">漢界</span></div>
+    <div class="xq-grid" id="xq-grid"></div>
+  </div>
+  <div class="bg-controls"><button class="ar-btn" id="xq-flip" type="button" aria-pressed="false" data-t="board.flip" data-t-title="chess.flipTitle" title="Turn the board around">Flip</button></div>
+  <div class="bu-quiet xq-moves" id="xq-moves" role="log" data-t-aria="chess.moves" aria-label="Moves"></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="enginekit.js"></script>
+<script src="xiangqi-engine.js"></script>
+<script src="engines/fairy.js"></script>
+<script src="chess-pieces.js"></script>
+<script src="pieceicons.js"></script>
+<script src="xiangqi.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q191448">About Xiangqi</a></footer><!-- /zimi-about -->
+</body>
+</html>

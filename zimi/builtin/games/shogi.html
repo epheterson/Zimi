@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shogi - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="shogi.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 id="sg-title">Shogi</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="sg-table" id="sg-table">
+    <div class="sg-hand top" id="sg-hand-top" role="group" data-t-aria="shogi.handTop" aria-label="Pieces in hand, top player"></div>
+    <div class="sg-frame">
+      <div class="sg-files" id="sg-files" aria-hidden="true"></div>
+      <div class="sg-ranks" id="sg-ranks" aria-hidden="true"></div>
+      <div class="sg-board" id="sg-board" role="group" data-t-aria="shogi.board.label" aria-label="Shogi board"></div>
+    </div>
+    <div class="sg-hand bottom" id="sg-hand-bottom" role="group" data-t-aria="shogi.handBottom" aria-label="Pieces in hand, bottom player"></div>
+  </div>
+  <div class="bg-controls"><button class="ar-btn" id="sg-flip" type="button" aria-pressed="false" data-t="board.flip" data-t-title="chess.flipTitle" title="Turn the board around">Flip</button></div>
+  <div class="bu-quiet sg-moves" id="sg-moves" role="log" data-t-aria="chess.moves" aria-label="Moves"></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="enginekit.js"></script>
+<script src="shogi-engine.js"></script>
+<script src="engines/fairy.js"></script>
+<script src="pieceicons.js"></script>
+<script src="shogi.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q131375">About Shogi</a></footer><!-- /zimi-about -->
+</body>
+</html>

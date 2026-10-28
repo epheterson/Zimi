@@ -1,0 +1,34 @@
+/* Janggi: a wooden board of lines with two palaces, octagonal pieces (the Cho green, the Han red). */
+:root { --jg-wood: #e1c58a; --jg-rule: #4a3420; --jg-face: #f3e7c6; --jg-cho: #1f7a4a; --jg-han: #b3261e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --jg-wood: #a98f5c; --jg-rule: #2a1d10; --jg-face: #e9dcba; --jg-cho: #1a6b40; } }
+:root[data-theme="dark"] { --jg-wood: #a98f5c; --jg-rule: #2a1d10; --jg-face: #e9dcba; --jg-cho: #1a6b40; }
+
+.jg-board { --jw: min(100vw - 24px, (100svh - 250px) * 0.9, 540px); position: relative; width: var(--jw); height: calc(var(--jw) * 10 / 9); background: var(--jg-wood); border: 3px solid var(--sq-edge); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.jg-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.jg-lines line, .jg-lines rect { stroke: var(--jg-rule); stroke-width: 1.4px; vector-effect: non-scaling-stroke; fill: none; stroke-linecap: square; }
+.jg-lines .fat { stroke-width: 3px; }
+.jg-lines .dot { fill: var(--jg-rule); stroke: none; }
+
+.jg-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(10, 1fr); }
+.jg-pt { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 50%; }
+.jg-pt:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+.jg-pt::before { content: ""; position: absolute; width: 90%; height: 90%; border-radius: 50%; pointer-events: none; }
+.jg-pt.last::before { background: var(--last); }
+.jg-pt.sel::before { background: var(--sel); box-shadow: var(--select); }
+.jg-pt.bad::before { background: radial-gradient(circle, rgba(229, 57, 53, 0.85), rgba(229, 57, 53, 0) 72%); }
+.jg-pt.hint::after { content: ""; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: var(--jg-rule); opacity: 0.55; pointer-events: none; }
+.jg-pt.hint.cap::after { width: 92%; height: 92%; background: transparent; border: 4px solid var(--danger); opacity: 0.85; }
+.jg-pt.tip::before { box-shadow: 0 0 0 4px var(--select-ring); }
+
+/* The octagon: an outer shape in the side's colour, an inner one in ivory, the character on top. */
+.jg-pc { --sz: 82%; position: relative; z-index: 1; width: var(--sz); height: var(--sz); display: grid; place-items: center; pointer-events: none; color: var(--jg-cho); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45)); }
+.jg-pc::before, .jg-pc::after { content: ""; position: absolute; clip-path: polygon(29% 0, 71% 0, 100% 29%, 100% 71%, 71% 100%, 29% 100%, 0 71%, 0 29%); }
+.jg-pc::before { inset: 0; background: currentColor; }
+.jg-pc::after { inset: 7%; background: radial-gradient(circle at 35% 30%, #fffaf0, var(--jg-face) 65%, #d6c394); }
+.jg-pc.han { color: var(--jg-han); }
+.jg-pc.k { --sz: 94%; } .jg-pc.p { --sz: 66%; }
+.jg-pc span { position: relative; z-index: 1; font: 800 calc(var(--jw) * 0.062)/1 "Noto Serif CJK KR", "Noto Serif CJK SC", "Songti SC", "AppleMyungjo", "Batang", "SimSun", "Microsoft YaHei", serif; }
+.jg-pc.k span { font-size: calc(var(--jw) * 0.07); } .jg-pc.p span { font-size: calc(var(--jw) * 0.048); }
+.jg-pc.icon span { display: grid; place-items: center; width: 100%; height: 100%; }
+.jg-pc.icon svg { display: block; width: 66%; height: 66%; }
+.jg-pc.icon.p svg { width: 100%; height: 100%; }

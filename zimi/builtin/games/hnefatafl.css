@@ -1,0 +1,27 @@
+/* Hnefatafl: a wooden 11 x 11 board of squares, the corners and the throne marked, dark attackers, light defenders, a crowned king. */
+:root { --hn-wood: #d9bd86; --hn-rule: rgba(70, 48, 24, 0.55); --hn-mark: rgba(120, 28, 20, 0.7); --hn-att: #2a2420; --hn-att-hi: #5a4a40; --hn-def: #f1e8d0; --hn-def-lo: #c8b98f; --hn-gold: #c98a00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --hn-wood: #8e7448; --hn-rule: rgba(20, 12, 4, 0.6); --hn-mark: rgba(255, 150, 120, 0.7); --hn-att: #15110e; --hn-att-hi: #5f5047; --hn-def: #e6dcc2; } }
+:root[data-theme="dark"] { --hn-wood: #8e7448; --hn-rule: rgba(20, 12, 4, 0.6); --hn-mark: rgba(255, 150, 120, 0.7); --hn-att: #15110e; --hn-att-hi: #5f5047; --hn-def: #e6dcc2; }
+
+.hn-board { --hs: min(100vw - 24px, 100svh - 210px, 600px); width: var(--hs); height: var(--hs); display: grid; grid-template-columns: repeat(11, 1fr); grid-template-rows: repeat(11, 1fr); background: var(--hn-wood); border: 3px solid var(--sq-edge); border-radius: 4px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.hn-sq { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: inset 0 0 0 0.5px var(--hn-rule); cursor: pointer; }
+.hn-sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+.hn-sq::before { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.hn-sq.last::before { background: var(--last); }
+.hn-sq.sel::before { background: var(--sel); }
+.hn-sq.tip::before { background: var(--sel); }
+.hn-sq.took::before { background: rgba(198, 40, 40, 0.38); }
+.hn-sq.hint::after { content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%; background: var(--hint); pointer-events: none; }
+/* The corners and the throne: a diagonal cross and a plain cross. */
+.hn-sq.corner, .hn-sq.throne { background-image: linear-gradient(45deg, transparent calc(50% - 1px), var(--hn-mark) calc(50% - 1px), var(--hn-mark) calc(50% + 1px), transparent calc(50% + 1px)), linear-gradient(-45deg, transparent calc(50% - 1px), var(--hn-mark) calc(50% - 1px), var(--hn-mark) calc(50% + 1px), transparent calc(50% + 1px)); }
+.hn-sq.corner { background-color: rgba(120, 28, 20, 0.14); }
+.hn-sq.throne { background-color: rgba(201, 138, 0, 0.18); }
+
+.hn-pc { position: relative; z-index: 1; width: 78%; height: 78%; border-radius: 50%; pointer-events: none; display: grid; place-items: center; box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.22), inset 0 2px 2px rgba(255, 255, 255, 0.25); }
+.hn-pc.a { background: radial-gradient(circle at 35% 30%, var(--hn-att-hi), var(--hn-att) 68%); }
+.hn-pc.d { background: radial-gradient(circle at 35% 30%, #ffffff, var(--hn-def) 62%, var(--hn-def-lo)); }
+.hn-pc.d::before { content: ""; position: absolute; inset: 22%; border-radius: 50%; border: 1.5px solid rgba(70, 48, 24, 0.5); }
+.hn-pc.k { width: 90%; height: 90%; background: radial-gradient(circle at 35% 30%, #ffffff, var(--hn-def) 62%, var(--hn-def-lo)); box-shadow: 0 0 0 2px var(--hn-gold), 0 2px 4px rgba(0, 0, 0, 0.5); }
+.hn-crown { width: 58%; height: 58%; fill: var(--hn-gold); stroke: rgba(0, 0, 0, 0.4); stroke-width: 1; }
+.hn-sq.sel .hn-pc { box-shadow: 0 0 0 1px rgba(26, 18, 9, 0.85), 0 0 0 4px var(--select-ring), 0 3px 6px rgba(0, 0, 0, 0.5); }
+.bg-dot.ha { background: var(--hn-att); } .bg-dot.hd { background: var(--hn-def); }

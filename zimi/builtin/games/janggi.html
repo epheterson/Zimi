@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Janggi - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="janggi.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Janggi</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="janggi.score" aria-label="Points"></div>
+  <div class="jg-board" id="jg-board" role="group" data-t-aria="janggi.board" aria-label="Janggi board">
+    <svg class="jg-lines" viewBox="0 0 9 10" preserveAspectRatio="none" aria-hidden="true" id="jg-lines"></svg>
+    <div class="jg-grid" id="jg-grid"></div>
+  </div>
+  <div class="bg-controls"><button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button><button class="ar-btn" id="jg-pass" type="button" data-t="board.pass" data-t-title="janggi.passTitle" title="Pass your turn (P)">Pass</button><button class="ar-btn" id="jg-flip" type="button" aria-pressed="false" data-t="board.flip" data-t-title="chess.flipTitle" title="Turn the board around">Flip</button></div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="enginekit.js"></script>
+<script src="engines/fairy.js"></script>
+<script src="chess-pieces.js"></script>
+<script src="pieceicons.js"></script>
+<script src="janggi-engine.js"></script>
+<script src="janggi.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q715883">About Janggi</a></footer><!-- /zimi-about -->
+</body>
+</html>

@@ -1,0 +1,48 @@
+/* Shogi: a wooden board of squares, pentagon pieces that point at the opponent. */
+:root { --sg-wood: #e6c98f; --sg-rule: #4a3420; --sg-piece: #f4dfaa; --sg-piece-edge: #6b4a22; --sg-ink: #1d1a14; --sg-promo: #b3261e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sg-wood: #a98f5c; --sg-rule: #2a1d10; --sg-piece: #ead49b; } }
+:root[data-theme="dark"] { --sg-wood: #a98f5c; --sg-rule: #2a1d10; --sg-piece: #ead49b; }
+
+.sg-table { --sgs: min(100vw - 24px, 100svh - 330px, 560px); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.sg-frame { display: grid; grid-template-columns: var(--sgs) 14px; grid-template-rows: 14px var(--sgs); }
+.sg-files { grid-column: 1; grid-row: 1; display: grid; font: 600 var(--fs-caption)/14px var(--font); color: var(--ink3); text-align: center; }
+.sg-ranks { grid-column: 2; grid-row: 2; display: grid; font: 600 var(--fs-caption)/1 var(--font); color: var(--ink3); align-items: center; padding-left: 3px; }
+.sg-board { grid-column: 1; grid-row: 2; width: var(--sgs); height: var(--sgs); display: grid; background: var(--sg-wood); border: 2px solid var(--sg-rule); border-radius: 3px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.sg-sq { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; border-right: 1px solid var(--sg-rule); border-bottom: 1px solid var(--sg-rule); background: transparent; cursor: pointer; }
+.sg-sq.ec { border-right: 0; } .sg-sq.er { border-bottom: 0; }
+.sg-sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+.sg-sq::before { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.sg-sq.last::before { background: var(--last); }
+.sg-sq.sel::before { background: var(--sel); }
+.sg-sq.sel { box-shadow: inset 0 0 0 3px var(--select-ring), inset 0 0 0 4px rgba(26, 18, 9, 0.85); }
+.sg-sq.bad::before { background: radial-gradient(circle, rgba(229, 57, 53, 0.85), rgba(229, 57, 53, 0) 72%); }
+.sg-sq.hint::after { content: ""; position: absolute; width: 26%; height: 26%; border-radius: 50%; background: var(--sg-rule); opacity: 0.55; pointer-events: none; }
+.sg-sq.hint.cap::after { width: 84%; height: 84%; background: transparent; border: 4px solid var(--danger); opacity: 0.85; border-radius: 6px; }
+.sg-sq.star-br { background-image: radial-gradient(circle at 100% 100%, var(--sg-rule) 3px, transparent 3.5px); }
+
+.sg-pc { position: relative; z-index: 1; width: 86%; height: 90%; pointer-events: none; filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.4)); }
+.sg-pc.g { transform: rotate(180deg); }
+.sg-pc polygon { fill: var(--sg-piece); stroke: var(--sg-piece-edge); stroke-width: 1.6; stroke-linejoin: round; }
+.sg-pc text { fill: var(--sg-ink); font: 700 21px/1 "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", "Songti SC", serif; text-anchor: middle; dominant-baseline: central; }
+.sg-pc.icon .pi-arrows { color: var(--sg-ink); }
+.sg-pc.up.icon .pi-arrows { color: var(--sg-promo); }
+.sg-pc.up text { fill: var(--sg-promo); }
+.sg-pc.small text { font-size: 21px; }
+
+.sg-hand { display: flex; gap: 4px; justify-content: center; width: var(--sgs); min-height: 50px; padding: 3px; border-radius: var(--r-chip); background: color-mix(in srgb, var(--sg-wood) 40%, transparent); border: 1px solid var(--line); }
+.sg-hand.active { box-shadow: 0 0 0 2px var(--accent); }
+.sg-h { position: relative; flex: 1 1 0; max-width: 52px; min-width: 0; height: 44px; padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; }
+.sg-h:disabled { cursor: default; opacity: 0.28; }
+.sg-h.sel { background: var(--sel); border-color: var(--select-ring); }
+.sg-h .sg-pc { width: 34px; height: 38px; }
+.sg-h b { position: absolute; right: 0; bottom: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--ink); color: var(--surface); font: 700 var(--fs-caption)/17px var(--mono); text-align: center; }
+.sg-h:disabled b { visibility: hidden; }
+
+.sg-moves { max-height: 66px; overflow: auto; line-height: 1.7; }
+.sg-n { color: var(--ink3); margin-right: 3px; }
+.sg-m { margin-right: 9px; font-variant-numeric: tabular-nums; }
+.sg-m.now { font-weight: 700; color: var(--ink); }
+.sg-promo-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sg-promo-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 96px; padding: 8px; background: var(--sg-wood); }
+.sg-promo-btn .sg-pc { width: 52px; height: 58px; }
+.bg-dot.s { background: #1d1a14; } .bg-dot.go { background: #f4dfaa; }

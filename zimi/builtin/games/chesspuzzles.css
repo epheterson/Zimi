@@ -1,0 +1,9 @@
+/* Chess Puzzles and the Opening Trainer: the rating row, the opening's name, the solved and missed frames. The board and pieces are chess.css and board.css. */
+.cp-hud { margin-top: 2px; }
+.cp-board.solved { box-shadow: 0 0 0 3px var(--ok), 0 6px 18px rgba(0, 0, 0, 0.22); }
+.cp-board.failed { box-shadow: 0 0 0 3px var(--bad), 0 6px 18px rgba(0, 0, 0, 0.22); }
+.cs-board .bg-sq.cue::before { background: var(--legal); }
+.cs-board .bg-sq.cue-to::before { background: var(--legal); opacity: 0.6; }
+.cp-delta { font-weight: 700; }
+.cp-delta.up { color: var(--ok); } .cp-delta.down { color: var(--bad); }
+.co-name { width: min(100vw - 24px, 600px); margin: 0; font-size: var(--fs-body); font-weight: 650; text-align: center; }

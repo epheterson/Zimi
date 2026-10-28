@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chess Puzzles - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="chess.css">
+<link rel="stylesheet" href="chesspuzzles.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Chess Puzzles</h1>
+  <button class="ar-btn" id="cp-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main is-rail">
+  <div class="pl-hud cp-hud" id="cp-hud"></div>
+  <div class="bg-board cs-board cp-board" id="cp-board" role="group" data-t-aria="chess.board" aria-label="Chess board"></div>
+  <p class="bg-status" id="cp-status"></p>
+  <p class="bg-stats" id="cp-info"></p>
+  <div class="bg-controls">
+    <button class="ar-btn" id="cp-hint" type="button" data-t="board.hint" data-t-title="puzzles.hintTitle" title="Show the piece to move (H)">Hint</button>
+    <button class="ar-btn" id="cp-solution" type="button" data-t="puzzles.showSolution">Show solution</button>
+    <button class="ar-btn" id="cp-next" type="button" aria-pressed="true" data-t="puzzles.next" data-t-title="puzzles.nextTitle" title="Next puzzle (N)">Next puzzle</button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="chess-pieces.js"></script>
+<script src="chess-engine.js"></script>
+<script src="chess-content.js"></script>
+<script src="chess-board.js"></script>
+<script src="data/chess-puzzles.js"></script>
+<script src="chesspuzzles.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q2891654">About Chess Puzzles</a></footer><!-- /zimi-about -->
+</body>
+</html>

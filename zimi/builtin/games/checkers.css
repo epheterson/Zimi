@@ -1,0 +1,12 @@
+/* Checkers: red and white discs on the brown squares, a crown for a king. */
+:root { --ck-red: #c62828; --ck-red-hi: #ef5350; --ck-white: #f4efe2; --ck-white-lo: #cbc3ad; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ck-red: #d33a35; --ck-white: #e6e1d3; } }
+:root[data-theme="dark"] { --ck-red: #d33a35; --ck-white: #e6e1d3; }
+
+.ck-pc { position: relative; display: grid; place-items: center; width: 78%; height: 78%; border-radius: 50%; pointer-events: none; box-shadow: 0 3px 4px rgba(0, 0, 0, 0.5), inset 0 -3px 5px rgba(0, 0, 0, 0.22), inset 0 2px 3px rgba(255, 255, 255, 0.3); }
+.ck-pc::before { content: ""; position: absolute; inset: 14%; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.ck-pc.r { background: radial-gradient(circle at 35% 30%, var(--ck-red-hi), var(--ck-red) 65%); color: #ffe9a8; }
+.ck-pc.w { background: radial-gradient(circle at 35% 30%, var(--disc-w), var(--ck-white) 62%, var(--ck-white-lo)); color: #8a6a1c; }
+.ck-crown { position: relative; width: 52%; height: 52%; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35)); }
+.ck-pc.mv { box-shadow: 0 0 0 3px var(--select-ring), 0 3px 4px rgba(0, 0, 0, 0.5); }
+.bg-sq.sel .ck-pc { box-shadow: 0 0 0 4px var(--select-ring), 0 3px 6px rgba(0, 0, 0, 0.5); }

@@ -1,0 +1,12 @@
+/* Go Problems: the board is one svg drawn from the position (our own stones and wood). Tokens come from games.css and play.css. */
+:root { --gp-wood: #e0b872; --gp-wood2: #d4a65a; --gp-line: #5a4020; --gp-edge: #3d2a12; --gp-black: #1a1917; --gp-white: #f7f4ea; --gp-white-edge: #8b8574; --gp-mark: #c0392b; --gp-good: #2e7d4f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gp-wood: #a07a3e; --gp-wood2: #8f6c35; --gp-line: #2a1c08; --gp-edge: #170f04; --gp-white: #e4e0d4; --gp-mark: #ef6a60; --gp-good: #4cae78; } }
+:root[data-theme="dark"] { --gp-wood: #a07a3e; --gp-wood2: #8f6c35; --gp-line: #2a1c08; --gp-edge: #170f04; --gp-white: #e4e0d4; --gp-mark: #ef6a60; --gp-good: #4cae78; }
+
+.gp-title { margin: 0; font-weight: 650; text-align: center; }
+.gp-goal { margin: 0; color: var(--ink2); text-align: center; }
+.gp-board { --bs: min(100vw - 24px, 100svh - 300px, 560px); --ar: 1; --gw: 1; width: calc(var(--bs) * var(--gw)); aspect-ratio: var(--ar); display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; border-radius: 6px; }
+.gp-board:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 3px; }
+.gp-board svg { width: 100%; height: 100%; display: block; border-radius: 4px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+.gp-controls { max-width: 100%; }
+.gp-board.thinking { cursor: progress; }
