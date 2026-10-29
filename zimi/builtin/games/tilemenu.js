@@ -59,13 +59,13 @@
 
   // ── The tile's facts ────────────────────────────────────────────────────
   function nameOf(tile) {
-    var n = tile.querySelector('strong');   // the name alone: a table box's label also carries "Last played: ..."
+    var n = tile.querySelector('strong');   // the name alone: a table box's label also carries the time
     return (n ? n.textContent : tile.textContent).trim();
   }
-  // "Last played 11 minutes ago", for a box of the game table (the label's small line reads "Last played: " then the time); '' elsewhere.
+  // "Last played 11 minutes ago", for a box of the game table (the label's small line is the time alone); '' elsewhere.
   function lastPlayedOf(tile) {
-    var small = tile.querySelector('.ar-box-label small'), when = small && small.querySelector('span');
-    return when ? small.firstChild.textContent.trim().replace(/[:\uff1a]$/, '') + ' ' + when.textContent : '';
+    var small = tile.querySelector('.ar-box-label small');
+    return small && small.dataset.ago ? T('shelf.table.last').replace(/[:\uff1a]$/, '') + ' ' + small.textContent : '';
   }
   function rowOf(path) {
     var row = root.ZimiShelf && root.ZimiShelf.meta(path);
