@@ -24306,7 +24306,7 @@ function _gameHeadBoot(path) {
   root.classList.add('game-booting');
   var done = function() { root.classList.remove('game-booting'); };
   setTimeout(done, GAME_BOOT_MS);
-  window.addEventListener('message', function on(e) { if (e.data && e.data.zimi === 'game') { done(); window.removeEventListener('message', on); } });
+  window.addEventListener('message', function on(e) { if (e.origin === location.origin && e.source && e.data && e.data.zimi === 'game') { done(); window.removeEventListener('message', on); } });
 }
 var _gameGoneTimer = 0;        // a page that left: the header waits a moment for the next one's word
 var GAME_GONE_MS = 600;
