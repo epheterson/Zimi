@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Highlights
 
-- TBD
+- Release notes now list every fixed issue, and the games table shows just how long ago you played.
 
 ## [1.15.0]
 
