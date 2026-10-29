@@ -63,6 +63,14 @@ def test_highlights_become_the_body_with_a_link_to_the_full_entry():
     )
 
 
+def test_lines_citing_an_issue_are_listed_as_fixed_from_any_subsection():
+    text = CHANGELOG.replace("- Saved pages.", "- Saved pages (#12).").replace("- Speed.", "- Speed, as #7 asked.\n- No issue here.")
+    out = release_notes.release_body(text, "1.2.0", REPO)
+    assert "**Fixed**\n\n- Saved pages (#12).\n- Speed, as #7 asked.\n\n[Full changelog" in out
+    assert "No issue here" not in out
+    assert "**Fixed**" not in body("1.2.0")
+
+
 def test_the_other_sections_stay_out_of_the_highlights_body():
     assert "Saved pages" not in body("1.2.0")
     assert "A thing" not in body("1.2.0")
