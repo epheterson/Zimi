@@ -1578,7 +1578,7 @@ function _aeFlyTo(target, dist, azel) {
     var hold = peak > Math.max(from.dist, to.dist) * AE_FLY_PULL_WORTH;
     _ae.fly = { start: performance.now(), ms: ms, hold: hold,
       from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, peak: peak };
-    if (hold) _ae.fly.side = _aeSideOn(from, _aeSub(_aeTargetPos(), from.pos));
+    if (hold) { _ae.fly.side = _aeSideOn(from, _aeSub(_aeTargetPos(), from.pos)); _aeFarFor(peak, _aeLen(_aeSub(_aeTargetPos(), from.pos))); }
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
@@ -1599,8 +1599,15 @@ function _aeSideOn(from, line) {
   return { az: from.az + _angleDelta(from.az, a.az), el: a.el };
 }
 // The distance from which two bodies this far apart both fit the frame.
+// Not held to the destination's zoom limits: the frame that holds both can be wider than either end allows
+// (the Moon's widest view is AE_MAX_DIST, a portrait phone needs more for the Earth and Moon together).
 function _aePullBackDist(sep) {
-  return _aeClampDist(sep / (_aeNarrowTanHalf() * AE_FIT_FILL));
+  return Math.max(_aeClampDist(0), sep / (_aeNarrowTanHalf() * AE_FIT_FILL));
+}
+// The far plane reaches past a pull-back wider than the scene's usual widest view, and comes back after.
+function _aeFarFor(peak, sep) {
+  var cam = _ae.gl && _ae.gl.camera, far = Math.max(AE_FAR, peak + sep);
+  if (cam && cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); }
 }
 // How long a flight takes: the camera's path, end to end, against the
 // nearer of the two distances it stands from what it looks at.
@@ -1644,7 +1651,7 @@ function _aeStepFly(now) {
     _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
     _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
   }
-  if (now - f.start >= _aeFlyLead(f) + f.ms) _ae.fly = null;
+  if (now - f.start >= _aeFlyLead(f) + f.ms) { _ae.fly = null; _aeFarFor(0, 0); }
   return true;
 }
 function _aeFlyTargetPos() {
