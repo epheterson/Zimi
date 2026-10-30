@@ -1421,7 +1421,8 @@ _CONTENT_BUCKETS = (
     ("pages", ("text/html", "application/xhtml")),
     ("fonts", ("font/", "application/font", "application/vnd.ms-font")),
     ("styles", ("text/css",)),
-    ("scripts", ("javascript", "ecmascript")),
+    # WebAssembly is code too: the games ZIM's 5.9 MB of engines read as "Other".
+    ("scripts", ("javascript", "ecmascript", "application/wasm")),
     # A capture can carry whole documents (a linked PDF, an EPUB) and plain
     # data files (JSON an app reads, an XML feed, a .txt). Both used to vanish
     # into "Other", which told nobody anything.
