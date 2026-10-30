@@ -321,9 +321,12 @@ _ESPEAK_REGIONS = {"cmn": ("zh", "CN"), "yue": ("zh", "HK")}
 _HOME_REGION = {"en": "US", "pt": "BR", "zh": "CN", "nb": "NO", "sv": "SE", "da": "DK"}
 
 _lock = threading.Lock()  # the engine discovery memo and the download state
-_synth_lock = threading.Lock()  # one synthesis at a time
+# One synthesis at a time per engine: the engines are separate processes, so
+# a slow voice's chunk no longer holds up a faster voice that Automatic gave
+# way to (#121). Same-engine requests still queue (one model, one worker).
+_synth_locks = {e: threading.Lock() for e in ENGINES}
 _synth_slots = threading.BoundedSemaphore(1 + SYNTH_QUEUE)  # said or waiting
-_synth_waiting = 0  # requests waiting for _synth_lock (under _lock)
+_synth_waiting = collections.Counter()  # engine -> requests waiting for its lock (under _lock)
 _sampled = {}  # engine -> the fingerprint it was last given a speed sample under
 _found = {}
 _download = {}
@@ -866,7 +869,7 @@ def _is_cold(engine, voice):
 
 
 def _timed(engine, voice, text, out, weight=TIMING_WEIGHT):
-    """_synthesize, timed and noted. Call under _synth_lock."""
+    """_synthesize, timed and noted. Call under the engine's synth lock."""
     cold = _is_cold(engine, voice)
     start = time.monotonic()
     done = _synthesize(engine, voice, text, out)
@@ -895,17 +898,17 @@ def _rate_key(rate):
     return "%g" % rate  # "1", "1.25": as the page writes its speeds
 
 
-def _acquire_synth(timeout=SYNTH_WAIT_S):
-    """Wait for _synth_lock as a request does; a speed sample starts only
-    while nobody is in this queue. False when it was not got in time."""
-    global _synth_waiting
+def _acquire_synth(engine, timeout=SYNTH_WAIT_S):
+    """Wait for the engine's synth lock as a request does; a speed sample
+    starts only while nobody is in that queue. False when it was not got in
+    time."""
     with _lock:
-        _synth_waiting += 1
+        _synth_waiting[engine] += 1
     try:
-        return _synth_lock.acquire(timeout=timeout)
+        return _synth_locks[engine].acquire(timeout=timeout)
     finally:
         with _lock:
-            _synth_waiting -= 1
+            _synth_waiting[engine] -= 1
 
 
 def _test_engine(engine, lang, texts):
@@ -915,7 +918,7 @@ def _test_engine(engine, lang, texts):
     if not picked or picked[0] != engine:
         return
     voice = picked[1]
-    if not _acquire_synth():
+    if not _acquire_synth(engine):
         raise Busy("waited %ss" % SYNTH_WAIT_S)
     try:
         if engine in DOWNLOADED:
@@ -936,7 +939,7 @@ def _test_engine(engine, lang, texts):
             if done != OK:
                 raise Busy("%s did not answer" % engine)
     finally:
-        _synth_lock.release()
+        _synth_locks[engine].release()
     reading = said[1:]  # warm first chunk, then the rest
     work = sum(w for w, _a in reading[1:])
     audio = sum(a for _w, a in reading[1:])
@@ -1539,7 +1542,7 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
     if not _synth_slots.acquire(blocking=False):
         raise Busy("queue full")
     try:
-        if not _acquire_synth():
+        if not _acquire_synth(engine):
             raise Busy("waited %ss" % SYNTH_WAIT_S)
         try:
             got = _cached(path)  # another request may have said it while we waited
@@ -1563,7 +1566,7 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
                 if os.path.exists(tmp):
                     os.remove(tmp)
         finally:
-            _synth_lock.release()
+            _synth_locks[engine].release()
     finally:
         _synth_slots.release()
     _trim_cache()
@@ -1598,7 +1601,7 @@ def say_ahead(text, lang):
         return False
     if _cached(where[3]) is not None:
         return True
-    if _synth_lock.locked():
+    if _synth_locks[where[0]].locked():
         return False
     try:
         return speak(text, lang, fetch=False) is not None
@@ -1748,16 +1751,16 @@ def _sample_speed(engine, lang):
         if "rtf" in t["engines"].get(engine, {}):
             return False
     with _lock:
-        if _sampled.get(engine) == fp or _synth_waiting:
+        if _sampled.get(engine) == fp or _synth_waiting[engine]:
             return False
     picked = _speed_sample(engine, lang)
     if picked is None or _is_cold(engine, picked[0]):
         return False  # a cold run notes no rtf, so it must not spend the one try: a later warm that finds the voice loaded samples it
-    if not _synth_lock.acquire(blocking=False):
+    if not _synth_locks[engine].acquire(blocking=False):
         return False
     try:
         with _lock:
-            if _sampled.get(engine) == fp or _synth_waiting:
+            if _sampled.get(engine) == fp or _synth_waiting[engine]:
                 return False
             _sampled[engine] = fp
         os.makedirs(_dir(TEST_DIR), exist_ok=True)
@@ -1771,7 +1774,7 @@ def _sample_speed(engine, lang):
             if os.path.exists(out):
                 os.remove(out)
     finally:
-        _synth_lock.release()
+        _synth_locks[engine].release()
 
 
 def _sample_in_background(engine, lang):

@@ -1128,7 +1128,7 @@ def test_a_helper_with_no_serve_mode_says_each_word_afresh(piper, monkeypatch):
 def test_a_queue_waits_and_one_more_is_busy_never_missing(piper, monkeypatch):
     install("en-US")
     monkeypatch.setattr(voices, "SYNTH_WAIT_S", 0.2)
-    with voices._synth_lock:  # a word being said
+    with voices._synth_locks[voices.PIPER]:  # a word being said
         with pytest.raises(voices.Busy):
             voices.speak("water", "en")  # waited its turn, too long
         monkeypatch.setattr(voices, "_synth_slots", threading.BoundedSemaphore(1))
@@ -1607,6 +1607,38 @@ def test_test_all_needs_its_texts_and_runs_once_at_a_time(piper):
     voices._testing.clear()
 
 
+def test_a_fast_voice_does_not_wait_for_a_slow_voices_synthesis_in_flight(tmp_path, monkeypatch):
+    """Automatic gives way from a stalled Natural to Clear (#121): Clear's chunk must not queue behind Natural's."""
+    gate = threading.Event()
+    started = threading.Event()
+
+    def audio(text, lang, accent="", engine=None, limit=voices.TEXT_MAX):
+        return engine, "v", text, str(tmp_path / engine / (text + ".wav"))
+
+    def synthesize(engine, voice, text, out):
+        if engine == voices.KOKORO:
+            started.set()
+            gate.wait(10)
+        with open(out, "wb") as f:
+            f.write(b"RIFF" + engine.encode())
+        return voices.OK
+
+    monkeypatch.setattr(voices, "_audio", audio)
+    monkeypatch.setattr(voices, "_maybe_fetch", lambda *a: None)
+    monkeypatch.setattr(voices, "_synthesize", synthesize)
+    slow = threading.Thread(target=lambda: voices.speak("slow", "en", engine=voices.KOKORO), daemon=True)
+    slow.start()
+    assert started.wait(5)
+    try:
+        t0 = time.monotonic()
+        assert voices.speak("fast", "en", engine=voices.PIPER)[:4] == b"RIFF"
+        assert time.monotonic() - t0 < 0.4, "not queued behind the other engine's chunk"
+        assert voices._acquire_synth(voices.KOKORO, 0.1) is False, "the same engine still queues"
+    finally:
+        gate.set()
+        slow.join(5)
+
+
 def test_say_ahead_makes_the_word_a_tap_would_get_and_never_fetches_or_waits(piper, monkeypatch):
     install("en-US")
     fetched = []
@@ -1619,7 +1651,7 @@ def test_say_ahead_makes_the_word_a_tap_would_get_and_never_fetches_or_waits(pip
     assert voices.speak("water", "en") and len(runs) == 1, "a tap finds it made"
     assert voices.say_ahead("water", "en") is True and len(runs) == 1, "made already: nothing again"
     assert voices.say_ahead("Wasser", "de") is False, "no voice here for it: left alone"
-    with voices._synth_lock:
+    with voices._synth_locks[voices.PIPER]:
         assert voices.say_ahead("river", "en") is False, "a voice busy reading: left for the tap"
     assert len(runs) == 1
 
@@ -1763,13 +1795,13 @@ def test_the_sample_follows_the_rtf_rules_and_is_skipped_when_rtf_exists(worker)
 
 def test_the_sample_is_skipped_while_the_lock_is_busy_and_tried_again_at_the_next_warm(worker, monkeypatch):
     monkeypatch.setattr(voices, "RTF_MIN_AUDIO_S", 0.1)
-    voices._synth_lock.acquire()
+    voices._synth_locks[voices.PIPER].acquire()
     try:
         _warmed()
         assert "rtf" not in voices.timings().get("piper", {})
         assert [x for x in worker() if x.startswith("said")] == []
     finally:
-        voices._synth_lock.release()
+        voices._synth_locks[voices.PIPER].release()
     _warmed()  # already loaded: the warm still looks for the missing number
     deadline = time.time() + 10
     while time.time() < deadline and "rtf" not in voices.timings().get("piper", {}):
@@ -1795,12 +1827,12 @@ def test_a_sample_never_starts_ahead_of_a_queued_request_and_never_delays_one(pi
     calls = []
     monkeypatch.setattr(voices, "_timed", lambda *a, **k: calls.append(a) or voices.OK)
     with voices._lock:
-        voices._synth_waiting = 1  # a request is queued (the synthesis lock itself is free: nothing else decides this)
+        voices._synth_waiting['piper'] = 1  # a request is queued (the synthesis lock itself is free: nothing else decides this)
     try:
         assert voices._sample_speed("piper", "en") is False and not calls
     finally:
         with voices._lock:
-            voices._synth_waiting = 0
+            voices._synth_waiting['piper'] = 0
     assert voices._sample_speed("piper", "en") is True, "nobody waiting: it runs"
 
 
@@ -1812,15 +1844,15 @@ def test_a_sample_in_progress_costs_a_request_only_its_own_time(piper, monkeypat
     monkeypatch.setattr(voices, "_timed", lambda *a, **k: gate.wait(5) and voices.OK)
     t = threading.Thread(target=voices._sample_speed, args=("piper", "en"), daemon=True)
     t.start()
-    while not voices._synth_lock.locked():
+    while not voices._synth_locks[voices.PIPER].locked():
         time.sleep(0.005)
     got = []
-    r = threading.Thread(target=lambda: got.append(voices._acquire_synth(5)), daemon=True)
+    r = threading.Thread(target=lambda: got.append(voices._acquire_synth('piper', 5)), daemon=True)
     r.start()
     gate.set()
     r.join(5)
     assert got == [True]
-    voices._synth_lock.release()
+    voices._synth_locks[voices.PIPER].release()
 
 
 def test_a_sample_is_said_in_the_voices_language_with_english_only_where_it_speaks_it(piper):

@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Release notes now list every fixed issue, and the games table shows just how long ago you played.
 
+### Fixed
+
+- Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
+- A faster voice no longer waits for a slower voice's chunk already being made (#121).
+
 ## [1.15.0]
 
 ### Highlights
