@@ -23961,6 +23961,10 @@ async function _loadUserPrefs() {
 }
 async function _setUserPref(key, value) {
   var body = {}; body[key] = value;
+  // Takes effect here at once; the server's answer, when it comes, is the word that stays.
+  if (key === 'apps') _readPrefs(Array.isArray(value) ? { apps: _userPrefs.apps, shown: value } : { apps: value, shown: _userPrefs.shown });
+  _syncOpenInAppsRow();
+  renderHome();
   try {
     var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { _readPrefs(await r.json()); }
@@ -23972,10 +23976,12 @@ async function _setUserPref(key, value) {
 // never has to guess what the others were.
 function _setUserApp(app, on) {
   var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
-  Promise.resolve(_setUserPref('apps', shown)).then(function() {
+  function redraw() {
     var card = document.querySelector('.apps-card[data-card="user"]');
     if (card) card.outerHTML = _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp', false, 'user', tH('show_apps'));
-  });
+  }
+  Promise.resolve(_setUserPref('apps', shown)).then(redraw);
+  redraw();
 }
 // The apps to choose from, as the tiles they are on the home page: an icon
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
