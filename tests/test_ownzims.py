@@ -200,3 +200,12 @@ def test_the_committed_zims_are_built_from_the_source_as_it_is():
     """A download, Kiwix and Zimi all get these bytes: a pull request whose
     ZIMs are older than their source fails until python -m zimi.ownzims runs."""
     assert ownzims.main(["--check"]) == 0
+
+
+def test_display_title_drops_the_brand_suffix():
+    from zimi import ownzims
+    from zimi.server import _own_display_title
+    assert ownzims.display_title("Games \u00b7 Zimi") == "Games"
+    assert ownzims.display_title("Wikipedia") == "Wikipedia"
+    assert _own_display_title("Almanac \u00b7 Zimi", "a;zimi:own") == "Almanac"
+    assert _own_display_title("Foo \u00b7 Zimi", "a;b") == "Foo \u00b7 Zimi"

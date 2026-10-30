@@ -3406,6 +3406,12 @@ def _read_faces(archive):
     return faces
 
 
+def _own_display_title(title, tags):
+    """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps " · Zimi" for other readers)."""
+    from zimi import ownzims
+    return ownzims.display_title(title) if ownzims.OWN_TAG in (tags or "").split(";") else title
+
+
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
     size_bytes = os.path.getsize(path)
@@ -3506,7 +3512,7 @@ def _extract_zim_metadata(name, path):
         # truncated transfer is the realistic LAN failure mode).
         "size_bytes": size_bytes,
         "entries": entry_count,
-        "title": meta_title,
+        "title": _own_display_title(meta_title, meta_tags),
         "description": meta_desc,
         "date": meta_date,
         "language": meta_lang,
