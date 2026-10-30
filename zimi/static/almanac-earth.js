@@ -2934,6 +2934,16 @@ function _aeWarm(S) {
   _aeUpdate(_ae.scene.ms);
   S.renderer.compile(S.scene, S.camera);
   S.renderer.render(S.scene, S.camera);
+  _aeUploadMaps(S);
+}
+// The maps the render above did not reach: three uploads a texture when a mesh that uses it is drawn, and the Moon
+// is out of the camera's frustum at the warm render, so its 4096 map (8 MB) went up in the swap's first frame
+// (WebKit, real GPU: a 155 ms frame, in the middle of the drag that opened the view). Up now, off the swap.
+function _aeUploadMaps(S) {
+  if (!S.renderer.initTexture) return;
+  [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap].forEach(function (u) {
+    if (u.value) S.renderer.initTexture(u.value);
+  });
 }
 // Behind the page, once it has painted and the browser is idle.
 var AE_IDLE_PREPARE_TIMEOUT_MS = 4000;
