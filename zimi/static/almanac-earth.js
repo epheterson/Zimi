@@ -3257,7 +3257,7 @@ function _aeDisposeGl() {
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
-  ['ae-lbl-moon', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
+  ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
     var label = _aeById(id);
     if (label) label.hidden = true;
   });
