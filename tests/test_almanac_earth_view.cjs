@@ -618,6 +618,24 @@ const run = (code) => vm.runInContext(code, S);
     check(!run('(function () { _ae.target = "earth"; _ae.fly = null; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sats"); return _ae.fly.hold; })()'),
       'a change of framing on the same body has no shoulder shot');
     check(S.AE_FLY_HOLD_MS >= 400 && S.AE_FLY_HOLD_MS <= 600, 'the beat is about half a second');
+    check(S.AE_FLY_PULL_MS >= 800 && S.AE_FLY_PULL_MS <= 1100, 'the first move, back to the shoulder, is a deliberate pull (about a second)');
+    // Both ends wear a ring through the flight, sized to the body as drawn.
+    const ringsAt = (from, to, ms) => run('(function () {' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); _ae.fly.start = performance.now() - ' + ms + '; _aeStepFly(performance.now()); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();' +
+      ' _aeUpdateMarks(_ae.scene); var out = {};' +
+      ' ["earth","moon","sun"].forEach(function (b) { var el = _aeById("ae-bm-" + b); out[b] = el ? { hidden: el.hidden, r: parseFloat(el.style["--ae-r"]), op: parseFloat(el.style.opacity) } : null; });' +
+      ' _ae.fly = null; _aeFarFor(0); return out; })()');
+    for (const [from, to] of [['moon', 'sun'], ['earth', 'moon']]) {
+      const early = ringsAt(from, to, S.AE_FLY_PULL_MS * 0.5), held = ringsAt(from, to, S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS);
+      const mid = ringsAt(from, to, S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly ? _ae.fly.ms : 1000'));
+      check(held[from] && held[to] && !held[from].hidden && !held[to].hidden, from + ' to ' + to + ': a ring on the source and the destination at the beat');
+      check(held[from].r >= S.AE_RING_MIN_R_PX && held[to].r >= S.AE_RING_MIN_R_PX, from + ' to ' + to + ': no ring under the minimum');
+      check(held[from].r > held[to].r, from + ' to ' + to + ': the foreground source has the bigger ring (' + held[from].r + ' vs ' + held[to].r + ')');
+      check(early[from].r !== held[from].r || early[to].r !== held[to].r, from + ' to ' + to + ': the rings change size as the camera moves');
+    }
+    const done = ringsAt('moon', 'sun', S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms; _ae.fly = null; return m; })()') - 1);
+    check(done.sun.hidden || done.sun.op < 0.05, 'the rings are gone once the camera has arrived');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');
     run('var _almReduceMotion = function () { return true; };');

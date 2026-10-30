@@ -376,11 +376,15 @@ var AE_FLY_MIN_MS = 500;
 // one side so that body stands large in the foreground (its diameter this fraction of the narrower side of the
 // frame, its centre this far out toward that side, in half-frames), turned to the destination, which is framed
 // on the open side (centred this far out the other way). A beat there, then in.
-var AE_FLY_PULL_MS = 450, AE_FLY_HOLD_MS = 500;
+var AE_FLY_PULL_MS = 900, AE_FLY_HOLD_MS = 550;
 var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
 // A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
 var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // marks closer than this: only the first
+// Through a flight between bodies both ends wear a ring the size of the body as drawn (the Sun from the Moon's night
+// side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
+// gone by the time the camera has arrived (the last share of the arrival).
+var AE_RING_MARGIN_PX = 5, AE_RING_MIN_R_PX = 11, AE_RING_FADE_FROM = 0.7;
 var AE_MARKED = [
   { body: 'earth', name: function () { return _tp('Earth'); } },
   { body: 'moon', name: function () { return _aeT('alm_moon'); } },
@@ -567,9 +571,9 @@ var AE_CSS = [
   // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
   '.ae-bm{position:absolute;left:0;top:0;color:#dfe6f0;pointer-events:none}',
   '.ae-bm[hidden]{display:none}',
-  '.ae-ring{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
-  '.ae-bm b{position:absolute;left:18px;top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
-  '.ae-bm-l b{left:auto;right:18px}',
+  '.ae-ring{position:absolute;left:0;top:0;width:calc(var(--ae-r,11px)*2);height:calc(var(--ae-r,11px)*2);margin:calc(var(--ae-r,11px)*-1) 0 0 calc(var(--ae-r,11px)*-1);box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
+  '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
+  '.ae-bm-l b{left:auto;right:calc(var(--ae-r,11px) + 7px)}',
   '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
@@ -2277,19 +2281,25 @@ function _aeUpdateMarks(sc) {
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
   var pos = { earth: [0, 0, 0], moon: sc.moon, sun: _aeSunShown(sc) }, shown = [];
   // The destination first, so a body standing on top of it (the Moon from the Sun) gives way.
-  var order = AE_MARKED.slice().sort(function (a, b) { return (b.body === _ae.target) - (a.body === _ae.target); });
+  var f = _ae.fly, flying = !!f && f.hold, source = flying ? f.from.target : null;
+  var ringFade = flying ? 1 - _smoothstep(AE_RING_FADE_FROM, 1, _aeFlyArrival(f, performance.now())) : 1;
+  var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
+  var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
   for (var i = 0; i < order.length; i++) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
-    var dest = !!_ae.fly && body === _ae.target;
-    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
+    var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
+    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
-    var alpha = _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
+    var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
+    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
+    if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
     var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
     if (!s || crowded || alpha <= 0 || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) { if (!el.hidden) el.hidden = true; continue; }
     shown.push(s);
     if (el.hidden) el.hidden = false;
     el.style.opacity = alpha.toFixed(2);
+    el.style.setProperty('--ae-r', r.toFixed(1) + 'px');
     el.classList.toggle('ae-bm-l', s.x > _ae.w / 2);
     el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
   }
