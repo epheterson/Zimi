@@ -3191,7 +3191,7 @@ function _skyShowTip(b) {
     html += '<span class="alm-sky-tip-line">' + _almEsc(lines[i]) + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
-    html += '<button type="button" class="orrery-tip-btn" data-sky-orrery="' + _almEsc(b.name) + '">' + _almEsc(t('alm_sky_find_orrery')) + '</button>';
+    html += '<button type="button" class="alm-sky-tip-go" data-sky-orrery="' + _almEsc(b.name) + '" aria-label="' + _almEsc(t('alm_sky_find_orrery')) + '">' + _almEsc(t('alm_solar_system')) + '</button>';
   }
   tip.innerHTML = html;
   tip.hidden = false;

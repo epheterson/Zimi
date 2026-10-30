@@ -190,7 +190,9 @@ def test_a_planet_is_named_and_found_in_the_solar_system(browser, served):
         assert tip.is_visible()
         assert pg.evaluate("_tp('Saturn')") in tip.inner_text()
         btn = tip.locator("[data-sky-orrery]")
-        assert btn.inner_text() == pg.evaluate("t('alm_sky_find_orrery')")
+        assert btn.inner_text() == pg.evaluate("t('alm_solar_system')")
+        assert btn.get_attribute("aria-label") == pg.evaluate("t('alm_sky_find_orrery')")
+        assert btn.bounding_box()["height"] < 40  # a word in the facts row, not a pill across the tip
         box = tip.bounding_box()
         assert box["x"] >= 0 and box["x"] + box["width"] <= VIEW["width"]
         btn.tap()

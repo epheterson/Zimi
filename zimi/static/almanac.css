@@ -441,6 +441,11 @@
 .alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }
 .alm-sky-tip-line { color: #bbb; }
 .alm-sky-tip-line + .alm-sky-tip-line::before { content: " \00b7  "; }   /* the facts share one row under the name */
+/* A planet's way to the solar system: a quiet amber word at the end of the facts, not a pill across the tip. */
+.alm-sky-tip-go { display: inline; padding: 6px 2px; margin: -6px 0; background: none; border: 0; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; }
+.alm-sky-tip-line + .alm-sky-tip-go::before { content: " \00b7  "; color: #bbb; font-weight: 400; }
+.alm-sky-tip-go:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; border-radius: 4px; }
+@media (hover: hover) { .alm-sky-tip-go:hover { text-decoration: underline; } }
 @media (pointer: coarse) { .alm-sky-tip { font-size: 12px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; } }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
 .almanac-location-link:hover { text-decoration: underline; }
