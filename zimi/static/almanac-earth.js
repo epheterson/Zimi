@@ -1566,11 +1566,16 @@ function _aeFlyTo(target, dist, azel) {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_,
+      peak: _aePullBackDist(_aeLen(_aeSub(_aeTargetPos(), from.pos))) };
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
+}
+// The distance from which two bodies this far apart both fit the frame.
+function _aePullBackDist(sep) {
+  return _aeClampDist(sep / (Math.tan(_aeRad(AE_FOV_DEG) / 2) * AE_FIT_FILL));
 }
 // How long a flight takes: the camera's path, end to end, against the
 // nearer of the two distances it stands from what it looks at.
@@ -1590,7 +1595,10 @@ function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
   var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseInOut(p);
-  _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
+  var lo = Math.log(f.from.dist), hi = Math.log(f.toDist);
+  // Between two bodies the camera first pulls back until both are in frame, then comes in.
+  var pull = Math.max(0, Math.log(f.peak) - (lo + hi) / 2) * Math.sin(Math.PI * e);
+  _ae.dist = Math.exp(lo + (hi - lo) * e + pull);
   _ae.az = f.from.az + (f.toAz - f.from.az) * e;
   _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
   if (p >= 1) _ae.fly = null;
