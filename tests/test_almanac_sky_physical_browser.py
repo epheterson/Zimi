@@ -621,6 +621,8 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
         pg.wait_for_function("() => !document.getElementById('almanac-sky-tip').hidden", polling=POLL_MS)
         tip = pg.inner_text("#almanac-sky-tip")
         assert b["desig"] in tip and "magnitude" in tip.lower(), (tip, b)
+        box = pg.locator("#almanac-sky-tip").bounding_box()
+        assert not (box["x"] <= pos["x"] <= box["x"] + box["width"] and box["y"] <= pos["y"] <= box["y"] + box["height"]), ("the tip covers what was tapped", box, pos)
         pg.wait_for_function("() => !!_skyConst && _skyState.reveal", polling=POLL_MS)
         assert any("constellations-v1" in u for u in fetched)
         assert pg.evaluate("_skyState.reveal") == b["con"]
