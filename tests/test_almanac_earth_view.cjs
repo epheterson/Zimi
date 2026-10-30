@@ -586,32 +586,37 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
     check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
       'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
-    // Earth to Sun: pulls back with room round both bodies, holds there, then flies in.
-    run('_ae.fly.start = 0;');
-    const probe = (ms) => run('_aeStepFly(' + ms + '), _ae.dist');
-    const hold = S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS;
-    const held = probe(hold), held2 = probe(S.AE_FLY_PULL_MS + 0.9 * S.AE_FLY_HOLD_MS);
-    check(run('_ae.fly.hold') && Math.abs(held - held2) < 1e-9 && held >= run('_ae.fly.peak') - 1e-9 && held > run('_ae.fly.from.dist') * 2,
-      'a flight between bodies pulls back to a frame holding both and stays there for a beat (' + held.toFixed(1) + ')');
-    check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in');
-    {
-      // A portrait phone: both bodies must fit the narrower, horizontal field of view, so the pull-back is 1/aspect farther.
-      const sep = '60';
-      const wide = run('(function () { var w = _ae.w, h = _ae.h; _ae.w = 800; _ae.h = 400; var d = _aePullBackDist(' + sep + '); _ae.w = w; _ae.h = h; return d; })()');
-      const tall = run('(function () { var w = _ae.w, h = _ae.h; _ae.w = 390; _ae.h = 780; var d = _aePullBackDist(' + sep + '); _ae.w = w; _ae.h = h; return d; })()');
-      check(Math.abs(tall / wide - 2) < 1e-6, 'on a portrait screen the pull-back fits the pair in the horizontal field of view (' + wide.toFixed(2) + ' -> ' + tall.toFixed(2) + ')');
+    // Between bodies the shot is over the shoulder: at the beat the old body stands large in the foreground to one
+    // side, the destination is framed in the open part of the view, and the camera is looking at it.
+    const shot = (from, to, w, h) => run('(function () {' +
+      ' var W = _ae.w, H = _ae.h; _ae.w = ' + w + '; _ae.h = ' + h + ';' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(' + (S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS) + ');' +
+      ' var look = _aeFlyTargetPos(), off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist), pos = _aeAdd(look, off);' +
+      ' var axis = _aeNorm(_aeSub(look, pos)), bodies = { earth: [[0, 0, 0], 1], moon: [_ae.scene.moon, AE_MOON_RADIUS_RE], sun: [_aeSunShown(_ae.scene), AE_SUN_SHOW_R] };' +
+      ' function seen(n) { var d = _aeSub(bodies[n][0], pos); return { ang: _aeAngle(axis, d), rad: Math.asin(bodies[n][1] / _aeLen(d)), dir: _aeNorm(d) }; }' +
+      ' var o = seen("' + from + '"), d = seen("' + to + '");' +
+      ' var out = { dest: d.ang, destRad: d.rad, oldRad: o.rad, apart: _aeAngle(o.dir, d.dir), half: Math.atan(_aeNarrowTanHalf()), hold: f.hold };' +
+      ' _ae.w = W; _ae.h = H; _ae.fly = null; _aeFarFor(0); return out; })()');
+    for (const [from, to] of [['earth', 'moon'], ['moon', 'earth'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth']]) {
+      for (const [w, h, name] of [[390, 844, 'phone'], [1280, 800, 'desktop']]) {
+        const g = shot(from, to, w, h);
+        check(g.hold && g.dest < g.half * 0.5, from + ' to ' + to + ' (' + name + '): the destination is framed inside the narrower half-FOV during the hold (' +
+          (g.dest * 180 / Math.PI).toFixed(1) + ' of ' + (g.half * 180 / Math.PI).toFixed(1) + ' degrees)');
+        check(g.oldRad > g.half / 6 && g.oldRad < g.half, from + ' to ' + to + ' (' + name + '): the old body stands large in the foreground (angular radius ' +
+          (g.oldRad * 180 / Math.PI).toFixed(1) + ' degrees, a third of the frame is ' + (g.half / 3 * 180 / Math.PI).toFixed(1) + ')');
+        check(g.apart > g.oldRad + g.destRad, from + ' to ' + to + ' (' + name + '): the old body does not cover the destination');
+      }
     }
-    {
-      // Started looking along the line between the bodies: at the beat's middle the camera sees them side-on.
-      const ang = run('(function () {' +
-        ' var f = _ae.fly, line = _aeNorm(_aeSub(_aeTargetPos(), f.from.pos));' +
-        ' f.start = 0; _ae.az = f.from.az = Math.atan2(line[1], line[0]); _ae.el_ = f.from.el = Math.asin(line[2]);' +
-        ' f.side = _aeSideOn(f.from, _aeSub(_aeTargetPos(), f.from.pos));' +
-        ' _aeStepFly(' + hold + ');' +
-        ' var v = _aeCameraOffset(_ae.az, _ae.el_, 1);' +
-        ' return Math.acos(Math.abs(v[0]*line[0] + v[1]*line[1] + v[2]*line[2])) * 180 / Math.PI; })()');
-      check(ang >= 60, 'a start along the line between the bodies turns side-on during the hold (' + ang.toFixed(1) + ' degrees)');
-    }
+    // The beat is still: the camera is where it was a moment before, then it flies in.
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sun"); _ae.fly.start = 0;');
+    // How far the camera stands from the destination.
+    const probe = (ms) => run('(function () { _aeStepFly(' + ms + '); var l = _aeFlyTargetPos(); return _aeLen(_aeSub(_aeAdd(l, _aeCameraOffset(_ae.az, _ae.el_, _ae.dist)), _aeTargetPos())); })()');
+    const held = probe(S.AE_FLY_PULL_MS + 0.2 * S.AE_FLY_HOLD_MS), held2 = probe(S.AE_FLY_PULL_MS + 0.9 * S.AE_FLY_HOLD_MS);
+    check(Math.abs(held - held2) < 1e-9, 'the beat holds the camera still');
+    check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in toward the destination');
+    check(!run('(function () { _ae.target = "earth"; _ae.fly = null; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sats"); return _ae.fly.hold; })()'),
+      'a change of framing on the same body has no shoulder shot');
     check(S.AE_FLY_HOLD_MS >= 400 && S.AE_FLY_HOLD_MS <= 600, 'the beat is about half a second');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');

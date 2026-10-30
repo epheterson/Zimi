@@ -372,11 +372,20 @@ var AE_KEY_ZOOM = 1.15;
 // GPS shell): a nudge between framings is quick, a crossing to the Sun is
 // the longest, and nothing takes longer than AE_FLY_FAR_MS.
 var AE_FLY_MIN_MS = 500;
-// A flight between two bodies shows them together first: out until both sit in the frame with this much room
-// around them, a beat to see it, then in. The beat is only worth having when the pull-back is wider than either end.
-var AE_FLY_PULL_MS = 450, AE_FLY_HOLD_MS = 500, AE_FLY_FRAME_MARGIN = 1.3, AE_FLY_PULL_WORTH = 1.15;
+// A flight between two bodies is an over-the-shoulder shot: the camera eases back behind the body it leaves, off to
+// one side so that body stands large in the foreground (its diameter this fraction of the narrower side of the
+// frame, its centre this far out toward that side, in half-frames), turned to the destination, which is framed
+// on the open side (centred this far out the other way). A beat there, then in.
+var AE_FLY_PULL_MS = 450, AE_FLY_HOLD_MS = 500;
+var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
-var AE_FLY_SIDE_MIN = 0.05;          // a view this close to the line between two bodies has no side of its own
+// A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
+var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // marks closer than this: only the first
+var AE_MARKED = [
+  { body: 'earth', name: function () { return _tp('Earth'); } },
+  { body: 'moon', name: function () { return _aeT('alm_moon'); } },
+  { body: 'sun', name: function () { return _aeT('alm_sun'); } }
+];
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
@@ -555,6 +564,13 @@ var AE_CSS = [
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
+  // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
+  '.ae-bm{position:absolute;left:0;top:0;color:#dfe6f0;pointer-events:none}',
+  '.ae-bm[hidden]{display:none}',
+  '.ae-ring{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
+  '.ae-bm b{position:absolute;left:18px;top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
+  '.ae-bm-l b{left:auto;right:18px}',
+  '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
   '.ae-label-you{color:#f5c16c}',
@@ -618,7 +634,9 @@ function _aeBuildDom() {
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
-      '<span class="ae-label" id="ae-lbl-moon" hidden>' + _almEsc(_aeT('alm_moon')) + '</span>' +
+      AE_MARKED.map(function (m) {
+        return '<span class="ae-bm" id="ae-bm-' + m.body + '" hidden><i class="ae-ring" aria-hidden="true"></i><b>' + _almEsc(m.name()) + '</b></span>';
+      }).join('') +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
       '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
@@ -1565,7 +1583,7 @@ function _aeAzElOf(v) {
 }
 
 function _aeFlyTo(target, dist, azel) {
-  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0 };
+  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
   var to = { dist: _aeClampDist(dist) };
@@ -1574,39 +1592,75 @@ function _aeFlyTo(target, dist, azel) {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    var peak = _aePullBackDist(_aeLen(_aeSub(_aeTargetPos(), from.pos)) * AE_FLY_FRAME_MARGIN);
-    var hold = peak > Math.max(from.dist, to.dist) * AE_FLY_PULL_WORTH;
-    _ae.fly = { start: performance.now(), ms: ms, hold: hold,
-      from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, peak: peak };
-    if (hold) { _ae.fly.side = _aeSideOn(from, _aeSub(_aeTargetPos(), from.pos)); _aeFarFor(peak, _aeLen(_aeSub(_aeTargetPos(), from.pos))); }
+    var hold = !!_ae.scene && target !== from.target;
+    _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    if (hold) {
+      var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
+      _ae.fly.shoulder = sh;
+      _aeFarFor(sh.far);
+    }
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
 }
-// The view (az, el) nearest the current one that looks at two bodies side-on: the current view direction with
-// its component along the line between them taken out, so the nearer body never hides the farther.
-function _aeSideOn(from, line) {
-  var L = _aeNorm(line), v = _aeCameraOffset(from.az, from.el, 1);
-  var d = v[0] * L[0] + v[1] * L[1] + v[2] * L[2];
-  var p = [v[0] - d * L[0], v[1] - d * L[1], v[2] - d * L[2]];
-  if (_aeLen(p) < AE_FLY_SIDE_MIN) {
-    // Looking straight along the line: any perpendicular will do, the one from the up axis first.
-    var ref = Math.abs(L[2]) < 0.99 ? [0, 0, 1] : [1, 0, 0];
-    p = [ref[1] * L[2] - ref[2] * L[1], ref[2] * L[0] - ref[0] * L[2], ref[0] * L[1] - ref[1] * L[0]];
+// The over-the-shoulder camera: where it stands (behind the body at `from`, away from `dest`, off to one side) and
+// the point it looks at, so the old body fills AE_SHOULDER_FILL of the narrower side of the frame at AE_SHOULDER_OLD_AT
+// and the destination stands at AE_SHOULDER_DEST_AT. The side is the one the camera is already on.
+// In the plane of the line between the two (u) and the side (s): the camera is `dOld` from the old body along
+// -(cos(phi) u + sin(phi) s); phi is found so the two land where they should.
+function _aeShoulder(from, rOld, dest) {
+  var a = from.pos, ab = _aeSub(dest, a), len = _aeLen(ab), u = _aeScale(ab, 1 / len);
+  var up = _aeViewUp(u, from.roll), side = _ae.w > _ae.h ? up : _aeCross(u, up);
+  if (_aeDot(_aeCameraOffset(from.az, from.el, 1), side) < 0) side = _aeScale(side, -1);
+  var tn = _aeNarrowTanHalf(), fill = AE_SHOULDER_FILL * tn;
+  var dOld = rOld * Math.hypot(1, 1 / fill);
+  var destTilt = Math.atan(AE_SHOULDER_DEST_AT * tn);
+  // Where the old body lands on the narrow axis (in tangents), for a given phi.
+  function oldAt(phi) {
+    var thetaDest = Math.atan2(dOld * Math.sin(phi), dOld * Math.cos(phi) + len);
+    return Math.tan(phi - thetaDest + destTilt);
   }
-  var a = _aeAzElOf(p);
-  return { az: from.az + _angleDelta(from.az, a.az), el: a.el };
+  var lo = 0, hi = Math.PI / 2 - 0.01;
+  for (var i = 0; i < 40; i++) {
+    var mid = (lo + hi) / 2;
+    if (oldAt(mid) < AE_SHOULDER_OLD_AT * tn) lo = mid; else hi = mid;
+  }
+  var phi = (lo + hi) / 2, c = Math.cos(phi), sn = Math.sin(phi);
+  var pos = _aeSub(a, _aeAdd(_aeScale(u, dOld * c), _aeScale(side, dOld * sn)));
+  var toDest = _aeSub(dest, pos), gamma = Math.atan2(dOld * sn, dOld * c + len) + (-destTilt);
+  var axis = _aeAdd(_aeScale(u, Math.cos(gamma)), _aeScale(side, Math.sin(gamma)));
+  // The turn away from the old body the look-at carries, and which way: held through the swing back, so the old body
+  // slides from the middle of the frame to its place and never leaves it.
+  var dA = _aeNorm(_aeSub(a, pos)), dD = _aeNorm(toDest);
+  return { pos: pos, look: _aeAdd(pos, _aeScale(axis, _aeLen(toDest))), far: dOld + len * 1.5,
+    turn: _aeAngle(dA, axis), away: _aePerp(axis, dA), destTurn: _aeAngle(dD, axis), destAway: _aePerp(axis, dD) };
 }
-// The distance from which two bodies this far apart both fit the frame.
-// Not held to the destination's zoom limits: the frame that holds both can be wider than either end allows
-// (the Moon's widest view is AE_MAX_DIST, a portrait phone needs more for the Earth and Moon together).
-function _aePullBackDist(sep) {
-  return Math.max(_aeClampDist(0), sep / (_aeNarrowTanHalf() * AE_FIT_FILL));
+// The unit direction of `v` across `d` (a unit vector): what is left of it once its part along `d` is taken out.
+function _aePerp(v, d) { return _aeNorm(_aeSub(v, _aeScale(d, _aeDot(v, d)))); }
+// The look-at that is `turn` radians off the direction to `target`, toward `away`, from `pos`.
+function _aeLookOff(pos, target, away, turn) {
+  var to = _aeSub(target, pos), d = _aeNorm(to), w = _aePerp(away, d);
+  return _aeAdd(pos, _aeScale(_aeAdd(_aeScale(d, Math.cos(turn)), _aeScale(w, Math.sin(turn))), _aeLen(to)));
 }
-// The far plane reaches past a pull-back wider than the scene's usual widest view, and comes back after.
-function _aeFarFor(peak, sep) {
-  var cam = _ae.gl && _ae.gl.camera, far = Math.max(AE_FAR, peak + sep);
+// A point on the way from offset `p` to offset `q` (both from the same centre) at e in 0..1: the direction turns the
+// short way and the distance changes by its ratio, so a camera swinging round a body neither cuts through it nor
+// flings out.
+function _aeSlerpOffset(p, q, e) {
+  var lp = _aeLen(p), lq = _aeLen(q), np = _aeScale(p, 1 / lp), nq = _aeScale(q, 1 / lq);
+  var d = _aeClamp(_aeDot(np, nq), -1, 1), ang = Math.acos(d), dir;
+  if (ang < 1e-6) dir = np;
+  else {
+    // Straight back on itself: swing round the vertical (or any axis across it).
+    var perp = ang > Math.PI - 1e-6 ? _aeNorm(_aeCross(np, Math.abs(np[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])) : null;
+    if (perp) dir = _aeAdd(_aeScale(np, Math.cos(Math.PI * e)), _aeScale(perp, Math.sin(Math.PI * e)));
+    else dir = _aeAdd(_aeScale(np, Math.sin((1 - e) * ang) / Math.sin(ang)), _aeScale(nq, Math.sin(e * ang) / Math.sin(ang)));
+  }
+  return _aeScale(dir, Math.exp(Math.log(lp) + (Math.log(lq) - Math.log(lp)) * e));
+}
+// The far plane reaches past a shot wider than the scene's usual widest view, and comes back after.
+function _aeFarFor(reach) {
+  var cam = _ae.gl && _ae.gl.camera, far = Math.max(AE_FAR, reach || 0);
   if (cam && cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); }
 }
 // How long a flight takes: the camera's path, end to end, against the
@@ -1618,8 +1672,8 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
-// How far along the flight's arrival is, eased (1 when there is none). With a pull-back the arrival is the part
-// after the beat, the turn and the roll waiting for it.
+// How far along the flight's arrival is, eased (1 when there is none). With the shoulder shot the arrival is the part
+// after the beat, the roll waiting for it.
 function _aeFlyLead(f) { return f.hold ? AE_FLY_PULL_MS + AE_FLY_HOLD_MS : 0; }
 function _aeFlyArrival(f, now) {
   return _aeEaseInOut(_aeClamp((now - f.start - _aeFlyLead(f)) / f.ms, 0, 1));
@@ -1628,43 +1682,48 @@ function _aeFlyEase(now) {
   var f = _ae.fly;
   return f ? _aeFlyArrival(f, now) : 1;
 }
+// The camera's place and the point it looks at, along a shoulder shot: back and round the old body, the beat, then
+// in to the destination's own view.
+function _aeShoulderCam(f, now) {
+  var from = f.from, sh = f.shoulder, dest = _aeTargetPos();
+  var arrive = _aeFlyArrival(f, now);
+  var pull = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1));
+  if (arrive > 0) {
+    var end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
+    var off = _aeSlerpOffset(_aeSub(sh.pos, dest), end, arrive);
+    // The destination slides from its place in the frame to the middle of it.
+    var posNow = _aeAdd(dest, off);
+    return { pos: posNow, look: _aeLookOff(posNow, dest, sh.destAway, sh.destTurn * (1 - arrive)) };
+  }
+  var start = _aeCameraOffset(from.az, from.el, from.dist);
+  var pos = _aeAdd(from.pos, _aeSlerpOffset(start, _aeSub(sh.pos, from.pos), pull));
+  // Look at the old body, turned off it by the share of the way done.
+  return { pos: pos, look: _aeLookOff(pos, from.pos, sh.away, sh.turn * pull) };
+}
+function _aeLerp3(a, b, e) { return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e]; }
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var lo = Math.log(f.from.dist), hi = Math.log(f.toDist), arrive = _aeFlyArrival(f, now);
   if (f.hold) {
-    // Out to the frame holding both, a beat there, then in.
-    var out = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1)), top = Math.log(f.peak);
-    _ae.dist = Math.exp(arrive > 0 ? top + (hi - top) * arrive : lo + (top - lo) * out);
+    // The orbit model (a point looked at, a direction and a distance) holds any camera and look-at pair.
+    var c = _aeShoulderCam(f, now), v = _aeSub(c.pos, c.look), d = _aeLen(v);
+    f.look = c.look;
+    _ae.dist = d; _ae.az = Math.atan2(v[1], v[0]); _ae.el_ = Math.asin(v[2] / d);
   } else {
-    // Between two bodies the camera first pulls back until both are in frame, then comes in.
-    var pull = Math.max(0, Math.log(f.peak) - (lo + hi) / 2) * Math.sin(Math.PI * arrive);
-    _ae.dist = Math.exp(lo + (hi - lo) * arrive + pull);
-  }
-  if (f.side) {
-    // Turn side-on during the pull-back, hold it, then turn to the destination's view on the way in.
-    var sa = f.side.az, se = f.side.el, turn = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1));
-    var toAz = sa + _angleDelta(sa, f.toAz);
-    _ae.az = arrive > 0 ? sa + (toAz - sa) * arrive : f.from.az + (sa - f.from.az) * turn;
-    _ae.el_ = arrive > 0 ? se + (f.toEl - se) * arrive : f.from.el + (se - f.from.el) * turn;
-  } else {
+    var arrive = _aeFlyArrival(f, now);
+    _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * arrive);
     _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
     _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
   }
-  if (now - f.start >= _aeFlyLead(f) + f.ms) { _ae.fly = null; _aeFarFor(0, 0); }
+  if (now - f.start >= _aeFlyLead(f) + f.ms) { _ae.fly = null; _aeFarFor(0); }
   return true;
 }
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
-  var now = performance.now(), e = _aeFlyEase(now), a = f.from.pos, b = to;
-  if (f.hold) {
-    // Centred between the two while the beat lasts, so both stand in the frame.
-    var mid = [(a[0] + to[0]) / 2, (a[1] + to[1]) / 2, (a[2] + to[2]) / 2];
-    if (e > 0) a = mid;
-    else { b = mid; e = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1)); }
-  }
-  return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e];
+  if (f.hold) return f.look || f.from.pos;
+  var e = _aeFlyEase(performance.now());
+  return _aeLerp3(f.from.pos, to, e);
 }
 
 // Where the camera stands and how wide it sees, now: the view's own
@@ -2178,7 +2237,7 @@ function _aeSetText(el, text) { if (el && el.textContent !== text) el.textConten
 function _aeUpdateLabels() {
   var sc = _ae.scene;
   if (!sc) return;
-  _aePlaceLabel('ae-lbl-moon', sc.moon, !_aeBehindEarth(sc.moon) && _ae.target !== 'moon');
+  _aeUpdateMarks(sc);
   // The tapped satellite is named by its card and marked by its colour, so
   // only the ISS carries a label of its own.
   var iss = null;
@@ -2194,7 +2253,8 @@ function _aeUpdateLabels() {
     if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
     issEl.classList.toggle('ae-faded', approx);
   }
-  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos));
+  // Not while the Earth is a small ringed disc: the ISS is a speck on it, and its label would sit on the Earth's.
+  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
@@ -2203,6 +2263,36 @@ function _aeUpdateLabels() {
   var ecl = _ae.eclipse;
   var sh = ecl && ecl.solar && ecl.hit ? _aeFixedToScene(_aeGeodeticToFixed(ecl.hit.lat, ecl.hit.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-shadow', sh, !!sh && _aeFacing(sh) && _ae.target === 'earth');
+}
+
+// A body drawn small is ringed and named, so it can be found: the mark is full under AE_MARK_SMALL_PX across and
+// gone by AE_MARK_GONE_PX. The flight's destination is always marked while it is small, even behind the Earth.
+// How wide the Earth is drawn, in CSS pixels.
+function _aeEarthPx() {
+  var cam = _ae.gl.camera, d = Math.max(1e-9, _aeLen([cam.position.x, cam.position.y, cam.position.z]));
+  return 2 / d * _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+}
+function _aeUpdateMarks(sc) {
+  var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var pos = { earth: [0, 0, 0], moon: sc.moon, sun: _aeSunShown(sc) }, shown = [];
+  // The destination first, so a body standing on top of it (the Moon from the Sun) gives way.
+  var order = AE_MARKED.slice().sort(function (a, b) { return (b.body === _ae.target) - (a.body === _ae.target); });
+  for (var i = 0; i < order.length; i++) {
+    var body = order[i].body, el = _aeById('ae-bm-' + body);
+    if (!el) continue;
+    var dest = !!_ae.fly && body === _ae.target;
+    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
+    var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
+    var alpha = _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
+    var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
+    if (!s || crowded || alpha <= 0 || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) { if (!el.hidden) el.hidden = true; continue; }
+    shown.push(s);
+    if (el.hidden) el.hidden = false;
+    el.style.opacity = alpha.toFixed(2);
+    el.classList.toggle('ae-bm-l', s.x > _ae.w / 2);
+    el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
+  }
 }
 
 // "GPS BIII-3  (PRN 23)" -> "PRN 23"; anything else as given.
