@@ -1989,11 +1989,6 @@ async function _fetchList() {
   return Array.isArray(data.zims) ? data.zims : [];
 }
 let homeScope = null; // {type:'favorites'|'category'|'collection'|'apps', label, zimNames:[]}
-// #34 library recency filter: null | 'added' | 'updated'. Transient view state —
-// deliberately NOT persisted, so a reload always lands on the full library. An
-// active pill narrows the existing home sections in place (like a language pill),
-// combining with homeLangFilter (AND).
-let homeRecentFilter = null;
 // Library language filter: a Set of ZIM language codes. Empty = all languages.
 // Transient view state — reset when leaving/entering a scope, never persisted,
 // so a reload always lands on the full library. Multi-select toggle, matching
@@ -2012,7 +2007,7 @@ let _pillsAreHomeFilters = false;
 let _homeFilterRowsHtml = '';
 function _updateHomeFiltersVisibility() {
   if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
-  const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  const filterActive = homeLangFilter.size > 0;
   pillsBar.style.display = filterActive ? '' : 'none';
 }
 
@@ -4482,7 +4477,6 @@ function enterHome(push) {
   homeScope = null;
   // The recency/language filters are scoped to whatever card set is showing (#37)
   // — leaving a scope drops any filter picked inside it so home starts clean.
-  homeRecentFilter = null;
   homeLangFilter.clear();
   _currentSearchQuery = null;
   articleHistory = [];
@@ -4522,7 +4516,6 @@ function enterScope(type, label, zimNames, push) {
   homeScope = { type, label, zimNames };
   // New section, new card set — drop any recency/language filter picked in
   // whatever view we're leaving (home or a different section).
-  homeRecentFilter = null;
   homeLangFilter.clear();
   q.value = '';
   searchMeta.style.display = 'none';
@@ -5062,7 +5055,7 @@ function renderHome(filter) {
   // languages so state stays sane (scope transitions reset filters themselves,
   // in enterScope/enterHome, so re-rendering the same scope doesn't clobber a
   // filter the user just picked).
-  if (filter) { homeRecentFilter = null; homeLangFilter.clear(); }
+  if (filter) homeLangFilter.clear();
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -5075,7 +5068,7 @@ function renderHome(filter) {
   } else {
     // The Apps page counts what each app shows on its own cards: a sum of
     // ZIM entries across books, videos and maps would count none of them.
-    statsHtml = (homeScope ? '' : _freshDotHtml(baseZims)) + t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
+    statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
       (homeScope && homeScope.type === 'apps' ? '' : t('articles_count', {n: '<span class="num">' + fmtNum(totalEntries) + '</span>'}) + ' &middot; ') +
       fmtSize(totalGb, true);
   }
@@ -5111,18 +5104,8 @@ function renderHome(filter) {
     ? sortedAll.filter(z => homeLangFilter.has(z.language || ''))
     : sortedAll;
 
-  // #34 recency lists, computed from the language-narrowed set so the two filters
-  // compose (AND). The counts drive the pill labels; an ACTIVE recency pill then
-  // narrows `sorted` in place so the existing sections filter down to just those
-  // ZIMs — exactly like a language pill — rather than spawning a separate view.
-  var _recentAdded = _langSorted.filter(function(z) { return _unseenKind(z) === 'new'; }).sort(_byFirstSeenDesc);
-  var _recentUpdated = _langSorted.filter(function(z) { return _unseenKind(z) === 'updated'; }).sort(_byUpdatedDesc);
-  // A language narrowing can empty the active recency list — its pill is hidden
-  // then, so fall back to All rather than strand the view on an empty filter.
-  var _recentFresh = _recentAdded.concat(_recentUpdated);
-  if (homeRecentFilter === 'fresh' && !_recentFresh.length) homeRecentFilter = null;
-  const sorted = homeRecentFilter === 'fresh' ? _recentFresh : _langSorted;
-  // The ZIMs the recency and language filters let through, for the sections
+  const sorted = _langSorted;
+  // The ZIMs the language filter lets through, for the sections
   // (favourites, collections) that pick their own members by name.
   const _homeShown = new Set(sorted.map(z => z.name));
 
@@ -5169,7 +5152,7 @@ function renderHome(filter) {
   let h = '';
   if (!homeScope && !filter) h += _libFoldersNoteHtml();
   // Help now sits first in the Apps row; where that row is not drawn (a filter is narrowing home) it stands alone.
-  if (!homeScope && !filter && (homeRecentFilter || homeLangFilter.size)) h += _helpNowHtml();
+  if (!homeScope && !filter && homeLangFilter.size) h += _helpNowHtml();
 
   // Scope header with back link — Favorites, a category or a collection all
   // drill in here, so keep a way back to "All sources".
@@ -5197,7 +5180,7 @@ function renderHome(filter) {
   // Not drawn at all when hidden: a row drawn and then emptied was filled
   // again by a load that landed after the × (Eric: "clicking the X no
   // longer hides discover!? BAD REGRESSION!!").
-  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
+  var _showDiscover = !homeScope && !filter && !homeLangFilter.size && !discoverHidden;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -5239,7 +5222,7 @@ function renderHome(filter) {
 
   // Zimi Maps, first, as a source sits: one tile whenever a map is installed.
   // Eric: "a Maps tile that sits with the sources grid like a source does."
-  if (!homeScope && !filter && !homeRecentFilter && !homeLangFilter.size) {
+  if (!homeScope && !filter && !homeLangFilter.size) {
     h += _appsRowHtml(true);
   }
 
@@ -5461,28 +5444,13 @@ function _ownZimInApps(name) {
   var app = _OWN_ZIM_APP[name];
   return !!app && _appsEnabled() && _shownApps().indexOf(app) >= 0;
 }
-// 'new', 'updated' or null: what has landed that you have not opened yet (the card's own badge).
-function _unseenKind(z) {
-  if (_ownZimInApps(z.name)) return null;   // theirs is on the tile
-  var b = _zimBadge(z);
-  return b ? b.label : null;
-}
-// The status line's one dot: solid amber, first thing on the line, only when a ZIM is new or updated since you opened it
-// (the apps' own dots are on their tiles). Tapping it narrows Home to those cards; tapping again lets go.
-function _freshDotHtml(list, mark) {
+// The dot on an app's tile: solid amber when a ZIM inside it is new or updated since you opened it.
+function _freshDotHtml(list) {
   var counts = { added: 0, updated: 0 };
-  // The tapped list is the cards (_unseenKind); an app lights its own tile's dot, not this one.
-  list.forEach(function(z) { var b = (mark || !_ownZimInApps(z.name)) && _zimBadge(z); if (b) counts[b.label === 'updated' ? 'updated' : 'added']++; });
+  list.forEach(function(z) { var b = _zimBadge(z); if (b) counts[b.label === 'updated' ? 'updated' : 'added']++; });
   if (!counts.added && !counts.updated) return '';
   var label = ['added', 'updated'].filter(function(k) { return counts[k]; }).map(function(k) { return t('recent_' + k + '_dot', { n: counts[k] }); }).join(', ');
-  if (mark) return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
-  return '<button type="button" class="rc-dot' + (homeRecentFilter === 'fresh' ? ' active' : '') + '" aria-pressed="' + (homeRecentFilter === 'fresh') +
-    '" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '" onclick="filterHomeRecent()"><i aria-hidden="true"></i></button>';
-}
-function filterHomeRecent() {
-  hideSuggest();
-  homeRecentFilter = homeRecentFilter === 'fresh' ? null : 'fresh';
-  renderHome();
+  return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
 }
 function _zimBadge(z) {
   if (!z) return null;
@@ -10868,7 +10836,7 @@ function showHistoryDropdown(filter) {
   // 'home' behind the reader overlay, #7). And when a filter is already ACTIVE
   // the pills-bar is shown above the content, so the dropdown must not duplicate
   // the same rows — the handoff is idle→dropdown, in-use→pills-bar (#9).
-  var _filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  var _filterActive = homeLangFilter.size > 0;
   var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' &&
       !currentSource && !readerOpen && !_filterActive)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
@@ -24153,7 +24121,7 @@ function _appsRowHtml(withHelp) {
 // filter is narrowing the page. One heading on top carries the order and
 // view controls, as every page's first heading does.
 function _appsPageHtml(shown) {
-  var narrowed = !!(homeRecentFilter || homeLangFilter.size);
+  var narrowed = !!homeLangFilter.size;
   var groups = _shownApps().map(function(app) {
     var inside = _appZims(app);
     if (!inside.length && app === 'games') return '';
@@ -24196,11 +24164,11 @@ function _appSectionHtml(app, n, grid) {
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
-// A tile's foot: the same solid dot a new or updated ZIM wears on the status line (when something inside is), and the
+// A tile's foot: the solid dot a new or updated ZIM wears (when something inside is), and the
 // same ⋯ a card has, which opens the menu a right click or a long press opens.
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
-  var dot = _freshDotHtml(zims.filter(Boolean), true);
+  var dot = _freshDotHtml(zims.filter(Boolean));
   return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' +
     '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button></span>';
 }
