@@ -100,13 +100,13 @@ function _skyZoneCity() {
 }
 // The span from now to an instant, the instant rounded as _skyClock rounds it.
 function _skySpan(at, now, guess, dir) { return _orrFmtSpan(Math.max(0, _skyRoundMs(at, guess, dir) - now) / 1000); }
-// "SW 252°": the point of the compass and the bearing it stands for.
+
+// "SW 252°": the point of the compass and the bearing it stands for (the Field Guide's card uses it).
 function _skyBearing(az) { return _azCompass(az) + ' ' + Math.round(az) + '\u00b0'; }
 
 // The cards: [label, value, sub, key], four, set among the Moon's eight in
 // one grid (almanac.css orders the twelve by key). The value is the one short
-// thing the card is for (a span, a clock time); the sub is where on the
-// horizon, in the card's own small line. (Where north is, the Look view and the
+// thing the card is for (a span, a clock time); the sub (none today) is a small line under it. (Where north is, the Look view and the
 // star chart show, and the Field Guide says: fieldguide-card.js.) A card that rests
 // on a guessed place says "about" in itself. They sit under the Moon beside the
 // hero's own numbers (illuminated, sunrise, sunset: almanac.js _almHeadHtml), so
@@ -118,13 +118,13 @@ function _skyFactRows(s, f) {
   var at = function (ms, dir) { return about(_skyClock(ms, guess, dir)); };
   // A guessed sunset less than a step away rounds down to now: said as what it is, not as a time already gone.
   var soon = guess && f.sunUp && f.sunset && _skyRoundMs(f.sunset, guess, -1) <= now;
-  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? about(_skySpan(f.sunset, now, guess, -1)) : t('alm_midnight_sun'), f.sunset && !soon ? _skyBearing(f.sunsetAz) : '', 'left']);
-  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? about(_skySpan(f.sunrise, now, guess, 1)) : t('alm_polar_night'), f.sunrise ? _skyBearing(f.sunriseAz) : '', 'left']);
+  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? about(_skySpan(f.sunset, now, guess, -1)) : t('alm_midnight_sun'), '', 'left']);
+  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? about(_skySpan(f.sunrise, now, guess, 1)) : t('alm_polar_night'), '', 'left']);
   if (f.fullyDark) rows.push([t('alm_sky_f_dark_until'), f.darkUntil ? about(_skyClock(f.darkUntil, guess, 1)) : t('alm_polar_night'), '', 'dark']);
   else rows.push([t('alm_sky_f_dark_from'), f.darkFrom ? about(_skyClock(f.darkFrom, guess, 1)) : t('alm_sky_f_not_dark'), '', 'dark']);
   // When it next comes or goes, and where; how lit it is is the hero's card. With neither in the next day and a half, that.
-  var moonAt = f.moonUp ? (f.moonset ? [t('alm_sky_f_sets', { t: at(f.moonset, -1) }), f.moonsetAz] : null) : (f.moonrise ? [t('alm_sky_f_rises', { t: at(f.moonrise, 1) }), f.moonriseAz] : null);
-  rows.push(moonAt ? [t('alm_moon'), moonAt[0], _skyBearing(moonAt[1]), 'moon'] : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), '', 'moon']);
+  var moonAt = f.moonUp ? (f.moonset ? [t('tb_moonset'), at(f.moonset, -1)] : null) : (f.moonrise ? [t('tb_moonrise'), at(f.moonrise, 1)] : null);
+  rows.push(moonAt ? [moonAt[0], moonAt[1], '', 'moon'] : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), '', 'moon']);
   rows.push([t('alm_sky_f_solar'), about(_skySolarClock(_skySolarMinutes(new Date(now), s.lon), guess)), '', 'solar']);
   return rows;
 }
