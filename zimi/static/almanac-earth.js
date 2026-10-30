@@ -1508,10 +1508,14 @@ function _aeFollowClock() {
 }
 
 // ── Camera ──
+// The tangent of the narrower half field of view: the vertical one, or on a portrait screen the horizontal one
+// (2·atan(tan(vfov/2)·aspect)), which is what a thing must fit inside.
+function _aeNarrowTanHalf() {
+  var aspect = _ae.w && _ae.h ? _ae.w / _ae.h : _ae.gl.camera.aspect;
+  return Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, aspect);
+}
 function _aeFitDist(radius) {
-  var cam = _ae.gl.camera, aspect = _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect;
-  var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, aspect);
-  return radius / (half * AE_FIT_FILL);
+  return radius / (_aeNarrowTanHalf() * AE_FIT_FILL);
 }
 // What the camera can circle: how near and far it may go, and the surface a
 // drag's speed is measured from.
@@ -1596,7 +1600,7 @@ function _aeSideOn(from, line) {
 }
 // The distance from which two bodies this far apart both fit the frame.
 function _aePullBackDist(sep) {
-  return _aeClampDist(sep / (Math.tan(_aeRad(AE_FOV_DEG) / 2) * AE_FIT_FILL));
+  return _aeClampDist(sep / (_aeNarrowTanHalf() * AE_FIT_FILL));
 }
 // How long a flight takes: the camera's path, end to end, against the
 // nearer of the two distances it stands from what it looks at.

@@ -595,6 +595,13 @@ const run = (code) => vm.runInContext(code, S);
       'a flight between bodies pulls back to a frame holding both and stays there for a beat (' + held.toFixed(1) + ')');
     check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in');
     {
+      // A portrait phone: both bodies must fit the narrower, horizontal field of view, so the pull-back is 1/aspect farther.
+      const sep = '60';
+      const wide = run('(function () { var w = _ae.w, h = _ae.h; _ae.w = 800; _ae.h = 400; var d = _aePullBackDist(' + sep + '); _ae.w = w; _ae.h = h; return d; })()');
+      const tall = run('(function () { var w = _ae.w, h = _ae.h; _ae.w = 390; _ae.h = 780; var d = _aePullBackDist(' + sep + '); _ae.w = w; _ae.h = h; return d; })()');
+      check(Math.abs(tall / wide - 2) < 1e-6, 'on a portrait screen the pull-back fits the pair in the horizontal field of view (' + wide.toFixed(2) + ' -> ' + tall.toFixed(2) + ')');
+    }
+    {
       // Started looking along the line between the bodies: at the beat's middle the camera sees them side-on.
       const ang = run('(function () {' +
         ' var f = _ae.fly, line = _aeNorm(_aeSub(_aeTargetPos(), f.from.pos));' +
