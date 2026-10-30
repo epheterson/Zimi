@@ -20,6 +20,7 @@ Run: pytest tests/test_almanac_sky_physical_browser.py -v
 """
 
 import json
+import re
 import os
 import sys
 import threading
@@ -672,13 +673,15 @@ def test_the_sky_view_tables_are_drawn_once_for_one_place_of_the_sun(browser, se
         ctx.close()
 
 
-def test_the_credit_the_bearings_and_the_zone_city_are_on_the_card(browser, served):
+def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
-        pg.wait_for_function("() => /\u00b0/.test(document.getElementById('almanac-sky-facts').innerText)", polling=POLL_MS)
+        pg.wait_for_function("() => document.getElementById('almanac-sky-facts').innerText.length > 10", polling=POLL_MS)
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
+        # Each rise and set card is two lines, the event and its time: no compass bearing (Eric, 2026-10-29).
+        assert not re.search(r"\b(N|NE|E|SE|S|SW|W|NW|NNE|ENE|ESE|SSE|SSW|WSW|WNW|NNW) \d+\u00b0", text), text
         assert "guessed" not in text.lower() and "about" not in text.lower(), text
         # The Milky Way's credit lives in About this data, off the card (the folded-calendar pass).
         assert "Brunier" not in text, text
@@ -694,8 +697,6 @@ def test_the_credit_the_bearings_and_the_zone_city_are_on_the_card(browser, serv
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
         assert "Chicago" in text and "about" in text.lower(), text
         # The sunrise's time is the Moon's block's own card (not said twice): Chicago's, not an Atlantic longitude's.
-        import re
-
         sunrise = pg.inner_text("#alm-hc-sunrise")
         assert re.match(r"[56]:\d\d AM", sunrise), sunrise
         assert pg.evaluate("Math.round(_skyState.lat * 10) / 10") == 41.9
