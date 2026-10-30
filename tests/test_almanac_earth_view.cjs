@@ -586,6 +586,15 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
     check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
       'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
+    // Earth to Sun: pulls back with room round both bodies, holds there, then flies in.
+    run('_ae.fly.start = 0;');
+    const probe = (ms) => run('_aeStepFly(' + ms + '), _ae.dist');
+    const hold = S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS;
+    const held = probe(hold), held2 = probe(S.AE_FLY_PULL_MS + 0.9 * S.AE_FLY_HOLD_MS);
+    check(run('_ae.fly.hold') && Math.abs(held - held2) < 1e-9 && held >= run('_ae.fly.peak') - 1e-9 && held > run('_ae.fly.from.dist') * 2,
+      'a flight between bodies pulls back to a frame holding both and stays there for a beat (' + held.toFixed(1) + ')');
+    check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in');
+    check(S.AE_FLY_HOLD_MS >= 400 && S.AE_FLY_HOLD_MS <= 600, 'the beat is about half a second');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');
     run('var _almReduceMotion = function () { return true; };');

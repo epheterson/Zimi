@@ -372,6 +372,9 @@ var AE_KEY_ZOOM = 1.15;
 // GPS shell): a nudge between framings is quick, a crossing to the Sun is
 // the longest, and nothing takes longer than AE_FLY_FAR_MS.
 var AE_FLY_MIN_MS = 500;
+// A flight between two bodies shows them together first: out until both sit in the frame with this much room
+// around them, a beat to see it, then in. The beat is only worth having when the pull-back is wider than either end.
+var AE_FLY_PULL_MS = 450, AE_FLY_HOLD_MS = 500, AE_FLY_FRAME_MARGIN = 1.3, AE_FLY_PULL_WORTH = 1.15;
 var AE_FLY_MS_PER_LOG = 300;
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
@@ -1566,8 +1569,10 @@ function _aeFlyTo(target, dist, azel) {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_,
-      peak: _aePullBackDist(_aeLen(_aeSub(_aeTargetPos(), from.pos))) };
+    var peak = _aePullBackDist(_aeLen(_aeSub(_aeTargetPos(), from.pos)) * AE_FLY_FRAME_MARGIN);
+    var hold = peak > Math.max(from.dist, to.dist) * AE_FLY_PULL_WORTH;
+    _ae.fly = { start: performance.now(), ms: ms, hold: hold,
+      from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, peak: peak };
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
@@ -1586,29 +1591,45 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
-// How far along the flight is, eased (1 when there is none).
+// How far along the flight's arrival is, eased (1 when there is none). With a pull-back the arrival is the part
+// after the beat, the turn and the roll waiting for it.
+function _aeFlyLead(f) { return f.hold ? AE_FLY_PULL_MS + AE_FLY_HOLD_MS : 0; }
+function _aeFlyArrival(f, now) {
+  return _aeEaseInOut(_aeClamp((now - f.start - _aeFlyLead(f)) / f.ms, 0, 1));
+}
 function _aeFlyEase(now) {
   var f = _ae.fly;
-  return f ? _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
+  return f ? _aeFlyArrival(f, now) : 1;
 }
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseInOut(p);
-  var lo = Math.log(f.from.dist), hi = Math.log(f.toDist);
-  // Between two bodies the camera first pulls back until both are in frame, then comes in.
-  var pull = Math.max(0, Math.log(f.peak) - (lo + hi) / 2) * Math.sin(Math.PI * e);
-  _ae.dist = Math.exp(lo + (hi - lo) * e + pull);
-  _ae.az = f.from.az + (f.toAz - f.from.az) * e;
-  _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
-  if (p >= 1) _ae.fly = null;
+  var lo = Math.log(f.from.dist), hi = Math.log(f.toDist), arrive = _aeFlyArrival(f, now);
+  if (f.hold) {
+    // Out to the frame holding both, a beat there, then in.
+    var out = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1)), top = Math.log(f.peak);
+    _ae.dist = Math.exp(arrive > 0 ? top + (hi - top) * arrive : lo + (top - lo) * out);
+  } else {
+    // Between two bodies the camera first pulls back until both are in frame, then comes in.
+    var pull = Math.max(0, Math.log(f.peak) - (lo + hi) / 2) * Math.sin(Math.PI * arrive);
+    _ae.dist = Math.exp(lo + (hi - lo) * arrive + pull);
+  }
+  _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
+  _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
+  if (now - f.start >= _aeFlyLead(f) + f.ms) _ae.fly = null;
   return true;
 }
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
-  var e = _aeFlyEase(performance.now());
-  return [f.from.pos[0] + (to[0] - f.from.pos[0]) * e, f.from.pos[1] + (to[1] - f.from.pos[1]) * e, f.from.pos[2] + (to[2] - f.from.pos[2]) * e];
+  var now = performance.now(), e = _aeFlyEase(now), a = f.from.pos, b = to;
+  if (f.hold) {
+    // Centred between the two while the beat lasts, so both stand in the frame.
+    var mid = [(a[0] + to[0]) / 2, (a[1] + to[1]) / 2, (a[2] + to[2]) / 2];
+    if (e > 0) a = mid;
+    else { b = mid; e = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1)); }
+  }
+  return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e];
 }
 
 // Where the camera stands and how wide it sees, now: the view's own
