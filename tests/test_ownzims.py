@@ -48,7 +48,7 @@ def test_zimigames_is_a_real_zim_any_reader_opens(home):
     assert server._zim_base_name(os.path.basename(path)) == "zimi_games", "served without the month"
     a = Archive(path)
     assert a.main_entry.get_item().path == "index.html"
-    assert a.get_metadata("Title").decode() == "ZimiGames"
+    assert a.get_metadata("Title").decode() == "Games · Zimi"
     assert a.get_metadata("Language").decode() == "eng"
     assert a.get_metadata("Creator").decode() == "Zimi"
     tags = a.get_metadata("Tags").decode().split(";")
