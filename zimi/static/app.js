@@ -24355,9 +24355,12 @@ function _gameDo(what) {
   try { f.contentWindow.postMessage({ zimi: 'game-do', what: what }, location.origin); } catch (e) {}
 }
 // What the page said, as much as can be trusted: a name, an Undo or a Pause, whether there is a Menu.
+var GAMES_SHELF_TITLE = 'ZimiGames';   // the shelf page's own <title>: the bar says "Games" (in the reader's language), as the tile did
 function _gameHeadFrom(d) {
+  var title = String(d.title || '').slice(0, 120);
+  if (title === GAMES_SHELF_TITLE) title = t('app_games');
   var act = d.act && typeof d.act === 'object' && (d.act.kind === 'undo' || d.act.kind === 'pause') ? d.act : null;
-  return { title: String(d.title || '').slice(0, 120), menu: !!d.menu,
+  return { title: title, menu: !!d.menu,
     act: act && { kind: act.kind, label: String(act.label || ''), disabled: !!act.disabled } };
 }
 // A page iOS has zoomed stays zoomed (the bar clipped at the left) until the viewport is set again: say the same thing twice, once pinned.
