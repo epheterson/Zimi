@@ -439,8 +439,8 @@
 .alm-sky-tip { position: absolute; z-index: 10; max-width: min(480px, calc(100% - 12px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
 .alm-sky-tip[hidden] { display: none; }
 .alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }
-.alm-sky-tip-line { display: block; color: #bbb; }
-.alm-sky-tip-line + .alm-sky-tip-line { margin-top: 3px; }
+.alm-sky-tip-line { color: #bbb; }
+.alm-sky-tip-line + .alm-sky-tip-line::before { content: " \00b7  "; }   /* the facts share one row under the name */
 @media (pointer: coarse) { .alm-sky-tip { font-size: 12px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; } }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
 .almanac-location-link:hover { text-decoration: underline; }
