@@ -22,9 +22,10 @@ const check = (ok, label) => {
 const tick = () => new Promise(r => setImmediate(r));
 
 function page(opts) {
-  const session = {}, listeners = {}, reloads = [];
+  const session = {}, listeners = {}, reloads = [], polls = [];
   const sb = {
-    Promise, JSON, Array, setTimeout: () => 0,
+    Promise, JSON, Array, setTimeout: () => 0, _BUILD_QUIET_POLL_MS: 3000,
+    setInterval: f => { polls.push(f); return polls.length; }, clearInterval: n => { polls[n - 1] = null; },
     _BUILD: 'zimi-v1-old', _buildWaiting: '', _UPDATE_TRIED_KEY: 'zimi_update_tried', _UPDATE_RESUME_KEY: 'zimi_update_resume',
     _BUILD_SW_WAIT_MS: 15000,
     sessionStorage: { getItem: k => (k in session ? session[k] : null), setItem: (k, v) => { session[k] = String(v); }, removeItem: k => { delete session[k]; } },
@@ -37,11 +38,11 @@ function page(opts) {
       removeEventListener: (type, f) => { listeners[type] = (listeners[type] || []).filter(g => g !== f); },
       getElementById: () => null,
     },
-    mode: opts.mode || 'home', readerOpen: !!opts.readerOpen, _almanacOpen: false, _createOpen: false, _ttsSpeaking: !!opts.speaking,
+    mode: opts.mode || 'home', readerOpen: !!opts.readerOpen, _almanacOpen: !!opts.almanac, _createOpen: false, _ttsSpeaking: !!opts.speaking,
   };
   vm.createContext(sb);
   vm.runInContext(['_buildHeard', '_buildWorker', '_buildReload', '_buildSafe', '_buildQuiet', '_updateResumeKeep'].map(fn).join('\n'), sb);
-  return { sb, session, listeners, reloads, hide() { sb.document.hidden = true; (listeners.visibilitychange || []).forEach(f => f()); } };
+  return { sb, session, listeners, reloads, poll() { polls.forEach(f => f && f()); }, hide() { sb.document.hidden = true; (listeners.visibilitychange || []).forEach(f => f()); } };
 }
 
 (async () => {
@@ -73,6 +74,28 @@ function page(opts) {
   p.sb.readerOpen = false; p.sb.document.hidden = false;
   p.hide();
   check(p.reloads.length === 1, '...it reloads on the first hide after the reader is closed');
+
+  // Leaving the game for Home and staying there: quiet again, no hide to hear.
+  p = page({ readerOpen: true, mode: 'reader' });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  p.poll();
+  check(p.reloads.length === 0, 'a poll while the article is still open does not reload');
+  p.sb.readerOpen = false; p.sb.mode = 'home';
+  p.poll();
+  check(p.reloads.length === 1, '...closing it and staying on Home reloads at the next poll, no force quit');
+  p.poll();
+  check(p.reloads.length === 1, '...and only once');
+
+  // The Almanac comes back from its address: hidden, it does not hold the update.
+  p = page({ almanac: true, hidden: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 1, 'a hidden window with the Almanac open reloads (it reopens from #almanac)');
+  p = page({ almanac: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...shown with the Almanac open it waits');
 
   p = page({ speaking: true });
   p.sb._buildHeard('zimi-v1-new');

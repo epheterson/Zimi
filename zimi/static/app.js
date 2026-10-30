@@ -28200,6 +28200,7 @@ function _libraryHeard() {
 // time it is hidden. An article open keeps its place (_updateResume).
 var _BUILD = (window.__ZIMI_CONFIG && __ZIMI_CONFIG.build) || '';
 var _buildWaiting = ''; // the newer build heard: the page reloads when it may
+var _BUILD_QUIET_POLL_MS = 3000; // how often a build that is waiting looks for the page to go quiet
 var _BUILD_SW_WAIT_MS = 15000; // a worker that never takes charge does not hold the reload
 var _UPDATE_RESUME_KEY = 'zimi_update_resume'; // sessionStorage: the article's place across the reload
 // sessionStorage: the build this tab last reloaded for. Reloaded and still on
@@ -28230,19 +28231,27 @@ function _buildReload() {
     location.reload();
   };
   if (_buildSafe()) { go(); return; }
-  // Hidden with a game, article or app open is not safe: iOS reloaded the tab
+  // Hidden with a game or article open is not safe: iOS reloaded the tab
   // under the player on every switch away after a deploy (Eric, 2026-10-27:
   // "a lot of safari reloads on games when switching away and back"). It waits
-  // for a hide with the home page or a ZIM's page up, or for the page to be left.
-  document.addEventListener('visibilitychange', function _again() {
-    if (!document.hidden || !_buildSafe()) return;
-    document.removeEventListener('visibilitychange', _again);
+  // for a hide with the home page or a ZIM's page up, and for the page to be
+  // left: a person who closes the game or the Almanac and stays on Home is
+  // quiet again with no hide to hear (Eric, 2026-10-30: "I had to force quit and
+  // relaunch PWA to see these"), so the wait is polled too.
+  var timer = 0;
+  var again = function () {
+    if (!_buildSafe()) return;
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', again);
     go();
-  });
+  };
+  timer = setInterval(again, _BUILD_QUIET_POLL_MS);
+  document.addEventListener('visibilitychange', again);
 }
 // Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
 function _buildSafe() {
-  return _buildQuiet() || (document.hidden && !readerOpen && !_almanacOpen && !_createOpen && !_ttsSpeaking);
+  // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
+  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
 }
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
 // the same one again), no field being typed in, no reading aloud, no media
