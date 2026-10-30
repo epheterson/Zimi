@@ -9079,7 +9079,9 @@ function _moveZimTo(zim, category) {
   function showAppMenu() {
     var zim = _ctxZim, own = zim && _zimInfo(zim);
     var h = '<div class="ctx-item" data-action="app-open">' + tH('open') + '</div>';
+    if (own && !IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
     if (own) h += '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    if (own && _keepAvailable()) h += '<div class="ctx-sep"></div>' + _keepMenuHtml(zim);
     if (_userSession) h += '<div class="ctx-item" data-action="app-hide">' + tH('hide_from_home') + '</div>';
     if (own && manageEnabled) h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
     menu.innerHTML = h;
