@@ -594,6 +594,17 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.fly.hold') && Math.abs(held - held2) < 1e-9 && held >= run('_ae.fly.peak') - 1e-9 && held > run('_ae.fly.from.dist') * 2,
       'a flight between bodies pulls back to a frame holding both and stays there for a beat (' + held.toFixed(1) + ')');
     check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in');
+    {
+      // Started looking along the line between the bodies: at the beat's middle the camera sees them side-on.
+      const ang = run('(function () {' +
+        ' var f = _ae.fly, line = _aeNorm(_aeSub(_aeTargetPos(), f.from.pos));' +
+        ' f.start = 0; _ae.az = f.from.az = Math.atan2(line[1], line[0]); _ae.el_ = f.from.el = Math.asin(line[2]);' +
+        ' f.side = _aeSideOn(f.from, _aeSub(_aeTargetPos(), f.from.pos));' +
+        ' _aeStepFly(' + hold + ');' +
+        ' var v = _aeCameraOffset(_ae.az, _ae.el_, 1);' +
+        ' return Math.acos(Math.abs(v[0]*line[0] + v[1]*line[1] + v[2]*line[2])) * 180 / Math.PI; })()');
+      check(ang >= 60, 'a start along the line between the bodies turns side-on during the hold (' + ang.toFixed(1) + ' degrees)');
+    }
     check(S.AE_FLY_HOLD_MS >= 400 && S.AE_FLY_HOLD_MS <= 600, 'the beat is about half a second');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');

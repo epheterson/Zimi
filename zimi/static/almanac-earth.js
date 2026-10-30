@@ -376,6 +376,7 @@ var AE_FLY_MIN_MS = 500;
 // around them, a beat to see it, then in. The beat is only worth having when the pull-back is wider than either end.
 var AE_FLY_PULL_MS = 450, AE_FLY_HOLD_MS = 500, AE_FLY_FRAME_MARGIN = 1.3, AE_FLY_PULL_WORTH = 1.15;
 var AE_FLY_MS_PER_LOG = 300;
+var AE_FLY_SIDE_MIN = 0.05;          // a view this close to the line between two bodies has no side of its own
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
@@ -1573,10 +1574,25 @@ function _aeFlyTo(target, dist, azel) {
     var hold = peak > Math.max(from.dist, to.dist) * AE_FLY_PULL_WORTH;
     _ae.fly = { start: performance.now(), ms: ms, hold: hold,
       from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, peak: peak };
+    if (hold) _ae.fly.side = _aeSideOn(from, _aeSub(_aeTargetPos(), from.pos));
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
+}
+// The view (az, el) nearest the current one that looks at two bodies side-on: the current view direction with
+// its component along the line between them taken out, so the nearer body never hides the farther.
+function _aeSideOn(from, line) {
+  var L = _aeNorm(line), v = _aeCameraOffset(from.az, from.el, 1);
+  var d = v[0] * L[0] + v[1] * L[1] + v[2] * L[2];
+  var p = [v[0] - d * L[0], v[1] - d * L[1], v[2] - d * L[2]];
+  if (_aeLen(p) < AE_FLY_SIDE_MIN) {
+    // Looking straight along the line: any perpendicular will do, the one from the up axis first.
+    var ref = Math.abs(L[2]) < 0.99 ? [0, 0, 1] : [1, 0, 0];
+    p = [ref[1] * L[2] - ref[2] * L[1], ref[2] * L[0] - ref[0] * L[2], ref[0] * L[1] - ref[1] * L[0]];
+  }
+  var a = _aeAzElOf(p);
+  return { az: from.az + _angleDelta(from.az, a.az), el: a.el };
 }
 // The distance from which two bodies this far apart both fit the frame.
 function _aePullBackDist(sep) {
@@ -1614,8 +1630,16 @@ function _aeStepFly(now) {
     var pull = Math.max(0, Math.log(f.peak) - (lo + hi) / 2) * Math.sin(Math.PI * arrive);
     _ae.dist = Math.exp(lo + (hi - lo) * arrive + pull);
   }
-  _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
-  _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
+  if (f.side) {
+    // Turn side-on during the pull-back, hold it, then turn to the destination's view on the way in.
+    var sa = f.side.az, se = f.side.el, turn = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1));
+    var toAz = sa + _angleDelta(sa, f.toAz);
+    _ae.az = arrive > 0 ? sa + (toAz - sa) * arrive : f.from.az + (sa - f.from.az) * turn;
+    _ae.el_ = arrive > 0 ? se + (f.toEl - se) * arrive : f.from.el + (se - f.from.el) * turn;
+  } else {
+    _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
+    _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
+  }
   if (now - f.start >= _aeFlyLead(f) + f.ms) _ae.fly = null;
   return true;
 }
