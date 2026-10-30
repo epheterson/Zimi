@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Release notes now list every fixed issue, and the games table shows just how long ago you played.
 
+### Changed
+
+- The 1.15.0 note was wrong: the Almanac and the games appear under Apps on Home and in the Zimi group of the Library and Catalog, and can be deleted and re-added from the Catalog.
+
 ### Fixed
 
 - Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
