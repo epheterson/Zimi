@@ -8030,6 +8030,16 @@ function openAlmanac(replaceState) {
     return;
   }
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
+  // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
+  // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
+  // icon on main page doesn't go right there it hangs back").
+  var root = document.documentElement;
+  var answered = root.classList.contains('almanac-boot');
+  root.classList.add('almanac-boot');
+  if (_almanacLoaded && !answered) {
+    requestAnimationFrame(function() { setTimeout(function() { _openAlmanacInner(replaceState); }, 0); });
+    return;
+  }
   if (!_almanacLoaded) {
     _loadAlmanacModules().then(function() {
       _almanacLoaded = true;
