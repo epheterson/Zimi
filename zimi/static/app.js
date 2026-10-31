@@ -8172,6 +8172,8 @@ function _loadAlmanacModules() {
   return _almanacModulesLoading;
 }
 
+// An open on its way (the frame it waits for, or the Almanac's files): a second tap meanwhile is the same open.
+var _almanacOpenPending = false;
 function openAlmanac(replaceState) {
   // Modifier-click: open Almanac in new browser tab
   if (_isModClick()) {
@@ -8179,6 +8181,7 @@ function openAlmanac(replaceState) {
     window.open('/#almanac', '_blank');
     return;
   }
+  if (_almanacOpenPending) return;
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
@@ -8187,11 +8190,14 @@ function openAlmanac(replaceState) {
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
   if (_almanacLoaded && !answered) {
-    requestAnimationFrame(function() { setTimeout(function() { _openAlmanacInner(replaceState); }, 0); });
+    _almanacOpenPending = true;
+    requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
     return;
   }
   if (!_almanacLoaded) {
+    _almanacOpenPending = true;
     _loadAlmanacModules().then(function() {
+      _almanacOpenPending = false;
       _almanacLoaded = true;
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
@@ -8209,6 +8215,7 @@ function openAlmanac(replaceState) {
       // "silent absence" the connection banner exists to eliminate. Drop the
       // reload-into-almanac boot gate so the library becomes visible again
       // instead of an empty dark shell.
+      _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
       _showToast(t('almanac_unavailable_offline'));
     });
@@ -16385,7 +16392,7 @@ function _appUpdateCheckHtml(d) {
   var btns = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
     var on = m === d.check_mode;
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
-      (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH('alm_earth_sat_' + m) + '</span></button>';
+      (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH(m === 'never' ? 'app_check_never' : 'alm_earth_sat_' + m) + '</span></button>';
   }).join('');
   return '<div class="ms-theme-label">' + tH('app_update_check') + '</div>' +
     '<div class="app-theme-seg" id="' + _APP_UPDATE_CHECK_ID + '" role="radiogroup" tabindex="-1" aria-label="' + escAttr(t('app_update_check')) + '" title="' + escAttr(t('app_update_check_hint')) + '">' + btns + '</div>' +

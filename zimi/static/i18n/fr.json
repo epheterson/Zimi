@@ -2292,6 +2292,7 @@
   "saved_like": "J'aime",
   "saved_add_to_list": "Ajouter à une liste",
   "app_update_check": "Rechercher les mises à jour",
+  "app_check_never": "Jamais",
   "app_update_check_hint": "Automatiquement : à l'ouverture de cette page, au plus une fois par jour, et l'app de bureau au lancement. Demander d'abord : seulement avec Vérifier maintenant.",
   "app_update_checks_off": "La recherche de mises à jour est désactivée",
   "net_section": "Accès à Internet",

@@ -2292,6 +2292,7 @@
   "saved_like": "Curtir",
   "saved_add_to_list": "Adicionar a uma lista",
   "app_update_check": "Procurar atualizações",
+  "app_check_never": "Nunca",
   "app_update_check_hint": "Automaticamente: ao abrir esta página, no máximo uma vez por dia, e o app de desktop ao iniciar. Perguntar antes: só ao tocar em Verificar agora.",
   "app_update_checks_off": "A procura de atualizações está desligada",
   "net_section": "Uso da internet",

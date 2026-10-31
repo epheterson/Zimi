@@ -1936,9 +1936,12 @@ function _almSecGo(key) {
   var s = st.sections.filter(function (x) { return x.key === key; })[0];
   if (!s) return;
   _almSecListClose(false);
-  _almGlide(root);
-  if (key === ALM_SECBAR_HERO) root.scrollTo({ top: 0, behavior: _scrollBehavior() });
-  else s.els[0].scrollIntoView({ block: 'start', behavior: _scrollBehavior() });
+  var go = function (how) {
+    if (key === ALM_SECBAR_HERO) root.scrollTo({ top: 0, behavior: how });
+    else s.els[0].scrollIntoView({ block: 'start', behavior: how });
+  };
+  _almGlide(root, function () { go('instant'); });
+  go(_scrollBehavior());
   st.cur = key;
   _almSecBarPaint();
   // Sections flying past on the way are not announced; the scroll's end (or,
@@ -2233,14 +2236,16 @@ function _almKeepStill(el) {
   el._almStill.observe(el);
 }
 // A smooth scroll the page itself started: the late sections let it run (_almKeepStill) until it ends, or a finger or
-// wheel takes the page back.
+// wheel takes the page back. `land`, when given, is called at a glide's own end: what grew above the way while it
+// ran was not made up, so it puts the reader where the glide was going.
 var ALM_GLIDE_MAX_MS = 1500;
-function _almGlide(root) {
+function _almGlide(root, land) {
   if (!root) return;
-  var done = function () {
+  var done = function (e) {
     clearTimeout(root._almGlideTimer);
     ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.removeEventListener(ev, done); });
     root._almGlide = false;
+    if (land && !(e && (e.type === 'touchstart' || e.type === 'wheel'))) land();
     if (root._almTop) root._almTop.v = root.scrollTop;
   };
   clearTimeout(root._almGlideTimer);
@@ -2526,14 +2531,17 @@ function _renderAlmanacContent() {
   // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
   // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
   // again over itself keeps its reader's place (anchor) and so draws whole, at once.
+  // Each panel reads the focus when it runs: a day picked on the calendar before it is drawn is the one it shows (the
+  // world clocks and today's highlights are today's whatever the focus).
+  var at = function () { return _almFocus || now; };
   var panels = [
-    function () { _renderSunMap(now, true); },
+    function () { _renderSunMap(at(), true); },
     function () { _initTzClock(now); },
-    function () { _renderOnThisDay(now); _renderTonightSky(now); },
-    function () { _renderStarChart(now); },
-    function () { _renderAnalemma(now); _renderAstroPanel(now); },
-    function () { _renderMeteorShowers(now, m); _renderCelestialEvents(now); },
-    function () { _renderDeepTime(now); _renderRosettaStone(now); },
+    function () { _renderOnThisDay(at()); _renderTonightSky(at()); },
+    function () { _renderStarChart(at()); },
+    function () { _renderAnalemma(at()); _renderAstroPanel(at()); },
+    function () { var f = at(); _renderMeteorShowers(f, f === now ? m : _moonPhase(f)); _renderCelestialEvents(f); },
+    function () { _renderDeepTime(at()); _renderRosettaStone(at()); },
     function () {
       _orreryStartState();
       _initOrrery();
@@ -2541,7 +2549,7 @@ function _renderAlmanacContent() {
       _orreryLastFrame = performance.now();
       _orreryAnimate();
     },
-    function () { _loadSunData(now); _startTzClock(); _cacheAlmanacHighlights(now, m); },
+    function () { _loadSunData(at()); _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
   ];
   _almPanelsReady = false;

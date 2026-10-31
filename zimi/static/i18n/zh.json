@@ -2292,6 +2292,7 @@
   "saved_like": "喜欢",
   "saved_add_to_list": "添加到列表",
   "app_update_check": "检查更新",
+  "app_check_never": "从不",
   "app_update_check_hint": "自动：打开此页面时检查，每天最多一次，桌面应用在启动时检查。先询问：仅在点击“立即检查”时。",
   "app_update_checks_off": "更新检查已关闭",
   "net_section": "联网情况",

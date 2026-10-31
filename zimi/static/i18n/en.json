@@ -2292,6 +2292,7 @@
   "saved_like": "Like",
   "saved_add_to_list": "Add to a list",
   "app_update_check": "Check for updates",
+  "app_check_never": "Never",
   "app_update_check_hint": "Automatically: when this page opens, at most once a day, and the desktop app at launch. Ask first: only when you press Check now.",
   "app_update_checks_off": "Update checks are off",
   "net_section": "Internet use",

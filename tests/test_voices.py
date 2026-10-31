@@ -1131,11 +1131,19 @@ def test_a_queue_waits_and_one_more_is_busy_never_missing(piper, monkeypatch):
     with voices._synth_locks[voices.PIPER]:  # a word being said
         with pytest.raises(voices.Busy):
             voices.speak("water", "en")  # waited its turn, too long
-        monkeypatch.setattr(voices, "_synth_slots", threading.BoundedSemaphore(1))
-        voices._synth_slots.acquire()
+        monkeypatch.setitem(voices._synth_slots, voices.PIPER, threading.BoundedSemaphore(1))
+        voices._synth_slots[voices.PIPER].acquire()
         with pytest.raises(voices.Busy):
             voices.speak("fire", "en")  # the queue is full: told at once
-        voices._synth_slots.release()
+        voices._synth_slots[voices.PIPER].release()
+    # Another engine's full queue (a stalled Natural and its waiters) does not turn this one away.
+    other = next(e for e in voices.ENGINES if e != voices.PIPER)
+    monkeypatch.setitem(voices._synth_slots, other, threading.BoundedSemaphore(1))
+    voices._synth_slots[other].acquire()
+    try:
+        assert voices.speak("earth", "en")[:4] == b"RIFF", "a full queue for another voice is not this one's"
+    finally:
+        voices._synth_slots[other].release()
     assert voices.speak("water", "en")[:4] == b"RIFF", "then said"
     engines(monkeypatch)
     assert voices.speak("water", "en") is None, "no engine: no voice"

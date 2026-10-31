@@ -28,6 +28,7 @@ def test_a_lookalike_path_is_not_swept_in():
     assert http._rate_class("/exchangerate")[0] is False
 
 
+@pytest.mark.skipif(http.RATE_LIMIT <= 0, reason="ZIMI_RATE_LIMIT=0 turns rate limiting off")
 def test_almanac_background_lookups_use_their_own_bucket():
     ip = "203.0.113.21"
     for b in (http._rate_buckets, http._rate_buckets_almanac):

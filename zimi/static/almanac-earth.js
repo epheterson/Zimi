@@ -1708,8 +1708,7 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
-// How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
-// after it, which starts at the pace the leg to the shoulder ended at.
+// How long the flight is before its arrival begins: the leg to the shoulder, when it has one.
 function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
 // The pace shape of a leg: `floor` of its cruise while within AE_FLY_CRAWL_MS of the shoulder (d ms away), rising
 // smoothly to the cruise.
@@ -1733,7 +1732,6 @@ function _aeShareAt(tab, t, len) {
 // How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
 // after it: the camera's distance to the destination goes down in log space, which is a steady apparent zoom, driven
 // by the crawl-then-rise pace (_aeFlyTables).
-function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
 function _aeFlyArrival(f, now) {
   if (!f.hold) return _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1));
   var q = _aeShareAt(f.inTab, now - f.start - AE_FLY_APPROACH_MS, f.ms + AE_FLY_TAIL_MS);
@@ -1868,6 +1866,9 @@ function _aeViewCam() {
 }
 function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
+  // The far plane reaches the shoulder only while a flight with one is under way: a drag or a hand-in that ends the
+  // flight early must not leave it out at the Sun (it costs every later view its depth precision).
+  _aeFarFor(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0);
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
   var tp = c.tp;

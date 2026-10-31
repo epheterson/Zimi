@@ -2292,6 +2292,7 @@
   "saved_like": "Mag ich",
   "saved_add_to_list": "Zu einer Liste hinzufügen",
   "app_update_check": "Nach Updates suchen",
+  "app_check_never": "Nie",
   "app_update_check_hint": "Automatisch: beim Öffnen dieser Seite, höchstens einmal am Tag, und die Desktop-App beim Start. Erst fragen: nur mit „Jetzt prüfen“.",
   "app_update_checks_off": "Update-Prüfungen sind aus",
   "net_section": "Internetnutzung",
