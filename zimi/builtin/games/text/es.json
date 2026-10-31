@@ -3816,7 +3816,7 @@
  "mancala.game": "Juego",
  "mancala.grandSlam": "{name} hizo un grand slam: no se captura nada.",
  "mancala.help.kalah.end": "Cuando un bando se queda sin semillas, el otro conserva las suyas. Gana quien tenga más semillas en el almacén.",
- "mancala.help.kalah.turn": "Elige uno de tus hoyos y siembra en sentido antihorario. Deja una semilla en tu almacén al pasar por él. Si tu última semilla acaba en tu almacén, juega otra vez. Si acaba en un hoyo vacío tuyo, captura el hoyo de enfrente.",
+ "mancala.help.kalah.turn": "Elige uno de tus hoyos y siembra en sentido antihorario. Deja una semilla en tu almacén al pasar por él. Si tu última semilla acaba en tu almacén, juega otra vez. Si acaba en un hoyo vacío tuyo, captura esa semilla y todas las del hoyo de enfrente.",
  "mancala.help.oware.end": "Gana el primero que llegue a 25 semillas. Si el otro bando está vacío, debes darle semillas.",
  "mancala.help.oware.turn": "Elige uno de tus hoyos y siembra en sentido antihorario: una semilla en cada hoyo siguiente. Si tu última semilla acaba en un hoyo rival que ahora tiene 2 o 3 semillas, te las llevas, y también los hoyos anteriores que tengan 2 o 3.",
  "mancala.hint": "Pista: prueba el hoyo marcado con un círculo.",

@@ -3743,7 +3743,7 @@
  "mancala.game": "Spiel",
  "mancala.grandSlam": "{name}: Grand Slam, nichts wird genommen.",
  "mancala.help.kalah.end": "Hat eine Seite keine Samen mehr, behält die andere ihre. Die meisten Samen im Kalaha gewinnen.",
- "mancala.help.kalah.turn": "Wählen Sie eine Ihrer Mulden und säen Sie sie gegen den Uhrzeigersinn. Legen Sie beim Vorbeikommen einen Samen in Ihr eigenes Kalaha. Endet Ihr letzter Samen im Kalaha, spielen Sie noch einmal. Endet er in einer leeren eigenen Mulde, nehmen Sie die gegenüberliegende.",
+ "mancala.help.kalah.turn": "Wählen Sie eine Ihrer Mulden und säen Sie sie gegen den Uhrzeigersinn. Legen Sie beim Vorbeikommen einen Samen in Ihr eigenes Kalaha. Endet Ihr letzter Samen im Kalaha, spielen Sie noch einmal. Endet er in einer leeren eigenen Mulde, nehmen Sie diesen Samen und alle Samen in der gegenüberliegenden Mulde.",
  "mancala.help.oware.end": "Wer zuerst 25 Samen hat, gewinnt. Ist die andere Seite leer, müssen Sie ihr Samen geben.",
  "mancala.help.oware.turn": "Wählen Sie eine Ihrer Mulden und säen Sie sie gegen den Uhrzeigersinn: ein Samen in jede folgende Mulde. Endet Ihr letzter Samen in einer gegnerischen Mulde, die nun 2 oder 3 Samen hält, nehmen Sie sie, ebenso die davorliegenden Mulden mit 2 oder 3.",
  "mancala.hint": "Tipp: Probieren Sie die eingekreiste Mulde.",

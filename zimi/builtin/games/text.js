@@ -3757,7 +3757,7 @@
  "mancala.game": "Game",
  "mancala.grandSlam": "{name} played a grand slam: nothing is taken.",
  "mancala.help.kalah.end": "When a side runs out, the other side keeps its seeds. Most seeds in the store wins.",
- "mancala.help.kalah.turn": "Pick one of your pits and sow it counterclockwise. Drop a seed in your own store as you pass it. If your last seed ends in your store, play again. If it ends in an empty pit of yours, take the pit opposite.",
+ "mancala.help.kalah.turn": "Pick one of your pits and sow it counterclockwise. Drop a seed in your own store as you pass it. If your last seed ends in your store, play again. If it ends in an empty pit of yours, take that seed and every seed in the pit opposite.",
  "mancala.help.oware.end": "First to 25 seeds wins. If the other side is empty, you must give it seeds.",
  "mancala.help.oware.turn": "Pick one of your pits and sow it counterclockwise: one seed in each pit after it. If your last seed ends in an opponent pit that now holds 2 or 3 seeds, you take them, and the pits before it that also hold 2 or 3.",
  "mancala.hint": "Hint: try the ringed pit.",

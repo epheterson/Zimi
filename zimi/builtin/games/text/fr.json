@@ -3816,7 +3816,7 @@
  "mancala.game": "Jeu",
  "mancala.grandSlam": "{name} a joué un grand chelem : rien n’est pris.",
  "mancala.help.kalah.end": "Quand un camp n’a plus de graines, l’autre garde les siennes. Le plus de graines dans le grenier gagne.",
- "mancala.help.kalah.turn": "Choisissez un de vos trous et semez-le dans le sens inverse des aiguilles d’une montre. Déposez une graine dans votre grenier en le passant. Si votre dernière graine finit dans votre grenier, rejouez. Si elle finit dans un de vos trous vides, prenez le trou opposé.",
+ "mancala.help.kalah.turn": "Choisissez un de vos trous et semez-le dans le sens inverse des aiguilles d’une montre. Déposez une graine dans votre grenier en le passant. Si votre dernière graine finit dans votre grenier, rejouez. Si elle finit dans un de vos trous vides, prenez cette graine et toutes celles du trou opposé.",
  "mancala.help.oware.end": "Le premier à 25 graines gagne. Si l’autre camp est vide, vous devez lui donner des graines.",
  "mancala.help.oware.turn": "Choisissez un de vos trous et semez-le dans le sens inverse des aiguilles d’une montre : une graine dans chaque trou suivant. Si votre dernière graine finit dans un trou adverse qui contient maintenant 2 ou 3 graines, vous les prenez, ainsi que les trous qui précèdent et en contiennent aussi 2 ou 3.",
  "mancala.hint": "Indice : essayez le trou entouré.",

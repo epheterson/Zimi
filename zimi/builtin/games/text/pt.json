@@ -3816,7 +3816,7 @@
  "mancala.game": "Jogo",
  "mancala.grandSlam": "{name} fez um grand slam: nada é capturado.",
  "mancala.help.kalah.end": "Quando um lado fica sem sementes, o outro guarda as suas. Vence quem tiver mais sementes no armazém.",
- "mancala.help.kalah.turn": "Escolha uma das suas casas e semeie em sentido anti-horário. Deixe uma semente no seu armazém ao passar por ele. Se a última semente cair no seu armazém, jogue de novo. Se cair numa casa vazia sua, leve a casa oposta.",
+ "mancala.help.kalah.turn": "Escolha uma das suas casas e semeie em sentido anti-horário. Deixe uma semente no seu armazém ao passar por ele. Se a última semente cair no seu armazém, jogue de novo. Se cair numa casa vazia sua, leve essa semente e todas as da casa oposta.",
  "mancala.help.oware.end": "Vence quem chegar primeiro a 25 sementes. Se o outro lado estiver vazio, você deve dar sementes a ele.",
  "mancala.help.oware.turn": "Escolha uma das suas casas e semeie em sentido anti-horário: uma semente em cada casa seguinte. Se a última semente cair numa casa do adversário que agora tem 2 ou 3 sementes, você as leva, e também as casas anteriores que tenham 2 ou 3.",
  "mancala.hint": "Dica: tente a casa circulada.",
