@@ -99,7 +99,7 @@ def _page(browser, served, place=True, locale="en-US"):
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     pg.wait_for_function(
-        "() => !!document.getElementById('almanac-calendar') && !!document.getElementById('almanac-head')",
+        "() => !!document.getElementById('almanac-calendar') && !!document.getElementById('almanac-head') && _almPanelsReady",
         timeout=60_000,
         polling=POLL_MS,
     )

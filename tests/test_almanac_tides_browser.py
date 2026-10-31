@@ -109,6 +109,12 @@ def _open(ctx, served):
         "() => document.getElementById('almanac-place') && document.querySelector('.alm-about')",
         polling=POLL_MS,
     )
+    # The panels under the calendar draw after the first paint; their last step
+    # sets up the section bar. A slow runner can be measuring before they land.
+    pg.wait_for_function(
+        "() => typeof _almSecBar !== 'undefined' && _almSecBar && _almSecBar.sections",
+        polling=POLL_MS,
+    )
     return pg, errors
 
 
@@ -169,6 +175,17 @@ def test_a_late_section_does_not_move_what_is_below_it(
             timeout=30000,
         )
         before = _top(pg, below)
+        tops = _section_tops(pg)
+        # Every scroll and every size change of the late parts from here on, for a failure's message.
+        pg.evaluate(
+            """() => { const c = document.getElementById('almanac-content'), t0 = performance.now(), log = window.__trace = [];
+              const ids = ['almanac-place', 'almanac-rosetta'];
+              c.addEventListener('scroll', () => log.push(['s', Math.round(performance.now() - t0), Math.round(c.scrollTop)]), { passive: true });
+              new ResizeObserver((es) => es.forEach((e) => log.push(['h', Math.round(performance.now() - t0), e.target.id,
+                e.target.offsetHeight, Math.round(c.scrollTop)]))).observe(document.getElementById(ids[0]));
+              new ResizeObserver((es) => es.forEach((e) => log.push(['h', Math.round(performance.now() - t0), e.target.id,
+                e.target.offsetHeight, Math.round(c.scrollTop)]))).observe(document.getElementById(ids[1])); }"""
+        )
         assert 0 <= before < VIEW["height"], "%s is in view" % below
         for i in range(600):
             if waiting:
@@ -180,10 +197,20 @@ def test_a_late_section_does_not_move_what_is_below_it(
         pg.wait_for_function(arrived, polling=POLL_MS, timeout=60000)
         pg.wait_for_timeout(600)
         after = _top(pg, below)
-        assert abs(after - before) <= STILL_PX, (below, before, after)
+        moved = [(a[0], a[1], b[1], a[2], b[2]) for a, b in zip(tops, _section_tops(pg)) if a[1:] != b[1:]]
+        assert abs(after - before) <= STILL_PX, json.dumps([below, before, after, moved, pg.evaluate("window.__trace")])
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def _section_tops(pg):
+    # Each section's place and height in the scroller: what moved, when something did.
+    return pg.evaluate(
+        """() => { const c = document.getElementById('almanac-content'), t = c.getBoundingClientRect().top;
+          return [...c.querySelectorAll('.almanac-inner > *')].map((e, i) => [i + ':' + (e.id || String(e.className).slice(0, 30)),
+            Math.round(e.getBoundingClientRect().top - t), e.offsetHeight]); }"""
+    )
 
 
 def test_the_tide_section_keeps_the_height_it_will_draw_at(browser, served):

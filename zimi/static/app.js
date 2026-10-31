@@ -1989,11 +1989,6 @@ async function _fetchList() {
   return Array.isArray(data.zims) ? data.zims : [];
 }
 let homeScope = null; // {type:'favorites'|'category'|'collection'|'apps', label, zimNames:[]}
-// #34 library recency filter: null | 'added' | 'updated'. Transient view state —
-// deliberately NOT persisted, so a reload always lands on the full library. An
-// active pill narrows the existing home sections in place (like a language pill),
-// combining with homeLangFilter (AND).
-let homeRecentFilter = null;
 // Library language filter: a Set of ZIM language codes. Empty = all languages.
 // Transient view state — reset when leaving/entering a scope, never persisted,
 // so a reload always lands on the full library. Multi-select toggle, matching
@@ -2012,7 +2007,7 @@ let _pillsAreHomeFilters = false;
 let _homeFilterRowsHtml = '';
 function _updateHomeFiltersVisibility() {
   if (!_pillsAreHomeFilters || !pillsBar.innerHTML) return;
-  const filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  const filterActive = homeLangFilter.size > 0;
   pillsBar.style.display = filterActive ? '' : 'none';
 }
 
@@ -3088,7 +3083,7 @@ function updateTopbar() {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
-    bcIcon.innerHTML = _ownIconHtml(_ALMANAC_ZIM, _ALMANAC_SVG.replace('width="26" height="26"', 'width="22" height="22"'), 22);
+    bcIcon.innerHTML = _ALMANAC_SVG.replace('width="26" height="26"', 'width="20" height="20"');
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
   } else if (_isWikiPage() || _isBooksPage() || _isDictPage()) {
@@ -3138,7 +3133,9 @@ function updateTopbar() {
     // Real link (#49): the source view has a true URL, so right/middle/
     // modifier clicks can open it in a new tab; bcClick keeps plain clicks SPA.
     bcIcon.setAttribute('href', '/w/' + encodeURIComponent(activeSource));
-    if (info && info.has_icon) {
+    if (activeSource === _GAMES_ZIM) {
+      bcIcon.innerHTML = _GAMES_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    } else if (info && info.has_icon) {
       bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" alt="" width="22" height="22" alt="' + escAttr(title) + '">';
     } else {
       bcIcon.innerHTML = '<span class="bc-letter">' + (esc(title)[0] || 'Z').toUpperCase() + '</span>';
@@ -4480,7 +4477,6 @@ function enterHome(push) {
   homeScope = null;
   // The recency/language filters are scoped to whatever card set is showing (#37)
   // — leaving a scope drops any filter picked inside it so home starts clean.
-  homeRecentFilter = null;
   homeLangFilter.clear();
   _currentSearchQuery = null;
   articleHistory = [];
@@ -4520,7 +4516,6 @@ function enterScope(type, label, zimNames, push) {
   homeScope = { type, label, zimNames };
   // New section, new card set — drop any recency/language filter picked in
   // whatever view we're leaving (home or a different section).
-  homeRecentFilter = null;
   homeLangFilter.clear();
   q.value = '';
   searchMeta.style.display = 'none';
@@ -5060,7 +5055,7 @@ function renderHome(filter) {
   // languages so state stays sane (scope transitions reset filters themselves,
   // in enterScope/enterHome, so re-rendering the same scope doesn't clobber a
   // filter the user just picked).
-  if (filter) { homeRecentFilter = null; homeLangFilter.clear(); }
+  if (filter) homeLangFilter.clear();
 
   const totalEntries = baseZims.reduce((s, z) => s + (typeof z.entries === 'number' ? z.entries : 0), 0);
   const totalGb = baseZims.reduce((s, z) => s + z.size_gb, 0);
@@ -5073,7 +5068,7 @@ function renderHome(filter) {
   } else {
     // The Apps page counts what each app shows on its own cards: a sum of
     // ZIM entries across books, videos and maps would count none of them.
-    statsHtml = (homeScope ? '' : _freshDotHtml(baseZims)) + t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
+    statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
       (homeScope && homeScope.type === 'apps' ? '' : t('articles_count', {n: '<span class="num">' + fmtNum(totalEntries) + '</span>'}) + ' &middot; ') +
       fmtSize(totalGb, true);
   }
@@ -5109,18 +5104,8 @@ function renderHome(filter) {
     ? sortedAll.filter(z => homeLangFilter.has(z.language || ''))
     : sortedAll;
 
-  // #34 recency lists, computed from the language-narrowed set so the two filters
-  // compose (AND). The counts drive the pill labels; an ACTIVE recency pill then
-  // narrows `sorted` in place so the existing sections filter down to just those
-  // ZIMs — exactly like a language pill — rather than spawning a separate view.
-  var _recentAdded = _langSorted.filter(function(z) { return _unseenKind(z) === 'new'; }).sort(_byFirstSeenDesc);
-  var _recentUpdated = _langSorted.filter(function(z) { return _unseenKind(z) === 'updated'; }).sort(_byUpdatedDesc);
-  // A language narrowing can empty the active recency list — its pill is hidden
-  // then, so fall back to All rather than strand the view on an empty filter.
-  var _recentFresh = _recentAdded.concat(_recentUpdated);
-  if (homeRecentFilter === 'fresh' && !_recentFresh.length) homeRecentFilter = null;
-  const sorted = homeRecentFilter === 'fresh' ? _recentFresh : _langSorted;
-  // The ZIMs the recency and language filters let through, for the sections
+  const sorted = _langSorted;
+  // The ZIMs the language filter lets through, for the sections
   // (favourites, collections) that pick their own members by name.
   const _homeShown = new Set(sorted.map(z => z.name));
 
@@ -5167,7 +5152,7 @@ function renderHome(filter) {
   let h = '';
   if (!homeScope && !filter) h += _libFoldersNoteHtml();
   // Help now sits first in the Apps row; where that row is not drawn (a filter is narrowing home) it stands alone.
-  if (!homeScope && !filter && (homeRecentFilter || homeLangFilter.size)) h += _helpNowHtml();
+  if (!homeScope && !filter && homeLangFilter.size) h += _helpNowHtml();
 
   // Scope header with back link — Favorites, a category or a collection all
   // drill in here, so keep a way back to "All sources".
@@ -5195,7 +5180,7 @@ function renderHome(filter) {
   // Not drawn at all when hidden: a row drawn and then emptied was filled
   // again by a load that landed after the × (Eric: "clicking the X no
   // longer hides discover!? BAD REGRESSION!!").
-  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
+  var _showDiscover = !homeScope && !filter && !homeLangFilter.size && !discoverHidden;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -5237,7 +5222,7 @@ function renderHome(filter) {
 
   // Zimi Maps, first, as a source sits: one tile whenever a map is installed.
   // Eric: "a Maps tile that sits with the sources grid like a source does."
-  if (!homeScope && !filter && !homeRecentFilter && !homeLangFilter.size) {
+  if (!homeScope && !filter && !homeLangFilter.size) {
     h += _appsRowHtml(true);
   }
 
@@ -5459,27 +5444,13 @@ function _ownZimInApps(name) {
   var app = _OWN_ZIM_APP[name];
   return !!app && _appsEnabled() && _shownApps().indexOf(app) >= 0;
 }
-// 'new', 'updated' or null: what has landed that you have not opened yet (the card's own badge).
-function _unseenKind(z) {
-  if (_ownZimInApps(z.name)) return null;   // theirs is on the tile
-  var b = _zimBadge(z);
-  return b ? b.label : null;
-}
-// The status line's one dot: solid amber, first thing on the line, only when a ZIM is new or updated since you opened it
-// (the games and the Almanac count too). Tapping it narrows Home to those cards; tapping again lets go.
-function _freshDotHtml(list, mark) {
+// The dot on an app's tile: solid amber when a ZIM inside it is new or updated since you opened it.
+function _freshDotHtml(list) {
   var counts = { added: 0, updated: 0 };
   list.forEach(function(z) { var b = _zimBadge(z); if (b) counts[b.label === 'updated' ? 'updated' : 'added']++; });
   if (!counts.added && !counts.updated) return '';
   var label = ['added', 'updated'].filter(function(k) { return counts[k]; }).map(function(k) { return t('recent_' + k + '_dot', { n: counts[k] }); }).join(', ');
-  if (mark) return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
-  return '<button type="button" class="rc-dot' + (homeRecentFilter === 'fresh' ? ' active' : '') + '" aria-pressed="' + (homeRecentFilter === 'fresh') +
-    '" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '" onclick="filterHomeRecent()"><i aria-hidden="true"></i></button>';
-}
-function filterHomeRecent() {
-  hideSuggest();
-  homeRecentFilter = homeRecentFilter === 'fresh' ? null : 'fresh';
-  renderHome();
+  return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
 }
 function _zimBadge(z) {
   if (!z) return null;
@@ -7239,6 +7210,76 @@ function _moonCachePut(cache, key, val) {
 var _moonSpriteCache = new Map();        // data URLs, for <img>
 var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and motion
 
+// ── Quiet work ──
+// Work nobody is waiting for (panels under the fold, the 3D view getting ready, a sharper Moon) runs when the person
+// is not touching the screen, one job at a time, never in the same task as another. Safari has no
+// requestIdleCallback, and the stand-in that fired 1 ms after the first paint put seconds of GPU setup and decoding
+// on the main thread exactly when a finger arrived (Eric, 2026-10-30: "waiting for something off screen to finish
+// loading"). So: a job runs once no finger is down and nothing has touched, scrolled or typed for QUIET_MS, or after
+// its maxWaitMs if the finger is up and QUIET_OVERDUE_MS have passed since the last touch; the next job waits QUIET_GAP_MS and the same test again. A job may return a
+// promise; the queue waits for it. quietBreath() is the same wait for a job that works in slices. quietNow(key)
+// runs a queued job now (the person's intent), quietCancel(key) drops it.
+var QUIET_MS = 250, QUIET_OVERDUE_MS = 100, QUIET_GAP_MS = 60, QUIET_MAX_WAIT_MS = 4000, QUIET_BREATH_MS = 120, QUIET_BREATH_MAX_MS = 700;
+var QUIET_PRI_NOW = 1, QUIET_PRI_PANELS = 2, QUIET_PRI_LOAD = 4, QUIET_PRI_PREPARE = 5, QUIET_PRI_POLISH = 6;
+var _quietJobs = [], _quietTimer = 0, _quietBusy = false, _quietSeq = 0, _quietLast = 0, _quietDown = false;
+function _quietNote(down) {
+  _quietLast = performance.now();
+  if (down != null) _quietDown = down;
+}
+(function () {
+  var opt = { capture: true, passive: true };
+  ['pointerdown', 'touchstart'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(true); }, opt); });
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(false); }, opt); });
+  ['scroll', 'wheel', 'keydown', 'touchmove'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(); }, opt); });
+})();
+function whenQuiet(fn, opts) {
+  opts = opts || {};
+  if (opts.key) _quietJobs = _quietJobs.filter(function (j) { return j.key !== opts.key; });
+  _quietJobs.push({ fn: fn, key: opts.key || null, pri: opts.priority == null ? QUIET_PRI_LOAD : opts.priority,
+    maxWait: opts.maxWaitMs || QUIET_MAX_WAIT_MS, at: performance.now(), seq: ++_quietSeq });
+  _quietPump(QUIET_GAP_MS);
+}
+function quietCancel(key) { _quietJobs = _quietJobs.filter(function (j) { return j.key !== key; }); }
+// Run a queued job now; false when it is not queued.
+function quietNow(key) {
+  var job = _quietJobs.filter(function (j) { return j.key === key; })[0];
+  if (!job) return false;
+  quietCancel(key);
+  Promise.resolve().then(job.fn).catch(function () {});
+  return true;
+}
+function _quietPump(delay) {
+  if (_quietTimer || _quietBusy) return;
+  _quietTimer = setTimeout(_quietStep, delay);
+}
+function _quietStep() {
+  _quietTimer = 0;
+  if (!_quietJobs.length) return;
+  var now = performance.now(), next = _quietJobs[0];
+  _quietJobs.forEach(function (j) { if (j.pri < next.pri || (j.pri === next.pri && j.seq < next.seq)) next = j; });
+  var idle = now - _quietLast, still = (now - next.at >= next.maxWait ? QUIET_OVERDUE_MS : QUIET_MS) - idle;
+  if (_quietDown || still > 0) { _quietPump(Math.max(still, QUIET_GAP_MS) + 1); return; }
+  _quietJobs = _quietJobs.filter(function (j) { return j !== next; });
+  _quietBusy = true;
+  Promise.resolve().then(next.fn).catch(function () {}).then(function () {
+    _quietBusy = false;
+    if (_quietJobs.length) _quietPump(QUIET_GAP_MS);
+  });
+}
+// Between two slices of one job: a frame is let through, then the wait for a moment with no finger on the screen
+// (QUIET_BREATH_MS of no touch, scroll or key), but never past QUIET_BREATH_MAX_MS unless a finger is down.
+function quietBreath() {
+  return new Promise(function (resolve) {
+    var t0 = performance.now();
+    var look = function () {
+      var now = performance.now();
+      if (!_quietDown && (now - _quietLast >= QUIET_BREATH_MS || now - t0 >= QUIET_BREATH_MAX_MS)) resolve();
+      else setTimeout(look, QUIET_BREATH_MS / 2);
+    };
+    requestAnimationFrame(function () { setTimeout(look, 0); });
+  });
+}
+
 // The 4096 map, asked for once the page has painted (two frames after load,
 // then idle), so it never competes with the first paint for the network or
 // the main thread. It is decoded off the main thread (decode()), and the
@@ -7246,18 +7287,22 @@ var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and moti
 // hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms. The 3D
 // Moon (almanac-earth.js) is drawn from the same decoded picture: one fetch,
 // one decode. Resolves with the Image, or null if it could not be had.
-var _MOON_IDLE_TIMEOUT_MS = 3000;
 var _moonHiLoad = null;
-function _moonIdle(fn) {
-  (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
-}
+var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
+var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
+function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
   _moonHiLoad = im.decode().then(function () {
-    _MOON_TEX_HI = im;
-    _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
+    _MOON_TEX_HI_IMG = im;
+    // Discs switch to the 4096 map only once its tone tables exist: a disc drawn in between would build them whole,
+    // in one task, in the middle of whatever the person was doing.
+    _moonMapDataSliced(_MOON_MAP_FULL_W * 2).then(function () { return _moonMapDataSliced(_MOON_MAP_HI_W); }).then(function () {
+      _MOON_TEX_HI = im;
+      return repaintMoonsSliced();
+    });
     return im;
   }, function () { return null; });   // without it every disc keeps the 1024 map
   return _moonHiLoad;
@@ -7367,18 +7412,42 @@ function _moonMapWidthFor(N) {
 // width. The readback is a GPU sync, so it happens once, not per sprite.
 // Widths past the small map's come from the 4096 one.
 var _moonMapCache = {};
-function _moonMapData(W) {
-  if (_moonMapCache[W]) return _moonMapCache[W];
+var _MOON_MAP_BAND_ROWS = 64;      // rows toned per slice when the map is built behind the page
+function _moonMapPlan(W, src) {
   var H = W / 2;
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(W > _MOON_MAP_FULL_W ? _MOON_TEX_HI : _MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
-  var src = ctx.getImageData(0, 0, W, H).data;
-  var g = new Uint8Array(W * H);
-  for (var i = 0; i < g.length; i++) g[i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
-  return (_moonMapCache[W] = { w: W, h: H, g: g });
+  ctx.drawImage(src, 0, 0, W, H);   // same-origin, so it won't taint
+  return { w: W, h: H, g: new Uint8Array(W * H), ctx: ctx };
+}
+function _moonMapBand(m, y0, y1) {
+  var src = m.ctx.getImageData(0, y0, m.w, y1 - y0).data, g = m.g, o = y0 * m.w;
+  for (var i = 0, n = (y1 - y0) * m.w; i < n; i++) g[o + i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
+}
+function _moonMapSource(W) { return W > _MOON_MAP_FULL_W ? _MOON_TEX_HI_IMG || _MOON_TEX_HI : _MOON_TEX; }
+function _moonMapData(W) {
+  if (_moonMapCache[W]) return _moonMapCache[W];
+  var m = _moonMapPlan(W, _moonMapSource(W));
+  for (var y = 0; y < m.h; y += _MOON_MAP_BAND_ROWS) _moonMapBand(m, y, Math.min(m.h, y + _MOON_MAP_BAND_ROWS));
+  return (_moonMapCache[W] = { w: W, h: m.h, g: m.g });
+}
+// The same map built a band at a time, a breath between (quietBreath), so the readback of a 4096 map is not one task.
+function _moonMapDataSliced(W) {
+  if (_moonMapCache[W]) return Promise.resolve(_moonMapCache[W]);
+  var m = _moonMapPlan(W, _moonMapSource(W)), y = 0;
+  var step = function () {
+    if (_moonMapCache[W]) return _moonMapCache[W];
+    var t0 = performance.now();
+    do {
+      _moonMapBand(m, y, Math.min(m.h, y + _MOON_MAP_BAND_ROWS));
+      y += _MOON_MAP_BAND_ROWS;
+    } while (y < m.h && performance.now() - t0 < _MOON_SLICE_MS);
+    if (y >= m.h) return (_moonMapCache[W] = { w: W, h: m.h, g: m.g });
+    return quietBreath().then(step);
+  };
+  return quietBreath().then(step);
 }
 
 // A sprite's inputs, rounded to what the eye can tell apart (1% of phase, a
@@ -7403,7 +7472,25 @@ function _moonSpriteCanvas(v, sizePx) {
   var key = _moonSpriteKey(v, sizePx);
   var hit = _moonSpriteCanvasCache.get(key);
   if (hit) return hit;
-
+  var plan = _moonSpritePlan(v, sizePx);
+  plan.rows(0, plan.N);
+  return plan.finish();
+}
+// The same drawing a few rows at a time with a breath between (quietBreath), for a sprite redrawn behind the page.
+function _moonSpriteCanvasSliced(v, sizePx) {
+  var hit = _moonSpriteCanvasCache.get(_moonSpriteKey(v, sizePx));
+  if (hit) return Promise.resolve(hit);
+  var plan = _moonSpritePlan(v, sizePx), py = 0;
+  var step = function () {
+    var t0 = performance.now();
+    do { plan.rows(py, py + _MOON_SPRITE_BAND_ROWS); py += _MOON_SPRITE_BAND_ROWS; } while (py < plan.N && performance.now() - t0 < _MOON_SLICE_MS);
+    return py >= plan.N ? plan.finish() : quietBreath().then(step);
+  };
+  return quietBreath().then(step);
+}
+var _MOON_SPRITE_BAND_ROWS = 8;
+function _moonSpritePlan(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
   var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
@@ -7431,7 +7518,9 @@ function _moonSpriteCanvas(v, sizePx) {
   var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
   var r0 = _MOON_TINT_R[0], r1 = _MOON_TINT_R[1], b0 = _MOON_TINT_B[0], b1 = _MOON_TINT_B[1];
 
-  for (var py = 0; py < N; py++) {
+  var rows = function (py0, py1) {
+  if (py1 > N) py1 = N;
+  for (var py = py0; py < py1; py++) {
     var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
     for (var px = 0; px < N; px++) {
       var x = (px + 0.5) / N * 2 - 1;
@@ -7461,8 +7550,11 @@ function _moonSpriteCanvas(v, sizePx) {
       data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }
   }
-  ctx.putImageData(img, 0, 0);
-  return _moonCachePut(_moonSpriteCanvasCache, key, cv);
+  };
+  return { N: N, rows: rows, finish: function () {
+    ctx.putImageData(img, 0, 0);
+    return _moonCachePut(_moonSpriteCanvasCache, key, cv);
+  } };
 }
 
 // atan2 to within 0.012 degrees (a hundredth of a map pixel) at a third of
@@ -7527,15 +7619,29 @@ function _setMoonSprite(img, v) {
 // Repaint already-rendered moon sprites in place — called when the map
 // finishes loading so a disc drawn before it was ready (plain grey, but with
 // the right phase and turn) gains its maria without a full re-render.
+function _repaintMoon(el) {
+  var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
+  var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+    parseInt(el.getAttribute('data-size'), 10) || 48);
+  if (el.src !== url) el.src = url;
+}
 function _repaintMoons() {
   var imgs = document.querySelectorAll('img.moon-sprite');
-  for (var i = 0; i < imgs.length; i++) {
-    var el = imgs[i];
+  for (var i = 0; i < imgs.length; i++) _repaintMoon(imgs[i]);
+}
+
+// _repaintMoons a disc at a time, a breath between.
+function repaintMoonsSliced() {
+  var imgs = Array.prototype.slice.call(document.querySelectorAll('img.moon-sprite')), i = 0;
+  var step = function () {
+    if (i >= imgs.length) return;
+    var el = imgs[i++];
+    if (!el.isConnected) return step();
     var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
-    var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
-      parseInt(el.getAttribute('data-size'), 10) || 48);
-    if (el.src !== url) el.src = url;
-  }
+    return _moonSpriteCanvasSliced({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+      parseInt(el.getAttribute('data-size'), 10) || 48).then(function () { _repaintMoon(el); return quietBreath(); }).then(step);
+  };
+  return step() || Promise.resolve();
 }
 
 // ── Canonical moon orientation — ONE derivation for every renderer ──
@@ -8059,6 +8165,16 @@ function openAlmanac(replaceState) {
     return;
   }
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
+  // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
+  // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
+  // icon on main page doesn't go right there it hangs back").
+  var root = document.documentElement;
+  var answered = root.classList.contains('almanac-boot');
+  root.classList.add('almanac-boot');
+  if (_almanacLoaded && !answered) {
+    requestAnimationFrame(function() { setTimeout(function() { _openAlmanacInner(replaceState); }, 0); });
+    return;
+  }
   if (!_almanacLoaded) {
     _loadAlmanacModules().then(function() {
       _almanacLoaded = true;
@@ -9108,7 +9224,9 @@ function _moveZimTo(zim, category) {
   function showAppMenu() {
     var zim = _ctxZim, own = zim && _zimInfo(zim);
     var h = '<div class="ctx-item" data-action="app-open">' + tH('open') + '</div>';
+    if (own && !IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
     if (own) h += '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    if (own && _keepAvailable()) h += '<div class="ctx-sep"></div>' + _keepMenuHtml(zim);
     if (_userSession) h += '<div class="ctx-item" data-action="app-hide">' + tH('hide_from_home') + '</div>';
     if (own && manageEnabled) h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
     menu.innerHTML = h;
@@ -10865,7 +10983,7 @@ function showHistoryDropdown(filter) {
   // 'home' behind the reader overlay, #7). And when a filter is already ACTIVE
   // the pills-bar is shown above the content, so the dropdown must not duplicate
   // the same rows — the handoff is idle→dropdown, in-use→pills-bar (#9).
-  var _filterActive = !!homeRecentFilter || homeLangFilter.size > 0;
+  var _filterActive = homeLangFilter.size > 0;
   var pillsHtml = (!filter && _homeFilterRowsHtml && mode === 'home' &&
       !currentSource && !readerOpen && !_filterActive)
     ? '<div class="suggest-filters">' + _homeFilterRowsHtml + '</div>' : '';
@@ -23990,8 +24108,13 @@ async function _loadUserPrefs() {
 }
 async function _setUserPref(key, value) {
   var body = {}; body[key] = value;
+  // Takes effect here at once; the server's answer, when it comes, is the word that stays.
+  if (key === 'apps') _readPrefs(Array.isArray(value) ? { apps: _userPrefs.apps, shown: value } : { apps: value, shown: _userPrefs.shown });
+  _syncOpenInAppsRow();
+  renderHome();
   try {
-    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    // keepalive: the page already shows the change, so leaving it at once must not drop the write
+    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { _readPrefs(await r.json()); }
   } catch (e) {}
   _syncOpenInAppsRow();
@@ -24001,10 +24124,12 @@ async function _setUserPref(key, value) {
 // never has to guess what the others were.
 function _setUserApp(app, on) {
   var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
-  Promise.resolve(_setUserPref('apps', shown)).then(function() {
+  function redraw() {
     var card = document.querySelector('.apps-card[data-card="user"]');
     if (card) card.outerHTML = _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp', false, 'user', tH('show_apps'));
-  });
+  }
+  Promise.resolve(_setUserPref('apps', shown)).then(redraw);
+  redraw();
 }
 // The apps to choose from, as the tiles they are on the home page: an icon
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
@@ -24150,7 +24275,7 @@ function _appsRowHtml(withHelp) {
 // filter is narrowing the page. One heading on top carries the order and
 // view controls, as every page's first heading does.
 function _appsPageHtml(shown) {
-  var narrowed = !!(homeRecentFilter || homeLangFilter.size);
+  var narrowed = !!homeLangFilter.size;
   var groups = _shownApps().map(function(app) {
     var inside = _appZims(app);
     if (!inside.length && app === 'games') return '';
@@ -24193,11 +24318,11 @@ function _appSectionHtml(app, n, grid) {
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
-// A tile's foot: the same solid dot a new or updated ZIM wears on the status line (when something inside is), and the
+// A tile's foot: the solid dot a new or updated ZIM wears (when something inside is), and the
 // same ⋯ a card has, which opens the menu a right click or a long press opens.
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
-  var dot = _freshDotHtml(zims.filter(Boolean), true);
+  var dot = _freshDotHtml(zims.filter(Boolean));
   return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' +
     '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button></span>';
 }
@@ -24226,12 +24351,7 @@ function _appTileHtml(app, title, icon, names, openFn) {
 // Their count lines are fixed strings: nothing is read to draw them.
 var _GAMES_ZIM = 'zimi_games';
 var _ALMANAC_ZIM = 'zimi_almanac';
-// A Zimi app wears its ZIM's own icon where the ZIM is named (the breadcrumb); its tile on Home and its Settings row
-// wear the line glyph, as every other app does.
-function _ownIconHtml(zim, glyph, px) {
-  var z = _zimInfo(zim);
-  return z && z.has_icon ? '<img src="/w/' + encodeURIComponent(zim) + '/-/icon" alt="" width="' + px + '" height="' + px + '">' : glyph;
-}
+// A Zimi app wears the same line glyph on its Home tile, in Settings and in the breadcrumb once open.
 var _OWN_APP_TITLE = { games: 'app_games', almanac: 'app_almanac' };
 var _GAMES_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><clipPath id="zgc"><path clip-rule="evenodd" d="M-4 -4H28V28H-4z M18.67 2.94L19.42 3.11L20.12 3.42L20.74 3.86L21.27 4.41L21.68 5.06L21.96 5.77L22.09 6.53L22.07 7.29L20.83 17.42L20.66 18.16L20.35 18.86L19.91 19.49L19.36 20.01L18.71 20.42L18.00 20.70L17.24 20.83L16.48 20.81L10.33 20.06L9.58 19.89L8.88 19.58L8.26 19.14L7.73 18.59L7.32 17.94L7.04 17.23L6.91 16.47L6.93 15.71L8.17 5.58L8.34 4.84L8.65 4.14L9.09 3.51L9.64 2.99L10.29 2.58L11.00 2.30L11.76 2.17L12.52 2.19z"/></clipPath><g clip-path="url(#zgc)"><rect x="4.5" y="5" width="11" height="15" rx="2.5" transform="rotate(-10 10 12.5)"/></g><rect x="9" y="4" width="11" height="15" rx="2.5" transform="rotate(7 14.5 11.5)"/><path d="M14.5 8.8l1.9 2.7-1.9 2.7-1.9-2.7z" fill="currentColor" stroke="none" transform="rotate(7 14.5 11.5)"/></svg>';
 var _ALMANAC_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.2A8 8 0 0 1 9.8 4.5a8 8 0 1 0 9.7 9.7z"/><path d="M17.6 2.8l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke="none"/></svg>';
@@ -24306,7 +24426,7 @@ function _gameHeadBoot(path) {
   root.classList.add('game-booting');
   var done = function() { root.classList.remove('game-booting'); };
   setTimeout(done, GAME_BOOT_MS);
-  window.addEventListener('message', function on(e) { if (e.data && e.data.zimi === 'game') { done(); window.removeEventListener('message', on); } });
+  window.addEventListener('message', function on(e) { if (e.origin === location.origin && e.source && e.data && e.data.zimi === 'game') { done(); window.removeEventListener('message', on); } });
 }
 var _gameGoneTimer = 0;        // a page that left: the header waits a moment for the next one's word
 var GAME_GONE_MS = 600;
@@ -24381,9 +24501,12 @@ function _gameDo(what) {
   try { f.contentWindow.postMessage({ zimi: 'game-do', what: what }, location.origin); } catch (e) {}
 }
 // What the page said, as much as can be trusted: a name, an Undo or a Pause, whether there is a Menu.
+var GAMES_SHELF_TITLE = 'ZimiGames';   // the shelf page's own <title>: the bar says "Games" (in the reader's language), as the tile did
 function _gameHeadFrom(d) {
+  var title = String(d.title || '').slice(0, 120);
+  if (title === GAMES_SHELF_TITLE) title = t('app_games');
   var act = d.act && typeof d.act === 'object' && (d.act.kind === 'undo' || d.act.kind === 'pause') ? d.act : null;
-  return { title: String(d.title || '').slice(0, 120), menu: !!d.menu,
+  return { title: title, menu: !!d.menu,
     act: act && { kind: act.kind, label: String(act.label || ''), disabled: !!act.disabled } };
 }
 // A page iOS has zoomed stays zoomed (the bar clipped at the left) until the viewport is set again: say the same thing twice, once pinned.
@@ -28223,6 +28346,7 @@ function _libraryHeard() {
 // time it is hidden. An article open keeps its place (_updateResume).
 var _BUILD = (window.__ZIMI_CONFIG && __ZIMI_CONFIG.build) || '';
 var _buildWaiting = ''; // the newer build heard: the page reloads when it may
+var _BUILD_QUIET_POLL_MS = 3000; // how often a build that is waiting looks for the page to go quiet
 var _BUILD_SW_WAIT_MS = 15000; // a worker that never takes charge does not hold the reload
 var _UPDATE_RESUME_KEY = 'zimi_update_resume'; // sessionStorage: the article's place across the reload
 // sessionStorage: the build this tab last reloaded for. Reloaded and still on
@@ -28253,19 +28377,27 @@ function _buildReload() {
     location.reload();
   };
   if (_buildSafe()) { go(); return; }
-  // Hidden with a game, article or app open is not safe: iOS reloaded the tab
+  // Hidden with a game or article open is not safe: iOS reloaded the tab
   // under the player on every switch away after a deploy (Eric, 2026-10-27:
   // "a lot of safari reloads on games when switching away and back"). It waits
-  // for a hide with the home page or a ZIM's page up, or for the page to be left.
-  document.addEventListener('visibilitychange', function _again() {
-    if (!document.hidden || !_buildSafe()) return;
-    document.removeEventListener('visibilitychange', _again);
+  // for a hide with the home page or a ZIM's page up, and for the page to be
+  // left: a person who closes the game or the Almanac and stays on Home is
+  // quiet again with no hide to hear (Eric, 2026-10-30: "I had to force quit and
+  // relaunch PWA to see these"), so the wait is polled too.
+  var timer = 0;
+  var again = function () {
+    if (!_buildSafe()) return;
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', again);
     go();
-  });
+  };
+  timer = setInterval(again, _BUILD_QUIET_POLL_MS);
+  document.addEventListener('visibilitychange', again);
 }
 // Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
 function _buildSafe() {
-  return _buildQuiet() || (document.hidden && !readerOpen && !_almanacOpen && !_createOpen && !_ttsSpeaking);
+  // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
+  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
 }
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
 // the same one again), no field being typed in, no reading aloud, no media

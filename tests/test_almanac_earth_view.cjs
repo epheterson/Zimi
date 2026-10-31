@@ -189,6 +189,8 @@ vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', S);
 for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_moonPhase', '_normDeg360'])
   vm.runInContext(extractFn(read('app.js'), fn), S);
 vm.runInContext(require('./moon_model.cjs')(), S);
+// app.js's quiet-work queue: nothing is waiting for quiet in these checks.
+vm.runInContext('var QUIET_PRI_PREPARE = 5, QUIET_PRI_PANELS = 2; function whenQuiet() {} function quietBreath() { return Promise.resolve(); }', S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-sky.js'), S);
 vm.runInContext(read('almanac-skygl.js'), S);
@@ -199,6 +201,8 @@ for (const name of ['_STARS', '_SKY_FIELD_STARS']) {
 }
 vm.runInContext(read('almanac-ephem.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
+// The slices of the view's preparation breathe on timers and frames; here they run back to back.
+vm.runInContext('_aeBreath = function () { return Promise.resolve(); };', S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
 S.window.SatelliteJS = S.SatelliteJS;
 const run = (code) => vm.runInContext(code, S);
@@ -586,6 +590,85 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
     check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
       'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
+    // Between bodies the shot is over the shoulder: at the shoulder view the old body stands large in the foreground to one
+    // side, the destination is framed in the open part of the view, and the camera is looking at it.
+    const shot = (from, to, w, h) => run('(function () {' +
+      ' var W = _ae.w, H = _ae.h; _ae.w = ' + w + '; _ae.h = ' + h + ';' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(' + S.AE_FLY_APPROACH_MS + ');' +
+      ' var look = _aeFlyTargetPos(), off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist), pos = _aeAdd(look, off);' +
+      ' var axis = _aeNorm(_aeSub(look, pos)), bodies = { earth: [[0, 0, 0], 1], moon: [_ae.scene.moon, AE_MOON_RADIUS_RE], sun: [_aeSunShown(_ae.scene), AE_SUN_SHOW_R] };' +
+      ' function seen(n) { var d = _aeSub(bodies[n][0], pos); return { ang: _aeAngle(axis, d), rad: Math.asin(bodies[n][1] / _aeLen(d)), dir: _aeNorm(d) }; }' +
+      ' var o = seen("' + from + '"), d = seen("' + to + '");' +
+      ' var out = { dest: d.ang, destRad: d.rad, oldRad: o.rad, apart: _aeAngle(o.dir, d.dir), half: Math.atan(_aeNarrowTanHalf()), hold: f.hold };' +
+      ' _ae.w = W; _ae.h = H; _ae.fly = null; _aeFarFor(0); return out; })()');
+    for (const [from, to] of [['earth', 'moon'], ['moon', 'earth'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth']]) {
+      for (const [w, h, name] of [[390, 844, 'phone'], [1280, 800, 'desktop']]) {
+        const g = shot(from, to, w, h);
+        check(g.hold && g.dest < g.half * 0.5, from + ' to ' + to + ' (' + name + '): the destination is framed inside the narrower half-FOV at the shoulder view (' +
+          (g.dest * 180 / Math.PI).toFixed(1) + ' of ' + (g.half * 180 / Math.PI).toFixed(1) + ' degrees)');
+        check(g.oldRad > g.half / 6 && g.oldRad < g.half, from + ' to ' + to + ' (' + name + '): the old body stands large in the foreground (angular radius ' +
+          (g.oldRad * 180 / Math.PI).toFixed(1) + ' degrees, a third of the frame is ' + (g.half / 3 * 180 / Math.PI).toFixed(1) + ')');
+        check(g.apart > g.oldRad + g.destRad, from + ' to ' + to + ' (' + name + '): the old body does not cover the destination');
+      }
+    }
+    // One continuous move: the camera's path is sampled across the whole flight; it never stops, and its speed has no jumps.
+    const path = (from, to, n) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); var f = _ae.fly, total = AE_FLY_APPROACH_MS + f.ms + AE_FLY_TAIL_MS, out = [];' +
+      ' for (var i = 0; i <= ' + n + '; i++) { f.start = 0; _aeStepFly(total * i / ' + n + ' - (i === ' + n + ' ? 1e-6 : 0)); var l = _aeFlyTargetPos();' +
+      '   out.push(_aeAdd(l, _aeCameraOffset(_ae.az, _ae.el_, _ae.dist))); if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify(out); })()'));
+    // How fast the view moves is how far the camera goes against how far it is from the nearer of the two bodies.
+    const near = (pt, from, to) => {
+      const at = (n) => run('(function () { return JSON.stringify(' + (n === 'earth' ? '[0, 0, 0]' : n === 'moon' ? '_ae.scene.moon' : '_aeSunShown(_ae.scene)') + '); })()');
+      return Math.min(...[from, to].map((n) => Math.hypot(...JSON.parse(at(n)).map((v, k) => v - pt[k]))));
+    };
+    const flightMs = (from, to) => run('(function () { _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _aePreset("' + to + '"); var m = _ae.fly.ms; _ae.fly = null; _aeFarFor(0); return m; })()');
+    const NS = 160;
+    for (const [from, to] of [['earth', 'moon'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth'], ['moon', 'earth']]) {
+      const pts = path(from, to, NS);
+      const step = [];
+      for (let i = 1; i < pts.length; i++) {
+        const m = pts[i].map((v, k) => (v + pts[i - 1][k]) / 2);
+        step.push(Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]) / near(m, from, to));
+      }
+      // Across the shoulder (a dozen frames either side) the pace changes smoothly; over the whole flight it is never zero.
+      const total = S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS + flightMs(from, to), jIdx = Math.round(NS * S.AE_FLY_APPROACH_MS / total);
+      const around = step.slice(jIdx - 12, jIdx + 12);
+      const avg = step.reduce((x, y) => x + y, 0) / step.length;
+      // The ratio between neighbours, wherever the picture moves at all (in the crawl's turn round the shoulder the steps are a
+      // fraction of a percent of the average and their ratio is noise).
+      const jump = Math.max(...step.slice(1).map((v, i) => (v < 0.01 * avg && step[i] < 0.01 * avg ? 1 : Math.max(v / step[i], step[i] / v))).slice(2, step.length - 4));
+      const lo = Math.min(...step.slice(2, step.length - 2));
+      // The crawl: within the crawl span either side of the shoulder the picture moves far slower than it does on average.
+      const half = Math.round(S.AE_FLY_CRAWL_MS / total * NS);
+      const crawl = step.slice(jIdx - half, jIdx + half + 1), mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const crawlShare = mean(crawl) / mean(step), crawlLo = Math.min(...crawl) / mean(step);
+      check(crawlShare < 0.15 && crawlLo > 1e-4, from + ' to ' + to + ': it crawls through the shoulder (apparent speed in the crawl averages ' + (crawlShare * 100).toFixed(1) + '% of the flight\'s, never under ' + (crawlLo * 100).toFixed(2) + '%)');
+      check(step.length === NS && step[0] > 0, from + ' to ' + to + ': the camera path is sampled across the whole flight');
+      check(lo > 0 && jump < 3, from + ' to ' + to + ': the camera never stops and its apparent speed has no jumps (worst step ratio between samples ' + jump.toFixed(2) + ', slowest step ' + lo.toExponential(1) + ')');
+    }
+    check(!run('(function () { _ae.target = "earth"; _ae.fly = null; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sats"); return _ae.fly.hold; })()'),
+      'a change of framing on the same body has no shoulder shot');
+    check(S.AE_FLY_APPROACH_MS >= 1000 && S.AE_FLY_APPROACH_MS <= 1500, 'the first move, back to the shoulder, is a deliberate one (over a second)');
+    // Both ends wear a ring through the flight, sized to the body as drawn.
+    const ringsAt = (from, to, ms) => run('(function () {' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); _ae.fly.start = performance.now() - ' + ms + '; _aeStepFly(performance.now()); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();' +
+      ' _aeUpdateMarks(_ae.scene); var out = {};' +
+      ' ["earth","moon","sun"].forEach(function (b) { var el = _aeById("ae-bm-" + b); out[b] = el ? { hidden: el.hidden, r: parseFloat(el.style["--ae-r"]), op: parseFloat(el.style.opacity) } : null; });' +
+      ' _ae.fly = null; _aeFarFor(0); return out; })()');
+    for (const [from, to] of [['moon', 'sun'], ['earth', 'moon']]) {
+      const early = ringsAt(from, to, S.AE_FLY_APPROACH_MS * 0.5), held = ringsAt(from, to, S.AE_FLY_APPROACH_MS);
+      const mid = ringsAt(from, to, S.AE_FLY_APPROACH_MS + 0.5 * run('_ae.fly ? _ae.fly.ms : 1000'));
+      check(held[from] && held[to] && !held[from].hidden && !held[to].hidden, from + ' to ' + to + ': a ring on the source and the destination at the shoulder view');
+      check(held[from].r >= S.AE_RING_MIN_R_PX && held[to].r >= S.AE_RING_MIN_R_PX, from + ' to ' + to + ': no ring under the minimum');
+      check(held[from].r > held[to].r, from + ' to ' + to + ': the foreground source has the bigger ring (' + held[from].r + ' vs ' + held[to].r + ')');
+      check(early[from].r !== held[from].r || early[to].r !== held[to].r, from + ' to ' + to + ': the rings change size as the camera moves');
+    }
+    const done = ringsAt('moon', 'sun', S.AE_FLY_APPROACH_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms + AE_FLY_TAIL_MS; _ae.fly = null; return m; })()') - 1);
+    check(done.sun.hidden || done.sun.op < 0.05, 'the rings are gone once the camera has arrived');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');
     run('var _almReduceMotion = function () { return true; };');

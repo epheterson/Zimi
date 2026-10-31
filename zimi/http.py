@@ -191,6 +191,11 @@ _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 KEEP_HEADER = "X-Zimi-Keep"
 _OWN_ZIM_PATH_PREFIX = "/w/zimi_"
 _rate_buckets_keep = {}  # {ip: [timestamps]}
+# The Almanac's background lookups (/almanac-links, /almanac-place) fire on their own whenever it draws; on the
+# strict API budget they ate what the person's taps (search, read) needed, and answered 429 themselves. They
+# count in a bucket of their own, at the content budget.
+_ALMANAC_BACKGROUND_PATHS = frozenset(("/almanac-links", "/almanac-place"))
+_rate_buckets_almanac = {}  # {ip: [timestamps]}
 _rate_buckets_login = {}  # {ip: [timestamps]} — POST /login
 _rate_lock = threading.Lock()
 
@@ -2623,7 +2628,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         # /w/ content and /snippet at 20x.
         limited, is_w_content = _rate_class(parsed.path)
         if limited:
-            limit = None if is_w_content else self._rate_limit_for_request()
+            background = parsed.path in _ALMANAC_BACKGROUND_PATHS
+            limit = None if (is_w_content or background) else self._rate_limit_for_request()
             keeping = (
                 is_w_content
                 and parsed.path.startswith(_OWN_ZIM_PATH_PREFIX)
@@ -2631,9 +2637,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             )
             retry_after = _check_rate_limit(
                 self._client_ip(),
-                content=is_w_content,
+                content=is_w_content or background,
                 limit=limit,
-                buckets=_rate_buckets_keep if keeping else None,
+                buckets=_rate_buckets_keep if keeping else (_rate_buckets_almanac if background else None),
             )
             if retry_after > 0:
                 with _metrics_lock:
@@ -3896,7 +3902,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Batch Q-ID resolution (closed set) — same public, rate-limited
                 # read as /suggest; the almanac POSTs its full ~250-Q-ID set.
                 retry_after = _check_rate_limit(
-                    self._client_ip(), limit=self._rate_limit_for_request()
+                    self._client_ip(), content=True, buckets=_rate_buckets_almanac
                 )
                 if retry_after > 0:
                     return self._json_rate_limited(retry_after)

@@ -8,11 +8,11 @@
 [![PyPI](https://img.shields.io/pypi/v/zimi)](https://pypi.org/project/zimi/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
+**If you ❤️ Zimi, leave a ⭐️ to help others find it.**
+
 A modern experience for your ZIM files.
 
 [Kiwix](https://kiwix.org) packages the world's knowledge into ZIM files. Zimi makes them feel like the real internet with a rich web UI, fast JSON API, and an MCP server for AI agents. Everything works offline, in your language.
-
-**If you ❤️ Zimi, leave a ⭐️ to help others find it.**
 
 Use as much as you need:
 
@@ -24,7 +24,7 @@ Use as much as you need:
 
 - **Search everything.** One query across every ZIM, 100M+ articles, with `-word`, `"exact words"`, `OR`, `lang:` and `in:` when you need them.
 - **Apps over your library.** Zimipedia for every wiki, the Dictionary for every Wiktionary, Bookshelf for every book, ZimiTube for video, ZimiExchange for Q&A, Reddot for subreddits, and offline street Maps.
-- **Games and the Almanac.** ZimiGames has over 100 offline games and Simon Tatham's puzzles, some played on your own Wikipedia and Wiktionary; the Almanac is a sky, Earth and calendar reference. Both are ZIM files you can delete and re-add from the Catalog, and they work in Kiwix and other ZIM readers too: download `zimi_games_<month>.zim` and `zimi_almanac_<month>.zim` from the Assets of the [latest release](https://github.com/epheterson/Zimi/releases/latest), or find them in this repository under [`zimi/builtin/`](zimi/builtin/).
+- **Games and the Almanac.** Over 100 offline games and a sky reference, both real ZIMs: [download them](https://github.com/epheterson/Zimi/releases/latest) or find them in [`zimi/builtin/`](zimi/builtin/).
 - **Keep what you find.** Bookmarks, lists, likes and highlights in every app, synced across devices when you sign in.
 - **A real library.** The whole Kiwix catalog one click away, even offline, with auto-updates and BitTorrent downloads that seed back.
 - **Make your own ZIMs.** A web page, a whole site, a video playlist, a subreddit, a web archive or a folder of your files.

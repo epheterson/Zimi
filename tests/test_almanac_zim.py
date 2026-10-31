@@ -158,7 +158,7 @@ def test_it_builds_into_a_real_zim_and_rebuilds_when_a_source_changes(
     path = ownzims.build(ALMANAC)
     a = Archive(path)
     assert a.main_entry.get_item().path == "index.html"
-    assert a.get_metadata("Title").decode() == "Zimi Almanac"
+    assert a.get_metadata("Title").decode() == "Almanac · Zimi"
     assert a.get_metadata("Creator").decode() == "Zimi"
     tags = a.get_metadata("Tags").decode().split(";")
     assert (

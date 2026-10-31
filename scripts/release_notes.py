@@ -4,7 +4,8 @@
 Desktop Release calls this: ``release_notes.py 1.14.1 > notes.md``.
 
 A version's section may open with a ``### Highlights`` block of one to three
-short sentences. The release body is then that block plus one line linking the
+short sentences. The release body is then that block, a **Fixed** list of every
+changelog line in the section that cites an issue (#N), and one line linking the
 full entry in the CHANGELOG at the version's tag. A section without the block
 is used whole, as it always was, and a version with no section at all gets a
 bare "Release vX.Y.Z".
@@ -15,6 +16,7 @@ import sys
 
 REPO_URL = "https://github.com/epheterson/zimi"
 HIGHLIGHTS_HEADING = "### Highlights"
+ISSUE_REF = re.compile(r"(?<![\w&])#\d+\b")
 
 
 def _section(changelog, version):
@@ -48,6 +50,11 @@ def _highlights(body):
     return "\n".join(text).strip()
 
 
+def _issue_lines(body):
+    """Every list item in the section, from any subsection, that cites an issue (#N)."""
+    return [l.rstrip() for l in body if l.startswith("- ") and ISSUE_REF.search(l)]
+
+
 def heading_anchor(heading):
     """The fragment GitHub generates for a heading: lowercase, anything but
     letters, digits, spaces, hyphens and underscores dropped, spaces to
@@ -64,6 +71,9 @@ def release_body(changelog, version, repo_url=REPO_URL):
     if not highlights:
         return "\n".join(body).strip() or "Release v%s" % version
     link = "%s/blob/v%s/CHANGELOG.md#%s" % (repo_url, version, heading_anchor(heading))
+    fixed = _issue_lines(body)
+    if fixed:
+        highlights += "\n\n**Fixed**\n\n" + "\n".join(fixed)
     return "%s\n\n[Full changelog for v%s](%s)" % (highlights, version, link)
 
 

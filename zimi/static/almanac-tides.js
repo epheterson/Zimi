@@ -472,7 +472,10 @@ function _atEnsureData(loc) {
   _at.tideId = null; _at.picking = null;
   _atFetch('/almanac-place?lat=' + loc.lat + '&lon=' + loc.lon).then(function(d) {
     if (_at.key !== key) return;
-    _at.data = d; _at.loading = false; _atRender();
+    _at.data = d; _at.loading = false;
+    var st = _getLocation().stored ? _atTideStation() : null;
+    if (!st) { _atRender(); return; }
+    _atMonthWarm(st, _almFocusInstant().getTime()).then(function() { if (_at.key === key) _atRender(); });
   }).catch(function() {
     if (_at.key !== key) return;
     _at.loading = false; _at.data = { failed: true }; _atRender();
@@ -828,29 +831,46 @@ var AT_MONTH_STEP_MS = 20 * 60000;   // a day's range from samples this far apar
 var AT_MONTH_MIN_BAR = 0.06;         // the smallest range still shows as a bar
 var _atMonthMemo = { key: null, days: null };
 
+// One day of the month: its range (highest high to lowest low) and the Moon's phase on it.
+function _atMonthDay(p, d0, tz, k) {
+  // Noon plus whole days, back to that day's midnight: DST-proof.
+  var s = _atDayStart(d0 + 12 * AT_MS_HOUR + k * AT_MS_DAY, tz);
+  var e = _atDayStart(s + 26 * AT_MS_HOUR, tz);
+  var lo = Infinity, hi = -Infinity;
+  for (var x = s; x <= e; x += AT_MONTH_STEP_MS) {
+    var h = p.height(x);
+    if (!isFinite(h)) continue;
+    if (h < lo) lo = h;
+    if (h > hi) hi = h;
+  }
+  var jdn = Math.floor((s + 12 * AT_MS_HOUR) / AT_MS_DAY) + 2440588;
+  return { k: k, start: s, range: hi > lo ? hi - lo : 0,
+    phase: typeof _principalPhaseOnDay === 'function' ? _principalPhaseOnDay(jdn, tz) : null };
+}
+function _atMonthKey(st, d0, tz) { return st.id + '|' + d0 + '|' + tz; }
 function _atMonthDays(st, focus) {
   var tz = _atTideTz(st), p = _atPredictor(st);
   var d0 = _atDayStart(focus, tz);
-  var key = st.id + '|' + d0 + '|' + tz;
+  var key = _atMonthKey(st, d0, tz);
   if (_atMonthMemo.key === key) return _atMonthMemo.days;
   var days = [];
-  for (var k = -AT_MONTH_BEFORE; k <= AT_MONTH_AFTER; k++) {
-    // Noon plus whole days, back to that day's midnight: DST-proof.
-    var s = _atDayStart(d0 + 12 * AT_MS_HOUR + k * AT_MS_DAY, tz);
-    var e = _atDayStart(s + 26 * AT_MS_HOUR, tz);
-    var lo = Infinity, hi = -Infinity;
-    for (var x = s; x <= e; x += AT_MONTH_STEP_MS) {
-      var h = p.height(x);
-      if (!isFinite(h)) continue;
-      if (h < lo) lo = h;
-      if (h > hi) hi = h;
-    }
-    var jdn = Math.floor((s + 12 * AT_MS_HOUR) / AT_MS_DAY) + 2440588;
-    days.push({ k: k, start: s, range: hi > lo ? hi - lo : 0,
-      phase: typeof _principalPhaseOnDay === 'function' ? _principalPhaseOnDay(jdn, tz) : null });
-  }
+  for (var k = -AT_MONTH_BEFORE; k <= AT_MONTH_AFTER; k++) days.push(_atMonthDay(p, d0, tz, k));
   _atMonthMemo = { key: key, days: days };
   return days;
+}
+// The same month, a day to a task with a breath between (app.js quietBreath), for when the station's data has just
+// landed behind the page: the section then draws from the memo instead of computing 2,300 heights in one task.
+function _atMonthWarm(st, focus) {
+  if (typeof quietBreath !== 'function') return Promise.resolve();
+  var tz = _atTideTz(st), p = _atPredictor(st), d0 = _atDayStart(focus, tz), key = _atMonthKey(st, d0, tz);
+  var days = [], k = -AT_MONTH_BEFORE;
+  var step = function () {
+    if (_atMonthMemo.key === key) return;
+    days.push(_atMonthDay(p, d0, tz, k++));
+    if (k <= AT_MONTH_AFTER) return quietBreath().then(step);
+    _atMonthMemo = { key: key, days: days };
+  };
+  return quietBreath().then(step);
 }
 
 function _atMonthHtml(st, focus) {

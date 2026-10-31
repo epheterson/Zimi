@@ -138,12 +138,37 @@ def _rows(pg):
     )
 
 
+class _Wide:
+    # Falsy when something scrolls sideways, and its repr names what is too wide (a CI-only width is otherwise blind).
+    def __init__(self, ok, why):
+        self.ok, self.why = ok, why
+
+    def __bool__(self):
+        return self.ok
+
+    def __repr__(self):
+        return "side scroll: %s" % (self.why,)
+
+
 def _no_side_scroll(pg):
-    return pg.evaluate(
-        "() => { var r = document.getElementById('alm-ref'), c = document.getElementById('almanac-content');"
-        " return document.documentElement.scrollWidth <= innerWidth && c.scrollWidth <= c.clientWidth"
-        " && (!r || r.scrollWidth <= r.clientWidth); }"
+    ok, why = pg.evaluate(
+        """() => { var r = document.getElementById('alm-ref'), c = document.getElementById('almanac-content');
+          var ok = document.documentElement.scrollWidth <= innerWidth && c.scrollWidth <= c.clientWidth
+            && (!r || r.scrollWidth <= r.clientWidth);
+          if (ok) return [true, null];
+          var why = { doc: [document.documentElement.scrollWidth, innerWidth], content: [c.scrollWidth, c.clientWidth],
+            ref: r && [r.scrollWidth, r.clientWidth], wide: [] };
+          [r, c].forEach(function (box) {
+            if (!box || box.scrollWidth <= box.clientWidth) return;
+            var base = box.scrollWidth;
+            (function walk(el, d) { for (var k of el.children) { var o = k.style.display; k.style.display = 'none';
+              var w = box.scrollWidth; k.style.display = o;
+              if (w < base) { why.wide.push([d, k.tagName, k.id, String(k.className && k.className.baseVal == null ? k.className : ''),
+                Math.round(k.getBoundingClientRect().width)]); if (d < 8 && why.wide.length < 30) walk(k, d + 1); } } })(box, 0);
+          });
+          return [false, why]; }"""
     )
+    return _Wide(ok, why)
 
 
 def _seg(pg, v):

@@ -372,7 +372,31 @@ var AE_KEY_ZOOM = 1.15;
 // GPS shell): a nudge between framings is quick, a crossing to the Sun is
 // the longest, and nothing takes longer than AE_FLY_FAR_MS.
 var AE_FLY_MIN_MS = 500;
+// A flight between two bodies is one continuous move through an over-the-shoulder view: the camera eases back behind
+// the body it leaves, off to one side so that body stands large in the foreground (its diameter this fraction of the
+// narrower side of the frame, its centre this far out toward that side, in half-frames), turned to the destination,
+// which is framed on the open side (centred this far out the other way), and carries on in without a stop.
+var AE_FLY_APPROACH_MS = 1500, AE_FLY_TAIL_MS = 900;   // the leg to the shoulder, and what the leg in adds to the flight's own length
+// The camera crawls through the shoulder view: its apparent speed (how fast the picture changes, a share of the
+// nearer body's distance per second) holds at a small share of the pace either leg cruises at for AE_FLY_CRAWL_MS
+// either side of it, and rises smoothly from there over AE_FLY_CRAWL_RAMP_MS. The leg to the shoulder eases in from rest
+// over AE_FLY_EASE_IN_MS, and the leg in eases out to rest over AE_FLY_EASE_OUT_MS.
+var AE_FLY_CRAWL_MS = 350, AE_FLY_CRAWL_RAMP_MS = 600, AE_FLY_CRAWL_SHARE = 0.04;
+var AE_FLY_EASE_IN_MS = 500, AE_FLY_EASE_OUT_MS = 800, AE_FLY_TABLE_N = 240;
+var AE_FLY_BEND_MS = 200, AE_FLY_BEND_REACH = 0.5;   // half the span over which the camera rounds the corner at the shoulder
+var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
+// A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
+var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // marks closer than this: only the first
+// Through a flight between bodies both ends wear a ring the size of the body as drawn (the Sun from the Moon's night
+// side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
+// gone by the time the camera has arrived (the last share of the arrival).
+var AE_RING_MARGIN_PX = 5, AE_RING_MIN_R_PX = 11, AE_RING_FADE_FROM = 0.7;
+var AE_MARKED = [
+  { body: 'earth', name: function () { return _tp('Earth'); } },
+  { body: 'moon', name: function () { return _aeT('alm_moon'); } },
+  { body: 'sun', name: function () { return _aeT('alm_sun'); } }
+];
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
@@ -531,6 +555,7 @@ var AE_CSS = [
   '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
   '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
   '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
+  '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
   '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
@@ -551,6 +576,14 @@ var AE_CSS = [
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
+  // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
+  '.ae-bm{position:absolute;left:0;top:0;color:#dfe6f0;pointer-events:none}',
+  '.ae-bm[hidden]{display:none}',
+  '.ae-ring{position:absolute;left:0;top:0;width:calc(var(--ae-r,11px)*2);height:calc(var(--ae-r,11px)*2);margin:calc(var(--ae-r,11px)*-1) 0 0 calc(var(--ae-r,11px)*-1);box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
+  '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
+  '.ae-bm-l b{left:auto;right:calc(var(--ae-r,11px) + 7px)}',
+  '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(-50%,-100%)}',
+  '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
   '.ae-label-you{color:#f5c16c}',
@@ -614,7 +647,9 @@ function _aeBuildDom() {
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
-      '<span class="ae-label" id="ae-lbl-moon" hidden>' + _almEsc(_aeT('alm_moon')) + '</span>' +
+      AE_MARKED.map(function (m) {
+        return '<span class="ae-bm" id="ae-bm-' + m.body + '" hidden><i class="ae-ring" aria-hidden="true"></i><b>' + _almEsc(m.name()) + '</b></span>';
+      }).join('') +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
       '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
@@ -692,10 +727,31 @@ function _aeLoadSgp4() {
   }
   return _aeSgp4Promise;
 }
+// A map is fetched and decoded off the main thread (createImageBitmap) and handed to three as a texture of its own
+// kind (the build exports no Texture: its class is the one a TextureLoader hands back). Without createImageBitmap, or
+// where it fails, three's own loader decodes it where it is first used.
+var AE_BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+function _aeTextureClass(THREE) {
+  var probe = new THREE.TextureLoader().load(AE_BLANK_GIF);
+  probe.dispose();
+  return probe.constructor;
+}
 function _aeLoadTexture(THREE, url) {
-  return new Promise(function (resolve, reject) {
-    new THREE.TextureLoader().load(url, resolve, undefined, reject);
-  });
+  var viaLoader = function () {
+    return new Promise(function (resolve, reject) {
+      new THREE.TextureLoader().load(url, resolve, undefined, reject);
+    });
+  };
+  if (typeof createImageBitmap !== 'function' || typeof fetch !== 'function') return viaLoader();
+  return fetch(url).then(function (r) { if (!r.ok) throw new Error(url); return r.blob(); }).then(function (blob) {
+    // Flipped as it is decoded: WebGL's flipY does not apply to an ImageBitmap.
+    return createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  }).then(function (bmp) {
+    var Tex = _aeTextureClass(THREE), tx = new Tex(bmp);
+    tx.flipY = false;
+    tx.needsUpdate = true;
+    return tx;
+  }).catch(viaLoader);
 }
 
 // ── Shaders ──
@@ -1398,7 +1454,7 @@ function _aeLoadMap(S, uni, url, format, load) {
       _ae.dirty = true;
       _aeKick();
       // Ready behind the page, a map that comes later is uploaded now too.
-      if (ok && _ae.ready) _aeWarm(S);
+      if (ok && _ae.ready) _aeWarmSliced(S);
       return ok;
     });
   }
@@ -1504,10 +1560,14 @@ function _aeFollowClock() {
 }
 
 // ── Camera ──
+// The tangent of the narrower half field of view: the vertical one, or on a portrait screen the horizontal one
+// (2·atan(tan(vfov/2)·aspect)), which is what a thing must fit inside.
+function _aeNarrowTanHalf() {
+  var aspect = _ae.w && _ae.h ? _ae.w / _ae.h : _ae.gl.camera.aspect;
+  return Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, aspect);
+}
 function _aeFitDist(radius) {
-  var cam = _ae.gl.camera, aspect = _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect;
-  var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, aspect);
-  return radius / (half * AE_FIT_FILL);
+  return radius / (_aeNarrowTanHalf() * AE_FIT_FILL);
 }
 // What the camera can circle: how near and far it may go, and the surface a
 // drag's speed is measured from.
@@ -1557,7 +1617,7 @@ function _aeAzElOf(v) {
 }
 
 function _aeFlyTo(target, dist, azel) {
-  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0 };
+  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
   var to = { dist: _aeClampDist(dist) };
@@ -1566,11 +1626,78 @@ function _aeFlyTo(target, dist, azel) {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    var hold = !!_ae.scene && target !== from.target;
+    _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    if (hold) {
+      var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
+      _ae.fly.shoulder = sh;
+      _aeFlyTables(_ae.fly);
+      _ae.fly.bend = _aeBendAfter(_ae.fly);
+      _aeFarFor(sh.far);
+    }
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
+}
+// The over-the-shoulder camera: where it stands (behind the body at `from`, away from `dest`, off to one side) and
+// the point it looks at, so the old body fills AE_SHOULDER_FILL of the narrower side of the frame at AE_SHOULDER_OLD_AT
+// and the destination stands at AE_SHOULDER_DEST_AT. The side is the one the camera is already on.
+// In the plane of the line between the two (u) and the side (s): the camera is `dOld` from the old body along
+// -(cos(phi) u + sin(phi) s); phi is found so the two land where they should.
+function _aeShoulder(from, rOld, dest) {
+  var a = from.pos, ab = _aeSub(dest, a), len = _aeLen(ab), u = _aeScale(ab, 1 / len);
+  var up = _aeViewUp(u, from.roll), side = _ae.w > _ae.h ? up : _aeCross(u, up);
+  if (_aeDot(_aeCameraOffset(from.az, from.el, 1), side) < 0) side = _aeScale(side, -1);
+  var tn = _aeNarrowTanHalf(), fill = AE_SHOULDER_FILL * tn;
+  var dOld = rOld * Math.hypot(1, 1 / fill);
+  var destTilt = Math.atan(AE_SHOULDER_DEST_AT * tn);
+  // Where the old body lands on the narrow axis (in tangents), for a given phi.
+  function oldAt(phi) {
+    var thetaDest = Math.atan2(dOld * Math.sin(phi), dOld * Math.cos(phi) + len);
+    return Math.tan(phi - thetaDest + destTilt);
+  }
+  var lo = 0, hi = Math.PI / 2 - 0.01;
+  for (var i = 0; i < 40; i++) {
+    var mid = (lo + hi) / 2;
+    if (oldAt(mid) < AE_SHOULDER_OLD_AT * tn) lo = mid; else hi = mid;
+  }
+  var phi = (lo + hi) / 2, c = Math.cos(phi), sn = Math.sin(phi);
+  var pos = _aeSub(a, _aeAdd(_aeScale(u, dOld * c), _aeScale(side, dOld * sn)));
+  var toDest = _aeSub(dest, pos), gamma = Math.atan2(dOld * sn, dOld * c + len) + (-destTilt);
+  var axis = _aeAdd(_aeScale(u, Math.cos(gamma)), _aeScale(side, Math.sin(gamma)));
+  // The turn away from the old body the look-at carries, and which way: held through the swing back, so the old body
+  // slides from the middle of the frame to its place and never leaves it.
+  var dA = _aeNorm(_aeSub(a, pos)), dD = _aeNorm(toDest);
+  return { pos: pos, look: _aeAdd(pos, _aeScale(axis, _aeLen(toDest))), far: dOld + len * 1.5,
+    turn: _aeAngle(dA, axis), away: _aePerp(axis, dA), destTurn: _aeAngle(dD, axis), destAway: _aePerp(axis, dD) };
+}
+// The unit direction of `v` across `d` (a unit vector): what is left of it once its part along `d` is taken out.
+function _aePerp(v, d) { return _aeNorm(_aeSub(v, _aeScale(d, _aeDot(v, d)))); }
+// The look-at that is `turn` radians off the direction to `target`, toward `away`, from `pos`.
+function _aeLookOff(pos, target, away, turn) {
+  var to = _aeSub(target, pos), d = _aeNorm(to), w = _aePerp(away, d);
+  return _aeAdd(pos, _aeScale(_aeAdd(_aeScale(d, Math.cos(turn)), _aeScale(w, Math.sin(turn))), _aeLen(to)));
+}
+// A point on the way from offset `p` to offset `q` (both from the same centre) at e in 0..1: the direction turns the
+// short way and the distance changes by its ratio, so a camera swinging round a body neither cuts through it nor
+// flings out.
+function _aeSlerpOffset(p, q, e) {
+  var lp = _aeLen(p), lq = _aeLen(q), np = _aeScale(p, 1 / lp), nq = _aeScale(q, 1 / lq);
+  var d = _aeClamp(_aeDot(np, nq), -1, 1), ang = Math.acos(d), dir;
+  if (ang < 1e-6) dir = np;
+  else {
+    // Straight back on itself: swing round the vertical (or any axis across it).
+    var perp = ang > Math.PI - 1e-6 ? _aeNorm(_aeCross(np, Math.abs(np[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])) : null;
+    if (perp) dir = _aeAdd(_aeScale(np, Math.cos(Math.PI * e)), _aeScale(perp, Math.sin(Math.PI * e)));
+    else dir = _aeAdd(_aeScale(np, Math.sin((1 - e) * ang) / Math.sin(ang)), _aeScale(nq, Math.sin(e * ang) / Math.sin(ang)));
+  }
+  return _aeScale(dir, Math.exp(Math.log(lp) + (Math.log(lq) - Math.log(lp)) * e));
+}
+// The far plane reaches past a shot wider than the scene's usual widest view, and comes back after.
+function _aeFarFor(reach) {
+  var cam = _ae.gl && _ae.gl.camera, far = Math.max(AE_FAR, reach || 0);
+  if (cam && cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); }
 }
 // How long a flight takes: the camera's path, end to end, against the
 // nearer of the two distances it stands from what it looks at.
@@ -1581,26 +1708,152 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
-// How far along the flight is, eased (1 when there is none).
+// How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
+// after it, which starts at the pace the leg to the shoulder ended at.
+function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
+// The pace shape of a leg: `floor` of its cruise while within AE_FLY_CRAWL_MS of the shoulder (d ms away), rising
+// smoothly to the cruise.
+function _aeCrawlShape(d, floor) {
+  return floor + (1 - floor) * _smoothstep(AE_FLY_CRAWL_MS, AE_FLY_CRAWL_MS + AE_FLY_CRAWL_RAMP_MS, d);
+}
+// The running share (0..1) of a pace over 0..len ms, sampled: lookups interpolate it, so a leg's progress follows its
+// pace exactly and arrives at 1.
+function _aeRunningShare(rate, len) {
+  var n = AE_FLY_TABLE_N, tab = new Array(n + 1), sum = 0, prev = rate(0);
+  tab[0] = 0;
+  for (var i = 1; i <= n; i++) { var r = rate(len * i / n); sum += (prev + r) / 2; prev = r; tab[i] = sum; }
+  for (i = 0; i <= n; i++) tab[i] /= sum;
+  tab.total = sum * len / n;
+  return tab;
+}
+function _aeShareAt(tab, t, len) {
+  var x = _aeClamp(t / len, 0, 1) * AE_FLY_TABLE_N, i = Math.min(AE_FLY_TABLE_N - 1, Math.floor(x));
+  return tab[i] + (tab[i + 1] - tab[i]) * (x - i);
+}
+// How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
+// after it: the camera's distance to the destination goes down in log space, which is a steady apparent zoom, driven
+// by the crawl-then-rise pace (_aeFlyTables).
+function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
+function _aeFlyArrival(f, now) {
+  if (!f.hold) return _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1));
+  var q = _aeShareAt(f.inTab, now - f.start - AE_FLY_APPROACH_MS, f.ms + AE_FLY_TAIL_MS);
+  if (!f.logIn) return q;
+  // g is the log of (distance from the old body over distance to the destination): it carries both ends' apparent
+  // zoom, and one eased run of it is the whole leg in.
+  var e = Math.exp(f.g0 + (f.g1 - f.g0) * q), x = (f.r0 * e - f.dOld) / (1 + e);
+  return _aeClamp(Math.log(Math.max(1e-12, f.r0 - x) / f.r0) / f.logRatio, 0, 1);
+}
+// How far along the leg to the shoulder the camera is.
+function _aeFlyPull(now, f) { return _aeShareAt(f.outTab, now - f.start, AE_FLY_APPROACH_MS); }
 function _aeFlyEase(now) {
   var f = _ae.fly;
-  return f ? _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
+  return f ? _aeFlyArrival(f, now) : 1;
 }
+// The paces of the two legs, set so the camera's apparent speed is the same either side of the shoulder: the leg to
+// the shoulder has the crawl share of its cruise at the end, and the leg in is given whatever share of its own makes the
+// apparent speed there equal (the leg in is thousands of times as long to the Sun, so its share is tiny).
+function _aeFlyTables(f) {
+  var from = f.from, sh = f.shoulder, dest = _aeTargetPos(), e = 0.01, T2 = f.ms + AE_FLY_TAIL_MS;
+  var start = _aeCameraOffset(from.az, from.el, from.dist), end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
+  var shOff = _aeSub(sh.pos, from.pos);
+  f.dOld = _aeLen(shOff);
+  var legA = _aeLen(_aeSub(shOff, _aeSlerpOffset(start, shOff, 1 - e))) / e;
+  var easeIn = function (t) { return _smoothstep(0, AE_FLY_EASE_IN_MS, t); };
+  var outRate = function (t) { return _aeCrawlShape(AE_FLY_APPROACH_MS - t, AE_FLY_CRAWL_SHARE) * easeIn(t); };
+  f.outTab = _aeRunningShare(outRate, AE_FLY_APPROACH_MS);
+  // Apparent speed at the shoulder: the leg's length per ms over the old body's distance.
+  var apparent = legA * AE_FLY_CRAWL_SHARE / f.outTab.total / f.dOld;
+  f.r0 = _aeLen(_aeSub(sh.pos, dest));
+  var r1 = _aeLen(end);
+  f.logIn = r1 < f.r0 * 0.9;
+  f.g0 = Math.log(f.dOld / f.r0); f.g1 = Math.log((f.dOld + f.r0 - r1) / r1); f.logRatio = Math.log(r1 / f.r0);
+  var G = f.logIn ? f.g1 - f.g0 : 1;
+  var share = AE_FLY_CRAWL_SHARE;
+  for (var i = 0; i < 12; i++) {
+    var inRate = function (t) { return _aeCrawlShape(t, share) * _smoothstep(0, AE_FLY_EASE_OUT_MS, T2 - t); };
+    var tab = _aeRunningShare(inRate, T2);
+    // Apparent speed of the leg in at its start is G (the log ratio's travel) times its share's rate per ms.
+    share = _aeClamp(apparent * tab.total / G, 1e-5, 0.6);
+  }
+  f.inTab = _aeRunningShare(function (t) { return _aeCrawlShape(t, share) * _smoothstep(0, AE_FLY_EASE_OUT_MS, T2 - t); }, T2);
+}
+// How long after the shoulder the corner is rounded for: until the leg in has carried the camera about half the old
+// body's distance away (the leg in begins very slowly, and across a flight's own scale any longer span would throw the
+// camera far from the shoulder before the corner was turned).
+function _aeBendAfter(f) {
+  var near = _aeLen(_aeSub(f.shoulder.pos, f.from.pos)) * AE_FLY_BEND_REACH, at = f.start + AE_FLY_APPROACH_MS;
+  f.bend = AE_FLY_BEND_MS;
+  var lo = 20, hi = AE_FLY_BEND_MS, sh = f.shoulder.pos;
+  if (_aeLen(_aeSub(_aeLegPos(f, at + hi), sh)) < near) return hi;
+  for (var i = 0; i < 24; i++) {
+    var mid = (lo + hi) / 2;
+    if (_aeLen(_aeSub(_aeLegPos(f, at + mid), sh)) < near) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+// The camera's place and the point it looks at, along a shoulder shot: back and round the old body, through the shoulder view without stopping, then
+// in to the destination's own view.
+function _aeShoulderCam(f, now) {
+  var j = AE_FLY_APPROACH_MS, t = now - f.start;
+  var pos = t <= j - AE_FLY_BEND_MS || t >= j + f.bend ? _aeLegPos(f, now) : _aeBend(f, now);
+  // Looking at the old body, turned off it by the share of the leg done, then at the destination, framed, then at its
+  // middle: the two looks are the same at the shoulder, and are blended across the bend.
+  var dest = _aeTargetPos(), sh = f.shoulder;
+  var look1 = _aeLookOff(pos, f.from.pos, sh.away, sh.turn * _aeClamp(_aeFlyPull(now, f), 0, 1));
+  var look2 = _aeLookOff(pos, dest, sh.destAway, sh.destTurn * (1 - _aeFlyArrival(f, now)));
+  var k = _smoothstep(j - AE_FLY_BEND_MS, j + f.bend, t);
+  var d1 = _aeNorm(_aeSub(look1, pos)), d2 = _aeNorm(_aeSub(look2, pos)), d = _aeNorm(_aeAdd(_aeScale(d1, 1 - k), _aeScale(d2, k)));
+  var r = _aeLen(_aeSub(look1, pos)) * (1 - k) + _aeLen(_aeSub(look2, pos)) * k;
+  return { pos: pos, look: _aeAdd(pos, _aeScale(d, r)) };
+}
+// Where the camera is on the leg to the shoulder (round the old body), then on the leg in (round the destination).
+function _aeLegPos(f, now) {
+  var from = f.from, sh = f.shoulder, dest = _aeTargetPos();
+  if (now - f.start >= AE_FLY_APPROACH_MS) {
+    var end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
+    return _aeAdd(dest, _aeSlerpOffset(_aeSub(sh.pos, dest), end, _aeFlyArrival(f, now)));
+  }
+  var start = _aeCameraOffset(from.az, from.el, from.dist);
+  return _aeAdd(from.pos, _aeSlerpOffset(start, _aeSub(sh.pos, from.pos), _aeFlyPull(now, f)));
+}
+// The two legs meet at the shoulder going different ways (out from the old body, then in toward the new): across a
+// short span the camera follows a cubic Hermite curve between the legs' own places and velocities, so it turns
+// round the corner instead of stopping at it.
+function _aeBend(f, now) {
+  var j = f.start + AE_FLY_APPROACH_MS, w = AE_FLY_BEND_MS + f.bend, h = 1;
+  var t0 = j - AE_FLY_BEND_MS, t1 = j + f.bend;
+  var p0 = _aeLegPos(f, t0), p1 = _aeLegPos(f, t1);
+  var v0 = _aeScale(_aeSub(_aeLegPos(f, t0 + h), p0), w / h), v1 = _aeScale(_aeSub(p1, _aeLegPos(f, t1 - h)), w / h);
+  var u = (now - t0) / w, u2 = u * u, u3 = u2 * u;
+  var out = _aeScale(p0, 2 * u3 - 3 * u2 + 1);
+  out = _aeAdd(out, _aeScale(v0, u3 - 2 * u2 + u));
+  out = _aeAdd(out, _aeScale(p1, -2 * u3 + 3 * u2));
+  return _aeAdd(out, _aeScale(v1, u3 - u2));
+}
+function _aeLerp3(a, b, e) { return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e]; }
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseInOut(p);
-  _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
-  _ae.az = f.from.az + (f.toAz - f.from.az) * e;
-  _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
-  if (p >= 1) _ae.fly = null;
+  if (f.hold) {
+    // The orbit model (a point looked at, a direction and a distance) holds any camera and look-at pair.
+    var c = _aeShoulderCam(f, now), v = _aeSub(c.pos, c.look), d = _aeLen(v);
+    f.look = c.look;
+    _ae.dist = d; _ae.az = Math.atan2(v[1], v[0]); _ae.el_ = Math.asin(v[2] / d);
+  } else {
+    var arrive = _aeFlyArrival(f, now);
+    _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * arrive);
+    _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
+    _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
+  }
+  if (now - f.start >= _aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)) { _ae.fly = null; _aeFarFor(0); }
   return true;
 }
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
+  if (f.hold) return f.look || f.from.pos;
   var e = _aeFlyEase(performance.now());
-  return [f.from.pos[0] + (to[0] - f.from.pos[0]) * e, f.from.pos[1] + (to[1] - f.from.pos[1]) * e, f.from.pos[2] + (to[2] - f.from.pos[2]) * e];
+  return _aeLerp3(f.from.pos, to, e);
 }
 
 // Where the camera stands and how wide it sees, now: the view's own
@@ -1842,6 +2095,13 @@ function _aeSettingsWhy(m) {
   if (!m.canChange) return _aeT('alm_earth_sat_admin_only');
   return _ae.setError;
 }
+// A choice's hint; where it names the source, the name links to it.
+var AE_SAT_SOURCE_URL = 'https://celestrak.org/';
+function _aeSetHint(key) {
+  var mark = '\u0001';
+  return _almEsc(_aeT(key, { src: mark })).replace(mark,
+    '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
+}
 function _aeRenderSettings() {
   var panel = _aeById('ae-set');
   if (!panel || !_ae.setOpen) return;
@@ -1854,7 +2114,7 @@ function _aeRenderSettings() {
     html += '<label class="ae-set-choice' + (editable ? '' : ' ae-off') + '">' +
       '<input type="radio" name="ae-sat-mode" value="' + mode + '"' +
         (m.mode === mode ? ' checked' : '') + (editable ? '' : ' disabled') + '>' +
-      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _almEsc(_aeT(key + '_hint')) + '</small></span></label>';
+      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _aeSetHint(key + '_hint') + '</small></span></label>';
   });
   html += '</div>';
   var why = _aeSettingsWhy(m);
@@ -2114,7 +2374,7 @@ function _aeSetText(el, text) { if (el && el.textContent !== text) el.textConten
 function _aeUpdateLabels() {
   var sc = _ae.scene;
   if (!sc) return;
-  _aePlaceLabel('ae-lbl-moon', sc.moon, !_aeBehindEarth(sc.moon) && _ae.target !== 'moon');
+  _aeUpdateMarks(sc);
   // The tapped satellite is named by its card and marked by its colour, so
   // only the ISS carries a label of its own.
   var iss = null;
@@ -2130,7 +2390,9 @@ function _aeUpdateLabels() {
     if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
     issEl.classList.toggle('ae-faded', approx);
   }
-  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos));
+  // Not while the Earth is a small ringed disc (the ISS is a speck on it, and its label would sit on the Earth's), nor
+  // through a flight between bodies, whose two names are the only words.
+  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_ae.fly && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
@@ -2139,6 +2401,45 @@ function _aeUpdateLabels() {
   var ecl = _ae.eclipse;
   var sh = ecl && ecl.solar && ecl.hit ? _aeFixedToScene(_aeGeodeticToFixed(ecl.hit.lat, ecl.hit.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-shadow', sh, !!sh && _aeFacing(sh) && _ae.target === 'earth');
+}
+
+// A body drawn small is ringed and named, so it can be found: the mark is full under AE_MARK_SMALL_PX across and
+// gone by AE_MARK_GONE_PX. The flight's destination is always marked while it is small, even behind the Earth.
+// How wide the Earth is drawn, in CSS pixels.
+function _aeEarthPx() {
+  var cam = _ae.gl.camera, d = Math.max(1e-9, _aeLen([cam.position.x, cam.position.y, cam.position.z]));
+  return 2 / d * _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+}
+function _aeUpdateMarks(sc) {
+  var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var pos = { earth: [0, 0, 0], moon: sc.moon, sun: _aeSunShown(sc) }, shown = [];
+  // The destination first, so a body standing on top of it (the Moon from the Sun) gives way.
+  var f = _ae.fly, flying = !!f && f.hold, source = flying ? f.from.target : null;
+  var ringFade = flying ? 1 - _smoothstep(AE_RING_FADE_FROM, 1, _aeFlyArrival(f, performance.now())) : 1;
+  var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
+  var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
+  for (var i = 0; i < order.length; i++) {
+    var body = order[i].body, el = _aeById('ae-bm-' + body);
+    if (!el) continue;
+    var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
+    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
+    var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
+    var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
+    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
+    if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
+    var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
+    // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
+    var reach = ringed ? r : 0;
+    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > _ae.h + reach) { if (!el.hidden) el.hidden = true; continue; }
+    shown.push(s);
+    if (el.hidden) el.hidden = false;
+    el.style.opacity = alpha.toFixed(2);
+    el.style.setProperty('--ae-r', r.toFixed(1) + 'px');
+    el.classList.toggle('ae-bm-l', s.x > _ae.w / 2);
+    el.classList.toggle('ae-bm-t', ringed);   // in a flight the name sits over its ring, so the pair's names never meet
+    el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
+  }
 }
 
 // "GPS BIII-3  (PRN 23)" -> "PRN 23"; anything else as given.
@@ -2445,8 +2746,29 @@ function _aeTurnBy(dAz, dEl) {
 }
 // A drag that began on the hero disc (almanac.js), carried on into the view.
 function _aeHandDrag(dx, dy) {
-  if (!_aeIsOpen || !_ae.gl) return;
+  if (!_aeIsOpen || !_ae.gl) { _aeWaitDrag(dx, dy); return; }
   _aeDragBy(dx, dy);
+}
+// The view is not up yet (its parts are still being made): the disc follows the finger at once, in 2D, and the
+// drag so far is kept to turn the Moon by when the view lifts it. Shown as the disc leaning toward the finger.
+var AE_WAIT_DRAG_LEAN = 0.35, AE_WAIT_DRAG_MAX_PX = 48;
+var _aeWaitDragPx = null;
+function _aeWaitDrag(dx, dy) {
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (!hero) return;
+  var p = _aeWaitDragPx || (_aeWaitDragPx = { x: 0, y: 0 });
+  p.x += dx; p.y += dy;
+  var lean = function (v) { return _aeClamp(v * AE_WAIT_DRAG_LEAN, -AE_WAIT_DRAG_MAX_PX, AE_WAIT_DRAG_MAX_PX); };
+  hero.style.transition = 'none';
+  hero.style.transform = 'translate(' + lean(p.x).toFixed(1) + 'px,' + lean(p.y).toFixed(1) + 'px)';
+}
+// The disc is let go (before the view lifts it, which reads where it stands); returns the drag kept, if any.
+function _aeWaitDragRelease() {
+  var p = _aeWaitDragPx;
+  _aeWaitDragPx = null;
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (hero) { hero.style.transition = ''; hero.style.transform = ''; }
+  return p;
 }
 // A finger's move, in screen pixels (right, down), as the camera's turn: the
 // surface under the finger goes with it ("it moves when I drag but I can't
@@ -2729,13 +3051,21 @@ function _aeEnsure() {
 function _aeReady() { return !!(_ae && _ae.gl && _ae.ready); }
 // Resolves true when the view can draw; false when it cannot (no WebGL, or
 // the day map, without which there is no view, did not load).
-function _aePrepare() {
+// Prepared in slices, a breath between (app.js quietBreath), so no one task holds the main thread: three.js, the
+// context and scene, the maps (decoded off the main thread; uploaded one to a slice below), the shaders. `urgent`
+// (the person touched the Moon, or the view is opening) takes the breaths out: the next task, not the next quiet.
+var _aeUrgent = false;
+function _aeBreath() { return _aeUrgent ? new Promise(function (r) { setTimeout(r, 0); }) : quietBreath(); }
+function _aePrepare(urgent) {
+  if (urgent) _aeUrgent = true;
   if (!_aeEnsure()) return Promise.resolve(false);
   if (_aeReady()) return Promise.resolve(true);
   if (_ae.failed) return Promise.resolve(false);
   if (_aePreparing) return _aePreparing;
   _ae.loading = true;
   _aePreparing = _aeLoadThree().then(function (THREE) {
+    return _aeBreath().then(function () { return THREE; });
+  }).then(function (THREE) {
     var S = _ae.gl;
     if (!S) {
       S = _aeBuildGl(THREE, _aeById('ae-canvas'));
@@ -2751,13 +3081,12 @@ function _aePrepare() {
     return _aeLoadMaps(S).then(function (dayMapIn) {
       if (_ae.gl !== S) return false;     // the Almanac closed while it loaded
       if (!dayMapIn) { _aeDisposeGl(); return false; }
-      _ae.ready = true;
-      _aeWarm(S);
-      return true;
+      return _aeWarmSliced(S);
     });
   }).catch(function () { return false; }).then(function (ok) {
     _ae.loading = false;
     _aePreparing = null;
+    _aeUrgent = false;
     return ok;
   });
   return _aePreparing;
@@ -2770,19 +3099,52 @@ function _aeWarm(S) {
   _aeUpdate(_ae.scene.ms);
   S.renderer.compile(S.scene, S.camera);
   S.renderer.render(S.scene, S.camera);
+  _aeUploadMaps(S);
 }
-// Behind the page, once it has painted and the browser is idle.
-var AE_IDLE_PREPARE_TIMEOUT_MS = 4000;
-function _aePrepareWhenIdle() {
-  var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 1); };
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () {
-      idle(function () {
-        if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return;
-        _aePrepare();
-      }, { timeout: AE_IDLE_PREPARE_TIMEOUT_MS });
+// The same, a task each: the scene set, the shaders (compileAsync where three has it: the driver compiles them off
+// the main thread), the first render, then each map's upload.
+function _aeWarmSliced(S) {
+  var live = function () { return _ae.gl === S && !_aeIsOpen; };
+  var slice = function (fn) { return _aeBreath().then(function () { if (live()) fn(); }); };
+  if (!live()) { _ae.ready = true; return Promise.resolve(true); }
+  return slice(function () {
+    _ae.scene = _aeSceneAt(_aeDisplayMs());
+    _aeUpdate(_ae.scene.ms);
+  }).then(function () {
+    return _aeBreath().then(function () {
+      if (!live()) return;
+      return S.renderer.compileAsync ? S.renderer.compileAsync(S.scene, S.camera) : S.renderer.compile(S.scene, S.camera);
     });
+  }).then(function () {
+    return slice(function () { S.renderer.render(S.scene, S.camera); });
+  }).then(function () {
+    var maps = [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap], chain = Promise.resolve();
+    maps.forEach(function (u) {
+      chain = chain.then(function () { return slice(function () { if (u.value && S.renderer.initTexture) S.renderer.initTexture(u.value); }); });
+    });
+    return chain;
+  }).then(function () {
+    if (_ae.gl !== S) return false;
+    _ae.ready = true;
+    return true;
   });
+}
+// The maps the render above did not reach: three uploads a texture when a mesh that uses it is drawn, and the Moon
+// is out of the camera's frustum at the warm render, so its 4096 map (8 MB) went up in the swap's first frame
+// (WebKit, real GPU: a 155 ms frame, in the middle of the drag that opened the view). Up now, off the swap.
+function _aeUploadMaps(S) {
+  if (!S.renderer.initTexture) return;
+  [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap].forEach(function (u) {
+    if (u.value) S.renderer.initTexture(u.value);
+  });
+}
+var AE_IDLE_PREPARE_MAX_WAIT_MS = 6000;
+// Behind the page, once it has painted and the person has stopped touching it (app.js whenQuiet).
+function _aePrepareWhenIdle() {
+  whenQuiet(function () {
+    if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return false;
+    return _aePrepare();
+  }, { key: 'ae-prepare', priority: QUIET_PRI_PREPARE, maxWaitMs: AE_IDLE_PREPARE_MAX_WAIT_MS });
 }
 
 // ── Open and close ──
@@ -2947,12 +3309,15 @@ function openAlmanacEarth(opts) {
   var hero = document.querySelector(AE_HERO_SEL);
   if (hero) hero.classList.add('alm-moon-waking');
   _ae.wanted = true;
-  _aePrepare().then(function () {
+  _aePrepare(true).then(function () {
     if (hero) hero.classList.remove('alm-moon-waking');
+    var kept = _aeWaitDragRelease();
     if (!_ae.wanted) return;
     _ae.wanted = false;
     if (_aeIsOpen || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
     _aeShow(true);
+    // What the finger did while the view was being made turns the Moon now it is up.
+    if (kept && _aeIsOpen && _ae.gl) _aeDragBy(kept.x, kept.y);
   });
 }
 // The view is a step in history, as Look's overlay is: the phone's back
@@ -3008,7 +3373,7 @@ function _aeShow(fromHero) {
   _aeCoverAlmanac(true);
   if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
   _aeMessage(_aeT('alm_earth_loading'));
-  _aePrepare().then(function (ok) {
+  _aePrepare(true).then(function (ok) {
     if (!_aeIsOpen) return;
     if (!ok) {
       // "Reconnect" only when the device is offline; connected, the files did not load, and the way on is to try again.
@@ -3103,7 +3468,7 @@ function _aeDisposeGl() {
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
-  ['ae-lbl-moon', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
+  ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
     var label = _aeById(id);
     if (label) label.hidden = true;
   });

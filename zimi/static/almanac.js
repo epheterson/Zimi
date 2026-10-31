@@ -2292,8 +2292,7 @@ function _almPlaceWatch() {
     js.onerror = function() { _almPlaceLoaded = false; host.style.minHeight = ''; };
     document.head.appendChild(js);
   };
-  var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 1); };
-  requestAnimationFrame(function () { idle(load, { timeout: _ALM_PLACE_IDLE_TIMEOUT_MS }); });
+  whenQuiet(load, { key: 'alm-place', priority: QUIET_PRI_LOAD, maxWaitMs: _ALM_PLACE_IDLE_TIMEOUT_MS });
 }
 
 function _renderAlmanacContent() {
@@ -2484,28 +2483,49 @@ function _renderAlmanacContent() {
   document.getElementById('almanac-content').innerHTML = html;
 
   _renderAlmanacCalendar(now);
-  _renderSunMap(now);
-  _renderOnThisDay(now);
-  _renderTonightSky(now);
-  _renderStarChart(now);
-  _renderAnalemma(now);
-  _renderAstroPanel(now);
-  _renderMeteorShowers(now, m);
-  _renderCelestialEvents(now);
-  _renderDeepTime(now);
-  _renderRosettaStone(now);
-  _orreryStartState();
-  _initOrrery();
-  // The orrery opens at 100K× so planets visibly orbit on load (still at now, where motion is reduced)
-  _orreryLastFrame = performance.now();
-  _orreryAnimate();
-  _loadSunData(now);
-  _startTzClock();
-  _almTmInit();
-  _cacheAlmanacHighlights(now, m);
-  _almPlaceWatch();
-  _almSecBarInit();
-  _almRedrawRestore(anchor);
+  // The place's section keeps the height it will draw at from the first frame: its panel is drawn later, and nothing
+  // under it may move when it lands.
+  var placeHost = document.getElementById('almanac-place');
+  if (placeHost) _almPlaceReserve(placeHost);
+  // Everything under the calendar is drawn after the Moon, the sky and the month have been painted: the first
+  // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
+  // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
+  // again over itself keeps its reader's place (anchor) and so draws whole, at once.
+  var panels = [
+    function () { _renderSunMap(now, true); },
+    function () { _initTzClock(now); },
+    function () { _renderOnThisDay(now); _renderTonightSky(now); },
+    function () { _renderStarChart(now); },
+    function () { _renderAnalemma(now); _renderAstroPanel(now); },
+    function () { _renderMeteorShowers(now, m); _renderCelestialEvents(now); },
+    function () { _renderDeepTime(now); _renderRosettaStone(now); },
+    function () {
+      _orreryStartState();
+      _initOrrery();
+      // The orrery opens at 100K× so planets visibly orbit on load (still at now, where motion is reduced)
+      _orreryLastFrame = performance.now();
+      _orreryAnimate();
+    },
+    function () { _loadSunData(now); _startTzClock(); _almTmInit(); _cacheAlmanacHighlights(now, m); },
+    function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
+  ];
+  _almPanelsReady = false;
+  if (anchor) panels.forEach(function (p) { p(); });
+  else _almAfterPaint(panels);
+}
+
+// The panels run after the browser has painted what is already drawn, one to a task, each when the person is not
+// touching the screen (app.js whenQuiet), unless the Almanac was closed or drawn again meanwhile: the newer draw is
+// the one that counts. A panel that has waited ALM_PANEL_MAX_WAIT_MS is drawn anyway (a finger that is up).
+var ALM_PANEL_MAX_WAIT_MS = 900;
+var _almPanelsReady = false;   // every panel under the calendar is drawn (the last slice has run)
+var _almAfterPaintToken = 0;
+function _almAfterPaint(steps) {
+  var token = ++_almAfterPaintToken;
+  steps.forEach(function (fn, i) {
+    whenQuiet(function () { if (token === _almAfterPaintToken && _almanacOpen) fn(); },
+      { key: 'alm-panel:' + i, priority: QUIET_PRI_PANELS, maxWaitMs: ALM_PANEL_MAX_WAIT_MS });
+  });
 }
 
 // The page drawn again over itself (its deep-links arriving, a new language)
@@ -2758,9 +2778,17 @@ var _almMoonPress = null;   // { id, x, y, lx, ly, lifted }
 function _almMoonTarget(e) {
   return e.target && e.target.closest ? e.target.closest('#almanac-head .almanac-moon-open') : null;
 }
-function _almMoonPrepare() { if (typeof _aePrepare === 'function') _aePrepare(); }
+function _almMoonPrepare() { if (typeof _aePrepare === 'function') _aePrepare(true); }
+// The 3D view's file loads right after the page opens (app.js openAlmanac): a lift asked for before it is in is
+// kept, not dropped, and made the moment it is (a drag on a Moon just painted did nothing at all).
+var ALM_LIFT_WAIT_MS = 100, ALM_LIFT_WAIT_TRIES = 100;
 function _almMoonLift() {
-  if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: 'moon', fromHero: true });
+  var lift = function () { window.openAlmanacEarth({ target: 'moon', fromHero: true }); };
+  if (typeof window.openAlmanacEarth === 'function') { lift(); return; }
+  var tries = 0, timer = setInterval(function () {
+    if (typeof window.openAlmanacEarth === 'function') { clearInterval(timer); if (_almanacOpen) lift(); }
+    else if (++tries >= ALM_LIFT_WAIT_TRIES || !_almanacOpen) clearInterval(timer);
+  }, ALM_LIFT_WAIT_MS);
 }
 document.addEventListener('pointerover', function (e) { if (_almMoonTarget(e)) _almMoonPrepare(); });
 document.addEventListener('focusin', function (e) { if (_almMoonTarget(e)) _almMoonPrepare(); });
@@ -3907,7 +3935,7 @@ var _sunMapLon = -118;
 var _sunMapLocName = '';
 var _sunMapHasLocation = false;
 
-function _renderSunMap(now) {
+function _renderSunMap(now, clockLater) {
   var el = document.getElementById('almanac-sunmap');
   if (!el) return;
   _sunMapNow = now;
@@ -4045,8 +4073,8 @@ function _renderSunMap(now) {
     };
   }
 
-  // Timezone analog clock + pills
-  _initTzClock(now);
+  // Timezone analog clock + pills (a caller that draws the page in slices draws them as a slice of their own)
+  if (!clockLater) _initTzClock(now);
 }
 
 // ── Timezone analog clock ──
