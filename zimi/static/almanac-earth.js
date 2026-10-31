@@ -718,10 +718,31 @@ function _aeLoadSgp4() {
   }
   return _aeSgp4Promise;
 }
+// A map is fetched and decoded off the main thread (createImageBitmap) and handed to three as a texture of its own
+// kind (the build exports no Texture: its class is the one a TextureLoader hands back). Without createImageBitmap, or
+// where it fails, three's own loader decodes it where it is first used.
+var AE_BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+function _aeTextureClass(THREE) {
+  var probe = new THREE.TextureLoader().load(AE_BLANK_GIF);
+  probe.dispose();
+  return probe.constructor;
+}
 function _aeLoadTexture(THREE, url) {
-  return new Promise(function (resolve, reject) {
-    new THREE.TextureLoader().load(url, resolve, undefined, reject);
-  });
+  var viaLoader = function () {
+    return new Promise(function (resolve, reject) {
+      new THREE.TextureLoader().load(url, resolve, undefined, reject);
+    });
+  };
+  if (typeof createImageBitmap !== 'function' || typeof fetch !== 'function') return viaLoader();
+  return fetch(url).then(function (r) { if (!r.ok) throw new Error(url); return r.blob(); }).then(function (blob) {
+    // Flipped as it is decoded: WebGL's flipY does not apply to an ImageBitmap.
+    return createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  }).then(function (bmp) {
+    var Tex = _aeTextureClass(THREE), tx = new Tex(bmp);
+    tx.flipY = false;
+    tx.needsUpdate = true;
+    return tx;
+  }).catch(viaLoader);
 }
 
 // ── Shaders ──
@@ -1424,7 +1445,7 @@ function _aeLoadMap(S, uni, url, format, load) {
       _ae.dirty = true;
       _aeKick();
       // Ready behind the page, a map that comes later is uploaded now too.
-      if (ok && _ae.ready) _aeWarm(S);
+      if (ok && _ae.ready) _aeWarmSliced(S);
       return ok;
     });
   }
@@ -2609,8 +2630,29 @@ function _aeTurnBy(dAz, dEl) {
 }
 // A drag that began on the hero disc (almanac.js), carried on into the view.
 function _aeHandDrag(dx, dy) {
-  if (!_aeIsOpen || !_ae.gl) return;
+  if (!_aeIsOpen || !_ae.gl) { _aeWaitDrag(dx, dy); return; }
   _aeDragBy(dx, dy);
+}
+// The view is not up yet (its parts are still being made): the disc follows the finger at once, in 2D, and the
+// drag so far is kept to turn the Moon by when the view lifts it. Shown as the disc leaning toward the finger.
+var AE_WAIT_DRAG_LEAN = 0.35, AE_WAIT_DRAG_MAX_PX = 48;
+var _aeWaitDragPx = null;
+function _aeWaitDrag(dx, dy) {
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (!hero) return;
+  var p = _aeWaitDragPx || (_aeWaitDragPx = { x: 0, y: 0 });
+  p.x += dx; p.y += dy;
+  var lean = function (v) { return _aeClamp(v * AE_WAIT_DRAG_LEAN, -AE_WAIT_DRAG_MAX_PX, AE_WAIT_DRAG_MAX_PX); };
+  hero.style.transition = 'none';
+  hero.style.transform = 'translate(' + lean(p.x).toFixed(1) + 'px,' + lean(p.y).toFixed(1) + 'px)';
+}
+// The disc is let go (before the view lifts it, which reads where it stands); returns the drag kept, if any.
+function _aeWaitDragRelease() {
+  var p = _aeWaitDragPx;
+  _aeWaitDragPx = null;
+  var hero = document.querySelector(AE_HERO_SEL);
+  if (hero) { hero.style.transition = ''; hero.style.transform = ''; }
+  return p;
 }
 // A finger's move, in screen pixels (right, down), as the camera's turn: the
 // surface under the finger goes with it ("it moves when I drag but I can't
@@ -2893,13 +2935,21 @@ function _aeEnsure() {
 function _aeReady() { return !!(_ae && _ae.gl && _ae.ready); }
 // Resolves true when the view can draw; false when it cannot (no WebGL, or
 // the day map, without which there is no view, did not load).
-function _aePrepare() {
+// Prepared in slices, a breath between (app.js quietBreath), so no one task holds the main thread: three.js, the
+// context and scene, the maps (decoded off the main thread; uploaded one to a slice below), the shaders. `urgent`
+// (the person touched the Moon, or the view is opening) takes the breaths out: the next task, not the next quiet.
+var _aeUrgent = false;
+function _aeBreath() { return _aeUrgent ? new Promise(function (r) { setTimeout(r, 0); }) : quietBreath(); }
+function _aePrepare(urgent) {
+  if (urgent) _aeUrgent = true;
   if (!_aeEnsure()) return Promise.resolve(false);
   if (_aeReady()) return Promise.resolve(true);
   if (_ae.failed) return Promise.resolve(false);
   if (_aePreparing) return _aePreparing;
   _ae.loading = true;
   _aePreparing = _aeLoadThree().then(function (THREE) {
+    return _aeBreath().then(function () { return THREE; });
+  }).then(function (THREE) {
     var S = _ae.gl;
     if (!S) {
       S = _aeBuildGl(THREE, _aeById('ae-canvas'));
@@ -2915,13 +2965,12 @@ function _aePrepare() {
     return _aeLoadMaps(S).then(function (dayMapIn) {
       if (_ae.gl !== S) return false;     // the Almanac closed while it loaded
       if (!dayMapIn) { _aeDisposeGl(); return false; }
-      _ae.ready = true;
-      _aeWarm(S);
-      return true;
+      return _aeWarmSliced(S);
     });
   }).catch(function () { return false; }).then(function (ok) {
     _ae.loading = false;
     _aePreparing = null;
+    _aeUrgent = false;
     return ok;
   });
   return _aePreparing;
@@ -2936,6 +2985,34 @@ function _aeWarm(S) {
   S.renderer.render(S.scene, S.camera);
   _aeUploadMaps(S);
 }
+// The same, a task each: the scene set, the shaders (compileAsync where three has it: the driver compiles them off
+// the main thread), the first render, then each map's upload.
+function _aeWarmSliced(S) {
+  var live = function () { return _ae.gl === S && !_aeIsOpen; };
+  var slice = function (fn) { return _aeBreath().then(function () { if (live()) fn(); }); };
+  if (!live()) { _ae.ready = true; return Promise.resolve(true); }
+  return slice(function () {
+    _ae.scene = _aeSceneAt(_aeDisplayMs());
+    _aeUpdate(_ae.scene.ms);
+  }).then(function () {
+    return _aeBreath().then(function () {
+      if (!live()) return;
+      return S.renderer.compileAsync ? S.renderer.compileAsync(S.scene, S.camera) : S.renderer.compile(S.scene, S.camera);
+    });
+  }).then(function () {
+    return slice(function () { S.renderer.render(S.scene, S.camera); });
+  }).then(function () {
+    var maps = [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap], chain = Promise.resolve();
+    maps.forEach(function (u) {
+      chain = chain.then(function () { return slice(function () { if (u.value && S.renderer.initTexture) S.renderer.initTexture(u.value); }); });
+    });
+    return chain;
+  }).then(function () {
+    if (_ae.gl !== S) return false;
+    _ae.ready = true;
+    return true;
+  });
+}
 // The maps the render above did not reach: three uploads a texture when a mesh that uses it is drawn, and the Moon
 // is out of the camera's frustum at the warm render, so its 4096 map (8 MB) went up in the swap's first frame
 // (WebKit, real GPU: a 155 ms frame, in the middle of the drag that opened the view). Up now, off the swap.
@@ -2945,18 +3022,13 @@ function _aeUploadMaps(S) {
     if (u.value) S.renderer.initTexture(u.value);
   });
 }
-// Behind the page, once it has painted and the browser is idle.
-var AE_IDLE_PREPARE_TIMEOUT_MS = 4000;
+var AE_IDLE_PREPARE_MAX_WAIT_MS = 6000;
+// Behind the page, once it has painted and the person has stopped touching it (app.js whenQuiet).
 function _aePrepareWhenIdle() {
-  var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 1); };
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () {
-      idle(function () {
-        if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return;
-        _aePrepare();
-      }, { timeout: AE_IDLE_PREPARE_TIMEOUT_MS });
-    });
-  });
+  whenQuiet(function () {
+    if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return false;
+    return _aePrepare();
+  }, { key: 'ae-prepare', priority: QUIET_PRI_PREPARE, maxWaitMs: AE_IDLE_PREPARE_MAX_WAIT_MS });
 }
 
 // ── Open and close ──
@@ -3121,12 +3193,15 @@ function openAlmanacEarth(opts) {
   var hero = document.querySelector(AE_HERO_SEL);
   if (hero) hero.classList.add('alm-moon-waking');
   _ae.wanted = true;
-  _aePrepare().then(function () {
+  _aePrepare(true).then(function () {
     if (hero) hero.classList.remove('alm-moon-waking');
+    var kept = _aeWaitDragRelease();
     if (!_ae.wanted) return;
     _ae.wanted = false;
     if (_aeIsOpen || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
     _aeShow(true);
+    // What the finger did while the view was being made turns the Moon now it is up.
+    if (kept && _aeIsOpen && _ae.gl) _aeDragBy(kept.x, kept.y);
   });
 }
 // The view is a step in history, as Look's overlay is: the phone's back
@@ -3182,7 +3257,7 @@ function _aeShow(fromHero) {
   _aeCoverAlmanac(true);
   if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
   _aeMessage(_aeT('alm_earth_loading'));
-  _aePrepare().then(function (ok) {
+  _aePrepare(true).then(function (ok) {
     if (!_aeIsOpen) return;
     if (!ok) {
       // "Reconnect" only when the device is offline; connected, the files did not load, and the way on is to try again.

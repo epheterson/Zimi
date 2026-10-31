@@ -189,6 +189,8 @@ vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', S);
 for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_moonPhase', '_normDeg360'])
   vm.runInContext(extractFn(read('app.js'), fn), S);
 vm.runInContext(require('./moon_model.cjs')(), S);
+// app.js's quiet-work queue: nothing is waiting for quiet in these checks.
+vm.runInContext('var QUIET_PRI_PREPARE = 5, QUIET_PRI_PANELS = 2; function whenQuiet() {} function quietBreath() { return Promise.resolve(); }', S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-sky.js'), S);
 vm.runInContext(read('almanac-skygl.js'), S);
@@ -199,6 +201,8 @@ for (const name of ['_STARS', '_SKY_FIELD_STARS']) {
 }
 vm.runInContext(read('almanac-ephem.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
+// The slices of the view's preparation breathe on timers and frames; here they run back to back.
+vm.runInContext('_aeBreath = function () { return Promise.resolve(); };', S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
 S.window.SatelliteJS = S.SatelliteJS;
 const run = (code) => vm.runInContext(code, S);
