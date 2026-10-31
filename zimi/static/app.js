@@ -10950,7 +10950,7 @@ async function fetchPlaces(query) {
           .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
         suggestItems.push({ _place: true, zim: g.zim, path: g.main_path, title: p.name,
           sub: (what ? what + ' \u00b7 ' : '') + (g.title || g.zim),
-          pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng });
+          pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng, label: p.name });
       }
     }
     suggestItems = suggestItems.slice(0, 12);
@@ -11112,7 +11112,7 @@ function selectSuggest(i) {
   }
   // Regular suggestion or history article; a place carries where it is.
   q.value = s.title;
-  if (s.pos) openArticle(s.zim, s.path, s.title, {pos: s.pos}); else _openResult(s.zim, s.path, s.title);
+  if (s.pos) openArticle(s.zim, s.path, s.title, {pos: s.pos, label: s.label}); else _openResult(s.zim, s.path, s.title);
 }
 
 // ── Library Manager ──
@@ -21694,9 +21694,12 @@ function _readerPrintCleanup() {
 // where you were was unbookmarkable, unshareable, and lost on reload. A map
 // you cannot return to a place on is a picture of a map.
 //
-// The author exposes the MapLibre instance on window, which is the whole
-// reason this is possible without a change on their side. Nothing here assumes
-// their internals beyond that handle and MapLibre's own public API.
+// StreetZim's viewer reads #map=zoom/lat/lng on load and on hashchange and
+// writes it back with replaceState after each move (jasontitus/streetzim#18),
+// and #pin=lat,lng&label=name drops a pin. That is the interface. Maps built
+// before that release have only the MapLibre instance on window (__szMap,
+// which their author asks nobody to build on), so it stays as the fallback,
+// and Kiwix's maps2zim keeps its own handle and its own #lat=&lon=&zoom=.
 //
 // The position rides in the URL hash, in the same z/lat/lng order OSM has used
 // for years. One mechanism then covers everything: a shared link opens where
@@ -21732,6 +21735,45 @@ function _readerMap() {
   return null;
 }
 
+function _readerWin() {
+  try {
+    var frame = document.getElementById('reader-frame');
+    return (frame && frame.contentWindow) || null;
+  } catch (e) { return null; }
+}
+
+// The hash interface. A map is known to speak it once its hash changes to
+// something Zimi did not write: an old map never touches its hash, so a #map=
+// we put there stays put and proves nothing. Until then the handle is used
+// (it works for both); a map with no handle at all can only be spoken to by hash.
+var _mapWroteHash = '';
+var _mapHashWin = null;
+function _frameHash(win) {
+  try { return win.location.hash.slice(1); } catch (e) { return ''; }
+}
+function _hashMapWin() {
+  var win = _readerWin();
+  if (!win) return null;
+  if (_mapHashWin === win) return win;
+  var h = _frameHash(win);
+  if (h && h !== _mapWroteHash && parseMapHash('#' + h)) { _mapHashWin = win; return win; }
+  return (!_readerMap() && _isMapPage()) ? win : null;
+}
+// Where the map says it is, from its own hash; null for a map that does not write one.
+function _hashMapPos() {
+  var win = _hashMapWin();
+  return win ? parseMapHash('#' + _frameHash(win)) : null;
+}
+// Tell the map, by hash, to look at pos ({zoom, lat, lng}), with a pin and name when given.
+function _setMapHash(win, pos, pin) {
+  var h = mapPositionHash(pos.zoom, pos.lat, pos.lng) + (pin ? _mapPinHash(pos.lat, pos.lng, pin) : '');
+  _mapWroteHash = h;
+  try { win.location.replace(win.location.href.split('#')[0] + '#' + h); } catch (e) {}
+}
+function _mapPinHash(lat, lng, label) {
+  return '&pin=' + (+lat).toFixed(5) + ',' + (+lng).toFixed(5) + (label ? '&label=' + encodeURIComponent(label) : '');
+}
+
 function mapPositionHash(zoom, lat, lng) {
   // Two decimals of zoom and five of position: about a metre, which is finer
   // than anyone points at and short enough to read in a URL.
@@ -21764,7 +21806,7 @@ function parseMapHash(hash) {
 // there, hidden, and the resize that hiding it causes fires one more moveend,
 // which must not write the map's position onto the library's URL.
 function _urlIsOpenMapPage() {
-  return !!(readerOpen && currentArticle && _readerMap() &&
+  return !!(readerOpen && currentArticle && (_readerMap() || _hashMapWin()) &&
     location.pathname + location.search === _articleDeepLinkPath(currentArticle.zim, currentArticle.path));
 }
 
@@ -21777,17 +21819,34 @@ function _watchReaderMap() {
     _mapHashTimer = setTimeout(function() {
       if (!_urlIsOpenMapPage()) return;
       try {
-        var c = map.getCenter();
-        var base = location.pathname + location.search;
-        // replaceState, never push: a pan is not a navigation, and pushing
-        // would bury the page you came from under a hundred entries.
-        var here = mapPositionHash(map.getZoom(), c.lat, c.lng);
-        history.replaceState(history.state, '', base + '#' + here);
-        _histFollowMap(here);
+        _followMapToAddress(_currentMapPositionHash());
       } catch (e) {}
     }, _MAP_HASH_DEBOUNCE_MS);
   };
   try { map.on('moveend', onMove); } catch (e) {}
+}
+// replaceState, never push: a pan is not a navigation, and pushing would bury
+// the page you came from under a hundred entries.
+function _followMapToAddress(here) {
+  if (!here) return;
+  history.replaceState(history.state, '', location.pathname + location.search + '#' + here);
+  _histFollowMap(here);
+}
+// A map with no handle is followed by reading its hash on a timer: it moves
+// itself with replaceState, which fires nothing.
+var _HASH_MAP_POLL_MS = 500;
+var _mapHashPoll = null;
+function _watchHashMap() {
+  if (_mapHashPoll) return;
+  var last = '';
+  _mapHashPoll = setInterval(function() {
+    if (!_isMapPage()) { clearInterval(_mapHashPoll); _mapHashPoll = null; return; }
+    if (_readerMap() || !_urlIsOpenMapPage()) return;
+    var p = _hashMapPos();
+    if (!p) return;
+    var here = mapPositionHash(p.zoom, p.lat, p.lng);
+    if (here !== last) { last = here; _followMapToAddress(here); }
+  }, _HASH_MAP_POLL_MS);
 }
 
 // The hash is the source of truth for where the map is, so react to it
@@ -21799,13 +21858,13 @@ window.addEventListener('hashchange', function() {
   var pos = parseMapHash(location.hash);
   if (!pos) return;
   var map = _readerMap();
-  if (!map) return;  // not a map page; the load handler will deal with it
+  if (!map && !_hashMapWin()) return;  // not a map page; the load handler will deal with it
   try {
-    var c = map.getCenter();
+    var c = _hashMapPos() || {lat: map.getCenter().lat, lng: map.getCenter().lng, zoom: map.getZoom()};
     // Already there: jumping again would fight a drag that is still settling.
     if (Math.abs(c.lat - pos.lat) < 1e-5 && Math.abs(c.lng - pos.lng) < 1e-5 &&
-        Math.abs(map.getZoom() - pos.zoom) < 0.01) return;
-    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+        Math.abs(c.zoom - pos.zoom) < 0.01) return;
+    _putMapAt(map, pos);
   } catch (e) {}
   // Back to a place you were at: the tab is called what it was called then.
   var was = _histFindPlace(currentArticle && currentArticle.zim, location.hash.slice(1));
@@ -21906,7 +21965,7 @@ function _mapPlaceRowsHtml(groups) {
 function _spaMapPlace(e, el) {
   return _spaNav(e, function () {
     openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
-      {pos: el.getAttribute('data-pos') || ''});
+      {pos: el.getAttribute('data-pos') || '', label: el.getAttribute('data-title') || ''});
   });
 }
 
@@ -24551,6 +24610,8 @@ function _syncGameHead() {
 // has not answered yet; null when this is not a map.
 function _currentMapPositionHash() {
   try {
+    var own = _hashMapPos();
+    if (own) return mapPositionHash(own.zoom, own.lat, own.lng);
     var map = _readerMap();
     if (map) {
       var c = map.getCenter();
@@ -24660,7 +24721,7 @@ function _mapWhereIAm() {
     var pos = mapPositionHash(15, lat, lng);
     var map = _readerMap();
     if (map) {
-      try { map.jumpTo({center: [lng, lat], zoom: 15}); } catch (e) {}
+      try { _mapPinLabel = ''; _putMapAt(map, {lat: lat, lng: lng, zoom: 15}); } catch (e) {}
       history.replaceState(history.state, '', location.pathname + location.search + '#' + pos);
     }
   }, function() { _showToast(t('map_location_unavailable')); }, {enableHighAccuracy: false, timeout: 10000, maximumAge: 60000});
@@ -24941,10 +25002,27 @@ function _mapHomeView(zim) {
   }).catch(function() {});
 }
 
+// The name a place result carried, for the pin the map drops there; kept until
+// the next position that is not that place.
+var _mapPinLabel = '';
+// Put a map at pos: by its hash when it speaks it (a pin with it), else by its handle.
+function _putMapAt(map, pos) {
+  var win = _hashMapWin();
+  if (win) { _setMapHash(win, pos, _mapPinLabel); return; }
+  // Not yet known to speak hash (it has not moved on its own): a pin can only be asked for by hash,
+  // so ask, and move it by handle as well in case it is a map built before the hash.
+  var sz = _mapPinLabel && currentArticle && (zimsCache || []).filter(function(z) { return z.name === currentArticle.zim; })[0];
+  if (sz && sz.map_source === 'StreetZim' && _readerWin()) _setMapHash(_readerWin(), pos, _mapPinLabel);
+  map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+}
+
 function _restoreMapPosition(pos, tries) {
   if (!pos) return;
   var map = _readerMap();
   if (!map) {
+    // A map with no handle is put where it should be by its hash alone.
+    var hw = _hashMapWin();
+    if (hw) { _setMapHash(hw, pos, _mapPinLabel); _watchHashMap(); return; }
     if ((tries || 0) >= _MAP_RESTORE_TRIES) return;
     // The map is built after the frame loads, so there is nothing to aim at
     // yet. Poll briefly rather than guess a delay.
@@ -24952,7 +25030,7 @@ function _restoreMapPosition(pos, tries) {
     return;
   }
   try {
-    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+    _putMapAt(map, pos);
     // A map with maxBounds (StreetZim's region box) cannot look at a spot
     // when the view is wider than the box: it recentres on the box instead.
     // Zoom in until it can, and keep that zoom for the re-puts below.
@@ -25336,7 +25414,7 @@ function openReader(url) {
     if (!_mapPos && _pendingMapHome && currentArticle && _pendingMapHome.zim === currentArticle.zim) { _mapPos = _pendingMapHome.pos; _pendingMapHome = null; }
     _restoreMapPosition(_mapPos, 0);
     _applyMapFind(0);
-    setTimeout(_watchReaderMap, 400);
+    setTimeout(function() { _watchReaderMap(); if (!_readerMap() && _hashMapWin()) _watchHashMap(); }, 400);
     // Inject responsive CSS + scroll-to-top button for mobile. Not into
     // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
     // and the button sat on a video's dock and over a thread's last lines.
@@ -29040,6 +29118,8 @@ function _fallbackTitle(zim, path) {
 
 function openArticle(zim, path, title, opts) {
   _appsOff();
+  // A place found by name is opened with a pin and its name; any other position is just a position.
+  _mapPinLabel = (opts && opts.pos && opts.label) || '';
   // A sentence to be shown in the article once it is up (a quoted passage).
   _pendingQuote = (opts && opts.quote) ? { zim: zim, text: opts.quote } : null;
   // A place on the map already on screen: fly there. Reloading an 800,000
@@ -29066,6 +29146,7 @@ function openArticle(zim, path, title, opts) {
     _mapWatched = null;
     clearTimeout(_mapHashTimer);
   }
+  _mapHashWin = null;
   // A query bound for the map's own search box, once the map has one.
   _pendingMapFind = (opts && opts.find) ? {zim: zim, q: opts.find} : null;
   // Any normal article open cancels a pending "return to almanac" intent; the
@@ -29099,8 +29180,12 @@ function openArticle(zim, path, title, opts) {
     var mp = parseMapHash('#' + opts.pos);
     if (mp && mz && mz.map_source === 'Kiwix') {
       url += '#lat=' + mp.lat + '&lon=' + mp.lng + '&zoom=' + Math.round(mp.zoom);
+    } else if (mp && mz && mz.map_source === 'StreetZim') {
+      // StreetZim reads its address on load; a map built before that ignores it and is placed by its handle.
+      _mapWroteHash = mapPositionHash(mp.zoom, mp.lat, mp.lng) + (_mapPinLabel ? _mapPinHash(mp.lat, mp.lng, _mapPinLabel) : '');
+      url += '#' + _mapWroteHash;
     }
-  } else if (mz && mz.kind === 'map' && mz.map_source === 'StreetZim') {
+  } else if (mz && mz.kind === 'map' && mz.map_source === 'StreetZim' && !_MAP_HASH_RE.test(path)) {
     // Nowhere remembered: the map opens over its settlements, not over the
     // middle of its region's box (Hawaii's box is mostly ocean, and the
     // islands sat off the right edge).
