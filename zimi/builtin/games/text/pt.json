@@ -1169,7 +1169,6 @@
   "one": "Você fechou um quadrado e joga de novo.",
   "other": "Você fechou {n} quadrados e joga de novo."
  },
- "draughts.bar": "Damas 10x10",
  "draughts.board": "Tabuleiro de damas",
  "draughts.cantTake": "A captura é obrigatória: essa peça não pode capturar",
  "draughts.king": "dama",

@@ -366,8 +366,9 @@
     // The clock sits before the buttons, the Menu last.
     var firstBtn = Array.prototype.filter.call(bar.children, function (c) { return c.classList.contains('ar-btn') && !c.hidden; })[0];
     Array.prototype.forEach.call(bar.querySelectorAll('.ar-stat'), function (s) { bar.insertBefore(s, firstBtn || null); keepOneStat(s); });
-    // An Undo that cannot be used (a fresh game) is absent, not ghosted.
-    Array.prototype.forEach.call(bar.querySelectorAll('[id$="undo"], [data-gs-bar]'), hideWhileDisabled);
+    // The bar never shifts: Undo has its place from the first frame (disabled until there is a move), and a page's own bar
+    // button (the puzzles' Redo) keeps its room too, unseen while disabled.
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-gs-bar]:not([id$="undo"])'), hideWhileDisabled);
     bar.appendChild(menuBtn);
     // The move timer's thin bar, right under the header.
     mt.label = h('span', { class: 'gs-turn-n', 'aria-hidden': 'true' });
@@ -386,7 +387,7 @@
     fit();
   }
   function hideWhileDisabled(btn) {
-    var sync = function () { btn.hidden = btn.disabled; };
+    var sync = function () { btn.classList.toggle('gs-absent', btn.disabled); };
     if (root.MutationObserver) new root.MutationObserver(sync).observe(btn, { attributes: true, attributeFilter: ['disabled'] });
     sync();
   }
@@ -430,7 +431,10 @@
       if (span && blurb) span.textContent = blurb;
     });
   };
-  // The bar's h1 is English in the page; it changes (and the name is returned) only when it still says exactly what the table's English says.
+  // The bar's h1 is English in the page; it takes the table's word for the game's title when it still says that title, however it
+  // is spelled in the markup (case, typographic or straight apostrophes, entities, spacing). A title the page means to differ from
+  // the game's name carries its own data-t key and is translated by the page kit.
+  function plainTitle(s) { return String(s || '').replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase(); }
   function localizeName() {
     var h1 = d.querySelector('.ar-bar h1'), stem = pageStem(), en = root.ZimiText && root.ZimiText.table && root.ZimiText.table.en;
     if (!h1 || !stem || !en) return '';
@@ -438,7 +442,7 @@
     if (!node) return '';
     var keys = ['game.' + stem + '.title'].concat(stem === 'puzzles' ? ['shelf.section.puzzles'] : []);
     for (var i = 0; i < keys.length; i++) {
-      if (en[keys[i]] === node.nodeValue.trim() && root.ZimiText.has(keys[i])) { node.nodeValue = T(keys[i]); return node.nodeValue; }
+      if (plainTitle(en[keys[i]]) === plainTitle(node.nodeValue) && root.ZimiText.has(keys[i])) { node.nodeValue = T(keys[i]); return node.nodeValue; }
     }
     return '';
   }

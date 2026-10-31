@@ -1169,7 +1169,6 @@
   "one": "Vous avez pris {n} case et rejouez.",
   "other": "Vous avez pris {n} cases et rejouez."
  },
- "draughts.bar": "Dames 10x10",
  "draughts.board": "Plateau de dames",
  "draughts.cantTake": "La prise est obligatoire : ce pion ne peut pas prendre",
  "draughts.king": "dame",

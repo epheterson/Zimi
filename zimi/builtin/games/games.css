@@ -85,6 +85,8 @@ button { font: inherit; color: inherit; }
 .ar-btn { min-height: 36px; padding: 0 var(--sp-3) 1px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; white-space: nowrap; }
 @media (pointer: coarse) { .ar-btn { min-height: var(--target); } }
 .ar-btn[hidden] { display: none; }
+/* A bar button that is not available keeps its room so Menu never moves; it is unseen and unreachable. */
+.ar-bar .ar-btn.gs-absent { visibility: hidden; }
 /* Hover is for a pointer: on a touch screen the last tap leaves the finger's place "hovered" and a second option looks chosen. */
 @media (hover: hover) { .ar-btn:hover { border-color: var(--accent); color: var(--accent); } }
 .ar-btn[aria-pressed="true"], .ar-btn.gs-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

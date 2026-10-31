@@ -1126,7 +1126,6 @@
   "one": "You took a box and go again.",
   "other": "You took {n} boxes and go again."
  },
- "draughts.bar": "Draughts 10x10",
  "draughts.board": "Draughts board",
  "draughts.cantTake": "A capture is compulsory: that piece cannot take",
  "draughts.king": "king",

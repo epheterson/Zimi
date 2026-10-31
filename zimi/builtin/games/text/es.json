@@ -1169,7 +1169,6 @@
   "one": "Te llevaste una caja y mueves otra vez.",
   "other": "Te llevaste {n} cajas y mueves otra vez."
  },
- "draughts.bar": "Damas 10x10",
  "draughts.board": "Tablero de damas",
  "draughts.cantTake": "La captura es obligatoria: esa ficha no puede capturar",
  "draughts.king": "dama",

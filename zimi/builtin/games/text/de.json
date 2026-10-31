@@ -1126,7 +1126,6 @@
   "one": "Ein Kästchen geschlossen: Sie sind noch einmal dran.",
   "other": "{n} Kästchen geschlossen: Sie sind noch einmal dran."
  },
- "draughts.bar": "Dame 10x10",
  "draughts.board": "Damebrett",
  "draughts.cantTake": "Schlagzwang: Dieser Stein kann nicht schlagen",
  "draughts.king": "Dame",

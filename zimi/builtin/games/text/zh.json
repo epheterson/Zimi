@@ -1083,7 +1083,6 @@
  "dotsandboxes.tookAgain.you": {
   "other": "你占了 {n} 格，再走一步。"
  },
- "draughts.bar": "国际跳棋 10x10",
  "draughts.board": "国际跳棋棋盘",
  "draughts.cantTake": "必须吃子：那枚棋子不能吃",
  "draughts.king": "王",
