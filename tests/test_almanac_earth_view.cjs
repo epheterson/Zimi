@@ -634,14 +634,21 @@ const run = (code) => vm.runInContext(code, S);
         step.push(Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]) / near(m, from, to));
       }
       // Across the shoulder (a dozen frames either side) the pace changes smoothly; over the whole flight it is never zero.
-      const jIdx = Math.round(NS * S.AE_FLY_APPROACH_MS / (S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS + flightMs(from, to)));
+      const total = S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS + flightMs(from, to), jIdx = Math.round(NS * S.AE_FLY_APPROACH_MS / total);
       const around = step.slice(jIdx - 12, jIdx + 12);
-      const jump = Math.max(...around.slice(1).map((v, i) => Math.max(v / around[i], around[i] / v)));
+      const avg = step.reduce((x, y) => x + y, 0) / step.length;
+      // The ratio between neighbours, wherever the picture moves at all (in the crawl's turn round the shoulder the steps are a
+      // fraction of a percent of the average and their ratio is noise).
+      const jump = Math.max(...step.slice(1).map((v, i) => (v < 0.01 * avg && step[i] < 0.01 * avg ? 1 : Math.max(v / step[i], step[i] / v))).slice(2, step.length - 4));
       const lo = Math.min(...step.slice(2, step.length - 2));
+      // The crawl: within the crawl span either side of the shoulder the picture moves far slower than it does on average.
+      const half = Math.round(S.AE_FLY_CRAWL_MS / total * NS);
+      const crawl = step.slice(jIdx - half, jIdx + half + 1), mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const crawlShare = mean(crawl) / mean(step), crawlLo = Math.min(...crawl) / mean(step);
+      check(crawlShare < 0.15 && crawlLo > 1e-4, from + ' to ' + to + ': it crawls through the shoulder (apparent speed in the crawl averages ' + (crawlShare * 100).toFixed(1) + '% of the flight\'s, never under ' + (crawlLo * 100).toFixed(2) + '%)');
       check(step.length === NS && step[0] > 0, from + ' to ' + to + ': the camera path is sampled across the whole flight');
-      check(lo > 0 && jump < 8, from + ' to ' + to + ': the camera never stops and its apparent speed has no jumps (worst step ratio across the shoulder ' + jump.toFixed(2) + ', slowest step ' + lo.toExponential(1) + ')');
+      check(lo > 0 && jump < 3, from + ' to ' + to + ': the camera never stops and its apparent speed has no jumps (worst step ratio between samples ' + jump.toFixed(2) + ', slowest step ' + lo.toExponential(1) + ')');
     }
-    check(S.AE_FLY_PASS_SLOPE > 0 && S.AE_FLY_PASS_SLOPE < 1, 'the camera slows through the shoulder view but is still going');
     check(!run('(function () { _ae.target = "earth"; _ae.fly = null; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sats"); return _ae.fly.hold; })()'),
       'a change of framing on the same body has no shoulder shot');
     check(S.AE_FLY_APPROACH_MS >= 1000 && S.AE_FLY_APPROACH_MS <= 1500, 'the first move, back to the shoulder, is a deliberate one (over a second)');

@@ -376,11 +376,14 @@ var AE_FLY_MIN_MS = 500;
 // the body it leaves, off to one side so that body stands large in the foreground (its diameter this fraction of the
 // narrower side of the frame, its centre this far out toward that side, in half-frames), turned to the destination,
 // which is framed on the open side (centred this far out the other way), and carries on in without a stop.
-var AE_FLY_APPROACH_MS = 1175, AE_FLY_TAIL_MS = 275;   // the leg to the shoulder, and what the leg in adds to the flight's own length
-// How fast the camera is going as it passes the shoulder, in the leg's own length per leg-time (an even pace is 1): it
-// slows there so both bodies read, and never stops.
-var AE_FLY_PASS_SLOPE = 0.35;
-var AE_FLY_BEND_MS = 300, AE_FLY_BEND_REACH = 0.5;   // half the span over which the camera rounds the corner at the shoulder
+var AE_FLY_APPROACH_MS = 1500, AE_FLY_TAIL_MS = 900;   // the leg to the shoulder, and what the leg in adds to the flight's own length
+// The camera crawls through the shoulder view: its apparent speed (how fast the picture changes, a share of the
+// nearer body's distance per second) holds at a small share of the pace either leg cruises at for AE_FLY_CRAWL_MS
+// either side of it, and rises smoothly from there over AE_FLY_CRAWL_RAMP_MS. The leg to the shoulder eases in from rest
+// over AE_FLY_EASE_IN_MS, and the leg in eases out to rest over AE_FLY_EASE_OUT_MS.
+var AE_FLY_CRAWL_MS = 350, AE_FLY_CRAWL_RAMP_MS = 600, AE_FLY_CRAWL_SHARE = 0.04;
+var AE_FLY_EASE_IN_MS = 500, AE_FLY_EASE_OUT_MS = 800, AE_FLY_TABLE_N = 240;
+var AE_FLY_BEND_MS = 200, AE_FLY_BEND_REACH = 0.5;   // half the span over which the camera rounds the corner at the shoulder
 var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
 // A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
@@ -1628,7 +1631,7 @@ function _aeFlyTo(target, dist, azel) {
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
       _ae.fly.shoulder = sh;
-      _ae.fly.m2 = _aeArrivalSlope(_ae.fly);
+      _aeFlyTables(_ae.fly);
       _ae.fly.bend = _aeBendAfter(_ae.fly);
       _aeFarFor(sh.far);
     }
@@ -1708,34 +1711,71 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
 // How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
 // after it, which starts at the pace the leg to the shoulder ended at.
 function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
-// A rise from 0 to 1 over tau in 0..1 that leaves at slope m0 and arrives at slope m1 (cubic Hermite).
-function _aeHermiteRise(tau, m0, m1) {
-  var t = _aeClamp(tau, 0, 1), t2 = t * t, t3 = t2 * t;
-  return 3 * t2 - 2 * t3 + m0 * (t3 - 2 * t2 + t) + m1 * (t3 - t2);
+// The pace shape of a leg: `floor` of its cruise while within AE_FLY_CRAWL_MS of the shoulder (d ms away), rising
+// smoothly to the cruise.
+function _aeCrawlShape(d, floor) {
+  return floor + (1 - floor) * _smoothstep(AE_FLY_CRAWL_MS, AE_FLY_CRAWL_MS + AE_FLY_CRAWL_RAMP_MS, d);
 }
+// The running share (0..1) of a pace over 0..len ms, sampled: lookups interpolate it, so a leg's progress follows its
+// pace exactly and arrives at 1.
+function _aeRunningShare(rate, len) {
+  var n = AE_FLY_TABLE_N, tab = new Array(n + 1), sum = 0, prev = rate(0);
+  tab[0] = 0;
+  for (var i = 1; i <= n; i++) { var r = rate(len * i / n); sum += (prev + r) / 2; prev = r; tab[i] = sum; }
+  for (i = 0; i <= n; i++) tab[i] /= sum;
+  tab.total = sum * len / n;
+  return tab;
+}
+function _aeShareAt(tab, t, len) {
+  var x = _aeClamp(t / len, 0, 1) * AE_FLY_TABLE_N, i = Math.min(AE_FLY_TABLE_N - 1, Math.floor(x));
+  return tab[i] + (tab[i + 1] - tab[i]) * (x - i);
+}
+// How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
+// after it: the camera's distance to the destination goes down in log space, which is a steady apparent zoom, driven
+// by the crawl-then-rise pace (_aeFlyTables).
+function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
 function _aeFlyArrival(f, now) {
   if (!f.hold) return _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1));
-  // Leaves at slope m2 and eases in over the quintic's gentle start (speed growing as the square of the time), so the
-  // pace rises smoothly from the one the shoulder was passed at instead of leaping to the leg's own.
-  var t = _aeClamp((now - f.start - AE_FLY_APPROACH_MS) / (f.ms + AE_FLY_TAIL_MS), 0, 1), u = 1 - t;
-  return t * t * t * (10 - 15 * t + 6 * t * t) + f.m2 * t * u * u * u;
+  var q = _aeShareAt(f.inTab, now - f.start - AE_FLY_APPROACH_MS, f.ms + AE_FLY_TAIL_MS);
+  if (!f.logIn) return q;
+  // g is the log of (distance from the old body over distance to the destination): it carries both ends' apparent
+  // zoom, and one eased run of it is the whole leg in.
+  var e = Math.exp(f.g0 + (f.g1 - f.g0) * q), x = (f.r0 * e - f.dOld) / (1 + e);
+  return _aeClamp(Math.log(Math.max(1e-12, f.r0 - x) / f.r0) / f.logRatio, 0, 1);
 }
 // How far along the leg to the shoulder the camera is.
-function _aeFlyPull(now, f) { return _aeHermiteRise((now - f.start) / AE_FLY_APPROACH_MS, 0, AE_FLY_PASS_SLOPE); }
+function _aeFlyPull(now, f) { return _aeShareAt(f.outTab, now - f.start, AE_FLY_APPROACH_MS); }
 function _aeFlyEase(now) {
   var f = _ae.fly;
   return f ? _aeFlyArrival(f, now) : 1;
 }
-// The slope the leg in leaves the shoulder at, so the camera's speed carries across it: the leg to the shoulder ends
-// at AE_FLY_PASS_SLOPE of its length per its time, and the leg in is worked out in its own (very different) length.
-function _aeArrivalSlope(f) {
-  var from = f.from, sh = f.shoulder, dest = _aeTargetPos(), e = 0.01;
+// The paces of the two legs, set so the camera's apparent speed is the same either side of the shoulder: the leg to
+// the shoulder has the crawl share of its cruise at the end, and the leg in is given whatever share of its own makes the
+// apparent speed there equal (the leg in is thousands of times as long to the Sun, so its share is tiny).
+function _aeFlyTables(f) {
+  var from = f.from, sh = f.shoulder, dest = _aeTargetPos(), e = 0.01, T2 = f.ms + AE_FLY_TAIL_MS;
   var start = _aeCameraOffset(from.az, from.el, from.dist), end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
   var shOff = _aeSub(sh.pos, from.pos);
+  f.dOld = _aeLen(shOff);
   var legA = _aeLen(_aeSub(shOff, _aeSlerpOffset(start, shOff, 1 - e))) / e;
-  var legB = _aeLen(_aeSub(_aeSlerpOffset(_aeSub(sh.pos, dest), end, e), _aeSub(sh.pos, dest))) / e;
-  var m2 = AE_FLY_PASS_SLOPE * (f.ms + AE_FLY_TAIL_MS) / AE_FLY_APPROACH_MS * legA / Math.max(1e-9, legB);
-  return _aeClamp(m2, 0, 0.5);
+  var easeIn = function (t) { return _smoothstep(0, AE_FLY_EASE_IN_MS, t); };
+  var outRate = function (t) { return _aeCrawlShape(AE_FLY_APPROACH_MS - t, AE_FLY_CRAWL_SHARE) * easeIn(t); };
+  f.outTab = _aeRunningShare(outRate, AE_FLY_APPROACH_MS);
+  // Apparent speed at the shoulder: the leg's length per ms over the old body's distance.
+  var apparent = legA * AE_FLY_CRAWL_SHARE / f.outTab.total / f.dOld;
+  f.r0 = _aeLen(_aeSub(sh.pos, dest));
+  var r1 = _aeLen(end);
+  f.logIn = r1 < f.r0 * 0.9;
+  f.g0 = Math.log(f.dOld / f.r0); f.g1 = Math.log((f.dOld + f.r0 - r1) / r1); f.logRatio = Math.log(r1 / f.r0);
+  var G = f.logIn ? f.g1 - f.g0 : 1;
+  var share = AE_FLY_CRAWL_SHARE;
+  for (var i = 0; i < 12; i++) {
+    var inRate = function (t) { return _aeCrawlShape(t, share) * _smoothstep(0, AE_FLY_EASE_OUT_MS, T2 - t); };
+    var tab = _aeRunningShare(inRate, T2);
+    // Apparent speed of the leg in at its start is G (the log ratio's travel) times its share's rate per ms.
+    share = _aeClamp(apparent * tab.total / G, 1e-5, 0.6);
+  }
+  f.inTab = _aeRunningShare(function (t) { return _aeCrawlShape(t, share) * _smoothstep(0, AE_FLY_EASE_OUT_MS, T2 - t); }, T2);
 }
 // How long after the shoulder the corner is rounded for: until the leg in has carried the camera about half the old
 // body's distance away (the leg in begins very slowly, and across a flight's own scale any longer span would throw the
@@ -1743,7 +1783,7 @@ function _aeArrivalSlope(f) {
 function _aeBendAfter(f) {
   var near = _aeLen(_aeSub(f.shoulder.pos, f.from.pos)) * AE_FLY_BEND_REACH, at = f.start + AE_FLY_APPROACH_MS;
   f.bend = AE_FLY_BEND_MS;
-  var lo = 20, hi = AE_FLY_BEND_MS * 1.5, sh = f.shoulder.pos;
+  var lo = 20, hi = AE_FLY_BEND_MS, sh = f.shoulder.pos;
   if (_aeLen(_aeSub(_aeLegPos(f, at + hi), sh)) < near) return hi;
   for (var i = 0; i < 24; i++) {
     var mid = (lo + hi) / 2;
