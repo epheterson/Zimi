@@ -32,8 +32,11 @@ FRAME = "() => document.getElementById('reader-frame').contentDocument"
 READY = "() => { var d = document.getElementById('reader-frame').contentDocument; return !!(d && d.querySelector('.zw-bar')); }"
 
 
-@pytest.fixture
-def served(tmp_path, monkeypatch):
+@pytest.fixture(scope="module")
+def served(tmp_path_factory):
+    """One library and one server for the module: the tests read it and keep
+    what they save in their own browser, so rebuilding both for every test
+    (about 0.6 s each) bought nothing."""
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
     from http.server import ThreadingHTTPServer
@@ -42,6 +45,8 @@ def served(tmp_path, monkeypatch):
 
     from zimi.http import ZimHandler
 
+    tmp_path = tmp_path_factory.mktemp("wiki-reader")
+    monkeypatch = pytest.MonkeyPatch()
     zdir = str(tmp_path / "zims")
     wiki_fixture.build_library(zdir)
     monkeypatch.setattr(srv, "ZIM_DIR", zdir)
@@ -54,6 +59,7 @@ def served(tmp_path, monkeypatch):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
+    monkeypatch.undo()
 
 
 def _boot(pg, base):
