@@ -590,12 +590,12 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
     check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
       'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
-    // Between bodies the shot is over the shoulder: at the beat the old body stands large in the foreground to one
+    // Between bodies the shot is over the shoulder: at the shoulder view the old body stands large in the foreground to one
     // side, the destination is framed in the open part of the view, and the camera is looking at it.
     const shot = (from, to, w, h) => run('(function () {' +
       ' var W = _ae.w, H = _ae.h; _ae.w = ' + w + '; _ae.h = ' + h + ';' +
       ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
-      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(' + (S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS) + ');' +
+      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(' + S.AE_FLY_APPROACH_MS + ');' +
       ' var look = _aeFlyTargetPos(), off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist), pos = _aeAdd(look, off);' +
       ' var axis = _aeNorm(_aeSub(look, pos)), bodies = { earth: [[0, 0, 0], 1], moon: [_ae.scene.moon, AE_MOON_RADIUS_RE], sun: [_aeSunShown(_ae.scene), AE_SUN_SHOW_R] };' +
       ' function seen(n) { var d = _aeSub(bodies[n][0], pos); return { ang: _aeAngle(axis, d), rad: Math.asin(bodies[n][1] / _aeLen(d)), dir: _aeNorm(d) }; }' +
@@ -605,24 +605,46 @@ const run = (code) => vm.runInContext(code, S);
     for (const [from, to] of [['earth', 'moon'], ['moon', 'earth'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth']]) {
       for (const [w, h, name] of [[390, 844, 'phone'], [1280, 800, 'desktop']]) {
         const g = shot(from, to, w, h);
-        check(g.hold && g.dest < g.half * 0.5, from + ' to ' + to + ' (' + name + '): the destination is framed inside the narrower half-FOV during the hold (' +
+        check(g.hold && g.dest < g.half * 0.5, from + ' to ' + to + ' (' + name + '): the destination is framed inside the narrower half-FOV at the shoulder view (' +
           (g.dest * 180 / Math.PI).toFixed(1) + ' of ' + (g.half * 180 / Math.PI).toFixed(1) + ' degrees)');
         check(g.oldRad > g.half / 6 && g.oldRad < g.half, from + ' to ' + to + ' (' + name + '): the old body stands large in the foreground (angular radius ' +
           (g.oldRad * 180 / Math.PI).toFixed(1) + ' degrees, a third of the frame is ' + (g.half / 3 * 180 / Math.PI).toFixed(1) + ')');
         check(g.apart > g.oldRad + g.destRad, from + ' to ' + to + ' (' + name + '): the old body does not cover the destination');
       }
     }
-    // The beat is still: the camera is where it was a moment before, then it flies in.
-    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sun"); _ae.fly.start = 0;');
-    // How far the camera stands from the destination.
-    const probe = (ms) => run('(function () { _aeStepFly(' + ms + '); var l = _aeFlyTargetPos(); return _aeLen(_aeSub(_aeAdd(l, _aeCameraOffset(_ae.az, _ae.el_, _ae.dist)), _aeTargetPos())); })()');
-    const held = probe(S.AE_FLY_PULL_MS + 0.2 * S.AE_FLY_HOLD_MS), held2 = probe(S.AE_FLY_PULL_MS + 0.9 * S.AE_FLY_HOLD_MS);
-    check(Math.abs(held - held2) < 1e-9, 'the beat holds the camera still');
-    check(probe(S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly.ms')) < held, 'then it flies in toward the destination');
+    // One continuous move: the camera's path is sampled across the whole flight; it never stops, and its speed has no jumps.
+    const path = (from, to, n) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
+      ' _aePreset("' + to + '"); var f = _ae.fly, total = AE_FLY_APPROACH_MS + f.ms + AE_FLY_TAIL_MS, out = [];' +
+      ' for (var i = 0; i <= ' + n + '; i++) { f.start = 0; _aeStepFly(total * i / ' + n + ' - (i === ' + n + ' ? 1e-6 : 0)); var l = _aeFlyTargetPos();' +
+      '   out.push(_aeAdd(l, _aeCameraOffset(_ae.az, _ae.el_, _ae.dist))); if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify(out); })()'));
+    // How fast the view moves is how far the camera goes against how far it is from the nearer of the two bodies.
+    const near = (pt, from, to) => {
+      const at = (n) => run('(function () { return JSON.stringify(' + (n === 'earth' ? '[0, 0, 0]' : n === 'moon' ? '_ae.scene.moon' : '_aeSunShown(_ae.scene)') + '); })()');
+      return Math.min(...[from, to].map((n) => Math.hypot(...JSON.parse(at(n)).map((v, k) => v - pt[k]))));
+    };
+    const flightMs = (from, to) => run('(function () { _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _aePreset("' + to + '"); var m = _ae.fly.ms; _ae.fly = null; _aeFarFor(0); return m; })()');
+    const NS = 160;
+    for (const [from, to] of [['earth', 'moon'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth'], ['moon', 'earth']]) {
+      const pts = path(from, to, NS);
+      const step = [];
+      for (let i = 1; i < pts.length; i++) {
+        const m = pts[i].map((v, k) => (v + pts[i - 1][k]) / 2);
+        step.push(Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]) / near(m, from, to));
+      }
+      // Across the shoulder (a dozen frames either side) the pace changes smoothly; over the whole flight it is never zero.
+      const jIdx = Math.round(NS * S.AE_FLY_APPROACH_MS / (S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS + flightMs(from, to)));
+      const around = step.slice(jIdx - 12, jIdx + 12);
+      const jump = Math.max(...around.slice(1).map((v, i) => Math.max(v / around[i], around[i] / v)));
+      const lo = Math.min(...step.slice(2, step.length - 2));
+      check(step.length === NS && step[0] > 0, from + ' to ' + to + ': the camera path is sampled across the whole flight');
+      check(lo > 0 && jump < 8, from + ' to ' + to + ': the camera never stops and its apparent speed has no jumps (worst step ratio across the shoulder ' + jump.toFixed(2) + ', slowest step ' + lo.toExponential(1) + ')');
+    }
+    check(S.AE_FLY_PASS_SLOPE > 0 && S.AE_FLY_PASS_SLOPE < 1, 'the camera slows through the shoulder view but is still going');
     check(!run('(function () { _ae.target = "earth"; _ae.fly = null; _ae.dist = _aeFitDist(AE_FIT_EARTH); _aePreset("sats"); return _ae.fly.hold; })()'),
       'a change of framing on the same body has no shoulder shot');
-    check(S.AE_FLY_HOLD_MS >= 400 && S.AE_FLY_HOLD_MS <= 600, 'the beat is about half a second');
-    check(S.AE_FLY_PULL_MS >= 800 && S.AE_FLY_PULL_MS <= 1100, 'the first move, back to the shoulder, is a deliberate pull (about a second)');
+    check(S.AE_FLY_APPROACH_MS >= 1000 && S.AE_FLY_APPROACH_MS <= 1500, 'the first move, back to the shoulder, is a deliberate one (over a second)');
     // Both ends wear a ring through the flight, sized to the body as drawn.
     const ringsAt = (from, to, ms) => run('(function () {' +
       ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
@@ -631,14 +653,14 @@ const run = (code) => vm.runInContext(code, S);
       ' ["earth","moon","sun"].forEach(function (b) { var el = _aeById("ae-bm-" + b); out[b] = el ? { hidden: el.hidden, r: parseFloat(el.style["--ae-r"]), op: parseFloat(el.style.opacity) } : null; });' +
       ' _ae.fly = null; _aeFarFor(0); return out; })()');
     for (const [from, to] of [['moon', 'sun'], ['earth', 'moon']]) {
-      const early = ringsAt(from, to, S.AE_FLY_PULL_MS * 0.5), held = ringsAt(from, to, S.AE_FLY_PULL_MS + 0.5 * S.AE_FLY_HOLD_MS);
-      const mid = ringsAt(from, to, S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + 0.5 * run('_ae.fly ? _ae.fly.ms : 1000'));
-      check(held[from] && held[to] && !held[from].hidden && !held[to].hidden, from + ' to ' + to + ': a ring on the source and the destination at the beat');
+      const early = ringsAt(from, to, S.AE_FLY_APPROACH_MS * 0.5), held = ringsAt(from, to, S.AE_FLY_APPROACH_MS);
+      const mid = ringsAt(from, to, S.AE_FLY_APPROACH_MS + 0.5 * run('_ae.fly ? _ae.fly.ms : 1000'));
+      check(held[from] && held[to] && !held[from].hidden && !held[to].hidden, from + ' to ' + to + ': a ring on the source and the destination at the shoulder view');
       check(held[from].r >= S.AE_RING_MIN_R_PX && held[to].r >= S.AE_RING_MIN_R_PX, from + ' to ' + to + ': no ring under the minimum');
       check(held[from].r > held[to].r, from + ' to ' + to + ': the foreground source has the bigger ring (' + held[from].r + ' vs ' + held[to].r + ')');
       check(early[from].r !== held[from].r || early[to].r !== held[to].r, from + ' to ' + to + ': the rings change size as the camera moves');
     }
-    const done = ringsAt('moon', 'sun', S.AE_FLY_PULL_MS + S.AE_FLY_HOLD_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms; _ae.fly = null; return m; })()') - 1);
+    const done = ringsAt('moon', 'sun', S.AE_FLY_APPROACH_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms + AE_FLY_TAIL_MS; _ae.fly = null; return m; })()') - 1);
     check(done.sun.hidden || done.sun.op < 0.05, 'the rings are gone once the camera has arrived');
     check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
       'a flight eases in and out');

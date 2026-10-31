@@ -372,11 +372,15 @@ var AE_KEY_ZOOM = 1.15;
 // GPS shell): a nudge between framings is quick, a crossing to the Sun is
 // the longest, and nothing takes longer than AE_FLY_FAR_MS.
 var AE_FLY_MIN_MS = 500;
-// A flight between two bodies is an over-the-shoulder shot: the camera eases back behind the body it leaves, off to
-// one side so that body stands large in the foreground (its diameter this fraction of the narrower side of the
-// frame, its centre this far out toward that side, in half-frames), turned to the destination, which is framed
-// on the open side (centred this far out the other way). A beat there, then in.
-var AE_FLY_PULL_MS = 900, AE_FLY_HOLD_MS = 550;
+// A flight between two bodies is one continuous move through an over-the-shoulder view: the camera eases back behind
+// the body it leaves, off to one side so that body stands large in the foreground (its diameter this fraction of the
+// narrower side of the frame, its centre this far out toward that side, in half-frames), turned to the destination,
+// which is framed on the open side (centred this far out the other way), and carries on in without a stop.
+var AE_FLY_APPROACH_MS = 1175, AE_FLY_TAIL_MS = 275;   // the leg to the shoulder, and what the leg in adds to the flight's own length
+// How fast the camera is going as it passes the shoulder, in the leg's own length per leg-time (an even pace is 1): it
+// slows there so both bodies read, and never stops.
+var AE_FLY_PASS_SLOPE = 0.35;
+var AE_FLY_BEND_MS = 300, AE_FLY_BEND_REACH = 0.5;   // half the span over which the camera rounds the corner at the shoulder
 var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
 // A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
@@ -1624,6 +1628,8 @@ function _aeFlyTo(target, dist, azel) {
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
       _ae.fly.shoulder = sh;
+      _ae.fly.m2 = _aeArrivalSlope(_ae.fly);
+      _ae.fly.bend = _aeBendAfter(_ae.fly);
       _aeFarFor(sh.far);
     }
     _ae.az = from.az; _ae.el_ = from.el;
@@ -1699,33 +1705,90 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
-// How far along the flight's arrival is, eased (1 when there is none). With the shoulder shot the arrival is the part
-// after the beat, the roll waiting for it.
-function _aeFlyLead(f) { return f.hold ? AE_FLY_PULL_MS + AE_FLY_HOLD_MS : 0; }
-function _aeFlyArrival(f, now) {
-  return _aeEaseInOut(_aeClamp((now - f.start - _aeFlyLead(f)) / f.ms, 0, 1));
+// How far along the flight's arrival is, eased (1 when there is none). With the shoulder view the arrival is the leg
+// after it, which starts at the pace the leg to the shoulder ended at.
+function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
+// A rise from 0 to 1 over tau in 0..1 that leaves at slope m0 and arrives at slope m1 (cubic Hermite).
+function _aeHermiteRise(tau, m0, m1) {
+  var t = _aeClamp(tau, 0, 1), t2 = t * t, t3 = t2 * t;
+  return 3 * t2 - 2 * t3 + m0 * (t3 - 2 * t2 + t) + m1 * (t3 - t2);
 }
+function _aeFlyArrival(f, now) {
+  if (!f.hold) return _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1));
+  // Leaves at slope m2 and eases in over the quintic's gentle start (speed growing as the square of the time), so the
+  // pace rises smoothly from the one the shoulder was passed at instead of leaping to the leg's own.
+  var t = _aeClamp((now - f.start - AE_FLY_APPROACH_MS) / (f.ms + AE_FLY_TAIL_MS), 0, 1), u = 1 - t;
+  return t * t * t * (10 - 15 * t + 6 * t * t) + f.m2 * t * u * u * u;
+}
+// How far along the leg to the shoulder the camera is.
+function _aeFlyPull(now, f) { return _aeHermiteRise((now - f.start) / AE_FLY_APPROACH_MS, 0, AE_FLY_PASS_SLOPE); }
 function _aeFlyEase(now) {
   var f = _ae.fly;
   return f ? _aeFlyArrival(f, now) : 1;
 }
-// The camera's place and the point it looks at, along a shoulder shot: back and round the old body, the beat, then
+// The slope the leg in leaves the shoulder at, so the camera's speed carries across it: the leg to the shoulder ends
+// at AE_FLY_PASS_SLOPE of its length per its time, and the leg in is worked out in its own (very different) length.
+function _aeArrivalSlope(f) {
+  var from = f.from, sh = f.shoulder, dest = _aeTargetPos(), e = 0.01;
+  var start = _aeCameraOffset(from.az, from.el, from.dist), end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
+  var shOff = _aeSub(sh.pos, from.pos);
+  var legA = _aeLen(_aeSub(shOff, _aeSlerpOffset(start, shOff, 1 - e))) / e;
+  var legB = _aeLen(_aeSub(_aeSlerpOffset(_aeSub(sh.pos, dest), end, e), _aeSub(sh.pos, dest))) / e;
+  var m2 = AE_FLY_PASS_SLOPE * (f.ms + AE_FLY_TAIL_MS) / AE_FLY_APPROACH_MS * legA / Math.max(1e-9, legB);
+  return _aeClamp(m2, 0, 0.5);
+}
+// How long after the shoulder the corner is rounded for: until the leg in has carried the camera about half the old
+// body's distance away (the leg in begins very slowly, and across a flight's own scale any longer span would throw the
+// camera far from the shoulder before the corner was turned).
+function _aeBendAfter(f) {
+  var near = _aeLen(_aeSub(f.shoulder.pos, f.from.pos)) * AE_FLY_BEND_REACH, at = f.start + AE_FLY_APPROACH_MS;
+  f.bend = AE_FLY_BEND_MS;
+  var lo = 20, hi = AE_FLY_BEND_MS * 1.5, sh = f.shoulder.pos;
+  if (_aeLen(_aeSub(_aeLegPos(f, at + hi), sh)) < near) return hi;
+  for (var i = 0; i < 24; i++) {
+    var mid = (lo + hi) / 2;
+    if (_aeLen(_aeSub(_aeLegPos(f, at + mid), sh)) < near) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+// The camera's place and the point it looks at, along a shoulder shot: back and round the old body, through the shoulder view without stopping, then
 // in to the destination's own view.
 function _aeShoulderCam(f, now) {
+  var j = AE_FLY_APPROACH_MS, t = now - f.start;
+  var pos = t <= j - AE_FLY_BEND_MS || t >= j + f.bend ? _aeLegPos(f, now) : _aeBend(f, now);
+  // Looking at the old body, turned off it by the share of the leg done, then at the destination, framed, then at its
+  // middle: the two looks are the same at the shoulder, and are blended across the bend.
+  var dest = _aeTargetPos(), sh = f.shoulder;
+  var look1 = _aeLookOff(pos, f.from.pos, sh.away, sh.turn * _aeClamp(_aeFlyPull(now, f), 0, 1));
+  var look2 = _aeLookOff(pos, dest, sh.destAway, sh.destTurn * (1 - _aeFlyArrival(f, now)));
+  var k = _smoothstep(j - AE_FLY_BEND_MS, j + f.bend, t);
+  var d1 = _aeNorm(_aeSub(look1, pos)), d2 = _aeNorm(_aeSub(look2, pos)), d = _aeNorm(_aeAdd(_aeScale(d1, 1 - k), _aeScale(d2, k)));
+  var r = _aeLen(_aeSub(look1, pos)) * (1 - k) + _aeLen(_aeSub(look2, pos)) * k;
+  return { pos: pos, look: _aeAdd(pos, _aeScale(d, r)) };
+}
+// Where the camera is on the leg to the shoulder (round the old body), then on the leg in (round the destination).
+function _aeLegPos(f, now) {
   var from = f.from, sh = f.shoulder, dest = _aeTargetPos();
-  var arrive = _aeFlyArrival(f, now);
-  var pull = _aeEaseInOut(_aeClamp((now - f.start) / AE_FLY_PULL_MS, 0, 1));
-  if (arrive > 0) {
+  if (now - f.start >= AE_FLY_APPROACH_MS) {
     var end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
-    var off = _aeSlerpOffset(_aeSub(sh.pos, dest), end, arrive);
-    // The destination slides from its place in the frame to the middle of it.
-    var posNow = _aeAdd(dest, off);
-    return { pos: posNow, look: _aeLookOff(posNow, dest, sh.destAway, sh.destTurn * (1 - arrive)) };
+    return _aeAdd(dest, _aeSlerpOffset(_aeSub(sh.pos, dest), end, _aeFlyArrival(f, now)));
   }
   var start = _aeCameraOffset(from.az, from.el, from.dist);
-  var pos = _aeAdd(from.pos, _aeSlerpOffset(start, _aeSub(sh.pos, from.pos), pull));
-  // Look at the old body, turned off it by the share of the way done.
-  return { pos: pos, look: _aeLookOff(pos, from.pos, sh.away, sh.turn * pull) };
+  return _aeAdd(from.pos, _aeSlerpOffset(start, _aeSub(sh.pos, from.pos), _aeFlyPull(now, f)));
+}
+// The two legs meet at the shoulder going different ways (out from the old body, then in toward the new): across a
+// short span the camera follows a cubic Hermite curve between the legs' own places and velocities, so it turns
+// round the corner instead of stopping at it.
+function _aeBend(f, now) {
+  var j = f.start + AE_FLY_APPROACH_MS, w = AE_FLY_BEND_MS + f.bend, h = 1;
+  var t0 = j - AE_FLY_BEND_MS, t1 = j + f.bend;
+  var p0 = _aeLegPos(f, t0), p1 = _aeLegPos(f, t1);
+  var v0 = _aeScale(_aeSub(_aeLegPos(f, t0 + h), p0), w / h), v1 = _aeScale(_aeSub(p1, _aeLegPos(f, t1 - h)), w / h);
+  var u = (now - t0) / w, u2 = u * u, u3 = u2 * u;
+  var out = _aeScale(p0, 2 * u3 - 3 * u2 + 1);
+  out = _aeAdd(out, _aeScale(v0, u3 - 2 * u2 + u));
+  out = _aeAdd(out, _aeScale(p1, -2 * u3 + 3 * u2));
+  return _aeAdd(out, _aeScale(v1, u3 - u2));
 }
 function _aeLerp3(a, b, e) { return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, a[2] + (b[2] - a[2]) * e]; }
 function _aeStepFly(now) {
@@ -1742,7 +1805,7 @@ function _aeStepFly(now) {
     _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
     _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
   }
-  if (now - f.start >= _aeFlyLead(f) + f.ms) { _ae.fly = null; _aeFarFor(0); }
+  if (now - f.start >= _aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)) { _ae.fly = null; _aeFarFor(0); }
   return true;
 }
 function _aeFlyTargetPos() {
