@@ -7210,6 +7210,76 @@ function _moonCachePut(cache, key, val) {
 var _moonSpriteCache = new Map();        // data URLs, for <img>
 var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and motion
 
+// ── Quiet work ──
+// Work nobody is waiting for (panels under the fold, the 3D view getting ready, a sharper Moon) runs when the person
+// is not touching the screen, one job at a time, never in the same task as another. Safari has no
+// requestIdleCallback, and the stand-in that fired 1 ms after the first paint put seconds of GPU setup and decoding
+// on the main thread exactly when a finger arrived (Eric, 2026-10-30: "waiting for something off screen to finish
+// loading"). So: a job runs once no finger is down and nothing has touched, scrolled or typed for QUIET_MS, or after
+// its maxWaitMs if the finger is up and QUIET_OVERDUE_MS have passed since the last touch; the next job waits QUIET_GAP_MS and the same test again. A job may return a
+// promise; the queue waits for it. quietBreath() is the same wait for a job that works in slices. quietNow(key)
+// runs a queued job now (the person's intent), quietCancel(key) drops it.
+var QUIET_MS = 250, QUIET_OVERDUE_MS = 100, QUIET_GAP_MS = 60, QUIET_MAX_WAIT_MS = 4000, QUIET_BREATH_MS = 120, QUIET_BREATH_MAX_MS = 700;
+var QUIET_PRI_NOW = 1, QUIET_PRI_PANELS = 2, QUIET_PRI_LOAD = 4, QUIET_PRI_PREPARE = 5, QUIET_PRI_POLISH = 6;
+var _quietJobs = [], _quietTimer = 0, _quietBusy = false, _quietSeq = 0, _quietLast = 0, _quietDown = false;
+function _quietNote(down) {
+  _quietLast = performance.now();
+  if (down != null) _quietDown = down;
+}
+(function () {
+  var opt = { capture: true, passive: true };
+  ['pointerdown', 'touchstart'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(true); }, opt); });
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(false); }, opt); });
+  ['scroll', 'wheel', 'keydown', 'touchmove'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(); }, opt); });
+})();
+function whenQuiet(fn, opts) {
+  opts = opts || {};
+  if (opts.key) _quietJobs = _quietJobs.filter(function (j) { return j.key !== opts.key; });
+  _quietJobs.push({ fn: fn, key: opts.key || null, pri: opts.priority == null ? QUIET_PRI_LOAD : opts.priority,
+    maxWait: opts.maxWaitMs || QUIET_MAX_WAIT_MS, at: performance.now(), seq: ++_quietSeq });
+  _quietPump(QUIET_GAP_MS);
+}
+function quietCancel(key) { _quietJobs = _quietJobs.filter(function (j) { return j.key !== key; }); }
+// Run a queued job now; false when it is not queued.
+function quietNow(key) {
+  var job = _quietJobs.filter(function (j) { return j.key === key; })[0];
+  if (!job) return false;
+  quietCancel(key);
+  Promise.resolve().then(job.fn).catch(function () {});
+  return true;
+}
+function _quietPump(delay) {
+  if (_quietTimer || _quietBusy) return;
+  _quietTimer = setTimeout(_quietStep, delay);
+}
+function _quietStep() {
+  _quietTimer = 0;
+  if (!_quietJobs.length) return;
+  var now = performance.now(), next = _quietJobs[0];
+  _quietJobs.forEach(function (j) { if (j.pri < next.pri || (j.pri === next.pri && j.seq < next.seq)) next = j; });
+  var idle = now - _quietLast, still = (now - next.at >= next.maxWait ? QUIET_OVERDUE_MS : QUIET_MS) - idle;
+  if (_quietDown || still > 0) { _quietPump(Math.max(still, QUIET_GAP_MS) + 1); return; }
+  _quietJobs = _quietJobs.filter(function (j) { return j !== next; });
+  _quietBusy = true;
+  Promise.resolve().then(next.fn).catch(function () {}).then(function () {
+    _quietBusy = false;
+    if (_quietJobs.length) _quietPump(QUIET_GAP_MS);
+  });
+}
+// Between two slices of one job: a frame is let through, then the wait for a moment with no finger on the screen
+// (QUIET_BREATH_MS of no touch, scroll or key), but never past QUIET_BREATH_MAX_MS unless a finger is down.
+function quietBreath() {
+  return new Promise(function (resolve) {
+    var t0 = performance.now();
+    var look = function () {
+      var now = performance.now();
+      if (!_quietDown && (now - _quietLast >= QUIET_BREATH_MS || now - t0 >= QUIET_BREATH_MAX_MS)) resolve();
+      else setTimeout(look, QUIET_BREATH_MS / 2);
+    };
+    requestAnimationFrame(function () { setTimeout(look, 0); });
+  });
+}
+
 // The 4096 map, asked for once the page has painted (two frames after load,
 // then idle), so it never competes with the first paint for the network or
 // the main thread. It is decoded off the main thread (decode()), and the
@@ -7217,18 +7287,22 @@ var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and moti
 // hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms. The 3D
 // Moon (almanac-earth.js) is drawn from the same decoded picture: one fetch,
 // one decode. Resolves with the Image, or null if it could not be had.
-var _MOON_IDLE_TIMEOUT_MS = 3000;
 var _moonHiLoad = null;
-function _moonIdle(fn) {
-  (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
-}
+var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
+var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
+function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
   _moonHiLoad = im.decode().then(function () {
-    _MOON_TEX_HI = im;
-    _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
+    _MOON_TEX_HI_IMG = im;
+    // Discs switch to the 4096 map only once its tone tables exist: a disc drawn in between would build them whole,
+    // in one task, in the middle of whatever the person was doing.
+    _moonMapDataSliced(_MOON_MAP_FULL_W * 2).then(function () { return _moonMapDataSliced(_MOON_MAP_HI_W); }).then(function () {
+      _MOON_TEX_HI = im;
+      return repaintMoonsSliced();
+    });
     return im;
   }, function () { return null; });   // without it every disc keeps the 1024 map
   return _moonHiLoad;
@@ -7338,18 +7412,42 @@ function _moonMapWidthFor(N) {
 // width. The readback is a GPU sync, so it happens once, not per sprite.
 // Widths past the small map's come from the 4096 one.
 var _moonMapCache = {};
-function _moonMapData(W) {
-  if (_moonMapCache[W]) return _moonMapCache[W];
+var _MOON_MAP_BAND_ROWS = 64;      // rows toned per slice when the map is built behind the page
+function _moonMapPlan(W, src) {
   var H = W / 2;
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(W > _MOON_MAP_FULL_W ? _MOON_TEX_HI : _MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
-  var src = ctx.getImageData(0, 0, W, H).data;
-  var g = new Uint8Array(W * H);
-  for (var i = 0; i < g.length; i++) g[i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
-  return (_moonMapCache[W] = { w: W, h: H, g: g });
+  ctx.drawImage(src, 0, 0, W, H);   // same-origin, so it won't taint
+  return { w: W, h: H, g: new Uint8Array(W * H), ctx: ctx };
+}
+function _moonMapBand(m, y0, y1) {
+  var src = m.ctx.getImageData(0, y0, m.w, y1 - y0).data, g = m.g, o = y0 * m.w;
+  for (var i = 0, n = (y1 - y0) * m.w; i < n; i++) g[o + i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
+}
+function _moonMapSource(W) { return W > _MOON_MAP_FULL_W ? _MOON_TEX_HI_IMG || _MOON_TEX_HI : _MOON_TEX; }
+function _moonMapData(W) {
+  if (_moonMapCache[W]) return _moonMapCache[W];
+  var m = _moonMapPlan(W, _moonMapSource(W));
+  for (var y = 0; y < m.h; y += _MOON_MAP_BAND_ROWS) _moonMapBand(m, y, Math.min(m.h, y + _MOON_MAP_BAND_ROWS));
+  return (_moonMapCache[W] = { w: W, h: m.h, g: m.g });
+}
+// The same map built a band at a time, a breath between (quietBreath), so the readback of a 4096 map is not one task.
+function _moonMapDataSliced(W) {
+  if (_moonMapCache[W]) return Promise.resolve(_moonMapCache[W]);
+  var m = _moonMapPlan(W, _moonMapSource(W)), y = 0;
+  var step = function () {
+    if (_moonMapCache[W]) return _moonMapCache[W];
+    var t0 = performance.now();
+    do {
+      _moonMapBand(m, y, Math.min(m.h, y + _MOON_MAP_BAND_ROWS));
+      y += _MOON_MAP_BAND_ROWS;
+    } while (y < m.h && performance.now() - t0 < _MOON_SLICE_MS);
+    if (y >= m.h) return (_moonMapCache[W] = { w: W, h: m.h, g: m.g });
+    return quietBreath().then(step);
+  };
+  return quietBreath().then(step);
 }
 
 // A sprite's inputs, rounded to what the eye can tell apart (1% of phase, a
@@ -7374,7 +7472,25 @@ function _moonSpriteCanvas(v, sizePx) {
   var key = _moonSpriteKey(v, sizePx);
   var hit = _moonSpriteCanvasCache.get(key);
   if (hit) return hit;
-
+  var plan = _moonSpritePlan(v, sizePx);
+  plan.rows(0, plan.N);
+  return plan.finish();
+}
+// The same drawing a few rows at a time with a breath between (quietBreath), for a sprite redrawn behind the page.
+function _moonSpriteCanvasSliced(v, sizePx) {
+  var hit = _moonSpriteCanvasCache.get(_moonSpriteKey(v, sizePx));
+  if (hit) return Promise.resolve(hit);
+  var plan = _moonSpritePlan(v, sizePx), py = 0;
+  var step = function () {
+    var t0 = performance.now();
+    do { plan.rows(py, py + _MOON_SPRITE_BAND_ROWS); py += _MOON_SPRITE_BAND_ROWS; } while (py < plan.N && performance.now() - t0 < _MOON_SLICE_MS);
+    return py >= plan.N ? plan.finish() : quietBreath().then(step);
+  };
+  return quietBreath().then(step);
+}
+var _MOON_SPRITE_BAND_ROWS = 8;
+function _moonSpritePlan(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
   var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
@@ -7402,7 +7518,9 @@ function _moonSpriteCanvas(v, sizePx) {
   var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
   var r0 = _MOON_TINT_R[0], r1 = _MOON_TINT_R[1], b0 = _MOON_TINT_B[0], b1 = _MOON_TINT_B[1];
 
-  for (var py = 0; py < N; py++) {
+  var rows = function (py0, py1) {
+  if (py1 > N) py1 = N;
+  for (var py = py0; py < py1; py++) {
     var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
     for (var px = 0; px < N; px++) {
       var x = (px + 0.5) / N * 2 - 1;
@@ -7432,8 +7550,11 @@ function _moonSpriteCanvas(v, sizePx) {
       data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }
   }
-  ctx.putImageData(img, 0, 0);
-  return _moonCachePut(_moonSpriteCanvasCache, key, cv);
+  };
+  return { N: N, rows: rows, finish: function () {
+    ctx.putImageData(img, 0, 0);
+    return _moonCachePut(_moonSpriteCanvasCache, key, cv);
+  } };
 }
 
 // atan2 to within 0.012 degrees (a hundredth of a map pixel) at a third of
@@ -7498,15 +7619,29 @@ function _setMoonSprite(img, v) {
 // Repaint already-rendered moon sprites in place — called when the map
 // finishes loading so a disc drawn before it was ready (plain grey, but with
 // the right phase and turn) gains its maria without a full re-render.
+function _repaintMoon(el) {
+  var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
+  var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+    parseInt(el.getAttribute('data-size'), 10) || 48);
+  if (el.src !== url) el.src = url;
+}
 function _repaintMoons() {
   var imgs = document.querySelectorAll('img.moon-sprite');
-  for (var i = 0; i < imgs.length; i++) {
-    var el = imgs[i];
+  for (var i = 0; i < imgs.length; i++) _repaintMoon(imgs[i]);
+}
+
+// _repaintMoons a disc at a time, a breath between.
+function repaintMoonsSliced() {
+  var imgs = Array.prototype.slice.call(document.querySelectorAll('img.moon-sprite')), i = 0;
+  var step = function () {
+    if (i >= imgs.length) return;
+    var el = imgs[i++];
+    if (!el.isConnected) return step();
     var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
-    var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
-      parseInt(el.getAttribute('data-size'), 10) || 48);
-    if (el.src !== url) el.src = url;
-  }
+    return _moonSpriteCanvasSliced({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+      parseInt(el.getAttribute('data-size'), 10) || 48).then(function () { _repaintMoon(el); return quietBreath(); }).then(step);
+  };
+  return step() || Promise.resolve();
 }
 
 // ── Canonical moon orientation — ONE derivation for every renderer ──
