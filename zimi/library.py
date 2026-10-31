@@ -25,6 +25,7 @@ import urllib.request
 from urllib.parse import urlparse, urlencode, quote
 
 import zimi.server as _srv
+from zimi import renames as _renames
 from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
@@ -3500,19 +3501,28 @@ def _check_updates():
     Returns list of {name, installed_date, latest_date, download_url}.
     """
     zims = _owned_zim_files()
+    listed = {z.get("name"): z for z in _srv._zim_list_cache or []}
     # Build lookup: catalog_prefix → (short_name, installed_date, filename)
     # Match by checking if installed filename starts with catalog name + '_'
     installed_files = []
     for name, path in zims.items():
         filename = os.path.basename(path)
-        _, date = _srv._extract_zim_date(filename)
+        prefix, date = _srv._extract_zim_date(filename)
         if date:
+            info = listed.get(name) or {}
             installed_files.append(
                 {
                     "name": name,
                     "date": date,
                     "filename": filename,
                     "filebase": filename.replace(".zim", ""),
+                    "path": path,
+                    "prefix": prefix,
+                    "title": info.get("title", ""),
+                    "language": _srv._ISO639_3_TO_1.get(
+                        info.get("language", ""), info.get("language", "")
+                    ),
+                    "size_bytes": info.get("size_bytes", 0),
                 }
             )
 
@@ -3571,21 +3581,60 @@ def _check_updates():
                 if inst["filebase"].startswith(p + "_") and len(p) > best_len:
                     best = (p, cat_date, item)
                     best_len = len(p)
+        renamed_to = None
+        if not best:
+            renamed_to = _renamed_successor(inst, catalog_index, installed_files)
+            if renamed_to:
+                _, cat_date, item = renamed_to
+                best = (renamed_to[0], cat_date, item)
         if best:
             _, cat_date, item = best
-            updates.append(
-                {
-                    "name": inst["name"],
-                    "installed_file": inst["filename"],
-                    "installed_date": inst["date"],
-                    "latest_date": cat_date,
-                    "download_url": item.get("download_url", ""),
-                    "title": item.get("title", ""),
-                    "size_bytes": item.get("size_bytes", 0),
-                }
-            )
+            upd = {
+                "name": inst["name"],
+                "installed_file": inst["filename"],
+                "installed_date": inst["date"],
+                "latest_date": cat_date,
+                "download_url": item.get("download_url", ""),
+                "title": item.get("title", ""),
+                "size_bytes": item.get("size_bytes", 0),
+            }
+            if renamed_to:
+                # The new file has another name; the download that follows
+                # removes this one and carries its settings across.
+                upd["renamed_to"] = renamed_to[0]
+                new_base = _srv._extract_zim_date(
+                    item.get("download_url", "").rsplit("/", 1)[-1].replace(".meta4", "")
+                )[0]
+                _renames.remember(new_base, inst["path"])
+            updates.append(upd)
 
     return updates
+
+
+def _installed_creator(path):
+    """The Creator metadata of an installed ZIM; "" when unreadable."""
+    try:
+        archive = _srv.open_archive(path)
+        if "Creator" in archive.metadata_keys:
+            return bytes(archive.get_metadata("Creator")).decode("utf-8", "replace")
+    except Exception as e:
+        log.debug("could not read the Creator of %s: %s", path, e)
+    return ""
+
+
+def _renamed_successor(inst, catalog_index, installed_files):
+    """(prefix, date, item) of the catalog entry an installed ZIM was renamed
+    to, unless the library already holds that one."""
+    found = _renames.find_successor(
+        {**inst, "flavor": _detect_flavor(inst["filebase"])},
+        catalog_index,
+        creator_of=lambda: _installed_creator(inst["path"]),
+    )
+    if found and not any(
+        f["filebase"].startswith(found[0] + "_") for f in installed_files
+    ):
+        return found
+    return None
 
 
 def _download_from_url(dl, url, tmp_dest):
@@ -3775,6 +3824,53 @@ def _record_download_activity(dl, outcome, detail=""):
         log.debug("Could not journal activity for %s: %s", dl.get("filename"), e)
 
 
+def _remove_renamed_predecessor(dl, removed_versions):
+    """The download is the successor of a ZIM renamed upstream: remove the old
+    file now the new one is complete. Returns the old file's short name."""
+    old_path = dl.get("replaces")
+    if not old_path or not os.path.isfile(old_path) or not os.path.isfile(dl["dest"]):
+        return None
+    old_short = _srv._zim_short_name(old_path)
+    try:
+        _srv.release_zim_handles([old_short])
+        os.remove(old_path)
+        removed_versions.append(os.path.basename(old_path))
+        log.info("Removed renamed ZIM: %s", os.path.basename(old_path))
+    except OSError as e:
+        log.warning("Could not remove renamed ZIM %s: %s", old_path, e)
+        return None
+    return old_short
+
+
+def _carry_zim_state(old, new):
+    """What is kept per ZIM, keyed by its short name, follows a rename:
+    favorites, collections, the category override and who may read it."""
+    if old == new:
+        return
+
+    def swap(names):
+        out = [new if n == old else n for n in names]
+        return [n for i, n in enumerate(out) if n not in out[:i]]
+
+    try:
+        with _srv._collections_lock:
+            data = _srv._load_collections()
+            data["favorites"] = swap(data.get("favorites", []))
+            for col in data.get("collections", {}).values():
+                col["zims"] = swap(col.get("zims", []))
+            _srv._save_collections(data)
+        with _srv._library_layout_lock:
+            layout = _srv._load_library_layout()
+            if old in layout["overrides"]:
+                layout["overrides"].setdefault(new, layout["overrides"].pop(old))
+                _srv._save_library_layout(layout)
+        from zimi import users
+
+        users.rename_zim(old, new)
+    except Exception as e:
+        log.warning("Could not carry %s's settings to %s: %s", old, new, e)
+
+
 def _post_download_finalize(dl):
     """Bookkeeping shared by both the HTTP-mirror and BT success paths.
 
@@ -3784,6 +3880,7 @@ def _post_download_finalize(dl):
     # Remove older versions of the same ZIM
     removed_versions = []
     prefix, new_date = _srv._extract_zim_date(dl["filename"])
+    old_short = _remove_renamed_predecessor(dl, removed_versions)
     if new_date:
         try:
             for f in os.listdir(_srv.ZIM_DIR):
@@ -3830,6 +3927,8 @@ def _post_download_finalize(dl):
     if not registered:
         with _srv._zim_lock:
             _srv.load_cache(force=True)
+    if old_short:
+        _carry_zim_state(old_short, _srv._zim_short_name(dl["filename"]))
     _srv._search_cache_clear()
     _srv._suggest_cache_clear()
     _srv._clean_stale_title_indexes()
@@ -4292,6 +4391,11 @@ def _start_download(url, size_bytes=None, actor=None):
     extra = {"_activity": {"actor": actor}}
     if meta4_url:
         extra["_meta4"] = meta4_url
+    # A download that is a renamed ZIM's successor replaces the old file.
+    old_path = _renames.replaced_by(_srv._extract_zim_date(filename)[0])
+    if old_path and os.path.isfile(old_path):
+        extra["replaces"] = old_path
+        extra["is_update"] = True
     return _enqueue_zim_download(
         url,
         [url],

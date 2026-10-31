@@ -41,6 +41,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from zimi import renames as _renames
 from zimi import server as _srv
 
 log = logging.getLogger("zimi")
@@ -272,6 +273,21 @@ def _piece_re(pid):
     return rx
 
 
+def _short(prefix):
+    return _srv._zim_base_name(prefix + "_2000-01.zim")
+
+
+def _is_piece(rx, name):
+    """A library name fits a piece's pattern, or did before the ZIM was renamed
+    upstream (www.ready.gov is ready.gov now)."""
+    if rx.search(name):
+        return True
+    return any(
+        _short(new) == name and rx.search(_short(old))
+        for old, new in _renames.table().items()
+    )
+
+
 def installed_zims():
     """{piece id: [library entries]} for the pieces the library holds, the
     biggest ZIM first (a piece can be several ZIMs: Wikipedia comes in many).
@@ -286,7 +302,7 @@ def installed_zims():
     out = {}
     for pid in data()["pieces"]:
         rx = _piece_re(pid)
-        found = [z for z in zims if rx.search(z.get("name", ""))]
+        found = [z for z in zims if _is_piece(rx, z.get("name", ""))]
         if found:
             out[pid] = sorted(found, key=lambda z: -int(z.get("size_bytes") or 0))
     with _lock:
@@ -523,7 +539,7 @@ def _missing(pid, piece, sizes):
     """A piece the library lacks, as an option to add: what it is, how big,
     where it downloads from. None when the catalog has none of it."""
     for name in piece.get("catalog", []):
-        got = sizes.get(name)
+        got = sizes.get(name) or sizes.get(_renames.successor_name(name))
         if got:
             return {
                 "piece": pid,

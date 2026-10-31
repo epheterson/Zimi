@@ -19878,6 +19878,12 @@ function _toggleUpdatesDetail() {
       fnames.textContent = u.installed_file + '  →  ' + nextFname;
       row.appendChild(fnames);
     }
+    if (u.renamed_to) {
+      const ren = document.createElement('div');
+      ren.className = 'updates-detail-fnames';
+      ren.textContent = t('renamed_upstream', {name: u.renamed_to});
+      row.appendChild(ren);
+    }
     el.appendChild(row);
   });
 }
