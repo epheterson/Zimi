@@ -2063,6 +2063,7 @@
   "update_all": "تحديث الكل",
   "updated_badge": "محدّث",
   "updates": "التحديثات",
+  "renamed_upstream": "أُعيدت تسميته في المصدر إلى {name}",
   "updates_available_one": "{n} متاح",
   "updates_available_other": "{n} متاحة",
   "updates_available_section": "تحديثات متاحة",

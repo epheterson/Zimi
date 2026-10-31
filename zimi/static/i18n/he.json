@@ -2063,6 +2063,7 @@
   "update_all": "עדכן הכל",
   "updated_badge": "עודכן",
   "updates": "עדכונים",
+  "renamed_upstream": "שונה במקור לשם {name}",
   "updates_available_one": "{n} זמין",
   "updates_available_other": "{n} זמינים",
   "updates_available_section": "עדכונים זמינים",

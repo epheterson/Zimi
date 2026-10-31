@@ -2063,6 +2063,7 @@
   "update_all": "Обновить все",
   "updated_badge": "Обновлено",
   "updates": "Обновления",
+  "renamed_upstream": "Переименовано у источника в {name}",
   "updates_available_one": "Доступно: {n}",
   "updates_available_other": "Доступно: {n}",
   "updates_available_section": "Доступны обновления",

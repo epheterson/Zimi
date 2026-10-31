@@ -2063,6 +2063,7 @@
   "update_all": "全部更新",
   "updated_badge": "已更新",
   "updates": "更新",
+  "renamed_upstream": "上游已改名为 {name}",
   "updates_available_one": "{n} 个可用",
   "updates_available_other": "{n} 个可用",
   "updates_available_section": "可用更新",

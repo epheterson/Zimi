@@ -2063,6 +2063,7 @@
   "update_all": "Update all",
   "updated_badge": "Updated",
   "updates": "Updates",
+  "renamed_upstream": "Renamed upstream to {name}",
   "updates_available_one": "{n} available",
   "updates_available_other": "{n} available",
   "updates_available_section": "Updates available",

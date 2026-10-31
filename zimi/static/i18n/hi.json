@@ -2063,6 +2063,7 @@
   "update_all": "सब अपडेट करें",
   "updated_badge": "अपडेट किया गया",
   "updates": "अपडेट",
+  "renamed_upstream": "स्रोत पर नाम बदलकर {name} किया गया",
   "updates_available_one": "{n} उपलब्ध",
   "updates_available_other": "{n} उपलब्ध",
   "updates_available_section": "अपडेट उपलब्ध",
