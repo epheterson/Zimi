@@ -385,6 +385,8 @@ var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // mar
 // side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
 // gone by the time the camera has arrived (the last share of the arrival).
 var AE_RING_MARGIN_PX = 5, AE_RING_MIN_R_PX = 11, AE_RING_FADE_FROM = 0.7;
+// The Sun's ring goes round its bright glow, not inside it: the glow's bright core, in the disc's radii.
+var AE_RING_SUN_GLOW_R = 1.6;
 var AE_MARKED = [
   { body: 'earth', name: function () { return _tp('Earth'); } },
   { body: 'moon', name: function () { return _aeT('alm_moon'); } },
@@ -574,6 +576,7 @@ var AE_CSS = [
   '.ae-ring{position:absolute;left:0;top:0;width:calc(var(--ae-r,11px)*2);height:calc(var(--ae-r,11px)*2);margin:calc(var(--ae-r,11px)*-1) 0 0 calc(var(--ae-r,11px)*-1);box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
   '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-bm-l b{left:auto;right:calc(var(--ae-r,11px) + 7px)}',
+  '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(-50%,-100%)}',
   '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
@@ -2278,8 +2281,9 @@ function _aeUpdateLabels() {
     if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
     issEl.classList.toggle('ae-faded', approx);
   }
-  // Not while the Earth is a small ringed disc: the ISS is a speck on it, and its label would sit on the Earth's.
-  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
+  // Not while the Earth is a small ringed disc (the ISS is a speck on it, and its label would sit on the Earth's), nor
+  // through a flight between bodies, whose two names are the only words.
+  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_ae.fly && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
@@ -2313,15 +2317,18 @@ function _aeUpdateMarks(sc) {
     var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
-    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
+    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 * (body === 'sun' ? AE_RING_SUN_GLOW_R : 1) + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
     if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
     var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
-    if (!s || crowded || alpha <= 0 || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) { if (!el.hidden) el.hidden = true; continue; }
+    // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
+    var reach = ringed ? r : 0;
+    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > _ae.h + reach) { if (!el.hidden) el.hidden = true; continue; }
     shown.push(s);
     if (el.hidden) el.hidden = false;
     el.style.opacity = alpha.toFixed(2);
     el.style.setProperty('--ae-r', r.toFixed(1) + 'px');
     el.classList.toggle('ae-bm-l', s.x > _ae.w / 2);
+    el.classList.toggle('ae-bm-t', ringed);   // in a flight the name sits over its ring, so the pair's names never meet
     el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
   }
 }
