@@ -109,6 +109,12 @@ def _open(ctx, served):
         "() => document.getElementById('almanac-place') && document.querySelector('.alm-about')",
         polling=POLL_MS,
     )
+    # The panels under the calendar draw after the first paint; their last step
+    # sets up the section bar. A slow runner can be measuring before they land.
+    pg.wait_for_function(
+        "() => typeof _almSecBar !== 'undefined' && _almSecBar && _almSecBar.sections",
+        polling=POLL_MS,
+    )
     return pg, errors
 
 

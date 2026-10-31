@@ -101,6 +101,7 @@ SHELL_SEEDS = (
     "_moonTexReady",
     "_moonView",
     "_renderMoonHTML",
+    "_repaintMoons",
     "_scrollBehavior",
     "_setMoonSprite",
     "_smoothstep",
