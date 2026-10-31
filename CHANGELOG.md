@@ -9,16 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Highlights
 
-- Release notes now list every fixed issue, and the games table shows just how long ago you played.
+- Read aloud no longer stalls on a slow voice, Zimi on your home screen updates without a restart, and its own apps stay offline with your library and get a full menu on their tiles.
 
 ### Changed
 
+- Zimi's own apps are called Games and Almanac in every language; About shows each file's real title.
+- An app's tile on Home offers Open in new tab and Keep offline, and an open app shows its tile's icon at the top.
+- A device that keeps any ZIM offline keeps Games and the Almanac offline too.
+- Settings, and which apps show on Home, take effect at once instead of after the server answers.
+- The footer's status dot is gone; app tiles and ZIM cards keep their own.
+- The games table shows just how long ago you played, and the Games bar says Games.
+- What's inside counts WebAssembly as scripts.
+- In the Almanac's sky, a tapped body's details sit at the foot of the scene, rise and set tiles drop the compass bearing, and flights between the Earth, Moon and Sun keep both in view.
+- Release notes list every fixed issue.
 - The 1.15.0 note was wrong: the Almanac and the games appear under Apps on Home and in the Zimi group of the Library and Catalog, and can be deleted and re-added from the Catalog.
 
 ### Fixed
 
 - Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
 - A faster voice no longer waits for a slower voice's chunk already being made (#121).
+- An open Zimi, including the home-screen app, reloads to a new version without being force quit.
+- The Almanac's tile answers at once instead of waiting for the app to load.
+- Background lookups no longer use up the rate limit meant for what you asked for.
 
 ## [1.15.0]
 
