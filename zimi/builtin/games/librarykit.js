@@ -429,14 +429,18 @@
   };
   // The StreetZim map that holds a point: `prefer` (a map the point came from) or the first of the library's searchable maps
   // whose box has it. {zim, path} for Lib.articleLink, the path ending where the map should look; null when no map has it.
-  var MAP_LINK_ZOOM = 14, MAP_PAGE = 'index.html';   // a StreetZim map's page, which reads #map=zoom/lat/lon
-  Lib.mapFor = function (list, lat, lon, prefer) {
+  var MAP_LINK_ZOOM = 14, MAP_PAGE = 'index.html';   // a StreetZim map's page, which reads #map=zoom/lat/lon and #pin=lat,lon&label=
+  // The map's address for a place: where to look, and with a name, the pin the map drops there. A map that does not know pin just looks.
+  Lib.mapHash = function (zoom, lat, lon, label) {
+    return 'map=' + zoom + '/' + lat + '/' + lon + (label ? '&pin=' + lat + ',' + lon + '&label=' + encodeURIComponent(label) : '');
+  };
+  Lib.mapFor = function (list, lat, lon, prefer, label) {
     var maps = (list || []).filter(function (z) { return z.kind === 'map' && z.map_search; });
     var z = prefer ? maps.filter(function (m) { return m.name === prefer; })[0] : maps.filter(function (m) {
       var b = m.map_bounds;
       return b && b.length === 4 && lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3];
     })[0];
-    return z ? { zim: z.name, path: MAP_PAGE + '#map=' + MAP_LINK_ZOOM + '/' + lat + '/' + lon } : null;
+    return z ? { zim: z.name, path: MAP_PAGE + '#' + Lib.mapHash(MAP_LINK_ZOOM, lat, lon, label) } : null;
   };
 
   // What a library game says about where it is playing from, for Menu > About: one plain sentence.
