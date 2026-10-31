@@ -176,6 +176,16 @@ def test_a_late_section_does_not_move_what_is_below_it(
         )
         before = _top(pg, below)
         tops = _section_tops(pg)
+        # Every scroll and every size change of the late parts from here on, for a failure's message.
+        pg.evaluate(
+            """() => { const c = document.getElementById('almanac-content'), t0 = performance.now(), log = window.__trace = [];
+              const ids = ['almanac-place', 'almanac-rosetta'];
+              c.addEventListener('scroll', () => log.push(['s', Math.round(performance.now() - t0), Math.round(c.scrollTop)]), { passive: true });
+              new ResizeObserver((es) => es.forEach((e) => log.push(['h', Math.round(performance.now() - t0), e.target.id,
+                e.target.offsetHeight, Math.round(c.scrollTop)]))).observe(document.getElementById(ids[0]));
+              new ResizeObserver((es) => es.forEach((e) => log.push(['h', Math.round(performance.now() - t0), e.target.id,
+                e.target.offsetHeight, Math.round(c.scrollTop)]))).observe(document.getElementById(ids[1])); }"""
+        )
         assert 0 <= before < VIEW["height"], "%s is in view" % below
         for i in range(600):
             if waiting:
@@ -188,7 +198,7 @@ def test_a_late_section_does_not_move_what_is_below_it(
         pg.wait_for_timeout(600)
         after = _top(pg, below)
         moved = [(a[0], a[1], b[1], a[2], b[2]) for a, b in zip(tops, _section_tops(pg)) if a[1:] != b[1:]]
-        assert abs(after - before) <= STILL_PX, (below, before, after, moved)
+        assert abs(after - before) <= STILL_PX, json.dumps([below, before, after, moved, pg.evaluate("window.__trace")])
         assert not errors, errors
     finally:
         ctx.close()
