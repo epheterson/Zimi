@@ -24113,7 +24113,8 @@ async function _setUserPref(key, value) {
   _syncOpenInAppsRow();
   renderHome();
   try {
-    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    // keepalive: the page already shows the change, so leaving it at once must not drop the write
+    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { _readPrefs(await r.json()); }
   } catch (e) {}
   _syncOpenInAppsRow();
