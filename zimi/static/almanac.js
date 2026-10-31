@@ -229,10 +229,12 @@ function _openAlmanacInner(replaceState) {
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('almanac');
-  _renderAlmanacContent();
   // Opened afresh it is at the top, on the Moon: the page keeps its element, and with it where it was last scrolled
-  // to. (Back from a page opened out of it puts the offset back after this: _reopenAlmanacFromLink.)
+  // to. (Back from a page opened out of it puts the offset back after this: _reopenAlmanacFromLink.) Before the
+  // draw, so a fresh open is not taken for a redraw in place, which draws every panel before the first paint.
   var scroller = document.getElementById('almanac-content');
+  if (scroller) scroller.scrollTop = 0;
+  _renderAlmanacContent();
   if (scroller) scroller.scrollTop = 0;
   // Zimi's header is in place under the Almanac: nothing in it slides the
   // header, so one left away by the page before (an article scrolled on a
@@ -2514,6 +2516,8 @@ function _renderAlmanacContent() {
   });
 
   _renderAlmanacCalendar(now);
+  // The time machine's dock is on screen from the first frame, so it answers a finger from then too.
+  _almTmInit();
   // The place's section keeps the height it will draw at from the first frame: its panel is drawn later, and nothing
   // under it may move when it lands.
   var placeHost = document.getElementById('almanac-place');
@@ -2537,11 +2541,12 @@ function _renderAlmanacContent() {
       _orreryLastFrame = performance.now();
       _orreryAnimate();
     },
-    function () { _loadSunData(now); _startTzClock(); _almTmInit(); _cacheAlmanacHighlights(now, m); },
+    function () { _loadSunData(now); _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
   ];
   _almPanelsReady = false;
-  if (anchor) panels.forEach(function (p) { p(); });
+  // Drawn whole here: panels still queued by the draw before are the old page's, so they are called off.
+  if (anchor) { ++_almAfterPaintToken; panels.forEach(function (p) { p(); }); }
   else _almAfterPaint(panels);
 }
 
@@ -2843,7 +2848,11 @@ document.addEventListener('pointermove', function (e) {
     _almMoonLift();
   }
   if (p.adopted) return;   // the 3D canvas has the drag now, and turns by it
-  if (p.lifted && typeof _aeHandDrag === 'function') _aeHandDrag(e.clientX - p.lx, e.clientY - p.ly);
+  if (p.lifted) {
+    // Before the 3D view's file is in, the drag so far is kept, and handed over with the first move after it is.
+    p.bx = (p.bx || 0) + e.clientX - p.lx; p.by = (p.by || 0) + e.clientY - p.ly;
+    if (typeof _aeHandDrag === 'function') { _aeHandDrag(p.bx, p.by); p.bx = p.by = 0; }
+  }
   p.lx = e.clientX; p.ly = e.clientY;
   // As soon as the view is up, the drag is handed to it whole: the same
   // pointer, captured by the 3D canvas, so the finger never has to lift.

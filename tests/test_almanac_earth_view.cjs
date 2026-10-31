@@ -666,6 +666,8 @@ const run = (code) => vm.runInContext(code, S);
       check(held[from].r >= S.AE_RING_MIN_R_PX && held[to].r >= S.AE_RING_MIN_R_PX, from + ' to ' + to + ': no ring under the minimum');
       check(held[from].r > held[to].r, from + ' to ' + to + ': the foreground source has the bigger ring (' + held[from].r + ' vs ' + held[to].r + ')');
       check(early[from].r !== held[from].r || early[to].r !== held[to].r, from + ' to ' + to + ': the rings change size as the camera moves');
+      check(mid[from] && mid[to] && !mid[from].hidden && !mid[to].hidden && mid[from].op > 0 && mid[to].op > 0,
+        from + ' to ' + to + ': both rings are still there halfway in (opacity ' + (mid[from] && mid[from].op) + ', ' + (mid[to] && mid[to].op) + ')');
     }
     const done = ringsAt('moon', 'sun', S.AE_FLY_APPROACH_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms + AE_FLY_TAIL_MS; _ae.fly = null; return m; })()') - 1);
     check(done.sun.hidden || done.sun.op < 0.05, 'the rings are gone once the camera has arrived');

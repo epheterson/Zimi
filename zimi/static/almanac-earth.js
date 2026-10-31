@@ -2754,6 +2754,8 @@ function _aeHandDrag(dx, dy) {
 var AE_WAIT_DRAG_LEAN = 0.35, AE_WAIT_DRAG_MAX_PX = 48;
 var _aeWaitDragPx = null;
 function _aeWaitDrag(dx, dy) {
+  // No view is coming (no WebGL here): nothing would let the disc go again.
+  if (_ae && _ae.failed) return;
   var hero = document.querySelector(AE_HERO_SEL);
   if (!hero) return;
   var p = _aeWaitDragPx || (_aeWaitDragPx = { x: 0, y: 0 });
@@ -3057,10 +3059,11 @@ function _aeReady() { return !!(_ae && _ae.gl && _ae.ready); }
 var _aeUrgent = false;
 function _aeBreath() { return _aeUrgent ? new Promise(function (r) { setTimeout(r, 0); }) : quietBreath(); }
 function _aePrepare(urgent) {
-  if (urgent) _aeUrgent = true;
   if (!_aeEnsure()) return Promise.resolve(false);
   if (_aeReady()) return Promise.resolve(true);
   if (_ae.failed) return Promise.resolve(false);
+  // Only while there is preparing to hurry: a hurry left over would take the breaths out of the next Almanac's.
+  if (urgent) _aeUrgent = true;
   if (_aePreparing) return _aePreparing;
   _ae.loading = true;
   _aePreparing = _aeLoadThree().then(function (THREE) {
@@ -3091,20 +3094,12 @@ function _aePrepare(urgent) {
   });
   return _aePreparing;
 }
-// Compile every shader and upload every map now, at a pixel's cost, so the
-// first frame the view shows does neither.
-function _aeWarm(S) {
-  if (_aeIsOpen || !S || _ae.gl !== S) return;
-  _ae.scene = _aeSceneAt(_aeDisplayMs());
-  _aeUpdate(_ae.scene.ms);
-  S.renderer.compile(S.scene, S.camera);
-  S.renderer.render(S.scene, S.camera);
-  _aeUploadMaps(S);
-}
-// The same, a task each: the scene set, the shaders (compileAsync where three has it: the driver compiles them off
+// Compile every shader and upload every map before the view shows, at a pixel's cost, so its first frame does neither,
+// a task each: the scene set, the shaders (compileAsync where three has it: the driver compiles them off
 // the main thread), the first render, then each map's upload.
 function _aeWarmSliced(S) {
-  var live = function () { return _ae.gl === S && !_aeIsOpen; };
+  // The view opening meanwhile (a cold Orrery or sky open waits on this) is what the warming is for: it carries on.
+  var live = function () { return _ae.gl === S; };
   var slice = function (fn) { return _aeBreath().then(function () { if (live()) fn(); }); };
   if (!live()) { _ae.ready = true; return Promise.resolve(true); }
   return slice(function () {
@@ -3118,6 +3113,8 @@ function _aeWarmSliced(S) {
   }).then(function () {
     return slice(function () { S.renderer.render(S.scene, S.camera); });
   }).then(function () {
+    // three uploads a texture when a mesh using it is drawn, and the Moon is out of the frustum at the warm render: its
+    // 4096 map (8 MB) went up in the swap's first frame (WebKit, real GPU: a 155 ms frame mid-drag). Each map goes up here.
     var maps = [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap], chain = Promise.resolve();
     maps.forEach(function (u) {
       chain = chain.then(function () { return slice(function () { if (u.value && S.renderer.initTexture) S.renderer.initTexture(u.value); }); });
@@ -3127,15 +3124,6 @@ function _aeWarmSliced(S) {
     if (_ae.gl !== S) return false;
     _ae.ready = true;
     return true;
-  });
-}
-// The maps the render above did not reach: three uploads a texture when a mesh that uses it is drawn, and the Moon
-// is out of the camera's frustum at the warm render, so its 4096 map (8 MB) went up in the swap's first frame
-// (WebKit, real GPU: a 155 ms frame, in the middle of the drag that opened the view). Up now, off the swap.
-function _aeUploadMaps(S) {
-  if (!S.renderer.initTexture) return;
-  [S.earthUni.dayMap, S.earthUni.nightMap, S.moonUni.moonMap].forEach(function (u) {
-    if (u.value) S.renderer.initTexture(u.value);
   });
 }
 var AE_IDLE_PREPARE_MAX_WAIT_MS = 6000;

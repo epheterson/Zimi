@@ -130,7 +130,13 @@ def test_automatic_gives_way_to_the_faster_voice_while_the_slow_one_is_still_loa
         pg.on("pageerror", lambda e: errors.append(str(e)))
         del log[:]
         pg.goto(base + "/")
-        pg.evaluate("startReading()")
+        # Started by a real click, as a person starts it: WebKit refuses audio started without one, and that refusal
+        # takes the failure path to the next voice, which would pass this test without the stall timer.
+        pg.evaluate(
+            "() => { const b = document.createElement('button'); b.id = 'go'; b.textContent = 'Read';"
+            " b.onclick = () => startReading(); document.body.prepend(b); }"
+        )
+        pg.click("#go")
         deadline = time.monotonic() + SLOW_S - 3  # well before the slow voice would have answered
         while time.monotonic() < deadline and not any(e == "piper" for e, _t in log):
             time.sleep(0.05)

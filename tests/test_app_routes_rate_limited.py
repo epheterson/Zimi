@@ -34,9 +34,10 @@ def test_almanac_background_lookups_use_their_own_bucket():
         b.pop(ip, None)
     try:
         assert {"/almanac-links", "/almanac-place"} <= http._ALMANAC_BACKGROUND_PATHS
-        for _ in range(http.RATE_LIMIT_CONTENT):
-            assert http._check_rate_limit(ip, content=True, buckets=http._rate_buckets_almanac) == 0
-        assert http._check_rate_limit(ip, content=True, buckets=http._rate_buckets_almanac) > 0
+        assert 0 < http.RATE_LIMIT_ALMANAC < http.RATE_LIMIT_CONTENT, "a batch lookup is dearer than a page's icon"
+        for _ in range(http.RATE_LIMIT_ALMANAC):
+            assert http._check_rate_limit(ip, limit=http.RATE_LIMIT_ALMANAC, buckets=http._rate_buckets_almanac) == 0
+        assert http._check_rate_limit(ip, limit=http.RATE_LIMIT_ALMANAC, buckets=http._rate_buckets_almanac) > 0
         assert http._check_rate_limit(ip, limit=http.RATE_LIMIT) == 0, "the taps' budget is untouched"
     finally:
         for b in (http._rate_buckets, http._rate_buckets_almanac):

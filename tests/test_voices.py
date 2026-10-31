@@ -1607,7 +1607,7 @@ def test_test_all_needs_its_texts_and_runs_once_at_a_time(piper):
     voices._testing.clear()
 
 
-def test_a_fast_voice_does_not_wait_for_a_slow_voices_synthesis_in_flight(tmp_path, monkeypatch):
+def test_a_fast_voice_does_not_wait_for_a_slow_voices_synthesis_in_flight(data, tmp_path, monkeypatch):
     """Automatic gives way from a stalled Natural to Clear (#121): Clear's chunk must not queue behind Natural's."""
     gate = threading.Event()
     started = threading.Event()
