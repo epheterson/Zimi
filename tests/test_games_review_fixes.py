@@ -230,7 +230,7 @@ def test_a_typed_seat_name_is_text_in_the_koikoi_pill(open_game, browser):
 def test_echo_new_game_cancels_a_strict_mode_ending_on_its_way(open_game):
     page = open_game("echo")
     game_ready(page, "__echo.g")
-    page.click('.ec-pad[data-c="0"]')   # the first tap starts the game
+    page.click(".gs-sp-play")   # the first tap, on the start splash, starts the game
     page.wait_for_function(truthy("__echo.status === 'input'"), timeout=60000)
     wrong = page.evaluate("(__echo.g.seq[0] + 1) % 4")
     page.click('.ec-pad[data-c="%d"]' % wrong)   # a miss: the game ends in about half a second
