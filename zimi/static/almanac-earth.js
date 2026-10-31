@@ -3085,7 +3085,7 @@ function _aePrepare(urgent) {
     return _aeLoadMaps(S).then(function (dayMapIn) {
       if (_ae.gl !== S) return false;     // the Almanac closed while it loaded
       if (!dayMapIn) { _aeDisposeGl(); return false; }
-      return _aeWarmSliced(S);
+      return _aeWarmSliced(S, true);
     });
   }).catch(function () { return false; }).then(function (ok) {
     _ae.loading = false;
@@ -3098,9 +3098,10 @@ function _aePrepare(urgent) {
 // Compile every shader and upload every map before the view shows, at a pixel's cost, so its first frame does neither,
 // a task each: the scene set, the shaders (compileAsync where three has it: the driver compiles them off
 // the main thread), the first render, then each map's upload.
-function _aeWarmSliced(S) {
-  // The view opening meanwhile (a cold Orrery or sky open waits on this) is what the warming is for: it carries on.
-  var live = function () { return _ae.gl === S; };
+function _aeWarmSliced(S, first) {
+  // The first preparation carries on when the view opens meanwhile (a cold Orrery or sky open waits on it: that is
+  // what the warming is for). A later one (a sharper map landing) stops once the view is open, which draws it anyway.
+  var live = function () { return _ae.gl === S && (first || !_aeIsOpen); };
   var slice = function (fn) { return _aeBreath().then(function () { if (live()) fn(); }); };
   if (!live()) { _ae.ready = true; return Promise.resolve(true); }
   return slice(function () {

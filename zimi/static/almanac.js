@@ -2245,11 +2245,18 @@ function _almGlide(root, land) {
     clearTimeout(root._almGlideTimer);
     ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.removeEventListener(ev, done); });
     root._almGlide = false;
-    if (land && !(e && (e.type === 'touchstart' || e.type === 'wheel'))) land();
+    if (land && !root._almGlideTaken && !(e && (e.type === 'touchstart' || e.type === 'wheel'))) land();
     if (root._almTop) root._almTop.v = root.scrollTop;
   };
   clearTimeout(root._almGlideTimer);
   root._almGlide = true;
+  root._almGlideTaken = false;
+  // A key that scrolls (PageDown, an arrow, Space) is the reader taking the page back too, though the glide still ends
+  // on its own scrollend: it is not landed then.
+  if (!root._almGlideKeys) {
+    root._almGlideKeys = true;
+    root.addEventListener('keydown', function () { if (root._almGlide) root._almGlideTaken = true; });
+  }
   ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.addEventListener(ev, done, { passive: true }); });
   root._almGlideTimer = setTimeout(done, ALM_GLIDE_MAX_MS);
 }

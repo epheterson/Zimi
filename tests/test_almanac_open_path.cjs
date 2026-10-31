@@ -58,7 +58,7 @@ check(/scroller\.scrollTop = 0;\s*\n\s*_renderAlmanacContent\(\);/.test(alm), 'a
 // _aeWarmSliced: the scene, the shaders, a first render and every map that is in go up before the view swaps in, and
 // a view opening meanwhile does not cut it short (it is what the warming is for).
 {
-  const run = async (opening) => {
+  const run = async (opening, first) => {
     const did = [];
     const mk = n => ({ value: n });
     const S = { scene: {}, camera: {}, renderer: { compile: () => did.push('compile'), render: () => did.push('render'), initTexture: t => did.push(t) },
@@ -67,15 +67,17 @@ check(/scroller\.scrollTop = 0;\s*\n\s*_renderAlmanacContent\(\);/.test(alm), 'a
       _aeUpdate: () => did.push('update') };
     vm.createContext(sb);
     vm.runInContext(fn(earth, '_aeWarmSliced'), sb);
-    const ok = await sb._aeWarmSliced(S);
+    const ok = await sb._aeWarmSliced(S, first);
     return { ok, did: did.join(), ready: sb._ae.ready };
   };
   (async () => {
     for (const opening of [false, true]) {
-      const r = await run(opening);
+      const r = await run(opening, true);
       check(r.ok && r.ready && r.did === 'update,compile,render,day,night', (opening ? 'the view opening meanwhile: ' : '') +
         'scene, shaders, a first render, then each map that is in, before it is ready (' + r.did + ')');
     }
+    const late = await run(true, false);
+    check(late.did === '', 'a later warm-up (a sharper map landing) does nothing on a view already open, which draws it anyway (' + late.did + ')');
     if (failures) { console.error('\n' + failures + ' failed'); process.exit(1); }
     console.log('\nall open-path checks passed');
   })();
