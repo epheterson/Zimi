@@ -385,8 +385,8 @@ var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // mar
 // side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
 // gone by the time the camera has arrived (the last share of the arrival).
 var AE_RING_MARGIN_PX = 5, AE_RING_MIN_R_PX = 11, AE_RING_FADE_FROM = 0.7;
-// The Sun's ring goes round its bright glow, not inside it: the glow's bright core, in the disc's radii.
-var AE_RING_SUN_GLOW_R = 1.6;
+// The Sun's ring sits just outside its limb glow, not inside it, and no wider: in the disc's radii.
+var AE_RING_SUN_GLOW_R = 1.12;
 var AE_MARKED = [
   { body: 'earth', name: function () { return _tp('Earth'); } },
   { body: 'moon', name: function () { return _aeT('alm_moon'); } },
