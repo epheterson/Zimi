@@ -147,7 +147,7 @@
   // Inside Zimi, the place on the StreetZim map that holds it (the map it came from, else one whose box has it): the whole map, in the reader.
   function mapLink(q) {
     els.mapLink.hidden = true;
-    var m = Lib.hosted() && Lib.mapFor(libList, q.lat, q.lon, q.zim, q.name);
+    var m = Lib.hosted() && Lib.mapFor(libList, q.lat, q.lon, q.zim);
     if (!m) return;
     Lib.articleLink(els.mapLink, m.zim, m.path); els.mapLink.textContent = T('learn.map', { place: q.name }); els.mapLink.hidden = false;
   }

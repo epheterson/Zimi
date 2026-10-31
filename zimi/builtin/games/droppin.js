@@ -64,7 +64,7 @@
   // ── the real map ──
   // (the world is an SVG: it has no .hidden property, only the attribute)
   function mapUrl(hash) { return Lib.articleUrl(mapZim, 'index.html') + (hash ? '#' + hash : ''); }
-  function truthHash() { return Lib.mapHash(MAP_ZOOM_TRUTH, q().lat, q().lon, q().name); }
+  function truthHash() { return 'map=' + MAP_ZOOM_TRUTH + '/' + q().lat + '/' + q().lon; }
   function showMap(hash) {
     els.world.toggleAttribute('hidden', true); els.zoom.hidden = true; els.frame.hidden = false; els.cross.hidden = false;
     els.frame.src = mapUrl(hash || '');
@@ -152,7 +152,7 @@
   }
   // Inside Zimi, the place on the whole StreetZim map (the one it came from, else one whose box holds it), once the pin is down.
   function mapLink(x) {
-    var m = Lib.hosted() && Lib.mapFor(libList, x.lat, x.lon, g.mode === 'map' ? g.zim : '', x.name);
+    var m = Lib.hosted() && Lib.mapFor(libList, x.lat, x.lon, g.mode === 'map' ? g.zim : '');
     els.mapLink.hidden = !m;
     if (!m) return;
     Lib.articleLink(els.mapLink, m.zim, m.path); els.mapLink.textContent = T('learn.map', { place: x.name });
