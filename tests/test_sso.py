@@ -37,6 +37,7 @@ from typing import Any, cast
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.server as _srv  # noqa: E402
+from tests.ports import free_port  # noqa: E402
 from zimi import http as _http  # noqa: E402
 from zimi import manage, sso, users  # noqa: E402
 
@@ -733,7 +734,7 @@ class TestSigningKeys(_SSOBase):
 class TestThroughTheServer(_SSOBase):
     """The wiring: a real socket, real header parsing, the real do_GET path."""
 
-    PORT = 8896
+    PORT = free_port()
 
     def setUp(self):
         super().setUp()

@@ -17,7 +17,7 @@ of asking for it to be re-entered in the UI. The contract under test:
 - the disk cache record is unchanged, so an older Zimi reading a cache written
   by this one sees exactly the fields it already knows.
 
-Live boots in this file use port 8895 and nothing else.
+Live boots in this file ask the OS for a free port (--port 0).
 """
 
 import json
@@ -37,7 +37,7 @@ import zimi.server as server  # noqa: E402
 from tests.conftest_zim import build_fixture_zim  # noqa: E402
 from tests.test_serve_smoke import REPO_ROOT, _wait_for_ready  # noqa: E402
 
-LIVE_PORT = "8895"  # the only port live boots in this file may bind
+LIVE_PORT = "0"  # the OS picks, so parallel workers never collide
 
 
 @pytest.fixture
@@ -316,7 +316,7 @@ def test_registering_a_downloaded_zim_keeps_root_behavior(zim_dir):
 
 
 # ---------------------------------------------------------------------------
-# Live boot (port 8895 only): /list precedence
+# Live boot (port 0, the OS picks): /list precedence
 # ---------------------------------------------------------------------------
 
 

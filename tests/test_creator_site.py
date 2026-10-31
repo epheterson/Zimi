@@ -1,7 +1,7 @@
 """`zimi create <url> --site` — a bounded same-origin crawl becomes one ZIM,
 and `--engine zimit` orchestrates openZIM's container.
 
-Every request goes to a local fixture site on port 8894; nothing here touches
+Every request goes to a local fixture site on a free port the OS picks; nothing here touches
 the real network, and the zimit tests replace the docker seams outright so no
 image is ever pulled. Real end-to-end otherwise: the built .zim is read back
 with libzim's Archive.
@@ -25,13 +25,14 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 from libzim.reader import Archive  # noqa: E402
+from tests.ports import free_port  # noqa: E402
 
 import zimi.crawler as crawler  # noqa: E402
 import zimi.creator as creator  # noqa: E402
 import zimi.server as _srv  # noqa: E402
 from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
-PORT = 8894
+PORT = free_port()
 HOST = "127.0.0.1"
 BASE = f"http://{HOST}:{PORT}"
 NS = "_assets/127_0_0_1"  # _slug() of the fixture hostname

@@ -25,6 +25,8 @@ suggest cache to whatever data dir the last test left behind).
 """
 
 import os
+import shutil
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +36,43 @@ os.environ.setdefault("ZIMI_BEST_ANSWER", "1")
 # Zimi's own ZIMs (ZimiGames, the Almanac) would join every test library, a single-ZIM
 # library among them; tests/test_ownzims.py turns them on for its own.
 os.environ.setdefault("ZIMI_BUILTIN_ZIMS", "0")
+# The suite's premise is the defaults: BitTorrent on, the network reachable.
+# A shell that exports ZIMI_TORRENT=0 / ZIMI_OFFLINE=1 (the release gate, a
+# developer who runs a server) would flip ~60 tests, so they are dropped here,
+# before any test module reads them, in every pytest-xdist worker too. A test
+# that needs either one sets it itself (monkeypatch.setenv).
+for _var in ("ZIMI_TORRENT", "ZIMI_OFFLINE"):
+    os.environ.pop(_var, None)
+
+
+def pytest_configure(config):
+    """Each pytest run gets a base temp directory of its own. The default,
+    <tmp>/pytest-of-<user>/pytest-N, is shared by every run on the machine,
+    and pytest deletes all but the newest few: a second run (another
+    terminal, another agent) removed a running run's directories out from
+    under it (FileNotFoundError .../popen-gwN). Workers inherit the
+    controller's directory from xdist."""
+    if getattr(config, "workerinput", None) is not None or config.option.basetemp:
+        return
+    import tempfile
+
+    config.option.basetemp = Path(tempfile.mkdtemp(prefix="zimi-pytest-"))
+    config._zimi_basetemp = config.option.basetemp
+
+
+def pytest_unconfigure(config):
+    own = getattr(config, "_zimi_basetemp", None)
+    if own is not None:
+        shutil.rmtree(own, ignore_errors=True)
+
+
+@pytest.fixture
+def free_port():
+    """A port the OS says is free (tests bind this, never a fixed number, so
+    workers running in parallel cannot collide)."""
+    from tests.ports import free_port as _free_port
+
+    return _free_port
 
 
 @pytest.fixture(autouse=True, scope="session")
