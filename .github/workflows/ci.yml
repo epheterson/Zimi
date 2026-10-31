@@ -118,13 +118,9 @@ jobs:
 
       # Standalone node tests (vm-extracted client logic). They are not
       # collected by pytest, so without this step they only ever run by hand
-      # and rot silently.
+      # and rot silently. The one place they run: in parallel, once.
       - name: Run standalone JS tests
-        run: |
-          for f in tests/*.cjs; do
-            echo "--- $f"
-            node "$f"
-          done
+        run: python scripts/run_node_tests.py
 
       # The hook only protects a clone that has run `git config core.hooksPath
       # .githooks`. This is the backstop for one that has not.
