@@ -111,7 +111,7 @@ def site():
 
 @pytest.fixture(scope="module")
 def pw():
-    from playwright.sync_api import sync_playwright
+    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright  # a runner without a browser skips
 
     with sync_playwright() as p:
         yield p
