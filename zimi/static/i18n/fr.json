@@ -2746,6 +2746,7 @@
   "app_items_dictionary_other": "{n} pages",
   "app_empty_dictionary": "Ajoutez un Wiktionnaire depuis le catalogue",
   "app_games": "Jeux",
+  "games_search_placeholder": "Chercher un jeu",
   "app_almanac": "Almanach",
   "apps_count_games": "Plus de 100 jeux",
   "apps_count_almanac": "Ciel, Terre et calendriers",

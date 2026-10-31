@@ -14,6 +14,7 @@ checks its article's path in memory: a hit shows Play; the games' "About" link
 (about.html?qid=) opens the article for the reader's language.
 """
 
+import html
 import json
 import logging
 import os
@@ -101,6 +102,79 @@ def rows():
     return _rows
 
 
+#: The shelf as the page writes it: a section heading, a family card, the end of a family, a tile (page, English name).
+_SHELF_TOKEN = re.compile(
+    r'<h2 id="ar-([a-z]+)"|<div class="ar-family" data-name="([^"]*)"|(</div>)'
+    r'|<a class="ar-game" href="([^"#?]+)\.html">.*?<strong>(.*?)</strong>',
+    re.S,
+)
+_shelf = None  # [(page, stem, English name, section id, family name)], read once
+_shelf_text = {}  # language -> {"game.x.title": ...}: only the keys the search reads
+
+
+def _shelf_tiles():
+    """Every tile of the shelf with the section and family it sits in, read once from the page itself (the games
+    are the page's, so a game added there is searchable with nothing else to edit)."""
+    global _shelf
+    if _shelf is None:
+        tiles, section, family = [], "", ""
+        try:
+            with open(os.path.join(ownzims.SOURCE_ROOT, "games", "index.html"), encoding="utf-8") as f:
+                page = f.read()
+        except OSError as e:
+            log.warning("games index.html unreadable: %s", e)
+            page = ""
+        for sec, fam, end, href, name in _SHELF_TOKEN.findall(page) if page else ():
+            if sec:
+                section, family = sec, ""
+            elif fam:
+                family = fam
+            elif end:
+                family = ""
+            else:
+                stem = href.replace("/", ".")
+                tiles.append((href + ".html", stem, html.unescape(name), section, family))
+        _shelf = tiles
+    return _shelf
+
+
+def _shelf_words(lang):
+    """The games' words in one language ({} for a language the games lack)."""
+    if lang not in _shelf_text:
+        words = {}
+        try:
+            with open(os.path.join(ownzims.SOURCE_ROOT, "games", "text", lang + ".json"), encoding="utf-8") as f:
+                words = {k: v for k, v in json.load(f).items() if k.endswith(".title") or k.startswith("shelf.section.") or k.startswith("shelf.family.")}
+        except (OSError, ValueError):
+            pass
+        _shelf_text[lang] = words
+    return _shelf_text[lang]
+
+
+def _family_key(name):
+    return "shelf.family." + re.sub(r"[^a-z]", "", name.lower())
+
+
+def search_index(lang):
+    """[{p: page, n: name, h: words}] for the main search's Games row: each game's name in `lang` (English where it has
+    none), and the words it is found by (both names, its section and family). A fixed file of the package read once per
+    language; nothing here touches a ZIM, so it costs a search nothing. Empty while the games ZIM is not in the library."""
+    if not games_here():
+        return []
+    lang = lang if re.fullmatch(r"[a-z]{2,3}", lang or "") else "en"
+    en, own = _shelf_words("en"), _shelf_words(lang)
+    out = []
+    for path, stem, name, section, family in _shelf_tiles():
+        key = "game." + stem + ".title"
+        shown = own.get(key) or name
+        words = [name, shown]
+        # "Library" is the shelf's drawer for games that read your library; as a word it would answer every search for one.
+        for k in ("shelf.section." + section if section != "library" else "", _family_key(family) + ".name" if family else ""):
+            words += [w for w in (own.get(k), en.get(k)) if w and k]
+        out.append({"p": path, "n": shown, "h": " ".join(dict.fromkeys(words))})
+    return out
+
+
 def wiki_rows():
     """The rows that stand for an encyclopedia article (a puzzle with none has no Q-ID)."""
     return [r for r in rows() if r.get("qid")]
@@ -110,6 +184,7 @@ def warm():
     """Read what the answers are made of before a request needs it: games.json, the Almanac's closed set and each game's
     picture (all fixed files of the package). Called from the background pass."""
     almanac_qids()
+    _shelf_tiles()
     for r in rows():
         thumbnail(r["path"])
 

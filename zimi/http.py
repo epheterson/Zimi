@@ -324,6 +324,7 @@ _RATE_LIMITED_API_PATHS = (
     "/almanac-ages",
     "/almanac-place",
     "/games-links",
+    "/games-search",
     "/own-offline",
     "/events",
 )
@@ -2933,6 +2934,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import gamelinks
 
                 return self._json(200, gamelinks.links())
+            elif parsed.path == "/games-search":
+                # The main search's Games row: every game's name in ?lang= and
+                # the words it is found by (zimi/gamelinks.py). Read once, a
+                # fixed file of the package; empty without the games ZIM.
+                from zimi import gamelinks
+
+                return self._json(200, {"games": gamelinks.search_index(param("lang") or "en")})
             elif parsed.path == "/almanac-place":
                 # Tide stations for the Almanac (zimi/placedata.py):
                 # the nearest to ?lat=&lon=, or those named like ?q=. Only
