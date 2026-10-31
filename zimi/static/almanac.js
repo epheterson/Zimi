@@ -1934,6 +1934,7 @@ function _almSecGo(key) {
   var s = st.sections.filter(function (x) { return x.key === key; })[0];
   if (!s) return;
   _almSecListClose(false);
+  _almGlide(root);
   if (key === ALM_SECBAR_HERO) root.scrollTo({ top: 0, behavior: _scrollBehavior() });
   else s.els[0].scrollIntoView({ block: 'start', behavior: _scrollBehavior() });
   st.cur = key;
@@ -2194,7 +2195,13 @@ function _almKeepStill(el) {
   // stay past the end), and compensating from there would count it twice.
   if (scroller && !scroller._almTop) {
     scroller._almTop = { v: scroller.scrollTop };
-    scroller.addEventListener('scroll', function () { scroller._almTop.v = scroller.scrollTop; }, { passive: true });
+    scroller.addEventListener('scroll', function () {
+      // A scroll that lands at the very end on the way up is the browser's pull, not the reader: they cannot scroll
+      // up onto the end. Chromium on Linux delivers it before the observer below, which would count the pull twice.
+      var end = scroller.scrollHeight - scroller.clientHeight;
+      if (scroller.scrollTop < scroller._almTop.v && scroller.scrollTop >= end - 1) return;
+      scroller._almTop.v = scroller.scrollTop;
+    }, { passive: true });
   }
   // Measured now, not at the observer's first call: on a busy first load that
   // call can come after the section has already arrived.
@@ -2207,6 +2214,8 @@ function _almKeepStill(el) {
     var h = el.offsetHeight, delta = h - last;
     last = h;
     if (!delta || !scroller) return;
+    // On the way somewhere (the status bar's tap to the top, a section's pill): a write here would stop the glide.
+    if (scroller._almGlide) return;
     // Coming back to a place kept from before (_reopenAlmanacFromLink): the
     // kept offset already has this section at its final height.
     if (scroller._almRestoreTo != null) { scroller.scrollTop = scroller._almTop.v = scroller._almRestoreTo; return; }
@@ -2220,6 +2229,22 @@ function _almKeepStill(el) {
     scroller.scrollTop = scroller._almTop.v = base + delta;
   });
   el._almStill.observe(el);
+}
+// A smooth scroll the page itself started: the late sections let it run (_almKeepStill) until it ends, or a finger or
+// wheel takes the page back.
+var ALM_GLIDE_MAX_MS = 1500;
+function _almGlide(root) {
+  if (!root) return;
+  var done = function () {
+    clearTimeout(root._almGlideTimer);
+    ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.removeEventListener(ev, done); });
+    root._almGlide = false;
+    if (root._almTop) root._almTop.v = root.scrollTop;
+  };
+  clearTimeout(root._almGlideTimer);
+  root._almGlide = true;
+  ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.addEventListener(ev, done, { passive: true }); });
+  root._almGlideTimer = setTimeout(done, ALM_GLIDE_MAX_MS);
 }
 function _almArrived(el) {
   if (!el) return;
@@ -2481,6 +2506,12 @@ function _renderAlmanacContent() {
   html += '</div>';
   var anchor = _almRedrawAnchor();
   document.getElementById('almanac-content').innerHTML = html;
+  // The sky's cards (in the Moon's grid) and its caption fill in when the page sky starts, a quiet slice later: a
+  // reader already scrolled past them stays where they are. Here from the first frame, so one looking at them is not moved.
+  [document.getElementById('almanac-head'), document.querySelector('#almanac-content .alm-sky-info')].forEach(function (el) {
+    _almKeepStill(el);
+    if (el) el._almArriving = false;
+  });
 
   _renderAlmanacCalendar(now);
   // The place's section keeps the height it will draw at from the first frame: its panel is drawn later, and nothing

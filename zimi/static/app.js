@@ -4186,6 +4186,7 @@ window.addEventListener('scroll', function() {
   if (window.scrollY > 0 || !document.documentElement.classList.contains('tap-relay')) return;
   var box = _tapRelayBox();
   if (!box) return;
+  if (typeof _almGlide === 'function') _almGlide(box);
   box.scrollTo({ top: 0, behavior: _scrollBehavior() });
   clearTimeout(_tapRelayTimer);
   _tapRelayTimer = setTimeout(function() { if (_tapRelayBox()) window.scrollTo(0, _TAP_RELAY_PX); }, _TAP_RELAY_REARM_MS);
