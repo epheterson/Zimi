@@ -583,3 +583,16 @@ body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 @keyframes gs-title-pop { 0% { transform: scale(0.88); opacity: 0.4; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
 .gs-end-lose { animation: gs-settle 480ms ease-out; }
 @keyframes gs-settle { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+
+/* The start splash: the game's art and name, one Play, chips for the choices, one line. Over the playfield, under the bar and every sheet.
+   It leaves at once (no exit); the only motion is the art and name settling in, and reduced motion has none. */
+.gs-splash { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: var(--gutter); background: color-mix(in srgb, var(--ground) 93%, transparent); cursor: pointer; }
+body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
+.gs-sp-card { display: grid; justify-items: center; gap: var(--sp-3); width: min(320px, 100%); text-align: center; }
+.gs-sp-art { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid var(--line); border-radius: var(--r-sheet); box-shadow: var(--shadow-popup); background: var(--surface2); }
+.gs-sp-card h2 { margin: var(--sp-2) 0 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
+.gs-sp-card .gs-chips { justify-content: center; margin: 0; }
+.gs-sp-play { width: 100%; min-height: 56px; margin-top: var(--sp-2); font-size: var(--fs-title); font-weight: 650; }
+.gs-sp-hint { margin: 0; font-size: var(--fs-small); color: var(--ink2); }
+@media (prefers-reduced-motion: no-preference) { :root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } } }
+@media (max-height: 520px) { .gs-sp-art { display: none; } }

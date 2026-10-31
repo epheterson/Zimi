@@ -552,6 +552,31 @@
     try { card.focus({ preventScroll: true }); } catch (e) { /* no focus */ }
     return api;
   };
+  // ── the start: a quick moment, not a wall of text ──
+  // The game's own art and name, one Play, the choices as compact chips and the one line that says how it starts. It sits over the
+  // playfield under the bar (Menu and Back stay reachable); a tap on it, Play or the game's own start key ends it at once.
+  //   Shell.splash({ hint, chips: [['Best', '120']], onPlay }) -> { close }
+  Shell.splash = function (opts) {
+    var stem = pageStem(), nameNow = function () { return gameWord(stem, 'title') || titleOf(); }, name = nameNow(), art = null, play, el;
+    if (stem) {
+      art = h('img', { class: 'gs-sp-art', src: HOME + 'thumbs/' + stem + '.svg', alt: '' });
+      art.addEventListener('error', function () { art.remove(); });
+    }
+    var chips = (opts.chips || []).slice(0, 3).map(function (c) { return h('span', { class: 'gs-chip' }, [h('span', { text: c[0] }), h('b', { text: String(c[1]) })]); });
+    play = h('button', { class: 'ar-btn gs-primary gs-sp-play', type: 'button', text: T('shelf.play') });
+    var title = h('h2', { text: name });
+    el = h('div', { class: 'gs-splash', role: 'group', 'aria-label': name }, [h('div', { class: 'gs-sp-card' }, [
+      art, title, chips.length ? h('div', { class: 'gs-chips' }, chips) : null, play, opts.hint ? h('p', { class: 'gs-sp-hint', text: opts.hint }) : null
+    ].filter(Boolean))]);
+    el.addEventListener('pointerdown', function (e) { if (e.button || !opts.onPlay) return; e.preventDefault(); opts.onPlay(); });
+    play.addEventListener('click', function () { if (opts.onPlay) opts.onPlay(); });
+    d.body.appendChild(el);
+    // The words arrive after the first paint when the player's language is not English: the name and Play follow them.
+    var words = function () { if (!el.isConnected) return; name = nameNow(); title.textContent = name; el.setAttribute('aria-label', name); play.textContent = T('shelf.play'); };
+    if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { root.setTimeout(words, 0); });
+    return { el: el, close: function () { el.remove(); } };
+  };
+
   var END_TITLES = { win: 'shell.end.win', lose: 'shell.end.lose', draw: 'shell.end.draw', over: 'shell.end.over' };
 
   // ── the end of a game is a moment ──

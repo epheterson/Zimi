@@ -143,9 +143,14 @@
   Play.ready = function (o) {
     var done = false, pointer = false;
     try { pointer = matchMedia('(pointer: coarse)').matches; } catch (e) { /* a mouse */ }
-    var text = pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey'));
+    var text = pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey')), splash = null;
     if (o.say) o.say(text); else if (o.msg) o.msg.textContent = text;
-    function stop() { done = true; (o.target || document).removeEventListener('pointerdown', tap); document.removeEventListener('keydown', key, true); }
+    // The first ready of a page opens on the start splash (art, name, Play, the best score); a re-arm after a game keeps to the line.
+    if (!Play.splashed && o.splash !== false && window.ZimiShell && window.ZimiShell.splash) {
+      Play.splashed = true;
+      splash = window.ZimiShell.splash({ hint: text, chips: o.best ? [[T('play.best'), Play.num(o.best)]] : [], onPlay: function () { go(); } });
+    }
+    function stop() { done = true; if (splash) splash.close(); (o.target || document).removeEventListener('pointerdown', tap); document.removeEventListener('keydown', key, true); }
     function go() { if (done) return; stop(); o.start(); }
     function tap(e) { if (e.button) return; e.preventDefault(); go(); }
     function key(e) {
@@ -416,7 +421,7 @@
     page.arm = function (r) {
       r = (typeof r === 'function' ? r() : r) || (typeof o.ready === 'function' ? o.ready() : { touch: T(o.ready.touch), keys: T(o.ready.keys) });
       if (armed) armed.cancel();
-      armed = Play.ready({ say: status.say, target: page.pad ? page.pad.stage : els.cv, start: r.start || page.begin, touch: r.touch, keys: r.keys });
+      armed = Play.ready({ say: status.say, target: page.pad ? page.pad.stage : els.cv, start: r.start || page.begin, touch: r.touch, keys: r.keys, best: page.best && page.best.score });
     };
     // Once a sheet is up: arm again if the game is still in that mode.
     page.armLater = function (mode, r) { setTimeout(function () { if (page.mode === mode) page.arm(r); }, ARM_MS); };
