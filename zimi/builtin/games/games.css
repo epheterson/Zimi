@@ -607,3 +607,16 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 @keyframes gs-lose-ring { 0% { opacity: 0; transform: scale(2.6); } 35% { opacity: 0.55; } 100% { opacity: 0; transform: scale(0.9); } }
 .gs-end-lose h2 { font-weight: 750; }
 
+/* The Menu's root: New game is a button of its own, then one grid of icon tiles (the game's own buttons first). 44px at least, a glance to read. */
+.gs-newgame { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); width: 100%; min-height: 56px; padding: 0 var(--sp-4); border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-title); font-weight: 650; cursor: pointer; }
+.gs-newgame:hover { background: var(--accent); filter: brightness(1.06); }
+.gs-newgame::after, .gs-tile::after { content: none; }
+.gs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); border: 0; background: none; overflow: visible; }
+.gs-grid .gs-tile, .gs-grid .gs-item + .gs-item { border-top: 1px solid var(--line); }
+.gs-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: auto; min-width: 0; min-height: 72px; padding: var(--sp-2) 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); text-align: center; font-size: var(--fs-small); line-height: 1.2; white-space: normal; cursor: pointer; }
+.gs-tile .gs-item-l { font-weight: 600; overflow-wrap: anywhere; }
+.gs-tile .gs-icon { flex: none; color: var(--ink2); }
+@media (hover: hover) { .gs-tile:hover { border-color: var(--accent); background: var(--surface); color: var(--accent); } .gs-tile:hover .gs-icon { color: var(--accent); } }
+.gs-extras .ar-btn.gs-tile { flex: none; }
+.gs-tile.ar-btn:disabled .gs-icon { color: var(--ink3); }
+.gs-grid > .gs-extras { display: contents; }

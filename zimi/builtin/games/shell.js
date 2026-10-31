@@ -809,25 +809,60 @@
     return h('button', { class: 'gs-item', type: 'button', onclick: onclick }, [h('span', { class: 'gs-item-l', text: label }), h('span', { class: 'gs-item-r', text: hint || '' })]);
   }
 
-  // The root: the game's own buttons, then the same rows in every game. The page footer's About link lives here now.
+  // The root: New game as a button of its own, then one grid of icon tiles (the game's own buttons first, then the same tiles in
+  // every game), so the way to what the player wants is a glance and a tap, not a list to read. The page footer's About link lives here.
   function aboutLink() { return d.querySelector('.gm-about a[href]'); }
+  var SVG_NS = 'http://www.w3.org/2000/svg', ICON_PX = 22;
+  // One stroke icon each (24 x 24, drawn in the text's colour); `ICON_OF` finds a game's own button's by its id or words.
+  var ICONS = {
+    plus: 'M12 5v14M5 12h14', settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4', how: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1 1-1.1 1.7M12 17h.01',
+    stats: 'M5 20V11M12 20V4M19 20v-6', history: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2', about: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5h.01',
+    watch: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', hint: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
+    undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3', restart: 'M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5',
+    flag: 'M5 21V4M5 4h12l-2.5 4L17 12H5', solve: 'M5 12.5l4.5 4.5L19 7', giveup: 'M6 6l12 12M18 6L6 18', rules: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM8 9h7M8 13h5',
+    pause: 'M8 5v14M16 5v14', pencil: 'M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3', erase: 'M8 20h11M5 15l9-9 5 5-6 6H8z', dot: 'M12 12h.01'
+  };
+  var ICON_OF = [[/undo/i, 'undo'], [/redo/i, 'redo'], [/hint|tip/i, 'hint'], [/give|resign|concede|quit/i, 'giveup'], [/solution|solve|reveal|check/i, 'solve'], [/restart|reset|replay|again|shuffle|reshuffle/i, 'restart'], [/flag/i, 'flag'], [/rule|help|how/i, 'rules'], [/pause/i, 'pause'], [/pencil|note|mark/i, 'pencil'], [/erase|clear/i, 'erase']];
+  function iconNode(name) {
+    var svg = d.createElementNS(SVG_NS, 'svg'), path = d.createElementNS(SVG_NS, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', ICON_PX); svg.setAttribute('height', ICON_PX); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'gs-icon');
+    [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.9'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']].forEach(function (kv) { svg.setAttribute(kv[0], kv[1]); });
+    path.setAttribute('d', ICONS[name] || ICONS.dot); svg.appendChild(path);
+    return svg;
+  }
+  function iconFor(b) {
+    var hay = b.id + ' ' + b.textContent, hit = ICON_OF.filter(function (m) { return m[0].test(hay); })[0];
+    return hit ? hit[1] : 'dot';
+  }
+  function tile(icon, label, hint, onclick) {
+    var b = h('button', { class: 'gs-item gs-tile', type: 'button', onclick: onclick }, [iconNode(icon), h('span', { class: 'gs-item-l', text: label })]);
+    if (hint) b.title = hint;
+    return b;
+  }
   function rootPane() {
     head(titleOf(), true);
-    var options = menuOptions(), list = h('div', { class: 'gs-list' });
-    if (extras.length) {
-      var box = h('div', { class: 'gs-actions gs-extras' });
-      extras.forEach(function (b) { b.classList.add('gs-moved'); box.appendChild(b); });
-      card.appendChild(box);
-      if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }
+    var options = menuOptions(), grid = h('div', { class: 'gs-grid gs-list' });
+    if (newBtn) {
+      var go = h('button', { class: 'gs-item gs-newgame', type: 'button', onclick: newGameTapped }, [iconNode('plus'), h('span', { class: 'gs-item-l', text: T('shell.menu.new') })]);
+      card.appendChild(go);
     }
-    if (newBtn) list.appendChild(chevronRow(T('shell.menu.new'), '', newGameTapped));
-    list.appendChild(chevronRow(T('shell.menu.settings'), summary(), function () { show(settingsPane); }));
-    if (helpFor(ID)) list.appendChild(chevronRow(T('shell.menu.how'), '', function () { show(helpPane); }));
-    if (game.watch) list.appendChild(chevronRow(T('shell.menu.watch'), watching ? T('shell.running') : '', function () { show(watchPane); }));
-    if (historyFor(ID)) list.appendChild(chevronRow(T('shell.menu.history'), '', function () { show(historyPane); }));
-    list.appendChild(chevronRow(T('shell.menu.stats'), '', function () { show(statsPane); }));
-    if (aboutLink()) list.appendChild(chevronRow(T('shell.menu.about'), '', function () { show(aboutPane); }));
-    card.appendChild(list);
+    if (extras.length) {
+      var box = h('div', { class: 'gs-extras' });
+      extras.forEach(function (b) {
+        b.classList.add('gs-moved', 'gs-tile');
+        if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        box.appendChild(b);
+      });
+      if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }
+      grid.appendChild(box);
+    }
+    grid.appendChild(tile('settings', T('shell.menu.settings'), summary(), function () { show(settingsPane); }));
+    if (helpFor(ID)) grid.appendChild(tile('how', T('shell.menu.how'), '', function () { show(helpPane); }));
+    if (game.watch) grid.appendChild(tile('watch', T('shell.menu.watch'), watching ? T('shell.running') : '', function () { show(watchPane); }));
+    if (historyFor(ID)) grid.appendChild(tile('history', T('shell.menu.history'), '', function () { show(historyPane); }));
+    grid.appendChild(tile('stats', T('shell.menu.stats'), '', function () { show(statsPane); }));
+    if (aboutLink()) grid.appendChild(tile('about', T('shell.menu.about'), '', function () { show(aboutPane); }));
+    card.appendChild(grid);
     void options;
   }
   function summary() {
