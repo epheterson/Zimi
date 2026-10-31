@@ -151,9 +151,9 @@
       G.showEnd(G.result);
     };
     // The end sheet for a result {text, outcome, name}; also how a finished game comes back after leaving it.
-    G.showEnd = function (r) {
+    G.showEnd = function (r, after) {
       var result = r.outcome === 'w' ? 'win' : r.outcome === 'l' ? 'lose' : r.outcome === 'd' ? 'draw' : r.name ? 'win' : 'over';
-      UI.end({ result: result, name: result === 'win' && r.outcome !== 'w' ? r.name : undefined, text: r.text });
+      UI.end({ result: result, name: result === 'win' && r.outcome !== 'w' ? r.name : undefined, text: r.text, after: after });
     };
     // Never lose a game: leaving and coming back puts the same position on the table (ZimiShell.persist).
     // api: { save() -> the page's state as plain data, or null when no move was made; load(data) -> false if it
@@ -177,7 +177,7 @@
           Object.keys(saved).forEach(function (k) { settings[k] = saved[k]; });
           G.over = !!data.over; G.result = data.res || null;
           if (keep.load(unpack(data.d), saved) === false) return false;
-          if (G.over && G.result) { G.say(G.result.line || resultLine(G.result.text, G.result.outcome, G.result.name)); G.showStats(); G.showEnd(G.result); }
+          if (G.over && G.result) { G.say(G.result.line || resultLine(G.result.text, G.result.outcome, G.result.name)); G.showStats(); G.showEnd(G.result, 0); }
           else if (keep.resume) keep.resume();
         }
       });

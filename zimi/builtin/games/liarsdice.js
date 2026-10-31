@@ -275,7 +275,8 @@
       title = T(won ? 'shell.end.win' : 'shell.end.lose');
     }
     els.msg.textContent = text;
-    showSheet(title, text, T('shell.menu.new'));
+    // The shell's end: the win's beat or the loss's moment, then the sheet; New game deals again with these seats.
+    ZimiShell.endSheet({ title: title, result: seats.hotseat() || won ? 'win' : 'lose', text: text, onNew: begin, after: counted ? 0 : undefined });
   }
 
   function paintN() {

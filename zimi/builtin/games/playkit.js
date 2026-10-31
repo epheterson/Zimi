@@ -176,19 +176,8 @@
     return el;
   };
 
-  // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
-  var audio = null, TONE_GAIN = 0.22, TONE_ATTACK_S = 0.02;
-  Play.tone = function (freq, ms, gain) {
-    if (!window.ZimiShell || !window.ZimiShell.sound || !window.ZimiShell.sound()) return;
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      if (audio.state === 'suspended') audio.resume();
-      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime, len = ms / 1000, peak = gain || TONE_GAIN;
-      o.type = 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + TONE_ATTACK_S); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
-    } catch (e) { /* no audio on this device: play on silently */ }
-  };
+  // A note, only when the player has turned Sound on (Settings): the shell makes it.
+  Play.tone = function (freq, ms, gain) { if (window.ZimiShell && window.ZimiShell.tone) window.ZimiShell.tone(freq, ms, gain); };
   // A buzz for a hit (a number of ms or a pattern); phones that cannot buzz, and reduced motion, stay still.
   Play.haptic = function (pattern) {
     try { if (navigator.vibrate && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }

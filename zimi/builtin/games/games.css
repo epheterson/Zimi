@@ -548,8 +548,7 @@ html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .gs-tm-sheet { animation: none; } }
 
 /* The end of a game. A win: a pebble stamps the middle of the game under the sheet's scrim level, a ring opens from it and a few
-   pebbles scatter and confetti falls (shell.js, about 1.8 s); the sheet's title is heavier. A loss: the sheet settles in, nothing moves over the
-   board. Reduced motion never reaches this: shell.js adds nothing then. */
+   pebbles scatter and confetti falls (shell.js, about 1.8 s); the sheet's title is heavier. A loss (about 1.1 s): the board goes quiet under a veil, a ring closes in and the pebble settles; nothing flies over it. Reduced motion never reaches this: shell.js adds nothing then. */
 .gs-moment { position: fixed; inset: 0; z-index: 49; pointer-events: none; overflow: hidden; }
 body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 .gs-moment { transition: opacity 280ms ease-out; }
@@ -596,3 +595,15 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-sp-hint { margin: 0; font-size: var(--fs-small); color: var(--ink2); }
 @media (prefers-reduced-motion: no-preference) { :root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } } }
 @media (max-height: 520px) { .gs-sp-art { display: none; } }
+
+/* The loss: the board dims under a veil, a ring closes in on the pebble and the pebble settles into the middle. No confetti, no scatter. */
+.gs-moment-lose { background: color-mix(in srgb, var(--ink) 26%, transparent); animation: gs-lose-veil 520ms ease-out both; }
+/* The pebble is gone the moment the sheet arrives (it would sit on the sheet's text); the veil fades with the scrim. */
+.gs-moment-lose.gs-m-out .gs-m-at { display: none; }
+.gs-moment-lose .gs-m-stamp { width: 72px; height: 72px; filter: grayscale(0.55) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.3)); animation: gs-lose-stamp 620ms cubic-bezier(0.25, 0.8, 0.3, 1) 220ms forwards; }
+.gs-moment-lose .gs-m-ring { border-color: var(--ink2); animation: gs-lose-ring 800ms ease-out 160ms forwards; }
+@keyframes gs-lose-veil { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gs-lose-stamp { 0% { opacity: 0; transform: translateY(-18px) scale(1.06); } 100% { opacity: 0.95; transform: translateY(0) scale(1); } }
+@keyframes gs-lose-ring { 0% { opacity: 0; transform: scale(2.6); } 35% { opacity: 0.55; } 100% { opacity: 0; transform: scale(0.9); } }
+.gs-end-lose h2 { font-weight: 750; }
+

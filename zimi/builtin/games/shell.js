@@ -584,11 +584,27 @@
   // mark's own colours falls (about 1.8 s, the game's own flourish plays first), then the sheet comes up with its title heavier and its numbers counting up.
   // A loss is dignified: no motion over the board, the sheet settles in softly. A draw is plain. A tap, a key or the
   // sheet being asked for early skips the beat; under reduced motion there is none and the sheet is there at once.
-  var BEAT_MS = 1800, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
+  var BEAT_MS = 1800, LOSS_BEAT_MS = 1100, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
   function haptic(result) {
     try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
   }
   Shell.haptic = haptic;
+  // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
+  var audio = null, TONE_GAIN = 0.22, TONE_ATTACK_S = 0.02, NOTE_GAP_MS = 140;
+  Shell.tone = function (freq, ms, gain, delayMs) {
+    if (!Shell.sound()) return;
+    try {
+      audio = audio || new (root.AudioContext || root.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + (delayMs || 0) / MS_PER_S, len = ms / MS_PER_S, peak = gain || TONE_GAIN;
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + TONE_ATTACK_S); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
+    } catch (e) { /* no audio on this device: play on silently */ }
+  };
+  // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
+  var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
+  function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }
   function momentNode() {
     var kids = [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })], i, a, r;
     for (i = 0; i < SCATTER; i++) {
@@ -600,6 +616,10 @@
       rain.push(h('i', { class: 'gs-m-conf gs-m-conf' + (i % CONFETTI_COLOURS), style: '--x:' + (((i * 0.618034) % 1) * 100).toFixed(1) + '%;--sway:' + (((i * 37) % 11) - 5) * 9 + 'px;--turn:' + (((i * 53) % 9) - 4) * 150 + 'deg;--delay:' + ((i * 29) % 13) * 40 + 'ms;--fall:' + (1050 + ((i * 17) % 7) * 70) + 'ms' }));
     }
     return h('div', { class: 'gs-moment', 'aria-hidden': 'true' }, [h('div', { class: 'gs-m-rain' }, rain), h('div', { class: 'gs-m-at' }, kids)]);
+  }
+  // A loss, dignified and still a moment: the board goes quiet (desaturated, dimmed), a ring closes in and the pebble settles in the middle.
+  function lossNode() {
+    return h('div', { class: 'gs-moment gs-moment-lose', 'aria-hidden': 'true' }, [h('div', { class: 'gs-m-at' }, [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })])]);
   }
   // The figures in the chips count up from nothing; the chip says its final value to a screen reader at once.
   function countUp(chips) {
@@ -636,10 +656,11 @@
     var title = opts.title ? String(opts.title) : opts.name ? T(opts.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: opts.name }) : T(END_TITLES[opts.result] || END_TITLES.over);
     var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
     var newGame = function () { dirty = false; clearRest(); if (opts.onNew) opts.onNew(); else if (newBtn) newBtn.click(); };
-    var after = opts.after === undefined ? (opts.result === 'win' && !reducedMotion() ? BEAT_MS : SHEET_GUARD_MS) : opts.after;
-    // A win always gets its whole beat, even when a game asks for a shorter wait for its own flourish.
-    if (opts.result === 'win' && after > 0 && !reducedMotion()) after = Math.max(after, BEAT_MS);
-    var beat = opts.result === 'win' && after > 0 && !reducedMotion(), shown = false, opened = null, timers = [], overlay = null, release = function () {};
+    var length = opts.result === 'win' ? BEAT_MS : opts.result === 'lose' ? LOSS_BEAT_MS : 0;
+    var after = opts.after === undefined ? (length && !reducedMotion() ? length : SHEET_GUARD_MS) : opts.after;
+    // A win or a loss always gets its whole beat, even when a game asks for a shorter wait for its own flourish.
+    if (length && after > 0 && !reducedMotion()) after = Math.max(after, length);
+    var beat = length > 0 && after > 0 && !reducedMotion(), shown = false, opened = null, timers = [], overlay = null, release = function () {};
     var label = opts.newLabel || T('shell.menu.new');
     var show = function () {
       if (shown) return;
@@ -658,8 +679,8 @@
     if (!(after > 0)) { show(); return; }
     haptic(opts.result);
     if (beat) {
-      // The stamp lands in the last BEAT_MS before the sheet; a game that took longer on its own flourish has finished by then.
-      timers.push(root.setTimeout(function () { if (!shown) { overlay = momentNode(); d.body.appendChild(overlay); } }, Math.max(0, after - BEAT_MS)));
+      // The moment lands in the last stretch before the sheet; a game that took longer on its own flourish has finished by then.
+      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
     }
     // A tap or key anywhere skips the beat (the sheet is up at once); a tap on the bar (Menu, Back) is the player doing something else.
     var armedAt = Date.now();
