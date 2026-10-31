@@ -550,6 +550,7 @@ var AE_CSS = [
   '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
   '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
   '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
+  '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
   '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
@@ -1993,6 +1994,13 @@ function _aeSettingsWhy(m) {
   if (!m.canChange) return _aeT('alm_earth_sat_admin_only');
   return _ae.setError;
 }
+// A choice's hint; where it names the source, the name links to it.
+var AE_SAT_SOURCE_URL = 'https://celestrak.org/';
+function _aeSetHint(key) {
+  var mark = '\u0001';
+  return _almEsc(_aeT(key, { src: mark })).replace(mark,
+    '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
+}
 function _aeRenderSettings() {
   var panel = _aeById('ae-set');
   if (!panel || !_ae.setOpen) return;
@@ -2005,7 +2013,7 @@ function _aeRenderSettings() {
     html += '<label class="ae-set-choice' + (editable ? '' : ' ae-off') + '">' +
       '<input type="radio" name="ae-sat-mode" value="' + mode + '"' +
         (m.mode === mode ? ' checked' : '') + (editable ? '' : ' disabled') + '>' +
-      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _almEsc(_aeT(key + '_hint')) + '</small></span></label>';
+      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _aeSetHint(key + '_hint') + '</small></span></label>';
   });
   html += '</div>';
   var why = _aeSettingsWhy(m);
