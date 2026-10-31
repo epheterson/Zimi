@@ -2210,7 +2210,7 @@ function _skyGLParams(s) {
     seed: s.twinkle, scint: !_skyReduceMotion(), lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, moonDisc: s.moonDisc };
 }
 function _skyGLSky(s) {
-  if (!_sgInit() || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
+  if (!_sgInitSoon() || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
   try {
     _sgLoadData(_skyKickDirty);
     return _sgDraw(_skyGLParams(s));

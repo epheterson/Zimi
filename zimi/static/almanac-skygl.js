@@ -614,6 +614,16 @@ function _sgInit() {
     return (_sg = false);
   }
 }
+// The page's sky starts the GPU when the person is not touching the screen, not in the paint that first asks: a
+// context, four programs and their tables were a task of their own, right after the Almanac opened. The Canvas 2D
+// sky draws until then (the same contract as while the programs compile). False until started.
+var SG_START_MAX_WAIT_MS = 1500;
+function _sgInitSoon() {
+  if (_sg !== null) return !!_sg;
+  if (typeof whenQuiet !== 'function') return _sgInit();
+  whenQuiet(function () { if (_sg === null) _sgInit(); }, { key: 'sky-gl', priority: QUIET_PRI_PANELS, maxWaitMs: SG_START_MAX_WAIT_MS });
+  return false;
+}
 // Until the programs have compiled: look again soon. Then link-check them and bake the two tables that never change.
 function _sgPoll(sg) {
   if (_sg !== sg) return;
@@ -730,7 +740,7 @@ function _sgLoadData(onReady) {
   if (!sg.mwReady && !sg.mwLoading && !_sgFailed.mw) {
     sg.mwLoading = true;
     var img = new Image();
-    img.onload = function () {
+    var upload = function () {
       sg.mwLoading = false;
       if (_sg !== sg) return;
       var gl = sg.gl;
@@ -741,8 +751,11 @@ function _sgLoadData(onReady) {
       sg.mwReady = true;
       onReady();
     };
-    img.onerror = function () { sg.mwLoading = false; _sgFailed.mw = true; };
+    var failed = function () { sg.mwLoading = false; _sgFailed.mw = true; };
     img.src = SG_MILKYWAY_URL;
+    // Decoded off the main thread first: the upload then copies pixels instead of decoding a webp in the task.
+    if (img.decode) img.decode().then(upload, failed);
+    else { img.onload = upload; img.onerror = failed; }
   }
 }
 

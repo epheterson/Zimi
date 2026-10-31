@@ -17,23 +17,24 @@ const fn = (src, name) => {
 let failures = 0;
 const check = (ok, label) => { if (ok) console.log('ok: ' + label); else { console.error('FAIL: ' + label); failures++; } };
 
-// _almAfterPaint: a frame, then a task; nothing when the Almanac closed or was drawn again meanwhile.
+// _almAfterPaint: every panel is a job for the quiet queue (app.js whenQuiet); nothing runs in the call that drew
+// the page, and nothing when the Almanac closed or was drawn again meanwhile.
 {
-  const frames = [], tasks = [], ran = [];
-  const sb = { requestAnimationFrame: f => frames.push(f), setTimeout: f => tasks.push(f), _almanacOpen: true, _almAfterPaintToken: 0 };
+  const jobs = [], ran = [];
+  const sb = { whenQuiet: (f, o) => jobs.push({ f, o }), QUIET_PRI_PANELS: 2, ALM_PANEL_MAX_WAIT_MS: 900, _almanacOpen: true, _almAfterPaintToken: 0 };
   vm.createContext(sb);
   vm.runInContext(fn(alm, '_almAfterPaint'), sb);
-  sb._almAfterPaint(() => ran.push('a'));
-  check(ran.length === 0 && frames.length === 1, 'the panels do not run in the call that drew the page');
-  frames.shift()(); check(ran.length === 0 && tasks.length === 1, '...nor in the frame: a task after it');
-  tasks.shift()(); check(ran.join() === 'a', '...they run in that task');
-  sb._almAfterPaint(() => ran.push('b')); sb._almAfterPaint(() => ran.push('c'));
-  frames.shift()(); frames.shift()(); tasks.shift()(); tasks.shift()();
-  check(ran.join() === 'a,c', 'drawn again before they ran: only the newer draw counts');
-  sb._almAfterPaint(() => ran.push('d')); frames.shift()(); sb._almanacOpen = false; tasks.shift()();
-  check(ran.join() === 'a,c', 'closed before they ran: skipped');
+  sb._almAfterPaint([() => ran.push('a1'), () => ran.push('a2')]);
+  check(ran.length === 0 && jobs.length === 2, 'the panels do not run in the call that drew the page: one quiet job each');
+  check(jobs[0].o.key !== jobs[1].o.key && jobs.every(j => j.o.priority === 2), '...each its own key, ahead of the loads');
+  jobs.shift().f(); jobs.shift().f(); check(ran.join() === 'a1,a2', '...and they run when the queue gets to them');
+  sb._almAfterPaint([() => ran.push('b')]); sb._almAfterPaint([() => ran.push('c')]);
+  jobs.shift().f(); jobs.shift().f();
+  check(ran.join() === 'a1,a2,c', 'drawn again before they ran: only the newer draw counts');
+  sb._almAfterPaint([() => ran.push('d')]); sb._almanacOpen = false; jobs.shift().f();
+  check(ran.join() === 'a1,a2,c', 'closed before they ran: skipped');
 }
-check(/anchor\) panels\(\);\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once');
+check(/if \(anchor\) panels\.forEach\(function \(p\) \{ p\(\); \}\);\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once');
 
 // _almMoonLift: kept until the 3D view's file is in.
 {
