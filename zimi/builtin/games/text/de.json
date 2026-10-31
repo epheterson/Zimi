@@ -4946,6 +4946,8 @@
  "sky.study.again": "Am Himmel ansehen",
  "sky.study.hint": "Ziehen, um sich umzusehen, zwei Finger zum Zoomen. Die Namen sind eingeblendet.",
  "sky.study.lead": "Sieh dir den Himmel von heute Abend an. Die Fragen drehen sich darum.",
+ "sky.study.motion": "Bewegungssensoren einschalten",
+ "sky.study.motionDenied": "Bewegung ist aus. Ziehe, um dich umzusehen.",
  "sky.study.open": "Den Himmel erkunden",
  "sky.tapIt": "Tippen Sie am Himmel darauf",
  "sky.whatIsThis": "Was ist das? ({n} von {total})",

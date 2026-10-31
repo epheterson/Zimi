@@ -5041,6 +5041,8 @@
  "sky.study.again": "Verlo en el cielo",
  "sky.study.hint": "Arrastra para mirar alrededor, pellizca para acercar. Los nombres están activados.",
  "sky.study.lead": "Echa un vistazo al cielo de esta noche. Las preguntas tratan de él.",
+ "sky.study.motion": "Activar el movimiento",
+ "sky.study.motionDenied": "El movimiento está desactivado. Arrastra para mirar alrededor.",
  "sky.study.open": "Mirar alrededor del cielo",
  "sky.tapIt": "Tócalo en el cielo",
  "sky.whatIsThis": "¿Qué es esto? ({n} de {total})",

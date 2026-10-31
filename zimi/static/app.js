@@ -8204,7 +8204,7 @@ function openAlmanac(replaceState) {
 
 // Point the phone at the sky (almanac-look.js): loaded on the first tap of the sky's Look button, never with the
 // Almanac. opts: {lat, lon, name} for a place other than the Almanac's.
-var _almLookLoading = null;
+var _ALMLOOK_JS = '/static/almanac-look.js?v=45';   // also read by a game's sky (almanac-gamesky.js), so loaded once for both
 function openAlmanacLook(opts) {
   // iOS answers a motion request only from inside a tap, and the view's files load after this one ends: asked here,
   // in the tap's own turn, the answer is waiting when the view is up (almanac-look.js _lookUsePermission).
@@ -8212,16 +8212,9 @@ function openAlmanacLook(opts) {
   if (Orientation && typeof Orientation.requestPermission === 'function' && window.isSecureContext !== false) {
     window._lookPermission = Orientation.requestPermission().then(function(r) { return r === 'granted' ? 'granted' : 'denied'; }, function() { return 'denied'; });
   }
-  if (!_almLookLoading) {
-    _almLookLoading = new Promise(function(resolve, reject) {
-      var s = document.createElement('script');
-      s.src = '/static/almanac-look.js?v=45';
-      s.onload = function() { resolve(); };
-      s.onerror = function() { _almLookLoading = null; reject(new Error(s.src)); };
-      document.head.appendChild(s);
-    });
-  }
-  _almLookLoading.then(function() { window.openAlmanacLookNow(opts); }, function() { _showToast(t('almanac_unavailable_offline')); });
+  _loadScript(_ALMLOOK_JS).then(function(ok) {
+    if (ok) window.openAlmanacLookNow(opts); else _showToast(t('almanac_unavailable_offline'));
+  });
 }
 
 // Find in the sky (almanac-skyfind.js): the phone's Look window only, loaded on the first tap of its Find button.
@@ -24528,7 +24521,7 @@ function _gameFrameIs(win) {
 var _GAMESKY_JS = '/static/almanac-gamesky.js?v=1';
 function _gameSkyOpen(d, win) {
   var answer = function(started) { try { win.postMessage({ zimi: 'game-sky-done', started: !!started }, location.origin); } catch (e) {} };
-  Promise.all([_loadAlmanacModules(), _loadScript(_GAMESKY_JS)]).then(function(r) {
+  Promise.all([_loadAlmanacModules(), _loadScript(_GAMESKY_JS), _loadScript(_ALMLOOK_JS)]).then(function(r) {
     if (r[1] && typeof ZimiGameSky !== 'undefined') ZimiGameSky.open(d, answer); else answer(false);
   }, function() { answer(false); });
 }

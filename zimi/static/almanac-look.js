@@ -184,7 +184,7 @@ function _lookAskSensors() {
 function _lookStartSensors() {
   var S = _look;
   if (S.sensing) return;
-  S.sensing = { absSeen: false, offset: null, offsetTrusted: false, lastEvent: 0, poorSince: 0, got: false };
+  S.sensing = _lookNewSensing();
   S.onAbs = function (e) { _lookOnOrientation(e, true); };
   S.onRel = function (e) { _lookOnOrientation(e, false); };
   window.addEventListener('deviceorientationabsolute', S.onAbs);
@@ -212,12 +212,14 @@ function _lookSensorsFailed(noteKey) {
   _lookButtons();
 }
 
-function _lookOnOrientation(e, absolute) {
-  var S = _look, sn = S && S.sensing;
-  if (!sn) return;
+// One reading, turned into where the phone looks. `sn` is the held state between readings
+// ({absSeen, offset, offsetTrusted, lastEvent}); null for a desktop's empty first event or a
+// relative reading after an absolute one. The Look window and a game's sky (almanac-gamesky.js) both read this way.
+function _lookNewSensing() { return { absSeen: false, offset: null, offsetTrusted: false, lastEvent: 0, poorSince: 0, got: false }; }
+function _lookReadOrientation(sn, e, absolute) {
   var ios = typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0;
-  if (e.alpha == null && !ios) return;                  // a desktop's empty first event
-  if (absolute) sn.absSeen = true; else if (sn.absSeen) return;   // Chrome fires both; the absolute one knows north
+  if (e.alpha == null && !ios) return null;             // a desktop's empty first event
+  if (absolute) sn.absSeen = true; else if (sn.absSeen) return null;   // Chrome fires both; the absolute one knows north
   var now = performance.now();
   var alpha = e.alpha || 0, beta = e.beta || 0, gamma = e.gamma || 0;
   var view = _lookViewFromEuler(alpha, beta, gamma, _lookScreenAngle());
@@ -229,8 +231,17 @@ function _lookOnOrientation(e, absolute) {
     view = _lookApplyOffset(view, sn.offset);
   }
   sn.lastEvent = now;
+  return { view: view, ios: ios, now: now, poor: _lookCompassNeedsCalibrating({ accuracy: ios ? e.webkitCompassAccuracy : null, absolute: absolute || !!e.absolute || ios }) };
+}
+
+function _lookOnOrientation(e, absolute) {
+  var S = _look, sn = S && S.sensing;
+  if (!sn) return;
+  var r = _lookReadOrientation(sn, e, absolute);
+  if (!r) return;
+  var view = r.view, ios = r.ios, now = r.now;
   if (!sn.got) { sn.got = true; S.mode = 'sensor'; _lookNote('', 'sensors'); _lookButtons(); }
-  var poor = _lookCompassNeedsCalibrating({ accuracy: ios ? e.webkitCompassAccuracy : null, absolute: absolute || !!e.absolute || ios });
+  var poor = r.poor;
   if (poor) {
     if (!sn.poorSince) sn.poorSince = now;
     if (now - sn.poorSince > LOOK_NOTE_AFTER_MS) _lookNote(_lookT(ios ? 'look_calibrate' : 'look_no_north'), 'compass');

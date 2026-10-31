@@ -5326,6 +5326,8 @@
  "sky.study.again": "شاهده في السماء",
  "sky.study.hint": "اسحب للنظر حولك، واضغط بإصبعين للتكبير. الأسماء ظاهرة.",
  "sky.study.lead": "ألقِ نظرة على سماء الليلة. الأسئلة عنها.",
+ "sky.study.motion": "شغّل الحركة",
+ "sky.study.motionDenied": "الحركة متوقفة. اسحب للنظر حولك.",
  "sky.study.open": "تجوّل في السماء",
  "sky.tapIt": "المسه على السماء",
  "sky.whatIsThis": "ما هذا؟ ({n} من {total})",

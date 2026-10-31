@@ -152,7 +152,7 @@
   // Before the first question: tonight's sky for the place, to look at. Inside Zimi the Almanac's own sky opens over the page
   // (names on, drag and pinch); the page's own dome, named, is always here under it and is the whole study anywhere else.
   function skyAsk(extra) {
-    var m = { zimi: 'game-sky', place: { lat: g.place.lat, lon: g.place.lon }, ms: g.ms, title: T('sky.over', { where: placeText(), when: whenText() }), hint: T('sky.study.hint'), close: T('shell.close') };
+    var m = { zimi: 'game-sky', place: { lat: g.place.lat, lon: g.place.lon }, ms: g.ms, title: T('sky.over', { where: placeText(), when: whenText() }), hint: T('sky.study.hint'), close: T('shell.close'), motion: T('sky.study.motion'), motionDenied: T('sky.study.motionDenied') };
     return Lib.tell(Object.assign(m, extra));
   }
   function study(auto) {

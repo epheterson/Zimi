@@ -5041,6 +5041,8 @@
  "sky.study.again": "Le voir dans le ciel",
  "sky.study.hint": "Faites glisser pour regarder autour de vous, pincez pour zoomer. Les noms sont affichés.",
  "sky.study.lead": "Observez le ciel de ce soir. Les questions portent dessus.",
+ "sky.study.motion": "Activer le mouvement",
+ "sky.study.motionDenied": "Le mouvement est désactivé. Faites glisser pour regarder autour.",
  "sky.study.open": "Parcourir le ciel",
  "sky.tapIt": "Touchez-le sur le ciel",
  "sky.whatIsThis": "Qu’est-ce que c’est ? ({n} sur {total})",

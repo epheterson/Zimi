@@ -4960,6 +4960,8 @@
  "sky.study.again": "See it in the sky",
  "sky.study.hint": "Drag to look around, pinch to zoom. Names are on.",
  "sky.study.lead": "Take a look at tonight's sky. The questions are about it.",
+ "sky.study.motion": "Turn on motion",
+ "sky.study.motionDenied": "Motion is off. Drag to look around.",
  "sky.study.open": "Look around the sky",
  "sky.tapIt": "Tap it on the sky",
  "sky.whatIsThis": "What is this? ({n} of {total})",

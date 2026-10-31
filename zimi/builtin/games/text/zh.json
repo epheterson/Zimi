@@ -4851,6 +4851,8 @@
  "sky.study.again": "在天空中查看",
  "sky.study.hint": "拖动环顾四周，双指捏合缩放。已显示名称。",
  "sky.study.lead": "先看看今晚的天空，问题都与它有关。",
+ "sky.study.motion": "开启动作感应",
+ "sky.study.motionDenied": "动作感应已关闭。拖动即可环顾四周。",
  "sky.study.open": "环顾天空",
  "sky.tapIt": "在天空上点按它",
  "sky.whatIsThis": "这是什么？（{n} / {total}）",
