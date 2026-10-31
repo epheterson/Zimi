@@ -2318,6 +2318,7 @@ function _appPlaceholder() {
   if (_isWikiPage()) return t('wiki_search_placeholder');
   if (_isBooksPage()) return t('books_search_placeholder');
   if (_isDictPage()) return t('dictionary_search_placeholder');
+  if (_isGameShelf()) return t('games_search_placeholder');
   if (_isFieldguidePage()) return t('fieldguide_search_placeholder');
   if (_isReddotPage()) return t('reddot_search_placeholder');
   if (_isExchangePage()) return t('exchange_search_placeholder');
@@ -9780,14 +9781,14 @@ var _searchFocusedByUser = false;
 // open the dropdown here too or the filter pills would be unreachable.
 function _searchBoxPressed() {
   _searchFocusedByUser = true;
-  if (document.activeElement === q && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  if (document.activeElement === q && !q.value.trim() && mode !== 'manage' && !_isGameShelf()) showHistoryDropdown();
 }
 q.addEventListener('mousedown', _searchBoxPressed);
 q.addEventListener('touchstart', _searchBoxPressed);
 q.addEventListener('focus', function() {
   // Open the dropdown (filter pills + recent history) on user-initiated focus
   // only — not autofocus-on-load, which would spoil the clean default home.
-  if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage') showHistoryDropdown();
+  if (_searchFocusedByUser && !q.value.trim() && mode !== 'manage' && !_isGameShelf()) showHistoryDropdown();
   // Only hide topbar icons on mobile when user tapped the search box (not autofocus on load)
   if (_searchFocusedByUser && _isNarrow()) {
     document.querySelector('.topbar').classList.add('search-focused');
@@ -9801,6 +9802,8 @@ q.addEventListener('blur', function() {
 q.addEventListener('input', () => {
   _searchHelpExpanded(false); // what is typed replaces the examples
   clearTimeout(searchTimer);
+  // The shelf filters as you type; the library is not asked.
+  if (_isGameShelf()) { clearTimeout(suggestTimer); hideSuggest(); _appFrameCall('shelfSearch', q.value); return; }
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
@@ -9905,6 +9908,7 @@ q.addEventListener('keydown', e => {
     clearTimeout(suggestTimer);
     // On a map, Enter takes the first place found; there is no article
     // search to fall through to.
+    if (_isGameShelf()) { _appFrameCall('shelfGo', q.value.trim()); return; }
     if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
     if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
     if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
@@ -9950,7 +9954,7 @@ async function doSearch(query, push, perSource) {
   const more = !!perSource;
   perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
-  if (!more) _searchCardClear(); // a new question: the old card goes, its request with it
+  if (!more) { _searchCardClear(); _gamesRowClear(); } // a new question: the old card goes, its request with it
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
@@ -9976,6 +9980,7 @@ async function doSearch(query, push, perSource) {
   // Reading an article, the box searches its ZIM, as its placeholder says
   // ("Search in Wikipedia…"); the ZIM's chip in the header widens it again.
   const scope = _searchScopeSource();
+  if (!more && !scope && !homeScope) _gamesRowStart(query);
   if (scope && !currentSource) { currentSource = scope; sourceHeaderEl.style.display = 'none'; }
   mode = 'search';
   sourceAutoReader = false; // user searched — don't auto-home on back
@@ -10309,6 +10314,13 @@ function searchResultCounts(items, zims) {
   return { bySource: bySource, byLanguage: byLanguage };
 }
 
+// A pill that leads nowhere (dimmed: nothing in it under the other filter) is left out once a row has more than a
+// few pills; the one that is on stays so it can be taken off.
+var PILLS_FEW = 3;
+function _pillsWithoutDimmed(names, isDimmed, isOn) {
+  if (names.length <= PILLS_FEW) return names;
+  return names.filter(function(n) { return isOn(n) || !isDimmed(n); });
+}
 function renderSearchResults(data, scope) {
   if (snippetController) { snippetController.abort(); snippetController = null; }
   let items = data.results || [];
@@ -10339,9 +10351,11 @@ function renderSearchResults(data, scope) {
     // Sort by count descending, same as source pills
     langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' +
       _allResetPill(activeLanguageFilters.size === 0, 'clearLanguageFilter()') +
-      langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }).map(function(lang) {
+      _pillsWithoutDimmed(langCodes.sort(function(a, b) { return (byLanguage[b] || 0) - (byLanguage[a] || 0); }), function(lang) {
+        return activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
+      }, function(lang) { return activeLanguageFilters.has(lang); }).map(function(lang) {
       var name = _langOwnName(lang);
-      // Dim language pills when a source filter is active and that source has no results in this language
+      // A language pill is dimmed when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
       // While a language filter is on, the other languages stay in view,
       // dimmed and still a tap away: there is more than the filter shows.
@@ -10362,8 +10376,10 @@ function renderSearchResults(data, scope) {
     sourceNames.forEach(function(s) { var tt = _zimTitle(s); _titleCounts[tt] = (_titleCounts[tt] || 0) + 1; });
     // Sort by count descending so most relevant sources are visible first
     var sourcePillsHtml = _allResetPill(activeSourceFilters.size === 0, 'clearSourceFilter()') +
-      sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }).map(function(s) {
-      // Dim source pills when a language filter is active and this source has no results in that language
+      _pillsWithoutDimmed(sourceNames.sort(function(a, b) { return (bySource[b] || 0) - (bySource[a] || 0); }), function(s) {
+        return activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
+      }, function(s) { return activeSourceFilters.has(s); }).map(function(s) {
+      // A source pill is dimmed when a language filter is active and this source has no results in that language
       var dimmed = activeLanguageFilters.size > 0 && ![...activeLanguageFilters].some(function(lang) { return sourcesByLang[lang] && sourcesByLang[lang].has(s); });
       var _si = _zimInfo(s);
       var badge = (_si && _titleCounts[_zimTitle(s)] > 1) ? ' ' + _langBadge(_si, true) : '';
@@ -10426,6 +10442,7 @@ function renderSearchResults(data, scope) {
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
     output.innerHTML = chipsHtml + (guided ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
+    _gamesRowMount();
     return;
   }
 
@@ -10518,6 +10535,7 @@ function renderSearchResults(data, scope) {
   // results in 0.3s" said them again under them).
   output.innerHTML = html;
   _searchCardMount();
+  _gamesRowMount();
 
   loadSnippets();
 }
@@ -10839,6 +10857,7 @@ function toggleSourceFilter(s) {
 function clearSearchInput() {
   q.value = '';
   hideSuggest();
+  if (_isGameShelf()) { _appFrameCall('shelfSearch', ''); q.focus(); return; }
   clearSearch();
   q.focus();
 }
@@ -24485,6 +24504,7 @@ function _gameHeadBoot(path) {
   setTimeout(done, GAME_BOOT_MS);
   window.addEventListener('message', function on(e) { if (e.origin === location.origin && e.source && e.data && e.data.zimi === 'game') { done(); window.removeEventListener('message', on); } });
 }
+var _shelfBoxOn = false;       // the box is the shelf's (see _isGameShelf)
 var _gameGoneTimer = 0;        // a page that left: the header waits a moment for the next one's word
 var GAME_GONE_MS = 600;
 var _GAME_ICON_SIZE = ' width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -24498,6 +24518,15 @@ function _isGamesZimOpen() {
   return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && currentArticle.zim === _GAMES_ZIM);
 }
 function _isGamePage() { return !!(_gameHead && _isGamesZimOpen()); }
+// The shelf (ZimiGames' index page) is an app that owns the search box: what is typed filters the shelf in the page,
+// Enter opens the top game (the page's shelfSearch / shelfGo, as the Dictionary's dictSearch / dictGo). The page the
+// frame shows decides (currentArticle trails it); before the frame has one, the article being opened does.
+function _gameFramePath() {
+  try { var m = /^\/w\/[^/]+\/(.*)$/.exec(_gameFrame().contentWindow.location.pathname); return m ? decodeURIComponent(m[1]) : ''; } catch (e) { return ''; }
+}
+function _isGameShelf() {
+  return _isGamesZimOpen() && (_gameFramePath() || _splitPathFragment(currentArticle.path).base) === 'index.html';
+}
 // A game (a page with a Menu) always has the shelf behind it. A reload empties the article history, and with it the arrow
 // that led there, which left the game's tile as the only way back.
 function _gameHasShelfBehind() { return !!(_isGamePage() && _gameHead.menu); }
@@ -24576,10 +24605,12 @@ function _unzoomPage() {
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
-  var on = _isGamePage();
+  var on = _isGamePage(), shelf = _isGameShelf();
   document.body.classList.toggle('game-page', on);
   if (on) _unzoomPage();
-  document.body.classList.toggle('game-shelf', on && !_gameHead.menu);
+  document.body.classList.toggle('game-shelf', shelf);
+  // The box holds what was typed for one place only: coming to the shelf or leaving it, it starts empty.
+  if (shelf !== _shelfBoxOn) { _shelfBoxOn = shelf; if (q.value) { q.value = ''; hideSuggest(); } }
   var head = document.getElementById('game-head');
   if (!head) return;
   head.hidden = !on;
@@ -28400,6 +28431,7 @@ function _libraryHeard() {
     _libraryKnown = true;
     _catalogCache = null;
     _gamesLinks = null; // the library changed: which articles are games' may have
+    _gamesIndex = null; // ... and whether the games are here at all
     if (window.AlmanacLinks) { AlmanacLinks.reset(); if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent(); } // its Q-ID links follow the library
     if (readerOpen) _gamePlayCheck();
     if (mode === 'manage') {
@@ -29301,6 +29333,88 @@ function _gamesLoad() {
   return _gamesLinks;
 }
 
+// ── Games in the main search ──
+// The search also finds the games: a small row of tiles above the results, only while the games ZIM is installed.
+// The names come from GET /games-search, one fixed list per language read once (the server holds it in memory; nothing is
+// read from a ZIM), then every keystroke is matched here with nothing asked of the server. The row is its own slot
+// beside the search card, drawn when the list is in hand, never in the way of the results.
+var _GAMES_SEARCH_URL = '/games-search';
+var GAMES_ROW_MAX = 6, GAMES_ROW_MIN_CHARS = 2;
+var _gamesIndex = null; // {lang, list, promise}: the list for the reader's language, null until asked
+var _gamesRow = null;   // {el}: the row for the search on screen
+function _gamesFold(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+function _gamesIndexLoad() {
+  if (!_installedGamesZims().length) return Promise.resolve([]);
+  var lang = _uiLangPrimary();
+  if (!_gamesIndex || _gamesIndex.lang !== lang) {
+    var cur = _gamesIndex = { lang: lang, list: null };
+    cur.promise = fetch(_GAMES_SEARCH_URL + '?lang=' + encodeURIComponent(lang))
+      .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d) {
+        cur.list = (d.games || []).map(function(g) { return { p: g.p, n: g.n, f: _gamesFold(g.n), h: _gamesFold(g.h) }; });
+        return cur.list;
+      })
+      .catch(function() { if (_gamesIndex === cur) _gamesIndex = null; return []; }); // asked again by the next search
+  }
+  return _gamesIndex.promise;
+}
+// Whole words of the query (an operator, a quote or a -exclusion is the library's grammar, not a game's name), each
+// the start of a word of the game's names or kinds (a script with no spaces: anywhere in them).
+var _GAMES_NO_SPACES = /[⺀-鿿가-힯]/;
+function _gamesWordRe(w) {
+  var lit = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return _GAMES_NO_SPACES.test(w) ? new RegExp(lit) : new RegExp('(?:^|[^\\p{L}\\p{N}])' + lit, 'u');
+}
+function _gamesMatches(list, query) {
+  var tokens = _gamesFold(query).replace(/["“”]/g, '').split(/\s+/).filter(function(w) { return w && w[0] !== '-' && w.indexOf(':') < 0; });
+  if (tokens.join('').length < GAMES_ROW_MIN_CHARS) return [];
+  var res = tokens.map(_gamesWordRe), whole = tokens.join(' '), scored = [];
+  list.forEach(function(g, i) {
+    if (!res.every(function(re) { return re.test(g.h); })) return;
+    scored.push({ g: g, i: i, s: (g.f === whole ? 8 : 0) + (g.f.indexOf(whole) === 0 ? 4 : 0) + (res.every(function(re) { return re.test(g.f); }) ? 2 : 0) });
+  });
+  scored.sort(function(a, b) { return b.s - a.s || a.i - b.i; });
+  return scored.slice(0, GAMES_ROW_MAX).map(function(x) { return x.g; });
+}
+function _gamesPathUrl(path) { return '/w/' + encodeURIComponent(_GAMES_ZIM) + '/' + path.split('/').map(encodeURIComponent).join('/'); }
+function _gamesRowHtml(hits) {
+  var label = '<a class="games-row-label" href="' + _gamesPathUrl('index.html') + '" data-path="index.html" data-name="' + escAttr(t('app_games')) + '" onclick="return _gamesRowOpen(event, this)">' + esc(t('app_games')) + '</a>';
+  return label + '<div class="games-row-list">' + hits.map(function(g) {
+    return '<a class="games-row-tile" href="' + _gamesPathUrl(g.p) + '" data-path="' + escAttr(g.p) + '" data-name="' + escAttr(g.n) + '" onclick="return _gamesRowOpen(event, this)">' +
+      '<img src="' + _gamesPathUrl('thumbs/' + g.p.replace(/\.html$/, '.svg')) + '" alt="" width="64" height="36" loading="lazy" onerror="this.remove()">' +
+      '<span>' + esc(g.n) + '</span></a>';
+  }).join('') + '</div>';
+}
+function _gamesRowOpen(e, a) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return true;
+  openArticle(_GAMES_ZIM, a.dataset.path, a.dataset.name);
+  return false;
+}
+function _gamesRowClear() {
+  if (_gamesRow && _gamesRow.el) _gamesRow.el.remove();
+  _gamesRow = null;
+}
+// First in the results, after the search card when there is one.
+function _gamesRowMount() {
+  var el = _gamesRow && _gamesRow.el;
+  if (!el) return;
+  var card = _searchCard && _searchCard.el;
+  if (card && card.parentNode === output) { if (card.nextSibling !== el) card.after(el); }
+  else if (output.firstChild !== el) output.prepend(el);
+}
+function _gamesRowStart(query) {
+  var row = _gamesRow = { el: null };
+  _gamesIndexLoad().then(function(list) {
+    if (row !== _gamesRow || mode !== 'search') return;
+    var hits = _gamesMatches(list, query);
+    if (!hits.length) return;
+    row.el = document.createElement('div');
+    row.el.className = 'games-row';
+    row.el.innerHTML = _gamesRowHtml(hits);
+    _gamesRowMount();
+  });
+}
+
 // Q-ID of the article in `zim` at `path`, as the data lists it ('' when none).
 function _gamesQidOf(data, zim, path) {
   var bare = function(p) { return p.replace(/^A\//, ''); };
@@ -29934,6 +30048,7 @@ document.addEventListener('keydown', e => {
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
     if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
+    if (q.value && _isGameShelf()) { clearSearchInput(); return; }
     if (readerOpen) { goBack(); return; }
     // From a result reached with the arrows too: the box is where it goes on.
     if (q.value) { clearSearchInput(); return; }

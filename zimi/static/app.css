@@ -468,7 +468,9 @@
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }
   .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
-  body.game-page .topbar-search { display: none; }
+  body.game-page:not(.game-shelf) .topbar-search { display: none; }
+  /* The shelf is the one page of the games that keeps the box: it searches the games (app.js _isGameShelf). */
+  body.game-shelf #game-head { display: none; }
   /* The shelf is not a game: nothing to keep as a favorite. */
   body.game-shelf #library-btn { display: none !important; }
   .topbar-search input {
@@ -1978,6 +1980,17 @@
   .search-card-slot { margin-bottom: 16px; animation: bestIn 0.2s ease; }
   @keyframes bestIn { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .search-card-slot { animation: none; } }
+  /* The games the search found: a label, then small tiles in a row that scrolls sideways on a phone. */
+  .games-row { margin-bottom: 16px; animation: bestIn 0.2s ease; }
+  .games-row-label { display: inline-block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text2); text-decoration: none; }
+  .games-row-label:hover { color: var(--amber); }
+  .games-row-list { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .games-row-list::-webkit-scrollbar { display: none; }
+  .games-row-tile { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; max-width: 220px; padding: 5px 12px 5px 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; }
+  .games-row-tile img { width: 64px; height: 36px; flex: none; border-radius: 6px; object-fit: cover; background: var(--surface2); }
+  .games-row-tile span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .games-row-tile:hover { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  @media (prefers-reduced-motion: reduce) { .games-row { animation: none; } }
   .best-card { display: flex; flex-direction: column; gap: 6px; }
   a.best-quote {
     display: block; color: inherit; text-decoration: none; padding: 14px 16px;
