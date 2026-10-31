@@ -101,6 +101,27 @@ def test_the_standalone_js_tests_are_all_reached():
     assert present, "no .cjs tests found; has the glob outlived its files?"
 
 
+def test_the_browser_shards_add_up_to_the_whole():
+    """CI splits the browser tests over `--shard i/N` jobs. A shard count in
+    ci.yml that the matrix does not list, or a split that drops or repeats a
+    module, would leave tests that run nowhere: check the arithmetic."""
+    body = _text("ci.yml")
+    count = int(re.search(r"--shard \$\{\{ matrix\.shard \}\}/(\d+)", body).group(1))
+    matrix = re.search(r"shard: \[([\d, ]+)\]", body).group(1)
+    assert [int(n) for n in matrix.split(",")] == list(range(1, count + 1)), (
+        f"ci.yml splits the browser tests {count} ways but its matrix runs shards {matrix}"
+    )
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("zimi_tests_conftest", ROOT / "tests" / "conftest.py")
+    conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conftest)
+    sizes = {f"test_{i}.py": 100 + (i * 37) % 900 for i in range(60)}
+    placed = conftest.shard_of(sizes, count)
+    assert sorted(placed) == sorted(sizes), "a module was dropped by the split"
+    assert set(placed.values()) == set(range(1, count + 1)), "a shard would run nothing"
+
+
 def test_deploy_does_not_hide_a_failed_build():
     """`ssh nas "...build" | tail -3` reports tail's exit status. Every
     "deploy=0" for a week meant only that tail ran."""
