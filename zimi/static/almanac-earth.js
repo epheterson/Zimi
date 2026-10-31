@@ -385,8 +385,6 @@ var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // mar
 // side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
 // gone by the time the camera has arrived (the last share of the arrival).
 var AE_RING_MARGIN_PX = 5, AE_RING_MIN_R_PX = 11, AE_RING_FADE_FROM = 0.7;
-// The Sun's ring sits just outside its limb glow, not inside it, and no wider: in the disc's radii.
-var AE_RING_SUN_GLOW_R = 1.12;
 var AE_MARKED = [
   { body: 'earth', name: function () { return _tp('Earth'); } },
   { body: 'moon', name: function () { return _aeT('alm_moon'); } },
@@ -2325,7 +2323,7 @@ function _aeUpdateMarks(sc) {
     var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
-    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 * (body === 'sun' ? AE_RING_SUN_GLOW_R : 1) + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
+    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
     if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
     var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
     // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
