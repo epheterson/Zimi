@@ -25,6 +25,7 @@ suggest cache to whatever data dir the last test left behind).
 """
 
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -58,6 +59,33 @@ def pytest_configure(config):
 
     config.option.basetemp = Path(tempfile.mkdtemp(prefix="zimi-pytest-"))
     config._zimi_basetemp = config.option.basetemp
+
+
+# A module drives a real browser when it imports Playwright or asks the
+# renderer / PDF engine whether a Chromium is there. Those are the slow tests
+# (most of a full run's time): `pytest -m "not browser" -n auto` is the quick
+# tier, `pytest -n auto` the full one. Marked here, from the module's source,
+# so a new browser test is in the slow tier without anyone remembering to tag it.
+_BROWSER_SOURCE = re.compile(
+    r"sync_playwright|async_playwright|^\s*(?:from|import)\s+playwright"
+    r"|importorskip\(\s*[\"']playwright|\.(?:chromium|webkit|firefox)\.launch"
+    r"|browser_available\(|_needs_chromium|_need_browser|apdf\.available\(",
+    re.M,
+)
+_browser_modules = {}
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        path = str(item.path)
+        if path not in _browser_modules:
+            try:
+                text = item.path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            _browser_modules[path] = bool(_BROWSER_SOURCE.search(text))
+        if _browser_modules[path]:
+            item.add_marker(pytest.mark.browser)
 
 
 def pytest_unconfigure(config):
