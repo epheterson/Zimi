@@ -233,7 +233,7 @@ function _openAlmanacInner(replaceState) {
   // to. (Back from a page opened out of it puts the offset back after this: _reopenAlmanacFromLink.) Before the
   // draw, so a fresh open is not taken for a redraw in place, which draws every panel before the first paint.
   var scroller = document.getElementById('almanac-content');
-  if (scroller) scroller.scrollTop = 0;
+  if (scroller && !_almReturning) scroller.scrollTop = 0;
   _renderAlmanacContent();
   if (scroller) scroller.scrollTop = 0;
   // Zimi's header is in place under the Almanac: nothing in it slides the
@@ -301,10 +301,13 @@ function _suspendAlmanacForLink() {
 // Reopen the almanac after a Back from a deep-linked article and restore the
 // scroll offset. The current history entry is already the #almanac one, so we
 // reuse it (replaceState) rather than pushing a new one.
+var _almReturning = false;   // _reopenAlmanacFromLink is opening it, back to where the reader was
 function _reopenAlmanacFromLink() {
   var target = _almReturnScroll;
   _almReturnScroll = null;
-  _openAlmanacInner(true);
+  // Back to a place: the page is drawn whole at once (a redraw in place), so the offset has its full height to land in.
+  _almReturning = !!target;
+  try { _openAlmanacInner(true); } finally { _almReturning = false; }
   if (!target) return;
   var content = document.getElementById('almanac-content');
   if (!content) return;

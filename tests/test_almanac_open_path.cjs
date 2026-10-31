@@ -35,7 +35,7 @@ const check = (ok, label) => { if (ok) console.log('ok: ' + label); else { conso
   check(ran.join() === 'a1,a2,c', 'closed before they ran: skipped');
 }
 check(/if \(anchor\) \{ \+\+_almAfterPaintToken; panels\.forEach\(function \(p\) \{ p\(\); \}\); \}\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once, and the older draw\'s queued panels are called off');
-check(/scroller\.scrollTop = 0;\s*\n\s*_renderAlmanacContent\(\);/.test(alm), 'a fresh open is at the top before it draws, so it is not taken for a redraw in place');
+check(/if \(scroller && !_almReturning\) scroller\.scrollTop = 0;\s*\n\s*_renderAlmanacContent\(\);/.test(alm), 'a fresh open is at the top before it draws, so it is not taken for a redraw in place');
 
 // _almMoonLift: kept until the 3D view's file is in.
 {
