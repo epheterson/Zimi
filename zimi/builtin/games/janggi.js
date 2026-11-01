@@ -52,7 +52,7 @@
   }
   function pieceHtml(v) {
     var t = Math.abs(v), han = v < 0, chars = G.settings.labels === 'han';   // Characters, or pictures that need no language
-    var cls = 'jg-pc ' + (han ? 'han' : 'cho') + (chars ? '' : ' icon') + (t === 7 ? ' k' : t === 1 ? ' p' : '');
+    var cls = 'jg-pc ' + (han ? 'han' : 'cho') + (chars ? '' : ' icon') + (t === 7 ? ' k' : t === 1 ? ' p' : t === 6 ? ' g' : '');
     return '<span class="' + cls + '"><span>' + (chars ? HANJA[t][han ? 'h' : 'c'] : root.ZimiPieceIcons.figure(t)) + '</span></span>';
   }
   function fmtPoints(x) { return x % 1 ? x.toFixed(1) : String(x); }

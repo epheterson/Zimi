@@ -26,9 +26,9 @@
 .jg-pc::before { inset: 0; background: currentColor; }
 .jg-pc::after { inset: 7%; background: radial-gradient(circle at 35% 30%, #fffaf0, var(--jg-face) 65%, #d6c394); }
 .jg-pc.han { color: var(--jg-han); }
-.jg-pc.k { --sz: 94%; } .jg-pc.p { --sz: 66%; }
+.jg-pc.k { --sz: 94%; } .jg-pc.g { --sz: 74%; } .jg-pc.p { --sz: 66%; }   /* the general largest, the guard and the soldier smaller, as on a real set */
 .jg-pc span { position: relative; z-index: 1; font: 800 calc(var(--jw) * 0.062)/1 "Noto Serif CJK KR", "Noto Serif CJK SC", "Songti SC", "AppleMyungjo", "Batang", "SimSun", "Microsoft YaHei", serif; }
-.jg-pc.k span { font-size: calc(var(--jw) * 0.07); } .jg-pc.p span { font-size: calc(var(--jw) * 0.048); }
+.jg-pc.k span { font-size: calc(var(--jw) * 0.07); } .jg-pc.g span { font-size: calc(var(--jw) * 0.054); } .jg-pc.p span { font-size: calc(var(--jw) * 0.048); }
 .jg-pc.icon span { display: grid; place-items: center; width: 100%; height: 100%; }
 .jg-pc.icon svg { display: block; width: 66%; height: 66%; }
 .jg-pc.icon.p svg { width: 100%; height: 100%; }
