@@ -31,6 +31,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 from games_wait import wait_for_server, frames  # noqa: E402
+from zimi.libzimcompat import result_paths
 
 GAMES = os.path.join(ROOT, "zimi", "builtin", "games")
 PHONE = {"width": 390, "height": 844}
@@ -192,7 +193,7 @@ def test_the_games_zim_keeps_notices_out_of_its_articles_but_serves_the_licence(
         a.get_entry_by_path("puzzles/README.txt")   # the vendoring notes live in docs/, not in the ZIM
     assert a.get_entry_by_path("puzzles/LICENCE").path == "puzzles/LICENCE"
     for q in ("LICENCE", "README"):
-        hits = list(SuggestionSearcher(a).suggest(q).getResults(0, 50))
+        hits = result_paths(SuggestionSearcher(a).suggest(q), 0, 50)
         assert not [h for h in hits if h.endswith(("LICENCE", "README.txt")) or "README-" in h], hits
     assert urllib.request.urlopen(zimi["url"] + "/w/zimi_games/puzzles/LICENCE").status == 200
     about = open(os.path.join(GAMES, "about.html"), encoding="utf-8").read()

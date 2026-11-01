@@ -44,6 +44,7 @@ import threading
 import unicodedata
 from urllib.parse import unquote
 
+from zimi.libzimcompat import entry_by_id
 from zimi import server as _srv
 from zimi import wikilang
 from zimi.safety import loggable
@@ -1640,7 +1641,7 @@ def _five_titles(archive, rng):
             for _ in range(FIVE_PROBE_BATCH):
                 probes += 1
                 try:
-                    entry = archive._get_entry_by_id(rng.randrange(total))
+                    entry = entry_by_id(archive, rng.randrange(total))
                     title = entry.title or ""
                 except Exception:
                     continue

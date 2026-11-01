@@ -21,6 +21,7 @@ from libzim.search import Query, Searcher
 from libzim.reader import Archive
 
 from zimi import query as Q
+from zimi.libzimcompat import estimated_matches, result_paths
 
 CASES = os.path.join(os.path.dirname(__file__), "fixtures", "search_query_cases.json")
 
@@ -253,7 +254,7 @@ class TestLibraryOperators(unittest.TestCase):
 
         def paths(q):
             r = s.search(Query().set_query(q))
-            return set(r.getResults(0, r.getEstimatedMatches()))
+            return set(result_paths(r, 0, estimated_matches(r)))
 
         self.assertEqual(paths("law -contract"), paths("law contract"))
 

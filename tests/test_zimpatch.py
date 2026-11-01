@@ -21,6 +21,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from zimi.libzimcompat import entry_by_id
 from zimi import zimpatch  # noqa: E402
 
 libzim_reader = pytest.importorskip("libzim.reader")
@@ -179,7 +180,7 @@ def test_both_pictures_are_metadata_in_the_zim(captured_zim, record):
 def test_nothing_else_moves(captured_zim, record):
     before = libzim_reader.Archive(captured_zim)
     paths = {
-        before._get_entry_by_id(i).path for i in range(before.all_entry_count)
+        entry_by_id(before, i).path for i in range(before.all_entry_count)
     } - set(before.metadata_keys)
     main = before.main_entry.get_item().path
     del before
@@ -188,7 +189,7 @@ def test_nothing_else_moves(captured_zim, record):
 
     after = libzim_reader.Archive(captured_zim)
     after_paths = {
-        after._get_entry_by_id(i).path for i in range(after.all_entry_count)
+        entry_by_id(after, i).path for i in range(after.all_entry_count)
     } - set(after.metadata_keys)
     assert paths <= after_paths, "an entry went missing"
     assert after.main_entry.get_item().path == main

@@ -97,6 +97,7 @@ import certifi
 from libzim.reader import Archive
 from libzim.suggestion import SuggestionSearcher
 
+from zimi.libzimcompat import entry_by_id, result_paths
 from zimi import changes as _changes
 from zimi.safety import loggable
 
@@ -3258,7 +3259,7 @@ def walk_entries(archive, bounded=True):
     if bounded:
         n = min(n, MAX_WALK_ENTRIES)
     for i in range(n):
-        entry = archive._get_entry_by_id(i)
+        entry = entry_by_id(archive, i)
         if not entry.is_redirect:
             yield entry, entry.get_item()
 
@@ -5738,7 +5739,7 @@ def warm_indexes():
                         try:
                             ss = SuggestionSearcher(archive)
                             s = ss.suggest("a")
-                            s.getResults(0, 1)
+                            result_paths(s, 0, 1)
                         finally:
                             del archive
                         warmed += 1

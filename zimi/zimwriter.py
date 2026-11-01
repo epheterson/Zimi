@@ -39,6 +39,7 @@ import time
 import urllib.parse
 import zlib
 
+from zimi.libzimcompat import add_illustration, entry_by_id
 from zimi.previews import jpeg_size
 
 # Every mimetype Zimi writes into a ZIM comes from here, and deliberately not
@@ -1572,7 +1573,7 @@ def zim_content_breakdown(
                 for i in range(start, stop):
                     examined += 1
                     try:
-                        entry = archive._get_entry_by_id(i)
+                        entry = entry_by_id(archive, i)
                         if entry.is_redirect:
                             continue
                         item = entry.get_item()
@@ -2331,7 +2332,8 @@ def add_standard_metadata(
         creator.add_metadata("License", str(license))
     if relation:
         creator.add_metadata("Relation", str(relation))
-    creator.add_illustration(
+    add_illustration(
+        creator,
         ILLUSTRATION_SIZE,
         illustration or default_illustration(name or zim_name(title, language)),
     )

@@ -21,6 +21,7 @@ import threading
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from libzim.reader import Archive
+from zimi.libzimcompat import entry_by_id
 
 
 # libzim's Archive is not safe to use from two threads at once (a crash, no traceback).
@@ -111,7 +112,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             if name in self.books:
                 arc = self.books[name][0]
                 for i in range(arc.entry_count):
-                    e = arc._get_entry_by_id(i)
+                    e = entry_by_id(arc, i)
                     if e.title.lower().startswith(term):
                         out.append({"value": e.title, "label": e.title, "kind": "path", "path": e.path})
                     if len(out) >= count:
