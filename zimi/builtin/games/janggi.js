@@ -9,18 +9,20 @@
   var HINT_MS = 1500;
   var HANJA = { 1: { c: '卒', h: '兵' }, 2: { c: '包', h: '包' }, 3: { c: '車', h: '車' }, 4: { c: '馬', h: '馬' }, 5: { c: '象', h: '象' }, 6: { c: '士', h: '士' }, 7: { c: '楚', h: '漢' } };
   function sideName(p) { return T(p === 0 ? 'janggi.side.cho' : 'janggi.side.han'); }
+  // How each side lines up its horses and elephants (the four standard arrangements), or each side's at random.
+  var SETUP_CHOICES = E.ARRANGEMENTS.map(function (a) { return [a, 'janggi.setup.' + a]; }).concat([['random', 'janggi.setup.random']]);
   var LEVEL_CHOICES = [['fairy', 'chess.level.fairy'], ['master', 'chess.level.master']];   // Strong and Master, when Fairy-Stockfish is there
   // Show legal moves is the shell's Hints setting (Menu > Settings), not a New game option.
   function hintsOn() { return !root.ZimiShell || root.ZimiShell.settings.get('hints') !== 'off'; }
 
   var G = WK.create({
     id: 'janggi',
-    options: WK.standardOptions({ first: 'janggi.side.choFirst', second: 'janggi.side.han', levels: LEVEL_CHOICES }).concat([{ key: 'labels', legend: 'xiangqi.pieces', def: root.ZimiText && root.ZimiText.lang === 'zh' ? 'han' : 'icons', choices: [['han', 'xiangqi.pieces.han'], ['icons', 'xiangqi.pieces.icons']] }]),
+    options: WK.standardOptions({ first: 'janggi.side.choFirst', second: 'janggi.side.han', levels: LEVEL_CHOICES }).concat([{ key: 'setup', legend: 'janggi.setup', def: 'inside', choices: SETUP_CHOICES }, { key: 'labels', legend: 'xiangqi.pieces', def: root.ZimiText && root.ZimiText.lang === 'zh' ? 'han' : 'icons', choices: [['han', 'xiangqi.pieces.han'], ['icons', 'xiangqi.pieces.icons']] }]),
     onNew: newGame, onUndo: undo, onHint: hint
   });
   var score = WK.scoreBar($('wk-score'), [{ color: 'var(--jg-cho)' }, { color: 'var(--jg-han)' }]);
   var els = { grid: $('jg-grid'), pass: $('jg-pass'), flip: $('jg-flip') };
-  var cells = [], pos, keys, sans, played, sel = -1, targets = {}, lastMove = 0, manualFlip = false, tip = null;
+  var cells = [], pos, start, keys, sans, played, sel = -1, targets = {}, lastMove = 0, manualFlip = false, tip = null;
 
   function turnIdx() { return pos.turn === CHO ? 0 : 1; }
   function flipped() { return manualFlip !== (G.vsComputer() && G.settings.side === 'second'); }
@@ -79,7 +81,7 @@
   }
 
   // ── turns ──
-  var WHY = { bikjang: 'janggi.why.bikjang', repetition: 'xiangqi.why.repetition', quiet: 'janggi.why.quiet' };
+  var WHY = { bikjang: 'janggi.why.bikjang', passes: 'janggi.why.passes', repetition: 'xiangqi.why.repetition', quiet: 'janggi.why.quiet' };
   function finish(st) {
     sel = -1; targets = {}; tip = null;
     var msg, out, name;
@@ -105,6 +107,7 @@
     if (st.over) { finish(st); return; }
     paint();
     var line = turnLine(st);
+    if (E.bikjang(pos) && G.human(turnIdx())) line = T('janggi.bikjang.warn');   // short: a second line would push the board down
     G.say(note ? UI.noted(note, st.check ? T('chess.check', { line: line }) : line) : st.check ? T('chess.check', { line: line }) : line, !G.human(turnIdx()));
     if (!G.human(turnIdx())) computerTurn();
   }
@@ -182,7 +185,8 @@
 
   function newGame() {
     sel = -1; targets = {}; lastMove = 0; tip = null; manualFlip = false; F.cancel();
-    pos = E.startPosition(); keys = [E.key(pos)]; sans = []; played = [];
+    var pick = function () { return G.settings.setup === 'random' ? E.ARRANGEMENTS[Math.floor(Math.random() * E.ARRANGEMENTS.length)] : G.settings.setup; };
+    pos = E.startPosition(pick(), pick()); start = E.toFen(pos); keys = [E.key(pos)]; sans = []; played = [];
     afterMove();
   }
 
@@ -203,9 +207,9 @@
   drawLines(); buildBoard();
   G.newGame();
   G.persist({
-    save: function () { return played.length ? { played: played.slice(), sans: sans.slice(), flip: manualFlip } : null; },
+    save: function () { return played.length ? { played: played.slice(), sans: sans.slice(), flip: manualFlip, start: start } : null; },
     load: function (d) {
-      pos = E.startPosition(); keys = [E.key(pos)]; played = []; sans = d.sans.slice();
+      start = d.start || E.START_FEN; pos = E.parseFen(start); keys = [E.key(pos)]; played = []; sans = d.sans.slice();
       d.played.forEach(function (m) { E.make(pos, m); played.push(m); keys.push(E.key(pos)); });
       lastMove = played[played.length - 1] || 0; sel = -1; targets = {}; tip = null; manualFlip = !!d.flip;
       paint();

@@ -5,14 +5,25 @@
    The rules: the palace with its diagonals, chariots and cannons that follow them, cannons that must
    jump exactly one piece (never a cannon) and never capture a cannon, elephants that step one point
    straight and two across, horses blocked on their leg, soldiers that never go back, a pass when a side
-   has no move, and bikjang (the generals face each other with nothing between): a draw. */
+   has no move, and bikjang (the generals face each other with nothing between). As Fairy-Stockfish has it: a side
+   may make bikjang, but the side to move then has to break it (put a piece between, take one, or step its general
+   off the file) or pass, and a pass in bikjang is a draw; two passes in a row are a draw too. Each side chooses one
+   of the four standard arrangements of its horses and elephants. */
 function ZimiJanggiEngine(S) {
   'use strict';
 
   var CHO = 1, HAN = -1;                     // Cho (blue-green) is at the bottom and moves first; Han (red) is at the top
   var P = 1, C = 2, R = 3, H = 4, E = 5, A = 6, G = 7;   // soldier, cannon, chariot, horse, elephant, guard, general
   var LETTERS = ' PCRHEAK', FEN_LETTERS = { P: P, C: C, R: R, H: H, N: H, E: E, B: E, A: A, G: A, K: G };
-  var START_FEN = 'rhea1aehr/4k4/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/4K4/RHEA1AEHR w';
+  // The four arrangements of the horses (H) and elephants (E) beside the guards, as a side's back rank read from its
+  // own left; a side's rank is the same way round for both, so Han's is turned about (point symmetry).
+  var ARRANGEMENTS = { inside: 'RHEA1AEHR', outside: 'REHA1AHER', left: 'RHEA1AHER', right: 'REHA1AEHR' };
+  var ARRANGEMENT_NAMES = ['inside', 'outside', 'left', 'right'];
+  function startFen(cho, han) {
+    var back = function (name) { return ARRANGEMENTS[name] || ARRANGEMENTS.inside; };
+    return back(han).split('').reverse().join('').toLowerCase() + '/4k4/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/4K4/' + back(cho) + ' w';
+  }
+  var START_FEN = startFen('inside', 'inside');
   var COLS = 9, ROWS = 10, SQUARES = 90, PASS = 0;
   var MATE = 30000, INF = 32000;
   var QUIET_DRAW_PLIES = 100;                // no capture for fifty moves each: a draw
@@ -206,17 +217,19 @@ function ZimiJanggiEngine(S) {
   function legalMoves(pos) {
     var ms = [], out = [], us = pos.turn;
     gen(pos, us, ms, -1);
+    var facing = bikjang(pos);   // generals face each other: only a move that breaks it (or the pass) is allowed
     for (var i = 0; i < ms.length; i++) {
       make(pos, ms[i]);
-      if (!attacked(pos, pos.king[kingIdx(us)], -us)) out.push(ms[i]);
+      if (!attacked(pos, pos.king[kingIdx(us)], -us) && !(facing && bikjang(pos))) out.push(ms[i]);
       unmake(pos);
     }
     return out;
   }
-  // What the searcher and the page offer: the legal moves, or the pass when a side that is not in check has none.
+  // What the searcher and the page offer: the legal moves, or the pass when a side that is not in check has none (or is in bikjang).
   function movesOrPass(pos) {
     var ms = legalMoves(pos);
-    return ms.length || inCheck(pos) ? ms : [PASS];
+    if (inCheck(pos)) return ms;
+    return !ms.length ? [PASS] : bikjang(pos) ? ms.concat([PASS]) : ms;   // in bikjang the pass is on offer: it ends the game in a draw
   }
   function findMove(pos, a, b) {
     var ms = legalMoves(pos);
@@ -238,6 +251,11 @@ function ZimiJanggiEngine(S) {
     for (var s = Math.min(a, b) + COLS; s < Math.max(a, b); s += COLS) if (pos.sq[s]) return false;
     return true;
   }
+  // How many passes in a row ended the game so far (what the moves made on this position say).
+  function lastPasses(pos) { var n = 0, u = pos.undo; for (var i = u.length - 1; i >= 0 && u[i].m === PASS; i--) n++; return n; }
+  // Bikjang that the side to move passed on: a draw.
+  function bikjangStands(pos) { return bikjang(pos) && lastPasses(pos) > 0; }
+  function passedOut(pos) { return lastPasses(pos) >= 2; }
   // The old count of what is left, Han with its 1.5 komi: [Cho, Han].
   function points(pos) {
     var cho = 0, han = HAN_KOMI;
@@ -253,7 +271,8 @@ function ZimiJanggiEngine(S) {
   // The state for the side to move. keys: earlier positions, a third occurrence is a draw.
   function status(pos, keys) {
     var check = inCheck(pos);
-    if (bikjang(pos)) return { over: true, result: 'bikjang', check: false };
+    if (bikjangStands(pos)) return { over: true, result: 'bikjang', check: false };
+    if (passedOut(pos)) return { over: true, result: 'passes', check: false };
     var ms = legalMoves(pos);
     if (!ms.length && check) return { over: true, result: 'mate', winner: -pos.turn, check: true };
     if (keys) {
@@ -286,7 +305,7 @@ function ZimiJanggiEngine(S) {
     moves: movesOrPass, make: make, unmake: unmake, evaluate: evaluate,
     order: function (pos, m) { return m === PASS ? -1 : Math.abs(pos.sq[to(m)]) * 100 - Math.abs(pos.sq[from(m)]); },
     terminal: function (pos) {
-      if (bikjang(pos)) return 0;
+      if (bikjangStands(pos) || passedOut(pos)) return 0;
       if (pos.noCapture >= QUIET_DRAW_PLIES) return 0;
       return null;
     },
@@ -303,11 +322,11 @@ function ZimiJanggiEngine(S) {
   function handle(req) { var r = think(req.fen, req); return { move: r.move, depth: r.depth, pass: r.pass }; }
 
   return {
-    CHO: CHO, HAN: HAN, P: P, C: C, R: R, H: H, E: E, A: A, G: G, COLS: COLS, ROWS: ROWS, PASS: PASS, START_FEN: START_FEN, LEVELS: LEVELS, POINTS: POINTS,
-    parseFen: parseFen, toFen: toFen, clone: clone, startPosition: function () { return parseFen(START_FEN); },
+    CHO: CHO, HAN: HAN, P: P, C: C, R: R, H: H, E: E, A: A, G: G, COLS: COLS, ROWS: ROWS, PASS: PASS, START_FEN: START_FEN, ARRANGEMENTS: ARRANGEMENT_NAMES, startFen: startFen, LEVELS: LEVELS, POINTS: POINTS,
+    parseFen: parseFen, toFen: toFen, clone: clone, startPosition: function (cho, han) { return parseFen(cho || han ? startFen(cho, han) : START_FEN); },
     mk: mk, from: from, to: to, rowOf: rowOf, colOf: colOf, squareName: squareName, squareFromName: squareFromName,
     legalMoves: legalMoves, movesOrPass: movesOrPass, make: make, unmake: unmake, findMove: findMove, inCheck: inCheck, perft: perft, attacked: attacked,
-    bikjang: bikjang, points: points, san: san, key: key, status: status, evaluate: evaluate, think: think, handle: handle
+    bikjang: bikjang, bikjangStands: bikjangStands, passedOut: passedOut, points: points, san: san, key: key, status: status, evaluate: evaluate, think: think, handle: handle
   };
 }
 if (typeof globalThis !== 'undefined') globalThis.ZimiJanggiEngine = ZimiJanggiEngine;
