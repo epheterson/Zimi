@@ -96,6 +96,7 @@
       var r = ranks[i], cards = groups[r].concat(i === 0 ? wilds : []), existing = melds.filter(function (m) { return m.rank === r; })[0];
       if (r === 3) {
         if (!goingOut) return fail(TX('canasta.err.blackOut'));
+        if (cards.length > groups[r].length) return fail(TX('canasta.err.blackWild'));
         if (cards.length < 3) return fail(TX('canasta.err.blackThree'));
         plan.push({ rank: 3, cards: cards, add: !!existing });
       } else if (existing) {
@@ -146,9 +147,25 @@
     if (!s.stock.length) return endHand(s, -1, TX('canasta.why.stock'));
     for (var k = 0; k < DRAW && s.stock.length; k++) { var c = s.stock.pop(); s.hands[side].push(c); got.push(c); }
     layReds(s, side);
+    if (s.melds[side].length) s.concealed[side] = false;   // laid on an earlier turn: going out now is not concealed
     s.hands[side] = sortHand(s.hands[side]);
     s.step = 'play'; s.turnPts = 0; s.moves++; note(s, side, TX('canasta.note.drew'));
     return s;
+  }
+  // The most a side's first meld could reach if it took the pile with `sel`: the taken rank with everything of it that is
+  // left, every other rank it holds three of, pairs that a wild card completes. An upper bound, so a take is refused only
+  // when no first meld could follow it.
+  function takeReach(st, side, sel, top) {
+    var r = rankKey(top), rest = st.hands[side].filter(function (c) { return sel.indexOf(c) < 0; }).concat(st.pile.slice(0, -1)).filter(function (c) { return !isRedThree(c); });
+    var g = naturalsByRank(rest), wilds = rest.filter(isWild).map(cardPts).sort(function (a, b) { return b - a; }), total = sumPts([top].concat(sel)), pairs = [];
+    delete g[3];
+    if (g[r]) total += sumPts(g[r]);
+    Object.keys(g).forEach(function (k) {
+      if (+k === r) return;
+      if (g[k].length >= 3) total += sumPts(g[k]); else if (g[k].length === 2) pairs.push(sumPts(g[k]));
+    });
+    pairs.sort(function (a, b) { return b - a; }).forEach(function (p) { if (wilds.length) total += p + wilds.shift(); });
+    return total;
   }
   // Can this side take the pile now with `sel` from its hand? {ok, error, plan}
   function takePlan(st, side, sel) {
@@ -163,12 +180,25 @@
     if (natSel.some(function (c) { return rankKey(c) !== r; })) return fail(TX('canasta.err.match', { rank: rankOne(r) }));
     var cards = [top].concat(sel);
     if (frozen && natSel.length < 2) return fail(TX('canasta.err.frozen', { rank: rankName(r) }));
+    if (!st.melded[side]) {
+      var reach = takeReach(st, side, sel, top);
+      if (reach < requirement(st.scores[side])) return fail(TX('canasta.err.firstMeld', { n: requirement(st.scores[side]), have: reach }));
+    }
+    var plan;
     if (existing) {
       if (!canExtend(existing, cards)) return fail(TX('canasta.err.noFit', { rank: rankName(r) }));
-      return { ok: true, plan: [{ rank: r, cards: cards, add: true }] };
+      plan = [{ rank: r, cards: cards, add: true }];
+    } else {
+      if (newMeldRank(cards) !== r) return fail(TX('canasta.err.twoNat', { rank: rankName(r) }));
+      plan = [{ rank: r, cards: cards, add: false }];
     }
-    if (newMeldRank(cards) !== r) return fail(TX('canasta.err.twoNat', { rank: rankName(r) }));
-    return { ok: true, plan: [{ rank: r, cards: cards, add: false }] };
+    // Taking must leave a card to discard, unless the take itself lets the side go out.
+    if (st.hands[side].length - sel.length + st.pile.slice(0, -1).filter(function (c) { return !isRedThree(c); }).length <= 1) {
+      var after = Z.clone(st.melds[side]);
+      addToMelds(after, plan);
+      if (canastaCount(after) < GO_OUT_CANASTAS) return fail(TX('canasta.err.keepOne', { n: GO_OUT_CANASTAS }));
+    }
+    return { ok: true, plan: plan };
   }
   function takePile(st, sel) {
     var side = st.turn, tp = takePlan(st, side, sel);
@@ -194,6 +224,8 @@
     var probe = Z.clone(st);
     var plan = planMelds(st.melds[side], selection, left <= 1, target);
     if (!plan.ok) return plan.error;
+    // The first meld of a side is laid in one go: below the minimum it would leave the turn with no way to end.
+    if (!st.melded[side] && !st.melds[side].length && left > 1 && st.turnPts + sumPts(selection) < requirement(st.scores[side])) return TX('canasta.err.firstMeld', { n: requirement(st.scores[side]), have: st.turnPts + sumPts(selection) });
     addToMelds(probe.melds[side], plan.melds);
     if (left <= 1 && !canGoOut(probe, side)) return TX(left === 0 ? 'canasta.err.needCanastas' : 'canasta.err.keepOne', { n: GO_OUT_CANASTAS });
     return '';
@@ -285,7 +317,7 @@
       if (!tp.ok) continue;
       var pts = sumPts([top].concat(tries[i]));
       if (!st.melded[side]) {
-        // The first meld must reach the minimum, with what the pile adds to the hand.
+        // The first meld must reach the minimum with what the pile adds to the hand: the computer counts only melds it will make.
         var all = hand.concat(st.pile.slice(0, -1)).filter(function (c) { return tries[i].indexOf(c) < 0; }), extra = 0, g = naturalsByRank(all);
         Object.keys(g).forEach(function (k) { if (g[k].length >= 3) extra += sumPts(g[k]); });
         if (pts + extra < requirement(st.scores[side])) continue;

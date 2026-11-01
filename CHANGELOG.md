@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Janggi: choose how the horses and elephants line up (the four standard arrangements, or random for each side).
+
+### Fixed
+
+- Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
+- Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
+- Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
+
 ## [1.15.1]
 
 ### Fixed
