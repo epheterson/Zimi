@@ -39,6 +39,7 @@ import zimi.creator as creator  # noqa: E402
 import zimi.importer as importer  # noqa: E402
 import zimi.manage as manage  # noqa: E402
 import zimi.renderer as renderer  # noqa: E402
+from zimi.libzimcompat import entry_by_id
 from zimi.warc import read_records  # noqa: E402
 
 HOST = "127.0.0.1"
@@ -718,7 +719,7 @@ def test_a_real_alive_capture_becomes_a_real_zim(fixture_site, tmp_path):
         fixture_site + "/", out_dir=str(tmp_path), extra_wait=1.0
     )
     archive = Archive(info["path"])
-    paths = {archive._get_entry_by_id(i).path for i in range(archive.all_entry_count)}
+    paths = {entry_by_id(archive, i).path for i in range(archive.all_entry_count)}
     # warc2zim's ZIM paths are the URLs with the port dropped, which is its
     # normalisation and not something Zimi chooses.
     host = fixture_site.split("//", 1)[1].split(":")[0]
@@ -883,7 +884,7 @@ def test_a_real_alive_crawl_becomes_a_real_multi_page_zim(fixture_site, tmp_path
     assert info["pages"] == 2  # the seed and the page its script linked to
     assert info["stopped"] is None
     archive = Archive(info["path"])
-    paths = {archive._get_entry_by_id(i).path for i in range(archive.all_entry_count)}
+    paths = {entry_by_id(archive, i).path for i in range(archive.all_entry_count)}
     host = fixture_site.split("//", 1)[1].split(":")[0]
     for want in (f"{host}/", f"{host}/second.html", f"{host}/s.css", f"{host}/app.js"):
         assert want in paths, f"{want} is missing from the ZIM"

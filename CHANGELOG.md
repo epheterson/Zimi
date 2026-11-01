@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
 - A faster voice no longer waits for a slower voice's chunk already being made (#121).
 - An open Zimi, including the home-screen app, reloads to a new version on its own.
@@ -70,7 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- libzim is held below 4.0, whose new writer API broke creating ZIMs on a fresh install.
 - qBittorrent versions after 5.1 connect: Zimi read their reply to a correct login as a wrong password (#122).
 - Read aloud on Automatic gives way to a faster server voice when a slow one stalls after only a title or fails twice, instead of falling to the browser's voice, and asks a voice whose speed is not measured yet for one chunk ahead instead of three (#121).
 - The draft release appears only once every build is attached to it.

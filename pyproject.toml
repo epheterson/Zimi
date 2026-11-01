@@ -34,7 +34,7 @@ classifiers = [
     "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
-    "libzim>=3.1.0,<4",  # libzim 4.0 (2026-10-29) changed the writer API
+    "libzim>=3.1.0",
     "certifi>=2026.10.19",
     # LAN peer discovery (mDNS/Zeroconf). Pure-Python; the peer ZIM-sharing
     # transport runs over plain HTTP so it needs no extra binary.

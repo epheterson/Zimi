@@ -46,6 +46,7 @@ MODULES = (
     "htmlmd",
     "mapsearch",
     "subproc",
+    "libzimcompat",
     "zimwriter",
     "zimpatch",
     "tube",

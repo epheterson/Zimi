@@ -28,6 +28,7 @@ from libzim.reader import Archive  # noqa: E402
 import zimi.crawler as crawler  # noqa: E402
 import zimi.creator as creator  # noqa: E402
 import zimi.manage as manage  # noqa: E402
+from zimi.libzimcompat import entry_by_id
 from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
 
@@ -110,7 +111,7 @@ def _quiet(monkeypatch):
 def _html_entries(arc):
     out = {}
     for i in range(arc.entry_count):
-        entry = arc._get_entry_by_id(i)
+        entry = entry_by_id(arc, i)
         if entry.is_redirect:
             continue
         item = entry.get_item()

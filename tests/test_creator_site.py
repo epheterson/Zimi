@@ -30,6 +30,7 @@ from tests.ports import free_port  # noqa: E402
 import zimi.crawler as crawler  # noqa: E402
 import zimi.creator as creator  # noqa: E402
 import zimi.server as _srv  # noqa: E402
+from zimi.libzimcompat import entry_by_id
 from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
 PORT = free_port()
@@ -315,7 +316,7 @@ def _text(arc, path):
 
 
 def _paths(arc):
-    return {arc._get_entry_by_id(i).path for i in range(arc.all_entry_count)}
+    return {entry_by_id(arc, i).path for i in range(arc.all_entry_count)}
 
 
 # ── URL rules ───────────────────────────────────────────────────────────────

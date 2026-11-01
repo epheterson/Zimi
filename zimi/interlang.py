@@ -18,6 +18,7 @@ import time
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
+from zimi.libzimcompat import entry_by_id
 from zimi.search import (
     _background_end,
     _background_fail,
@@ -282,7 +283,7 @@ def _build_qid_index(zim_name, zim_path):
 
         for i in range(total_entries):
             try:
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 if entry.is_redirect:
                     continue
                 path = entry.path
@@ -793,7 +794,7 @@ def _check_one_article_for_qid(zim_path):
         checked = 0
         for i in indices:
             try:
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 if entry.is_redirect:
                     continue
                 path = entry.path
