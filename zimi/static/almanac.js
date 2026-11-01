@@ -229,10 +229,12 @@ function _openAlmanacInner(replaceState) {
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
   if (qEl) qEl.placeholder = t('almanac');
-  _renderAlmanacContent();
   // Opened afresh it is at the top, on the Moon: the page keeps its element, and with it where it was last scrolled
-  // to. (Back from a page opened out of it puts the offset back after this: _reopenAlmanacFromLink.)
+  // to. (Back from a page opened out of it puts the offset back after this: _reopenAlmanacFromLink.) Before the
+  // draw, so a fresh open is not taken for a redraw in place, which draws every panel before the first paint.
   var scroller = document.getElementById('almanac-content');
+  if (scroller && !_almReturning) scroller.scrollTop = 0;
+  _renderAlmanacContent();
   if (scroller) scroller.scrollTop = 0;
   // Zimi's header is in place under the Almanac: nothing in it slides the
   // header, so one left away by the page before (an article scrolled on a
@@ -299,10 +301,13 @@ function _suspendAlmanacForLink() {
 // Reopen the almanac after a Back from a deep-linked article and restore the
 // scroll offset. The current history entry is already the #almanac one, so we
 // reuse it (replaceState) rather than pushing a new one.
+var _almReturning = false;   // _reopenAlmanacFromLink is opening it, back to where the reader was
 function _reopenAlmanacFromLink() {
   var target = _almReturnScroll;
   _almReturnScroll = null;
-  _openAlmanacInner(true);
+  // Back to a place: the page is drawn whole at once (a redraw in place), so the offset has its full height to land in.
+  _almReturning = !!target;
+  try { _openAlmanacInner(true); } finally { _almReturning = false; }
   if (!target) return;
   var content = document.getElementById('almanac-content');
   if (!content) return;
@@ -1934,8 +1939,12 @@ function _almSecGo(key) {
   var s = st.sections.filter(function (x) { return x.key === key; })[0];
   if (!s) return;
   _almSecListClose(false);
-  if (key === ALM_SECBAR_HERO) root.scrollTo({ top: 0, behavior: _scrollBehavior() });
-  else s.els[0].scrollIntoView({ block: 'start', behavior: _scrollBehavior() });
+  var go = function (how) {
+    if (key === ALM_SECBAR_HERO) root.scrollTo({ top: 0, behavior: how });
+    else s.els[0].scrollIntoView({ block: 'start', behavior: how });
+  };
+  _almGlide(root, function () { go('instant'); });
+  go(_scrollBehavior());
   st.cur = key;
   _almSecBarPaint();
   // Sections flying past on the way are not announced; the scroll's end (or,
@@ -2194,7 +2203,13 @@ function _almKeepStill(el) {
   // stay past the end), and compensating from there would count it twice.
   if (scroller && !scroller._almTop) {
     scroller._almTop = { v: scroller.scrollTop };
-    scroller.addEventListener('scroll', function () { scroller._almTop.v = scroller.scrollTop; }, { passive: true });
+    scroller.addEventListener('scroll', function () {
+      // A scroll that lands at the very end on the way up is the browser's pull, not the reader: they cannot scroll
+      // up onto the end. Chromium on Linux delivers it before the observer below, which would count the pull twice.
+      var end = scroller.scrollHeight - scroller.clientHeight;
+      if (scroller.scrollTop < scroller._almTop.v && scroller.scrollTop >= end - 1) return;
+      scroller._almTop.v = scroller.scrollTop;
+    }, { passive: true });
   }
   // Measured now, not at the observer's first call: on a busy first load that
   // call can come after the section has already arrived.
@@ -2207,6 +2222,8 @@ function _almKeepStill(el) {
     var h = el.offsetHeight, delta = h - last;
     last = h;
     if (!delta || !scroller) return;
+    // On the way somewhere (the status bar's tap to the top, a section's pill): a write here would stop the glide.
+    if (scroller._almGlide) return;
     // Coming back to a place kept from before (_reopenAlmanacFromLink): the
     // kept offset already has this section at its final height.
     if (scroller._almRestoreTo != null) { scroller.scrollTop = scroller._almTop.v = scroller._almRestoreTo; return; }
@@ -2220,6 +2237,31 @@ function _almKeepStill(el) {
     scroller.scrollTop = scroller._almTop.v = base + delta;
   });
   el._almStill.observe(el);
+}
+// A smooth scroll the page itself started: the late sections let it run (_almKeepStill) until it ends, or a finger or
+// wheel takes the page back. `land`, when given, is called at a glide's own end: what grew above the way while it
+// ran was not made up, so it puts the reader where the glide was going.
+var ALM_GLIDE_MAX_MS = 1500;
+function _almGlide(root, land) {
+  if (!root) return;
+  var done = function (e) {
+    clearTimeout(root._almGlideTimer);
+    ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.removeEventListener(ev, done); });
+    root._almGlide = false;
+    if (land && !root._almGlideTaken && !(e && (e.type === 'touchstart' || e.type === 'wheel'))) land();
+    if (root._almTop) root._almTop.v = root.scrollTop;
+  };
+  clearTimeout(root._almGlideTimer);
+  root._almGlide = true;
+  root._almGlideTaken = false;
+  // A key that scrolls (PageDown, an arrow, Space) is the reader taking the page back too, though the glide still ends
+  // on its own scrollend: it is not landed then.
+  if (!root._almGlideKeys) {
+    root._almGlideKeys = true;
+    root.addEventListener('keydown', function () { if (root._almGlide) root._almGlideTaken = true; });
+  }
+  ['scrollend', 'touchstart', 'wheel'].forEach(function (ev) { root.addEventListener(ev, done, { passive: true }); });
+  root._almGlideTimer = setTimeout(done, ALM_GLIDE_MAX_MS);
 }
 function _almArrived(el) {
   if (!el) return;
@@ -2481,8 +2523,16 @@ function _renderAlmanacContent() {
   html += '</div>';
   var anchor = _almRedrawAnchor();
   document.getElementById('almanac-content').innerHTML = html;
+  // The sky's cards (in the Moon's grid) and its caption fill in when the page sky starts, a quiet slice later: a
+  // reader already scrolled past them stays where they are. Here from the first frame, so one looking at them is not moved.
+  [document.getElementById('almanac-head'), document.querySelector('#almanac-content .alm-sky-info')].forEach(function (el) {
+    _almKeepStill(el);
+    if (el) el._almArriving = false;
+  });
 
   _renderAlmanacCalendar(now);
+  // The time machine's dock is on screen from the first frame, so it answers a finger from then too.
+  _almTmInit();
   // The place's section keeps the height it will draw at from the first frame: its panel is drawn later, and nothing
   // under it may move when it lands.
   var placeHost = document.getElementById('almanac-place');
@@ -2491,14 +2541,17 @@ function _renderAlmanacContent() {
   // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
   // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
   // again over itself keeps its reader's place (anchor) and so draws whole, at once.
+  // Each panel reads the focus when it runs: a day picked on the calendar before it is drawn is the one it shows (the
+  // world clocks and today's highlights are today's whatever the focus).
+  var at = function () { return _almFocus || now; };
   var panels = [
-    function () { _renderSunMap(now, true); },
+    function () { _renderSunMap(at(), true); },
     function () { _initTzClock(now); },
-    function () { _renderOnThisDay(now); _renderTonightSky(now); },
-    function () { _renderStarChart(now); },
-    function () { _renderAnalemma(now); _renderAstroPanel(now); },
-    function () { _renderMeteorShowers(now, m); _renderCelestialEvents(now); },
-    function () { _renderDeepTime(now); _renderRosettaStone(now); },
+    function () { _renderOnThisDay(at()); _renderTonightSky(at()); },
+    function () { _renderStarChart(at()); },
+    function () { _renderAnalemma(at()); _renderAstroPanel(at()); },
+    function () { var f = at(); _renderMeteorShowers(f, f === now ? m : _moonPhase(f)); _renderCelestialEvents(f); },
+    function () { _renderDeepTime(at()); _renderRosettaStone(at()); },
     function () {
       _orreryStartState();
       _initOrrery();
@@ -2506,11 +2559,12 @@ function _renderAlmanacContent() {
       _orreryLastFrame = performance.now();
       _orreryAnimate();
     },
-    function () { _loadSunData(now); _startTzClock(); _almTmInit(); _cacheAlmanacHighlights(now, m); },
+    function () { _loadSunData(at()); _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
   ];
   _almPanelsReady = false;
-  if (anchor) panels.forEach(function (p) { p(); });
+  // Drawn whole here: panels still queued by the draw before are the old page's, so they are called off.
+  if (anchor) { ++_almAfterPaintToken; panels.forEach(function (p) { p(); }); }
   else _almAfterPaint(panels);
 }
 
@@ -2812,7 +2866,11 @@ document.addEventListener('pointermove', function (e) {
     _almMoonLift();
   }
   if (p.adopted) return;   // the 3D canvas has the drag now, and turns by it
-  if (p.lifted && typeof _aeHandDrag === 'function') _aeHandDrag(e.clientX - p.lx, e.clientY - p.ly);
+  if (p.lifted) {
+    // Before the 3D view's file is in, the drag so far is kept, and handed over with the first move after it is.
+    p.bx = (p.bx || 0) + e.clientX - p.lx; p.by = (p.by || 0) + e.clientY - p.ly;
+    if (typeof _aeHandDrag === 'function') { _aeHandDrag(p.bx, p.by); p.bx = p.by = 0; }
+  }
   p.lx = e.clientX; p.ly = e.clientY;
   // As soon as the view is up, the drag is handed to it whole: the same
   // pointer, captured by the 3D canvas, so the finger never has to lift.

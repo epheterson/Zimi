@@ -26,12 +26,12 @@ const run = c => vm.runInContext(c, sb);
 // Advance the clock, firing due timers (and the promises they start) in order.
 const advance = async ms => {
   const end = now + ms;
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
   for (;;) {
     timers.sort((a, b) => a.at - b.at);
     if (!timers.length || timers[0].at > end) break;
     const t = timers.shift(); now = Math.max(now, t.at); t.f();
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   }
   now = end;
 };
@@ -42,10 +42,10 @@ const advance = async ms => {
   sb.log = log; sb.stamp = () => at.push(now);
   run("whenQuiet(function () { log.push('b'); stamp(); }, { priority: 5, maxWaitMs: 1e9 }); whenQuiet(function () { log.push('a'); stamp(); }, { priority: 2, maxWaitMs: 1e9 });");
   await advance(GAP - 1); check(log.length === 0, 'nothing runs in the task that asked');
-  listeners.touchstart();                      // a finger lands
+  listeners.touchstart({ touches: [{}] });                      // a finger lands
   const down = now;
   await advance(5000); check(log.length === 0, 'a finger that is down holds every job, however long they wait');
-  listeners.touchend();
+  listeners.touchend({ touches: [] });
   const up = now;
   await advance(QUIET - 10); check(log.length === 0, 'just lifted: still not quiet');
   await advance(1000);
@@ -78,10 +78,42 @@ const advance = async ms => {
   run("quietBreath().then(function () { log.push('breath'); });");
   await advance(10); check(log.length === 0, 'a breath waits for no touch in QUIET_BREATH_MS');
   await advance(run('QUIET_BREATH_MS') + 100); check(log.join() === 'breath', '...then lets the slice go on');
-  listeners.touchstart(); log.length = 0;
+  listeners.touchstart({ touches: [{}] }); log.length = 0;
   run("quietBreath().then(function () { log.push('breath2'); });");
   await advance(5000); check(log.length === 0, 'a finger down holds a breath for as long as it is down');
-  listeners.touchend(); await advance(run('QUIET_BREATH_MS') + 100); check(log.join() === 'breath2', '...and lets it go once it is up');
+  listeners.touchend({ touches: [] }); await advance(run('QUIET_BREATH_MS') + 100); check(log.join() === 'breath2', '...and lets it go once it is up');
+
+  // Two fingers: lifting one is not the end of the gesture.
+  log.length = 0;
+  run("whenQuiet(function () { log.push('two'); }, { maxWaitMs: 1e9 });");
+  listeners.touchstart({ touches: [{}] }); listeners.touchstart({ touches: [{}, {}] });
+  listeners.touchend({ touches: [{}] });
+  await advance(3000); check(log.length === 0, 'one of two fingers lifted: the other still holds the queue');
+  listeners.touchend({ touches: [] }); await advance(1000); check(log.join() === 'two', '...and the last one up lets it go');
+  listeners.pointerdown({ pointerId: 1 }); listeners.pointerdown({ pointerId: 2 }); listeners.pointerup({ pointerId: 1 });
+  run("whenQuiet(function () { log.push('pens'); }, { maxWaitMs: 1e9 });");
+  await advance(3000); check(log.join() === 'two', 'the same for pointers');
+  listeners.pointerup({ pointerId: 2 }); await advance(1000); check(log.join() === 'two,pens', '...until the last is up');
+  // A lift that never came (a lost capture) holds the queue only so long.
+  listeners.pointerdown({ pointerId: 3 }); log.length = 0;
+  run("whenQuiet(function () { log.push('stuck'); }, { maxWaitMs: 1e9 });");
+  await advance(run('QUIET_DOWN_STALE_MS') + 1000); check(log.join() === 'stuck', 'a finger with no word for QUIET_DOWN_STALE_MS no longer holds it');
+  listeners.pointerup({ pointerId: 3 });
+
+  // Asked again while queued (the sky asks on every paint): the wait already done still counts.
+  log.length = 0;
+  for (let i = 0; i < 8; i++) {
+    run("whenQuiet(function () { log.push('again'); }, { key: 'again', maxWaitMs: 800 });");
+    listeners.scroll(); await advance(200);
+  }
+  check(log.join() === 'again', 'a job asked again on every frame still runs once past its maxWaitMs');
+  run("quietCancel('again')");
+
+  // quietNow's job is one at a time with the queue's.
+  log.length = 0;
+  run("var hold; whenQuiet(function () { log.push('forced'); return new Promise(function (r) { hold = r; }); }, { key: 'f', maxWaitMs: 1e9 }); whenQuiet(function () { log.push('queued'); }, { maxWaitMs: 1e9 }); quietNow('f');");
+  await advance(3000); check(log.join() === 'forced', 'nothing queued runs while a forced job is still working');
+  run('hold()'); await advance(1000);
 
   if (failures) { console.error('\n' + failures + ' failed'); process.exit(1); }
   console.log('\nall quiet-work checks passed');

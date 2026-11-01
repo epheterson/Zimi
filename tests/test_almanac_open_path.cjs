@@ -34,7 +34,8 @@ const check = (ok, label) => { if (ok) console.log('ok: ' + label); else { conso
   sb._almAfterPaint([() => ran.push('d')]); sb._almanacOpen = false; jobs.shift().f();
   check(ran.join() === 'a1,a2,c', 'closed before they ran: skipped');
 }
-check(/if \(anchor\) panels\.forEach\(function \(p\) \{ p\(\); \}\);\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once');
+check(/if \(anchor\) \{ \+\+_almAfterPaintToken; panels\.forEach\(function \(p\) \{ p\(\); \}\); \}\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once, and the older draw\'s queued panels are called off');
+check(/if \(scroller && !_almReturning\) scroller\.scrollTop = 0;\s*\n\s*_renderAlmanacContent\(\);/.test(alm), 'a fresh open is at the top before it draws, so it is not taken for a redraw in place');
 
 // _almMoonLift: kept until the 3D view's file is in.
 {
@@ -54,20 +55,30 @@ check(/if \(anchor\) panels\.forEach\(function \(p\) \{ p\(\); \}\);\s*\n\s*else
   check(calls.length === 2 && timers.length === 1, 'with the file in, a lift is at once');
 }
 
-// _aeUploadMaps: the maps the warm render did not reach go up now.
+// _aeWarmSliced: the scene, the shaders, a first render and every map that is in go up before the view swaps in, and
+// a view opening meanwhile does not cut it short (it is what the warming is for).
 {
-  const up = [];
-  const mk = n => ({ value: n });
-  const S = { renderer: { initTexture: t => up.push(t) }, earthUni: { dayMap: mk('day'), nightMap: mk('night') }, moonUni: { moonMap: mk('moon') } };
-  const sb = {};
-  vm.createContext(sb);
-  vm.runInContext(fn(earth, '_aeUploadMaps'), sb);
-  sb._aeUploadMaps(S);
-  check(up.join() === 'day,night,moon', 'the day, night and Moon maps are uploaded before the swap');
-  S.moonUni.moonMap.value = null; up.length = 0; sb._aeUploadMaps(S);
-  check(up.join() === 'day,night', 'a map not in yet is skipped');
-  check(/_aeUploadMaps\(S\);\s*\n\}/.test(earth.slice(earth.indexOf('function _aeWarm'))), '_aeWarm ends by uploading them');
+  const run = async (opening, first) => {
+    const did = [];
+    const mk = n => ({ value: n });
+    const S = { scene: {}, camera: {}, renderer: { compile: () => did.push('compile'), render: () => did.push('render'), initTexture: t => did.push(t) },
+      earthUni: { dayMap: mk('day'), nightMap: mk('night') }, moonUni: { moonMap: mk(null) } };
+    const sb = { _ae: { gl: S }, _aeIsOpen: opening, _aeBreath: () => Promise.resolve(), _aeSceneAt: () => ({ ms: 0 }), _aeDisplayMs: () => 0,
+      _aeUpdate: () => did.push('update') };
+    vm.createContext(sb);
+    vm.runInContext(fn(earth, '_aeWarmSliced'), sb);
+    const ok = await sb._aeWarmSliced(S, first);
+    return { ok, did: did.join(), ready: sb._ae.ready };
+  };
+  (async () => {
+    for (const opening of [false, true]) {
+      const r = await run(opening, true);
+      check(r.ok && r.ready && r.did === 'update,compile,render,day,night', (opening ? 'the view opening meanwhile: ' : '') +
+        'scene, shaders, a first render, then each map that is in, before it is ready (' + r.did + ')');
+    }
+    const late = await run(true, false);
+    check(late.did === '', 'a later warm-up (a sharper map landing) does nothing on a view already open, which draws it anyway (' + late.did + ')');
+    if (failures) { console.error('\n' + failures + ' failed'); process.exit(1); }
+    console.log('\nall open-path checks passed');
+  })();
 }
-
-if (failures) { console.error('\n' + failures + ' failed'); process.exit(1); }
-console.log('\nall open-path checks passed');

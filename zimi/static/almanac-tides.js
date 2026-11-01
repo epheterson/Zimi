@@ -475,7 +475,11 @@ function _atEnsureData(loc) {
     _at.data = d; _at.loading = false;
     var st = _getLocation().stored ? _atTideStation() : null;
     if (!st) { _atRender(); return; }
-    _atMonthWarm(st, _almFocusInstant().getTime()).then(function() { if (_at.key === key) _atRender(); });
+    _atMonthWarm(st, _almFocusInstant().getTime()).then(function() { if (_at.key === key) _atRender(); }, function() {
+      // A day that could not be worked out: the section says the tide is not to be had, not a blank (and does not
+      // try the same sum again in the draw).
+      if (_at.key === key) { _at.data = { failed: true }; _atRender(); }
+    });
   }).catch(function() {
     if (_at.key !== key) return;
     _at.loading = false; _at.data = { failed: true }; _atRender();

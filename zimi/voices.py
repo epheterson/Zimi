@@ -325,7 +325,8 @@ _lock = threading.Lock()  # the engine discovery memo and the download state
 # a slow voice's chunk no longer holds up a faster voice that Automatic gave
 # way to (#121). Same-engine requests still queue (one model, one worker).
 _synth_locks = {e: threading.Lock() for e in ENGINES}
-_synth_slots = threading.BoundedSemaphore(1 + SYNTH_QUEUE)  # said or waiting
+# Said or waiting, per engine too: a stalled voice's queue filling up must not turn away the voice Automatic gives way to.
+_synth_slots = {e: threading.BoundedSemaphore(1 + SYNTH_QUEUE) for e in ENGINES}
 _synth_waiting = collections.Counter()  # engine -> requests waiting for its lock (under _lock)
 _sampled = {}  # engine -> the fingerprint it was last given a speed sample under
 _found = {}
@@ -1539,7 +1540,8 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
     got = _cached(path)
     if got is not None:
         return got
-    if not _synth_slots.acquire(blocking=False):
+    slots = _synth_slots[engine]
+    if not slots.acquire(blocking=False):
         raise Busy("queue full")
     try:
         if not _acquire_synth(engine):
@@ -1568,7 +1570,7 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
         finally:
             _synth_locks[engine].release()
     finally:
-        _synth_slots.release()
+        slots.release()
     _trim_cache()
     return _cached(path)
 

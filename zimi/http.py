@@ -171,6 +171,9 @@ RATE_LIMIT_EXPLICIT = bool(os.environ.get("ZIMI_RATE_LIMIT", "").strip())
 RATE_LIMIT_CONTENT = (
     RATE_LIMIT * 20
 )  # /w/ sub-resources: icons, CSS, images (1200/min default)
+# The Almanac's background lookups: one or two a draw, and a /almanac-links batch can try hundreds of titles under the
+# archive lock, so a budget of their own well under the content one (120/min default).
+RATE_LIMIT_ALMANAC = RATE_LIMIT * 2
 # Trusted clients (valid manage credential, or any private-network client on
 # a passwordless instance) get 10x headroom: the manage UI polls downloads/
 # peers/BT status every couple of seconds and was 429-ing itself off the
@@ -193,7 +196,7 @@ _OWN_ZIM_PATH_PREFIX = "/w/zimi_"
 _rate_buckets_keep = {}  # {ip: [timestamps]}
 # The Almanac's background lookups (/almanac-links, /almanac-place) fire on their own whenever it draws; on the
 # strict API budget they ate what the person's taps (search, read) needed, and answered 429 themselves. They
-# count in a bucket of their own, at the content budget.
+# count in a bucket of their own (RATE_LIMIT_ALMANAC).
 _ALMANAC_BACKGROUND_PATHS = frozenset(("/almanac-links", "/almanac-place"))
 _rate_buckets_almanac = {}  # {ip: [timestamps]}
 _rate_buckets_login = {}  # {ip: [timestamps]} — POST /login
@@ -2630,7 +2633,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         limited, is_w_content = _rate_class(parsed.path)
         if limited:
             background = parsed.path in _ALMANAC_BACKGROUND_PATHS
-            limit = None if (is_w_content or background) else self._rate_limit_for_request()
+            limit = RATE_LIMIT_ALMANAC if background else (None if is_w_content else self._rate_limit_for_request())
             keeping = (
                 is_w_content
                 and parsed.path.startswith(_OWN_ZIM_PATH_PREFIX)
@@ -3910,7 +3913,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Batch Q-ID resolution (closed set) — same public, rate-limited
                 # read as /suggest; the almanac POSTs its full ~250-Q-ID set.
                 retry_after = _check_rate_limit(
-                    self._client_ip(), content=True, buckets=_rate_buckets_almanac
+                    self._client_ip(), limit=RATE_LIMIT_ALMANAC, buckets=_rate_buckets_almanac
                 )
                 if retry_after > 0:
                     return self._json_rate_limited(retry_after)

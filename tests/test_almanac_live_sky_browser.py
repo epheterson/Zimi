@@ -97,6 +97,10 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
         "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph",
         polling=POLL_MS,
     )
+    pg.wait_for_function(   # the panels under the calendar, drawn after the first paint
+        "() => typeof _almSecBar !== 'undefined' && _almSecBar && _almSecBar.sections",
+        polling=POLL_MS,
+    )
     # The sky stands under the Moon's numbers and its words, below the first screen: bring it into view, as a reader does.
     pg.evaluate(
         "() => document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' })"
@@ -247,7 +251,7 @@ def test_one_clock(browser, served):
     try:
         # Live: the sky is at now, kept there by a timer.
         assert abs(pg.evaluate("_skyState.nowTime") - pg.evaluate("Date.now()")) < 60000
-        assert pg.evaluate("!!_skyTimers.live")
+        pg.wait_for_function("!!_skyTimers.live", polling=POLL_MS)   # armed once the sky is seen (an observer, after the scroll)
         # Scrubbed: the sky is at the focus, and no live timer runs.
         _settle(pg, NIGHT)
         assert pg.evaluate("_skyState.nowTime") == _ms(NIGHT)

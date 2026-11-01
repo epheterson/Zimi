@@ -488,14 +488,15 @@ def test_a_round_of_choices_links_the_answer_and_back_returns(
         "() => window.__round && __round.zim && __round.round.length > 0", timeout=WAIT
     )
     # a question whose answer the library has a page for (a list links to articles a small ZIM may leave out: those get no link)
-    for _ in range(8):
+    # (rounds are random: 8 tries all missed the test ZIM once in CI, so try enough that a miss is a real defect)
+    for _ in range(30):
         click(f, ".rk-choice")
         try:
             f.locator("#rk-read").wait_for(state="visible", timeout=4000)
             break
         except Exception:
             click(f, "#rk-next")
-    f.locator("#rk-read").wait_for(state="visible", timeout=100)
+    assert f.locator("#rk-read").is_visible(), "no answer in 30 questions had a page in the test library"
     assert hosted(f)
     if name == "flags.html":
         shot(page, "learn-flags")

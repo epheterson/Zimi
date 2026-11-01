@@ -129,14 +129,15 @@ def test_closing_a_pooled_connection_waits_for_the_query_using_it():
             closed.append(time.monotonic())
 
     pool["z"] = Conn()
-    began = time.monotonic()
     with _search.pooled_db_use(pool, "z"):
         closer = threading.Thread(target=_search._close_pooled_db, args=("z", pool, lock))
         closer.start()
         time.sleep(0.2)
         assert not closed, "closed while a query held the connection"
+        released = time.monotonic()
     closer.join(5)
-    assert closed and closed[0] - began >= 0.2
+    # After the query let go: Windows' sleep can end a timer tick short of 0.2 s, so the release is the mark.
+    assert closed and closed[0] >= released
 
 
 def test_a_qid_index_built_by_a_child_tells_the_games_links(monkeypatch):

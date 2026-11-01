@@ -4187,6 +4187,7 @@ window.addEventListener('scroll', function() {
   if (window.scrollY > 0 || !document.documentElement.classList.contains('tap-relay')) return;
   var box = _tapRelayBox();
   if (!box) return;
+  if (typeof _almGlide === 'function') _almGlide(box);
   box.scrollTo({ top: 0, behavior: _scrollBehavior() });
   clearTimeout(_tapRelayTimer);
   _tapRelayTimer = setTimeout(function() { if (_tapRelayBox()) window.scrollTo(0, _TAP_RELAY_PX); }, _TAP_RELAY_REARM_MS);
@@ -7222,22 +7223,32 @@ var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and moti
 // runs a queued job now (the person's intent), quietCancel(key) drops it.
 var QUIET_MS = 250, QUIET_OVERDUE_MS = 100, QUIET_GAP_MS = 60, QUIET_MAX_WAIT_MS = 4000, QUIET_BREATH_MS = 120, QUIET_BREATH_MAX_MS = 700;
 var QUIET_PRI_NOW = 1, QUIET_PRI_PANELS = 2, QUIET_PRI_LOAD = 4, QUIET_PRI_PREPARE = 5, QUIET_PRI_POLISH = 6;
-var _quietJobs = [], _quietTimer = 0, _quietBusy = false, _quietSeq = 0, _quietLast = 0, _quietDown = false;
+// A finger counts as down until the last contact is up; one that never reported its lift (a lost capture) stops
+// counting after QUIET_DOWN_STALE_MS with nothing touched, so background work cannot wait for ever.
+var QUIET_DOWN_STALE_MS = 20000;
+var _quietJobs = [], _quietTimer = 0, _quietBusy = 0, _quietSeq = 0, _quietLast = 0, _quietDown = false;
+function _quietFingerDown(now) { return _quietDown && now - _quietLast <= QUIET_DOWN_STALE_MS; }
 function _quietNote(down) {
   _quietLast = performance.now();
   if (down != null) _quietDown = down;
 }
 (function () {
-  var opt = { capture: true, passive: true };
-  ['pointerdown', 'touchstart'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(true); }, opt); });
-  ['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(false); }, opt); });
+  var opt = { capture: true, passive: true }, pointers = new Set(), touches = 0;
+  var note = function () { _quietNote(pointers.size > 0 || touches > 0); };
+  window.addEventListener('pointerdown', function (e) { pointers.add(e.pointerId); note(); }, opt);
+  ['pointerup', 'pointercancel'].forEach(function (n) { window.addEventListener(n, function (e) { pointers.delete(e.pointerId); note(); }, opt); });
+  ['touchstart', 'touchend', 'touchcancel'].forEach(function (n) {
+    window.addEventListener(n, function (e) { touches = e.touches ? e.touches.length : 0; note(); }, opt);
+  });
   ['scroll', 'wheel', 'keydown', 'touchmove'].forEach(function (n) { window.addEventListener(n, function () { _quietNote(); }, opt); });
 })();
 function whenQuiet(fn, opts) {
   opts = opts || {};
-  if (opts.key) _quietJobs = _quietJobs.filter(function (j) { return j.key !== opts.key; });
+  // Asked again while still queued: the newer job, but the wait it has already done still counts toward its maxWaitMs.
+  var was = opts.key ? _quietJobs.filter(function (j) { return j.key === opts.key; })[0] : null;
+  if (was) _quietJobs = _quietJobs.filter(function (j) { return j !== was; });
   _quietJobs.push({ fn: fn, key: opts.key || null, pri: opts.priority == null ? QUIET_PRI_LOAD : opts.priority,
-    maxWait: opts.maxWaitMs || QUIET_MAX_WAIT_MS, at: performance.now(), seq: ++_quietSeq });
+    maxWait: opts.maxWaitMs || QUIET_MAX_WAIT_MS, at: was ? was.at : performance.now(), seq: was ? was.seq : ++_quietSeq });
   _quietPump(QUIET_GAP_MS);
 }
 function quietCancel(key) { _quietJobs = _quietJobs.filter(function (j) { return j.key !== key; }); }
@@ -7246,26 +7257,30 @@ function quietNow(key) {
   var job = _quietJobs.filter(function (j) { return j.key === key; })[0];
   if (!job) return false;
   quietCancel(key);
-  Promise.resolve().then(job.fn).catch(function () {});
+  // Not after the quiet, but still one at a time: the queue waits for it as for its own.
+  _quietRun(job.fn);
   return true;
 }
 function _quietPump(delay) {
   if (_quietTimer || _quietBusy) return;
   _quietTimer = setTimeout(_quietStep, delay);
 }
+function _quietRun(fn) {
+  _quietBusy++;
+  Promise.resolve().then(fn).catch(function () {}).then(function () {
+    _quietBusy--;
+    if (_quietJobs.length) _quietPump(QUIET_GAP_MS);
+  });
+}
 function _quietStep() {
   _quietTimer = 0;
-  if (!_quietJobs.length) return;
+  if (!_quietJobs.length || _quietBusy) return;
   var now = performance.now(), next = _quietJobs[0];
   _quietJobs.forEach(function (j) { if (j.pri < next.pri || (j.pri === next.pri && j.seq < next.seq)) next = j; });
   var idle = now - _quietLast, still = (now - next.at >= next.maxWait ? QUIET_OVERDUE_MS : QUIET_MS) - idle;
-  if (_quietDown || still > 0) { _quietPump(Math.max(still, QUIET_GAP_MS) + 1); return; }
+  if (_quietFingerDown(now) || still > 0) { _quietPump(Math.max(still, QUIET_GAP_MS) + 1); return; }
   _quietJobs = _quietJobs.filter(function (j) { return j !== next; });
-  _quietBusy = true;
-  Promise.resolve().then(next.fn).catch(function () {}).then(function () {
-    _quietBusy = false;
-    if (_quietJobs.length) _quietPump(QUIET_GAP_MS);
-  });
+  _quietRun(next.fn);
 }
 // Between two slices of one job: a frame is let through, then the wait for a moment with no finger on the screen
 // (QUIET_BREATH_MS of no touch, scroll or key), but never past QUIET_BREATH_MAX_MS unless a finger is down.
@@ -7274,7 +7289,7 @@ function quietBreath() {
     var t0 = performance.now();
     var look = function () {
       var now = performance.now();
-      if (!_quietDown && (now - _quietLast >= QUIET_BREATH_MS || now - t0 >= QUIET_BREATH_MAX_MS)) resolve();
+      if (!_quietFingerDown(now) && (now - _quietLast >= QUIET_BREATH_MS || now - t0 >= QUIET_BREATH_MAX_MS)) resolve();
       else setTimeout(look, QUIET_BREATH_MS / 2);
     };
     requestAnimationFrame(function () { setTimeout(look, 0); });
@@ -8158,6 +8173,8 @@ function _loadAlmanacModules() {
   return _almanacModulesLoading;
 }
 
+// An open on its way (the frame it waits for, or the Almanac's files): a second tap meanwhile is the same open.
+var _almanacOpenPending = false;
 function openAlmanac(replaceState) {
   // Modifier-click: open Almanac in new browser tab
   if (_isModClick()) {
@@ -8165,6 +8182,7 @@ function openAlmanac(replaceState) {
     window.open('/#almanac', '_blank');
     return;
   }
+  if (_almanacOpenPending) return;
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
@@ -8173,11 +8191,14 @@ function openAlmanac(replaceState) {
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
   if (_almanacLoaded && !answered) {
-    requestAnimationFrame(function() { setTimeout(function() { _openAlmanacInner(replaceState); }, 0); });
+    _almanacOpenPending = true;
+    requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
     return;
   }
   if (!_almanacLoaded) {
+    _almanacOpenPending = true;
     _loadAlmanacModules().then(function() {
+      _almanacOpenPending = false;
       _almanacLoaded = true;
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
@@ -8195,6 +8216,7 @@ function openAlmanac(replaceState) {
       // "silent absence" the connection banner exists to eliminate. Drop the
       // reload-into-almanac boot gate so the library becomes visible again
       // instead of an empty dark shell.
+      _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
       _showToast(t('almanac_unavailable_offline'));
     });
@@ -9470,7 +9492,8 @@ function _moveZimTo(zim, category) {
     } else if (action.indexOf('keep-') === 0) {
       closeCtx(); _keepDo(action, zim);
     } else if (action === 'newtab') {
-      closeCtx(); window.open('/w/' + encodeURIComponent(zim), '_blank');
+      // The Almanac's tile opens the Almanac in Zimi, so its new tab does too (its ZIM's own page is the offline copy).
+      closeCtx(); window.open(_OWN_ZIM_APP[zim] === 'almanac' ? '/#almanac' : '/w/' + encodeURIComponent(zim), '_blank');
     } else if (action === 'move-to') {
       var cat = item.dataset.cat;
       closeCtx();
@@ -16381,7 +16404,7 @@ function _appUpdateCheckHtml(d) {
   var btns = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
     var on = m === d.check_mode;
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
-      (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH('alm_earth_sat_' + m) + '</span></button>';
+      (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH(m === 'never' ? 'app_check_never' : 'alm_earth_sat_' + m) + '</span></button>';
   }).join('');
   return '<div class="ms-theme-label">' + tH('app_update_check') + '</div>' +
     '<div class="app-theme-seg" id="' + _APP_UPDATE_CHECK_ID + '" role="radiogroup" tabindex="-1" aria-label="' + escAttr(t('app_update_check')) + '" title="' + escAttr(t('app_update_check_hint')) + '">' + btns + '</div>' +
@@ -24172,29 +24195,41 @@ function _appTitle(app) { return t(app === 'maps' ? 'cat_maps' : _OWN_APP_TITLE[
 function _readPrefs(d) {
   _userPrefs = { apps: d.apps !== false, shown: Array.isArray(d.shown) ? d.shown : null };
 }
+// Bumped by each change made here: an answer from before a newer change is not the word that stays.
+var _userPrefsSeq = 0;
 async function _loadUserPrefs() {
   if (!_userSession) return;
+  var seq = _userPrefsSeq;
   try {
     var r = await fetch('/me/prefs', { credentials: 'same-origin' });
     if (!r.ok) return;
     var d = await r.json();
+    if (seq !== _userPrefsSeq) return;
     var was = JSON.stringify(_userPrefs);
     _readPrefs(d);
     if (was !== JSON.stringify(_userPrefs) && mode === 'home') renderHome();
   } catch (e) {}
 }
+function _userPrefsShown() {
+  _syncOpenInAppsRow();
+  if (mode === 'home') renderHome();   // Manage > Preferences redraws its own card
+}
 async function _setUserPref(key, value) {
-  var body = {}; body[key] = value;
+  var body = {}, prev = _userPrefs, seq = ++_userPrefsSeq;
+  body[key] = value;
   // Takes effect here at once; the server's answer, when it comes, is the word that stays.
   if (key === 'apps') _readPrefs(Array.isArray(value) ? { apps: _userPrefs.apps, shown: value } : { apps: value, shown: _userPrefs.shown });
-  _syncOpenInAppsRow();
-  renderHome();
+  _userPrefsShown();
+  var kept = null;
   try {
-    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.ok) { _readPrefs(await r.json()); }
+    // keepalive: the page already shows the change, so leaving it at once must not drop the write
+    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) kept = await r.json();
   } catch (e) {}
-  _syncOpenInAppsRow();
-  renderHome();
+  if (seq !== _userPrefsSeq) return;   // a newer change is on its way and speaks for both
+  // Refused or unreachable: the server still has the old choice, so the page shows it again.
+  if (kept) _readPrefs(kept); else _userPrefs = prev;
+  _userPrefsShown();
 }
 // One app on or off for this account: the whole list goes up, so the server
 // never has to guess what the others were.
