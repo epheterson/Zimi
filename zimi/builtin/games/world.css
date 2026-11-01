@@ -14,7 +14,7 @@
 .wk-pip { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--disc-edge); vertical-align: -2px; box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.45); }
 .bg-controls:empty { display: none; }
 .bg-controls .ar-btn[hidden] { display: none; }
-@media (prefers-reduced-motion: reduce) { .wk-board * { animation-duration: 0.001s !important; transition-duration: 0.001s !important; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .wk-board * { animation-duration: 0.001s !important; transition-duration: 0.001s !important; } }
 
 /* The opponent's chip pulses while the computer thinks. */
 .bg-score .wk-who.turn.thinking { animation: wk-think 1s ease-in-out infinite alternate; }

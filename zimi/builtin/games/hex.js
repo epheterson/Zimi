@@ -191,7 +191,7 @@
     cellsG = host.querySelector('#hx-cells'); marksG = host.querySelector('#hx-marks');
     var p = [];
     for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) p.push({ x: cx(r, c), y: cy(r, c), w: R * SQ3, h: R * 1.75 });
-    btns = WK.overlay(host, W, Hh, p, onCell, 'hx-pt');
+    btns = WK.overlay(host, W, Hh, p, onCell, 'hx-pt', n);
     host.style.setProperty('--ratio', (W / Hh).toFixed(3));
   }
 

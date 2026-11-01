@@ -7,4 +7,4 @@
 .nc-cell[data-m="X"]::after { transform: rotate(-45deg); }
 .nc-cell[data-m="O"]::before { content: ""; position: absolute; inset: 20%; border: 10px solid var(--g-blue); border-radius: 50%; }
 .nc-cell.nc-win { border-color: var(--accent); box-shadow: var(--select); }
-@media (prefers-reduced-motion: no-preference) { .nc-cell[data-m] { animation: nc-pop 0.14s ease-out; } @keyframes nc-pop { from { transform: scale(0.88); } to { transform: scale(1); } } }
+.nc-cell[data-m] { animation: nc-pop 0.14s ease-out; } @keyframes nc-pop { from { transform: scale(0.88); } to { transform: scale(1); } }

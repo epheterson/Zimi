@@ -176,7 +176,7 @@
     var cap = t.querySelector('caption');
     cap.textContent = T('yacht.card.aria');
     t.textContent = ''; t.appendChild(cap);
-    var head = t.createTHead().insertRow(); head.appendChild(document.createElement('th'));
+    var head = t.createTHead().insertRow(); head.appendChild(document.createElement('td'));
     g.players.forEach(function (pl, n) { var th = document.createElement('th'); th.scope = 'col'; th.textContent = pl.name; if (n === g.turn && !g.over) th.className = 'yc-turn'; head.appendChild(th); });
     var body = t.createTBody();
     function row(label, cls, cell) {

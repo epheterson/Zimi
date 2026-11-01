@@ -103,7 +103,7 @@
 .pl-peg:disabled { cursor: default; opacity: 1; }
 .pl-row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .pl-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.pl-seg button { border: 0; border-right: 1px solid var(--line); background: var(--surface); min-height: var(--target); padding: 0 var(--sp-3); cursor: pointer; }
+.pl-seg button { border: 0; border-right: 1px solid var(--line); background: var(--surface); min-height: var(--target); min-width: var(--target); padding: 0 var(--sp-3); cursor: pointer; }
 .pl-seg button:last-child { border-right: 0; }
 .pl-seg button[aria-pressed="true"] { background: var(--accent-glow); color: var(--ink); font-weight: 650; }
 .pl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -122,4 +122,4 @@
 /* A figure that rises off a score and fades (Play.float). */
 .pl-float { position: absolute; z-index: 5; pointer-events: none; font: 800 var(--fs-body)/1 var(--font); font-variant-numeric: tabular-nums; color: var(--accent); text-shadow: 0 0 6px var(--surface); animation: pl-float 0.8s ease-out forwards; }
 @keyframes pl-float { 0% { opacity: 0; translate: 0 6px; } 15% { opacity: 1; } 100% { opacity: 0; translate: 0 -34px; } }
-@media (prefers-reduced-motion: reduce) { .pl-float { animation: pl-float-fade 1s ease-out forwards; } @keyframes pl-float-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .pl-float { animation: pl-float-fade 1s ease-out forwards; } @keyframes pl-float-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } } }

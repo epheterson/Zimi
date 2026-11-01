@@ -51,7 +51,7 @@
 .ms-num { width: 100%; min-height: var(--target); padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; }
 
 @media (max-width: 420px) { .ms-main { padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom)); } }
-@media (prefers-reduced-motion: reduce) { .ms-c.pop { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.pop { animation: none; } }
 
 /* Moments: an opening spreads from the tap, a cell held for a flag sinks first, the mines go off outward from the one that did, and a win plants its flags. */
 .ms-c { transition: scale 0.18s ease-out; }
@@ -63,7 +63,7 @@
 @keyframes ms-reveal { from { opacity: 0; scale: 0.6; } to { opacity: 1; scale: 1; } }
 @keyframes ms-boom { 0% { scale: 1; } 35% { scale: 1.45; } 100% { scale: 1; } }
 @keyframes ms-plant { from { opacity: 0; scale: 1.6; } to { opacity: 1; scale: 1; } }
-@media (prefers-reduced-motion: reduce) { .ms-c { transition: none; } .ms-c.pop, .ms-c.reveal, .ms-c.boom, .ms-c.planted { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c { transition: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.pop, html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.reveal, html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.boom, html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.planted { animation: none; } }
 
 /* Flag mode is a toggle, so it reads as a selection (glow and amber line), never as a second filled amber button. */
 .ms-flagbtn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; }

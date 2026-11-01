@@ -115,12 +115,13 @@
       var b;
       if (isBlock(i)) { b = document.createElement('div'); b.className = 'cw-block'; b.setAttribute('aria-hidden', 'true'); }
       else {
-        b = document.createElement('button'); b.type = 'button'; b.className = 'cw-cell'; b.dataset.i = i; b.setAttribute('role', 'gridcell');
+        b = document.createElement('button'); b.type = 'button'; b.className = 'cw-cell'; b.dataset.i = i;
         if (NUMBERED[i]) { var n = document.createElement('span'); n.className = 'cw-n'; n.textContent = NUMBERED[i]; n.setAttribute('aria-hidden', 'true'); b.appendChild(n); }
         b.appendChild(document.createTextNode(''));
       }
       els.grid.appendChild(b); cellEls.push(b);
     }
+    root.ZimiUtil.gridAria(els.grid, cellEls, SIZE);
     els.keys.innerHTML = '';
     ROWS.forEach(function (r) {
       var row = document.createElement('div'); row.className = 'cw-krow';
@@ -148,6 +149,8 @@
     cellEls.forEach(function (b, i) {
       if (isBlock(i)) return;
       b.lastChild.nodeValue = g.cells[i] || '';
+      b.tabIndex = i === g.sel ? 0 : -1;
+      if (i === g.sel && b !== document.activeElement && els.grid.contains(document.activeElement)) b.focus({ preventScroll: true });   // the arrows move the selection; focus follows
       b.classList.toggle('sel', i === g.sel); b.classList.toggle('in-word', i !== g.sel && here.indexOf(i) >= 0);
       b.classList.toggle('wrong', wrongs.indexOf(i) >= 0); b.classList.toggle('hinted', !!g.hinted[i]);
       var r = Math.floor(i / SIZE), c = i % SIZE;

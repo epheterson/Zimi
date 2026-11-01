@@ -65,7 +65,7 @@
     for (var r = 1; r < SEATS; r++) {
       p = (me() + r) % SEATS;
       var backs = ''; for (i = 0; i < t.hands[p].length; i++) backs += backHtml('xs');
-      opp += '<div class="m4-opp' + (t.turn === p && !t.result ? ' turn' : '') + '"><span class="nm">' + esc(labelOf(p)) + (p === t.dealer ? ' · ' + esc(T('mahjong4.dealer')) : '') + '</span><span class="row" aria-label="' + esc(T('mahjong4.inHand', { n: t.hands[p].length })) + '">' + backs + '</span><span class="melds">' + t.melds[p].map(function (m) { return meldHtml(m, 'xs'); }).join('') + '</span></div>';
+      opp += '<div class="m4-opp' + (t.turn === p && !t.result ? ' turn' : '') + '"><span class="nm">' + esc(labelOf(p)) + (p === t.dealer ? ' · ' + esc(T('mahjong4.dealer')) : '') + '</span><span class="row" role="img" aria-label="' + esc(T('mahjong4.inHand', { n: t.hands[p].length })) + '">' + backs + '</span><span class="melds">' + t.melds[p].map(function (m) { return meldHtml(m, 'xs'); }).join('') + '</span></div>';
     }
     els.opps.innerHTML = opp;
     // the discards, a row for each player, the newest claim target marked

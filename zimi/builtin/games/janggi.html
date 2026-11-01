@@ -22,9 +22,9 @@
 <main class="bg-main">
   <p class="bg-status" id="wk-status"></p>
   <div class="bg-score" id="wk-score" data-t-aria="janggi.score" aria-label="Points"></div>
-  <div class="jg-board" id="jg-board" role="group" data-t-aria="janggi.board" aria-label="Janggi board">
+  <div class="jg-board" id="jg-board">
     <svg class="jg-lines" viewBox="0 0 9 10" preserveAspectRatio="none" aria-hidden="true" id="jg-lines"></svg>
-    <div class="jg-grid" id="jg-grid"></div>
+    <div class="jg-grid" id="jg-grid" data-t-aria="janggi.board" aria-label="Janggi board"></div>
   </div>
   <div class="bg-controls"><button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button><button class="ar-btn" id="jg-pass" type="button" data-t="board.pass" data-t-title="janggi.passTitle" title="Pass your turn (P)">Pass</button><button class="ar-btn" id="jg-flip" type="button" aria-pressed="false" data-t="board.flip" data-t-title="chess.flipTitle" title="Turn the board around">Flip</button></div>
   <p class="bg-stats" id="wk-stats"></p>

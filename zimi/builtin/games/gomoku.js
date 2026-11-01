@@ -154,7 +154,7 @@
     stonesG = host.querySelector('#gm-stones'); marksG = host.querySelector('#gm-marks');
     var pts = [];
     for (var i = 0; i < SIZE; i++) { var p = xy(i); pts.push({ x: p.x, y: p.y, w: CELL }); }
-    btns = WK.overlay(host, W, W, pts, onPoint, 'gm-pt');
+    btns = WK.overlay(host, W, W, pts, onPoint, 'gm-pt', N);
   }
 
   function paint() {

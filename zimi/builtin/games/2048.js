@@ -140,8 +140,7 @@
   function tileClass(v) { return 'tf-tile t' + (v >= 4096 ? 'big' : v); }
   function makeTile(id, v, at, cls) {
     var el = document.createElement('div');
-    el.className = tileClass(v) + (cls ? ' ' + cls : ''); el.textContent = Play.num(v); el.dataset.at = at; el.setAttribute('role', 'gridcell');
-    el.setAttribute('aria-label', Play.num(v));
+    el.className = tileClass(v) + (cls ? ' ' + cls : ''); el.textContent = Play.num(v); el.dataset.at = at;
     place(el); els.board.appendChild(el); els2[id] = el;
     return el;
   }

@@ -38,7 +38,7 @@
                                      returns { say(text), reason(text, ms) } where reason shows for 2 s,
                                      then goes back to the line before it.
      ZimiShell.shake(el)             the illegal-move shake (120 ms; an outline flash under reduced motion).
-     ZimiShell.reducedMotion()       the one answer: the device asks for less motion, or Animation is Off.
+     ZimiShell.reducedMotion()       the one answer: Animation is Off, which is the default where the device asks for less motion and gives way to a choice.
      ZimiShell.settings, .anim(), .ms(n), .sound(), .stripClock(text)   as before.
 
      ZimiShell.persist({ save, load })
@@ -449,7 +449,9 @@
 
   // ── motion, status and the shake ──
   // The one answer to "should this move?": the device asks for less motion, or Animation is Off.
-  function reducedMotion() { return deviceReducedMotion() || settings.get('anim') === 'off'; }
+  // The game's own Animation choice outranks the device: settings.get('anim') is 'off' by default on a device that asks for less motion,
+  // and whatever the player chose once they have chosen.
+  function reducedMotion() { return settings.get('anim') === 'off'; }
   Shell.reducedMotion = reducedMotion;
   var SHAKE_MS = 120, REASON_MS = 2000;
   // The illegal-move shake: 120 ms sideways, or an outline flash for a player who asked for less motion.

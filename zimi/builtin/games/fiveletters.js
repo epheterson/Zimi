@@ -130,13 +130,14 @@
 
   function build() {
     for (var r = 0; r < TRIES; r++) {
-      var row = document.createElement('div'); row.className = 'fl-row'; row.setAttribute('role', 'row');
+      var row = document.createElement('div'); row.className = 'fl-row';
       var tiles = [];
       for (var c = 0; c < LEN; c++) {
-        var t = document.createElement('div'); t.className = 'fl-tile'; t.setAttribute('role', 'gridcell'); row.appendChild(t); tiles.push(t);
+        var t = document.createElement('div'); t.className = 'fl-tile'; row.appendChild(t); tiles.push(t);
       }
       tileEls.push(tiles); els.board.appendChild(row);
     }
+    ZimiUtil.gridAria(els.board, [].concat.apply([], tileEls), LEN);
     ROWS.forEach(function (letters) {
       var row = document.createElement('div'); row.className = 'fl-krow';
       letters.split('').forEach(function (ch) {

@@ -190,7 +190,9 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-view-btn + .ar-view-btn { border-left: 1px solid var(--line); }
 .ar-view-btn:hover { color: var(--ink); background: var(--ground); }
 .ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
-@media (pointer: coarse) { .ar-view-btn { width: 44px; height: 42px; } .sh-search input { height: 42px; } }
+@media (pointer: coarse) { .ar-view-btn { width: 44px; min-width: 44px; height: 44px; } .sh-search input { height: 44px; } }
+/* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
+@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .sh-chip::before, .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
 /* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
 .sh-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 18px; padding: 2px 16px; }
@@ -199,7 +201,8 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-chip:hover { border-color: var(--accent); }
 /* The chosen chip is a selection, as in Zimi: accent glow, accent line, ink text. */
 .sh-chip[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); }
-.sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.6; }
+.sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink2); }
+.sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the pressed tint is under 4.5:1 */
 .sh-count { margin-inline-start: 8px; letter-spacing: 0; }
 .sh-rail-head, .sh-chip-recent { display: none; }
 .sh-empty { margin: 32px 0; text-align: center; color: var(--ink2); }
@@ -232,7 +235,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-fam-tag svg { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s; }
 .sh-fam.sh-open .sh-fam-tag svg { transform: rotate(180deg); }
 .sh-fam-card:hover .sh-fam-tag, .sh-fam-card:focus-visible .sh-fam-tag { border-color: var(--accent); }
-@media (prefers-reduced-motion: no-preference) { .sh-fam.sh-open .sh-fam-panel { animation: sh-fam-in 0.24s ease-out; } @keyframes sh-fam-in { from { opacity: 0; transform: translateY(-8px); } } }
+.sh-fam.sh-open .sh-fam-panel { animation: sh-fam-in 0.24s ease-out; } @keyframes sh-fam-in { from { opacity: 0; transform: translateY(-8px); } }
 .sh-fam.sh-open { display: block; grid-column: 1 / -1; }
 .sh-fam.sh-open .sh-fam-card { flex-direction: row; align-items: center; width: 100%; margin-bottom: 14px; box-shadow: none; border-color: var(--accent-line); }
 .sh-fam.sh-open .sh-fam-art { flex: 0 0 min(34%, 160px); width: min(34%, 160px); aspect-ratio: 16 / 9; }
@@ -324,7 +327,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-foot > summary:hover { color: var(--ink); }
 .ar-foot > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-chip); }
 .ar-foot > p { margin: 0 0 8px; line-height: 1.5; }
-@media (prefers-reduced-motion: no-preference) { .ar-foot[open] > p { animation: sh-fam-in 0.24s ease-out; } }
+.ar-foot[open] > p { animation: sh-fam-in 0.24s ease-out; }
 
 /* The order control: Zimi's Home sort (a mark, the order it is in; the native select lies over it unseen). */
 .sh-sort-wrap { position: relative; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: var(--r-chip); font-size: var(--fs-small); font-weight: 500; color: var(--ink2); cursor: pointer; white-space: nowrap; }
@@ -333,9 +336,9 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-sort-wrap:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sh-sort { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
 .ar-shelf:not([data-sort="sections"]) .sh-sort-wrap { color: var(--accent); }
-@media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; } }
+@media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* A phone's lobby header has room for the mark only. */
-@media (max-width: 699px) { [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
+@media (max-width: 699px) { [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; min-width: 44px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
 @media (max-width: 899px) { [data-view="index"] .sh-sort-wrap { margin-left: auto; } [data-view="index"] .ar-view-toggle { margin-left: 0; } }
 .sh-wait .sh-list { visibility: hidden; }
 
@@ -391,7 +394,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .ar-continue h2 { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--ink2); }
-.ar-continue.ar-table-idle h2 { font-weight: 500; color: var(--ink3); }
+.ar-continue.ar-table-idle h2 { font-weight: 500; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
 @media (max-width: 699px) {
@@ -402,10 +405,8 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
   .ar-box:not(:first-child) .ar-box-label small { display: none; }
 }
 @media (min-width: 700px) { .ar-table { --bw: 168px; --ov: 36px; padding: 30px 32px 34px; } }
-@media (prefers-reduced-motion: no-preference) {
-  .ar-box.ar-settle { animation: ar-settle 0.45s cubic-bezier(0.25, 1, 0.5, 1) backwards; animation-delay: calc(var(--i) * 70ms); }
-  @keyframes ar-settle { from { opacity: 0; transform: translateY(calc(var(--dy) - 18px)) rotate(calc(var(--rot) * 2.5)) scale(1.05); } }
-}
+.ar-box.ar-settle { animation: ar-settle 0.45s cubic-bezier(0.25, 1, 0.5, 1) backwards; animation-delay: calc(var(--i) * 70ms); }
+@keyframes ar-settle { from { opacity: 0; transform: translateY(calc(var(--dy) - 18px)) rotate(calc(var(--rot) * 2.5)) scale(1.05); } }
 
 /* The "About <game>" link scripts/games_links.py writes at the foot of a page is not shown: the Menu has the row
    (shell.js clicks this link, which Zimi's reader catches to open the article). */
@@ -545,7 +546,7 @@ html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gs-tm-head b { min-width: 0; font-size: var(--fs-body); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-tm-sheet .gs-tm-item { min-height: 48px; padding: 13px 20px; font-size: var(--fs-body); white-space: normal; }
 @keyframes gs-tm-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .gs-tm-sheet { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .gs-tm-sheet { animation: none; } }
 
 /* The end of a game. A win: a pebble stamps the middle of the game under the sheet's scrim level, a ring opens from it and a few
    pebbles scatter and confetti falls (shell.js, about 1.8 s); the sheet's title is heavier. A loss (about 1.1 s): the board goes quiet under a veil, a ring closes in and the pebble settles; nothing flies over it. Reduced motion never reaches this: shell.js adds nothing then. */
@@ -576,7 +577,7 @@ body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 .gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), env(safe-area-inset-bottom)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
 .gs-rest p { margin: 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
 .gs-rest .gs-rest-new { width: 100%; min-height: 56px; font-size: var(--fs-title); font-weight: 650; }
-@media (prefers-reduced-motion: no-preference) { .gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } } }
+.gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } }
 .gs-end-win h2 { font-weight: 800; animation: gs-title-pop 360ms cubic-bezier(0.2, 0.9, 0.25, 1.2); transform-origin: left center; }
 .gs-end-win .gs-chip b { color: var(--accent); }
 @keyframes gs-title-pop { 0% { transform: scale(0.88); opacity: 0.4; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
@@ -593,7 +594,7 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-sp-card .gs-chips { justify-content: center; margin: 0; }
 .gs-sp-play { width: 100%; min-height: 56px; margin-top: var(--sp-2); font-size: var(--fs-title); font-weight: 650; }
 .gs-sp-hint { margin: 0; font-size: var(--fs-small); color: var(--ink2); }
-@media (prefers-reduced-motion: no-preference) { :root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } } }
+:root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @media (max-height: 520px) { .gs-sp-art { display: none; } }
 
 /* The loss: the board dims under a veil, a ring closes in on the pebble and the pebble settles into the middle. No confetti, no scatter. */

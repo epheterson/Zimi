@@ -88,16 +88,12 @@
     els.board.textContent = '';
     cells = [];
     for (var i = 0; i < 9; i++) {
-      var c = document.createElement('button'); c.type = 'button'; c.className = 'nc-cell'; c.setAttribute('role', 'gridcell');
+      var c = document.createElement('button'); c.type = 'button'; c.className = 'nc-cell';
       (function (n) { c.addEventListener('click', function () { click(n); }); })(i);
       els.board.appendChild(c); cells.push(c);
     }
-    els.board.addEventListener('keydown', function (e) {
-      var i = cells.indexOf(document.activeElement); if (i < 0) return;
-      var d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[e.key]; if (!d) return;
-      e.preventDefault();
-      var k = i + d; if (k >= 0 && k < 9 && !(Math.abs(d) === 1 && Math.floor(k / 3) !== Math.floor(i / 3))) cells[k].focus();
-    });
+    root.ZimiUtil.gridAria(els.board, cells, 3);
+    root.ZimiUtil.gridRove(els.board, cells, 3);
   }
   function paint() {
     var win = winLine(board);

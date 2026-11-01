@@ -15,8 +15,7 @@
 .rc-article p { margin: 0 0 12px; }
 .rc-article h2, .rc-article h3, .rc-article h4 { margin: var(--sp-4) 0 var(--sp-2); font-size: var(--fs-title); }
 .rc-article ul, .rc-article ol { padding-left: 22px; margin: 0 0 12px; }
-.rc-link { color: var(--accent); cursor: pointer; border-bottom: 1px solid transparent; text-decoration: none; border-radius: 2px; }
-.rc-link:hover { border-bottom-color: currentColor; }
+.rc-link { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; border-radius: 2px; }
 .rc-link:active { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .rc-card { max-width: 440px; margin: 8px auto; padding: 8px 0; text-align: center; }
 .rc-card h2 { margin: 0 0 12px; font-size: 20px; }
@@ -30,5 +29,4 @@
 /* The route as articles to read, on the end sheet: a quiet line of links, not buttons. */
 .rc-review { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; margin: 0; font-size: var(--fs-small); color: var(--ink2); }
 .rc-review-label { flex: 0 0 100%; text-align: center; }
-.rc-review-link { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
-.rc-review-link:hover { border-bottom-color: currentColor; }
+.rc-review-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }

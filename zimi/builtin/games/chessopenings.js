@@ -189,7 +189,6 @@
       for (step = 0; step < d.step; step++) { var m = C.fromUci(E, pos, line.moves[step]); if (!m) return false; sans.push(E.san(pos, m)); E.make(pos, m); lastMove = m; }
       finished = d.finished; mistakes = d.mistakes; hinted = d.hinted; hintLevel = d.hintLevel; busy = false;
       els.name.textContent = line.eco + ' · ' + line.name;
-      els.next.setAttribute('aria-pressed', String(finished));
       paintMoves(); paintStats(); paint();
     },
     resume: function () {

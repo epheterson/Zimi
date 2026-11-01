@@ -35,7 +35,7 @@
   };
 
   Play.reducedMotion = function () {
-    if (window.ZimiShell && window.ZimiShell.anim() === 'off') return true;
+    if (window.ZimiShell) return window.ZimiShell.reducedMotion();
     try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
   };
 

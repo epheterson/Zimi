@@ -29,4 +29,4 @@
 /* A found word rises and fades from where it was typed. */
 .bee-ghost { position: absolute; inset: 0; display: grid; place-items: center; color: var(--accent); pointer-events: none; animation: bee-rise 0.7s ease-out forwards; }
 @keyframes bee-rise { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-28px) scale(1.15); } }
-@media (prefers-reduced-motion: reduce) { .bee-ghost { animation: none; opacity: 0; } .bee-track i { transition: none; } .bee-input .caret { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .bee-ghost { animation: none; opacity: 0; } html:not([data-anim="normal"]):not([data-anim="fast"]) .bee-track i { transition: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .bee-input .caret { animation: none; } }

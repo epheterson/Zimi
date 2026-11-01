@@ -25,4 +25,4 @@
 .lb-key.miss { background: transparent; color: var(--ink3); box-shadow: inset 0 0 0 1px var(--line); }
 .lb-key:active:not(:disabled) { filter: brightness(0.85); transform: scale(0.94); }
 .lb-key:disabled { cursor: default; }
-@media (prefers-reduced-motion: reduce) { .lb-fig path, .lb-fig ellipse, .lb-fig circle { transition: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .lb-fig path, html:not([data-anim="normal"]):not([data-anim="fast"]) .lb-fig ellipse, html:not([data-anim="normal"]):not([data-anim="fast"]) .lb-fig circle { transition: none; } }

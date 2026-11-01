@@ -27,6 +27,6 @@
 .ur-die.tumble { animation: ur-tumble 0.14s linear infinite; }
 @keyframes ur-tumble { from { transform: rotate(-14deg) translateY(-2px); } to { transform: rotate(14deg) translateY(2px); } }
 .ur-total { min-width: 2ch; padding-left: 4px; font: 800 var(--fs-display) var(--mono); color: var(--ink); text-align: center; }
-@media (prefers-reduced-motion: reduce) { .ur-die.tumble { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .ur-die.tumble { animation: none; } }
 html[data-anim="off"] .ur-die.tumble { animation: none; }
 @media (max-width: 420px) { .ur-die { width: 42px; height: 42px; } .ur-dice { gap: 6px; } }
