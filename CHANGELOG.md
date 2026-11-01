@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
+
 ## [1.15.1]
 
 ### Fixed

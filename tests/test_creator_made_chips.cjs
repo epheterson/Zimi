@@ -9,7 +9,7 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'zimi', 'static');
-const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+const src = [path.join(root, 'manage.js'), path.join(root, 'app.js')].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 function extract(re, label) {
   const m = src.match(re);
   if (!m) throw new Error('could not extract ' + label + ' from app.js');

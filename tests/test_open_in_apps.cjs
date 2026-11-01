@@ -13,7 +13,7 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'zimi', 'static');
-const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const src = [path.join(root, 'manage.js'), path.join(root, 'app.js')].map((f) => fs.readFileSync(f, 'utf8')).join('\n').replace(/\r\n/g, '\n');
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));

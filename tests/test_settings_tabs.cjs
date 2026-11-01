@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..', 'zimi');
-const src = fs.readFileSync(path.join(root, 'static', 'app.js'), 'utf8');
+const src = [path.join(root, 'static', 'manage.js'), path.join(root, 'static', 'app.js')].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 let failures = 0;
 function ok(name, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + name + (cond || detail === undefined ? '' : '  ' + detail));

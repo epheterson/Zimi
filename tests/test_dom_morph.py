@@ -26,7 +26,11 @@ APP_JS = os.path.join(
     "static",
     "app.js",
 )
-_SRC = open(APP_JS, encoding="utf-8").read()
+# The morph helpers live in manage.js (the Library Manager, fetched on first use).
+_SRC = "\n".join(
+    open(APP_JS.replace("app.js", f), encoding="utf-8").read()
+    for f in ("manage.js", "app.js")
+)
 
 
 def _function(name):

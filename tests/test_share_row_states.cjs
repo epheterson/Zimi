@@ -20,7 +20,7 @@ const path = require('path');
 
 const APP_JS = path.join(__dirname, '..', 'zimi', 'static', 'app.js');
 const APP_CSS = path.join(__dirname, '..', 'zimi', 'static', 'app.css');
-const js = fs.readFileSync(APP_JS, 'utf8');
+const js = [APP_JS.replace('app.js', 'manage.js'), APP_JS].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const css = fs.readFileSync(APP_CSS, 'utf8');
 
 let failures = 0;
