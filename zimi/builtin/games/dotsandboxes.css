@@ -15,5 +15,5 @@
 .db-edge:hover:not([aria-disabled="true"]) { background: var(--accent-glow); border-radius: 10px; }
 .db-edge:focus-visible { outline-offset: -2px; }
 @keyframes db-fill { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 0.88; } }
-@media (prefers-reduced-motion: reduce) { .db-box { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .db-box { animation: none; } }
 html[data-anim="off"] .db-box { animation: none; }

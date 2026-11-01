@@ -20,6 +20,6 @@
 .pl-die.yc-tumble { animation: yc-tumble 320ms ease-out; }
 @keyframes yc-pulse { from { background: var(--accent-line); } }
 @keyframes yc-tumble { 0% { transform: translateY(-14px) rotate(-24deg) scale(0.9); } 60% { transform: translateY(2px) rotate(8deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .yc-card td.yc-fresh, .pl-die.yc-tumble { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .yc-card td.yc-fresh, html:not([data-anim="normal"]):not([data-anim="fast"]) .pl-die.yc-tumble { animation: none; } }
 .yc-card td.yc-fresh { background: var(--accent-glow); }
 .pl-die[aria-disabled="true"] { cursor: default; }

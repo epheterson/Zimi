@@ -54,7 +54,7 @@
 .m4-rules h3 { margin: 12px 0 4px; font-size: var(--fs-body); }
 
 @media (max-width: 420px) { .m4-opp .nm { min-width: 6.4em; } }
-@media (prefers-reduced-motion: reduce) { .m4-hand .m4-t { transition: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .m4-hand .m4-t { transition: none; } }
 html[data-anim="off"] .m4-hand .m4-t { transition: none; }
 
 /* Four player chips: two by two, the shared pill with the name on one line. */

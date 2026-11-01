@@ -44,6 +44,6 @@
 .dm-card:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 2px; }
 .dm-card .dm-tile { --s: var(--dm-hs); width: var(--dm-hs); height: calc(var(--dm-hs) * 2); flex-direction: column; border-radius: 6px; }
 .dm-tally { font-weight: 600; font-size: var(--fs-small); font-variant-numeric: tabular-nums; color: var(--ink2); }
-@media (prefers-reduced-motion: reduce) { .dm-card.sel { transform: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .dm-card.sel { transform: none; } }
 html[data-anim="off"] .dm-card.sel { transform: none; }
 .dm-tile.dm-hidden { background: var(--dm-back); }

@@ -29,5 +29,5 @@
 .mm-card[data-miss="true"] .mm-face { border-color: var(--bad); }
 .mm-grid.won .mm-face { animation: mm-match 0.5s ease-out both; animation-delay: calc(var(--k) * 45ms); }
 @keyframes mm-match { 0% { scale: 1; } 40% { scale: 1.1; } 100% { scale: 1; } }
-@media (prefers-reduced-motion: reduce) { .mm-card[data-done="true"] .mm-face, .mm-grid.won .mm-face { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .mm-card[data-done="true"] .mm-face, html:not([data-anim="normal"]):not([data-anim="fast"]) .mm-grid.won .mm-face { animation: none; } }
 :root[data-anim="off"] :is(.mm-card[data-done="true"] .mm-face, .mm-grid.won .mm-face) { animation: none; }

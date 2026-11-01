@@ -18,5 +18,5 @@
 .mo-hint { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 6 4; }
 .mo-pt:hover:not([aria-disabled="true"]) { background: rgba(255, 255, 255, 0.22); border-radius: 50%; }
 @keyframes mo-pulse { from { opacity: 0.55; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .mo-remove { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .mo-remove { animation: none; } }
 html[data-anim="off"] .mo-remove { animation: none; }

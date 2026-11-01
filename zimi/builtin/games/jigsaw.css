@@ -10,10 +10,10 @@
 .jg-piece.locked { cursor: default; box-shadow: none; border-radius: 0; animation: jg-click 0.16s ease-out; }
 @keyframes jg-click { 50% { filter: brightness(1.25); } }
 .jg-credit { margin: 0; min-height: 1.2em; max-width: 52ch; text-align: center; font-size: var(--fs-small); color: var(--ink2); }
-@media (prefers-reduced-motion: reduce) { .jg-piece.locked { animation: none; } .jg-piece.lifted { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .jg-piece.locked { animation: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .jg-piece.lifted { scale: 1; } }
 /* A piece that snaps glides the last few pixels into its place; a finished picture lifts once. */
 .jg-piece.locked { transition: left 0.09s ease-out, top 0.09s ease-out; }
 .jg-area.whole { animation: jg-whole 0.6s ease-out; }
 .jg-area.whole .jg-ghost { opacity: 0; }
 @keyframes jg-whole { 0% { scale: 1; } 35% { scale: 1.025; filter: brightness(1.12); } 100% { scale: 1; } }
-@media (prefers-reduced-motion: reduce) { .jg-piece.locked { transition: none; } .jg-area.whole { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .jg-piece.locked { transition: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .jg-area.whole { animation: none; } }

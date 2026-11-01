@@ -37,4 +37,4 @@
 .fl-key.correct { background: var(--fl-correct); }
 .fl-key.present { background: var(--fl-present); }
 .fl-key.absent { background: var(--fl-absent); }
-@media (prefers-reduced-motion: reduce) { .fl-tile.pop, .fl-tile.flip, .fl-tile.hop { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .fl-tile.pop, html:not([data-anim="normal"]):not([data-anim="fast"]) .fl-tile.flip, html:not([data-anim="normal"]):not([data-anim="fast"]) .fl-tile.hop { animation: none; } }
