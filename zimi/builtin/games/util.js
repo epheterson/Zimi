@@ -12,6 +12,9 @@
      ZimiUtil.DIR_KEYS                the arrow keys and WASD as 'left' | 'right' | 'up' | 'down'; copy it to add a game's own keys
      ZimiUtil.sweep(s, /pattern/g)    s with the pattern's matches removed until none is left (markup out of text)
      ZimiUtil.el(tag, cls, text)      a new element with a class and some text (a page only: it needs a document)
+     ZimiUtil.gridRove(board, cells, cols, rows)  one tab stop for a grid of buttons; the arrow keys move between them (display order)
+     ZimiUtil.gridAria(board, cells, cols)  the board as an ARIA grid: role=grid, each run of cols cells in a role=row wrapper that takes
+                                     no space (display:contents), each cell a gridcell. Call it once the cells are in the board, in order.
 
    Loaded before the engines (a page's script tag, a test's file list). */
 (function (root) {
@@ -76,5 +79,38 @@
     return s;
   }
 
-  root.ZimiUtil = { sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
+  // The one grid pattern (docs/design/games.md, Accessibility): a grid needs rows, and the boards lay their cells out with CSS grid or
+  // absolute positions, so a row is a wrapper with display:contents. The cells keep their parent's layout and their own labels.
+  function gridAria(board, cells, cols) {
+    board.setAttribute('role', 'grid');
+    board.setAttribute('aria-colcount', String(cols));
+    board.setAttribute('aria-rowcount', String(Math.ceil(cells.length / cols)));
+    for (var i = 0; i < cells.length; i += cols) {
+      var first = cells[i], row = first.parentNode;
+      if (!row || row.getAttribute('role') !== 'row') {
+        row = first.ownerDocument.createElement('div');
+        row.setAttribute('role', 'row');
+        row.style.display = 'contents';
+        first.parentNode.insertBefore(row, first);
+      }
+      for (var j = i; j < Math.min(i + cols, cells.length); j++) { row.appendChild(cells[j]); cells[j].setAttribute('role', 'gridcell'); }
+    }
+  }
+
+  // One tab stop for a grid of buttons, arrow keys inside it (display order). cols is the width, rows the height (default cols).
+  var ROVE_ARROWS = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
+  function gridRove(board, cells, cols, rows) {
+    var cur = 0, h = rows || cols;
+    function mark(i) { cells[cur].tabIndex = -1; cur = i; cells[cur].tabIndex = 0; }
+    cells.forEach(function (c, i) { c.tabIndex = i ? -1 : 0; c.addEventListener('focus', function () { mark(i); }); });
+    board.addEventListener('keydown', function (e) {
+      var d = ROVE_ARROWS[e.key];
+      if (!d || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      var r = clamp(Math.floor(cur / cols) + d[0], 0, h - 1), c = clamp((cur % cols) + d[1], 0, cols - 1);
+      cells[r * cols + c].focus();
+    });
+  }
+
+  root.ZimiUtil = { gridRove: gridRove, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
 })(this);

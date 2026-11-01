@@ -254,7 +254,7 @@
   // pts: [{x, y, w, h, label}] in the drawing's units (W by H); arrows move to the nearest
   // place in that direction. Returns the buttons.
   var DIRVEC = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-  function overlay(host, W, H, pts, onPick, cls) {
+  function overlay(host, W, H, pts, onPick, cls, cols) {
     var btns = [];
     pts.forEach(function (p, i) {
       var b = el('button', 'wk-pt' + (cls ? ' ' + cls : ''));
@@ -267,6 +267,7 @@
       b.addEventListener('focus', function () { btns.forEach(function (o) { o.tabIndex = o === b ? 0 : -1; }); });
       host.appendChild(b); btns.push(b);
     });
+    if (cols) root.ZimiUtil.gridAria(host, btns, cols);   // a square lattice reads as a grid of rows
     host.addEventListener('keydown', function (e) {
       var d = DIRVEC[e.key], cur = btns.indexOf(document.activeElement);
       if (!d || cur < 0 || e.ctrlKey || e.metaKey || e.altKey) return;

@@ -42,7 +42,7 @@
     stonesG = host.querySelector('#go-stones'); marksG = host.querySelector('#go-marks');
     var pts = [];
     for (var i = 0; i < n * n; i++) { var p = xy(i); pts.push({ x: p.x, y: p.y, w: cell }); }
-    btns = WK.overlay(host, VIEW, VIEW, pts, onPoint, 'go-pt');
+    btns = WK.overlay(host, VIEW, VIEW, pts, onPoint, 'go-pt', n);
   }
 
   function liveScore() { return Engine.score(st.board, n, dead, st.caps); }

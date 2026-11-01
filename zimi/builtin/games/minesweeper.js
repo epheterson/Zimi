@@ -247,10 +247,12 @@
       var d = document.createElement('div');
       d.className = 'ms-c';
       d.dataset.i = i;
+      d.id = 'ms-c' + i;
       cells.push(d);
       frag.appendChild(d);
     }
     els.board.appendChild(frag);
+    root.ZimiUtil.gridAria(els.board, cells, game.cols);
     els.board.setAttribute('aria-label', T('mines.boardLabel', { rows: game.rows, cols: game.cols, mines: game.mines }));
   }
   function paint(i) {
@@ -266,6 +268,9 @@
     } else if (s === QUESTION) { cls += ' q'; text = '?'; }
     if (i === cursor) cls += ' cursor';
     if (d.className !== cls) d.className = cls;
+    var what = s === FLAG ? (g.status === 'lost' && !g.mine[i] ? 'mines.c.wrong' : 'mines.c.flag') : s === QUESTION ? 'mines.c.q' : s !== OPEN ? 'mines.c.hidden' : g.mine[i] ? 'mines.c.mine' : g.count[i] ? 'mines.c.n' : 'mines.c.zero';
+    var name = T('mines.cell', { row: Math.floor(i / g.cols) + 1, col: i % g.cols + 1, what: T(what, { n: g.count[i] }) });
+    if (d.getAttribute('aria-label') !== name) d.setAttribute('aria-label', name);
     var key = html || String(text);
     if (d.dataset.k !== key) { d.dataset.k = key; if (html) d.innerHTML = html; else d.textContent = text; }
   }
@@ -375,7 +380,9 @@
     if (playable(game)) setFace('smile');
   }
   function haptic() { try { if (navigator.vibrate) navigator.vibrate(HAPTIC_MS); } catch (e) { /* no haptics here */ } }
-  function paintCursorOff() { cells.forEach(function (c) { c.classList.remove('cursor'); }); }
+  function paintCursorOff() { cells.forEach(function (c) { c.classList.remove('cursor'); }); els.board.removeAttribute('aria-activedescendant'); }
+  // The cursor is the grid's active descendant: one tab stop for the board, a screen reader reads the cell the arrows reached.
+  function showCursor() { paintCursorOff(); cells[cursor].classList.add('cursor'); els.board.setAttribute('aria-activedescendant', cells[cursor].id); cells[cursor].scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
 
   els.board.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   els.board.addEventListener('pointerdown', function (e) {
@@ -420,6 +427,7 @@
   window.addEventListener('pointercancel', function () { if (press) endPress(); }); // a scroll began
 
   // ── keyboard ──
+  els.board.addEventListener('focus', function () { if (cursor < 0 && game && playable(game) && els.board.matches(':focus-visible')) { cursor = 0; showCursor(); } });
   var ARROWS = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
   document.addEventListener('keydown', function (e) {
     if (e.target.closest && e.target.closest('input,select,textarea,button,.ar-sheet')) return;
@@ -433,8 +441,7 @@
         var c = Math.min(g.cols - 1, Math.max(0, (cursor % g.cols) + move[1]));
         cursor = r * g.cols + c;
       }
-      paintCursorOff(); cells[cursor].classList.add('cursor');
-      cells[cursor].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      showCursor();
       return;
     }
     if (cursor < 0) return;
