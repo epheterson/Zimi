@@ -4,6 +4,7 @@ Every tile of the shelf is findable by its name in the reader's language, nothin
 is offered without the games ZIM, and the index costs a request no ZIM read.
 """
 
+import glob
 import os
 import re
 import sys
@@ -13,10 +14,13 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi  # noqa: F401,E402
+from libzim.reader import Archive  # noqa: E402
 from zimi import gamelinks  # noqa: E402
 from zimi import server as _srv  # noqa: E402
 
 GAMES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "builtin", "games")
+# The built games ZIM, opened here: the server's own pool depends on what other tests in the same worker left behind.
+GAMES_ZIM = sorted(glob.glob(os.path.join(os.path.dirname(GAMES), "zimi_games_*.zim")))[-1]
 
 
 class SearchIndexTests(unittest.TestCase):
@@ -24,6 +28,7 @@ class SearchIndexTests(unittest.TestCase):
         for p in (
             mock.patch.object(gamelinks.ownzims, "enabled", lambda: True),
             mock.patch.object(_srv, "_zim_list_cache", [{"name": "zimi_games"}]),
+            mock.patch.object(_srv, "get_archive", lambda name: Archive(GAMES_ZIM) if name == "zimi_games" else None),
         ):
             p.start()
             self.addCleanup(p.stop)
