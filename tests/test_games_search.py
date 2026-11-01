@@ -59,6 +59,14 @@ class SearchIndexTests(unittest.TestCase):
         with mock.patch.object(_srv, "zim_allowed", lambda name: False):
             assert gamelinks.search_index("en") == []
 
+    def test_an_installed_package_without_the_source_still_finds_games(self):
+        # the wheel, the image and the desktop apps ship games.json and the tile pictures, not the shelf page or its words
+        import tempfile
+        with tempfile.TemporaryDirectory() as empty, mock.patch.object(gamelinks.ownzims, "SOURCE_ROOT", empty), \
+                mock.patch.object(gamelinks, "_shelf", None), mock.patch.object(gamelinks, "_shelf_text", {}):
+            by = {g["p"]: g for g in gamelinks.search_index("de")}
+        assert len(by) > 100 and by["solitaire.html"]["n"] == "Solitär"
+
 
 if __name__ == "__main__":
     unittest.main()

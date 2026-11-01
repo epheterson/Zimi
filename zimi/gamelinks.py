@@ -112,19 +112,30 @@ _shelf = None  # [(page, stem, English name, section id, family name)], read onc
 _shelf_text = {}  # language -> {"game.x.title": ...}: only the keys the search reads
 
 
+def _games_file(rel):
+    """A text file of the games ZIM (the shelf page, a language's words), or None. Read from the ZIM, not the source
+    folder: only games.json and the tile pictures of the source ship in the packages."""
+    archive = _srv.get_archive(_GAMES_ZIM) if games_here() else None
+    if archive is None:
+        return None
+    try:
+        with _srv._zim_lock:
+            return bytes(archive.get_entry_by_path(rel).get_item().content).decode("utf-8")
+    except (KeyError, RuntimeError, UnicodeDecodeError) as e:
+        log.debug("games ZIM has no %s: %s", rel, e)
+        return None
+
+
 def _shelf_tiles():
     """Every tile of the shelf with the section and family it sits in, read once from the page itself (the games
     are the page's, so a game added there is searchable with nothing else to edit)."""
     global _shelf
     if _shelf is None:
         tiles, section, family = [], "", ""
-        try:
-            with open(os.path.join(ownzims.SOURCE_ROOT, "games", "index.html"), encoding="utf-8") as f:
-                page = f.read()
-        except OSError as e:
-            log.warning("games index.html unreadable: %s", e)
-            page = ""
-        for sec, fam, end, href, name in _SHELF_TOKEN.findall(page) if page else ():
+        page = _games_file("index.html")
+        if page is None:
+            return []   # not cached: the games ZIM may come back
+        for sec, fam, end, href, name in _SHELF_TOKEN.findall(page):
             if sec:
                 section, family = sec, ""
             elif fam:
@@ -141,11 +152,14 @@ def _shelf_tiles():
 def _shelf_words(lang):
     """The games' words in one language ({} for a language the games lack)."""
     if lang not in _shelf_text:
-        words = {}
+        words, text = {}, _games_file("text/" + lang + ".json")
+        if text is None and games_here():
+            text = "{}"   # a language the games lack (the ZIM answered)
+        if text is None:
+            return {}
         try:
-            with open(os.path.join(ownzims.SOURCE_ROOT, "games", "text", lang + ".json"), encoding="utf-8") as f:
-                words = {k: v for k, v in json.load(f).items() if k.endswith(".title") or k.startswith("shelf.section.") or k.startswith("shelf.family.")}
-        except (OSError, ValueError):
+            words = {k: v for k, v in json.loads(text).items() if k.endswith(".title") or k.startswith("shelf.section.") or k.startswith("shelf.family.")}
+        except ValueError:
             pass
         _shelf_text[lang] = words
     return _shelf_text[lang]
@@ -157,8 +171,9 @@ def _family_key(name):
 
 def search_index(lang):
     """[{p: page, n: name, h: words}] for the main search's Games row: each game's name in `lang` (English where it has
-    none), and the words it is found by (both names, its section and family). A fixed file of the package read once per
-    language; nothing here touches a ZIM, so it costs a search nothing. Empty while the games ZIM is not in the library."""
+    none), and the words it is found by (both names, its section and family). Read once per
+    language from the games ZIM and kept, so only the first ask in a language reads it. Empty while the games ZIM is not
+    in the library."""
     if not games_here():
         return []
     lang = lang if re.fullmatch(r"[a-z]{2,3}", lang or "") else "en"
