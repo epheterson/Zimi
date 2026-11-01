@@ -97,20 +97,26 @@
     }
   }
 
-  // One tab stop for a grid of buttons, arrow keys inside it (display order). cols is the width, rows the height (default cols).
+  // One tab stop for a grid of buttons, arrow keys inside it (display order). cols is the width, rows the height (default: as many
+  // as the cells fill). A board that deals new cells calls it again: the board keeps one listener and the newest cells.
   var ROVE_ARROWS = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
   function gridRove(board, cells, cols, rows) {
-    var cur = 0, h = rows || cols;
-    function mark(i) { cells[cur].tabIndex = -1; cur = i; cells[cur].tabIndex = 0; }
-    cells.forEach(function (c, i) { c.tabIndex = i ? -1 : 0; c.addEventListener('focus', function () { mark(i); }); });
+    var g = { cells: cells, cols: cols, rows: rows || Math.ceil(cells.length / cols), cur: 0 }, first = !board._zimiRove;
+    board._zimiRove = g;
+    cells.forEach(function (c, i) {
+      c.tabIndex = i ? -1 : 0;
+      c.addEventListener('focus', function () { if (board._zimiRove !== g) return; g.cells[g.cur].tabIndex = -1; g.cur = i; c.tabIndex = 0; });
+    });
+    if (!first) return;
     board.addEventListener('keydown', function (e) {
-      var d = ROVE_ARROWS[e.key];
+      var s = board._zimiRove, d = ROVE_ARROWS[e.key];
       if (!d || e.ctrlKey || e.metaKey || e.altKey) return;
       e.preventDefault();
-      var r = clamp(Math.floor(cur / cols) + d[0], 0, h - 1), c = clamp((cur % cols) + d[1], 0, cols - 1);
-      cells[r * cols + c].focus();
+      var r = clamp(Math.floor(s.cur / s.cols) + d[0], 0, s.rows - 1), c = clamp((s.cur % s.cols) + d[1], 0, s.cols - 1), next = s.cells[r * s.cols + c];
+      if (next) next.focus();   // a short last row has no cell under every column
     });
   }
+
 
   root.ZimiUtil = { gridRove: gridRove, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
 })(this);
