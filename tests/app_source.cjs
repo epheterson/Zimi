@@ -13,7 +13,9 @@ const MARK = '/*@lang-codes.json@*/{}';
 
 module.exports = function appSource() {
   // A Windows checkout carries CRLF; the tests read it as served on POSIX.
-  const src = fs.readFileSync(path.join(root, 'static', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+  // manage.js (the Library Manager, fetched on first use) first, so its functions are
+  // found before the stubs app.js keeps for them.
+  const src = ['manage.js', 'app.js'].map((f) => fs.readFileSync(path.join(root, 'static', f), 'utf8')).join('\n').replace(/\r\n/g, '\n');
   if (!src.includes(MARK)) throw new Error('app.js has no ' + MARK);
   const table = JSON.parse(fs.readFileSync(path.join(root, 'assets', 'lang-codes.json'), 'utf8'));
   return src.replace(MARK, JSON.stringify(table));
