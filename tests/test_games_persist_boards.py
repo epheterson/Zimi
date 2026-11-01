@@ -53,14 +53,14 @@ DOMINO_MOVE = """(async function () {
   } return 0; })()"""
 ROWS = [
     ("fourinarow", [".fr-col:nth-child(4)"], SAVE),
-    ("gomoku", [".wk-board button:nth-child(113)"], SAVE),
-    ("hex", [".wk-board button:nth-child(60)"], SAVE),
+    ("gomoku", [".wk-board button >> nth=112"], SAVE),
+    ("hex", [".wk-board button >> nth=59"], SAVE),
     ("dotsandboxes", [".db-edge:nth-child(3)"], SAVE),
     ("morris", [".mo-pt:nth-child(5)"], SAVE),
     ("reversi", [".bg-sq.hint"], SAVE),
     ("checkers", [".bg-sq:has(.ck-pc.r.mv)", ".bg-sq.hint"], SAVE),
     ("mancala", [".mc-pit-btn[aria-disabled=false]"], SAVE),
-    ("go", [".go-pt:nth-child(41)"], SAVE),
+    ("go", [".go-pt >> nth=40"], SAVE),
     ("ur", ["#ur-roll"], SAVE),
     ("carrom", ["#cr-shoot"], SAVE),
     ("draughts", (".bg-sq.can", ".bg-sq.hint"), SAVE),
