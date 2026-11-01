@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
+- Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
+- Games: text contrast, 44px touch targets and names for tiles and pictures, checked by an axe-core sweep of every game.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
 
 ## [1.15.1]
