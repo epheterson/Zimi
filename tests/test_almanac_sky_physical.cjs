@@ -365,7 +365,8 @@ check(run('_sgLimitMag(_sgSkyLum(60, -90, 0, 0, 0.003))') > 0 && run('_sgLimitMa
   const f = run('_skyFactsAt(' + Date.parse('2026-10-14T20:00:00Z') + ', 37.7749, -122.4194)');
   check(Math.abs(f.sunsetAz - 259.9) < 1.2 && f.sunriseAz > 80 && f.sunriseAz < 110, 'the Sun sets at bearing ' + f.sunsetAz.toFixed(1) + ' (Horizons 259.9) and rises in the east');
   const known = rowsOf(true), guessed = rowsOf(false);
-  check(/alm_dir_w/.test(known[0][2]) && /\d+\u00b0/.test(known[0][2]) && !known.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'the daylight card names where the Sun goes down: "' + known[0][2] + '"');
+  const moonRow = known.find((r) => r[3] === 'moon');
+  check(known.every((r) => !r[2]) && /^tb_moon(rise|set)$/.test(moonRow[0]) && !/alm_sky_f_about/.test(moonRow[1]) && !known.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'the cards carry no compass line, and the Moon card is two lines: MOONRISE or MOONSET, then the time: ' + JSON.stringify(moonRow));
   check(guessed.every((r) => /alm_sky_f_about/.test(r[1])), 'while the place is a guess the rows say so in themselves (about)');
 }
 

@@ -1,5 +1,4 @@
-// Home's status row: a solid amber dot for what was added and a ring for what was updated since you opened it, with
-// counts; a tap is the recent filter, a second tap lets go. The games and the Almanac are Apps tiles, not library cards.
+// The games and the Almanac are Apps tiles with their own dot, not library cards; the status row has no dot.
 //
 //   ZIMI_MANAGE_OPEN=1 ZIMI_TORRENT=0 ZIMI_OFFLINE=1 ZIM_DIR=<empty dir> python3 -m zimi serve --port 9075
 //   BASE_URL=http://localhost:9075 npx playwright test --config=tests/playwright.config.mjs tests/test_home_dots.spec.mjs
@@ -32,23 +31,10 @@ test('the own ZIMs are Apps tiles with a dot, and not library cards', async ({ p
   await expect(page.locator('.stat-card[data-zim="extra_one"]')).toHaveCount(1);
 });
 
-test('the status row has an amber dot and a ring with counts; a tap filters, again lets go', async ({ page }) => {
+test('the status row carries no dot, and a ZIM card keeps its own', async ({ page }) => {
   await home(page);
-  const added = page.locator('.stats-bar .rc-dot.added'), updated = page.locator('.stats-bar .rc-dot.updated');
-  await expect(added).toHaveText('1');
-  await expect(updated).toHaveText('1');
-  await added.tap();
+  await expect(page.locator('.stats-bar .rc-dot')).toHaveCount(0);
   await expect(page.locator('.stat-card[data-zim="extra_one"]')).toHaveCount(1);
-  await expect(page.locator('.stat-card[data-zim="extra_two"]')).toHaveCount(0);
-  await page.locator('.stats-bar .rc-dot.added').tap();
-  await expect(page.locator('.stat-card[data-zim="extra_two"]')).toHaveCount(1);
-});
-
-test('opening a ZIM clears its dot', async ({ page }) => {
-  await home(page);
-  await page.evaluate(() => { _markZimOpened('extra_one'); renderHome(); });
-  await expect(page.locator('.stats-bar .rc-dot.added')).toHaveCount(0);
-  await expect(page.locator('.stats-bar .rc-dot.updated')).toHaveCount(1);
 });
 
 test('behind a login gate the activity poll logs nothing', async ({ page }) => {

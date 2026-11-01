@@ -185,7 +185,7 @@
   }
 
   // A game box lying on the table: the lid is the tile's art, the label its name and a small tag.
-  function box(game, i, tag) {
+  function box(game, i, tag, played) {
     var tile = tileFor(game);
     if (!tile) return null;
     var art = tile.querySelector('.ar-game-art');
@@ -203,14 +203,8 @@
     var name = doc.createElement('strong');
     name.textContent = tile.querySelector('.ar-game-text strong').textContent;
     var small = doc.createElement('small');
-    // "Last played:" may wrap on a narrow box, the time itself does not.
-    if (Array.isArray(tag)) {
-      small.appendChild(doc.createTextNode(tag[0] + ' '));
-      var when = doc.createElement('span');
-      when.style.whiteSpace = 'nowrap';
-      when.textContent = tag[1];
-      small.appendChild(when);
-    } else small.appendChild(doc.createTextNode(tag));
+    small.textContent = tag;
+    if (played) small.dataset.ago = '1';
     label.appendChild(name);
     label.appendChild(small);
     a.appendChild(lid);
@@ -231,7 +225,7 @@
     var inner = doc.createElement('div');
     inner.className = 'ar-table-in';
     games.forEach(function (g, i) {
-      var b = box(g, i, idle ? T('shelf.table.classic') : [T('shelf.table.last'), ago(now, g.at)]);
+      var b = box(g, i, idle ? T('shelf.table.classic') : ago(now, g.at), !idle);
       if (b) inner.appendChild(b);
     });
     tbl.appendChild(inner);

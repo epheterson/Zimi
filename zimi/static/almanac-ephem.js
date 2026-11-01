@@ -229,6 +229,7 @@ function _aeEqVec(ra, dec, r) {
 
 // ── Small vector helpers ──
 function _aeDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function _aeAdd(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
 function _aeSub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
 function _aeLen(a) { return Math.sqrt(_aeDot(a, a)); }
 function _aeScale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }

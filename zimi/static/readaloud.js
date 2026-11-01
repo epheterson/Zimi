@@ -916,7 +916,7 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     clearTimeout(waiting);
     if (!waits && (eng + 1 < engines.length || onSlow)) {
       waiting = setTimeout(function() {
-        if (!live() || i !== idx || !audio.paused || _ttsPaused) return;
+        if (!live() || i !== idx || (audio.readyState >= 3 && !audio.paused) || _ttsPaused) return;
         if (!settled() && eng + 1 < engines.length) { slower(); play(idx); }
         else if (started) late(); else tooSlow();
       }, started ? _TTS_START_WAIT_MS : _ttsStartWait(engines[eng]));

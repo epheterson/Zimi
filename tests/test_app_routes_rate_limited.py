@@ -26,3 +26,20 @@ def test_an_app_route_is_limited_as_an_api_path(path):
 
 def test_a_lookalike_path_is_not_swept_in():
     assert http._rate_class("/exchangerate")[0] is False
+
+
+@pytest.mark.skipif(http.RATE_LIMIT <= 0, reason="ZIMI_RATE_LIMIT=0 turns rate limiting off")
+def test_almanac_background_lookups_use_their_own_bucket():
+    ip = "203.0.113.21"
+    for b in (http._rate_buckets, http._rate_buckets_almanac):
+        b.pop(ip, None)
+    try:
+        assert {"/almanac-links", "/almanac-place"} <= http._ALMANAC_BACKGROUND_PATHS
+        assert 0 < http.RATE_LIMIT_ALMANAC < http.RATE_LIMIT_CONTENT, "a batch lookup is dearer than a page's icon"
+        for _ in range(http.RATE_LIMIT_ALMANAC):
+            assert http._check_rate_limit(ip, limit=http.RATE_LIMIT_ALMANAC, buckets=http._rate_buckets_almanac) == 0
+        assert http._check_rate_limit(ip, limit=http.RATE_LIMIT_ALMANAC, buckets=http._rate_buckets_almanac) > 0
+        assert http._check_rate_limit(ip, limit=http.RATE_LIMIT) == 0, "the taps' budget is untouched"
+    finally:
+        for b in (http._rate_buckets, http._rate_buckets_almanac):
+            b.pop(ip, None)

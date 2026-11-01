@@ -48,6 +48,13 @@ OWN = (
     Own("almanac", "zimi_almanac", "Zimi", _stage_almanac),
 )
 OWN_TAG = "zimi:own"
+# The ZIM's Title leads with the thing and ends " · Zimi" for other readers (Kiwix); inside Zimi it is just the thing.
+_BRAND_SUFFIX = " \u00b7 Zimi"
+
+
+def display_title(title):
+    """The name Zimi shows for one of its own ZIMs ("Games · Zimi" -> "Games")."""
+    return title[: -len(_BRAND_SUFFIX)] if title.endswith(_BRAND_SUFFIX) else title
 
 SOURCE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin")
 #: Where the built files are committed. A module global so tests build elsewhere.
@@ -244,7 +251,7 @@ def _file_row(path):
            "date": (re.search(r"_(\d{4}-\d{2})", fname) or [""] * 2)[1]}
     try:
         a = Archive(path)
-        row["title"] = a.get_metadata("Title").decode("utf-8", "replace")
+        row["title"] = display_title(a.get_metadata("Title").decode("utf-8", "replace"))
         row["entries"] = a.article_count
         row["description"] = a.get_metadata("Description").decode("utf-8", "replace")
         if a.has_illustration(48):

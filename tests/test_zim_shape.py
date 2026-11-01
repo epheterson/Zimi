@@ -44,8 +44,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from zimi.zimwriter import (  # noqa: E402
     SHAPE_SAMPLE_ENTRIES,
     SHAPE_SAMPLE_RUNS,
+    _content_bucket,
     _sample_ids,
 )
+
+
+class TestContentBucket(unittest.TestCase):
+    def test_webassembly_counts_as_scripts_not_other(self):
+        self.assertEqual(_content_bucket("application/wasm"), "scripts")
+        self.assertEqual(_content_bucket("text/javascript"), "scripts")
+        self.assertEqual(_content_bucket("application/octet-stream"), "other")
 
 
 class TestSampleIds(unittest.TestCase):

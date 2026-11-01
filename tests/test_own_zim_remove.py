@@ -196,7 +196,7 @@ def test_remove_from_library_gone_from_home_add_from_catalog_back(served):
         _shot(pg, "1-home-with-apps")
         # Remove from Manage > Library.
         _manage(pg, "installed")
-        row = pg.locator(".catalog-item", has_text="ZimiGames")
+        row = pg.locator(".catalog-item", has_text="Games")
         row.wait_for(timeout=15000)
         pg.wait_for_timeout(1500)  # the stream's first announcement redraws the list once
         _shot(pg, "2-library")
@@ -208,7 +208,7 @@ def test_remove_from_library_gone_from_home_add_from_catalog_back(served):
         pg.wait_for_function("() => !(zimsCache || []).some(z => z.name === 'zimi_games')", timeout=8000)
         # zimsCache drops the ZIM optimistically; the row itself goes when the delete answers, which a slow runner makes visible.
         pg.wait_for_function(
-            "() => ![...document.querySelectorAll('.catalog-item')].some(e => e.textContent.includes('ZimiGames'))",
+            "() => ![...document.querySelectorAll('.catalog-item')].some(e => e.textContent.includes('Games'))",
             timeout=8000,
         )
         _shot(pg, "4-library-after-remove")
@@ -229,7 +229,7 @@ def test_remove_from_library_gone_from_home_add_from_catalog_back(served):
         assert card.locator(".bcc-name").inner_text().strip() == "Zimi"
         _shot(pg, "7a-catalog-gallery")
         card.click()
-        games, almanac = pg.locator("[data-category=zimi]", has_text="ZimiGames"), pg.locator("[data-category=zimi]", has_text="Zimi Almanac")
+        games, almanac = pg.locator("[data-category=zimi]", has_text="Games"), pg.locator("[data-category=zimi]", has_text="Almanac")
         games.wait_for(timeout=15000)
         pg.get_by_role("button", name="you already have").click()  # the catalog's ordinary fold of what is installed
         almanac.wait_for()

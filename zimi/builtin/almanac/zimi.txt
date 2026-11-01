@@ -1,4 +1,4 @@
-Title: Zimi Almanac
+Title: Almanac · Zimi
 Description: Explore the sky, your planet and the universe, for any place and day, offline
 Language: eng
 Creator: Zimi

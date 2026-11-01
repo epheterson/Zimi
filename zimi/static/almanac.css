@@ -436,12 +436,17 @@
 .almanac-sky-wrap.sky-red input { accent-color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-set select { background: var(--surface2); color: var(--text2); border-color: var(--border); }
 /* A tapped body's name: the orrery tip's look, with room for a few lines. */
-.alm-sky-tip { position: absolute; z-index: 10; max-width: min(260px, calc(100% - 4px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
+.alm-sky-tip { position: absolute; z-index: 10; max-width: min(480px, calc(100% - 12px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
 .alm-sky-tip[hidden] { display: none; }
 .alm-sky-tip-name { display: block; color: #eee; font-weight: 600; }
-.alm-sky-tip-line { display: block; color: #bbb; }
-.alm-sky-tip-line + .alm-sky-tip-line { margin-top: 3px; }
-@media (pointer: coarse) { .alm-sky-tip { font-size: 12px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; max-width: min(320px, calc(100% - 4px)); } }
+.alm-sky-tip-line { color: #bbb; }
+.alm-sky-tip-line + .alm-sky-tip-line::before { content: " \00b7  "; }   /* the facts share one row under the name */
+/* A planet's way to the solar system: a quiet amber word at the end of the facts, not a pill across the tip. */
+.alm-sky-tip-go { display: inline; padding: 6px 2px; margin: -6px 0; background: none; border: 0; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; }
+.alm-sky-tip-line + .alm-sky-tip-go::before { content: " \00b7  "; color: #bbb; font-weight: 400; }
+.alm-sky-tip-go:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; border-radius: 4px; }
+@media (hover: hover) { .alm-sky-tip-go:hover { text-decoration: underline; } }
+@media (pointer: coarse) { .alm-sky-tip { font-size: 12px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; } }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }
 .almanac-location-link:hover { text-decoration: underline; }
 .almanac-eclipse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }

@@ -913,6 +913,7 @@ function _skyPaintStarBodies(s, M, ctx) {
       x: p.x / dpr, y: p.y / dpr, r: _skyStarDevR(_skyStarLook(st.mag[i]).r, dpr) / dpr, alt: aa.alt, az: aa.az, mag: st.mag[i] });
   }
 }
+var SKY_TIP_FOOT_PX = 6;   // the tip's gap above the scene's bottom edge
 // Show the figure of a tapped star until the tip goes.
 function _skyRevealFigure(id) {
   var s = _skyState;
@@ -2209,7 +2210,7 @@ function _skyGLParams(s) {
     seed: s.twinkle, scint: !_skyReduceMotion(), lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, moonDisc: s.moonDisc };
 }
 function _skyGLSky(s) {
-  if (!_sgInit() || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
+  if (!_sgInitSoon() || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
   try {
     _sgLoadData(_skyKickDirty);
     return _sgDraw(_skyGLParams(s));
@@ -3190,18 +3191,18 @@ function _skyShowTip(b) {
     html += '<span class="alm-sky-tip-line">' + _almEsc(lines[i]) + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
-    html += '<button type="button" class="orrery-tip-btn" data-sky-orrery="' + _almEsc(b.name) + '">' + _almEsc(t('alm_sky_find_orrery')) + '</button>';
+    html += '<button type="button" class="alm-sky-tip-go" data-sky-orrery="' + _almEsc(b.name) + '" aria-label="' + _almEsc(t('alm_sky_find_orrery')) + '">' + _almEsc(t('alm_solar_system')) + '</button>';
   }
   tip.innerHTML = html;
   tip.hidden = false;
   tip._sky = b;
-  // Beside the body, above it when there is room, inside the scene.
+  // Off the sky, so it never covers what was tapped (a constellation's figure especially): along the foot of the
+  // scene, on the ground. A body that low (the look-around sphere has bodies everywhere) sends it to the top instead.
   var W = wrap.clientWidth, H = (_skyState && _skyState.canvas && _skyState.canvas.clientHeight) || wrap.clientHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
   var at = b.box ? { x: b.tapX, y: b.tapY } : b.x0 != null ? { x: b.x1, y: (b.y0 + b.y1) / 2 } : b;
-  var ax = at.x, ay = at.y, gap = (b.r || 4) + 8;
-  var top = ay - gap - th >= 2 ? ay - gap - th : ay + gap;
-  tip.style.top = _skyClamp(top, 2, Math.max(2, H - th - 2)) + 'px';
-  tip.style.left = _skyClamp(ax - tw / 2, 2, Math.max(2, W - tw - 2)) + 'px';
+  var foot = Math.max(2, H - th - SKY_TIP_FOOT_PX), low = at.y + (b.r || 4) + 8 > foot;
+  tip.style.top = (low ? 2 : foot) + 'px';
+  tip.style.left = _skyClamp((W - tw) / 2, 2, Math.max(2, W - tw - 2)) + 'px';
 }
 function _skyHideTip() {
   var s = _skyState;

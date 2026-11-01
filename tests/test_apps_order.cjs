@@ -47,7 +47,7 @@ const ctx = {
   // The server offers these five (named, so the orders below don't shift when
   // an app's default changes: Zimipedia is on by default from 1.12).
   _getLibraryView: () => 'list', _userSession: null, document: { body: { dataset: { zimiApps: 'maps,tube,exchange,reddot,books' } } },
-  homeRecentFilter: null, homeLangFilter: new Set(),
+  homeLangFilter: new Set(),
   // A card grid, as its ZIMs' names in the order it was handed them.
   renderCardGrid: (zims) => '<grid ' + zims.map(z => z.name).join(',') + '>',
   _zimInfo: name => ctx.zimsCache.find(z => z.name === name) || null,
@@ -152,11 +152,11 @@ ok('the ZIMs sit on a rail under the banner, spaced from the next app', /\.app-s
 ctx.localStorage.setItem('zimi_library_sort', 'entries');
 pageHtml = appsPage(all);
 ok('a new order: the groups and the ZIMs in them move with it', /<lead books>[\s\S]*<grid gutenberg_en_all,nautilus_books>[\s\S]*<lead exchange>[\s\S]*<lead tube><grid blender,ted_en_all>/.test(pageHtml));
-ctx.homeRecentFilter = 'added';
+ctx.homeLangFilter.add('en');
 pageHtml = appsPage(new Set(['nautilus_books']));
 ok('a filter narrows the page to the apps holding what it lets through', (pageHtml.match(/<lead /g) || []).length === 1 && /<lead books><grid nautilus_books>/.test(pageHtml));
 ok('a filter that lets nothing through leaves no heading alone', vm.runInContext('_appsPageHtml', ctx)(new Set()) === '');
-ctx.homeRecentFilter = null;
+ctx.homeLangFilter.clear();
 ok('the page is rebuilt on a new order (its sections move), the home row slides in place',
   /if \(homeScope && homeScope\.type === 'apps'\) return false;/.test(src));
 

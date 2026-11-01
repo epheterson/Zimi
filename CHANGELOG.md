@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.15.1]
+
+### Fixed
+
+- Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
+- A faster voice no longer waits for a slower voice's chunk already being made (#121).
+- An open Zimi, including the home-screen app, reloads to a new version on its own.
+- The Almanac opens at once instead of waiting for everything to load.
+
 ## [1.15.0]
 
 ### Highlights

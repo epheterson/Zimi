@@ -624,12 +624,11 @@
   /* ── Stats bar ── */
   .stats-bar { text-align: center; padding: 12px 0; font-size: 14px; color: var(--text2); }
   .stats-bar .num { color: var(--amber); font-weight: 600; }
-  /* The status line's one dot (_freshDotHtml): solid amber, first on the line, only when something is new or updated. */
-  .rc-dot { display: inline-flex; align-items: center; gap: 5px; margin-inline-end: 2px; padding: 2px 8px 2px 6px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--text2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; vertical-align: 1px; }
+  /* An app tile's dot (_freshDotHtml): solid amber, only when something inside is new or updated. */
+  .rc-dot { display: inline-flex; align-items: center; gap: 5px; }
   .rc-dot i { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-sizing: border-box; }
-  .rc-dot.mark { margin: 0; padding: 0 4px; cursor: default; pointer-events: none; }
+  .rc-dot.mark { padding: 0 4px; pointer-events: none; }
   .app-banner .card-foot { display: none; }
-  .rc-dot:hover, .rc-dot.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── Pills (categories + search source filters) ── */
   .pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-bottom: 20px; }

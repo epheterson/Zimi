@@ -38,7 +38,7 @@ Before tagging, verify these on the feature branch:
 
 ### Release notes
 
-Desktop Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block of one to three short one-line bullets, before `### Added` and the rest. When it does, the release body is those bullets plus a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no headings or stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
+Desktop Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block of one to three short one-line bullets, before `### Added` and the rest. When it does, the release body is those bullets, a **Fixed** list of every line in the section beginning with `- ` that cites an issue (#N), and a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no headings or stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
 
 ### Phase 1: Tag and build
 
