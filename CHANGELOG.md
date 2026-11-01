@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
 - Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
+- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
 
 ### Changed
@@ -25,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Automatic Read aloud now gives way to a faster voice when a slow one stalls (#121).
 - A faster voice no longer waits for a slower voice's chunk already being made (#121).
 - An open Zimi, including the home-screen app, reloads to a new version on its own.
