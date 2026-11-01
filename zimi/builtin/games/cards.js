@@ -1196,7 +1196,7 @@
     }
     function cascade(order, done) {
       var m = metrics;
-      if ((root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches) || (root.ZimiShell && root.ZimiShell.anim() === 'off')) { done(); return; }
+      if (root.ZimiShell && root.ZimiShell.reducedMotion()) { done(); return; }
       var dpr = Math.min(MAX_DPR, root.devicePixelRatio || 1), W = root.innerWidth, H = root.innerHeight;
       var canvas = h('canvas', { class: 'zc-cascade', 'aria-hidden': 'true' });
       canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);

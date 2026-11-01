@@ -307,7 +307,7 @@
     var tableEl = Z.pageEls().table;
     tableEl.appendChild(boardEl); tableEl.appendChild(tagCrib); tableEl.appendChild(tagStarter);
     var lastBoard = '', shown = null, walkTimer = 0;
-    var anim = function () { return !(root.ZimiShell && root.ZimiShell.anim() === 'off') && !(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches); };
+    var anim = function () { return !(root.ZimiShell && root.ZimiShell.reducedMotion()); };
 
     // A peg moves hole by hole to its new score, slowly enough to count along; the back peg hops to where the front one was.
     function walkPegs(from, st) {

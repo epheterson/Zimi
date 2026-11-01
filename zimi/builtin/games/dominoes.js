@@ -168,7 +168,7 @@
       for (var i = 0; i < 9; i++) { var c = document.createElement('i'); if (PIP_SLOTS[v].indexOf(i) >= 0) c.className = 'on'; h.appendChild(c); }
       t.appendChild(h);
     });
-    t.setAttribute('aria-label', T('dominoes.tile', { a: a, b: b }));
+    t.setAttribute('role', 'img'); t.setAttribute('aria-label', T('dominoes.tile', { a: a, b: b }));
     return t;
   }
 
@@ -238,7 +238,7 @@
       if (p !== V) {
         var n = document.createElement('span');
         n.className = 'dm-tl'; n.textContent = st.hands[p].length; n.title = T('dominoes.tiles', { n: st.hands[p].length });
-        n.setAttribute('aria-label', n.title);
+        n.setAttribute('role', 'img'); n.setAttribute('aria-label', n.title);
         d.appendChild(n);
       }
       box.appendChild(d);
