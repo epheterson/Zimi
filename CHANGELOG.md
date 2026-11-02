@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
+- Map tiles kept for offline are capped at the newest 600, so panning a continent no longer fills the phone's storage.
 - Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
 - Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
 - Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
