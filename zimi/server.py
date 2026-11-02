@@ -130,7 +130,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.15.1"
+ZIMI_VERSION = "1.15.2"
 
 
 def bundled(module):
