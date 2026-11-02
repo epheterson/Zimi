@@ -9,29 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- A ZIM renamed upstream is offered as an update to the old one; the old file goes and its settings carry over.
 - Games: with ZimiGames open, the top bar searches the shelf, and the main search lists matching games.
+- A ZIM renamed upstream is offered as an update to the old one; the old file goes and its settings carry over.
 - Janggi: choose how the horses and elephants line up (the four standard arrangements, or random for each side).
-
-### Fixed
-
-- Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
-- Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
-- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
-- Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
 
 ### Changed
 
+- Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
+- Games: text contrast, 44px touch targets and names for tiles and pictures, checked by an axe-core sweep of every game.
+- Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
 - Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
 - Games: card faces use an open index font with a larger suit under the rank.
-- Mancala opens as Kalah, the standard capture rule.
-- Maps open by their #map= address, and a place result drops a pin with its name.
-- Sky Detective's study sky follows the phone's motion.
-- Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
-- Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
-- Games: text contrast, 44px touch targets and names for tiles and pictures, checked by an axe-core sweep of every game.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
+- Maps open by their #map= address, and a place result drops a pin with its name.
+- Mancala opens as Kalah, the standard capture rule.
+- Sky Detective's study sky follows the phone's motion.
+
+### Fixed
+
+- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
+- Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
+- Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
+- Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
 
 ## [1.15.1]
 
