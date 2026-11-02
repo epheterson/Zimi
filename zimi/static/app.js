@@ -9240,10 +9240,11 @@ function _moveZimTo(zim, category) {
   // NOT a per-row action; it lives as a link in the library header (its own view).
   function _layoutItemsHtml(zim) {
     if (!manageEnabled) return '';
-    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>' + _autoUpdateItemHtml(zim);
+    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>';
   }
   // The auto-updater's opt-out, for a ZIM it can reach (a dated catalog file).
   function _autoUpdateItemHtml(zim) {
+    if (!manageEnabled) return '';
     var info = _zimInfo(zim);
     if (!info || !_DATED_ZIM_FILE_RE.test(info.file || '')) return '';
     return '<div class="ctx-item" data-action="au-skip">' + tH(info.auto_update === false ? 'au_skip_off' : 'au_skip_on') + '</div>';
@@ -9275,8 +9276,8 @@ function _moveZimTo(zim, category) {
     var dlItem = manageEnabled
       ? '<div class="ctx-item" data-action="download-zim">' + tH('ctx_download_zim') + '</div>'
       : '';
-    // The file's own group: take it with you, as a file or as a copy on the phone.
-    var fileGroup = dlItem + keepItems;
+    // The file's own group: take it with you, as a file or as a copy on the phone, and whether it updates itself.
+    var fileGroup = dlItem + keepItems + _autoUpdateItemHtml(zim);
     if (_ctxCompact) {
       var layout = _layoutItemsHtml(zim);
       menu.innerHTML = aboutItem + (fileGroup ? '<div class="ctx-sep"></div>' + fileGroup : '') + (layout ? '<div class="ctx-sep"></div>' + layout : '');
