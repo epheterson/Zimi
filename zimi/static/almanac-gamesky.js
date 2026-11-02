@@ -138,8 +138,9 @@ var ZimiGameSky = (function () {
       };
       m.onAbs = function (e) { read(e, true); }; m.onRel = function (e) { read(e, false); };
       window.addEventListener('deviceorientationabsolute', m.onAbs); window.addEventListener('deviceorientation', m.onRel);
-      // A device with no sensor never answers: the view stays a finger's, and the button stays for a retry.
-      m.wait = setTimeout(function () { if (motion === m && !m.got) stopMotion(); }, MOTION_WAIT_MS);
+      // After an ask, a phone that sends nothing gives the view back to the finger and leaves the button for a retry.
+      // With nothing to ask there is no retry, so it keeps listening (a first reading can come late while the sky loads).
+      if (motionBtn) m.wait = setTimeout(function () { if (motion === m && !m.got) stopMotion(); }, MOTION_WAIT_MS);
     }
     function say(text) {
       var n = root.querySelector('.gamesky-note') || root.appendChild(el('p', 'gamesky-note'));

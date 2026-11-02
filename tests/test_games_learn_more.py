@@ -409,9 +409,8 @@ def test_a_study_left_before_starting_comes_back_as_a_study_without_reopening_th
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
     f = game(page, "skydetective.html")
-    page.locator(
-        ".gamesky-btn:not(.primary)"
-    ).click()  # Close: back to the page's own study
+    # Close: back to the page's own study (WebKit asks for motion, so Turn on motion sits before it)
+    page.locator(".gamesky-btn:not(.primary)").last.click()
     page.locator(".gamesky").wait_for(state="detached", timeout=WAIT)
     assert f.evaluate("__sky.g.study") is True
     f.locator("#sk-look").wait_for(state="visible", timeout=WAIT)
