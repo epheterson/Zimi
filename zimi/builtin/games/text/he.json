@@ -373,6 +373,7 @@
  "canasta.err.oneRank": "הניחו קלפי ווילד דרגה אחת בכל פעם",
  "canasta.err.pick": "בחרו קלפים להנחה",
  "canasta.err.pileEmpty": "ערימת ההשלכה ריקה",
+ "canasta.err.stockEmpty": "הקופה ריקה: עליך לקחת את ערימת ההשלכה",
  "canasta.err.reds": "3 אדומים מונחים עבורכם אוטומטית",
  "canasta.err.tapMeld": "הקישו על שילוב, ואז הוסיפו לו קלפי ווילד",
  "canasta.err.tooWild": "יותר מדי קלפי ווילד עבור {rank}",

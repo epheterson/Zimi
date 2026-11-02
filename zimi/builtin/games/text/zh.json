@@ -353,6 +353,7 @@
  "canasta.err.oneRank": "百搭牌一次只能配一个点数",
  "canasta.err.pick": "选择要组牌的牌",
  "canasta.err.pileEmpty": "弃牌堆是空的",
+ "canasta.err.stockEmpty": "摸牌堆已空：你必须拿走弃牌堆",
  "canasta.err.reds": "红 3 会自动为你亮出",
  "canasta.err.tapMeld": "点一组牌，再给它加百搭牌",
  "canasta.err.tooWild": "{rank} 的百搭牌太多了",

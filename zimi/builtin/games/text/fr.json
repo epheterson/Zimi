@@ -373,6 +373,7 @@
  "canasta.err.oneRank": "Posez les jokers un rang à la fois",
  "canasta.err.pick": "Choisissez les cartes à poser",
  "canasta.err.pileEmpty": "La défausse est vide",
+ "canasta.err.stockEmpty": "La pioche est vide : vous devez prendre la défausse",
  "canasta.err.reds": "Les 3 rouges se posent tout seuls",
  "canasta.err.tapMeld": "Touchez une combinaison, puis ajoutez-y des jokers",
  "canasta.err.tooWild": "Trop de jokers pour les {rank}",

@@ -363,6 +363,7 @@
  "canasta.err.oneRank": "Legen Sie wilde Karten Wert für Wert aus",
  "canasta.err.pick": "Wählen Sie die Karten zum Auslegen",
  "canasta.err.pileEmpty": "Der Ablagestapel ist leer",
+ "canasta.err.stockEmpty": "Der Talon ist leer: Du musst den Ablagestapel nehmen",
  "canasta.err.reds": "Rote Dreier werden für Sie ausgelegt",
  "canasta.err.tapMeld": "Tippen Sie eine Auslage an, dann legen Sie wilde Karten an",
  "canasta.err.tooWild": "Zu viele wilde Karten für {rank}",
