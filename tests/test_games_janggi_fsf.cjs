@@ -65,7 +65,8 @@ async function startFairy() {
 
   // 2. whole games against the engine
   {
-    let ok = true, plies = 0, why = '';
+    // Both sides think against a clock, so a loaded machine can end a game early: each game must reach 70 plies or a real end.
+    let ok = true, plies = 0, short = 0, why = '';
     for (const [cho, han] of [['inside', 'outside'], ['left', 'right']]) {
       const pos = E.startPosition(cho, han), played = [];
       for (let ply = 0; ply < 70 && ok; ply++) {
@@ -82,9 +83,10 @@ async function startFairy() {
         if (!(E.movesOrPass(pos).includes(m) || (m === E.PASS && !E.inCheck(pos)))) { ok = false; why = 'illegal ' + m; break; }   // the page lets a side pass whenever it is not in check
         played.push(m); E.make(pos, m); plies++;
       }
+      if (played.length < 70 && !E.status(pos).over) short++;
     }
     if (!ok) console.error(why);
-    check(ok && plies > 60, 'janggi: ' + plies + ' plies against Fairy-Stockfish, every answer one of our legal moves');
+    check(ok && short === 0 && plies > 20, 'janggi: ' + plies + ' plies against Fairy-Stockfish, every answer one of our legal moves');
   }
 
   console.log(failures ? failures + ' failed' : 'all passed');
