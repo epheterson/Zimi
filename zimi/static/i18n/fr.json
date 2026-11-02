@@ -2256,6 +2256,7 @@
   "alm_earth_iss_line": "À {alt} km d’altitude, à {v} km/s, un tour de la Terre toutes les {min} minutes.",
   "alm_earth_approx": "approximatif : données orbitales du {date}",
   "alm_earth_data_from": "Données orbitales du {date}",
+  "alm_earth_data_stale": "Les positions des satellites peuvent être périmées",
   "alm_earth_no_sat_data": "Aucun satellite dessiné : les données orbitales disponibles (du {date}) sont trop éloignées de cette date",
   "alm_earth_iss_orbit_only": "ISS : orbite seule, car les données du {date} sont trop anciennes pour y situer la station",
   "alm_earth_sats_unavailable": "Données satellites indisponibles",

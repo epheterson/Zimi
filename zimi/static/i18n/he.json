@@ -2256,6 +2256,7 @@
   "alm_earth_iss_line": "בגובה {alt} ק״מ, במהירות {v} ק״מ/ש׳, הקפה של כדור הארץ כל {min} דקות.",
   "alm_earth_approx": "משוער: נתוני מסלול מ-{date}",
   "alm_earth_data_from": "נתוני מסלול מ-{date}",
+  "alm_earth_data_stale": "ייתכן שמיקומי הלוויינים אינם עדכניים",
   "alm_earth_no_sat_data": "לא נציירו לווינים: נתוני המסלול כאן (מ-{date}) רחוקים מדי מהתאריך הזה",
   "alm_earth_iss_orbit_only": "תחנת החלל: המסלול בלבד, כי הנתונים מ-{date} ישנים מכדי למקם עליו את התחנה",
   "alm_earth_sats_unavailable": "נתוני הלווינים אינם זמינים",
