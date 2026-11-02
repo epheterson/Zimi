@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The header, the reader and Read aloud's bar keep clear of the notch and the home indicator on a curved iPhone.
 - libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
 - Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
