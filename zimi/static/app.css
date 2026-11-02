@@ -37,7 +37,9 @@
        banner PUSHES content instead of covering it — an offline notice must
        never sit on top of the article someone is reading. */
     --conn-h: 0px;
-    --under-topbar: calc(56px + var(--conn-h));
+    /* The notch / status bar: viewport-fit=cover lets the page run under it, so the header grows by it. */
+    --sat: env(safe-area-inset-top, 0px);
+    --under-topbar: calc(56px + var(--sat) + var(--conn-h));
     /* Where the header goes when it steps aside: its own height and a pixel
        more, so a part pixel of rounding never leaves its bottom border
        showing as a line along the top of the page. */
@@ -236,9 +238,9 @@
   /* ── Topbar ── */
   .topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-    height: 56px; display: flex; align-items: center; gap: 10px;
+    height: calc(56px + var(--sat)); display: flex; align-items: center; gap: 10px;
     /* Opaque: the page scrolling under a translucent bar showed through ("APPS" and the view toggle ghosting behind the logo). */
-    padding: 0 16px; background: var(--topbar-bg);
+    padding: var(--sat) max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); background: var(--topbar-bg);
     border-bottom: 1px solid var(--border);
   }
   /* A game's sheet is open: the bar takes the game's veil but stays tappable (Menu closes the sheet). */
@@ -1730,7 +1732,7 @@
   .ci-add-btn:hover { border-color: var(--amber-border); background: var(--amber-glow); }
 
   /* ── Reader ── */
-  .reader-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
+  .reader-view { position: fixed; top: var(--under-topbar); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   /* Play, over a wiki article that is a ZimiGames game (_gamePlayCheck). */
@@ -1775,7 +1777,7 @@
   @media (max-width: 900px), (max-height: 500px) {
     .topbar { transition: transform 0.2s ease; }
     .reader-view, body .almanac-view { transition: top 0.2s ease; }
-    body.chrome-away { --under-topbar: var(--conn-h); }
+    body.chrome-away { --under-topbar: calc(var(--sat) + var(--conn-h)); }
     body.chrome-away .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1783,7 +1785,7 @@
   }
   /* Held away (a book being read, a video on a phone turned sideways):
      at every size, since the book's own header takes its place. */
-  body.chrome-held { --under-topbar: var(--conn-h); }
+  body.chrome-held { --under-topbar: calc(var(--sat) + var(--conn-h)); }
   body.chrome-held .topbar:not(:focus-within) { transform: translateY(var(--topbar-away)); }
 
   /* ── Context Menu ── */
