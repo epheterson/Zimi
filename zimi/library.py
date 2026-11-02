@@ -243,10 +243,38 @@ def _load_auto_update_config():
         return False, "weekly"
 
 
+def _read_auto_update_file():
+    """The persisted auto-update file as a dict ({} when absent or unreadable)."""
+    try:
+        with open(_auto_update_config_path(), encoding="utf-8") as f:
+            cfg = json.loads(f.read())
+        return cfg if isinstance(cfg, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _save_auto_update_config(enabled, freq):
-    """Persist auto-update settings to disk."""
-    config_path = _auto_update_config_path()
-    _srv._atomic_write_json(config_path, {"enabled": enabled, "frequency": freq})
+    """Persist auto-update settings to disk, keeping the ZIMs it skips."""
+    cfg = _read_auto_update_file()
+    cfg.update(enabled=enabled, frequency=freq)
+    _srv._atomic_write_json(_auto_update_config_path(), cfg)
+
+
+def _load_auto_update_skips():
+    """Short names of the ZIMs the auto-updater leaves alone (#34)."""
+    names = _read_auto_update_file().get("skip")
+    return frozenset(n for n in names if isinstance(n, str)) if isinstance(names, list) else frozenset()
+
+
+def set_auto_update_skip(name, skip):
+    """Leave one ZIM out of (or back in) the auto-updater. A person's Update
+    still works on it; only the unattended pass passes it over."""
+    skips = set(_srv._auto_update_skips)
+    skips.add(name) if skip else skips.discard(name)
+    cfg = _read_auto_update_file()
+    cfg["skip"] = sorted(skips)
+    _srv._atomic_write_json(_auto_update_config_path(), cfg)
+    _srv._auto_update_skips = frozenset(skips)
 
 
 _auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()
@@ -283,6 +311,9 @@ def _auto_update_loop(initial_delay=0):
                 for upd in updates:
                     url = upd.get("download_url")
                     if not url:
+                        continue
+                    if upd.get("name") in _srv._auto_update_skips:
+                        log.info("Auto-update: skipping %s (opted out)", upd.get("name"))
                         continue
                     # Strip .meta4 suffix to get the actual filename
                     raw_name = url.rsplit("/", 1)[-1] if "/" in url else url
@@ -3864,6 +3895,9 @@ def _carry_zim_state(old, new):
             if old in layout["overrides"]:
                 layout["overrides"].setdefault(new, layout["overrides"].pop(old))
                 _srv._save_library_layout(layout)
+        if old in _srv._auto_update_skips:
+            set_auto_update_skip(old, False)
+            set_auto_update_skip(new, True)
         from zimi import users
 
         users.rename_zim(old, new)

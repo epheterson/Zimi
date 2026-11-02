@@ -6040,11 +6040,15 @@ function _ziOtherHtml(other) {
     }).join('') + '</div>';
 }
 
+// A catalog ZIM's file name ends in its edition's month: what the auto-updater matches on.
+var _DATED_ZIM_FILE_RE = /_\d{4}-\d{2}\.zim$/;
+
 function _ziBodyHtml(info) {
   // Same icon rule the cards follow: the ZIM's own illustration when it has
   // one, its initial otherwise. An empty frame would read as a broken image.
   var iconHtml = '<span class="zi-icon">' + (info.has_icon
-    ? '<img src="/w/' + encodeURIComponent(info.name) + '/-/icon" alt="" width="48" height="48">'
+    ? '<a href="/w/' + encodeURIComponent(info.name) + '/-/icon" target="_blank" rel="noopener" title="' + escAttr(t('zi_icon_full')) +
+      '" aria-label="' + escAttr(t('zi_icon_full')) + '"><img src="/w/' + encodeURIComponent(info.name) + '/-/icon" alt="" width="48" height="48"></a>'
     : '<span class="zi-letter">' + (esc(info.title || info.name)[0] || '?').toUpperCase() + '</span>') +
     '</span>';
   // Articles and entries are different numbers (entries count redirects and
@@ -9236,7 +9240,13 @@ function _moveZimTo(zim, category) {
   // NOT a per-row action; it lives as a link in the library header (its own view).
   function _layoutItemsHtml(zim) {
     if (!manageEnabled) return '';
-    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>';
+    return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>' + _autoUpdateItemHtml(zim);
+  }
+  // The auto-updater's opt-out, for a ZIM it can reach (a dated catalog file).
+  function _autoUpdateItemHtml(zim) {
+    var info = _zimInfo(zim);
+    if (!info || !_DATED_ZIM_FILE_RE.test(info.file || '')) return '';
+    return '<div class="ctx-item" data-action="au-skip">' + tH(info.auto_update === false ? 'au_skip_off' : 'au_skip_on') + '</div>';
   }
 
   // An Apps tile's menu: Open, About (its ZIM, where it has one), Hide from Home (an account's choice), Delete (Zimi's own).
@@ -9534,6 +9544,15 @@ function _moveZimTo(zim, category) {
           collectionsCache = c; renderHome();
         });
       });
+    } else if (action === 'au-skip') {
+      closeCtx();
+      var auInfo = _zimInfo(zim);
+      if (!auInfo) return;
+      var auSkip = auInfo.auto_update !== false;
+      manageFetch('/manage/auto-update-skip', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({zim: zim, skip: auSkip})
+      }).then(function(res) { if (res.ok) { if (auSkip) auInfo.auto_update = false; else delete auInfo.auto_update; } });
     } else if (action === 'download-zim') {
       closeCtx();
       var zdl = _zimInfo(zim);
