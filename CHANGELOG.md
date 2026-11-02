@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A subreddit capture started from the web goes through the same private-address proxy as video captures.
 - libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Map tiles kept for offline are capped at the newest 600, so panning a continent no longer fills the phone's storage.
 - Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).

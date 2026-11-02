@@ -132,7 +132,7 @@ def _stream_lines(stream, exited=lambda: False):
         yield buf.decode("utf-8", "replace")
 
 
-def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
+def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None, env=None):
     """Run a command, streaming every combined-output line through ``sink``.
     No timeout — warc2zim over a multi-GB WARC legitimately runs for hours.
 
@@ -144,7 +144,9 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
     When the command prints nothing for ``heartbeat_s``, a line saying it is
     still running goes through ``sink`` instead: warc2zim converted cnn.com's
     recording for 86 s without a word, and a run pane that says nothing for
-    that long reads as stuck (survey finding O3)."""
+    that long reads as stuck (survey finding O3).
+
+    ``env``, when given, is the child's whole environment (None inherits)."""
     import threading
 
     try:
@@ -152,6 +154,7 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            env=env,
         )
     except OSError as e:
         sink(f"cannot run {cmd[0]}: {e}")

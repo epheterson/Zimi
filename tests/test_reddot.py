@@ -129,7 +129,7 @@ def test_the_pipeline_runs_the_four_steps_and_registers(tmp_path, monkeypatch):
     monkeypatch.setattr(reddot, "ensure_sidecar", lambda sink=None: "/fake/arcticzim")
     ran = []
 
-    def fake_run(cmd, sink, watch=None):
+    def fake_run(cmd, sink, watch=None, env=None):
         assert cmd[1].endswith(reddot._LAUNCHER_NAME) and os.path.exists(cmd[1]), "ArcticZim runs through Zimi's launcher"
         ran.append(cmd[2] if cmd[2] != "-v" else cmd[3])
         if cmd[2] == "-v":
@@ -161,7 +161,7 @@ def test_a_subreddit_zimi_made_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(reddot, "ensure_sidecar", lambda sink=None: "/fake/arcticzim")
     seen = {}
 
-    def fake_run(cmd, sink, watch=None):
+    def fake_run(cmd, sink, watch=None, env=None):
         if "retrieve" in cmd:
             with open(cmd[-1], "w") as f:
                 f.write('{"id": "a"}\n{"id": "b"}\n{"id": "b"}\n' if cmd[-2] == "posts" else '{"id": "c"}\n')
@@ -228,7 +228,7 @@ def test_the_launcher_lays_zimi_metadata_over_arcticzims(tmp_path, monkeypatch):
 def test_a_failed_step_leaves_nothing_behind(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(reddot, "ensure_sidecar", lambda sink=None: "/fake/arcticzim")
-    monkeypatch.setattr(reddot, "_run_stream", lambda cmd, sink, watch=None: 1)
+    monkeypatch.setattr(reddot, "_run_stream", lambda cmd, sink, watch=None, env=None: 1)
     with pytest.raises(CreateError) as e:
         reddot.create_reddit_zim("kiwix", out_dir=str(tmp_path))
     assert "fetching posts" in str(e.value)
@@ -547,3 +547,22 @@ def test_the_builds_leftovers_do_not_stay_in_the_library(tmp_path):
     os.makedirs(os.path.join(str(tmp_path), "reddit_kiwix.zim.part_title.idx.tmp", "x"))
     reddot._remove_part_files(out)
     assert sorted(os.listdir(str(tmp_path))) == ["reddit_kiwix.zim"]
+
+
+def test_the_sidecar_goes_through_the_capture_proxy_under_the_private_rule(monkeypatch):
+    from zimi import creator
+    from zimi.importer import _run_stream
+
+    monkeypatch.setenv("NO_PROXY", "arctic-shift.photon-reddit.com")
+    assert reddot._proxy_env() is None
+    with creator.private_addresses_refused():
+        env = reddot._proxy_env()
+        assert env["HTTPS_PROXY"] == env["http_proxy"] == creator.capture_proxy_url()
+        assert "NO_PROXY" not in env and "no_proxy" not in env
+        seen = []
+        rc = _run_stream(
+            [sys.executable, "-c", "import os;print(os.environ['HTTPS_PROXY'])"],
+            seen.append,
+            env=env,
+        )
+        assert rc == 0 and seen[0].strip() == env["HTTPS_PROXY"]
