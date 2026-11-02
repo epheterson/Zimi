@@ -450,7 +450,7 @@ const run = (code) => vm.runInContext(code, S);
     check(requests.length === before + 1 && lastReq().method === 'POST' && lastReq().url === S.AE_SATS_REFRESH_URL,
       'Get fresh data is one POST to the admin route');
     check(run('_ae.sats.source') === 'cache' && run('_ae.sats.fetched') === '2026-09-28T18:00:00Z', 'and the fresh elements are drawn');
-    check(askText() === null && note().includes('alm_earth_data_from'), 'fresh, the offer goes and the note dates the data again');
+    check(askText() === null && note().includes('alm_earth_data_from') && !note().includes('alm_earth_data_stale'), 'fresh, the offer goes and the note dates the data again, without a stale warning');
 
     fetches.push(stale({}));
     await reopen();
@@ -466,10 +466,10 @@ const run = (code) => vm.runInContext(code, S);
 
     fetches.push(stale({ can_change: false }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from'), 'a viewer who may not fetch sees the date and no button');
+    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
     fetches.push(stale({ mode: 'never' }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from'), 'under Never, stale data is dated and nothing more');
+    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
     fetches.push(stale({ mode: 'auto', refreshing: true }));
     await reopen();
     check(askText() === null, 'under Automatically nothing is offered: the server is fetching already');

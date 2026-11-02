@@ -2588,6 +2588,7 @@ function _aeNoteParts() {
     var line = _aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) });
     if (anyShown && _aeAsking()) dated = line;
     else parts.push(line);
+    if (anyShown && _ae.satMeta && _ae.satMeta.stale && !_aeAsking()) parts.push(_aeT('alm_earth_data_stale'));
     if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));

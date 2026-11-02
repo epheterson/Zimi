@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Maps open by their #map= address, and a place result drops a pin with its name.
 - Mancala opens as Kalah, the standard capture rule.
 - Sky Detective's study sky follows the phone's motion.
+- The Earth view says its satellite positions may be out of date when its orbital data is stale and no fetch is on offer.
 
 ### Fixed
 
