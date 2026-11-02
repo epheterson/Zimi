@@ -153,7 +153,7 @@
   var settings = BK.load(SETTINGS_KEY, {});
   if (!LAYOUTS.some(function (l) { return l.id === settings.layout; })) settings.layout = 'turtle';
   var stats = BK.load(STATS_KEY, {});
-  var MIN_UNIT = 8, MAX_UNIT = 28, ZOOM_UNIT = 16, ROW_RATIO = 1.34, LAYER_SHIFT = 0.3, MIN_SHIFT_PX = 3, SIDE_PAD_PX = 6, REMOVE_MS = 260;
+  var MIN_UNIT = 8, MAX_UNIT = 28, ZOOM_UNIT = 22, ROW_RATIO = 1.34, LAYER_SHIFT = 0.3, MIN_SHIFT_PX = 3, SIDE_PAD_PX = 6, REMOVE_MS = 260;
   var faceName = root.MahjongTiles.faceName, faceMarkup = root.MahjongTiles.faceMarkup;   // the tile art lives in mahjong-tiles.js
 
   var els = { stage: $('mj-stage'), scroll: $('mj-scroll'), status: $('mj-status'), nu: $('mj-new'), time: $('mj-time'), undo: $('mj-undo'), hint: $('mj-hint'), shuffle: $('mj-shuffle'), zoom: $('mj-zoom'), left: $('mj-left'), stats: $('mj-stats') };

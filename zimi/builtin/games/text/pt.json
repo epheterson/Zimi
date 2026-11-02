@@ -373,6 +373,7 @@
  "canasta.err.oneRank": "Baixe coringas um valor por vez",
  "canasta.err.pick": "Escolha as cartas para baixar",
  "canasta.err.pileEmpty": "O monte de descarte está vazio",
+ "canasta.err.stockEmpty": "O monte de compra está vazio: você deve pegar o descarte",
  "canasta.err.reds": "Os 3 vermelhos são baixados para você",
  "canasta.err.tapMeld": "Toque num jogo e depois acrescente coringas",
  "canasta.err.tooWild": "Coringas demais para {rank}",

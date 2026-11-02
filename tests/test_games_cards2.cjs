@@ -664,6 +664,15 @@ if (sandbox.ZimiCanasta) {
     check(done.result.sides[0].out === 100, 'going out after earlier melds pays 100, not 200');
   }
   {
+    // With the stock gone the pile must be taken when it can be; the hand ends only when it cannot.
+    const open = (hand, pile) => base({ hands: [cids(hand), cids('AC')], turn: 0, step: 'draw', stock: [], pile: cids(pile), pileFrozen: false, melded: [true, false], melds: [[mk(9, '9S 9H 9D')], []] });
+    const can = open('9C 5D 4D', '9D');
+    check(CA.forcedTake(can, 0) !== null && CA.draw(can) === can, 'stock empty and the pile can be taken: drawing does not end the hand');
+    check(CA.aiStep(can).pile.length === 0, 'stock empty: the computer takes the pile it can take');
+    const cannot = open('5C 4D 6D', 'KD');
+    check(CA.forcedTake(cannot, 0) === null && CA.draw(cannot).phase === 'handEnd', 'stock empty and no take possible: the hand ends');
+  }
+  {
     // Going out and the hand-size rule.
     const melds = [mk(13, "KS KH KD KC KS' KH' KD'"), mk(12, "QS QH QD QC QS' QH' QD'")];
     let st = base({ hands: [cids('5S 5H 5D 9C'), cids('AC')], turn: 0, step: 'play', melds: [melds, []], melded: [true, false] });

@@ -67,5 +67,10 @@ def test_a_first_meld_below_the_minimum_cannot_be_laid(served, browser):
     assert meld.is_enabled()
     meld.click()
     page.wait_for_function("ZimiCanasta.session.state.melds[0].length >= 2")
+    page.wait_for_timeout(900)
+    # a meld is its cards, fanned overlapping, not one card and a count
+    for ids in page.evaluate("ZimiCanasta.session.state.melds[0].map(m => m.cards)"):
+        xs = page.evaluate("(ids) => ids.map(id => document.querySelector('.zc-card[data-id=\"' + id + '\"]').getBoundingClientRect().left)", ids)
+        assert len(set(round(x) for x in xs)) == len(ids), "a meld of %d cards should be fanned, got %s" % (len(ids), xs)
     assert not errors
     ctx.close()

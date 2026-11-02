@@ -378,6 +378,7 @@
  "canasta.err.pick": "Pick the cards to meld",
  "canasta.err.pileEmpty": "The discard pile is empty",
  "canasta.err.reds": "Red threes are laid down for you",
+ "canasta.err.stockEmpty": "The stock is empty: you must take the discard pile",
  "canasta.err.tapMeld": "Tap a meld, then add wild cards to it",
  "canasta.err.tooWild": "Too many wild cards for {rank}",
  "canasta.err.twoNat": "Two natural {rank} (or one and a wild card) go with the top card",

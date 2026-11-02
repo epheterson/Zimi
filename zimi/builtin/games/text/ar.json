@@ -403,6 +403,7 @@
  "canasta.err.oneRank": "أنزل الأوراق البديلة رتبة رتبة",
  "canasta.err.pick": "اختر الأوراق للإنزال",
  "canasta.err.pileEmpty": "كومة الرمي فارغة",
+ "canasta.err.stockEmpty": "كومة السحب فارغة: عليك أخذ كومة الرمي",
  "canasta.err.reds": "الثلاثات الحمراء تُنزل عنك",
  "canasta.err.tapMeld": "المس مجموعة ثم أضف إليها أوراقًا بديلة",
  "canasta.err.tooWild": "أوراق بديلة كثيرة جدًا لـ {rank}",

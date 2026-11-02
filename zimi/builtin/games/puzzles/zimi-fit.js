@@ -83,6 +83,7 @@
     pegs: { 4: "amber" },                                   // the cursor
     net: { 5: "amber" },                                    // the wires that are lit
     mines: { 1: "sunk", 20: "surface2", 21: "edge" },       // an opened square sinks into the page; a closed one is raised, with an ink edge
+    loopy: { 2: "unknown" },                                // an edge not yet drawn is a faint guide under the lines that are
     pattern: { 4: "unknown" }                               // a square not yet decided sits just above the panel
   };
   var raw = [], mapped = [];

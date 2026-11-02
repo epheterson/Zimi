@@ -383,6 +383,7 @@
  "canasta.err.oneRank": "Дикие карты выкладывайте по одному достоинству",
  "canasta.err.pick": "Выберите карты для выкладки",
  "canasta.err.pileEmpty": "Сброс пуст",
+ "canasta.err.stockEmpty": "Колода пуста: нужно взять сброс",
  "canasta.err.reds": "Красные тройки выкладываются за вас",
  "canasta.err.tapMeld": "Коснитесь комбинации, затем добавьте к ней дикие карты",
  "canasta.err.tooWild": "Слишком много диких карт среди {rank}",

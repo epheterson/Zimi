@@ -373,6 +373,7 @@
  "canasta.err.oneRank": "Baja los comodines de un valor cada vez",
  "canasta.err.pick": "Elige las cartas que bajar",
  "canasta.err.pileEmpty": "El pozo está vacío",
+ "canasta.err.stockEmpty": "El mazo está vacío: debes llevarte el pozo",
  "canasta.err.reds": "Los treses rojos se bajan solos",
  "canasta.err.tapMeld": "Toca un juego y añádele comodines",
  "canasta.err.tooWild": "Demasiados comodines para {rank}",

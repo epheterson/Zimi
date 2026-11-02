@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
 - Games: card faces use an open index font with a larger suit under the rank.
+- Games: the About sheet's link to the game's article takes the accent colour and sits clear of the facts above it.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
 - Maps open by their #map= address, and a place result drops a pin with its name.
 - Mancala opens as Kalah, the standard capture rule.
@@ -31,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
 - Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
 - Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
+- Mahjong: Zoom makes a tile 44 px wide on a phone, big enough to tap (it was 32).
+- Five Letters: tap the solved word to open its definition, when a Wiktionary (the Dictionary) is installed.
+- Loopy: an edge not yet drawn is a faint grey guide instead of an amber line as heavy as a drawn one.
+- Canasta: with the stock empty the discard pile must be taken when it can be (the hand ends only when it cannot), and a meld shows its cards fanned instead of one card and a count.
 - Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
 
 ## [1.15.1]

@@ -313,6 +313,12 @@
     else if (/^[a-zA-Z]$/.test(k)) type(k.toLowerCase());
   });
   els.mean.addEventListener('click', askMeaning);
+  // The solved word's row is the way in to its definition too: the Dictionary's page, or the in-page meaning, whichever is on offer.
+  els.board.addEventListener('click', function (e) {
+    var tile = e.target.closest('.fl-tile');
+    if (!tile || !game || game.status !== 'won' || tileEls[game.guesses.length - 1].indexOf(tile) < 0) return;
+    if (!els.learn.hidden) els.learn.click(); else if (!els.mean.hidden && !els.mean.disabled) askMeaning();
+  });
   els.share.addEventListener('click', function () {
     var title = T('fiveletters.share', { lang: cur ? ' (' + cur.lang + ')' : '', date: game.mode === 'daily' ? ' ' + game.date : '' });
     var text = shareText(title, game.guesses, game.answer, game.status === 'won');
