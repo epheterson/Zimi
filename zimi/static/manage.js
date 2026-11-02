@@ -7854,7 +7854,7 @@ function _toggleUpdatesDetail() {
     name.textContent = u.title || u.name;
     const versions = document.createElement('span');
     versions.className = 'updates-detail-versions';
-    versions.textContent = u.installed_date + ' → ' + u.latest_date;
+    versions.textContent = u.installed_date + ' → ' + u.latest_date + (u.size_bytes ? ' · ' + formatSize(u.size_bytes) : '');
     top.appendChild(name);
     top.appendChild(versions);
     row.appendChild(top);

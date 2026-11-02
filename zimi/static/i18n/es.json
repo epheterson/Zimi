@@ -3498,5 +3498,8 @@
   "alm_earth_failed": "No se pudo cargar la Tierra en 3D. Cierra esta vista y ábrela de nuevo.",
   "recent_added_dot": "{n} añadidos recientemente",
   "recent_updated_dot": "{n} actualizados recientemente",
-  "hide_from_home": "Ocultar de Inicio"
+  "hide_from_home": "Ocultar de Inicio",
+  "zi_icon_full": "Ver el icono a tamaño completo",
+  "au_skip_on": "No actualizar este ZIM automáticamente",
+  "au_skip_off": "Actualizar este ZIM automáticamente"
 }

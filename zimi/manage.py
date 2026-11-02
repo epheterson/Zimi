@@ -4859,8 +4859,8 @@ def _auto_update_coverage():
     """Which installed ZIMs the auto-updater can actually maintain, and why it
     passes over the rest.
 
-    Not a preference and not an opt-out list — Zimi has neither. It is the
-    updater's real reach, made visible: matching an installed file to a newer
+    Not the opt-out list (set_auto_update_skip keeps that): the updater's real
+    reach, made visible: matching an installed file to a newer
     edition needs a dated filename (``…_YYYY-MM.zim``), so anything without one
     is invisible to it. That is most locally created ZIMs, and until now the
     only way to discover it was to notice a file never updating.
@@ -7242,6 +7242,16 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/auto-update-skip":
+        name = data.get("zim")
+        if not isinstance(name, str) or name not in _srv.get_zim_files():
+            return handler._json(404, {"error": "unknown ZIM"})
+        _srv.set_auto_update_skip(name, bool(data.get("skip")))
+        with _srv._zim_lock:
+            _srv.mark_auto_update_skips(_srv._zim_list_cache)
+        _srv._changes.announce("library", None)
+        return handler._json(200, {"zim": name, "skip": name in _srv._auto_update_skips})
 
     elif parsed.path == "/manage/app-update-check":
         # "Check now" for the Zimi APP release check — bypasses the daily

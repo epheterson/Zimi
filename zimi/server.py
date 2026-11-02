@@ -1508,8 +1508,9 @@ def _init():
         pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
     _migrate_data_files()
     if bundled("library"):  # auto-update is downloads; zimi-mcp has none
-        global _auto_update_enabled, _auto_update_freq
+        global _auto_update_enabled, _auto_update_freq, _auto_update_skips
         _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
+        _auto_update_skips = _load_auto_update_skips()
 
 
 def _migrate_data_files():
@@ -2737,8 +2738,19 @@ _CACHE_VERSION = 2  # bumped for language metadata
 _MASS_STAMP_WINDOW = 120.0  # seconds
 _MASS_STAMP_MTIME_TOL = 3600.0  # first_seen must be within 1h of file mtime to be real
 _zim_list_cache = None
+_auto_update_skips = frozenset()  # ZIMs the auto-updater leaves alone; library.py owns the file
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
 _listing_seen = None  # what _set_listing last saw in the listing
+
+
+def mark_auto_update_skips(listing):
+    """`auto_update: False` on the entries the auto-updater leaves alone, so the
+    card menu can say so without a request of its own."""
+    for z in listing or []:
+        if z.get("name") in _auto_update_skips:
+            z["auto_update"] = False
+        else:
+            z.pop("auto_update", None)
 
 
 def _set_listing(listing):
@@ -2747,6 +2759,7 @@ def _set_listing(listing):
     "library") and draws the library again, without a reload; a rescan that
     found the same files tells nobody. Call under _zim_lock, or at load."""
     global _zim_list_cache, _listing_seen
+    mark_auto_update_skips(listing)
     _zim_list_cache = listing
     seen = frozenset(
         (z.get("name"), z.get("file"), z.get("size_bytes"), z.get("entries"))
@@ -5966,6 +5979,8 @@ if bundled("library"):
         _auto_update_env_locked,
         _load_auto_update_config,
         _save_auto_update_config,
+        _load_auto_update_skips,
+        set_auto_update_skip,
         _auto_update_enabled,
         _auto_update_freq,
         _auto_update_last_check,

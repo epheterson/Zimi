@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: with ZimiGames open, the top bar searches the shelf, and the main search lists matching games.
 - A ZIM renamed upstream is offered as an update to the old one; the old file goes and its settings carry over.
 - Janggi: choose how the horses and elephants line up (the four standard arrangements, or random for each side).
+- A ZIM can be left out of auto-update from its card menu (#34); a person's Update still works on it.
+- About this ZIM: tapping the icon opens it full size.
 
 ### Changed
 
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Maps open by their #map= address, and a place result drops a pin with its name.
 - Mancala opens as Kalah, the standard capture rule.
 - Sky Detective's study sky follows the phone's motion.
+- Available updates in Manage show each download's size.
 
 ### Fixed
 
