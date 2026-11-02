@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
 - Mahjong: Zoom makes a tile 44 px wide on a phone, big enough to tap (it was 32).
 - Five Letters: tap the solved word to open its definition, when a Wiktionary (the Dictionary) is installed.
+- Loopy: an edge not yet drawn is a faint grey guide instead of an amber line as heavy as a drawn one.
 - Canasta: with the stock empty the discard pile must be taken when it can be (the hand ends only when it cannot), and a meld shows its cards fanned instead of one card and a count.
 - Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
 
