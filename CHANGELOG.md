@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Games: the shelf's order and view switch sit on the section chips' row instead of a row of their own; on a phone the switch is one button.
 - Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
 - Games: text contrast, 44px touch targets and names for tiles and pictures, checked automatically in every game.
 - Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
