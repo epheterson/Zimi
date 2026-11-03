@@ -470,7 +470,9 @@ jobs:
           # host that file must belong to the user who ran the container, not
           # to a subordinate UID: that is the whole point of keep-id.
           for i in $(seq 1 30); do [ -f zimi-config/cache.json ] && break; sleep 1; done
-          ls -ln zimi-config
+          # Listing only: an atomic write's .tmp can vanish between readdir and
+          # stat, and ls then exits 1 under bash -e.
+          ls -ln zimi-config || true
           owner=$(stat -c %u zimi-config/cache.json)
           if [ "$owner" != "$(id -u)" ]; then
             echo "::error::cache.json is owned by uid $owner, not by $(id -u): the userns mapping is wrong"
