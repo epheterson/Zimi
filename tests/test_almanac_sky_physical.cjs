@@ -367,7 +367,8 @@ check(run('_sgLimitMag(_sgSkyLum(60, -90, 0, 0, 0.003))') > 0 && run('_sgLimitMa
   const known = rowsOf(true), guessed = rowsOf(false);
   const moonRow = known.find((r) => r[3] === 'moon');
   check(!known.some((r) => /\u00b0/.test(r[2])) && known.filter((r) => r[2]).length === 4 && /^tb_moon(rise|set)$/.test(moonRow[0]) && !/alm_sky_f_about/.test(moonRow[1]) && !known.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'no tile carries a compass bearing, each has its third line, and the Moon tile is MOONRISE or MOONSET, the time, then the other event: ' + JSON.stringify(moonRow));
-  check(guessed.every((r) => /alm_sky_f_about/.test(r[1])), 'while the place is a guess the rows say so in themselves (about)');
+  // A guessed place is said once, under the tiles (alm_sky_f_guess); an "about" in each made every tile two lines.
+  check(guessed.length === known.length && !guessed.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'while the place is a guess the tiles stay short: no "about" in any of them');
 }
 
 // ── 8. Rising and setting, the time by the Sun ──

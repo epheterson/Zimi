@@ -73,7 +73,7 @@ function _skySolarMinutes(date, lon) {
 }
 
 // ══ In words ════════════════════════════════════════════════════════════
-var SKY_GUESS_ROUND_MS = 15 * 60000;   // while the place is a guess, times are given to the quarter hour and said to be about
+var SKY_GUESS_ROUND_MS = 15 * 60000;   // while the place is a guess, times are given to the quarter hour, and the line under the tiles says the place is a guess
 // A guessed time is given to the quarter hour in the direction that does no
 // harm: dir -1 rounds down (the light ends, no later than said), +1 up (the
 // dark lasts, no less than said). The span and the clock are cut from the same
@@ -111,11 +111,12 @@ function _skyBearing(az) { return _azCompass(az) + ' ' + Math.round(az) + '\u00b
 // what time is it by the Sun. The value is the one short thing the tile is for
 // (a span, a clock time); the sub adds one fact. (Where north is, the Look view
 // and the star chart show, and the Field Guide says: fieldguide-card.js.) A tile
-// that rests on a guessed place says "about" in itself.
+// on a guessed place is rounded, and the one line under the grid says the place
+// was guessed (an "about" in every tile made each one two lines).
+// Each tile is three short lines at most.
 function _skyFactRows(s, f) {
   var rows = [], now = s.nowTime, guess = !s.stored, loc = { lat: s.lat, lon: s.lon, stored: s.stored };
-  var about = function (v) { return guess ? t('alm_sky_f_about', { v: v }) : v; };
-  var at = function (ms, dir) { return about(_skyClock(ms, guess, dir)); };
+  var at = function (ms, dir) { return _skyClock(ms, guess, dir); };
   var sun = _almSunTimesAt(new Date(now), loc);
   // A guessed sunset less than a step away rounds down to now: said as what it is, not as a time already gone.
   var soon = guess && f.sunUp && f.sunset && _skyRoundMs(f.sunset, guess, -1) <= now;
@@ -124,15 +125,17 @@ function _skyFactRows(s, f) {
   var moonSub = here && other ? t(up ? 'alm_sky_f_rises' : 'alm_sky_f_sets', { t: at(other, up ? 1 : -1) }) : '';
   rows.push(here ? [t(up ? 'tb_moonset' : 'tb_moonrise'), at(here, up ? -1 : 1), moonSub, 'moon']
     : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), '', 'moon']);
-  var sunSub = sun.polar ? '' : [t('alm_sky_f_sunrise_at', { t: about(sun.sunrise) }), t('alm_sky_f_sunset_at', { t: about(sun.sunset) })].join(' \u00b7 ');
-  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? about(_skySpan(f.sunset, now, guess, -1)) : t('alm_midnight_sun'), sunSub, 'left']);
-  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? about(_skySpan(f.sunrise, now, guess, 1)) : t('alm_polar_night'), sunSub, 'left']);
-  var gold = sun.goldenHour ? t('alm_sky_f_golden_at', { t: about(sun.goldenHour) }) : '';
-  if (f.fullyDark) rows.push([t('alm_sky_f_dark_until'), f.darkUntil ? about(_skyClock(f.darkUntil, guess, 1)) : t('alm_polar_night'), gold, 'dark']);
-  else rows.push([t('alm_sky_f_dark_from'), f.darkFrom ? about(_skyClock(f.darkFrom, guess, 1)) : t('alm_sky_f_not_dark'), gold, 'dark']);
+  // Under the span, the clock time it ends at: one event, the one the span counts to.
+  var sunSub = sun.polar ? '' : f.sunUp ? t('alm_sky_f_sunset_at', { t: sun.sunset }) : t('alm_sky_f_sunrise_at', { t: sun.sunrise });
+  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? _skySpan(f.sunset, now, guess, -1) : t('alm_midnight_sun'), sunSub, 'left']);
+  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? _skySpan(f.sunrise, now, guess, 1) : t('alm_polar_night'), sunSub, 'left']);
+  // The evening's golden hour leads up to the dark; once it is dark that hour is behind us and says nothing.
+  var gold = sun.goldenHour && !f.fullyDark ? t('alm_sky_f_golden_at', { t: sun.goldenHour }) : '';
+  if (f.fullyDark) rows.push([t('alm_sky_f_dark_until'), f.darkUntil ? _skyClock(f.darkUntil, guess, 1) : t('alm_polar_night'), gold, 'dark']);
+  else rows.push([t('alm_sky_f_dark_from'), f.darkFrom ? _skyClock(f.darkFrom, guess, 1) : t('alm_sky_f_not_dark'), gold, 'dark']);
   var solarMin = _skySolarMinutes(new Date(now), s.lon);
   var off = _skyClockOffsetMin(new Date(now), loc, solarMin);
-  rows.push([t('alm_sky_f_solar'), about(_skySolarClock(solarMin, guess)),
+  rows.push([t('alm_sky_f_solar'), _skySolarClock(solarMin, guess),
     t('alm_sky_f_clock_off', { d: t('alm_tm_dmin_other', { n: (off > 0 ? '+' : off < 0 ? '\u2212' : '') + Math.abs(off) }) }), 'solar']);
   return rows;
 }

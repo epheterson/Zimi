@@ -167,7 +167,10 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
         assert "lit" not in got["factText"].lower(), got["factText"]
         assert not any(l in ("illuminated", "sunrise", "sunset", "daylight") for l in got["factLabels"]), got["factLabels"]
         # Six tiles, each a label, a value and a small third line.
-        assert got["tiles"] == 6 and got["subs"] == 6, got
+        # Every tile has its third line, but for the dark tile once it is dark: the evening's golden hour is behind
+        # it then and nothing else belongs there.
+        dark_now = "fully dark until" in got["factLabels"]
+        assert got["tiles"] == 6 and got["subs"] == (5 if dark_now else 6), got
         assert not errors, errors
     finally:
         ctx.close()

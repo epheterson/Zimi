@@ -622,7 +622,7 @@ function _almHeadHtml(focus) {
 
   html += '<div class="alm-cards">';
   html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum',
-    { cardId: 'alm-hc-illum-card', sub: _almMoonNowSub(m, dist), subId: 'alm-hc-illum-sub' });
+    { cardId: 'alm-hc-illum-card', sub: _almMoonNowSub(m), subId: 'alm-hc-illum-sub' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '',
       sub: _almNextNewSub(focus, lang), subId: 'alm-hc-nextfull-sub' });
@@ -645,11 +645,9 @@ function _almHeadCard(lbl, valHtml, valId, opts) {
     valHtml + '</div>' +
     (opts.subId ? '<div class="alm-card-sub" id="' + opts.subId + '">' + (opts.sub || '') + '</div>' : '') + '</div>';
 }
-// The Moon card's third line: how old it is and how far away.
-function _almMoonNowSub(m, dist) {
-  var parts = [t('alm_sky_f_age', { d: (m.phase * 29.53).toFixed(1) })];
-  if (dist) parts.push(_almFmtNum(Math.round(dist)) + ' ' + t('alm_km'));
-  return _skyNoBreak(parts.join(' \u00b7 '));
+// The Moon card's third line: how old it is, in whole days.
+function _almMoonNowSub(m) {
+  return _almEsc(t('alm_sky_f_age', { d: Math.round(m.phase * 29.53) }));
 }
 // The next full Moon card's third line: the new Moon after the focus.
 function _almNextNewSub(focus, lang) {
@@ -1063,7 +1061,7 @@ function _almLiveHeadCards(focus) {
   set('alm-hc-illum', m.illumination + '%');
   set('alm-hc-phase', _localMoonName(m.name));
   var sub = document.getElementById('alm-hc-illum-sub');
-  try { if (sub) sub.innerHTML = _almMoonNowSub(m, _moonDistance(focus)); } catch (e) {}
+  try { if (sub) sub.innerHTML = _almMoonNowSub(m); } catch (e) {}
   _almLiveNextFull(focus);
 }
 
