@@ -225,6 +225,7 @@ function _ttsSegments(seg, lang) {
 function _ttsJoinsNext(prev, next, lang) {
   if (!/[^.]\.$/.test(prev)) return false; // "?", "!", "..." and a closing quote end a sentence
   if (/^\p{Ll}/u.test(next)) return true;
+  if ((prev.match(/\(/g) || []).length > (prev.match(/\)/g) || []).length) return true; // inside a parenthesis ("lit." in a lead's aside)
   var tok = (prev.match(/(\S+)\.$/) || ['', ''])[1].replace(/^[("'\[«„“‘]+/, '');
   var l = _langPrimary(lang || 'en');
   if (/^\p{Lu}$/u.test(tok)) return tok !== (_TTS_INITIAL_NOT[l] || '');
@@ -268,6 +269,7 @@ function _ttsPlanChunks(text, maxLen, first, from, to, lang) {
     var gap = text.slice(sp[1], to).match(/^\s*/)[0];
     var blockEnds = sp[1] + gap.length >= to || gap.indexOf(_TTS_BLOCK) >= 0;
     s = _ttsSpoken(s, lang);
+    if (!/[\p{L}\p{N}]/u.test(s)) return; // only asides were there
     if (!_TTS_SAID_END.test(s) && blockEnds) s += stop;
     // A single sentence longer than maxLen: hard-split on word boundaries. The
     // first chunk's smaller cap only keeps a second sentence out of it (a
@@ -340,7 +342,32 @@ var _TTS_PANEL_OPEN_MS = 450; // a panel slides open before the sentence in it c
 // ("THE WORLD FACTBOOK" is not T-H-E), "::" a pause, "sq km" what it is.
 var _TTS_SMALL_WORDS = ' THE AND FOR OF OR IN ON TO BY AT IS AS AN ';
 var _TTS_UNITS = [[/\bsq km\b/g, 'square kilometers'], [/\bsq mi\b/g, 'square miles'], [/(\d) ?km\b/g, '$1 kilometers']]; // English, where a number gives them away
+// An aside the voice cannot say: a name in another script, a transliteration, a
+// pronunciation key. The text keeps a mark where one was (_TTS_ASIDE), and the
+// parenthesis that held it goes with it, while "(born 1952)" stays
+// (Eric, 2026-11-02: "Reading this is coming off bad: The Western Turkic Khaganate
+// (Chinese: 西突厥; pinyin: Xī Tūjué) or Onoq Khaganate (Old Turkic: ...").
+var _TTS_ASIDE = '\uE000';
+var _TTS_ASIDE_SEL = '.IPA,.rt-commentary,.haudio,.mw-empty-elt';
+var _TTS_SCRIPTS = { zh: 'Han', ja: 'Han|Hiragana|Katakana', ko: 'Hangul|Han', ru: 'Cyrillic', uk: 'Cyrillic', bg: 'Cyrillic', sr: 'Cyrillic', be: 'Cyrillic',
+  ar: 'Arabic', fa: 'Arabic', ur: 'Arabic', he: 'Hebrew', hi: 'Devanagari', mr: 'Devanagari', ne: 'Devanagari', el: 'Greek', th: 'Thai' };
+var _ttsOwnScripts = {};
+// Letters of the article's own script, Latin (names and brands in any article) and Greek (alpha, mu).
+function _ttsOwnScript(lang) {
+  var key = _langPrimary(lang || 'en');
+  return _ttsOwnScripts[key] || (_ttsOwnScripts[key] = new RegExp('^[' + (_TTS_SCRIPTS[key] ? _TTS_SCRIPTS[key].split('|') : []).concat('Latin', 'Greek').map(function(n) { return '\\p{Script=' + n + '}'; }).join('') + ']+$', 'u'));
+}
+function _ttsAsides(s, lang) {
+  if (s.indexOf(_TTS_ASIDE) < 0 && !/[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F]/.test(s)) return s;
+  var own = _ttsOwnScript(lang);
+  s = s.replace(/[\p{L}\p{M}]+/gu, function(w) { return own.test(w) ? w : _TTS_ASIDE; });
+  for (var before; before !== s;) { before = s; s = s.replace(/[(\[][^()\[\]]*\uE000[^()\[\]]*[)\]]/g, _TTS_ASIDE); } // innermost first, so an outer one holding only labels goes too
+  s = s.replace(/\s*\uE000[\s\uE000]*/g, ' ').replace(/\s+([,.;:!?)])/g, '$1');
+  return s.trim();
+}
 function _ttsSpoken(s, lang) {
+  s = _ttsAsides(s, lang);
+  if (_langPrimary(lang || 'en') === 'en') s = s.replace(/\s*\((?=\s*(?:lit\.|literally|listen|pronounced|pronunciation|IPA|romani[sz]ed|transliterat|pinyin|Hanyu|Romaji|Hepburn)\b)[^()]*\)/gi, '');
   s = s.replace(/\s*::\s*/g, ', ');
   s = s.replace(/\s+[\u2013\u2014]$/, ''); // a comment's dash before its author, which is not read
   if (_langPrimary(lang || 'en') === 'en') _TTS_UNITS.forEach(function(u) { s = s.replace(u[0], u[1]); });
@@ -350,6 +377,16 @@ function _ttsSpoken(s, lang) {
 // A table that holds paragraphs is the page's layout (older captures, some
 // crawled sites put the whole article in one), not a table of facts: it is read.
 function _ttsLayoutTable(el) { return el.tagName === 'TABLE' && !!el.querySelector('p'); }
+// A span the page marks as another language than the article's, in a script or
+// romanization the voice cannot say (Wikipedia: <span lang="zh">, lang="zh-Latn-pinyin",
+// .IPA, .rt-commentary). A foreign name in the article's own script is read.
+function _ttsAside(el, alang) {
+  if (el.matches(_TTS_ASIDE_SEL)) return true;
+  var l = el.getAttribute('lang');
+  if (!l || _langPrimary(l) === alang) return false;
+  var text = el.textContent || '';
+  return /-(?:Latn|Hrkt)\b|-(?:pinyin|romaji|translit)/i.test(l) || _ttsAsides(text, alang) !== text;
+}
 var _TTS_HL = 'zimi-tts', _TTS_HL_STYLE = 'zimi-tts-style';
 // A quiet amber tint, never the selection's blue: Reader View's own link
 // colour of its theme where there is one (light, dark, sepia, black), else amber.
@@ -381,7 +418,7 @@ var _ttsRead = null; // the reading in progress: its plan, its document, whether
 // style or hidden text), a _TTS_BLOCK between blocks and at each <br>. A
 // piece is a text node and where it starts in the text.
 function _ttsReadModel(doc, main, all) {
-  var win = doc.defaultView, parts = [], pieces = [], index = new Map(), len = 0, said = 0, blockAt = 0, fresh = true, label = false; // said: letters so far, without the page's indentation
+  var win = doc.defaultView, parts = [], pieces = [], index = new Map(), alang = _langPrimary(_ttsLang(doc)), len = 0, said = 0, blockAt = 0, fresh = true, label = false; // said: letters so far, without the page's indentation
   function split() {
     if (label && said - blockAt <= _TTS_LABEL_MAX) { if (len && /\S$/.test(parts[parts.length - 1])) { parts.push(' '); len++; } return; } // "Area:" and its value are one sentence
     fresh = true;
@@ -391,6 +428,7 @@ function _ttsReadModel(doc, main, all) {
     var cs = win.getComputedStyle(el), tag = el.localName;
     // A book lays out one section at a time and hides the others: they are still its text, as is a closed panel's.
     if (_TTS_SKIP_TAGS.indexOf(' ' + tag + ' ') >= 0 || (cs.display === 'none' && !el.classList.contains('zb-sec') && !(!all && _ttsPanel(el)))) return;
+    if (!all && el !== main && _ttsAside(el, alang)) { if (len && parts[parts.length - 1] !== _TTS_ASIDE) { parts.push(_TTS_ASIDE); len++; } return; }
     if (!all && el !== main && ((el.matches && el.matches(_TTS_SKIP_SEL)) || _ttsChrome(el) || _ttsCode(el)) && !_ttsLayoutTable(el)) return;
     var block = cs.display.indexOf('inline') !== 0 && cs.display !== 'contents', shown = cs.visibility === 'visible';
     if (block || tag === 'br') split();
@@ -597,6 +635,16 @@ function _ttsFollow(force) {
   } catch (e) { return; }
   if (moved) { st.following = true; _ttsBarSync(); }
 }
+// Where the sentence being read is from here: 'up' (before the view) or 'down'.
+function _ttsWhere() {
+  var st = _ttsRead, rs = st && st.ranges;
+  try {
+    var r = rs[0].getBoundingClientRect();
+    if (st.doc.documentElement.classList.contains('zb-paged')) return r.left < 0 ? 'up' : 'down';
+    var scr = _scrollerOf(rs[0].startContainer.parentElement, st.win);
+    return r.bottom <= (scr ? scr.getBoundingClientRect().top : 0) ? 'up' : 'down';
+  } catch (e) { return 'down'; }
+}
 // The person moved the page: stop following until they ask or it comes back.
 function _ttsLose() {
   if (_ttsRead && _ttsRead.following) { _ttsRead.following = false; _ttsBarSync(); }
@@ -738,7 +786,7 @@ function _ttsSpeak(from, plan) {
   // a slow voice can take seconds over a sentence, and the page sat unmarked
   // (Eric, 2026-10-21: "tapping to another spot highlight is gone").
   _ttsAlongAt(from, 0);
-  _ttsNow = { at: from, engine: engines[0] || _DEVICE_VOICE, playing: false, spin: false, lang: lang, ahead: 0, readyAt: 0, aheadOf: 0 };
+  _ttsNow = { at: from, engine: engines[0] || _DEVICE_VOICE, playing: false, spin: false, lang: lang, ahead: 0 };
   _ttsHold();
   if (engines.length) _ttsSpeakServer(chunks, lang, engines, ++_ttsRun, chosen ? function(e) { _ttsSuggestFaster(lang, e); } : null, from);
   else _ttsSpeakDevice(chunks, lang, from);
@@ -879,19 +927,15 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     var end = _ttsLeadEnd(chunks, idx, pace, _ttsRate()), left = 0;
     for (var k = idx; k <= end; k++) if (!ready[k] && asked[k] !== true) left += (pace.work || 0) * chunks[k].length;
     if (left > 0 || (!ready[idx] && asked[idx] !== true) || _ttsPaused) {
-      // The wait from here: counted down each second between chunks, and
-      // the whole of it kept, so the ring says how much is done.
-      var fresh = holding !== idx || !_ttsNow.readyAt;
-      _ttsNow.readyAt = Date.now() + left * 1000;
-      _ttsNow.aheadOf = fresh ? left : Math.max(_ttsNow.aheadOf, left);
+      // The wait from here: the bar turns a ring and says no seconds, for
+      // the voice's pace is a guess and a countdown on it only lies.
       holding = idx; _ttsHeld = function() { hold(idx); };
       if (_ttsNow.at !== idx || _ttsNow.playing || _ttsNow.ahead !== Math.ceil(left)) {
         _ttsNow.at = idx; _ttsNow.ahead = Math.ceil(left); _ttsHold();
       }
-      _ttsAheadTick();
       return;
     }
-    holding = -1; _ttsHeld = null; _ttsNow.ahead = 0; _ttsNow.readyAt = 0;
+    holding = -1; _ttsHeld = null; _ttsNow.ahead = 0;
     play(idx);
   }
   function play(idx) {
@@ -963,21 +1007,6 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
 // Waiting for the voice to get ahead: what Resume does instead of playing
 // the clip that ended (set by _ttsSpeakServer while it holds).
 var _ttsHeld = null;
-// The countdown between chunks: a second at a time toward readyAt, never
-// below 1 s until the chunks say it is ready.
-var _ttsAheadTimer = 0;
-function _ttsAheadTick() {
-  clearTimeout(_ttsAheadTimer);
-  if (!_ttsSpeaking || _ttsNow.playing || !_ttsNow.readyAt) return;
-  _ttsNow.ahead = Math.max(1, Math.ceil((_ttsNow.readyAt - Date.now()) / 1000));
-  _ttsBarSync();
-  _ttsAheadTimer = setTimeout(_ttsAheadTick, 1000);
-}
-// How much of the wait is done, 0 to 1, for the ring.
-function _ttsAheadDone() {
-  if (!_ttsNow.aheadOf) return 0;
-  return Math.min(1, Math.max(0, 1 - (_ttsNow.readyAt - Date.now()) / 1000 / _ttsNow.aheadOf));
-}
 function _ttsToggle() {
   if (_ttsSpeaking) _ttsStop();
   else _ttsSpeak();
@@ -989,7 +1018,7 @@ function _ttsToggle() {
 // which voice it was. The bar says all three (a turning ring until the first
 // sound, then the voice), offers this language's voices where it plays
 // (remembered as Read aloud's own, Settings > Voices), and stops it.
-var _ttsNow = { at: 0, engine: '', playing: false, spin: false, lang: '', ahead: 0, readyAt: 0, aheadOf: 0 }; // ahead: seconds until it has got far enough ahead (at readyAt, of aheadOf in all)
+var _ttsNow = { at: 0, engine: '', playing: false, spin: false, lang: '', ahead: 0 }; // ahead: the voice is getting far enough ahead (a wait, never a number of seconds)
 // Between sentences, or a sentence started again, the bar holds still; the
 // ring turns only for a wait long enough to notice (Eric, 2026-10-22:
 // "should hide unless it's a longer wait (seamless ui)").
@@ -1015,8 +1044,9 @@ var _TTS_PLAY_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 
 // Back a sentence: a turning arrow, as a player's replay, not a skip (Eric,
 // 2026-10-21: "just one back rewindish circle to restart from previous sentence").
 var _TTS_BACK_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v6h6"/><path d="M3.5 15a8.5 8.5 0 1 0 2-8.8L3 10"/></svg>';
-// Where the reading is: shown in place of the bars once the page was moved away from it.
-var _TTS_LOCATE_ICON = '<svg class="tts-locate" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
+// Back to the sentence being read: a chevron toward it, up or down, by the words.
+var _TTS_UP_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>';
+var _TTS_DOWN_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 var _TTS_CLOSE_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 // The voices this article's language can be read in: the server's, in its
 // order (none Settings turned off), then this browser's.
@@ -1029,11 +1059,7 @@ function _ttsVoicesFor(lang) {
 // The voice reading, by its name alone: (Too slow) is for choosing one, in
 // the voice list, not the bar, where it has no room (Eric, 2026-10-21).
 // Paused is paused: the bar says getting ahead only while the reading is going on.
-function _ttsAheadShown() { return _ttsNow.ahead > 0 && !_ttsNow.playing && !_ttsPaused; }
-function _ttsVoiceLabel() {
-  var name = _voiceEngineName(_ttsNow.engine);
-  return _ttsAheadShown() ? t('tts_getting_ahead', { voice: name, s: fmtNum(_ttsNow.ahead) }) : name;
-}
+function _ttsVoiceLabel() { return _voiceEngineName(_ttsNow.engine); }
 // The speed sheet: a slider (the bar's button says the speed), the marks
 // under it each a tap away. Arrow keys step 0.05 and never snap.
 function _ttsSpeedHtml(rate) {
@@ -1055,8 +1081,10 @@ function _ttsBarHtml() {
     return '<button type="button" class="' + cls + '" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '" onclick="' + onclick + '"' + (extra || '') + '>' + inner + '</button>';
   };
   var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
-  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
-    (ahead ? ' style="--p:' + _ttsAheadDone().toFixed(3) + '"' : '') + ' aria-hidden="true"><i></i><i></i><i></i>' + _TTS_LOCATE_ICON + '</span>';
+  var lost = !!(_ttsRead && !_ttsRead.following); // the page was moved off the sentence
+  // The mark's slot is always there, the same size: the bars (still while paused), a turning arc while it gets ready, a chevron toward the sentence once the page was moved (never over the arc: waiting shows the arc alone).
+  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : lost ? ' lost' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    ' aria-hidden="true">' + (lost && !waiting ? (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) : '<i></i><i></i><i></i>') + '</span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
@@ -1065,7 +1093,10 @@ function _ttsBarHtml() {
         ' onclick="' + escAttr(it[1]) + '">' + esc(it[2] + (it[3] ? ' ' + t('tts_too_slow') : '')) + '</button>';
     }).join('') + '</div>';
   };
-  if (voices.length > 1) {
+  if (lost) {
+    // The page was moved off the sentence: the voice's name gives way to the way back, in words.
+    h += '<button type="button" class="tts-bar-voice tts-bar-back" onclick="_ttsFollowResume()"><span>' + esc(t('tts_back_to_reading')) + '</span></button>';
+  } else if (voices.length > 1) {
     h += '<span class="tts-bar-anchor"><button type="button" class="tts-bar-voice" aria-haspopup="menu" aria-expanded="' + (_ttsMenuOpen === 'voice') + '" onclick="_ttsMenuToggle(\'voice\')">' +
       '<span>' + esc(_ttsVoiceLabel()) + '</span>' + _TTS_CHEVRON + '</button>' +
       menu('voice', [['' === pick, '_ttsPickVoice("")', t('voices_default_auto')]].concat(voices.map(function(e) {
@@ -1083,7 +1114,7 @@ function _ttsBarHtml() {
     (_ttsMenuOpen === 'speed' ? _ttsSpeedHtml(rate) : '') + '</span>';
   // One way back, before pause: this sentence again, then the one before.
   h += btn('tts-bar-btn tts-bar-step', t('tts_prev_sentence'), '_ttsBack()', _TTS_BACK_ICON);
-  h += btn('tts-bar-btn', t(_ttsPaused ? 'resume' : 'pause'), '_ttsPauseToggle()', _ttsPaused ? _TTS_PLAY_ICON : _TTS_PAUSE_ICON,
+  h += btn('tts-bar-btn tts-bar-main', t(_ttsPaused ? 'resume' : 'pause'), '_ttsPauseToggle()', _ttsPaused ? _TTS_PLAY_ICON : _TTS_PAUSE_ICON,
     ' aria-pressed="' + _ttsPaused + '"');
   h += btn('tts-bar-btn', t('tts_stop'), '_ttsStop()', _TTS_CLOSE_ICON);
   return h;
@@ -1101,18 +1132,14 @@ function _ttsBarSync() {
     bar = document.createElement('div');
     bar.id = 'tts-bar';
     bar.className = 'tts-bar';
-    // The voice-state mark is also the way back to the sentence, once the page was moved.
-    bar.addEventListener('click', function(e) { if (e.target.closest('.tts-bar-state.tts-lost')) _ttsFollowResume(); });
     reader.appendChild(bar);
   }
   if (_ttsSliding) return; // drawn when the finger lifts
   var html = _ttsBarHtml();
   if (bar._painted !== html) bar.innerHTML = bar._painted = html;
-  var mark = bar.querySelector('.tts-bar-state'), lost = !!(_ttsRead && !_ttsRead.following);
+  var mark = bar.querySelector('.tts-bar-state');
   if (mark) {
-    mark.classList.toggle('tts-lost', lost);
-    if (lost) { mark.setAttribute('role', 'button'); mark.setAttribute('title', t('tts_follow')); mark.setAttribute('aria-label', t('tts_follow')); mark.removeAttribute('aria-hidden'); }
-    else if (mark.classList.contains('ahead')) { mark.setAttribute('role', 'img'); mark.setAttribute('title', t('tts_ahead_label')); mark.setAttribute('aria-label', t('tts_ahead_label')); mark.removeAttribute('aria-hidden'); }
+    if (mark.classList.contains('ahead')) { mark.setAttribute('role', 'img'); mark.setAttribute('title', t('tts_ahead_label')); mark.setAttribute('aria-label', t('tts_ahead_label')); mark.removeAttribute('aria-hidden'); }
     else { ['role', 'title', 'aria-label'].forEach(function(a) { mark.removeAttribute(a); }); mark.setAttribute('aria-hidden', 'true'); }
   }
   bar.hidden = false;

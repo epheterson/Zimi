@@ -19,9 +19,15 @@ for (const name of ['_ttsPlanChunks', '_ttsChunkText']) {
 eval(pick(/var _TTS_CHUNK_MAX = [^\n]*/, '_TTS_CHUNK_MAX'));
 eval(pick(/var _TTS_SMALL_WORDS = [^\n]*/, '_TTS_SMALL_WORDS'));
 eval(pick(/var _TTS_UNITS = [^\n]*/, '_TTS_UNITS'));
+eval(pick(/var _TTS_ASIDE = [^\n]*/, '_TTS_ASIDE'));
+eval(pick(/var _TTS_SCRIPTS = [\s\S]*?\n  ar:[^\n]*/, '_TTS_SCRIPTS'));
+eval(pick(/var _ttsOwnScripts = [^\n]*/, '_ttsOwnScripts'));
+eval(pick(/function _ttsOwnScript\([\s\S]*?\n}/, '_ttsOwnScript'));
+eval(pick(/function _ttsAsides\([\s\S]*?\n}/, '_ttsAsides'));
 eval(pick(/function _ttsSpoken\([\s\S]*?\n}/, '_ttsSpoken'));
 
 let failures = 0;
+
 function ok(label, cond, got) { console.log((cond ? '  ok: ' : '  FAIL: ') + label + (cond ? '' : '  ' + JSON.stringify(got))); if (!cond) failures++; }
 
 const text = 'The Family Man is a 2000 American romantic fantasy comedy-drama film directed by Brett Ratner. It stars Nicolas Cage and Tea Leoni. '.repeat(4);
@@ -33,6 +39,21 @@ ok('nothing is lost or repeated', c.join(' ') === text.replace(/\s+/g, ' ').trim
 const sectioned = 'His papacy was marked by reconciliation.' + _TTS_BLOCK + 'Early life' + _TTS_BLOCK + 'John was born in Antioch. He was named legate.';
 ok('a chunk ends with its block: a heading is said alone, with its own stop', JSON.stringify(_ttsChunkText(sectioned, _TTS_CHUNK_MAX)) === JSON.stringify(['His papacy was marked by reconciliation.', 'Early life.', 'John was born in Antioch. He was named legate.']), _ttsChunkText(sectioned, _TTS_CHUNK_MAX));
 ok('without a first cap every chunk is full size', _ttsChunkText(text, _TTS_CHUNK_MAX)[0].length > _TTS_FIRST_CHUNK_MAX);
+
+// What is not said: names in another script, transliterations and pronunciation
+// keys in a lead's parentheses (Eric, 2026-11-02, the Western Turkic Khaganate).
+{
+  const lead = 'The Western Turkic Khaganate (Chinese: \u897f\u7a81\u53a5; pinyin: X\u012b T\u016bju\u00e9) or Onoq Khaganate (Old Turkic: \ud800\udc00\ud803\udc06\ud803\udc23:\ud803\udc38:\ud803\udc09\ud803\udc06\ud803\udc11\ud803\udc23, romanized: On oq budun, lit. "Ten Arrows People") was an Asian empire.';
+  const c = _ttsChunkText(lead, 400, null, 'en');
+  ok('the lead keeps its words and drops both parentheses of names', c.join(' ') === 'The Western Turkic Khaganate or Onoq Khaganate was an Asian empire.', c);
+  ok('a birth date in parentheses is read', _ttsChunkText('Ada Lovelace (born 1815) wrote notes.', 400, null, 'en')[0] === 'Ada Lovelace (born 1815) wrote notes.');
+  ok('an English parenthetical with a pronunciation label goes, with no mark left', _ttsSpoken('Paris (pronounced like parry) is large.', 'en') === 'Paris is large.', _ttsSpoken('Paris (pronounced like parry) is large.', 'en'));
+  ok('a Latin-script name is read in an English article', _ttsSpoken('Jos\u00e9 \u00c5ngstr\u00f6m met Zo\u00eb.', 'en') === 'Jos\u00e9 \u00c5ngstr\u00f6m met Zo\u00eb.');
+  ok('a bare run of Han in an English sentence is left out', _ttsSpoken('The word \u8fa6\u516c\u5ba4 means office.', 'en') === 'The word means office.', _ttsSpoken('The word \u8fa6\u516c\u5ba4 means office.', 'en'));
+  ok('a Chinese article reads its own script', _ttsSpoken('\u5317\u4eac\u662f\u4e2d\u56fd\u7684\u9996\u90fd\u3002', 'zh') === '\u5317\u4eac\u662f\u4e2d\u56fd\u7684\u9996\u90fd\u3002');
+  ok('a Russian article reads Cyrillic and keeps a Latin name', _ttsSpoken('\u041c\u043e\u0441\u043a\u0432\u0430 \u2014 Python.', 'ru') === '\u041c\u043e\u0441\u043a\u0432\u0430 \u2014 Python.');
+  ok('a sentence of nothing but asides makes no chunk', _ttsChunkText('\u897f\u7a81\u53a5', 400, null, 'en').length === 0, _ttsChunkText('\u897f\u7a81\u53a5', 400, null, 'en'));
+}
 
 // Sentences as people read them (Eric, 2026-10-20: "Dr. Smith isn't two
 // sentences ... there's probably conventions"): the platform's sentence rules,

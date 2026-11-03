@@ -20327,6 +20327,7 @@ function _savedStart() {
     // change made meanwhile on another device arrives as it reopens.
     if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
     _liveOpen();
+    _buildCheck();
   });
   window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); });
   // A setting written in another page of this browser (another tab, an app
@@ -20351,6 +20352,7 @@ function _savedStart() {
   // article that asks what is kept does not wait on reading it.
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   _liveOpen();
+  _buildCheck();
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
@@ -20475,7 +20477,17 @@ function _buildHeard(build) {
   if (!_BUILD || build === _BUILD || _buildWaiting) return;
   try { if (sessionStorage.getItem(_UPDATE_TRIED_KEY) === build) return; } catch (e) {}
   _buildWaiting = build;
+  _buildFreshHeard = _buildFresh(); // heard in the first moments: the worker's wait does not make it late
   _buildWorker().then(_buildReload);
+}
+// Asked outright, on load and on coming back to the front (Eric, 2026-11-02:
+// "Fresh load is not a busy time, it's the ideal time to pull latest"): the
+// stream's first tick says it too, but it may not open (blocked, offline at
+// first) and a reload then is before the person has engaged with anything.
+function _buildCheck() {
+  if (!_BUILD || _buildWaiting || typeof fetch !== 'function') return;
+  fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); }).catch(function () {});
 }
 // The new build's worker in charge (its cache is the new page), or a moment's wait for it.
 function _buildWorker() {
@@ -20512,19 +20524,51 @@ function _buildReload() {
   timer = setInterval(again, _BUILD_QUIET_POLL_MS);
   document.addEventListener('visibilitychange', again);
 }
+// Any touch, key or wheel since the page was shown: the Almanac, which comes
+// back from its #almanac address, is reloaded under no one who has used it
+// (Eric, 2026-11-02: "I still had to relaunch the PWA to see the new tiles":
+// he came back to the Almanac, the build was heard, and it waited for a hide).
+var _buildTouched = false;
+// The reload opens the Almanac at its top (only the place is kept), so a page scrolled away from it holds the reload.
+function _almanacScrolled() {
+  var box = document.getElementById('almanac-content');
+  return !!box && box.scrollTop > 0;
+}
+['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function (type) {
+  document.addEventListener(type, function () { _buildTouched = true; }, { capture: true, passive: true });
+});
+document.addEventListener('visibilitychange', function () { if (!document.hidden) _buildShown(); });
+window.addEventListener('pageshow', function () { _buildShown(); _buildCheck(); });
 // Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
 function _buildSafe() {
   // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
-  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
+  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking) || (_buildFreshHeard && !_buildTouched && !_buildInHand());
+}
+// The first moments of a load or a return to the front, before any input:
+// the ideal time to pull the latest (Eric, 2026-11-02: "Fresh load is not a
+// busy time"). Heard then, the reload goes ahead whatever view is up, unless
+// something is in hand. A touch inside the reader's frame never reaches this
+// page, hence the short window rather than "until touched".
+var _BUILD_FRESH_MS = 10000;
+var _buildShownAt = Date.now(), _buildFreshHeard = false;
+function _buildFresh() { return !_buildTouched && Date.now() - _buildShownAt < _BUILD_FRESH_MS; }
+function _buildShown() { _buildTouched = false; _buildShownAt = Date.now(); }
+// Something in hand: a reading aloud, a field with text, media playing (here or in the reader's frame).
+function _buildInHand() {
+  if (_ttsSpeaking) return true;
+  var docs = [document];
+  try { var f = document.getElementById('reader-frame'); if (readerOpen && f && f.contentDocument) docs.push(f.contentDocument); } catch (e) {}
+  return docs.some(function (d) {
+    var el = d.activeElement;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return true;
+    return Array.prototype.some.call(d.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+  });
 }
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
-// the same one again), no field being typed in, no reading aloud, no media
-// playing, nothing open over it.
+// the same one again), the Almanac at its top and not yet used since it was shown, nothing open over it.
 function _buildQuiet() {
-  if ((mode !== 'home' && mode !== 'source') || readerOpen || _almanacOpen || _createOpen || _ttsSpeaking) return false;
-  var el = document.activeElement;
-  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return false;
-  return !Array.prototype.some.call(document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+  if ((mode !== 'home' && mode !== 'source') || readerOpen || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen) return false;
+  return !_buildInHand();
 }
 // The nearest ancestor that scrolls by itself, or null (the page scrolls).
 // The body counts only when it scrolls itself: with the root's overflow left
