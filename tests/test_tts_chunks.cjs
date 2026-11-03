@@ -20,9 +20,10 @@ eval(pick(/var _TTS_CHUNK_MAX = [^\n]*/, '_TTS_CHUNK_MAX'));
 eval(pick(/var _TTS_SMALL_WORDS = [^\n]*/, '_TTS_SMALL_WORDS'));
 eval(pick(/var _TTS_UNITS = [^\n]*/, '_TTS_UNITS'));
 eval(pick(/var _TTS_ASIDE = [^\n]*/, '_TTS_ASIDE'));
-eval(pick(/var _TTS_SCRIPTS = [\s\S]*?\n  ar:[^\n]*/, '_TTS_SCRIPTS'));
+eval(pick(/var _TTS_SCRIPTS = [\s\S]*?\};/, '_TTS_SCRIPTS'));
 eval(pick(/var _ttsOwnScripts = [^\n]*/, '_ttsOwnScripts'));
 eval(pick(/function _ttsOwnScript\([\s\S]*?\n}/, '_ttsOwnScript'));
+eval(pick(/function _ttsAsideMask\([\s\S]*?\n}/, '_ttsAsideMask'));
 eval(pick(/function _ttsAsides\([\s\S]*?\n}/, '_ttsAsides'));
 eval(pick(/function _ttsSpoken\([\s\S]*?\n}/, '_ttsSpoken'));
 
@@ -51,6 +52,11 @@ ok('without a first cap every chunk is full size', _ttsChunkText(text, _TTS_CHUN
   ok('a Latin-script name is read in an English article', _ttsSpoken('Jos\u00e9 \u00c5ngstr\u00f6m met Zo\u00eb.', 'en') === 'Jos\u00e9 \u00c5ngstr\u00f6m met Zo\u00eb.');
   ok('a bare run of Han in an English sentence is left out', _ttsSpoken('The word \u8fa6\u516c\u5ba4 means office.', 'en') === 'The word means office.', _ttsSpoken('The word \u8fa6\u516c\u5ba4 means office.', 'en'));
   ok('a Chinese article reads its own script', _ttsSpoken('\u5317\u4eac\u662f\u4e2d\u56fd\u7684\u9996\u90fd\u3002', 'zh') === '\u5317\u4eac\u662f\u4e2d\u56fd\u7684\u9996\u90fd\u3002');
+  ok('a Bengali article reads its own script', _ttsSpoken('\u0986\u09ae\u09be\u09b0 \u09b8\u09cb\u09a8\u09be\u09b0 \u09ac\u09be\u0982\u09b2\u09be\u0964', 'bn') === '\u0986\u09ae\u09be\u09b0 \u09b8\u09cb\u09a8\u09be\u09b0 \u09ac\u09be\u0982\u09b2\u09be\u0964', _ttsSpoken('\u0986\u09ae\u09be\u09b0 \u09b8\u09cb\u09a8\u09be\u09b0', 'bn'));
+  ok('Georgian, Tamil and Amharic articles read their own scripts', ['\u10e1\u10d0\u10e5\u10d0\u10e0\u10d7\u10d5\u10d4\u10da\u10dd ka', '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd ta', '\u12a2\u1275\u12ee\u1335\u12eb am'].every(function (t) { var p = t.split(' '); return _ttsSpoken(p[0], p[1]) === p[0]; }));
+  { const long = 'The Western Turkic Khaganate (Chinese: \u897f\u7a81\u53a5; pinyin: X\u012b T\u016bju\u00e9) ruled the steppe for many long years and many more.';
+    const parts = _ttsChunkText(long, 40, null, 'en');
+    ok('a sentence cut for length still leaves its asides out of every part', parts.length > 1 && !parts.some((p) => /[\u4e00-\u9fff]|pinyin|Chinese:/.test(p)), parts); }
   ok('a Russian article reads Cyrillic and keeps a Latin name', _ttsSpoken('\u041c\u043e\u0441\u043a\u0432\u0430 \u2014 Python.', 'ru') === '\u041c\u043e\u0441\u043a\u0432\u0430 \u2014 Python.');
   ok('a sentence of nothing but asides makes no chunk', _ttsChunkText('\u897f\u7a81\u53a5', 400, null, 'en').length === 0, _ttsChunkText('\u897f\u7a81\u53a5', 400, null, 'en'));
 }

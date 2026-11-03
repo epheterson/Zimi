@@ -628,6 +628,12 @@ const tick = () => new Promise(r => setImmediate(r));
       ') was ', ['span', { lang: 'fr' }, 'un empire'], ' (born 1952) in Asia.']]);
     const leadChunks = ax._ttsPlanFrom(ax._ttsReadModel(lead, lead.main), 0, 1e9, false).chunks.map(c => c.text).join(' ');
     ok('the marked asides and their parentheses are not said; a foreign phrase in the article\'s script and "(born 1952)" are', leadChunks === 'The Western Turkic Khaganate or Onoq Khaganate was un empire (born 1952) in Asia.', leadChunks);
+    // An aside that opens a later block leaves a mark with no text node of its own: a sentence starting on it still maps into the page.
+    const opens = mkDoc(['main', {}, ['p', {}, 'First block.'], ['p', {}, ['span', { lang: 'zh' }, '西突厥'], ' is a name.']]);
+    const opensModel = ax._ttsReadModel(opens, opens.main);
+    const bad = ax._ttsPlanFrom(opensModel, 0, 1e9, false).chunks.flatMap(c => c.spans).map(sp => ax._ttsRange(opensModel, sp.s, sp.e))
+      .filter(r => r.startOffset < 0 || r.startOffset > r.startContainer.data.length || r.endOffset > r.endContainer.data.length);
+    ok('a sentence that starts on an aside\'s mark maps to offsets inside its text nodes', bad.length === 0, JSON.stringify(bad.map(r => [r.startContainer.data, r.startOffset, r.endContainer.data, r.endOffset])));
     const facts2 = mkDoc(['main', {}, ['details', { cls: ['zw-facts'] }, ['summary', {}, 'Quick facts'], ['table', { cls: ['infobox'] }, ['tr', {}, ['td', {}, 'Born']]]], ['p', {}, 'Prose.']]);
     const factsText = ax._ttsReadModel(facts2, facts2.main).text.replace(new RegExp(BLOCK, 'g'), '|');
     ok('Zimipedia\'s Quick facts label is not read with the article', factsText === 'Prose.|', factsText);
