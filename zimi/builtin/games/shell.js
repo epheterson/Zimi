@@ -580,24 +580,29 @@
   // ── the start: a quick moment, not a wall of text ──
   // The game's own art and name, one Play, the choices as compact chips and the one line that says how it starts. It sits over the
   // playfield under the bar (Menu and Back stay reachable); a tap on it, Play or the game's own start key ends it at once.
-  //   Shell.splash({ hint, chips: [['Best', '120']], onPlay }) -> { close }
+  //   Shell.splash({ hint, chips: [['Best', '120']], onPlay }) -> { close }   (hint and a chip's label may be functions, asked again when the words arrive)
   Shell.splash = function (opts) {
     var stem = pageStem(), nameNow = function () { return gameWord(stem, 'title') || titleOf(); }, name = nameNow(), art = null, play, el;
     if (stem) {
       art = h('img', { class: 'gs-sp-art', src: HOME + 'thumbs/' + stem + '.svg', alt: '' });
       art.addEventListener('error', function () { art.remove(); });
     }
-    var chips = (opts.chips || []).slice(0, 3).map(function (c) { return h('span', { class: 'gs-chip' }, [h('span', { text: c[0] }), h('b', { text: String(c[1]) })]); });
+    var said = function (v) { return typeof v === 'function' ? v() : v; }, labels = [];
+    var chips = (opts.chips || []).slice(0, 3).map(function (c) { var l = h('span', { text: said(c[0]) }); labels.push([l, c[0]]); return h('span', { class: 'gs-chip' }, [l, h('b', { text: String(c[1]) })]); });
+    var hint = opts.hint ? h('p', { class: 'gs-sp-hint', text: said(opts.hint) }) : null;
     play = h('button', { class: 'ar-btn gs-primary gs-sp-play', type: 'button', text: T('shelf.play') });
     var title = h('h2', { text: name });
     el = h('div', { class: 'gs-splash', role: 'group', 'aria-label': name }, [h('div', { class: 'gs-sp-card' }, [
-      art, title, chips.length ? h('div', { class: 'gs-chips' }, chips) : null, play, opts.hint ? h('p', { class: 'gs-sp-hint', text: opts.hint }) : null
+      art, title, chips.length ? h('div', { class: 'gs-chips' }, chips) : null, play, hint
     ].filter(Boolean))]);
     el.addEventListener('pointerdown', function (e) { if (e.button || !opts.onPlay) return; e.preventDefault(); opts.onPlay(); });
     play.addEventListener('click', function () { if (opts.onPlay) opts.onPlay(); });
     d.body.appendChild(el);
     // The words arrive after the first paint when the player's language is not English: the name and Play follow them.
-    var words = function () { if (!el.isConnected) return; name = nameNow(); title.textContent = name; el.setAttribute('aria-label', name); play.textContent = T('shelf.play'); };
+    var words = function () { if (!el.isConnected) return; name = nameNow(); title.textContent = name; el.setAttribute('aria-label', name); play.textContent = T('shelf.play');
+      if (hint) hint.textContent = said(opts.hint);
+      labels.forEach(function (l) { l[0].textContent = said(l[1]); });
+    };
     if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { root.setTimeout(words, 0); });
     return { el: el, close: function () { el.remove(); } };
   };

@@ -119,3 +119,26 @@ def test_a_cell_board_opens_as_a_grid(browser, served, path):
         assert (
             g["rows"] * g["cols"] >= g["cells"]
         ), "%s: rows and columns cover the cells: %s" % (path, g)
+
+
+def test_the_tab_stop_and_the_arrows_pass_over_cells_that_cannot_be_pressed(browser, served):
+    """Fleet disables a square once it is fired at. The grid's one tab stop must
+    move off it, or Tab can no longer reach the board, and the arrows step over it."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844})
+    page = ctx.new_page()
+    try:
+        page.goto("%s/fleet.html" % served)
+        page.wait_for_function("!!(window.ZimiUtil && ZimiUtil.gridRove)")
+        got = page.evaluate("""() => {
+          const b = document.createElement('div'); document.body.appendChild(b);
+          const cells = [...Array(9)].map(() => { const c = document.createElement('button'); b.appendChild(c); return c; });
+          ZimiUtil.gridAria(b, cells, 3); ZimiUtil.gridRove(b, cells, 3);
+          cells[0].disabled = true; ZimiUtil.gridRoveSync(b);
+          const stop = cells.findIndex(c => c.tabIndex === 0);
+          cells[4].disabled = true; cells[3].focus();
+          b.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+          return { stop, after: cells.indexOf(document.activeElement) };
+        }""")
+    finally:
+        ctx.close()
+    assert got == {"stop": 1, "after": 5}, got

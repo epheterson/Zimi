@@ -161,6 +161,7 @@
       b.setAttribute('aria-label', st.name);
       b.disabled = phase !== 'battle' || theirs.shots[y][x] !== UNKNOWN;
     });
+    root.ZimiUtil.gridRoveSync(els.enemy);
     els.enemy.classList.toggle('fl-aim', phase === 'battle');
     els.eships.textContent = '';
     theirs.ships.forEach(function (s, i) {
