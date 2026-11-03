@@ -79,11 +79,9 @@ def find_successor(inst, index, creator_of=None):
     `index`: [(prefixes, date, flavor, item)], the update check's catalog index.
     `creator_of`: called only when title, language and flavour already agree
     on a candidate, since it reads the installed file.
-    Returns (new prefix, date, item). None when the old name is still in the
-    catalog, nothing matches, or more than one thing does."""
-    if any(inst["prefix"] in prefixes for prefixes, _d, _f, _i in index):
-        return None  # not renamed: the ordinary match handles it
-
+    Returns (new prefix, date, item). None when nothing matches, more than one
+    thing does, or (for a match by title, not by the table) the old name is
+    still in the catalog."""
     def newest(prefix):
         got = [
             (d, i)
@@ -92,10 +90,14 @@ def find_successor(inst, index, creator_of=None):
         ]
         return max(got, key=lambda g: g[0], default=None)
 
+    # The table is the word of whoever recorded the rename: it holds even while
+    # Kiwix still lists the old name beside the new one.
     target = successor_name(inst["prefix"])
     if target != inst["prefix"]:
         hit = newest(target)
         return (target, hit[0], hit[1]) if hit else None
+    if any(inst["prefix"] in prefixes for prefixes, _d, _f, _i in index):
+        return None  # not renamed: the ordinary match handles it
 
     if not _norm(inst.get("title")) or not inst.get("language"):
         return None

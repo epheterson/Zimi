@@ -3703,11 +3703,14 @@ def _renamed_successor(inst, catalog_index, installed_files):
         catalog_index,
         creator_of=lambda: _installed_creator(inst["path"]),
     )
-    if found and not any(
-        f["filebase"].startswith(found[0] + "_") for f in installed_files
-    ):
-        return found
-    return None
+    if not found:
+        return None
+    # Every name the catalog gives that entry (its OPDS name, its file's), since
+    # the successor may be installed under either.
+    names = next((p for p, _d, _f, i in catalog_index if i is found[2]), [found[0]])
+    if any(f["filebase"].startswith(n + "_") for n in {found[0], *names} for f in installed_files):
+        return None
+    return found
 
 
 def _download_from_url(dl, url, tmp_dest):
