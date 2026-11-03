@@ -170,6 +170,6 @@ def test_the_server_logs_a_start_failure_and_caps_it(caplog):
         for _ in range(zhttp._GAMES_START_LOG_PER_HOUR + 5):
             zhttp._log_games_start({"outcome": "banner", "page": "/x", "why": "again"})
     lines = [r.getMessage() for r in caplog.records if "ZimiGames start" in r.getMessage()]
-    assert lines[0] == "ZimiGames start: banner on /w/zimi_games/puzzles/loopy.html: boom forged line"
+    assert lines[0] == "ZimiGames start: banner on /w/zimi_games/puzzles/loopy.html: boom\\nforged line"  # the break shows escaped, on one line
     assert len(lines) == zhttp._GAMES_START_LOG_PER_HOUR
     zhttp._games_start_logged.clear()
