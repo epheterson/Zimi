@@ -28,13 +28,11 @@ html body .pz-status[hidden] { display: none; }
 .zf-keys .ar-btn { min-height: var(--target); min-width: var(--target); padding: 0 var(--sp-3); font-weight: 600; }
 
 /* Menu > New game: the Type and the Game rows. */
-.pz-types, .pz-games { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.pz-types, .pz-games { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+/* The custom size's own fields, under the sizes: the pane's option rows, a gap apart. */
+.pz-custom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.pz-custom > :not(.pz-short) { grid-column: 1 / -1; }
 .pz-opt-head { margin: var(--sp-2) 0 0; font-size: var(--fs-small); font-weight: 600; color: var(--ink2); }
-.pz-facet { display: grid; gap: var(--sp-2); }
-.pz-facet[hidden] { display: none; }
-.pz-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.pz-chips .pz-opt { width: auto; }
-.pz-select { min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; }
 .pz-game-rows { display: grid; gap: var(--sp-2); }
 .pz-opt { width: 100%; justify-content: flex-start; text-align: start; min-height: var(--target); }
 /* The chosen type is selected, not the screen's one filled amber button (that is Start). */

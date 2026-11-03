@@ -26,7 +26,7 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 
 /* ── Piles ─────────────────────────────────────────────────────────────── */
 .zc-slot { position: absolute; left: 0; top: 0; z-index: 0; outline: none; -webkit-tap-highlight-color: transparent; }
-.zc-slot::before { content: ""; position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4);
+.zc-slot::before { content: ""; position: absolute; left: 0; top: 0; box-sizing: border-box; width: var(--cw); height: calc(var(--cw) * 1.4);
   border-radius: calc(var(--cw) * 0.075); border: 2px solid var(--felt-line); background: rgba(0, 0, 0, 0.08); }
 /* A goal pile (the foundations, Spider's finished runs) is the brightest outline on the felt, not the dimmest. */
 .zc-slot[data-goal]::before { border-color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.1); }

@@ -112,15 +112,16 @@
   // The Ace of Spades carries the maker's mark: the Z alone, in the spade's belly (centre 0.3 of the spade's 20-unit box below its middle,
   // 9 units tall, clear of the outline on every side).
   var ACE_Z_DY = 0.3, ACE_Z_UNITS = 5.4, ACE_Z_Y = 70 + ACE_Z_DY * ACE_SPADE_SCALE, ACE_Z_H = ACE_Z_UNITS * ACE_SPADE_SCALE, BACK_Z_H = 32.2; // and the Zimi back's
-  var PIP_SCALE = 0.92, PIP_SCALE_DENSE = 0.8, DENSE_FROM = 8, PIP_COLS = [37, 63], PIP_MID_X = 50, PIP_TOP = 34, PIP_BOTTOM = 106, PIP_CENTRE = 70, PIP_ROW_2 = 57.3, PIP_ROW_3 = 82.7, FLIP_AFTER_Y = 70;
+  // The pips stand in a box of their own, inset from the index column: the outer columns clear the corner suit by 8 units and the top row sits below it (at 37 and 63, from 34, a count ran into it).
+  var PIP_SCALE = 0.86, PIP_SCALE_DENSE = 0.76, DENSE_FROM = 8, PIP_COLS = [39, 61], PIP_MID_X = 50, PIP_TOP = 38, PIP_BOTTOM = 102, PIP_CENTRE = 70, PIP_ROW_2 = 58.7, PIP_ROW_3 = 81.3, FLIP_AFTER_Y = 70;
   var PIPS = (function () {
     var sides = function (ys) { var o = []; ys.forEach(function (y) { PIP_COLS.forEach(function (x) { o.push([x, y]); }); }); return o; };
     var mid = function (y) { return [PIP_MID_X, y]; };
     var two = sides([PIP_TOP, PIP_BOTTOM]), three = sides([PIP_TOP, PIP_CENTRE, PIP_BOTTOM]), four = sides([PIP_TOP, PIP_ROW_2, PIP_ROW_3, PIP_BOTTOM]);
     return [null,
       [mid(PIP_CENTRE)], [mid(PIP_TOP), mid(PIP_BOTTOM)], [mid(PIP_TOP), mid(PIP_CENTRE), mid(PIP_BOTTOM)],
-      two, two.concat([mid(PIP_CENTRE)]), three, three.concat([mid(52)]), three.concat([mid(52), mid(88)]),
-      four.concat([mid(PIP_CENTRE)]), four.concat([mid(45.7), mid(94.3)])];
+      two, two.concat([mid(PIP_CENTRE)]), three, three.concat([mid(54)]), three.concat([mid(54), mid(86)]),
+      four.concat([mid(PIP_CENTRE)]), four.concat([mid(48.4), mid(91.6)])];
   })();
 
   // The mark's numbers (the pebble, and the Z of Zimi's icon centred on 0,0 for the cards).
@@ -1472,10 +1473,11 @@
   // is the pile's step count, `room` the height under its first card.
   // The solitaire family's frame: one row of stock, waste and goal piles right under the bar, the columns under it fanning
   // through all the height that is left (`room`, measured from the columns' top).
-  var TOP_ROW_GAP_SHARE = 0.18;
+  // The stock and waste row has air above it (off the bar) and below it (off the columns): a card's height share each.
+  var TOP_ROW_GAP_SHARE = 0.26, TOP_ROW_LIFT_SHARE = 0.06;
   function solitaireRows(m) {
-    var cols = m.pad + m.ch + Math.round(m.ch * TOP_ROW_GAP_SHARE);
-    return { top: m.pad, cols: cols, room: m.H - m.pad - cols };
+    var top = m.pad + Math.round(m.ch * TOP_ROW_LIFT_SHARE), cols = top + m.ch + Math.round(m.ch * TOP_ROW_GAP_SHARE);
+    return { top: top, cols: cols, room: m.H - m.pad - cols };
   }
   // A face-down card shows `base` of a face-up step when the columns are long; with height to spare (the deal, a short fan) it
   // opens up in `inc` steps to `max`, so the table spends the screen instead of huddling at the top. `heaviest(down)` is the

@@ -174,6 +174,7 @@
   // [the original's id, English, our id, string id, icon (in the bar, no words) or null]
   var ORIGINALS = [["undo", "Undo", "pz-undo", "shell.undo", "undo"], ["redo", "Redo", "pz-redo", "pz.redo", "redo"], ["restart", "Restart", "pz-restart", "pz.restart"], ["solve", "Show solution", "pz-solve", "puzzles.showSolution"]];
   var staged = null;      // a Type chosen in the New game pane, applied by Start
+  var customPick = null;  // the custom size panel, when that is what the pane has chosen
   // What a button does besides press the original: Show solution asks first, and Restart starts the clock and the win over.
   var CLICKS = { solve: function (orig) { confirmSolve(orig); }, restart: function (orig) { newGameStarted(); orig.click(); } };
   function icon(name) {
@@ -229,6 +230,13 @@
     d.body.insertBefore(bar, d.body.firstChild);
   }
   function startNew() {
+    if (customPick) {   // a custom size: its dialog set from the pane and OK pressed (that starts the game)
+      var custom = customPick;
+      customPick = null; staged = null;
+      newGameStarted();
+      custom.apply();
+      return;
+    }
     var radio = staged && $("gametype") && $("gametype").querySelector('input[name="preset"][value="' + staged + '"]');
     staged = null;
     newGameStarted();
@@ -266,7 +274,7 @@
     "trivial", "easy", "tricky", "normal", "hard", "extreme", "unreasonable", "basic", "advanced", "medium", "intermediate", "standard", "wrapping"];
   var PHRASE_RX = new RegExp("(^|[^A-Za-z])(" + PHRASES.slice().sort(function (a, b) { return b.length - a.length; }).map(function (w) { return w.replace(/[.*+?^${}()|[\]\\\/]/g, "\\$&"); }).join("|") + ")(?![A-Za-z])", "gi");
   function typeLabel(text) {
-    if (text === "Custom...") return T("pz.customSize", "Custom size…");
+    if (text === "Custom...") return T("pz.customSize", "Custom");
     TEMPLATES.forEach(function (t) {
       text = text.replace(t[0], function (m, a, b) { return T(t[1], t[2], { a: num(a), b: num(b) }); });
     });
@@ -326,18 +334,6 @@
     });
     return out;
   }
-  function typeButton(entry, into) {
-    var row = el("button", "ar-btn pz-opt", typeLabel(entry.name));
-    row.type = "button";
-    row.setAttribute("aria-pressed", String((staged || currentPreset()) === entry.value));
-    row.addEventListener("click", function () {
-      staged = entry.value;
-      Array.prototype.forEach.call(into.querySelectorAll(".pz-opt[data-type]"), function (r) { r.setAttribute("aria-pressed", String(r === row)); });
-    });
-    row.setAttribute("data-type", entry.value);
-    into.appendChild(row);
-    return row;
-  }
   // A puzzle whose types are a grid shape, a size and a difficulty (Loopy has 23, Mines 40) is asked as those, a short choice each.
   // A spec reads a type's name as its parts, in the order they are asked, and names what each part is (a string id and its English).
   var SIZE_HEAD = ["pz.d.size", "Size"], LEVEL_HEAD = ["pz.d.difficulty", "Difficulty"], FACET_MIN = 9, SELECT_MIN = 7;
@@ -360,10 +356,136 @@
     }
     return { heads: spec.heads, rows: rows };
   }
+  // The New game pane's rows are every game's option rows (boardui.js row and field): the label, then the choices joined in one
+  // control (wrapped as separate buttons past three), or a select under its label.
+  var CHOICES_JOINED = 3, JOINED_CHARS = 16;   // more choices than this, or longer words, wrap as separate buttons
+  function seatRow(head) {
+    var seg = el("div", "gs-seg"), row = el("div", "gs-row", "");
+    seg.setAttribute("role", "group");
+    if (head[0]) word(seg, head[0], head[1], "aria-label");
+    row.appendChild(head[0] ? word(el("label"), head[0], head[1]) : el("label", "", xl(head[1])));
+    row.appendChild(seg);
+    return { row: row, seg: seg };
+  }
+  // choices [[value, text]]; isOn(value) says which is chosen; the buttons are rebuilt each time.
+  function fillChoices(seg, choices, isOn, onPick) {
+    seg.textContent = "";
+    seg.classList.toggle("is-wrap", choices.length > CHOICES_JOINED || choices.reduce(function (n, c) { return n + c[1].length; }, 0) > JOINED_CHARS);
+    choices.forEach(function (c) {
+      var b = el("button", "ar-btn", c[1]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(isOn(c[0])));
+      b.addEventListener("click", function () { onPick(c[0]); });
+      seg.appendChild(b);
+    });
+  }
+  var fieldCount = 0;
+  function fieldRow(label, control) {
+    var row = el("div", "gs-row gs-field"), l = el("label", "", label);
+    control.id = control.id || "pz-f" + (++fieldCount);
+    l.htmlFor = control.id;
+    row.appendChild(l);
+    row.appendChild(control);
+    return row;
+  }
+  function selectOf(options, value, onPick) {
+    var sel = el("select", "gs-select");
+    options.forEach(function (o) { var n = el("option", "", o[1]); n.value = o[0]; sel.appendChild(n); });
+    sel.value = value;
+    if (onPick) sel.addEventListener("change", function () { onPick(sel.value); });
+    return sel;
+  }
+
+  // The custom size is the puzzle's own configuration dialog. It is read once where nobody sees it (opened, read, cancelled: the
+  // chosen type comes back), shown as fields in the pane, and when Start is pressed opened again, set, and OK pressed.
+  function withCustom(entry, fn, apply) {
+    var radio = $("gametype") && $("gametype").querySelector('input[name="preset"][value="' + entry.value + '"]'), html = d.documentElement, result = null;
+    if (!radio) return null;
+    html.classList.add("zf-quiet");
+    try {
+      radio.click();
+      var form = $("dlgform");
+      if (form) {
+        result = fn(form);
+        var button = form.querySelector('input[value="' + (apply ? "OK" : "Cancel") + '"]') || form.querySelector('input[value="Cancel"]');
+        if (button) button.click();
+      }
+    } finally { html.classList.remove("zf-quiet"); }
+    return result;
+  }
+  // [{ index (of the form's labels), label (English), kind: text | select | bool, value, options [{ value, text }] }]
+  function customFields(form) {
+    var fields = [];
+    Array.prototype.forEach.call(form.querySelectorAll("label"), function (l, index) {
+      var box = l.querySelector('input[type="checkbox"]'), sel = l.querySelector("select"), txt = l.querySelector('input[type="text"]');
+      var text = Array.prototype.map.call(l.childNodes, function (n) { return n.nodeType === 3 ? n.nodeValue : ""; }).join("").trim();
+      var ctl = box || sel || txt;
+      if (!text || !ctl) return;
+      fields.push({ index: index, label: text, kind: box ? "bool" : sel ? "select" : "text", value: box ? box.checked : ctl.value,
+        options: sel ? Array.prototype.map.call(sel.options, function (o) { return { value: o.value, text: o.text }; }) : null });
+    });
+    return fields;
+  }
+  function inlineField(f) {
+    if (f.kind === "bool") {
+      var on = !!f.value, row = seatRow([null, f.label]);
+      var paint = function () { fillChoices(row.seg, [[false, T("shell.off", "Off")], [true, T("shell.on", "On")]], function (v) { return v === on; }, function (v) { on = v; paint(); }); };
+      paint();
+      f.get = function () { return on; };
+      return row.row;
+    }
+    var control;
+    if (f.kind === "select") control = selectOf(f.options.map(function (o) { return [o.value, xl(o.text)]; }), f.value);
+    else { control = el("input"); control.type = "text"; control.value = f.value; control.setAttribute("inputmode", /^\d*$/.test(f.value) ? "numeric" : "text"); control.autocomplete = "off"; }
+    f.get = function () { return control.value; };
+    var row = fieldRow(xl(f.label), control);
+    if (f.kind === "text") row.classList.add("pz-short");   // a width and a height stand side by side
+    return row;
+  }
+  // `bind(fields)` says which fields the pane already asks as rows of its own: { fieldIndex: whatever chooses it }; `valueOf(that)`
+  // is the English text chosen there. The rest are shown here, and only while the custom size is the choice.
+  function customPanel(entry, bind, valueOf) {
+    var node = el("div", "pz-custom"), fields = null, bound = {};
+    node.hidden = true;
+    return {
+      node: node,
+      show: function () {
+        if (!fields) {
+          fields = withCustom(entry, customFields, false) || [];
+          bound = bind ? bind(fields) : {};
+          fields.forEach(function (f) { if (bound[f.index] === undefined) node.appendChild(inlineField(f)); });
+        }
+        node.hidden = false;
+        return bound;
+      },
+      hide: function () { node.hidden = true; },
+      // The text the dialog holds now for a field (what the game in play was made with).
+      current: function (index) {
+        var f = fields.filter(function (x) { return x.index === index; })[0], o = f && f.options && f.options.filter(function (n) { return n.value === f.value; })[0];
+        return o ? o.text : null;
+      },
+      apply: function () {
+        withCustom(entry, function (form) {
+          var labels = form.querySelectorAll("label");
+          fields.forEach(function (f) {
+            var l = labels[f.index], ctl = l && (l.querySelector("select") || l.querySelector('input[type="checkbox"]') || l.querySelector('input[type="text"]'));
+            if (!ctl) return;
+            if (bound[f.index] !== undefined) {
+              var want = String(valueOf(bound[f.index])).toLowerCase();
+              Array.prototype.forEach.call(ctl.options, function (o) { if (o.text.toLowerCase() === want) ctl.value = o.value; });
+            } else if (f.kind === "bool") ctl.checked = !!f.get(); else ctl.value = f.get();
+          });
+        }, true);
+      }
+    };
+  }
+
   function typeFacetRows(facets, entries, into) {
     var rows = facets.rows, heads = facets.heads, custom = entries.filter(function (e) { return e.name === "Custom..."; })[0];
-    var current = staged || currentPreset(), onCustom = !!custom && custom.value === current, boxes = [];
+    var current = staged || currentPreset(), onCustom = !!custom && custom.value === current, boxes = [], panel = null;
     var chosen = (rows.filter(function (r) { return r.value === current; })[0] || rows[0]).parts.slice();
+    var sizeAt = Math.max(0, heads.map(function (h) { return h[0]; }).indexOf(SIZE_HEAD[0])), bound = {};
+    if (sizeAt === 0 && heads.length > 1 && options(0).length >= SELECT_MIN) sizeAt = 1;   // the first part is a select: the custom size goes with the buttons
     function matching(i) { return rows.filter(function (r) { return chosen.slice(0, i).every(function (p, k) { return r.parts[k] === p; }); }); }
     function options(i) {
       return matching(i).reduce(function (all, r) { if (all.indexOf(r.parts[i]) < 0) all.push(r.parts[i]); return all; }, []);
@@ -371,55 +493,84 @@
     function pick(i, value) {
       chosen[i] = value;
       for (var j = i + 1; j < heads.length; j++) { var opts = options(j); if (opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0]; }
+      if (onCustom && i !== sizeAt) { render(); return; }   // the shape and the difficulty are the custom size's too: it stays the choice
       staged = matching(heads.length)[0].value;
-      onCustom = false;
+      customOn(false);
+    }
+    // Only the parts the custom size's own dialog also asks as a list (the grid shape, the difficulty) stay while it is the choice;
+    // the size is its width and height, shown under the sizes.
+    function bindParts(fields) {
+      var map = {};
+      heads.forEach(function (h, i) {
+        var all = rows.reduce(function (a, r) { if (a.indexOf(r.parts[i]) < 0) a.push(r.parts[i]); return a; }, []);
+        fields.forEach(function (f) {
+          if (f.kind !== "select" || map[f.index] !== undefined || i === sizeAt) return;
+          var texts = f.options.map(function (o) { return o.text.toLowerCase(); });
+          if (all.every(function (v) { return texts.indexOf(v.toLowerCase()) >= 0; })) map[f.index] = i;
+        });
+      });
+      return map;
+    }
+    function customOn(on) {
+      onCustom = on;
+      if (panel) { if (on) bound = panel.show(); else panel.hide(); customPick = on ? panel : null; }
       render();
     }
     function render() {
       boxes.forEach(function (box, i) {
-        var opts = options(i);
-        box.group.hidden = opts.length < 2;
-        if (box.select) { box.select.value = onCustom ? "" : chosen[i]; return; }
-        box.chips.textContent = "";
-        opts.forEach(function (value) {
-          var b = el("button", "ar-btn pz-opt", typeLabel(value));
-          b.type = "button";
-          b.setAttribute("aria-pressed", String(!onCustom && value === chosen[i]));
-          b.addEventListener("click", function () { pick(i, value); });
-          box.chips.appendChild(b);
-        });
+        var opts = options(i), keeps = !onCustom || i === sizeAt || Object.keys(bound).some(function (k) { return bound[k] === i; });
+        box.group.hidden = !keeps || (opts.length < 2 && !(custom && i === sizeAt));
+        var choices = opts.map(function (v) { return [v, typeLabel(v)]; });
+        if (box.select) { box.select.value = chosen[i]; return; }
+        if (custom && i === sizeAt) choices.push([CUSTOM_CHOICE, typeLabel("Custom...")]);
+        fillChoices(box.chips, choices, function (v) { return v === CUSTOM_CHOICE ? onCustom : (!onCustom || i !== sizeAt) && v === chosen[i]; },
+          function (v) { if (v === CUSTOM_CHOICE) customOn(true); else pick(i, v); });
       });
-      if (custom) into.querySelector(".pz-opt[data-type]").setAttribute("aria-pressed", String(onCustom));
     }
     heads.forEach(function (h, i) {
-      var group = el("div", "pz-facet"), box = { group: group };
-      group.appendChild(word(el("h4", "pz-opt-head"), h[0], h[1]));
-      var opts = options(i);
+      var box = {}, opts = options(i);
       if (i === 0 && opts.length >= SELECT_MIN) {
-        box.select = el("select", "pz-select");
+        box.select = selectOf(opts.map(function (v) { return [v, typeLabel(v)]; }), chosen[i], function (v) { pick(i, v); });
         word(box.select, h[0], h[1], "aria-label");
-        box.select.appendChild(el("option", "", "")).value = "";
-        box.select.firstChild.hidden = true;
-        opts.forEach(function (value) { var o = el("option", "", typeLabel(value)); o.value = value; box.select.appendChild(o); });
-        box.select.addEventListener("change", function () { pick(i, box.select.value); });
-        group.appendChild(box.select);
+        box.group = fieldRow("", box.select);
+        word(box.group.firstChild, h[0], h[1]);
       } else {
-        box.chips = el("div", "pz-chips");
-        group.appendChild(box.chips);
+        var r = seatRow(h);
+        box.group = r.row; box.chips = r.seg;
       }
       boxes.push(box);
-      into.appendChild(group);
+      into.appendChild(box.group);
+      if (custom && i === sizeAt) {
+        panel = customPanel(custom, bindParts, function (k) { return chosen[k]; });
+        into.appendChild(panel.node);
+      }
     });
-    if (custom) {
-      var row = typeButton(custom, into);
-      row.addEventListener("click", function () { onCustom = true; render(); });
+    if (onCustom && panel) {   // a custom game is in play: its shape and difficulty are what the pane starts on
+      bound = panel.show(); customPick = panel;
+      heads.forEach(function (h, j) {
+        var k = Object.keys(bound).filter(function (x) { return bound[x] === j; })[0], v = k !== undefined && panel.current(+k), opts = options(j);
+        if (v && opts.indexOf(v) >= 0) chosen[j] = v; else if (opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0];
+      });
     }
     render();
   }
+  var CUSTOM_CHOICE = "\0custom";
   function typeRows(entries, into) {
     var facets = facetsFor(entries);
-    if (facets) typeFacetRows(facets, entries, into);
-    else entries.forEach(function (e) { typeButton(e, into); });
+    if (facets) { typeFacetRows(facets, entries, into); return; }
+    var custom = entries.filter(function (e) { return e.name === "Custom..."; })[0], panel = custom && customPanel(custom);
+    var row = seatRow(["pz.type", "Type"]), on = staged || currentPreset();
+    function paint() {
+      fillChoices(row.seg, entries.map(function (e) { return [e.value, typeLabel(e.name)]; }), function (v) { return v === on; }, function (v) {
+        on = staged = v;
+        if (panel) { if (custom && v === custom.value) { panel.show(); customPick = panel; } else { panel.hide(); customPick = null; } }
+        paint();
+      });
+    }
+    into.appendChild(row.row);
+    if (panel) into.appendChild(panel.node);
+    paint();
+    if (panel && custom.value === on) { panel.show(); customPick = panel; }
   }
   // A game's id and seed, and saving to a file, are for people who share or reproduce a game: behind one fold.
   function advancedRows() {
@@ -443,14 +594,12 @@
   }
   function newGameOptions() {
     var nodes = [], types = $("gametype");
-    staged = null;
+    staged = null; customPick = null;
     if (types && types.children.length) {
       var box = el("div", "pz-types");
       box.setAttribute("role", "group");
       word(box, "pz.type", "Type", "aria-label");
-      var head = box.appendChild(word(el("h3", "pz-opt-head"), "pz.type", "Type"));
       typeRows(typeEntries(types, []), box);
-      if (box.querySelector(".pz-facet")) box.removeChild(head);   // split into named rows (Grid shape, Size), a Type heading over them says nothing
       nodes.push(box);
     }
     var fold = advancedRows();
