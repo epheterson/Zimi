@@ -107,8 +107,8 @@ const server = http.createServer((q, r) => {
   // 5. The index's top: flat ranks start at the 5.5 inset and rounds overshoot it by under 0.3, never touching the edge.
   const cb = await browser2.newContext({ deviceScaleFactor: 1 }).then(c => c.newPage());
   await cb.goto(base + '/h.html');
-  // 4b. The number cards' pips sit inside the court frame with air round them: the sparse pips' outer ink is 27.5..72.5, 5.5 units in from
-  // the frame (22..78) and clear of the index column, and their rows sit within 7 units of its height (27..113), every card (the pips of
+  // 4b. The number cards' pips sit inside the court frame with air round them: the sparse pips' outer ink is 30..70, 8 units in from
+  // the frame (22..78), in a box of their own so a count never runs into the corner suit, and clear of the index column, and their rows sit within 7 units of its height (27..113), every card (the pips of
   // one card are measured with the index's column cut away).
   const pipInk = await cb.evaluate(async () => {
     const S = 8, out = {};
@@ -130,7 +130,7 @@ const server = http.createServer((q, r) => {
   });
   for (const [name, [x0, x1, y0, y1]] of Object.entries(pipInk)) {
     ok('pips of ' + name + ' stay within the court frame\'s width and 7 units of its height', x0 >= 21.4 && x1 <= 78.6 && y0 >= 20 && y1 <= 120, [x0, x1, y0, y1].join(' '));
-    if (name === '7H' || name === '7C') ok('outer pips of ' + name + ' stand 5.5 units in from the frame (27.5 and 72.5) within a unit', Math.abs(x0 - 27.5) <= 1 && Math.abs(x1 - 72.5) <= 1, [x0, x1].join(' '));
+    if (name === '7H' || name === '7C') ok('outer pips of ' + name + ' stand 8 units in from the frame (30 and 70) within a unit', Math.abs(x0 - 30) <= 1 && Math.abs(x1 - 70) <= 1, [x0, x1].join(' '));
   }
 
   const tops = await cb.evaluate(async () => {
