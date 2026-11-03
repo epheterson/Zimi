@@ -96,17 +96,27 @@ def served(tmp_path, monkeypatch):
 
 
 # Watches, in the shell, for the page shown while the comic is still on its
-# way: the early reveal, which the fix must keep.
+# way: the early reveal, which the fix must keep. Only the page this test
+# opens counts (OPEN), not the one the shell had up before: with one ZIM in
+# the library the shell opens that ZIM's main page itself (the comic too),
+# and its picture completing must not pass for ours.
 WATCH = """() => {
   window.__shownEarly = false;
   var tick = function () {
     var f = document.getElementById('reader-frame'), d = null;
     try { d = f && f.contentDocument; } catch (e) {}
-    var img = d && d.getElementById('comic');
+    var img = d && d !== window.__before && d.getElementById('comic');
     if (img && f.style.visibility === 'visible' && !img.complete) { window.__shownEarly = true; return; }
     setTimeout(tick, 5);
   };
   tick();
+}"""
+
+# The frame's document before ours is recorded and the article opened in one
+# step, so no other load can come between them.
+OPEN = """([z, p]) => {
+  window.__before = document.getElementById('reader-frame').contentDocument;
+  openArticle(z, p);
 }"""
 
 FIT = """() => {
@@ -144,9 +154,9 @@ def test_a_page_shown_early_fits_its_picture_once_it_loads(served, mode):
             # Reader View kept on from the page before: the flag the reader reads.
             pg.evaluate("() => { _readerViewOn = true; }")
         pg.evaluate(WATCH)
-        pg.evaluate("([z, p]) => openArticle(z, p)", ["comics", "A/comic"])
+        pg.evaluate(OPEN, ["comics", "A/comic"])
         pg.wait_for_function(
-            "() => { var d = document.getElementById('reader-frame').contentDocument; var i = d && d.getElementById('comic'); return !!(i && i.complete && i.naturalWidth); }",
+            "() => { var d = document.getElementById('reader-frame').contentDocument; var i = d && d !== window.__before && d.getElementById('comic'); return !!(i && i.complete && i.naturalWidth); }",
             timeout=20000,
         )
         pg.wait_for_timeout(300)
