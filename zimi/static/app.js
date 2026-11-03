@@ -17480,6 +17480,13 @@ function openReader(url) {
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
           '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+        // An infobox keeps the column's width the way Wikipedia's phone skin
+        // does: its long words and no-wrap runs break rather than widening it
+        // into a scroll box nobody finds (Roman Empire, #136). A real table
+        // inside it still scrolls on its own.
+        '.infobox{display:table;width:100%}' +
+          '.infobox td,.infobox th{overflow-wrap:break-word}' +
+          '.infobox td *,.infobox th *{white-space:normal!important}',
         MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
