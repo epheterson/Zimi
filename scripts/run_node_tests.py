@@ -36,7 +36,11 @@ def run_one(node, script):
         )
         code, out = done.returncode, done.stdout + done.stderr
     except subprocess.TimeoutExpired as e:
-        code, out = 124, f"timed out after {FILE_TIMEOUT}s\n{(e.stdout or b'')!s}"
+        # TimeoutExpired keeps what was captured as bytes even under text=True.
+        def said(b):
+            return b.decode("utf-8", "replace") if isinstance(b, bytes) else (b or "")
+
+        code, out = 124, f"timed out after {FILE_TIMEOUT}s\n{said(e.stdout)}{said(e.stderr)}"
     return script.name, code, out, time.monotonic() - t0
 
 
