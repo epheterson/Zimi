@@ -1429,7 +1429,8 @@ class TestDownloadValidation(unittest.TestCase):
         self.assertIsNotNone(dl_id)
         self.assertEqual(captured["filename"], "passwd.zim")
         self.assertEqual(
-            captured["dest"], os.path.join(self.zimi.ZIM_DIR, "passwd.zim")
+            captured["dest"],
+            os.path.join(os.path.normpath(self.zimi.ZIM_DIR), "passwd.zim"),
         )
 
     def test_import_strips_query_string(self):

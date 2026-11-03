@@ -56,7 +56,7 @@ def _log_games_start(data):
     _games_start_logged.append(now)
 
     def clean(v):
-        return re.sub(r"[\x00-\x1f\x7f]", " ", str(v or ""))[:300]
+        return loggable(v or "")[:300]
 
     log.warning(
         "ZimiGames start: %s on %s: %s",

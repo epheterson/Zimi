@@ -25,6 +25,7 @@ import time
 
 import zimi.server as _srv
 from zimi import ownzims
+from zimi.safety import loggable
 from zimi.interlang import (
     _ALMANAC_ENC_RE,
     _almanac_title_entry_path,
@@ -122,7 +123,7 @@ def _games_file(rel):
         with _srv._zim_lock:
             return bytes(archive.get_entry_by_path(rel).get_item().content).decode("utf-8")
     except (KeyError, RuntimeError, UnicodeDecodeError) as e:
-        log.debug("games ZIM has no %s: %s", rel, e)
+        log.debug("games ZIM has no %s: %s", loggable(rel), loggable(e))
         return None
 
 
