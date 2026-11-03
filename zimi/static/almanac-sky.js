@@ -2777,13 +2777,13 @@ function _skyArm() {
   var s = _skyState;
   if (!_skyAwake(s) || !s.eph) return;
   if (_skyLive()) _skyTimers.live = setTimeout(_skyLiveTick, SKY_LIVE_MS);
+  _skyPollSats(0);   // the ISS is a thing of the sky, on any picture of it and with motion reduced
   if (_skyReduceMotion() || s.lens || _skySetting('skin') !== 'beach') return;
   _skyTimers.sway = setTimeout(_skySwayTick, SKY_SWAY_MS);
   Object.keys(SKY_FIRST_SPAWN_MS).forEach(function (kind) {
     _skyTimers[kind] = setTimeout(SKY_SPAWNERS[kind], SKY_FIRST_SPAWN_MS[kind] * (0.6 + 0.8 * Math.random()));
   });
   _skyScheduleMeteor(s);
-  _skyPollSats(0);
 }
 function _skyLiveTick() {
   _skyTimers.live = 0;
@@ -2791,20 +2791,21 @@ function _skyLiveTick() {
   if (!_skyAwake(s) || !_skyLive()) return;
   _skyCompute(s, new Date(), true);
   if (s.baseDirty) _skyKick();
-  else if (_skySetting('skin') === 'beach') _skyIssWatch(s);
+  else _skyIssWatch(s);
   _skyTimers.live = setTimeout(_skyLiveTick, SKY_LIVE_MS);
 }
-// The ISS needs the satellite elements the 3D view keeps. The beach asks for
-// them once (from Zimi's own server: what it may fetch fresher is that
-// server's setting, Ask first unless the owner chose otherwise) and looks at
-// every live tick whether a pass has begun or ended, since a pass is minutes.
+// The ISS needs the satellite elements the 3D view keeps (its state, not its GPU: the sky makes the state itself and
+// does not wait for the view to be prepared or opened). The live sky asks for them once (from Zimi's own server: what
+// it may fetch fresher is that server's setting, Ask first unless the owner chose otherwise) and looks at every live
+// tick whether a pass has begun or ended, since a pass is minutes.
 function _skyIssWatch(s) {
-  if (typeof _ae === 'undefined' || !_ae || typeof _aeLoadSats !== 'function') return;
+  if (typeof _aeLoadSats !== 'function') return;
+  if (typeof _ae === 'undefined' || !_ae) { if (typeof _aeEnsure === 'function') _aeEnsure(); }
+  if (typeof _ae === 'undefined' || !_ae) return;
   if (!_ae.sats && !_ae.satsLoading && !_ae.satsFailed) _aeLoadSats();
   if (_ae.sats && _skyLive() && !!_skyIss(s, Date.now()) !== !!s.issUp) _skyKick();
 }
-// The 3D view (which makes `_ae`) is prepared when the page is idle, and its
-// elements take a moment to arrive: look every second until they are in (or
+// The elements take a moment to arrive: look every second until they are in (or
 // have failed, or it has been a minute), then draw once more.
 var SKY_SATS_POLL_MS = 1000, SKY_SATS_POLL_TRIES = 60, _skySatsTries = 0;
 function _skyPollSats(tries) {
@@ -2814,7 +2815,7 @@ function _skyPollSats(tries) {
 function _skyPollSatsTick() {
   var s = _skyState;
   _skyTimers.sats = 0;
-  if (!s || !_skyAwake(s) || _skySetting('skin') !== 'beach') return;
+  if (!s || !_skyAwake(s)) return;
   var ae = typeof _ae !== 'undefined' ? _ae : null;
   if (ae && ae.sats) { _skyKick(); return; }
   if (ae && ae.satsFailed) return;
@@ -3082,8 +3083,7 @@ function _skyCaption(s) {
   var where = [_almEsc(sunAlt), _almEsc(facing)];
   if (s.stored) where.push(_almEsc(s.name || _skyCoords(s.lat, s.lon)));
   var html = '<span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub">' + where.join(' · ') + '</span>' +
-    (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '') +
-    (s.sunLine ? '<span class="alm-sky-sub alm-sky-sun">' + _almEsc(s.sunLine) + '</span>' : '');
+    (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.
   var inv = document.getElementById('almanac-sky-invite');

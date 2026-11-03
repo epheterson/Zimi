@@ -217,6 +217,48 @@ def test_a_planet_is_named_and_found_in_the_solar_system(browser, served):
         ctx.close()
 
 
+SECBAR_STATE = """() => { const b = document.getElementById('alm-secbar'), c = b.querySelector('.pill.active');
+  return { hidden: b.hidden, active: c && c.dataset.sec, cur: _almSecBar.cur }; }"""
+# A scroll position past the first section where no section crosses the line under the bar: between two sections.
+GAP_SCROLL = """() => { const root = document.getElementById('almanac-content'), line = ALM_SECBAR_LINE;
+  for (let y = 900; y < root.scrollHeight - root.clientHeight; y += 20) {
+    root.scrollTop = y;
+    const top = root.getBoundingClientRect().top + line;
+    const across = _almSecBar.sections.some(s => s.els.some(e => { const r = e.getBoundingClientRect(); return r.top <= top && r.bottom > top; }));
+    const past = _almSecBar.sections.some(s => s.key !== ALM_SECBAR_HERO && s.els.some(e => e.getBoundingClientRect().top <= top));
+    if (!across && past) return y;
+  }
+  return -1; }"""
+
+
+def test_the_section_bar_is_there_when_a_jump_lands(browser, served):
+    """Eric: from the live sky, a planet's link to the solar system took the page there and the bar of sections was
+    not shown until he scrolled: no section stood across the line under the bar where it landed (a gap between two),
+    so none was named and the bar stayed the hero's. Where a jump lands, the section that has begun above the line is
+    the current one, there and then."""
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        _settle(pg, NIGHT)
+        pg.evaluate("() => { document.getElementById('almanac-content').scrollTop = 0; }")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate(SECBAR_STATE)["hidden"] is True
+        y = pg.evaluate(GAP_SCROLL)
+        assert y > 0, "the page has a place between two sections"
+        pg.wait_for_timeout(400)
+        got = pg.evaluate(SECBAR_STATE)
+        assert got["hidden"] is False and got["active"] and got["active"] != "today", (y, got)
+        # And the flight itself: the sky's planet, its link, the bar named at once.
+        pg.evaluate("() => { document.getElementById('almanac-content').scrollTop = 0; }")
+        pg.wait_for_timeout(300)
+        pg.evaluate("() => _orreryShowBody('Saturn')")
+        pg.wait_for_timeout(400)
+        got = pg.evaluate(SECBAR_STATE)
+        assert got["hidden"] is False and got["active"] == "solar", got
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
@@ -539,6 +581,30 @@ def test_the_iss_is_drawn_when_it_is_overhead_and_lit(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
+def test_the_iss_needs_no_3d_view_and_no_beach(browser, served):
+    """The live sky asks for the satellite elements itself, on the true horizon as on the beach, without the 3D view
+    being opened (or anything calling the watch): its pass is drawn when it is overhead and lit."""
+    ctx, pg, errors = _almanac(browser, served, horizon=True)
+    try:
+        assert pg.evaluate("_skySetting('skin')") == "horizon"
+        pg.wait_for_function(
+            "() => typeof _ae !== 'undefined' && !!_ae && !!_ae.sats && !_aeIsOpen",
+            polling=500,
+            timeout=90000,
+        )
+        iss_pass = pg.evaluate(ISS_PASS_SCAN)
+        assert iss_pass, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
+        _settle(pg, iss_pass)
+        pg.wait_for_function(
+            "() => _skyState.bodies.some((b) => b.type === 'iss')",
+            polling=POLL_MS,
+            timeout=30000,
+        )
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_the_aurora_where_it_is_seen(browser, served):
     ctx, pg, errors = _almanac(browser, served, place=TROMSO)
     try:
