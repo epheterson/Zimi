@@ -4386,6 +4386,7 @@
  "pz.save": "Download save file…",
  "pz.score": "Score: {n}",
  "pz.selected": "Selected: {a} ({b})",
+ "pz.shape": "Grid shape",
  "pz.solutionShown": "Solution shown",
  "pz.solveGo": "Show solution",
  "pz.solveText": "This game will not count as a win.",

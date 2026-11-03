@@ -4455,6 +4455,7 @@
  "pz.save": "Descargar archivo guardado…",
  "pz.score": "Puntos: {n}",
  "pz.selected": "Seleccionados: {a} ({b})",
+ "pz.shape": "Forma de la cuadrícula",
  "pz.solutionShown": "Solución mostrada",
  "pz.solveGo": "Mostrar solución",
  "pz.solveText": "Esta partida no contará como victoria.",

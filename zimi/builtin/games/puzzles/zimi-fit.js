@@ -316,23 +316,110 @@
     var t = l ? l.textContent.replace(/\s+/g, " ").trim() : "";
     return t && t !== "Custom..." ? t : null;
   }
-  function typeRows(list, into) {
+  // Every type the puzzle lists, in order: its radio's value and its English name ("More..." holds the rest in a list of its own).
+  function typeEntries(list, out) {
     Array.prototype.forEach.call(list.children, function (li) {
-      var label = li.firstElementChild, sub = li.querySelector(":scope > div > ul, :scope > label > ul, :scope > ul");   // "More..." is a div holding the rest
+      var label = li.firstElementChild, sub = li.querySelector(":scope > div > ul, :scope > label > ul, :scope > ul");
       var radio = li.querySelector(":scope > label > input.tick");
-      var text = label ? typeLabel(label.textContent.replace(/\s+/g, " ").trim()) : "";
-      if (radio) {
-        var row = el("button", "ar-btn pz-opt", text);
-        row.type = "button";
-        row.setAttribute("aria-pressed", String((staged || currentPreset()) === radio.value));
-        row.addEventListener("click", function () {
-          staged = radio.value;
-          Array.prototype.forEach.call(into.querySelectorAll(".pz-opt[data-type]"), function (r) { r.setAttribute("aria-pressed", String(r === row)); });
-        });
-        row.setAttribute("data-type", radio.value);
-        into.appendChild(row);
-      } else if (sub) typeRows(sub, into);     // the rest of the types follow in the same list
+      if (radio) out.push({ value: radio.value, name: label ? label.textContent.replace(/\s+/g, " ").trim() : "" });
+      else if (sub) typeEntries(sub, out);
     });
+    return out;
+  }
+  function typeButton(entry, into) {
+    var row = el("button", "ar-btn pz-opt", typeLabel(entry.name));
+    row.type = "button";
+    row.setAttribute("aria-pressed", String((staged || currentPreset()) === entry.value));
+    row.addEventListener("click", function () {
+      staged = entry.value;
+      Array.prototype.forEach.call(into.querySelectorAll(".pz-opt[data-type]"), function (r) { r.setAttribute("aria-pressed", String(r === row)); });
+    });
+    row.setAttribute("data-type", entry.value);
+    into.appendChild(row);
+    return row;
+  }
+  // A puzzle whose types are a grid shape, a size and a difficulty (Loopy has 23, Mines 40) is asked as those, a short choice each.
+  // A spec reads a type's name as its parts, in the order they are asked, and names what each part is (a string id and its English).
+  var SIZE_HEAD = ["pz.d.size", "Size"], LEVEL_HEAD = ["pz.d.difficulty", "Difficulty"], FACET_MIN = 9, SELECT_MIN = 7;
+  var SOLO_LEVEL = /^(.+?) (Trivial|Basic|Intermediate|Advanced|Extreme|Unreasonable|Killer)( X)?$/;
+  var FACETS = {
+    loopy: { heads: [["pz.shape", "Grid shape"], SIZE_HEAD, LEVEL_HEAD], parse: function (n) { var m = /^(\S+) (.+?) - (\S+)$/.exec(n); return m && [m[2], m[1], m[3]]; } },
+    mines: { heads: [["pz.shape", "Grid shape"], SIZE_HEAD, ["mines.mines", "Mines"]], parse: function (n) { var m = /^(\d+x\d+), (\d+%? mines), (.+)$/.exec(n); return m && [m[3], m[1], m[2]]; } },
+    dominosa: { heads: [SIZE_HEAD, LEVEL_HEAD], parse: function (n) { var m = /^(Order \d+), (.+)$/.exec(n); return m && [m[1], m[2]]; } },
+    unequal: { heads: [["pz.type", "Type"], SIZE_HEAD, LEVEL_HEAD], parse: function (n) { var m = /^(Unequal|Adjacent): (\d+x\d+) (.+)$/.exec(n); return m && [m[1], m[2], m[3]]; } },
+    solo: { heads: [SIZE_HEAD, LEVEL_HEAD], parse: function (n) { var m = SOLO_LEVEL.exec(n); return m && [m[1], m[2] + (m[3] || "")]; } }
+  };
+  var SIZE_AND_LEVEL = { heads: [SIZE_HEAD, LEVEL_HEAD], parse: function (n) { var m = /^(\d+ ?x ?\d+),? (.+)$/.exec(n); return m && [m[1], m[2]]; } };
+  // The facets for these types, or null: the puzzle has too few types to need them, or one of them does not read as the parts.
+  function facetsFor(entries) {
+    var spec = FACETS[NAME] || SIZE_AND_LEVEL, rows = entries.filter(function (e) { return e.name !== "Custom..."; });
+    if (rows.length < FACET_MIN) return null;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].parts = spec.parse(rows[i].name);
+      if (!rows[i].parts) return null;
+    }
+    return { heads: spec.heads, rows: rows };
+  }
+  function typeFacetRows(facets, entries, into) {
+    var rows = facets.rows, heads = facets.heads, custom = entries.filter(function (e) { return e.name === "Custom..."; })[0];
+    var current = staged || currentPreset(), onCustom = !!custom && custom.value === current, boxes = [];
+    var chosen = (rows.filter(function (r) { return r.value === current; })[0] || rows[0]).parts.slice();
+    function matching(i) { return rows.filter(function (r) { return chosen.slice(0, i).every(function (p, k) { return r.parts[k] === p; }); }); }
+    function options(i) {
+      return matching(i).reduce(function (all, r) { if (all.indexOf(r.parts[i]) < 0) all.push(r.parts[i]); return all; }, []);
+    }
+    function pick(i, value) {
+      chosen[i] = value;
+      for (var j = i + 1; j < heads.length; j++) { var opts = options(j); if (opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0]; }
+      staged = matching(heads.length)[0].value;
+      onCustom = false;
+      render();
+    }
+    function render() {
+      boxes.forEach(function (box, i) {
+        var opts = options(i);
+        box.group.hidden = opts.length < 2;
+        if (box.select) { box.select.value = onCustom ? "" : chosen[i]; return; }
+        box.chips.textContent = "";
+        opts.forEach(function (value) {
+          var b = el("button", "ar-btn pz-opt", typeLabel(value));
+          b.type = "button";
+          b.setAttribute("aria-pressed", String(!onCustom && value === chosen[i]));
+          b.addEventListener("click", function () { pick(i, value); });
+          box.chips.appendChild(b);
+        });
+      });
+      if (custom) into.querySelector(".pz-opt[data-type]").setAttribute("aria-pressed", String(onCustom));
+    }
+    heads.forEach(function (h, i) {
+      var group = el("div", "pz-facet"), box = { group: group };
+      group.appendChild(word(el("h4", "pz-opt-head"), h[0], h[1]));
+      var opts = options(i);
+      if (i === 0 && opts.length >= SELECT_MIN) {
+        box.select = el("select", "pz-select");
+        word(box.select, h[0], h[1], "aria-label");
+        box.select.appendChild(el("option", "", "")).value = "";
+        box.select.firstChild.hidden = true;
+        opts.forEach(function (value) { var o = el("option", "", typeLabel(value)); o.value = value; box.select.appendChild(o); });
+        box.select.addEventListener("change", function () { pick(i, box.select.value); });
+        group.appendChild(box.select);
+      } else {
+        box.chips = el("div", "pz-chips");
+        group.appendChild(box.chips);
+      }
+      boxes.push(box);
+      into.appendChild(group);
+    });
+    if (custom) {
+      var row = typeButton(custom, into);
+      row.addEventListener("click", function () { onCustom = true; render(); });
+    }
+    render();
+  }
+  function typeRows(entries, into) {
+    var facets = facetsFor(entries);
+    if (facets) typeFacetRows(facets, entries, into);
+    else entries.forEach(function (e) { typeButton(e, into); });
   }
   // A game's id and seed, and saving to a file, are for people who share or reproduce a game: behind one fold.
   function advancedRows() {
@@ -362,7 +449,7 @@
       box.setAttribute("role", "group");
       word(box, "pz.type", "Type", "aria-label");
       box.appendChild(word(el("h3", "pz-opt-head"), "pz.type", "Type"));
-      typeRows(types, box);
+      typeRows(typeEntries(types, []), box);
       nodes.push(box);
     }
     var fold = advancedRows();

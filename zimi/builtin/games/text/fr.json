@@ -4455,6 +4455,7 @@
  "pz.save": "Télécharger le fichier de sauvegarde…",
  "pz.score": "Score : {n}",
  "pz.selected": "Sélection : {a} ({b})",
+ "pz.shape": "Forme de la grille",
  "pz.solutionShown": "Solution affichée",
  "pz.solveGo": "Afficher la solution",
  "pz.solveText": "Cette partie ne comptera pas comme une victoire.",
