@@ -1,0 +1,30 @@
+# Zimi as a system service on Linux (a Raspberry Pi, a school server) after `pip install zimi`.
+#
+#   sudo useradd --system --create-home --home-dir /var/lib/zimi zimi
+#   sudo -u zimi python3 -m venv /var/lib/zimi/venv
+#   sudo -u zimi /var/lib/zimi/venv/bin/pip install zimi
+#   sudo cp zimi.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zimi
+#
+# Logs: journalctl -u zimi -f    Stop: sudo systemctl stop zimi
+# Put ZIM files in /var/lib/zimi/zims (or point ZIM_DIR elsewhere the zimi user can read).
+
+[Unit]
+Description=Zimi offline knowledge server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=zimi
+Group=zimi
+Environment=ZIM_DIR=/var/lib/zimi/zims
+Environment=ZIMI_DATA_DIR=/var/lib/zimi/data
+ExecStart=/var/lib/zimi/venv/bin/zimi serve --port 8899
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

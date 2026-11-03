@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Janggi: choose how the horses and elephants line up (the four standard arrangements, or random for each side).
 - A ZIM can be left out of auto-update from its card menu (#34); a person's Update still works on it.
 - About this ZIM: tapping the icon opens it full size.
+- A systemd unit runs Zimi as a service at boot after a pip install (deploy/systemd/zimi.service, #137).
 - Five Letters: tap the solved word to open its definition, when a Wiktionary (the Dictionary) is installed.
 
 ### Changed
