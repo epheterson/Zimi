@@ -1082,9 +1082,9 @@ function _ttsBarHtml() {
   };
   var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
   var lost = !!(_ttsRead && !_ttsRead.following); // the page was moved off the sentence
-  // The mark's slot is always there, the same size: the bars (still while paused), a turning arc while it gets ready, a chevron toward the sentence once the page was moved.
-  var h = '<span class="tts-bar-state' + (lost ? ' lost' : ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
-    ' aria-hidden="true">' + (lost ? (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) : '<i></i><i></i><i></i>') + '</span>';
+  // The mark's slot is always there, the same size: the bars (still while paused), a turning arc while it gets ready, a chevron toward the sentence once the page was moved (never over the arc: waiting shows the arc alone).
+  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : lost ? ' lost' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    ' aria-hidden="true">' + (lost && !waiting ? (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) : '<i></i><i></i><i></i>') + '</span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
