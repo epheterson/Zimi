@@ -112,6 +112,18 @@ def _arrow_fits(pg):
     )
 
 
+# The Almanac draws a new day's later sections (events, the sky's cards)
+# after the day changes, replacing their links: a link picked before that
+# is gone by the time it is scrolled to. Quiet means no change for this long.
+QUIET_MS = 800
+QUIET = """(ms) => new Promise(done => {
+  const box = document.getElementById('almanac-content');
+  let timer = setTimeout(done, ms);
+  new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(done, ms); })
+    .observe(box, { childList: true, subtree: true });
+})"""
+
+
 @pytest.mark.parametrize("lang,phone", [("en", False), ("he", True)])
 def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phone):
     from playwright.sync_api import sync_playwright
@@ -127,6 +139,7 @@ def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phon
         pg.evaluate("() => _almSelectDay(_almTodayJDN - 40)")
         focus = pg.evaluate("() => _almFocus && _almFocus.getTime()")
         assert focus
+        pg.evaluate(QUIET, QUIET_MS)
         link = pg.locator("#almanac-view .alm-link:visible").last
         link.scroll_into_view_if_needed()
         # The place is where the page was when the link was tapped. Read
