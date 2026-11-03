@@ -297,15 +297,20 @@ def test_tapping_saved_keeps_the_toggle_under_the_finger(browser, served):
             "() => document.querySelectorAll('#almanac-tz-pills .alm-tz-city-card').length > 5",
             timeout=60_000,
         )
+        # The late sections above (the head, the sky's line) have arrived, so the one scroll left to move the page is
+        # the tap's own; and a finger lands where the button is, as Playwright's tap would not (it scrolls the
+        # element into view again when the page moved under its check, and that scroll is not the page's).
+        pg.wait_for_function("() => !_almLateArriving()", timeout=60_000)
         pg.evaluate(
             "() => document.getElementById('almanac-tz-view').scrollIntoView({ behavior: 'instant', block: 'center' })"
         )
         pg.wait_for_timeout(800)
-        top = lambda: pg.evaluate(
-            "() => document.querySelector('#almanac-tz-view .alm-scope-btn:nth-child(2)').getBoundingClientRect().top"
+        rect = lambda: pg.evaluate(
+            "() => { const r = document.querySelector('#almanac-tz-view .alm-scope-btn:nth-child(2)').getBoundingClientRect(); return [r.left + r.width / 2, r.top, r.top + r.height / 2]; }"
         )
-        before = top()
-        pg.tap("#almanac-tz-view .alm-scope-btn:nth-child(2)")
+        top = lambda: rect()[1]
+        x, before, y = rect()
+        pg.touchscreen.tap(x, y)
         pg.wait_for_function(
             "() => !!document.querySelector('.alm-tz-hint')", timeout=10_000
         )
