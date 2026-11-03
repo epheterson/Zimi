@@ -115,8 +115,7 @@ LATE = (
     '<!doctype html><html><head><meta charset="utf-8"><title>Late</title><script src="shell.js"></script></head>'
     "<body><script>throw new Error('a helper threw while the puzzle was still loading');</script>"
     "<script>setTimeout(function () { var c = document.createElement('canvas'); c.width = 300; c.height = 300;"
-    " document.body.appendChild(c);"
-    " for (var i = 0; i < 3; i++) { var b = document.createElement('button'); b.textContent = 'x' + i; document.body.appendChild(b); } }, 4000);"
+    " document.body.appendChild(c); }, 4000);"
     "</script></body></html>"
 )
 
@@ -142,6 +141,23 @@ def test_a_game_that_draws_after_the_banner_takes_it_down(site, browser):
     # Both moments reach Zimi's log, with the error that raised the banner.
     assert [m["outcome"].split(" ")[0] for m in told] == ["banner", "drew"], told
     assert "puzzle was still loading" in told[0]["why"], told
+    page.close()
+
+
+def test_a_script_from_another_site_that_fails_raises_no_banner_on_a_puzzle(site, browser):
+    # Eric's Loopy over the internet, from Zimi's own log: "script did not load: https://static.cloudflareinsights.com/
+    # beacon.min.js". Cloudflare adds that script to pages it serves; a blocker or the network dropped it, and the
+    # puzzle's board (one canvas, nothing else) read as nothing drawn, so the banner stayed up over a working game.
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.route("https://static.cloudflareinsights.com/**", lambda r: r.abort())
+    page.add_init_script(
+        "addEventListener('DOMContentLoaded', function () { var s = document.createElement('script');"
+        " s.src = 'https://static.cloudflareinsights.com/beacon.min.js/v1'; document.body.appendChild(s); });"
+    )
+    page.goto(site + "puzzles/loopy.html")
+    page.wait_for_timeout(GRACE_WAIT_MS)
+    assert page.locator("canvas").count() >= 1
+    assert _banner(page) == 0
     page.close()
 
 

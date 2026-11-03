@@ -110,7 +110,7 @@
   }
   // A thrown error only counts when the game then has nothing on screen: an error from a later corner of a game
   // that did start (a ResizeObserver loop note, a late listener) must not cover a working table with an alarm.
-  var NOTHING_DRAWN_MIN = 3;
+  var NOTHING_DRAWN_MIN = 3, BOARD_MIN_PX = 120;
   var LATE_DRAW_EVERY_MS = 1000, LATE_DRAW_LOOKS = 60;   // a minute of looking for a game that drew late
   function nothingDrawn() {
     // A game that put up its own sheet (a setup, a start, a menu) ran far enough to draw it: that is a start
@@ -123,10 +123,13 @@
       if (el.closest && el.closest('.ar-bar, .gs-sheet, .ar-sheet, .gs-start-alert, script, style')) continue;
       if (!/^(CANVAS|SVG|svg|BUTTON|IMG)$/.test(el.tagName) && !(el.childNodes.length === 1 && el.firstChild.nodeType === 3 && el.textContent.trim())) continue;
       var r = el.getBoundingClientRect();
+      // A puzzle is one canvas and nothing else: a board that size is a game on screen by itself.
+      if (el.tagName === 'CANVAS' && r.width >= BOARD_MIN_PX && r.height >= BOARD_MIN_PX) return false;
       if (r.width > 4 && r.height > 4) n++;
     }
     return n < NOTHING_DRAWN_MIN;
   }
+  function sameSite(src) { try { return new URL(src, root.location.href).origin === root.location.origin; } catch (x) { return true; } }
   function threwWhileStarting(e) {
     if (e && /ResizeObserver loop/.test(e.message || '')) return;
     root.setTimeout(function () { if (nothingDrawn()) failedToStart(true); }, START_GRACE_MS);
@@ -134,6 +137,8 @@
   root.addEventListener('error', function (e) {
     var t = e && e.target;
     if (t && t !== root && t.tagName !== 'SCRIPT') return;   // an image or a sound that did not load is not a start
+    // Nor is another site's script: Cloudflare adds its analytics beacon to pages it serves, and a blocker drops it.
+    if (t && t.tagName === 'SCRIPT' && t.src && !sameSite(t.src)) return;
     // Either way the banner waits and asks the page: a helper that failed to load or a stray throw can leave a game
     // that plays fine, and only a page with nothing of the game on it is a failure to start. The cause is kept for a report.
     var why = t && t !== root && t.tagName === 'SCRIPT' ? 'script did not load: ' + (t.src || '') : (e && (e.message || e.reason)) || 'error';
