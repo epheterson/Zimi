@@ -93,3 +93,48 @@ def test_almanac_reloads_only_when_nothing_would_be_lost(served):
         field = "() => { var i = document.createElement('input'); i.value = 'Tokyo'; document.body.appendChild(i); i.focus(); }"
         assert not _reloads(pg, field), "a field with text being typed in: it waits"
         br.close()
+
+
+def test_fresh_load_asks_for_the_build_and_reloads_once(served):
+    """Loaded with an older build than the server's: reloaded before anyone engages, once."""
+    import json
+
+    from playwright.sync_api import sync_playwright
+
+    pages = []
+    with sync_playwright() as p:
+        br = p.chromium.launch()
+        ctx = br.new_context(service_workers="block", **p.devices["iPhone 13"])
+        pg = ctx.new_page()
+
+        def newer(route):
+            route.fetch()
+            real = route.fetch().json()
+            real["asset_version"] = NEW_BUILD
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(real))
+
+        pg.route("**/health", newer)
+        pg.on("request", lambda r: pages.append(r.url) if r.resource_type == "document" and r.frame.parent_frame is None else None)
+        pg.goto(served + "/")
+        pg.wait_for_timeout(4000)
+        br.close()
+    assert len(pages) == 2, pages  # the load, and the one reload; never a loop
+
+
+def test_fresh_article_waits_when_read_aloud_or_scrolled(served):
+    """The fresh-load reload never lands under a reading aloud or a scrolled article."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        br = p.chromium.launch()
+        for setup in (
+            "() => { _ttsSpeaking = true; }",
+            "() => { var w = document.getElementById('reader-frame').contentWindow; w.document.body.style.minHeight = '4000px'; w.scrollTo(0, 300); }",
+        ):
+            ctx = br.new_context(service_workers="block", **p.devices["iPhone 13"])
+            pg = ctx.new_page()
+            pg.goto(served + "/")
+            pg.wait_for_function("() => typeof readerOpen !== 'undefined' && readerOpen && typeof _BUILD === 'string' && _BUILD", timeout=20000)
+            pg.wait_for_timeout(800)
+            assert not _reloads(pg, setup), setup
+        br.close()

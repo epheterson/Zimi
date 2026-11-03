@@ -24,7 +24,7 @@ const tick = () => new Promise(r => setImmediate(r));
 function page(opts) {
   const session = {}, listeners = {}, reloads = [], polls = [];
   const sb = {
-    Promise, JSON, Array, _buildTouched: !!opts.touched, setTimeout: () => 0, _BUILD_QUIET_POLL_MS: 3000,
+    Promise, JSON, Array, _GAMES_ZIM: 'zimi_games', readerSource: '', _articleScroller: () => null, _buildTouched: !!opts.touched, setTimeout: () => 0, _BUILD_QUIET_POLL_MS: 3000,
     setInterval: f => { polls.push(f); return polls.length; }, clearInterval: n => { polls[n - 1] = null; },
     _BUILD: 'zimi-v1-old', _buildWaiting: '', _UPDATE_TRIED_KEY: 'zimi_update_tried', _UPDATE_RESUME_KEY: 'zimi_update_resume',
     _BUILD_SW_WAIT_MS: 15000,
@@ -41,7 +41,7 @@ function page(opts) {
     mode: opts.mode || 'home', readerOpen: !!opts.readerOpen, _almanacOpen: !!opts.almanac, _createOpen: false, _ttsSpeaking: !!opts.speaking,
   };
   vm.createContext(sb);
-  vm.runInContext(['_buildHeard', '_buildWorker', '_buildReload', '_buildSafe', '_buildQuiet', '_almanacScrolled', '_updateResumeKeep'].map(fn).join('\n'), sb);
+  vm.runInContext(['_buildHeard', '_buildWorker', '_buildReload', '_buildSafe', '_buildQuiet', '_almanacScrolled', '_buildFreshArticle', '_updateResumeKeep'].map(fn).join('\n'), sb);
   return { sb, session, listeners, reloads, poll() { polls.forEach(f => f && f()); }, hide() { sb.document.hidden = true; (listeners.visibilitychange || []).forEach(f => f()); } };
 }
 
@@ -134,6 +134,7 @@ function page(opts) {
   p.sb.document.activeElement = { tagName: 'INPUT', value: '' };
   check(p.sb._buildQuiet() === true, '...an empty, focused box is not');
 
+  check(/function _buildCheck\(\)[\s\S]{0,400}asset_version\) _buildHeard/.test(src) && /_liveOpen\(\);\n    _buildCheck\(\);/.test(src) && /_liveOpen\(\);\n  _buildCheck\(\);/.test(src), 'the build is asked for on load and on coming back, not only heard in the stream');
   check(/addEventListener\('tick'[\s\S]{0,300}_buildHeard\(d\.build\)/.test(src), 'every tick of /events is read for the build');
   check(/addEventListener\('visibilitychange', function \(\) \{ if \(!document\.hidden\) _buildTouched = false/.test(src), 'shown again, a window counts as untouched');
   check(/__ZIMI_CONFIG\.build/.test(src), 'the page knows the build it is');

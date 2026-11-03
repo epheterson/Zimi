@@ -20327,6 +20327,7 @@ function _savedStart() {
     // change made meanwhile on another device arrives as it reopens.
     if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
     _liveOpen();
+    _buildCheck();
   });
   window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); });
   // A setting written in another page of this browser (another tab, an app
@@ -20351,6 +20352,7 @@ function _savedStart() {
   // article that asks what is kept does not wait on reading it.
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   _liveOpen();
+  _buildCheck();
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
@@ -20477,6 +20479,15 @@ function _buildHeard(build) {
   _buildWaiting = build;
   _buildWorker().then(_buildReload);
 }
+// Asked outright, on load and on coming back to the front (Eric, 2026-11-02:
+// "Fresh load is not a busy time, it's the ideal time to pull latest"): the
+// stream's first tick says it too, but it may not open (blocked, offline at
+// first) and a reload then is before the person has engaged with anything.
+function _buildCheck() {
+  if (!_BUILD || _buildWaiting || typeof fetch !== 'function') return;
+  fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); }).catch(function () {});
+}
 // The new build's worker in charge (its cache is the new page), or a moment's wait for it.
 function _buildWorker() {
   var sw = navigator.serviceWorker;
@@ -20531,11 +20542,23 @@ function _buildSafe() {
   // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
   return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
 }
+// An article just opened or come back to, not touched since and still at its
+// top (a touch inside the frame never reaches this page, a scroll shows it):
+// nothing is lost by the reload. Not a game or an
+// app page, whose state a reload would lose, nor one playing media.
+function _buildFreshArticle() {
+  if (!readerOpen || _buildTouched || readerSource === _GAMES_ZIM) return false;
+  try {
+    var w = document.getElementById('reader-frame').contentWindow;
+    var box = _articleScroller(w);
+    return /^\/w\//.test(w.location.pathname) && !w.scrollY && !(box && box.scrollTop) && !Array.prototype.some.call(w.document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+  } catch (e) { return false; }
+}
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
 // the same one again), the Almanac at its top and not yet used since it was shown, no field being typed in, no reading aloud, no media
 // playing, nothing open over it.
 function _buildQuiet() {
-  if ((mode !== 'home' && mode !== 'source') || readerOpen || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen || _ttsSpeaking) return false;
+  if ((mode !== 'home' && mode !== 'source') || (readerOpen && !_buildFreshArticle()) || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen || _ttsSpeaking) return false;
   var el = document.activeElement;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return false;
   return !Array.prototype.some.call(document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
