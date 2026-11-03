@@ -20477,6 +20477,7 @@ function _buildHeard(build) {
   if (!_BUILD || build === _BUILD || _buildWaiting) return;
   try { if (sessionStorage.getItem(_UPDATE_TRIED_KEY) === build) return; } catch (e) {}
   _buildWaiting = build;
+  _buildFreshHeard = _buildFresh(); // heard in the first moments: the worker's wait does not make it late
   _buildWorker().then(_buildReload);
 }
 // Asked outright, on load and on coming back to the front (Eric, 2026-11-02:
@@ -20536,32 +20537,38 @@ function _almanacScrolled() {
 ['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function (type) {
   document.addEventListener(type, function () { _buildTouched = true; }, { capture: true, passive: true });
 });
-document.addEventListener('visibilitychange', function () { if (!document.hidden) _buildTouched = false; });
+document.addEventListener('visibilitychange', function () { if (!document.hidden) _buildShown(); });
+window.addEventListener('pageshow', function () { _buildShown(); _buildCheck(); });
 // Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
 function _buildSafe() {
   // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
-  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
+  return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking) || (_buildFreshHeard && !_buildTouched && !_buildInHand());
 }
-// An article just opened or come back to, not touched since and still at its
-// top (a touch inside the frame never reaches this page, a scroll shows it):
-// nothing is lost by the reload. Not a game or an
-// app page, whose state a reload would lose, nor one playing media.
-function _buildFreshArticle() {
-  if (!readerOpen || _buildTouched || readerSource === _GAMES_ZIM) return false;
-  try {
-    var w = document.getElementById('reader-frame').contentWindow;
-    var box = _articleScroller(w);
-    return /^\/w\//.test(w.location.pathname) && !w.scrollY && !(box && box.scrollTop) && !Array.prototype.some.call(w.document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
-  } catch (e) { return false; }
+// The first moments of a load or a return to the front, before any input:
+// the ideal time to pull the latest (Eric, 2026-11-02: "Fresh load is not a
+// busy time"). Heard then, the reload goes ahead whatever view is up, unless
+// something is in hand. A touch inside the reader's frame never reaches this
+// page, hence the short window rather than "until touched".
+var _BUILD_FRESH_MS = 10000;
+var _buildShownAt = Date.now(), _buildFreshHeard = false;
+function _buildFresh() { return !_buildTouched && Date.now() - _buildShownAt < _BUILD_FRESH_MS; }
+function _buildShown() { _buildTouched = false; _buildShownAt = Date.now(); }
+// Something in hand: a reading aloud, a field with text, media playing (here or in the reader's frame).
+function _buildInHand() {
+  if (_ttsSpeaking) return true;
+  var docs = [document];
+  try { var f = document.getElementById('reader-frame'); if (readerOpen && f && f.contentDocument) docs.push(f.contentDocument); } catch (e) {}
+  return docs.some(function (d) {
+    var el = d.activeElement;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return true;
+    return Array.prototype.some.call(d.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+  });
 }
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
-// the same one again), the Almanac at its top and not yet used since it was shown, no field being typed in, no reading aloud, no media
-// playing, nothing open over it.
+// the same one again), the Almanac at its top and not yet used since it was shown, nothing open over it.
 function _buildQuiet() {
-  if ((mode !== 'home' && mode !== 'source') || (readerOpen && !_buildFreshArticle()) || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen || _ttsSpeaking) return false;
-  var el = document.activeElement;
-  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return false;
-  return !Array.prototype.some.call(document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
+  if ((mode !== 'home' && mode !== 'source') || readerOpen || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen) return false;
+  return !_buildInHand();
 }
 // The nearest ancestor that scrolls by itself, or null (the page scrolls).
 // The body counts only when it scrolls itself: with the root's overflow left
