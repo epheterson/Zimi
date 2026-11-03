@@ -621,12 +621,10 @@ function _almHeadHtml(focus) {
   var _nfm = _nextFullMoon(focus);
 
   html += '<div class="alm-cards">';
-  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum',
-    { cardId: 'alm-hc-illum-card', sub: _almMoonNowSub(m), subId: 'alm-hc-illum-sub' });
+  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
-    { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '',
-      sub: _almNextNewSub(focus, lang), subId: 'alm-hc-nextfull-sub' });
-  // The sky's four cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
+    { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
+  // The sky's Moon card and its three Sun cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
   html += '<div id="almanac-sky-facts" class="alm-sky-facts"></div>';
   html += '</div>';
   return html;
@@ -635,26 +633,15 @@ function _almHeadHtml(focus) {
 // One card in the hero readout grid. Every value node carries an id so the
 // per-frame travel updater can rewrite it in place instead of the whole grid.
 // opts: cardId (id on the card, for hiding it), hidden, valClass (colour
-// variant), sub + subId (the small line under the value).
+// variant). Every tile is a label and one value, no tile taller than another.
 function _almHeadCard(lbl, valHtml, valId, opts) {
   opts = opts || {};
   return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
     (opts.hidden ? ' hidden' : '') + '>' +
     (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
     '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
-    valHtml + '</div>' +
-    (opts.subId ? '<div class="alm-card-sub" id="' + opts.subId + '">' + (opts.sub || '') + '</div>' : '') + '</div>';
+    valHtml + '</div></div>';
 }
-// The Moon card's third line: how old it is, in whole days.
-function _almMoonNowSub(m) {
-  return _almEsc(t('alm_sky_f_age', { d: Math.round(m.phase * 29.53) }));
-}
-// The next full Moon card's third line: the new Moon after the focus.
-function _almNextNewSub(focus, lang) {
-  var nm = _nextNewMoon(focus);
-  return nm ? _almEsc(t('alm_sky_f_next_new', { d: nm.toLocaleDateString(lang, { month: 'short', day: 'numeric' }) })) : '';
-}
-
 // Value markup for the next-full-moon card, shared by the full render and the
 // throttled travel refresh so the two can never disagree on format. The year
 // shows only when the full moon falls outside the focused year: a bare "Aug 27"
@@ -664,8 +651,7 @@ function _almNextFullHtml(nfm, lang, focus) {
   if (!nfm) return '';
   var opts = { month: 'short', day: 'numeric' };
   if (nfm.date.getFullYear() !== focus.getFullYear()) opts.year = 'numeric';
-  return nfm.date.toLocaleDateString(lang, opts) +
-    (nfm.isSuper ? ' \u00b7 ' + _lterm('supermoon', t('alm_supermoon')) : '');
+  return nfm.date.toLocaleDateString(lang, opts);
 }
 
 // Render one panel resiliently. Travel now reaches arbitrary epochs, where a
@@ -1039,8 +1025,6 @@ function _almLiveNextFull(focus) {
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   val.innerHTML = _almNextFullHtml(nfm, lang, focus);
   val.classList.toggle('alm-card-super', !!nfm.isSuper);
-  var sub = document.getElementById('alm-hc-nextfull-sub');
-  if (sub) sub.innerHTML = _almNextNewSub(focus, lang);
 }
 
 // Update the moon/sun readout cards in place (text nodes and `hidden` flags, no
@@ -1060,8 +1044,6 @@ function _almLiveHeadCards(focus) {
   try { m = _moonPhase(focus); } catch (e) { return; }
   set('alm-hc-illum', m.illumination + '%');
   set('alm-hc-phase', _localMoonName(m.name));
-  var sub = document.getElementById('alm-hc-illum-sub');
-  try { if (sub) sub.innerHTML = _almMoonNowSub(m); } catch (e) {}
   _almLiveNextFull(focus);
 }
 
@@ -1798,7 +1780,7 @@ var ALM_SECTIONS = [
   ['tables', ['#alm-group-tables'], 'alm_group_tables']
 ];
 var ALM_SECBAR_CHEVRON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
-var _almSecBar = null;   // { io, ro, sections: [{key, name, els}], seen: Map(el -> bool), cur }
+var _almSecBar = null;   // { io, ro, sections: [{key, name, els}], cur }
 
 function _almSecBarHostHtml() { return '<div class="alm-secbar-host" id="alm-secbar-host"></div>'; }
 function _almSecBarScroller() { return document.getElementById('almanac-content'); }
@@ -1846,13 +1828,10 @@ function _almSecBarInit() {
   if (!host || !root || !('IntersectionObserver' in window)) return;
   var sections = _almSecBarFind();
   host.innerHTML = _almSecBarMarkup(sections);
-  var st = _almSecBar = { io: null, ro: null, sections: sections, seen: new Map(), cur: keep || ALM_SECBAR_HERO, h: root.clientHeight };
-  // One line, a pixel high, under the bar: the section across it is current.
+  var st = _almSecBar = { io: null, ro: null, sections: sections, cur: keep || ALM_SECBAR_HERO, h: root.clientHeight };
+  // One line, a pixel high, under the bar: crossing it wakes the sync, which names the section.
   var line = ALM_SECBAR_LINE, rest = Math.max(0, root.clientHeight - line - 1);
-  st.io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) { st.seen.set(e.target, e.isIntersecting); });
-    _almSecBarSync();
-  }, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
+  st.io = new IntersectionObserver(_almSecBarSync, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
   sections.forEach(function (s) { s.els.forEach(function (e) { st.io.observe(e); }); });
   // A late section (the tide) or an empty one filling in changes the set. The
   // observer already runs once per laid-out frame, so it asks for none: a
@@ -1877,13 +1856,15 @@ function _almSecBarInit() {
   _almSecBarPaint();
 }
 function _almSecBarSync() {
-  var st = _almSecBar;
-  if (!st || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
-  var cur = null;
+  var st = _almSecBar, root = _almSecBarScroller();
+  if (!st || !root || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
+  // The section is the last one that has begun above the line: where it ends is no matter, or a jump that lands
+  // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
+  var line = root.getBoundingClientRect().top + ALM_SECBAR_LINE, cur = ALM_SECBAR_HERO;
   st.sections.forEach(function (s) {
-    if (s.els.some(function (e) { return st.seen.get(e); })) cur = s.key;
+    if (s.els.some(function (e) { return e.getBoundingClientRect().top <= line; })) cur = s.key;
   });
-  if (cur && cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
+  if (cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
 // The bar's face for the current section: shown past the first, the current
 // pill lit and brought to the row's start, the list's current item marked.
