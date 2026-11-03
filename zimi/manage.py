@@ -74,7 +74,9 @@ def _atomic_write_text(path, content):
     OSError stays in the server log (repo rule: no str(e) in responses)."""
     tmp = path + ".tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        # 0600 from creation, whatever the umask: these are credentials.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
         os.replace(tmp, path)
         return True
