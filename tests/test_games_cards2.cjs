@@ -605,6 +605,8 @@ if (sandbox.ZimiCanasta) {
     check(!CA.takePlan(st, 0, cids('KS')).ok, 'before your first meld the pile is frozen: one king is not enough');
     check(CA.takePlan(st, 0, cids('KS KH')).ok, 'a natural pair takes the pile with the top card');
     check(!CA.takePlan(Object.assign({}, st, { hands: [cids('KS KH 5C 9D QS QD JC'), cids('AS')] }), 0, cids('KS KH')).ok, 'before your first meld a take that could never reach the minimum is refused (30 of 50)');
+    const wildLeft = base({ hands: [cids("KS KH KC KS' KH' J QS QH QD 9D"), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw', scores: [3000, 0] });
+    check(CA.takePlan(wildLeft, 0, cids('KS KH')).ok, 'a first meld counts a wild card that joins a meld of three or more: six kings, a joker and three queens make 140 of 120');
     const lone = base({ hands: [cids('KS KH'), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw', melded: [true, false] });
     check(CA.takePlan(lone, 0, cids('KS KH')).error.indexOf('canastas') >= 0, 'a take that leaves no card to discard is refused without two canastas');
     st.melded[0] = true; st.melds[0] = [mk(12, 'QC QH QD')];

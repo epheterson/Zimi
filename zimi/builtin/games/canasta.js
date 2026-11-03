@@ -164,7 +164,7 @@
     return null;
   }
   // The most a side's first meld could reach if it took the pile with `sel`: the taken rank with everything of it that is
-  // left, every other rank it holds three of, pairs that a wild card completes. An upper bound, so a take is refused only
+  // left, every other rank it holds three of, pairs that a wild card completes, and the wild cards left over. An upper bound, so a take is refused only
   // when no first meld could follow it.
   function takeReach(st, side, sel, top) {
     var r = rankKey(top), rest = st.hands[side].filter(function (c) { return sel.indexOf(c) < 0; }).concat(st.pile.slice(0, -1)).filter(function (c) { return !isRedThree(c); });
@@ -176,7 +176,8 @@
       if (g[k].length >= 3) total += sumPts(g[k]); else if (g[k].length === 2) pairs.push(sumPts(g[k]));
     });
     pairs.sort(function (a, b) { return b - a; }).forEach(function (p) { if (wilds.length) total += p + wilds.shift(); });
-    return total;
+    // Wild cards left over can join the taken meld or any meld of three: still an upper bound.
+    return total + wilds.reduce(function (n, w) { return n + w; }, 0);
   }
   // Can this side take the pile now with `sel` from its hand? {ok, error, plan}
   function takePlan(st, side, sel) {
