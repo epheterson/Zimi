@@ -162,8 +162,16 @@ def test_signed_in_the_server_switch_and_the_accounts_hold_after_leaving(served)
             pg
         ), "the server's Bookshelf missing after coming back"
         # The account's own switch: off, then on again, each held the same way.
+        # The page shows the change at once and the server takes it a moment
+        # later; left before that, the page come back to can ask the server
+        # first and hear the old choice (a slow runner did). What is held is
+        # the choice the server has, so the test leaves once it has it.
         for on in (False, True):
-            pg.evaluate("(on) => _setUserApp('books', on)", on)
+            with pg.expect_response(
+                lambda r: r.url.endswith("/me/prefs") and r.request.method == "POST",
+                timeout=10000,
+            ):
+                pg.evaluate("(on) => _setUserApp('books', on)", on)
             pg.wait_for_function(
                 "(on) => (_userPrefs.shown || []).includes('books') === on",
                 arg=on,
