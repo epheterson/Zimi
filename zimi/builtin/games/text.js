@@ -4199,7 +4199,7 @@
  "pz.bestLabel": "Best",
  "pz.clear": "Clear",
  "pz.correct": "Correct",
- "pz.customSize": "Custom size…",
+ "pz.customSize": "Custom",
  "pz.d.2_way_diagonal_mirror": "2-way diagonal mirror",
  "pz.d.2_way_mirror": "2-way mirror",
  "pz.d.2_way_rotation": "2-way rotation",

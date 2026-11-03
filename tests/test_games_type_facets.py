@@ -111,7 +111,7 @@ def test_custom_size_starts_with_the_panes_own_values(page, served):
     assert page.evaluate("() => !document.getElementById('dlgform')")   # no second dialog
     assert page.evaluate(PARAMS) == "6,4,Triangular,Hard"
     open_new_game(page, "loopy", served)   # a custom game in play: the pane opens on it
-    assert page.locator(".gs-options .gs-row:not([hidden]) [aria-pressed=true]").all_text_contents() == ["Custom size\u2026"]
+    assert page.locator(".gs-options .gs-row:not([hidden]) [aria-pressed=true]").all_text_contents() == ["Custom"]
     assert page.locator(".pz-custom input").nth(0).input_value() == "6"
 
 
@@ -119,6 +119,6 @@ def test_a_puzzle_with_a_plain_list_of_types_keeps_custom_in_it(page, served):
     open_new_game(page, "net", served)
     choice(page, "Custom")
     assert page.locator(".pz-custom input").count() >= 2
-    assert page.locator(".pz-types > .gs-row .gs-seg [aria-pressed=true]").all_text_contents() == ["Custom size\u2026"]
+    assert page.locator(".pz-types > .gs-row .gs-seg [aria-pressed=true]").all_text_contents() == ["Custom"]
     choice(page, "5x5")
     assert page.locator(".pz-custom").is_hidden()

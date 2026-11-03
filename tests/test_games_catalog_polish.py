@@ -118,3 +118,29 @@ def test_game_of_the_day_shows_in_the_compact_view_in_every_section(browser, ser
         page.wait_for_timeout(150)
         assert page.locator(".ar-today").is_visible(), chip
     ctx.close()
+
+
+@pytest.mark.parametrize("width", [375, 390])
+@pytest.mark.parametrize("view", ["lobby", "index"])
+def test_the_shelf_title_is_never_covered(browser, served, width, view):
+    ctx = browser.new_context(viewport={"width": width, "height": 800})
+    page = ctx.new_page()
+    page.add_init_script("try{localStorage.setItem('zimi.games.view','%s')}catch(e){}" % view)
+    page.goto("%s/index.html" % served)
+    page.wait_for_selector(".ar-brand span")
+    r = page.evaluate("""() => { const t = document.querySelector('.ar-brand span'), b = t.getBoundingClientRect();
+      return [...document.querySelectorAll('.sh-tools > *, .sh-search')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect())
+        .filter(q => q.width && q.left < b.right && q.right > b.left && q.top < b.bottom && q.bottom > b.top).length + (t.scrollWidth > t.clientWidth ? 1 : 0); }""")
+    assert r == 0
+    ctx.close()
+
+
+def test_the_custom_choice_is_short(page, served):
+    page.goto("%s/puzzles/loopy.html#lang=de" % served)
+    page.wait_for_selector(".ar-bar .ar-btn")
+    page.wait_for_function("() => document.querySelectorAll('#gametype input[name=preset]').length > 0")
+    page.locator(".ar-bar .ar-btn").filter(has_text="Men").first.click()
+    page.locator(".gs-newgame").click()
+    clipped = page.evaluate("() => [...document.querySelectorAll('.gs-options .gs-seg button')].filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent)")
+    assert clipped == []
+    assert "Eigene" in page.locator(".pz-types .gs-seg button").all_text_contents()

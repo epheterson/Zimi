@@ -274,7 +274,7 @@
     "trivial", "easy", "tricky", "normal", "hard", "extreme", "unreasonable", "basic", "advanced", "medium", "intermediate", "standard", "wrapping"];
   var PHRASE_RX = new RegExp("(^|[^A-Za-z])(" + PHRASES.slice().sort(function (a, b) { return b.length - a.length; }).map(function (w) { return w.replace(/[.*+?^${}()|[\]\\\/]/g, "\\$&"); }).join("|") + ")(?![A-Za-z])", "gi");
   function typeLabel(text) {
-    if (text === "Custom...") return T("pz.customSize", "Custom size…");
+    if (text === "Custom...") return T("pz.customSize", "Custom");
     TEMPLATES.forEach(function (t) {
       text = text.replace(t[0], function (m, a, b) { return T(t[1], t[2], { a: num(a), b: num(b) }); });
     });
