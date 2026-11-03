@@ -4289,6 +4289,7 @@
  "pz.save": "下载存档文件…",
  "pz.score": "得分：{n}",
  "pz.selected": "已选：{a}（{b}）",
+ "pz.shape": "网格形状",
  "pz.solutionShown": "已显示答案",
  "pz.solveGo": "显示答案",
  "pz.solveText": "这一局不会算作胜利。",

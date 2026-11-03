@@ -353,7 +353,9 @@
   var rail = el('div', 'sh-rail');
   var nav = el('nav', 'sh-nav');
   nav.setAttribute('aria-label', T('shelf.head.sections'));
-  rail.appendChild(nav);
+  var chipBar = el('div', 'sh-bar');
+  chipBar.appendChild(nav);
+  rail.appendChild(chipBar);
   var main = el('div', 'sh-main');
   var top = el('div', 'sh-top');
   var empty = el('p', 'sh-empty', T('shelf.noMatch'));
@@ -511,6 +513,14 @@
   function today() { return doc.querySelector('.ar-today'); }
 
   // Continue and Game of the day come from recent.js, after the page is up.
+  // The order and the view switch share the chips' row, so no row is spent on them. Index on a wide screen has the
+  // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well.
+  var wide = root.matchMedia('(min-width: 900px)');
+  function placeTools() {
+    var target = hosted && !(state.view === 'index' && wide.matches) ? chipBar : header;
+    if (tools.parentNode !== target) target.appendChild(tools);
+  }
+  if (wide.addEventListener) wide.addEventListener('change', placeTools);
   function place() {
     var c = doc.querySelector('.ar-continue'), t = today();
     if (c && c.parentNode !== top) top.appendChild(c);
@@ -571,6 +581,7 @@
     state.sec = defaultSection();
     store(VIEW_KEY, v);
     place();
+    placeTools();
     apply();
   }
 
@@ -610,6 +621,7 @@
 
   buildChips();
   place();
+  placeTools();
   apply();
 
   // games.json is the shelf's own data (a file of this ZIM). Until it is read, or if it cannot be

@@ -4704,6 +4704,7 @@
  "pz.save": "تنزيل ملف الحفظ…",
  "pz.score": "النتيجة: {n}",
  "pz.selected": "المحدَّد: {a} ({b})",
+ "pz.shape": "شكل الشبكة",
  "pz.solutionShown": "تم عرض الحل",
  "pz.solveGo": "إظهار الحل",
  "pz.solveText": "لن تُحتسب هذه اللعبة فوزًا.",

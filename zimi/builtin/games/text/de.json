@@ -4372,6 +4372,7 @@
  "pz.save": "Speicherdatei herunterladen…",
  "pz.score": "Punkte: {n}",
  "pz.selected": "Gewählt: {a} ({b})",
+ "pz.shape": "Gitterform",
  "pz.solutionShown": "Lösung angezeigt",
  "pz.solveGo": "Lösung anzeigen",
  "pz.solveText": "Dieses Spiel zählt dann nicht als Sieg.",

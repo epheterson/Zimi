@@ -194,6 +194,15 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 /* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
 @media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .sh-chip::before, .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
+/* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
+.sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; }
+.sh-bar .sh-tools { flex: none; }
+[data-view="index"] .sh-bar { margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+[data-view="index"] .sh-bar .sh-nav { margin-bottom: 0; border-bottom: 0; }
+@media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; border-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
+html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
+@media (max-width: 560px) { .sh-bar .sh-sort-now, .sh-bar .ar-view-btn[aria-pressed="true"] { display: none; } .sh-bar .ar-view-toggle { border: 0; background: none; } }
 /* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
 .sh-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 18px; padding: 2px 16px; }
 .sh-nav::-webkit-scrollbar { display: none; }
