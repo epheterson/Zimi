@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
-- Games: text contrast, 44px touch targets and names for tiles and pictures, checked by an axe-core sweep of every game.
+- Games: text contrast, 44px touch targets and names for tiles and pictures, checked automatically in every game.
 - Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
 - Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
