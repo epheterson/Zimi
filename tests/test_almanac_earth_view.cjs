@@ -745,6 +745,39 @@ const run = (code) => vm.runInContext(code, S);
     check(longest <= 4 * (S.AE_FLY_FAR_MS + S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS), 'and none is stretched past ' + Math.round(longest) + ' ms');
   }
 
+  // The ends of a flight: the line of sight and the up vector are each sampled every frame, and neither the turn
+  // rate nor its change steps anywhere in the flight (a look-at that flipped for a frame as the camera swung round
+  // the old body, and the picture rolled half a turn in the last second), and both rates are nil at the first and
+  // last frame.
+  {
+    const series = (from, to, az, el) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.hand = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = ' + az + '; _ae.el_ = ' + el + '; _aePlaceCamera();' +
+      ' _aePreset("' + to + '"); var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, out = [], FR = 1000 / 60;' +
+      ' for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6)); _aePlaceCamera();' +
+      '   var cam = _ae.gl.camera; cam.updateMatrixWorld(); var e = cam.matrixWorld.elements; out.push({ look: [-e[8], -e[9], -e[10]], up: [e[4], e[5], e[6]] }); if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify(out); })()'));
+    const angle = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI;
+    const diff = (a) => a.slice(1).map((x, i) => x - a[i]), peak = (a) => a.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    const worst = { accel: 0, jerk: 0, lookJerk: 0, end: 0 };
+    let n = 0;
+    for (const [from, to] of [['moon', 'earth'], ['sun', 'moon'], ['earth', 'moon'], ['moon', 'sun'], ['earth', 'sun'], ['sun', 'earth']]) {
+      for (const [az, el] of [[0.3, 0.2], [3.1, 0.2], [1.5, 1.0], [-2, -0.5]]) {
+        const F = series(from, to, az, el);
+        n++;
+        for (const k of ['look', 'up']) {
+          const w = diff(F.map((_, i) => i)).map((_, i) => angle(F[i][k], F[i + 1][k])), a = diff(w), j = diff(a);
+          worst.accel = Math.max(worst.accel, peak(a)); worst.jerk = Math.max(worst.jerk, peak(j));
+          if (k === 'look') worst.lookJerk = Math.max(worst.lookJerk, peak(j));
+          worst.end = Math.max(worst.end, w[0], w[w.length - 1]);
+        }
+      }
+    }
+    check(worst.accel <= 0.5 && worst.jerk <= 0.1, n + ' flights: the turn rate of the line of sight and of up changes by at most ' + worst.accel.toFixed(2) +
+      ' degrees a frame squared, and that change by ' + worst.jerk.toFixed(2) + ' (no snap anywhere)');
+    check(worst.lookJerk <= 0.1, 'the line of sight turns without a kink (' + worst.lookJerk.toFixed(3) + ' degrees a frame cubed)');
+    check(worst.end <= 0.05, 'and starts and stops at rest (' + worst.end.toFixed(3) + ' degrees a frame at the first and last frame)');
+  }
+
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
   console.log('all passed');
 })().catch((e) => { console.error(e); process.exit(1); });
