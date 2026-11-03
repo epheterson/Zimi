@@ -125,7 +125,6 @@ body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inli
 .ar-sheet-actions .ar-btn[aria-pressed="true"], .ar-sheet-actions .ar-btn.gs-primary { flex-grow: 2; }
 .ar-sheet-actions:has([aria-pressed="true"], .gs-primary) .ar-btn:not([aria-pressed="true"], .gs-primary) { background: transparent; border-color: transparent; color: var(--ink2); }
 .ar-sheet-actions:has([aria-pressed="true"], .gs-primary) .ar-btn:not([aria-pressed="true"], .gs-primary):hover { color: var(--accent); }
-@media (max-width: 520px) { .gs-actions .ar-btn[aria-pressed="true"], .gs-actions .ar-btn.gs-primary { flex: 1 1 100%; } }
 /* Option rows: a 13px sentence-case label on the left, a 44px segmented control on the right. */
 .gs-row, .zc-row { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--target); }
 .gs-row > label, .zc-row > label { flex: 1 1 auto; font-size: var(--fs-small); font-weight: 600; color: var(--ink2); text-transform: none; letter-spacing: 0; }
@@ -137,6 +136,28 @@ body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inli
 /* A chosen segment is a selection, not the screen's one amber button: accent glow, accent line, ink text. */
 .gs-seg .ar-btn[aria-pressed="true"], .zc-seg .ar-btn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; position: relative; z-index: 1; }
 @media (max-width: 420px) { .gs-row, .zc-row { flex-wrap: wrap; } .gs-seg, .zc-seg { flex: 1 1 100%; } .gs-seg .ar-btn, .zc-seg .ar-btn { flex: 1; } }
+/* The New game pane's rows fit the card, and a row of more than three choices wraps as separate buttons. */
+.gs-row .gs-seg { max-width: 100%; }
+.gs-row .gs-seg .ar-btn { min-width: 0; padding: 0 var(--sp-3); }
+.gs-seg.is-wrap { flex-wrap: wrap; gap: var(--sp-2); }
+.gs-seg.is-wrap .ar-btn { flex: 0 0 auto; }
+.gs-seg.is-wrap .ar-btn, .gs-seg.is-wrap .ar-btn:first-child, .gs-seg.is-wrap .ar-btn:last-child { margin-left: 0; border-radius: var(--radius); }
+
+/* A select or a search box in the New game pane: the row's label above, a 44px control, tokens only. */
+.gs-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+.gs-field > label { font-size: var(--fs-small); color: var(--ink2); }
+.gs-field :is(select, input) { width: 100%; min-height: 44px; padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: var(--fs-body) var(--font); }
+.gs-field :is(select, input):focus-visible { outline: 2px solid var(--select-ring); outline-offset: 2px; }
+.gs-options .bu-quiet { width: auto; text-align: left; }
+.gs-row[hidden], .gs-field[hidden], .pz-custom[hidden] { display: none; }
+/* A long setup sheet (Circuit, Kart): each row stays label left and choice right on one line, and Start stays in reach at the bottom of the card as the rows scroll. */
+.gs-setup .gs-row { flex-wrap: nowrap; }
+.gs-setup .gs-row > label { min-width: 0; }
+.gs-setup .gs-seg { flex: 0 0 auto; }
+.gs-setup .gs-seg .ar-btn { flex: 0 0 auto; min-width: 44px; padding: 0 var(--sp-3) 1px; }
+@media (max-width: 360px) { .gs-setup .gs-row { flex-wrap: wrap; } .gs-setup .gs-seg { flex: 1 1 100%; } .gs-setup .gs-seg .ar-btn { flex: 1 1 0; } }
+.ar-sheet-card:has(.gs-setup) .ar-sheet-actions { position: sticky; z-index: 2; bottom: -20px; margin: var(--sp-3) -20px -20px; padding: var(--sp-2) 20px 20px; background: var(--surface2); box-shadow: 0 -12px 10px -2px var(--surface2); }
+.ar-sheet-card:has(.gs-setup) { max-height: calc(100vh - var(--bar-h, 0px) - 2 * var(--gutter, 16px)); }
 
 /* The player chip: 13px, 28px tall, a pill with a dot, the name and a number. The current player has an amber outline and
    glow with the name in ink, never white on amber. D marks the dealer; a suit chip marks trump. */
@@ -192,27 +213,27 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
 @media (pointer: coarse) { .ar-view-btn { width: 44px; min-width: 44px; height: 44px; } .sh-search input { height: 44px; } }
 /* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
-@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .sh-chip::before, .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
+@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -4px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
 /* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
 .sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
 .sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
 [dir="rtl"] .sh-bar .sh-nav { margin: 0 -16px 0 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
 .sh-bar .sh-tools { flex: none; }
-[data-view="index"] .sh-bar { margin-bottom: 14px; border-bottom: 1px solid var(--line); }
-[data-view="index"] .sh-bar .sh-nav { margin-bottom: 0; border-bottom: 0; }
-@media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; border-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
+@media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
 html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 @media (max-width: 560px) { .sh-bar .sh-sort-now, .sh-bar .ar-view-btn[aria-pressed="true"] { display: none; } .sh-bar .ar-view-toggle { border: 0; background: none; } }
 /* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
-.sh-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 18px; padding: 2px 16px; }
+/* Sideways only: no vertical scroll or bounce (touch-action), and the padding is room for the focus ring and the chip's hit area, which the clip would otherwise cut. */
+.sh-nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; scrollbar-width: none; margin: -2px -16px 16px; padding: 4px 16px; }
 .sh-nav::-webkit-scrollbar { display: none; }
-.sh-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-.sh-chip:hover { border-color: var(--accent); }
-/* The chosen chip is a selection, as in Zimi: accent glow, accent line, ink text. */
-.sh-chip[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); }
+/* The Library Manager's filter pill (app.css .pill): 28px, 12px type, quiet ink, a glow on hover, the chosen one filled with the accent. */
+.sh-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; height: 28px; padding: 0 14px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s; }
+.sh-chip:hover { border-color: var(--accent-line); color: var(--ink); background: var(--accent-glow); }
+.sh-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sh-chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
 .sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink2); }
-.sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the pressed tint is under 4.5:1 */
+.sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the accent fill is under 4.5:1 */
 .sh-count { margin-inline-start: 8px; letter-spacing: 0; }
 .sh-rail-head, .sh-chip-recent { display: none; }
 .sh-empty { margin: 32px 0; text-align: center; color: var(--ink2); }
@@ -281,11 +302,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 @media (max-width: 699px) { .ar-today { max-width: none; } }
 
 /* Index: rows, one section at a time. */
-[data-view="index"] .sh-nav { margin-bottom: 14px; padding: 0 16px; gap: 2px; border-bottom: 1px solid var(--line); }
-[data-view="index"] .sh-chip { height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink2); }
-[data-view="index"] .sh-chip[aria-pressed="true"] { background: none; color: var(--ink); border-bottom-color: var(--accent); }
-[data-view="index"] .sh-chip:hover { border-bottom-color: var(--line); }
-[data-view="index"] .sh-chip[aria-pressed="true"]:hover { border-bottom-color: var(--accent); }
 @media (max-width: 899px) {
   [data-view="index"] .sh-tools { display: contents; }
   [data-view="index"] .ar-view-toggle { margin-left: auto; }
@@ -309,13 +325,12 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 [data-view="index"] .ar-today .ar-game-text { justify-content: center; padding: 0; }
 [data-view="index"] .ar-today .ar-game-text span { display: block; }
 [data-view="index"] .ar-today .ar-game-text::after { display: none; }
-[data-view="index"]:not([data-sec="all"]):not([data-sec="search"]) .ar-today { display: none; }
 @media (min-width: 900px) {
   [data-view="index"] .sh-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
   [data-view="index"] .sh-rail { position: sticky; top: 16px; }
-  [data-view="index"] .sh-nav { flex-direction: column; gap: 2px; margin: 0 0 22px; padding: 0; border: 0; overflow: visible; }
-  [data-view="index"] .sh-chip { height: 34px; width: 100%; justify-content: space-between; padding: 0 12px; border: 0; border-radius: var(--r-chip); }
-  [data-view="index"] .sh-chip[aria-pressed="true"], [data-view="index"] .sh-chip[aria-pressed="true"]:hover { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+  [data-view="index"] .sh-nav { flex-direction: column; gap: 2px; margin: 0 0 22px; padding: 0; border: 0; overflow: visible; touch-action: auto; }
+  [data-view="index"] .sh-chip { height: 34px; width: 100%; justify-content: space-between; padding: 0 12px; border: 0; border-radius: var(--r-chip); background: none; font-size: 13px; font-weight: 600; }
+  [data-view="index"] .sh-chip[aria-pressed="true"], [data-view="index"] .sh-chip[aria-pressed="true"]:hover { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
   [data-view="index"] .sh-chip:hover { background: var(--surface); }
   [data-view="index"] .sh-chip-recent:not([hidden]) { display: inline-flex; }
   [data-view="index"] .sh-rail-head { display: block; margin: 14px 12px 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
@@ -469,8 +484,7 @@ html[data-anim="fast"] :not(.bg-spin, .gs-turn i) { transition-duration: 0.1s !i
 .gs-extras { margin: 0; }
 .gs-extras .ar-btn { flex: 1 1 auto; }
 .gs-text { margin: 0; color: var(--ink2); }
-.gs-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-.gs-options { display: grid; gap: 4px; }
+.gs-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
 .gs-more { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--target); margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r-chip); background: none; color: var(--ink); text-decoration: none; }
 .gs-more:visited { color: var(--ink); }
 .gs-more:hover, .gs-more:focus-visible { border-color: var(--accent); }

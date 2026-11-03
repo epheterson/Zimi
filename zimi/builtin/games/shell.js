@@ -817,7 +817,7 @@
       }
       card.appendChild(box);
     }
-    card.appendChild(h('div', { class: 'gs-actions' }, [
+    card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [
       h('button', { class: 'ar-btn', type: 'button', text: T('shell.cancel'), onclick: back }),
       h('button', { class: 'ar-btn gs-primary', type: 'button', text: options.length ? T('shell.start') : T('shell.menu.new'), onclick: startNew })
     ]));
@@ -1089,11 +1089,11 @@
     head(T('shell.menu.watch'), false);
     if (watching) {
       card.appendChild(h('p', { class: 'gs-text', text: T('shell.watch.running') }));
-      card.appendChild(h('div', { class: 'gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.stop'), onclick: function () { closeMenu(); stopWatching('stop'); } })]));
+      card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.stop'), onclick: function () { closeMenu(); stopWatching('stop'); } })]));
       return;
     }
     card.appendChild(h('p', { class: 'gs-text', text: T('shell.watch.intro') }));
-    card.appendChild(h('div', { class: 'gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.start'), onclick: function () { closeMenu(); startWatching(); } })]));
+    card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.start'), onclick: function () { closeMenu(); startWatching(); } })]));
   }
   function loadScript(src, done) {
     var s = d.createElement('script'); s.src = src; s.onload = function () { done(); }; s.onerror = function () { done(new Error(src)); };
