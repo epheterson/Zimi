@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Sky Detective's study sky follows the phone's motion.
 - The Earth view says its satellite positions may be out of date when its orbital data is stale and no fetch is on offer.
 - Available updates in Manage show each download's size.
+- Games: a game that fails to start says so in Zimi's log with the error, and the banner steps down if the game draws late.
 
 ### Fixed
 

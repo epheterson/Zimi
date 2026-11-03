@@ -72,7 +72,15 @@
   // fetch), left a blank page. It now says so, with a Reload. Plain English on purpose: the strings (text.js) may be
   // the very file that failed. Errors later in play are the game's own and are not announced here.
   var START_GRACE_MS = 2500;
-  var starting = true, failed = false;
+  var starting = true, failed = false, lastWhy = '';
+  // The banner tells the server too, so a failure seen on someone's phone shows in Zimi's log with its cause.
+  // Under Kiwix or any other reader the endpoint is not there and the request just fails.
+  function reportStart(outcome) {
+    try {
+      root.fetch('/games/start-error', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: root.location.pathname, why: lastWhy, outcome: outcome }) }).catch(function () {});
+    } catch (x) {}
+  }
   // The banner speaks the player's language when the strings loaded (text.js is rarely the file that failed); plain English only if not.
   function bannerText(key, english) { return root.ZimiText && root.ZimiText.has && root.ZimiText.has(key) ? T(key) : english; }
   function failedToStart(late) {
@@ -90,10 +98,11 @@
       btn.addEventListener('click', function () { root.location.reload(); });
       box.appendChild(msg); box.appendChild(btn);
       (d.body || d.documentElement).appendChild(box);
+      reportStart('banner');
       // A slow start (a puzzle's wasm still on its way over the internet) can draw after the grace: the banner then
       // covers a working game, so it watches for a while and steps down once the game is on screen.
       var looks = 0, watch = root.setInterval(function () {
-        if (!nothingDrawn()) { box.remove(); root.clearInterval(watch); }
+        if (!nothingDrawn()) { box.remove(); root.clearInterval(watch); reportStart('drew ' + (looks + 1) + ' s after the banner'); }
         else if (++looks >= LATE_DRAW_LOOKS) root.clearInterval(watch);
       }, LATE_DRAW_EVERY_MS);
     }
@@ -128,6 +137,7 @@
     // Either way the banner waits and asks the page: a helper that failed to load or a stray throw can leave a game
     // that plays fine, and only a page with nothing of the game on it is a failure to start. The cause is kept for a report.
     var why = t && t !== root && t.tagName === 'SCRIPT' ? 'script did not load: ' + (t.src || '') : (e && (e.message || e.reason)) || 'error';
+    lastWhy = String(why).slice(0, 300);
     try { root.localStorage.setItem('zimi.games.lastStartError', JSON.stringify({ at: Date.now(), page: root.location.pathname, why: String(why).slice(0, 300) })); } catch (x) {}
     if (root.console) root.console.warn('ZimiGames start:', why);
     if (starting || (t && t.tagName === 'SCRIPT')) threwWhileStarting(e);

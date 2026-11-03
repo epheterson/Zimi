@@ -129,9 +129,31 @@ def test_a_game_that_draws_after_the_banner_takes_it_down(site, browser):
         "**/late-game.html",
         lambda r: r.fulfill(status=200, content_type="text/html", body=LATE),
     )
+    told = []
+    page.on(
+        "request",
+        lambda r: told.append(r.post_data_json) if r.url.endswith("/games/start-error") else None,
+    )
     page.goto(site + "late-game.html")
     page.wait_for_timeout(3500)
     assert _banner(page) == 1
     page.wait_for_timeout(GRACE_WAIT_MS)
     assert _banner(page) == 0
+    # Both moments reach Zimi's log, with the error that raised the banner.
+    assert [m["outcome"].split(" ")[0] for m in told] == ["banner", "drew"], told
+    assert "puzzle was still loading" in told[0]["why"], told
     page.close()
+
+
+def test_the_server_logs_a_start_failure_and_caps_it(caplog):
+    from zimi import http as zhttp
+
+    zhttp._games_start_logged.clear()
+    with caplog.at_level("WARNING", logger="zimi"):
+        zhttp._log_games_start({"outcome": "banner", "page": "/w/zimi_games/puzzles/loopy.html", "why": "boom\nforged line"})
+        for _ in range(zhttp._GAMES_START_LOG_PER_HOUR + 5):
+            zhttp._log_games_start({"outcome": "banner", "page": "/x", "why": "again"})
+    lines = [r.getMessage() for r in caplog.records if "ZimiGames start" in r.getMessage()]
+    assert lines[0] == "ZimiGames start: banner on /w/zimi_games/puzzles/loopy.html: boom forged line"
+    assert len(lines) == zhttp._GAMES_START_LOG_PER_HOUR
+    zhttp._games_start_logged.clear()

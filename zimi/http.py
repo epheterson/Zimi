@@ -42,6 +42,30 @@ from zimi.safety import header_value, join_inside, loggable
 
 log = logging.getLogger("zimi")
 
+# A game that showed "This game failed to start" says so here, so the cause
+# lands in the server log. Capped per hour: anyone can post it.
+_GAMES_START_LOG_PER_HOUR = 30
+_games_start_logged = []
+
+
+def _log_games_start(data):
+    now = time.time()
+    _games_start_logged[:] = [t for t in _games_start_logged if now - t < 3600]
+    if len(_games_start_logged) >= _GAMES_START_LOG_PER_HOUR or not isinstance(data, dict):
+        return
+    _games_start_logged.append(now)
+
+    def clean(v):
+        return re.sub(r"[\x00-\x1f\x7f]", " ", str(v or ""))[:300]
+
+    log.warning(
+        "ZimiGames start: %s on %s: %s",
+        clean(data.get("outcome")),
+        clean(data.get("page")),
+        clean(data.get("why")) or "no error recorded",
+    )
+
+
 # A client that hangs up mid-response surfaces as one of these when the
 # handler writes to the dead socket. That is the CLIENT's doing, not a server
 # error — under load (e.g. every UI poller timing out at once, #51) treating
@@ -3820,6 +3844,10 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             if parsed.path.startswith("/manage/"):
                 return handle_manage_post(self, parsed, data)
+
+            if parsed.path == "/games/start-error":
+                _log_games_start(data)
+                return self._json(200, {"ok": True})
 
             if parsed.path == "/dictionary/voices/warm":
                 # The Dictionary opening: load the voices its languages
