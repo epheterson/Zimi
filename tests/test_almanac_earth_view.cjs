@@ -709,6 +709,42 @@ const run = (code) => vm.runInContext(code, S);
     check(starRequests.length === 2, 'once it is in, it is not asked for again');
   }
 
+  // ── 8. Turning to point the right way ─────────────────────────────────
+  // A flight turns the camera at an eased, bounded rate: sampled every frame, its orientation never turns more than
+  // a few degrees between two frames, wherever the flight starts and ends (across the date line, at the poles).
+  {
+    fetches.push(answer({}));
+    await reopen();
+    run('_aeUpdate(Date.UTC(2026, 9, 2, 12))');
+    const turns = (from, to, az, el, toAzel) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.hand = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = ' + az + '; _ae.el_ = ' + el + '; _aePlaceCamera();' +
+      (to === 'place' ? ' _aeFlyTo("earth", _aeFitDist(AE_FIT_EARTH), ' + toAzel + ');' : ' _aePreset("' + to + '");') +
+      ' var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, prev = null, worst = 0, FR = 1000 / 60;' +
+      ' for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6));' +
+      '   _aePlaceCamera(); var cam = _ae.gl.camera; cam.updateMatrixWorld();' +
+      '   var q = cam.quaternion, cur = [q.x, q.y, q.z, q.w];' +
+      '   if (prev) { var d = Math.abs(cur[0]*prev[0] + cur[1]*prev[1] + cur[2]*prev[2] + cur[3]*prev[3]); var dg = 2 * Math.acos(Math.min(1, d)) * 180 / Math.PI; worst = Math.max(worst, dg); }' +
+      '   prev = cur; if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify({ worst: worst, ms: total }); })()'));
+    const cases = [];
+    for (const [from, to] of [['earth', 'moon'], ['moon', 'earth'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth'], ['sun', 'moon']]) {
+      for (const [az, el] of [[0.3, 0.2], [3.1, 0.2], [-3.1, -0.3], [1.5, 1.45], [0, -1.45], [3.1, 1.48]]) cases.push([from, to, az, el]);
+    }
+    for (const [az, el, taz, tel] of [[3.1, 0.2, -3.1, 0.3], [0, 1.4, 3.0, -1.4], [0.2, 0.2, 3.0, 1.4]])
+      cases.push(['earth', 'place', az, el, '{az:' + taz + ',el:' + tel + '}']);
+    const MAX_TURN_DEG = 4.5;
+    let peak = 0, longest = 0, worstCase = '';
+    for (const c of cases) {
+      const r = turns(...c);
+      worstCase = r.worst >= peak ? c.slice(0, 4).join(' ') : worstCase;
+      peak = Math.max(peak, r.worst);
+      longest = Math.max(longest, r.ms);
+    }
+    check(peak <= MAX_TURN_DEG, cases.length + ' flights (across the date line, over the poles, between the bodies): the picture never turns more than ' +
+      MAX_TURN_DEG + ' degrees a frame (peak ' + peak.toFixed(2) + ', in ' + worstCase + ')');
+    check(longest <= 4 * (S.AE_FLY_FAR_MS + S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS), 'and none is stretched past ' + Math.round(longest) + ' ms');
+  }
+
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
   console.log('all passed');
 })().catch((e) => { console.error(e); process.exit(1); });
