@@ -398,14 +398,15 @@
 .alm-sky-cap { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 20px 10px 0; text-align: center; text-wrap: balance; }
 .alm-sky-lead { font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--text); }
 .alm-sky-sub { font-size: 11px; line-height: 1.4; color: var(--text2); }
-/* The sky's Moon card is an item of the hero's grid (the slot and its list step aside): the four tiles
-   read as the questions a person asks of the Moon: how lit it is, when it rises or sets, when it is next
-   full, when it is next new. Two across on a phone, four on a wide screen, the same sequence. */
+/* The sky's four cards are items of the hero's grid (the slot and its list step aside), and the six read as
+   two rows of three: the Moon (how lit it is, when it rises or sets, when it is next full), then the Sun (when it
+   rises, when it sets, how long the day is). The same sequence at every width. */
 .alm-sky-facts, .alm-sky-cards { display: contents; }
-#alm-hc-illum-card { order: 1; } .alm-sf-moon { order: 2; } #alm-hc-nextfull-card { order: 3; } #alm-hc-nextnew-card { order: 4; }
-.alm-sky-cards .alm-card-lbl, .alm-sky-cards .alm-card-val { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; text-wrap: balance; }
-/* Top-aligned: the cards side by side read their labels on one line, whatever the values below them hold. */
-.alm-sky-cards .alm-card { display: flex; flex-direction: column; justify-content: flex-start; }
+#alm-hc-illum-card { order: 1; } .alm-sf-moon { order: 2; } #alm-hc-nextfull-card { order: 3; }
+.alm-sf-sunrise { order: 4; } .alm-sf-sunset { order: 5; } .alm-sf-daylight { order: 6; }
+#almanac-head .alm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#almanac-head .alm-card-lbl { letter-spacing: 0.03em; }   /* three across: "Next full moon" fits the tile */
+#almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
 .alm-sky-guess { margin: 10px 0 0; font-size: 11px; line-height: 1.4; color: var(--text3); text-align: center; text-wrap: balance; }
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
@@ -580,7 +581,7 @@
   .orrery-speed-label { font-size: 10px; min-width: 44px; }
   .orrery-speed-end { font-size: 8px; }
   .orrery-date { font-size: 10px; }
-  .alm-cards, #almanac-head .alm-cards { grid-template-columns: repeat(2, 1fr); }
+  .alm-cards { grid-template-columns: repeat(2, 1fr); }
   .alm-tz-wrap { gap: 12px; width: 100%; }
   .alm-tz-clock-side { width: 100%; gap: 12px; }
   .alm-tz-clock-side canvas { width: 140px; height: 140px; }

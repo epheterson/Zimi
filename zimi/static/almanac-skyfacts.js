@@ -100,22 +100,21 @@ function _skySpan(at, now, guess, dir) { return _orrFmtSpan(Math.max(0, _skyRoun
 // "SW 252°": the point of the compass and the bearing it stands for (the Field Guide's card uses it).
 function _skyBearing(az) { return _azCompass(az) + ' ' + Math.round(az) + '\u00b0'; }
 
-// The Moon's own tile: [label, value, key]. It sits in the hero's grid of four, one tile for each
-// thing a person asks of the Moon (how lit it is, when it rises or sets, when it is next full, when it is
-// next new), every tile a label and one value and no taller than its neighbours. The Moon rises or sets,
-// whichever comes next; with neither in the next day and a half, how lit it is. The Sun's own times stand
-// under the sky's caption (_skySunLine), and where north is, the Look view and the star chart show.
+// The tiles, [label, value, key]: the Moon, then the Sun, three of each in the hero's one grid (almanac.css orders
+// them), every tile a label and one value and none taller than its neighbours. The Moon: how lit it is and when it is
+// next full (the hero's), and when it rises or sets, whichever comes next (with neither in the next day and a half,
+// how lit it is). The Sun: its rise, its set, and the length of the day between, in the place's own zone (a polar
+// day or night says so in one tile). A guessed place is said once, under the grid. Where north is, the Look view
+// and the star chart show.
 function _skyFactRows(s, f) {
   var guess = !s.stored, at = function (ms, dir) { return _skyClock(ms, guess, dir); };
   var up = f.moonUp, here = up ? f.moonset : f.moonrise;
-  return [here ? [t(up ? 'tb_moonset' : 'tb_moonrise'), at(here, up ? -1 : 1), 'moon']
+  var rows = [here ? [t(up ? 'tb_moonset' : 'tb_moonrise'), at(here, up ? -1 : 1), 'moon']
     : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), 'moon']];
-}
-// The Sun's day as one quiet line for the caption: its rise and its set, in the place's own zone.
-function _skySunLine(s) {
   var sun = _almSunTimesAt(new Date(s.nowTime), { lat: s.lat, lon: s.lon, stored: s.stored });
-  return sun.polar || !sun.sunrise || !sun.sunset ? '' :
-    t('alm_sky_f_sunrise_at', { t: sun.sunrise }) + ' \u00b7 ' + t('alm_sky_f_sunset_at', { t: sun.sunset });
+  if (sun.polar) rows.push([t('alm_sun'), sun.polar, 'sunrise']);
+  else rows.push([t('alm_sunrise'), sun.sunrise, 'sunrise'], [t('alm_sunset'), sun.sunset, 'sunset'], [t('alm_daylight'), sun.dayLength, 'daylight']);
+  return rows;
 }
 // The cards in the hero's own grammar (a label over a value, two columns).
 function _skyFactCards(rows) {
@@ -131,11 +130,7 @@ function _skyFacts(s) {
   var el = document.getElementById('almanac-sky-facts');
   if (!el || !s.eph) return;
   var key = s.lat + ',' + s.lon, due = !s.factsAt || Math.abs(s.nowTime - s.factsAt) >= SKY_FACTS_MS || s.factsKey !== key;
-  if (due) {
-    s.facts = _skyFactsAt(s.nowTime, s.lat, s.lon); s.factsAt = s.nowTime; s.factsKey = key;
-    var line = _skySunLine(s);
-    if (line !== s.sunLine) { s.sunLine = line; if (typeof _skyCaption === 'function') _skyCaption(s); }
-  }
+  if (due) { s.facts = _skyFactsAt(s.nowTime, s.lat, s.lon); s.factsAt = s.nowTime; s.factsKey = key; }
   var html = _skyFactCards(_skyFactRows(s, s.facts));
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // Under the tiles, the word that the place is a guess.

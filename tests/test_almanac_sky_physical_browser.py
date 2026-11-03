@@ -490,8 +490,7 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
         assert "guessed" not in text.lower(), text
         assert "moon" in text.lower(), text
-        pg.wait_for_function("() => !!document.querySelector('#almanac-sky-cap .alm-sky-sun')", polling=POLL_MS)
-        assert "sunrise" in pg.inner_text("#almanac-sky-cap").lower()
+        assert "sunrise" in text.lower() and "sunset" in text.lower(), text
     finally:
         ctx.close()
 
@@ -697,9 +696,9 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
         assert "Chicago" in text and "about" not in text.lower(), text   # the guess is said once, under the tiles
-        # The sunrise's time is in the caption's Sun line: Chicago's, not an Atlantic longitude's.
-        sunrise = pg.inner_text("#almanac-sky-cap .alm-sky-sun")
-        assert re.search(r"Sunrise .*[56]:\d\d AM", sunrise), sunrise
+        # The sunrise tile's time is Chicago's, not an Atlantic longitude's.
+        sunrise = pg.inner_text(".alm-sf-sunrise")
+        assert re.search(r"(?i)sunrise\s+[56]:\d\d AM", sunrise), sunrise
         assert pg.evaluate("Math.round(_skyState.lat * 10) / 10") == 41.9
     finally:
         ctx.close()
