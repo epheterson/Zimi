@@ -563,15 +563,16 @@ const tick = () => new Promise(r => setImmediate(r));
   // ── read along: the text, its sentences, where the voice is, following ────
   {
     const BLOCK = ' ';
-    const ax = { Node: { DOCUMENT_POSITION_FOLLOWING: 4 }, Map, isFinite, window: { matchMedia: () => ({ matches: false }) },
+    const ax = { setTimeout: () => 0, clearTimeout() {}, Node: { DOCUMENT_POSITION_FOLLOWING: 4 }, Map, isFinite, window: { matchMedia: () => ({ matches: false }) },
       _TTS_CHUNK_MAX: 240, _TTS_FIRST_CHUNK_MAX: 120, _BOOK_EDGE: 0.3, _nightRedOn: () => false, _ttsBarSync: () => {},
       _langPrimary: l => String(l || '').split(/[-_]/)[0].toLowerCase(), _ttsLang: () => 'en' };
     vm.createContext(ax);
     vm.runInContext(extract(/var _TTS_BLOCK = [^\n]*\n/, '_TTS_BLOCK') + extract(/var _TTS_ABBREVS[\s\S]*?\nfunction _ttsSentenceSpans[\s\S]*?\n}\n/, 'the sentence splitter') +
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
+    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
       '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
-      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle'].map(fn).join('\n'), ax);
+      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle', '_ttsIdleBusy', '_ttsIdleArm'].map(fn).join('\n'), ax);
 
     // A DOM of just what the reading looks at: elements with a display, text nodes, document order.
     const BLOCKS = ['div', 'p', 'h1', 'h2', 'ul', 'li', 'main', 'article', 'section', 'body'];
@@ -789,6 +790,37 @@ const tick = () => new Promise(r => setImmediate(r));
     ok('pausing leaves the page where it is, not following', ax._ttsPaused === true && !win.scrolled && ax._ttsRead.following === false);
     ax._ttsPauseToggle();
     ok('Play scrolls to the sentence being read and follows it again', ax._ttsPaused === false && ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224), JSON.stringify(win.scrolled));
+    // Left alone for _TTS_IDLE_FOLLOW_MS after scrolling away, it goes back by itself.
+    {
+      const timers = []; ax.setTimeout = (f, ms) => { timers.push({ f, ms }); return timers.length; }; ax.clearTimeout = n => { if (n) timers[n - 1] = null; };
+      const fire = () => { const t = timers.filter(Boolean).pop(); if (t) { timers[timers.indexOf(t)] = null; t.f(); } };
+      ax._TTS_IDLE_FOLLOW_MS = 6000; ax.document = ax.document || {}; ax.document.querySelector = () => null; ax.document.activeElement = null;
+      doc.activeElement = null; win.getSelection = () => ({ isCollapsed: true });
+      doc.rect = () => ({ top: 700, bottom: 740, left: 0, right: 50, width: 50, height: 40 });
+      ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
+      ax._ttsLose(); win.scrolled = null;
+      ok('scrolling away waits the idle time', timers.filter(Boolean).length === 1 && timers.filter(Boolean)[0].ms === 6000, timers.map(t => t && t.ms));
+      ax._ttsLose(); ax._ttsIdleArm();
+      ok('...and any input restarts the clock (one timer, not two)', timers.filter(Boolean).length === 1);
+      win.getSelection = () => ({ isCollapsed: false });
+      fire();
+      ok('...text selected: it does not pull the reader back, and asks again later', !win.scrolled && ax._ttsRead.following === false && timers.filter(Boolean).length === 1);
+      win.getSelection = () => ({ isCollapsed: true }); doc.activeElement = { tagName: 'TEXTAREA' };
+      fire();
+      ok('...nor under a field being typed in', !win.scrolled && ax._ttsRead.following === false);
+      doc.activeElement = null; ax.document.querySelector = () => ({});
+      fire();
+      ok('...nor with a lookup or highlight card open', !win.scrolled && ax._ttsRead.following === false);
+      ax.document.querySelector = () => null; ax._ttsPaused = true;
+      fire();
+      ok('...nor while paused (Play does that)', !win.scrolled && ax._ttsRead.following === false);
+      ax._ttsPaused = false; ax._ttsIdleArm();
+      fire();
+      ok('idle, nothing in hand: it scrolls to the sentence and follows again', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224) && win.scrolled.behavior === 'smooth', JSON.stringify(win.scrolled));
+      ax.window.matchMedia = () => ({ matches: true }); ax._ttsLose(); win.scrolled = null; ax._ttsRead.key = ''; fire();
+      ok('...under reduced motion it jumps', win.scrolled && win.scrolled.behavior === 'auto', JSON.stringify(win.scrolled));
+      ax.window.matchMedia = () => ({ matches: false });
+    }
     ax.window.matchMedia = () => ({ matches: true });
     win.scrolled = null; ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
     ok('reduced motion: it jumps, not glides', win.scrolled && win.scrolled.behavior === 'auto');
