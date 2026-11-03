@@ -365,6 +365,26 @@ def test_a_catalog_download_is_nomads_job_and_zimi_shows_its_progress(box):
     assert not os.listdir(server.ZIM_DIR), "nothing landed in Zimi's own library"
 
 
+def test_a_renamed_zims_successor_through_nomad_removes_the_old_name_and_carries_its_settings(
+    box, monkeypatch
+):
+    from zimi import renames
+
+    fake, url, nomad = box
+    _turn_on(url)
+    moved = []
+    monkeypatch.setattr(library, "_carry_zim_state", lambda a, b: moved.append((a, b)))
+    # The update check found OTHER renamed upstream to the download's name.
+    monkeypatch.setitem(renames._pending, "wikipedia_en_100_mini", str(nomad / OTHER))
+    dl_id, err = library._start_download(URL, size_bytes=1000)
+    assert err is None
+    assert _wait(lambda: library._download_by_id(dl_id)["done"])
+    assert _wait(lambda: ("DELETE", "/api/zim/" + OTHER) in fake.calls), fake.calls
+    assert _wait(lambda: moved), "the old name's settings were not carried"
+    assert OTHER not in _names(str(nomad))
+    assert moved == [("medlineplus", "wikipedia_en_100")]
+
+
 def test_the_off_switch_keeps_downloads_in_zimis_own_library(box, monkeypatch):
     fake, url, nomad = box
     started = []

@@ -263,7 +263,11 @@ def _save_auto_update_config(enabled, freq):
 def _load_auto_update_skips():
     """Short names of the ZIMs the auto-updater leaves alone (#34)."""
     names = _read_auto_update_file().get("skip")
-    return frozenset(n for n in names if isinstance(n, str)) if isinstance(names, list) else frozenset()
+    return (
+        frozenset(n for n in names if isinstance(n, str))
+        if isinstance(names, list)
+        else frozenset()
+    )
 
 
 def set_auto_update_skip(name, skip):
@@ -313,7 +317,9 @@ def _auto_update_loop(initial_delay=0):
                     if not url:
                         continue
                     if upd.get("name") in _srv._auto_update_skips:
-                        log.info("Auto-update: skipping %s (opted out)", upd.get("name"))
+                        log.info(
+                            "Auto-update: skipping %s (opted out)", upd.get("name")
+                        )
                         continue
                     # Strip .meta4 suffix to get the actual filename
                     raw_name = url.rsplit("/", 1)[-1] if "/" in url else url
@@ -1772,7 +1778,11 @@ def _fetch_thumb(url):
             # and dropped rather than written into the cache dir.
             data = resp.read(_THUMB_MAX_BYTES + 1)
             if len(data) > _THUMB_MAX_BYTES:
-                log.debug("Thumbnail over %d bytes, dropped: %s", _THUMB_MAX_BYTES, loggable(url))
+                log.debug(
+                    "Thumbnail over %d bytes, dropped: %s",
+                    _THUMB_MAX_BYTES,
+                    loggable(url),
+                )
                 return None, None
         # Write to disk cache
         with open(cache_path, "wb") as f:
@@ -1910,9 +1920,7 @@ def maybe_persist_full_catalog(total):
         return False
     with _opds_lock:
         pages = [
-            (key, entry)
-            for key, entry in _opds_cache.items()
-            if _is_browse_key(key)
+            (key, entry) for key, entry in _opds_cache.items() if _is_browse_key(key)
         ]
     seen, items = set(), []
     for _key, (_ts, _total, page_items) in pages:
@@ -1996,7 +2004,8 @@ def _offline_catalog_matching_stamped(query):
     return [
         it
         for it in items
-        if needle in str(it.get("title", "")).lower() or needle in str(it.get("name", "")).lower()
+        if needle in str(it.get("title", "")).lower()
+        or needle in str(it.get("name", "")).lower()
     ], stamp
 
 
@@ -2081,7 +2090,11 @@ def _fetch_kiwix_catalog(
         # The network is not an option: the snapshot answers (matched as the
         # cold path above matches it), or nothing does.
         fallback = _offline_catalog_matching(query)
-        return len(fallback), fallback[start : start + count], None if fallback else "offline"
+        return (
+            len(fallback),
+            fallback[start : start + count],
+            None if fallback else "offline",
+        )
 
     params = {"count": str(count), "start": str(start)}
     if query:
@@ -2998,14 +3011,20 @@ def _try_bt_download(
         # the process exits.
         if not backend.is_alive() or backend.retired:
             if _exiting:
-                log.info("BT engine stopped under %s; it resumes on next start", dl["filename"])
+                log.info(
+                    "BT engine stopped under %s; it resumes on next start",
+                    dl["filename"],
+                )
                 return "stopped"
             if backend.retired or _p2p.is_torrent_enabled():
                 # Another engine took over, or this one restarted (a port
                 # change). The torrent stays where it is: the same engine
                 # picks it up where it was, and a different one was handed
                 # over clean (p2p.switch_engine).
-                log.info("BT engine changed under %s; carrying on with the new one", dl["filename"])
+                log.info(
+                    "BT engine changed under %s; carrying on with the new one",
+                    dl["filename"],
+                )
                 return "restart"
             # Not exiting: the engine was turned off (or its port changed)
             # from Settings while this download ran. That is what the HTTP
@@ -3027,8 +3046,16 @@ def _try_bt_download(
                 return "restart"  # taken apart between the check and the poll
             poll_fails += 1
             failing_since = failing_since or time.monotonic()
-            if getattr(backend, "external", False) and time.monotonic() - failing_since < STATUS_FAIL_S:
-                log.info("BT status poll failed for %s (%d): %s", dl["filename"], poll_fails, e)
+            if (
+                getattr(backend, "external", False)
+                and time.monotonic() - failing_since < STATUS_FAIL_S
+            ):
+                log.info(
+                    "BT status poll failed for %s (%d): %s",
+                    dl["filename"],
+                    poll_fails,
+                    e,
+                )
                 time.sleep(poll_interval)
                 continue
             log.warning(
@@ -3084,8 +3111,12 @@ def _try_bt_download(
                     "BT reported complete but staged file missing: %s"
                     " — falling back%s",
                     staged,
-                    f" (can Zimi see {backend.name}'s download folder? Settings > "
-                    "BitTorrent > Folders)" if backend.external else "",
+                    (
+                        f" (can Zimi see {backend.name}'s download folder? Settings > "
+                        "BitTorrent > Folders)"
+                        if backend.external
+                        else ""
+                    ),
                 )
                 try:
                     backend.remove(tid, delete_files=True)
@@ -3124,7 +3155,9 @@ def _try_bt_download(
                     backend.remove(tid, delete_files=False)
                 except Exception:
                     pass
-                log.warning("BT: %s stays where the engine put it: %s", dl["filename"], staged)
+                log.warning(
+                    "BT: %s stays where the engine put it: %s", dl["filename"], staged
+                )
                 return "fallback"
             # Post-world resilience: remember how to seed this file with
             # zero internet — infohash + .torrent survive in ZIMI_DATA_DIR
@@ -3634,7 +3667,9 @@ def _check_updates():
                 # removes this one and carries its settings across.
                 upd["renamed_to"] = renamed_to[0]
                 new_base = _srv._extract_zim_date(
-                    item.get("download_url", "").rsplit("/", 1)[-1].replace(".meta4", "")
+                    item.get("download_url", "")
+                    .rsplit("/", 1)[-1]
+                    .replace(".meta4", "")
                 )[0]
                 _renames.remember(new_base, inst["path"])
             updates.append(upd)
@@ -3919,7 +3954,8 @@ def _post_download_finalize(dl):
         try:
             for f in os.listdir(_srv.ZIM_DIR):
                 if (
-                    _srv._extract_zim_date(f)[1] is not None and _srv._extract_zim_date(f)[0] == prefix
+                    _srv._extract_zim_date(f)[1] is not None
+                    and _srv._extract_zim_date(f)[0] == prefix
                     and f.endswith(".zim")
                     and f != dl["filename"]
                 ):
@@ -4056,11 +4092,17 @@ def _download_thread(dl):
             if dl.get("bt_info_hash"):
                 # The retired engine, and the live one when it is the same
                 # client restarted, may each still hold it.
-                for engine in {id(e): e for e in (_backend, _p2p.peek_backend()) if e is not None}.values():
+                for engine in {
+                    id(e): e for e in (_backend, _p2p.peek_backend()) if e is not None
+                }.values():
                     try:
                         engine.remove(dl["bt_info_hash"], delete_files=True)
                     except Exception as e:
-                        log.debug("BT: could not drop %s after restarts: %s", dl["filename"], e)
+                        log.debug(
+                            "BT: could not drop %s after restarts: %s",
+                            dl["filename"],
+                            e,
+                        )
         if _bt_outcome is not None:
             if _bt_outcome == "success":
                 dl["done"] = True
@@ -4080,7 +4122,9 @@ def _download_thread(dl):
             dl["_source"] = "http"
             dl["bt_peers"] = 0
             dl["switch_direct"] = False
-            dl["checking"] = False  # HTTP verifies nothing; the row must not say it does
+            dl["checking"] = (
+                False  # HTTP verifies nothing; the row must not say it does
+            )
 
         success = False
         last_error = None
@@ -4331,11 +4375,29 @@ def _hand_to_nomad(url, filename, size_bytes, extra):
         return None, str(e)
     with _download_lock:
         _active_downloads[dl_id] = dl
-    log.info("Download handed to Project NOMAD: %s (job %s)", loggable(filename), loggable(job_id))
+    log.info(
+        "Download handed to Project NOMAD: %s (job %s)",
+        loggable(filename),
+        loggable(job_id),
+    )
 
     def landed(base):
         gone = [p for p in nomadapi.nomad_files().values() if not os.path.exists(p)]
         libfolders.settle(added=[dl["dest"]], gone=gone)
+        # NOMAD replaces an edition by its own name only; a ZIM renamed
+        # upstream leaves its old name behind, so Zimi asks NOMAD to delete
+        # it and carries its settings, as _post_download_finalize does.
+        old = dl.get("replaces")
+        if old and nomadapi.is_nomad_path(old) and os.path.isfile(old):
+            try:
+                nomadapi.delete(os.path.basename(old))
+                _carry_zim_state(
+                    _srv._zim_short_name(old), _srv._zim_short_name(filename)
+                )
+            except nomadapi.NomadError as e:
+                log.warning(
+                    "Project NOMAD kept renamed ZIM %s: %s", loggable(old), loggable(e)
+                )
         _record_download_activity(dl, "ok")
         _srv._append_history(
             {
@@ -4420,7 +4482,9 @@ def _start_download(url, size_bytes=None, actor=None):
     # into the download record.
     filename, err = _validate_zim_filename(url.split("/")[-1])
     if filename is None:
-        log.info("download rejected: %s (url=%.120s)", loggable(err), loggable(repr(url)))
+        log.info(
+            "download rejected: %s (url=%.120s)", loggable(err), loggable(repr(url))
+        )
         return None, err
     extra = {"_activity": {"actor": actor}}
     if meta4_url:
