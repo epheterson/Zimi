@@ -635,6 +635,16 @@ function _ttsFollow(force) {
   } catch (e) { return; }
   if (moved) { st.following = true; _ttsBarSync(); }
 }
+// Where the sentence being read is from here: 'up' (before the view) or 'down'.
+function _ttsWhere() {
+  var st = _ttsRead, rs = st && st.ranges;
+  try {
+    var r = rs[0].getBoundingClientRect();
+    if (st.doc.documentElement.classList.contains('zb-paged')) return r.left < 0 ? 'up' : 'down';
+    var scr = _scrollerOf(rs[0].startContainer.parentElement, st.win);
+    return r.bottom <= (scr ? scr.getBoundingClientRect().top : 0) ? 'up' : 'down';
+  } catch (e) { return 'down'; }
+}
 // The person moved the page: stop following until they ask or it comes back.
 function _ttsLose() {
   if (_ttsRead && _ttsRead.following) { _ttsRead.following = false; _ttsBarSync(); }
@@ -1034,8 +1044,9 @@ var _TTS_PLAY_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 
 // Back a sentence: a turning arrow, as a player's replay, not a skip (Eric,
 // 2026-10-21: "just one back rewindish circle to restart from previous sentence").
 var _TTS_BACK_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v6h6"/><path d="M3.5 15a8.5 8.5 0 1 0 2-8.8L3 10"/></svg>';
-// Where the reading is: shown in place of the bars once the page was moved away from it.
-var _TTS_LOCATE_ICON = '<svg class="tts-locate" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M6 20h12"/></svg>';
+// Back to the sentence being read: a chevron toward it, up or down, by the words.
+var _TTS_UP_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>';
+var _TTS_DOWN_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 var _TTS_CLOSE_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 // The voices this article's language can be read in: the server's, in its
 // order (none Settings turned off), then this browser's.
@@ -1070,8 +1081,9 @@ function _ttsBarHtml() {
     return '<button type="button" class="' + cls + '" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '" onclick="' + onclick + '"' + (extra || '') + '>' + inner + '</button>';
   };
   var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
-  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
-    ' aria-hidden="true"><i></i><i></i><i></i>' + _TTS_LOCATE_ICON + '</span>';
+  var lost = !!(_ttsRead && !_ttsRead.following); // the page was moved off the sentence
+  var h = lost ? '' : '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    ' aria-hidden="true"><i></i><i></i><i></i></span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
@@ -1080,7 +1092,10 @@ function _ttsBarHtml() {
         ' onclick="' + escAttr(it[1]) + '">' + esc(it[2] + (it[3] ? ' ' + t('tts_too_slow') : '')) + '</button>';
     }).join('') + '</div>';
   };
-  if (voices.length > 1) {
+  if (lost) {
+    // The page was moved off the sentence: the progress mark and the voice's name give way to the way back, in words.
+    h += '<button type="button" class="tts-bar-voice tts-bar-back" onclick="_ttsFollowResume()">' + (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) + '<span>' + esc(t('tts_back_to_reading')) + '</span></button>';
+  } else if (voices.length > 1) {
     h += '<span class="tts-bar-anchor"><button type="button" class="tts-bar-voice" aria-haspopup="menu" aria-expanded="' + (_ttsMenuOpen === 'voice') + '" onclick="_ttsMenuToggle(\'voice\')">' +
       '<span>' + esc(_ttsVoiceLabel()) + '</span>' + _TTS_CHEVRON + '</button>' +
       menu('voice', [['' === pick, '_ttsPickVoice("")', t('voices_default_auto')]].concat(voices.map(function(e) {
@@ -1116,18 +1131,14 @@ function _ttsBarSync() {
     bar = document.createElement('div');
     bar.id = 'tts-bar';
     bar.className = 'tts-bar';
-    // The voice-state mark is also the way back to the sentence, once the page was moved.
-    bar.addEventListener('click', function(e) { if (e.target.closest('.tts-bar-state.tts-lost')) _ttsFollowResume(); });
     reader.appendChild(bar);
   }
   if (_ttsSliding) return; // drawn when the finger lifts
   var html = _ttsBarHtml();
   if (bar._painted !== html) bar.innerHTML = bar._painted = html;
-  var mark = bar.querySelector('.tts-bar-state'), lost = !!(_ttsRead && !_ttsRead.following);
+  var mark = bar.querySelector('.tts-bar-state');
   if (mark) {
-    mark.classList.toggle('tts-lost', lost);
-    if (lost) { mark.setAttribute('role', 'button'); mark.setAttribute('title', t('tts_follow')); mark.setAttribute('aria-label', t('tts_follow')); mark.removeAttribute('aria-hidden'); }
-    else if (mark.classList.contains('ahead')) { mark.setAttribute('role', 'img'); mark.setAttribute('title', t('tts_ahead_label')); mark.setAttribute('aria-label', t('tts_ahead_label')); mark.removeAttribute('aria-hidden'); }
+    if (mark.classList.contains('ahead')) { mark.setAttribute('role', 'img'); mark.setAttribute('title', t('tts_ahead_label')); mark.setAttribute('aria-label', t('tts_ahead_label')); mark.removeAttribute('aria-hidden'); }
     else { ['role', 'title', 'aria-label'].forEach(function(a) { mark.removeAttribute(a); }); mark.setAttribute('aria-hidden', 'true'); }
   }
   bar.hidden = false;

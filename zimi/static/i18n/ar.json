@@ -2036,7 +2036,7 @@
   "tts_speak": "قراءة بصوت عالٍ",
   "tts_stop": "إيقاف القراءة",
   "tts_speed": "سرعة القراءة",
-  "tts_follow": "تابع القراءة",
+  "tts_back_to_reading": "العودة للنص",
   "tts_prev_sentence": "الجملة السابقة",
   "tts_slow_suggest": "{slow} بطيء على هذا الخادم. جرّب {fast}؟",
   "tts_slow_at": "لا يواكب {slow} السرعة {rate}. جرّب {fast}؟",

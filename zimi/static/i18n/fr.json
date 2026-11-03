@@ -2036,7 +2036,7 @@
   "tts_speak": "Lire à voix haute",
   "tts_stop": "Arrêter la lecture",
   "tts_speed": "Vitesse de lecture",
-  "tts_follow": "Suivre la lecture",
+  "tts_back_to_reading": "Retour au texte",
   "tts_prev_sentence": "Phrase précédente",
   "tts_slow_suggest": "{slow} est lent sur ce serveur. Essayer {fast} ?",
   "tts_slow_at": "{slow} ne suit pas à {rate}. Essayer {fast} ?",

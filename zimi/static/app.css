@@ -544,7 +544,7 @@
   /* While it reads: a pill at the reader's foot. A ring turns until the first
      sound, then three bars move; the voice opens its menu upward. */
   /* A media control: Back, Pause, On read left to right in every language, as on any player. */
-  .tts-bar { direction: ltr; position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20;
+  .tts-bar { direction: ltr; position: absolute; left: 50%; width: max-content; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20;
              display: flex; align-items: center; gap: 4px; padding-block: 4px; padding-inline: 14px 4px; max-width: calc(100% - 32px); box-sizing: border-box;
              background: var(--surface); border: 1px solid var(--border); border-radius: 26px; box-shadow: var(--shadow-popup); color: var(--text); font-size: 14px; }
   .tts-bar[hidden] { display: none; }
@@ -556,21 +556,15 @@
   .tts-bar-state.paused i, .tts-bar-state.hold i { animation: none; transform: scaleY(0.35); }
   /* Paused with nothing pending: no mark. Paused while the voice still gets ahead: the same ring, a slow arc turning (a pulse under reduced motion). */
   .tts-bar-state.paused { visibility: hidden; }
-  .tts-bar-state.paused.tts-lost { visibility: visible; }
   @keyframes tts-pulse { 50% { opacity: 0.35; } }
   .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; width: 14px; height: 14px; animation: spin 0.8s linear infinite; }
   /* Getting ahead: the same turning arc, with no seconds (the voice's pace is a guess). */
   .tts-bar-state.ahead { width: 14px; height: 14px; box-sizing: border-box; border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
   .tts-bar-state.ahead.working { animation-duration: 1.8s; }
-  .tts-locate { display: none; }
-  .tts-bar-state.tts-lost { width: 22px; height: 22px; }
-  .tts-bar-state.tts-lost i { display: none !important; }
-  .tts-bar-state.tts-lost .tts-locate { display: block; }
-  .tts-bar-state.tts-lost { cursor: pointer; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--amber); position: relative; }
-  .tts-bar-state.tts-lost::after { content: ''; position: absolute; inset: -11px -3px; }   /* a 44px touch target around the 22px mark, not wide enough to reach the voice button */
-  .tts-bar-state.ahead.tts-lost { border: 0; animation: none; width: 22px; height: 22px; }   /* the way back to the sentence, never a turning ring */
   @keyframes tts-bars { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
   .tts-bar-voice { unicode-bidi: plaintext; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: inherit; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tts-bar-back { min-width: 0; padding-inline-start: 4px; }
+  .tts-bar-back span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   button.tts-bar-voice { cursor: pointer; border-radius: 22px; }
   button.tts-bar-voice svg { color: var(--text2); flex: none; }
   .tts-bar-btn, .tts-bar-speed { width: 44px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: none; color: var(--text); cursor: pointer; }

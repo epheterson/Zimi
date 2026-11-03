@@ -2036,7 +2036,7 @@
   "tts_speak": "朗读",
   "tts_stop": "停止朗读",
   "tts_speed": "朗读速度",
-  "tts_follow": "跟随朗读",
+  "tts_back_to_reading": "回到朗读处",
   "tts_prev_sentence": "上一句",
   "tts_slow_suggest": "{slow}在此服务器上较慢。试试{fast}？",
   "tts_slow_at": "{slow} 跟不上 {rate}。试试 {fast}？",
