@@ -635,19 +635,35 @@ function _ttsFollow(force) {
   } catch (e) { return; }
   if (moved) { st.following = true; _ttsBarSync(); }
 }
-// Where the sentence being read is from here: 'up' (before the view) or 'down'.
-function _ttsWhere() {
-  var st = _ttsRead, rs = st && st.ranges;
-  try {
-    var r = rs[0].getBoundingClientRect();
-    if (st.doc.documentElement.classList.contains('zb-paged')) return r.left < 0 ? 'up' : 'down';
-    var scr = _scrollerOf(rs[0].startContainer.parentElement, st.win);
-    return r.bottom <= (scr ? scr.getBoundingClientRect().top : 0) ? 'up' : 'down';
-  } catch (e) { return 'down'; }
-}
 // The person moved the page: stop following until they ask or it comes back.
 function _ttsLose() {
   if (_ttsRead && _ttsRead.following) { _ttsRead.following = false; _ttsBarSync(); }
+  _ttsIdleArm();
+}
+// Scrolled away and then left alone: the page goes back to the sentence by
+// itself (Eric, 2026-11-02: "n seconds after scrolling away we should resume
+// if it's idle?"). Any input in the reader restarts the clock; never while
+// text is selected, a lookup or highlight card is open, or a field is typed in.
+var _TTS_IDLE_FOLLOW_MS = 6000, _ttsIdleTimer = 0;
+function _ttsIdleBusy() {
+  var st = _ttsRead, doc = st && st.doc;
+  try {
+    var sel = st.win.getSelection();
+    if (sel && !sel.isCollapsed) return true;
+    var els = [doc.activeElement, document.activeElement];
+    if (els.some(function(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); })) return true;
+    if (typeof _defineState !== 'undefined' && _defineState) return true;
+    return !!document.querySelector('#hl-bar.open, #hl-note.open') || doc.documentElement.classList.contains('zb-sheet-open');
+  } catch (e) { return false; }
+}
+function _ttsIdleArm() {
+  clearTimeout(_ttsIdleTimer);
+  if (!_ttsRead || _ttsRead.following) return;
+  _ttsIdleTimer = setTimeout(function() {
+    if (!_ttsRead || _ttsRead.following || _ttsPaused) return; // Play does it when paused
+    if (_ttsIdleBusy()) { _ttsIdleArm(); return; }
+    _ttsFollowResume();
+  }, _TTS_IDLE_FOLLOW_MS);
 }
 function _ttsFollowResume() {
   if (_ttsRead) { _ttsRead.following = true; _ttsFollow(true); _ttsBarSync(); }
@@ -711,7 +727,8 @@ function _ttsAlongBegin(plan) {
   on('keydown', function(e) { if (_TTS_SCROLL_KEYS.indexOf(' ' + e.key + ' ') >= 0) _ttsLose(); }, moved);
   on('mousedown', function(e) { if (e.clientX >= doc.documentElement.clientWidth) _ttsLose(); }, moved);
   on('click', function(e) { if (Date.now() - _ttsTouchedAt > _TTS_TAP_CLICK_MS) _ttsTap(e); }, false);
-  on('scroll', function() { if (_ttsRead && !_ttsRead.following) _ttsFollow(false); }, moved);
+  on('scroll', function() { if (_ttsRead && !_ttsRead.following) { _ttsFollow(false); _ttsIdleArm(); } }, moved);
+  ['touchstart', 'mousedown', 'keydown', 'selectionchange'].forEach(function(type) { on(type, _ttsIdleArm, moved); });
   // A tap on a phone is read from the touch itself: iOS sends a tap on plain
   // text no click on many pages (Wikivoyage's), so a click was never heard
   // there. One that does follow the touch is the same tap, and passes.
@@ -732,6 +749,7 @@ function _ttsAlongEnd() {
   var st = _ttsRead;
   if (!st) return;
   _ttsPaint([]);
+  clearTimeout(_ttsIdleTimer);
   st.off.forEach(function(f) { f(); });
   _ttsRead = null;
 }
@@ -1044,9 +1062,6 @@ var _TTS_PLAY_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 
 // Back a sentence: a turning arrow, as a player's replay, not a skip (Eric,
 // 2026-10-21: "just one back rewindish circle to restart from previous sentence").
 var _TTS_BACK_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v6h6"/><path d="M3.5 15a8.5 8.5 0 1 0 2-8.8L3 10"/></svg>';
-// Back to the sentence being read: a chevron toward it, up or down, by the words.
-var _TTS_UP_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>';
-var _TTS_DOWN_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 var _TTS_CLOSE_ICON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 // The voices this article's language can be read in: the server's, in its
 // order (none Settings turned off), then this browser's.
@@ -1081,10 +1096,9 @@ function _ttsBarHtml() {
     return '<button type="button" class="' + cls + '" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '" onclick="' + onclick + '"' + (extra || '') + '>' + inner + '</button>';
   };
   var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
-  var lost = !!(_ttsRead && !_ttsRead.following); // the page was moved off the sentence
-  // The mark's slot is always there, the same size: the bars (still while paused), a turning arc while it gets ready, a chevron toward the sentence once the page was moved (never over the arc: waiting shows the arc alone).
-  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : lost ? ' lost' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
-    ' aria-hidden="true">' + (lost && !waiting ? (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) : '<i></i><i></i><i></i>') + '</span>';
+  // The mark's slot is always there, the same size: the bars (still, dimmed, while paused) or a turning arc while it gets ready.
+  var h = '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    ' aria-hidden="true">' + '<i></i><i></i><i></i>' + '</span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
@@ -1093,10 +1107,7 @@ function _ttsBarHtml() {
         ' onclick="' + escAttr(it[1]) + '">' + esc(it[2] + (it[3] ? ' ' + t('tts_too_slow') : '')) + '</button>';
     }).join('') + '</div>';
   };
-  if (lost) {
-    // The page was moved off the sentence: the voice's name gives way to the way back, in words.
-    h += '<button type="button" class="tts-bar-voice tts-bar-back" onclick="_ttsFollowResume()"><span>' + esc(t('tts_back_to_reading')) + '</span></button>';
-  } else if (voices.length > 1) {
+  if (voices.length > 1) {
     h += '<span class="tts-bar-anchor"><button type="button" class="tts-bar-voice" aria-haspopup="menu" aria-expanded="' + (_ttsMenuOpen === 'voice') + '" onclick="_ttsMenuToggle(\'voice\')">' +
       '<span>' + esc(_ttsVoiceLabel()) + '</span>' + _TTS_CHEVRON + '</button>' +
       menu('voice', [['' === pick, '_ttsPickVoice("")', t('voices_default_auto')]].concat(voices.map(function(e) {
@@ -1164,6 +1175,7 @@ window.addEventListener('blur', _ttsMenuAway);
 // switch waits while paused (_ttsSpeakServer).
 function _ttsPauseToggle() {
   _ttsPaused = !_ttsPaused;
+  if (!_ttsPaused) _ttsFollowResume(); // Play brings the page to the sentence and follows it again
   var device = _ttsNow.engine === _DEVICE_VOICE;
   try {
     if (device) { if (_ttsPaused) window.speechSynthesis.pause(); else window.speechSynthesis.resume(); }
