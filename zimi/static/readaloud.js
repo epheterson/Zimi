@@ -1082,8 +1082,9 @@ function _ttsBarHtml() {
   };
   var waiting = _ttsNow.ahead > 0 && !_ttsNow.playing, ahead = waiting && !_ttsPaused, working = waiting && _ttsPaused; // working: paused, and the voice still getting ahead
   var lost = !!(_ttsRead && !_ttsRead.following); // the page was moved off the sentence
-  var h = lost ? '' : '<span class="tts-bar-state' + (ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
-    ' aria-hidden="true"><i></i><i></i><i></i></span>';
+  // The mark's slot is always there, the same size: the bars (still while paused), a turning arc while it gets ready, a chevron toward the sentence once the page was moved.
+  var h = '<span class="tts-bar-state' + (lost ? ' lost' : ahead ? ' ahead' : working ? ' ahead working' : _ttsPaused ? ' paused' : _ttsNow.playing ? ' playing' : _ttsNow.spin ? '' : ' hold') + '"' +
+    ' aria-hidden="true">' + (lost ? (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) : '<i></i><i></i><i></i>') + '</span>';
   // A menu opens above the button it belongs to, its choices radio items.
   var menu = function(which, items) {
     if (_ttsMenuOpen !== which) return '';
@@ -1093,8 +1094,8 @@ function _ttsBarHtml() {
     }).join('') + '</div>';
   };
   if (lost) {
-    // The page was moved off the sentence: the progress mark and the voice's name give way to the way back, in words.
-    h += '<button type="button" class="tts-bar-voice tts-bar-back" onclick="_ttsFollowResume()">' + (_ttsWhere() === 'up' ? _TTS_UP_ICON : _TTS_DOWN_ICON) + '<span>' + esc(t('tts_back_to_reading')) + '</span></button>';
+    // The page was moved off the sentence: the voice's name gives way to the way back, in words.
+    h += '<button type="button" class="tts-bar-voice tts-bar-back" onclick="_ttsFollowResume()"><span>' + esc(t('tts_back_to_reading')) + '</span></button>';
   } else if (voices.length > 1) {
     h += '<span class="tts-bar-anchor"><button type="button" class="tts-bar-voice" aria-haspopup="menu" aria-expanded="' + (_ttsMenuOpen === 'voice') + '" onclick="_ttsMenuToggle(\'voice\')">' +
       '<span>' + esc(_ttsVoiceLabel()) + '</span>' + _TTS_CHEVRON + '</button>' +
