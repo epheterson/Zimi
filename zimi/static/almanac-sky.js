@@ -3082,7 +3082,8 @@ function _skyCaption(s) {
   var where = [_almEsc(sunAlt), _almEsc(facing)];
   if (s.stored) where.push(_almEsc(s.name || _skyCoords(s.lat, s.lon)));
   var html = '<span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub">' + where.join(' · ') + '</span>' +
-    (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '');
+    (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '') +
+    (s.sunLine ? '<span class="alm-sky-sub alm-sky-sun">' + _almEsc(s.sunLine) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.
   var inv = document.getElementById('almanac-sky-invite');

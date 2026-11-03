@@ -2,10 +2,10 @@
 
   1. The wall calendar: the live sky stands directly above the calendar, with
      nothing in between, whether or not a place has been chosen.
-  2. The hero: the Moon with its six tiles (how lit, when it rises or sets, when
-     it is next full, daylight left, how dark it gets, the Sun's time), then what
-     the sky says (its caption, the ask for a place), then the sky. Each tile is
-     a value, a label and a small third line.
+  2. The hero: the Moon with its four tiles (how lit, when it rises or sets, when
+     it is next full, when it is next new), then what the sky says (its caption
+     with the Sun's rise and set, the ask for a place), then the sky. Each tile
+     is a label and one value.
   3. The world clocks: the All / Saved switch is above the clocks, at the end of
      the line.
   4. The Moon is its picture (nothing stands in for it), and the solar system
@@ -36,6 +36,7 @@ POLL_MS = 100
 HERO_CARDS = [
     "alm-hc-illum",
     "alm-hc-nextfull",
+    "alm-hc-nextnew",
 ]
 
 
@@ -147,7 +148,9 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
                 tiles: document.querySelectorAll('#almanac-head .alm-cards .alm-card:not([hidden])').length,
                 subs: document.querySelectorAll('#almanac-head .alm-cards .alm-card:not([hidden]) .alm-card-sub:not(:empty)').length,
                 factLabels: [...document.querySelectorAll('#almanac-sky-facts .alm-card-lbl')].map(e => e.textContent.trim().toLowerCase()),
-                factText: document.getElementById('almanac-sky-facts').textContent };
+                factText: document.getElementById('almanac-sky-facts').textContent,
+                heights: [...document.querySelectorAll('#almanac-head .alm-cards .alm-card:not([hidden])')].map(e => Math.round(e.getBoundingClientRect().height)),
+                sunLine: (document.querySelector('#almanac-sky-cap .alm-sky-sun') || {}).textContent || '' };
             }""",
             HERO_CARDS,
         )
@@ -155,22 +158,19 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
         assert all(got["text"]), got  # each has its figure
         # The Moon, its cards, then the caption directly over the sky (Eric, 2026-10-18).
         assert got["order"] == sorted(got["order"]), got["order"]
-        # The sky's four among the hero's two, in the questions a person asks: how lit, when it rises or sets,
-        # when it is next full, how much daylight is left, how dark it gets, what time the Sun says.
+        # One idea: the Moon. How lit it is, when it rises or sets, when it is next full, when it is next new.
         assert got["reading"] == [
-            "alm-hc-illum-card", "alm-sf-moon", "alm-hc-nextfull-card",
-            "alm-sf-left", "alm-sf-dark", "alm-sf-solar",
+            "alm-hc-illum-card", "alm-sf-moon", "alm-hc-nextfull-card", "alm-hc-nextnew-card",
         ], got["reading"]
-        assert got["cap"] and got["facts"] == 4, got
-        # No duplication: the facts do not say how lit the Moon is (the hero's Illuminated tile does), and the
-        # day's sunrise and sunset are the third line of the daylight tile, not tiles of their own.
+        assert got["cap"] and got["facts"] == 1, got
+        # Nothing about the Sun or the clock stands among the Moon's tiles, and none says how lit twice.
         assert "lit" not in got["factText"].lower(), got["factText"]
-        assert not any(l in ("illuminated", "sunrise", "sunset", "daylight") for l in got["factLabels"]), got["factLabels"]
-        # Six tiles, each a label, a value and a small third line.
-        # Every tile has its third line, but for the dark tile once it is dark: the evening's golden hour is behind
-        # it then and nothing else belongs there.
-        dark_now = "fully dark until" in got["factLabels"]
-        assert got["tiles"] == 6 and got["subs"] == (5 if dark_now else 6), got
+        assert not any(w in " ".join(got["factLabels"]) for w in ("sun", "daylight", "dark", "solar")), got["factLabels"]
+        # Four tiles, every one a label and one value: no third line, so no tile is taller than its neighbours.
+        assert got["tiles"] == 4 and got["subs"] == 0, got
+        assert len(set(got["heights"])) == 1, got["heights"]
+        # The Sun's rise and set are one quiet line under the sky's caption.
+        assert "Sunrise" in got["sunLine"] and "Sunset" in got["sunLine"], got["sunLine"]
         assert not errors, errors
     finally:
         ctx.close()

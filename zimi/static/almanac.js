@@ -621,12 +621,11 @@ function _almHeadHtml(focus) {
   var _nfm = _nextFullMoon(focus);
 
   html += '<div class="alm-cards">';
-  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum',
-    { cardId: 'alm-hc-illum-card', sub: _almMoonNowSub(m), subId: 'alm-hc-illum-sub' });
+  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
-    { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '',
-      sub: _almNextNewSub(focus, lang), subId: 'alm-hc-nextfull-sub' });
-  // The sky's four cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
+    { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
+  html += _almHeadCard(t('alm_next_new'), _almNextNewHtml(focus, lang), 'alm-hc-nextnew', { cardId: 'alm-hc-nextnew-card' });
+  // The sky's Moon card (almanac-skyfacts.js) lives in this same grid, ordered among these by almanac.css.
   html += '<div id="almanac-sky-facts" class="alm-sky-facts"></div>';
   html += '</div>';
   return html;
@@ -635,24 +634,22 @@ function _almHeadHtml(focus) {
 // One card in the hero readout grid. Every value node carries an id so the
 // per-frame travel updater can rewrite it in place instead of the whole grid.
 // opts: cardId (id on the card, for hiding it), hidden, valClass (colour
-// variant), sub + subId (the small line under the value).
+// variant). Every tile is a label and one value, no tile taller than another.
 function _almHeadCard(lbl, valHtml, valId, opts) {
   opts = opts || {};
   return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
     (opts.hidden ? ' hidden' : '') + '>' +
     (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
     '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
-    valHtml + '</div>' +
-    (opts.subId ? '<div class="alm-card-sub" id="' + opts.subId + '">' + (opts.sub || '') + '</div>' : '') + '</div>';
+    valHtml + '</div></div>';
 }
-// The Moon card's third line: how old it is, in whole days.
-function _almMoonNowSub(m) {
-  return _almEsc(t('alm_sky_f_age', { d: Math.round(m.phase * 29.53) }));
-}
-// The next full Moon card's third line: the new Moon after the focus.
-function _almNextNewSub(focus, lang) {
+// The next new Moon card's value: the date, the year only when it falls outside the focused year (as the full Moon's).
+function _almNextNewHtml(focus, lang) {
   var nm = _nextNewMoon(focus);
-  return nm ? _almEsc(t('alm_sky_f_next_new', { d: nm.toLocaleDateString(lang, { month: 'short', day: 'numeric' }) })) : '';
+  if (!nm) return '';
+  var opts = { month: 'short', day: 'numeric' };
+  if (nm.getFullYear() !== focus.getFullYear()) opts.year = 'numeric';
+  return nm.toLocaleDateString(lang, opts);
 }
 
 // Value markup for the next-full-moon card, shared by the full render and the
@@ -1039,8 +1036,8 @@ function _almLiveNextFull(focus) {
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   val.innerHTML = _almNextFullHtml(nfm, lang, focus);
   val.classList.toggle('alm-card-super', !!nfm.isSuper);
-  var sub = document.getElementById('alm-hc-nextfull-sub');
-  if (sub) sub.innerHTML = _almNextNewSub(focus, lang);
+  var nw = document.getElementById('alm-hc-nextnew');
+  if (nw) nw.textContent = _almNextNewHtml(focus, lang);
 }
 
 // Update the moon/sun readout cards in place (text nodes and `hidden` flags, no
@@ -1060,8 +1057,6 @@ function _almLiveHeadCards(focus) {
   try { m = _moonPhase(focus); } catch (e) { return; }
   set('alm-hc-illum', m.illumination + '%');
   set('alm-hc-phase', _localMoonName(m.name));
-  var sub = document.getElementById('alm-hc-illum-sub');
-  try { if (sub) sub.innerHTML = _almMoonNowSub(m); } catch (e) {}
   _almLiveNextFull(focus);
 }
 
