@@ -365,6 +365,10 @@ def test_a_catalog_download_is_nomads_job_and_zimi_shows_its_progress(box):
     assert not os.listdir(server.ZIM_DIR), "nothing landed in Zimi's own library"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fake NOMAD deletes a file Zimi still has open; NOMAD itself runs in a Linux container",
+)
 def test_a_renamed_zims_successor_through_nomad_removes_the_old_name_and_carries_its_settings(
     box, monkeypatch
 ):

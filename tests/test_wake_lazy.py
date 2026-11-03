@@ -114,7 +114,8 @@ def test_a_page_with_many_tags_wakes_in_linear_time(n):
     out = wake_lazy(html)
     took = time.monotonic() - t0
     assert out.count('src="/r.jpg"') == n
-    assert took < 5.0, took
+    # Linear takes ~1 s here and ~6 s on CI's Intel Mac; quadratic takes minutes.
+    assert took < 20.0, took
 
 
 def test_attributes_in_capitals_are_replaced_not_appended_to():
