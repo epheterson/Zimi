@@ -20512,16 +20512,30 @@ function _buildReload() {
   timer = setInterval(again, _BUILD_QUIET_POLL_MS);
   document.addEventListener('visibilitychange', again);
 }
+// Any touch, key or wheel since the page was shown: the Almanac, which comes
+// back from its #almanac address, is reloaded under no one who has used it
+// (Eric, 2026-11-02: "I still had to relaunch the PWA to see the new tiles":
+// he came back to the Almanac, the build was heard, and it waited for a hide).
+var _buildTouched = false;
+// The reload opens the Almanac at its top (only the place is kept), so a page scrolled away from it holds the reload.
+function _almanacScrolled() {
+  var box = document.getElementById('almanac-content');
+  return !!box && box.scrollTop > 0;
+}
+['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function (type) {
+  document.addEventListener(type, function () { _buildTouched = true; }, { capture: true, passive: true });
+});
+document.addEventListener('visibilitychange', function () { if (!document.hidden) _buildTouched = false; });
 // Reloading loses nothing: the page is quiet, or hidden with nothing open over it.
 function _buildSafe() {
   // The Almanac comes back from its #almanac address, so hidden it does not hold the reload.
   return _buildQuiet() || (document.hidden && !readerOpen && !_createOpen && !_ttsSpeaking);
 }
 // Shown, with nothing in hand: the home page or a ZIM's (the reload draws
-// the same one again), no field being typed in, no reading aloud, no media
+// the same one again), the Almanac at its top and not yet used since it was shown, no field being typed in, no reading aloud, no media
 // playing, nothing open over it.
 function _buildQuiet() {
-  if ((mode !== 'home' && mode !== 'source') || readerOpen || _almanacOpen || _createOpen || _ttsSpeaking) return false;
+  if ((mode !== 'home' && mode !== 'source') || readerOpen || (_almanacOpen && (_buildTouched || _almanacScrolled())) || _createOpen || _ttsSpeaking) return false;
   var el = document.activeElement;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.value) return false;
   return !Array.prototype.some.call(document.querySelectorAll('audio, video'), function (m) { return !m.paused; });
