@@ -571,7 +571,7 @@ const tick = () => new Promise(r => setImmediate(r));
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
       '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
-      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd'].map(fn).join('\n'), ax);
+      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle'].map(fn).join('\n'), ax);
 
     // A DOM of just what the reading looks at: elements with a display, text nodes, document order.
     const BLOCKS = ['div', 'p', 'h1', 'h2', 'ul', 'li', 'main', 'article', 'section', 'body'];
@@ -781,7 +781,14 @@ const tick = () => new Promise(r => setImmediate(r));
     doc.rect = () => ({ top: 700, bottom: 740, left: 0, right: 50, width: 50, height: 40 });
     ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
     ax._ttsFollowResume();
-    ok('tapping the voice state follows again, at once', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224));
+    ok('following again at once is what Play does (below)', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224));
+    // Scrolled away: nothing in the bar; Play brings the page to the sentence and follows again.
+    ax._ttsLose(); win.scrolled = null;
+    Object.assign(ax, { _ttsPaused: false, _ttsNow: { engine: 'kokoro' }, _ttsAudio: { pause() {}, play: () => Promise.resolve() }, _ttsHeld: null, _DEVICE_VOICE: 'device' });
+    ax._ttsPauseToggle();
+    ok('pausing leaves the page where it is, not following', ax._ttsPaused === true && !win.scrolled && ax._ttsRead.following === false);
+    ax._ttsPauseToggle();
+    ok('Play scrolls to the sentence being read and follows it again', ax._ttsPaused === false && ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224), JSON.stringify(win.scrolled));
     ax.window.matchMedia = () => ({ matches: true });
     win.scrolled = null; ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
     ok('reduced motion: it jumps, not glides', win.scrolled && win.scrolled.behavior === 'auto');
