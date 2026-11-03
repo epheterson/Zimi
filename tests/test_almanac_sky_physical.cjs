@@ -322,7 +322,7 @@ check(run('_sgLimitMag(_sgSkyLum(60, -90, 0, 0, 0.003))') > 0 && run('_sgLimitMa
   const keys = run("Object.keys(SKY_ZONE_GENERATED).length");
   check(keys > 450, 'the table has every zone.tab zone and its links (' + keys + ')');
   const rows = (known) => { S.__ms = Date.parse('2026-10-14T20:00:00Z'); S.__s = { lat: 34, lon: 0, nowTime: S.__ms, stored: false, known: known, moonData: { phase: { illumination: 20 } } }; S.__f = run('_skyFactsAt(__ms, 34, 0)'); return run('_skyFactRows(__s, __f)'); };
-  // Four cards, two by two, under the Moon's eight (Eric, 2026-10-18); where north is, Look and the chart show.
+  // Four tiles among the hero's two (six in all); where north is, Look and the chart show.
   check(rows(false).length === 4 && rows(true).length === 4, 'four cards, guessed or known');
   check(!rows(true).some((r) => /alm_sky_f_(north|south)/.test(r[0])), 'no north card under the Moon');
 }
@@ -336,7 +336,7 @@ check(run('_sgLimitMag(_sgSkyLum(60, -90, 0, 0, 0.003))') > 0 && run('_sgLimitMa
   check(run('_orrFmtSpan(' + (down - now) / 1000 + ')') === run('_skySpan(' + f.sunset + ', ' + now + ', true, -1)'), 'and the row says that span (' + left + ' min of ' + Math.round((f.sunset - now) / 60000) + ' real)');
   const soon = f.sunset - 3 * 60000, fs = run('_skyFactsAt(' + soon + ', -33.87, 151.21)');
   S.__s = { lat: -33.87, lon: 151.21, nowTime: soon, stored: false, known: true, moonData: { phase: { illumination: 20 } } }; S.__f = fs;
-  check(run('_skyFactRows(__s, __f)')[0][1] === 'alm_sky_f_under_step', 'three minutes of light left, guessed: "under 15 min", not 0 sec');
+  check(run('_skyFactRows(__s, __f)').find((r) => r[3] === 'left')[1] === 'alm_sky_f_under_step', 'three minutes of light left, guessed: "under 15 min", not 0 sec');
   const darkUntil = Date.parse('2026-10-13T19:07:00Z');
   check(run('_skyRoundMs(' + (darkUntil + 7 * 60000) + ', true, 1)') >= darkUntil + 7 * 60000, 'dark until rounds up');
 }
@@ -366,7 +366,7 @@ check(run('_sgLimitMag(_sgSkyLum(60, -90, 0, 0, 0.003))') > 0 && run('_sgLimitMa
   check(Math.abs(f.sunsetAz - 259.9) < 1.2 && f.sunriseAz > 80 && f.sunriseAz < 110, 'the Sun sets at bearing ' + f.sunsetAz.toFixed(1) + ' (Horizons 259.9) and rises in the east');
   const known = rowsOf(true), guessed = rowsOf(false);
   const moonRow = known.find((r) => r[3] === 'moon');
-  check(known.every((r) => !r[2]) && /^tb_moon(rise|set)$/.test(moonRow[0]) && !/alm_sky_f_about/.test(moonRow[1]) && !known.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'the cards carry no compass line, and the Moon card is two lines: MOONRISE or MOONSET, then the time: ' + JSON.stringify(moonRow));
+  check(!known.some((r) => /\u00b0/.test(r[2])) && known.filter((r) => r[2]).length === 4 && /^tb_moon(rise|set)$/.test(moonRow[0]) && !/alm_sky_f_about/.test(moonRow[1]) && !known.some((r) => /alm_sky_f_about/.test(r.join(' '))), 'no tile carries a compass bearing, each has its third line, and the Moon tile is MOONRISE or MOONSET, the time, then the other event: ' + JSON.stringify(moonRow));
   check(guessed.every((r) => /alm_sky_f_about/.test(r[1])), 'while the place is a guess the rows say so in themselves (about)');
 }
 

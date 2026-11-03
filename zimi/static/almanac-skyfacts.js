@@ -104,29 +104,43 @@ function _skySpan(at, now, guess, dir) { return _orrFmtSpan(Math.max(0, _skyRoun
 // "SW 252°": the point of the compass and the bearing it stands for (the Field Guide's card uses it).
 function _skyBearing(az) { return _azCompass(az) + ' ' + Math.round(az) + '\u00b0'; }
 
-// The cards: [label, value, sub, key], four, set among the Moon's eight in
-// one grid (almanac.css orders the twelve by key). The value is the one short
-// thing the card is for (a span, a clock time); the sub (none today) is a small line under it. (Where north is, the Look view and the
-// star chart show, and the Field Guide says: fieldguide-card.js.) A card that rests
-// on a guessed place says "about" in itself. They sit under the Moon beside the
-// hero's own numbers (illuminated, sunrise, sunset: almanac.js _almHeadHtml), so
-// they say none of those again: the span left, not the time it ends; when the
-// Moon comes or goes, not how lit it is.
+// The tiles: [label, value, sub, key], four, set among the hero's two in one
+// grid of six (almanac.css orders them by key), one for each thing a person
+// asks of the Moon and the day: how lit is it (hero), when does it rise or set,
+// when is it next full (hero), how much daylight is left, how dark will it get,
+// what time is it by the Sun. The value is the one short thing the tile is for
+// (a span, a clock time); the sub adds one fact. (Where north is, the Look view
+// and the star chart show, and the Field Guide says: fieldguide-card.js.) A tile
+// that rests on a guessed place says "about" in itself.
 function _skyFactRows(s, f) {
-  var rows = [], now = s.nowTime, guess = !s.stored;
+  var rows = [], now = s.nowTime, guess = !s.stored, loc = { lat: s.lat, lon: s.lon, stored: s.stored };
   var about = function (v) { return guess ? t('alm_sky_f_about', { v: v }) : v; };
   var at = function (ms, dir) { return about(_skyClock(ms, guess, dir)); };
+  var sun = _almSunTimesAt(new Date(now), loc);
   // A guessed sunset less than a step away rounds down to now: said as what it is, not as a time already gone.
   var soon = guess && f.sunUp && f.sunset && _skyRoundMs(f.sunset, guess, -1) <= now;
-  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? about(_skySpan(f.sunset, now, guess, -1)) : t('alm_midnight_sun'), '', 'left']);
-  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? about(_skySpan(f.sunrise, now, guess, 1)) : t('alm_polar_night'), '', 'left']);
-  if (f.fullyDark) rows.push([t('alm_sky_f_dark_until'), f.darkUntil ? about(_skyClock(f.darkUntil, guess, 1)) : t('alm_polar_night'), '', 'dark']);
-  else rows.push([t('alm_sky_f_dark_from'), f.darkFrom ? about(_skyClock(f.darkFrom, guess, 1)) : t('alm_sky_f_not_dark'), '', 'dark']);
-  // When it next comes or goes, and where; how lit it is is the hero's card. With neither in the next day and a half, that.
-  var moonAt = f.moonUp ? (f.moonset ? [t('tb_moonset'), at(f.moonset, -1)] : null) : (f.moonrise ? [t('tb_moonrise'), at(f.moonrise, 1)] : null);
-  rows.push(moonAt ? [moonAt[0], moonAt[1], '', 'moon'] : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), '', 'moon']);
-  rows.push([t('alm_sky_f_solar'), about(_skySolarClock(_skySolarMinutes(new Date(now), s.lon), guess)), '', 'solar']);
+  // When it next comes or goes, and where; with neither in the next day and a half, how lit it is.
+  var up = f.moonUp, here = up ? f.moonset : f.moonrise, other = up ? f.moonrise : f.moonset;
+  var moonSub = here && other ? t(up ? 'alm_sky_f_rises' : 'alm_sky_f_sets', { t: at(other, up ? 1 : -1) }) : '';
+  rows.push(here ? [t(up ? 'tb_moonset' : 'tb_moonrise'), at(here, up ? -1 : 1), moonSub, 'moon']
+    : [t('alm_moon'), t('alm_sky_f_moon_lit', { p: _orrNum(s.moonData.phase.illumination, null, 0) + '%' }), '', 'moon']);
+  var sunSub = sun.polar ? '' : [t('alm_sky_f_sunrise_at', { t: about(sun.sunrise) }), t('alm_sky_f_sunset_at', { t: about(sun.sunset) })].join(' \u00b7 ');
+  if (f.sunUp) rows.push([t('alm_sky_f_daylight_left'), soon ? t('alm_sky_f_under_step') : f.sunset ? about(_skySpan(f.sunset, now, guess, -1)) : t('alm_midnight_sun'), sunSub, 'left']);
+  else rows.push([t('alm_sky_f_sunrise_in'), f.sunrise ? about(_skySpan(f.sunrise, now, guess, 1)) : t('alm_polar_night'), sunSub, 'left']);
+  var gold = sun.goldenHour ? t('alm_sky_f_golden_at', { t: about(sun.goldenHour) }) : '';
+  if (f.fullyDark) rows.push([t('alm_sky_f_dark_until'), f.darkUntil ? about(_skyClock(f.darkUntil, guess, 1)) : t('alm_polar_night'), gold, 'dark']);
+  else rows.push([t('alm_sky_f_dark_from'), f.darkFrom ? about(_skyClock(f.darkFrom, guess, 1)) : t('alm_sky_f_not_dark'), gold, 'dark']);
+  var solarMin = _skySolarMinutes(new Date(now), s.lon);
+  var off = _skyClockOffsetMin(new Date(now), loc, solarMin);
+  rows.push([t('alm_sky_f_solar'), about(_skySolarClock(solarMin, guess)),
+    t('alm_sky_f_clock_off', { d: t('alm_tm_dmin_other', { n: (off > 0 ? '+' : off < 0 ? '\u2212' : '') + Math.abs(off) }) }), 'solar']);
   return rows;
+}
+// How far the Sun's time stands from the clock's at a place, in whole minutes (positive: the Sun is ahead).
+function _skyClockOffsetMin(date, loc, solarMin) {
+  var clock = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60 + _tzUtcOffsetMin(_almDisplayTz(loc), date);
+  var d = (((solarMin - clock) % 1440) + 1440) % 1440;
+  return Math.round(d > 720 ? d - 1440 : d);
 }
 // A line that breaks only at its dots (each piece, a time or a bearing, whole, the dot staying with the piece before it).
 function _skyNoBreak(text) {

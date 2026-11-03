@@ -2,10 +2,10 @@
 
   1. The wall calendar: the live sky stands directly above the calendar, with
      nothing in between, whether or not a place has been chosen.
-  2. The hero: the Moon with its numbers (illuminated, age, distance, next full
-     Moon, sunrise, sunset, daylight, golden hour), then what the sky says (its
-     caption, the survivor facts, the ask for a place), then the sky. Nothing in
-     the facts repeats a hero card.
+  2. The hero: the Moon with its six tiles (how lit, when it rises or sets, when
+     it is next full, daylight left, how dark it gets, the Sun's time), then what
+     the sky says (its caption, the ask for a place), then the sky. Each tile is
+     a value, a label and a small third line.
   3. The world clocks: the All / Saved switch is above the clocks, at the end of
      the line.
   4. The Moon is its picture (nothing stands in for it), and the solar system
@@ -35,13 +35,7 @@ PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 POLL_MS = 100
 HERO_CARDS = [
     "alm-hc-illum",
-    "alm-hc-age",
-    "alm-hc-dist",
     "alm-hc-nextfull",
-    "alm-hc-sunrise",
-    "alm-hc-sunset",
-    "alm-hc-daylight",
-    "alm-hc-golden",
 ]
 
 
@@ -144,12 +138,14 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
               const cards = ids.map(i => document.getElementById(i));
               return { present: cards.map(c => !!c), text: cards.map(c => c && c.textContent.trim()),
                 order: [y(moon), y(cards[0]), y(document.getElementById('almanac-sky-cap')), y(sky)],
-                // The twelve as they read: one grid, row by row (top, then left).
+                // The six as they read: one grid, row by row (top, then left).
                 reading: [...document.querySelectorAll('#almanac-head .alm-cards .alm-card')].filter(e => !e.hidden)
                   .map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), e.id || e.className]; })
                   .sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2].replace(/^alm-card /, '')),
                 cap: document.getElementById('almanac-sky-cap').textContent.trim().length > 0,
                 facts: document.getElementById('almanac-sky-facts').querySelectorAll('.alm-card').length,
+                tiles: document.querySelectorAll('#almanac-head .alm-cards .alm-card:not([hidden])').length,
+                subs: document.querySelectorAll('#almanac-head .alm-cards .alm-card:not([hidden]) .alm-card-sub:not(:empty)').length,
                 factLabels: [...document.querySelectorAll('#almanac-sky-facts .alm-card-lbl')].map(e => e.textContent.trim().toLowerCase()),
                 factText: document.getElementById('almanac-sky-facts').textContent };
             }""",
@@ -159,22 +155,19 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
         assert all(got["text"]), got  # each has its figure
         # The Moon, its cards, then the caption directly over the sky (Eric, 2026-10-18).
         assert got["order"] == sorted(got["order"]), got["order"]
-        # The sky's four among the Moon's eight, in pairs: the Moon, its distance and the Sun's clock, the Sun's day.
+        # The sky's four among the hero's two, in the questions a person asks: how lit, when it rises or sets,
+        # when it is next full, how much daylight is left, how dark it gets, what time the Sun says.
         assert got["reading"] == [
-            "alm-hc-illum-card", "alm-hc-age-card", "alm-sf-moon", "alm-hc-nextfull-card",
-            "alm-hc-dist-card", "alm-sf-solar", "alm-hc-sunrise-card", "alm-hc-sunset-card",
-            "alm-hc-daylight-card", "alm-sf-left", "alm-hc-golden-card", "alm-sf-dark",
+            "alm-hc-illum-card", "alm-sf-moon", "alm-hc-nextfull-card",
+            "alm-sf-left", "alm-sf-dark", "alm-sf-solar",
         ], got["reading"]
-        assert got["cap"] and got["facts"] >= 4, got
-        # No duplication: the facts do not say how lit the Moon is (the hero's Illuminated card does), and do not
-        # write a sunrise or sunset hour again (the hero's cards do).
+        assert got["cap"] and got["facts"] == 4, got
+        # No duplication: the facts do not say how lit the Moon is (the hero's Illuminated tile does), and the
+        # day's sunrise and sunset are the third line of the daylight tile, not tiles of their own.
         assert "lit" not in got["factText"].lower(), got["factText"]
-        assert not any(
-            l in ("illuminated", "sunrise", "sunset", "daylight")
-            for l in got["factLabels"]
-        ), got["factLabels"]
-        # Four cards, so the Moon's eight and these four are one grid of twelve.
-        assert got["facts"] == 4, got
+        assert not any(l in ("illuminated", "sunrise", "sunset", "daylight") for l in got["factLabels"]), got["factLabels"]
+        # Six tiles, each a label, a value and a small third line.
+        assert got["tiles"] == 6 and got["subs"] == 6, got
         assert not errors, errors
     finally:
         ctx.close()

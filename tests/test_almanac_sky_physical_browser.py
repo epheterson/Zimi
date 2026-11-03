@@ -696,9 +696,9 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
         assert "Chicago" in text and "about" in text.lower(), text
-        # The sunrise's time is the Moon's block's own card (not said twice): Chicago's, not an Atlantic longitude's.
-        sunrise = pg.inner_text("#alm-hc-sunrise")
-        assert re.match(r"[56]:\d\d AM", sunrise), sunrise
+        # The sunrise's time is the daylight tile's third line: Chicago's, not an Atlantic longitude's.
+        sunrise = pg.inner_text(".alm-sf-left .alm-card-sub")
+        assert re.search(r"Sunrise .*[56]:\d\d AM", sunrise), sunrise
         assert pg.evaluate("Math.round(_skyState.lat * 10) / 10") == 41.9
     finally:
         ctx.close()
