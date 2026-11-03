@@ -19,7 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Games: the shelf's order and view switch sit on the section chips' row instead of a row of their own; on a phone the switch is one button.
+- Games: the shelf's section chips scroll sideways only and look like Manage's; on a phone the order and view switch sit under the title, never over it.
+- Games: Game of the day shows in the compact view too.
+- Games: every New game sheet has the same Cancel and Start row, and puzzles use the same option rows as the other games; a custom size shows its fields only when Custom is chosen.
+- Games: solitaire foundations are exactly a card's size, the stock and waste have room, and the corner index stands clear of the pips.
 - Games: a puzzle's New game Type is asked as its parts (Loopy and Mines: grid shape, size, difficulty or mines; size and difficulty for twelve more), each a short choice, instead of one list of up to 40 types.
 - Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
 - Games: text contrast, 44px touch targets and names for tiles and pictures, checked automatically in every game.
@@ -28,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
 - Games: card faces use an open index font with a larger suit under the rank.
 - Games: the About sheet's link to the game's article takes the accent colour and sits clear of the facts above it.
+- Read aloud: a spinner while it gets ready instead of a countdown, Pause and Play as the main button, Play returns to the sentence being read, and after 6 idle seconds it follows the reading again.
+- Read aloud leaves out foreign-script names, romanizations and pronunciations in parentheses.
+- An open window or the app picks up a new version when it loads or comes back to the front.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
 - Maps open by their #map= address, and a place result drops a pin with its name.
 - Mancala opens as Kalah, the standard capture rule.
@@ -47,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Mahjong: Zoom makes a tile 44 px wide on a phone, big enough to tap (it was 32).
 - Loopy: an edge not yet drawn is a faint grey guide instead of an amber line as heavy as a drawn one.
 - Canasta: with the stock empty the discard pile must be taken when it can be (the hand ends only when it cannot), and a meld shows its cards fanned instead of one card and a count.
+- Games: another site's script that fails to load (Cloudflare's analytics, blocked) no longer raises the failed-to-start banner over a puzzle.
 - Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
 
 ## [1.15.1]
