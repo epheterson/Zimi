@@ -2042,7 +2042,6 @@
   "tts_slow_at": "{slow} no puede seguir a {rate}. ¿Probar {fast}?",
   "tts_slow_use": "Usar {fast}",
   "tts_too_slow": "(Demasiado lenta)",
-  "tts_getting_ahead": "{voice} · {s} s",
   "tts_ahead_label": "Adelantando",
   "tts_unavailable_offline": "La lectura en voz alta aún no está en caché. Conéctate una vez para usarla sin conexión.",
   "uncaptured_back": "Volver",

@@ -2042,7 +2042,6 @@
   "tts_slow_at": "لا يواكب {slow} السرعة {rate}. جرّب {fast}؟",
   "tts_slow_use": "استخدم {fast}",
   "tts_too_slow": "(بطيء جدًا)",
-  "tts_getting_ahead": "{voice} · {s} ث",
   "tts_ahead_label": "يتقدّم مسبقًا",
   "tts_unavailable_offline": "لم تُخزَّن القراءة بصوت عالٍ بعد. اتصل مرة واحدة لتستخدمها دون اتصال.",
   "uncaptured_back": "رجوع",

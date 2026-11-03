@@ -2042,7 +2042,6 @@
   "tts_slow_at": "{slow} can't keep up at {rate}. Try {fast}?",
   "tts_slow_use": "Use {fast}",
   "tts_too_slow": "(Too slow)",
-  "tts_getting_ahead": "{voice} · {s} s",
   "tts_ahead_label": "Getting ahead",
   "tts_unavailable_offline": "Read aloud has not been cached yet. Connect once to use it offline.",
   "uncaptured_back": "Go back",

@@ -2042,7 +2042,6 @@
   "tts_slow_at": "{slow} 跟不上 {rate}。试试 {fast}？",
   "tts_slow_use": "改用{fast}",
   "tts_too_slow": "（太慢）",
-  "tts_getting_ahead": "{voice} · {s} 秒",
   "tts_ahead_label": "正在提前准备",
   "tts_unavailable_offline": "朗读功能尚未缓存。请联网一次，之后即可离线使用。",
   "uncaptured_back": "返回",
