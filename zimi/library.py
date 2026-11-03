@@ -253,11 +253,17 @@ def _read_auto_update_file():
         return {}
 
 
+# One writer at a time for the auto-update file: the settings and the skips are
+# each a read, merge and write of the same file.
+_auto_update_file_lock = threading.Lock()
+
+
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk, keeping the ZIMs it skips."""
-    cfg = _read_auto_update_file()
-    cfg.update(enabled=enabled, frequency=freq)
-    _srv._atomic_write_json(_auto_update_config_path(), cfg)
+    with _auto_update_file_lock:
+        cfg = _read_auto_update_file()
+        cfg.update(enabled=enabled, frequency=freq)
+        _srv._atomic_write_json(_auto_update_config_path(), cfg)
 
 
 def _load_auto_update_skips():
@@ -273,12 +279,13 @@ def _load_auto_update_skips():
 def set_auto_update_skip(name, skip):
     """Leave one ZIM out of (or back in) the auto-updater. A person's Update
     still works on it; only the unattended pass passes it over."""
-    skips = set(_srv._auto_update_skips)
-    skips.add(name) if skip else skips.discard(name)
-    cfg = _read_auto_update_file()
-    cfg["skip"] = sorted(skips)
-    _srv._atomic_write_json(_auto_update_config_path(), cfg)
-    _srv._auto_update_skips = frozenset(skips)
+    with _auto_update_file_lock:
+        skips = set(_srv._auto_update_skips)
+        skips.add(name) if skip else skips.discard(name)
+        cfg = _read_auto_update_file()
+        cfg["skip"] = sorted(skips)
+        _srv._atomic_write_json(_auto_update_config_path(), cfg)
+        _srv._auto_update_skips = frozenset(skips)
 
 
 _auto_update_enabled, _auto_update_freq = False, "weekly"  # defaults; loaded by _init()

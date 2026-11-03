@@ -7249,7 +7249,10 @@ def handle_manage_post(handler, parsed, data):
         name = data.get("zim")
         if not isinstance(name, str) or name not in _srv.get_zim_files():
             return handler._json(404, {"error": "unknown ZIM"})
-        _srv.set_auto_update_skip(name, bool(data.get("skip")))
+        skip = data.get("skip")
+        if not isinstance(skip, bool):
+            return handler._json(400, {"error": "skip must be true or false"})
+        _srv.set_auto_update_skip(name, skip)
         with _srv._zim_lock:
             _srv.mark_auto_update_skips(_srv._zim_list_cache)
         _srv._changes.announce("library", None)

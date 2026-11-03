@@ -67,3 +67,25 @@ def test_the_unattended_pass_skips_an_opted_out_zim(data_dir, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(data_dir))
     lib._auto_update_loop()
     assert [u.rsplit("/", 1)[-1] for u in started] == ["kept_en_2026-02.zim.meta4"]
+
+
+def test_skips_and_settings_written_at_once_all_survive(data_dir, monkeypatch):
+    import threading
+    import time
+
+    real = server._atomic_write_json
+
+    def slow(path, data):
+        time.sleep(0.02)  # widen the read-merge-write window
+        return real(path, data)
+
+    monkeypatch.setattr(server, "_atomic_write_json", slow)
+    names = ["zim%d" % i for i in range(8)]
+    jobs = [threading.Thread(target=lib.set_auto_update_skip, args=(n, True)) for n in names]
+    jobs.append(threading.Thread(target=lib._save_auto_update_config, args=(True, "daily")))
+    for j in jobs:
+        j.start()
+    for j in jobs:
+        j.join()
+    got = _file(data_dir)
+    assert got["skip"] == sorted(names) and got["frequency"] == "daily", got
