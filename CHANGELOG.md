@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
 - Games: card faces use an open index font with a larger suit under the rank.
+- Almanac: the twelve tiles under the Moon are six, one per question (how lit, when it rises or sets, next full, daylight left, how dark, the Sun's time), each with a small third line carrying the age, distance, next new Moon, sunrise and sunset, golden hour and clock offset.
 - Games: the About sheet's link to the game's article takes the accent colour and sits clear of the facts above it.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
 - Maps open by their #map= address, and a place result drops a pin with its name.
