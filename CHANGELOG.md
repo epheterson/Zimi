@@ -27,20 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
 - Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
 - Games: card faces use an open index font with a larger suit under the rank.
-- Almanac: the twelve tiles under the Moon are six, one per question (how lit, when it rises or sets, next full, daylight left, how dark, the Sun's time), each with a small third line carrying the age, distance, next new Moon, sunrise and sunset, golden hour and clock offset.
 - Games: the About sheet's link to the game's article takes the accent colour and sits clear of the facts above it.
 - Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
 - Maps open by their #map= address, and a place result drops a pin with its name.
 - Mancala opens as Kalah, the standard capture rule.
 - Sky Detective's study sky follows the phone's motion.
-- The Earth view says its satellite positions may be out of date when its orbital data is stale and no fetch is on offer.
 - Available updates in Manage show each download's size.
 - Games: a game that fails to start says so in Zimi's log with the error, and the banner steps down if the game draws late.
 
 ### Fixed
 
 - A wide infobox in the reader (Roman Empire on a phone) wraps to the column instead of being cut off at the right edge (#136).
-- The Almanac's flights between the Earth, the Moon and the Sun turn the picture smoothly: up is carried along the flight instead of snapping to north past the pole, and a flight that would turn faster than 4 degrees a frame takes longer.
 - A subreddit capture started from the web goes through the same private-address proxy as video captures.
 - The header, the reader and Read aloud's bar keep clear of the notch and the home indicator on a curved iPhone.
 - libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
