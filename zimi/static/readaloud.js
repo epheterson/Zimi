@@ -1098,7 +1098,7 @@ function _ttsBarHtml() {
     (_ttsMenuOpen === 'speed' ? _ttsSpeedHtml(rate) : '') + '</span>';
   // One way back, before pause: this sentence again, then the one before.
   h += btn('tts-bar-btn tts-bar-step', t('tts_prev_sentence'), '_ttsBack()', _TTS_BACK_ICON);
-  h += btn('tts-bar-btn', t(_ttsPaused ? 'resume' : 'pause'), '_ttsPauseToggle()', _ttsPaused ? _TTS_PLAY_ICON : _TTS_PAUSE_ICON,
+  h += btn('tts-bar-btn tts-bar-main', t(_ttsPaused ? 'resume' : 'pause'), '_ttsPauseToggle()', _ttsPaused ? _TTS_PLAY_ICON : _TTS_PAUSE_ICON,
     ' aria-pressed="' + _ttsPaused + '"');
   h += btn('tts-bar-btn', t('tts_stop'), '_ttsStop()', _TTS_CLOSE_ICON);
   return h;

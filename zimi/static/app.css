@@ -575,7 +575,9 @@
   button.tts-bar-voice svg { color: var(--text2); flex: none; }
   .tts-bar-btn, .tts-bar-speed { width: 44px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: none; color: var(--text); cursor: pointer; }
   .tts-bar-speed { width: 5.2em; padding: 0; white-space: nowrap; /* as wide as 2.95x: dragging the speed never moves the bar */ border-radius: 22px; font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text2); }
-  .tts-bar-btn:last-of-type { background: var(--surface2); }
+  /* Play/Pause is the one filled control, as on any player; Back and Stop are quiet beside it, the progress mark apart at the left. */
+  .tts-bar-btn.tts-bar-main { background: var(--amber); color: var(--on-amber); }
+  .tts-bar-btn.tts-bar-main:hover { color: var(--on-amber); filter: brightness(1.08); }
   button.tts-bar-voice:hover, .tts-bar-btn:hover, .tts-bar-speed:hover { color: var(--amber); }
   .tts-bar button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
   .tts-bar-anchor { position: relative; display: inline-flex; min-width: 0; }
