@@ -363,7 +363,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-shelf:not([data-sort="sections"]) .sh-sort-wrap { color: var(--accent); }
 @media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* A phone's lobby header has room for the mark only. */
-@media (max-width: 699px) { [data-view="lobby"] .sh-tools { flex: 1 0 100%; } /* the controls take a row under the title, never over it */ [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; min-width: 44px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
+@media (max-width: 699px) { [data-view="lobby"] header .sh-tools { flex: 1 0 100%; } /* the controls take a row under the title, never over it */ [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; min-width: 44px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
 @media (max-width: 899px) { [data-view="index"] .sh-sort-wrap { margin-left: auto; } [data-view="index"] .ar-view-toggle { margin-left: 0; } }
 .sh-wait .sh-list { visibility: hidden; }
 
