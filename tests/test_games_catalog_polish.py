@@ -107,6 +107,25 @@ def test_the_chip_row_scrolls_sideways_only(browser, served, view):
     ctx.close()
 
 
+@pytest.mark.parametrize("view", ["lobby", "index"])
+def test_inside_zimi_on_a_phone_the_chips_keep_their_row(browser, served, view):
+    """In Zimi the order and view controls share the chips' row; on a phone they
+    must leave the chips most of it (the header's own rule once took it all)."""
+    ctx = browser.new_context(viewport=VIEW)
+    page = ctx.new_page()
+    page.add_init_script("try{localStorage.setItem('zimi.games.view','%s')}catch(e){}" % view)
+    page.set_content('<style>body{margin:0}iframe{border:0;width:100vw;height:100vh}</style><iframe src="%s/index.html"></iframe>' % served)
+    frame = page.frame_locator("iframe")
+    frame.locator(".sh-bar .sh-nav .sh-chip").first.wait_for()
+    f = page.frames[1]
+    w = f.evaluate("""() => { const bar = document.querySelector('.sh-bar'), nav = bar.querySelector('.sh-nav');
+      return { bar: bar.getBoundingClientRect().width, nav: nav.getBoundingClientRect().width,
+               inBar: !!bar.querySelector('.sh-tools') }; }""")
+    assert w["inBar"], w
+    assert w["nav"] >= w["bar"] * 0.6, w
+    ctx.close()
+
+
 def test_game_of_the_day_shows_in_the_compact_view_in_every_section(browser, served):
     ctx = browser.new_context(viewport=VIEW)
     page = ctx.new_page()

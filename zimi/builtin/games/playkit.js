@@ -143,12 +143,12 @@
   Play.ready = function (o) {
     var done = false, pointer = false;
     try { pointer = matchMedia('(pointer: coarse)').matches; } catch (e) { /* a mouse */ }
-    var text = pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey')), splash = null;
+    var line = function () { return pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey')); }, text = line(), splash = null;
     if (o.say) o.say(text); else if (o.msg) o.msg.textContent = text;
     // The first ready of a page opens on the start splash (art, name, Play, the best score); a re-arm after a game keeps to the line.
     if (!Play.splashed && o.splash !== false && window.ZimiShell && window.ZimiShell.splash) {
       Play.splashed = true;
-      splash = window.ZimiShell.splash({ hint: text, chips: o.best ? [[T('play.best'), Play.num(o.best)]] : [], onPlay: function () { go(); } });
+      splash = window.ZimiShell.splash({ hint: line, chips: o.best ? [[function () { return T('play.best'); }, Play.num(o.best)]] : [], onPlay: function () { go(); } });
     }
     function stop() { done = true; if (splash) splash.close(); (o.target || document).removeEventListener('pointerdown', tap); document.removeEventListener('keydown', key, true); }
     function go() { if (done) return; stop(); o.start(); }

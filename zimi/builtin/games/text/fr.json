@@ -3898,7 +3898,7 @@
  "memory.wins": "{name} gagne",
  "mines.bestRow": "Meilleur temps, {level}",
  "mines.boardLabel": "Plateau de {rows} sur {cols}, {mines} mines",
- "mines.c.flag": "avec drapeau",
+ "mines.c.flag": "avec un drapeau",
  "mines.c.hidden": "cachée",
  "mines.c.mine": "mine",
  "mines.c.n": "ouverte, mines autour : {n}",

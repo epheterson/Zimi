@@ -25,3 +25,5 @@ def test_header_and_reader_offset_by_the_safe_area():
     assert "--under-topbar: calc(56px + var(--sat) + var(--conn-h))" in css
     assert re.search(r"\.reader-view \{[^}]*left: env\(safe-area-inset-left", css)
     assert re.search(r"\.tts-bar \{[^}]*env\(safe-area-inset-bottom", css)
+    # Landscape on a notched phone: the library's own column keeps clear of the cutout too.
+    assert len(re.findall(r"\.container \{[^}]*env\(safe-area-inset-left", css)) == 2

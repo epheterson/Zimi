@@ -399,3 +399,20 @@ def test_generate_token_http_route_returns_generic_500(ro_data_dir, monkeypatch)
     manage._env_pw_hash_cache = None
     assert h.status == 500
     assert h.body["error"] == "Could not save the API token (storage is not writable)"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
+def test_credential_files_are_readable_by_the_server_alone(tmp_path, restore_path_globals):
+    """The API token and the password hash are written 0600 whatever the
+    process umask, so another account on the machine cannot read them."""
+    data = tmp_path / "data"
+    data.mkdir()
+    server.ZIMI_DATA_DIR = str(data)
+    old = os.umask(0o022)
+    try:
+        assert manage._generate_api_token()
+        assert manage._set_manage_password("secret") is True
+    finally:
+        os.umask(old)
+    for name in ("api_token", os.path.basename(manage._password_file())):
+        assert (os.stat(data / name).st_mode & 0o777) == 0o600, name

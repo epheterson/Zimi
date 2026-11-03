@@ -86,6 +86,15 @@ def test_the_game_title_localizes_without_a_workaround_key(browser, base):
 def test_a_title_spelled_with_a_straight_apostrophe_still_localizes(browser, base):
     c = browser.new_context(viewport={"width": 390, "height": 844}, locale="fr-FR")
     page = c.new_page()
+
+    # The page spells it Hold&rsquo;em and the table Hold’em; serve it with a
+    # straight apostrophe so the two really differ.
+    def straight(route):
+        body = route.fetch().text().replace("Hold&rsquo;em", "Hold'em")
+        assert "Hold'em" in body
+        route.fulfill(body=body, content_type="text/html")
+
+    page.route("**/holdem.html", straight)
     page.goto(base + "/holdem.html")
     game_ready(page)
     fr = page.evaluate("ZimiText.T('game.holdem.title')")

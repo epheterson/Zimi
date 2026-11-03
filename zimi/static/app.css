@@ -618,7 +618,7 @@
   }
 
   /* ── Layout ── */
-  .container { max-width: 820px; margin: 0 auto; padding: 28px 16px; }
+  .container { max-width: 820px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right, 0px)) 28px max(16px, env(safe-area-inset-left, 0px)); }
 
   /* ── Stats bar ── */
   .stats-bar { text-align: center; padding: 12px 0; font-size: 14px; color: var(--text2); }
@@ -3274,7 +3274,7 @@
     .bc-icon .bc-letter { width: 18px; height: 18px; font-size: 10px; }
     .stats-grid { grid-template-columns: 1fr; }
     .browse-grid { grid-template-columns: 1fr; }
-    .container { padding: 20px 12px; }
+    .container { padding: 20px max(12px, env(safe-area-inset-right, 0px)) 20px max(12px, env(safe-area-inset-left, 0px)); }
     .topbar-search .kbd { display: none; }
     /* A phone's box is narrow, so the "?" costs it nothing: it takes the ×'s
        place while the box is empty, sits beside the × while you type, and

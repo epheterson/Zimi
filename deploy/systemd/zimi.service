@@ -1,10 +1,14 @@
 # Zimi as a system service on Linux (a Raspberry Pi, a school server) after `pip install zimi`.
 #
+#   sudo apt install python3-venv        # Debian, Ubuntu, Raspberry Pi OS
 #   sudo useradd --system --create-home --home-dir /var/lib/zimi zimi
 #   sudo -u zimi python3 -m venv /var/lib/zimi/venv
 #   sudo -u zimi /var/lib/zimi/venv/bin/pip install zimi
 #   sudo cp zimi.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now zimi
+#
+# Then open http://<this machine>:8899 and set the password. Until you do, a
+# device on the local network can claim it during the first hour.
 #
 # Logs: journalctl -u zimi -f    Stop: sudo systemctl stop zimi
 # Put ZIM files in /var/lib/zimi/zims (or point ZIM_DIR elsewhere the zimi user can read).
@@ -22,6 +26,7 @@ Environment=ZIMI_DATA_DIR=/var/lib/zimi/data
 ExecStart=/var/lib/zimi/venv/bin/zimi serve --port 8899
 Restart=on-failure
 RestartSec=5
+UMask=0027
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true

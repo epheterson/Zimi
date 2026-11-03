@@ -39,11 +39,11 @@ os.environ.setdefault("ZIMI_BEST_ANSWER", "1")
 # library among them; tests/test_ownzims.py turns them on for its own.
 os.environ.setdefault("ZIMI_BUILTIN_ZIMS", "0")
 # The suite's premise is the defaults: BitTorrent on, the network reachable.
-# A shell that exports ZIMI_TORRENT=0 / ZIMI_OFFLINE=1 (the release gate, a
+# A shell that exports ZIMI_TORRENT=0, ZIMI_BT or ZIMI_OFFLINE=1 (the release gate, a
 # developer who runs a server) would flip ~60 tests, so they are dropped here,
 # before any test module reads them, in every pytest-xdist worker too. A test
 # that needs either one sets it itself (monkeypatch.setenv).
-for _var in ("ZIMI_TORRENT", "ZIMI_OFFLINE"):
+for _var in ("ZIMI_TORRENT", "ZIMI_BT", "ZIMI_OFFLINE"):
     os.environ.pop(_var, None)
 
 

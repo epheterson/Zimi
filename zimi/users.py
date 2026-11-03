@@ -1595,7 +1595,7 @@ def rename_zim(old, new):
         for rec in users.values():
             allow = rec.get("allowlist") if isinstance(rec, dict) else None
             if isinstance(allow, list) and old in allow:
-                rec["allowlist"] = sorted({new if a == old else a for a in allow})
+                rec["allowlist"] = sorted({new if a == old else a for a in allow if isinstance(a, str)})
                 changed = True
         if changed:
             _save_users(users)

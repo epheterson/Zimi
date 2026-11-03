@@ -93,7 +93,8 @@
         row.style.display = 'contents';
         first.parentNode.insertBefore(row, first);
       }
-      for (var j = i; j < Math.min(i + cols, cells.length); j++) { row.appendChild(cells[j]); cells[j].setAttribute('role', 'gridcell'); }
+      // Each cell says its own column, so a hidden cell (Mini Crossword's blocks) leaves the others where they stand.
+      for (var j = i; j < Math.min(i + cols, cells.length); j++) { row.appendChild(cells[j]); cells[j].setAttribute('role', 'gridcell'); cells[j].setAttribute('aria-colindex', String(j - i + 1)); }
     }
   }
 
@@ -112,11 +113,26 @@
       var s = board._zimiRove, d = ROVE_ARROWS[e.key];
       if (!d || e.ctrlKey || e.metaKey || e.altKey) return;
       e.preventDefault();
-      var r = clamp(Math.floor(s.cur / s.cols) + d[0], 0, s.rows - 1), c = clamp((s.cur % s.cols) + d[1], 0, s.cols - 1), next = s.cells[r * s.cols + c];
-      if (next) next.focus();   // a short last row has no cell under every column
+      // Past cells that cannot be pressed (a square already fired at) to the next one that can, if any.
+      var r = Math.floor(s.cur / s.cols), c = s.cur % s.cols, next;
+      do {
+        r += d[0]; c += d[1];
+        if (r < 0 || c < 0 || r >= s.rows || c >= s.cols) return;
+        next = s.cells[r * s.cols + c];
+      } while (!next || next.disabled);   // a short last row has no cell under every column
+      next.focus();
     });
+  }
+  // After a board disables cells, keep its one tab stop on a cell that can be pressed, or Tab can no longer reach the grid.
+  function gridRoveSync(board) {
+    var g = board._zimiRove;
+    if (!g || !g.cells[g.cur] || !g.cells[g.cur].disabled) return;
+    for (var k = 1; k < g.cells.length; k++) {
+      var i = (g.cur + k) % g.cells.length;
+      if (!g.cells[i].disabled) { g.cells[g.cur].tabIndex = -1; g.cur = i; g.cells[i].tabIndex = 0; return; }
+    }
   }
 
 
-  root.ZimiUtil = { gridRove: gridRove, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
+  root.ZimiUtil = { gridRove: gridRove, gridRoveSync: gridRoveSync, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
 })(this);

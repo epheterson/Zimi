@@ -12,11 +12,24 @@ tried first so a test double written against 3.x still works.
 
 from importlib import metadata
 
-# The writer's argument order cannot be told from the method, so it comes from the installed version.
-try:
-    LIBZIM_MAJOR = int(metadata.version("libzim").split(".")[0])
-except (metadata.PackageNotFoundError, ValueError):
-    LIBZIM_MAJOR = 3
+
+
+def _libzim_major():
+    """The writer's argument order cannot be told from the method, so it comes
+    from the installed version, or, where the package carries no metadata (a
+    PyInstaller bundle), from the reader's 4.0 rename."""
+    try:
+        return int(metadata.version("libzim").split(".")[0])
+    except (metadata.PackageNotFoundError, ValueError):
+        pass
+    try:
+        from libzim.reader import Archive
+    except ImportError:
+        return 3
+    return 3 if hasattr(Archive, "_get_entry_by_id") else 4
+
+
+LIBZIM_MAJOR = _libzim_major()
 
 
 def _first(obj, *names):

@@ -139,3 +139,37 @@ def test_fieldguide_finds_the_renamed_zim():
     rx = fieldguide._piece_re("ready")
     assert fieldguide._is_piece(rx, "ready.gov")
     assert not fieldguide._is_piece(rx, "other")
+
+
+def _check(monkeypatch, tmp_path, files, catalog):
+    for f in files:
+        (tmp_path / f).write_bytes(b"")
+    monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        server, "get_zim_files", lambda: {f.rsplit("_", 1)[0]: str(tmp_path / f) for f in files}
+    )
+    monkeypatch.setattr(
+        server,
+        "_zim_list_cache",
+        [{"name": f.rsplit("_", 1)[0], "title": "Ready", "language": "en", "size_bytes": 1_000} for f in files],
+    )
+    monkeypatch.setattr(
+        library, "_fetch_kiwix_catalog", lambda **kw: (len(catalog), list(catalog), None)
+    )
+    return library._check_updates()
+
+
+def test_a_successor_installed_under_its_file_name_is_not_offered_again(monkeypatch, tmp_path):
+    # The catalog names it ready.gov_en_all; its file is readygov_en_all_2026-10.zim.
+    catalog = [_item("ready.gov_en_all", "Ready", "en", "FEMA", "2026-10-01", file="readygov_en_all_2026-10")]
+    updates = _check(monkeypatch, tmp_path, ["www.ready.gov_en_all_2026-05.zim", "readygov_en_all_2026-10.zim"], catalog)
+    assert not [u for u in updates if u.get("renamed_to")], updates
+
+
+def test_a_table_rename_holds_while_the_old_name_is_still_listed(monkeypatch, tmp_path):
+    catalog = [
+        _item("www.ready.gov_en_all", "Ready", "en", "FEMA", "2026-01-01"),
+        _item("ready.gov_en_all", "Ready", "en", "FEMA", "2026-10-01"),
+    ]
+    updates = _check(monkeypatch, tmp_path, ["www.ready.gov_en_all_2026-05.zim"], catalog)
+    assert [u.get("renamed_to") for u in updates] == ["ready.gov_en_all"], updates

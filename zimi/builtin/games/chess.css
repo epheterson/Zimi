@@ -12,7 +12,7 @@
 
 /* The move list is a quiet line under the board: 13px, ink2, no box, nothing that looks like an input. */
 .cs-moves { overflow: auto; line-height: 1.7; font-size: var(--fs-small); color: var(--ink2); text-align: center; border: 0; background: none; padding: 0; }
-.cs-n { color: var(--ink2); opacity: 0.7; margin-right: 3px; }
+.cs-n { color: var(--ink2); margin-right: 3px; }
 .cs-m { margin-right: 3px; font-variant-numeric: tabular-nums; }
 .cs-m.now { font-weight: 700; color: var(--ink); }
 

@@ -298,7 +298,7 @@
       cancel.value = T("shell.cancel", "Cancel");
       ok.classList.add("ar-btn");
       cancel.classList.add("ar-btn");
-      ok.setAttribute("aria-pressed", "true");
+      ok.classList.add("gs-primary");
       row.appendChild(cancel);
       row.appendChild(ok);
       form.appendChild(row);

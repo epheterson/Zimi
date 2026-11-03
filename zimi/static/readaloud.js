@@ -277,13 +277,18 @@ function _ttsPlanChunks(text, maxLen, first, from, to, lang) {
     // did this sentence split?").
     if (s.length > maxLen) {
       flush();
-      var line = null, re = /\S+/g, w;
+      // Cut on the page's words, so each part marks its own words, leaving out the words of an aside; each part is
+      // then said as the whole would be.
+      var line = null, re = /\S+/g, w, mask = _ttsAsideMask(piece, lang);
+      var said = function(l) { if (!l) return null; l.text = _ttsSpoken(l.text, lang); l.spans[0].n = l.text.length; return /[\p{L}\p{N}]/u.test(l.text) ? l : null; };
       while ((w = re.exec(piece))) {
-        if (line && line.text.length + 1 + w[0].length > maxLen) { out.push(line); line = null; }
-        if (line) { line.text += ' ' + w[0]; line.spans[0].e = sp[0] + re.lastIndex; line.spans[0].n = line.text.length; }
-        else line = { text: w[0], spans: [{ s: sp[0] + w.index, e: sp[0] + re.lastIndex, n: w[0].length }] };
+        var m = mask.slice(w.index, re.lastIndex);
+        if (m.indexOf(_TTS_ASIDE) >= 0 && !/[\p{L}\p{N}]/u.test(m)) continue; // all aside
+        if (line && line.text.length + 1 + w[0].length > maxLen) { if (said(line)) out.push(line); line = null; }
+        if (line) { line.text += ' ' + w[0]; line.spans[0].e = sp[0] + re.lastIndex; }
+        else line = { text: w[0], spans: [{ s: sp[0] + w.index, e: sp[0] + re.lastIndex, n: 0 }] };
       }
-      buf = line; // carry remainder to pack with the next sentence
+      buf = said(line); // carry remainder to pack with the next sentence
       return;
     }
     if (buf && buf.text.length + 1 + s.length > cap()) flush();
@@ -349,20 +354,30 @@ var _TTS_UNITS = [[/\bsq km\b/g, 'square kilometers'], [/\bsq mi\b/g, 'square mi
 // (Chinese: 西突厥; pinyin: Xī Tūjué) or Onoq Khaganate (Old Turkic: ...").
 var _TTS_ASIDE = '\uE000';
 var _TTS_ASIDE_SEL = '.IPA,.rt-commentary,.haudio,.mw-empty-elt';
-var _TTS_SCRIPTS = { zh: 'Han', ja: 'Han|Hiragana|Katakana', ko: 'Hangul|Han', ru: 'Cyrillic', uk: 'Cyrillic', bg: 'Cyrillic', sr: 'Cyrillic', be: 'Cyrillic',
-  ar: 'Arabic', fa: 'Arabic', ur: 'Arabic', he: 'Hebrew', hi: 'Devanagari', mr: 'Devanagari', ne: 'Devanagari', el: 'Greek', th: 'Thai' };
+// A language missing here is read as a Latin-script one, so every script with a Wikipedia of its own is named.
+var _TTS_SCRIPTS = { zh: 'Han', yue: 'Han', wuu: 'Han', lzh: 'Han', gan: 'Han', ja: 'Han|Hiragana|Katakana', ko: 'Hangul|Han',
+  ru: 'Cyrillic', uk: 'Cyrillic', bg: 'Cyrillic', sr: 'Cyrillic', be: 'Cyrillic', mk: 'Cyrillic', kk: 'Cyrillic', ky: 'Cyrillic', tg: 'Cyrillic', mn: 'Cyrillic', ba: 'Cyrillic', tt: 'Cyrillic', cv: 'Cyrillic', ce: 'Cyrillic', os: 'Cyrillic', sah: 'Cyrillic',
+  ar: 'Arabic', fa: 'Arabic', ur: 'Arabic', ps: 'Arabic', sd: 'Arabic', ug: 'Arabic', ckb: 'Arabic', arz: 'Arabic', azb: 'Arabic', pnb: 'Arabic', he: 'Hebrew', yi: 'Hebrew',
+  hi: 'Devanagari', mr: 'Devanagari', ne: 'Devanagari', sa: 'Devanagari', mai: 'Devanagari', bho: 'Devanagari', new: 'Devanagari', bn: 'Bengali', as: 'Bengali', bpy: 'Bengali',
+  pa: 'Gurmukhi', gu: 'Gujarati', or: 'Oriya', ta: 'Tamil', te: 'Telugu', kn: 'Kannada', ml: 'Malayalam', si: 'Sinhala', dv: 'Thaana',
+  el: 'Greek', th: 'Thai', lo: 'Lao', km: 'Khmer', my: 'Myanmar', bo: 'Tibetan', dz: 'Tibetan', ka: 'Georgian', hy: 'Armenian', am: 'Ethiopic', ti: 'Ethiopic',
+  iu: 'Canadian_Aboriginal', chr: 'Cherokee', sat: 'Ol_Chiki' };
 var _ttsOwnScripts = {};
 // Letters of the article's own script, Latin (names and brands in any article) and Greek (alpha, mu).
 function _ttsOwnScript(lang) {
   var key = _langPrimary(lang || 'en');
   return _ttsOwnScripts[key] || (_ttsOwnScripts[key] = new RegExp('^[' + (_TTS_SCRIPTS[key] ? _TTS_SCRIPTS[key].split('|') : []).concat('Latin', 'Greek').map(function(n) { return '\\p{Script=' + n + '}'; }).join('') + ']+$', 'u'));
 }
+// The asides of s as marks, one per character, so every other character keeps its place.
+function _ttsAsideMask(s, lang) {
+  var own = _ttsOwnScript(lang), mark = function(w) { return _TTS_ASIDE.repeat(w.length); };
+  s = s.replace(/[\p{L}\p{M}]+/gu, function(w) { return own.test(w) ? w : mark(w); });
+  for (var before; before !== s;) { before = s; s = s.replace(/[(\[][^()\[\]]*\uE000[^()\[\]]*[)\]]/g, mark); } // innermost first, so an outer one holding only labels goes too
+  return s;
+}
 function _ttsAsides(s, lang) {
   if (s.indexOf(_TTS_ASIDE) < 0 && !/[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F]/.test(s)) return s;
-  var own = _ttsOwnScript(lang);
-  s = s.replace(/[\p{L}\p{M}]+/gu, function(w) { return own.test(w) ? w : _TTS_ASIDE; });
-  for (var before; before !== s;) { before = s; s = s.replace(/[(\[][^()\[\]]*\uE000[^()\[\]]*[)\]]/g, _TTS_ASIDE); } // innermost first, so an outer one holding only labels goes too
-  s = s.replace(/\s*\uE000[\s\uE000]*/g, ' ').replace(/\s+([,.;:!?)])/g, '$1');
+  s = _ttsAsideMask(s, lang).replace(/\s*\uE000[\s\uE000]*/g, ' ').replace(/\s+([,.;:!?)])/g, '$1');
   return s.trim();
 }
 function _ttsSpoken(s, lang) {
@@ -455,9 +470,15 @@ function _ttsPieceAt(model, off) {
   return p[lo];
 }
 // The DOM Range of text[s, e).
+// A block's marks (and an aside's) have no text node: an offset on one starts at
+// the next piece and ends at the end of the one before.
 function _ttsRange(model, s, e) {
-  var a = _ttsPieceAt(model, s), b = _ttsPieceAt(model, e - 1), r = model.doc.createRange();
-  r.setStart(a.node, s - a.at); r.setEnd(b.node, e - b.at);
+  var a = _ttsPieceAt(model, s), b = _ttsPieceAt(model, e - 1), r = model.doc.createRange(), so = s - a.at;
+  if (so > a.node.data.length) {
+    var next = model.pieces[model.index.get(a.node) + 1];
+    if (next) { a = next; so = 0; } else so = a.node.data.length;
+  }
+  r.setStart(a.node, so); r.setEnd(b.node, Math.min(e - b.at, b.node.data.length));
   return r;
 }
 // Where a point of the DOM is in the text: a text node's own offset, else the

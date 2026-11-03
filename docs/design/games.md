@@ -280,7 +280,7 @@ A game that draws on the player's library may point at the real thing Zimi alrea
 
 ## Accessibility
 
-- One grid. Every board made of cells is an ARIA grid built by `ZimiUtil.gridAria` (role=grid, rows that take no space, gridcells that keep their own labels) with `ZimiUtil.gridRove` (one tab stop, arrow keys between cells). No game sets these roles or walks its cells with its own arrow keys; tests/test_games_one_grid.py refuses both.
+- One grid. Every board made of cells is an ARIA grid built by `ZimiUtil.gridAria` (role=grid, rows that take no space, gridcells that keep their own labels) with `ZimiUtil.gridRove` (one tab stop, arrow keys between cells). No game sets these roles; tests/test_games_one_grid.py refuses that. Three keep their own arrow keys over the grid ZimiUtil made, moving a selection rather than focus: Sudoku (its number pad beside it), Mini Crossword (the typing cell) and Minesweeper (aria-activedescendant). A cell that cannot be pressed (Fleet's square once fired at) is passed over, and `ZimiUtil.gridRoveSync` keeps the tab stop off it.
 - Not grids: card piles, Mahjong's heap, point boards (Backgammon, Morris, Mancala, Ur, Ludo, Dots and Boxes) are groups of named buttons; Snakes and Ladders is one named picture; canvas games say plainly what a screen reader cannot play.
 - One-shot actions are never aria-pressed. Pictures with a name are role=img.
 - Motion: the game's Animation setting decides (`ZimiShell.reducedMotion()`). A device that asks for less motion makes Off the default, and the player's own choice wins.
