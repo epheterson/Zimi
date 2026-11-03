@@ -196,7 +196,8 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 
 /* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
 .sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; }
+.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+[dir="rtl"] .sh-bar .sh-nav { margin: 0 -16px 0 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
 .sh-bar .sh-tools { flex: none; }
 [data-view="index"] .sh-bar { margin-bottom: 14px; border-bottom: 1px solid var(--line); }
 [data-view="index"] .sh-bar .sh-nav { margin-bottom: 0; border-bottom: 0; }

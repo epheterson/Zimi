@@ -448,8 +448,9 @@
       var box = el("div", "pz-types");
       box.setAttribute("role", "group");
       word(box, "pz.type", "Type", "aria-label");
-      box.appendChild(word(el("h3", "pz-opt-head"), "pz.type", "Type"));
+      var head = box.appendChild(word(el("h3", "pz-opt-head"), "pz.type", "Type"));
       typeRows(typeEntries(types, []), box);
+      if (box.querySelector(".pz-facet")) box.removeChild(head);   // split into named rows (Grid shape, Size), a Type heading over them says nothing
       nodes.push(box);
     }
     var fold = advancedRows();
