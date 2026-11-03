@@ -80,6 +80,7 @@
     failed = true;
     function paint() {
       var box = d.createElement('div');
+      box.className = 'gs-start-alert';
       box.setAttribute('role', 'alert');
       box.dir = (d.documentElement && d.documentElement.dir) || 'ltr';
       box.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:2147483647;padding:14px 16px;border-radius:12px;background:#fff;color:#1b2233;border:2px solid #c62828;font:600 16px/1.35 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.3);display:flex;gap:12px;align-items:center;justify-content:space-between';
@@ -89,12 +90,19 @@
       btn.addEventListener('click', function () { root.location.reload(); });
       box.appendChild(msg); box.appendChild(btn);
       (d.body || d.documentElement).appendChild(box);
+      // A slow start (a puzzle's wasm still on its way over the internet) can draw after the grace: the banner then
+      // covers a working game, so it watches for a while and steps down once the game is on screen.
+      var looks = 0, watch = root.setInterval(function () {
+        if (!nothingDrawn()) { box.remove(); root.clearInterval(watch); }
+        else if (++looks >= LATE_DRAW_LOOKS) root.clearInterval(watch);
+      }, LATE_DRAW_EVERY_MS);
     }
     if (d.body) paint(); else d.addEventListener('DOMContentLoaded', paint);
   }
   // A thrown error only counts when the game then has nothing on screen: an error from a later corner of a game
   // that did start (a ResizeObserver loop note, a late listener) must not cover a working table with an alarm.
   var NOTHING_DRAWN_MIN = 3;
+  var LATE_DRAW_EVERY_MS = 1000, LATE_DRAW_LOOKS = 60;   // a minute of looking for a game that drew late
   function nothingDrawn() {
     // A game that put up its own sheet (a setup, a start, a menu) ran far enough to draw it: that is a start
     // (ZimiKart's setup covers a board not drawn until Start, and read as a blank page).
@@ -103,7 +111,7 @@
     var n = 0, els = d.querySelectorAll('body *');
     for (var i = 0; i < els.length && n < NOTHING_DRAWN_MIN; i++) {
       var el = els[i];
-      if (el.closest && el.closest('.ar-bar, .gs-sheet, .ar-sheet, script, style')) continue;
+      if (el.closest && el.closest('.ar-bar, .gs-sheet, .ar-sheet, .gs-start-alert, script, style')) continue;
       if (!/^(CANVAS|SVG|svg|BUTTON|IMG)$/.test(el.tagName) && !(el.childNodes.length === 1 && el.firstChild.nodeType === 3 && el.textContent.trim())) continue;
       var r = el.getBoundingClientRect();
       if (r.width > 4 && r.height > 4) n++;

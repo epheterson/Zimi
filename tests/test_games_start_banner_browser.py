@@ -109,3 +109,29 @@ def test_the_banner_speaks_the_players_language_when_the_strings_loaded(site, br
     assert "pas pu démarrer" in box.inner_text()
     assert box.locator("button").inner_text() == "Recharger"
     ctx.close()
+
+
+LATE = (
+    '<!doctype html><html><head><meta charset="utf-8"><title>Late</title><script src="shell.js"></script></head>'
+    "<body><script>throw new Error('a helper threw while the puzzle was still loading');</script>"
+    "<script>setTimeout(function () { var c = document.createElement('canvas'); c.width = 300; c.height = 300;"
+    " document.body.appendChild(c);"
+    " for (var i = 0; i < 3; i++) { var b = document.createElement('button'); b.textContent = 'x' + i; document.body.appendChild(b); } }, 4000);"
+    "</script></body></html>"
+)
+
+
+def test_a_game_that_draws_after_the_banner_takes_it_down(site, browser):
+    # Eric saw it over a Loopy board on the NAS: something threw while the puzzle's wasm was still on its way, the
+    # banner went up at the end of the grace, and then the board drew under it.
+    page = browser.new_page(viewport={"width": 1000, "height": 800})
+    page.route(
+        "**/late-game.html",
+        lambda r: r.fulfill(status=200, content_type="text/html", body=LATE),
+    )
+    page.goto(site + "late-game.html")
+    page.wait_for_timeout(3500)
+    assert _banner(page) == 1
+    page.wait_for_timeout(GRACE_WAIT_MS)
+    assert _banner(page) == 0
+    page.close()
