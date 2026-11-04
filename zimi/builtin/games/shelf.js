@@ -18,6 +18,7 @@
   var VIEW_KEY = 'zimi.games.view';
   var SORT_KEY = 'zimi.games.sort';
   var RECENT_KEY = 'zimi.games.recent';
+  var ROOM_KEY = 'zimi.games.room';
   var VIEWS = ['lobby', 'index'];
 
   // ── Orders (pure, no DOM; tests/test_games_meta.cjs) ─────────────────────
@@ -139,7 +140,21 @@
     return out.filter(function (g) { return g.items.length; });
   }
 
-  var api = { SORTS: SORTS, SORT_LABEL: SORT_LABEL, REGIONS: REGIONS, ERAS: ERAS, FALLBACK: FALLBACK, eraYear: eraYear, ageOf: ageOf, ageText: ageText, playersText: playersText, maxPlayers: maxPlayers, minutesOf: minutesOf, eraOf: eraOf, groupsFor: groupsFor };
+  // ── Rooms (pure): a feel to play in, across the types. Membership is what games.json already says of a game (its kind, how many
+  // play), with one short list for the kids' games no fact names. No room is themed yet: a room is a filter.
+  var ROOMS = ['all', 'kids', 'arcade', 'night', 'solo'];
+  var KIDS_TOO = { 'fourinarow.html': 1, 'dotsandboxes.html': 1, 'crazyeights.html': 1, 'higherlower.html': 1, 'jigsaw.html': 1, 'ludo.html': 1 };
+  function inRoom(room, m, path) {
+    if (room === 'all') return true;
+    if (!m) return false;
+    if (room === 'kids') return m.kind === 'kids' || !!KIDS_TOO[path];
+    if (room === 'arcade') return m.kind === 'arcade';
+    if (room === 'night') return maxPlayers(m) >= 3;   // a table of three or more: people, or the computer's seats
+    if (room === 'solo') return maxPlayers(m) === 1 && m.kind !== 'arcade';   // the quiet one: puzzles, solitaires, words
+    return true;
+  }
+
+  var api = { ROOMS: ROOMS, KIDS_TOO: KIDS_TOO, inRoom: inRoom, SORTS: SORTS, SORT_LABEL: SORT_LABEL, REGIONS: REGIONS, ERAS: ERAS, FALLBACK: FALLBACK, eraYear: eraYear, ageOf: ageOf, ageText: ageText, playersText: playersText, maxPlayers: maxPlayers, minutesOf: minutesOf, eraOf: eraOf, groupsFor: groupsFor };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
 
   var doc = root.document;
@@ -287,7 +302,7 @@
     });
   }
 
-  var state = { view: stored(VIEW_KEY, VIEWS, 'lobby'), sort: stored(SORT_KEY, SORTS, 'sections'), sec: 'all', q: '' };
+  var state = { view: stored(VIEW_KEY, VIEWS, 'lobby'), sort: stored(SORT_KEY, SORTS, 'sections'), room: stored(ROOM_KEY, ROOMS, 'all'), sec: 'all', q: '' };
   var rows = null; // games.json by page, once read
   var groups = sections; // what is on the shelf now: the sections, or the groups of an order
   var made = []; // group nodes this file made for an order
@@ -297,7 +312,8 @@
   function meta(path) { return (rows && rows[path]) || FALLBACK[path] || null; }
   root.ZimiShelf = { meta: meta };   // a tile's own row, for its long-press menu (tilemenu.js)
   function sortedNow() { return rows && state.sort !== 'sections' ? state.sort : 'sections'; }
-  function defaultSection() { return state.view === 'index' && sortedNow() === 'sections' && sections.length ? sections[0].id : 'all'; }
+  // Index opens on its first section; a room opens whole (a type chip then narrows it).
+  function defaultSection() { return state.room === 'all' && state.view === 'index' && sortedNow() === 'sections' && sections.length ? sections[0].id : 'all'; }
   state.sec = defaultSection();
   if (state.sort !== 'sections') shelf.classList.add('sh-wait');
 
@@ -382,16 +398,43 @@
     nav.appendChild(b);
     return b;
   }
+  // The rooms lead the row (All is everything: every room and every type); a room is kept like the view and the order.
+  var roomChips = {};
+  function roomChip(id) {
+    var b = el('button', 'sh-chip sh-room');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.appendChild(doc.createTextNode(T('shelf.room.' + id)));
+    var n = el('span', 'sh-chip-n', String(roomCount(id)));
+    b.appendChild(n);
+    b.addEventListener('click', function () { setRoom(id); });
+    roomChips[id] = { btn: b, n: n };
+    nav.appendChild(b);
+  }
+  function tilesInRoom(id) {
+    var seen = {};
+    sections.forEach(function (s) { s.tiles.forEach(function (t) { var p = tilePath.get(t); if (p && inRoom(id, meta(p), p)) seen[p] = 1; }); });
+    return Object.keys(seen).length;
+  }
+  function roomCount(id) { return id === 'all' ? total : tilesInRoom(id); }
+  function setRoom(id) {
+    state.room = id;
+    state.sec = 'all';   // a room opens whole, and All is every game; a type chip then narrows it
+    store(ROOM_KEY, id);
+    apply();
+  }
+  function roomOf(tile) { var p = tilePath.get(tile) || (tile.getAttribute('href') || '').replace(/[?#].*$/, ''); return inRoom(state.room, meta(p), p); }
   function buildChips() {
     nav.textContent = '';
     chips = {};
-    chip('all', T('shelf.chip.all'), total);
+    roomChips = {};
+    ROOMS.forEach(roomChip);
+    nav.appendChild(el('span', 'sh-chip-sep'));
     recentChip = chip('recent', T('shelf.chip.recent'), tableCount, 'sh-chip-recent');
     recentChip.hidden = !tableCount;
-    // One group is no choice: A to Z has no chips at all.
     nav.setAttribute('aria-label', SORT_HEAD[sortedNow()] || T('shelf.head.sections'));
-    nav.hidden = groups.length < 2;
-    if (nav.hidden) return;
+    // One group is no choice: A to Z has no type chips, only the rooms.
+    if (groups.length < 2) return;
     nav.appendChild(el('span', 'sh-rail-head', SORT_HEAD[sortedNow()]));
     groups.forEach(function (g) { chip(g.id, g.label, g.tiles.length); });
   }
@@ -554,12 +597,14 @@
     input.placeholder = state.view === 'lobby' && root.matchMedia('(max-width: 699px)').matches ? T('shelf.searchShort') : T('shelf.searchN', { n: total });
     VIEWS.forEach(function (v) { viewBtns[v].setAttribute('aria-pressed', String(v === state.view)); });
     Object.keys(chips).forEach(function (id) { chips[id].btn.setAttribute('aria-pressed', String(!searching && id === state.sec)); });
+    Object.keys(roomChips).forEach(function (id) { roomChips[id].btn.setAttribute('aria-pressed', String(id === state.room && !(id === 'all' && state.sec !== 'all' && !searching))); });
+    shelf.dataset.room = state.room;
     var shown = 0;
     sections.concat(made).forEach(function (s) {
       if (groups.indexOf(s) < 0) { s.node.hidden = true; return; }
       var n = 0;
       s.tiles.forEach(function (t) {
-        var hit = !searching || words.get(t).indexOf(q) >= 0;
+        var hit = (!searching || words.get(t).indexOf(q) >= 0) && roomOf(t);
         t.hidden = !hit;
         if (hit) n++;
       });
@@ -574,7 +619,15 @@
     if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll);
     if (t) t.hidden = searching || (state.view === 'lobby' && !feedAll);
     var dl = daily();
-    if (dl) dl.hidden = searching || (state.view === 'lobby' && !feedAll);
+    if (dl) {
+      var inside = 0, done = 0;
+      Array.prototype.forEach.call(dl.querySelectorAll('a.ar-game'), function (a) {
+        a.hidden = !roomOf(a);
+        if (!a.hidden) { inside++; if (a.classList.contains('ar-done')) done++; }
+      });
+      if (dl.dailyLine) dl.dailyLine(done, inside);
+      dl.hidden = searching || !inside || (state.view === 'lobby' && !feedAll);
+    }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;
     top.hidden = [c, t, dl].every(function (x) { return !x || x.hidden; });

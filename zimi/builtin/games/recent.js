@@ -270,7 +270,9 @@
       var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
       var line = doc.createElement('span');
       line.className = 'ar-daily-line';
-      line.textContent = T('shelf.daily.done', { n: finished.length, total: tiles.length }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : '');
+      // How many are done of those shown: the shelf calls it again when a room leaves fewer in the row.
+      s.dailyLine = function (n, total) { line.textContent = T('shelf.daily.done', { n: n, total: total }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
+      s.dailyLine(finished.length, tiles.length);
       var stats = doc.createElement('button');
       stats.type = 'button';
       stats.className = 'ar-daily-stats';
