@@ -483,7 +483,7 @@
     }
     t = T.create({
       id: 'holdem', name: 'Texas Hold’em', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, cols: 7, heightShare: 0.1,
-      stat: function (sec, st) { return TX('holdem.fact', { chips: chipsLeft(st) }); },
+      stat: function () { return ''; },   // the chips are the status line's (holdem.fact): in the bar they cut the name to "Texas H…"
       cascadeOrder: function (st) { return st.board.concat(st.players[seats.view()].hole).map(function (id) { return { id: id }; }); },
       winLines: function (sec, st) { return [TX('holdem.tookAll', { hands: Z.plural(st.handNo, 'hand') })]; },
       menuExtra: function () {

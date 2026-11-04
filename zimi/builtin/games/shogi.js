@@ -18,11 +18,11 @@
       .concat(WK.standardOptions({ base: WK.CLASSIC_LEVELS, levelDef: 'club', first: 'shogi.side.senteFirst', second: 'shogi.side.gote' }),
         [{ key: 'labels', legend: 'xiangqi.pieces', def: root.ZimiText && root.ZimiText.lang === 'zh' ? 'kanji' : 'icons', choices: [['kanji', 'shogi.pieces.kanji'], ['icons', 'xiangqi.pieces.icons']] }]),
     statKey: function (s) { return s.variant + '.' + s.level; },
-    onNew: newGame, onUndo: undo
+    onNew: newGame, onUndo: undo, onHint: hint
   });
   var E = null, brain = null, SIZE = 9, SENTE = 1, GOTE = -1, PROMOTED = 8;
   var els = { board: $('sg-board'), moves: $('sg-moves'), flip: $('sg-flip') };
-  var cells = [], pos, keys, sans, played, sel = -1, selDrop = 0, targets = {}, lastMove = 0, manualFlip = false;
+  var cells = [], pos, keys, sans, played, sel = -1, selDrop = 0, targets = {}, lastMove = 0, manualFlip = false, tip = null;
 
   function turnIdx() { return pos.turn === SENTE ? 0 : 1; }
   function flipped() { return manualFlip !== (G.vsComputer() && G.settings.side === 'second'); }
@@ -74,6 +74,7 @@
       var cls = 'sg-sq' + (col === SIZE - 1 ? ' ec' : '') + (r === SIZE - 1 ? ' er' : '') + (isStar(r, col) ? ' star-br' : '');
       if (s === lastTo || s === lastFrom) cls += ' last';
       if (s === sel) cls += ' sel';
+      if (tip && tip.indexOf(s) >= 0) cls += ' sel';
       if (s === kingSq) cls += ' bad';
       if (hintsOn() && targets.hasOwnProperty(s)) cls += ' hint' + (v ? ' cap' : '');
       c.className = cls;
@@ -85,7 +86,7 @@
     }
     paintLabels();
     paintHands();
-    G.setUndo(played.length > 0);
+    G.setUndo(played.length > 0); G.setHint(!G.over && !G.thinking && G.human(turnIdx()));
     els.flip.setAttribute('aria-pressed', String(manualFlip));
   }
 
@@ -122,7 +123,7 @@
   // ── turns ──
   var WHY = { repetition: 'shogi.why.repetition', long: 'shogi.why.long' };
   function finish(st) {
-    sel = -1; selDrop = 0; targets = {};
+    sel = -1; selDrop = 0; targets = {}; tip = null;
     var msg, out, name;
     if (st.result === 'mate') {
       var wi = st.winner === SENTE ? 0 : 1;
@@ -135,7 +136,7 @@
   }
 
   function afterMove() {
-    sel = -1; selDrop = 0; targets = {};
+    sel = -1; selDrop = 0; targets = {}; tip = null;
     var st = E.status(pos, keys);
     paintMoves();
     if (st.over) { finish(st); return; }
@@ -184,6 +185,17 @@
     }, COMPUTER_DELAY_MS);
   }
 
+  // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board;
+  // a drop shows the square it lands on.
+  function hint() {
+    var token = G.begin(); paint(); G.say(T('board.thinkingHint'), true);
+    brain.ask({ sfen: E.toSfen(pos), level: 'strong', seen: seenCounts() }, function (r) {
+      if (!G.done(token)) return;
+      tip = r && r.move ? [E.isDrop(r.move) ? -1 : E.from(r.move), E.to(r.move)] : null; paint();
+      G.say(tip ? T('makruk.hint', { move: E.san(pos, r.move) }) : T('board.noHint'));
+    }, E.LEVELS.strong.ms);
+  }
+
   // ── input ──
   function targetsFor(match) {
     var out = {};
@@ -203,17 +215,17 @@
     if ((sel >= 0 || selDrop) && targets.hasOwnProperty(s)) { pick(s); return; }
     selDrop = 0;
     if (v * pos.turn > 0 && s !== sel) {
-      sel = s; targets = targetsFor(function (m) { return !E.isDrop(m) && E.from(m) === s; });
+      sel = s; tip = null; targets = targetsFor(function (m) { return !E.isDrop(m) && E.from(m) === s; });
       if (!Object.keys(targets).length) { sel = -1; G.refuse(e.currentTarget, T('chess.cantMove')); }
       else G.say(!G.vsComputer() ? T('board.toMove', { name: colorName(pos.turn) }) : T('board.chooseWhere'));
-    } else { sel = -1; targets = {}; }
+    } else { sel = -1; targets = {}; tip = null; }
     paint();
   }
   function onHand(e) {
     if (G.over || G.thinking || !G.human(turnIdx())) return;
     var t = +e.currentTarget.dataset.piece;
     sel = -1;
-    if (selDrop === t) { selDrop = 0; targets = {}; } else {
+    if (selDrop === t) { selDrop = 0; targets = {}; tip = null; } else {
       selDrop = t; targets = targetsFor(function (m) { return E.isDrop(m) && E.from(m) === t; });
       if (!Object.keys(targets).length) { selDrop = 0; G.refuse(e.currentTarget, T('shogi.cantDrop')); }
       else G.say(T('shogi.chooseDrop'));
@@ -260,7 +272,7 @@
     }
   }
   function newGame() {
-    sel = -1; selDrop = 0; targets = {}; lastMove = 0; manualFlip = false; F.cancel();
+    sel = -1; selDrop = 0; targets = {}; tip = null; lastMove = 0; manualFlip = false; F.cancel();
     useVariant();
     pos = E.startPosition(); keys = [E.key(pos)]; sans = []; played = [];
     cells.forEach(function (c) { delete c.dataset.sig; });
@@ -273,7 +285,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('.ar-sheet,input')) return;
     if (e.key.toLowerCase() === 'f') { manualFlip = !manualFlip; paint(); }
-    else if (e.key === 'Escape' && (sel >= 0 || selDrop)) { sel = -1; selDrop = 0; targets = {}; paint(); }
+    else if (e.key === 'Escape' && (sel >= 0 || selDrop)) { sel = -1; selDrop = 0; targets = {}; tip = null; paint(); }
   });
 
   if (root.ZimiShell) {
@@ -289,7 +301,7 @@
       useVariant();
       pos = E.startPosition(); keys = [E.key(pos)]; sans = []; played = [];
       d.played.forEach(function (m) { sans.push(E.san(pos, m)); played.push(m); E.make(pos, m); keys.push(E.key(pos)); });
-      lastMove = played[played.length - 1] || 0; manualFlip = !!d.flip; sel = -1; selDrop = 0; targets = {};
+      lastMove = played[played.length - 1] || 0; manualFlip = !!d.flip; sel = -1; selDrop = 0; targets = {}; tip = null;
       cells.forEach(function (c) { delete c.dataset.sig; });
       paintMoves(); paint();
     },
