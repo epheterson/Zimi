@@ -5797,6 +5797,7 @@ def warm_indexes():
                 targets = {n: zim_files[n] for n in names_to_warm if n in zim_files}
                 warmed = 0
                 for name, path in targets.items():
+                    _wait_until_idle()  # a person opening something goes first
                     try:
                         _get_suggest_archive(name)
                         archive = open_archive(path)
@@ -5817,6 +5818,7 @@ def warm_indexes():
         if hot:
             try:
                 for name in names_to_warm:
+                    _wait_until_idle()
                     try:
                         _get_fts_archive(name)
                     except Exception as e:

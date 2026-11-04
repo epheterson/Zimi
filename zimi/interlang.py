@@ -868,6 +868,8 @@ def _detect_qid_flags(zims):
         if _qid_has_index(name):
             flags[name] = True
         else:
+            # A read per ZIM, after a restart, while someone may be opening an app: they go first.
+            _srv._wait_until_idle()
             flags[name] = _check_one_article_for_qid(path)
             sampled += 1
     log.info(
