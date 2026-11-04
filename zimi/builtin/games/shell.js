@@ -472,7 +472,7 @@
 
   // A long name ("International Draughts") beside Undo and Menu on a phone: the title steps down a pixel at a time to
   // TITLE_MIN_PX before it is cut with an ellipsis.
-  var TITLE_MIN_PX = 13;
+  var TITLE_MIN_PX = 12;
   function fitTitle() {
     var h1 = d.querySelector('.ar-bar h1');
     if (!h1) return;
