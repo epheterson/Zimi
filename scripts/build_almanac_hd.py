@@ -90,8 +90,8 @@ LAYERS = {
 # SHA-256 of each layer's sources: for GIBS, of every source tile's bytes in
 # (row, column) order; for a file, of the file.
 PINS = {
-    "earth/day": "",
-    "earth/night": "",
+    "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
+    "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
     "moon/albedo": "dbff4356479764d89f9fd7722140043eddbc2cafbad4dec5950858e2df77ac54",
 }
 

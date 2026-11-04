@@ -578,6 +578,15 @@ var AE_CSS = [
   '@media (pointer:coarse){.ae-fresh{min-height:32px;padding:8px 12px}}',
   '.ae-fresh[disabled]{opacity:.7;cursor:default}',
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
+  // Landmarks: a dot and a name each, tappable (the dot sits on the place, AE_LM_DOT_X from the button's edge).
+  '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
+  '.ae-lm{position:absolute;left:0;top:0;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
+  '.ae-lm::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:currentColor;transform:translateY(-50%);box-shadow:0 0 3px #000}',
+  '.ae-lm:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}',
+  '.ae-lm[hidden]{display:none}',
+  '.ae-lm-landing{color:#f5c16c}',
+  '.night-red .ae-lm,.night-red .ae-lm-landing{color:var(--text)}',
+  '.ae-card .ae-lm-fly{margin-top:8px}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
   // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
@@ -658,6 +667,7 @@ function _aeBuildDom() {
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
       '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
     '</div>' +
+    '<div class="ae-lms" id="ae-lms"></div>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
     '<div class="ae-top">' +
       '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> <span id="ae-back-text">' + _almEsc(_aeT('alm_solar_system')) + '</span></button>' +
@@ -686,6 +696,9 @@ function _aeBuildDom() {
       '<div class="ae-card" id="ae-card" hidden></div>' +
       '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
       '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
+      '<div class="ae-row" id="ae-maprow" hidden><button type="button" class="ae-btn" id="ae-map">' +
+        (typeof _MAPS_SVG === 'string' ? _MAPS_SVG.replace('width="26" height="26"', 'width="16" height="16"') + ' ' : '') +
+        _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         // Outward from home: the Earth, its satellites, the Moon, the Sun.
         '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
@@ -697,6 +710,9 @@ function _aeBuildDom() {
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
       '</div>' +
       '<div class="ae-note">' +
+        '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
+          '<button type="button" class="ae-fresh" id="ae-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button><span aria-hidden="true"> · </span>' +
+          '<button type="button" class="ae-fresh" id="ae-hd-later">' + _almEsc(_aeT('alm_hd_later')) + '</button></span><br></span>' +
         '<span id="ae-ask" hidden><span class="ae-ask-text" id="ae-ask-text"></span>' +
           '<button type="button" class="ae-fresh" id="ae-fresh"></button><span aria-hidden="true"> · </span></span>' +
         '<span id="ae-note"></span>' +
@@ -1489,7 +1505,525 @@ function _aeLoadMaps(S) {
     S.moonUni.moonMapped.value = 1;
     _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
   });
+  _aeHdLoad(S);
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
+}
+
+// ── Almanac HD: the Earth and the Moon in tiles, as sharp as the view ──
+// Almanac HD (scripts/build_almanac_hd.py) is a ZIM of its own: each body's map cut into 512 px tiles, level by level
+// (level z: 2^(z+1) columns by 2^z rows, 180 / 2^z degrees a side, from longitude -180 and latitude +90). Installed,
+// the view draws each body as the tiles in sight instead of its one map, each at the level whose texels are no smaller
+// than the screen's pixels, and lets the camera nearer. Without it nothing here runs: the one map is the view.
+var AE_HD_NAME = 'zimi_almanac_hd';
+var AE_HD_BASE = '/w/' + AE_HD_NAME + '/';
+var AE_HD_TILE_PX = 512;
+var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
+var AE_HD_GPU_TILES = 120;       // textures kept on the GPU (day ~1.4 MB with mipmaps, night and Moon a quarter), least recently used go first
+var AE_HD_LOADS = 6;             // tiles fetched at once
+var AE_HD_KEEP_LEVEL = 1;        // levels 0 and 1 (10 tiles a layer) stay: there is always something to draw
+var AE_HD_SEG_DEG = 2.8;         // a tile's mesh no coarser than the base sphere's (AE_EARTH_SEGMENTS)
+var AE_HD_MIN_SEG = 8;
+var AE_HD_SKIRT = 0.002;         // each tile's edges hang this far below the surface (of its radius): no crack shows where levels meet
+var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its side (half its diagonal, and a margin)
+// With HD, the Earth's closest approach: its 610 m texels are then about two CSS pixels on a phone (three device
+// pixels at 2x); nearer, the picture only blurs. The Moon's 670 m texels already reach that at its own closest
+// approach (AE_MIN_DIST_MOON), so it keeps it: the Blue Marble and LRO mosaics, not the view, are the limit.
+var AE_HD_MIN_ALT_KM = 400;
+var AE_DEG = Math.PI / 180;
+
+function _aeHdInstalled() {
+  return typeof zimsCache !== 'undefined' && (zimsCache || []).some(function (z) { return z.name === AE_HD_NAME; });
+}
+// Each body's tiled layers: the sampler each fills in the body's own shader, and the layer's folder in the ZIM.
+function _aeHdBodies(S) {
+  return [
+    { key: 'earth', parent: S.earth, radius: 1, frag: AE_EARTH_FRAG, uni: S.earthUni,
+      maps: [{ uni: 'dayMap', layer: 'earth/day' }, { uni: 'nightMap', layer: 'earth/night' }],
+      minDist: 1 + AE_HD_MIN_ALT_KM / AE_EARTH_RADIUS_KM },
+    { key: 'moon', parent: S.moon, radius: AE_MOON_RADIUS_RE, frag: AE_MOON_FRAG, uni: S.moonUni,
+      maps: [{ uni: 'moonMap', layer: 'moon/albedo' }], extra: { moonMapped: { value: 1 } },
+      minDist: AE_MIN_DIST_MOON }
+  ];
+}
+// Reads the ZIM's list of layers once a view is built; a body whose layers are all there is drawn in tiles from then on.
+function _aeHdLoad(S, known) {
+  if (S.hd !== undefined) return;
+  S.hd = null;
+  if (!(known || _aeHdInstalled()) || typeof fetch !== 'function') return;
+  fetch(AE_HD_BASE + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
+    if (_ae.gl !== S || !man || !man.layers) return;
+    var bodies = _aeHdBodies(S).filter(function (b) {
+      return b.maps.every(function (m) { return man.layers[m.layer]; });
+    });
+    if (!bodies.length) return;
+    S.hd = { man: man, bodies: bodies, queue: [], loading: 0, gpu: 0, frame: 0 };
+    bodies.forEach(function (b) {
+      b.max = man.layers[b.maps[0].layer].max;
+      b.maps.forEach(function (m) { m.max = man.layers[m.layer].max; });
+      b.nodes = {};
+      b.drawn = [];
+      b.frag = _aeHdFrag(b.frag, b.maps);
+      AE_TARGETS[b.key].min = Math.min(AE_TARGETS[b.key].min, b.minDist);
+    });
+    _ae.dirty = true;
+    _aeKick();
+  }).catch(function () {});
+}
+// The body's shader with each map read through its tile's box: (offset u, offset v, width, height) of the tile in the
+// whole map's uv, so a tile is drawn by the same lighting as the one map was.
+function _aeHdFrag(frag, maps) {
+  var decl = maps.map(function (m) { return 'uniform vec4 uBox_' + m.uni + ';'; }).join(' ');
+  var out = frag.replace('precision highp float;', 'precision highp float;\n' + decl);
+  maps.forEach(function (m) {
+    out = out.split('texture2D(' + m.uni + ', vUv)').join('texture2D(' + m.uni + ', (vUv - uBox_' + m.uni + '.xy) / uBox_' + m.uni + '.zw)');
+  });
+  return out;
+}
+function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
+function _aeHdSpan(z) { return 180 / Math.pow(2, z); }
+// A tile's box in the whole map's uv (u from longitude -180, v from latitude -90).
+function _aeHdBox(z, x, y) {
+  var w = 1 / Math.pow(2, z + 1), h = 1 / Math.pow(2, z);
+  return [x * w, 1 - (y + 1) * h, w, h];
+}
+// One tile's patch of sphere, with the whole map's uv (the shader picks the tile's part), and a skirt round its edges.
+function _aeHdGeometry(THREE, z, x, y, radius) {
+  var span = _aeHdSpan(z), n = Math.max(AE_HD_MIN_SEG, Math.ceil(span / AE_HD_SEG_DEG));
+  var lon0 = -180 + x * span, lat0 = 90 - y * span;
+  var pos = [], nor = [], uv = [], idx = [];
+  var vert = function (lat, lon, r) {
+    var cl = Math.cos(lat * AE_DEG), p = [cl * Math.cos(lon * AE_DEG), cl * Math.sin(lon * AE_DEG), Math.sin(lat * AE_DEG)];
+    pos.push(p[0] * r, p[1] * r, p[2] * r);
+    nor.push(p[0], p[1], p[2]);
+    uv.push((lon + 180) / 360, (lat + 90) / 180);
+    return pos.length / 3 - 1;
+  };
+  var grid = [];
+  for (var i = 0; i <= n; i++) {
+    grid.push([]);
+    for (var j = 0; j <= n; j++) grid[i].push(vert(lat0 - span * i / n, lon0 + span * j / n, radius));
+  }
+  for (i = 0; i < n; i++) {
+    for (j = 0; j < n; j++) {
+      var a = grid[i][j], b = grid[i + 1][j], c = grid[i + 1][j + 1], d = grid[i][j + 1];
+      idx.push(a, b, d, b, c, d);
+    }
+  }
+  // The skirt: each edge again, hung below the surface, joined to the edge.
+  var edges = [
+    grid[0].slice(),
+    grid.map(function (row) { return row[n]; }),
+    grid[n].slice().reverse(),
+    grid.map(function (row) { return row[0]; }).reverse()
+  ];
+  var low = radius * (1 - AE_HD_SKIRT);
+  edges.forEach(function (edge) {
+    var under = edge.map(function (k) {
+      var u = uv[2 * k], v = uv[2 * k + 1];
+      return vert(v * 180 - 90, u * 360 - 180, low);
+    });
+    for (var k = 0; k < edge.length - 1; k++) idx.push(edge[k], under[k], edge[k + 1], under[k], under[k + 1], edge[k + 1]);
+  });
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+  g.setIndex(idx);
+  return g;
+}
+function _aeHdNode(b, z, x, y) {
+  var key = _aeHdKey(z, x, y), n = b.nodes[key];
+  if (!n) n = b.nodes[key] = { z: z, x: x, y: y, key: key, tex: {}, mesh: null, used: 0 };
+  return n;
+}
+// A layer's tile for node n: the node's own, or (past the layer's deepest level) the ancestor's at that level.
+function _aeHdLayerNode(b, n, m) {
+  if (n.z <= m.max) return n;
+  var up = n.z - m.max;
+  return _aeHdNode(b, m.max, n.x >> up, n.y >> up);
+}
+function _aeHdTileUrl(m, n) { return AE_HD_BASE + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
+function _aeHdReady(b, n) {
+  return b.maps.every(function (m) { var t = _aeHdLayerNode(b, n, m).tex[m.layer]; return t && t.isTexture; });
+}
+function _aeHdWant(S, b, n, pri) {
+  b.maps.forEach(function (m) {
+    var ln = _aeHdLayerNode(b, n, m);
+    if (ln.tex[m.layer] === undefined) { ln.tex[m.layer] = 'queued'; S.hd.queue.push({ b: b, n: ln, m: m, pri: pri }); }
+    else if (ln.tex[m.layer] === 'queued') S.hd.queue.forEach(function (q) { if (q.n === ln && q.m === m) q.pri = Math.min(q.pri, pri); });
+  });
+}
+function _aeHdPump(S) {
+  var hd = S.hd;
+  hd.queue.sort(function (a, b) { return a.pri - b.pri; });
+  while (hd.loading < AE_HD_LOADS && hd.queue.length) {
+    var q = hd.queue.shift();
+    hd.loading++;
+    (function (q) {
+      _aeLoadTexture(S.THREE, _aeHdTileUrl(q.m, q.n)).then(function (tx) {
+        if (_ae.gl !== S) { tx.dispose(); return; }
+        tx.anisotropy = S.aniso;
+        if (q.m.layer !== 'earth/day') tx.format = AE_THREE_RED_FORMAT;
+        q.n.tex[q.m.layer] = tx;
+        hd.gpu++;
+      }, function () { q.n.tex[q.m.layer] = 'failed'; }).then(function () {
+        hd.loading--;
+        if (_ae.gl !== S) return;
+        _ae.dirty = true;
+        _aeKick();
+      });
+    })(q);
+  }
+}
+function _aeHdMesh(S, b, n) {
+  if (n.mesh) return n.mesh;
+  var uniforms = {};
+  for (var k in b.uni) uniforms[k] = b.uni[k];
+  for (k in b.extra || {}) uniforms[k] = b.extra[k];
+  b.maps.forEach(function (m) {
+    var ln = _aeHdLayerNode(b, n, m);
+    uniforms[m.uni] = { value: ln.tex[m.layer] };
+    uniforms['uBox_' + m.uni] = { value: _aeHdBox(ln.z, ln.x, ln.y) };
+  });
+  n.mesh = new S.THREE.Mesh(_aeHdGeometry(S.THREE, n.z, n.x, n.y, b.radius),
+    new S.THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: AE_SPHERE_VERT, fragmentShader: b.frag }));
+  n.mesh.visible = false;
+  b.parent.add(n.mesh);
+  return n.mesh;
+}
+function _aeHdFreeMesh(n) {
+  if (!n.mesh) return;
+  n.mesh.parent.remove(n.mesh);
+  n.mesh.geometry.dispose();
+  n.mesh.material.dispose();
+  n.mesh = null;
+}
+// The tiles to draw this frame for one body: walk down from level 0, past what is behind the body or off screen,
+// giving way to the four below while a tile covers more device pixels than it holds. A tile not in yet is stood in for
+// by its nearest ancestor that is (levels 0 and 1 always are, once in).
+function _aeHdSelect(S, b) {
+  var cam = S.camera, inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
+  var P = cam.position.clone().applyMatrix4(inv);
+  var fwd = cam.position.clone().add(cam.getWorldDirection(new S.THREE.Vector3())).applyMatrix4(inv).sub(P).normalize();
+  var p = [P.x / b.radius, P.y / b.radius, P.z / b.radius], d = _aeLen(p);
+  var horizon = d > 1 ? Math.acos(Math.min(1, 1 / d)) : Math.PI;
+  var focal = _aeFocalPx() * S.dpr;
+  var halfDiag = Math.atan(Math.tan(_aeRad(cam.fov) / 2) * Math.sqrt(1 + cam.aspect * cam.aspect));
+  var leaves = [];
+  var visit = function (z, x, y) {
+    var span = _aeHdSpan(z), lon = (-180 + (x + 0.5) * span) * AE_DEG, lat = (90 - (y + 0.5) * span) * AE_DEG;
+    var c = [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
+    var reach = span * AE_DEG * AE_HD_TILE_REACH, chord = 2 * Math.sin(Math.min(reach, Math.PI / 2) / 2);
+    var ang = Math.acos(_aeClamp(_aeDot(c, p) / d, -1, 1));
+    if (z > 0 && ang - reach > horizon) return;                       // over the horizon
+    var v = _aeSub(c, p), dist = _aeLen(v);
+    if (z > 0 && dist > chord) {
+      var off = Math.acos(_aeClamp((v[0] * fwd.x + v[1] * fwd.y + v[2] * fwd.z) / dist, -1, 1)) - Math.asin(Math.min(1, chord / dist));
+      if (off > halfDiag) return;                                     // off the screen
+    }
+    var near = Math.max(dist - chord, (d - 1) * 0.5, 1e-6);
+    var px = span * AE_DEG / near * focal;
+    if (z < b.max && px > AE_HD_TILE_PX * AE_HD_SPLIT) {
+      for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 2; dx++) visit(z + 1, 2 * x + dx, 2 * y + dy);
+      return;
+    }
+    leaves.push({ z: z, x: x, y: y, pri: z * 10 + near });
+  };
+  visit(0, 0, 0);
+  visit(0, 1, 0);
+  return leaves;
+}
+// In use this frame: the node, and the tiles of its other layers it reads (an ancestor's, past their deepest level).
+function _aeHdTouch(b, n, frame) {
+  b.maps.forEach(function (m) { _aeHdLayerNode(b, n, m).used = frame; });
+}
+function _aeHdUpdate(S) {
+  var hd = S.hd;
+  hd.frame++;
+  hd.bodies.forEach(function (b) {
+    b.parent.updateMatrixWorld(true);
+    // Levels 0 and 1 first, wanted always: the stand-ins for everything else.
+    for (var z = 0; z <= AE_HD_KEEP_LEVEL; z++) {
+      for (var y = 0; y < Math.pow(2, z); y++) for (var x = 0; x < Math.pow(2, z + 1); x++) _aeHdWant(S, b, _aeHdNode(b, z, x, y), z - 10);
+    }
+    var draw = {};
+    _aeHdSelect(S, b).forEach(function (l) {
+      var n = _aeHdNode(b, l.z, l.x, l.y);
+      _aeHdWant(S, b, n, l.pri);
+      _aeHdTouch(b, n, hd.frame);
+      while (n && !_aeHdReady(b, n)) n = n.z ? _aeHdNode(b, n.z - 1, n.x >> 1, n.y >> 1) : null;
+      if (n) draw[n.key] = n;
+    });
+    // An ancestor stood in for a tile: none of its descendants is drawn over it.
+    var keys = Object.keys(draw);
+    keys.forEach(function (k) {
+      var n = draw[k];
+      for (var zz = n.z - 1; zz >= 0; zz--) {
+        var up = draw[_aeHdKey(zz, n.x >> (n.z - zz), n.y >> (n.z - zz))];
+        if (up) { delete draw[k]; break; }
+      }
+    });
+    b.drawn.forEach(function (n) { if (!draw[n.key] && n.mesh) n.mesh.visible = false; });
+    b.drawn = [];
+    for (var k in draw) {
+      var n = draw[k];
+      _aeHdMesh(S, b, n).visible = true;
+      _aeHdTouch(b, n, hd.frame);
+      b.drawn.push(n);
+    }
+    // The body's one map steps aside once its tiles cover it.
+    b.parent.material.visible = !b.drawn.length;
+  });
+  _aeHdPump(S);
+  _aeHdEvict(S);
+}
+// ── Past the pictures: the map ──
+// Come down close over the Earth and an installed map takes over from the globe: Map here opens it at the place under
+// the middle of the screen, at the scale the view was showing (a StreetZim or Kiwix map, the last one used first).
+var AE_MAP_HANDOFF_DIST = 1.25;            // Earth radii from the centre: ~1,600 km up, a region on screen
+var AE_MAP_M_PER_PX_Z0 = 156543.034;       // a web map's metres per pixel at zoom 0, at the equator
+var AE_MAP_ZOOM_RANGE = [2, 17];
+function _aeMapZims() { return typeof _installedMaps === 'function' ? _installedMaps() : []; }
+function _aeShowMapHere() {
+  var row = _aeById('ae-maprow');
+  if (!row) return;
+  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && _ae.dist <= AE_MAP_HANDOFF_DIST && _aeMapZims().length > 0;
+  if (row.hidden === on) row.hidden = !on;
+}
+function _aeOpenMapHere() {
+  var sc = _ae.scene, maps = _aeMapZims();
+  if (!sc || !maps.length || !window.AlmanacLinks || typeof mapPositionHash !== 'function') return;
+  var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
+  var g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, sc.gast));   // the camera looks at the centre: the point below it
+  var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
+  var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
+  var zoom = _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]);
+  var last = typeof _lastMapVisit === 'function' ? _lastMapVisit() : null;
+  var z = (last && last.zim) || maps[0];
+  AlmanacLinks.openHit({ zim: z.name, path: z.main_path, title: typeof _mapName === 'function' ? _mapName(z) : z.title },
+    { pos: mapPositionHash(zoom, g.lat, g.lon) });
+}
+
+// ── Landmarks: named places on a body, at their true coordinates ──
+// landmarks-v1.json (scripts/build_landmarks.py): per body, rows of [name, lat, lon, kind, qid, size_km]. A body's
+// places are named as the view comes near enough to read them: a feature once it spans AE_LM_MIN_PX on screen, a landing
+// once the body is AE_LM_LANDING_MIN_R_PX in radius, the biggest first and none on top of another. A tap opens its card:
+// what it is, its article when the library has it, and Fly there, down to the surface over it. A body is a key, so Mars
+// and the rest slot in beside the Moon (with a placement in _aeLmBodies).
+var AE_LM_URL = '/static/earth/landmarks-v1.json';
+var AE_LM_MAX = 18;
+var AE_LM_MIN_PX = 28;
+var AE_LM_LANDING_MIN_R_PX = 80;
+var AE_LM_APART_X = 96, AE_LM_APART_Y = 22;   // labels nearer than this to a placed one wait for a closer view
+var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
+var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
+var AE_LM_KINDS = { landing: 'landing', crater: 'crater', mare: 'mare', mons: 'mons' };
+// A place in the lunar night is black: its card says when the Sun comes up there, and offers that morning instead, with
+// the Sun this high (low light: every crater's rim casts its shadow).
+var AE_LM_MORNING_SUN_DEG = 8;
+var AE_LM_DAWN_STEP_MS = 3 * 3600 * 1000, AE_LM_DAWN_LOOK_MS = 31 * MS_PER_DAY, AE_LM_DAWN_TOL_MS = 10 * 60 * 1000;
+var _aeLm = null, _aeLmLoading = null;
+function _aeLmLoad() {
+  if (_aeLm || _aeLmLoading || typeof fetch !== 'function') return;
+  _aeLmLoading = fetch(AE_LM_URL).then(function (r) { if (!r.ok) throw new Error('landmarks'); return r.json(); }).then(function (d) {
+    _aeLm = d;
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { _aeLmLoading = null; });
+}
+// Where each body with landmarks stands: its centre, radius and turn (the rotation part of its matrix, column-major).
+function _aeLmBodies() {
+  var S = _ae.gl, sc = _ae.scene;
+  if (!S || !sc) return [];
+  return [{ key: 'moon', center: sc.moon, r: AE_MOON_RADIUS_RE, m: S.moon.matrix.elements }];
+}
+function _aeLmDir(b, lat, lon) {
+  var cl = Math.cos(lat * AE_DEG), v = [cl * Math.cos(lon * AE_DEG), cl * Math.sin(lon * AE_DEG), Math.sin(lat * AE_DEG)], e = b.m;
+  return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
+}
+function _aeUpdateLandmarks() {
+  var host = _aeById('ae-lms');
+  if (!host) return;
+  var placed = [];
+  if (_aeLm && !_ae.fly && !_ae.hand) {
+    var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+    var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+    var cands = [];
+    _aeLmBodies().forEach(function (b) {
+      var rows = _aeLm[b.key];
+      if (!rows) return;
+      var rPx = b.r / _aeLen(_aeSub(b.center, eye)) * pxPerRad;
+      if (rPx < AE_LM_LANDING_MIN_R_PX / 2) { if (rPx > 4) _aeLmLoad(); return; }
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i], n = _aeLmDir(b, row[1], row[2]);
+        var p = [b.center[0] + n[0] * b.r, b.center[1] + n[1] * b.r, b.center[2] + n[2] * b.r];
+        var toEye = _aeSub(eye, p), dist = _aeLen(toEye);
+        if (_aeDot(n, toEye) < AE_LM_FACING * dist) continue;
+        var landing = row[3] === 'landing';
+        var px = row[5] / AE_EARTH_RADIUS_KM / dist * pxPerRad;
+        if (landing ? rPx < AE_LM_LANDING_MIN_R_PX : px < AE_LM_MIN_PX) continue;
+        var s = _aeProject(p);
+        if (!s || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) continue;
+        cands.push({ b: b.key, row: row, s: s, pri: landing ? Infinity : px });
+      }
+    });
+    cands.sort(function (a, c) { return c.pri - a.pri; });
+    for (var k = 0; k < cands.length && placed.length < AE_LM_MAX; k++) {
+      var c = cands[k];
+      if (placed.some(function (q) { return Math.abs(q.s.x - c.s.x) < AE_LM_APART_X && Math.abs(q.s.y - c.s.y) < AE_LM_APART_Y; })) continue;
+      placed.push(c);
+    }
+  } else if (_ae.target === 'moon') _aeLmLoad();
+  while (host.children.length < placed.length) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ae-lm';
+    btn.onclick = function () { if (this._aeLm) _aeLmOpen(this._aeLm.b, this._aeLm.row); };
+    host.appendChild(btn);
+  }
+  for (var j = 0; j < host.children.length; j++) {
+    var el = host.children[j], c2 = placed[j];
+    if (!c2) { if (!el.hidden) el.hidden = true; el._aeLm = null; continue; }
+    el.hidden = false;
+    el._aeLm = c2;
+    _aeSetText(el, c2.row[0]);
+    el.classList.toggle('ae-lm-landing', c2.row[3] === 'landing');
+    el.style.transform = 'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
+  }
+}
+// The Sun's height (its sine) over a place on the Moon at a time.
+function _aeLmSunAt(row, ms) {
+  var sc = _aeSceneAt(ms), m = _aeMoonBasis(sc);
+  var cl = Math.cos(row[1] * AE_DEG), v = [cl * Math.cos(row[2] * AE_DEG), cl * Math.sin(row[2] * AE_DEG), Math.sin(row[1] * AE_DEG)];
+  var n = [m.x[0] * v[0] + m.y[0] * v[1] + m.z[0] * v[2], m.x[1] * v[0] + m.y[1] * v[1] + m.z[1] * v[2], m.x[2] * v[0] + m.y[2] * v[1] + m.z[2] * v[2]];
+  var p = _aeAdd(sc.moon, _aeScale(n, AE_MOON_RADIUS_RE));
+  return _aeDot(n, _aeNorm(_aeSub(sc.sun, p)));
+}
+// The next lunar morning there after ms: when the Sun climbs past AE_LM_MORNING_SUN_DEG. Null if none within a month.
+function _aeLmMorning(row, ms) {
+  var want = Math.sin(AE_LM_MORNING_SUN_DEG * AE_DEG), a = ms, fa = _aeLmSunAt(row, a) - want;
+  for (var t = ms + AE_LM_DAWN_STEP_MS; t <= ms + AE_LM_DAWN_LOOK_MS; t += AE_LM_DAWN_STEP_MS) {
+    var ft = _aeLmSunAt(row, t) - want;
+    if (fa < 0 && ft >= 0) {
+      var lo = a, hi = t;
+      while (hi - lo > AE_LM_DAWN_TOL_MS) { var mid = (lo + hi) / 2; if (_aeLmSunAt(row, mid) - want < 0) lo = mid; else hi = mid; }
+      return hi;
+    }
+    a = t; fa = ft;
+  }
+  return null;
+}
+function _aeLmOpen(body, row) {
+  _ae.selected = null;
+  _ae.lm = { body: body, row: row, hit: null };
+  var lm = _ae.lm;
+  if (row[4] && window.AlmanacLinks && AlmanacLinks.resolve) {
+    AlmanacLinks.resolve([row[4]]).then(function (links) {
+      if (_ae.lm !== lm || !links[row[4]]) return;
+      lm.hit = links[row[4]];
+      _aeRenderCard();
+    });
+  }
+  _aeRenderCard();
+}
+function _aeRenderLmCard(card) {
+  var lm = _ae.lm, row = lm.row;
+  var kind = _aeT('alm_lm_kind_' + (AE_LM_KINDS[row[3]] || 'other'));
+  var line = row[5] ? kind + ' · ' + _aeT('alm_lm_size', { km: _orrNum(row[5], null, 0) }) : kind;
+  var name = _almEsc(row[0]);
+  var now = _aeDisplayMs();
+  if (lm.morning === undefined) lm.morning = lm.body === 'moon' && _aeLmSunAt(row, now) < 0 ? _aeLmMorning(row, now) : null;
+  var night = lm.morning ? '<p>' + _almEsc(_aeT('alm_lm_night', { date: _aeFmtWhen(lm.morning) })) + '</p>' : '';
+  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
+    '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
+    '<p>' + _almEsc(line) + '</p>' + night +
+    '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>' +
+    (lm.morning ? ' <button type="button" class="ae-btn ae-lm-fly" id="ae-lm-morning">' + _almEsc(_aeT('alm_lm_fly_morning')) + '</button>' : '');
+  card.hidden = false;
+  _aeById('ae-card-x').onclick = function () { _ae.lm = null; _aeRenderCard(); };
+  _aeById('ae-lm-fly').onclick = function () { _aeLmFly(lm.body, row); };
+  var morning = _aeById('ae-lm-morning');
+  if (morning) morning.onclick = function () { var at = lm.morning; lm.morning = null; _aeGoTo(at); _aeLmFly(lm.body, row); _aeRenderCard(); };
+  var read = _aeById('ae-lm-read');
+  if (read) read.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(lm.hit); };
+}
+// Down to the place: the camera comes over it, as near as the body's tiles allow, looking straight down.
+function _aeLmFly(body, row) {
+  var b = _aeLmBodies().filter(function (x) { return x.key === body; })[0];
+  if (!b) return;
+  _aeFlyTo(body, AE_TARGETS[body].min, _aeAzElOf(_aeLmDir(b, row[1], row[2])));
+  _ae.preset = null;
+}
+
+// The offer, in the data note's quiet line: shown to someone who may download (can_change) while the setting is Ask
+// first and they have not said Not now on this device; under Automatically the server's first answer already started it.
+// It comes with the view's satellite data (_aeTakeSats); while the download runs, /almanac-hd is asked how far it got,
+// and once it is in the library the view draws from it without a reload.
+var AE_HD_URL = '/almanac-hd', AE_HD_SET_URL = '/manage/almanac-hd';
+var AE_HD_LATER_KEY = 'zimi_alm_hd_later';
+var AE_HD_POLL_MS = 3000;
+function _aeHdLater() { try { return localStorage.getItem(AE_HD_LATER_KEY) === '1'; } catch (e) { return false; } }
+function _aeHdPollNow() {
+  _aeFetch(AE_HD_URL).then(_aeJson).then(_aeHdShow).catch(function () { _aeHdShow(null); });
+}
+function _aeHdShow(st) {
+  var box = _aeById('ae-hd');
+  if (!box) return;
+  clearTimeout(_ae.hdPoll);
+  var S = _ae.gl;
+  if (st && st.installed && S && !S.hd) { S.hd = undefined; _aeHdLoad(S, true); }
+  var text = '', offer = false;
+  if (st && st.downloading) {
+    text = _aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) });
+    if (_aeIsOpen) _ae.hdPoll = setTimeout(_aeHdPollNow, AE_HD_POLL_MS);
+  } else if (st && st.offer && st.can_change && st.mode === 'ask' && !_aeHdLater()) {
+    var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
+    text = _aeT('alm_hd_offer') + ': ' + _aeT('alm_hd_offer_sub', { size: size });
+    offer = true;
+  }
+  box.hidden = !text;
+  _aeSetText(_aeById('ae-hd-text'), text);
+  var act = _aeById('ae-hd-act');
+  if (act) act.hidden = !offer;
+}
+function _aeHdGet() {
+  _aeById('ae-hd-get').disabled = true;
+  _aePost(AE_HD_SET_URL, { start: true }).then(function (st) {
+    st.can_change = true;
+    _aeHdShow(st);
+  }).catch(function () { _aeHdShow(null); }).then(function () { _aeById('ae-hd-get').disabled = false; });
+}
+function _aeHdNotNow() {
+  try { localStorage.setItem(AE_HD_LATER_KEY, '1'); } catch (e) {}
+  _aeHdShow(null);
+}
+
+// Over budget: the least recently drawn tiles below level 2 give their GPU memory back (and are fetched again if needed).
+function _aeHdEvict(S) {
+  var hd = S.hd;
+  if (hd.gpu <= AE_HD_GPU_TILES) return;
+  var all = [];
+  hd.bodies.forEach(function (b) {
+    for (var k in b.nodes) {
+      var n = b.nodes[k];
+      if (n.z > AE_HD_KEEP_LEVEL && n.used !== hd.frame && Object.keys(n.tex).some(function (l) { return n.tex[l] && n.tex[l].isTexture; })) all.push(n);
+    }
+  });
+  all.sort(function (a, b) { return a.used - b.used; });
+  for (var i = 0; i < all.length && hd.gpu > AE_HD_GPU_TILES; i++) {
+    var n = all[i];
+    _aeHdFreeMesh(n);
+    for (var l in n.tex) {
+      // Only what is on the GPU: a tile still on its way keeps its place in the queue.
+      if (n.tex[l] && n.tex[l].isTexture) { n.tex[l].dispose(); hd.gpu--; delete n.tex[l]; }
+    }
+    // A deeper tile's mesh may read this one's night or Moon map: it is built again with what is there.
+    hd.bodies.forEach(function (b) {
+      for (var k in b.nodes) {
+        var m = b.nodes[k];
+        if (m.mesh && m !== n && b.maps.some(function (mp) { return _aeHdLayerNode(b, m, mp) === n; })) _aeHdFreeMesh(m);
+      }
+    });
+  }
 }
 
 // ── State ──
@@ -2141,6 +2675,8 @@ function _aeTakeSats(lib, data, again) {
   _ae.satsFailed = false;
   _ae.satMeta = { mode: data.mode, locked: data.locked || null, stale: !!data.stale, canChange: !!data.can_change };
   _aeRenderSettings();
+  // Almanac HD's offer rides on the same answer (http.py): no request of its own on the way in.
+  if (data.hd) _aeHdShow(Object.assign({ can_change: !!data.can_change }, data.hd));
   if (data.refreshing && !again) setTimeout(function () { _aeLoadSats(true); }, AE_SATS_REFETCH_MS);
 }
 
@@ -2467,6 +3003,7 @@ function _aeUpdateLabels() {
   var sc = _ae.scene;
   if (!sc) return;
   _aeUpdateMarks(sc);
+  _aeUpdateLandmarks();
   // The tapped satellite is named by its card and marked by its colour, so
   // only the ISS carries a label of its own.
   var iss = null;
@@ -2596,7 +3133,9 @@ function _aeRenderCard() {
   var card = _aeById('ae-card');
   if (!card) return;
   var s = _aeSelectedSat();
+  if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
+  _ae.lm = null;
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
   if (s.iss) {
     html += '<h3>' + _aeLink('term:iss', _almEsc(_aeT('alm_earth_iss_name'))) + '</h3>' +
@@ -2717,6 +3256,7 @@ function _aeUpdateText(ms) {
       (_aeIsLive() ? '<span class="ae-live">● ' + _almEsc(_aeT('alm_earth_live')) + '</span>' : '');
     if (whenHtml !== _ae.whenHtml) { when.innerHTML = whenHtml; _ae.whenHtml = whenHtml; }
   }
+  _aeShowMapHere();
   var nowBtn = _aeById('ae-now'), live = _aeIsLive();
   if (nowBtn && nowBtn.hidden !== live) {
     nowBtn.hidden = live;
@@ -2785,6 +3325,7 @@ function _aeBusy() {
 function _aeDraw(now, busy) {
   if (!_ae.gl || !(_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) return;
   _aeUpdate(_aeDisplayMs());
+  if (_ae.gl.hd) _aeHdUpdate(_ae.gl);
   _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
   _aeUpdateLabels();
   _ae.lastRender = now;
@@ -3077,6 +3618,9 @@ function _aeBindControls() {
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
+  _aeById('ae-hd-get').onclick = _aeHdGet;
+  _aeById('ae-map').onclick = _aeOpenMapHere;
+  _aeById('ae-hd-later').onclick = _aeHdNotNow;
   // The panel's radios are drawn afresh with each answer: one listener.
   _aeById('ae-set').onchange = function (e) {
     var input = e && e.target;

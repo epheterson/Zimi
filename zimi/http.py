@@ -2936,10 +2936,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # every /manage write follows).
                 from zimi import satellites as _sats
 
+                from zimi import almanachd as _hd
+
                 payload = _sats.get()
                 payload["can_change"] = bool(
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
+                # Almanac HD's offer, on the answer the view already asks
+                # for when it opens (the first ask, under Automatically).
+                payload["hd"] = _hd.on_almanac_open()
                 return self._json(200, payload)
 
             elif parsed.path == "/almanac-hd":

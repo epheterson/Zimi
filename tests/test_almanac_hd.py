@@ -110,3 +110,28 @@ def test_the_fetch_is_listed_with_what_zimi_fetches(hd):
     rows = {r["id"]: r for r in outbound.inventory()["rows"]}
     assert rows["almanac_hd"]["hosts"] == ["github.com"]
     assert rows["almanac_hd"]["state"] == outbound.STATE_ASK
+
+
+def test_the_offer_rides_on_the_satellites_answer(hd, tmp_path, monkeypatch):
+    """The Earth view asks for its satellite data as it opens; the offer comes on that answer, no request of its own."""
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    import zimi.server as srv
+    from zimi.http import ZimHandler
+
+    (tmp_path / "z").mkdir()
+    (tmp_path / "d").mkdir()
+    monkeypatch.setattr(srv, "ZIM_DIR", str(tmp_path / "z"))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "d"))
+    srv.load_cache(force=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/almanac-satellites" % httpd.server_address[1]) as r:
+            payload = json.loads(r.read())
+    finally:
+        httpd.shutdown()
+    assert payload["hd"]["offer"] == {"file": REL["file"], "size": REL["size"]}
+    assert payload["hd"]["mode"] == outbound.ASK and hd == []

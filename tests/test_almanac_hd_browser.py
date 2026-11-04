@@ -1,0 +1,227 @@
+"""Almanac HD in the 3D view: tiles by view, nothing without it, and the offer.
+
+A small Almanac HD is built here (three levels of solid tiles), served by Zimi, and the Earth view is driven in
+headless Chromium at a phone's size. Without it the view asks for no tile and draws its one map; with it, far away
+it draws level 0, close in the deepest level over what is in sight only, and the body's one map steps aside.
+
+Run: pytest tests/test_almanac_hd_browser.py -v
+"""
+
+import json
+import os
+import sys
+import threading
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+GL_ARGS = [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--ignore-gpu-blocklist",
+]
+VIEW = {"width": 390, "height": 844}
+PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
+READY_MS = 240_000
+LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1}
+OFFER = {
+    "installed": False,
+    "mode": "ask",
+    "locked": None,
+    "offer": {"file": "zimi_almanac_hd_2026-11.zim", "size": 312_000_000},
+    "downloading": None,
+    "can_change": True,
+}
+
+
+def _build_hd(folder, out):
+    from PIL import Image
+
+    from zimi import creator
+
+    for layer, top in LEVELS.items():
+        for z in range(top + 1):
+            for x in range(2 ** (z + 1)):
+                for y in range(2**z):
+                    p = os.path.join(folder, layer, str(z), str(x))
+                    os.makedirs(p, exist_ok=True)
+                    Image.new("RGB", (64, 64), (60 + 60 * z, 120, 200)).save(
+                        os.path.join(p, "%d.webp" % y), "WEBP"
+                    )
+    with open(os.path.join(folder, "hd.json"), "w") as f:
+        json.dump(
+            {
+                "version": 1,
+                "tile": 512,
+                "ext": "webp",
+                "layers": {k: {"max": v} for k, v in LEVELS.items()},
+            },
+            f,
+        )
+    with open(os.path.join(folder, "index.html"), "w") as f:
+        f.write("<!doctype html><title>Almanac HD</title><p>tiles</p>")
+    with open(os.path.join(folder, "zimi.txt"), "w") as f:
+        f.write(
+            "Title: Almanac HD\nDescription: test tiles\nLanguage: eng\nCreator: test\nPublisher: test\n"
+        )
+    creator.create_folder_zim(folder, out_path=out, register=False)
+
+
+def _serve(tmp, with_hd):
+    from http.server import ThreadingHTTPServer
+
+    import zimi.server as srv
+    from zimi.http import ZimHandler
+
+    (tmp / "zims").mkdir()
+    (tmp / "data").mkdir()
+    if with_hd:
+        _build_hd(str(tmp / "stage"), str(tmp / "zims" / "zimi_almanac_hd_2026-11.zim"))
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp / "zims"), str(tmp / "data")
+    srv.load_cache(force=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+@pytest.fixture(scope="module")
+def browser():
+    import zimi.renderer as renderer
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        yield br
+        br.close()
+
+
+@pytest.fixture(params=[False, True], ids=["without", "with"])
+def served(request, tmp_path):
+    import zimi.server as srv
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    httpd = _serve(tmp_path, request.param)
+    yield request.param, "http://127.0.0.1:%d" % httpd.server_address[1]
+    httpd.shutdown()
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+
+
+def _open_earth(browser, url, route_hd=None):
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r);"
+        " localStorage.removeItem('zimi_alm_hd_later'); } catch (e) {}" % (PLACE, PLACE)
+    )
+    pg = ctx.new_page()
+    tiles = []
+    pg.on(
+        "request",
+        lambda r: (
+            tiles.append(r.url)
+            if "/w/zimi_almanac_hd/" in r.url and r.url.endswith(".webp")
+            else None
+        ),
+    )
+    if route_hd is not None:
+        # The offer rides on the satellites answer the view asks for as it opens.
+        def with_offer(route):
+            body = route.fetch().json()
+            body["hd"] = {k: v for k, v in route_hd.items() if k != "can_change"}
+            body["can_change"] = route_hd["can_change"]
+            route.fulfill(
+                status=200, content_type="application/json", body=json.dumps(body)
+            )
+
+        pg.route("**/almanac-satellites*", with_offer)
+    pg.goto(url + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+        timeout=READY_MS,
+        polling=200,
+    )
+    return ctx, pg, tiles
+
+
+DRAWN = "() => _ae.gl.hd ? _ae.gl.hd.bodies[0].drawn.map(n => n.z) : null"
+
+
+def _settle(pg, js_true, ms=60_000):
+    pg.wait_for_function(
+        "() => { _ae.dirty = true; _aeKick(); return (" + js_true + ")(); }",
+        timeout=ms,
+        polling=250,
+    )
+
+
+def test_tiles_by_view(browser, served):
+    with_hd, url = served
+    ctx, pg, tiles = _open_earth(browser, url)
+    try:
+        if not with_hd:
+            pg.wait_for_timeout(2500)
+            assert pg.evaluate("_ae.gl.hd") is None
+            assert tiles == []
+            assert pg.evaluate("_ae.gl.earth.material.visible") is True
+            assert pg.evaluate("AE_TARGETS.earth.min") == pytest.approx(1.12)
+            return
+        # Far: level 0 covers the Earth, and its one map steps aside.
+        _settle(
+            pg,
+            "() => { var d = ("
+            + DRAWN
+            + ")(); return d && d.length && d.every(z => z === 0); }",
+        )
+        assert pg.evaluate("_ae.gl.earth.material.visible") is False
+        # The camera may come nearer with tiles to show it.
+        assert pg.evaluate("AE_TARGETS.earth.min") < 1.1
+        # Close in over one place: the deepest level, and only what is in sight.
+        pg.evaluate(
+            "_ae.fly = null; _ae.dist = AE_TARGETS.earth.min; _ae.dirty = true; _aeKick()"
+        )
+        _settle(
+            pg,
+            "() => { var d = ("
+            + DRAWN
+            + ")(); return d && d.length && d.every(z => z === 2); }",
+        )
+        deep = [u for u in tiles if "/earth/day/2/" in u]
+        assert 0 < len(deep) < 32, deep
+        assert not any(
+            "/earth/night/2/" in u for u in tiles
+        ), "night stops at its deepest level"
+    finally:
+        ctx.close()
+
+
+def test_the_offer_line(browser, served):
+    with_hd, url = served
+    if with_hd:
+        pytest.skip("offered only while it is not installed")
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=OFFER)
+    try:
+        pg.wait_for_function(
+            "() => !document.getElementById('ae-hd').hidden", timeout=20_000
+        )
+        text = pg.inner_text("#ae-hd")
+        assert "312" in text and "MB" in text, text
+        assert pg.is_visible("#ae-hd-get") and pg.is_visible("#ae-hd-later")
+        pg.click("#ae-hd-later")
+        assert pg.evaluate("document.getElementById('ae-hd').hidden")
+        assert pg.evaluate("localStorage.getItem('zimi_alm_hd_later')") == "1"
+    finally:
+        ctx.close()
