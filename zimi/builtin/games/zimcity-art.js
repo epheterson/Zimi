@@ -62,7 +62,8 @@ function road(ctx, x, y, s, e, cars, step) {
     if (e[3]) ctx.fillRect(x + 2, y + c - 1, c - 6, 2);
     if (e[1]) ctx.fillRect(x + c + 4, y + c - 1, c - 6, 2);
   }
-  for (var k = 0; k < cars; k++) {
+  var straight = (e[0] && e[2] && !e[1] && !e[3]) || (e[1] && e[3] && !e[0] && !e[2]);
+  for (var k = 0; k < (straight ? cars : 0); k++) {   // cars on the straights; a junction or a bend stays clear
     var along = (step * 7 + k * 15) % 24 + 4, h = e[1] || e[3];
     ctx.fillStyle = s.car[(step + k) % s.car.length];
     if (h) ctx.fillRect(x + along - 3, y + c + (k ? -8 : 2), 7, 5); else ctx.fillRect(x + c + (k ? -8 : 2), y + along - 3, 5, 7);

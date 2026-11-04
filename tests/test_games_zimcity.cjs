@@ -121,6 +121,27 @@ function seeded(seed, fn) {
   Tools.build(ad, 'commercial', [[26, 26]]); Tools.build(ad, 'wire', [[24, 24], [24, 25]]); step(ad, 256); steps.push(advise(ad.map));
   check(steps.join() === 'city.adv.road,city.adv.plant,city.adv.zone,city.adv.power,city.adv.power,city.adv.jobs,', 'the advisor walks the first steps (' + steps.join() + ')');
 
+  // The original scenario and city files read as maps, and a scenario's disaster and judging keep the original's clocks.
+  const Scen = await mod('zimcity-scenarios.js');
+  const all = Scen.SCENARIOS.map((x) => 'zimcity/scenarios/' + x.file).concat(Scen.CITIES.map((c) => 'zimcity/cities/' + c[0] + '.cty'));
+  let read = 0;
+  for (const f of all) {
+    const buf = fs.readFileSync(path.join(games, f)), map = Scen.mapOf(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length));
+    const vs = map ? values(map) : [];
+    if (map && vs.every((v) => v >= 0 && v < TV.TILE_COUNT) && new Set(vs).size > 3) read++;   // some are bare land, one is a picture
+  }
+  check(read === 32, 'all 8 scenarios and 24 cities read as maps of real tiles (' + read + ')');
+  const sf = Scen.SCENARIOS[1], sfBuf = fs.readFileSync(path.join(games, 'zimcity/scenarios/' + sf.file));
+  const sfMap = Scen.mapOf(sfBuf.buffer.slice(sfBuf.byteOffset, sfBuf.byteOffset + sfBuf.length));
+  const sfSim = new Simulation(sfMap, 0, Simulation.SPEED_MED), quakes = [];
+  sfSim.addEventListener(Messages.FRONT_END_MESSAGE, (m) => { if (m.subject === Messages.EARTHQUAKE) quakes.push(1); });
+  const run = { left: sf.disaster[1], judgeIn: sf.judge };
+  let out = null, ticks = 0;
+  while (!out && ticks < sf.judge + 5) { out = Scen.tick(sfSim, sf, run); ticks++; if (ticks === 9) check(!quakes.length, 'no earthquake before its tenth tick'); }
+  check(quakes.length === 1, 'San Francisco shakes once (' + quakes.length + ')');
+  check(ticks === sf.judge && (out === 'win' || out === 'lose'), 'and is judged after five years of ticks (' + ticks + ', ' + out + ')');
+  check(Scen.mapOf(new ArrayBuffer(10)) === null, 'a file of the wrong size is refused');
+
   if (failures) { console.log(failures + ' failed'); process.exit(1); }
   console.log('zimcity: all passed');
 })().catch((e) => { console.log('FAIL ' + (e && e.stack || e)); process.exit(1); });

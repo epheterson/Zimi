@@ -200,6 +200,36 @@ export function citiesSheet(s) {
   api = Shell.sheet({ title: s.T('city.cities'), text: s.T('city.k.text'), body: body, actions: [{ label: s.T('shell.close'), primary: true }] });
 }
 
+// Scenarios (the original's eight, each a real city in trouble with a goal and a deadline) and the 24 ready-made
+// cities. A real place links to its article and, where an installed map holds it, to the map.
+export function scenariosSheet(s) {
+  var sc = s.scenarios, api = null, body = [];
+  function placeLinks(row, key, lat, lon, label) {
+    var read = s.library.link(key, s.T);
+    var box = el('span', 'cy-sc-links');
+    if (read) { read.className = 'cy-sc-read'; box.appendChild(read.firstChild); }
+    s.library.mapLink(lat, lon, label, s.T).then(function (a) { if (a) { if (box.childNodes.length) box.appendChild(document.createTextNode(' \u00b7 ')); box.appendChild(a); } });
+    row.appendChild(box);
+  }
+  sc.list.forEach(function (x) {
+    var row = el('div', 'gs-row cy-sc'), what = el('span', 'cy-kept-what'), play = el('button', 'ar-btn', s.T('city.sc.play'));
+    what.appendChild(el('b', '', s.T('city.sct.' + x.id))); what.appendChild(el('small', '', s.T('city.scl.' + x.id)));
+    if (x.place) placeLinks(what, 'place.' + x.id, x.place[1], x.place[2], s.T('city.sct.' + x.id).split(',')[0]);
+    play.type = 'button'; play.addEventListener('click', function () { api.close(); sc.play(x); });
+    row.appendChild(what); row.appendChild(play); body.push(row);
+  });
+  body.push(el('h3', 'cy-sub', s.T('city.sc.maps')));
+  var grid = el('div', 'cy-maps');
+  sc.maps.forEach(function (m) {
+    var b = el('button', 'ar-btn', s.T('city.map.' + m[0]));
+    b.type = 'button'; b.addEventListener('click', function () { api.close(); sc.open(m); });
+    grid.appendChild(b);
+  });
+  body.push(grid);
+  body.push(el('p', 'gs-text cy-sc-note', s.T('city.sc.credit')));
+  api = Shell.sheet({ title: s.T('city.scenarios'), text: s.T('city.sc.text'), body: body, actions: [{ label: s.T('shell.close'), primary: true }] });
+}
+
 export function newGameRows(s) {
   return [Play.optionRow(s.T('board.level'), [[Simulation.LEVEL_EASY, s.T('board.level.easy')], [Simulation.LEVEL_MED, s.T('board.level.medium')], [Simulation.LEVEL_HARD, s.T('board.level.hard')]], s.level(), function (v) { s.level(v); })];
 }

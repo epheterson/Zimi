@@ -379,3 +379,25 @@ def test_the_city_is_never_painted_whole(browser, site):
     assert all(b < 16e6 for b in seen.values()), seen
     sharp = pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 2; v.clamp(); v.draw(performance.now()); return v._cache.r; }")
     assert sharp == 32   # a tile 32 CSS px wide at 2x is drawn from the 32 px art
+
+
+def test_a_scenario_and_a_ready_made_city_open_from_the_menu(browser, site):
+    pg = phone(browser, site)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-scenarios")
+    rows = pg.wait_for_selector(OURS + " .ar-sheet-card")
+    assert len(pg.query_selector_all(OURS + " .cy-sc")) == 8 and len(pg.query_selector_all(OURS + " .cy-maps .ar-btn")) == 24
+    pg.click(OURS + " .cy-sc >> nth=1 >> .ar-btn")   # San Francisco, 1906
+    pg.wait_for_function("() => window.__zimcity.city.scenario")
+    got = pg.evaluate("() => { const c = window.__zimcity.city; return { year: c.sim.getDate().year, funds: c.sim.budget.totalFunds, id: c.scenario.id, zones: (() => { let n = 0; for (let y = 0; y < 100; y++) for (let x = 0; x < 120; x++) if (c.map.getTile(x, y).isZone()) n++; return n; })() }; }")
+    assert got["year"] == 1906 and got["funds"] == 20000 and got["id"] == "sanfrancisco" and got["zones"] > 50, got
+    if os.environ.get("SHOTS"):
+        pg.wait_for_timeout(400)
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-sanfrancisco.png"))
+    pg.evaluate("() => window.__zimcity.step(16 * 11)")   # past the tenth tick: the earthquake
+    # an urgent message goes to the front of the line once the one showing has had its few seconds
+    pg.wait_for_function("() => document.getElementById('cy-msg').textContent === 'Earthquake'", timeout=15000)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-scenarios")
+    pg.click(OURS + " .cy-maps .ar-btn >> text=Kyoto")
+    pg.wait_for_function("() => !window.__zimcity.city.scenario && window.__zimcity.city.name === 'Kyoto'")

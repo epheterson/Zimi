@@ -15,7 +15,8 @@ import * as Words from './zimcity-words.js';
 import * as Library from './zimcity-library.js';
 import * as Save from './zimcity-save.js';
 import { advise } from './zimcity-advisor.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
+import * as Scen from './zimcity-scenarios.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
@@ -71,7 +72,7 @@ function install(c, cam) {
   view.resize();
   if (cam) { view.cam.x = cam.x; view.cam.y = cam.y; view.cam.s = cam.s; view.clamp(); }
   else { view.cam.s = START_SCALE; centreOnLand(); }
-  messages.length = 0;
+  messages.length = 0; status.say(''); shownAt = 0; shownLine = '';   // nothing of the last city is left on the line
   strip();
   advice = null; advisor();
 }
@@ -114,6 +115,7 @@ function heard(subject) {
   if (!key) return;
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
+  if (city.settleUntil && city.sim._cityTime < city.settleUntil && Words.MILESTONES.indexOf(subject) >= 0) return;
   if (subject === Messages.REACHED_METROPOLIS && !city.won) { city.won = true; record('metropolis'); }
   say(T(key), Words.URGENT.indexOf(subject) >= 0);
   news(key);
@@ -318,9 +320,64 @@ function advisor() {
 var lastFrame = 0, owed = 0, slowSince = 0, lastSave = 0, lastSummary = 0, lastAdvice = 0;
 function step() {
   if (city.sim.budget.awaitingValues) return;
+  var t = city.sim._cityTime;
   city.sim._simulate(city.sim._constructSimData());
   city.sim._updateTime();
+  if (city.scenario && city.sim._cityTime !== t) scenarioTick();
 }
+
+// ── scenarios and ready-made cities ──
+var PLACE_TITLES = { Q62: 'San Francisco', Q1055: 'Hamburg', Q70: 'Bern', Q1490: 'Tokyo', Q12439: 'Detroit', Q100: 'Boston', Q8678: 'Rio de Janeiro',
+  Q262483: 'Deadwood, South Dakota', Q1027700: 'Haight-Ashbury', Q200267: 'Kamakura', Q48320: 'Kobe', Q239143: 'Kowloon', Q34600: 'Kyoto', Q38283: 'Yokohama' };
+var places = {};
+Scen.SCENARIOS.forEach(function (sc) { if (sc.place) places['place.' + sc.id] = [sc.place[0], PLACE_TITLES[sc.place[0]]]; });
+Scen.CITIES.forEach(function (c) { if (c[1]) places['place.' + c[0]] = [c[1], PLACE_TITLES[c[1]]]; });
+Library.add(places);
+function scenarioOf(id) { return Scen.SCENARIOS.filter(function (x) { return x.id === id; })[0]; }
+function scenarioTick() {
+  var sc = scenarioOf(city.scenario.id), out = Scen.tick(city.sim, sc, city.scenario);
+  if (!out) return;
+  var name = T('city.sct.' + sc.id), c = city;
+  c.scenario = null;   // judged once: the city goes on as a city of its own
+  Shell.endSheet({ result: out === 'win' ? 'win' : 'lose', title: T(out === 'win' ? 'city.end.scWin' : 'city.end.scLose'),
+                   text: T(out === 'win' ? 'city.end.scWinText' : 'city.end.scLoseText', { city: name }), stats: endStats() });
+}
+// Open a scenario (`sc`) or a ready-made city (`file` under zimcity/cities) from its file; the city in progress is left
+// for a new one, as New game does.
+function openFile(path, sc, title) {
+  return fetch(path).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(function (buf) {
+    var map = Scen.mapOf(buf);
+    if (!map) throw new Error('not a city');
+    var level = Simulation.LEVEL_EASY, sim = new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed);
+    var start = Scen.startOf(buf);
+    sim._cityTime = sc ? (sc.year - 1900) * 48 + 2 : start.time;
+    sim.budget.setFunds(sc ? sc.funds : start.funds);
+    sim.budget.cityTax = 7;
+    sim._updateTime();
+    sim._simulate(sim._constructSimData());   // the engine's first step evaluates the city, so its people show at once
+    var c = cityOf(map, sim, level, 0);
+    // A city that arrives grown: its milestones are not news, and becoming a metropolis is not a win of the player's
+    // (a scenario has its own judging). For its first year the "now a city" messages say nothing.
+    c.built = true; c.name = title; c.won = true; c.settleUntil = sim._cityTime + 48;
+    if (sc) c.scenario = { id: sc.id, left: sc.disaster ? sc.disaster[1] : 0, judgeIn: sc.judge };
+    record('best');
+    install(c);
+    view.cam.s = 1; centreOnCity();
+    say(sc ? T('city.scl.' + sc.id) : title);
+    Shell.saveNow();
+  }).catch(function () { say(T('city.sc.failed'), true); });
+}
+// A city loaded from a file opens over its middle of things: the box holding its zones.
+function centreOnCity() {
+  var map = city.map, sx = 0, sy = 0, n = 0;
+  for (var y = 0; y < MAP_H; y++) for (var x = 0; x < MAP_W; x++) if (map.getTile(x, y).isZone()) { sx += x; sy += y; n++; }
+  if (n) view.centreOn(sx / n, sy / n); else view.centreOn(MAP_W / 2, MAP_H / 2);
+}
+var scenarios = {
+  list: Scen.SCENARIOS, maps: Scen.CITIES,
+  play: function (sc) { openFile('zimcity/scenarios/' + sc.file, sc, T('city.sct.' + sc.id)); },
+  open: function (c) { openFile('zimcity/cities/' + c[0] + '.cty', null, T('city.map.' + c[0])); }
+};
 function frame(now) {
   requestAnimationFrame(frame);
   if (!city || d.hidden) { lastFrame = now; return; }
@@ -401,7 +458,7 @@ var sheets = {
   paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
   level: function (v) { if (v !== undefined) pendingLevel = v; return pendingLevel; },
-  library: Library, get cities() { return cities; }, dateOf: function (m, y) { var z = root.ZimiText; return T('city.date', { month: z.month(m, 'short'), year: z.number(y, { useGrouping: false }) }); }, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
+  library: Library, get cities() { return cities; }, get scenarios() { return scenarios; }, dateOf: function (m, y) { var z = root.ZimiText; return T('city.date', { month: z.month(m, 'short'), year: z.number(y, { useGrouping: false }) }); }, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
 };
 function openBudget(forced) { budgetSheet(sheets, forced); }
 
@@ -412,6 +469,7 @@ fromMenu('cy-report', function () { reportSheet(sheets); });
 fromMenu('cy-layers', function () { layersSheet(sheets); });
 fromMenu('cy-speed', function () { speedSheet(sheets); });
 fromMenu('cy-cities', function () { citiesSheet(sheets); });
+fromMenu('cy-scenarios', function () { scenariosSheet(sheets); });
 $('cy-new').addEventListener('click', function () {
   record('best');
   install(freshCity(pendingLevel));
@@ -421,7 +479,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built,
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '',
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -431,7 +489,8 @@ function unpack(k) {
   if (!back) return false;
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
-  c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false;
+  c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
+  if (k.scenario && scenarioOf(k.scenario.id)) c.scenario = k.scenario;
   install(c, k.cam);
   return true;
 }

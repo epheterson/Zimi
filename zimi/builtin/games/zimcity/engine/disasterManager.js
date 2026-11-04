@@ -106,7 +106,8 @@ var vulnerable = function(tile) {
 // User initiated earthquake
 DisasterManager.prototype.makeEarthquake = function() {
   var strength = Random.getRandom(700) + 300;
-  this.doEarthquake(strength);
+  // ZimCity: upstream called this.doEarthquake(strength), which does not exist (the original's DoEarthquake only shook
+  // the screen), so every earthquake threw. The shaking of the screen is the page's to do; the damage below stands.
 
   this._emitEvent(Messages.EARTHQUAKE, {x: this._map.cityCenterX, y: this._map.cityCenterY});
 

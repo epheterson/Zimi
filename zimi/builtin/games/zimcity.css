@@ -90,3 +90,10 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-kept-what { display: flex; flex-direction: column; min-width: 0; }
 .cy-kept-what small { font-size: var(--fs-small); color: var(--ink2); }
 .cy-kept-acts { display: flex; gap: var(--sp-2); flex: none; }
+
+/* Scenarios: each a row (name, story, links; Play), then the ready-made cities as a grid of buttons. */
+.cy-sc { align-items: center; }
+.cy-sc-links { display: block; margin-top: 2px; font-size: var(--fs-small); }
+.cy-maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.cy-maps .ar-btn { min-height: var(--target); padding: 0 var(--sp-1); font-size: var(--fs-small); }
+.cy-sc-note { font-size: var(--fs-small); color: var(--ink2); margin-top: var(--sp-3); }
