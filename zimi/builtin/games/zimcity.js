@@ -292,7 +292,8 @@ function watchFast(dt, now) {
   if (!slowSince) slowSince = now;
   if (now - slowSince > FAST_PATIENCE_MS) { fastOK = false; setSpeed(Simulation.SPEED_MED); say(T('city.s.fastGone'), true); }
 }
-function sheetOpen() { return !!d.querySelector('.ar-sheet, .gs-sheet:not([hidden])'); }
+// Any sheet up (the Menu's stays in the page, hidden, once it has opened) holds the city's clock.
+function sheetOpen() { return !!d.querySelector('.ar-sheet:not([hidden])'); }
 function setSpeed(s) { speed = s; if (city) city.sim.setSpeed(s); }
 function summary() {
   $('cy-map').setAttribute('aria-label', T('city.summary', { date: dateWords(), people: T('city.people', { n: people() }), money: money(city.sim.budget.totalFunds) }));
