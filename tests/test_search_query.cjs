@@ -31,10 +31,11 @@ function grab(name, kind) {
 
 const sandbox = { console, tH: (k) => k };
 vm.createContext(sandbox);
-for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES', '_LIBRARY_FILTER_TESTS']) {
+for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', 'SEARCH_BAR_FILTERS', 'SEARCH_NEAR_RADIUS', '_searchUnquote', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES', '_LIBRARY_FILTER_TESTS']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
-for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
+vm.runInContext('var SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_KM_PER_MILE = 1.609344;', sandbox);
+for (const f of ['_searchTokens', '_searchNearRadius', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
   vm.runInContext(grab(f), sandbox);
 }
 
@@ -54,6 +55,14 @@ for (const c of cases.parse) {
   // plain is the server's alone (query.py): the client never asks it.
   const want = { groups: c.groups, exclude: c.exclude, filters: c.filters };
   check(same(view, want), 'parse ' + JSON.stringify(c.q) + (same(view, want) ? '' : ' got ' + JSON.stringify(view)));
+}
+// near: (Eric, 2026-11-03), the search bar's: the same cases query.py is held to.
+for (const c of cases.near) {
+  const got = sandbox.parseSearchQuery(c.q, sandbox.SEARCH_BAR_FILTERS);
+  const f = got.filters.find(x => x.key === 'near');
+  const view = f && { place: f.value, radius_km: Math.round(f.radius_km * 1e6) / 1e6, unit: f.unit, groups: got.groups.map(g => g.map(show)) };
+  const want = { place: c.place, radius_km: Math.round(c.radius_km * 1e6) / 1e6, unit: c.unit, groups: c.groups };
+  check(same(view, want), 'near ' + JSON.stringify(c.q) + (same(view, want) ? '' : ' got ' + JSON.stringify(view)));
 }
 for (const c of cases.match) {
   const got = sandbox.searchQueryMatches(sandbox.parseSearchQuery(c.q), c.text);

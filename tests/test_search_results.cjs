@@ -27,7 +27,7 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 const decls = [
-  'const SEARCH_QUOTES = ', 'const _SEARCH_UNSPACED = ', 'const SEARCH_FILTERS = ', 'function _searchTokens(',
+  'const SEARCH_QUOTES = ', 'const _SEARCH_UNSPACED = ', 'const SEARCH_FILTERS = ', 'const SEARCH_BAR_FILTERS = ', 'const SEARCH_NEAR_RADIUS = ', 'const SEARCH_NEAR_DEFAULT_KM = ', 'const _searchUnquote = ', 'function _searchNearRadius(', 'function _searchTokens(',
   'function parseSearchQuery(', 'const _reEscape = ', 'const SEARCH_STOP_WORDS = ', 'function searchHitRe(',
   'function searchHitsHtml(', 'const RESULTS_PER_PAGE = ', 'const SEARCH_GROUP_MIN_SOURCES = ',
   'const SEARCH_GROUP_SIZE = ', 'function searchResultGroups(',

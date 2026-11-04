@@ -2050,6 +2050,13 @@ function t(key, vars) {
 function tH(key, vars) {
   return t(key, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// The string as HTML with each of `vars` already HTML (a <bdi> around a
+// name the person typed, say): the string escaped, the values not.
+function tHtml(key, vars) {
+  let s = tH(key);
+  for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
 // Zimi's language, not the phone's: a German Zimi on an English phone reads
 // 20.10.2026 and 1.234 everywhere, so every number, date and sorted list goes
 // through these. Each Intl object is kept per language and options: building
@@ -10087,7 +10094,7 @@ async function doSearch(query, push, perSource) {
     // ── One request, both passes: the server sends the title matches, the
     // snippets of the cards they draw, the full-text results, then theirs,
     // a line of JSON each as it is ready (_searchStream in http.py).
-    const res = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&ui=' + encodeURIComponent(_uiLangPrimary()) + '&stream=1',
+    const res = await serverFetch('/search?' + await _nearParams(query) + '&limit=' + perSource + zimParam + '&ui=' + encodeURIComponent(_uiLangPrimary()) + '&stream=1',
       { signal: searchController.signal });
     _throwIfRateLimited(res);
     _snippetsStreamSeq = searchSeq;
@@ -10275,6 +10282,7 @@ function mergeSearchResults(phase1, phase2) {
     // Places come only from the full phase; the keystroke phase reads no
     // shards. They are a group beside the results, not merged into them.
     places: phase2.places || phase1.places || [],
+    near: phase2.near || phase1.near,
   };
 }
 
@@ -10479,10 +10487,10 @@ function renderSearchResults(data, scope) {
 
   // What the query's operators did, each a tap away from undone.
   const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
-  if (!items.length) {
+  if (!items.length && !(data.places || []).length) {
     // A query of only exclusions and filters ("-ted") asks for nothing, so
     // the library finds nothing: say what it needs, not "try other words".
-    const asksNothing = !!data._query && !parseSearchQuery(data._query).groups.length;
+    const asksNothing = !!data._query && !parseSearchQuery(data._query, SEARCH_BAR_FILTERS).groups.length;
     // Under the Field Guide's answer, "No results found" would be the louder
     // line on a page that has just helped: the answer stands alone.
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
@@ -10495,7 +10503,7 @@ function renderSearchResults(data, scope) {
   // Show matching ZIM sources above results (global search only)
   let zimMatchHtml = '';
   if (!scope && zimsCache && data._query) {
-    const parsed = parseSearchQuery(data._query);
+    const parsed = parseSearchQuery(data._query, SEARCH_BAR_FILTERS);
     const matches = parsed.groups.length ? zimsCache.filter(z => _libraryMatches(parsed, z)) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
@@ -10563,7 +10571,7 @@ function renderSearchResults(data, scope) {
   // the shards had nothing, so the words are most likely not a place: it
   // follows the results ("black hole" read the map first), and leads only
   // when there is nothing else.
-  const placesHtml = _mapPlaceRowsHtml(data.places || []);
+  const placesHtml = _nearHtml(data.near) + _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
   let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results' + (groups ? ' grouped' : '') + '">' +
     placesHtml + (listHtml ? listHtml + mapFindHtml : mapFindHtml) + '</div>';
@@ -10994,7 +11002,7 @@ async function fetchPlaces(query) {
   suggestController = new AbortController();
   const seq = ++_suggestSeq;
   try {
-    const res = await fetch('/places?q=' + encodeURIComponent(query), { signal: suggestController.signal });
+    const res = await fetch('/places?' + await _nearParams(query), { signal: suggestController.signal });
     const data = await res.json();
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     suggestItems = [];
@@ -11004,8 +11012,7 @@ async function fetchPlaces(query) {
     const groups = (data.groups || []).slice().sort((a, b) => (b.zim === onScreen) - (a.zim === onScreen));
     for (const g of groups) {
       for (const p of (g.places || [])) {
-        const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
-          .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
+        const what = _placeWhat(p, g.unit).join(' \u00b7 ');
         suggestItems.push({ _place: true, zim: g.zim, path: g.main_path, title: p.name,
           sub: (what ? what + ' \u00b7 ' : '') + (g.title || g.zim),
           pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng, label: p.name });
@@ -11487,8 +11494,13 @@ const SEARCH_QUOTES = '"“”„';
 // Scripts written without spaces (Thai, Lao, Myanmar, Khmer, kana, CJK): a
 // term there matches anywhere, since a word boundary means nothing.
 const _SEARCH_UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]/;
-// The keys both searches know (query.LIBRARY_FILTERS on the server).
+// The keys both searches know. The search bar also knows near: (places
+// within a distance of a place; query.LIBRARY_FILTERS on the server).
 const SEARCH_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
+const SEARCH_BAR_FILTERS = Object.assign({ near: 'near' }, SEARCH_FILTERS);
+// near:'s distance, the token after it (query.NEAR_RADIUS), and its default.
+const SEARCH_NEAR_RADIUS = /^(\d+(?:\.\d+)?)(km|mi)$/i;
+const SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_KM_PER_MILE = 1.609344;
 
 // Each token is [text, phrase, negated, start, end]: where it sits in what
 // was typed is what lets a chip take one operator back out (searchQueryChips).
@@ -11515,11 +11527,54 @@ function _searchTokens(q) {
       if (start >= n) break;
     }
     let j = start;
-    while (j < n && !isS(q[j])) j++;
+    while (j < n && !isS(q[j])) {
+      // key:"a value": the value's quotes hold its spaces (query._tokens).
+      if (q[j] === ':' && j + 1 < n && isQ(q[j + 1]) && j > start) {
+        for (let k = j + 2; k < n; k++) if (isQ(q[k])) { j = k; break; }
+      }
+      j++;
+    }
     out.push([q.slice(start, j), false, false, start, j]);
     i = j;
   }
   return out;
+}
+
+const _searchUnquote = s => [...s].filter(ch => !SEARCH_QUOTES.includes(ch)).join('').split(/\s+/).filter(Boolean).join(' ');
+// near:'s distance from the token at `at` when it is one (then taken, its
+// place kept in radiusAt), else the default (query._near_radius).
+function _searchNearRadius(tokens, at, skip) {
+  const m = at < tokens.length && !tokens[at][1] ? SEARCH_NEAR_RADIUS.exec(tokens[at][0]) : null;
+  if (!m) return { radius_km: SEARCH_NEAR_DEFAULT_KM, unit: 'km' };
+  skip.add(at);
+  const unit = m[2].toLowerCase(), n = parseFloat(m[1]);
+  return { radius_km: unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, unit: unit, radiusAt: at };
+}
+
+// The query as the server is asked it: q=, and for a near: search the place
+// it is from. near:here becomes the browser's position (asked for, so the
+// browser's own prompt decides), else the Almanac's place; and near_at= is
+// the Almanac's place, which picks among places of one name (several
+// Danvilles). Nothing is added to a search without near:.
+var _NEAR_HERE_TIMEOUT_MS = 8000;
+function _nearParams(query) {
+  const plain = 'q=' + encodeURIComponent(query);
+  const near = parseSearchQuery(query, SEARCH_BAR_FILTERS).filters.find(f => f.key === 'near' && !f.negate);
+  if (!near) return Promise.resolve(plain);
+  const stored = _almChosenPlace();
+  const at = stored && isFinite(stored.lat) && isFinite(stored.lon != null ? stored.lon : stored.lng)
+    ? stored.lat + ',' + (stored.lon != null ? stored.lon : stored.lng) : '';
+  const withAt = q => 'q=' + encodeURIComponent(q) + (at ? '&near_at=' + encodeURIComponent(at) : '');
+  if (near.value !== 'here') return Promise.resolve(withAt(query));
+  const tok = parseSearchQuery(query, SEARCH_BAR_FILTERS).tokens[near.at];
+  const swap = where => where ? query.slice(0, tok[3]) + (near.negate ? '-' : '') + 'near:' + where + query.slice(tok[4]) : query;
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(withAt(swap(at)));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(withAt(swap(pos.coords.latitude.toFixed(4) + ',' + pos.coords.longitude.toFixed(4)))),
+      () => resolve(withAt(swap(at))),
+      { timeout: _NEAR_HERE_TIMEOUT_MS, maximumAge: 600000 });
+  });
 }
 
 // Beyond what query.py returns, each term and filter carries `at`, its token
@@ -11529,7 +11584,9 @@ function parseSearchQuery(q, filters) {
   const groups = [], joins = [], exclude = [], found = [];
   const tokens = _searchTokens(q || '');
   let joinNext = false, orAt = -1;
+  const skip = new Set();
   for (let at = 0; at < tokens.length; at++) {
+    if (skip.has(at)) continue;
     let [text, phrase, neg] = tokens[at];
     if (!phrase) {
       if (text === 'OR') { joinNext = groups.length > 0; orAt = at; continue; }
@@ -11540,7 +11597,9 @@ function parseSearchQuery(q, filters) {
       const c = text.indexOf(':');
       const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
       if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
-        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg, at: at });
+        const f = { key: filters[key], value: _searchUnquote(text.slice(c + 1)).toLowerCase(), negate: neg, at: at };
+        if (f.key === 'near') Object.assign(f, _searchNearRadius(tokens, at + 1, skip));
+        found.push(f);
         joinNext = false;
         continue;
       }
@@ -11603,7 +11662,7 @@ const SEARCH_STOP_WORDS = new Set(['a','an','and','are','as','at','be','by','for
 // over a word inside it. null when there is nothing to mark.
 function searchHitRe(query) {
   const terms = [];
-  for (const g of parseSearchQuery(query || '').groups) {
+  for (const g of parseSearchQuery(query || '', SEARCH_BAR_FILTERS).groups) {
     for (const t of g) if (t.phrase || !SEARCH_STOP_WORDS.has(t.text)) terms.push(t.text);
   }
   if (!terms.length) return null;
@@ -11641,6 +11700,8 @@ function _libraryFilterText(z) {
 // The catalog's operators on an installed ZIM: source: also reads the file
 // name, the one way to ask for it on purpose ("source:nopic").
 const _LIBRARY_FILTER_TESTS = {
+  // A place says nothing about a source: near: picks places, not ZIMs.
+  near: () => true,
   source: (v, z) => [z.name, z.title, z.category].some(s => (s || '').toLowerCase().includes(v)),
   lang: (v, z) => (z.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
 };
@@ -11678,7 +11739,7 @@ function _searchTokenWords(tok) {
 
 function searchQueryChips(q) {
   q = q || '';
-  const p = parseSearchQuery(q), toks = p.tokens, chips = [];
+  const p = parseSearchQuery(q, SEARCH_BAR_FILTERS), toks = p.tokens, chips = [];
   // An OR just before an exclusion or a filter joined nothing; taken out
   // alone it would join the terms either side, so it goes with it.
   const without = at => _searchRebuild(q, toks, new Set(_isOrToken(toks[at - 1]) ? [at, at - 1] : [at]));
@@ -11686,7 +11747,11 @@ function searchQueryChips(q) {
     chips.push({ kind: 'without', at: t.at, words: [_searchTokenWords(toks[t.at])], query: without(t.at) });
   }
   for (const f of p.filters) {
-    chips.push({ kind: f.key, at: f.at, value: f.value, negate: f.negate, query: without(f.at) });
+    // near:'s distance goes with it.
+    const q2 = f.radiusAt != null ? _searchRebuild(q, toks, new Set([f.at, f.radiusAt])) : without(f.at);
+    // near: shows its place as typed ("Walnut Creek"), not folded.
+    const value = f.key === 'near' ? _searchUnquote(toks[f.at][0].slice(toks[f.at][0].indexOf(':') + 1)) : f.value;
+    chips.push({ kind: f.key, at: f.at, value: value, negate: f.negate, radius_km: f.radius_km, unit: f.unit, query: q2 });
   }
   p.groups.forEach((g, i) => {
     for (const t of g) {
@@ -11719,12 +11784,7 @@ function _searchSourceTitle(value, pool) {
 // place in a Hebrew label) or as plain text for its button's label.
 function _searchChipLabel(chip, pool, html) {
   const w = html ? (s => '<bdi>' + esc(s) + '</bdi>') : (s => s);
-  const tpl = (key, vars) => {
-    if (!html) return t(key, vars);
-    let s = tH(key);
-    for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
-    return s;
-  };
+  const tpl = (key, vars) => html ? tHtml(key, vars) : t(key, vars);
   if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
   if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
   if (chip.kind === 'or') {
@@ -11737,6 +11797,11 @@ function _searchChipLabel(chip, pool, html) {
     // An OR past the search's budget (query.MAX_SEARCHES): what was not searched is said.
     const left = chip.skipped && chip.skipped.length ? ' ' + tpl('search_chip_not_searched', { words: list(chip.skipped, 'conjunction') }) : '';
     return list(chip.words, 'disjunction') + left;
+  }
+  if (chip.kind === 'near') {
+    const n = chip.unit === 'mi' ? chip.radius_km / SEARCH_KM_PER_MILE : chip.radius_km;
+    return tpl('search_chip_near', { place: w(chip.value.toLowerCase() === 'here' ? t('near_here') : chip.value),
+      distance: fmtNum(Math.round(n * 10) / 10) + ' ' + chip.unit });
   }
   const lang = chip.kind === 'lang';
   const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
@@ -11779,7 +11844,7 @@ function _searchAgain(query) {
 // The "?" beside the box: examples written for each language, one operator
 // each, shown with the chip it makes. The library's are about articles, the
 // catalog's about finding ZIMs.
-const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source'];
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near'];
 const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
 
 // Where the grammar applies: the library's own search and the catalog. Not
@@ -13951,7 +14016,7 @@ function _mapPlaceRowsHtml(groups) {
     var mapTitle = g.title || g.zim;
     for (var pi = 0; pi < (g.places || []).length; pi++) {
       var p = g.places[pi];
-      var what = [p.sub || p.type, p.locality].filter(Boolean).map(function(x) { return String(x).replace(/_/g, ' '); });
+      var what = _placeWhat(p, g.unit);
       var pos = 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng;
       h += '<a class="result map-place" href="' + escAttr(_articleDeepLinkPath(g.zim, g.main_path) + '#' + pos) +
         '" data-zim="' + escAttr(g.zim) + '" data-path="' + escAttr(g.main_path) + '" data-title="' + escAttr(p.name) +
@@ -13964,6 +14029,30 @@ function _mapPlaceRowsHtml(groups) {
     }
   }
   return h;
+}
+// A near: search says what it measured from: the place it took (and, when
+// several share the name, which and why), and the distance asked.
+function _nearDistanceText(km, unit) {
+  const n = unit === 'mi' ? km / SEARCH_KM_PER_MILE : km;
+  return fmtNum(n < 10 ? Math.round(n * 10) / 10 : Math.round(n)) + ' ' + unit;
+}
+function _nearHtml(near) {
+  if (!near) return '';
+  if (!near.found) return '<div class="near-from">' + tHtml('near_not_found', { place: '<bdi>' + esc(near.place) + '</bdi>' }) + '</div>';
+  const where = fmtNum(near.lat) + ', ' + fmtNum(near.lng);
+  let h = '<div class="near-from">' + tHtml('near_from', { distance: esc(_nearDistanceText(near.radius_km, near.unit)),
+    place: '<bdi>' + esc(near.place) + '</bdi>' });
+  if (near.others > 0) {
+    h += '<div class="near-which">' + tHtml(near.by === 'nearest' ? 'near_pick_nearest' : 'near_pick_largest',
+      { place: '<bdi>' + esc(near.place) + '</bdi>', where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
+  }
+  return h + '</div>';
+}
+// What a place is, for its row: its kind, where, and how far (a near: search).
+function _placeWhat(p, unit) {
+  const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean).map(x => String(x).replace(/_/g, ' '));
+  if (p.km != null) what.push(_nearDistanceText(p.km, unit || 'km'));
+  return what;
 }
 function _spaMapPlace(e, el) {
   return _spaNav(e, function () {
