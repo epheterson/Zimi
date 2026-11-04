@@ -3500,5 +3500,12 @@
   "hide_from_home": "Hide from Home",
   "zi_icon_full": "See the icon full size",
   "au_skip_on": "Don’t auto-update this ZIM",
-  "au_skip_off": "Auto-update this ZIM"
+  "au_skip_off": "Auto-update this ZIM",
+  "search_chip_near": "within {distance} of {place}",
+  "search_example_near": "near:Danville 25km",
+  "near_here": "here",
+  "near_from": "Places within {distance} of {place}",
+  "near_pick_nearest": "{place} at {where}: of {n} places with that name, the nearest to you.",
+  "near_pick_largest": "{place} at {where}: of {n} places with that name, the largest.",
+  "near_not_found": "No installed map names a place called {place}."
 }

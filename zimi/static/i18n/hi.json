@@ -3500,5 +3500,12 @@
   "hide_from_home": "होम से छिपाएँ",
   "zi_icon_full": "आइकन पूरे आकार में देखें",
   "au_skip_on": "इस ZIM को अपने आप अपडेट न करें",
-  "au_skip_off": "इस ZIM को अपने आप अपडेट करें"
+  "au_skip_off": "इस ZIM को अपने आप अपडेट करें",
+  "search_chip_near": "{place} से {distance} के भीतर",
+  "search_example_near": "near:पुणे 25km",
+  "near_here": "यहाँ",
+  "near_from": "{place} से {distance} के भीतर की जगहें",
+  "near_pick_nearest": "{where} पर {place}: इस नाम की {n} जगहों में से आपके सबसे पास वाली।",
+  "near_pick_largest": "{where} पर {place}: इस नाम की {n} जगहों में से सबसे बड़ी।",
+  "near_not_found": "किसी भी इंस्टॉल किए गए नक्शे पर {place} नाम की कोई जगह नहीं है।"
 }

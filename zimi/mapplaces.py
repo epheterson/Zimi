@@ -30,6 +30,7 @@ import threading
 
 from zimi import mapsearch
 from zimi import server as _srv
+from zimi.placedata import km_between
 from zimi.details import DetailsBuilder
 
 log = logging.getLogger("zimi")
@@ -250,7 +251,7 @@ _builder = DetailsBuilder(
     zims=_ours,
     label="Maps",
     what="town names",
-    version="1",
+    version="2",
     table="places",
     columns=("word TEXT", "name TEXT", "class TEXT", "lat REAL", "lng REAL"),
     # Looked up when it runs, as the child process looks it up.
@@ -258,7 +259,8 @@ _builder = DetailsBuilder(
     load=None,
     lock=_lock,
     on_keep=lambda name, key, details: None,
-    indexes=("word",),
+    # word for a name; lat for near: (a box of latitudes, then the distance).
+    indexes=("word", "lat"),
 )
 build_all = _builder.build_all
 
@@ -311,6 +313,102 @@ def search(name, query, limit=mapsearch.MAX_RESULTS):
         place = mapsearch._place_dict(entry)
         place["zoom"] = ZOOM_FOR_CLASS.get(entry["s"], place["zoom"])
         place["score"] = s
+        out.append(place)
+    return out
+
+
+# ── near: places within a distance of a place ─────────────────────────────
+
+KM_PER_DEGREE_LAT = 111.32
+# The most places a near: answers with, nearest first.
+NEAR_MAX_RESULTS = 30
+# The rank of a place's class when several share its name: the largest first.
+_CLASS_RANK = {"city": 2, "town": 1}
+
+
+def _query(name, sql, args):
+    try:
+        conn = sqlite3.connect(_builder.path(name), timeout=5)
+        try:
+            return conn.execute(sql, args).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        log.debug("map places %s: %s", name, e)
+        return []
+
+
+def named(name, place):
+    """Every place on map ``name`` called ``place`` (case and accents aside):
+    [{"name", "sub", "lat", "lng"}]. [] until the map has been read."""
+    norm = " ".join(mapsearch.normalize_text(place).split())
+    if not norm or not ready(name):
+        return []
+    rows = _query(
+        name,
+        "SELECT DISTINCT name, class, lat, lng FROM places WHERE word = ?",
+        (max(norm.split(), key=len),),
+    )
+    return [
+        {"name": n, "sub": c, "lat": la, "lng": lo}
+        for n, c, la, lo in rows
+        if " ".join(mapsearch.normalize_text(n).split()) == norm
+    ]
+
+
+def pick(candidates, at=None):
+    """The one of several places of a name a near: means: the nearest to
+    ``at`` (the person's own place) when there is one, else the largest."""
+    if not candidates:
+        return None
+    if at:
+        return min(candidates, key=lambda p: km_between(at[0], at[1], p["lat"], p["lng"]))
+    return max(candidates, key=lambda p: _CLASS_RANK.get(p["sub"], 0))
+
+
+def _lng_ranges(lng, dlng):
+    """The longitude ranges a box of half-width ``dlng`` covers: two where
+    it crosses the antimeridian, the whole circle when it is wider."""
+    if dlng >= 180:
+        return [(-180.0, 180.0)]
+    lo, hi = lng - dlng, lng + dlng
+    if lo < -180:
+        return [(lo + 360, 180.0), (-180.0, hi)]
+    if hi > 180:
+        return [(lo, 180.0), (-180.0, hi - 360)]
+    return [(lo, hi)]
+
+
+def near(name, lat, lng, radius_km, words=(), limit=NEAR_MAX_RESULTS):
+    """Places on map ``name`` within ``radius_km`` of ``lat``, ``lng``,
+    nearest first, each with ``km``; ``words`` (normalized) must all be in
+    a name. The index gives a box of latitudes; the distance decides."""
+    if not ready(name):
+        return []
+    dlat = radius_km / KM_PER_DEGREE_LAT
+    cos = math.cos(math.radians(min(abs(lat) + dlat, 89.9)))
+    dlng = radius_km / (KM_PER_DEGREE_LAT * max(cos, 1e-6))
+    found = {}
+    for lo, hi in _lng_ranges(lng, dlng):
+        rows = _query(
+            name,
+            "SELECT DISTINCT name, class, lat, lng FROM places"
+            " WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+            (lat - dlat, lat + dlat, lo, hi),
+        )
+        for n, c, la, lo2 in rows:
+            km = km_between(lat, lng, la, lo2)
+            if km > radius_km:
+                continue
+            norm = mapsearch.normalize_text(n)
+            if any(w not in norm for w in words):
+                continue
+            found[(n, round(la, 3), round(lo2, 3))] = (km, n, c, la, lo2)
+    out = []
+    for km, n, c, la, lo2 in sorted(found.values())[:limit]:
+        place = mapsearch._place_dict({"n": n, "t": "place", "s": c, "a": la, "o": lo2})
+        place["zoom"] = ZOOM_FOR_CLASS.get(c, place["zoom"])
+        place["km"] = round(km, 1)
         out.append(place)
     return out
 

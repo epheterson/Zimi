@@ -58,7 +58,7 @@ ok('the tile sits in the apps row before favorites on the plain home only', /if 
 const input = extract(/q\.addEventListener\('input', \(\) => \{[\s\S]*?\n\}\);/, 'input handler');
 ok('typing on a map page finds places, not articles or history', /if \(val && val\.length >= 1 && _isMapPage\(\)\) \{[\s\S]*fetchPlaces\(val\)/.test(input) && !/_isMapPage\(\)\) \{[\s\S]*showHistoryDropdown\(val\)[\s\S]*\} else if/.test(input.split('} else if')[0]));
 const fp = extract(/async function fetchPlaces\(query\) \{[\s\S]*?\n\}/, 'fetchPlaces');
-ok('it asks /places and makes suggest rows that carry the place', /fetch\('\/places\?q=' \+ encodeURIComponent\(query\)/.test(fp) && /_place: true, zim: g\.zim, path: g\.main_path, title: p\.name/.test(fp) && /pos: 'map=' \+ \(p\.zoom \|\| 15\) \+ '\/' \+ p\.lat \+ '\/' \+ p\.lng/.test(fp));
+ok('it asks /places and makes suggest rows that carry the place', /fetch\('\/places\?' \+ await _nearParams\(query\)/.test(fp) && /_place: true, zim: g\.zim, path: g\.main_path, title: p\.name/.test(fp) && /pos: 'map=' \+ \(p\.zoom \|\| 15\) \+ '\/' \+ p\.lat \+ '\/' \+ p\.lng/.test(fp));
 ok('picking a row opens the place where it is', /if \(s\.pos\) openArticle\(s\.zim, s\.path, s\.title, \{pos: s\.pos, label: s\.label\}\);/.test(src));
 const keys = extract(/q\.addEventListener\('keydown', e => \{[\s\S]*?\n\}\);/, 'keydown');
 ok('Enter on a map takes the first place', /if \(_isMapPage\(\)\) \{\s*\r?\n\s*if \(suggestItems\.length && suggestItems\[0\]\._place\) selectSuggest\(0\);/.test(keys));

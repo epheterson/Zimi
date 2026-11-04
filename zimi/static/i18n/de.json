@@ -3500,5 +3500,12 @@
   "hide_from_home": "Von Start ausblenden",
   "zi_icon_full": "Symbol in voller Größe ansehen",
   "au_skip_on": "Dieses ZIM nicht automatisch aktualisieren",
-  "au_skip_off": "Dieses ZIM automatisch aktualisieren"
+  "au_skip_off": "Dieses ZIM automatisch aktualisieren",
+  "search_chip_near": "im Umkreis von {distance} um {place}",
+  "search_example_near": "near:Hamburg 25km",
+  "near_here": "hier",
+  "near_from": "Orte im Umkreis von {distance} um {place}",
+  "near_pick_nearest": "{place} bei {where}: von {n} Orten dieses Namens der Ihnen nächste.",
+  "near_pick_largest": "{place} bei {where}: von {n} Orten dieses Namens der größte.",
+  "near_not_found": "Keine installierte Karte kennt einen Ort namens {place}."
 }

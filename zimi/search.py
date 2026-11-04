@@ -2866,7 +2866,7 @@ def _kiwix_places(archive, query_str, limit):
     return found
 
 
-def find_places(query_str, limit=_PLACES_PER_MAP):
+def find_places(query_str, limit=_PLACES_PER_MAP, near_at=None):
     """Places matching ``query_str`` on every installed map: the one box of
     Zimi Maps. One group per map that answered, StreetZim's from their place
     index, Kiwix's from their place pages. Same shape as ``search_all``'s
@@ -2877,6 +2877,11 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
     q = (query_str or "").strip()
     if not q:
         return []
+    parsed = _query.parse_query(q)
+    if not parsed["plain"]:
+        near = near_places(parsed, near_at)
+        if near is not None:
+            return near["places"]
     groups = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
@@ -2941,7 +2946,8 @@ def _search_places(queries, target_names, parsed=None):
     groups = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
-        if z.get("kind") != "map" or name not in target_names:
+        # map_search is only ever set on a map.
+        if not (z.get("map_search") or z.get("kind") == "map") or name not in target_names:
             continue
         try:
             if z.get("map_search"):
@@ -3059,7 +3065,100 @@ def _best_score(title, word_sets, rank, entry_count, lang_match):
     )
 
 
-def search_all(query_str, limit=5, filter_zim=None, fast=False):
+# near:<lat>,<lng>: a position typed, or the browser's (near:here, sent so).
+_LATLNG_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+
+
+def parse_latlng(text):
+    """``(lat, lng)`` from "lat,lng", or None when it is not a position."""
+    m = _LATLNG_RE.match(text or "")
+    if not m:
+        return None
+    lat, lng = float(m.group(1)), float(m.group(2))
+    return (lat, lng) if -90 <= lat <= 90 and -180 <= lng <= 180 else None
+
+
+def near_places(parsed, at=None):
+    """A near: search (Eric, 2026-11-03: "should we also include like radius
+    near a location?"): None when the query has no near:, else
+
+        {"places": [groups as _search_places gives them, each place with km],
+         "near": {"place", "sub", "lat", "lng", "others", "radius_km", "unit"}
+                 or {"place": <as typed>, "found": False}}
+
+    The place is a position (near:37.8,-122), or a name read from the Kiwix
+    maps' towns (zimi.mapplaces). Several places of the name: the nearest to
+    ``at`` (the person's own place) when given, else the largest, and
+    ``others`` says how many were passed over. The other words of the query
+    must all be in a place's name. A query without near: never comes here."""
+    from zimi import mapplaces as _mapplaces
+    from zimi import mapsearch
+
+    f = _query.near_filter(parsed)
+    if not f:
+        return None
+    maps = [
+        z
+        for z in _srv._zim_list_cache or []
+        if z.get("kind") == "map"
+        and not z.get("map_search")
+        and z.get("name")
+        and _srv.zim_allowed(z["name"])
+    ]
+    here = parse_latlng(f["value"])
+    others = 0
+    if here:
+        anchor = {"name": f["value"], "sub": "", "lat": here[0], "lng": here[1]}
+    else:
+        seen = []
+        for z in maps:
+            for p in _mapplaces.named(z["name"], f["value"]):
+                if not any(
+                    abs(p["lat"] - q["lat"]) < _SAME_PLACE_DEGREES
+                    and abs(p["lng"] - q["lng"]) < _SAME_PLACE_DEGREES
+                    for q in seen
+                ):
+                    seen.append(p)
+        anchor = _mapplaces.pick(seen, at)
+        others = max(len(seen) - 1, 0)
+    if not anchor:
+        return {"places": [], "near": {"place": f["value"], "found": False}}
+    words = [
+        mapsearch.normalize_text(t["text"]) for g in parsed["groups"] for t in g[:1]
+    ]
+    groups = []
+    for z in maps:
+        found = _mapplaces.near(
+            z["name"], anchor["lat"], anchor["lng"], f["radius_km"], words
+        )
+        if found:
+            groups.append(
+                {
+                    "zim": z["name"],
+                    "title": z.get("title") or z["name"],
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                    "unit": f["unit"],
+                }
+            )
+    return {
+        "places": groups,
+        "near": {
+            "place": anchor["name"],
+            "sub": anchor["sub"],
+            "lat": round(anchor["lat"], 4),
+            "lng": round(anchor["lng"], 4),
+            "others": others,
+            # How one of several was picked: nearest the person, or largest.
+            "by": "nearest" if at else "largest",
+            "radius_km": f["radius_km"],
+            "unit": f["unit"],
+            "found": True,
+        },
+    }
+
+
+def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     """Search across all ZIM files, a specific one, or a list.
 
     filter_zim can be None (all), a string (single ZIM), or a list of strings.
@@ -3092,6 +3191,22 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
 
     # The grammar (#94). A plain query takes the path it always took.
     parsed = _query.parse_query(query_str)
+    # near: asks for places, not articles: answered from the towns' index.
+    if not parsed["plain"]:
+        near = near_places(parsed, near_at)
+        if near is not None:
+            out = {
+                "results": [],
+                "by_source": {},
+                "by_language": {},
+                "total": 0,
+                "elapsed": 0,
+                "partial": fast,
+                "near": near["near"],
+            }
+            if near["places"]:
+                out["places"] = near["places"]
+            return out
     plan = None if parsed["plain"] else _query.alternatives(parsed)
     # Detect query language for scoring boost
     detected_lang = _srv._detect_query_language(

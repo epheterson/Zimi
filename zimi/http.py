@@ -2766,18 +2766,33 @@ class ZimHandler(BaseHTTPRequestHandler):
                     else (filter_zim or "all")
                 )
 
+                # A near: search's own place (the Almanac's), which picks among
+                # places of one name; part of the cache key, since it can
+                # change the answer.
+                near_at = _srv.parse_latlng(param("near_at"))
+
                 def run(fast_pass):
                     # Key includes the request's allowlist identity (see
                     # _search_cache_key) so a restricted user never receives
                     # another session's broader results. Neither pass takes
                     # _zim_lock: the quick one reads title indexes and
                     # _suggest_pool, the full one _fts_pool's per-ZIM locks.
-                    key = _srv._search_cache_key(q, zim_scope_str, limit, fast_pass)
+                    key = _srv._search_cache_key(
+                        q + ("\x00%s,%s" % near_at if near_at else ""),
+                        zim_scope_str,
+                        limit,
+                        fast_pass,
+                    )
                     t0 = time.time()
                     result, hit = _srv.search_cached(
                         key,
                         lambda: _srv.search_all(
-                            q, limit=limit, filter_zim=filter_zim, fast=fast_pass
+                            q,
+                            limit=limit,
+                            filter_zim=filter_zim,
+                            fast=fast_pass,
+                            # Only a near: search's request carries it.
+                            **({"near_at": near_at} if near_at else {}),
                         ),
                     )
                     dt = 0 if hit else time.time() - t0
@@ -3480,7 +3495,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not q:
                     return self._json(400, {"error": "missing ?q= parameter"})
                 t0 = time.time()
-                groups = _srv.find_places(q)
+                groups = _srv.find_places(q, near_at=_srv.parse_latlng(param("near_at")))
                 _record_metric("/places", time.time() - t0)
                 return self._json(
                     200, {"groups": groups, "elapsed": round(time.time() - t0, 3)}

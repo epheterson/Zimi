@@ -73,7 +73,9 @@ def _load():
     return _tides
 
 
-def _km(lat1, lon1, lat2, lon2):
+def km_between(lat1, lon1, lat2, lon2):
+    """Great-circle kilometres between two points (haversine): the tide
+    stations' distance, and the map's near: search."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = p2 - p1, math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
@@ -90,7 +92,7 @@ def _public(st, extra=None):
 def _tide_out(tides, st, lat=None, lon=None):
     extra = {}
     if lat is not None:
-        extra["km"] = round(_km(lat, lon, st["la"], st["lo"]), 1)
+        extra["km"] = round(km_between(lat, lon, st["la"], st["lo"]), 1)
     if "ref" in st:
         ref = tides["by_id"].get(st["ref"])
         if ref:
@@ -151,7 +153,7 @@ def search(q, lat=None, lon=None):
             if lat is None:
                 return (starts, s["_k"])
             la, lo = coords(s)
-            return (starts, _km(lat, lon, la, lo))
+            return (starts, km_between(lat, lon, la, lo))
 
         return sorted(found, key=rank)[:SEARCH_LIMIT]
 
