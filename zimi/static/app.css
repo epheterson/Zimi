@@ -3367,18 +3367,22 @@
   body.login-gate .pw-box h3 { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   body.login-gate #pw-username-hint { display:none !important; }
   body.login-gate .pw-brand { margin-bottom:24px; }
-  body.login-gate .pw-box input[type="password"], body.login-gate .pw-box input[type="text"] { padding:12px; }
-  body.login-gate .pw-box .pw-actions { margin-top:16px; }
-  body.login-gate .pw-box button.pw-primary { flex:1; padding:12px; font-size:15px; }
   body.login-gate .pw-ok-label { display:none; }
   body.login-gate .pw-gate-label { display:inline; }
   /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any
      input smaller than 16px. */
-  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
+  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:12px; border-radius:var(--radius); border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
   .pw-box input[type="password"]:focus, .pw-box input[type="text"]:focus { outline:none; border-color:var(--amber); }
   .pw-box input#pw-username { margin-bottom:8px; }
-  .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
-  .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
+  .pw-box .pw-hint { display:none; font-size:12px; color:var(--text2); margin:-4px 0 8px; }
+  .pw-box .pw-remember { display:flex; align-items:center; gap:6px; margin-top:12px; font-size:13px; color:var(--text2); cursor:pointer; }
+  .pw-box .pw-remember input { accent-color:var(--amber); flex-shrink:0; margin:0; }
+  /* One row of equal buttons, the way every sheet in the app ends (the games' New game row too):
+     Cancel and the way in side by side, the same size, the way in last. Alone (the sign-in
+     screen hides Cancel) the way in takes the whole row. */
+  .pw-box .pw-actions { display:flex; gap:8px; margin-top:16px; }
+  .pw-box button { flex:1; min-height:44px; padding:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:15px; }
+  .pw-box button#pw-remove-btn { flex:none; padding:12px 0; margin-right:auto; border:0; background:none; color:var(--text2); font-size:13px; }
   .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border-color:transparent; font-weight:600; }
   .pw-box button.pw-primary:hover { opacity:0.85; }
   .pw-box .pw-error { color:var(--error); font-size:12px; margin-top:8px; display:none; }
