@@ -12219,9 +12219,9 @@ function _splitPathFragment(path) {
   if (h === -1) return { base: path, frag: '' };
   return { base: path.slice(0, h), frag: path.slice(h) };
 }
-function _articleUrl(zim, path) {
+function _articleUrl(zim, path, query) {
   var p = _splitPathFragment(path);
-  return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + p.frag;
+  return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + (query || '') + p.frag;
 }
 // decodeURIComponent that keeps what it cannot decode. A saved page's own file
 // names can hold a bare '%' ("50% off.html"), and a path that is already decoded
@@ -17703,7 +17703,9 @@ function openReader(url) {
           var aboutQid = linkPath.slice(-_GAMES_ABOUT_PAGE.length) === _GAMES_ABOUT_PAGE &&
                          (fullUrl.match(/[?&]qid=(Q\d+)/) || [])[1];
           if (aboutQid) { _gamesAbout(aboutQid, linkZim, linkPath); return; }
-          openArticle(linkZim, linkPath);
+          // Zimi's own apps read their address (a game's ?daily=, ?deal=): their links keep it.
+          var linkQuery = _OWN_ZIM_APP[linkZim] && (fullUrl.match(/\?[^#]*/) || [''])[0];
+          openArticle(linkZim, linkPath, undefined, linkQuery ? { query: linkQuery } : undefined);
           return;
         }
         // Off this server: into the library when an installed ZIM holds the
@@ -21374,7 +21376,7 @@ function openArticle(zim, path, title, opts) {
   if (discScroll && discScroll.scrollLeft > 0) {
     try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
   }
-  var url = _articleUrl(zim, path);
+  var url = _articleUrl(zim, path, opts && opts.query);
   // A Kiwix map restores its own last view from localStorage as it loads,
   // after Zimi has positioned it, so a switch from Hawaii to the world map
   // landed on wherever that map was last (Eric: "It moved from Hawaii to

@@ -220,3 +220,48 @@ def test_a_finished_daily_is_ticked_on_the_shelf_and_its_end_sheet_shares_no_ans
         full_page=False,
     )
     ctx.close()
+
+
+NSTATES = TATHAM.replace("DESC", "NSTATES")
+
+
+def test_a_solved_tatham_daily_comes_back_solved(site, browser):
+    ctx = _phone(browser, ZONES[0])
+    page = ctx.new_page()
+    url = site + "puzzles/net.html?daily=" + SERVER_DAY   # a puzzle that keeps its status bar, where COMPLETED shows
+    page.goto(url)
+    page.wait_for_function("typeof command === 'function' && document.getElementById('puzzle').style.display !== 'none'", timeout=20000)
+    fresh = page.evaluate(NSTATES)
+    page.evaluate("() => document.getElementById('solve').click()")
+    page.wait_for_timeout(500)
+    if page.locator(".ar-sheet:not([hidden]) .gs-primary").count():
+        page.locator(".ar-sheet:not([hidden]) .gs-primary").first.click()
+    page.wait_for_function("f => (%s)() !== f" % NSTATES, arg=fresh, timeout=10000)
+    # The puzzle says COMPLETED when the player solves it; the solver does not, so the test says it for the player.
+    page.evaluate("() => { document.getElementById('statusbar').textContent = 'COMPLETED!'; }")
+    page.wait_for_timeout(300)
+    page.evaluate("() => ZimiShell.saveNow()")
+    solved = page.evaluate(NSTATES)
+    assert solved != fresh
+    page.goto(url)
+    page.wait_for_function("typeof command === 'function' && document.getElementById('puzzle').style.display !== 'none'", timeout=20000)
+    page.wait_for_timeout(800)
+    assert page.evaluate(NSTATES) == solved, "a solved daily came back dealt fresh"
+    ctx.close()
+
+
+def test_a_finished_arcade_daily_comes_back_over_and_counts_once(site, browser):
+    ctx = _phone(browser, ZONES[0])
+    page = ctx.new_page()
+    url = site + "snake.html?daily=" + SERVER_DAY
+    page.goto(url)
+    page.wait_for_timeout(800)
+    page.mouse.click(195, 420)   # the ready screen: a tap starts the snake, which runs into a wall on its own
+    page.wait_for_selector(".ar-sheet:not([hidden]) .gs-share-row", timeout=40000)
+    count = "() => (JSON.parse(localStorage.getItem('zimi.games.stats')) || { g: {} }).g['snake.html']"
+    assert page.evaluate(count)["n"] == 1
+    page.goto(url)
+    page.mouse.click(195, 420)
+    page.wait_for_selector(".ar-sheet:not([hidden]) .gs-share-row, .gs-rest", timeout=10000)
+    assert page.evaluate(count)["n"] == 1, "reopening a finished daily counted it again"
+    ctx.close()

@@ -979,8 +979,9 @@
   function canMove(id) { var b = $(id); return !!b && !b.disabled; }
   function persistGame() {
     root.ZimiShell.persist({
-      // A game that was only dealt is kept too, so the puzzle that comes back is the one that was left; a solved one is not.
-      save: function () { return solved ? null : { sav: saveText(), t: elapsed }; },
+      // A game that was only dealt is kept too, so the puzzle that comes back is the one that was left; a solved one is not,
+      // except the day's: a solved daily comes back solved (its own save, gone with the day).
+      save: function () { return solved && !DAILY ? null : { sav: saveText(), t: elapsed }; },
       load: function (data) {
         // A link to one particular game (#id) is that game, not the one left behind; a daily's own save is the day's game.
         if (!data || typeof data.sav !== "string" || !encoder || (root.location.hash && !DAILY)) return false;

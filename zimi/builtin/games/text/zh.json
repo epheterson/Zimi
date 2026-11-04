@@ -4761,7 +4761,6 @@
  "seats.players": "玩家",
  "seats.seatN": "座位 {n}",
  "seats.show": "我是 {name}，显示我的牌",
- "shelf.chip.all": "全部游戏",
  "shelf.chip.recent": "最近",
  "shelf.credits": "致谢",
  "shelf.daily": "每日",
@@ -4833,6 +4832,11 @@
  "shelf.region.South Asia": "南亚",
  "shelf.region.Southeast Asia": "东南亚",
  "shelf.region.Worldwide/Modern": "全球/现代",
+ "shelf.room.all": "全部",
+ "shelf.room.arcade": "街机",
+ "shelf.room.kids": "儿童",
+ "shelf.room.night": "游戏之夜",
+ "shelf.room.solo": "单人",
  "shelf.search": "搜索游戏",
  "shelf.searchN": {
   "other": "搜索 {n} 款游戏"

@@ -238,6 +238,8 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the accent fill is under 4.5:1 */
 .sh-count { margin-inline-start: 8px; letter-spacing: 0; }
 .sh-rail-head, .sh-chip-recent { display: none; }
+/* The rooms lead the row; a thin line, then the types. */
+.sh-chip-sep { flex: none; align-self: center; width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
 .sh-empty { margin: 32px 0; text-align: center; color: var(--ink2); }
 .sh-empty[hidden] { display: none; }
 
@@ -317,6 +319,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 [data-view="index"] .ar-daily .ar-game { flex: 0 0 132px; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
 [data-view="index"] .ar-daily .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
 [data-view="index"] .ar-daily .ar-game-text { padding: 8px 10px 10px; }
+.ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game-text span, [data-view="index"] .ar-daily .ar-game::after { display: none; }
 
 /* Index: rows, one section at a time. */
 @media (max-width: 899px) {
@@ -350,6 +353,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
   [data-view="index"] .sh-chip[aria-pressed="true"], [data-view="index"] .sh-chip[aria-pressed="true"]:hover { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
   [data-view="index"] .sh-chip:hover { background: var(--surface); }
   [data-view="index"] .sh-chip-recent:not([hidden]) { display: inline-flex; }
+  [data-view="index"] .sh-chip-sep { width: auto; height: 1px; margin: 10px 12px; }
   [data-view="index"] .sh-rail-head { display: block; margin: 14px 12px 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
   [data-view="index"] .ar-games { grid-template-columns: 1fr 1fr; }
   [data-view="index"] .ar-today { margin: 0; display: flex !important; }
@@ -540,6 +544,7 @@ dl.gs-help { margin: 0; }
 .gs-earned .gs-got > span:first-child { color: var(--accent); font-weight: 700; }
 .gs-share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: 0 0 var(--sp-3); }
 .gs-daily-tag { font-size: var(--fs-small); font-weight: 650; color: var(--accent); }
+.gs-daily-flag { display: none; }   /* shown only inside Zimi, where the bar's name is hidden (shell.js HOST_CSS) */
 .gs-card .zc-row { margin: 6px 0; }
 .gs-card .zs-seats { margin: 6px 0; }
 .gs-seats { display: grid; gap: var(--sp-2); }

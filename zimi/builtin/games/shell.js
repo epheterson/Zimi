@@ -57,6 +57,15 @@
    Where a game overrides a shared rule it says why in a comment where it happens. */
 (function (root) {
   'use strict';
+  // FNV-1a over UTF-8: ZimiGames' one hash (ZimiShell.hash), for the day's seeds and picks; zimi/gamelinks.py _fnv1a is the same in
+  // Python (a test holds them together). A seed is a promise to everyone who played that day: never change it.
+  function fnv1a(text) {
+    var bytes = unescape(encodeURIComponent(String(text))), hash = 0x811c9dc5;
+    for (var i = 0; i < bytes.length; i++) { hash ^= bytes.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
+    return hash >>> 0;
+  }
+  // Node (the tests, recent.js and librarykit.js there) asks for the hash alone.
+  if (!root.document && typeof module !== 'undefined' && module.exports) { module.exports = { hash: fnv1a }; return; }
   var d = root.document;
   // ZimiText first (text.js beside this file): it must exist before anything below draws a string. A page
   // that did not load it writes the tag here, synchronously, so the strings are ready before the first paint.
@@ -211,21 +220,20 @@
     'puzzles/tracks.html': '8x8dt', 'puzzles/twiddle.html': '3x3n2', 'puzzles/undead.html': '5x5dn', 'puzzles/unequal.html': '5dk',
     'puzzles/unruly.html': '8x8dn', 'puzzles/untangle.html': '10'
   };
-  // FNV-1a over UTF-8, the arithmetic of recent.js's (a test holds them together). A seed is a promise to everyone who played
-  // that day: never change it.
-  function fnv1a(text) {
-    var bytes = unescape(encodeURIComponent(text)), hash = 0x811c9dc5;
-    for (var i = 0; i < bytes.length; i++) { hash ^= bytes.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
-    return hash >>> 0;
-  }
   var DAY_RE = /^(\d{4})-(\d\d)-(\d\d)$/;
   function isDay(s) {
     var m = DAY_RE.exec(s || ''), t = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
     return !!t && t.getUTCMonth() === +m[2] - 1 && t.getUTCDate() === +m[3];
   }
+  function ymd(y, m, dd) { var p = function (n) { return (n < 10 ? '0' : '') + n; }; return y + '-' + p(m) + '-' + p(dd); }
+  // The server's day now: its UTC offset (kept from its last answer at /games-day) on the device's clock, else the device's own day.
+  var OFFSET_KEY = 'zimi.games.serverOffset';
+  function keptOffset() { try { var v = root.localStorage.getItem(OFFSET_KEY); return v === null ? null : +v; } catch (e) { return null; } }
   function deviceDay() {
-    var t = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
-    return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate());
+    var off = keptOffset(), t = new Date();
+    if (off === null || isNaN(off)) return ymd(t.getFullYear(), t.getMonth() + 1, t.getDate());
+    t = new Date(Date.now() + off * 60000);
+    return ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
   }
   // The page as the shelf names it: "sudoku.html", "puzzles/loopy.html".
   var PAGE = (function () {
@@ -241,7 +249,7 @@
   Shell.hash = fnv1a;
   Shell.isDay = isDay;
   Shell.daily = DAILY[PAGE] && isDay(askedDay) ? { day: askedDay, seed: dailySeed(askedDay, PAGE), kind: DAILY[PAGE] } : null;
-  // The day this page plays: the daily's, else the device's (outside Zimi, or a page opened without one).
+  // The day this page plays: the daily's, else the server's (worked out from its last answer), else the device's (outside Zimi).
   Shell.day = function (sep) { var s = Shell.daily ? Shell.daily.day : deviceDay(); return sep === '' ? s.replace(/-/g, '') : s; };
   // A deal's seed and random source: the day's in a daily, else chance.
   Shell.seed = function () { return Shell.daily ? Shell.daily.seed : Math.floor(Math.random() * 4294967296); };
@@ -249,15 +257,26 @@
   Shell.random = function () { return Shell.daily ? root.ZimiUtil.mulberry32(Shell.daily.seed) : Math.random; };
   Shell.dailyHref = function (page, day) { return HOME + page + '?daily=' + day; };
   // The server's day, asked once a page: inside Zimi /games-day answers in the server's time zone, so every
-  // person on one server plays the same edition and it changes at the server's midnight. Elsewhere (Kiwix, a file) the device's.
+  // person on one server plays the same edition and it changes at the server's midnight. Its UTC offset is kept, so a page that
+  // cannot wait (a word game's first round) works out the same day itself. Elsewhere (Kiwix, a file) the device's.
   var serverDay = null;
   Shell.serverDay = function () {
     if (!serverDay) {
       serverDay = (root.fetch ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
-        .then(function (j) { return j && isDay(j.day) ? j.day : deviceDay(); }, function () { return deviceDay(); });
+        .then(function (j) {
+          if (!j || !isDay(j.day)) return deviceDay();
+          if (typeof j.utcOffsetMin === 'number') { try { root.localStorage.setItem(OFFSET_KEY, String(j.utcOffsetMin)); } catch (e) { /* blocked */ } }
+          return j.day;
+        }, function () { return deviceDay(); });
     }
     return serverDay;
   };
+  // A game with its own daily, opened from its ordinary tile, keeps the server's offset fresh. The first time (no offset kept yet)
+  // a day it guessed wrong is put right at once: an untouched page opens again on the server's day.
+  if (DAILY[PAGE] === 'own' && !Shell.daily && d && d.readyState) {
+    var guessed = deviceDay();
+    Shell.serverDay().then(function (day) { if (day !== guessed && !touched) root.location.reload(); });
+  }
 
   function h(tag, attrs, kids) {
     var e = d.createElement(tag), k;
@@ -838,7 +857,9 @@
   function countResult(result) {
     if (!touched || (Shell.isWatching && Shell.isWatching())) return null;
     touched = false;
-    var day = roundDaily(), all = addResult(readStats(), PAGE, result, day);
+    var day = roundDaily(), all = readStats();
+    if (day && all.days[day] && all.days[day][PAGE]) return day;   // the day's daily is counted once, however often it is opened
+    all = addResult(all, PAGE, result, day);
     try { root.localStorage.setItem(STATS_KEY, JSON.stringify(all)); } catch (e) { /* full or blocked: play on */ }
     return day;
   }
@@ -1368,8 +1389,10 @@
   // Zimi's reader (same origin) has its own top bar. There the game's name, its Undo or Pause and its
   // Menu live in that bar and this page's own bar steps aside (a clock or score in it stays). Anywhere
   // else (Kiwix, a browser tab) nothing here runs. The page tells Zimi what it has; Zimi asks it to act.
-  var HOST_CSS = 'html.gs-hosted .ar-bar > :not(.ar-stat):not(#ms-flagmode) { display: none !important; }' +
-    'html.gs-hosted .ar-bar:not(:has(.ar-stat, #ms-flagmode)) { display: none; }' +
+  var HOST_CSS = 'html.gs-hosted .ar-bar > :not(.ar-stat):not(#ms-flagmode):not(.gs-daily-flag) { display: none !important; }' +
+    'html.gs-hosted .ar-bar:not(:has(.ar-stat, #ms-flagmode, .gs-daily-flag)) { display: none; }' +
+    // Inside Zimi the game's name is Zimi's; a daily says so at the start of the strip that is left.
+    'html.gs-hosted .ar-bar > .gs-daily-flag { display: block; margin-inline-end: auto; }' +
     'html.gs-hosted .ar-bar { min-height: 0; padding-block: 4px; justify-content: flex-end; }' +
     // A sheet covers the whole page here: the strip of score left of the bar is not a control to keep in reach.
     'html.gs-hosted body .ar-sheet { top: 0; }' +
@@ -1493,6 +1516,7 @@
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
     if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
+    if (h1) h1.parentNode.insertBefore(h('span', { class: 'gs-daily-tag gs-daily-flag', 'data-t': 'daily.tag', text: T('daily.tag') }), h1.nextSibling);
     fitTitle(); root.addEventListener('resize', fitTitle);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.

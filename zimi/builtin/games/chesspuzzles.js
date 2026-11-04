@@ -59,11 +59,7 @@
     return from[Math.floor(Math.random() * from.length)];
   }
   function today() { return root.ZimiShell ? root.ZimiShell.day() : root.ZimiUtil.dayKey(new Date(), '-'); }   // a daily's date (the server's day), else the device's
-  function dailyIndex(date) {
-    var h = 0x811c9dc5;
-    for (var i = 0; i < date.length; i++) { h ^= date.charCodeAt(i); h = Math.imul(h, 0x01000193); }
-    return (h >>> 0) % rows.length;
-  }
+  function dailyIndex(date) { return root.ZimiShell.hash(date) % rows.length; }
 
   // ── drawing ──
   var view = root.ZimiChessBoard.create(els.board, E, onSquare);

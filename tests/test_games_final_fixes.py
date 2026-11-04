@@ -297,7 +297,7 @@ def test_favorites_tiles_lay_out_like_the_other_tiles(browser, zimi, viewport, v
                          ids=["phone-lobby", "desktop-lobby", "desktop-index", "phone-index"])
 def test_every_sections_number_is_the_games_it_shows(browser, zimi, viewport, view):
     ctx, page, f = _shelf(browser, zimi, viewport, view, touch=viewport is PHONE)
-    chips = f.evaluate("() => [...document.querySelectorAll('.sh-nav .sh-chip')].map(c => c.textContent)")
+    chips = f.evaluate("() => [...document.querySelectorAll('.sh-nav .sh-chip:not(.sh-room)')].map(c => c.textContent)")
     named = [c for c in chips if not c.startswith(("All", "Recent"))]
     assert len(named) >= 6, chips
     for i in range(len(chips)):
@@ -305,7 +305,7 @@ def test_every_sections_number_is_the_games_it_shows(browser, zimi, viewport, vi
         if label.startswith(("All", "Recent")):
             continue
         shown = f.evaluate("""(i) => {
-          const chip = document.querySelectorAll('.sh-nav .sh-chip')[i];
+          const chip = document.querySelectorAll('.sh-nav .sh-chip:not(.sh-room)')[i];
           chip.click();
           const sec = [...document.querySelectorAll('.sh-list .ar-section')].filter(s => !s.hidden && s.getBoundingClientRect().height > 0);
           const count = Number(chip.querySelector('.sh-chip-n').textContent);

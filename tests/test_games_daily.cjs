@@ -26,7 +26,7 @@ function page(pathname, search, opts) {
     addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], title: 'Game - ZimiGames'
   };
   const RealDate = Date;
-  const shift = o.clockShiftMs || 0;
+  const shift = o.at ? o.at - Date.now() : (o.clockShiftMs || 0);
   function ShiftedDate(...a) { return a.length ? new RealDate(...a) : new RealDate(RealDate.now() + shift); }
   ShiftedDate.UTC = RealDate.UTC; ShiftedDate.now = () => RealDate.now() + shift; ShiftedDate.prototype = RealDate.prototype;
   const sb = {
@@ -62,6 +62,15 @@ function page(pathname, search, opts) {
   check(page('chess.html', '?daily=' + DAY).S.daily === null, 'a game with no daily ignores ?daily=');
   const pz = page('puzzles/loopy.html', '?daily=' + DAY);
   check(pz.S.daily && pz.S.daily.kind === '10x10t0dn', 'a Tatham puzzle\'s daily carries its fixed type');
+}
+
+// ── an own-daily game opened from its ordinary tile plays the server's day ──
+{
+  const AT = Date.UTC(2026, 10, 4, 12, 0);   // noon UTC: Auckland is already on the 5th, Honolulu still on the 4th
+  const nz = page('fiveletters.html', '', { at: AT, storage: { 'zimi.games.serverOffset': '780' } });
+  const hi = page('fiveletters.html', '', { at: AT, storage: { 'zimi.games.serverOffset': '-600' } });
+  check(nz.S.day() === '2026-11-05' && hi.S.day() === '2026-11-04', 'without ?daily= a page plays the server\'s day, from the offset it last answered');
+  check(page('fiveletters.html', '?daily=2026-11-04', { at: AT, storage: { 'zimi.games.serverOffset': '780' } }).S.day() === '2026-11-04', 'a daily\'s own date still wins');
 }
 
 // ── a daily keeps its own save ──
@@ -110,11 +119,13 @@ function page(pathname, search, opts) {
   check(!ownSilent.length, 'every own-daily game reads the shell\'s day and says when a round is the day\'s: ' + ownSilent.join(', '));
 }
 
-// ── one hash: the shell's agrees with the shelf's (recent.js) ──
+// ── one hash: the shell's is the only one in the games, and it is zimi/gamelinks.py's (tests/test_games_links.py pins the same) ──
 {
   const { S } = page('index.html', '');
-  const R = require(path.join(dir, 'recent.js'));
-  check(['', 'a', '2026-11-04', 'Été 🌞'].every((s) => S.hash(s) === R.fnv1a(s)), 'the shell\'s FNV-1a is the shelf\'s');
+  check(S.hash('') === 0x811C9DC5 && S.hash('a') === 0xE40C292C && S.hash('foobar') === 0xBF9CF968, 'the shell\'s FNV-1a is gamelinks.py\'s');
+  const copies = fs.readdirSync(dir).concat(fs.readdirSync(path.join(dir, 'puzzles')).map((f) => 'puzzles/' + f))
+    .filter((f) => f.endsWith('.js') && f !== 'shell.js' && /0x811c9dc5/i.test(read(f)));
+  check(!copies.length, 'no other games file carries a copy of the hash: ' + copies.join(', '));
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
