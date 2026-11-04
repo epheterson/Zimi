@@ -604,8 +604,11 @@ var AE_CSS = [
   // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
   '.ae-bm{position:absolute;left:0;top:0;color:#dfe6f0;pointer-events:none}',
   '.ae-bm[hidden]{display:none}',
+  // A mark is the body itself, small (drawn on .ae-marks-c by the orrery's painter), its name small and quiet beside it.
+  '.ae-marks-c{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}',
+  '.ae-bm .ae-ring{display:none}',
   '.ae-ring{position:absolute;left:0;top:0;width:calc(var(--ae-r,11px)*2);height:calc(var(--ae-r,11px)*2);margin:calc(var(--ae-r,11px)*-1) 0 0 calc(var(--ae-r,11px)*-1);box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
-  '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
+  '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:10.5px;font-weight:400;color:rgba(223,230,240,.78);white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-bm-l b{left:auto;right:calc(var(--ae-r,11px) + 7px)}',
   '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),-100%)}',
   '.ae-bm-b b{left:0;right:auto;top:calc(var(--ae-r,11px) + 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),0)}',
@@ -691,6 +694,7 @@ function _aeBuildDom() {
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
+      '<canvas class="ae-marks-c" id="ae-marks-c"></canvas>' +
       AE_MARKED.map(_aeMarkHtml).join('') +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
@@ -2247,7 +2251,8 @@ var AE_PROBE_VIEW_DIST = 60;          // Earth radii: a flight to a probe ends t
 var AE_PROBE_VIEW_LIFT = 0.35;
 var AE_PROBE_FRAME_NEAR = 1.15, AE_PROBE_FRAME_MAX = 4000;   // a body this near the probe is framed with it, up to this far        // and looks at it from this far above its path (tan of the angle)
 var AE_TRAIL_POINTS = 240, AE_TRAIL_REDRAW_DAYS = 10, AE_TRAIL_ALPHA = 0.55, AE_TRAIL_FAINT = 0.12;
-var _aeTracks = null, _aeTracksLoading = null, _aeProbePos = {};
+var _aeTracks = null, _aeTracksLoading = null, _aeProbePos = {}, _aeProbeHeading = {};
+var AE_PROBE_HEADING_DAYS = 30;
 function _aeTracksLoad() {
   if (_aeTracks || _aeTracksLoading || typeof fetch !== 'function') return;
   _aeTracksLoading = fetch(AE_TRACKS_URL).then(function (r) { if (!r.ok) throw new Error('tracks'); return r.json(); }).then(function (d) {
@@ -2295,6 +2300,8 @@ function _aeUpdateProbes(jd, place) {
     if (!trail) { trail = out.trails[k] = _aeLine(S.THREE, S.THREE.Line, AE_TRAIL_POINTS, 0x6ee7d8, AE_TRAIL_ALPHA); S.scene.add(trail); }
     if (!h) { trail.visible = false; return; }
     var pos = _aeProbePos[k] = place(h);
+    var ahead = _aeTrackAt(t, jd + AE_PROBE_HEADING_DAYS);   // where it will be: its heading as drawn
+    _aeProbeHeading[k] = ahead ? _aeSub(place(ahead), pos) : null;
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, 1, AE_PROBE_PX);
     // Its own path for the probe in view; the others' only in the wide views (near a body a path is a stray line).
     trail.visible = _ae.target === k || _aeWideView();
@@ -3717,7 +3724,8 @@ function _aeUpdateMarks(sc) {
     var s = (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
-    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
+    // The name stands off the body's drawn disc (or, in a flight, off the body itself as the view shows it).
+    var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : _aeMarkDiscR(body) + AE_MARK_NAME_PAD;
     if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
     var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_SAME_PX; });
     // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
@@ -3731,7 +3739,62 @@ function _aeUpdateMarks(sc) {
     el.style.setProperty('--ae-r', r.toFixed(1) + 'px');
     el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
   }
-  _aePlaceMarkNames(_aeClusterMarks(shown));
+  var kept = _aeClusterMarks(shown);
+  _aePlaceMarkNames(kept);
+  _aePaintMarks(kept);
+}
+// The marks' bodies: each planet as the orrery draws it (_orreryPaintPlanet), sized by a gentle log of its true size
+// so Jupiter reads bigger than Mercury; a moon or a dwarf a small shaded disc of its colour; a probe a bright point
+// with a tick the way it is heading; a crowd every member's disc where it is, overlapping. Not the Sun (the view draws
+// it) and not a body the view shows big enough to see (in a flight).
+var AE_MARK_DISC = [2.4, 7], AE_MARK_KM = [1188, 71492], AE_MARK_NAME_PAD = 3;
+var AE_PROBE_DOT_PX = 1.6, AE_PROBE_TICK_PX = 7;
+function _aeMarkDiscR(body) {
+  if (_aeIsProbe(body)) return AE_PROBE_DOT_PX;
+  var b = _aePlanetBody(body), km = b ? b.km : body === 'earth' ? AE_EARTH_RADIUS_KM : body === 'moon' ? AE_MOON_RADIUS_KM : 0;
+  if (!km) return AE_MARK_DISC[1];
+  var t = _aeClamp(Math.log(km / AE_MARK_KM[0]) / Math.log(AE_MARK_KM[1] / AE_MARK_KM[0]), 0, 1);
+  return AE_MARK_DISC[0] + (AE_MARK_DISC[1] - AE_MARK_DISC[0]) * t;
+}
+function _aePaintMarks(kept) {
+  var cv = _aeById('ae-marks-c');
+  if (!cv || !cv.getContext) return;
+  var dpr = _ae.gl.dpr, w = Math.round(_ae.w * dpr), h = Math.round(_ae.h * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  var g = cv.getContext('2d'), sun = _ae.scene ? _aeProject(_aeSunShown(_ae.scene)) : null;
+  if (sun && !(isFinite(sun.x) && isFinite(sun.y))) sun = null;
+  g.clearRect(0, 0, w, h);
+  _ae.marksDrawn = [];   // what is on the screen (CSS px): the tests read it
+  kept.forEach(function (m) {
+    m.pts.forEach(function (q) { _ae.marksDrawn.push({ body: q.body, x: q.x, y: q.y, r: _aeMarkDiscR(q.body), lead: m.body, el: m.el.id }); });
+    if (m.ringed) return;
+    m.pts.forEach(function (q) {
+      var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
+      if (q.body === 'sun' || !isFinite(x) || !isFinite(y)) return;
+      if (_aeIsProbe(q.body)) {
+        g.fillStyle = '#6ee7d8';
+        g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
+        var v = _aeProbeHeading[q.body], tip = v ? _aeProject(_aeAdd(_aeProbePos[q.body], v)) : null;
+        if (tip) {
+          var dx = tip.x - q.x, dy = tip.y - q.y, l = Math.hypot(dx, dy) || 1;
+          g.strokeStyle = 'rgba(110,231,216,0.8)'; g.lineWidth = dpr;
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x + dx / l * AE_PROBE_TICK_PX * dpr, y + dy / l * AE_PROBE_TICK_PX * dpr); g.stroke();
+        }
+        return;
+      }
+      var name = q.body === 'earth' ? 'Earth' : b && !b.parent ? b.eph : null;
+      if (name && typeof _orreryPaintPlanet === 'function' && typeof _PLANETS !== 'undefined' && _PLANETS[name]) {
+        _orreryPaintPlanet(g, name, x, y, r, sun ? sun.x * dpr : x, sun ? sun.y * dpr : y - 1, dpr, dpr, { plain: true });
+        return;
+      }
+      var col = b ? b.color : [0.78, 0.78, 0.78];
+      var gr = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
+      gr.addColorStop(0, 'rgb(' + col.map(function (c) { return Math.round(Math.min(1, c * 1.25) * 255); }).join(',') + ')');
+      gr.addColorStop(1, 'rgb(' + col.map(function (c) { return Math.round(c * 0.45 * 255); }).join(',') + ')');
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
+    });
+  });
 }
 // In the wide views, marks whose rings would overlap become one: the first (the nearest to what you chose, then the
 // planets before the probes) stands for the group, named "Earth +3"; a tap on it comes in close enough to part them.
@@ -3741,8 +3804,9 @@ function _aeClusterMarks(shown) {
   var out = [];
   shown.forEach(function (m) {
     var lead = _aeWideView() && !m.ringed ? out.filter(function (o) { return o.members && Math.hypot(o.x - m.x, o.y - m.y) < o.r + m.r + AE_CLUSTER_GAP_PX; })[0] : null;
-    if (lead) { lead.members.push(m.body); m.el.hidden = true; return; }
+    if (lead) { lead.members.push(m.body); lead.pts.push(m); m.el.hidden = true; return; }
     m.members = [m.body];
+    m.pts = [m];
     out.push(m);
   });
   out.forEach(function (m) {
@@ -3769,12 +3833,12 @@ var AE_CLUSTER_ZOOM_FILL = 1.35;
 // the middle first, then the other, then above, then below; with nowhere free the ring goes unnamed (a tap still
 // flies there). In a flight the two bodies' names sit over their rings, so the pair's names never meet.
 var AE_NAME_SIDES = ['out', 'in', 't', 'b', 'tout', 'bout', 'tin', 'bin'];
-var AE_NAME_GAP = 7, AE_NAME_H = 16, AE_NAME_CHAR_PX = 6.6;
+var AE_NAME_GAP = 7, AE_NAME_H = 16, AE_NAME_CHAR_PX = 6.6, AE_NAME_EDGE = 6;   // a name keeps this far in from the screen's sides
 // Above or below, a name is centred on its ring, slid sideways to stay on the screen (dx, read by the CSS as --ae-nx).
 function _aeNameBox(m, side, w) {
   var r = m.r, h = AE_NAME_H;
   if (side === 't' || side === 'b') {
-    var x0 = _aeClamp(m.x - w / 2, 0, Math.max(0, _ae.w - w)), y0 = side === 't' ? m.y - r - 4 - h : m.y + r + 4;
+    var x0 = _aeClamp(m.x - w / 2, AE_NAME_EDGE, Math.max(AE_NAME_EDGE, _ae.w - w - AE_NAME_EDGE)), y0 = side === 't' ? m.y - r - 4 - h : m.y + r + 4;
     var box = [x0, y0, x0 + w, y0 + h];
     box.dx = x0 - (m.x - w / 2);
     return box;
@@ -3789,18 +3853,32 @@ function _aeNameBox(m, side, w) {
 }
 function _aeBoxesMeet(a, b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
 function _aePlaceMarkNames(shown) {
-  var rings = shown.map(function (m) { return [m.x - m.r, m.y - m.r, m.x + m.r, m.y + m.r]; }), names = [];
+  // What a name may not cover: every body drawn (a crowd's every member too), but its own.
+  var rings = [];
+  shown.forEach(function (m, i) {
+    (m.pts || [m]).forEach(function (q) {
+      var r = q === m ? m.r : _aeMarkDiscR(q.body) + AE_MARK_NAME_PAD;
+      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r] });
+    });
+  });
+  var names = [];
   shown.forEach(function (m, i) {
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
-    if (el._aeNameW == null) el._aeNameW = (label && label.offsetWidth) || String((label || el).textContent || '').length * AE_NAME_CHAR_PX;
+    // Measured once it has been laid out (a hidden name has no width: until then, a generous guess by its letters).
+    if (el._aeNameW == null || el._aeNameGuess) {
+      var meas = label && label.offsetWidth;
+      el._aeNameGuess = !meas;
+      el._aeNameW = meas || String((label || el).textContent || '').length * AE_NAME_CHAR_PX;
+    }
     var w = el._aeNameW || 0, out = m.x > _ae.w / 2 ? 'l' : 'r', inn = out === 'l' ? 'r' : 'l';
     var sides = m.ringed ? ['t'] : AE_NAME_SIDES.map(function (sd) { return sd.replace('out', out).replace('in', inn); });
     var chosen = null;
     for (var k = 0; k < sides.length && !chosen; k++) {
       var box = _aeNameBox(m, sides[k], w);
-      if (box[0] < 0 || box[2] > _ae.w || box[1] < 0 || box[3] > _ae.h) continue;
+      // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
+      if (box[0] < AE_NAME_EDGE || box[2] > _ae.w - AE_NAME_EDGE || box[1] < 0 || box[3] > _ae.h) continue;
       var hit = names.some(function (n) { return _aeBoxesMeet(n, box); }) ||
-        rings.some(function (rb, j) { return j !== i && _aeBoxesMeet(rb, box); });
+        rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); });
       if (!hit || m.ringed) chosen = { side: sides[k], box: box };
     }
     if (chosen) names.push(chosen.box);

@@ -143,30 +143,33 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             assert pg.evaluate("_aeShownDist(1) === AE_SUN_SHOW_DIST && _aeShownDist(30.07) / _aeShownDist(1) === _solarSqueeze(30.07) / _solarSqueeze(1)")
             # Names: none over another name or another body's ring, at 390 px, and the planets named.
             pg.wait_for_timeout(500)
-            marks = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden).map(e => {
-                var ring = e.querySelector('.ae-ring').getBoundingClientRect(), b = e.querySelector('b'), named = getComputedStyle(b).display !== 'none';
-                var nb = b.getBoundingClientRect();
-                return { id: e.id, ring: [ring.left, ring.top, ring.right, ring.bottom], name: named ? [nb.left, nb.top, nb.right, nb.bottom] : null }; })""")
+            # Each mark is the body itself, small; its name covers no other body and no other name, at 390 px.
+            marks = pg.evaluate("""() => _ae.marksDrawn.map(d => { var e = document.getElementById(d.el), b = e && e.querySelector('b');
+                var named = b && getComputedStyle(b).display !== 'none' && d.body === d.lead, nb = named ? b.getBoundingClientRect() : null;
+                var v = _ae.el.getBoundingClientRect();   // the marks' own frame: the view's
+                return { body: d.body, lead: d.lead, box: [d.x - d.r, d.y - d.r, d.x + d.r, d.y + d.r], name: nb ? [nb.left - v.left, nb.top - v.top, nb.right - v.left, nb.bottom - v.top] : null }; })""")
+            assert pg.evaluate("Array.from(document.querySelectorAll('#ae-labels .ae-ring')).every(r => getComputedStyle(r).display === 'none')"), "no hollow rings"
             meet = lambda a, b: a[0] < b[2] - 0.5 and b[0] < a[2] - 0.5 and a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5  # noqa: E731
             for m in marks:
-                if not m["name"]:
-                    continue
                 for o in marks:
                     if o is m:
                         continue
-                    assert not meet(m["name"], o["ring"]), (m, o)
-                    assert not (o["name"] and meet(m["name"], o["name"])), (m, o)
-            named = {m["id"] for m in marks if m["name"]}
-            assert {"ae-bm-jupiter", "ae-bm-saturn", "ae-bm-uranus", "ae-bm-neptune"} <= named, named
+                    if m["name"]:
+                        assert not meet(m["name"], o["box"]), (m, o)
+                        assert not (o["name"] and meet(m["name"], o["name"])), (m, o)
+            named = {m["body"] for m in marks if m["name"]}
+            assert {"jupiter", "saturn", "uranus", "neptune"} <= named, named
+            radius = {m["body"]: m["box"][2] - m["box"][0] for m in marks}
+            assert radius.get("jupiter", 0) > radius.get("mercury", radius.get("mars", 99)) or "mercury" not in radius, radius
             assert pg.is_visible("#ae-scale")
-            # No two rings on top of each other: a crowd is one mark ("Earth +3"), and a tap on it comes in close.
+            # Bodies on top of each other are one crowd: a single name with its count, every disc still drawn.
             for m in marks:
                 for o in marks:
-                    if o is not m:
-                        assert not meet(m["ring"], o["ring"]), (m, o)
-            # Nothing named under the controls at the foot.
-            foot = pg.evaluate("document.querySelector('.ae-bottom').getBoundingClientRect().top")
-            assert all(m["ring"][1] < foot for m in marks), (foot, marks)
+                    if o is not m and o["lead"] != m["lead"] and m["body"] == m["lead"] and o["body"] == o["lead"]:
+                        assert not meet(m["box"], o["box"]), (m, o)
+            # Nothing under the controls at the foot.
+            foot = pg.evaluate("document.querySelector('.ae-bottom').getBoundingClientRect().top - _ae.el.getBoundingClientRect().top")
+            assert all(m["box"][1] < foot for m in marks), (foot, marks)
             clusters = pg.evaluate("_ae.clusters")
             if clusters:
                 dist0 = pg.evaluate("_ae.dist")
@@ -232,6 +235,37 @@ def test_the_strip_the_minimap_and_the_orrery_s_way_in(served):
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }", timeout=60_000, polling=200)
             assert not pg.is_visible("#ae-mini")
             assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+@pytest.mark.parametrize("width", [390, 360])
+def test_no_name_runs_off_the_screen(served, width):
+    """In the Planets view every name stays inside the screen, flipping inward at the edge (Neptune ran off at 390)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(viewport={"width": width, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+            ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE))
+            pg = ctx.new_page()
+            pg.goto(served + "/#almanac", wait_until="load")
+            pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+            pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+            pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly", timeout=READY_MS, polling=200)
+            pg.evaluate("_aePreset('planets')")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeTracks; }", timeout=60_000, polling=200)
+            for _ in range(6):
+                pg.evaluate("_ae.dirty = true; _aeKick()")
+                pg.wait_for_timeout(200)
+            names = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden).map(e => {
+                var b = e.querySelector('b'); if (getComputedStyle(b).display === 'none') return null;
+                var r = b.getBoundingClientRect(); return [b.textContent, r.left, r.right]; }).filter(Boolean)""")
+            assert names
+            for text, left, right in names:
+                assert left >= 0 and right <= width, (width, text, left, right)
             ctx.close()
         finally:
             br.close()
