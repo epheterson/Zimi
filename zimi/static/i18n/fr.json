@@ -2565,7 +2565,6 @@
   "alm_subj_sun": "Soleil",
   "alm_subj_eclipses": "Éclipses",
   "alm_subj_seasons": "Saisons",
-  "alm_tide_nearest": "Aucune station marégraphique à proximité. Voici la plus proche : {name}, à {d}.",
   "alm_place_no_match": "Aucune station de ce nom",
   "alm_tide_title": "Marées",
   "alm_tide_rising": "Montante",

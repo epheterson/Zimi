@@ -2565,7 +2565,6 @@
   "alm_subj_sun": "الشمس",
   "alm_subj_eclipses": "الكسوف والخسوف",
   "alm_subj_seasons": "الفصول",
-  "alm_tide_nearest": "لا توجد محطة مد وجزر قريبة. المعروضة هي الأقرب: {name}، على بعد {d}.",
   "alm_place_no_match": "لا توجد محطة بهذا الاسم",
   "alm_tide_title": "المد والجزر",
   "alm_tide_rising": "يرتفع",

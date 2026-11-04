@@ -2565,7 +2565,6 @@
   "alm_subj_sun": "Sun",
   "alm_subj_eclipses": "Eclipses",
   "alm_subj_seasons": "Seasons",
-  "alm_tide_nearest": "No tide station near here. Shown: the nearest, {name}, {d} away.",
   "alm_place_no_match": "No station by that name",
   "alm_tide_title": "Tides",
   "alm_tide_rising": "Rising",

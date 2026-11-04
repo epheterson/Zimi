@@ -2241,7 +2241,8 @@ function _almPlaceHeights() {
 function _almPlaceReserve(host) {
   var known = _almPlaceHeights()[_almPlaceHKey(host)];
   var guess = _getLocation().stored ? _ALM_PLACE_GUESS_PX.tide : _ALM_PLACE_GUESS_PX.empty;
-  host.style.minHeight = (known || guess) + 'px';
+  // Nothing drawn here last time (no station near the place) is remembered as 0, so the next visit keeps no space.
+  host.style.minHeight = (known != null ? known : guess) + 'px';
 }
 // Called by almanac-tides.js each time it has drawn its answer: remember the
 // height for next time, and let the section be its own height from now on.
@@ -2250,7 +2251,8 @@ function _almPlaceDrawn() {
   if (!host) return;
   host.style.minHeight = '';
   var h = host.offsetHeight;
-  if (h) {
+  // Zero is an answer too (no tide here), but only from a host that is laid out: a hidden Almanac measures nothing.
+  if (host.getClientRects().length) {
     var all = _almPlaceHeights(), k = _almPlaceHKey(host);
     delete all[k];
     all[k] = h;
@@ -2271,8 +2273,10 @@ function _almPlaceWatch() {
   if (!host) return;
   _almKeepStill(document.getElementById('almanac-rosetta'));
   if (typeof _atRender === 'function') { _almKeepStill(host); _atRender(); return; }
-  _almPlaceReserve(host);
+  // Watched before the space is kept: a reader already below (a slow phone, the module still on its way) keeps their
+  // place while the space opens above them, and again when the tide (or nothing, #140) replaces it.
   _almKeepStill(host);
+  _almPlaceReserve(host);
   if (_almPlaceLoaded) return;   // on its way: it draws when it lands
   var load = function() {
     if (_almPlaceLoaded || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;

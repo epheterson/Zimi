@@ -2565,7 +2565,6 @@
   "alm_subj_sun": "太阳",
   "alm_subj_eclipses": "日月食",
   "alm_subj_seasons": "季节",
-  "alm_tide_nearest": "附近没有潮汐站。显示最近的一个：{name}，相距 {d}。",
   "alm_place_no_match": "没有这个名称的站点",
   "alm_tide_title": "潮汐",
   "alm_tide_rising": "涨潮中",

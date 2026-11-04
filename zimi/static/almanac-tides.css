@@ -8,7 +8,6 @@
   --at-night: rgba(0, 0, 0, 0.28);
 }
 .at-quiet { font-size: 13px; color: var(--text2); line-height: 1.5; margin: 0 0 12px; }
-.at-far { margin-top: 24px; }
 .at-link { background: none; border: 0; padding: 0; color: var(--text2); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; text-align: start; }
 .at-link:hover, .at-link:focus-visible { color: var(--amber); text-decoration-color: var(--amber-border); }
 
