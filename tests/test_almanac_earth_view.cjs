@@ -427,18 +427,22 @@ const run = (code) => vm.runInContext(code, S);
     const lastReq = () => requests[requests.length - 1];
     // A frame first (none run here on their own): it places the satellites,
     // which is what says whether any is drawn.
+    // The data's date and Get fresh data are a row in the gear's sheet; the line under the controls keeps only the
+    // quiet stale warning.
     const askText = () => {
       run('_ae.gl && _aeUpdate(_aeDisplayMs()); _aeUpdateText(_aeDisplayMs())');
       return el('ae-ask').hidden ? null : text('ae-ask-text');
     };
+    const offered = () => { askText(); return !el('ae-ask').hidden && !el('ae-fresh').hidden; };
 
-    // Ask first, stale, and an admin: the data's date stands before the offer.
+    // Ask first, stale, and an admin: the data's date, and the offer beside it.
     fetches.push(stale({}));
     await reopen();
     check(lastReq().url === S.AE_SATS_URL && lastReq().method === 'GET', 'the view asks for its data with a GET');
-    const offered = askText();
-    check(offered !== null && offered.includes('alm_earth_data_from'), 'under Ask first, stale data is dated and offered fresh (' + offered + ')');
-    check(!note().includes('alm_earth_data_from'), 'and the date is not said twice');
+    const dated = askText();
+    check(dated !== null && dated.includes('alm_earth_sat_data_from') && offered(), 'under Ask first, stale data is dated in the gear and offered fresh (' + dated + ')');
+    check(!note().includes('alm_earth_data_from') && !note().includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'),
+      'and the line under the controls says only that it may be out of date');
     check(text('ae-fresh') === 'alm_earth_get_fresh', 'the button says Get fresh data');
 
     // The button: one POST, and the view redraws from its answer.
@@ -450,7 +454,7 @@ const run = (code) => vm.runInContext(code, S);
     check(requests.length === before + 1 && lastReq().method === 'POST' && lastReq().url === S.AE_SATS_REFRESH_URL,
       'Get fresh data is one POST to the admin route');
     check(run('_ae.sats.source') === 'cache' && run('_ae.sats.fetched') === '2026-09-28T18:00:00Z', 'and the fresh elements are drawn');
-    check(askText() === null && note().includes('alm_earth_data_from') && !note().includes('alm_earth_data_stale'), 'fresh, the offer goes and the note dates the data again, without a stale warning');
+    check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && !note().includes('alm_earth_data_stale'), 'fresh, the offer goes, the date stays, and no stale warning');
 
     fetches.push(stale({}));
     await reopen();
@@ -462,25 +466,26 @@ const run = (code) => vm.runInContext(code, S);
     fetches.push({ __status: 401 });
     el('ae-fresh').onclick();
     await flush();
-    check(askText() === null, 'refused (no longer an admin), the offer goes');
+    check(!offered(), 'refused (no longer an admin), the offer goes');
 
     fetches.push(stale({ can_change: false }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
+    check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
     fetches.push(stale({ mode: 'never' }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
+    check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
     fetches.push(stale({ mode: 'auto', refreshing: true }));
     await reopen();
-    check(askText() === null, 'under Automatically nothing is offered: the server is fetching already');
+    check(!offered(), 'under Automatically nothing is offered: the server is fetching already');
 
     // The gear.
-    const gear = el('ae-gear'), panel = el('ae-set');
+    const gear = el('ae-gear'), panel = el('ae-set'), body = el('ae-set-body');
     fetches.push(stale({}));
     await reopen();
     check(panel.hidden === true, 'the setting is put away at open');
     gear.onclick();
-    const html = panel.innerHTML;
+    const html = body.innerHTML;
+    check(/name="ae-lm-layer"/.test(html) && !/name="ae-lm-layer" checked/.test(html), 'the sheet has Landmarks, off');
     check(panel.hidden === false && gear.getAttribute('aria-expanded') === 'true', 'the gear opens "Satellite data from the internet"');
     check(/value="ask" checked/.test(html) && !/disabled/.test(html), 'an admin sees Ask first chosen, and may change it');
     check(['alm_earth_sat_ask', 'alm_earth_sat_auto', 'alm_earth_sat_never'].every((k) => html.includes(k)), 'with all three choices');
@@ -493,9 +498,9 @@ const run = (code) => vm.runInContext(code, S);
     check(saved && saved.method === 'POST' && saved.url === S.AE_SATS_SETTING_URL && JSON.parse(saved.body).mode === 'auto',
       'choosing Automatically saves it with one POST');
     check(requests.length === n0 + 2 && requests[n0 + 1].method === 'GET', 'then the view asks again');
-    check(/value="auto" checked/.test(panel.innerHTML), 'and shows the new choice');
+    check(/value="auto" checked/.test(body.innerHTML), 'and shows the new choice');
 
-    const panelFor = async (over) => { fetches.push(stale(over)); await reopen(); gear.onclick(); return panel.innerHTML; };
+    const panelFor = async (over) => { fetches.push(stale(over)); await reopen(); gear.onclick(); return body.innerHTML; };
     let h = await panelFor({ can_change: false });
     check(/value="ask" checked/.test(h) && (h.match(/ disabled/g) || []).length === 3 && h.includes('alm_earth_sat_admin_only'),
       'anyone else sees the choice read-only, and why');

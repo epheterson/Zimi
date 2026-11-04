@@ -3536,5 +3536,9 @@
   "hide_from_home": "Ocultar do Início",
   "zi_icon_full": "Ver o ícone em tamanho real",
   "au_skip_on": "Não atualizar este ZIM automaticamente",
-  "au_skip_off": "Atualizar este ZIM automaticamente"
+  "au_skip_off": "Atualizar este ZIM automaticamente",
+  "alm_lm_layer": "Marcos",
+  "alm_lm_layer_hint": "Nomes na Lua: locais de pouso, crateras, mares",
+  "alm_earth_sat_data_from": "Dados de satélites: de {date}",
+  "alm_go_landings": "Pousos na Lua"
 }

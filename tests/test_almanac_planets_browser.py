@@ -228,9 +228,9 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             row = pg.evaluate("Array.from(document.querySelectorAll('#ae-views > *')).map(b => b.dataset.aeView || b.id)")
             assert row == ["earth", "sats", "moon", "sun", "planets", "ae-go-btn"], row
             pg.click("#ae-go-btn")
-            pg.wait_for_function("() => !document.getElementById('ae-go').hidden && document.querySelectorAll('#ae-go [data-ae-go=\"voyager1\"]').length === 1", timeout=60_000)
+            pg.wait_for_function("() => !document.getElementById('ae-go').hidden && document.querySelectorAll('#ae-go [data-ae-go=\"voyager1\"]').length === 1 && document.querySelectorAll('#ae-go [data-ae-go^=\"lm:\"]').length > 20", timeout=60_000)
             groups = pg.evaluate("Array.from(document.querySelectorAll('#ae-go h4')).length")
-            assert groups == 5, groups
+            assert groups == 6, groups   # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings
             assert pg.evaluate("Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-dot'))")
             pg.click("#ae-go [data-ae-go='saturn']")
             assert pg.evaluate("document.getElementById('ae-go').hidden")
@@ -452,7 +452,8 @@ def test_every_destination_flies(served, start):
             _open(pg, served)
             pg.evaluate("_aeShowGo(true)")
             pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
-            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).concat(['sun', 'planets', 'sats'])")
+            # Every body (the landing sites are the landmarks test's).
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0).concat(['sun', 'planets', 'sats'])")
             pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")   # each flight lands at once
             missed = []
             for k in keys:
