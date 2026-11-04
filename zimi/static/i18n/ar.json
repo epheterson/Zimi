@@ -2240,6 +2240,7 @@
   "alm_earth_hint": "اسحب للتدوير، وقرّب إصبعيك أو مرّر للتكبير، واضغط على الأرض أو القمر أو الشمس للانتقال إليها",
   "alm_earth_view_sats": "الأقمار الصناعية",
   "alm_earth_view_planets": "الكواكب",
+  "alm_earth_not_to_scale": "ليس بمقياس الرسم: الاتجاهات صحيحة والمسافات مضغوطة",
   "alm_probe_from_sun": "{au} من الشمس",
   "alm_probe_ev_launch": "أُطلقت",
   "alm_probe_ev_flyby": "مرّت بجوار {body}",

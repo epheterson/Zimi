@@ -2240,6 +2240,7 @@
   "alm_earth_hint": "घुमाने के लिए खींचें, ज़ूम के लिए पिंच या स्क्रॉल करें, वहाँ जाने के लिए पृथ्वी, चंद्रमा या सूर्य पर टैप करें",
   "alm_earth_view_sats": "उपग्रह",
   "alm_earth_view_planets": "ग्रह",
+  "alm_earth_not_to_scale": "पैमाने पर नहीं: दिशाएँ सही, दूरियाँ सिकोड़ी गईं",
   "alm_probe_from_sun": "सूर्य से {au}",
   "alm_probe_ev_launch": "प्रक्षेपित",
   "alm_probe_ev_flyby": "{body} के पास से गुज़रा",

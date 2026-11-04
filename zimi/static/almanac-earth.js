@@ -389,7 +389,7 @@ var AE_FLY_MS_PER_LOG = 300;
 // No flight turns the picture faster than this, in degrees a frame at 60 fps: a flight that would is stretched.
 var AE_FLY_MAX_TURN_DEG = 4, AE_FLY_MAX_STRETCH = 4, AE_FRAME_MS = 1000 / 60, AE_FLY_PLAN_STEPS = 60;
 // A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
-var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // marks closer than this: only the first
+var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_SAME_PX = 6;   // marks closer than this: only the first
 // Through a flight between bodies both ends wear a ring the size of the body as drawn (the Sun from the Moon's night
 // side is nearly black, and a ring is all that outlines it): its radius plus this margin, never under the minimum,
 // gone by the time the camera has arrived (the last share of the arrival).
@@ -402,6 +402,7 @@ var AE_MARKED = [
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
+var AE_NAME_DIAG = 0.75;               // a mark's corner name stands off its ring this share of the radius each way
 var AE_LABEL_DX = 8;                  // labels sit this far right of their point (CSS px)
 // Presets: the radius (Earth radii) each view must hold, and how full.
 var AE_FIT_EARTH = 1.12;              // the Earth and the ISS's orbit
@@ -449,7 +450,7 @@ var AE_GRANULE_CYCLE = 512;           // the pattern's time, wrapped to keep a f
 var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colour: golden centre, deep orange limb
 var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
 var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
-var AE_MAX_DIST_SUN = 70000;          // out from the Sun far enough to hold every planet's orbit as shown, on a phone
+var AE_MAX_DIST_SUN = 100000;         // out from the Sun far enough to hold every planet's orbit as shown, on a phone
 var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
@@ -596,7 +597,13 @@ var AE_CSS = [
   '.ae-ring{position:absolute;left:0;top:0;width:calc(var(--ae-r,11px)*2);height:calc(var(--ae-r,11px)*2);margin:calc(var(--ae-r,11px)*-1) 0 0 calc(var(--ae-r,11px)*-1);box-sizing:border-box;border:1.5px solid currentColor;border-radius:50%;box-shadow:0 0 3px #000}',
   '.ae-bm b{position:absolute;left:calc(var(--ae-r,11px) + 7px);top:0;transform:translateY(-50%);font:inherit;font-size:11px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-bm-l b{left:auto;right:calc(var(--ae-r,11px) + 7px)}',
-  '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(-50%,-100%)}',
+  '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),-100%)}',
+  '.ae-bm-b b{left:0;right:auto;top:calc(var(--ae-r,11px) + 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),0)}',
+  '.ae-bm-n b{display:none}',
+  '.ae-bm-tr b{left:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);right:auto;top:calc(var(--ae-r,11px) * -' + AE_NAME_DIAG + ' - 2px);transform:translate(0,-100%)}',
+  '.ae-bm-tl b{left:auto;right:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);top:calc(var(--ae-r,11px) * -' + AE_NAME_DIAG + ' - 2px);transform:translate(0,-100%)}',
+  '.ae-bm-br b{left:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);right:auto;top:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);transform:none}',
+  '.ae-bm-bl b{left:auto;right:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);top:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);transform:none}',
   '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
@@ -704,6 +711,7 @@ function _aeBuildDom() {
       '<div class="ae-card" id="ae-card" hidden></div>' +
       '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
       '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
+      '<div class="ae-orient" id="ae-scale" hidden>' + _almEsc(_aeT('alm_earth_not_to_scale')) + '</div>' +
       '<div class="ae-row" id="ae-maprow" hidden><button type="button" class="ae-btn" id="ae-map">' +
         (typeof _MAPS_SVG === 'string' ? _MAPS_SVG.replace('width="26" height="26"', 'width="16" height="16"') + ' ' : '') +
         _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
@@ -1555,7 +1563,7 @@ function _aeHdBodies(S) {
       minDist: AE_MIN_DIST_MOON }
   ].concat(AE_PLANETS.filter(function (b) { return S.planets && S.planets[b.key]; }).map(function (b) {
     var p = S.planets[b.key];
-    return { key: b.key, parent: p.mesh, radius: b.r, frag: AE_PLANET_FRAG, uni: p.uni, cc: true,
+    return { key: b.key, parent: p.mesh, radius: b.r, frag: AE_PLANET_FRAG, uni: p.uni, cc: !!b.ccHd,
       maps: [{ uni: 'map', layer: 'planets/' + b.key }], extra: { mapped: { value: 1 } }, minDist: AE_TARGETS[b.key].min };
   }));
 }
@@ -1871,7 +1879,7 @@ function _aeHdUpdate(S) {
 // name, to fly there. Maps: NASA, USGS and JPL mosaics (public domain); Saturn, Uranus and Neptune from Solar System
 // Scope (CC BY 4.0), credited on the view. Saturn's rings are its measured radial structure, with the planet's shadow
 // on them and theirs on it.
-var AE_PLANET_DIST_POW = 0.28;
+var AE_PLANET_DIST_POW = 0.4;          // Neptune at 30 AU: 3.9 times the Earth's distance; the belt clear of Mars and Jupiter
 var AE_PLANETS_OUTER_AU = 30.5;        // Neptune's farthest: what the Planets overview fits
 var AE_ORBIT_POINTS = 180, AE_ORBIT_REDRAW_DAYS = 30;
 var AE_PLANET_ORBIT_COLOR = 0x9aa8c8, AE_PLANET_ORBIT_ALPHA = 0.32;
@@ -1882,11 +1890,11 @@ var AE_RING_SEGMENTS = 160;
 var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide, not exported by name by the tree-shaken build
 // IAU WGCCRE 2015 poles and turning (J2000 equatorial; W0 at J2000 and Wd a day, degrees).
 var AE_PLANETS = [
-  { key: 'mercury', eph: 'Mercury', km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
-  { key: 'venus', eph: 'Venus', km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
+  { key: 'mercury', eph: 'Mercury', ccHd: true, km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
+  { key: 'venus', eph: 'Venus', ccHd: true, km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
   { key: 'mars', eph: 'Mars', km: 3396.2, flat: 0.00589, map: 'mars', color: [0.77, 0.38, 0.25], atmo: [0.9, 0.55, 0.4], pole: [317.269202, 54.432516, 176.049863, 350.891982443297] },
-  { key: 'jupiter', eph: 'Jupiter', km: 71492, flat: 0.06487, map: 'jupiter', color: [0.77, 0.6, 0.41], pole: [268.056595, 64.495303, 284.95, 870.536] },
-  { key: 'saturn', eph: 'Saturn', km: 60268, flat: 0.09796, map: 'saturn', color: [0.83, 0.72, 0.47], pole: [40.589, 83.537, 38.90, 810.7939024], rings: [74500, 140220], cc: true },
+  { key: 'jupiter', eph: 'Jupiter', ccHd: true, km: 71492, flat: 0.06487, map: 'jupiter', color: [0.77, 0.6, 0.41], pole: [268.056595, 64.495303, 284.95, 870.536] },
+  { key: 'saturn', eph: 'Saturn', ccHd: true, km: 60268, flat: 0.09796, map: 'saturn', color: [0.83, 0.72, 0.47], pole: [40.589, 83.537, 38.90, 810.7939024], rings: [74500, 140220], cc: true },
   { key: 'uranus', eph: 'Uranus', km: 25559, flat: 0.0229, map: 'uranus', color: [0.47, 0.78, 0.78], atmo: [0.5, 0.85, 0.9], pole: [257.311, -15.175, 203.81, -501.1600928], cc: true },
   { key: 'neptune', eph: 'Neptune', km: 24764, flat: 0.0171, map: 'neptune', color: [0.22, 0.41, 0.78], atmo: [0.3, 0.45, 1], pole: [299.36, 43.46, 249.978, 541.1397757], cc: true },
   // The dwarf planets the probes visited, from the Horizons table (space-tracks-v1.json) while it covers the date.
@@ -3627,18 +3635,64 @@ function _aeUpdateMarks(sc) {
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
     var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
     if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
-    var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_APART_PX; });
+    var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_SAME_PX; });
     // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
     var reach = ringed ? r : 0;
     if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > _ae.h + reach) { if (!el.hidden) el.hidden = true; continue; }
-    shown.push(s);
+    shown.push({ x: s.x, y: s.y, r: r, el: el, ringed: ringed });
     if (el.hidden) el.hidden = false;
     el.style.opacity = alpha.toFixed(2);
     el.style.setProperty('--ae-r', r.toFixed(1) + 'px');
-    el.classList.toggle('ae-bm-l', s.x > _ae.w / 2);
-    el.classList.toggle('ae-bm-t', ringed);   // in a flight the name sits over its ring, so the pair's names never meet
     el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px)';
   }
+  _aePlaceMarkNames(shown);
+}
+// Each shown mark's name, beside its ring where it covers no other ring and no name already placed: the side away from
+// the middle first, then the other, then above, then below; with nowhere free the ring goes unnamed (a tap still
+// flies there). In a flight the two bodies' names sit over their rings, so the pair's names never meet.
+var AE_NAME_SIDES = ['out', 'in', 't', 'b', 'tout', 'bout', 'tin', 'bin'];
+var AE_NAME_GAP = 7, AE_NAME_H = 16, AE_NAME_CHAR_PX = 6.6;
+// Above or below, a name is centred on its ring, slid sideways to stay on the screen (dx, read by the CSS as --ae-nx).
+function _aeNameBox(m, side, w) {
+  var r = m.r, h = AE_NAME_H;
+  if (side === 't' || side === 'b') {
+    var x0 = _aeClamp(m.x - w / 2, 0, Math.max(0, _ae.w - w)), y0 = side === 't' ? m.y - r - 4 - h : m.y + r + 4;
+    var box = [x0, y0, x0 + w, y0 + h];
+    box.dx = x0 - (m.x - w / 2);
+    return box;
+  }
+  if (side.length === 2) {   // a corner: tr, tl, br, bl
+    var dx = r * AE_NAME_DIAG + 2, dy = r * AE_NAME_DIAG + 2, rx = side[1] === 'r';
+    var cx0 = rx ? m.x + dx : m.x - dx - w, cy0 = side[0] === 't' ? m.y - dy - h : m.y + dy;
+    return [cx0, cy0, cx0 + w, cy0 + h];
+  }
+  var left = side === 'l';
+  return left ? [m.x - r - AE_NAME_GAP - w, m.y - h / 2, m.x - r - AE_NAME_GAP, m.y + h / 2] : [m.x + r + AE_NAME_GAP, m.y - h / 2, m.x + r + AE_NAME_GAP + w, m.y + h / 2];
+}
+function _aeBoxesMeet(a, b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
+function _aePlaceMarkNames(shown) {
+  var rings = shown.map(function (m) { return [m.x - m.r, m.y - m.r, m.x + m.r, m.y + m.r]; }), names = [];
+  shown.forEach(function (m, i) {
+    var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
+    if (el._aeNameW == null) el._aeNameW = (label && label.offsetWidth) || String((label || el).textContent || '').length * AE_NAME_CHAR_PX;
+    var w = el._aeNameW || 0, out = m.x > _ae.w / 2 ? 'l' : 'r', inn = out === 'l' ? 'r' : 'l';
+    var sides = m.ringed ? ['t'] : AE_NAME_SIDES.map(function (sd) { return sd.replace('out', out).replace('in', inn); });
+    var chosen = null;
+    for (var k = 0; k < sides.length && !chosen; k++) {
+      var box = _aeNameBox(m, sides[k], w);
+      if (box[0] < 0 || box[2] > _ae.w || box[1] < 0 || box[3] > _ae.h) continue;
+      var hit = names.some(function (n) { return _aeBoxesMeet(n, box); }) ||
+        rings.some(function (rb, j) { return j !== i && _aeBoxesMeet(rb, box); });
+      if (!hit || m.ringed) chosen = { side: sides[k], box: box };
+    }
+    if (chosen) names.push(chosen.box);
+    el.classList.toggle('ae-bm-l', !!chosen && chosen.side === 'l');
+    el.classList.toggle('ae-bm-t', !!chosen && chosen.side === 't');
+    el.classList.toggle('ae-bm-b', !!chosen && chosen.side === 'b');
+    ['tr', 'tl', 'br', 'bl'].forEach(function (c) { el.classList.toggle('ae-bm-' + c, !!chosen && chosen.side === c); });
+    el.classList.toggle('ae-bm-n', !chosen);
+    el.style.setProperty('--ae-nx', ((chosen && chosen.box.dx) || 0).toFixed(1) + 'px');
+  });
 }
 
 // "GPS BIII-3  (PRN 23)" -> "PRN 23"; anything else as given.
@@ -3864,6 +3918,12 @@ function _aeUpdateText(ms) {
       _aeSetText(sunNote, _aeT(cyc >= 1 ? 'alm_earth_sun_spots' : 'alm_earth_sun_spots_old',
         { n: _orrNum(Math.round(_aeSunspotNumber(yr).r), null, 0), c: _orrNum(cyc, null, 0) }));
     }
+  }
+  // Out among the planets, said once and quietly: their directions are true, their distances squeezed.
+  var scale = _aeById('ae-scale');
+  if (scale) {
+    var squeezed = _ae.preset === 'planets' || (_ae.target !== 'earth' && _ae.target !== 'moon' && _ae.target !== 'sun');
+    if (scale.hidden === squeezed) scale.hidden = !squeezed;
   }
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);

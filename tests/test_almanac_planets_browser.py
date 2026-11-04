@@ -137,7 +137,28 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                 var r = function (k) { var p = _ae.gl.planets[k].pos; return Math.hypot(p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]); };
                 return { n: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }""")
             assert belt["n"] > 15000, belt
-            assert belt["mars"] < belt["p1"] and belt["p99"] < belt["jupiter"], belt
+            # Through the same squeeze as the planets: clear of Mars's orbit at its farthest and Jupiter's at its nearest.
+            squeeze = pg.evaluate("[AE_SUN_SHOW_DIST, AE_PLANET_DIST_POW]")
+            drawn = lambda au: squeeze[0] * au ** squeeze[1]  # noqa: E731
+            assert drawn(1.666) < belt["p1"] and belt["p99"] < drawn(4.95), (belt, drawn(1.666), drawn(4.95))
+            # Names: none over another name or another body's ring, at 390 px, and the planets named.
+            pg.wait_for_timeout(500)
+            marks = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden).map(e => {
+                var ring = e.querySelector('.ae-ring').getBoundingClientRect(), b = e.querySelector('b'), named = getComputedStyle(b).display !== 'none';
+                var nb = b.getBoundingClientRect();
+                return { id: e.id, ring: [ring.left, ring.top, ring.right, ring.bottom], name: named ? [nb.left, nb.top, nb.right, nb.bottom] : null }; })""")
+            meet = lambda a, b: a[0] < b[2] - 0.5 and b[0] < a[2] - 0.5 and a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5  # noqa: E731
+            for m in marks:
+                if not m["name"]:
+                    continue
+                for o in marks:
+                    if o is m:
+                        continue
+                    assert not meet(m["name"], o["ring"]), (m, o)
+                    assert not (o["name"] and meet(m["name"], o["name"])), (m, o)
+            named = {m["id"] for m in marks if m["name"]}
+            assert {"ae-bm-jupiter", "ae-bm-saturn", "ae-bm-uranus", "ae-bm-neptune"} <= named, named
+            assert pg.is_visible("#ae-scale")
             # The probes: once out here their table comes; each flying one is named, Webb stands at L2 at its true
             # distance from the Earth (1.5 million km, not squeezed by the drawn scale), and a tap's card says where.
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_aeTracks && !!_aeProbePos.voyager1 && !!_aeProbePos.jwst; }", timeout=60_000, polling=200)

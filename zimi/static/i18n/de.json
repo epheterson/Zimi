@@ -2240,6 +2240,7 @@
   "alm_earth_hint": "Ziehen zum Drehen, Zwei-Finger-Geste oder Scrollen zum Zoomen, Erde, Mond oder Sonne antippen, um hinzufliegen",
   "alm_earth_view_sats": "Satelliten",
   "alm_earth_view_planets": "Planeten",
+  "alm_earth_not_to_scale": "Nicht maßstabsgetreu: Richtungen stimmen, Abstände gestaucht",
   "alm_probe_from_sun": "{au} von der Sonne",
   "alm_probe_ev_launch": "Gestartet",
   "alm_probe_ev_flyby": "Flog an {body} vorbei",
