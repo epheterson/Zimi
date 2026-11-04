@@ -106,12 +106,13 @@ def test_custom_size_starts_with_the_panes_own_values(page, served):
     fields = page.locator(".pz-custom input")
     fields.nth(0).fill("6")
     fields.nth(1).fill("4")
-    page.select_option(".gs-options select", "Triangular")   # its one difficulty is Hard: nothing to ask
+    page.select_option(".gs-options select", "Triangular")   # the presets give Triangular one difficulty; a custom size has the dialog's four
+    choice(page, "Hard")
     start(page)
     assert page.evaluate("() => !document.getElementById('dlgform')")   # no second dialog
     assert page.evaluate(PARAMS) == "6,4,Triangular,Hard"
     open_new_game(page, "loopy", served)   # a custom game in play: the pane opens on it
-    assert page.locator(".gs-options .gs-row:not([hidden]) [aria-pressed=true]").all_text_contents() == ["Custom"]
+    assert page.locator(".gs-options .gs-row:not([hidden]) [aria-pressed=true]").all_text_contents() == ["Custom", "Hard"]
     assert page.locator(".pz-custom input").nth(0).input_value() == "6"
 
 
@@ -122,3 +123,19 @@ def test_a_puzzle_with_a_plain_list_of_types_keeps_custom_in_it(page, served):
     assert page.locator(".pz-types > .gs-row .gs-seg [aria-pressed=true]").all_text_contents() == ["Custom"]
     choice(page, "5x5")
     assert page.locator(".pz-custom").is_hidden()
+
+
+def test_a_custom_size_offers_what_only_its_dialog_has(page, served):
+    """Unequal's Recursive difficulty is in no preset, only in the custom size's dialog: Custom offers it, and it is what the game is made with."""
+    open_new_game(page, "unequal", served)
+    assert page.locator(".gs-options .gs-seg button", has_text="Recursive").count() == 0
+    choice(page, "Custom")
+    choice(page, "Recursive")
+    start(page)
+    assert page.evaluate(PARAMS).endswith("Recursive")
+    open_new_game(page, "unequal", served)   # the pane opens on the game in play, Recursive included
+    assert "Recursive" in page.locator(".gs-options .gs-row:not([hidden]) [aria-pressed=true]").all_text_contents()
+    choice(page, "4x4")   # a preset size again: its difficulty is a preset's
+    assert page.locator(".gs-options .gs-seg button", has_text="Recursive").count() == 0
+    start(page)
+    assert "4x4" in page.evaluate(CHECKED)

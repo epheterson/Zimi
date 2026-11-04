@@ -213,7 +213,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
 @media (pointer: coarse) { .ar-view-btn { width: 44px; min-width: 44px; height: 44px; } .sh-search input { height: 44px; } }
 /* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
-@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -4px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
+@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -9px -1px; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
 /* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
 .sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
@@ -227,6 +227,8 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 /* Sideways only: no vertical scroll or bounce (touch-action), and the padding is room for the focus ring and the chip's hit area, which the clip would otherwise cut. */
 .sh-nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; scrollbar-width: none; margin: -2px -16px 16px; padding: 4px 16px; }
 .sh-nav::-webkit-scrollbar { display: none; }
+/* A finger's row: the 28px chips' 44px hit areas need 8px above and below inside the clip. */
+@media (pointer: coarse) { .sh-nav { padding-top: 8px; padding-bottom: 8px; margin-top: -6px; margin-bottom: 12px; } .sh-bar .sh-nav, [dir] .sh-bar .sh-nav { margin-top: -4px; margin-bottom: -4px; } }
 /* The Library Manager's filter pill (app.css .pill): 28px, 12px type, quiet ink, a glow on hover, the chosen one filled with the accent. */
 .sh-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; height: 28px; padding: 0 14px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s; }
 .sh-chip:hover { border-color: var(--accent-line); color: var(--ink); background: var(--accent-glow); }

@@ -405,27 +405,45 @@
   function discardFallback(st) { return endHand(Z.clone(st), -1, TX('canasta.why.nothing')); }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var BAR_H = 46, TAG_H = 22, CELL_SHARE = 1.5, PILE_GAP = 1.7, TAG_SHARE = 2.6, MELD_STEP = 0.22, MELD_GAP = 4;
-  function perRow(m) { return Math.max(1, Math.floor((m.W - 2 * m.pad) / (m.cw * CELL_SHARE))); }
-  function meldRows(m, n) { return Math.max(1, Math.ceil(n / perRow(m))); }
+  var BAR_H = 46, TAG_H = 22, PILE_GAP = 1.7, TAG_SHARE = 2.6, MELD_GAP = 6;
+  // How far a meld's cards fan, as shares of a card's width, widest first: wide enough that every card's corner index shows
+  // (a wild card among naturals reads as itself), narrower only when the table runs out of height for the rows.
+  var MELD_STEPS = [0.42, 0.34, 0.26, 0.18, 0.1];
+  var rowH = function (g) { return g.ch + TAG_H + 4; };
+  // Melds flow left to right, each as wide as its fan, and wrap: spots[k] = {x, row, w}.
+  function flowMelds(g, melds, step) {
+    var x = g.pad, row = 0, right = g.W - g.pad, spots = melds.map(function (mm) {
+      var w = Math.round(Math.min(right - g.pad, g.cw + (mm.cards.length - 1) * step));
+      if (x > g.pad && x + w > right) { x = g.pad; row++; }
+      var sp = { x: x, row: row, w: w };
+      x += w + MELD_GAP;
+      return sp;
+    });
+    return { spots: spots, rows: row + 1 };
+  }
   // V is the side looking: its hand and melds sit at the bottom.
   function geo(m, st, V) {
     V = V || 0;
     var n = st.hands[V].length, g = T.geometry(m, T.rowsFor(m, n));
-    var myRows = meldRows(m, st.melds[V].length), oppRows = meldRows(m, st.melds[1 - V].length);
     g.V = V;
     g.barY = g.yBot - BAR_H;   // yBot is the top of your hand (its extra rows included)
     g.statusY = g.barY - 4 - T.STATUS_H;
-    g.myMeldY = g.statusY - 4 - myRows * (g.ch + TAG_H + 4);
     g.oppMeldY = g.northY + g.ch + 8;
-    g.centreY = Math.round((g.oppMeldY + oppRows * (g.ch + TAG_H + 4) + g.myMeldY) / 2 - g.ch / 2);
-    g.perRow = perRow(m);
+    var room = g.statusY - 4 - g.oppMeldY - (g.ch + TAG_H + 12), mine, theirs;
+    for (var i = 0; i < MELD_STEPS.length; i++) {
+      g.step = Math.round(g.cw * MELD_STEPS[i]);
+      mine = flowMelds(g, st.melds[V], g.step); theirs = flowMelds(g, st.melds[1 - V], g.step);
+      if ((mine.rows + theirs.rows) * rowH(g) <= room) break;
+    }
+    g.myMeldY = g.statusY - 4 - mine.rows * rowH(g);
+    g.spots = [];
+    g.spots[V] = mine.spots; g.spots[1 - V] = theirs.spots;
+    g.centreY = Math.round((g.oppMeldY + theirs.rows * rowH(g) + g.myMeldY) / 2 - g.ch / 2);
     return g;
   }
   function meldSpot(g, side, k) {
-    var row = Math.floor(k / g.perRow), col = k % g.perRow, cell = g.cw * CELL_SHARE, inRow = Math.min(g.perRow, 99);
-    var x = g.pad + col * cell, y = (side === g.V ? g.myMeldY : g.oppMeldY) + row * (g.ch + TAG_H + 4);
-    return { x: Math.round(x), y: Math.round(y) };
+    var sp = g.spots[side][k];
+    return { x: sp.x, y: (side === g.V ? g.myMeldY : g.oppMeldY) + sp.row * rowH(g), w: sp.w };
   }
   function repCard(m) { return m.cards.filter(function (c) { return !isWild(c); })[0] || m.cards[0]; }
   // A meld's cards fanned left to right, wild cards underneath so the natural rank card lies on top.
@@ -439,9 +457,9 @@
     [0, 1].forEach(function (side) {
       st.melds[side].forEach(function (mm, k) {
         var sp = meldSpot(g, side, k);
-        var fanned = meldFan(mm), step = fanned.length > 1 ? Math.min(g.cw * MELD_STEP, (g.cw * CELL_SHARE - g.cw - MELD_GAP) / (fanned.length - 1)) : 0;
+        var fanned = meldFan(mm), step = fanned.length > 1 ? (sp.w - g.cw) / (fanned.length - 1) : 0;
         fanned.forEach(function (id, i) { cards.push({ id: id, pile: 'm' + side + '-' + mm.rank, idx: i, x: Math.round(sp.x + i * step), y: sp.y, up: true, glow: isCanasta(mm), mark: side === V && view && view.target === mm.rank }); });
-        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: Math.round(g.cw + (fanned.length - 1) * step), h: g.ch, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
+        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: sp.w, h: g.ch, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
       });
     });
     var gap = Math.round(g.cw * PILE_GAP), sx = Math.round(g.cx - g.cw - gap / 2), px = Math.round(g.cx + gap / 2);
@@ -490,7 +508,7 @@
       tags.forEach(function (e) { e.remove(); }); tags = [];
       var add = function (txt, x, y, w, cls) { if (!txt) return; var e = Z.h('div', { class: 'c2-tag ' + (cls || ''), style: 'left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;width:' + Math.round(w) + 'px;height:' + (TAG_H - 1) + 'px' }, [Z.h('span', { text: txt })]); table.appendChild(e); tags.push(e); };
       [0, 1].forEach(function (side) {
-        st.melds[side].forEach(function (mm, k) { var sp = meldSpot(g, side, k); add(meldTag(mm), sp.x, sp.y + g.ch + 1, g.cw * CELL_SHARE - 3, 'c2-meld' + (isCanasta(mm) ? ' c2-turn' : '')); });
+        st.melds[side].forEach(function (mm, k) { var sp = meldSpot(g, side, k); add(meldTag(mm), sp.x, sp.y + g.ch + 1, sp.w, 'c2-meld' + (isCanasta(mm) ? ' c2-turn' : '')); });
       });
       var gap = Math.round(g.cw * PILE_GAP), sx = Math.round(g.cx - g.cw - gap / 2), px = Math.round(g.cx + gap / 2), w = Math.round(g.cw * TAG_SHARE), off = (w - g.cw) / 2;
       add(TX('canasta.tag.stock', { n: st.stock.length }), sx - off, g.centreY + g.ch + 2, w);

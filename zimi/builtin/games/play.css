@@ -29,7 +29,7 @@
 .pl-stat b { display: block; font: 650 var(--fs-display)/1.15 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
 /* Keys: the pad's, and a puzzle's own. 56px on the pad; a held key is a selection (glow and amber line), never a second amber fill. */
 .pl-keys { display: flex; gap: var(--sp-2); justify-content: center; flex-wrap: wrap; }
-.pl-key { min-width: var(--target); min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: 600 var(--fs-body) var(--font); cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.pl-key { min-width: var(--target); min-height: var(--target); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: 600 var(--fs-body) var(--font); cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .pl-key:hover { border-color: var(--accent); color: var(--accent); }
 .pl-key:active, .pl-key[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); }
 .pl-key:disabled { color: var(--ink3); border-color: var(--line); cursor: default; }

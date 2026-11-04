@@ -569,6 +569,21 @@ if (sandbox.ZimiCanasta) {
   check(!CA.canExtend(mk(13, 'KS KH KD 2S 2H 2C'), cids('J')), 'at most three wild cards in a meld');
   check(!CA.canExtend(six, cids('QS')), 'only its own rank');
   check(CA.isCanasta(seven) && !CA.isCanasta(six) && CA.isPure(seven) && !CA.isPure(mk(13, 'KS KH KD KC KS\' KH\' 2D')), 'seven cards make a canasta; pure with no wild cards');
+  // Melds on a phone: each card's corner index shows (the fan steps at least a third of a card), and only a table full of
+  // melds squeezes the fan, never past the edge.
+  {
+    const phone = { W: 390, H: 700, cw: 41, ch: 57, pad: 8 }, hand = cids('4S 5S 6S 8S 9S TS JS QS KS AS 4H');
+    const fanOf = (melds, rank) => {
+      const p = CA.place({ hands: [hand, hand], melds: [melds, []], stock: [1], pile: [] }, phone, { viewer: 0 });
+      const xs = p.cards.filter(c => c.pile === 'm0-' + rank).map(c => c.x);
+      return { step: xs[1] - xs[0], right: Math.max.apply(null, xs) + phone.cw };
+    };
+    const few = fanOf([mk(13, "KS KH KD KC KS' KH' 2D")], 13);
+    check(few.step >= phone.cw / 3, 'a canasta of seven on a phone fans a third of a card per card, its corners showing: ' + few.step);
+    const ranks = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], all = ranks.map(r => ({ rank: r, cards: [r, r + 13, r + 26, r + 52, r + 65, r + 78, 104].map(x => x - 1) }));
+    const full = fanOf(all, 14);
+    check(full.step > 0 && full.right <= phone.W - phone.pad, 'eleven melds of seven still fit the width: step ' + full.step + ', right edge ' + full.right);
+  }
   // Planning a turn's melds from a selection.
   {
     const plan = (sel, melds, out, target) => CA.planMelds(melds || [], cids(sel), !!out, target);

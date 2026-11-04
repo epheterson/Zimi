@@ -150,7 +150,7 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   // A real deck: a face-down card shows a sliver (DOWN_RATIO of a face-up step, about 15% of the card), a face-up one
   // its rank, suit and a little pip (28%); a fan tightens only when the column would run off the screen.
-  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = 0.28, MIN_STEP_SHARE = 0.2;
+  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.2;
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };

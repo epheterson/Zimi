@@ -7,7 +7,7 @@
 .kt-pad { display: none; width: 100%; justify-content: space-between; align-items: flex-end; gap: 8px; padding: 8px 6px 0; pointer-events: none; }
 body.touch .kt-pad { display: flex; }
 .kt-pad > div { display: flex; gap: 10px; align-items: flex-end; pointer-events: none; }
-.kt-btn { pointer-events: auto; min-width: 64px; min-height: 64px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.45); border-radius: var(--radius); background: rgba(14, 14, 16, 0.82); color: #fff; font: 700 var(--fs-body) var(--font); touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.kt-btn { pointer-events: auto; min-width: 64px; min-height: 64px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.45); border-radius: var(--radius); background: rgba(14, 14, 16, 0.82); color: #fff; font: 700 var(--fs-body) var(--font); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer; }
 .kt-btn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: #fff; }
 .kt-steer .kt-btn { font-size: 26px; min-width: 88px; }
 .kt-drift { min-width: 88px; min-height: 88px; border-radius: 50%; }

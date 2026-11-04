@@ -1093,9 +1093,13 @@
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (d.querySelector('.zc-cascade')) return;
       var cardNode = e.target.closest('.zc-card'), slotNode = e.target.closest('.zc-slot');
-      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')];
+      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')], slot = slotNode && slotNode.getAttribute('data-pile');
       if (!pos && !slotNode) return;
-      drag = { pos: pos, slot: slotNode && slotNode.getAttribute('data-pile'), sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
+      // A column's place runs down to the table's edge: a tap under its cards (on a phone a column is one card, 35 px
+      // wide in Spider) is a tap on its top card.
+      var under = !pos && byPile[slot];
+      if (under && under.length) pos = cardPos[under[under.length - 1]];
+      drag = { pos: pos, slot: slot, sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
       sel = null; paintSelection(); toast();
       try { table.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     });
@@ -1489,6 +1493,9 @@
     while (down + inc <= max + 1e-9 && heaviest(down + inc) * maxStep <= room - ch) down += inc;
     return down;
   }
+  // A face-up card in a fan shows this much of its height when the table has room: its whole corner index and its whole top
+  // row of pips (PIP_TOP). Less cuts the pips through the middle into triangles beside the index.
+  var FAN_UP_SHARE = 0.34;
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
   }
@@ -1589,7 +1596,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
