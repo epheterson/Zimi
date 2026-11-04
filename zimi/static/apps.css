@@ -164,6 +164,8 @@ button { font: inherit; color: inherit; }
 .app-wait-card i { display: block; aspect-ratio: 16 / 9; background: var(--surface2); }
 .app-wait-card b { display: block; height: 10px; margin: 0 12px; border-radius: 5px; background: var(--surface2); }
 .app-wait-card b + b { width: 55%; }
+.app-wait-lines b { display: block; height: 14px; margin: 10px 0; border-radius: 7px; background: var(--surface2); animation: app-wait 1.6s ease-in-out infinite; }
+.app-wait-lines b:nth-child(2) { width: 82%; } .app-wait-lines b:nth-child(3) { width: 64%; }
 .app-wait-note { margin: 16px 0 0; color: var(--text2); text-align: center; }
 @keyframes app-wait { 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .app-wait-card { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .app-wait-card, .app-wait-lines b { animation: none; } }

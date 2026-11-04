@@ -247,15 +247,18 @@ function strings(defaults) {
 // if it takes a while (after a restart the server may still be reading the library), and a way to try again if it
 // fails. The cards go in the same moment the content arrives, so the page is never blank and never empty first.
 var APP_WAIT_SLOW_MS = 4000, APP_WAIT_CARDS = 6;
-function appWait(before) {
+function appWait(before, shape) {
   var host = typeof before === 'string' ? document.getElementById(before) : before;
   var none = { done: function() {}, fail: function() {} };
   if (!host || !host.parentNode) return none;
   var old = host.parentNode.querySelector('.app-wait'); if (old) old.remove();
   var box = document.createElement('div');
   box.className = 'app-wait'; box.setAttribute('role', 'status'); box.setAttribute('aria-busy', 'true');
-  box.innerHTML = '<div class="app-wait-cards" aria-hidden="true">' + new Array(APP_WAIT_CARDS + 1).join('<div class="app-wait-card"><i></i><b></b><b></b></div>') +
-    '</div><p class="app-wait-note" hidden></p>';
+  // Cards for a page of cards; 'lines' for a page of text (a word, an entry).
+  box.innerHTML = (shape === 'lines'
+    ? '<div class="app-wait-lines" aria-hidden="true"><b></b><b></b><b></b></div>'
+    : '<div class="app-wait-cards" aria-hidden="true">' + new Array(APP_WAIT_CARDS + 1).join('<div class="app-wait-card"><i></i><b></b><b></b></div>') + '</div>') +
+    '<p class="app-wait-note" hidden></p>';
   host.parentNode.insertBefore(box, host);
   // The page has drawn its own waiting state: the shell's loader can go now rather than at its 6 s limit,
   // which left a blank page when the answer took longer.

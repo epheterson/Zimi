@@ -91,7 +91,7 @@ def _frame(pg):
 
 
 STATE = """() => ({ h1: (document.querySelector('.hw h1') || {}).textContent || null,
-  loading: !!document.querySelector('.sk'), page: location.href.split('#')[0], shell: parent.location.href })"""
+  loading: !!document.querySelector('.app-wait'), page: location.href.split('#')[0], shell: parent.location.href })"""
 
 
 def _word(f, w):
@@ -104,7 +104,7 @@ def _word(f, w):
             "the page never went to it",
         ),
         (
-            "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w && !document.querySelector('.sk'); }",
+            "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w && !document.querySelector('.app-wait'); }",
             "the lookup never answered",
         ),
     ):
