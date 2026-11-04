@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.15.3]
+
+### Highlights
+
+- **ZimCity:** a city builder made for the phone, with the classic scenarios, an AI data center, solar and wind, a toy climate and citizens with opinions.
+- **Daily games:** today's edition of 63 games, the same for everyone on a Zimi server, with streaks, stats and a spoiler-free share line; rooms (Kids, Arcade, Game night, Solo) on the shelf.
+- **Games polish:** one card size across card games, tap-to-aim on small boards, Hint in Xiangqi and Shogi, and full game names on a phone.
+- **Search:** `near:Danville 10km` lists the towns on your maps nearby; questions find articles written in another form of their words; "Did you mean" leaves real words alone.
+- **AI agents:** Zimi's MCP server keeps a clean stream when the library prints a notice.
+- **Linux:** `zimi service install` sets up the systemd unit that now ships with Zimi (#137).
+- **Tides:** shown only where a gauge is near, now about 1,500 places worldwide (#140).
+
 ## [1.15.2]
 
 ### Highlights
