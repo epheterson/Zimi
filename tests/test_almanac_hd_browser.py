@@ -194,7 +194,7 @@ def test_tiles_by_view(browser, served):
         # Far: level 0 covers the Earth, and its one map steps aside (a body under 40 px asks for no tiles at all, so
         # the camera is put far but not that far, the flight in done).
         pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
-        pg.evaluate("_ae.dist = 8; _ae.dirty = true; _aeKick()")
+        pg.evaluate("_ae.dist = 20; _ae.dirty = true; _aeKick()")   # about 60 px in radius: past the 40 px floor, still level 0
         _settle(
             pg,
             "() => { var d = ("
