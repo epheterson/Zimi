@@ -1373,8 +1373,10 @@
   // Zimi's reader (same origin) has its own top bar. There the game's name, its Undo or Pause and its
   // Menu live in that bar and this page's own bar steps aside (a clock or score in it stays). Anywhere
   // else (Kiwix, a browser tab) nothing here runs. The page tells Zimi what it has; Zimi asks it to act.
-  var HOST_CSS = 'html.gs-hosted .ar-bar > :not(.ar-stat):not(#ms-flagmode) { display: none !important; }' +
-    'html.gs-hosted .ar-bar:not(:has(.ar-stat, #ms-flagmode)) { display: none; }' +
+  var HOST_CSS = 'html.gs-hosted .ar-bar > :not(.ar-stat):not(#ms-flagmode):not(.gs-daily-flag) { display: none !important; }' +
+    'html.gs-hosted .ar-bar:not(:has(.ar-stat, #ms-flagmode, .gs-daily-flag)) { display: none; }' +
+    // Inside Zimi the game's name is Zimi's; a daily says so at the start of the strip that is left.
+    'html.gs-hosted .ar-bar > .gs-daily-flag { display: block; margin-inline-end: auto; }' +
     'html.gs-hosted .ar-bar { min-height: 0; padding-block: 4px; justify-content: flex-end; }' +
     // A sheet covers the whole page here: the strip of score left of the bar is not a control to keep in reach.
     'html.gs-hosted body .ar-sheet { top: 0; }' +
@@ -1498,6 +1500,7 @@
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
     if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
+    if (h1) h1.parentNode.insertBefore(h('span', { class: 'gs-daily-tag gs-daily-flag', 'data-t': 'daily.tag', text: T('daily.tag') }), h1.nextSibling);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });

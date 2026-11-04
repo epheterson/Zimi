@@ -538,6 +538,7 @@ dl.gs-help { margin: 0; }
 .gs-earned .gs-got > span:first-child { color: var(--accent); font-weight: 700; }
 .gs-share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: 0 0 var(--sp-3); }
 .gs-daily-tag { font-size: var(--fs-small); font-weight: 650; color: var(--accent); }
+.gs-daily-flag { display: none; }   /* shown only inside Zimi, where the bar's name is hidden (shell.js HOST_CSS) */
 .gs-card .zc-row { margin: 6px 0; }
 .gs-card .zs-seats { margin: 6px 0; }
 .gs-seats { display: grid; gap: var(--sp-2); }
