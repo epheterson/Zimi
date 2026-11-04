@@ -2647,7 +2647,9 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     def _pick(cands):
         if not cands:
             return None
-        best = max(cands, key=lambda w: vocab[w])
+        # A letter put back before a letter taken away: a dropped letter is the
+        # usual slip, so "watr" is "water" even where "war" is commoner.
+        best = max(cands, key=lambda w: (len(w) >= len(word), vocab[w]))
         if own_count is None or vocab[best] >= freq_ratio * own_count:
             return best
         return None
@@ -2656,6 +2658,11 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     picked = _pick(cands)
     if picked:
         return picked
+    # A word the library knows is mended by one slip at most (a swapped or
+    # wrong letter, "einstien"), never two: two edits from a real word is
+    # another real word ("water" and "war"), not a typo of it.
+    if own_count is not None:
+        return None
     if deadline is None or time.monotonic() <= deadline:
         if len(word) <= _DIST2_MAX_LEN:
             cands2 = set()

@@ -922,3 +922,29 @@ class TrigramIndexTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCorrectionsThatKeepWhatWasTyped(unittest.TestCase):
+    """The regression sweep (2026-11-04): on a small library "water" found 7
+    results and still offered "Did you mean war?", and "watr purificaton" was
+    turned into "war purificaton". A word the library knows is only ever
+    mended by one slip (a swapped or wrong letter), never shortened by two;
+    and a word with a letter missing is mended by putting a letter back
+    before taking one away."""
+
+    VOCAB = {"war": 900, "water": 40, "purification": 12, "einstien": 1, "einstein": 100}
+
+    def test_a_known_word_is_not_corrected_to_a_shorter_common_one(self):
+        deadline = time.monotonic() + 1.0
+        self.assertIsNone(_search._did_you_mean("water", self.VOCAB, deadline))
+
+    def test_a_dropped_letter_is_put_back(self):
+        deadline = time.monotonic() + 1.0
+        self.assertEqual(
+            _search._did_you_mean("watr purificaton", self.VOCAB, deadline),
+            "water purification",
+        )
+
+    def test_a_known_typo_is_still_mended(self):
+        deadline = time.monotonic() + 1.0
+        self.assertEqual(_search._did_you_mean("einstien", self.VOCAB, deadline), "einstein")
