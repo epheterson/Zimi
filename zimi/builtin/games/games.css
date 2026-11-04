@@ -300,6 +300,21 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-today .ar-game-text span { -webkit-line-clamp: 4; color: var(--ink); font-size: 13px; }
 .ar-today .ar-game-text::after { content: var(--play-label, "Play"); align-self: flex-start; margin-top: 8px; padding: 5px 16px; border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-small); font-weight: 650; }
 @media (max-width: 699px) { .ar-today { max-width: none; } }
+/* Daily: today's edition of each game, one row you scroll sideways only; the ones done carry a tick and sit at the end. */
+.ar-daily { flex: 1 1 100%; min-width: 0; }
+.ar-daily[hidden] { display: none; }
+.ar-daily > h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.ar-daily-line { color: var(--ink2); font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ar-daily-stats { margin-inline-start: auto; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 2px; min-height: 44px; cursor: pointer; }
+.ar-daily .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; margin: 0 -16px; padding: 2px 16px 6px; }
+.ar-daily .ar-game { flex: 0 0 132px; position: relative; scroll-snap-align: start; }
+.ar-daily .ar-game-text span { display: none; }
+.ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
+.ar-done-mark { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; line-height: 1; }
+[data-view="index"] .ar-daily .ar-games { display: flex; }
+[data-view="index"] .ar-daily .ar-game { flex: 0 0 132px; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+[data-view="index"] .ar-daily .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
+[data-view="index"] .ar-daily .ar-game-text { padding: 8px 10px 10px; }
 
 /* Index: rows, one section at a time. */
 @media (max-width: 899px) {
@@ -514,6 +529,15 @@ dl.gs-help { margin: 0; }
 .gs-statlist { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: var(--fs-small); }
 .gs-statlist dt { color: var(--ink2); } .gs-statlist dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 .gs-statlist .gs-stat-alone { grid-column: 1 / -1; }
+.gs-card .gs-subhead + .gs-stats, .gs-card .gs-subhead + .gs-earned { margin-top: var(--sp-2); }
+.gs-card .gs-stats + .gs-subhead { margin-top: var(--sp-4); }
+.gs-earned { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink2); }
+.gs-earned li { display: flex; gap: 10px; align-items: center; }
+.gs-earned li > span:first-child { width: 16px; text-align: center; }
+.gs-earned .gs-got { color: var(--ink); }
+.gs-earned .gs-got > span:first-child { color: var(--accent); font-weight: 700; }
+.gs-share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: 0 0 var(--sp-3); }
+.gs-daily-tag { font-size: var(--fs-small); font-weight: 650; color: var(--accent); }
 .gs-card .zc-row { margin: 6px 0; }
 .gs-card .zs-seats { margin: 6px 0; }
 .gs-seats { display: grid; gap: var(--sp-2); }

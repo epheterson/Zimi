@@ -73,7 +73,7 @@
 
   // ── the page ─────────────────────────────────────────────────────────────
   var Play = root.ArcadePlay, $ = Play.$, T = Play.T;
-  var FLIP_MS = 230, HOP_MS = 80, COPIED_MS = 1500, MAX_TILE = 62, GAP = 6, SIDE_PAD = 24, END_DELAY_MS = 500;       // each tile turns over 230 ms after the one before
+  var FLIP_MS = 230, HOP_MS = 80, MAX_TILE = 62, GAP = 6, SIDE_PAD = 24, END_DELAY_MS = 500;       // each tile turns over 230 ms after the one before
   var STATE_KEY = 'zimi.games.fiveletters.state', STATS_KEY = 'zimi.games.fiveletters.stats', LANG_KEY = 'zimi.games.fiveletters.lang';
   var ROWS = ['qwertyuiop', 'asdfghjkl', '#zxcvbnm<'];
   Play.applyTheme();
@@ -84,7 +84,9 @@
   var keyEls = {}, tileEls = [];
   var stored = Play.load(STATE_KEY, {});
   var stats = null; // each word list keeps its own record (loadStats)
-  var game = null, busy = false, today = dateKey(new Date());
+  // The day is the shell's: a daily's date when the page was opened as one (the server's day), else the device's.
+  var today = ZimiShell.day(), dayDate = new Date(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10));
+  var game = null, busy = false;
   var pendingMode = null, pendingList;   // a choice made in the New game pane, taken when it starts
 
   // The word list: the shipped English one, or (inside Zimi) a Wiktionary of the player's library, whose
@@ -98,13 +100,13 @@
 
   function blank(mode) {
     if (cur) return null; // a library word is asked for (fetchWord)
-    if (mode === 'daily') return { mode: 'daily', date: today, answer: dailyAnswer(words, new Date()), guesses: [], current: '', status: 'playing' };
+    if (mode === 'daily') return { mode: 'daily', date: today, answer: dailyAnswer(words, dayDate), guesses: [], current: '', status: 'playing' };
     return { mode: 'practice', answer: words.answers[Math.floor(Math.random() * words.answers.length)], guesses: [], current: '', status: 'playing' };
   }
   function load(mode) {
     var s = stored[skey(mode)];
     if (cur) return s && s.answer && s.zim === cur.zim && (mode !== 'daily' || s.date === today) ? s : null;
-    if (mode === 'daily' && s && s.date === today && s.answer === dailyAnswer(words, new Date())) return s;
+    if (mode === 'daily' && s && s.date === today && s.answer === dailyAnswer(words, dayDate)) return s;
     if (mode === 'practice' && s && s.answer && words.allowed[s.answer]) return s;
     return blank(mode);
   }
@@ -112,7 +114,7 @@
 
   // A word from the Wiktionary: the day's for the daily (the same for everyone on this Zimi), else by chance.
   function fetchWord(mode) {
-    var day = mode === 'daily' ? Lib.dayKey(new Date()) : 'chance';
+    var day = mode === 'daily' ? Lib.dayKey(dayDate) : 'chance';
     return Lib.json(FIVE_API + '?zim=' + encodeURIComponent(cur.zim) + '&day=' + day).then(function (w) {
       if (!w || !w.word) throw new Error('no word');
       libKnown[w.word] = true;
@@ -279,7 +281,7 @@
     stats.last = today;
     Play.save(statsKey(), stats);
   }
-  function yesterdayKey() { var d = new Date(); d.setDate(d.getDate() - 1); return dateKey(d); }
+  function yesterdayKey() { return ZimiShell.stats.dayBefore(today); }
 
   // The answer as the player would write it (a Wiktionary's own spelling keeps its accents).
   function shown() { return (game.title || game.answer).toUpperCase(); }
@@ -323,8 +325,7 @@
     var title = T('fiveletters.share', { lang: cur ? ' (' + cur.lang + ')' : '', date: game.mode === 'daily' ? ' ' + game.date : '' });
     var text = shareText(title, game.guesses, game.answer, game.status === 'won');
     // The answer shows on the button itself, where the finger is.
-    var label = T('fiveletters.copy'), told = function (msg) { els.share.textContent = msg; setTimeout(function () { els.share.textContent = label; }, COPIED_MS); };
-    try { navigator.clipboard.writeText(text).then(function () { told(T('fiveletters.copied')); }, function () { status.reason(text); }); } catch (e) { told(T('fiveletters.copyFail')); }
+    ZimiShell.share(text, els.share);
   });
   // Enter a mode of the current list. A library word may have to be fetched first.
   function switchTo(mode, fresh) {
@@ -404,6 +405,11 @@
   window.addEventListener('resize', layout);
   loadStats();
   game = load('daily');
+  // The day's word is the daily (the shelf's Daily row, the streak); its squares are the share line.
+  ZimiShell.game({
+    daily: function () { return !!game && game.mode === 'daily'; },
+    share: function () { return shareText('', game.guesses, game.answer, game.status === 'won').trim(); }
+  });
   paintAll();
   // Leaving and coming back keeps the position, the letters typed so far included. The day's word of an earlier
   // day is not kept; a Wiktionary's round keeps itself (state per list) and is asked for again.
@@ -414,7 +420,7 @@
       var g = kept && kept.game;
       if (!g || !g.answer || (g.mode === 'daily' && g.date !== today)) return false;
       if (kept.list) { cur = kept.list; libKnown = {}; libKnown[g.answer] = true; g.guesses.forEach(function (w) { libKnown[w] = true; }); loadStats(); }
-      else if (!words.allowed[g.answer] || (g.mode === 'daily' && g.answer !== dailyAnswer(words, new Date()))) return false;
+      else if (!words.allowed[g.answer] || (g.mode === 'daily' && g.answer !== dailyAnswer(words, dayDate))) return false;
       game = g; paintAll();
       if (game.status !== 'playing') finish();
     }

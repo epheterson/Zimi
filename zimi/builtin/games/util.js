@@ -6,6 +6,7 @@
                                      so a game that holds one can be put back where it was: counted(seed, draws)
      ZimiUtil.snapshot(game)          the game's state as plain JSON (its `rng` becomes { seed, draws })
      ZimiUtil.restore(saved)          a game from a snapshot, its `rng` the same sequence at the same place
+     ZimiUtil.newSeed()               a new game's seed: the day's in a daily (ZimiShell.seed, shell.js), else chance
      ZimiUtil.clamp(v, lo, hi)        v held between lo and hi
      ZimiUtil.DAY_MS                  86400000
      ZimiUtil.dayKey(date, sep)       the player's calendar day as YYYYMMDD (the server's day key), or YYYY-MM-DD with sep '-'; today by default
@@ -52,6 +53,8 @@
     game.rng = counted(game.rng.seed, game.rng.draws);
     return game;
   }
+
+  function newSeed() { return root.ZimiShell && root.ZimiShell.seed ? root.ZimiShell.seed() : Math.floor(Math.random() * 4294967296); }
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -134,5 +137,5 @@
   }
 
 
-  root.ZimiUtil = { gridRove: gridRove, gridRoveSync: gridRoveSync, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
+  root.ZimiUtil = { gridRove: gridRove, gridRoveSync: gridRoveSync, gridAria: gridAria, sweep: sweep, mulberry32: mulberry32, counted: counted, snapshot: snapshot, restore: restore, newSeed: newSeed, clamp: clamp, DAY_MS: DAY_MS, dayKey: dayKey, DIR_KEYS: DIR_KEYS, el: el };
 })(this);
