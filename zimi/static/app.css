@@ -2008,6 +2008,9 @@
   }
   a.best-quote.more .bq-src { margin-top: 4px; }
   .did-you-mean { font-size: 14px; color: var(--text2); margin-bottom: 16px; }
+  /* A near: search: what it measured from, over its places (the did-you-mean line's voice). */
+  .near-from { font-size: 14px; color: var(--text2); margin-bottom: 12px; }
+  .near-which { font-size: 13px; color: var(--text3); margin-top: 4px; }
   .empty .did-you-mean { margin-bottom: 12px; }
   .did-you-mean a { color: var(--amber); font-style: italic; text-decoration: none; border-bottom: 1px solid var(--amber-border); }
   .did-you-mean a:hover { border-bottom-color: var(--amber); }

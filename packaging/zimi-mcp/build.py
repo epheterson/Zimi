@@ -46,6 +46,7 @@ MODULES = (
     "htmlmd",
     "mapsearch",
     "mapplaces",
+    "placedata",
     "subproc",
     "libzimcompat",
     "zimwriter",

@@ -109,7 +109,17 @@ def build_openapi():
                         required=True,
                         description='The words. Also: -word leaves out, "exact words" in order, '
                         "a OR b, in:<source> and lang:<code> (negate with -). "
-                        "Exclusions and phrases apply to result titles.",
+                        "Exclusions and phrases apply to result titles. "
+                        'near:<place> or near:"two words" or near:<lat>,<lng>, then an optional '
+                        "distance (25km, 10mi; 25 km when none): places on the installed Kiwix "
+                        "maps within it, nearest first, in places (each with km), and what was "
+                        "measured from in near; the other words must be in a place's name.",
+                    ),
+                    _param(
+                        "near_at",
+                        {"type": "string"},
+                        description="lat,lng: the searcher's own place. Of several places a "
+                        "near: names, the nearest to it is taken (else the largest).",
                     ),
                     _param(
                         "zim",
@@ -150,6 +160,16 @@ def build_openapi():
                                         "results are sparse and a correction was "
                                         "found. The query's operators (-word, "
                                         "quotes, OR, filters) are kept. Optional."
+                                    ),
+                                },
+                                "near": {
+                                    "type": "object",
+                                    "description": (
+                                        "A near: search's starting place: place, lat, "
+                                        "lng, radius_km, unit, found (false when no "
+                                        "map names it), others (places of the same "
+                                        "name passed over) and by (nearest or "
+                                        "largest: how one was picked). Optional."
                                     ),
                                 },
                                 "unsearched": {
