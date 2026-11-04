@@ -511,6 +511,7 @@
 
   // ── Layout and filtering ─────────────────────────────────────────────────
   function today() { return doc.querySelector('.ar-today'); }
+  function daily() { return doc.querySelector('.ar-daily'); }
 
   // Continue and Game of the day come from recent.js, after the page is up.
   // The order and the view switch share the chips' row, so no row is spent on them. Index on a wide screen has the
@@ -530,6 +531,8 @@
       if (art) art.setAttribute('preserveAspectRatio', 'xMidYMid slice');
       if (state.view === 'index') rail.appendChild(t); else top.appendChild(t);
     }
+    var dl = daily();
+    if (dl && dl.parentNode !== top) top.appendChild(dl);
     tableCount = c && !c.classList.contains('ar-table-idle') ? c.querySelectorAll('.ar-box').length : 0;
     if (recentChip) {
       recentChip.hidden = !tableCount;
@@ -570,9 +573,11 @@
     var feedAll = state.sec === 'all';
     if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll);
     if (t) t.hidden = searching || (state.view === 'lobby' && !feedAll);
+    var dl = daily();
+    if (dl) dl.hidden = searching || (state.view === 'lobby' && !feedAll);
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;
-    top.hidden = !!(c && t ? c.hidden && t.hidden : (c ? c.hidden : t ? t.hidden : true));
+    top.hidden = [c, t, dl].every(function (x) { return !x || x.hidden; });
   }
 
   function setView(v) {
