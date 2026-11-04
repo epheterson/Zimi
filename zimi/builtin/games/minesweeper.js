@@ -41,7 +41,7 @@
       rows: rows, cols: cols, size: size, mines: mines,
       state: new Uint8Array(size), mine: new Uint8Array(size), count: new Uint8Array(size),
       nb: buildNeighbours(rows, cols),
-      rng: mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed),
+      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed),
       status: 'ready', placed: false, opened: 0, flags: 0, exploded: []
     };
   }
@@ -196,6 +196,7 @@
   var fixedSeed = params.has('seed') ? Number(params.get('seed')) : undefined;
   if (params.get('theme') === 'light' || params.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', params.get('theme'));
   if (params.get('level') && LEVEL_IDS.indexOf(params.get('level')) >= 0 && params.get('level') !== 'custom') settings.level = params.get('level');
+  if (root.ZimiShell && root.ZimiShell.daily) settings.level = 'intermediate';   // a daily is intermediate (kept only if the player picks a level)
 
   var game, cells = [], flagMode = false, cursor = -1, press = null, tickTimer = 0, startedAt = 0, finalMs = 0;
   var els = {

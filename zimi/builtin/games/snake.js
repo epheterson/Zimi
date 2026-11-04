@@ -26,7 +26,7 @@
     var g = {
       cols: cols || COLS, rows: rows || ROWS, wrap: !!wrap, snake: [], dir: 'right', queue: [],
       score: 0, status: 'ready', food: null,
-      rng: mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed)
+      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed)
     };
     var y = Math.floor(g.rows / 2), x = Math.floor(g.cols / 2);
     for (var i = 0; i < START_LENGTH; i++) g.snake.push([x - i, y]);

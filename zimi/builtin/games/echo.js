@@ -10,7 +10,7 @@
   var mulberry = root.ZimiUtil.mulberry32;
 
   function createGame(seed) {
-    var g = { seq: [], pos: 0, rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), done: 0 };
+    var g = { seq: [], pos: 0, rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), done: 0 };
     extend(g);
     return g;
   }

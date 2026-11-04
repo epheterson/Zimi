@@ -41,7 +41,7 @@
 
   // A shuffled deck: `pairs` different pictures, two cards of each.
   function createGame(pairs, seed) {
-    var rng = mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), ids = [], i;
+    var rng = mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), ids = [], i;
     for (i = 0; i < pairs; i++) ids.push(i, i);
     for (i = ids.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
     return { cards: ids.map(function (id) { return { id: id, up: false, done: false }; }), first: -1, pending: null, moves: 0, pairs: pairs, found: 0, over: false };
@@ -206,7 +206,7 @@
   }
   function begin() {
     if (timer) { timer.cancel(); timer = null; }
-    g = createGame(SIZES[settings.size]); newSeats(); build();
+    g = createGame(SIZES[root.ZimiShell && root.ZimiShell.daily ? 'medium' : settings.size]); newSeats(); build();   // a daily is sixteen cards
     status.say(multi() ? T('memory.turn', { name: seats.name(turn) }) : T('memory.start'));
   }
   els.nu.addEventListener('click', begin);

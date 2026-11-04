@@ -70,7 +70,7 @@
   }
 
   function createState(level, seed, carry) {
-    var st = { level: level || 1, seed: seed, rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), time: 0,
+    var st = { level: level || 1, seed: seed, rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), time: 0,
       score: carry ? carry.score : 0, lives: carry ? carry.lives : LIVES, nextLife: carry ? carry.nextLife : EXTRA_LIFE, nests: [false, false, false, false, false],
       x: 5, row: START_ROW, best: START_ROW, left: TIME_LIMIT, status: 'playing', statusT: 0, cool: 0, queued: null, face: 'up', hopT: 1, why: '', events: [], anim: 0 };
     return st;

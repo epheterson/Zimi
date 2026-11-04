@@ -83,7 +83,7 @@
   var els = { clue: $('cw-clue'), grid: $('cw-grid'), msg: $('cw-msg'), hint: $('cw-hint'), check: $('cw-check'), keys: $('cw-keys'), across: $('cw-across'), down: $('cw-down'), newBtn: $('cw-new') };
   var status = Play.status(els.msg);
   var g = null, sol = null, cellEls = [], dict = '', pendingMode = null, done = false, building = false, wrongs = [];
-  var today = Lib.dayKey(new Date());
+  var today = ZimiShell.day('');   // a daily's date when opened as one (the server's day), else the device's
 
   function entryOf(idx, dir) {
     for (var n = 0; n < ENTRIES.length; n++) if (ENTRIES[n].dir === dir && cellsOf(ENTRIES[n]).indexOf(idx) >= 0) return n;
@@ -254,6 +254,7 @@
     }
   });
   ZimiShell.game({
+    daily: function () { return !!g && g.mode === 'daily'; },
     about: function () { return Lib.note(T, 'words', g && g.dict ? g.dict : ''); },
     inProgress: function () { return !!g && !done && g.cells.some(Boolean); },
     menu: function () {

@@ -34,6 +34,12 @@
   // Zimi opens a page with its language in the hash (#lang=fr&dir=ltr). To the puzzle a hash is a game ID, and it would answer with
   // an error box and no saved game could come back; the words are already read (text.js), so the hash goes.
   if (/^#(?:lang|dir)=[^&]*(?:&(?:lang|dir)=[^&]*)*&?$/.test(root.location.hash) && root.history && root.history.replaceState) root.history.replaceState(null, "", root.location.pathname + root.location.search);
+  // The day's puzzle (ZimiShell.daily, ../shell.js): its daily type and the day's seed as a game ID ("10x10t0dn#<seed>"), so the
+  // puzzle makes the same grid for everyone that day. A daily left part-way comes back from its own save instead.
+  var DAILY = root.ZimiShell && root.ZimiShell.daily;
+  if (DAILY && typeof DAILY.kind === "string" && !root.location.hash && !root.ZimiShell.peekSave() && root.history && root.history.replaceState) {
+    root.history.replaceState(null, "", root.location.pathname + root.location.search + "#" + DAILY.kind + "#" + DAILY.seed);
+  }
 
   function el(tag, cls, text) {
     var e = d.createElement(tag);
@@ -960,8 +966,8 @@
       // A game that was only dealt is kept too, so the puzzle that comes back is the one that was left; a solved one is not.
       save: function () { return solved ? null : { sav: saveText(), t: elapsed }; },
       load: function (data) {
-        // A link to one particular game (#id) is that game, not the one left behind.
-        if (!data || typeof data.sav !== "string" || !encoder || root.location.hash) return false;
+        // A link to one particular game (#id) is that game, not the one left behind; a daily's own save is the day's game.
+        if (!data || typeof data.sav !== "string" || !encoder || (root.location.hash && !DAILY)) return false;
         loadText(data.sav);
         elapsed = +data.t || 0;
         return true;

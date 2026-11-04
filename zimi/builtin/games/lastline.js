@@ -73,7 +73,7 @@
   function aliveCount(st) { var n = 0; st.inv.forEach(function (v) { if (v.alive) n++; }); return n; }
 
   function createState(seed) {
-    var st = { rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), time: 0, score: 0, lives: START_LIVES, wave: 1, status: 'playing', events: [], px: W / 2, cool: 0, inv_t: 0, waveT: 0 };
+    var st = { rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), time: 0, score: 0, lives: START_LIVES, wave: 1, status: 'playing', events: [], px: W / 2, cool: 0, inv_t: 0, waveT: 0 };
     newFormation(st);
     return st;
   }

@@ -55,7 +55,7 @@
   }
 
   function createState(seed) {
-    var st = { rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), time: 0, score: 0, lives: START_LIVES, wave: 1, status: 'playing', events: [],
+    var st = { rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), time: 0, score: 0, lives: START_LIVES, wave: 1, status: 'playing', events: [],
       ship: { x: SIZE / 2, y: SIZE / 2, a: 0, vx: 0, vy: 0, alive: true, inv: INVULNERABLE_S, cool: 0, respawn: 0, thrusting: false },
       bullets: [], rocks: [], saucer: null, saucerIn: 0, waveT: 0, nextLife: EXTRA_LIFE_EVERY };
     spawnWave(st);

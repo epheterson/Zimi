@@ -231,7 +231,7 @@
   // A puzzle of the asked difficulty: { puzzle, solution, difficulty, info }. Tries again until
   // the grader agrees with the label; after MAX_TRIES it settles for the hardest it found.
   function generate(difficulty, seed) {
-    var rng = mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), bestTry = null;
+    var rng = mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed), bestTry = null;
     for (var t = 0; t < MAX_TRIES; t++) {
       var solution = randomSolution(rng), puzzle = carve(solution, difficulty, rng), info = grade(puzzle);
       var got = difficultyOf(info), cand = { puzzle: puzzle, solution: solution, difficulty: got, info: info, tries: t + 1 };
@@ -518,7 +518,7 @@
     // A solved puzzle comes back to its end sheet, not to a fresh one.
     if (s.done) ZimiShell.endSheet({ result: 'win', after: 0, stats: [[T('play.time'), Play.fmtClock(s.elapsed)], [T('play.best'), Play.fmtClock(best[s.diff] || s.elapsed)]] });
     else startClock();
-  } else newGame(settings.diff);
+  } else newGame(root.ZimiShell && root.ZimiShell.daily ? 'medium' : settings.diff);   // a daily is medium
   ZimiShell.persist({ save: function () { return !s ? null : { puzzle: s.puzzle, solution: s.solution, grid: s.grid, notes: s.notes, diff: s.diff, elapsed: elapsed(), done: s.done, hist: s.hist.slice(-UNDO_KEPT) }; } });
   // A read-only window onto the live game, for the browser tests.
   root.__sudoku = { get s() { return s; } };
