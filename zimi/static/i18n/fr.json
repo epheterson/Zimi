@@ -3500,5 +3500,12 @@
   "hide_from_home": "Masquer de l'accueil",
   "zi_icon_full": "Voir l'icône en taille réelle",
   "au_skip_on": "Ne pas mettre à jour ce ZIM automatiquement",
-  "au_skip_off": "Mettre à jour ce ZIM automatiquement"
+  "au_skip_off": "Mettre à jour ce ZIM automatiquement",
+  "search_chip_near": "à moins de {distance} de {place}",
+  "search_example_near": "near:Lyon 25km",
+  "near_here": "ici",
+  "near_from": "Lieux à moins de {distance} de {place}",
+  "near_pick_nearest": "{place} à {where} : sur {n} lieux de ce nom, le plus proche de vous.",
+  "near_pick_largest": "{place} à {where} : sur {n} lieux de ce nom, le plus grand.",
+  "near_not_found": "Aucune carte installée ne nomme un lieu appelé {place}."
 }

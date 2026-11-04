@@ -3500,5 +3500,12 @@
   "hide_from_home": "إخفاء من الرئيسية",
   "zi_icon_full": "عرض الأيقونة بالحجم الكامل",
   "au_skip_on": "عدم تحديث هذا ZIM تلقائيًا",
-  "au_skip_off": "تحديث هذا ZIM تلقائيًا"
+  "au_skip_off": "تحديث هذا ZIM تلقائيًا",
+  "search_chip_near": "ضمن {distance} من {place}",
+  "search_example_near": "near:الإسكندرية 25km",
+  "near_here": "هنا",
+  "near_from": "أماكن ضمن {distance} من {place}",
+  "near_pick_nearest": "{place} عند {where}: الأقرب إليك من بين {n} أماكن بهذا الاسم.",
+  "near_pick_largest": "{place} عند {where}: الأكبر من بين {n} أماكن بهذا الاسم.",
+  "near_not_found": "لا توجد خريطة مثبتة تسمّي مكانًا باسم {place}."
 }
