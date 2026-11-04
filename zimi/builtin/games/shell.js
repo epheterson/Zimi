@@ -470,6 +470,17 @@
     return '';
   }
 
+  // A long name ("International Draughts") beside Undo and Menu on a phone: the title steps down a pixel at a time to
+  // TITLE_MIN_PX before it is cut with an ellipsis.
+  var TITLE_MIN_PX = 13;
+  function fitTitle() {
+    var h1 = d.querySelector('.ar-bar h1');
+    if (!h1) return;
+    h1.style.fontSize = '';
+    var px = parseFloat(root.getComputedStyle(h1).fontSize);
+    while (h1.scrollWidth > h1.clientWidth + 0.5 && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
+  }
+
   // ── motion, status and the shake ──
   // The one answer to "should this move?": the device asks for less motion, or Animation is Off.
   // The game's own Animation choice outranks the device: settings.get('anim') is 'off' by default on a device that asks for less motion,
@@ -1254,6 +1265,7 @@
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
     watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
+    fitTitle(); root.addEventListener('resize', fitTitle);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });
