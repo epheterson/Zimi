@@ -2134,7 +2134,7 @@ function _aeDrawOrbit(p, jd, place) {
   var held = _aeWideView() ? 1 : 0, wanted = _ae.target !== 'earth' && _ae.target !== 'moon';
   p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * held * _aeFadeU.value;
   p.orbit.visible = held > 0;
-  if (!wanted || (p.orbitAt != null && Math.abs(jd - p.orbitAt) < AE_ORBIT_REDRAW_DAYS)) return;
+  if (!wanted || (p.orbitAt != null && Math.abs(jd - p.orbitAt) < AE_ORBIT_REDRAW_DAYS) || !_aeMayRedraw()) return;
   p.orbitAt = jd;
   var arr = p.orbit.geometry.attributes.position.array;
   for (var k = 0; k < AE_ORBIT_POINTS; k++) {
@@ -2167,6 +2167,7 @@ function _aeUpdatePlanets(sc) {
   var helio = {}, sunAt = _aeSunShown(sc);
   S.ecl = { sun: sunAt, x: _aeNorm(toScene([1, 0, 0])), z: _aeNorm(toScene([0, 0, 1])) };
   var place = function (h) { return _aeAdd(sunAt, _aeScale(_aeNorm(toScene(h)), _aeShownDist(_aeLen(h)))); };
+  _aeRedrawsLeft = AE_REDRAWS_PER_FRAME;
   _aeUpdateAsteroids(jde, place);
   // A probe near a planet stands at its true distance from it, as the moons do (the drawn scale squeezes space round
   // a planet tens of times: Juno would orbit inside Jupiter, Webb inside the GPS shell): within a planet's reach it
@@ -2252,6 +2253,10 @@ var AE_AST_URL = '/static/earth/asteroids-v1.bin';
 var AE_AST_AU_SPAN = 6, AE_AST_Q = 65535, AE_AST_HEADER = 12;
 var AE_AST_GAUSS_K = 0.01720209895;             // radians a day at 1 AU (Kepler's third law)
 var AE_AST_REPLACE_DAYS = 1;
+var AE_AST_PER_FRAME = 1500;                     // asteroids placed a frame
+// Work that can wait a frame (an orbit, a probe's path): this many such redraws a frame, the rest the next.
+var AE_REDRAWS_PER_FRAME = 3, _aeRedrawsLeft = AE_REDRAWS_PER_FRAME;
+function _aeMayRedraw() { return _aeRedrawsLeft-- > 0; }
 var AE_AST_WIDE_DIST = 60;                       // Earth radii from the Earth: past this the belt is worth drawing
 // A faint dust ring, never brighter than the orbits: every third asteroid, small and dim.
 var AE_AST_COLOR = [0.62, 0.62, 0.66], AE_AST_ALPHA = 0.16, AE_AST_PX = 1.0, AE_AST_STRIDE = 3;
@@ -2286,18 +2291,26 @@ function _aeUpdateAsteroids(jde, place) {
   if (!wide && !(_aeAst && _aeAst.cloud && _aeAst.cloud.visible)) return;
   if (!_aeAst) { _aeAstLoad(); return; }
   if (!_aeAst.cloud || _aeAst.cloud.parent !== S.scene) {   // a view built again (it gives the GPU back) gets its own
-    _aeAst.at = null;
+    _aeAst.at = null; _aeAst.fill = null; _aeAst.drawn = 0;
     _aeAst.cloud = _aePointCloud(S.THREE, Math.ceil(_aeAst.n / AE_AST_STRIDE), S.dpr, false, { depthTest: true });
     S.scene.add(_aeAst.cloud);
   }
   _aeAst.cloud.visible = wide;
-  if (!wide || (_aeAst.at !== null && Math.abs(jde - _aeAst.at) < AE_AST_REPLACE_DAYS)) return;
-  _aeAst.at = jde;
-  var k = 0;
-  for (var i = 0; i < _aeAst.n; i += AE_AST_STRIDE) {
-    _aeSetPoint(_aeAst.cloud, k++, place(_aeAstHelio(_aeAst.el, i, jde, _aeAst.epoch)), AE_AST_COLOR, AE_AST_ALPHA, AE_AST_PX);
+  if (!wide) return;
+  // Placed a share a frame (a Kepler solve each: all at once held one frame for 60 ms on a slow phone), the belt
+  // filling in over the first frames of the pull back while it is still small.
+  if (_aeAst.fill == null) {
+    if (_aeAst.at !== null && Math.abs(jde - _aeAst.at) < AE_AST_REPLACE_DAYS) return;
+    _aeAst.at = jde; _aeAst.fill = 0;
   }
-  _aeCommitPoints(_aeAst.cloud, k);
+  var total = Math.ceil(_aeAst.n / AE_AST_STRIDE), end = Math.min(total, _aeAst.fill + AE_AST_PER_FRAME);
+  for (var k = _aeAst.fill; k < end; k++) {
+    _aeSetPoint(_aeAst.cloud, k, place(_aeAstHelio(_aeAst.el, k * AE_AST_STRIDE, _aeAst.at, _aeAst.epoch)), AE_AST_COLOR, AE_AST_ALPHA, AE_AST_PX);
+  }
+  _aeAst.drawn = Math.max(_aeAst.drawn || 0, end);
+  _aeCommitPoints(_aeAst.cloud, _aeAst.drawn);
+  _aeAst.fill = end < total ? end : null;
+  if (_aeAst.fill != null) _ae.dirty = true;
 }
 // ── The probes ──
 // space-tracks-v1.json (scripts/build_space_tracks.py, JPL Horizons): Voyager 1 and 2, Pioneer 10 and 11, New
@@ -2436,7 +2449,7 @@ function _aeUpdateProbes(jd, place, near) {
     // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
     var o = trail.orbit;
     var every = o ? Math.min(AE_TRAIL_REDRAW_DAYS, o.trail / 15) : AE_TRAIL_REDRAW_DAYS;
-    if (trail.at == null || Math.abs(jd - trail.at) >= every) {
+    if ((trail.at == null || Math.abs(jd - trail.at) >= every) && _aeMayRedraw()) {
       trail.at = jd;
       o = trail.orbit = _aeProbeOrbit(t, jd, near);
       var arr = trail.geometry.attributes.position.array, col = trail.geometry.attributes.color.array;
@@ -2955,7 +2968,10 @@ function _aeAzElOf(v) {
   return { az: Math.atan2(n[1], n[0]), el: _aeClamp(Math.asin(n[2]), -AE_MAX_ELEVATION, AE_MAX_ELEVATION) };
 }
 
-function _aeFlyTo(target, dist, azel) {
+// `overview`: a pull back to the whole system rather than a flight to a body. No shoulder (there is no one body to
+// arrive at): the camera draws straight back on the same eased profile, AE_FLY_OVERVIEW_MS however far it starts.
+var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_KEEP = [0.3, 5];
+function _aeFlyTo(target, dist, azel, overview) {
   var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
@@ -2964,8 +2980,8 @@ function _aeFlyTo(target, dist, azel) {
   else {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
-    var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    var hold = !!_ae.scene && target !== from.target;
+    var ms = overview ? AE_FLY_OVERVIEW_MS : _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
+    var hold = !overview && !!_ae.scene && target !== from.target;
     _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, lead: AE_FLY_APPROACH_MS };
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
@@ -2975,6 +2991,7 @@ function _aeFlyTo(target, dist, azel) {
       _aeFarFor(sh.far);
     }
     _ae.az = from.az; _ae.el_ = from.el;
+    if (overview) { _ae.fly.maxStretch = AE_FLY_OVERVIEW_STRETCH; _ae.fly.overview = true; }   // spread a fast turn, by a quarter at most
     _aeEaseTurn(_ae.fly);
   }
   _aeMarkViews();
@@ -3017,8 +3034,9 @@ function _aeFlightTurnPeak(f) {
 function _aeEaseTurn(f) {
   for (var pass = 0; pass < 2; pass++) {
     var k = _aeFlightTurnPeak(f) / AE_FLY_MAX_TURN_DEG;
-    if (k <= 1.02 || f.stretch >= AE_FLY_MAX_STRETCH) return;
-    k = Math.min(k, AE_FLY_MAX_STRETCH / (f.stretch || 1));
+    var most = f.maxStretch || AE_FLY_MAX_STRETCH;
+    if (k <= 1.02 || f.stretch >= most) return;
+    k = Math.min(k, most / (f.stretch || 1));
     f.stretch = (f.stretch || 1) * k;
     f.ms *= k;
     if (f.hold) { f.lead *= k; _aeFlyTables(f); f.bend = _aeBendAfter(f); }
@@ -3242,6 +3260,13 @@ function _aeFlyTargetPos() {
   if (!f) return to;
   if (f.hold) return f.look || f.from.pos;
   var e = _aeFlyEase(performance.now());
+  if (f.overview) {
+    // Pulling back, the body it left stays in the picture, shrinking: the look-at goes over to the Sun as the distance
+    // grows past the gap between them (on a log scale, eased at both ends), all the way by the end.
+    var gap = _aeLen(_aeSub(to, f.from.pos)) || 1;
+    var lo = Math.log(Math.max(gap * AE_FLY_OVERVIEW_KEEP[0], f.from.dist)), hi = Math.log(Math.min(gap * AE_FLY_OVERVIEW_KEEP[1], f.toDist));
+    e = hi > lo ? _aeSmoother(_aeClamp((Math.log(_ae.dist) - lo) / (hi - lo), 0, 1)) : e;
+  }
   return _aeLerp3(f.from.pos, to, e);
 }
 
@@ -3389,7 +3414,7 @@ function _aePreset(name) {
     // The whole system from above the ecliptic's north: every orbit round, the belt a ring, each planet a name to tap.
     var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
     var up = typeof _ephEclJ2000ToEqOfDate === 'function' ? _ephEclJ2000ToEqOfDate([0, 0, 1], jd + _aeDeltaTDays(jd)) : [0, 0, 1];
-    _aeFlyTo('sun', _aeFitDist(_aeShownDist(AE_PLANETS_OUTER_AU)), _aeAzElOf(up));
+    _aeFlyTo('sun', _aeFitDist(_aeShownDist(AE_PLANETS_OUTER_AU)), _aeAzElOf(up), true);
   } else if (_aeIsProbe(name)) {
     var pp = _aeBodyPos(name);
     if (!pp) return;
