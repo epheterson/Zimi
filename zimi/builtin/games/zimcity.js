@@ -16,7 +16,9 @@ import * as Library from './zimcity-library.js';
 import * as Save from './zimcity-save.js';
 import { advise } from './zimcity-advisor.js';
 import * as Scen from './zimcity-scenarios.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
+import * as Climate from './zimcity-climate.js';
+import * as Voices from './zimcity-voices.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
@@ -38,7 +40,7 @@ var STATS_KEY = 'zimi.zimcity.stats';
 var city = null;                     // { sim, map, tools, seed, level, won, broke, built }
 var held = '';                       // the tool in hand ('' for none)
 var stroke = null;                   // the tiles of the stroke under way
-var paused = false, speed = Simulation.SPEED_MED, fastOK = true, layer = 'off', disasters = false;
+var paused = false, speed = Simulation.SPEED_MED, fastOK = true, layer = 'off', disasters = false, climateOn = true;
 var pendingLevel = Simulation.LEVEL_EASY;
 
 var view = new View($('cy-map'), { tiles: new Image(), sprites: new Image() });
@@ -54,7 +56,7 @@ function seeded(seed, fn) {
 }
 
 function cityOf(map, sim, level, seed) {
-  var c = { sim: sim, map: map, tools: Tools.makeTools(map), seed: seed, level: level, won: false, broke: false, built: false };
+  var c = { sim: sim, map: map, tools: Tools.makeTools(map), seed: seed, level: level, won: false, broke: false, built: false, climate: Climate.fresh() };
   sim.disasterManager.disastersEnabled = disasters;
   listen(sim);
   return c;
@@ -281,6 +283,7 @@ function onStroke(tile, done) {
   stroke = null; view.ghost = null;
   if (built.ok) {
     lastBuilt = built.undo; undoBtn.disabled = false;
+    if (OPENING[held]) { say(T(OPENING[held])); news(OPENING[held]); react(held); }
     if (!city.built) city.built = true;
     advisor();
     Play.haptic(10);
@@ -323,8 +326,37 @@ function step() {
   var t = city.sim._cityTime;
   city.sim._simulate(city.sim._constructSimData());
   city.sim._updateTime();
-  if (city.scenario && city.sim._cityTime !== t) scenarioTick();
+  if (city.sim._cityTime === t) return;
+  if (city.scenario) scenarioTick();
+  Climate.tick(city.sim, city.climate, climateOn, disasters).forEach(happened);
 }
+
+// ── what the modern city adds: the climate's events, the new buildings' news, and the citizens' voices ──
+var NEWS_KEYS = { heatwave: 'city.msg.heatwave', sea: 'city.msg.sea' };
+function happened(what) {
+  if (NEWS_KEYS[what]) { say(T(NEWS_KEYS[what]), true); news(NEWS_KEYS[what]); }
+  react(what);
+}
+// One citizen answers what just happened (the first of those who care, in turn).
+var reacted = {};
+function react(what) {
+  var who = Voices.REACT[what];
+  if (!who) return;
+  var id = who[(reacted[what] = ((reacted[what] || 0) + 1)) % who.length], p = Voices.PEOPLE.filter(function (x) { return x.id === id; })[0];
+  say(T('city.v.say', { name: p.name, line: T('city.v.ev.' + what + '.' + id) }));
+  lastVoice = id; voiceAt = Date.now();
+}
+// Now and then, while the city runs, the citizen with the strongest feeling says it.
+var VOICE_EVERY_MS = 75000, voiceAt = Date.now(), lastVoice = '';
+function voices(now) {
+  if (Date.now() - voiceAt < VOICE_EVERY_MS || messages.length) return;
+  var st = Voices.stats(city.sim, city.climate.warm), p = Voices.next(st, lastVoice), m = Voices.mood(p.id, st);
+  var n = Math.floor(now / VOICE_EVERY_MS) % Voices.LINES;
+  say(T('city.v.say', { name: p.name, line: T('city.v.' + p.id + '.' + m + '.' + n) }));
+  lastVoice = p.id; voiceAt = Date.now();
+}
+// What a new building of the modern kind says when it opens.
+var OPENING = { datacenter: 'city.msg.datacenter', solar: 'city.msg.solar', wind: 'city.msg.wind' };
 
 // ── scenarios and ready-made cities ──
 var PLACE_TITLES = { Q62: 'San Francisco', Q1055: 'Hamburg', Q70: 'Bern', Q1490: 'Tokyo', Q12439: 'Detroit', Q100: 'Boston', Q8678: 'Rio de Janeiro',
@@ -391,6 +423,7 @@ function frame(now) {
     for (var i = 0; i < n; i++) step();
     city.sim.spriteManager.moveObjects(city.sim._constructSimData());
     watchFast(dt, now);
+    voices(now);
     if (now - lastSave > SAVE_EVERY_MS) { lastSave = now; Shell.saveNow(); }
   }
   view.paused = paused;
@@ -457,6 +490,8 @@ var sheets = {
   speed: function (v) { if (v !== undefined) setSpeed(v); return speed; }, fastOK: function () { return fastOK; },
   paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
+  climateOn: function (v) { if (v !== undefined) climateOn = v; return climateOn; },
+  climate: function () { return Climate.summary(city.sim, city.climate); },
   level: function (v) { if (v !== undefined) pendingLevel = v; return pendingLevel; },
   library: Library, get cities() { return cities; }, get scenarios() { return scenarios; }, dateOf: function (m, y) { var z = root.ZimiText; return T('city.date', { month: z.month(m, 'short'), year: z.number(y, { useGrouping: false }) }); }, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
 };
@@ -470,6 +505,7 @@ fromMenu('cy-layers', function () { layersSheet(sheets); });
 fromMenu('cy-speed', function () { speedSheet(sheets); });
 fromMenu('cy-cities', function () { citiesSheet(sheets); });
 fromMenu('cy-scenarios', function () { scenariosSheet(sheets); });
+fromMenu('cy-climate', function () { climateSheet(sheets); });
 $('cy-new').addEventListener('click', function () {
   record('best');
   install(freshCity(pendingLevel));
@@ -479,7 +515,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '',
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn,
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -491,6 +527,8 @@ function unpack(k) {
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
   if (k.scenario && scenarioOf(k.scenario.id)) c.scenario = k.scenario;
+  if (k.climate && typeof k.climate.carbon === 'number') c.climate = Object.assign(Climate.fresh(), k.climate);   // older cities start with none
+  climateOn = k.climateOn !== false;
   install(c, k.cam);
   return true;
 }
@@ -545,7 +583,7 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: unpack });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }

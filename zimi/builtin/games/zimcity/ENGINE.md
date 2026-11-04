@@ -25,3 +25,14 @@ Fixes:
 - `disasterManager.js`: `makeEarthquake` called a `doEarthquake` that does not exist (the original's only shook the screen), so an earthquake threw; the call is gone and the damage stands.
 
 Left out: `queryTool.js`, `gameTools.js` and `text.js` (they depend on jQuery and on upstream's page). ZimCity builds its own tool set and inspect sheet from the same engine calls.
+
+## The modern layer (patched from outside, at load)
+
+`zimcity-modern.js` (our own code, GPL-3.0) changes the engine without editing these files. It wraps or replaces, at
+import time: `Simulation.prototype._clearCensus` and `init` (counts the new buildings, `census.zc`),
+`PowerManager.prototype.doPowerScan` (the engine's flood fill, with solar and wind supply and the data centers' demand
+counted in) and `setTilePower`, `Budget.prototype.collectTax` (the data centers' yearly payment, straight into the
+funds), and `BlockMapUtils.pollutionTerrainLandValueScan` (land value lowered around a data center). The new buildings
+use the engine's spare 3 x 3 slots 956 to 982 (the unused "extended church" tiles), so the bulldozer and zone code
+already know their size. `zimcity-climate.js` and `zimcity-voices.js` only read the simulation, except that the sea
+sets a few shore tiles to water. Saves without the climate open with none.

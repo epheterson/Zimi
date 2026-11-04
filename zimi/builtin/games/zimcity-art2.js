@@ -148,6 +148,35 @@ export function buildings(atlasCtx, at, s) {
     ctx.strokeStyle = s.ind; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(80, 110); ctx.lineTo(80, 30); ctx.lineTo(120, 30); ctx.stroke();
     box(ctx, 60, 10, 36, 24, 8, s.metal, s.metalDark);
   });
+  // the modern layer's three (zimcity-modern.js), in the engine's spare 3 x 3 slots
+  block(atlasCtx, at, 956, 3, function (ctx, n) {   // an AI data center: a long windowless hall, rooftop chillers in rows, one blue line of light
+    lot(ctx, n, s); ctx.fillStyle = s.pave; ctx.fillRect(2, 2, n - 4, n - 4);
+    box(ctx, 6, 8, 84, 66, 10, s.metalDark, s.coal);
+    for (var r = 0; r < 2; r++) for (var k = 0; k < 5; k++) {
+      var x = 11 + k * 16, y = 14 + r * 22;
+      ctx.fillStyle = s.metal; ctx.fillRect(x, y, 13, 16);
+      ctx.strokeStyle = s.coal; ctx.lineWidth = 1; ctx.strokeRect(x + 2.5, y + 2.5, 8, 5); ctx.strokeRect(x + 2.5, y + 9.5, 8, 5);
+    }
+    ctx.fillStyle = s.coal; ctx.fillRect(10, 60, 76, 6);
+    ctx.fillStyle = '#5fb4ff'; ctx.fillRect(6, 76, 84, 2);
+  });
+  block(atlasCtx, at, 965, 3, function (ctx, n) {   // a solar farm: rows of panels on grass
+    lot(ctx, n, s); ctx.fillStyle = s.grass; ctx.fillRect(2, 2, n - 4, n - 4);
+    for (var r = 0; r < 5; r++) for (var k = 0; k < 3; k++) {
+      ctx.fillStyle = '#2f4f86'; ctx.fillRect(8 + k * 28, 8 + r * 17, 24, 11);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'; ctx.fillRect(8 + k * 28, 8 + r * 17, 24, 3);
+    }
+  });
+  block(atlasCtx, at, 974, 3, function (ctx, n) {   // a wind farm: three turbines, seen from above with their shadows
+    lot(ctx, n, s); ctx.fillStyle = s.grass; ctx.fillRect(2, 2, n - 4, n - 4);
+    [[24, 26], [70, 40], [36, 72]].forEach(function (p, i) {
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p[0] + 4, p[1] + 4); ctx.lineTo(p[0] + 22, p[1] + 14); ctx.stroke();
+      ctx.strokeStyle = s.white; ctx.lineWidth = 2.5; ctx.beginPath();
+      for (var b = 0; b < 3; b++) { var a = i * 0.7 + b * Math.PI * 2 / 3; ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] + Math.cos(a) * 14, p[1] + Math.sin(a) * 14); }
+      ctx.stroke();
+      ctx.fillStyle = s.pale; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, Math.PI * 2); ctx.fill();
+    });
+  });
   block(atlasCtx, at, TV.AIRPORTBASE, 6, function (ctx, n) {
     lot(ctx, n, s); ctx.fillStyle = s.grass; ctx.fillRect(0, 0, n, n);
     ctx.fillStyle = s.asphalt; ctx.fillRect(8, 120, n - 16, 26);

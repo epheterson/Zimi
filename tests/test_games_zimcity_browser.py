@@ -406,3 +406,63 @@ def test_a_scenario_and_a_ready_made_city_open_from_the_menu(browser, site):
     pg.click("#cy-scenarios")
     pg.click(OURS + " .cy-maps .ar-btn >> text=Kyoto")
     pg.wait_for_function("() => !window.__zimcity.city.scenario && window.__zimcity.city.name === 'Kyoto'")
+
+
+def test_an_ai_data_center_opens_with_its_news_and_a_citizen_answers(browser, site):
+    """Built from More by a tap: the city pays for it, the line says it opened, and one of the citizens has a view."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="more"]')
+    pg.click(OURS + ' .cy-more-tool >> text="AI data center"')
+    x, y = box["w"] / 2, box["top"] + box["h"] * 0.55
+    before = funds(pg)
+    stroke(pg, [(x, y), (x + 1, y)])
+    assert before - funds(pg) == 12000
+    seen = pg.evaluate("""() => new Promise((done) => {
+      const el = document.getElementById('cy-msg'), lines = new Set([el.textContent]);
+      new MutationObserver(() => lines.add(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
+      setTimeout(() => done([...lines]), 9000);
+    })""")
+    assert any(l.startswith("The AI data center opens.") for l in seen), seen
+    assert any(re.match(r"^(Vivian Crane|Juniper Ash|Dale Pemberton): “.+”$", l) for l in seen), seen
+    pg.evaluate("() => window.__zimcity.step(64)")
+    assert pg.evaluate("() => window.__zimcity.city.sim._census.zc.data") == 1
+    assert not pg.errors, pg.errors
+
+
+def test_the_climate_sheet_says_it_plainly_and_comes_back_after_a_reload(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("""() => { const c = window.__zimcity.city; c.climate.carbon = 9000; c.climate.warm = 1.5; c.climate.sea = 0.12; }""")
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-climate")
+    card = pg.wait_for_selector(OURS + " .ar-sheet-card")
+    text = card.text_content()
+    assert "+1.5 °C" in text and "+12 cm" in text and "A toy model" in text, text
+    assert pg.evaluate("() => document.activeElement && !!document.activeElement.closest('.ar-sheet')")
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-climate.png"))
+    pg.keyboard.press("Escape")
+    pg.evaluate("() => { window.__zimcity.step(4); ZimiShell.saveNow(); }")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    assert pg.evaluate("() => window.__zimcity.city.climate.carbon") >= 9000
+
+
+def test_a_city_saved_before_the_climate_still_opens(browser, site):
+    """Saves from 1.15.3 have no climate: they open with none and start counting."""
+    pg = phone(browser, site)
+    pg.evaluate("() => { window.__zimcity.step(4); ZimiShell.saveNow(); }")
+    pg.evaluate("""() => { const k = 'zimi.games.save.zimcity', v = JSON.parse(localStorage.getItem(k));
+      if (!('climateOn' in v.data)) throw new Error('no climate in the save');
+      delete v.data.climate; delete v.data.climateOn; localStorage.setItem(k, JSON.stringify(v)); }""")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    got = pg.evaluate("() => { const c = window.__zimcity.city; return { carbon: c.climate.carbon, t: c.sim._cityTime }; }")
+    assert got["carbon"] == 0 and got["t"] > 0, got
+    assert not pg.errors, pg.errors
+
+
+def test_the_citizens_speak_in_their_own_names(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => window.__zimcity.voice()")
+    pg.wait_for_function("() => /^(Dale Pemberton|Vivian Crane|Juniper Ash|Gordon Plumb): “.+”$/.test(document.getElementById('cy-msg').textContent)", timeout=10000)

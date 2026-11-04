@@ -37,7 +37,7 @@ var KINDS = [
   [TV.COMBASE, 'commercial'], [TV.INDBASE, 'industrial'], [TV.PORTBASE, 'port'], [TV.AIRPORTBASE, 'airport'], [TV.COALBASE, 'coal'],
   [TV.FIRESTBASE, 'fire'], [TV.POLICESTBASE, 'police'], [TV.STADIUMBASE, 'stadium'], [TV.NUCLEARBASE, 'nuclear'],
   [TV.HBRDG0, 'bridge'], [TV.RADAR0, 'radar'], [TV.FOUNTAIN, 'fountain'], [TV.INDBASE2, 'industrial'], [TV.FOOTBALLGAME1, 'stadium'],
-  [TV.VBRDG0, 'bridge'], [952, 'waste']
+  [TV.VBRDG0, 'bridge'], [952, 'waste'], [956, 'datacenter'], [965, 'solar'], [974, 'wind'], [983, 'clear']
 ];
 // The kind's id under city.kind.*; a fire station and a fire share 'fire' in upstream's list, so the station is told apart.
 export function kindOf(value) {
@@ -72,7 +72,10 @@ export var ICON = {
   port: 'M12 3v15M8 7h8M5 13a7 7 0 0 0 14 0M3 21h18',
   airport: 'M21 15l-8-4V5a1.5 1.5 0 0 0-3 0v6l-8 4v2l8-2v4l-2 1.5V21l3.5-1 3.5 1v-1.5L13 19v-4l8 2z',
   coal: 'M4 21V11l5-3v3l5-3v3h2V4h3v17zM4 21h16',
-  nuclear: 'M7 21c1-6 1-11 0-17h10c-1 6-1 11 0 17zM12 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4'
+  nuclear: 'M7 21c1-6 1-11 0-17h10c-1 6-1 11 0 17zM12 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4',
+  solar: 'M3 19l3-9h12l3 9zM9 10l-1 9M15 10l1 9M4.5 14.5h15M12 3v3M6 5l1.5 1.5M18 5l-1.5 1.5',
+  wind: 'M12 21V10M12 10L7 4M12 10l6.5-1.5M12 10l-1 7M9 21h6',
+  datacenter: 'M5 4h14v6H5zM5 14h14v6H5zM8 7h.01M8 17h.01M12 7h4M12 17h4'
 };
 
 // About: where the simulation comes from, its licence and the Micropolis name's attribution, with links into the ZIM.

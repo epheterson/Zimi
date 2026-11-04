@@ -234,5 +234,21 @@ export function newGameRows(s) {
   return [Play.optionRow(s.T('board.level'), [[Simulation.LEVEL_EASY, s.T('board.level.easy')], [Simulation.LEVEL_MED, s.T('board.level.medium')], [Simulation.LEVEL_HARD, s.T('board.level.hard')]], s.level(), function (v) { s.level(v); })];
 }
 export function settingsRows(s) {
-  return [Play.optionRow(s.T('city.set.disasters'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.disasters(), function (v) { s.disasters(v); })];
+  return [Play.optionRow(s.T('city.set.disasters'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.disasters(), function (v) { s.disasters(v); }),
+          Play.optionRow(s.T('city.set.climate'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.climateOn(), function (v) { s.climateOn(v); })];
+}
+
+// The climate, plainly: how much warmer, how much higher the sea, where the power comes from, and a heat wave if there
+// is one; that it is a toy model; and the real articles, when the library has them.
+export function climateSheet(s) {
+  var c = s.climate(), Z = window.ZimiText, T = s.T;
+  var deg = Z.number(c.warm, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  var rows = [[T('city.cl.warm'), T('city.cl.deg', { n: deg })], [T('city.cl.sea'), T('city.cl.cm', { n: c.seaCm })],
+              [T('city.cl.coal'), pct(s, c.coal * 100)], [T('city.cl.clean'), pct(s, (c.solar + c.wind + c.nuclear) * 100)],
+              [T('city.cl.summer'), T(c.heat ? 'city.cl.heatNow' : 'city.cl.heatNone')]];
+  var body = [list(rows), el('p', 'gs-text', T(c.coal + c.nuclear + c.solar + c.wind === 0 ? 'city.cl.noPower' : c.coal > 0.5 ? 'city.cl.mostlyCoal' : c.coal > 0 ? 'city.cl.someCoal' : 'city.cl.noCoal')),
+              el('p', 'gs-text cy-sc-note', T('city.cl.toy'))];
+  if (!s.climateOn()) body.unshift(el('p', 'gs-text', T('city.cl.off')));
+  ['climate.change', 'climate.sea', 'climate.heat'].forEach(function (k) { var a = s.library.link(k, T); if (a) body.push(a); });
+  Shell.sheet({ title: T('city.climate'), body: body, actions: [{ label: T('shell.close'), primary: true }] });
 }
