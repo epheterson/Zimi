@@ -5,15 +5,21 @@
    water is, where its trees stand. So the shapes follow the engine's own tiles (a corner is still that corner), and a
    tile not redrawn yet keeps its recoloured picture. */
 
+import { buildings } from './zimcity-art2.js';
+
 export var ART = 32;           // a tile in the atlas: twice the engine's 16
 var SRC = 16, PER_ROW = 32;
 
 // The style's colours, light and dark (the recolouring's own, so redrawn and recoloured tiles sit together).
 var STYLE = {
   light: { ground: '#cdbf98', grain: '#c2b38b', water: '#5f93d2', ripple: '#7aa7dc', shore: '#b8a77d', asphalt: '#3b3d42', paint: '#e9e4d6',
-           leaf: '#5aa261', leafDark: '#3f8148', leafLight: '#7dbb7f', trunk: '#7a6a4c', wire: '#4a4c52', pole: '#8d9096', car: ['#e4893d', '#d24a3f', '#f7f5ef', '#5f93d2'], res: '#3f9a52', com: '#3b6fc4', ind: '#b9891a' },
+           leaf: '#5aa261', leafDark: '#3f8148', leafLight: '#7dbb7f', trunk: '#7a6a4c', wire: '#4a4c52', pole: '#8d9096', car: ['#e4893d', '#d24a3f', '#f7f5ef', '#5f93d2'], res: '#3f9a52', com: '#3b6fc4', ind: '#b9891a',
+           wall: '#a8a294', glass: '#9fc2e8', glassDark: '#5f86b8', pave: '#c9c6bd', shopRoof: '#8d9096', yard: '#bdb49a', metal: '#9a9ea6', metalDark: '#6c7078',
+           brick: '#a65a3e', brickDark: '#7d3f2a', coal: '#2a2b2f', white: '#f7f5ef', pale: '#d9dbe0', grass: '#a9c08a', rail: '#6c7078', sleeper: '#8d6e57' },
   dark:  { ground: '#4d4738', grain: '#463f31', water: '#2c4f80', ripple: '#3a6298', shore: '#5a5240', asphalt: '#2a2b2f', paint: '#9a978e',
-           leaf: '#3c7a44', leafDark: '#2a5c31', leafLight: '#4f9358', trunk: '#4e4433', wire: '#b8bac0', pole: '#6a6c71', car: ['#c97532', '#b83f36', '#d9d7d1', '#3f72b8'], res: '#5cb46d', com: '#6d93e0', ind: '#e0b043' }
+           leaf: '#3c7a44', leafDark: '#2a5c31', leafLight: '#4f9358', trunk: '#4e4433', wire: '#b8bac0', pole: '#6a6c71', car: ['#c97532', '#b83f36', '#d9d7d1', '#3f72b8'], res: '#5cb46d', com: '#6d93e0', ind: '#e0b043',
+           wall: '#5c5850', glass: '#5f86b8', glassDark: '#3f5f8c', pave: '#4a4842', shopRoof: '#6a6c71', yard: '#57503f', metal: '#6c7078', metalDark: '#4a4d54',
+           brick: '#7d3f2a', brickDark: '#5c2c1d', coal: '#151618', white: '#d9d7d1', pale: '#9a9ca1', grass: '#4f6a3c', rail: '#9a9ea6', sleeper: '#5c4a3a' }
 };
 
 function rgbAt(d, w, x, y) { var i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }
@@ -64,8 +70,8 @@ function road(ctx, x, y, s, e, cars, step) {
 }
 
 // A power line: thin poles at the middle and two wires to each edge it leaves by.
-function wire(ctx, x, y, s, e) {
-  ground(ctx, x, y, s, x * 3 + y);
+function wire(ctx, x, y, s, e, over) {
+  if (!over) ground(ctx, x, y, s, x * 3 + y);
   var c = ART / 2;
   ctx.strokeStyle = s.wire; ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -146,6 +152,45 @@ function lot(ctx, x, y, s, zone, k) {
   ctx.stroke();
   if (k === 4) { ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(GLYPH[zone])); }
 }
+// Scale2x (EPX): each pixel becomes four, and a corner takes its neighbours' colour where two of them agree, so pixel art
+// doubles with clean diagonals instead of staircases. Neighbours are read within the tile, so tiles never bleed.
+function scale2x(src) {
+  var w = src.width, h = src.height, d = src.getContext('2d').getImageData(0, 0, w, h).data;
+  var out = new ImageData(w * 2, h * 2), o = out.data;
+  function px(x, y) { return ((y * w) + x) * 4; }
+  function eq(a, b) { return d[a] === d[b] && d[a + 1] === d[b + 1] && d[a + 2] === d[b + 2] && d[a + 3] === d[b + 3]; }
+  function put(x, y, from) { var i = ((y * w * 2) + x) * 4; o[i] = d[from]; o[i + 1] = d[from + 1]; o[i + 2] = d[from + 2]; o[i + 3] = d[from + 3]; }
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var tx = x % SRC, ty = y % SRC;
+      var P = px(x, y), A = ty ? px(x, y - 1) : P, D = ty < SRC - 1 ? px(x, y + 1) : P, C = tx ? px(x - 1, y) : P, B = tx < SRC - 1 ? px(x + 1, y) : P;
+      put(x * 2, y * 2, eq(C, A) && !eq(C, D) && !eq(A, B) ? A : P);
+      put(x * 2 + 1, y * 2, eq(A, B) && !eq(A, C) && !eq(B, D) ? B : P);
+      put(x * 2, y * 2 + 1, eq(D, C) && !eq(D, B) && !eq(C, A) ? C : P);
+      put(x * 2 + 1, y * 2 + 1, eq(B, D) && !eq(B, A) && !eq(D, C) ? D : P);
+    }
+  }
+  return out;
+}
+
+// Rails: two steel lines on sleepers, along the same edges as the road of the same place in the order.
+function rail(ctx, x, y, s, e) {
+  var c = ART / 2;
+  ctx.fillStyle = s.sleeper;
+  [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(function (v, i) {
+    if (!e[i]) return;
+    for (var k = 2; k < c; k += 5) { if (v[0]) ctx.fillRect(x + c + v[0] * k - 1, y + c - 7, 3, 14); else ctx.fillRect(x + c - 7, y + c + v[1] * k - 1, 14, 3); }
+  });
+  ctx.fillRect(x + c - 7, y + c - 7, 14, 14);
+  ctx.strokeStyle = s.rail; ctx.lineWidth = 2; ctx.beginPath();
+  [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(function (v, i) {
+    if (!e[i]) return;
+    for (var o = -4; o <= 4; o += 8) { ctx.moveTo(x + c + (v[1] ? o : 0), y + c + (v[0] ? o : 0)); ctx.lineTo(x + c + v[0] * c + (v[1] ? o : 0), y + c + v[1] * c + (v[0] ? o : 0)); }
+  });
+  ctx.stroke();
+}
+var H = [false, true, false, true], V = [true, false, true, false];
+
 function hex(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
 
 // The atlas: `recoloured` (the 16 px tiles in Zimi's colours) doubled, the redrawn tiles over it. `original` is the 1989
@@ -154,8 +199,7 @@ export function atlas(original, recoloured, dark) {
   var s = STYLE[dark ? 'dark' : 'light'], c = document.createElement('canvas');
   c.width = c.height = PER_ROW * ART;
   var ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(recoloured, 0, 0, c.width, c.height);
+  ctx.putImageData(scale2x(recoloured), 0, 0);   // every tile, doubled with Scale2x so its edges stay crisp, then the redrawn ones over it
   var src = document.createElement('canvas');
   src.width = original.naturalWidth; src.height = original.naturalHeight;
   var sctx = src.getContext('2d', { willReadFrequently: true }); sctx.drawImage(original, 0, 0);
@@ -179,6 +223,25 @@ export function atlas(original, recoloured, dark) {
     road(ctx, p[0], p[1], s, shape[base], t >= 144 ? 2 : t >= 80 ? 1 : 0, (t >> 4) & 3);
   }
   for (t = 210; t <= 220; t++) { p = at(t); wire(ctx, p[0], p[1], s, shape[t - 144]); }
+  // rails over land (226 to 236; the two over water keep their picture) in the plain roads' order, and the crossings: a road under a power line (77, 78), a rail
+  // under one (221, 222), a rail across a road (237, 238); each the two drawings, the line on top
+  for (t = 226; t <= 236; t++) { p = at(t); ground(ctx, p[0], p[1], s, t); rail(ctx, p[0], p[1], s, shape[t - 160]); }
+  var both = function (t, under, over) { var q = at(t); under(q); over(q); };
+  both(77, function (q) { road(ctx, q[0], q[1], s, H, 0, 0); }, function (q) { wire(ctx, q[0], q[1], s, V, true); });
+  both(78, function (q) { road(ctx, q[0], q[1], s, V, 0, 0); }, function (q) { wire(ctx, q[0], q[1], s, H, true); });
+  both(221, function (q) { ground(ctx, q[0], q[1], s, 221); rail(ctx, q[0], q[1], s, H); }, function (q) { wire(ctx, q[0], q[1], s, V, true); });
+  both(222, function (q) { ground(ctx, q[0], q[1], s, 222); rail(ctx, q[0], q[1], s, V); }, function (q) { wire(ctx, q[0], q[1], s, H, true); });
+  both(237, function (q) { road(ctx, q[0], q[1], s, V, 0, 0); }, function (q) { rail(ctx, q[0], q[1], s, H); });
+  both(238, function (q) { road(ctx, q[0], q[1], s, H, 0, 0); }, function (q) { rail(ctx, q[0], q[1], s, V); });
+  // bridges: the road over water, with a rail each side
+  [[64, H], [65, V]].forEach(function (b) {
+    var q = at(b[0]);
+    ctx.fillStyle = s.water; ctx.fillRect(q[0], q[1], ART, ART);
+    var horiz = b[1] === H;
+    ctx.fillStyle = s.asphalt; if (horiz) ctx.fillRect(q[0], q[1] + 6, ART, 20); else ctx.fillRect(q[0] + 6, q[1], 20, ART);
+    ctx.fillStyle = s.pole; if (horiz) { ctx.fillRect(q[0], q[1] + 4, ART, 2); ctx.fillRect(q[0], q[1] + 26, ART, 2); } else { ctx.fillRect(q[0] + 4, q[1], 2, ART); ctx.fillRect(q[0] + 26, q[1], 2, ART); }
+  });
+  buildings(ctx, at, s);
   // empty zones: residential 240 to 248, commercial 423 to 431, industrial 612 to 620 (the lot's tiles in reading order)
   [[240, 'res'], [423, 'com'], [612, 'ind']].forEach(function (z) {
     for (var k = 0; k < 9; k++) { var q = at(z[0] + k); inside(ctx, q[0], q[1], function () { lot(ctx, q[0], q[1], s, z[1], k); }); }
