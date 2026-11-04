@@ -14130,6 +14130,7 @@ function _reddotUrl(p) {
 // considerations with all this."
 function _appStrings(app, keys, extra) {
   var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
+    loading_slow: t('app_loading_slow'), loading_failed: t('app_loading_failed'), retry: t('retry'),
     dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app),
     // Your languages (Settings > Languages), for the apps that pick by language.
     yours: _getPrefLanguages().map(_normLang).filter(Boolean) };

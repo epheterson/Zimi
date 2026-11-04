@@ -3540,5 +3540,7 @@
   "near_from": "מקומות בטווח {distance} מ־{place}",
   "near_pick_nearest": "{place} ב־{where}: מבין {n} מקומות בשם הזה, הקרוב אליך ביותר.",
   "near_pick_largest": "{place} ב־{where}: מבין {n} מקומות בשם הזה, הגדול ביותר.",
-  "near_not_found": "אף מפה מותקנת לא מציינת מקום בשם {place}."
+  "near_not_found": "אף מפה מותקנת לא מציינת מקום בשם {place}.",
+  "app_loading_slow": "עדיין בהכנה…",
+  "app_loading_failed": "הטעינה נכשלה."
 }

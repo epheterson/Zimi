@@ -3540,5 +3540,7 @@
   "near_from": "Orte im Umkreis von {distance} um {place}",
   "near_pick_nearest": "{place} bei {where}: von {n} Orten dieses Namens der Ihnen nächste.",
   "near_pick_largest": "{place} bei {where}: von {n} Orten dieses Namens der größte.",
-  "near_not_found": "Keine installierte Karte kennt einen Ort namens {place}."
+  "near_not_found": "Keine installierte Karte kennt einen Ort namens {place}.",
+  "app_loading_slow": "Wird noch vorbereitet …",
+  "app_loading_failed": "Das konnte nicht geladen werden."
 }

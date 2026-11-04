@@ -3540,5 +3540,7 @@
   "near_from": "{place} 周边 {distance} 以内的地点",
   "near_pick_nearest": "{place}（{where}）：同名的 {n} 个地点中离你最近的一个。",
   "near_pick_largest": "{place}（{where}）：同名的 {n} 个地点中最大的一个。",
-  "near_not_found": "已安装的地图上没有名为 {place} 的地点。"
+  "near_not_found": "已安装的地图上没有名为 {place} 的地点。",
+  "app_loading_slow": "仍在准备中…",
+  "app_loading_failed": "未能加载。"
 }

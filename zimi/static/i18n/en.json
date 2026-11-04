@@ -3540,5 +3540,7 @@
   "near_from": "Places within {distance} of {place}",
   "near_pick_nearest": "{place} at {where}: of {n} places with that name, the nearest to you.",
   "near_pick_largest": "{place} at {where}: of {n} places with that name, the largest.",
-  "near_not_found": "No installed map names a place called {place}."
+  "near_not_found": "No installed map names a place called {place}.",
+  "app_loading_slow": "Still getting this ready…",
+  "app_loading_failed": "This didn't load."
 }

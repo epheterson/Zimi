@@ -157,3 +157,13 @@ button { font: inherit; color: inherit; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
 .menu-check { display: inline-block; width: 1.4em; flex: none; color: var(--amber); font-weight: 700; }
 .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+/* Waiting for the first answer (apps.js appWait): cards the shape of the page's own, breathing gently. */
+.app-wait { margin: 12px 0; }
+.app-wait-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.app-wait-card { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); overflow: hidden; animation: app-wait 1.6s ease-in-out infinite; }
+.app-wait-card i { display: block; aspect-ratio: 16 / 9; background: var(--surface2); }
+.app-wait-card b { display: block; height: 10px; margin: 0 12px; border-radius: 5px; background: var(--surface2); }
+.app-wait-card b + b { width: 55%; }
+.app-wait-note { margin: 16px 0 0; color: var(--text2); text-align: center; }
+@keyframes app-wait { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .app-wait-card { animation: none; } }

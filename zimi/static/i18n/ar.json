@@ -3540,5 +3540,7 @@
   "near_from": "أماكن ضمن {distance} من {place}",
   "near_pick_nearest": "{place} عند {where}: الأقرب إليك من بين {n} أماكن بهذا الاسم.",
   "near_pick_largest": "{place} عند {where}: الأكبر من بين {n} أماكن بهذا الاسم.",
-  "near_not_found": "لا توجد خريطة مثبتة تسمّي مكانًا باسم {place}."
+  "near_not_found": "لا توجد خريطة مثبتة تسمّي مكانًا باسم {place}.",
+  "app_loading_slow": "ما زال قيد التحضير…",
+  "app_loading_failed": "تعذّر التحميل."
 }

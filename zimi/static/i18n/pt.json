@@ -3540,5 +3540,7 @@
   "near_from": "Lugares a até {distance} de {place}",
   "near_pick_nearest": "{place} em {where}: de {n} lugares com esse nome, o mais próximo de você.",
   "near_pick_largest": "{place} em {where}: de {n} lugares com esse nome, o maior.",
-  "near_not_found": "Nenhum mapa instalado tem um lugar chamado {place}."
+  "near_not_found": "Nenhum mapa instalado tem um lugar chamado {place}.",
+  "app_loading_slow": "Ainda a preparar…",
+  "app_loading_failed": "Não foi possível carregar."
 }

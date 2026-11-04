@@ -405,15 +405,17 @@ function renderHome() {
 function load() {
   if (_busy) return; _busy = true;
   var url = '/tube?limit=5000&offset=0' + (_q ? '&q=' + encodeURIComponent(_q) : '');
-  fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+  var wait = _all.length ? null : appWait('home');
+  fetch(url).then(function(r) { if (!r.ok) throw r; return r.json(); }).then(function(d) {
     _all = d.items || []; _zims = d.zims || []; _shown = 0;
     _byKey = {};
     _all.forEach(function(v) { _byKey[v.zim + '\n' + v.page] = v; });
     renderHome();
+    if (wait) wait.done();
     // Opened at an address: play what it names, once, then it is a page like
     // any other visit here.
     if (STR.play) { var want = STR.play; STR.play = ''; var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === want; }); if (i >= 0) play(null, i); }
-  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; })
+  }).catch(function() { if (wait) wait.fail(load); else { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; } })
     .finally(function() { _busy = false; });
 }
 function tubeMore() { _shown += PAGE; renderHome(); }

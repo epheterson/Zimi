@@ -3540,5 +3540,7 @@
   "near_from": "Lieux à moins de {distance} de {place}",
   "near_pick_nearest": "{place} à {where} : sur {n} lieux de ce nom, le plus proche de vous.",
   "near_pick_largest": "{place} à {where} : sur {n} lieux de ce nom, le plus grand.",
-  "near_not_found": "Aucune carte installée ne nomme un lieu appelé {place}."
+  "near_not_found": "Aucune carte installée ne nomme un lieu appelé {place}.",
+  "app_loading_slow": "Encore un instant…",
+  "app_loading_failed": "Le chargement a échoué."
 }

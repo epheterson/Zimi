@@ -3540,5 +3540,7 @@
   "near_from": "{place} से {distance} के भीतर की जगहें",
   "near_pick_nearest": "{where} पर {place}: इस नाम की {n} जगहों में से आपके सबसे पास वाली।",
   "near_pick_largest": "{where} पर {place}: इस नाम की {n} जगहों में से सबसे बड़ी।",
-  "near_not_found": "किसी भी इंस्टॉल किए गए नक्शे पर {place} नाम की कोई जगह नहीं है।"
+  "near_not_found": "किसी भी इंस्टॉल किए गए नक्शे पर {place} नाम की कोई जगह नहीं है।",
+  "app_loading_slow": "अभी तैयार हो रहा है…",
+  "app_loading_failed": "यह लोड नहीं हुआ।"
 }
