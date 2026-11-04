@@ -72,6 +72,29 @@ for (const id of Object.keys(NOAA)) {
   check(dt.length === NOAA[id].length && max(dt) <= MAX_MIN && max(dh) <= MAX_M && mean(dt) <= MEAN_MIN && mean(dh) <= MEAN_M, label);
 }
 
+// A world station (TICON-3, scripts/build_tide_world.py) against a published table: Dover on 5 Nov 2026, times in
+// GMT and heights in metres above chart datum (Lowest Astronomical Tide), as tidetimes.org.uk printed them on
+// 4 Nov 2026 from the UK's own predictions. Our constants are a gauge's, not the Admiralty's, and our datum is
+// estimated, so the bounds are a sailor's, not NOAA's.
+const WORLD = {
+  Dover: [['2611050246', 1.91, 'L'], ['2611050802', 5.99, 'H'], ['2611051516', 1.48, 'L'], ['2611052043', 6.01, 'H']],
+};
+const WORLD_MAX_MIN = 15, WORLD_MAX_M = 0.2;
+for (const name of Object.keys(WORLD)) {
+  const st = snap.stations.find(s => s.src === 'ticon3' && s.n === name);
+  if (!st) { check(false, name + ' is a world station in the snapshot'); continue; }
+  const p = TM.predictor(st, snap.constituents, null);
+  const off = WORLD[name].map(([ts, h, type]) => {
+    const t = utc(ts);
+    const near = p.extremes(t - 3 * 3600e3, t + 3 * 3600e3).filter(e => e.high === (type === 'H'))
+      .sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+    return near ? [Math.abs(near.t - t) / 60000, Math.abs(near.h - h)] : [Infinity, Infinity];
+  });
+  const worstMin = Math.max(...off.map(o => o[0])), worstM = Math.max(...off.map(o => o[1]));
+  check(worstMin <= WORLD_MAX_MIN && worstM <= WORLD_MAX_M,
+    `${name} (TICON-3): worst ${worstMin.toFixed(0)} min, ${(worstM * 100).toFixed(0)} cm from the published table`);
+}
+
 // Every additional constituent NOAA lists anywhere is rebuilt from its name
 // (or skipped on purpose): an unknown one would silently drop a term.
 const unknown = new Set();
