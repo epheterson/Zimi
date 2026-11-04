@@ -90,6 +90,13 @@ def _daily_hrefs(ctx, site):
     return hrefs
 
 
+
+def _shot(page, name):
+    """A picture for a person to look at, only when DAILY_SHOT_DIR asks for one (no stray files in /tmp, which Windows lacks)."""
+    if os.environ.get("DAILY_SHOT_DIR"):
+        page.screenshot(path=os.path.join(os.environ["DAILY_SHOT_DIR"], name))
+
+
 def test_the_shelf_writes_the_servers_day_into_every_daily_whatever_the_zone(
     site, browser
 ):
@@ -195,9 +202,7 @@ def test_a_finished_daily_is_ticked_on_the_shelf_and_its_end_sheet_shares_no_ans
         "() => ZimiShell.endSheet({ result: 'win', after: 0, stats: [['Time', '4:12']] })"
     )
     page.wait_for_selector(".gs-share-row button")
-    page.screenshot(
-        path=os.environ.get("DAILY_SHOT_DIR", "/tmp") + "/daily-end-sheet.png"
-    )
+    _shot(page, "daily-end-sheet.png")
     kept = page.evaluate("() => JSON.parse(localStorage.getItem('zimi.games.stats'))")
     assert kept["days"][SERVER_DAY] == {"sudoku.html": "win"}
     text = page.evaluate(
@@ -215,10 +220,7 @@ def test_a_finished_daily_is_ticked_on_the_shelf_and_its_end_sheet_shares_no_ans
     )
     assert done == ["sudoku.html?daily=" + SERVER_DAY]
     assert "1 of" in page.inner_text(".ar-daily-line")
-    page.screenshot(
-        path=os.environ.get("DAILY_SHOT_DIR", "/tmp") + "/daily-shelf.png",
-        full_page=False,
-    )
+    _shot(page, "daily-shelf.png")
     ctx.close()
 
 

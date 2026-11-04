@@ -56,4 +56,4 @@ def test_state_files_follow_the_umask(tmp_path):
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "0o640", out.stdout
-    assert json.loads(path.read_text()) == {"a": 1}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}

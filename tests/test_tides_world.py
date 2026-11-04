@@ -54,7 +54,7 @@ def test_no_world_gauge_stands_on_a_noaa_station():
             if abs(s["la"] - w["la"]) < 0.1 and abs(s["lo"] - w["lo"]) < 0.15
         ]
         for s in near:
-            assert placedata._km(w["la"], w["lo"], s["la"], s["lo"]) >= NOAA_WINS_KM, (
+            assert placedata.km_between(w["la"], w["lo"], s["la"], s["lo"]) >= NOAA_WINS_KM, (
                 w["n"],
                 s["n"],
             )
