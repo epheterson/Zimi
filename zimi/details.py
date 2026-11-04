@@ -42,7 +42,10 @@ class DetailsBuilder:
     when given, is told when a ZIM left the library before it was read.
     ``table`` and ``columns`` spell the file's CREATE TABLE; changing them
     means bumping ``version``, or a file an earlier release wrote is taken
-    as current and read with the wrong columns."""
+    as current and read with the wrong columns. ``indexes`` names columns to
+    index in the file, for a kind that is asked by key rather than read whole;
+    ``load`` None keeps no rows in memory (the file is asked instead), only
+    that it is there."""
 
     def __init__(
         self,
@@ -59,6 +62,7 @@ class DetailsBuilder:
         lock,
         on_keep,
         gone=None,
+        indexes=(),
     ):
         self.kind = kind
         self.zims = zims
@@ -72,6 +76,7 @@ class DetailsBuilder:
         self.lock = lock
         self.on_keep = on_keep
         self.gone = gone
+        self.indexes = tuple(indexes)
         self._kept = {}  # name -> (real path of the ZIM it was read from, details)
         # One build at a time, as _build_all_title_lock serializes the title
         # index; _queued keeps a ZIM from being asked for twice while it waits.
@@ -112,6 +117,10 @@ class DetailsBuilder:
             conn.executemany(
                 f"INSERT OR REPLACE INTO {self.table} VALUES ({marks})", rows
             )
+            for col in self.indexes:
+                conn.execute(
+                    f"CREATE INDEX {self.table}_{col} ON {self.table} ({col})"
+                )
             _write_index_meta(conn, archive, zim_path, self.version, len(rows))
             conn.commit()
         except Exception:
@@ -195,7 +204,7 @@ class DetailsBuilder:
                         name,
                         time.time() - t0,
                     )
-                details = self.load(self.read(name))
+                details = self.load(self.read(name)) if self.load else True
                 _background_ok(self.kind, name)
             except Exception as e:
                 _background_fail(self.kind, name)

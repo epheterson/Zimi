@@ -5730,6 +5730,15 @@ def warm_indexes():
         except Exception as e:
             log.warning("Bookshelf details phase failed: %s", e)
 
+        # Phase 1d: the towns on each Kiwix map, read from its tiles, so a
+        # town its search pages leave out is found by name (Danville, CA).
+        try:
+            from zimi import mapplaces as _mapplaces
+
+            _mapplaces.build_all()
+        except Exception as e:
+            log.warning("Map places phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()
