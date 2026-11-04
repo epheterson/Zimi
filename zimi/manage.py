@@ -7320,6 +7320,32 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _sats.setting())
 
+    elif parsed.path == "/manage/almanac-hd":
+        # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
+        # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
+        # true} queues the download, the Almanac's offer said yes.
+        from zimi import almanachd as _hd
+
+        if data.get("start"):
+            dl_id, err = _hd.start(activity_actor(handler))
+            if err == "never":
+                return handler._json(409, {"error": "Almanac HD is set to never be fetched"})
+            if err == "unavailable":
+                return handler._json(404, {"error": "No Almanac HD for this version"})
+            if err and err != "installed":
+                return handler._json(500, {"error": "Could not start the download"})
+            return handler._json(200, dict(_hd.status(), id=dl_id))
+        _mode, err = _hd.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Almanac HD is controlled by the %s env var" % _hd.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _hd.status())
+
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,
         # answered with the view's payload so it redraws from the answer.

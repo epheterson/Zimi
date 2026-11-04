@@ -1,0 +1,52 @@
+name: Almanac HD
+
+# Builds Almanac HD (scripts/build_almanac_hd.py: NASA's Earth and Moon as tile
+# pyramids, about 115 MB) and attaches it to a release that already exists.
+# Zimi fetches it from there once, when someone opening the Almanac says yes
+# (zimi/almanachd.py reads zimi/assets/almanac-hd.json for the file and tag).
+#
+# By hand, not on every release: the imagery changes when NASA reissues it, not
+# when Zimi does. The descriptor it writes is uploaded as an artifact; commit it
+# with the release that names that tag. It never creates or moves a tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The existing release to attach the file to (e.g. v1.15.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload the release asset
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt "Pillow>=13.0.0" numpy
+
+      - name: Build the tiles and the ZIM
+        env:
+          TAG: ${{ inputs.tag }}
+        run: python3 scripts/build_almanac_hd.py --out dist --tag "$TAG"
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/zimi_almanac_hd_*.zim --clobber
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: almanac-hd-descriptor
+          path: zimi/assets/almanac-hd.json

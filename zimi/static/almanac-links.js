@@ -1150,14 +1150,15 @@
   // are tappable, so a missing hit is a no-op -- never a dead end, never a
   // toast, never a search.
   function open(key) {
-    if (typeof openArticle !== 'function') return;
     var q = _qidFor(key);
-    var hit = q ? _qidLinks[q] : null;
-    if (!hit) return;
+    openHit(q ? _qidLinks[q] : null);
+  }
+  // Leave the almanac and open a resolved article; the return intent is stamped AFTER openArticle (which clears it
+  // for normal opens), so a Back from the article reopens the almanac where it was.
+  function openHit(hit, opts) {
+    if (!hit || typeof openArticle !== 'function') return;
     var scroll = _leaveAlmanac();
-    openArticle(hit.zim, hit.path, hit.title);
-    // Stamp the return intent AFTER openArticle (which clears it for normal
-    // opens), so a Back from this article reopens the almanac at `scroll`.
+    openArticle(hit.zim, hit.path, hit.title, opts);
     window._almReturnScroll = scroll;
   }
 
@@ -1249,8 +1250,17 @@
     _preload();
   }
 
+  // -- Beyond the curated set -------------------------------------------------
+  // A body's landmarks (almanac-earth.js) carry their own Q-IDs, hundreds of them: each is resolved when its card
+  // opens, against the same library and languages, by the same rule (no search: a Q-ID that maps to no installed
+  // article stays plain text). Resolves to { qid: hit } for those that do.
+  function resolve(qids) {
+    if (!_encZimNames().length || !qids.length) return Promise.resolve({});
+    return _fetchChunk(qids.slice(0, _QID_BATCH_SIZE), _prefLangs(), {}).then(function (links) { return links || {}; });
+  }
+
   window.AlmanacLinks = {
     MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday, linkifyEvent: linkifyEvent,
-    open: open, bind: bind, reset: reset, linkFor: linkFor
+    open: open, openHit: openHit, bind: bind, reset: reset, linkFor: linkFor, resolve: resolve
   };
 })();

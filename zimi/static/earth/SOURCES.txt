@@ -69,3 +69,27 @@ constellations-v1.json
 Moon and Earth: the Earth view's maps above (moon-v1.webp, earth-day-v1.webp,
 earth-night-v1.webp). Saturn's rings are drawn from their measured radial
 structure (Cassini Division 117,500-122,200 km, Encke Gap near 133,500 km).
+
+landmarks-v1.json
+  Named places on the Moon for the 3D view's labels, cards and Fly there, built
+  by scripts/build_landmarks.py: every IAU-adopted lunar feature worth a label
+  (maria, sinus, lacus, montes, stationes, the Apollo sites' named features, and
+  craters from 20 km), from the IAU Gazetteer of Planetary Nomenclature (USGS
+  Astrogeology Science Center, public domain), each with its Wikidata Q-ID by
+  Gazetteer ID (P2824; Wikidata is CC0); and 25 landings at their published
+  coordinates (NASA NSSDC and the LRO camera team, CNSA, ISRO, JAXA), each
+  with the Q-ID of its English Wikipedia article. 84 KB, fetched the first time
+  the Moon is near.
+  https://planetarynames.wr.usgs.gov/
+
+Almanac HD (zimi_almanac_hd_<month>.zim, not in this folder: a ZIM of its own,
+attached to a release and fetched once on an admin's yes; zimi/almanachd.py)
+  The Earth and the Moon as 512 px tile pyramids, built by
+  scripts/build_almanac_hd.py, all public domain:
+  - Earth by day: NASA Blue Marble: Next Generation (Reto Stockli, NASA Earth
+    Observatory), through NASA GIBS (500 m set), to 610 m a pixel.
+  - Earth by night: NASA Black Marble 2016 (VIIRS), through NASA GIBS.
+  - Moon: the CGI Moon Kit's LRO colour mosaic at 16k (above), and the
+    Lunar Orbiter Laser Altimeter's elevation at 64 pixels a degree
+    (ldem_64_uint.tif) as surface normals, so the Moon is lit by its relief.
+    https://svs.gsfc.nasa.gov/4720

@@ -115,15 +115,21 @@ SHELL_SEEDS = (
 #: aside (no library to open, no PDF reader, no account).
 GUARDED = frozenset(
     (
+        "_MAPS_SVG",
         "_armTapRelay",
         "_chromeReset",
         "_getPrefLanguages",
         "_gearSvg",
+        "_installedMaps",
+        "_lastMapVisit",
+        "_mapName",
         "_nightSet",
         "_pdfViewerUrl",
         "_zimiVersion",
         "authedFetch",
         "closeReader",
+        "fmtBytes",
+        "mapPositionHash",
         "openArticle",
         "openReader",
         "updateTopbar",
