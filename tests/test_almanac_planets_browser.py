@@ -192,49 +192,140 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             br.close()
 
 
-def test_the_strip_the_minimap_and_the_orrery_s_way_in(served):
-    """Every destination in one sideways strip; near a planet the corner minimap shows where you are and opens the
-    whole system; the 2D orrery's planet tip opens the 3D view on that planet."""
+def _open(pg, served, target="earth"):
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+    pg.evaluate("(t) => openAlmanacEarth({ target: t })", target)
+    pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
+    pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+
+
+def _ctx(br, width=390):
+    ctx = br.new_context(viewport={"width": width, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE))
+    return ctx
+
+
+def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
+    """The short row stays (Earth, Satellites, Moon, Sun, Planets) with Go to: a sheet of every place in groups, each
+    with its disc; a tap flies and puts it away. Near a planet the corner minimap shows where you are and opens the
+    whole system; the 2D orrery's planet tap opens the 3D view on that planet."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
         try:
-            ctx = br.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
-            ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE))
+            ctx = _ctx(br)
             pg = ctx.new_page()
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
             pg.goto(served + "/#almanac", wait_until="load")
             pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
-            # The orrery's way in: open on Jupiter, as its tip's button does.
             pg.evaluate("_orreryOpenEarthView('jupiter')")
             pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'jupiter'; }", timeout=60_000, polling=200)
-            # One strip, one row, sideways only, every planet in it.
-            strip = pg.evaluate("""() => { var s = document.getElementById('ae-views'), cs = getComputedStyle(s);
-                var tops = new Set(Array.from(s.children).map(b => b.offsetTop));
-                return { rows: tops.size, wrap: cs.flexWrap, ox: cs.overflowX, keys: Array.from(s.children).map(b => b.dataset.aeView) }; }""")
-            assert strip["rows"] == 1 and strip["wrap"] == "nowrap" and strip["ox"] == "auto", strip
-            assert {"earth", "moon", "sun", "planets", "mercury", "neptune", "io", "titan", "pluto", "ceres"} <= set(strip["keys"]), strip
-            assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"jupiter\"]').getAttribute('aria-pressed')") == "true"
-            # Tap straight to Saturn from Jupiter.
-            pg.click("#ae-views [data-ae-view='saturn']")
+            row = pg.evaluate("Array.from(document.querySelectorAll('#ae-views > *')).map(b => b.dataset.aeView || b.id)")
+            assert row == ["earth", "sats", "moon", "sun", "planets", "ae-go-btn"], row
+            pg.click("#ae-go-btn")
+            pg.wait_for_function("() => !document.getElementById('ae-go').hidden && document.querySelectorAll('#ae-go [data-ae-go=\"voyager1\"]').length === 1", timeout=60_000)
+            groups = pg.evaluate("Array.from(document.querySelectorAll('#ae-go h4')).length")
+            assert groups == 5, groups
+            assert pg.evaluate("Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-dot'))")
+            pg.click("#ae-go [data-ae-go='saturn']")
+            assert pg.evaluate("document.getElementById('ae-go').hidden")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'saturn'; }", timeout=60_000, polling=200)
-            # Near a body: no orbit or other probe's path as a line across the screen; no not-to-scale line (the
-            # minimap says it); no credit for a map not drawn there.
             assert pg.evaluate("Object.keys(_ae.gl.planets).every(k => !_ae.gl.planets[k].orbit || !_ae.gl.planets[k].orbit.visible)")
             assert not pg.is_visible("#ae-scale")
-            pg.click("#ae-views [data-ae-view='mars']")
+            pg.evaluate("_aePreset('mars')")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'mars' && _ae.gl.planets.mars.uni.mapped.value === 1; }", timeout=60_000, polling=200)
             pg.evaluate("_aeUpdateText(_aeDisplayMs())")
             assert "Solar System Scope" not in pg.inner_text(".ae-note"), "Mars is the Viking map: nothing of Solar System Scope's is drawn"
-            # The minimap is up near a planet, drawn by the orrery's own painters, and takes you to the whole system.
             assert pg.is_visible("#ae-mini")
             pg.click("#ae-mini")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }", timeout=60_000, polling=200)
             assert not pg.is_visible("#ae-mini")
             assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+@pytest.mark.parametrize("start", ["earth", "jupiter"])
+def test_every_destination_flies(served, start):
+    """Every place in Go to (and the row) takes the camera there: from the Earth and from Jupiter, none is a dead tap
+    (Pluto and Ceres wait for their table and then go)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("_aeShowGo(true)")
+            pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).concat(['sun', 'planets', 'sats'])")
+            pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")   # each flight lands at once
+            missed = []
+            for k in keys:
+                pg.evaluate("(s) => { _ae.fly = null; _aePreset(s); }", start)
+                pg.wait_for_function("(s) => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset && (_ae.target === s || (s === 'jupiter' ? false : true)); }", arg=start, timeout=30_000, polling=100)
+                pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k)
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset; }", timeout=30_000, polling=100)
+                got = pg.evaluate("""(k) => { var want = k === 'planets' ? 'sun' : k === 'sats' ? 'earth' : k;
+                    _aeUpdate(_aeDisplayMs());   // where the camera stands now
+                    var t = _aeTargetPos(), b = _aeBodyPos(want), c = _ae.gl.camera.position;
+                    return { target: _ae.target, want: want, near: !!b && Math.hypot(t[0] - b[0], t[1] - b[1], t[2] - b[2]) < 1e-6,
+                             dist: Math.hypot(c.x - t[0], c.y - t[1], c.z - t[2]), allowed: Math.max(AE_TARGETS[want].max, _ae.dist) * 1.01, d: _ae.dist }; }""", k)
+                if got["target"] != got["want"] or not got["near"] or got["dist"] > got["allowed"]:
+                    missed.append((k, got))
+            assert not missed, missed
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_a_flight_to_a_planet_is_the_fly_between(served):
+    """1.15.2's shot for every flight: over the shoulder, a circle on the body it leaves and on the one it goes to, and
+    the line of sight and up turning with no snap (the bounds of test_almanac_earth_view.cjs's section 8b)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            _open(pg, served)
+            for frm, to in (("earth", "jupiter"), ("jupiter", "saturn"), ("mars", "moon")):
+                rings = pg.evaluate("""(a) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset(a.frm); window._almReduceMotion = undefined; _aeUpdate(_aeDisplayMs());
+                    _aePreset(a.to); var f = _ae.fly; f.start = performance.now() - AE_FLY_APPROACH_MS; _aeStepFly(performance.now());
+                    _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene);
+                    var out = {}; [a.frm, a.to].forEach(function (b) { var el = document.getElementById('ae-bm-' + b);
+                      out[b] = { shown: !el.hidden, ringed: el.classList.contains('ae-bm-ringed'), ring: getComputedStyle(el.querySelector('.ae-ring')).display }; });
+                    out.hold = !!f.hold; _ae.fly = null; return out; }""", {"frm": frm, "to": to})
+                assert rings["hold"], (frm, to, rings)
+                for b in (frm, to):
+                    assert rings[b]["shown"] and rings[b]["ringed"] and rings[b]["ring"] != "none", (frm, to, b, rings)
+                series = pg.evaluate("""(a) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset(a.frm); window._almReduceMotion = undefined; _aeUpdate(_aeDisplayMs());
+                    _aePreset(a.to); var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, out = [], FR = 1000 / 60;
+                    for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6)); _aePlaceCamera();
+                      var cam = _ae.gl.camera; cam.updateMatrixWorld(); var e = cam.matrixWorld.elements; out.push([[-e[8], -e[9], -e[10]], [e[4], e[5], e[6]]]); if (!_ae.fly) break; }
+                    _ae.fly = null; return out; }""", {"frm": frm, "to": to})
+                import math
+
+                def ang(p, q):
+                    return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(p, q))))))
+
+                for k in (0, 1):
+                    w = [ang(series[i][k], series[i + 1][k]) for i in range(len(series) - 1)]
+                    acc = [w[i + 1] - w[i] for i in range(len(w) - 1)]
+                    jerk = [acc[i + 1] - acc[i] for i in range(len(acc) - 1)]
+                    assert max(abs(x) for x in acc) <= 0.5, (frm, to, k, max(abs(x) for x in acc))
+                    assert max(abs(x) for x in jerk) <= 0.1, (frm, to, k, max(abs(x) for x in jerk))
+                    assert w[0] <= 0.05 and w[-1] <= 0.05, (frm, to, k, w[0], w[-1])
             ctx.close()
         finally:
             br.close()
