@@ -3607,6 +3607,25 @@ def _is_own_zim_path(path):
     return ownzims.is_own_path(path)
 
 
+def _own_zim_update(path, prior):
+    """(updated_at, own) for one of Zimi's own ZIMs, where ``own`` = {"v": Zimi version, "src": the hash of
+    the source it was built from (its .source file)}. Updated only when this Zimi is a different version
+    than the one that last served it AND the content differs: a redeploy or rebuild of the same release,
+    or a new release whose games did not change, is nothing new to look at."""
+    try:
+        with open(path + ".source", encoding="utf-8") as f:
+            src = f.read().strip()
+    except OSError:
+        src = ""
+    own = {"v": ZIMI_VERSION, "src": src}
+    prior = prior or {}
+    was = prior.get("own") or {}
+    kept = prior.get("updated_at")
+    if src and was.get("src") and was.get("v") != ZIMI_VERSION and was.get("src") != src:
+        return time.time(), own
+    return kept, own
+
+
 def _self_heal_mass_first_seen(info, file_cache, zims):
     """Repair a library-wide first_seen stamp left by a full cache rebuild.
 
@@ -3863,10 +3882,11 @@ def load_cache(force=False):
             updated_at = cached.get("updated_at")
         else:
             updated_at = time.time()
-        if updated_at and _is_own_zim_path(path):
-            # Zimi's own ZIMs are rebuilt with Zimi itself (a new dated file every deploy): the app
-            # changed, there is nothing new to read, so they never wear the Updated dot.
-            updated_at = None
+        own = None
+        if _is_own_zim_path(path):
+            # Zimi's own ZIMs are rebuilt with Zimi itself, a new dated file every deploy. They are
+            # Updated only when a new Zimi version brings different content (_own_zim_update).
+            updated_at, own = _own_zim_update(path, cached or prior_by_name.get(name))
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
             if (
@@ -3995,6 +4015,8 @@ def load_cache(force=False):
                 cached_out["first_seen"] = first_seen
             if updated_at is not None:
                 cached_out["updated_at"] = updated_at
+            if own:
+                cached_out["own"] = own
             file_cache[filename] = cached_out
         else:
             # Cache miss — scan this ZIM
@@ -4051,6 +4073,8 @@ def load_cache(force=False):
                 new_cached["first_seen"] = first_seen
             if updated_at is not None:
                 new_cached["updated_at"] = updated_at
+            if own:
+                new_cached["own"] = own
             file_cache[filename] = new_cached
 
     # Self-heal a library that a pre-fix rebuild already mass-stamped. The code
