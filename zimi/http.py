@@ -1457,7 +1457,8 @@ def _random_pick_verdict(
 # these two were 19% of it (9 KB of 47 KB): a copy of the provenance record
 # that /zim-info?kinds=1 already serves on purpose, and an mtime that
 # first_seen and updated_at already answer for.
-_PRIVATE_ZIM_FIELDS = ("zimi_kind", "mtime")
+_PRIVATE_ZIM_FIELDS = ("zimi_kind", "mtime", "own_h")
+_ZIM_UPDATES_ASK_MAX = 50  # an app is a few dozen ZIMs at most
 
 
 def _public_zim_entry(entry):
@@ -3074,7 +3075,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 info = _zim_info(zim)
                 if info is None:
                     return self._json(404, {"error": f"ZIM '{zim}' not found"})
-                return self._json(200, info)
+                # How it came to be what it is: About's Last updated and Update history.
+                return self._json(200, {**info, "updates": _srv.zim_updates(info.get("name") or zim)})
+
+            elif parsed.path == "/zim-updates":
+                # What lit a dot, asked only when someone opens the dot: each ZIM's arrivals and updates
+                # (zimi.server.zim_updates). Only the ZIMs this person may see.
+                names = [n for n in (param("zims") or "").split(",") if n][:_ZIM_UPDATES_ASK_MAX]
+                return self._json(200, {"updates": {n: _srv.zim_updates(n) for n in names if _srv.zim_allowed(n)}})
 
             elif parsed.path == "/whoami":
                 return self._uncached(self._handle_whoami)

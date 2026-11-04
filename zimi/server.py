@@ -3617,13 +3617,50 @@ def _own_zim_update(path, prior):
             src = f.read().strip()
     except OSError:
         src = ""
-    own = {"v": ZIMI_VERSION, "src": src}
     prior = prior or {}
     was = prior.get("own") or {}
-    kept = prior.get("updated_at")
+    # The releases that changed it, newest first: what its Updated dot and About say.
+    own = {"v": ZIMI_VERSION, "src": src, "h": list(was.get("h") or [])[:_OWN_HISTORY_MAX]}
     if src and was.get("src") and was.get("v") != ZIMI_VERSION and was.get("src") != src:
-        return time.time(), own
-    return kept, own
+        now = time.time()
+        own["h"] = ([{"v": ZIMI_VERSION, "ts": now}] + own["h"])[:_OWN_HISTORY_MAX]
+        return now, own
+    return prior.get("updated_at"), own
+
+
+_OWN_HISTORY_MAX = 10
+_ZIM_UPDATES_MAX = 10
+_whatsnew = None
+
+
+def _whatsnew_lines(version, own_name):
+    """The release's highlight lines about one of Zimi's own ZIMs (assets/whatsnew.json, from the CHANGELOG)."""
+    global _whatsnew
+    if _whatsnew is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "whatsnew.json"), encoding="utf-8") as f:
+                _whatsnew = json.load(f)
+        except (OSError, ValueError):
+            _whatsnew = {}
+    return list((_whatsnew.get(version) or {}).get(own_name) or [])
+
+
+def zim_updates(name):
+    """How ``name`` came to be what it is, newest first: each arrival and update of a library ZIM from
+    the event history (its file, so its edition, and its size), or for one of Zimi's own ZIMs, each Zimi
+    release that changed it with that release's highlights. For a dot that explains itself and About."""
+    out = []
+    for z in _zim_list_cache or []:
+        if z.get("name") == name and z.get("own_h"):
+            for h in z["own_h"]:
+                out.append({"event": "release", "ts": h.get("ts"), "version": h.get("v"), "notes": _whatsnew_lines(h.get("v"), name)})
+            return out
+    for ev in _load_history():
+        if ev.get("name") == name and ev.get("event") in ("download", "updated"):
+            out.append({"event": ev["event"], "ts": ev.get("ts"), "file": ev.get("filename", ""), "size_bytes": ev.get("size_bytes") or 0})
+            if len(out) >= _ZIM_UPDATES_MAX:
+                break
+    return out
 
 
 def _self_heal_mass_first_seen(info, file_cache, zims):
@@ -4009,6 +4046,8 @@ def load_cache(force=False):
             # what lets a picture request be answered from the client's copy
             # without opening the archive to find out — see _picture_etag.
             entry["mtime"] = mtime
+            if own and own.get("h"):
+                entry["own_h"] = own["h"]
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:
@@ -4027,6 +4066,8 @@ def load_cache(force=False):
                 entry["first_seen"] = first_seen
             entry["updated_at"] = updated_at
             entry["mtime"] = mtime
+            if own and own.get("h"):
+                entry["own_h"] = own["h"]
             info.append(entry)
             scanned += 1
             new_cached = {
