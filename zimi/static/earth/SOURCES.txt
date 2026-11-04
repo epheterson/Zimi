@@ -166,6 +166,12 @@ asteroids-v1.bin (scripts/build_asteroids.py)
   The main belt's asteroids brighter than H 14 (17,992), osculating elements
   from NASA/JPL's Small-Body Database (SBDB Query API), brought to one epoch
   and quantized to 16 bits, 216 KB. Moved by Kepler's laws in the view.
+
+iss-v1.bin (scripts/build_iss_model.py)
+  The International Space Station: NASA 3D Resources' "International Space
+  Station (ISS) (B)", credit NASA/Michael D. Carbajal; the collection's terms:
+  "These assets are free and without copyright". No textures (no logo).
+  Simplified from 174,000 triangles to 31,000 and quantized, 331 KB.
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.

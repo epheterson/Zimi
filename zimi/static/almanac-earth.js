@@ -684,6 +684,7 @@ var AE_GO_PROBE_COLOR = '#6ee7d8';
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
 function _aeGoDot(key) {
+  if (key === 'iss') return '<i class="ae-go-dot ae-go-probe" style="background:rgb(255,209,89);color:rgb(255,209,89)"></i>';
   if (_aeIsProbe(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_GO_PROBE_COLOR + '"></i>';
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
   if (b && !b.parent && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) hex = _PLANETS[b.eph].color;
@@ -698,12 +699,13 @@ function _aeGoGroups() {
   // The spacecraft flying on the shown date: one whose table ends (Cassini into Saturn, Galileo into Jupiter) or has
   // not begun is not a place to go then.
   var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
-  var craft = _aeTracks ? _aeTracks.probes.filter(function (k) { return !!_aeTrackAt(_aeTracks.tracks[k], jd); }) : [];
+  var craft = (_ae.issPos ? ['iss'] : []).concat(_aeTracks ? _aeTracks.probes.filter(function (k) { return !!_aeTrackAt(_aeTracks.tracks[k], jd); }) : []);
   return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft]]
     .filter(function (g) { return g[1].length; });
 }
 function _aeGoName(key) {
   if (key === 'earth') return _tp('Earth');
+  if (key === 'iss') return _aeT('alm_earth_iss_short');
   if (key === 'moon') return _aeT('alm_moon');
   if (_aeIsProbe(key)) return _aeTracks.tracks[key].name;
   var b = _aePlanetBody(key);
@@ -2501,6 +2503,7 @@ function _aeBodyPos(key, sc) {
   if (!sc || key === 'earth') return [0, 0, 0];
   if (key === 'moon') return sc.moon;
   if (key === 'sun') return _aeSunShown(sc);
+  if (key === 'iss') return _ae.issPos || null;
   var p = _ae.gl && _ae.gl.planets && _ae.gl.planets[key];
   if (p) return p.pos;
   return _aeProbePos[key] || null;   // a probe, while its table covers the date; null for anything not there
@@ -2523,7 +2526,7 @@ function _aePlanetCredit() {
 // pointing the way it looks.
 var AE_MINI_FILL = 0.46, AE_MINI_SHIP_PX = 6, AE_MINI_ORBIT_ALPHA = 0.28;
 function _aeMiniShown() {
-  return !!(_ae.gl && _ae.gl.ecl) && _ae.preset !== 'planets' && _ae.target !== 'earth' && _ae.target !== 'moon' && !_ae.hand;
+  return !!(_ae.gl && _ae.gl.ecl) && _ae.preset !== 'planets' && _ae.target !== 'earth' && _ae.target !== 'moon' && _ae.target !== 'iss' && !_ae.hand;
 }
 function _aeDrawMini() {
   var btn = _aeById('ae-mini'), on = _aeMiniShown() && typeof _orreryPaintPlanets === 'function';
@@ -2916,6 +2919,14 @@ function _aeObserver() {
 // (app.js _moonLimbAngles, the same answer the hero disc turns by), so the
 // terminator lies as it does in their sky; everywhere else north is up.
 function _aeRollDeg(target, ms) {
+  // By the station, up is away from the Earth (its zenith), so the horizon lies across the picture.
+  if (target === 'iss' && _ae.issPos) {
+    var d = _aeNorm(_aeScale(_aeCameraOffset(_ae.az, _ae.el_, 1), -1)), z = _aeNorm(_ae.issPos);
+    var n = _aeSub([0, 0, 1], _aeScale(d, d[2])), u = _aeSub(z, _aeScale(d, _aeDot(z, d)));
+    if (_aeLen(n) < 1e-9 || _aeLen(u) < 1e-9) return 0;
+    n = _aeNorm(n);
+    return _aeDeg(Math.atan2(_aeDot(u, _aeCross(n, d)), _aeDot(u, n)));
+  }
   var obs = target === 'moon' ? _aeObserver() : null;
   return obs ? _moonLimbAngles(new Date(ms), obs.lat, obs.lon).q : 0;
 }
@@ -2983,6 +2994,9 @@ function _aeFlyTo(target, dist, azel, overview) {
     var ms = overview ? AE_FLY_OVERVIEW_MS : _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
     var hold = !overview && !!_ae.scene && target !== from.target;
     _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, lead: AE_FLY_APPROACH_MS };
+    // A destination on the move (the ISS goes 30 km in a flight's 4 s): the flight is planned to where it was, and
+    // carried along by how far it has gone since, all of it by the end.
+    if (target === 'iss' && _ae.issPos) _ae.fly.trackFrom = _ae.issPos.slice();
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
       _ae.fly.shoulder = sh;
@@ -3244,6 +3258,7 @@ function _aeStepFly(now) {
   if (f.hold) {
     // The orbit model (a point looked at, a direction and a distance) holds any camera and look-at pair.
     var c = _aeShoulderCam(f, now), v = _aeSub(c.pos, c.look), d = _aeLen(v);
+    if (f.trackFrom && _ae.issPos) c.look = _aeAdd(c.look, _aeScale(_aeSub(_ae.issPos, f.trackFrom), _aeSmoother(f.prog)));
     f.look = c.look;
     _ae.dist = d; _ae.az = Math.atan2(v[1], v[0]); _ae.el_ = Math.asin(v[2] / d);
   } else {
@@ -3321,6 +3336,7 @@ function _aePlaceCamera() {
   // And from every planet and moon, and the probe in view: in a flight the body left behind stands in the foreground,
   // and a near plane set by the Earth or the Sun alone cut it away (its ring went with it).
   var toBody = _aeIsProbe(_ae.target) ? _aeLen(_aeSub(pos, _aeTargetPos())) - AE_PROBE_SURFACE : Infinity;
+  if (_ae.issPos && S.iss && S.iss.root.visible) toBody = Math.min(toBody, _aeLen(_aeSub(pos, _ae.issPos)) - AE_ISS_SPAN_RE / 2);
   var pl = _ae.gl.planets;
   for (var pk in pl) {
     if (!pl[pk].pos) continue;
@@ -3437,6 +3453,15 @@ function _aePreset(name) {
     // Pluto and Ceres come with the probes' table: not here yet, the tap waits for it and then flies.
     if (!at) { _ae.pendingPreset = name; _aeTracksLoad(); return; }
     _aeFlyTo(name, _aeFitDist(AE_TARGETS[name].surface * AE_PLANET_FIT * (_aePlanetBody(name).rings ? 1.6 : 1)), _ae.scene ? _aeAzElOf(_aeScale(at, -1)) : null);
+  } else if (name === 'iss') {
+    if (!_ae.issPos || !_ae.issBasis) return;
+    // From above, behind and to starboard: the truss across the picture, the Earth below it to the horizon.
+    var B = _ae.issBasis, dir = [0, 1, 2].reduce(function (acc, k) { return _aeAdd(acc, _aeScale(B[k], AE_ISS_VIEW_DIR[k])); }, [0, 0, 0]);
+    // On the Sun's side of the arrays (they face it), so their faces are lit and can glint: the other way round
+    // horizontally if the Sun is behind.
+    if (_ae.scene && _aeDot(dir, _ae.scene.sun) < 0) dir = _aeAdd(_aeScale(B[0], AE_ISS_VIEW_DIR[0]), _aeAdd(_aeScale(B[1], -AE_ISS_VIEW_DIR[1]), _aeScale(B[2], -AE_ISS_VIEW_DIR[2])));
+    _aeIssLoad();
+    _aeFlyTo('iss', AE_ISS_VIEW_DIST, _aeAzElOf(dir));
   } else if (name === 'sun') {
     // From the Earth's side too: the Sun as it stands in our sky, ahead.
     _aeFlyTo('sun', _aeFitDist(AE_FIT_SUN), _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.sun, -1)) : null);
@@ -3697,6 +3722,7 @@ function _aeUpdateSats(ms, sc) {
     var color = sel ? AE_SELECTED_COLOR : (s.iss ? AE_ISS_COLOR : AE_GPS_COLOR);
     var alpha = standing === 'approximate' ? AE_ISS_FADED_ALPHA : 1;
     var size = sel ? AE_SAT_SELECTED_PX : (s.iss ? AE_ISS_POINT_PX : AE_SAT_POINT_PX);
+    if (s.iss) alpha *= _aeIssAt(st, eqeq, standing);   // its dot gives way to the station itself, close up
     _aeSetPoint(S.sats, count++, st.pos, color, alpha, size);
     _ae.positions.push({ idx: i, pos: st.pos, st: st });
   }
@@ -3707,6 +3733,7 @@ function _aeUpdateSats(ms, sc) {
     _ae.ringsAt = ms;
   }
   if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
+  if (!issShown || !_ae.issPos) _aeIssAt(null);
   // A card belongs to a dot: when the tapped satellite's dot goes (its data
   // too far from the shown instant), its card goes with it.
   if (_ae.selected && !selShown) { _ae.selected = null; _aeRenderCard(); }
@@ -3751,6 +3778,147 @@ function _aeOrientMoon(sc) {
   S.basis.setPosition(sc.moon[0], sc.moon[1], sc.moon[2]);
   S.moon.matrix.copy(S.basis);
   S.moon.matrixWorldNeedsUpdate = true;
+}
+
+// ── The ISS, close up ──
+// iss-v1.bin (scripts/build_iss_model.py, from NASA 3D Resources' "International Space Station (ISS) (B)", NASA/Michael D.
+// Carbajal, free and without copyright): fetched when the view first goes to the station or near it. Held the way the
+// station flies (LVLH: the truss across the direction of travel, the Russian segment behind, the truss on the zenith
+// side), its main solar arrays turned about the truss toward the Sun. Lit by the Sun (the arrays glint), by the Earth
+// below in daylight, and dark in the Earth's shadow. Under AE_ISS_MODEL_PX across it is not drawn: the dot is.
+var AE_ISS_URL = '/static/earth/iss-v1.bin';
+var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
+var AE_ISS_MODEL_PX = [6, 14];                              // the model fades in across these widths, the dot out
+var AE_ISS_VIEW_DIST = AE_ISS_SPAN_RE * 2.2;                // a flight to it ends this far off: the whole station in view
+var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
+var AE_ISS_EARTHSHINE = 0.3;                                // the day side below, as a light from the nadir
+// Shading per class (structure, truss, turning array, radiator, fixed array): colour, specular strength, sharpness.
+var AE_ISS_LOOK = [[[0.86, 0.85, 0.82], 0.25, 24], [[0.62, 0.62, 0.6], 0.3, 30], [[0.5, 0.34, 0.14], 1.8, 90],
+  [[0.94, 0.94, 0.96], 0.15, 12], [[0.12, 0.15, 0.3], 1.2, 70]];
+var _aeIssData = null, _aeIssLoading = false;
+AE_TARGETS.iss = { min: AE_ISS_SPAN_RE * 0.9, max: 0.5, surface: AE_ISS_SPAN_RE / 2 };
+var AE_ISS_VERT = [
+  'attribute float cls;',
+  'varying vec3 vView;',
+  'varying float vCls;',
+  'void main() {',
+  '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+  '  vView = mv.xyz; vCls = cls;',
+  '  gl_Position = projectionMatrix * mv;',
+  '}'
+].join('\n');
+var AE_ISS_FRAG = [
+  'uniform vec3 sunView;',
+  'uniform vec3 nadirView;',
+  'uniform float lit;',
+  'uniform float earthLight;',
+  'uniform float fade;',
+  'uniform vec3 albedo[5];',
+  'uniform vec3 shine[5];',
+  'varying vec3 vView;',
+  'varying float vCls;',
+  'void main() {',
+  '  vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));',   // flat: the station is panels and cylinders
+  '  vec3 v = normalize(-vView);',
+  '  if (dot(n, v) < 0.0) n = -n;',
+  '  int k = int(vCls + 0.5);',
+  '  vec3 a = albedo[0]; vec3 sp = shine[0];',
+  '  for (int i = 1; i < 5; i++) { if (i == k) { a = albedo[i]; sp = shine[i]; } }',
+  '  float d = max(dot(n, sunView), 0.0) * lit;',
+  '  vec3 h = normalize(sunView + v);',
+  '  float s = sp.x * pow(max(dot(n, h), 0.0), sp.y) * lit * step(0.0, dot(n, sunView));',
+  '  float e = max(dot(n, nadirView), 0.0) * earthLight;',
+  '  vec3 lin = a * (d + e * vec3(0.55, 0.7, 1.0) + 0.02) + vec3(s);',
+  '  gl_FragColor = vec4(sqrt(min(lin, vec3(1.0))), fade);',
+  '}'
+].join('\n');
+function _aeIssLoad() {
+  if (_aeIssData || _aeIssLoading || typeof fetch !== 'function') return;
+  _aeIssLoading = true;
+  fetch(AE_ISS_URL).then(function (r) { if (!r.ok) throw new Error('iss'); return r.arrayBuffer(); }).then(function (buf) {
+    var dv = new DataView(buf), f = function (o) { return dv.getFloat32(o, true); };
+    var lo = [f(12), f(16), f(20)], hi = [f(24), f(28), f(32)], nv = dv.getUint32(44, true), nt = dv.getUint32(48, true);
+    var pos = new Float32Array(nv * 3), cls = new Float32Array(nv), o = 52, mid = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
+    for (var i = 0; i < nv; i++, o += 8) {
+      for (var k = 0; k < 3; k++) pos[i * 3 + k] = lo[k] + (dv.getInt16(o + 2 * k, true) + 32767) / 65534 * (hi[k] - lo[k]) - mid[k];
+      cls[i] = dv.getUint8(o + 6);
+    }
+    var idx = nv > 65535 ? new Uint32Array(buf.slice(o, o + nt * 12)) : new Uint16Array(buf.slice(o, o + nt * 6));
+    _aeIssData = { metres: f(8), pos: pos, cls: cls, idx: idx, axis: [f(36) - mid[0], f(40) - mid[1]], span: hi[2] - lo[2] };
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { _aeIssLoading = false; });
+}
+function _aeIssBuild(S) {
+  var THREE = S.THREE, d = _aeIssData, g = new THREE.BufferGeometry();
+  var position = new THREE.BufferAttribute(d.pos, 3), cls = new THREE.BufferAttribute(d.cls, 1);
+  var body = [], arrays = [];
+  for (var t = 0; t < d.idx.length; t += 3) (d.cls[d.idx[t]] === 2 ? arrays : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
+  var geo = function (list) {
+    var gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', position); gg.setAttribute('cls', cls);
+    gg.setIndex(new THREE.BufferAttribute(d.pos.length / 3 > 65535 ? new Uint32Array(list) : new Uint16Array(list), 1));
+    return gg;
+  };
+  var uni = { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, lit: { value: 1 },
+    earthLight: { value: 0 }, fade: { value: 1 },
+    albedo: { value: AE_ISS_LOOK.map(function (l) { return new THREE.Vector3(l[0][0], l[0][1], l[0][2]); }) },
+    shine: { value: AE_ISS_LOOK.map(function (l) { return new THREE.Vector3(l[1], l[2], 0); }) } };   // (the build has no Vector2)
+  var mat = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_ISS_VERT, fragmentShader: AE_ISS_FRAG, transparent: true, side: THREE.DoubleSide });
+  var root = new THREE.Group(), pivot = new THREE.Group(), arr = new THREE.Mesh(geo(arrays), mat), main = new THREE.Mesh(geo(body), mat);
+  pivot.position.set(d.axis[0], d.axis[1], 0);
+  arr.position.set(-d.axis[0], -d.axis[1], 0);
+  pivot.add(arr); root.add(main); root.add(pivot);
+  root.scale.setScalar(d.metres / 1000 / AE_EARTH_RADIUS_KM);
+  main.frustumCulled = arr.frustumCulled = false;
+  root.visible = false;
+  S.scene.add(root);
+  g.dispose();
+  return { root: root, pivot: pivot, uni: uni, basis: null };
+}
+// The station's place and attitude now, from its SGP4 state; null hides it. Returns how much of its dot to draw.
+function _aeIssAt(st, eqeq, standing) {
+  var S = _ae.gl;
+  if (!st) {
+    _ae.issPos = _ae.issBasis = null;
+    if (S.iss) S.iss.root.visible = false;
+    return 1;
+  }
+  var pos = st.pos, vel = _aeRotZ([st.velKmS.x, st.velKmS.y, st.velKmS.z], eqeq);
+  var nadir = _aeNorm(_aeScale(pos, -1)), fwd = _aeNorm(_aeSub(vel, _aeScale(nadir, _aeDot(vel, nadir)))), star = _aeCross(nadir, fwd);
+  var prev = _ae.issBasis;
+  _ae.issPos = pos; _ae.issBasis = [nadir, fwd, star];
+  // Close by, the camera rides along with the station (its place in the station's own axes held), so the Earth stays
+  // below it as it goes round; a drag turns about it as anywhere else.
+  if (prev && _ae.target === 'iss' && !_ae.fly) {
+    var off = _aeCameraOffset(_ae.az, _ae.el_, 1), loc = [_aeDot(off, prev[0]), _aeDot(off, prev[1]), _aeDot(off, prev[2])];
+    var azel = _aeAzElOf(_aeAdd(_aeAdd(_aeScale(nadir, loc[0]), _aeScale(fwd, loc[1])), _aeScale(star, loc[2])));
+    _ae.az = azel.az; _ae.el_ = azel.el;
+  }
+  var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var dist = _aeLen(_aeSub(eye, pos)), px = AE_ISS_SPAN_RE / Math.max(dist, 1e-9) * (_ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2));
+  var show = _smoothstep(AE_ISS_MODEL_PX[0], AE_ISS_MODEL_PX[1], px);
+  if (show > 0 || _ae.target === 'iss') _aeIssLoad();
+  if (!_aeIssData) return 1;
+  if (!S.iss || S.iss.root.parent !== S.scene) S.iss = _aeIssBuild(S);
+  var I = S.iss;
+  I.root.visible = show > 0;
+  if (!I.root.visible) return 1;
+  I.root.position.set(pos[0], pos[1], pos[2]);
+  var m = new S.THREE.Matrix4().makeBasis(new S.THREE.Vector3(nadir[0], nadir[1], nadir[2]),
+    new S.THREE.Vector3(fwd[0], fwd[1], fwd[2]), new S.THREE.Vector3(star[0], star[1], star[2]));
+  I.root.quaternion.setFromRotationMatrix(m);
+  var sun = _aeNorm(_ae.scene.sun), sm = [_aeDot(sun, nadir), _aeDot(sun, fwd)];
+  I.pivot.rotation.z = Math.atan2(sm[1], sm[0]);   // the arrays' faces (+x) toward the Sun, about the truss
+  // In the Earth's shadow (a cylinder behind it, the edge softened over the penumbra's few seconds).
+  var along = _aeDot(pos, sun), perp = _aeLen(_aeSub(pos, _aeScale(sun, along)));
+  I.uni.lit.value = along > 0 ? 1 : _smoothstep(0.995, 1.005, perp);
+  I.uni.earthLight.value = AE_ISS_EARTHSHINE * _aeClamp(0.5 + 0.5 * _aeDot(_aeNorm(pos), sun), 0, 1);
+  I.uni.fade.value = show * _aeFadeU.value;
+  I.root.updateMatrixWorld();
+  var vInv = cam.matrixWorldInverse.elements;
+  var toView = function (u, out) { out.set(vInv[0] * u[0] + vInv[4] * u[1] + vInv[8] * u[2], vInv[1] * u[0] + vInv[5] * u[1] + vInv[9] * u[2], vInv[2] * u[0] + vInv[6] * u[1] + vInv[10] * u[2]).normalize(); };
+  toView(sun, I.uni.sunView.value); toView(nadir, I.uni.nadirView.value);
+  return 1 - show;
 }
 
 function _aeUpdate(ms) {
@@ -3862,7 +4030,8 @@ function _aeUpdateLabels() {
   }
   // Not while the Earth is a small ringed disc (the ISS is a speck on it, and its label would sit on the Earth's), nor
   // through a flight between bodies, whose two names are the only words.
-  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_ae.fly && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
+  var issNear = !!(_ae.gl.iss && _ae.gl.iss.root.visible);   // the station itself is drawn: no name on it
+  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_ae.fly && !issNear && !_aeBehindEarth(iss.p.pos) && _aeEarthPx() >= 2 * AE_MARK_GONE_PX);
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
@@ -3897,7 +4066,7 @@ function _aeUpdateMarks(sc) {
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body]) { if (!el.hidden) el.hidden = true; continue; }
     // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).
-    var s = (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
+    var s = (_ae.target === 'iss' && !ringed) || (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
     // The name stands off the body's drawn disc (or, in a flight, off the body itself as the view shows it).

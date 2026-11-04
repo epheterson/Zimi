@@ -14,7 +14,8 @@ import threading
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 GL_ARGS = [
     "--use-angle=swiftshader",
@@ -312,6 +313,52 @@ def test_the_pull_back_to_the_planets_is_two_seconds_and_smooth(served):
             fills = pg.evaluate("""() => { _aeAst.at = null; _aeAst.fill = null; _ae.fly = null; _aePreset('planets'); _ae.fly = null; var n = 0;
                 do { _aeUpdate(_aeDisplayMs()); n++; } while (_aeAst.fill != null && n < 50); return { n: n, drawn: _aeAst.drawn }; }""")
             assert fills["n"] >= 3 and fills["drawn"] == pg.evaluate("Math.ceil(_aeAst.n / AE_AST_STRIDE)"), fills
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_iss_close_up(served):
+    """Go to has the ISS; a flight there ends on the station itself (NASA's model, under 1 MB), held as it flies: the
+    truss across the direction of travel, the US segment ahead, the truss on the zenith side, the main arrays turned to
+    the Sun, lit in daylight, up away from the Earth. From the Earth view it is the dot, and the model is not drawn."""
+    import math
+    from playwright.sync_api import sync_playwright
+
+    assert os.path.getsize(os.path.join(ROOT, "zimi", "static", "earth", "iss-v1.bin")) < 1_000_000
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.issPos; }", timeout=60_000, polling=200)
+            far = pg.evaluate("() => ({ drawn: !!(_ae.gl.iss && _ae.gl.iss.root.visible) })")
+            assert not far["drawn"], far
+            pg.evaluate("_aeShowGo(true)")
+            pg.click("#ae-go [data-ae-go='iss']")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'iss' && !!_ae.gl.iss && _ae.gl.iss.root.visible; }", timeout=60_000, polling=200)
+            got = pg.evaluate("""() => { _aeUpdate(_aeDisplayMs()); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(); var I = _ae.gl.iss, V = _ae.gl.THREE.Vector3;
+                var ax = function (x, y, z) { var v = new V(x, y, z).applyQuaternion(I.root.quaternion); return [v.x, v.y, v.z]; };
+                var p = _ae.issPos, B = _ae.issBasis, sun = _aeNorm(_ae.scene.sun);
+                var arr = new V(1, 0, 0).applyQuaternion(I.pivot.quaternion).applyQuaternion(I.root.quaternion);
+                var sunIn = _aeNorm(_aeSub(sun, _aeScale(ax(0, 0, 1), _aeDot(sun, ax(0, 0, 1)))));
+                var cam = _ae.gl.camera.matrixWorld.elements, up = [cam[4], cam[5], cam[6]], look = [-cam[8], -cam[9], -cam[10]];
+                var zen = _aeNorm(p), zenIn = _aeNorm(_aeSub(zen, _aeScale(look, _aeDot(zen, look))));
+                return { truss: _aeDot(ax(0, 0, 1), _aeNorm(_aeCross(p, B[1]))), fwd: _aeDot(ax(0, 1, 0), B[1]), nadir: _aeDot(ax(1, 0, 0), _aeScale(_aeNorm(p), -1)),
+                         arrays: _aeDot([arr.x, arr.y, arr.z], sunIn), lit: I.uni.lit.value, up: _aeDot(up, zenIn), label: document.getElementById('ae-lbl-iss').hidden,
+                         dist: _ae.dist, span: AE_ISS_SPAN_RE }; }""")
+            assert got["truss"] < -0.999, got     # starboard is the orbit's negative normal
+            assert got["fwd"] > 0.999 and got["nadir"] > 0.999, got
+            assert got["arrays"] > 0.999, got
+            assert got["up"] > 0.999 and got["label"], got
+            assert got["dist"] < got["span"] * 5, got
+            shade = pg.evaluate("() => { var b = _aeNorm(_ae.issPos), s = _aeNorm(_ae.scene.sun); return _aeDot(b, s); }")
+            if shade > 0:
+                assert got["lit"] == 1, got
+            assert not errors, errors
             ctx.close()
         finally:
             br.close()
