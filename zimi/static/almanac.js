@@ -1789,6 +1789,7 @@ function _almSecBarTeardown() {
   if (_almSecBar.io) _almSecBar.io.disconnect();
   if (_almSecBar.ro) _almSecBar.ro.disconnect();
   if (_almSecBar.roFrame) clearTimeout(_almSecBar.roFrame);
+  if (_almSecBar.root) _almSecBar.root.removeEventListener('scroll', _almSecBarSync);
   _almSecBar = null;
 }
 // The sections that are on the page now (a late or empty one is left out).
@@ -1833,6 +1834,11 @@ function _almSecBarInit() {
   var line = ALM_SECBAR_LINE, rest = Math.max(0, root.clientHeight - line - 1);
   st.io = new IntersectionObserver(_almSecBarSync, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
   sections.forEach(function (s) { s.els.forEach(function (e) { st.io.observe(e); }); });
+  // The line only reports a section crossing it: a jump from one gap between sections to another crosses none (the
+  // page's top can itself sit in a gap), so a scroll asks too (the browser sends it at most once a frame, and only
+  // while the page moves: a still page asks nothing).
+  st.root = root;
+  root.addEventListener('scroll', _almSecBarSync, { passive: true });
   // A late section (the tide) or an empty one filling in changes the set. The
   // observer already runs once per laid-out frame, so it asks for none: a
   // parked page stays without frames.
