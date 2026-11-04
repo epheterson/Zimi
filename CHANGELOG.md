@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **ZimCity:** a city builder made for the phone, with the classic scenarios, an AI data center, solar and wind, a toy climate and citizens with opinions.
 - **Daily games:** today's edition of 63 games, the same for everyone on a Zimi server, with streaks, stats and a spoiler-free share line; rooms (Kids, Arcade, Game night, Solo) on the shelf.
 - **Games polish:** one card size across card games, tap-to-aim on small boards, Hint in Xiangqi and Shogi, and full game names on a phone.
+- **Apps:** a dot means something new you haven't opened and clears when you open the app; tap it to see what changed; apps show their own waiting cards instead of a blank page.
 - **Search:** `near:Danville 10km` lists the towns on your maps nearby; questions find articles written in another form of their words; "Did you mean" leaves real words alone.
 - **AI agents:** Zimi's MCP server keeps a clean stream when the library prints a notice.
 - **Linux:** `zimi service install` sets up the systemd unit that now ships with Zimi (#137).
@@ -25,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Polished games:** Canasta, Janggi, Mahjong, Loopy, Five Letters, Mancala and the solitaires play by the right rules and read better on a phone.
 - **Read aloud:** a spinner while it gets ready, Pause and Play up front, it follows along again after you look away, and it skips foreign-script asides.
 - **Always current:** an open Zimi picks up a new version when it loads or comes back to the front.
-- **Library:** leave a ZIM out of auto-update (#34), and a ZIM renamed upstream is offered as its update.
+- **Library:** leave a ZIM out of auto-update, and a ZIM renamed upstream is offered as its update.
 - **Phones:** curved iPhones keep the header and reader clear of the edges, and wide infoboxes fit (#136).
 - **Installs:** a systemd unit runs Zimi at boot after a pip install (#137), and libzim 4.0 works.
 
