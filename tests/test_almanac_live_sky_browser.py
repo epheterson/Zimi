@@ -477,11 +477,13 @@ def test_life_on_the_horizon(browser, served):
     ctx, pg, errors = _almanac(browser, served, place=DENVER)
     try:
         _settle(pg, DAY)
+        # The place is answered, and inland there is no tide section at all (#140), not a far station's.
         pg.wait_for_function(
-            "() => !!document.querySelector('#almanac-place .at-tides')",
+            "() => typeof _at !== 'undefined' && !!_at.data && !_at.loading",
             polling=POLL_MS,
             timeout=60000,
         )
+        assert pg.evaluate("() => document.querySelector('#almanac-place .at-tides')") is None
         pg.evaluate("_skyKick()")
         pg.wait_for_timeout(300)
         assert pg.evaluate("_skyState.sea") is None
