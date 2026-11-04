@@ -23,8 +23,10 @@ zimi/static/earth/SOURCES.txt):
   earth/night  NASA Black Marble 2016 (VIIRS), through NASA GIBS, greyscale.
   moon/relief  NASA SVS CGI Moon Kit, LOLA elevation at 64 pixels a degree
                (ldem_64_uint.tif, half-metres), as surface normals: east and
-               north tilt in red and green, so the Moon's own shader lights
-               every crater wall and ridge from the Sun of the moment.
+               north tilt in red and green, square-root companded (a mare's
+               tenth-of-a-degree slopes would band at 8 bits under a low Sun),
+               so the Moon's own shader lights every crater wall and ridge
+               from the Sun of the moment.
   moon/albedo  NASA SVS CGI Moon Kit, LRO Wide Angle Camera colour mosaic,
                16k (lroc_color_poles_16k.tif), greyscale.
 
@@ -278,9 +280,13 @@ MOON_RADIUS_M = 1737400.0
 HALF_METRE = 0.5  # the uint LOLA map's unit (offset 20,000 to stay positive: slopes do not see it)
 
 
+RELIEF_SMOOTH_PX = 1.0  # LOLA's gridding leaves faint stripes along the tracks; a pixel's blur takes them, not the craters
+
+
 def normals_map(dem_path, out_path, width):
-    """An elevation map (plate carree) as a normal map ``width`` wide: per pixel, the surface's tilt to the east and to
-    the north as red and green (0.5 is level), from centred differences over the sphere's true pixel sizes."""
+    """An elevation map (plate carree) as a normal map ``width`` wide: per pixel, the unit normal's east and north
+    components t as red and green, stored as 0.5 + 0.5 * sign(t) * sqrt(|t|) (0.5 is level; the shader squares it
+    back), from centred differences over the sphere's true pixel sizes. Blue is unused (level)."""
     import numpy as np
     from PIL import Image
 
@@ -289,7 +295,9 @@ def normals_map(dem_path, out_path, width):
         return out_path
     src = Image.open(dem_path)
     dem = src.resize((width, width // 2), Image.BOX) if src.width != width else src
-    z = np.asarray(dem, dtype=np.float32) * HALF_METRE
+    from scipy.ndimage import gaussian_filter
+
+    z = gaussian_filter(np.asarray(dem, dtype=np.float32) * HALF_METRE, RELIEF_SMOOTH_PX, mode="wrap")
     h, w = z.shape
     step = np.deg2rad(360.0 / w)
     lat = np.deg2rad(90.0 - (np.arange(h) + 0.5) * 180.0 / h)
@@ -300,9 +308,10 @@ def normals_map(dem_path, out_path, width):
     del z, up, down
     inv = 1.0 / np.sqrt(gx * gx + gy * gy + 1.0)
     rgb = np.empty((h, w, 3), dtype=np.uint8)
-    rgb[..., 0] = np.clip(np.rint((0.5 - 0.5 * gx * inv) * 255), 0, 255)
-    rgb[..., 1] = np.clip(np.rint((0.5 - 0.5 * gy * inv) * 255), 0, 255)
-    rgb[..., 2] = np.clip(np.rint((0.5 + 0.5 * inv) * 255), 0, 255)
+    for ch, g in ((0, gx), (1, gy)):
+        t = -g * inv
+        rgb[..., ch] = np.clip(np.rint((0.5 + 0.5 * np.sign(t) * np.sqrt(np.abs(t))) * 255), 0, 255)
+    rgb[..., 2] = 128
     Image.fromarray(rgb, "RGB").save(out_path)
     return out_path
 
@@ -319,7 +328,7 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
         )
         _check_pin(layer, _sha_files([path]), update)
         if spec.get("derive") == "normals":
-            path = normals_map(path, os.path.join(cache, "files", "moon-normals-%d.png" % (TILE * 2 ** (top + 1))), TILE * 2 ** (top + 1))
+            path = normals_map(path, os.path.join(cache, "files", "moon-normals-v2-%d.png" % (TILE * 2 ** (top + 1))), TILE * 2 ** (top + 1))
         kind, src = "file", path
     # One process per row of the deepest level; a FileMosaic holds the whole map, so fewer of those at once.
     workers = procs or (os.cpu_count() or 4) if kind == "gibs" else 2
@@ -357,6 +366,56 @@ Publisher: Zimi
 Tags: _category:education;astronomy;zimi;zimi:own;zimi:almanac-hd
 Icon: icon.png
 """
+
+
+MIMES = {".webp": "image/webp", ".json": "application/json", ".html": "text/html", ".png": "image/png"}
+
+
+def pack_zim(stage, path):
+    """The staged folder as one ZIM. Written here rather than by Zimi's folder capture: fifteen thousand tiles
+    need no full-text index (the capture's indexing stalled libzim's writer at the end, under load), and the
+    metadata is fixed. Every tile is an asset, never a front article: nothing here is read or searched."""
+    import pathlib
+
+    from libzim.writer import Creator
+
+    from zimi.libzimcompat import add_illustration
+    from zimi.zimwriter import make_asset_item, zim_static_item_class
+
+    tmp = path + ".part"
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    page = zim_static_item_class()
+    with Creator(pathlib.Path(tmp)).config_indexing(False, "eng") as zc:
+        zc.set_mainpath("index.html")
+        for dirpath, dirnames, files in os.walk(stage):
+            dirnames.sort()
+            for fn in sorted(files):
+                full = os.path.join(dirpath, fn)
+                rel = os.path.relpath(full, stage).replace(os.sep, "/")
+                if rel in ("zimi.txt", "icon.png"):
+                    continue
+                with open(full, "rb") as f:
+                    data = f.read()
+                if rel == "index.html":
+                    zc.add_item(page(rel, "Almanac HD", data))
+                else:
+                    zc.add_item(make_asset_item(rel, MIMES[os.path.splitext(fn)[1]], data))
+        meta = dict(line.split(": ", 1) for line in ZIMI_TXT.strip().split("\n"))
+        for key in ("Title", "Description", "Language", "Creator", "Publisher", "Tags"):
+            zc.add_metadata(key, meta[key])
+        zc.add_metadata("Name", NAME)
+        zc.add_metadata("Date", datetime.date.today().isoformat())
+        with open(os.path.join(stage, "icon.png"), "rb") as f:
+            icon = f.read()
+        from PIL import Image
+
+        with Image.open(io.BytesIO(icon)) as im:
+            small = io.BytesIO()
+            im.convert("RGBA").resize((48, 48), Image.LANCZOS).save(small, "PNG")
+        add_illustration(zc, 48, small.getvalue())
+    os.replace(tmp, path)
+    return path
 
 
 def main(argv=None):
@@ -403,13 +462,11 @@ def main(argv=None):
     if a.no_zim:
         print("staged", stage)
         return 0
-    from zimi import creator
-
     os.makedirs(a.out, exist_ok=True)
     path = os.path.join(
         a.out, "%s_%s.zim" % (NAME, datetime.date.today().strftime("%Y-%m"))
     )
-    creator.create_folder_zim(stage, out_path=path, register=False)
+    pack_zim(stage, path)
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     if a.tag:
         # What almanachd.py offers and fetches: committed with the release that carries the file.

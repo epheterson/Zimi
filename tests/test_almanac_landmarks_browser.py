@@ -141,7 +141,7 @@ def test_map_here_opens_the_map_at_the_place_below(served):
             pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly", timeout=READY_MS, polling=200)
             # No map installed: no button, however close.
             pg.evaluate("_ae.dist = 1.15; _aeUpdateText(_aeDisplayMs())")
-            assert pg.evaluate("document.getElementById('ae-maprow').hidden")
+            assert not pg.is_visible("#ae-map")
             # A map installed (stood in for here), over San Francisco, close in.
             pg.evaluate("""() => {
                 window._installedMaps = () => [{ name: 'maps_test', main_path: 'index.html', title: 'Test map' }];
@@ -151,10 +151,10 @@ def test_map_here_opens_the_map_at_the_place_below(served):
                 var a = _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(37.77, -122.42), _ae.scene.gast));
                 _ae.az = a.az; _ae.el_ = a.el; _ae.dist = 1.15; _aePlaceCamera(); _aeUpdateText(_aeDisplayMs());
             }""")
-            assert not pg.evaluate("document.getElementById('ae-maprow').hidden")
+            assert pg.is_visible("#ae-map")
             # Zoomed out to the whole Earth, it goes again.
             pg.evaluate("_ae.dist = 3; _aeUpdateText(_aeDisplayMs())")
-            assert pg.evaluate("document.getElementById('ae-maprow').hidden")
+            assert not pg.is_visible("#ae-map")
             pg.evaluate("_ae.dist = 1.15; _aePlaceCamera(); _aeUpdateText(_aeDisplayMs())")
             pg.click("#ae-map")
             got = pg.evaluate("window.__opened")

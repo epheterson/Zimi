@@ -568,6 +568,7 @@ var AE_CSS = [
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
+  '.ae-row[hidden]{display:none}',
   '.ae-orient{font-size:11px;line-height:1;color:var(--text3);letter-spacing:.02em;text-shadow:0 1px 2px #000}',
   '.ae-orient[hidden]{display:none}',
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
@@ -1538,10 +1539,11 @@ function _aeHdInstalled() {
 function _aeHdBodies(S) {
   return [
     { key: 'earth', parent: S.earth, radius: 1, frag: AE_EARTH_FRAG, uni: S.earthUni,
-      maps: [{ uni: 'dayMap', layer: 'earth/day' }, { uni: 'nightMap', layer: 'earth/night' }],
+      maps: [{ uni: 'dayMap', layer: 'earth/day' }, { uni: 'nightMap', layer: 'earth/night', red: true }],
       minDist: 1 + AE_HD_MIN_ALT_KM / AE_EARTH_RADIUS_KM },
     { key: 'moon', parent: S.moon, radius: AE_MOON_RADIUS_RE, frag: AE_MOON_FRAG, uni: S.moonUni,
-      maps: [{ uni: 'moonMap', layer: 'moon/albedo' }], extra: { moonMapped: { value: 1 } },
+      maps: [{ uni: 'moonMap', layer: 'moon/albedo', red: true }, { uni: 'reliefMap', layer: 'moon/relief', optional: true }],
+      extra: { moonMapped: { value: 1 }, moonPole: { value: S.vz } }, relief: true,
       minDist: AE_MIN_DIST_MOON }
   ];
 }
@@ -1553,6 +1555,7 @@ function _aeHdLoad(S, known) {
   fetch(AE_HD_BASE + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
+      b.maps = b.maps.filter(function (m) { return man.layers[m.layer] || !m.optional; });
       return b.maps.every(function (m) { return man.layers[m.layer]; });
     });
     if (!bodies.length) return;
@@ -1562,7 +1565,7 @@ function _aeHdLoad(S, known) {
       b.maps.forEach(function (m) { m.max = man.layers[m.layer].max; });
       b.nodes = {};
       b.drawn = [];
-      b.frag = _aeHdFrag(b.frag, b.maps);
+      b.frag = _aeHdFrag(b.relief && b.maps.some(function (m) { return m.uni === 'reliefMap'; }) ? _aeReliefFrag(b.frag) : b.frag, b.maps);
       AE_TARGETS[b.key].min = Math.min(AE_TARGETS[b.key].min, b.minDist);
     });
     _ae.dirty = true;
@@ -1577,6 +1580,24 @@ function _aeHdFrag(frag, maps) {
   maps.forEach(function (m) {
     out = out.split('texture2D(' + m.uni + ', vUv)').join('texture2D(' + m.uni + ', (vUv - uBox_' + m.uni + '.xy) / uBox_' + m.uni + '.zw)');
   });
+  return out;
+}
+// The Moon's relief (LOLA, as normals: east and north tilt in red and green): each pixel's surface turned by its
+// slope before the light is reckoned, so crater walls and ridges catch the Sun of the moment and cast no light past
+// the terminator (the sphere's own horizon still decides day and night: a tilt does not raise a peak into sunlight).
+var AE_RELIEF_TWILIGHT = 0.02;
+function _aeReliefFrag(frag) {
+  var out = frag.replace('uniform float earthshine;', 'uniform float earthshine; uniform sampler2D reliefMap; uniform vec3 moonPole;');
+  out = out.replace('  vec3 N = normalize(vNormal);',
+    '  vec3 N0 = normalize(vNormal);\n' +
+    '  vec3 E0 = normalize(cross(moonPole, N0) + vec3(1e-6, 0.0, 0.0));\n' +
+    // Stored square-root companded (scripts/build_almanac_hd.py normals_map), so a mare's gentle slopes keep their
+    // steps under a low Sun: squared back here.
+    '  vec2 e = texture2D(reliefMap, vUv).rg * 2.0 - 1.0;\n' +
+    '  vec2 tilt = sign(e) * e * e;\n' +
+    '  vec3 N = normalize(E0 * tilt.x + cross(N0, E0) * tilt.y + N0 * sqrt(max(1.0 - dot(tilt, tilt), 0.0025)));');
+  out = out.replace('  float sun = aeLunarLambert(dot(N, L), mu, aeLunarL(dot(L, V)));',
+    '  float sun = aeLunarLambert(max(dot(N, L), 0.0), mu, aeLunarL(dot(L, V))) * smoothstep(-' + AE_RELIEF_TWILIGHT + ', ' + AE_RELIEF_TWILIGHT + ', dot(N0, L));');
   return out;
 }
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
@@ -1663,7 +1684,7 @@ function _aeHdPump(S) {
       _aeLoadTexture(S.THREE, _aeHdTileUrl(q.m, q.n)).then(function (tx) {
         if (_ae.gl !== S) { tx.dispose(); return; }
         tx.anisotropy = S.aniso;
-        if (q.m.layer !== 'earth/day') tx.format = AE_THREE_RED_FORMAT;
+        if (q.m.red) tx.format = AE_THREE_RED_FORMAT;   // one channel on the GPU: a quarter of the memory
         q.n.tex[q.m.layer] = tx;
         hd.gpu++;
       }, function () { q.n.tex[q.m.layer] = 'failed'; }).then(function () {

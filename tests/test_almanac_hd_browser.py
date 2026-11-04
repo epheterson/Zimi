@@ -24,7 +24,7 @@ GL_ARGS = [
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
-LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1}
+LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
     "installed": False,
     "mode": "ask",
@@ -204,6 +204,14 @@ def test_tiles_by_view(browser, served):
         assert not any(
             "/earth/night/2/" in u for u in tiles
         ), "night stops at its deepest level"
+        # The Moon's relief: lit through its own shader, read in colour (east and north tilt), not as one channel.
+        moon = pg.evaluate("""() => { var b = _ae.gl.hd.bodies.filter(b => b.key === 'moon')[0];
+            var n = b.nodes['0/0/0'], t = n && n.tex['moon/relief'], a = n && n.tex['moon/albedo'];
+            return { relief: b.frag.indexOf('reliefMap') >= 0, maps: b.maps.map(m => m.uni),
+                     reliefRed: t && t.isTexture ? t.format === AE_THREE_RED_FORMAT : null,
+                     albedoRed: a && a.isTexture ? a.format === AE_THREE_RED_FORMAT : null }; }""")
+        assert moon["relief"] and moon["maps"] == ["moonMap", "reliefMap"], moon
+        assert moon["reliefRed"] is False and moon["albedoRed"] is True, moon
     finally:
         ctx.close()
 
