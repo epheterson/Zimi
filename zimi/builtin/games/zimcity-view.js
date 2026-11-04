@@ -24,6 +24,48 @@ export var LAYERS = {
   land: { map: 'landValueMap', max: 250, rgb: [22, 140, 70] }
 };
 
+// The 1989 art in Zimi's colours: each of its flat colours is mapped to a quieter one (the antialiased greys stay),
+// once for light and once for dark, and the plain ground's black speckle becomes a faint grain. The engine's tile
+// numbers are untouched: only the picture of each tile changes.
+var PALETTE = {
+  //            1989 colour         light        dark
+  ground:   [[204, 127, 102], '#cdbf98', '#4d4738'],
+  shore:    [[153, 127, 76],  '#a8946a', '#3d3528'],
+  trees:    [[0, 230, 0],     '#5aa261', '#3c7a44'],
+  forest:   [[0, 127, 0],     '#2f6f3a', '#21502a'],
+  water:    [[102, 102, 230], '#5f93d2', '#2c4f80'],
+  deep:     [[0, 0, 230],     '#3f72b8', '#1f3d6a'],
+  asphalt:  [[63, 63, 63],    '#3b3d42', '#2a2b2f'],
+  concrete: [[127, 127, 127], '#8d9096', '#6a6c71'],
+  pale:     [[191, 191, 191], '#c9cbcf', '#9a9ca1'],
+  black:    [[0, 0, 0],       '#1d1e21', '#111214'],
+  white:    [[255, 255, 255], '#f7f5ef', '#d9d7d1'],
+  yellow:   [[255, 255, 0],   '#e3c04a', '#c9a73a'],
+  red:      [[255, 0, 0],     '#d24a3f', '#b83f36'],
+  orange:   [[255, 127, 0],   '#e4893d', '#c97532']
+};
+var GRAIN = ['#c4b58d', '#463f31'];   // the ground's speckle, light and dark
+var GROUND_KEY = (204 << 16) | (127 << 8) | 102;
+function hex(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+export function recolour(img, dark) {
+  var c = document.createElement('canvas'), k = dark ? 2 : 1, map = {};
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  var ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  var data = ctx.getImageData(0, 0, c.width, c.height), d = data.data;
+  Object.keys(PALETTE).forEach(function (n) { var e = PALETTE[n], o = e[0]; map[(o[0] << 16) | (o[1] << 8) | o[2]] = hex(e[k]); });
+  var grain = hex(GRAIN[k - 1]);
+  for (var i = 0; i < d.length; i += 4) {
+    var key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2], to = map[key];
+    // tile 0 (the plain ground) is the top left 16 x 16: every speck on it becomes a faint grain
+    var px = (i / 4) % c.width, py = Math.floor(i / 4 / c.width);
+    if (px < TILE && py < TILE && key !== GROUND_KEY) to = grain;
+    if (to) { d[i] = to[0]; d[i + 1] = to[1]; d[i + 2] = to[2]; }
+  }
+  ctx.putImageData(data, 0, 0);
+  return c;
+}
+
 export function View(canvas, art) {
   this.canvas = canvas;
   this.ctx = canvas.getContext('2d');
@@ -105,7 +147,7 @@ View.prototype._paintWorld = function () {
   this.anim.getTiles(v, 0, 0, w, h, this.paused);
   for (var i = 0, n = v.length; i < n; i++) {
     if (v[i] === this.painted[i]) continue;
-    drawTile(this.wctx, this.art.tiles, v[i], (i % w) * TILE, Math.floor(i / w) * TILE);
+    drawTile(this.wctx, this.tileArt(), v[i], (i % w) * TILE, Math.floor(i / w) * TILE);
     this.painted[i] = v[i];
   }
 };
@@ -129,9 +171,24 @@ View.prototype._layerImage = function (now) {
   return lc;
 };
 
+// The tiles in the page's theme (Zimi's data-theme first, the device's preference otherwise); a change repaints the city.
+function darkNow() {
+  var t = document.documentElement.getAttribute('data-theme');
+  if (t) return t === 'dark';
+  try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return false; }
+}
+View.prototype.tileArt = function () {
+  var dark = darkNow();
+  if (!this._art || this._artDark !== dark) {
+    this._art = recolour(this.art.tiles, dark); this._artDark = dark;
+    if (this.painted) this.painted.fill(NOT_PAINTED);
+  }
+  return this._art;
+};
 function loaded(img) { return img.complete && img.naturalWidth > 0; }
 View.prototype.draw = function (now) {
   if (!this.city || !this.w || !loaded(this.art.tiles) || !loaded(this.art.sprites)) return;
+  this.tileArt();   // before the world is painted, so a theme change repaints it in one frame
   this._paintWorld();
   var ctx = this.ctx, c = this.cam, map = this.city.map, k = this.dpr * c.s;
   ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -172,7 +229,7 @@ View.prototype._drawSprites = function (ctx) {
 View.prototype._drawGhost = function (ctx) {
   var g = this.ghost;
   ctx.globalAlpha = GHOST_ALPHA;
-  g.tiles.forEach(function (t) { if (t[2] >= 0) drawTile(ctx, this.art.tiles, t[2], t[0] * TILE, t[1] * TILE); }, this);
+  g.tiles.forEach(function (t) { if (t[2] >= 0) drawTile(ctx, this.tileArt(), t[2], t[0] * TILE, t[1] * TILE); }, this);
   ctx.globalAlpha = 1;
   ctx.fillStyle = g.ok ? 'rgba(34, 160, 80, 0.32)' : 'rgba(205, 40, 30, 0.38)';
   g.tiles.forEach(function (t) { ctx.fillRect(t[0] * TILE, t[1] * TILE, TILE, TILE); });
