@@ -191,10 +191,14 @@ def test_tiles_by_view(browser, served):
         # A data pack: served to the view, listed nowhere (Home, the library's grid).
         listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
         assert "zimi_almanac_hd" not in listed, listed
-        # Far: level 0 covers the Earth, and its one map steps aside (a body under 40 px asks for no tiles at all, so
-        # the camera is put far but not that far, the flight in done).
+        # Far: level 0 covers the Earth, and its one map steps aside. Far enough that a level-0 tile covers no more
+        # device pixels than it has (nearer, at 8 Earth radii and 2x, level 2 is the right choice, and the old check
+        # passed only while level 2's tiles were still on their way), not so far the Earth is under 40 px and asks for
+        # none. Worked out from the view's own numbers, the flight in done.
         pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
-        pg.evaluate("_ae.dist = 20; _ae.dirty = true; _aeKick()")   # about 60 px in radius: past the 40 px floor, still level 0
+        far = pg.evaluate("""() => { var d = Math.PI * _aeFocalPx() * _ae.gl.dpr / (AE_HD_TILE_PX * AE_HD_SPLIT) + 2.5;
+            _ae.dist = d; _ae.dirty = true; _aeKick(); return { dist: d, radiusPx: _aeFocalPx() / d }; }""")
+        assert far["radiusPx"] > 40, far
         _settle(
             pg,
             "() => { var d = ("
