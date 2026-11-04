@@ -621,7 +621,7 @@ function _almHeadHtml(focus) {
   var _nfm = _nextFullMoon(focus);
 
   html += '<div class="alm-cards">';
-  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
+  html += _almHeadCard(t('alm_illuminated'), _moonLitPct(m.illumination), 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
   // The sky's Moon card and its three Sun cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
@@ -1042,7 +1042,7 @@ function _almLiveHeadCards(focus) {
   var show = function (id, on) { var e = document.getElementById(id); if (e) e.hidden = !on; };
   var m;
   try { m = _moonPhase(focus); } catch (e) { return; }
-  set('alm-hc-illum', m.illumination + '%');
+  set('alm-hc-illum', _moonLitPct(m.illumination));
   set('alm-hc-phase', _localMoonName(m.name));
   _almLiveNextFull(focus);
 }

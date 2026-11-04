@@ -7111,6 +7111,10 @@ function _moonPhase(date) {
   else name = 'Waning Crescent';
   return { phase: phase, name: name, illumination: illum };
 }
+// The Moon's lit share as people read it, a whole percent (the figure itself keeps a tenth).
+function _moonLitPct(illum) {
+  return fmtNum(Math.round(illum)) + '%';
+}
 
 // Moon time-travel animation — shared by the hero disc and the sky-scene moon.
 // A jump doesn't snap the phase: the moon is sampled at real intermediate
