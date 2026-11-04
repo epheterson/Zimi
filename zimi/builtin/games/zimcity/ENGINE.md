@@ -6,9 +6,9 @@ Micropolis is a registered trademark of Micropolis Corporation (Micropolis GmbH)
 
 ## What is here
 
-`engine/` holds the simulation modules from upstream commit f13a1624d111d235e804bd80f48ba7c9f66a8e0f (2025-07-13), the closure of what `simulation.js`, `gameMap.js`, `mapGenerator.js`, the building tools and `animationManager.js` import. Everything a person touches (the canvas, the windows, jQuery, the splash, the saves, the strings) is ZimCity's own, in `../zimcity.js`, `../zimcity-view.js` and `../zimcity-input.js`.
+`engine/` holds the simulation modules from upstream commit f13a1624d111d235e804bd80f48ba7c9f66a8e0f (2025-07-13), the closure of what `simulation.js`, `gameMap.js`, `mapGenerator.js`, the building tools and `animationManager.js` import. Everything a person touches (the canvas, the windows, jQuery, the splash, the saves, the strings) is ZimCity's own: `../zimcity.js` (the page), `../zimcity-view.js` (the map, and the tiles redrawn in Zimi's colours), `../zimcity-input.js` (touch, mouse, keys), `../zimcity-tools.js` (strokes, their honest ghost, undo), `../zimcity-sheets.js`, `../zimcity-words.js` and `../zimcity-library.js` (articles in the player's library).
 
-`tiles.png` and `sprites.png` are the original Micropolis art, released under the GPL with the code.
+`tiles.png` and `sprites.png` are the original Micropolis art, released under the GPL with the code. The tiles are shown recoloured (zimcity-view.js, `recolour`); the files are unchanged.
 
 ## Changes from upstream
 
