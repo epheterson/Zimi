@@ -1361,7 +1361,7 @@ def _build_all_title_indexes():
 
 def _build_all_title_indexes_inner():
     os.makedirs(_title_index_dir(), exist_ok=True)
-    zims = _srv.get_zim_files()
+    zims = _srv.content_zims()
 
     # Count how many are already current
     need_build = []
@@ -3232,7 +3232,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     searched fully. Use fast=True for instant title matches, then full FTS for
     complete results (progressive two-phase pattern).
     """
-    zims = _srv.get_zim_files()
+    zims = _srv.content_zims()
     cache_meta = {
         z["name"]: (z.get("entries") if isinstance(z.get("entries"), int) else 0)
         for z in (_srv._zim_list_cache or [])

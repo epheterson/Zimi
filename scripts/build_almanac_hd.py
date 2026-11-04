@@ -86,6 +86,13 @@ LAYERS = {
         "max": 5,
         "mode": "L",
     },
+    # The planets to 8192 px: Solar System Scope's 8k maps (CC BY 4.0, credited in the view and the ZIM), but Mars
+    # from the Viking colour mosaic (NASA/JPL/USGS, public domain), its true butterscotch, as the small map is.
+    **{
+        "planets/%s" % k: {"file": "https://www.solarsystemscope.com/textures/download/8k_%s.jpg" % f, "max": 3, "mode": "RGB"}
+        for k, f in (("mercury", "mercury"), ("venus", "venus_surface"), ("jupiter", "jupiter"), ("saturn", "saturn"))
+    },
+    "planets/mars": {"file": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Mars_Viking_MDIM21_ClrMosaic_1km.jpg", "max": 3, "mode": "RGB"},
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 4,
@@ -107,6 +114,11 @@ PINS = {
     "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
     "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
     "moon/albedo": "dbff4356479764d89f9fd7722140043eddbc2cafbad4dec5950858e2df77ac54",
+    "planets/mercury": "5c8bd885ae3571c6ba2cd34b3446b9c6d767e314bf0ee8c1d5c147cadd388fc3",
+    "planets/venus": "9bc21a50577ed8ac734cda91058724c7a741c19427aa276224ce349351432c5b",
+    "planets/mars": "fdfcd335559c3dc67052b7e8a9565d850e336ac0d1f3ea7f5eb7826ffb44ecb2",
+    "planets/jupiter": "0bd844bf20822c4e3e80882b077859833c0dac44c7e4e1e0cd63d1b1b6d43085",
+    "planets/saturn": "0d39a4a490c87c3edabe00a3881a29bb3418364178c79c534fe0986e97e09853",
     "moon/relief": "0f40bce8b42864deddb6943a38474879e691d5b20647aa5e54c2612b23106499",
 }
 
@@ -117,7 +129,8 @@ def _fetch(url, path, tries=4):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     for i in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=120) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": "Zimi-build/1.0 (https://github.com/epheterson/Zimi)"})   # Wikimedia refuses none
+            with urllib.request.urlopen(req, timeout=120) as r:
                 data = r.read()
             tmp = path + ".part"
             with open(tmp, "wb") as f:
@@ -354,12 +367,15 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 <ul>
 <li>Earth by day: NASA Blue Marble: Next Generation (Reto St&ouml;ckli, NASA Earth Observatory), served by NASA GIBS. Public domain.</li>
 <li>Earth by night: NASA Black Marble 2016 (VIIRS), served by NASA GIBS. Public domain.</li>
-<li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera. Public domain.</li>
+<li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera, and its elevation from the Lunar Orbiter Laser Altimeter. Public domain.</li>
+<li>The Apollo landing sites: LRO Narrow Angle Camera mosaics (NASA/GSFC/Arizona State University), through NASA Moon Trek. Public domain.</li>
+<li>Mars: Viking MDIM 2.1 colour mosaic, NASA/JPL/USGS. Public domain.</li>
+<li>Mercury, Venus, Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
 </ul></body></html>
 """
 
 ZIMI_TXT = """Title: Almanac HD · Zimi
-Description: Sharper Earth and Moon for the Almanac's 3D view: NASA imagery as tiles
+Description: Sharper Earth, Moon and planets for the Almanac's 3D view, as tiles
 Language: eng
 Creator: NASA
 Publisher: Zimi
@@ -368,6 +384,106 @@ Icon: icon.png
 """
 
 
+# The Apollo sites at the Narrow Angle Camera's half a metre: LRO NAC mosaics (NASA/GSFC/Arizona State University,
+# public domain) through NASA's Moon Trek tile service, cut into this pyramid's tiles round each landing, deeper than
+# the global map goes (an "insert": levels past moon/albedo's max, only there). (name, Trek layer, lat, lon, deepest
+# level here). At the deepest, the descent stages and their tracks show.
+TREK = "https://trek.nasa.gov/tiles/Moon/EQ/{layer}/1.0.0/default/default028mm/{z}/{row}/{col}.png"
+INSERTS = [
+    ("apollo11", "A11_60x60km.eq", 0.67408, 23.47297, 14),
+    ("apollo12", "LRO_NAC_Apollo12_Mosaic_p", -3.01239, -23.42157, 14),
+    ("apollo15", "LRO_NAC_Apollo15_Mosaic_p", 26.13222, 3.63386, 14),
+    ("apollo16", "LRO_NAC_Apollo16_Mosaic_p", -8.97301, 15.50019, 13),
+    ("apollo17", "M129086118.nd.gcs", 20.19080, 30.77168, 14),
+]
+INSERT_FROM = 5          # the first level past the global map's
+INSERT_HALF = 2          # tiles either side of the site at each level: a 5 x 5 patch, about 2.5 km across at the deepest
+
+
+def _trek_path(cache, layer, z, row, col):
+    return os.path.join(cache, "trek", layer, str(z), "%d_%d.png" % (row, col))
+
+
+def _trek_get(job):
+    """Fetch one Trek tile into the cache; a tile past the mosaic's edge is missing, and a marker says so."""
+    cache, layer, z, row, col = job
+    path = _trek_path(cache, layer, z, row, col)
+    if os.path.exists(path) or os.path.exists(path + ".miss"):
+        return
+    try:
+        _fetch(TREK.format(layer=layer, z=z, row=row, col=col), path, tries=2)
+    except OSError:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path + ".miss", "w").close()
+
+
+def _trek_tile(cache, layer, z, row, col):
+    from PIL import Image
+
+    path = _trek_path(cache, layer, z, row, col)
+    try:
+        return Image.open(path).convert("LA") if os.path.exists(path) else None
+    except OSError:
+        return None
+
+
+def _insert_extents():
+    """Every site's patch at every level: (site, Trek layer, lat, lon, z, x0, x1, y0, y1)."""
+    for name, layer, lat, lon, deepest in INSERTS:
+        for z in range(INSERT_FROM, deepest + 1):
+            span = 180.0 / 2**z
+            cx, cy = int((lon + 180) // span), int((90 - lat) // span)
+            yield name, layer, lat, lon, z, cx - INSERT_HALF, cx + INSERT_HALF, cy - INSERT_HALF, cy + INSERT_HALF
+
+
+def _insert_tile(cache, stage, layer, z, x, y, base_level):
+    """One of this pyramid's tiles (z, x, y) at a site: the NAC mosaic's four Trek tiles over it, brought to the
+    global map's brightness, laid on the global map's tile upsampled from base_level where the mosaic has no data."""
+    from PIL import Image
+
+    up = z - base_level
+    with Image.open(tile_path(stage, "moon/albedo", base_level, x >> up, y >> up)) as parent:
+        n = 2 ** up
+        cell = TILE / n
+        ox, oy = (x % n) * cell, (y % n) * cell
+        base = parent.convert("L").resize((TILE, TILE), Image.BICUBIC, box=(ox, oy, ox + cell, oy + cell))
+    nac = Image.new("LA", (TILE, TILE))
+    for dy in (0, 1):
+        for dx in (0, 1):
+            t = _trek_tile(cache, layer, z + 1, 2 * y + dy, 2 * x + dx)
+            if t is not None:
+                nac.paste(t, (dx * 256, dy * 256))
+    return base, nac
+
+
+def build_inserts(cache, stage, base_level):
+    """Every site's tiles from INSERT_FROM to its deepest level; returns the manifest's list of what exists."""
+    from PIL import Image, ImageStat
+
+    jobs = [(cache, layer, z + 1, 2 * y + dy, 2 * x + dx)
+            for _n, layer, _la, _lo, z, x0, x1, y0, y1 in _insert_extents()
+            for y in range(y0, y1 + 1) for x in range(x0, x1 + 1) for dy in (0, 1) for dx in (0, 1)]
+    with concurrent.futures.ThreadPoolExecutor(12) as ex:
+        list(ex.map(_trek_get, jobs))
+    out, gains = [], {}
+    for name, layer, lat, lon, z, x0, x1, y0, y1 in _insert_extents():
+        gain = gains.get(name)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                base, nac = _insert_tile(cache, stage, layer, z, x, y, base_level)
+                lum, alpha = nac.split()
+                if gain is None and ImageStat.Stat(alpha).mean[0] > 128:
+                    # The mosaic's brightness against the global map's, once, where both are whole.
+                    m_nac, m_base = ImageStat.Stat(lum, alpha).median[0], ImageStat.Stat(base, alpha).median[0]
+                    gain = gains[name] = m_base / max(1.0, m_nac)
+                lum = lum.point(lambda v, g=(gain or 1.0): min(255, int(v * g + 0.5)))
+                _save(Image.composite(lum, base, alpha), tile_path(stage, "moon/albedo", z, x, y), INSERT_Q)
+        out.append({"site": name, "lat": lat, "lon": lon, "z": z, "x0": x0, "x1": x1, "y0": y0, "y1": y1})
+    print("inserts: %d patches" % len(out))
+    return out
+
+
+INSERT_Q = 85
 MIMES = {".webp": "image/webp", ".json": "application/json", ".html": "text/html", ".png": "image/png"}
 
 
@@ -432,6 +548,8 @@ def main(argv=None):
     ap.add_argument("--update-pins", action="store_true")
     ap.add_argument("--no-zim", action="store_true", help="stop at the staged folder")
     ap.add_argument("--keep-stage", action="store_true", help="add to the staged folder instead of starting it over")
+    ap.add_argument("--inserts", action="store_true", default=True, help="the Apollo sites' NAC inserts (on unless --no-inserts)")
+    ap.add_argument("--no-inserts", dest="inserts", action="store_false")
     ap.add_argument("--tag", help="the release the file is attached to: writes zimi/assets/almanac-hd.json for it")
     a = ap.parse_args(argv)
     stage = os.path.join(a.cache, "stage")
@@ -444,11 +562,14 @@ def main(argv=None):
     except (OSError, ValueError):
         manifest = None
     manifest = manifest or {"version": 1, "tile": TILE, "ext": "webp", "layers": {}}
-    for layer in a.layers.split(","):
+    for layer in [x for x in a.layers.split(",") if x]:
         cap = a.max_earth if layer.startswith("earth/") else None
         manifest["layers"][layer] = {
             "max": build_layer(layer, a.cache, stage, a.update_pins, cap)
         }
+    if a.inserts:
+        albedo = manifest["layers"]["moon/albedo"]
+        albedo["inserts"] = build_inserts(a.cache, stage, albedo["max"])
     with open(os.path.join(stage, "hd.json"), "w") as f:
         json.dump(manifest, f, separators=(",", ":"))
     with open(os.path.join(stage, "index.html"), "w") as f:

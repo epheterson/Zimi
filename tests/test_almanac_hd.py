@@ -135,3 +135,14 @@ def test_the_offer_rides_on_the_satellites_answer(hd, tmp_path, monkeypatch):
         httpd.shutdown()
     assert payload["hd"]["offer"] == {"file": REL["file"], "size": REL["size"]}
     assert payload["hd"]["mode"] == outbound.ASK and hd == []
+
+
+def test_a_data_pack_is_neither_on_home_nor_searched(tmp_path, monkeypatch):
+    """Almanac HD is the Almanac's tiles, not a book: /list leaves it out (Home, the library's grid), and search and
+    the title indexes do not walk it; /w/ still serves it to the 3D view."""
+    import zimi.server as srv
+
+    files = {"wikipedia_en_test": "/z/wikipedia_en_test.zim", almanachd.NAME: "/z/zimi_almanac_hd_2026-11.zim"}
+    monkeypatch.setattr(srv, "get_zim_files", lambda: files)
+    assert almanachd.NAME in srv.DATA_PACKS
+    assert set(srv.content_zims()) == {"wikipedia_en_test"}

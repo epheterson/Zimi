@@ -3218,6 +3218,16 @@ def get_zim_files():
     return {k: v for k, v in _zim_files_cache.items() if k in allow}
 
 
+#: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
+#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles).
+DATA_PACKS = frozenset(("zimi_almanac_hd",))
+
+
+def content_zims():
+    """get_zim_files() less the data packs: what search and the indexes walk."""
+    return {k: v for k, v in get_zim_files().items() if k not in DATA_PACKS}
+
+
 def server_zim_count():
     """How many ZIMs this SERVER has, ignoring who is asking.
 
