@@ -24,7 +24,7 @@ REL = {
 @pytest.fixture
 def hd(tmp_path, monkeypatch):
     asset = tmp_path / "almanac-hd.json"
-    asset.write_text(json.dumps(REL))
+    asset.write_text(json.dumps(REL), encoding="utf-8")
     monkeypatch.setattr(almanachd, "ASSET", str(asset))
     monkeypatch.setattr(almanachd, "installed", lambda: False)
     monkeypatch.setattr(almanachd.POLICY, "_offline", lambda: False)
