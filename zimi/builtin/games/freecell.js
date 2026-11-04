@@ -140,7 +140,7 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var UP_STEP_SHARE = 0.3, MIN_STEP_SHARE = 0.12;
+  var UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12;
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };

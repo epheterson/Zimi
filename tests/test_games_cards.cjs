@@ -276,5 +276,16 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
   check(!ace.includes('viewBox="0 0 1300 2000"'), 'the Ace of Spades keeps its own drawing');
 }
 
+// A fanned column on a phone with room to spare shows each face-up card's whole index and its whole top row of pips:
+// a step of 0.28 of a card cut the pips through the middle into triangles beside the index.
+{
+  const phone = { cw: 50, ch: 70, pad: 6, left: 6, step: 54, W: 390, H: 780, cols: 7 };
+  const s = K.newState(deck, 1), col = s.piles.t6.slice(-1)[0];
+  s.piles.t6.push({ id: (col.id + 13) % 52, up: true }, { id: (col.id + 26) % 52, up: true });
+  const ys = K.place(s, phone).cards.filter(c => c.pile === 't6').map(c => c.y), n = ys.length;
+  const step = ys[n - 1] - ys[n - 2];
+  check(Math.abs(step - phone.ch * Z.FAN_UP_SHARE) < 0.5 && Z.FAN_UP_SHARE >= 0.33, 'a face-up card in a roomy fan shows a third of its height: ' + step);
+}
+
 console.log(failures ? failures + ' failure(s)' : 'all passed');
 process.exit(failures ? 1 : 0);
