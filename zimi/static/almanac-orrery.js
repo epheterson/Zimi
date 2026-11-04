@@ -618,6 +618,9 @@ function _orreryInfoFirst(hit) { return hit.type === 'sun' || _orreryIsDestinati
 
 // A body's direct action; returns what it did.
 function _orreryAct(hit) {
+  // A planet opens in the 3D view, where it is (the light-speed ride stays its tip's Fly button); without that view,
+  // the ride, as before.
+  if (_orreryIsDestination(hit) && _orreryEarthViewAvailable()) { _orreryOpenEarthView(hit.data.name.toLowerCase()); return 'earth'; }
   if (_orreryIsDestination(hit)) { _orreryLaunchRocket(hit.data.name); return 'fly'; }
   if (hit.type === 'planet' && _orreryEarthViewAvailable()) { _orreryOpenEarthView(); return 'earth'; }
   if (hit.type === 'sun' && _orreryEarthViewAvailable()) { _orreryOpenEarthView('sun'); return 'earth'; }
@@ -961,113 +964,21 @@ function _ensureOrreryStars(W, dpr) {
   return stars;
 }
 
-function _drawOrrery(canvas, dpr) {
-  var ctx = canvas.getContext('2d');
-  var W = canvas.width;
-  var cx = W / 2, cy = W / 2;
-
-  var simTime = _orrerySimTime();
-  var JD = _dateToJD(simTime);
-  var T = _jdToJulianCentury(JD);
-
-  ctx.clearRect(0, 0, W, W);
-
-  // Match page background
-  ctx.fillStyle = '#0a0a0b';
-  ctx.fillRect(0, 0, W, W);
-
-  // Background stars — pre-computed positions, drawn every frame
-  var bgStars = _ensureOrreryStars(W, dpr);
-  for (var si = 0; si < bgStars.length; si++) {
-    var st = bgStars[si];
-    ctx.beginPath();
-    ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,' + st.b.toFixed(3) + ')';
-    ctx.fill();
-  }
-
-  var names = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
-
-  // z: how far the view has glided out toward the probes (0 = clean planet view
-  // at "now", 1 = full deep space after scrubbing years away).
-  var z = _orreryDeepFactor();
-
-  // Everything below the stars goes through the camera (the ride's follow and
-  // zoom). `u` is one screen CSS px in world device px: strokes, text and
-  // markers are sized in u so they stay crisp and constant while bodies and
-  // distances scale with the zoom.
-  _orreryCamStep(_orreryCamTarget(z, T));
-  var cam = _orreryCam;
-  var u = dpr / cam.zoom;
-  ctx.save();
-  ctx.setTransform(cam.zoom, 0, 0, cam.zoom, W / 2 - cam.x * W * cam.zoom, W / 2 - cam.y * W * cam.zoom);
-
-  // Orbit rings — Apple Watch style: visible but understated
+// ── The solar system as the orrery draws it, for the orrery and for the 3D view's minimap ──
+// The same picture at any size: orbit rings at the shared squeeze (_ORBIT_VIS, _solarSqueeze), the Sun, the planets
+// where _planetPosition has them. W is the drawing's width in device px, u one CSS px in it.
+function _orreryPaintOrbits(ctx, cx, cy, W, z, u, names, alpha) {
   for (var i = 0; i < names.length; i++) {
     var orbitR = _orreryPlanetR(names[i], z) * W;
     ctx.beginPath();
     ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = 'rgba(255,255,255,' + (alpha || 0.07) + ')';
     ctx.lineWidth = 0.7 * u;
     ctx.stroke();
   }
-
-  // Faint labelled band helper (asteroid + Kuiper belts). Records each band's
-  // annulus (CSS px) so the tap/hover hit-test can open its article.
-  _orreryBeltZones = [];
-  var _belt = function (auIn, auOut, fill, labelCol, label, key, labelKey) {
-    var rIn = _orrR(auIn, z) * W, rOut = _orrR(auOut, z) * W, rMid = (rIn + rOut) / 2;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, rOut, 0, Math.PI * 2);
-    ctx.arc(cx, cy, rIn, 0, Math.PI * 2, true);
-    ctx.fillStyle = fill; ctx.fill('evenodd');
-    ctx.font = (7.5 * u) + 'px -apple-system, system-ui, sans-serif';
-    ctx.fillStyle = labelCol; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx, cy - rMid);
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-    if (key) _orreryBeltZones.push({ key: key, labelKey: labelKey, rIn: rIn / dpr, rOut: rOut / dpr });
-  };
-
-  // Asteroid belt — a faint band in the Mars–Jupiter gap.
-  _belt(2.1, 3.3, 'rgba(200,190,170,0.06)', 'rgba(200,190,170,0.5)', t('alm_asteroid_belt'), 'belt:asteroid', 'alm_asteroid_belt');
-
-  // Deep-space reference rings — fade in as the view eases out (z), giving the
-  // probes something to be "beyond".
-  if (z > 0.02) {
-    ctx.save();
-    ctx.globalAlpha = z;
-    var _refRing = function (au, col, dash, label, key, labelKey) {
-      var rr = _orrR(au, z) * W;
-      ctx.save();
-      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
-      ctx.strokeStyle = col; ctx.lineWidth = 0.8 * u;
-      ctx.setLineDash(dash ? [3 * u, 4 * u] : []);
-      ctx.stroke();
-      if (label) {
-        ctx.setLineDash([]);
-        ctx.font = (8 * u) + 'px -apple-system, system-ui, sans-serif';
-        ctx.fillStyle = col; ctx.textAlign = 'center';
-        ctx.fillText(label, cx, cy - rr - 3 * u);
-      }
-      ctx.restore();
-      // A thin ring (not a filled band) still gets a narrow hit zone around its
-      // drawn line, same annulus scheme the belts use.
-      if (key) {
-        var ringTol = 4 * u;
-        _orreryBeltZones.push({ key: key, labelKey: labelKey, rIn: (rr - ringTol) / dpr, rOut: (rr + ringTol) / dpr });
-      }
-    };
-    _belt(_KUIPER_INNER_AU, _KUIPER_OUTER_AU, 'rgba(120,160,220,0.05)', 'rgba(150,180,230,0.55)', t('alm_kuiper_belt'), 'belt:kuiper', 'alm_kuiper_belt');
-    _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
-    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'), 'belt:heliopause', 'alm_heliopause');
-    ctx.restore();
-  }
-
-  // Sun — large luminous glow, Apple Watch style
+}
+function _orreryPaintSun(ctx, cx, cy, W) {
   var sunR = W * 0.022;
-  _orrerySunPos = { x: cx / dpr, y: cy / dpr, r: sunR / dpr }; // hover/tap hit zone (CSS px)
 
   // Wide outer haze
   var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.14);
@@ -1096,8 +1007,11 @@ function _drawOrrery(canvas, dpr) {
   ctx.fillStyle = sd;
   ctx.beginPath(); ctx.arc(cx, cy, sunR, 0, Math.PI * 2); ctx.fill();
 
-  // Planets — big, no labels, Apple Watch proportions
-  _orreryPlanetPositions = [];
+  return sunR;
+}
+// Returns each planet's place and size, in the drawing's px: [{ name, x, y, r, glowR? }].
+function _orreryPaintPlanets(ctx, cx, cy, W, T, z, dpr, u, names, opts) {
+  var out = [];
   for (var i = 0; i < names.length; i++) {
     var pos = _planetPosition(names[i], T);
     var angle = Math.atan2(pos.y, pos.x);
@@ -1192,7 +1106,7 @@ function _drawOrrery(canvas, dpr) {
     // The Earth glow: a still halo that says the tap leads into the Earth
     // view, drawn only while that view exists.
     var glowR = 0;
-    if (names[i] === 'Earth' && _orreryEarthViewAvailable()) {
+    if (names[i] === 'Earth' && !(opts && opts.plain) && _orreryEarthViewAvailable()) {
       glowR = pr * _EARTH_GLOW_SCALE;
       var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
       eg.addColorStop(0, _hexToRgba(p.glow, 0));
@@ -1208,10 +1122,116 @@ function _drawOrrery(canvas, dpr) {
     // Record position for hover (world CSS px)
     var rec = { name: names[i], x: px / dpr, y: py / dpr, r: pr / dpr };
     if (glowR) rec.glowR = glowR / dpr;
-    _orreryPlanetPositions.push(rec);
+    out.push(rec);
 
     // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
   }
+  return out;
+}
+
+function _drawOrrery(canvas, dpr) {
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width;
+  var cx = W / 2, cy = W / 2;
+
+  var simTime = _orrerySimTime();
+  var JD = _dateToJD(simTime);
+  var T = _jdToJulianCentury(JD);
+
+  ctx.clearRect(0, 0, W, W);
+
+  // Match page background
+  ctx.fillStyle = '#0a0a0b';
+  ctx.fillRect(0, 0, W, W);
+
+  // Background stars — pre-computed positions, drawn every frame
+  var bgStars = _ensureOrreryStars(W, dpr);
+  for (var si = 0; si < bgStars.length; si++) {
+    var st = bgStars[si];
+    ctx.beginPath();
+    ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,' + st.b.toFixed(3) + ')';
+    ctx.fill();
+  }
+
+  var names = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
+
+  // z: how far the view has glided out toward the probes (0 = clean planet view
+  // at "now", 1 = full deep space after scrubbing years away).
+  var z = _orreryDeepFactor();
+
+  // Everything below the stars goes through the camera (the ride's follow and
+  // zoom). `u` is one screen CSS px in world device px: strokes, text and
+  // markers are sized in u so they stay crisp and constant while bodies and
+  // distances scale with the zoom.
+  _orreryCamStep(_orreryCamTarget(z, T));
+  var cam = _orreryCam;
+  var u = dpr / cam.zoom;
+  ctx.save();
+  ctx.setTransform(cam.zoom, 0, 0, cam.zoom, W / 2 - cam.x * W * cam.zoom, W / 2 - cam.y * W * cam.zoom);
+
+  // Orbit rings — Apple Watch style: visible but understated
+  _orreryPaintOrbits(ctx, cx, cy, W, z, u, names);
+
+  // Faint labelled band helper (asteroid + Kuiper belts). Records each band's
+  // annulus (CSS px) so the tap/hover hit-test can open its article.
+  _orreryBeltZones = [];
+  var _belt = function (auIn, auOut, fill, labelCol, label, key, labelKey) {
+    var rIn = _orrR(auIn, z) * W, rOut = _orrR(auOut, z) * W, rMid = (rIn + rOut) / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOut, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rIn, 0, Math.PI * 2, true);
+    ctx.fillStyle = fill; ctx.fill('evenodd');
+    ctx.font = (7.5 * u) + 'px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = labelCol; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy - rMid);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+    if (key) _orreryBeltZones.push({ key: key, labelKey: labelKey, rIn: rIn / dpr, rOut: rOut / dpr });
+  };
+
+  // Asteroid belt — a faint band in the Mars–Jupiter gap.
+  _belt(2.1, 3.3, 'rgba(200,190,170,0.06)', 'rgba(200,190,170,0.5)', t('alm_asteroid_belt'), 'belt:asteroid', 'alm_asteroid_belt');
+
+  // Deep-space reference rings — fade in as the view eases out (z), giving the
+  // probes something to be "beyond".
+  if (z > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = z;
+    var _refRing = function (au, col, dash, label, key, labelKey) {
+      var rr = _orrR(au, z) * W;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = col; ctx.lineWidth = 0.8 * u;
+      ctx.setLineDash(dash ? [3 * u, 4 * u] : []);
+      ctx.stroke();
+      if (label) {
+        ctx.setLineDash([]);
+        ctx.font = (8 * u) + 'px -apple-system, system-ui, sans-serif';
+        ctx.fillStyle = col; ctx.textAlign = 'center';
+        ctx.fillText(label, cx, cy - rr - 3 * u);
+      }
+      ctx.restore();
+      // A thin ring (not a filled band) still gets a narrow hit zone around its
+      // drawn line, same annulus scheme the belts use.
+      if (key) {
+        var ringTol = 4 * u;
+        _orreryBeltZones.push({ key: key, labelKey: labelKey, rIn: (rr - ringTol) / dpr, rOut: (rr + ringTol) / dpr });
+      }
+    };
+    _belt(_KUIPER_INNER_AU, _KUIPER_OUTER_AU, 'rgba(120,160,220,0.05)', 'rgba(150,180,230,0.55)', t('alm_kuiper_belt'), 'belt:kuiper', 'alm_kuiper_belt');
+    _refRing(_HELIO_TERMINATION_AU, 'rgba(255,180,60,0.22)', true, null);
+    _refRing(_HELIOPAUSE_AU, 'rgba(120,200,255,0.30)', true, t('alm_heliopause'), 'belt:heliopause', 'alm_heliopause');
+    ctx.restore();
+  }
+
+  // Sun — large luminous glow, Apple Watch style
+  var sunR = _orreryPaintSun(ctx, cx, cy, W);
+  _orrerySunPos = { x: cx / dpr, y: cy / dpr, r: sunR / dpr }; // hover/tap hit zone (CSS px)
+
+  // Planets — big, no labels, Apple Watch proportions
+  _orreryPlanetPositions = _orreryPaintPlanets(ctx, cx, cy, W, T, z, dpr, u, names);
 
   // ── Interstellar probes — amber diamonds out past Neptune, revealed as the
   // view eases into deep space (z) where they have room to visibly crawl. ──

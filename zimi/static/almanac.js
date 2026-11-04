@@ -3076,6 +3076,14 @@ var _AU_VIS_C = (function() {
   return segs;
 })();
 
+// The solar system's one squeeze: the orrery's radii (above), and past Neptune a gentle continuation, so the 3D
+// view's planets, belt and probes and the orrery stand at the same shares of the way out (almanac-earth.js scales it
+// so the Earth is where it is).
+var _SQUEEZE_TAIL_POW = 0.2;
+function _solarSqueeze(au) {
+  var last = _AU_VIS_X.length - 1;
+  return au <= _AU_VIS_X[last] ? _auToVis(au) : _AU_VIS_Y[last] * Math.pow(au / _AU_VIS_X[last], _SQUEEZE_TAIL_POW);
+}
 function _auToVis(au) {
   if (au <= 0) return 0;
   var segs = _AU_VIS_C;

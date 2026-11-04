@@ -235,6 +235,13 @@ res = run('_orreryTap(300, 300, 10, false)');
 check(res.action === 'earth' && opened === 1, 'Earth with the view opens it');
 res = run('_orreryTap(311, 300, 2, true)');
 check(res && res.action === 'earth' && opened === 2, 'a tap on the glow (outside the disc) opens it too');
+// With the 3D view, a planet opens there, on that planet; its tip keeps the ride (Fly).
+let openedOn = null;
+S.window.openAlmanacEarth = (o) => { opened++; openedOn = o && o.target; };
+run('_orreryRockets = []; _orrerySelectedKey = null;');
+res = run('_orreryTap(100, 100, 10, false)');
+check(res.action === 'earth' && openedOn === 'mars' && run('_orreryRockets.length') === 0, 'with the 3D view a click on Mars opens it on Mars, no rocket');
+S.window.openAlmanacEarth = () => { opened++; };
 run('_orreryPlanetPositions.push({ name: "Venus", x: 312, y: 300, r: 4 });');
 res = run('_orreryTap(311, 300, 2, false)');
 check(res.hit.data.name === 'Venus', 'a neighbour\'s disc wins over Earth\'s glow');
