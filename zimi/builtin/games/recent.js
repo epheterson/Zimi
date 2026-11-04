@@ -28,15 +28,8 @@
   var ALIAS = { 'puzzles/mines.html': 'minesweeper.html', 'puzzles/solo.html': 'sudoku.html', 'puzzles/guess.html': 'codebreaker.html' };
   function canon(path) { return ALIAS[path] || path; }
 
-  // FNV-1a over the UTF-8 bytes of a string, as an unsigned 32-bit number.
-  function fnv1a(text) {
-    var bytes = unescape(encodeURIComponent(text)), h = 0x811c9dc5, i;
-    for (i = 0; i < bytes.length; i++) {
-      h ^= bytes.charCodeAt(i);
-      h = Math.imul(h, 0x01000193) >>> 0;
-    }
-    return h >>> 0;
-  }
+  // The shell's hash (ZimiShell.hash): the day's pick, the same everywhere.
+  function fnv1a(text) { return root.ZimiShell.hash(text); }
 
   // One row per game page, in games.json order (a game with two Q-IDs has two rows).
   function uniqueByPath(rows) {

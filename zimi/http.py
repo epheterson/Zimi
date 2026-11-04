@@ -325,6 +325,12 @@ def _mend_zimit1_loader(text):
 SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 
 
+def games_day(now=None):
+    """The server's day (YYYY-MM-DD) and its UTC offset in minutes, in its own time zone."""
+    now = now or datetime.datetime.now().astimezone()
+    return {"day": now.date().isoformat(), "utcOffsetMin": int(now.utcoffset().total_seconds() // 60)}
+
+
 # Snippets ride the content bucket: one search fans out to ~10 snippet
 # fetches, which burned the whole API budget in a few searches (#30's
 # cousin). Pinned by tests — moving /snippet back to the API bucket is a
@@ -2966,8 +2972,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/games-day":
                 # ZimiGames' dailies: the server's day in its own time zone, so
                 # everyone on one Zimi plays the same edition and it turns over
-                # at the server's midnight, whatever a device's clock says.
-                return self._json(200, {"day": datetime.date.today().isoformat()})
+                # at the server's midnight, whatever a device's clock says. The
+                # offset lets a page work out that day itself until it asks again.
+                return self._send(200, json.dumps(games_day()).encode(), "application/json", cache="no-store")
             elif parsed.path == "/games-search":
                 # The main search's Games row: every game's name in ?lang= and
                 # the words it is found by (zimi/gamelinks.py). Read once, a
