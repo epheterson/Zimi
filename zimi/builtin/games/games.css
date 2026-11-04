@@ -306,7 +306,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-daily > h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .ar-daily-line { color: var(--ink2); font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; }
 .ar-daily-stats { margin-inline-start: auto; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 2px; min-height: 44px; cursor: pointer; }
-.ar-daily .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; margin: 0 -16px; padding: 2px 16px 6px; }
+.ar-daily .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin: 0 -16px; padding: 2px 16px 6px; }
 .ar-daily .ar-game { flex: 0 0 132px; position: relative; scroll-snap-align: start; }
 .ar-daily .ar-game-text span { display: none; }
 .ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
@@ -529,8 +529,8 @@ dl.gs-help { margin: 0; }
 .gs-statlist { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: var(--fs-small); }
 .gs-statlist dt { color: var(--ink2); } .gs-statlist dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 .gs-statlist .gs-stat-alone { grid-column: 1 / -1; }
-.gs-card .gs-subhead + .gs-stats, .gs-card .gs-subhead + .gs-earned { margin-top: var(--sp-2); }
-.gs-card .gs-stats + .gs-subhead { margin-top: var(--sp-4); }
+.gs-subhead + .gs-stats, .gs-subhead + .gs-earned { margin-top: var(--sp-2); }
+.gs-stats + .gs-subhead { margin-top: var(--sp-5); }
 .gs-earned { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink2); }
 .gs-earned li { display: flex; gap: 10px; align-items: center; }
 .gs-earned li > span:first-child { width: 16px; text-align: center; }

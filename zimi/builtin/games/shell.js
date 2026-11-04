@@ -860,8 +860,10 @@
     return h('div', { class: 'gs-share-row' }, [h('span', { class: 'gs-daily-tag', text: T('daily.tag') }), btn]);
   }
   // The stats page: the streak line first, then the totals, then what was earned (quiet, never announced).
-  function statsBody() {
-    var all = readStats(), t = totals(all, Shell.day()), F = function (n) { return root.ZimiText ? root.ZimiText.number(n) : String(n); };
+  // The day the stats count to: a daily's, else the server's (asked once), so the streak here is the shelf's.
+  function withDay(fn) { if (Shell.daily) fn(Shell.daily.day); else Shell.serverDay().then(fn); }
+  function statsBody(day) {
+    var all = readStats(), t = totals(all, day), F = function (n) { return root.ZimiText ? root.ZimiText.number(n) : String(n); };
     var lines = [[T('daily.streakLabel'), T('daily.streakDays', { n: t.streak })], [T('stats.best'), T('daily.streakDays', { n: t.best })],
       [T('stats.dailies'), F(t.dailies)], [T('stats.finished'), F(t.finished)], [T('stats.wins'), F(t.wins)], [T('stats.kinds'), F(t.kinds)]];
     var most = Object.keys(all.g).sort(function (a, b) { return all.g[b].n - all.g[a].n; }).slice(0, STATS_TOP_GAMES)
@@ -873,7 +875,7 @@
     return [h('div', { class: 'gs-stats' }, [statRows(lines)])].concat(most.length ? [h('h3', { class: 'gs-subhead', text: T('stats.most') }), h('div', { class: 'gs-stats' }, [statRows(most)])] : [])
       .concat([h('h3', { class: 'gs-subhead', text: T('stats.earned') }), earned]);
   }
-  Shell.statsSheet = function () { return Shell.sheet({ title: T('stats.title'), body: statsBody(), actions: [{ label: T('shell.close'), primary: true }] }); };
+  Shell.statsSheet = function () { withDay(function (day) { Shell.sheet({ title: T('stats.title'), body: statsBody(day), actions: [{ label: T('shell.close'), primary: true }] }); }); };
 
   Shell.endSheet = function (opts) {
     countResult(opts.result || 'over');
@@ -1287,14 +1289,21 @@
       if (el && el.textContent.trim()) lines = [el.textContent.trim()];
     }
     lines = lines.filter(function (t) { return t && (Array.isArray(t) || String(t).trim()); });
-    if (DAILY[PAGE]) lines.push([T('daily.streakLabel'), T('daily.streakDays', { n: streakOf(readStats(), Shell.day(), PAGE) })]);
-    if (!lines.length) card.appendChild(h('p', { class: 'gs-text', text: T('shell.stats.none') }));
-    else card.appendChild(h('div', { class: 'gs-stats' }, [statRows(lines)]));
+    var box = h('div', { class: 'gs-stats' }), pane = paneStack[paneStack.length - 1];
+    card.appendChild(box);
     card.appendChild(chevronRow(T('stats.all'), '', function () { show(allStatsPane); }));
+    withDay(function (day) {
+      if (paneStack[paneStack.length - 1] !== pane) return;   // the player has moved on
+      var n = DAILY[PAGE] ? streakOf(readStats(), day, PAGE) : 0;
+      if (n) lines.push([T('daily.streakLabel'), T('daily.streakDays', { n: n })]);
+      if (!lines.length) box.replaceWith(h('p', { class: 'gs-text', text: T('shell.stats.none') }));
+      else box.appendChild(statRows(lines));
+    });
   }
   function allStatsPane() {
     head(T('stats.title'), false);
-    statsBody().forEach(function (n) { card.appendChild(n); });
+    var pane = paneStack[paneStack.length - 1];
+    withDay(function (day) { if (paneStack[paneStack.length - 1] === pane) statsBody(day).forEach(function (n) { card.appendChild(n); }); });
   }
 
   // ── Watch and learn (the driver is in watch.js, fetched when first wanted) ──
@@ -1465,6 +1474,9 @@
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
     watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
+    // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
+    var h1 = Shell.daily && d.querySelector('.ar-bar h1');
+    if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });

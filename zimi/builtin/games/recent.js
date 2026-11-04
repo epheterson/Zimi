@@ -277,7 +277,7 @@
       var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
       var line = doc.createElement('span');
       line.className = 'ar-daily-line';
-      line.textContent = T('shelf.daily.done', { n: finished.length, total: tiles.length }) + (streak ? ' \u00b7 ' + T('daily.streak', { n: streak }) : '');
+      line.textContent = T('shelf.daily.done', { n: finished.length, total: tiles.length }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : '');
       var stats = doc.createElement('button');
       stats.type = 'button';
       stats.className = 'ar-daily-stats';
