@@ -1,0 +1,71 @@
+/* ZimCity: the map owns the screen. The strip above it (demand, money, then the date and people, quieter), the status
+   line, the map, then the held tool's line and the tray at the thumb. Zone colours are materials (the original's
+   green, blue and yellow, pulled toward neutral); everything else is games.css tokens. */
+:root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; } }
+:root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; }
+
+body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; }
+.cy-page .gm-about { display: none; }
+.cy-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: var(--column); margin: 0 auto; }
+
+/* The strip: demand leads (it decides the next move), the money second, the date and population quiet at the right. */
+.cy-strip { flex: none; display: flex; align-items: center; gap: var(--sp-3); min-height: 40px; padding: var(--sp-1) var(--gutter); }
+.cy-rci { flex: none; display: flex; align-items: stretch; gap: 3px; height: 28px; padding: 0 2px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+/* Each bar grows up from the middle line for demand and down for a surplus. */
+.cy-dem { position: relative; width: 8px; }
+.cy-dem::before { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 1px; background: var(--line-strong); }
+.cy-dem i { position: absolute; left: 0; right: 0; bottom: 50%; border-radius: 2px; height: max(2px, calc(var(--dem, 0) * 50%)); }
+.cy-dem.cy-neg i { bottom: auto; top: 50%; opacity: 0.55; }
+.cy-dem[data-k="residential"] i { background: var(--cy-res); }
+.cy-dem[data-k="commercial"] i { background: var(--cy-com); }
+.cy-dem[data-k="industrial"] i { background: var(--cy-ind); }
+.cy-funds { flex: none; font: 650 var(--fs-title)/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.cy-when { flex: 1 1 auto; min-width: 0; text-align: end; font-size: var(--fs-small); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+
+.cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* The map: everything left between the strip and the tray. */
+.cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+#cy-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#cy-map:focus-visible { outline-offset: -3px; }
+
+/* The held tool's line and the tray, clear of the home indicator. */
+.cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cy-held.cy-bad { color: var(--bad); }
+.cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
+.cy-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer; touch-action: manipulation; }
+@media (hover: hover) { .cy-tool:hover, .cy-more-tool:hover { border-color: var(--accent); } }
+.cy-tool[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cy-icon { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.cy-icon-more { stroke-width: 3.2; }
+.cy-icon-residential { color: var(--cy-res); } .cy-icon-commercial { color: var(--cy-com); } .cy-icon-industrial { color: var(--cy-ind); }
+/* A phone shows the tray as icons (the held line names the tool and its cost); wider screens add the word under each. */
+.cy-tool-l { display: none; font-size: var(--fs-small); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+@media (min-width: 560px) { .cy-tool-l { display: block; } .cy-tool { min-height: 56px; } }
+
+/* The More sheet: the rest of the tools, three to a row. */
+.cy-more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.cy-more-tool { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 76px; padding: var(--sp-2) var(--sp-1); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; text-align: center; }
+.cy-more-tool[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); }
+.cy-more-l { font-size: var(--fs-small); line-height: 1.2; }
+.cy-more-c { font-size: var(--fs-small); color: var(--ink2); font-variant-numeric: tabular-nums; }
+
+/* The budget's steppers: − value + in one 44 px control. */
+.cy-stepper { display: inline-flex; align-items: center; }
+.cy-stepper .ar-btn { min-width: var(--target); padding: 0; font-size: var(--fs-title); }
+.cy-step-v { min-width: 7.5em; text-align: center; font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.cy-costs { color: var(--ink2); }
+.cy-sub { margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-body); font-weight: 650; }
+.cy-credit p { margin: 0 0 var(--sp-2); }
+
+/* Landscape on a phone: the tray moves beside the map. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; }
+  .cy-strip, .cy-msg { grid-column: 1 / -1; }
+  .cy-stage { grid-column: 1; grid-row: 3; }
+  .cy-foot { grid-column: 2; grid-row: 3; width: 128px; padding-bottom: var(--sp-2); justify-content: flex-end; }
+  .cy-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cy-held { white-space: normal; }
+}
