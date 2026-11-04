@@ -130,10 +130,10 @@
     // computer), 'l', 'd', or none (two people: `name` is who won, or nothing for a game with no winner). `line` is
     // what the one status line says when `text` is too long for it (the sheet carries the whole of `text`).
     // The status line says who won as well as why, so it still reads right once the sheet is closed.
-    var RESULT_KEY = { w: 'shell.end.win', l: 'shell.end.lose', d: 'shell.end.draw' };
+    var RESULT_KEY = { w: 'shell.end.win', l: 'shell.end.lose', d: 'shell.end.draw' }, ENDS_SENTENCE = /[.!?\u3002\uff01\uff1f]\s*$/;
     function resultLine(text, outcome, name) {
       var head = RESULT_KEY[outcome] ? T(RESULT_KEY[outcome]) : name ? T('shell.end.wins', { name: name }) : '';
-      var s = head ? head + '. ' + text : text;
+      var s = head ? head + (ENDS_SENTENCE.test(head) ? ' ' : '. ') + text : text;   // "You won! Checkmate.", never "won!."
       return s.length > 60 ? text : s;
     }
     G.finish = function (text, outcome, name, line) {
