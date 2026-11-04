@@ -4558,11 +4558,15 @@ async function _renderNetSection() {
 // The server-wide apps switch. The element is looked up after the fetch
 // (see _renderEnvSection for why).
 async function _renderAppsSection() {
-  var d = null;
-  try { d = await _msFetch('/manage/apps'); } catch (e) {}
+  var d = null, refused = false;
+  try { d = await _msFetch('/manage/apps'); } catch (e) { refused = /^http 40[13]$/.test(e && e.message); }
   var wrap = document.getElementById('ms-apps-wrap');
   if (!document.getElementById('ms-apps')) return;
-  if (!d) { if (wrap) wrap.hidden = true; return; }
+  // Only the server saying no takes the rows away. No answer at all (offline,
+  // the server restarting) leaves them as the page drew them, from the apps
+  // it was served with: hiding them then made Preferences jump, and empty
+  // offline.
+  if (!d) { if (wrap && refused) wrap.hidden = true; return; }
   if (wrap) wrap.hidden = false;
   _serverApps = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
   _serverAppsLocked = !!d.env_locked;
