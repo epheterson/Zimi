@@ -14,8 +14,8 @@ Two zooms are read. Zoom 9 carries the cities; zoom 10 is where towns are
 labelled (Danville first appears there). Villages start at 11, four times
 the tiles again, and are left out. Zoom 10 is read only under a zoom 9 tile
 with land in it: the sea's tiles are a few hundred bytes, and skipping them
-leaves about 200,000 of the world map's tiles to read, some 20 minutes on a
-NAS, once.
+leaves under 200,000 of the world map's tiles to read: maps_en_all_2026-06
+gave 116,003 places in 11 minutes on a NAS at the lowest priority, once.
 
 The tile format is Mapbox Vector Tile (protobuf), read here by hand for the
 one layer wanted: no dependency for 60 lines.
