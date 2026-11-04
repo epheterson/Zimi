@@ -21,6 +21,10 @@ zimi/static/earth/SOURCES.txt):
                level 7, 0.0044 deg a pixel). Deepest level 6: 610 m a pixel,
                the finest the 500 m mosaic holds without inventing pixels.
   earth/night  NASA Black Marble 2016 (VIIRS), through NASA GIBS, greyscale.
+  moon/relief  NASA SVS CGI Moon Kit, LOLA elevation at 64 pixels a degree
+               (ldem_64_uint.tif, half-metres), as surface normals: east and
+               north tilt in red and green, so the Moon's own shader lights
+               every crater wall and ridge from the Sun of the moment.
   moon/albedo  NASA SVS CGI Moon Kit, LRO Wide Angle Camera colour mosaic,
                16k (lroc_color_poles_16k.tif), greyscale.
 
@@ -80,6 +84,14 @@ LAYERS = {
         "max": 5,
         "mode": "L",
     },
+    "moon/relief": {
+        "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
+        "max": 4,
+        "mode": "RGB",
+        "derive": "normals",
+        # Low sun reads a normal's every error as a slope: the lossy default left 16 px blocks across the maria.
+        "quality": 95,
+    },
     "moon/albedo": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_16k.tif",
         "max": 4,
@@ -93,6 +105,7 @@ PINS = {
     "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
     "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
     "moon/albedo": "dbff4356479764d89f9fd7722140043eddbc2cafbad4dec5950858e2df77ac54",
+    "moon/relief": "0f40bce8b42864deddb6943a38474879e691d5b20647aa5e54c2612b23106499",
 }
 
 
@@ -227,19 +240,20 @@ def tile_path(out, layer, z, x, y):
     return os.path.join(out, layer, str(z), str(x), "%d.webp" % y)
 
 
-def _save(im, path):
+def _save(im, path, quality=WEBP_Q):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    im.save(path, "WEBP", quality=WEBP_Q, method=6)
+    im.save(path, "WEBP", quality=quality, method=6)
 
 
 def _cut_row(args):
-    kind, src, mode, layer, out, z, y = args
+    kind, src, mode, layer, out, z, y, quality = args
     mos = GibsMosaic(*src, mode) if kind == "gibs" else FileMosaic(src, mode)
     span = 180.0 / 2**z
     for x in range(2 ** (z + 1)):
         _save(
             mos.window(-180.0 + x * span, 90.0 - y * span, span),
             tile_path(out, layer, z, x, y),
+            quality,
         )
     return y
 
@@ -247,7 +261,7 @@ def _cut_row(args):
 def _shrink_row(args):
     from PIL import Image
 
-    layer, out, z, y, mode = args
+    layer, out, z, y, mode, quality = args
     for x in range(2 ** (z + 1)):
         quad = Image.new(mode, (2 * TILE, 2 * TILE))
         for dy in (0, 1):
@@ -256,8 +270,41 @@ def _shrink_row(args):
                     tile_path(out, layer, z + 1, 2 * x + dx, 2 * y + dy)
                 ) as child:
                     quad.paste(child.convert(mode), (dx * TILE, dy * TILE))
-        _save(quad.resize((TILE, TILE), Image.LANCZOS), tile_path(out, layer, z, x, y))
+        _save(quad.resize((TILE, TILE), Image.LANCZOS), tile_path(out, layer, z, x, y), quality)
     return y
+
+
+MOON_RADIUS_M = 1737400.0
+HALF_METRE = 0.5  # the uint LOLA map's unit (offset 20,000 to stay positive: slopes do not see it)
+
+
+def normals_map(dem_path, out_path, width):
+    """An elevation map (plate carree) as a normal map ``width`` wide: per pixel, the surface's tilt to the east and to
+    the north as red and green (0.5 is level), from centred differences over the sphere's true pixel sizes."""
+    import numpy as np
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = None
+    if os.path.exists(out_path):
+        return out_path
+    src = Image.open(dem_path)
+    dem = src.resize((width, width // 2), Image.BOX) if src.width != width else src
+    z = np.asarray(dem, dtype=np.float32) * HALF_METRE
+    h, w = z.shape
+    step = np.deg2rad(360.0 / w)
+    lat = np.deg2rad(90.0 - (np.arange(h) + 0.5) * 180.0 / h)
+    dx = (MOON_RADIUS_M * np.cos(lat) * step)[:, None]
+    gx = (np.roll(z, -1, axis=1) - np.roll(z, 1, axis=1)) / (2 * dx)
+    up, down = np.vstack([z[:1], z[:-1]]), np.vstack([z[1:], z[-1:]])
+    gy = (up - down) / (2 * MOON_RADIUS_M * step)
+    del z, up, down
+    inv = 1.0 / np.sqrt(gx * gx + gy * gy + 1.0)
+    rgb = np.empty((h, w, 3), dtype=np.uint8)
+    rgb[..., 0] = np.clip(np.rint((0.5 - 0.5 * gx * inv) * 255), 0, 255)
+    rgb[..., 1] = np.clip(np.rint((0.5 - 0.5 * gy * inv) * 255), 0, 255)
+    rgb[..., 2] = np.clip(np.rint((0.5 + 0.5 * inv) * 255), 0, 255)
+    Image.fromarray(rgb, "RGB").save(out_path)
+    return out_path
 
 
 def build_layer(layer, cache, out, update, max_level=None, procs=None):
@@ -271,22 +318,21 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
             spec["file"], os.path.join(cache, "files", os.path.basename(spec["file"]))
         )
         _check_pin(layer, _sha_files([path]), update)
+        if spec.get("derive") == "normals":
+            path = normals_map(path, os.path.join(cache, "files", "moon-normals-%d.png" % (TILE * 2 ** (top + 1))), TILE * 2 ** (top + 1))
         kind, src = "file", path
     # One process per row of the deepest level; a FileMosaic holds the whole map, so fewer of those at once.
     workers = procs or (os.cpu_count() or 4) if kind == "gibs" else 2
+    q = spec.get("quality", WEBP_Q)
     with concurrent.futures.ProcessPoolExecutor(workers) as ex:
-        list(
-            ex.map(
-                _cut_row,
-                [(kind, src, spec["mode"], layer, out, top, y) for y in range(2**top)],
-            )
-        )
-        for z in range(top - 1, -1, -1):
-            list(
-                ex.map(
-                    _shrink_row, [(layer, out, z, y, spec["mode"]) for y in range(2**z)]
-                )
-            )
+        if kind == "file":
+            # The whole map is at hand: every level is cut from it, never from a level already compressed once.
+            for z in range(top, -1, -1):
+                list(ex.map(_cut_row, [(kind, src, spec["mode"], layer, out, z, y, q) for y in range(2**z)]))
+        else:
+            list(ex.map(_cut_row, [(kind, src, spec["mode"], layer, out, top, y, q) for y in range(2**top)]))
+            for z in range(top - 1, -1, -1):
+                list(ex.map(_shrink_row, [(layer, out, z, y, spec["mode"], q) for y in range(2**z)]))
     print("%s: levels 0-%d" % (layer, top))
     return top
 
@@ -326,12 +372,19 @@ def main(argv=None):
     ap.add_argument("--layers", default=",".join(LAYERS))
     ap.add_argument("--update-pins", action="store_true")
     ap.add_argument("--no-zim", action="store_true", help="stop at the staged folder")
+    ap.add_argument("--keep-stage", action="store_true", help="add to the staged folder instead of starting it over")
+    ap.add_argument("--tag", help="the release the file is attached to: writes zimi/assets/almanac-hd.json for it")
     a = ap.parse_args(argv)
     stage = os.path.join(a.cache, "stage")
-    if os.path.isdir(stage):
+    if os.path.isdir(stage) and not a.keep_stage:
         shutil.rmtree(stage)
-    os.makedirs(stage)
-    manifest = {"version": 1, "tile": TILE, "ext": "webp", "layers": {}}
+    os.makedirs(stage, exist_ok=True)
+    try:
+        with open(os.path.join(stage, "hd.json")) as f:
+            manifest = json.load(f) if a.keep_stage else None
+    except (OSError, ValueError):
+        manifest = None
+    manifest = manifest or {"version": 1, "tile": TILE, "ext": "webp", "layers": {}}
     for layer in a.layers.split(","):
         cap = a.max_earth if layer.startswith("earth/") else None
         manifest["layers"][layer] = {
@@ -358,6 +411,13 @@ def main(argv=None):
     )
     creator.create_folder_zim(stage, out_path=path, register=False)
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
+    if a.tag:
+        # What almanachd.py offers and fetches: committed with the release that carries the file.
+        asset = {"file": os.path.basename(path), "size": os.path.getsize(path), "sha256": _sha_files([path]), "tag": a.tag}
+        with open(os.path.join(ROOT, "zimi", "assets", "almanac-hd.json"), "w") as f:
+            json.dump(asset, f, indent=2)
+            f.write("\n")
+        print("wrote zimi/assets/almanac-hd.json for", a.tag)
     return 0
 
 
