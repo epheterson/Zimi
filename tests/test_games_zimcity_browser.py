@@ -244,3 +244,44 @@ def test_the_city_runs_again_once_the_menu_has_closed(browser, site):
     t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
     pg.wait_for_timeout(1500)
     assert pg.evaluate("() => window.__zimcity.city.sim._cityTime") > t0
+
+
+def test_a_drag_with_a_zone_lays_a_row_and_undo_takes_the_last_one_back(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="residential"]')
+    y = box["top"] + box["h"] * 0.55
+    before = funds(pg)
+    tile = pg.evaluate("() => 16 * window.__zimcity.view.cam.s")   # one tile on screen
+    stroke(pg, [(60 + i * tile, y) for i in range(0, 8)])   # seven tiles to the right: three zones side by side
+    assert before - funds(pg) == 300, before - funds(pg)
+    assert pg.evaluate("() => !document.getElementById('cy-undo').disabled")
+    pg.click("#cy-undo")
+    assert funds(pg) == before
+    assert pg.evaluate("() => document.getElementById('cy-undo').disabled")
+
+
+def test_an_unpowered_zone_says_why_it_is_not_growing(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="residential"]')
+    x, y = box["w"] / 2, box["top"] + box["h"] * 0.55
+    stroke(pg, [(x, y), (x + 1, y)])
+    pg.click('.cy-tool[data-tool="residential"]')
+    touch(pg, "touchStart", [(x, y)])
+    pg.wait_for_timeout(750)
+    touch(pg, "touchEnd", [])
+    why = pg.wait_for_selector(".cy-why").text_content()
+    assert "no power" in why and "no road beside it" in why, why
+
+
+def test_paused_is_a_speed(browser, site):
+    pg = phone(browser, site)   # phone() leaves the city paused
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-speed")
+    pg.wait_for_selector(OURS + " .gs-seg")
+    pressed = pg.evaluate("() => document.querySelector('.ar-sheet:not(.gs-sheet) [aria-pressed=\"true\"]').textContent")
+    assert pressed == "Paused", pressed
+    pg.click(OURS + " .gs-seg button >> nth=2")   # Normal
+    pg.keyboard.press("Escape")
+    assert pg.evaluate("() => document.getElementById('cy-pause').getAttribute('data-t')") == "play.pause"
