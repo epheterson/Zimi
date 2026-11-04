@@ -94,6 +94,7 @@ SHELL_SEEDS = (
     "_moonEcliptic",
     "_moonEqCoords",
     "_moonLimbAngles",
+    "_moonLitPct",
     "_moonLoadHiMap",
     "_moonPhase",
     "_moonSpriteCanvas",
