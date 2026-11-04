@@ -6,7 +6,6 @@
    zimcity-input.js and the tools zimcity-tools.js. */
 
 import { Simulation } from './zimcity/engine/simulation.js';
-import { GameMap } from './zimcity/engine/gameMap.js';
 import { MapGenerator } from './zimcity/engine/mapGenerator.js';
 import * as Messages from './zimcity/engine/messages.js';
 import { View } from './zimcity-view.js';
@@ -14,13 +13,15 @@ import { Input } from './zimcity-input.js';
 import * as Tools from './zimcity-tools.js';
 import * as Words from './zimcity-words.js';
 import * as Library from './zimcity-library.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
+import * as Save from './zimcity-save.js';
+import { advise } from './zimcity-advisor.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
 var $ = function (id) { return d.getElementById(id); };
 
-var MAP_W = 120, MAP_H = 100;
+var MAP_W = Save.MAP_W, MAP_H = Save.MAP_H;
 var START_SCALE = 2;                 // a tile 32 px wide on screen: a road is one finger wide
 var STEPS_PER_SECOND = { 1: 10, 2: 20, 3: 60 };   // the engine's slow, normal and fast, as simulation steps a second
 var MAX_STEPS_PER_FRAME = 4;
@@ -50,9 +51,8 @@ function seeded(seed, fn) {
   try { return fn(); } finally { Math.random = real; }
 }
 
-function makeCity(map, level, saved, seed) {
-  var sim = new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed, saved);
-  var c = { sim: sim, map: map, tools: Tools.makeTools(map), seed: seed, level: level, won: false, broke: false, built: !!saved };
+function cityOf(map, sim, level, seed) {
+  var c = { sim: sim, map: map, tools: Tools.makeTools(map), seed: seed, level: level, won: false, broke: false, built: false };
   sim.disasterManager.disastersEnabled = disasters;
   listen(sim);
   return c;
@@ -60,7 +60,7 @@ function makeCity(map, level, saved, seed) {
 function freshCity(level) {
   var seed = randomSeed();
   var map = seeded(seed, function () { return MapGenerator(MAP_W, MAP_H); });
-  return makeCity(map, level, null, seed);
+  return cityOf(map, new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed), level, seed);
 }
 function install(c, cam) {
   if (held) Tools.drop(city, held);
@@ -72,17 +72,23 @@ function install(c, cam) {
   else { view.cam.s = START_SCALE; centreOnLand(); }
   messages.length = 0;
   strip();
-  if (!city.built) say(T('city.start'));
+  advice = null; advisor();
 }
-// A new city opens over its best land: the middle of the map, nudged toward the most open ground near it.
+// A new city opens over its best land: the window big enough for a first town (24 x 16 tiles) with the most ground to
+// build on (clear ground counts most, woods a little less since they cost a dollar to clear, water nothing), the middle
+// of the map winning a tie; never an island in a lake.
+var START_W = 24, START_H = 16;
 function centreOnLand() {
-  var map = city.map, best = null;
-  for (var y = 20; y < MAP_H - 20; y += 5) {
-    for (var x = 20; x < MAP_W - 20; x += 5) {
-      var open = 0;
-      for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) if (map.getTileValue(x + dx, y + dy) === 0) open++;
-      var score = open - Math.hypot(x - MAP_W / 2, y - MAP_H / 2) / 4;
-      if (!best || score > best.score) best = { x: x, y: y, score: score };
+  var map = city.map, best = null, clear = [];
+  for (var y = 0; y < MAP_H; y++) { clear[y] = []; for (var x = 0; x < MAP_W; x++) { var v = map.getTileValue(x, y); clear[y][x] = v === 0 ? 1 : v >= 2 && v <= 20 ? 0 : 0.7; } }
+  // a summed-area table answers "how much clear ground in this box" at once for every box
+  var sum = [];
+  for (y = 0; y <= MAP_H; y++) { sum[y] = []; for (x = 0; x <= MAP_W; x++) sum[y][x] = y && x ? clear[y - 1][x - 1] + sum[y - 1][x] + sum[y][x - 1] - sum[y - 1][x - 1] : 0; }
+  for (y = 0; y + START_H <= MAP_H; y += 2) {
+    for (x = 0; x + START_W <= MAP_W; x += 2) {
+      var open = sum[y + START_H][x + START_W] - sum[y][x + START_W] - sum[y + START_H][x] + sum[y][x];
+      var score = open - Math.hypot(x + START_W / 2 - MAP_W / 2, y + START_H / 2 - MAP_H / 2) / 8;
+      if (!best || score > best.score) best = { x: x + START_W / 2, y: y + START_H / 2, score: score };
     }
   }
   view.centreOn(best.x, best.y);
@@ -135,6 +141,7 @@ function showNews(l) {
   newsEl.hidden = false;
   clearTimeout(newsTimer); newsTimer = setTimeout(hideNews, NEWS_MS);
 }
+$('cy-map').addEventListener('pointerdown', function () { if (!newsEl.hidden) hideNews(); });   // touching the map puts the card away
 function hideNews() { clearTimeout(newsTimer); newsEl.hidden = true; newsEl.textContent = ''; }
 
 // The status line: one message at a time, each up for a few seconds; an urgent one (a fire, a crash) goes first.
@@ -269,7 +276,8 @@ function onStroke(tile, done) {
   stroke = null; view.ghost = null;
   if (built.ok) {
     lastBuilt = built.undo; undoBtn.disabled = false;
-    if (!city.built) { city.built = true; messages.length = 0; status.say(''); shownAt = 0; }
+    if (!city.built) city.built = true;
+    advisor();
     Play.haptic(10);
     strip();
     heldLine();
@@ -284,6 +292,15 @@ function onHover(tile) {
   var r = Tools.trial(city, held, [[tile.x, tile.y]]);
   Tools.drop(city, held);
   view.ghost = ghostOf(r);
+}
+
+// The advisor: the next useful step, said once when it changes (and again only after something else was said).
+var advice = null;
+function advisor() {
+  var next = advise(city.map);
+  if (next === advice) return;
+  advice = next;
+  if (next) say(T(next));
 }
 
 // ── the clock ──
@@ -310,7 +327,7 @@ function frame(now) {
   }
   view.paused = paused;
   view.draw(now);
-  if (now - lastSummary > SUMMARY_EVERY_MS) { lastSummary = now; summary(); }
+  if (now - lastSummary > SUMMARY_EVERY_MS) { lastSummary = now; summary(); advisor(); }
 }
 // Fast is offered only while the device keeps up with it: frames slower than FAST_FRAME_MS for a few seconds take it away.
 function watchFast(dt, now) {
@@ -372,7 +389,7 @@ var sheets = {
   paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
   level: function (v) { if (v !== undefined) pendingLevel = v; return pendingLevel; },
-  library: Library, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
+  library: Library, get cities() { return cities; }, dateOf: function (m, y) { var z = root.ZimiText; return T('city.date', { month: z.month(m, 'short'), year: z.number(y, { useGrouping: false }) }); }, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
 };
 function openBudget(forced) { budgetSheet(sheets, forced); }
 
@@ -382,6 +399,7 @@ fromMenu('cy-budget', function () { openBudget(false); });
 fromMenu('cy-report', function () { reportSheet(sheets); });
 fromMenu('cy-layers', function () { layersSheet(sheets); });
 fromMenu('cy-speed', function () { speedSheet(sheets); });
+fromMenu('cy-cities', function () { citiesSheet(sheets); });
 $('cy-new').addEventListener('click', function () {
   record('best');
   install(freshCity(pendingLevel));
@@ -391,22 +409,40 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  var sd = {};
-  city.sim.save(sd);
-  sd.map = sd.map.map(function (t) { return t.value; });
-  return { sim: sd, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s },
-           speed: speed, layer: layer, disasters: disasters };
+  return { sim: Save.packSim(city.sim), seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built,
+           cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
-  if (!k || !k.sim || !Array.isArray(k.sim.map) || k.sim.map.length !== MAP_W * MAP_H) return false;
-  var sd = Object.assign({}, k.sim, { map: k.sim.map.map(function (v) { return { value: v }; }) });
+  if (!k || !k.sim) return false;
   speed = [1, 2, 3].indexOf(k.speed) >= 0 ? k.speed : Simulation.SPEED_MED;
+  var back = Save.unpackSim(k.sim, k.level || 0, speed);
+  if (!back) return false;
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
-  var c = makeCity(new GameMap(MAP_W, MAP_H), k.level || 0, sd, k.seed);
+  var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false;
   install(c, k.cam);
   return true;
 }
+
+// ── kept cities: up to five, beside the one in progress ──
+var KEPT_KEY = 'zimi.zimcity.kept', KEPT_MAX = 5;
+function kept() { try { var v = JSON.parse(localStorage.getItem(KEPT_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function putKept(list) { try { localStorage.setItem(KEPT_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
+function card() { var dt = city.sim.getDate(); return { at: Date.now(), month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() }; }
+var cities = {
+  list: kept, max: KEPT_MAX,
+  keep: function () { var l = kept(); if (l.length >= KEPT_MAX) return false; l.unshift(card()); return putKept(l); },
+  remove: function (i) { var l = kept(); l.splice(i, 1); putKept(l); },
+  // Opening a kept city puts the one in progress in its place (when anything has been built), so nothing is lost.
+  open: function (i) {
+    var l = kept(), want = l[i];
+    if (!want) return;
+    if (city.built) l[i] = card(); else l.splice(i, 1);
+    putKept(l);
+    unpack(want.data);
+    Shell.saveNow();
+  }
+};
 
 Shell.game({
   inProgress: function () { return !!city && city.built; },

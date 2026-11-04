@@ -71,7 +71,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 }
 
 /* The news card: an article's lead over the top of the map when something happens that the library knows about. */
-.cy-news { position: absolute; z-index: 1; top: var(--sp-2); left: var(--gutter); right: var(--gutter); display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
+.cy-news { position: absolute; z-index: 1; top: var(--sp-2); left: var(--sp-2); right: var(--sp-2); max-width: 520px; margin: 0 auto; display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
 .cy-news[hidden] { display: none; }
 .cy-news-link { flex: 1 1 auto; min-width: 0; display: flex; gap: var(--sp-3); color: var(--ink); text-decoration: none; }
 .cy-news-img { flex: none; width: 56px; height: 56px; border-radius: var(--r-chip); object-fit: cover; background: var(--surface); }
@@ -81,5 +81,12 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-news-text span { font-size: var(--fs-small); color: var(--ink2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cy-news-close { flex: none; width: var(--target); height: var(--target); margin: calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) 0 0; border: 0; background: none; color: var(--ink2); font-size: 22px; cursor: pointer; }
 @media (prefers-reduced-motion: no-preference) { .cy-news:not([hidden]) { animation: cy-news-in 200ms ease-out; } }
-@keyframes cy-news-in { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes cy-news-in { from { transform: translateY(-8px); } }
 .cy-read { margin-top: var(--sp-2); }
+
+/* Kept cities: when and how big on the left, Open and Delete on the right. */
+.cy-keep { width: 100%; margin-bottom: var(--sp-2); }
+.cy-kept { align-items: center; }
+.cy-kept-what { display: flex; flex-direction: column; min-width: 0; }
+.cy-kept-what small { font-size: var(--fs-small); color: var(--ink2); }
+.cy-kept-acts { display: flex; gap: var(--sp-2); flex: none; }

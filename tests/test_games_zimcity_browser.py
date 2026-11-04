@@ -285,3 +285,48 @@ def test_paused_is_a_speed(browser, site):
     pg.click(OURS + " .gs-seg button >> nth=2")   # Normal
     pg.keyboard.press("Escape")
     assert pg.evaluate("() => document.getElementById('cy-pause').getAttribute('data-t')") == "play.pause"
+
+
+def test_a_new_city_opens_on_open_ground_with_the_first_step(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.clear()")
+    for seed_try in range(3):   # three fresh maps
+        pg.reload()
+        pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+        clear = pg.evaluate("""() => { const v = window.__zimcity.view, map = window.__zimcity.city.map, a = v.tileAt(v.w * 0.2, v.h * 0.3), b = v.tileAt(v.w * 0.8, v.h * 0.7);
+          let n = 0, all = 0; for (let y = a.y; y <= b.y; y++) for (let x = a.x; x <= b.x; x++) { all++; const v = map.testBounds(x, y) ? map.getTileValue(x, y) : 2; if (v < 2 || v > 20) n++; } return n / all; }""")
+        assert clear > 0.9, clear   # land, not water (woods are cleared for a dollar a tile)
+        pg.evaluate("() => localStorage.clear()")
+    assert pg.wait_for_selector("#cy-msg").text_content() == "Lay a road: choose Road and drag"
+
+
+def test_keep_open_and_delete_a_city(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="road"]')
+    y = box["top"] + box["h"] * 0.5
+    stroke(pg, [(x, y) for x in range(40, 200, 12)])
+    first = funds(pg)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 1
+    pg.keyboard.press("Escape")
+    stroke(pg, [(x, y + 40) for x in range(40, 200, 12)])   # the city moves on after it was kept
+    second = funds(pg)
+    assert second < first
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=0")   # Open: the kept city comes back, the one in progress takes its place
+    pg.wait_for_timeout(200)
+    assert funds(pg) == first
+    kept = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))")
+    assert len(kept) == 1 and kept[0]["funds"] == second
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=1")
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 1   # asked first
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=1")
+    pg.wait_for_timeout(100)
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 0

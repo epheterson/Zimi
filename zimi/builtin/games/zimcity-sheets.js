@@ -172,6 +172,34 @@ export function moreSheet(s) {
   api = Shell.sheet({ title: s.T('city.more'), body: [grid], actions: [{ label: s.T('shell.close') }] });
 }
 
+// Kept cities: keep the one in progress (up to five), open one (the city in progress takes its place), or delete one.
+export function citiesSheet(s) {
+  var c = s.cities, api = null, body = [], list = c.list();
+  var keep = el('button', 'ar-btn cy-keep', s.T('city.k.keep'));
+  keep.type = 'button';
+  if (list.length >= c.max) { keep.disabled = true; body.push(el('p', 'gs-text', s.T('city.k.full', { n: c.max }))); }
+  keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } });
+  body.unshift(keep);
+  if (!list.length) body.push(el('p', 'gs-text', s.T('city.k.none')));
+  list.forEach(function (k, i) {
+    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what');
+    what.appendChild(el('b', '', s.dateOf(k.month, k.year)));
+    what.appendChild(el('small', '', s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
+    var open = el('button', 'ar-btn', s.T('city.k.open')), del = el('button', 'ar-btn', s.T('city.k.delete'));
+    open.type = del.type = 'button';
+    open.addEventListener('click', function () { api.close(); c.open(i); });
+    // Delete asks once, in place: the button says so, and a second tap deletes.
+    del.addEventListener('click', function () {
+      if (del.dataset.sure) { c.remove(i); api.close(); citiesSheet(s); return; }
+      del.dataset.sure = '1'; del.textContent = s.T('city.k.sure');
+    });
+    var acts = el('span', 'cy-kept-acts'); acts.appendChild(open); acts.appendChild(del);
+    row.appendChild(what); row.appendChild(acts);
+    body.push(row);
+  });
+  api = Shell.sheet({ title: s.T('city.cities'), text: s.T('city.k.text'), body: body, actions: [{ label: s.T('shell.close'), primary: true }] });
+}
+
 export function newGameRows(s) {
   return [Play.optionRow(s.T('board.level'), [[Simulation.LEVEL_EASY, s.T('board.level.easy')], [Simulation.LEVEL_MED, s.T('board.level.medium')], [Simulation.LEVEL_HARD, s.T('board.level.hard')]], s.level(), function (v) { s.level(v); })];
 }
