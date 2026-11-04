@@ -444,7 +444,7 @@ def test_far_from_any_station_there_is_no_tide_section(browser, served):
         pg, errors = _open(ctx, served)
         pg.wait_for_function(ANSWERED, polling=POLL_MS, timeout=60000)
         pg.wait_for_timeout(300)
-        assert pg.evaluate("() => _at.data.tides.stations[0].km") > 1000
+        assert pg.evaluate("() => _at.data.tides.stations[0].km") > pg.evaluate("AT_TIDE_NEAR_KM")
         assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
         assert pg.evaluate("() => document.getElementById('almanac-place').offsetHeight") == 0
         assert "tides" not in _bar_keys(pg)
@@ -507,6 +507,24 @@ def test_a_tide_section_comes_and_goes_with_the_place_without_moving_the_reader(
         assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
         assert abs(after - before) <= STILL_PX, (before, after)
         assert "tides" not in _bar_keys(pg)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+DOVER = {"lat": 51.1279, "lon": 1.3134, "name": "Dover"}
+
+
+def test_a_world_gauge_gives_britain_its_tide_and_says_whose(browser, served):
+    """Dover has a tide of its own from TICON-3's gauge, credited as such, with heights above its lowest tide."""
+    ctx = _context(browser, DOVER)
+    try:
+        pg, errors = _open(ctx, served)
+        pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
+        assert "Dover" in pg.inner_text("#almanac-place .at-station-name")
+        note = pg.evaluate("() => [...document.querySelectorAll('#at-why-panel .at-why-n')].pop().textContent")
+        assert "TICON-3" in note and "CC BY 4.0" in note, note
+        assert "tides" in _bar_keys(pg)
         assert not errors, errors
     finally:
         ctx.close()

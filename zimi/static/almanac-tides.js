@@ -506,6 +506,17 @@ function _atPredictor(st) {
   return _atPredictorMemo.p;
 }
 
+// Whose constants these are, and what the heights stand on: NOAA's stations above mean lower low water, the world's
+// gauges (TICON-3, scripts/build_tide_world.py) above their lowest predicted tide.
+function _atWorld(st) { return st.src === 'ticon3'; }
+function _atNote(st) {
+  if (st.refrec) return t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) });
+  return t(_atWorld(st) ? 'alm_tide_note_world' : 'alm_tide_note');
+}
+function _atSourceLine(st) {
+  return t(_atWorld(st) ? 'alm_tide_sheet_source_world' : 'alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id });
+}
+
 // The tide station's own clock: tide tables are read in the harbour's time.
 function _atTideTz(st) { return _almTzForLocation(st.la, st.lo); }
 
@@ -721,7 +732,7 @@ function _atTideHtml(st) {
       (isFinite(nowH) ? '<span class="at-lead-now">' + _almEsc(t('alm_tide_now', { h: _atHeight(nowH) })) + '</span>' : '');
   }
   lead += '</div>';
-  var note = st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note');
+  var note = _atNote(st);
   var body = lead +
     '<div class="at-curve" id="at-curve">' + _atCurveSvg(st, day, focus, next) + '</div>' +
     _atMonthHtml(st, focus) +

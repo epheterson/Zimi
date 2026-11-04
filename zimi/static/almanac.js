@@ -1721,7 +1721,7 @@ function _almTmInit() {
 // where the answer is a limit worth knowing. The methods are each table's
 // "How this is made" ("is about this data really needed maybe so but reread
 // and think", Eric, 2026-10-03); the sources' ages are the sheet one tap in.
-var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'islamic', 'chinese',
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'tides', 'planets', 'islamic', 'chinese',
   'deeptime', 'timezones'];
 // The data's sources and ages, folded away at the page's end, with what stops
 // being true without updates (a reference sheet) one tap inside it.

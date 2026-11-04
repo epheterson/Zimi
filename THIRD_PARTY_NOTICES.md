@@ -65,6 +65,14 @@ Harmonic constants, tidal datums and subordinate-station offsets for every NOAA 
 - Source: NOAA Center for Operational Oceanographic Products and Services, https://tidesandcurrents.noaa.gov/
 - Terms: work of the U.S. Government, public domain in the United States (17 U.S.C. 105). NOAA asks that it be credited as the source and that its data not be presented as an official NOAA product; Zimi's predictions are its own computation and say so.
 
+## TICON-3 tide gauges, in the same file (`zimi/assets/tides-snapshot.json.gz`)
+
+Harmonic constants for tide gauges outside NOAA's coverage (about 1,500 after leaving out lakes, gauges with too small a tide to tell, repeated records and any gauge within 5 km of a NOAA station), with two datums the build works out from them. Built by `scripts/build_tide_world.py`, which adds them beside NOAA's stations.
+
+- Source: Hart-Davis, M. G., Dettmering, D. and Seitz, F. (2022): TICON-3: Tidal Constants based on GESLA-3 sea-level records from globally distributed tide gauges including gauge type information (data). PANGAEA, https://doi.org/10.1594/PANGAEA.951610
+- Terms: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/ . Zimi keeps 37 of the 40 constituents, rounds amplitudes to the millimetre and phases to the degree, and adds estimated datums; the Almanac credits TICON-3 under each world station's tide and in "About this data".
+- Gauge names: GeoNames cities1000, https://www.geonames.org/ , CC BY 4.0. Only the name and country of the town each gauge stands in are used.
+
 ## The live sky's Milky Way and constellations (`zimi/static/earth/`)
 
 - Milky Way panorama (`milkyway-v1.webp`): ESO / S. Brunier, "The Milky Way panorama" (eso0932a), CC BY 4.0, https://www.eso.org/public/images/eso0932a/ . Zimi removed the point stars, resized it and recompressed it; the stars drawn over it are the Yale Bright Star Catalogue's (`stars-v1.bin`, public domain).
@@ -74,7 +82,7 @@ Harmonic constants, tidal datums and subordinate-station offsets for every NOAA 
 
 Tides outside the United States, recorded so the next look starts here (2026-10-01):
 
-- TICON-3 / TICON-4 (Hart-Davis et al., tidal constants from GESLA tide-gauge records, about 1,100+ gauges worldwide): CC BY 4.0, so redistributable with attribution. The best candidate for world coverage. https://doi.pangaea.de/10.1594/PANGAEA.951610, https://www.seanoe.org/data/00980/109129/
+- TICON-3: shipped since 1.15.3 (above). TICON-4 (https://www.seanoe.org/data/00980/109129/) is the next look.
 - Canadian Hydrographic Service: listed under the Open Government Licence - Canada on open.canada.ca, but the tides.gc.ca licence agreement says CHS data "shall not be sold, licensed, leased, assigned or given to a third party". Not clearly redistributable; ask CHS before shipping. https://www.tides.gc.ca/en/licence-agreement
 - UK Hydrographic Office (Admiralty) tidal constants: Crown copyright under commercial licence. Not redistributable.
 - Australian Bureau of Meteorology tide predictions: published under the Bureau's copyright terms, not an open licence for the constants. Not shipped.

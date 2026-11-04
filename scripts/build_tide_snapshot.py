@@ -24,6 +24,9 @@ run rarely, not every release. NOAA data is in the public domain (see
 THIRD_PARTY_NOTICES.md).
 
 About 4,800 small requests to the CO-OPS metadata API, four at a time.
+
+This writes NOAA's stations only: run scripts/build_tide_world.py after it to
+add the world's tide gauges (TICON-3) back beside them.
 """
 
 import concurrent.futures as futures
