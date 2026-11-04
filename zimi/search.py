@@ -1888,7 +1888,9 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
 def _shelf_games_only(name, results):
     """``results`` from ``name``, where the games ZIM answers with its games only: a page on the shelf, under the
     game's own name and its blurb ("Chess", not "Chess - ZimiGames" over its button labels "Hint Flip"), never the
-    ZIM's other files (a data README, an engine's notes, a stylesheet)."""
+    ZIM's other files (a data README, an engine's notes, a stylesheet). zimi-mcp has no games and no gamelinks."""
+    if not _srv.bundled("gamelinks"):
+        return results
     from zimi import gamelinks
 
     if name != gamelinks._GAMES_ZIM:
