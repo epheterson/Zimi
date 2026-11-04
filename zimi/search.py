@@ -4583,6 +4583,18 @@ def _scan_vocab_child_main(index_dir, out):
     _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
 
 
+# A background index build is never what anyone is waiting on: its child runs at the lowest CPU
+# priority, so a big map or Wikipedia being read never slows a page someone opened.
+_CHILD_NICE = 19
+
+
+def _yield_to_the_server():
+    try:
+        os.nice(_CHILD_NICE)
+    except (AttributeError, OSError):
+        pass  # Windows has no nice; the build still runs, at normal priority
+
+
 def _build_index_child_main(kind, data_dir, zim_name, zim_path):
     """`python -m zimi.search --build-index <kind> <data dir> <name> <path>`:
     the build _build_index_isolated starts. It writes the index into the data
@@ -4591,6 +4603,7 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
     )
     _srv.ZIMI_DATA_DIR = data_dir
+    _yield_to_the_server()
     if kind == "titles":
         _build_title_index(zim_name, zim_path)
     elif kind == "qids":
