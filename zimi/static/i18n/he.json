@@ -3548,5 +3548,12 @@
   "near_pick_largest": "{place} ב־{where}: מבין {n} מקומות בשם הזה, הגדול ביותר.",
   "near_not_found": "אף מפה מותקנת לא מציינת מקום בשם {place}.",
   "app_loading_slow": "עדיין בהכנה…",
-  "app_loading_failed": "הטעינה נכשלה."
+  "app_loading_failed": "הטעינה נכשלה.",
+  "zi_last_updated": "עודכן לאחרונה",
+  "zi_update_history": "היסטוריית עדכונים",
+  "upd_added": "נוסף",
+  "upd_updated": "עודכן",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "מהדורת {date}",
+  "dot_why": "מה חדש כאן"
 }

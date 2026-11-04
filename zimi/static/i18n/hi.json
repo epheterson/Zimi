@@ -3548,5 +3548,12 @@
   "near_pick_largest": "{where} पर {place}: इस नाम की {n} जगहों में से सबसे बड़ी।",
   "near_not_found": "किसी भी इंस्टॉल किए गए नक्शे पर {place} नाम की कोई जगह नहीं है।",
   "app_loading_slow": "अभी तैयार हो रहा है…",
-  "app_loading_failed": "यह लोड नहीं हुआ।"
+  "app_loading_failed": "यह लोड नहीं हुआ।",
+  "zi_last_updated": "अंतिम अपडेट",
+  "zi_update_history": "अपडेट का इतिहास",
+  "upd_added": "जोड़ा गया",
+  "upd_updated": "अपडेट किया गया",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "{date} संस्करण",
+  "dot_why": "यहाँ क्या नया है"
 }

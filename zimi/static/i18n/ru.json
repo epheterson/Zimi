@@ -3548,5 +3548,12 @@
   "near_pick_largest": "{place} в точке {where}: из {n} мест с таким названием самое крупное.",
   "near_not_found": "Ни на одной установленной карте нет места под названием {place}.",
   "app_loading_slow": "Ещё готовится…",
-  "app_loading_failed": "Не удалось загрузить."
+  "app_loading_failed": "Не удалось загрузить.",
+  "zi_last_updated": "Последнее обновление",
+  "zi_update_history": "История обновлений",
+  "upd_added": "Добавлено",
+  "upd_updated": "Обновлено",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "Выпуск {date}",
+  "dot_why": "Что нового"
 }

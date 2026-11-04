@@ -3548,5 +3548,12 @@
   "near_pick_largest": "{place} em {where}: de {n} lugares com esse nome, o maior.",
   "near_not_found": "Nenhum mapa instalado tem um lugar chamado {place}.",
   "app_loading_slow": "Ainda a preparar…",
-  "app_loading_failed": "Não foi possível carregar."
+  "app_loading_failed": "Não foi possível carregar.",
+  "zi_last_updated": "Última atualização",
+  "zi_update_history": "Histórico de atualizações",
+  "upd_added": "Adicionado",
+  "upd_updated": "Atualizado",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "Edição {date}",
+  "dot_why": "O que há de novo"
 }

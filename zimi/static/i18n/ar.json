@@ -3548,5 +3548,12 @@
   "near_pick_largest": "{place} عند {where}: الأكبر من بين {n} أماكن بهذا الاسم.",
   "near_not_found": "لا توجد خريطة مثبتة تسمّي مكانًا باسم {place}.",
   "app_loading_slow": "ما زال قيد التحضير…",
-  "app_loading_failed": "تعذّر التحميل."
+  "app_loading_failed": "تعذّر التحميل.",
+  "zi_last_updated": "آخر تحديث",
+  "zi_update_history": "سجل التحديثات",
+  "upd_added": "أُضيف",
+  "upd_updated": "حُدّث",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "إصدار {date}",
+  "dot_why": "ما الجديد هنا"
 }
