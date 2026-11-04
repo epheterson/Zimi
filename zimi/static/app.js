@@ -17418,9 +17418,9 @@ function _whenFrameDocReady(frame, prevDoc, fn) {
   setTimeout(tick, _FRAME_DOC_POLL_MS);
 }
 function openReader(url) {
+  _chromeReset(); // a new page starts with the header in place
   var seenApp = _appOfReaderUrl(url);
   if (seenApp) _appSeen(seenApp);
-  _chromeReset(); // a new page starts with the header in place
   _gamePlayHide();
   // Same-document fragment scroll fast-path. When the frame already holds the
   // target document and only the #fragment differs, a location.replace() below
