@@ -123,11 +123,30 @@ def test_the_command_line_prints_the_body(tmp_path):
     assert done.stdout.strip() == body("1.1.0")
 
 
-def test_every_highlights_block_in_the_real_changelog_is_one_to_three_sentences():
+HIGHLIGHT_BULLETS_MAX = 8
+
+
+def test_every_highlights_block_in_the_real_changelog_is_short():
+    """One to three sentences, or up to eight bullets of one sentence each."""
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     for version in re.findall(r"^## \[(\d[^\]]*)\]", text, re.M):
         _, section = release_notes._section(text, version)
         highlights = release_notes._highlights(section)
-        if highlights:
+        if not highlights:
+            continue
+        bullets = [l for l in highlights.splitlines() if l.startswith("- ")]
+        if bullets:
+            assert len(bullets) <= HIGHLIGHT_BULLETS_MAX, "%s: %d highlight bullets" % (version, len(bullets))
+            for b in bullets:
+                sentences = re.findall(r"[^.!?]+[.!?](?=\s|$)", b[2:])
+                assert len(sentences) == 1, "%s: a highlight bullet is %d sentences: %s" % (version, len(sentences), b)
+        else:
             sentences = re.findall(r"[^.!?]+[.!?]", highlights)
             assert 1 <= len(sentences) <= 3, "%s: Highlights is %d sentences" % (version, len(sentences))
+
+
+def test_an_issue_the_highlights_name_is_not_listed_again_under_fixed():
+    log = "## [2.0.0]\n\n### Highlights\n\n- **Linux:** a unit at boot (#137).\n\n### Fixed\n\n- Wide infoboxes fit (#136).\n"
+    body = release_notes.release_body(log, "2.0.0")
+    assert body.count("#137") == 1, body
+    assert "**Fixed**\n\n- Wide infoboxes fit (#136)." in body, body
