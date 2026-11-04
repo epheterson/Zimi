@@ -36,6 +36,9 @@
     return true;
   }
 
+  // A deal's random source: the day's in a daily (ZimiShell.random, shell.js), else chance.
+  function random() { return root.ZimiShell && root.ZimiShell.random ? root.ZimiShell.random() : Math.random; }
+  function daily() { return !!(root.ZimiShell && root.ZimiShell.daily); }
   function shuffled(rng) {
     var a = [], i, j, t;
     for (i = 0; i < DECK; i++) a.push(i);
@@ -1592,7 +1595,7 @@
   root.ZimiCards = {
     SUITS: SUITS, RANK_LABELS: RANK_LABELS, KING: KING, DECK: DECK, BACKS: BACKS,
     rank: rank, suit: suit, isRed: isRed, make: make, cardName: cardName, clone: clone,
-    foundationAccepts: foundationAccepts, stacksOn: stacksOn, isRun: isRun, shuffled: shuffled, msDeal: msDeal,
+    foundationAccepts: foundationAccepts, stacksOn: stacksOn, isRun: isRun, shuffled: shuffled, random: random, daily: daily, msDeal: msDeal,
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,

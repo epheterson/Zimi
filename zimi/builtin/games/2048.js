@@ -19,7 +19,7 @@
   function emptyGame(seed) {
     return {
       size: SIZE, cells: new Array(SIZE * SIZE).fill(null), nextId: 1, score: 0, won: false, over: false, undo: null,
-      rng: mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed)
+      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed)
     };
   }
 

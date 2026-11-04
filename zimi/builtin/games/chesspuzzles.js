@@ -58,7 +58,7 @@
     var from = fresh.length ? fresh : pool;
     return from[Math.floor(Math.random() * from.length)];
   }
-  function today() { return root.ZimiUtil.dayKey(new Date(), '-'); }
+  function today() { return root.ZimiShell ? root.ZimiShell.day() : root.ZimiUtil.dayKey(new Date(), '-'); }   // a daily's date (the server's day), else the device's
   function dailyIndex(date) {
     var h = 0x811c9dc5;
     for (var i = 0; i < date.length; i++) { h ^= date.charCodeAt(i); h = Math.imul(h, 0x01000193); }
@@ -240,11 +240,11 @@
 
   pos = E.startPosition();
   if (root.ZimiShell) root.ZimiShell.game({
-    menu: menuOptions, hints: true,
+    menu: menuOptions, hints: true, daily: function () { return isDaily; },
     stats: function () { return state.solved + state.failed ? [T('puzzles.record', { won: state.solved, lost: state.failed })] : []; },
     inProgress: function () { return !done && step > 1; }
   });
-  startPuzzle(pick());
+  if (root.ZimiShell && root.ZimiShell.daily) { isDaily = true; startPuzzle(dailyIndex(today())); } else startPuzzle(pick());
   // Leaving and coming back: the same puzzle, played as far as it was (the position is played again from the puzzle's start).
   UI.persist({
     save: function () { return puzzle ? { idx: puzzle.idx, step: step, hinted: hinted, failed: failed, done: done, rated: rated, isDaily: isDaily, hintLevel: hintLevel, day: isDaily ? today() : '' } : null; },

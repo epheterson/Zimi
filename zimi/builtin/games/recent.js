@@ -248,6 +248,48 @@
     return s;
   }
 
+  // The Daily row: today's edition of every game that has one (ZimiShell.DAILY in shell.js), each tile opening it with the
+  // server's day in its address, so everyone on this Zimi plays the same one. Those done today carry a tick and move to the end.
+  // Over the row, one line: how many are done, and the streak.
+  function dailySection(rows) {
+    var S = root.ZimiShell;
+    if (!S || !S.DAILY || !S.serverDay || !S.stats) return Promise.resolve(null);
+    return S.serverDay().then(function (day) {
+      var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [];
+      uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path]; }).forEach(function (g) {
+        var t = tileFor(g);
+        if (!t) return;
+        ownIds(t);
+        t.setAttribute('href', g.path + '?daily=' + day);
+        if (done[g.path]) {
+          t.classList.add('ar-done');
+          var tick = doc.createElement('span');
+          tick.className = 'ar-done-mark';
+          tick.setAttribute('role', 'img');
+          tick.setAttribute('aria-label', T('daily.doneToday'));
+          tick.textContent = '\u2713';
+          t.appendChild(tick);
+          finished.push(t);
+        } else open.push(t);
+      });
+      var tiles = open.concat(finished);
+      if (!tiles.length) return null;
+      var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
+      var line = doc.createElement('span');
+      line.className = 'ar-daily-line';
+      line.textContent = T('shelf.daily.done', { n: finished.length, total: tiles.length }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : '');
+      var stats = doc.createElement('button');
+      stats.type = 'button';
+      stats.className = 'ar-daily-stats';
+      stats.textContent = T('stats.title');
+      stats.addEventListener('click', function () { S.statsSheet(); });
+      h.appendChild(line);
+      h.appendChild(stats);
+      if (S.localizeTiles) S.localizeTiles(s);
+      return s;
+    });
+  }
+
   function shelf() {
     var first = doc.querySelector('.ar-section');
     if (!first) return;
@@ -273,7 +315,12 @@
       if (t) first.parentNode.insertBefore(t, first);
       var g = dayPick(rows, localDay(new Date()));
       if (g) put('ar-today', T('shelf.today'), [{ path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') }], true);
-      // shelf.js lays the two sections out per view; it is told when both are in.
+      // shelf.js lays the sections out per view; it is told when they are in.
+      doc.dispatchEvent(new Event('zimi-shelf-today'));
+      return dailySection(rows);
+    }).then(function (s) {
+      if (!s) return;
+      first.parentNode.insertBefore(s, first);
       doc.dispatchEvent(new Event('zimi-shelf-today'));
     });
   }

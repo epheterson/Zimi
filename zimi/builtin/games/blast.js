@@ -36,7 +36,7 @@
 
   // kinds: one entry per bomber, 'person' or 'cpu' (up to four). Person 0 is player 1.
   function createState(kinds, seed, carry) {
-    var rng = mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), g = makeGrid(rng, kinds.length);
+    var rng = mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), g = makeGrid(rng, kinds.length);
     var st = { w: W, h: H, grid: g.grid, hidden: g.hidden, rng: rng, seed: seed, kinds: kinds.slice(), bombs: [], flames: [], items: [], time: 0, status: 'ready', statusT: READY_S, winner: -1, events: [], round: carry ? carry.round : 1, wins: carry ? carry.wins.slice() : kinds.map(function () { return 0; }), anim: 0 };
     st.players = kinds.map(function (k, i) {
       return { id: i, human: k === 'person', x: SPAWNS[i][0], y: SPAWNS[i][1], dx: 0, dy: 0, wantX: 0, wantY: 0, alive: true, maxBombs: START_BOMBS, range: START_RANGE, speed: START_SPEED, face: 'down', walk: 0, diedAt: -1, think: 0, color: COLORS[i] };

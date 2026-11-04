@@ -193,8 +193,10 @@
       do { n = 1 + Math.floor(Math.random() * RANDOM_DEAL_MAX); } while (winnableOnly && n === UNWINNABLE_DEAL);
       return n;
     }
+    // A daily is the day's numbered deal (never the one that cannot be won).
+    function dailyDealNo() { var n = 1 + root.ZimiShell.daily.seed % RANDOM_DEAL_MAX; return n === UNWINNABLE_DEAL ? n + 1 : n; }
     var asked = parseInt(params.get('deal'), 10);   // no ?deal= (NaN) is a random deal, not deal 1
-    var dealNo = asked >= 1 ? Math.min(MAX_DEAL, asked) : randomDealNo();
+    var dealNo = Z.daily() ? dailyDealNo() : asked >= 1 ? Math.min(MAX_DEAL, asked) : randomDealNo();
 
     function startDeal(n) {
       dealNo = n;

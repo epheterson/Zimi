@@ -102,7 +102,7 @@
     var g = {
       board: emptyBoard(), queue: [], hold: null, canHold: true, over: false, cur: null,
       score: 0, lines: 0, level: 1,
-      rng: mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed)
+      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed)
     };
     refill(g);
     spawnNext(g);
