@@ -87,49 +87,39 @@ def test_no_workflow_runs_a_test_file_as_a_script(name):
 
 
 def test_the_standalone_js_tests_are_all_reached():
-    """The .cjs tests are not collected by pytest, so CI loops over them. A
-    loop that names files instead of globbing would rot the same way."""
-    body = _text("ci.yml")
-    assert (
-        "tests/*.cjs" in body
-    ), "ci.yml no longer globs tests/*.cjs — a new .cjs test would never run"
+    """The .cjs tests are not collected by pytest, so CI runs them through
+    scripts/run_node_tests.py (the one place they run). A runner that names
+    files instead of globbing would rot the same way."""
+    assert "scripts/run_node_tests.py" in _text("ci.yml"), (
+        "ci.yml no longer runs scripts/run_node_tests.py — no .cjs test would run"
+    )
+    runner = (ROOT / "scripts" / "run_node_tests.py").read_text(encoding="utf-8")
+    assert '.glob("*.cjs")' in runner, (
+        "run_node_tests.py no longer globs tests/*.cjs — a new .cjs test would never run"
+    )
     present = sorted(p.name for p in (ROOT / "tests").glob("*.cjs"))
     assert present, "no .cjs tests found; has the glob outlived its files?"
 
 
-def test_the_standalone_js_tests_pass():
-    """Run the .cjs suite from pytest, so `pytest tests/` means everything.
+def test_the_browser_shards_add_up_to_the_whole():
+    """CI splits the browser tests over `--shard i/N` jobs. A shard count in
+    ci.yml that the matrix does not list, or a split that drops or repeats a
+    module, would leave tests that run nowhere: check the arithmetic."""
+    body = _text("ci.yml")
+    count = int(re.search(r"--shard \$\{\{ matrix\.shard \}\}/(\d+)", body).group(1))
+    matrix = re.search(r"shard: \[([\d, ]+)\]", body).group(1)
+    assert [int(n) for n in matrix.split(",")] == list(range(1, count + 1)), (
+        f"ci.yml splits the browser tests {count} ways but its matrix runs shards {matrix}"
+    )
+    import importlib.util
 
-    These are not collected by pytest, so for as long as CI was the only thing
-    running them, "the suite is green" locally meant "the Python half is
-    green". Two .cjs tests were broken on this branch and stayed broken through
-    a full day of work because every local run was `pytest tests/` — the exact
-    blind spot the CI-coverage fix above was about, one level closer to home.
-
-    Skipped rather than failed when node is absent: a Python-only contributor
-    should not be blocked by a missing runtime, and CI always has one."""
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node is not installed here; CI runs these")
-    scripts = sorted((ROOT / "tests").glob("*.cjs"))
-    assert scripts, "no .cjs tests found"
-    broken = []
-    for script in scripts:
-        done = subprocess.run(
-            # encoding, not the platform default: the .cjs tests print names
-            # and marks that cp1252 cannot decode, and the failure lands in
-            # a reader thread as an unhandled exception rather than here.
-            [node, str(script)], capture_output=True, text=True, encoding="utf-8",
-            errors="replace", cwd=ROOT, timeout=180
-        )
-        if done.returncode != 0:
-            tail = (done.stdout + done.stderr).strip().splitlines()
-            hint = next(
-                (ln for ln in tail if "FAIL" in ln or "Error" in ln),
-                tail[-1] if tail else "",
-            )
-            broken.append(f"{script.name}: {hint[:160]}")
-    assert not broken, "standalone JS tests failed:\n  " + "\n  ".join(broken)
+    spec = importlib.util.spec_from_file_location("zimi_tests_conftest", ROOT / "tests" / "conftest.py")
+    conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conftest)
+    sizes = {f"test_{i}.py": 100 + (i * 37) % 900 for i in range(60)}
+    placed = conftest.shard_of(sizes, count)
+    assert sorted(placed) == sorted(sizes), "a module was dropped by the split"
+    assert set(placed.values()) == set(range(1, count + 1)), "a shard would run nothing"
 
 
 def test_deploy_does_not_hide_a_failed_build():

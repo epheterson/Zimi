@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from conftest_zim import _Article  # noqa: E402
+from zimi.libzimcompat import estimated_matches, result_paths
 
 ZIM = "titles"
 
@@ -164,7 +165,7 @@ class SearchFindsEveryTitle(unittest.TestCase):
         gaps = {}
         for q in queries:
             s = searcher.suggest(q)
-            oracle = set(s.getResults(0, s.getEstimatedMatches()))
+            oracle = set(result_paths(s, 0, estimated_matches(s)))
             if prefix_only:
                 oracle = {p for p in oracle if archive.get_entry_by_path(p).title.lower().startswith(q.lower())}
             # libzim answers an alias with its article, as the quick search does.

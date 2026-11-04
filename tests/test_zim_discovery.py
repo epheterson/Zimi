@@ -14,7 +14,7 @@ explicit setting always beats a discovered folder):
    Collision rule: root files scan first, larger file wins per short name,
    size ties keep the root copy. Deeper nesting stays out of scope.
 
-Live boots in this file use port 8895 and nothing else.
+Live boots in this file ask the OS for a free port (--port 0).
 """
 
 import json
@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "desktop"))
 
 import zimi_desktop  # noqa: E402
 
-LIVE_PORT = "8895"  # the only port live boots in this file may bind
+LIVE_PORT = "0"  # the OS picks, so parallel workers never collide
 
 
 @pytest.fixture
@@ -300,7 +300,7 @@ def test_scan_collision_size_tie_keeps_the_root_copy(scan_dir):
 
 
 # ---------------------------------------------------------------------------
-# Live boots (port 8895 only)
+# Live boots (port 0, the OS picks)
 # ---------------------------------------------------------------------------
 
 
@@ -319,7 +319,7 @@ def _clean_env(overrides):
 
 
 def _boot_and_list(cwd, env_overrides, argv=None):
-    """Boot `python -m zimi serve --port 8895` from `cwd`, wait for READY,
+    """Boot `python -m zimi serve --port 0` from `cwd`, wait for READY,
     GET /list, shut down. Returns the parsed /list payload."""
     argv = argv or [sys.executable, "-m", "zimi", "serve", "--port", LIVE_PORT]
     log_fd, log_path = tempfile.mkstemp(prefix="zimi-discovery-log-")
@@ -334,7 +334,7 @@ def _boot_and_list(cwd, env_overrides, argv=None):
         )
     try:
         port = _wait_for_ready(proc, log_path)
-        assert port == int(LIVE_PORT)
+        assert port > 0
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/list", timeout=5) as resp:
             listing = json.loads(resp.read().decode())
         assert proc.poll() is None, "server exited during the check"

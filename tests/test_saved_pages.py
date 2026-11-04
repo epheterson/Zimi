@@ -26,6 +26,7 @@ sys.path.insert(0, REPO_ROOT)
 
 from libzim.reader import Archive  # noqa: E402
 
+from zimi.libzimcompat import entry_by_id
 from zimi import creator, folderfiles, savedpages  # noqa: E402
 
 FIXTURES = os.path.join(REPO_ROOT, "tests", "fixtures", "saved_pages.zip")
@@ -60,9 +61,9 @@ def _text(arc, path):
 
 def _entries(arc):
     return [
-        arc._get_entry_by_id(i).path
+        entry_by_id(arc, i).path
         for i in range(arc.all_entry_count)
-        if not arc._get_entry_by_id(i).path.startswith(
+        if not entry_by_id(arc, i).path.startswith(
             ("X/", "M/", "fulltext/", "title/", "listing/")
         )
     ]

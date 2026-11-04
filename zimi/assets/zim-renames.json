@@ -1,0 +1,7 @@
+{
+ "_about": "Upstream ZIM renames, old file-name prefix (before _YYYY-MM) to the new one. Consulted before the fuzzy match in zimi/renames.py.",
+ "renames": {
+  "www.ready.gov_en_all": "ready.gov_en_all",
+  "scoutwiki_en_all": "scoutwiki.org_en_all"
+ }
+}

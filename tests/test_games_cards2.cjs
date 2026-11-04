@@ -580,6 +580,7 @@ if (sandbox.ZimiCanasta) {
     check(!plan('2D 2H').ok && plan('2D', [mk(13, 'KH KD KC')], false, 13).ok, 'plan: wild cards alone need a meld to join');
     check(!plan('3S 3C 3D'.replace('3D', '3C\'')).ok && plan('3S 3C 3C\'', [], true).ok, 'plan: black threes only when going out');
     check(!plan('3H KS KH KD').ok, 'plan: red threes are laid automatically');
+    check(!plan('3S 3C 2D', [], true).ok && plan('3S 3C 3C\'', [], true).ok, 'plan: a wild card never joins black threes');
   }
   // The deal and the state of play.
   const deck = () => { const a = []; for (let i = 0; i < 108; i++) a.push(i); return a; };
@@ -600,9 +601,14 @@ if (sandbox.ZimiCanasta) {
   };
   {
     // Taking the pile.
-    let st = base({ hands: [cids('KS KH 5C 9D QS QD JC'), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw' });
+    let st = base({ hands: [cids('KS KH 5C 9D QS QD JC AS AH AD'), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw' });
     check(!CA.takePlan(st, 0, cids('KS')).ok, 'before your first meld the pile is frozen: one king is not enough');
     check(CA.takePlan(st, 0, cids('KS KH')).ok, 'a natural pair takes the pile with the top card');
+    check(!CA.takePlan(Object.assign({}, st, { hands: [cids('KS KH 5C 9D QS QD JC'), cids('AS')] }), 0, cids('KS KH')).ok, 'before your first meld a take that could never reach the minimum is refused (30 of 50)');
+    const wildLeft = base({ hands: [cids("KS KH KC KS' KH' J QS QH QD 9D"), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw', scores: [3000, 0] });
+    check(CA.takePlan(wildLeft, 0, cids('KS KH')).ok, 'a first meld counts a wild card that joins a meld of three or more: six kings, a joker and three queens make 140 of 120');
+    const lone = base({ hands: [cids('KS KH'), cids('AS')], pile: cids('8C KD'), turn: 0, step: 'draw', melded: [true, false] });
+    check(CA.takePlan(lone, 0, cids('KS KH')).error.indexOf('canastas') >= 0, 'a take that leaves no card to discard is refused without two canastas');
     st.melded[0] = true; st.melds[0] = [mk(12, 'QC QH QD')];
     st.hands[0].push(cid('2D'));
     check(!CA.takePlan(st, 0, cids('KS')).ok && CA.takePlan(st, 0, cids('KS KH')).ok && CA.takePlan(st, 0, cids('KS 2D')).ok, 'not frozen, no meld of that rank: the top card needs two more (two naturals, or a natural and a wild card)');
@@ -625,21 +631,48 @@ if (sandbox.ZimiCanasta) {
   }
   {
     // Discarding and the first meld's minimum.
-    let st = base({ hands: [cids('KS KH KD 5C 9D QS JC'), cids('AS')], turn: 0, step: 'play', pile: cids('8C'), scores: [0, 0] });
+    let st = base({ hands: [cids('KS KH KD 5C 9D QS JC'), cids('AS')], turn: 0, step: 'play', pile: cids('8C'), scores: [0, 0], melded: [true, false], melds: [[mk(12, 'QC QH QD')], []] });
     st = CA.meld(st, cids('KS KH KD'));
-    check(st.melds[0].length === 1 && st.turnPts === 30, 'a meld of three kings');
-    check(CA.discardProblem(st, cid('9D')).indexOf('first meld') >= 0, 'the first meld must reach 50: discarding is refused at 30');
+    check(st.melds[0].length === 2 && st.turnPts === 30, 'a meld of three kings');
+    const took = CA.takePile(base({ hands: [cids('KS KH 9D QS AS AH AD'), cids('AC')], pile: cids('8C KD'), turn: 0, step: 'draw' }), cids('KS KH'));
+    check(CA.discardProblem(took, cid('9D')).indexOf('first meld') >= 0, 'the first meld must reach 50: after taking the pile, discarding is refused at 30');
     let st2 = base({ hands: [cids('KS KH KD AS AH AD 9D QS'), cids('AC')], turn: 0, step: 'play', pile: cids('8C'), scores: [0, 0] });
     st2 = CA.meld(st2, cids('KS KH KD AS AH AD'));
     check(st2.turnPts === 90 && CA.discardProblem(st2, cid('9D')) === '', 'kings and aces make 90, enough');
     const after = CA.discard(st2, cid('9D'));
     check(after.turn === 1 && after.step === 'draw' && after.melded[0] === true && after.pile.length === 2, 'the turn passes after the discard');
-    const w = CA.discard(Object.assign(CA.meld(base({ hands: [cids('5S 5H 5D 9D QS'), cids('AC')], turn: 0, step: 'play', pile: cids('8C'), scores: [1600, 0] }), cids('5S 5H 5D')), {}), cid('9D'));
-    check(w.turn === 0 && w.melds[0].length === 1 && w.melded[0] === false, 'the minimum is 90 at a score of 1600: the 15-point meld is refused');
+    const w = CA.meldProblem(base({ hands: [cids('5S 5H 5D 9D QS'), cids('AC')], turn: 0, step: 'play', pile: cids('8C'), scores: [1600, 0] }), cids('5S 5H 5D'));
+    check(w.indexOf('90') >= 0, 'the minimum is 90 at a score of 1600: the 15-point meld is refused');
     // the wild card discard freezes
     let sw = base({ hands: [cids('2S 5H'), cids('AC')], turn: 0, step: 'play', pile: cids('8C'), melded: [true, false], melds: [[mk(13, 'KC KH KD')], []] });
     sw = CA.discard(sw, cid('2S'));
     check(sw.pileFrozen === true, 'discarding a wild card freezes the pile');
+  }
+  {
+    // The first meld is laid in one go and must reach the minimum; a later meld has no minimum.
+    const fives = base({ hands: [cids('5S 5H 5D 9D QS QD'), cids('AS')], turn: 0, step: 'play', pile: cids('8C'), scores: [0, 0] });
+    check(CA.meldProblem(fives, cids('5S 5H 5D')).indexOf('first meld') >= 0, 'three fives (15) cannot be laid as the first meld of 50');
+    const some = CA.meld(base({ hands: [cids('KS KH KD AS AH AD 9D QS QD'), cids('AS')], turn: 0, step: 'play', pile: cids('8C'), scores: [0, 0] }), cids('KS KH KD AS AH AD'));
+    check(CA.meldProblem(Object.assign({}, some, { hands: [cids('5S 5H 5D 9D QS'), cids('AS')] }), cids('5S 5H 5D')) === '', 'a meld after the first needs no minimum');
+  }
+  {
+    // Going out concealed means no meld before this turn: the flag goes at the start of a turn that finds melds.
+    const canastas = [mk(13, "KS KH KD KC KS' KH' KD'"), mk(12, "QS QH QD QC QS' QH' QD'")];
+    const early = CA.draw(base({ hands: [cids('9C 5D'), cids('AC')], turn: 0, step: 'draw', melds: [canastas, []], melded: [true, false] }));
+    check(early.concealed[0] === false, 'a side that melded on an earlier turn can no longer go out concealed');
+    const fresh = CA.draw(base({ hands: [cids('9C 5D'), cids('AC')], turn: 0, step: 'draw' }));
+    check(fresh.concealed[0] === true, 'a side with nothing laid keeps the concealed chance');
+    const done = CA.discard(Object.assign(early, { hands: [cids('9C'), cids('AC')], step: 'play' }), cid('9C'));
+    check(done.result.sides[0].out === 100, 'going out after earlier melds pays 100, not 200');
+  }
+  {
+    // With the stock gone the pile must be taken when it can be; the hand ends only when it cannot.
+    const open = (hand, pile) => base({ hands: [cids(hand), cids('AC')], turn: 0, step: 'draw', stock: [], pile: cids(pile), pileFrozen: false, melded: [true, false], melds: [[mk(9, '9S 9H 9D')], []] });
+    const can = open('9C 5D 4D', '9D');
+    check(CA.forcedTake(can, 0) !== null && CA.draw(can) === can, 'stock empty and the pile can be taken: drawing does not end the hand');
+    check(CA.aiStep(can).pile.length === 0, 'stock empty: the computer takes the pile it can take');
+    const cannot = open('5C 4D 6D', 'KD');
+    check(CA.forcedTake(cannot, 0) === null && CA.draw(cannot).phase === 'handEnd', 'stock empty and no take possible: the hand ends');
   }
   {
     // Going out and the hand-size rule.

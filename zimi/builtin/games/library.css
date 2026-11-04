@@ -6,7 +6,7 @@
 .gl-card .gm-play { min-height: 44px; padding: 0 22px; }
 .gl-loading::after { content: ""; display: block; width: 22px; height: 22px; margin: 12px auto 0; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: gl-spin 0.8s linear infinite; }
 @keyframes gl-spin { to { rotate: 360deg; } }
-@media (prefers-reduced-motion: reduce) { .gl-loading::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .gl-loading::after { animation: none; } }
 /* A hidden button stays hidden whatever else styles it (the games' accent buttons set a display). */
 .ar-btn[hidden] { display: none !important; }
 /* The accent button keeps its label on hover (the plain button turns its text accent, which would vanish on it). */
@@ -24,7 +24,7 @@ a.gl-learn[hidden] { display: none; }
 /* A right answer lifts the score a little. */
 .gl-bump { display: inline-block; animation: gl-bump 0.35s ease-out; }
 @keyframes gl-bump { 40% { transform: scale(1.35); color: var(--accent); } }
-@media (prefers-reduced-motion: reduce) { .gl-bump { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .gl-bump { animation: none; } }
 /* Every answer and key answers a press at once: the lift is on press, not on hover (a touch screen has none). */
 .rk-choice:active:not(:disabled), .qz-choice:active:not(:disabled), .bl-option:active:not(:disabled), .tl-item:active:not(:disabled) { background: var(--accent-glow); border-color: var(--accent); }
 .cw-key:active, .bee-hex:active { filter: brightness(0.88); }

@@ -74,7 +74,9 @@ def _atomic_write_text(path, content):
     OSError stays in the server log (repo rule: no str(e) in responses)."""
     tmp = path + ".tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        # 0600 from creation, whatever the umask: these are credentials.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
         os.replace(tmp, path)
         return True
@@ -4859,8 +4861,8 @@ def _auto_update_coverage():
     """Which installed ZIMs the auto-updater can actually maintain, and why it
     passes over the rest.
 
-    Not a preference and not an opt-out list — Zimi has neither. It is the
-    updater's real reach, made visible: matching an installed file to a newer
+    Not the opt-out list (set_auto_update_skip keeps that): the updater's real
+    reach, made visible: matching an installed file to a newer
     edition needs a dated filename (``…_YYYY-MM.zim``), so anything without one
     is invisible to it. That is most locally created ZIMs, and until now the
     only way to discover it was to notice a file never updating.
@@ -7242,6 +7244,19 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/auto-update-skip":
+        name = data.get("zim")
+        if not isinstance(name, str) or name not in _srv.get_zim_files():
+            return handler._json(404, {"error": "unknown ZIM"})
+        skip = data.get("skip")
+        if not isinstance(skip, bool):
+            return handler._json(400, {"error": "skip must be true or false"})
+        _srv.set_auto_update_skip(name, skip)
+        with _srv._zim_lock:
+            _srv.mark_auto_update_skips(_srv._zim_list_cache)
+        _srv._changes.announce("library", None)
+        return handler._json(200, {"zim": name, "skip": name in _srv._auto_update_skips})
 
     elif parsed.path == "/manage/app-update-check":
         # "Check now" for the Zimi APP release check — bypasses the daily

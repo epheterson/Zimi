@@ -221,6 +221,79 @@ def test_sky_detective_studies_the_almanacs_sky_first(browser, zimi):
     ctx.close()
 
 
+# What a phone's browser has that headless does not: iOS's motion ask (only in answer to a tap), and events to send.
+MOTION_INIT = """
+(() => {
+  window.__asked = 0;
+  if (%s) {
+    window.DeviceOrientationEvent = window.DeviceOrientationEvent || function () {};
+    window.DeviceOrientationEvent.requestPermission = () => { window.__asked++; return Promise.resolve('granted'); };
+  } else if (window.DeviceOrientationEvent) { delete DeviceOrientationEvent.requestPermission; }
+  window.__fire = (o, abs) => {
+    const e = new Event(abs ? 'deviceorientationabsolute' : 'deviceorientation');
+    Object.assign(e, { alpha: o.alpha, beta: o.beta, gamma: o.gamma, absolute: !!abs });
+    if (o.heading != null) { e.webkitCompassHeading = o.heading; e.webkitCompassAccuracy = 5; }
+    window.dispatchEvent(e);
+  };
+})();
+"""
+
+
+def motion_ctx(browser, ios):
+    ctx = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True)
+    ctx.add_init_script(MOTION_INIT % ("true" if ios else "false"))
+    return ctx
+
+
+def test_the_study_sky_follows_the_phone_after_the_one_tap_ios_needs(browser, zimi):
+    ctx, page, errors = open_game(browser, zimi, "skydetective.html", motion_ctx(browser, ios=True))
+    game(page, "skydetective.html")
+    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    btn = page.locator(".gamesky-btn:not(.primary)").first
+    btn.wait_for(state="visible", timeout=WAIT)
+    assert page.evaluate("window.__asked") == 0, "asked for motion before any tap"
+    page.evaluate("__fire({ alpha: 0, beta: 90, gamma: 0, heading: 90 })")
+    frames(page, 4)
+    assert page.evaluate("_skyHost.look.az") == pytest.approx(180, abs=1), "moved with no permission"
+    btn.click()
+    page.wait_for_function("window.__asked === 1", timeout=WAIT)
+    for _ in range(3):   # a phone sends readings all the while
+        page.evaluate("__fire({ alpha: 0, beta: 90, gamma: 0, heading: 90 })")
+        frames(page, 20)
+    look = page.evaluate("({..._skyHost.look})")
+    assert look["az"] == pytest.approx(90, abs=3) and abs(look["alt"]) < 3, look   # held up, facing east
+    assert btn.is_hidden(), "the ask stays after it is answered"
+    shot(page, "sky-motion-east")
+    page.evaluate("__fire({ alpha: 0, beta: 135, gamma: 0, heading: 90 })")   # tipped back: looking up
+    page.wait_for_function("_skyHost.look.alt > 30", timeout=WAIT)
+    # a finger trims the phone's reading, it does not fight it
+    box = page.locator(".gamesky-host").bounding_box()
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    before = page.evaluate("_skyHost.look.az")
+    page.mouse.move(cx, cy); page.mouse.down(); page.mouse.move(cx + 80, cy, steps=5); page.mouse.up()
+    frames(page, 6)
+    assert page.evaluate("_skyHost.look.az") != pytest.approx(before, abs=2)
+    page.evaluate("__fire({ alpha: 0, beta: 135, gamma: 0, heading: 90 })")
+    frames(page, 6)
+    page.locator(".gamesky-btn.primary").click()
+    page.locator(".gamesky").wait_for(state="detached", timeout=WAIT)
+    page.evaluate("__fire({ alpha: 0, beta: 90, gamma: 0, heading: 200 })")   # closed: nobody is listening
+    assert not errors, errors
+    ctx.close()
+
+
+def test_where_no_ask_is_needed_the_study_sky_follows_at_once_and_drag_still_works(browser, zimi):
+    ctx, page, errors = open_game(browser, zimi, "skydetective.html", motion_ctx(browser, ios=False))
+    game(page, "skydetective.html")
+    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    assert page.locator(".gamesky-btn").count() == 2, "a motion button where nothing needs asking"
+    for _ in range(3):
+        page.evaluate("__fire({ alpha: 0, beta: 90, gamma: 0 }, true)")   # facing north
+        frames(page, 20)
+    assert page.evaluate("_skyHost.look.az") == pytest.approx(0, abs=3) or page.evaluate("_skyHost.look.az") > 357
+    ctx.close()
+
+
 def test_back_closes_the_study_sky_and_stays_in_the_game(browser, zimi):
     """Browser Back and Zimi's back arrow each close the sky over the game, and the game (not the shelf) is still there."""
     for how in ("browser", "arrow"):
@@ -336,9 +409,8 @@ def test_a_study_left_before_starting_comes_back_as_a_study_without_reopening_th
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
     f = game(page, "skydetective.html")
-    page.locator(
-        ".gamesky-btn:not(.primary)"
-    ).click()  # Close: back to the page's own study
+    # Close: back to the page's own study (WebKit asks for motion, so Turn on motion sits before it)
+    page.locator(".gamesky-btn:not(.primary)").last.click()
     page.locator(".gamesky").wait_for(state="detached", timeout=WAIT)
     assert f.evaluate("__sky.g.study") is True
     f.locator("#sk-look").wait_for(state="visible", timeout=WAIT)

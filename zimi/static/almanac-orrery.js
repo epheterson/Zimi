@@ -596,8 +596,11 @@ function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLi
 var _orreryShowTipFn = null;   // _initOrrery's tip, for that
 function _orreryShowBody(name) {
   if (!_orreryCanvas) return;
-  // At once: a smooth scroll is cut short while the 3D view readies itself behind the page.
-  _orreryCanvas.scrollIntoView({ block: 'center' });
+  // At once: a smooth scroll is cut short while the 3D view readies itself behind the page. To the section's top,
+  // under the page's section bar (which names it, as a tap on the bar would), the orrery below.
+  (_orreryCanvas.closest('.almanac-section') || _orreryCanvas).scrollIntoView({ block: 'start' });
+  // The bar learns where it landed now, not at the next scroll.
+  if (typeof _almSecBarSync === 'function') _almSecBarSync();
   for (var i = 0; i < _orreryPlanetPositions.length; i++) {
     var rec = _orreryPlanetPositions[i];
     if (rec.name !== name) continue;

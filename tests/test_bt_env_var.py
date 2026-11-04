@@ -62,7 +62,7 @@ def test_the_card_says_it_once():
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "zimi",
             "static",
-            "app.js",
+            "manage.js",
         ),
         encoding="utf-8",
     ).read()

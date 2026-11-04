@@ -1,4 +1,4 @@
-libzim>=3.1.0,<4
+libzim>=3.1.0
 PyMuPDF>=1.23.0,<2
 # <2.0 on purpose: mcp 2.0 dropped the vendored FastMCP this server is built on
 # (moved it to a separate `fastmcp` distribution), so a bare `mcp` resolves to

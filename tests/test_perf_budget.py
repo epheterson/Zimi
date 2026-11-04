@@ -7,10 +7,10 @@ texture app.js fetches as it starts), gzipped as the server sends them.
 1.12 measured 569 KB, 1.15.0 663 KB (app.js +87 KB gzipped over 1.14.2: the
 library-folders, Keep, settings-sync, offline-home and games-link work, no
 one block above 7 KB raw; read aloud already left for its own file). The
-budget leaves room for a release's growth and fails on the kind of jump a
-second copy of a library or a 470 KB picture is. The next real saving is the
-Manage panel's code (_ms*, _btc*, library folders), which only opens on
-demand and could load like create.js does.
+Manage panel's code (manage.js, 122 KB gzipped) has since left too: it loads
+when Manage is first opened, or once Home is quiet, and took app.js to 415 KB.
+The budget leaves room for a release's growth and fails on the kind of jump a
+second copy of a library or a 470 KB picture is.
 """
 
 import gzip
@@ -22,7 +22,7 @@ from zimi import http as H
 
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi")
 STATIC = os.path.join(ROOT, "static")
-HOME_FIRST_PAINT_BUDGET = 700 * 1000
+HOME_FIRST_PAINT_BUDGET = 600 * 1000
 MOON_TEXTURE_BUDGET = 120 * 1000
 
 

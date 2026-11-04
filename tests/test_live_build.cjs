@@ -24,7 +24,8 @@ const tick = () => new Promise(r => setImmediate(r));
 function page(opts) {
   const session = {}, listeners = {}, reloads = [], polls = [];
   const sb = {
-    Promise, JSON, Array, setTimeout: () => 0, _BUILD_QUIET_POLL_MS: 3000,
+    Promise, JSON, Array, _buildShownAt: Date.now() - 60000, // a page open a while: not in its first moments
+     _buildFreshHeard: false, _BUILD_FRESH_MS: 10000, Date, _buildTouched: !!opts.touched, setTimeout: () => 0, _BUILD_QUIET_POLL_MS: 3000,
     setInterval: f => { polls.push(f); return polls.length; }, clearInterval: n => { polls[n - 1] = null; },
     _BUILD: 'zimi-v1-old', _buildWaiting: '', _UPDATE_TRIED_KEY: 'zimi_update_tried', _UPDATE_RESUME_KEY: 'zimi_update_resume',
     _BUILD_SW_WAIT_MS: 15000,
@@ -36,12 +37,12 @@ function page(opts) {
       querySelectorAll: () => [],
       addEventListener: (type, f) => { (listeners[type] = listeners[type] || []).push(f); },
       removeEventListener: (type, f) => { listeners[type] = (listeners[type] || []).filter(g => g !== f); },
-      getElementById: () => null,
+      getElementById: id => (id === 'almanac-content' ? { scrollTop: opts.scrolled || 0 } : id === 'reader-frame' ? { contentDocument: opts.frameDoc || null } : null),
     },
     mode: opts.mode || 'home', readerOpen: !!opts.readerOpen, _almanacOpen: !!opts.almanac, _createOpen: false, _ttsSpeaking: !!opts.speaking,
   };
   vm.createContext(sb);
-  vm.runInContext(['_buildHeard', '_buildWorker', '_buildReload', '_buildSafe', '_buildQuiet', '_updateResumeKeep'].map(fn).join('\n'), sb);
+  vm.runInContext(['_buildHeard', '_buildWorker', '_buildReload', '_buildSafe', '_buildQuiet', '_almanacScrolled', '_buildInHand', '_buildFresh', '_updateResumeKeep'].map(fn).join('\n'), sb);
   return { sb, session, listeners, reloads, poll() { polls.forEach(f => f && f()); }, hide() { sb.document.hidden = true; (listeners.visibilitychange || []).forEach(f => f()); } };
 }
 
@@ -95,7 +96,24 @@ function page(opts) {
   p = page({ almanac: true });
   p.sb._buildHeard('zimi-v1-new');
   await tick(); await tick();
-  check(p.reloads.length === 0, '...shown with the Almanac open it waits');
+  check(p.reloads.length === 1, '...shown with the Almanac open and not yet touched since it was shown (a PWA just resumed), it reloads at once');
+  p = page({ almanac: true, touched: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...once it was touched, scrolled or typed in, it waits');
+  p = page({ almanac: true, scrolled: 640 });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...or scrolled away from its top (the reload would put it back at the top)');
+  p = page({ almanac: true, speaking: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...and never under a reading aloud');
+  p = page({ almanac: true });
+  p.sb.document.activeElement = { tagName: 'INPUT', value: 'Tokyo' };
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...or a field with text in it');
 
   p = page({ speaking: true });
   p.sb._buildHeard('zimi-v1-new');
@@ -117,7 +135,38 @@ function page(opts) {
   p.sb.document.activeElement = { tagName: 'INPUT', value: '' };
   check(p.sb._buildQuiet() === true, '...an empty, focused box is not');
 
+  check(/function _buildCheck\(\)[\s\S]{0,400}asset_version\) _buildHeard/.test(src) && /_liveOpen\(\);\n    _buildCheck\(\);/.test(src) && /_liveOpen\(\);\n  _buildCheck\(\);/.test(src), 'the build is asked for on load and on coming back, not only heard in the stream');
+  // Heard in the first moments of a load or a return: whatever view is up, unless something is in hand.
+  const frameDoc = (active, playing) => ({ activeElement: active || null, querySelectorAll: () => (playing ? [{ paused: false }] : []) });
+  p = page({ readerOpen: true, mode: 'reader' });
+  p.sb._buildShownAt = Date.now();
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 1, 'an article open, heard within moments of the load or resume: it reloads at once');
+  p = page({ readerOpen: true, mode: 'reader' });
+  p.sb._buildShownAt = Date.now() - 60000;
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...heard a minute in, it waits as before');
+  p = page({ readerOpen: true, mode: 'reader', touched: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...or once touched');
+  p = page({ readerOpen: true, mode: 'reader', speaking: true });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...never under a reading aloud');
+  p = page({ readerOpen: true, mode: 'reader', frameDoc: frameDoc(null, true) });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...nor media playing in the reader\'s frame');
+  p = page({ readerOpen: true, mode: 'reader', frameDoc: frameDoc({ tagName: 'INPUT', value: 'abc' }) });
+  p.sb._buildHeard('zimi-v1-new');
+  await tick(); await tick();
+  check(p.reloads.length === 0, '...nor a field with text in the reader\'s frame');
+  check(/addEventListener\('pageshow'[\s\S]{0,120}_buildCheck\(\)/.test(src), 'a page restored from the back-forward cache asks too');
   check(/addEventListener\('tick'[\s\S]{0,300}_buildHeard\(d\.build\)/.test(src), 'every tick of /events is read for the build');
+  check(/addEventListener\('visibilitychange', function \(\) \{ if \(!document\.hidden\) _buildShown\(\)/.test(src), 'shown again, a window counts as untouched');
   check(/__ZIMI_CONFIG\.build/.test(src), 'the page knows the build it is');
 
   if (failures) { console.error('\n' + failures + ' failed'); process.exit(1); }

@@ -13,5 +13,5 @@
 .rv-disc.w { background: radial-gradient(circle at 35% 30%, var(--disc-w), var(--disc-w) 66%, #cfc9b8); }
 .rv-disc.flip { animation: rv-flip 0.4s ease-in-out; }
 @keyframes rv-flip { 0% { transform: scaleX(1); } 50% { transform: scaleX(0.05); } 100% { transform: scaleX(1); } }
-@media (prefers-reduced-motion: reduce) { .rv-disc.flip { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .rv-disc.flip { animation: none; } }
 html[data-anim="off"] .rv-disc.flip { animation: none; }

@@ -34,6 +34,7 @@ import logging
 import os
 import tempfile
 import time
+from zimi.libzimcompat import add_illustration, entry_by_id
 
 log = logging.getLogger("zimi.zimpatch")
 
@@ -284,7 +285,7 @@ def _rewrite(source, out, *, pages, record, live_shot, packaged_shot, shoot, pub
 
     with Creator(out).config_indexing(True, language) as creator:
         for index in range(source.all_entry_count):
-            entry = source._get_entry_by_id(index)
+            entry = entry_by_id(source, index)
             path = entry.path
             if path in metadata_keys:
                 continue  # re-added below, from the source of truth
@@ -393,7 +394,7 @@ def _add_illustration(creator, key, value):
         except ValueError:
             size = 48
     try:
-        creator.add_illustration(size, value)
+        add_illustration(creator, size, value)
     except Exception as e:
         log.debug("illustration %s not carried: %s", key, e)
 

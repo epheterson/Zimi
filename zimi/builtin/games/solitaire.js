@@ -159,7 +159,7 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   // Stock, waste and the foundations are one row right under the bar; the columns start under it and fan down through
   // all the height that is left (up to a card's height a step).
-  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = 0.28, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3;
+  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = 0.28, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3, WASTE_NUDGE_SHARE = 0.14;   // the waste stands a little off the stock, not against it
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
@@ -174,7 +174,7 @@
     var step = Z.fanStep(heaviest(down), rows.room, ch, ch * UP_STEP_SHARE, ch * MIN_STEP_SHARE);
     var bottom = y2 + ch;
     var ids = function (pile) { return pile.map(function (c) { return c.id; }); };
-    var fan = cw * WASTE_FAN_SHARE;
+    var fan = cw * WASTE_FAN_SHARE, wx = x(1) + cw * WASTE_NUDGE_SHARE;
 
     // stock: the top two cards drawn, the rest stacked unseen beneath
     P.stock.forEach(function (c, i) { cards.push({ id: c.id, pile: 'stock', idx: i, x: x(0), y: y1, up: false, hidden: i < P.stock.length - 2 }); });
@@ -182,7 +182,7 @@
     var shown = state.draw === 3 ? SHOWN_WASTE : 1;
     P.waste.forEach(function (c, i) {
       var k = i - (P.waste.length - Math.min(shown, P.waste.length)), seen = k >= 0;
-      cards.push({ id: c.id, pile: 'waste', idx: i, x: x(1) + (seen ? k * fan : 0), y: y1, up: true, hidden: !seen });
+      cards.push({ id: c.id, pile: 'waste', idx: i, x: wx + (seen ? k * fan : 0), y: y1, up: true, hidden: !seen });
     });
     FOUNDATION.forEach(function (f, n) {
       P[f].forEach(function (c, i) { cards.push({ id: c.id, pile: f, idx: i, x: x(3 + n), y: y1, up: true, hidden: i < P[f].length - 2 }); });
@@ -198,7 +198,7 @@
     var height = Math.max(bottom + m.pad, m.H);
 
     slots.push({ id: 'stock', x: x(0), y: y1, w: cw, h: ch, mark: P.stock.length ? '' : '↻', label: Z.describePile(TX('sol.stock'), ids(P.stock), false) + (P.stock.length ? TX('sol.enterDraw') : TX('sol.enterRecycle')) });
-    slots.push({ id: 'waste', x: x(1), y: y1, w: cw + fan * (SHOWN_WASTE - 1), h: ch, label: Z.describePile(TX('sol.waste'), ids(P.waste), true) });
+    slots.push({ id: 'waste', x: wx, y: y1, w: cw + fan * (SHOWN_WASTE - 1), h: ch, label: Z.describePile(TX('sol.waste'), ids(P.waste), true) });
     FOUNDATION.forEach(function (f, n) {
       var t = P[f].length ? top(P[f]).id : null;
       slots.push({ id: f, x: x(3 + n), y: y1, w: cw, h: ch, goal: true, mark: t === null ? 'A' : '', label: (t === null ? TX('sol.foundationEmpty') : TX('sol.foundation', { suit: TX('cards.suit.' + ['clubs', 'diamonds', 'hearts', 'spades'][Z.suit(t)]), cards: Z.plural(P[f].length, 'card') })) });

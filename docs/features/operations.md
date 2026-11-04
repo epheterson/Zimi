@@ -26,7 +26,9 @@ podman run -d --name zimi --network host \
 
 `--userns=keep-id:uid=1000,gid=1000` maps the image's user to you, so the ZIMs Zimi downloads into `./zims` are yours to read and delete. `:Z` is the SELinux label Fedora and RHEL need on a bind mount, harmless elsewhere. To start it at boot, install [deploy/podman/zimi.container](../../deploy/podman/zimi.container) under `~/.config/containers/systemd/` (a Quadlet unit), then `systemctl --user daemon-reload && systemctl --user start zimi`.
 
-**Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
+**As a service, after a pip install.** `zimi serve` runs in the foreground on purpose, so the system starts it, restarts it and keeps its log. On Linux, [deploy/systemd/zimi.service](../../deploy/systemd/zimi.service) runs it at boot as its own `zimi` user; the steps are in the file's header, and `journalctl -u zimi` shows its log. On a Raspberry Pi serving a school this is the whole setup.
+
+**Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, `systemd/zimi.service`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
 **Native desktop window.** `zimi desktop` starts the server and opens it in a native window instead of a browser tab (`zimi serve --ui` does the same thing). It needs pywebview: `pip install 'zimi[desktop]'`; the packaged macOS, Windows and Linux desktop builds bundle it. On Linux the window is WebKitGTK, taken from the distro (`libwebkit2gtk-4.1-0` or 4.0, and `python3-gi` for a pip install); a machine without it gets the same app in the system browser, which `zimi desktop --browser` or `ZIMI_DESKTOP_BROWSER=1` asks for outright. Zimi sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1` unless you set them, because WebKitGTK's GPU path draws a black window on some drivers. Everything else about the instance is identical: same library, same config, same port.
 

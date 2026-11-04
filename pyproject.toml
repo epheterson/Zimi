@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.15.1"
+version = "1.15.2"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -34,7 +34,7 @@ classifiers = [
     "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
-    "libzim>=3.1.0,<4",  # libzim 4.0 (2026-10-29) changed the writer API
+    "libzim>=3.1.0",
     "certifi>=2026.10.19",
     # LAN peer discovery (mDNS/Zeroconf). Pure-Python; the peer ZIM-sharing
     # transport runs over plain HTTP so it needs no extra binary.
@@ -87,6 +87,9 @@ browser = ["playwright>=1.40"]
 # Docker image's pins). Without them Zimi sets them up itself, in a venv under
 # its data directory, the first time someone downloads a voice.
 voices = ["piper-tts>=1.8,<2", "kokoro-onnx>=0.6,<0.7", "misaki[zh]>=0.9.4,<0.10", "num2words>=0.5.14,<0.6"]
+# What the test suite needs beyond the package: pytest, and pytest-xdist so
+# `pytest -n auto` runs it in parallel (see CONTRIBUTING.md, Tests).
+test = ["pytest>=8", "pytest-xdist>=3.5"]
 all = ["PyMuPDF>=1.23.0,<2", "mcp>=1.30.0,<2.0", "libtorrent==2.0.*"]
 
 [project.scripts]
@@ -132,5 +135,6 @@ addopts = "--ignore=tests/test_article_languages.py"
 testpaths = ["tests"]
 markers = [
     "fieldguide_on: runs with ZIMI_FIELDGUIDE=1 (the Field Guide and Help now are off by default)",
+    "browser: drives a real browser (Playwright / Chromium); set from the module's source in tests/conftest.py. Quick tier: -m \"not browser\"",
     "real_engine: opts a test out of the autouse libtorrent guard (may start a live libtorrent session)",
 ]

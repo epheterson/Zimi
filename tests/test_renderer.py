@@ -36,6 +36,7 @@ sys.path.insert(0, REPO_ROOT)
 import zimi.creator as creator  # noqa: E402
 import zimi.manage as manage  # noqa: E402
 import zimi.renderer as renderer  # noqa: E402
+from zimi.libzimcompat import entry_by_id
 
 HOST = "127.0.0.1"
 # EPHEMERAL ports, always: the fixture servers bind port 0 and the tests read
@@ -683,7 +684,7 @@ def _zim_paths(path):
     from libzim.reader import Archive
 
     arc = Archive(path)
-    return {arc._get_entry_by_id(i).path for i in range(arc.all_entry_count)}
+    return {entry_by_id(arc, i).path for i in range(arc.all_entry_count)}
 
 
 @browser

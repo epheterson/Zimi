@@ -176,7 +176,7 @@
     var cap = t.querySelector('caption');
     cap.textContent = T('yacht.card.aria');
     t.textContent = ''; t.appendChild(cap);
-    var head = t.createTHead().insertRow(); head.appendChild(document.createElement('th'));
+    var head = t.createTHead().insertRow(); head.appendChild(document.createElement('td'));
     g.players.forEach(function (pl, n) { var th = document.createElement('th'); th.scope = 'col'; th.textContent = pl.name; if (n === g.turn && !g.over) th.className = 'yc-turn'; head.appendChild(th); });
     var body = t.createTBody();
     function row(label, cls, cell) {
@@ -266,23 +266,24 @@
     timer = Play.later(step, CPU_DELAY_MS);
   }
 
-  function finish() {
+  function finish(restored) {
     var scores = g.players.map(function (p) { return total(p.card); }), top = Math.max.apply(null, scores);
-    var key = String(g.players.length), text, title = T('shell.end.over');
+    var key = String(g.players.length), text, title = T('shell.end.over'), ended = 'over';
     var me = seats.people()[0];
     if (g.players.length === 1) text = T('yacht.end.solo', { n: scores[0] });
     else {
       var winners = g.players.filter(function (p, i) { return scores[i] === top; }), w = g.players.indexOf(winners[0]);
-      if (winners.length > 1) { title = T('shell.end.draw'); text = T('yacht.end.tie', { n: top }); }
-      else if (seats.isYou(w)) { title = T('shell.end.win'); text = T('yacht.end.you', { n: top }); }
-      else if (seats.hotseat()) { title = T('shell.end.wins', { name: winners[0].name }); text = T('yacht.end.other', { name: winners[0].name, n: top }); }
-      else { title = T('shell.end.lose'); text = T('yacht.end.otherYou', { name: winners[0].name, n: top, me: scores[me] }); }
+      if (winners.length > 1) { title = T('shell.end.draw'); ended = 'draw'; text = T('yacht.end.tie', { n: top }); }
+      else if (seats.isYou(w)) { title = T('shell.end.win'); ended = 'win'; text = T('yacht.end.you', { n: top }); }
+      else if (seats.hotseat()) { title = T('shell.end.wins', { name: winners[0].name }); ended = 'win'; text = T('yacht.end.other', { name: winners[0].name, n: top }); }
+      else { title = T('shell.end.lose'); ended = 'lose'; text = T('yacht.end.otherYou', { name: winners[0].name, n: top, me: scores[me] }); }
     }
     if (seats.hotseat()) text += ' ' + g.players.map(function (p, i) { return p.name + ' ' + Play.num(scores[i]); }).join(', ') + '.';
     else if (scores[me] > (best[key] || 0)) { best[key] = scores[me]; Play.save(BEST_KEY, best); text += ' ' + T('yacht.end.newBest'); }
     else text += ' ' + T('yacht.end.best', { n: best[key] });
     els.msg.textContent = text;
-    showSheet(title, text, T('shell.menu.new'));
+    // The shell's end: the win's beat or the loss's moment (a draw and a solo score are plain), then the sheet; New game deals again with these seats.
+    ZimiShell.endSheet({ title: title, result: ended, text: text, onNew: begin, after: restored ? 0 : undefined });
   }
 
   function paintOpp() {
@@ -336,7 +337,7 @@
       g = Engine.restore(saved);
       seatPlayers(g.players.length);
       Play.closeSheet(els.sheet); els.msg.textContent = ''; paint();
-      if (g.over) finish(); else if (g.players[g.turn].ai) cpuTurn();
+      if (g.over) finish(true); else if (g.players[g.turn].ai) cpuTurn();
       return true;
     }
   });

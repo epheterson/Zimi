@@ -42,6 +42,30 @@ from zimi.safety import header_value, join_inside, loggable
 
 log = logging.getLogger("zimi")
 
+# A game that showed "This game failed to start" says so here, so the cause
+# lands in the server log. Capped per hour: anyone can post it.
+_GAMES_START_LOG_PER_HOUR = 30
+_games_start_logged = []
+
+
+def _log_games_start(data):
+    now = time.time()
+    _games_start_logged[:] = [t for t in _games_start_logged if now - t < 3600]
+    if len(_games_start_logged) >= _GAMES_START_LOG_PER_HOUR or not isinstance(data, dict):
+        return
+    _games_start_logged.append(now)
+
+    def clean(v):
+        return loggable(v or "")[:300]
+
+    log.warning(
+        "ZimiGames start: %s on %s: %s",
+        clean(data.get("outcome")),
+        clean(data.get("page")),
+        clean(data.get("why")) or "no error recorded",
+    )
+
+
 # A client that hangs up mid-response surfaces as one of these when the
 # handler writes to the dead socket. That is the CLIENT's doing, not a server
 # error — under load (e.g. every UI poller timing out at once, #51) treating
@@ -327,6 +351,7 @@ _RATE_LIMITED_API_PATHS = (
     "/almanac-ages",
     "/almanac-place",
     "/games-links",
+    "/games-search",
     "/own-offline",
     "/events",
 )
@@ -1189,6 +1214,7 @@ if os.path.isdir(_STATIC_DIR):
             _static_hash("app.js")
             + _static_hash("app.css")
             + _static_hash("readaloud.js")  # Read aloud, fetched on first use
+            + _static_hash("manage.js")  # the Library Manager, fetched on first use
             + _static_hash("almanac.js")
             + _static_hash("almanac.css")
             # Almanac was split into sibling modules; all of them must feed the
@@ -1240,7 +1266,7 @@ if os.path.isdir(_STATIC_DIR):
 # the content hashes the pages ask for; only the files named here are kept.
 _OFFLINE_SHELL_FILE = re.compile(
     r"/static/((?:app\.(?:js|css)|almanac[\w-]*\.(?:js|css)|zone-places\.js"
-    r"|world-map\.svg|tz-borders\.json|fieldguide[\w-]*\.(?:html|json|js)|highlights\.js|find\.js|readaloud\.js"
+    r"|world-map\.svg|tz-borders\.json|fieldguide[\w-]*\.(?:html|json|js)|highlights\.js|find\.js|readaloud\.js|manage\.js"
     r"|keepstore\.js|keepworker\.js|zimreader\.js|fzstd\.js|rosetta/manifest\.json"
     r"|earth/(?:moon-v1\.webp|stars-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
     r"|satellite-[\d.]+\.min\.js|three-r\d+\.min\.js|earth-(?:day|night)-v1\.webp))"
@@ -2936,6 +2962,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import gamelinks
 
                 return self._json(200, gamelinks.links())
+            elif parsed.path == "/games-search":
+                # The main search's Games row: every game's name in ?lang= and
+                # the words it is found by (zimi/gamelinks.py). Read once, a
+                # fixed file of the package; empty without the games ZIM.
+                from zimi import gamelinks
+
+                return self._json(200, {"games": gamelinks.search_index(param("lang") or "en")})
             elif parsed.path == "/almanac-place":
                 # Tide stations for the Almanac (zimi/placedata.py):
                 # the nearest to ?lat=&lon=, or those named like ?q=. Only
@@ -3811,6 +3844,10 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             if parsed.path.startswith("/manage/"):
                 return handle_manage_post(self, parsed, data)
+
+            if parsed.path == "/games/start-error":
+                _log_games_start(data)
+                return self._json(200, {"ok": True})
 
             if parsed.path == "/dictionary/voices/warm":
                 # The Dictionary opening: load the voices its languages

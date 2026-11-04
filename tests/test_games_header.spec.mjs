@@ -32,9 +32,9 @@ test('a game has one header: its name, Undo and Menu in Zimi\'s bar, none in the
   await expect(frame.locator('.gs-sheet')).toBeVisible();
 });
 
-test('the shelf is titled ZimiGames with no Undo, Menu or heart', async ({ page }) => {
+test('the shelf has the search box for the games, no Undo, Menu or heart', async ({ page }) => {
   await openGame(page, 'index.html');
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
   await expect(page.locator('#game-act-btn')).toBeHidden();
   await expect(page.locator('#game-menu-btn')).toBeHidden();
   await expect(page.locator('#library-btn')).toBeHidden();
@@ -95,14 +95,14 @@ test('after a reload a game still has its back arrow, and it leads to the shelf'
   await expect(page.locator('#game-title')).toHaveText('Checkers');
   await expect(page.locator('#back-btn')).toBeVisible();
   await page.locator('#back-btn').click();
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
 });
 
 test('the ZimiGames icon in Zimi\'s bar leads to the shelf from any game', async ({ page }) => {
   await openGame(page, 'mahjong.html');
   await expect(page.locator('#game-title')).toHaveText('Mahjong');
   await page.locator('.topbar-breadcrumb .bc-icon').click();
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
 });
 
 test('a tile\'s picture on the shelf opens what the tile opens, never Zimi\'s image viewer', async ({ page }) => {

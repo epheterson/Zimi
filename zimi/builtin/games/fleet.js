@@ -128,18 +128,11 @@
     var cells = [];
     for (var y = 0; y < SIZE; y++) for (var x = 0; x < SIZE; x++) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'fl-c'; b.dataset.x = x; b.dataset.y = y;
-      b.setAttribute('role', 'gridcell');
       (function (cx, cy) { b.addEventListener('click', function () { handler(cx, cy); }); })(x, y);
       el.appendChild(b); cells.push(b);
     }
-    el.addEventListener('keydown', function (e) {
-      var t = e.target; if (!t || !t.dataset || t.dataset.x === undefined) return;
-      var dx = { ArrowLeft: -1, ArrowRight: 1 }[e.key] || 0, dy = { ArrowUp: -1, ArrowDown: 1 }[e.key] || 0;
-      if (!dx && !dy) return;
-      e.preventDefault();
-      var nx = Math.max(0, Math.min(SIZE - 1, +t.dataset.x + dx)), ny = Math.max(0, Math.min(SIZE - 1, +t.dataset.y + dy));
-      cells[ny * SIZE + nx].focus();
-    });
+    root.ZimiUtil.gridAria(el, cells, SIZE);
+    root.ZimiUtil.gridRove(el, cells, SIZE);
     return cells;
   }
   var mineCells, enemyCells;
@@ -168,6 +161,7 @@
       b.setAttribute('aria-label', st.name);
       b.disabled = phase !== 'battle' || theirs.shots[y][x] !== UNKNOWN;
     });
+    root.ZimiUtil.gridRoveSync(els.enemy);
     els.enemy.classList.toggle('fl-aim', phase === 'battle');
     els.eships.textContent = '';
     theirs.ships.forEach(function (s, i) {
@@ -201,7 +195,7 @@
     var all = mine.ships.length === FLEET.length;
     var more = seats.hotseat() && placeIdx < seats.people().length - 1;
     var go = button(els.tools, more ? T('fleet.pass', { name: seats.name(seats.people()[placeIdx + 1]) }) : T('fleet.startBattle'), startBattle, { disabled: !all });
-    go.setAttribute('aria-pressed', String(all));
+    go.classList.toggle('gs-primary', all);
   }
   function paintAll() { paintMine(); paintEnemy(); paintTools(); els.enemyWrap.hidden = phase === 'place'; els.mine.classList.toggle('fl-small', phase !== 'place'); }
 

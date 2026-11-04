@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.15.2]
+
+### Added
+
+- Games: with ZimiGames open, the top bar searches the shelf, and the main search lists matching games.
+- A ZIM renamed upstream is offered as an update to the old one; the old file goes and its settings carry over.
+- Janggi: choose how the horses and elephants line up (the four standard arrangements, or random for each side).
+- A ZIM can be left out of auto-update from its card menu (#34); a person's Update still works on it.
+- About this ZIM: tapping the icon opens it full size.
+- A systemd unit runs Zimi as a service at boot after a pip install (deploy/systemd/zimi.service, #137).
+- Five Letters: tap the solved word to open its definition, when a Wiktionary (the Dictionary) is installed.
+
+### Changed
+
+- Games: the shelf's section chips scroll sideways only and look like Manage's; on a phone the order and view switch sit under the title, never over it.
+- Games: Game of the day shows in the compact view too.
+- Games: every New game sheet has the same Cancel and Start row, and puzzles use the same option rows as the other games; a custom size shows its fields only when Custom is chosen.
+- Games: solitaire foundations are exactly a card's size, the stock and waste have room, and the corner index stands clear of the pips.
+- Games: a puzzle's New game Type is asked as its parts (Loopy and Mines: grid shape, size, difficulty or mines; size and difficulty for twelve more), each a short choice, instead of one list of up to 40 types.
+- Games: every board of cells reads as one grid to a screen reader, with one tab stop and the arrow keys between cells.
+- Games: text contrast, 44px touch targets and names for tiles and pictures, checked automatically in every game.
+- Games: the Animation setting outranks the device. Reduce Motion only sets the default, and the player's own choice wins.
+- Games: a loss is a real moment and a win has its own notes; arcade games open on a splash with one Play.
+- Games: New game is its own button in the Menu, the other actions one grid of icons; Undo keeps its place in the bar.
+- Games: card faces use an open index font with a larger suit under the rank.
+- Games: the About sheet's link to the game's article takes the accent colour and sits clear of the facts above it.
+- Read aloud: a spinner while it gets ready instead of a countdown, Pause and Play as the main button, Play returns to the sentence being read, and after 6 idle seconds it follows the reading again.
+- Read aloud leaves out foreign-script names, romanizations and pronunciations in parentheses.
+- An open window or the app picks up a new version when it loads or comes back to the front.
+- Manage loads when it is first opened (or once Home is quiet) instead of with the page, so Home parses a quarter less script.
+- Maps open by their #map= address, and a place result drops a pin with its name.
+- Mancala opens as Kalah, the standard capture rule.
+- Sky Detective's study sky follows the phone's motion.
+- Available updates in Manage show each download's size.
+- Games: a game that fails to start says so in Zimi's log with the error, and the banner steps down if the game draws late.
+
+### Fixed
+
+- A wide infobox in the reader (Roman Empire on a phone) wraps to the column instead of being cut off at the right edge (#136).
+- A subreddit capture started from the web goes through the same private-address proxy as video captures.
+- The header, the reader and Read aloud's bar keep clear of the notch and the home indicator on a curved iPhone.
+- libzim 4.0 works as well as 3.x: ZIM creation and reading no longer break on a fresh install that picks up 4.0.
+- Map tiles kept for offline are capped at the newest 600, so panning a continent no longer fills the phone's storage.
+- Canasta: going out concealed pays 200 only when nothing was laid on an earlier turn (it paid 200 after any earlier meld).
+- Canasta: the first meld is laid in one go and must reach its minimum, taking the pile cannot leave you with no card to discard, and wild cards cannot join black threes.
+- Mahjong: Zoom makes a tile 44 px wide on a phone, big enough to tap (it was 32).
+- Loopy: an edge not yet drawn is a faint grey guide instead of an amber line as heavy as a drawn one.
+- Canasta: with the stock empty the discard pile must be taken when it can be (the hand ends only when it cannot), and a meld shows its cards fanned instead of one card and a count.
+- Games: another site's script that fails to load (Cloudflare's analytics, blocked) no longer raises the failed-to-start banner over a puzzle.
+- Janggi: bikjang follows Fairy-Stockfish. The side to move must break it or pass, and a pass is a draw (it ended the game at once before).
+
 ## [1.15.1]
 
 ### Fixed
@@ -58,7 +109,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- libzim is held below 4.0, whose new writer API broke creating ZIMs on a fresh install.
 - qBittorrent versions after 5.1 connect: Zimi read their reply to a correct login as a wrong password (#122).
 - Read aloud on Automatic gives way to a faster server voice when a slow one stalls after only a title or fails twice, instead of falling to the browser's voice, and asks a voice whose speed is not measured yet for one chunk ahead instead of three (#121).
 - The draft release appears only once every build is attached to it.

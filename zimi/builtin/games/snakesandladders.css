@@ -23,4 +23,4 @@
 .sl-die circle { fill: var(--suit-black); }
 .sl-die.tumble { animation: sl-tumble 0.16s linear infinite; }
 @keyframes sl-tumble { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
-@media (prefers-reduced-motion: reduce) { .sl-die.tumble { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .sl-die.tumble { animation: none; } }

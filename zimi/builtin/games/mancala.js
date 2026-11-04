@@ -1,4 +1,6 @@
-/* ZimiGames: Mancala, two rule sets: Oware (abapa) and Kalah (6 pits, 4 seeds).
+/* ZimiGames: Mancala, two rule sets: Kalah (6 pits, 4 seeds; the default) and Oware (abapa).
+   Kalah's capture is the standard one: the last seed in an empty pit on your own side takes
+   that seed and the seeds in the pit opposite.
    Our own code, GPL-3.0. The rules and the computer (pure functions, testable in node),
    then the page. */
 (function (root) {
@@ -133,12 +135,12 @@
   var WK = root.WorldKit, BK = root.BoardKit, UI = root.BoardUI, T = UI.t, UNIT = 62, PAD = 14, PIT_R = 26, ROW_H = 84;
   var SEED_COLORS = ['#c8553d', '#2a8c82', '#e8d9b0', '#d99a2b', '#6c5ba7'];
   function sideName(p) { return T(p === 0 ? 'mancala.south' : 'mancala.north'); }
-  var host = document.getElementById('wk-board'), svgPits, btns = [], R = Oware, cols = 6, W = 0, H = 0, posOf = [];
+  var host = document.getElementById('wk-board'), svgPits, btns = [], R = Kalah, cols = 6, W = 0, H = 0, posOf = [];
   var state, shown, history = WK.History(), lastPit = -1, flashed = [], animating = false, hintPit = -1, passInfo = '';
   var score = WK.scoreBar(document.getElementById('wk-score'), [{ color: '#c8553d' }, { color: '#2a8c82' }]);
   var G = WK.create({
     id: 'mancala',
-    options: [{ key: 'rules', legend: 'mancala.game', def: 'oware', choices: [['oware', 'mancala.oware'], ['kalah', 'mancala.kalah']] }].concat(WK.standardOptions({ first: 'mancala.southFirst', second: 'mancala.north' })),
+    options: [{ key: 'rules', legend: 'mancala.game', def: 'kalah', choices: [['kalah', 'mancala.kalah'], ['oware', 'mancala.oware']] }].concat(WK.standardOptions({ first: 'mancala.southFirst', second: 'mancala.north' })),
     statKey: function (s) { return s.rules + s.level; },
     onNew: newGame, onUndo: undo, onHint: hint
   });

@@ -277,3 +277,12 @@ A game that draws on the player's library may point at the real thing Zimi alrea
 - The position survives the trip: the page saves on pagehide as always, and Zimi's Back brings the game back to it.
 - The hook, in app.js beside `_gameDo`, is a message from the frame showing the game: `{zimi: 'open', zim, path}` (an article; a path may end in `#map=zoom/lat/lon`), `{zimi: 'game-app', app: 'dictionary', w}` and `{zimi: 'game-sky', place, ms, title, hint, start, close, az, alt, fov, ring}`, answered `{zimi: 'game-sky-done', started}`. No state and no strings live in Zimi for these: the game sends its own words, in the player's language.
 - Sky Detective studies first: inside Zimi the Almanac's own `AlmanacSkyView` opens over the page (static/almanac-gamesky.js, loaded with the Almanac's modules on first use), names on, drag and pinch, for the game's own moment (the time machine's instant is set while it is up and put back). Anywhere else the page's own dome is drawn with every name on it. After an answer, "See it in the sky" turns the same view to the answer and rings it.
+
+## Accessibility
+
+- One grid. Every board made of cells is an ARIA grid built by `ZimiUtil.gridAria` (role=grid, rows that take no space, gridcells that keep their own labels) with `ZimiUtil.gridRove` (one tab stop, arrow keys between cells). No game sets these roles; tests/test_games_one_grid.py refuses that. Three keep their own arrow keys over the grid ZimiUtil made, moving a selection rather than focus: Sudoku (its number pad beside it), Mini Crossword (the typing cell) and Minesweeper (aria-activedescendant). A cell that cannot be pressed (Fleet's square once fired at) is passed over, and `ZimiUtil.gridRoveSync` keeps the tab stop off it.
+- Not grids: card piles, Mahjong's heap, point boards (Backgammon, Morris, Mancala, Ur, Ludo, Dots and Boxes) are groups of named buttons; Snakes and Ladders is one named picture; canvas games say plainly what a screen reader cannot play.
+- One-shot actions are never aria-pressed. Pictures with a name are role=img.
+- Motion: the game's Animation setting decides (`ZimiShell.reducedMotion()`). A device that asks for less motion makes Off the default, and the player's own choice wins.
+- Contrast 4.5:1 in light and dark; faded text uses --ink2, never opacity. Touch targets are 44px, by a hit area when the drawing is smaller.
+- tests/test_games_axe.py sweeps every page with axe-core (ZIMI_AXE_FULL=1 for every width, theme and right-to-left language).

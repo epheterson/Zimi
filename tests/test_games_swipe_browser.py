@@ -70,7 +70,7 @@ def test_sokoban_swipe(page):
 def test_quest_swipe(page):
     page.goto(page.base + "/quest.html")
     page.wait_for_function("window.__quest")
-    page.tap("#qs-screen")  # the ready tap starts it
+    page.tap(".gs-sp-play")  # the start splash: a tap on it starts the game
     page.wait_for_function("__quest.mode === 'playing'")
     before = page.evaluate("[__quest.st.x, __quest.st.y]")
     for dx, dy in ((80, 0), (-80, 0), (0, 80), (0, -80)):

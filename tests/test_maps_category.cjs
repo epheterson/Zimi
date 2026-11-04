@@ -15,7 +15,7 @@ const path = require('path');
 const vm = require('vm');
 const zlib = require('zlib');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+const src = [path.join(__dirname, '..', 'zimi', 'static', 'manage.js'), path.join(__dirname, '..', 'zimi', 'static', 'app.js')].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 function extract(re, label) {
   const m = src.match(re);
   if (!m) throw new Error('could not extract ' + label + ' from app.js');

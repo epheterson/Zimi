@@ -151,9 +151,9 @@
       G.showEnd(G.result);
     };
     // The end sheet for a result {text, outcome, name}; also how a finished game comes back after leaving it.
-    G.showEnd = function (r) {
+    G.showEnd = function (r, after) {
       var result = r.outcome === 'w' ? 'win' : r.outcome === 'l' ? 'lose' : r.outcome === 'd' ? 'draw' : r.name ? 'win' : 'over';
-      UI.end({ result: result, name: result === 'win' && r.outcome !== 'w' ? r.name : undefined, text: r.text });
+      UI.end({ result: result, name: result === 'win' && r.outcome !== 'w' ? r.name : undefined, text: r.text, after: after });
     };
     // Never lose a game: leaving and coming back puts the same position on the table (ZimiShell.persist).
     // api: { save() -> the page's state as plain data, or null when no move was made; load(data) -> false if it
@@ -177,7 +177,7 @@
           Object.keys(saved).forEach(function (k) { settings[k] = saved[k]; });
           G.over = !!data.over; G.result = data.res || null;
           if (keep.load(unpack(data.d), saved) === false) return false;
-          if (G.over && G.result) { G.say(G.result.line || resultLine(G.result.text, G.result.outcome, G.result.name)); G.showStats(); G.showEnd(G.result); }
+          if (G.over && G.result) { G.say(G.result.line || resultLine(G.result.text, G.result.outcome, G.result.name)); G.showStats(); G.showEnd(G.result, 0); }
           else if (keep.resume) keep.resume();
         }
       });
@@ -254,7 +254,7 @@
   // pts: [{x, y, w, h, label}] in the drawing's units (W by H); arrows move to the nearest
   // place in that direction. Returns the buttons.
   var DIRVEC = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-  function overlay(host, W, H, pts, onPick, cls) {
+  function overlay(host, W, H, pts, onPick, cls, cols) {
     var btns = [];
     pts.forEach(function (p, i) {
       var b = el('button', 'wk-pt' + (cls ? ' ' + cls : ''));
@@ -267,6 +267,7 @@
       b.addEventListener('focus', function () { btns.forEach(function (o) { o.tabIndex = o === b ? 0 : -1; }); });
       host.appendChild(b); btns.push(b);
     });
+    if (cols) root.ZimiUtil.gridAria(host, btns, cols);   // a square lattice reads as a grid of rows
     host.addEventListener('keydown', function (e) {
       var d = DIRVEC[e.key], cur = btns.indexOf(document.activeElement);
       if (!d || cur < 0 || e.ctrlKey || e.metaKey || e.altKey) return;

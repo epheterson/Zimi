@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from zimi.libzimcompat import entry_by_id
 
 #: ``folder``: its source under zimi/builtin/; ``name``: the file it becomes;
 #: ``category``: its Home section (both are "Zimi": one place for what Zimi makes, a name in
@@ -191,7 +192,7 @@ def offline_paths(name):
     for start in range(0, total, _OFFLINE_RUN):
         with _srv._zim_lock:
             for i in range(start, min(start + _OFFLINE_RUN, total)):
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 # The ZIM's own metadata (Counter, Title, Illustration_48x48@1) has no extension and is no page.
                 if (not entry.is_redirect and "." in entry.path and not entry.path.startswith(OFFLINE_SKIP + ("_", "-/", "Illustration"))):
                     out.append("/w/%s/%s" % (name, entry.path))

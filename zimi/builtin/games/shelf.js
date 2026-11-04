@@ -230,9 +230,15 @@
       tileTitle.set(t, t.querySelector('strong').textContent);
     });
   });
-  // A tile's words, lowercased, for search: its name and its line (and, once known, where and when).
+  // A tile's words, lowercased, for search: its name and its line, the section and family it sits in ("cards", "logic
+  // puzzles"), and, once known, where and when.
   var words = new Map();
-  sections.forEach(function (s) { s.tiles.forEach(function (t) { words.set(t, t.textContent.toLowerCase()); }); });
+  sections.forEach(function (s) {
+    s.tiles.forEach(function (t) {
+      var fam = t.closest('.ar-family');
+      words.set(t, (t.textContent + ' ' + s.label + ' ' + (fam ? fam.getAttribute('data-name') : '')).toLowerCase());
+    });
+  });
 
   // ── Families: Chess and its cousins, the Solitaires, Draughts ────────────
   // The page wraps each family's tiles in <div class="ar-family" data-name data-line>. Here the wrapper
@@ -334,7 +340,10 @@
     viewBtns[v[0]] = b;
     toggle.appendChild(b);
   });
-  tools.appendChild(search);
+  // In Zimi the top bar is the search box (Zimi calls shelfSearch / shelfGo below), so the page has none of its own:
+  // one search box. Out of Zimi (a ZIM opened by itself) the page keeps its box.
+  var hosted = !!root.parent && root.parent !== root;
+  if (!hosted) tools.appendChild(search);
   tools.appendChild(sortWrap);
   tools.appendChild(toggle);
   header.appendChild(tools);
@@ -344,7 +353,9 @@
   var rail = el('div', 'sh-rail');
   var nav = el('nav', 'sh-nav');
   nav.setAttribute('aria-label', T('shelf.head.sections'));
-  rail.appendChild(nav);
+  var chipBar = el('div', 'sh-bar');
+  chipBar.appendChild(nav);
+  rail.appendChild(chipBar);
   var main = el('div', 'sh-main');
   var top = el('div', 'sh-top');
   var empty = el('p', 'sh-empty', T('shelf.noMatch'));
@@ -502,6 +513,14 @@
   function today() { return doc.querySelector('.ar-today'); }
 
   // Continue and Game of the day come from recent.js, after the page is up.
+  // The order and the view switch share the chips' row, so no row is spent on them. Index on a wide screen has the
+  // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well.
+  var wide = root.matchMedia('(min-width: 900px)');
+  function placeTools() {
+    var target = hosted && !(state.view === 'index' && wide.matches) ? chipBar : header;
+    if (tools.parentNode !== target) target.appendChild(tools);
+  }
+  if (wide.addEventListener) wide.addEventListener('change', placeTools);
   function place() {
     var c = doc.querySelector('.ar-continue'), t = today();
     if (c && c.parentNode !== top) top.appendChild(c);
@@ -562,6 +581,7 @@
     state.sec = defaultSection();
     store(VIEW_KEY, v);
     place();
+    placeTools();
     apply();
   }
 
@@ -573,17 +593,35 @@
     if (k === 'region') withLand(layout); else layout();
   }
 
+  function setQuery(v) { state.q = String(v || ''); input.value = state.q; apply(); }
+  // The first game the search leaves on the shelf, in the order it is shown.
+  function topHit() {
+    var tiles = shelf.querySelectorAll('a.ar-game');
+    for (var i = 0; i < tiles.length; i++) if (!tiles[i].hidden && !tiles[i].closest('[hidden]')) return tiles[i];
+    return null;
+  }
+  // Zimi's top bar asks: what is typed filters the shelf as you type, Enter plays the first game left.
+  root.shelfSearch = setQuery;
+  root.shelfGo = function (v) {
+    if (v != null && String(v) !== state.q) setQuery(v);
+    var hit = state.q.trim() ? topHit() : null;
+    if (hit) hit.click();
+  };
   input.addEventListener('input', function () { state.q = input.value; apply(); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') root.shelfGo(); });
   doc.addEventListener('keydown', function (e) {
     if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && doc.activeElement !== input && !/^(INPUT|TEXTAREA|SELECT)$/.test(doc.activeElement && doc.activeElement.tagName)) {
       e.preventDefault();
-      input.focus();
+      var bar = null;
+      try { bar = hosted && root.parent.document.getElementById('q'); } catch (err) { /* another origin: no bar to reach */ }
+      (bar || input).focus();
     }
   });
   doc.addEventListener('zimi-shelf-today', function () { place(); decorateToday(); apply(); });
 
   buildChips();
   place();
+  placeTools();
   apply();
 
   // games.json is the shelf's own data (a file of this ZIM). Until it is read, or if it cannot be

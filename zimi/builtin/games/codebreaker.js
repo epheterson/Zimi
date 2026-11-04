@@ -96,7 +96,7 @@
       for (var k = 0; k < PEGS; k++) {
         var c = r < rows.length ? rows[r].guess[k] : now ? cur[k] : -1, b = peg(c);
         if (now) { b.setAttribute('aria-label', c >= 0 ? T('cb.tapRemove', { peg: pegName(c) }) : T('cb.emptyPlace', { n: k + 1 })); (function (slot) { b.addEventListener('click', function () { cur[slot] = -1; paint(); }); })(k); }
-        else b.disabled = true;
+        else { b.disabled = true; if (c < 0) b.setAttribute('aria-label', T('cb.emptyPlace', { n: k + 1 })); }
         pegs.appendChild(b);
       }
       li.appendChild(pegs);

@@ -335,6 +335,7 @@ const Lib = load(['librarykit.js']).GamesLib;
     const maps = [{ name: 'osm_small', kind: 'map', map_search: true, map_bounds: [0, 0, 10, 10] }, { name: 'osm_other', kind: 'map', map_search: true, map_bounds: [100, 40, 120, 60] }, { name: 'osm_nosearch', kind: 'map' }];
     check(same(Lib.mapFor(maps, 5, 5), { zim: 'osm_small', path: 'index.html#map=14/5/5' }), 'lead out: the map whose box holds a point, opened at that point');
     check(same(Lib.mapFor(maps, 50, 110), { zim: 'osm_other', path: 'index.html#map=14/50/110' }), 'lead out: another point, another map');
+    check(same(Lib.mapFor(maps, 5, 5, '', 'Caf\u00e9 & Bar'), { zim: 'osm_small', path: 'index.html#map=14/5/5&pin=5,5&label=Caf%C3%A9%20%26%20Bar' }), 'lead out: a named place also asks the map for a pin, the name encoded');
     check(Lib.mapFor(maps, -40, -70) === null, 'lead out: a point no map holds gives no link');
     check(Lib.mapFor([{ name: 'osm_nobox', kind: 'map', map_search: true }], 5, 5) === null, 'lead out: a map with no known box is not guessed at');
     check(Lib.mapFor(maps, 5, 5, 'osm_other').zim === 'osm_other', 'lead out: the map a place came from, whatever its box');

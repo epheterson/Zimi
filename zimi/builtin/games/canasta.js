@@ -96,6 +96,7 @@
       var r = ranks[i], cards = groups[r].concat(i === 0 ? wilds : []), existing = melds.filter(function (m) { return m.rank === r; })[0];
       if (r === 3) {
         if (!goingOut) return fail(TX('canasta.err.blackOut'));
+        if (cards.length > groups[r].length) return fail(TX('canasta.err.blackWild'));
         if (cards.length < 3) return fail(TX('canasta.err.blackThree'));
         plan.push({ rank: 3, cards: cards, add: !!existing });
       } else if (existing) {
@@ -143,12 +144,40 @@
   function draw(st) {
     if (st.phase !== 'play' || st.step !== 'draw') return st;
     var s = Z.clone(st), side = s.turn, got = [];
-    if (!s.stock.length) return endHand(s, -1, TX('canasta.why.stock'));
+    if (!s.stock.length) return forcedTake(s, side) ? st : endHand(s, -1, TX('canasta.why.stock'));
     for (var k = 0; k < DRAW && s.stock.length; k++) { var c = s.stock.pop(); s.hands[side].push(c); got.push(c); }
     layReds(s, side);
+    if (s.melds[side].length) s.concealed[side] = false;   // laid on an earlier turn: going out now is not concealed
     s.hands[side] = sortHand(s.hands[side]);
     s.step = 'play'; s.turnPts = 0; s.moves++; note(s, side, TX('canasta.note.drew'));
     return s;
+  }
+  // With the stock gone the pile must be taken when it can be (Hoyle); the hand ends only when it cannot. The cards to
+  // take it with, or null.
+  function forcedTake(st, side) {
+    if (!st.pile.length) return null;
+    var top = last(st.pile), r = rankKey(top);
+    if (isWild(top) || isBlackThree(top)) return null;
+    var pool = st.hands[side].filter(function (c) { return isWild(c) || (!isRedThree(c) && rankKey(c) === r); }), tries = [[]], i, j;
+    for (i = 0; i < pool.length; i++) { tries.push([pool[i]]); for (j = i + 1; j < pool.length; j++) tries.push([pool[i], pool[j]]); }
+    for (i = 0; i < tries.length; i++) if (takePlan(st, side, tries[i]).ok) return tries[i];
+    return null;
+  }
+  // The most a side's first meld could reach if it took the pile with `sel`: the taken rank with everything of it that is
+  // left, every other rank it holds three of, pairs that a wild card completes, and the wild cards left over. An upper bound, so a take is refused only
+  // when no first meld could follow it.
+  function takeReach(st, side, sel, top) {
+    var r = rankKey(top), rest = st.hands[side].filter(function (c) { return sel.indexOf(c) < 0; }).concat(st.pile.slice(0, -1)).filter(function (c) { return !isRedThree(c); });
+    var g = naturalsByRank(rest), wilds = rest.filter(isWild).map(cardPts).sort(function (a, b) { return b - a; }), total = sumPts([top].concat(sel)), pairs = [];
+    delete g[3];
+    if (g[r]) total += sumPts(g[r]);
+    Object.keys(g).forEach(function (k) {
+      if (+k === r) return;
+      if (g[k].length >= 3) total += sumPts(g[k]); else if (g[k].length === 2) pairs.push(sumPts(g[k]));
+    });
+    pairs.sort(function (a, b) { return b - a; }).forEach(function (p) { if (wilds.length) total += p + wilds.shift(); });
+    // Wild cards left over can join the taken meld or any meld of three: still an upper bound.
+    return total + wilds.reduce(function (n, w) { return n + w; }, 0);
   }
   // Can this side take the pile now with `sel` from its hand? {ok, error, plan}
   function takePlan(st, side, sel) {
@@ -163,12 +192,25 @@
     if (natSel.some(function (c) { return rankKey(c) !== r; })) return fail(TX('canasta.err.match', { rank: rankOne(r) }));
     var cards = [top].concat(sel);
     if (frozen && natSel.length < 2) return fail(TX('canasta.err.frozen', { rank: rankName(r) }));
+    if (!st.melded[side]) {
+      var reach = takeReach(st, side, sel, top);
+      if (reach < requirement(st.scores[side])) return fail(TX('canasta.err.firstMeld', { n: requirement(st.scores[side]), have: reach }));
+    }
+    var plan;
     if (existing) {
       if (!canExtend(existing, cards)) return fail(TX('canasta.err.noFit', { rank: rankName(r) }));
-      return { ok: true, plan: [{ rank: r, cards: cards, add: true }] };
+      plan = [{ rank: r, cards: cards, add: true }];
+    } else {
+      if (newMeldRank(cards) !== r) return fail(TX('canasta.err.twoNat', { rank: rankName(r) }));
+      plan = [{ rank: r, cards: cards, add: false }];
     }
-    if (newMeldRank(cards) !== r) return fail(TX('canasta.err.twoNat', { rank: rankName(r) }));
-    return { ok: true, plan: [{ rank: r, cards: cards, add: false }] };
+    // Taking must leave a card to discard, unless the take itself lets the side go out.
+    if (st.hands[side].length - sel.length + st.pile.slice(0, -1).filter(function (c) { return !isRedThree(c); }).length <= 1) {
+      var after = Z.clone(st.melds[side]);
+      addToMelds(after, plan);
+      if (canastaCount(after) < GO_OUT_CANASTAS) return fail(TX('canasta.err.keepOne', { n: GO_OUT_CANASTAS }));
+    }
+    return { ok: true, plan: plan };
   }
   function takePile(st, sel) {
     var side = st.turn, tp = takePlan(st, side, sel);
@@ -194,6 +236,8 @@
     var probe = Z.clone(st);
     var plan = planMelds(st.melds[side], selection, left <= 1, target);
     if (!plan.ok) return plan.error;
+    // The first meld of a side is laid in one go: below the minimum it would leave the turn with no way to end.
+    if (!st.melded[side] && !st.melds[side].length && left > 1 && st.turnPts + sumPts(selection) < requirement(st.scores[side])) return TX('canasta.err.firstMeld', { n: requirement(st.scores[side]), have: st.turnPts + sumPts(selection) });
     addToMelds(probe.melds[side], plan.melds);
     if (left <= 1 && !canGoOut(probe, side)) return TX(left === 0 ? 'canasta.err.needCanastas' : 'canasta.err.keepOne', { n: GO_OUT_CANASTAS });
     return '';
@@ -285,7 +329,7 @@
       if (!tp.ok) continue;
       var pts = sumPts([top].concat(tries[i]));
       if (!st.melded[side]) {
-        // The first meld must reach the minimum, with what the pile adds to the hand.
+        // The first meld must reach the minimum with what the pile adds to the hand: the computer counts only melds it will make.
         var all = hand.concat(st.pile.slice(0, -1)).filter(function (c) { return tries[i].indexOf(c) < 0; }), extra = 0, g = naturalsByRank(all);
         Object.keys(g).forEach(function (k) { if (g[k].length >= 3) extra += sumPts(g[k]); });
         if (pts + extra < requirement(st.scores[side])) continue;
@@ -345,7 +389,7 @@
   function aiStep(st) {
     var side = st.turn;
     if (st.step === 'draw') {
-      var sel = aiTake(st, side);
+      var sel = aiTake(st, side) || (st.stock.length ? null : forcedTake(st, side));
       return sel ? takePile(st, sel) : draw(st);
     }
     var m = aiMeldStep(st, side);
@@ -361,7 +405,7 @@
   function discardFallback(st) { return endHand(Z.clone(st), -1, TX('canasta.why.nothing')); }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var BAR_H = 46, TAG_H = 22, CELL_SHARE = 1.5, PILE_GAP = 1.7, TAG_SHARE = 2.6;
+  var BAR_H = 46, TAG_H = 22, CELL_SHARE = 1.5, PILE_GAP = 1.7, TAG_SHARE = 2.6, MELD_STEP = 0.22, MELD_GAP = 4;
   function perRow(m) { return Math.max(1, Math.floor((m.W - 2 * m.pad) / (m.cw * CELL_SHARE))); }
   function meldRows(m, n) { return Math.max(1, Math.ceil(n / perRow(m))); }
   // V is the side looking: its hand and melds sit at the bottom.
@@ -384,6 +428,8 @@
     return { x: Math.round(x), y: Math.round(y) };
   }
   function repCard(m) { return m.cards.filter(function (c) { return !isWild(c); })[0] || m.cards[0]; }
+  // A meld's cards fanned left to right, wild cards underneath so the natural rank card lies on top.
+  function meldFan(m) { return m.cards.filter(isWild).concat(m.cards.filter(function (c) { return !isWild(c); })); }
   function place(st, m, view) {
     var V = (view && view.viewer) || 0, up = !(view && view.hideHand), g = geo(m, st, V), slots = [], cards = [], sel = !up ? [] : ((view && view.sel) || []).filter(function (c) { return st.hands[V].indexOf(c) >= 0; });
     slots.push({ id: 'table', x: g.pad, y: g.northY, w: g.W - 2 * g.pad, h: g.southY - g.northY + g.ch, quiet: true, label: TX('cards.slot.table') });
@@ -393,8 +439,9 @@
     [0, 1].forEach(function (side) {
       st.melds[side].forEach(function (mm, k) {
         var sp = meldSpot(g, side, k);
-        cards.push({ id: repCard(mm), pile: 'm' + side + '-' + mm.rank, idx: 0, x: sp.x, y: sp.y, up: true, glow: isCanasta(mm), mark: side === V && view && view.target === mm.rank });
-        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: g.cw, h: g.ch, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
+        var fanned = meldFan(mm), step = fanned.length > 1 ? Math.min(g.cw * MELD_STEP, (g.cw * CELL_SHARE - g.cw - MELD_GAP) / (fanned.length - 1)) : 0;
+        fanned.forEach(function (id, i) { cards.push({ id: id, pile: 'm' + side + '-' + mm.rank, idx: i, x: Math.round(sp.x + i * step), y: sp.y, up: true, glow: isCanasta(mm), mark: side === V && view && view.target === mm.rank }); });
+        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: Math.round(g.cw + (fanned.length - 1) * step), h: g.ch, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
       });
     });
     var gap = Math.round(g.cw * PILE_GAP), sx = Math.round(g.cx - g.cw - gap / 2), px = Math.round(g.cx + gap / 2);
@@ -410,7 +457,7 @@
   var api = {
     TARGETS: TARGETS, NAMES: NAMES, requirement: requirement, cardPts: cardPts, isWild: isWild, isRedThree: isRedThree, isBlackThree: isBlackThree, rankKey: rankKey,
     newMeldRank: newMeldRank, canExtend: canExtend, planMelds: planMelds, takePlan: takePlan, newHand: newHand, draw: draw, takePile: takePile, meld: meld, meldProblem: meldProblem,
-    discard: discard, discardProblem: discardProblem, sideScore: sideScore, canastaCount: canastaCount, isCanasta: isCanasta, isPure: isPure, aiStep: aiStep, aiTake: aiTake, aiMeldStep: aiMeldStep, aiDiscard: aiDiscard,
+    discard: discard, discardProblem: discardProblem, sideScore: sideScore, canastaCount: canastaCount, isCanasta: isCanasta, isPure: isPure, aiStep: aiStep, aiTake: aiTake, forcedTake: forcedTake, aiMeldStep: aiMeldStep, aiDiscard: aiDiscard,
     gameWinner: gameWinner, nextHand: nextHand, geo: geo, place: place, face: face, sumPts: sumPts, JOKER_BASE: JOKER_BASE, TOTAL: TOTAL, GO_OUT_CANASTAS: GO_OUT_CANASTAS
   };
   root.ZimiCanasta = api;
@@ -518,7 +565,10 @@
       if (next === st) next = discardFallback(st);
       session.follow(next); drive();
     }
-    function drawTurn() { var st = session.state; if (st.turn !== seats.view() || st.step !== 'draw') return; view.sel = []; session.commit(draw(st)); afterMe(); }
+    function drawTurn() {
+      var st = session.state; if (st.turn !== seats.view() || st.step !== 'draw') return;
+      if (!st.stock.length && forcedTake(st, st.turn)) { t.flash(TX('canasta.err.stockEmpty')); return; }
+      view.sel = []; session.commit(draw(st)); afterMe(); }
     function takeSelected() {
       var st = session.state, sel = mySel(st), tp = takePlan(st, seats.view(), sel);
       if (!tp.ok) { t.flash(tp.error); return; }

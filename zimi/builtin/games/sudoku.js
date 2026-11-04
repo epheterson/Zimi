@@ -273,13 +273,16 @@
     var frag = document.createDocumentFragment();
     for (var i = 0; i < CELLS; i++) {
       var d = document.createElement('div');
-      d.className = 'su-c'; d.dataset.i = i; d.setAttribute('role', 'gridcell'); d.tabIndex = -1;
+      d.className = 'su-c'; d.dataset.i = i; d.tabIndex = -1;
       var r = Math.floor(i / N), c = i % N;
+      if (c === N - 1) d.classList.add('lc');
+      if (r === N - 1) d.classList.add('lr');
       if (c % 3 === 2 && c < 8) d.classList.add('rb');
       if (r % 3 === 2 && r < 8) d.classList.add('bb');
       cellEls.push(d); frag.appendChild(d);
     }
     els.board.appendChild(frag);
+    root.ZimiUtil.gridAria(els.board, cellEls, N);
     // The pad: 1 to 9 as a three by three; Erase sits with Hint and Pencil in the tools row, the same size.
     for (var k = 1; k <= N; k++) {
       var b = document.createElement('button');
@@ -309,7 +312,7 @@
   function render() {
     var bad = conflicts(s.grid), sel = s.sel, selDigit = sel >= 0 ? s.grid[sel] : 0, selPeers = sel >= 0 ? PEERS[sel] : [];
     for (var i = 0; i < CELLS; i++) {
-      var el = cellEls[i], val = s.grid[i], cls = 'su-c' + (el.classList.contains('rb') ? ' rb' : '') + (el.classList.contains('bb') ? ' bb' : '');
+      var el = cellEls[i], val = s.grid[i], cls = 'su-c' + (el.classList.contains('rb') ? ' rb' : '') + (el.classList.contains('bb') ? ' bb' : '') + (el.classList.contains('lc') ? ' lc' : '') + (el.classList.contains('lr') ? ' lr' : '');
       if (s.puzzle[i]) cls += ' given';
       else if (val) cls += ' user';
       if (bad[i]) cls += ' bad';

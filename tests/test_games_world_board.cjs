@@ -214,6 +214,16 @@ const check = (ok, label) => {
   s = { pits: Int8Array.from([1, 0, 0, 0, 3, 0, 0, 2, 0, 0, 0, 5, 0, 0]), score: [0, 0], turn: 0, quiet: 0, done: false };
   r = K.sow(s, 0);
   check(r.captured.length === 2 && r.state.pits[6] === 6 && r.state.pits[11] === 0 && r.state.pits[1] === 0, 'kalah: ending in your own empty pit takes the pit opposite, and your seed');
+  // the capture rule: last seed in an empty pit on your side takes it and the opposite pit (12 - i); an empty opposite takes nothing
+  s = { pits: Int8Array.from([0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0]), score: [0, 0], turn: 0, quiet: 0, done: false };
+  r = K.sow(s, 2);
+  check(r.state.pits[6] === 0 && r.captured.length === 0 && r.state.pits[4] === 1, 'kalah: an empty opposite pit takes nothing');
+  s = { pits: Int8Array.from([0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 3, 0, 0, 0]), score: [0, 0], turn: 0, quiet: 0, done: false };
+  r = K.sow(s, 2);
+  check(r.captured.length === 2 && r.state.pits[6] === 5 && r.state.pits[8] === 0 && r.state.pits[4] === 0 && r.state.turn === 1, 'kalah: last seed in an empty own pit takes that seed and the pit opposite');
+  s = { pits: Int8Array.from([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 5, 0, 0]), score: [0, 0], turn: 1, quiet: 0, done: false };
+  r = K.sow(s, 11);
+  check(r.captured.length === 0, 'kalah: no capture on the other side of the board');
   s = { pits: Int8Array.from([0, 1, 0, 0, 0, 9, 0, 1, 1, 1, 1, 1, 1, 0]), score: [0, 0], turn: 0, quiet: 0, done: false };
   r = K.sow(s, 5);
   check(r.state.pits[13] === 0 && r.path.indexOf(13) < 0 && r.state.pits[6] === 1, 'kalah: sowing skips the opponent store and drops one in your own');

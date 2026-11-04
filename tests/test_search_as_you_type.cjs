@@ -43,7 +43,7 @@ const sandbox = {
   searchTimer: null, suggestTimer: null,
   searchMeta: { style: {} },
   _searchHelpExpanded: nop, _isWikiPage: no, _isBooksPage: no, _isDictPage: no, _isReddotPage: no,
-  _isExchangePage: no, _isTubePage: no, _isMapPage: no,
+  _isExchangePage: no, _isTubePage: no, _isMapPage: no, _isGameShelf: no,
   showHistoryDropdown: nop, hideSuggest: nop, clearSearch: nop, renderHome: nop,
   doSearch: v => sent.search.push(v),
   fetchSuggestions: v => sent.suggest.push(v),

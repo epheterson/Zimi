@@ -450,7 +450,7 @@ const run = (code) => vm.runInContext(code, S);
     check(requests.length === before + 1 && lastReq().method === 'POST' && lastReq().url === S.AE_SATS_REFRESH_URL,
       'Get fresh data is one POST to the admin route');
     check(run('_ae.sats.source') === 'cache' && run('_ae.sats.fetched') === '2026-09-28T18:00:00Z', 'and the fresh elements are drawn');
-    check(askText() === null && note().includes('alm_earth_data_from'), 'fresh, the offer goes and the note dates the data again');
+    check(askText() === null && note().includes('alm_earth_data_from') && !note().includes('alm_earth_data_stale'), 'fresh, the offer goes and the note dates the data again, without a stale warning');
 
     fetches.push(stale({}));
     await reopen();
@@ -466,10 +466,10 @@ const run = (code) => vm.runInContext(code, S);
 
     fetches.push(stale({ can_change: false }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from'), 'a viewer who may not fetch sees the date and no button');
+    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
     fetches.push(stale({ mode: 'never' }));
     await reopen();
-    check(askText() === null && note().includes('alm_earth_data_from'), 'under Never, stale data is dated and nothing more');
+    check(askText() === null && note().includes('alm_earth_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
     fetches.push(stale({ mode: 'auto', refreshing: true }));
     await reopen();
     check(askText() === null, 'under Automatically nothing is offered: the server is fetching already');
@@ -707,6 +707,75 @@ const run = (code) => vm.runInContext(code, S);
       'the catalogue (' + CATALOGUE + ' stars, one draw call) replaces the first sky');
     await reopen();
     check(starRequests.length === 2, 'once it is in, it is not asked for again');
+  }
+
+  // ── 8. Turning to point the right way ─────────────────────────────────
+  // A flight turns the camera at an eased, bounded rate: sampled every frame, its orientation never turns more than
+  // a few degrees between two frames, wherever the flight starts and ends (across the date line, at the poles).
+  {
+    fetches.push(answer({}));
+    await reopen();
+    run('_aeUpdate(Date.UTC(2026, 9, 2, 12))');
+    const turns = (from, to, az, el, toAzel) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.hand = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = ' + az + '; _ae.el_ = ' + el + '; _aePlaceCamera();' +
+      (to === 'place' ? ' _aeFlyTo("earth", _aeFitDist(AE_FIT_EARTH), ' + toAzel + ');' : ' _aePreset("' + to + '");') +
+      ' var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, prev = null, worst = 0, FR = 1000 / 60;' +
+      ' for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6));' +
+      '   _aePlaceCamera(); var cam = _ae.gl.camera; cam.updateMatrixWorld();' +
+      '   var q = cam.quaternion, cur = [q.x, q.y, q.z, q.w];' +
+      '   if (prev) { var d = Math.abs(cur[0]*prev[0] + cur[1]*prev[1] + cur[2]*prev[2] + cur[3]*prev[3]); var dg = 2 * Math.acos(Math.min(1, d)) * 180 / Math.PI; worst = Math.max(worst, dg); }' +
+      '   prev = cur; if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify({ worst: worst, ms: total }); })()'));
+    const cases = [];
+    for (const [from, to] of [['earth', 'moon'], ['moon', 'earth'], ['earth', 'sun'], ['moon', 'sun'], ['sun', 'earth'], ['sun', 'moon']]) {
+      for (const [az, el] of [[0.3, 0.2], [3.1, 0.2], [-3.1, -0.3], [1.5, 1.45], [0, -1.45], [3.1, 1.48]]) cases.push([from, to, az, el]);
+    }
+    for (const [az, el, taz, tel] of [[3.1, 0.2, -3.1, 0.3], [0, 1.4, 3.0, -1.4], [0.2, 0.2, 3.0, 1.4]])
+      cases.push(['earth', 'place', az, el, '{az:' + taz + ',el:' + tel + '}']);
+    const MAX_TURN_DEG = 4.5;
+    let peak = 0, longest = 0, worstCase = '';
+    for (const c of cases) {
+      const r = turns(...c);
+      worstCase = r.worst >= peak ? c.slice(0, 4).join(' ') : worstCase;
+      peak = Math.max(peak, r.worst);
+      longest = Math.max(longest, r.ms);
+    }
+    check(peak <= MAX_TURN_DEG, cases.length + ' flights (across the date line, over the poles, between the bodies): the picture never turns more than ' +
+      MAX_TURN_DEG + ' degrees a frame (peak ' + peak.toFixed(2) + ', in ' + worstCase + ')');
+    check(longest <= 4 * (S.AE_FLY_FAR_MS + S.AE_FLY_APPROACH_MS + S.AE_FLY_TAIL_MS), 'and none is stretched past ' + Math.round(longest) + ' ms');
+  }
+
+  // The ends of a flight: the line of sight and the up vector are each sampled every frame, and neither the turn
+  // rate nor its change steps anywhere in the flight (a look-at that flipped for a frame as the camera swung round
+  // the old body, and the picture rolled half a turn in the last second), and both rates are nil at the first and
+  // last frame.
+  {
+    const series = (from, to, az, el) => JSON.parse(run('(function () {' +
+      ' _ae.fly = null; _ae.hand = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = ' + az + '; _ae.el_ = ' + el + '; _aePlaceCamera();' +
+      ' _aePreset("' + to + '"); var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, out = [], FR = 1000 / 60;' +
+      ' for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6)); _aePlaceCamera();' +
+      '   var cam = _ae.gl.camera; cam.updateMatrixWorld(); var e = cam.matrixWorld.elements; out.push({ look: [-e[8], -e[9], -e[10]], up: [e[4], e[5], e[6]] }); if (!_ae.fly) break; }' +
+      ' _ae.fly = null; _aeFarFor(0); return JSON.stringify(out); })()'));
+    const angle = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI;
+    const diff = (a) => a.slice(1).map((x, i) => x - a[i]), peak = (a) => a.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    const worst = { accel: 0, jerk: 0, lookJerk: 0, end: 0 };
+    let n = 0;
+    for (const [from, to] of [['moon', 'earth'], ['sun', 'moon'], ['earth', 'moon'], ['moon', 'sun'], ['earth', 'sun'], ['sun', 'earth']]) {
+      for (const [az, el] of [[0.3, 0.2], [3.1, 0.2], [1.5, 1.0], [-2, -0.5]]) {
+        const F = series(from, to, az, el);
+        n++;
+        for (const k of ['look', 'up']) {
+          const w = diff(F.map((_, i) => i)).map((_, i) => angle(F[i][k], F[i + 1][k])), a = diff(w), j = diff(a);
+          worst.accel = Math.max(worst.accel, peak(a)); worst.jerk = Math.max(worst.jerk, peak(j));
+          if (k === 'look') worst.lookJerk = Math.max(worst.lookJerk, peak(j));
+          worst.end = Math.max(worst.end, w[0], w[w.length - 1]);
+        }
+      }
+    }
+    check(worst.accel <= 0.5 && worst.jerk <= 0.1, n + ' flights: the turn rate of the line of sight and of up changes by at most ' + worst.accel.toFixed(2) +
+      ' degrees a frame squared, and that change by ' + worst.jerk.toFixed(2) + ' (no snap anywhere)');
+    check(worst.lookJerk <= 0.1, 'the line of sight turns without a kink (' + worst.lookJerk.toFixed(3) + ' degrees a frame cubed)');
+    check(worst.end <= 0.05, 'and starts and stops at rest (' + worst.end.toFixed(3) + ' degrees a frame at the first and last frame)');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

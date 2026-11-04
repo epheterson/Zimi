@@ -35,7 +35,7 @@
   };
 
   Play.reducedMotion = function () {
-    if (window.ZimiShell && window.ZimiShell.anim() === 'off') return true;
+    if (window.ZimiShell) return window.ZimiShell.reducedMotion();
     try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
   };
 
@@ -143,9 +143,14 @@
   Play.ready = function (o) {
     var done = false, pointer = false;
     try { pointer = matchMedia('(pointer: coarse)').matches; } catch (e) { /* a mouse */ }
-    var text = pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey'));
+    var line = function () { return pointer ? (o.touch || T('play.tapStart')) : (o.keys || T('play.pressKey')); }, text = line(), splash = null;
     if (o.say) o.say(text); else if (o.msg) o.msg.textContent = text;
-    function stop() { done = true; (o.target || document).removeEventListener('pointerdown', tap); document.removeEventListener('keydown', key, true); }
+    // The first ready of a page opens on the start splash (art, name, Play, the best score); a re-arm after a game keeps to the line.
+    if (!Play.splashed && o.splash !== false && window.ZimiShell && window.ZimiShell.splash) {
+      Play.splashed = true;
+      splash = window.ZimiShell.splash({ hint: line, chips: o.best ? [[function () { return T('play.best'); }, Play.num(o.best)]] : [], onPlay: function () { go(); } });
+    }
+    function stop() { done = true; if (splash) splash.close(); (o.target || document).removeEventListener('pointerdown', tap); document.removeEventListener('keydown', key, true); }
     function go() { if (done) return; stop(); o.start(); }
     function tap(e) { if (e.button) return; e.preventDefault(); go(); }
     function key(e) {
@@ -171,19 +176,8 @@
     return el;
   };
 
-  // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
-  var audio = null, TONE_GAIN = 0.22, TONE_ATTACK_S = 0.02;
-  Play.tone = function (freq, ms, gain) {
-    if (!window.ZimiShell || !window.ZimiShell.sound || !window.ZimiShell.sound()) return;
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      if (audio.state === 'suspended') audio.resume();
-      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime, len = ms / 1000, peak = gain || TONE_GAIN;
-      o.type = 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + TONE_ATTACK_S); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
-    } catch (e) { /* no audio on this device: play on silently */ }
-  };
+  // A note, only when the player has turned Sound on (Settings): the shell makes it.
+  Play.tone = function (freq, ms, gain) { if (window.ZimiShell && window.ZimiShell.tone) window.ZimiShell.tone(freq, ms, gain); };
   // A buzz for a hit (a number of ms or a pattern); phones that cannot buzz, and reduced motion, stay still.
   Play.haptic = function (pattern) {
     try { if (navigator.vibrate && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }
@@ -416,7 +410,7 @@
     page.arm = function (r) {
       r = (typeof r === 'function' ? r() : r) || (typeof o.ready === 'function' ? o.ready() : { touch: T(o.ready.touch), keys: T(o.ready.keys) });
       if (armed) armed.cancel();
-      armed = Play.ready({ say: status.say, target: page.pad ? page.pad.stage : els.cv, start: r.start || page.begin, touch: r.touch, keys: r.keys });
+      armed = Play.ready({ say: status.say, target: page.pad ? page.pad.stage : els.cv, start: r.start || page.begin, touch: r.touch, keys: r.keys, best: page.best && page.best.score });
     };
     // Once a sheet is up: arm again if the game is still in that mode.
     page.armLater = function (mode, r) { setTimeout(function () { if (page.mode === mode) page.arm(r); }, ARM_MS); };

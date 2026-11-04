@@ -38,7 +38,7 @@
 .t32 { color: var(--tf-ink-dark); }
 :root[data-theme="dark"] .t32 { color: var(--tf-ink-light); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .t32 { color: var(--tf-ink-light); } }
-@media (prefers-reduced-motion: reduce) { .tf-tile { transition: none; } .tf-tile.pop, .tf-tile.new { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .tf-tile { transition: none; } html:not([data-anim="normal"]):not([data-anim="fast"]) .tf-tile.pop, html:not([data-anim="normal"]):not([data-anim="fast"]) .tf-tile.new { animation: none; } }
 
 /* The whole page takes the swipe, so a thumb never has to find the board. */
 @media (orientation: portrait) { .tf-main { min-height: calc(100dvh - var(--bar-h, 56px)); touch-action: none; user-select: none; -webkit-user-select: none; } }

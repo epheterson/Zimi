@@ -121,11 +121,12 @@
     var last = g.raceMode === 'gp' && g.gp.race === 2, title;
     if (g.raceMode === 'gp') title = Tx('kart.raceOf', { n: g.gp.race + 1, total: 3 });
     else title = g.humans.length === 2 ? Tx('shell.end.wins', { name: nameOf(order.filter(isMine)[0]) }) : Tx('kart.placeOf', { place: Play.ordinal(me.place), n: r.karts.length });
-    sheet(title, function (b) {
+    var build = function (b) {
       table(b, order.map(function (k, i) { return { me: isMine(k), cells: [Play.ordinal(i + 1), nameOf(k), k.finished != null ? E.fmtTime(k.finished) : '-', g.raceMode === 'gp' ? '+' + Play.num(E.GP_POINTS[i] || 0) : ''] }; }));
       if (g.raceMode !== 'gp') g.humans.forEach(function (k) { if (k.laps.length) note(b, g.humans.length > 1 ? Tx('kart.bestLapOf', { name: nameOf(k), time: E.fmtTime(Math.min.apply(null, k.laps)) }) : Tx('kart.bestLap', { time: E.fmtTime(Math.min.apply(null, k.laps)) })); });
-    }, g.raceMode === 'gp' ? [[last ? Tx('kart.cupResult') : Tx('kart.next', { track: trackName(TRACKS[E.CUPS[g.gp.cup].tracks[g.gp.race + 1]]) }), function () { if (last) cupResult(); else { g.gp.race++; startRace(); } }, true, true]] :
-      [[Tx('shell.close')], [Tx('shell.menu.new'), startRace, true]]);
+    };
+    if (g.raceMode !== 'gp') return endRace(title, build, order[0] && isMine(order[0]) ? 'win' : 'over', startRace);
+    sheet(title, build, [[last ? Tx('kart.cupResult') : Tx('kart.next', { track: trackName(TRACKS[E.CUPS[g.gp.cup].tracks[g.gp.race + 1]]) }), function () { if (last) cupResult(); else { g.gp.race++; startRace(); } }, true, true]]);
   }
   // The cup standings with the next race ready (also what a returning player sees).
   function standings() {
@@ -141,19 +142,19 @@
     g.gp.done = true;   // a finished cup is not saved as 'between races'
     var rec = prefs.cups[cup.id];
     if (!rec || rank < rec.rank || (rank === rec.rank && g.gp.totals[me] > rec.points)) { prefs.cups[cup.id] = { rank: rank, points: g.gp.totals[me] }; savePrefs(); }
-    sheet(Tx('kart.cupTitle', { cup: cupName(cup), medal: medal(rank) }), function (b) {
+    endRace(Tx('kart.cupTitle', { cup: cupName(cup), medal: medal(rank) }), function (b) {
       table(b, order.map(function (di, i) { return { me: di === me || (g.humans[1] && di === g.humans[1].drvIndex), cells: [Play.ordinal(i + 1), driverName(DRIVERS[di]), '', Tx('kart.points', { n: g.gp.totals[di] })] }; }));
       if (rank > 3) note(b, Tx('kart.cupNote'));
-    }, [[Tx('shell.close')], [Tx('shell.menu.new'), startCup, true]]);
+    }, rank === 1 ? 'win' : 'over', startCup);
   }
   function trialResult(me, ms) {
     var def = g.T.def, best = prefs.best[def.id], rec = !best || ms < best.ms, bestLap = Math.min.apply(null, me.laps);
     if (rec) { prefs.best[def.id] = { ms: ms, lap: bestLap }; savePrefs(); Play.save(GHOST_KEY + def.id, { rec: g.rec, driver: me.drvIndex }); }
     else if (best && bestLap < best.lap) { best.lap = bestLap; savePrefs(); }
-    sheet(Tx('kart.trialTitle', { track: trackName(def), time: E.fmtTime(ms) }), function (b) {
+    endRace(Tx('kart.trialTitle', { track: trackName(def), time: E.fmtTime(ms) }), function (b) {
       table(b, me.laps.map(function (l, i) { return { me: false, cells: [Tx('kart.lap', { n: i + 1 }), '', '', E.fmtTime(l)] }; }));
       note(b, rec ? (best ? Tx('kart.record.new', { time: E.fmtTime(best.ms - ms) }) : Tx('kart.record.first')) : Tx('kart.record.have', { time: E.fmtTime(best.ms) }));
-    }, [[Tx('shell.close')], [Tx('shell.menu.new'), startRace, true]]);
+    }, rec ? 'win' : 'over', startRace);
   }
 
   // ── pause: the bar's button toggles; opening the Menu pauses too ──
@@ -174,6 +175,13 @@
     build(body);
     openSheet = ZimiShell.sheet({ title: title, body: [body], actions: actions.map(function (a) { return { label: a[0], onclick: a[1], primary: !!a[2], keep: !!a[3] }; }), onClose: function () { openSheet = null; } });
     return openSheet;
+  }
+  // The end of a race or a cup is the shell's end: a win lands with its beat, anything else settles in plainly; the table rides on the sheet.
+  function endRace(title, build, result, onNew) {
+    closeSheet();
+    var body = document.createElement('div');
+    build(body);
+    ZimiShell.endSheet({ title: title, result: result, extra: [body], onNew: onNew });
   }
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function note(parent, text) { parent.appendChild(mk('p', 'kt-note', text)); }
@@ -204,7 +212,7 @@
 
   // The setup: the real choices (mode, cup or track, players, drivers). It is the start sheet and the New game pane.
   function setupNodes() {
-    var top = mk('div'), detail = mk('div', 'kt-detail');
+    var top = mk('div'), detail = mk('div', 'kt-detail gs-setup');
     function fill() {
       detail.textContent = '';
       var two = prefs.mode !== 'trial' && prefs.players === 2;

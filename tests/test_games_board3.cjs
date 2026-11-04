@@ -111,7 +111,16 @@ const sortNum = list => list.slice().sort((a, b) => a - b);
     }
     return out;
   }
+  // The generals on one file with nothing between them (bikjang): the side to move then has to break it.
+  function facing(bb) {
+    let a = null, c = null;
+    for (const [k, p] of bb) if (p.t === 7) { const [x, y] = k.split(',').map(Number); if (p.c > 0) a = [x, y]; else c = [x, y]; }
+    if (!a || !c || a[0] !== c[0]) return false;
+    for (let y = a[1] + 1; y < c[1]; y++) if (bb.get(key(a[0], y))) return false;
+    return true;
+  }
   function legal(b, color) {
+    const wasFacing = facing(b);
     const attackedKing = (bb) => {
       let ks = null;
       for (const [k, p] of bb) if (p.c === color && p.t === 7) ks = k;
@@ -120,7 +129,7 @@ const sortNum = list => list.slice().sort((a, b) => a - b);
     return pseudo(b, color).filter(m => {
       const bb = new Map(b), mover = bb.get(key(m[0], m[1]));
       bb.delete(key(m[0], m[1])); bb.set(key(m[2], m[3]), mover);
-      return !attackedKing(bb);
+      return !attackedKing(bb) && !(wasFacing && facing(bb));
     });
   }
   const canon = list => list.map(m => m.join(',')).sort();
@@ -143,6 +152,16 @@ const sortNum = list => list.slice().sort((a, b) => a - b);
   if (!same(canon(engineMoves(start)), canon(legal(fromPos(start), 1)))) { const a = canon(engineMoves(start)), b = canon(legal(fromPos(start), 1)); console.error('only engine', a.filter(x => !b.includes(x)), 'only independent', b.filter(x => !a.includes(x))); }
   check(same(canon(engineMoves(start)), canon(legal(fromPos(start), 1))), 'janggi: the same 1-ply moves, not just the same count');
   check(E.toFen(start) === E.START_FEN, 'janggi: the start position round-trips through its FEN');
+  {
+    // The four arrangements of horses and elephants: same pieces, a perft that agrees, Han's the half-turn of Cho's.
+    const fens = E.ARRANGEMENTS.map(n => E.startFen(n, n));
+    check(new Set(fens).size === 4 && fens[0] === E.START_FEN, 'janggi: four distinct arrangements, the old setup is the inside one');
+    const rows = f => f.split(' ')[0].split('/');
+    check(rows(E.startFen('left', 'left'))[9] === 'RHEA1AHER' && rows(E.startFen('left', 'left'))[0] === 'reha1aehr', 'janggi: the Han back rank is the Cho one turned half way round (left elephant: Cho RHEA1AHER, Han reha1aehr)');
+    const mixed = E.startFen('outside', 'right');
+    check(rows(mixed)[9] === 'REHA1AHER' && rows(mixed)[0] === 'rhea1aher', 'janggi: each side picks its own arrangement');
+    fens.forEach((f, i) => check(E.legalMoves(E.parseFen(f)).length > 25 && E.toFen(E.parseFen(f)) === f, 'janggi: arrangement ' + E.ARRANGEMENTS[i] + ' parses and has moves'));
+  }
 
   // The two generators agree at every position of random games, which reaches palaces, cannons and elephants.
   {
@@ -178,31 +197,51 @@ const sortNum = list => list.slice().sort((a, b) => a - b);
   check(!m.includes(P(7, 5)), 'janggi: a cannon cannot jump a cannon on the palace middle');
 
   // Cannons must jump exactly one piece, never a cannon, and never capture one.
-  check(mv('5k3/9/9/9/9/9/9/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon with nothing to jump cannot move at all');
-  check(mv('5k3/9/9/9/9/1c7/9/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon cannot jump over or capture a cannon');
-  check(same(mv('5k3/9/9/9/9/1p7/1r7/1C7/9/5K3 w', 7, 1), [P(5, 1)]), 'janggi: a cannon jumps one piece and captures the next');
-  check(mv('5k3/9/9/9/9/1c7/1r7/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon jumps a piece but still cannot capture a cannon behind it');
-  check(same(mv('5k3/9/9/9/9/9/1r7/1C7/9/5K3 w', 7, 1), sortNum([P(5, 1), P(4, 1), P(3, 1), P(2, 1), P(1, 1), P(0, 1)])), 'janggi: after its jump a cannon may land on any empty point in line');
-  check(mv('5k3/9/9/9/9/1p7/1r7/1C7/9/5K3 w', 7, 1).length === 1, 'janggi: a cannon cannot jump two pieces');
+  check(mv('3k5/9/9/9/9/9/9/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon with nothing to jump cannot move at all');
+  check(mv('3k5/9/9/9/9/1c7/9/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon cannot jump over or capture a cannon');
+  check(same(mv('3k5/9/9/9/9/1p7/1r7/1C7/9/5K3 w', 7, 1), [P(5, 1)]), 'janggi: a cannon jumps one piece and captures the next');
+  check(mv('3k5/9/9/9/9/1c7/1r7/1C7/9/5K3 w', 7, 1).length === 0, 'janggi: a cannon jumps a piece but still cannot capture a cannon behind it');
+  check(same(mv('3k5/9/9/9/9/9/1r7/1C7/9/5K3 w', 7, 1), sortNum([P(5, 1), P(4, 1), P(3, 1), P(2, 1), P(1, 1), P(0, 1)])), 'janggi: after its jump a cannon may land on any empty point in line');
+  check(mv('3k5/9/9/9/9/1p7/1r7/1C7/9/5K3 w', 7, 1).length === 1, 'janggi: a cannon cannot jump two pieces');
 
   // Elephants step one straight and two across; a blocked point on the way stops them.
-  m = mv('5k3/9/9/9/9/9/9/4E4/9/5K3 w', 7, 4);
+  m = mv('3k5/9/9/9/9/9/9/4E4/9/5K3 w', 7, 4);
   check(m.length === 6 && m.includes(P(4, 2)) && m.includes(P(5, 7)) && m.includes(P(9, 1)), 'janggi: an elephant jumps three by two, across the river too');
-  check(same(mv('5k3/9/9/9/9/9/4P4/4E4/9/5K3 w', 7, 4), sortNum([P(5, 1), P(5, 7), P(9, 1), P(9, 7)])), 'janggi: a piece on the elephant\'s straight step blocks both ways that way');
-  m = mv('5k3/9/9/9/9/3p5/9/4E4/9/5K3 w', 7, 4);
+  check(same(mv('3k5/9/9/9/9/9/4P4/4E4/9/5K3 w', 7, 4), sortNum([P(5, 1), P(5, 7), P(9, 1), P(9, 7)])), 'janggi: a piece on the elephant\'s straight step blocks both ways that way');
+  m = mv('3k5/9/9/9/9/3p5/9/4E4/9/5K3 w', 7, 4);
   check(m.length === 5 && !m.includes(P(4, 2)), 'janggi: a piece on the diagonal step blocks only that jump');
 
   // Horses are blocked on their leg.
-  check(same(mv('5k3/9/9/9/9/9/9/9/1P7/1H3K3 w', 9, 1), [P(8, 3)]), 'janggi: a horse with a piece on its leg cannot jump that way');
+  check(same(mv('3k5/9/9/9/9/9/9/9/1P7/1H3K3 w', 9, 1), [P(8, 3)]), 'janggi: a horse with a piece on its leg cannot jump that way');
 
   // Soldiers go forward and sideways, and along the palace diagonal inside the enemy palace.
-  check(same(mv('5k3/9/9/9/9/4P4/9/9/9/5K3 w', 5, 4), sortNum([P(4, 4), P(5, 3), P(5, 5)])), 'janggi: a soldier moves forward and sideways, never back');
+  check(same(mv('3k5/9/9/9/9/4P4/9/9/9/5K3 w', 5, 4), sortNum([P(4, 4), P(5, 3), P(5, 5)])), 'janggi: a soldier moves forward and sideways, never back');
   check(same(mv('3k5/9/3P5/9/9/9/9/9/9/5K3 w', 2, 3), sortNum([P(1, 3), P(1, 4), P(2, 2), P(2, 4)])), 'janggi: a soldier on the enemy palace corner also steps along the diagonal');
-  check(same(mv('5k3/4P4/9/9/9/9/9/9/9/5K3 w', 1, 4), sortNum([P(0, 3), P(0, 4), P(0, 5), P(1, 3), P(1, 5)])), 'janggi: a soldier on the enemy palace middle has two diagonals');
+  check(same(mv('3k5/4P4/9/9/9/9/9/9/9/5K3 w', 1, 4), sortNum([P(0, 3), P(0, 4), P(0, 5), P(1, 3), P(1, 5)])), 'janggi: a soldier on the enemy palace middle has two diagonals');
   check(!mv('3k5/9/9/3P5/9/9/9/9/9/5K3 w', 3, 3).includes(P(2, 4)), 'janggi: outside the enemy palace a soldier has no diagonal step');
 
   // Bikjang, checkmate, and the pass.
-  check(E.bikjang(E.parseFen('4k4/9/9/9/9/9/9/9/9/4K4 w')) && E.status(E.parseFen('4k4/9/9/9/9/9/9/9/9/4K4 w')).result === 'bikjang', 'janggi: bikjang (generals face with nothing between) ends the game as a draw');
+  check(E.bikjang(E.parseFen('4k4/9/9/9/9/9/9/9/9/4K4 w')) && !E.status(E.parseFen('4k4/9/9/9/9/9/9/9/9/4K4 w')).over, 'janggi: bikjang (generals face with nothing between) alone is not the end: the side to move may break it');
+  {
+    // As Fairy-Stockfish has it: a side may make bikjang, the other has to break it or pass, and a pass in bikjang is a draw.
+    const bk = E.parseFen('3k5/9/9/9/9/9/9/9/9/4K4 b');
+    E.make(bk, E.findMove(bk, E.squareFromName('d10'), E.squareFromName('e10')));
+    check(E.bikjang(bk) && !E.status(bk).over, 'janggi: Han moves to face the general: allowed, and not yet a draw');
+    const names = E.legalMoves(bk).map(m => E.squareName(E.to(m))).sort();
+    check(same(names, ['d1', 'f1']), 'janggi: facing, Cho must step off the file (the general along it is no answer): ' + names);
+    check(E.movesOrPass(bk).includes(E.PASS), 'janggi: facing, the pass is on offer');
+    const passed = E.clone(bk); E.make(passed, E.PASS);
+    check(E.bikjangStands(passed) && E.status(passed).result === 'bikjang', 'janggi: Cho passes in bikjang: a draw');
+    E.make(bk, E.findMove(bk, E.squareFromName('e1'), E.squareFromName('d1')));
+    check(!E.bikjang(bk) && !E.status(bk).over, 'janggi: Cho steps off the file and the game goes on');
+    E.unmake(bk);
+    check(E.bikjang(bk) && !E.bikjangStands(bk), 'janggi: take-back restores the position');
+    const rook = E.parseFen('4k4/9/9/9/9/9/9/9/R8/4K4 w');
+    check(same(E.legalMoves(rook).map(m => E.squareName(E.from(m)) + E.squareName(E.to(m))).sort(), ['a2e2', 'e1d1', 'e1f1']), 'janggi: facing, a piece may also be put between the generals');
+    const two = E.parseFen('3k5/9/9/9/9/9/9/9/R8/5K3 w');
+    E.make(two, E.PASS); check(!E.status(two).over, 'janggi: one pass is not the end');
+    E.make(two, E.PASS); check(E.passedOut(two) && E.status(two).result === 'passes', 'janggi: two passes in a row are a draw');
+  }
   check(!E.bikjang(E.parseFen('4k4/9/9/9/4P4/9/9/9/9/4K4 w')), 'janggi: a piece between the generals is no bikjang');
   const mate = E.parseFen('3k4R/R8/9/9/9/9/9/9/9/5K3 b');
   const ms = E.status(mate);

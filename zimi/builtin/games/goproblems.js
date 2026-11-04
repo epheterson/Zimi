@@ -240,7 +240,7 @@
       if (!problems[d.i]) return false;
       load(d.i);
       b = d.b; ko = d.ko; plies = d.plies; last = d.last; history = d.history; over = d.over; thinking = d.thinking; cue = -1; wrongAt = -1;
-      $('gp-next').setAttribute('aria-pressed', String(over));
+      $('gp-next').classList.toggle('gs-primary', over);
       if (over) say(T(P.k === 'kill' ? 'gp.solved.kill' : 'gp.solved.live'));
       showStats(); drawBoard();
     },

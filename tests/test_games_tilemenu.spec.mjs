@@ -59,7 +59,7 @@ test('a long press on a tile opens the menu, Add to favorites keeps it, and the 
   await expect(menu.getByRole('menuitem', { name: 'Open in new tab' })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'About this game' })).toBeVisible();
   // the click the press leaves behind did not open the game
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
   await menu.getByRole('menuitem', { name: 'Add to favorites' }).tap();
   await expect(menu).toBeHidden();
   const row = frame.locator('#sh-favorites a.ar-game');
@@ -89,14 +89,14 @@ test('a scroll is not a press, a tap still opens the game, and Escape and a tap 
   await tile.tap();                                      // a tap is not a press: the game opens, no menu
   await expect(page.locator('#game-title')).not.toHaveText('ZimiGames');
   await page.evaluate(() => openArticle('zimi_games', 'index.html', 'x'));
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
   await expect(frame.locator('.gs-tm')).toHaveCount(0);
   await hold(page, await tile.boundingBox());
   await expect(frame.locator('.gs-tm')).toBeVisible();
   await page.waitForTimeout(450);
   await page.touchscreen.tap(195, 40);                    // away from the sheet
   await expect(frame.locator('.gs-tm')).toHaveCount(0);
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
   await hold(page, await tile.boundingBox());
   await expect(frame.locator('.gs-tm')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -106,7 +106,7 @@ test('a scroll is not a press, a tap still opens the game, and Escape and a tap 
 test('How to play and About show on the shelf as sheets, without opening the game', async ({ page }) => {
   const frame = await openShelf(page);
   const tile = frame.locator('a.ar-game[href="checkers.html"]');
-  await frame.locator('.sh-search input').fill('checkers');
+  await page.locator('#q').fill('checkers');   // Zimi's bar is the shelf's search
   await tile.first().scrollIntoViewIfNeeded();
   await tile.first().click({ button: 'right' });   // a mouse: the popup
   const menu = frame.locator('.gs-tm');
@@ -118,7 +118,7 @@ test('How to play and About show on the shelf as sheets, without opening the gam
   await tile.first().click({ button: 'right' });
   await menu.getByRole('menuitem', { name: 'About this game' }).click();
   await expect(frame.locator('.ar-sheet-card .gs-about a[href^="about.html?qid="]')).toBeVisible();
-  await expect(page.locator('#game-title')).toHaveText('ZimiGames');
+  await expect(page.locator('#q')).toHaveAttribute('placeholder', 'Search games');   // the shelf: Zimi's box searches the games
 });
 
 test('Open in new tab uses the address a reader link gets', async ({ page, context }) => {

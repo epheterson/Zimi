@@ -133,7 +133,11 @@
       var mine = legal.filter(function (m) { return m.from === s; });
       if (mine.length) { sel = s; prefix = []; cands = mine; tip = null; G.say(T(mine[0].caps.length ? 'draughts.tapLands' : 'board.chooseWhere')); }
       else { sel = -1; prefix = []; cands = []; G.refuse(e.currentTarget, T(legal[0].caps.length ? 'draughts.cantTake' : 'chess.cantMove')); }
-    } else { sel = -1; prefix = []; cands = []; }
+    } else {
+      var had = sel >= 0 && s !== sel;   // a tap on the selected piece just lets it go
+      sel = -1; prefix = []; cands = [];
+      if (had) G.refuse(e.currentTarget, T(legal[0].caps.length ? 'checkers.mustCapture' : 'checkers.no.way'));
+    }
     paint();
   }
 

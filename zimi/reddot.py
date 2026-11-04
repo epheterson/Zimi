@@ -33,7 +33,12 @@ from zimi import server as _srv
 # Making a subreddit ZIM is capture. zimi-mcp only reads one, and ships
 # without the capture modules (server.bundled).
 if _srv.bundled("creator") and _srv.bundled("importer"):
-    from zimi.creator import CreateError, _finish_output, _try_register
+    from zimi.creator import (
+        CreateError,
+        _finish_output,
+        _try_register,
+        capture_proxy_url,
+    )
     from zimi.importer import _run_capture, _run_stream, _venv_bin, build_venv
 
 log = logging.getLogger("zimi")
@@ -381,6 +386,21 @@ _TQDM_RE = re.compile(
 )
 
 
+def _proxy_env():
+    """The sidecar's environment under the private-address rule: its requests
+    go through the capture proxy, as yt-dlp's do. None (inherit) without the
+    rule, so a command-line build is untouched."""
+    proxy = capture_proxy_url()
+    if proxy is None:
+        return None
+    env = dict(os.environ)
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        env[key] = proxy
+    for key in ("NO_PROXY", "no_proxy"):
+        env.pop(key, None)
+    return env
+
+
 def _caption(line):
     """A tqdm redraw as a sentence: ``Retrieving posts: 1031posts [00:14,
     71.31posts/s, Time=2026-08-07T12:21:12, requests=4]`` becomes
@@ -527,7 +547,7 @@ def create_reddit_zim(
                 with open(meta, "w", encoding="utf-8") as f:
                     json.dump(_provenance(sub, counts), f, ensure_ascii=False)
             say(label)
-            rc = _run_stream(cmd, _throttled(say), watch=watch)
+            rc = _run_stream(cmd, _throttled(say), watch=watch, env=_proxy_env())
             if rc != 0:
                 raise CreateError(
                     f"ArcticZim failed while {label} (the job log has its output)"

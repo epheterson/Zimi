@@ -188,7 +188,7 @@
     var now = shown(game);
     now.forEach(function (c, i) {
       var d = document.createElement('span'); d.className = 'lb-slot' + (c ? ' on' : '') + (c && lastShown.length === now.length && !lastShown[i] ? ' pop' : ''); d.textContent = c || '';
-      d.setAttribute('aria-label', c || T('letters.blank'));
+      d.setAttribute('role', 'img'); d.setAttribute('aria-label', c || T('letters.blank'));
       els.word.appendChild(d);
     });
     els.word.setAttribute('dir', 'auto'); lastShown = now;

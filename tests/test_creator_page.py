@@ -1,6 +1,6 @@
 """`zimi create <url>` — one web page plus its same-origin assets → ZIM.
 
-All HTTP is a local fixture server on port 8897 (the designated test port);
+All HTTP is a local fixture server on a free port the OS picks;
 nothing here touches the real network. Real end-to-end: the built .zim is
 read back with libzim's Archive.
 """
@@ -19,13 +19,14 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 from libzim.reader import Archive  # noqa: E402
+from tests.ports import free_port  # noqa: E402
 
 import zimi.creator as creator  # noqa: E402
 import zimi.server as _srv  # noqa: E402
 import zimi.zimwriter as zimwriter  # noqa: E402
 from zimi.zimwriter import parse_history  # noqa: E402
 
-PORT = 8897
+PORT = free_port()
 HOST = "127.0.0.1"
 BASE = f"http://{HOST}:{PORT}"
 # _slug() of the fixture hostname — the asset namespace inside the ZIM.
@@ -322,7 +323,7 @@ def test_page_zim_conforms_and_wears_the_site_icon(fixture_server, tmp_path):
     # The Name keeps host AND path: another site's /blog/post.html is a
     # different ZIM, not another edition of this one.
     name = bytes(arc.get_metadata("Name")).decode()
-    assert name == "zimi_eng_127_0_0_1_8897_blog_post_html"
+    assert name == f"zimi_eng_127_0_0_1_{PORT}_blog_post_html"
     assert bytes(arc.get_metadata("Tags")).decode().startswith("_category:other;")
 
     png = bytes(arc.get_metadata("Illustration_48x48@1"))

@@ -397,7 +397,7 @@ def test_without_webgl2_the_panorama_turns_and_the_sky_still_draws(browser, serv
         )
         assert lit > 100, "the Canvas 2D sky draws its stars (%d)" % lit
         # The facts and settings are the same.
-        assert "local solar time" in pg.inner_text("#almanac-sky-facts").lower()
+        assert "local solar time" not in pg.inner_text("#almanac-head").lower()
         assert not errors, errors
     finally:
         ctx.close()
@@ -471,7 +471,7 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
     try:
         _settle(pg, NIGHT)
         pg.wait_for_function(
-            "() => document.getElementById('almanac-sky-facts').innerText.length > 20",
+            "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
         pg.wait_for_function("() => document.getElementById('almanac-sky-guess').innerText.length > 10", polling=POLL_MS)
@@ -484,13 +484,13 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
     try:
         _settle(pg, NIGHT)
         pg.wait_for_function(
-            "() => document.getElementById('almanac-sky-facts').innerText.length > 20",
+            "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
         assert "guessed" not in text.lower(), text
-        for label in ("sunrise", "moon", "solar time"):
-            assert label in text.lower(), (label, text)
+        assert "moon" in text.lower(), text
+        assert "sunrise" in text.lower() and "sunset" in text.lower(), text
     finally:
         ctx.close()
 
@@ -680,7 +680,7 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
         _drawn(pg)
         pg.wait_for_function("() => document.getElementById('almanac-sky-facts').innerText.length > 10", polling=POLL_MS)
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
-        # Each rise and set card is two lines, the event and its time: no compass bearing (Eric, 2026-10-29).
+        # The rise or set card is two lines, the event and its time: no compass bearing (Eric, 2026-10-29).
         assert not re.search(r"\b(N|NE|E|SE|S|SW|W|NW|NNE|ENE|ESE|SSE|SSW|WSW|WNW|NNW) \d+\u00b0", text), text
         assert "guessed" not in text.lower() and "about" not in text.lower(), text
         # The Milky Way's credit lives in About this data, off the card (the folded-calendar pass).
@@ -695,10 +695,10 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
         pg.wait_for_function("() => document.getElementById('almanac-sky-guess').innerText.length > 10", polling=POLL_MS)
         text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
-        assert "Chicago" in text and "about" in text.lower(), text
-        # The sunrise's time is the Moon's block's own card (not said twice): Chicago's, not an Atlantic longitude's.
-        sunrise = pg.inner_text("#alm-hc-sunrise")
-        assert re.match(r"[56]:\d\d AM", sunrise), sunrise
+        assert "Chicago" in text and "about" not in text.lower(), text   # the guess is said once, under the tiles
+        # The sunrise tile's time is Chicago's, not an Atlantic longitude's.
+        sunrise = pg.inner_text(".alm-sf-sunrise")
+        assert re.search(r"(?i)sunrise\s+[56]:\d\d AM", sunrise), sunrise
         assert pg.evaluate("Math.round(_skyState.lat * 10) / 10") == 41.9
     finally:
         ctx.close()

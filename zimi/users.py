@@ -1586,6 +1586,24 @@ def set_public_access(mode, allowlist=None):
     return True, None
 
 
+def rename_zim(old, new):
+    """A ZIM renamed upstream keeps its readers: every allowlist that named
+    `old` (each user's, and the anonymous one) names `new` as well."""
+    with _lock:
+        users = _load_users()
+        changed = False
+        for rec in users.values():
+            allow = rec.get("allowlist") if isinstance(rec, dict) else None
+            if isinstance(allow, list) and old in allow:
+                rec["allowlist"] = sorted({new if a == old else a for a in allow if isinstance(a, str)})
+                changed = True
+        if changed:
+            _save_users(users)
+        mode, allow, ok = _load_access()
+        if ok and old in allow:
+            set_public_access(mode, [new if a == old else a for a in allow])
+
+
 def public_access_status():
     """Admin-facing view of the policy: the effective mode/allowlist plus
     whether the env override is forcing it (so the UI can show a read-only

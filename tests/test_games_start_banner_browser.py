@@ -109,3 +109,67 @@ def test_the_banner_speaks_the_players_language_when_the_strings_loaded(site, br
     assert "pas pu démarrer" in box.inner_text()
     assert box.locator("button").inner_text() == "Recharger"
     ctx.close()
+
+
+LATE = (
+    '<!doctype html><html><head><meta charset="utf-8"><title>Late</title><script src="shell.js"></script></head>'
+    "<body><script>throw new Error('a helper threw while the puzzle was still loading');</script>"
+    "<script>setTimeout(function () { var c = document.createElement('canvas'); c.width = 300; c.height = 300;"
+    " document.body.appendChild(c); }, 4000);"
+    "</script></body></html>"
+)
+
+
+def test_a_game_that_draws_after_the_banner_takes_it_down(site, browser):
+    # Eric saw it over a Loopy board on the NAS: something threw while the puzzle's wasm was still on its way, the
+    # banner went up at the end of the grace, and then the board drew under it.
+    page = browser.new_page(viewport={"width": 1000, "height": 800})
+    page.route(
+        "**/late-game.html",
+        lambda r: r.fulfill(status=200, content_type="text/html", body=LATE),
+    )
+    told = []
+    page.on(
+        "request",
+        lambda r: told.append(r.post_data_json) if r.url.endswith("/games/start-error") else None,
+    )
+    page.goto(site + "late-game.html")
+    page.wait_for_timeout(3500)
+    assert _banner(page) == 1
+    page.wait_for_timeout(GRACE_WAIT_MS)
+    assert _banner(page) == 0
+    # Both moments reach Zimi's log, with the error that raised the banner.
+    assert [m["outcome"].split(" ")[0] for m in told] == ["banner", "drew"], told
+    assert "puzzle was still loading" in told[0]["why"], told
+    page.close()
+
+
+def test_a_script_from_another_site_that_fails_raises_no_banner_on_a_puzzle(site, browser):
+    # Eric's Loopy over the internet, from Zimi's own log: "script did not load: https://static.cloudflareinsights.com/
+    # beacon.min.js". Cloudflare adds that script to pages it serves; a blocker or the network dropped it, and the
+    # puzzle's board (one canvas, nothing else) read as nothing drawn, so the banner stayed up over a working game.
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.route("https://static.cloudflareinsights.com/**", lambda r: r.abort())
+    page.add_init_script(
+        "addEventListener('DOMContentLoaded', function () { var s = document.createElement('script');"
+        " s.src = 'https://static.cloudflareinsights.com/beacon.min.js/v1'; document.body.appendChild(s); });"
+    )
+    page.goto(site + "puzzles/loopy.html")
+    page.wait_for_timeout(GRACE_WAIT_MS)
+    assert page.locator("canvas").count() >= 1
+    assert _banner(page) == 0
+    page.close()
+
+
+def test_the_server_logs_a_start_failure_and_caps_it(caplog):
+    from zimi import http as zhttp
+
+    zhttp._games_start_logged.clear()
+    with caplog.at_level("WARNING", logger="zimi"):
+        zhttp._log_games_start({"outcome": "banner", "page": "/w/zimi_games/puzzles/loopy.html", "why": "boom\nforged line"})
+        for _ in range(zhttp._GAMES_START_LOG_PER_HOUR + 5):
+            zhttp._log_games_start({"outcome": "banner", "page": "/x", "why": "again"})
+    lines = [r.getMessage() for r in caplog.records if "ZimiGames start" in r.getMessage()]
+    assert lines[0] == "ZimiGames start: banner on /w/zimi_games/puzzles/loopy.html: boom\\nforged line"  # the break shows escaped, on one line
+    assert len(lines) == zhttp._GAMES_START_LOG_PER_HOUR
+    zhttp._games_start_logged.clear()

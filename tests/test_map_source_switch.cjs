@@ -26,6 +26,7 @@ const escf = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;
 
 let opened = null;
 let fakeMap = null;
+let hashPos = null;
 const ctx = {
   zimsCache: [
     { name: 'osm-hawaii', title: 'Hawaii', kind: 'map', main_path: 'index.html', map_search: true,
@@ -42,6 +43,7 @@ const ctx = {
   location: { hash: '' },
   esc: escf, escAttr: escf,
   _readerMap: () => fakeMap,
+  _hashMapPos: () => hashPos,
   _closeMapSourceDropdown: () => {},
   openArticle: (zim, p, title, opts) => { opened = { zim, path: p, title, opts }; },
 };
@@ -88,6 +90,12 @@ ok('a map only a map ZIM counts', ctx._isMapZim('osm-hawaii') && !ctx._isMapZim(
 fakeMap = { getCenter: () => ({ lat: 21.39412, lng: -157.74401 }), getZoom: () => 14.2 };
 ctx._switchMapSource('maps_en_hawaii', 'index.html', 'Hawaii (Kiwix)');
 ok('the other map opens where this one is', opened && opened.zim === 'maps_en_hawaii' && opened.opts && opened.opts.pos === 'map=14.20/21.39412/-157.74401', JSON.stringify(opened));
+// A map that writes #map= itself is read from its hash, not from the handle it was asked not to be built on.
+hashPos = { zoom: 12, lat: 21.5, lng: -158 };
+opened = null;
+ctx._switchMapSource('maps_en_hawaii', 'index.html', 'Hawaii (Kiwix)');
+ok('a map that speaks the hash is read from it', opened && opened.opts && opened.opts.pos === 'map=12.00/21.50000/-158.00000', JSON.stringify(opened));
+hashPos = null;
 
 // ...from the URL when the map has not answered yet
 fakeMap = null; opened = null;

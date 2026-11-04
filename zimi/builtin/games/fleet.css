@@ -23,7 +23,7 @@
 .fl-tray { max-width: 300px; }   /* five ships wrap three and two, not four and one */
 .fl-tray:empty, .fl-tools:empty { display: none; }
 .fl-tray .ar-btn[aria-pressed="true"], .fl-tools .ar-btn[aria-pressed="true"], .fl-tools .ar-btn.gs-primary { background: var(--accent); color: var(--accent-ink); }
-.fl-tray .ar-btn.fl-done { text-decoration: line-through; opacity: 0.6; }
+.fl-tray .ar-btn.fl-done { text-decoration: line-through; color: var(--ink2); }
 .fl-ships { margin: 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
 .fl-ships s { color: var(--ink3); }
 .fl-c:focus-visible { outline-offset: -3px; }   /* inside the cell: the grid clips an outline that sits outside an edge cell */

@@ -436,7 +436,7 @@ def test_the_menu_is_in_groups_about_file_move_delete(pw, world):
             if (e.classList.contains('ctx-sep')) out.push([]); else out[out.length - 1].push(e.innerText.trim().replace(/\\s+/g, ' ')); }
           return out; }"""
     )
-    assert groups[-4:] == [["About this ZIM"], ["Download ZIM file", "Keep offline"], ["Move to… ›"], ["Delete"]], groups
+    assert groups[-4:] == [["About this ZIM"], ["Download ZIM file", "Keep offline", "Don’t auto-update this ZIM"], ["Move to… ›"], ["Delete"]], groups
     shot(pg, "m-grouped-menu")
     ctx.close()
     br.close()

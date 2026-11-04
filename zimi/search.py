@@ -22,6 +22,7 @@ import unicodedata
 from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
 
+from zimi.libzimcompat import entry_by_id, estimated_matches, result_paths
 from zimi import datepages as _datepages
 from zimi import query as _query
 from zimi import wikilang as _wikilang
@@ -727,7 +728,7 @@ def _build_title_index(zim_name, zim_path):
         pages = _capture_page_paths(archive)
         for i in range(total_entries):
             try:
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 path = entry.path
                 target = None
                 if entry.is_redirect:
@@ -1589,8 +1590,8 @@ def suggest_search_zim(archive, query_str, limit=5):
     try:
         ss = SuggestionSearcher(archive)
         suggestion = ss.suggest(query_str)
-        count = min(suggestion.getEstimatedMatches(), limit)
-        for path in suggestion.getResults(0, count):
+        count = min(estimated_matches(suggestion), limit)
+        for path in result_paths(suggestion, 0, count):
             try:
                 entry = archive.get_entry_by_path(path)
                 results.append({"path": path, "title": entry.title, "snippet": ""})
@@ -1620,8 +1621,8 @@ def search_zim(archive, query_str, limit=10, snippets=True):
         searcher = Searcher(archive)
         query = Query().set_query(query_str)
         search = searcher.search(query)
-        count = min(search.getEstimatedMatches(), limit)
-        for path in search.getResults(0, count):
+        count = min(estimated_matches(search), limit)
+        for path in result_paths(search, 0, count):
             try:
                 entry = archive.get_entry_by_path(path)
                 if not snippets:
@@ -3893,9 +3894,9 @@ def suggest(query_str, zim_name=None, limit=10):
             archive = _srv.get_archive(name) or _srv.open_archive(zims[name])
             ss = SuggestionSearcher(archive)
             suggestion = ss.suggest(query_str)
-            count = min(suggestion.getEstimatedMatches(), limit)
+            count = min(estimated_matches(suggestion), limit)
             results = []
-            for s_path in suggestion.getResults(0, count):
+            for s_path in result_paths(suggestion, 0, count):
                 try:
                     entry = archive.get_entry_by_path(s_path)
                     results.append({"path": s_path, "title": entry.title})
@@ -3927,7 +3928,7 @@ def _get_factbook_countries(archive):
     for pattern_prefix in ("countries", "geos"):
         for i in range(archive.entry_count):
             try:
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 p = entry.path
                 if (
                     p.startswith(pattern_prefix + "/")
@@ -3944,7 +3945,7 @@ def _get_factbook_countries(archive):
         # Fallback: collect any HTML pages that look like country pages
         for i in range(archive.entry_count):
             try:
-                entry = archive._get_entry_by_id(i)
+                entry = entry_by_id(archive, i)
                 p = entry.path
                 if (
                     p.endswith(".html")
@@ -3995,7 +3996,7 @@ def random_entry(archive, max_attempts=8, rng=None):
         for _ in range(max_attempts):
             idx = rng.randint(0, total - 1)
             try:
-                entry = archive._get_entry_by_id(idx)
+                entry = entry_by_id(archive, idx)
                 if entry.is_redirect:
                     entry = entry.get_redirect_entry()
                 item = entry.get_item()
@@ -4039,10 +4040,10 @@ def random_entry(archive, max_attempts=8, rng=None):
         try:
             ss = SuggestionSearcher(archive)
             suggestion = ss.suggest(prefix)
-            count = suggestion.getEstimatedMatches()
+            count = estimated_matches(suggestion)
             if count == 0:
                 continue
-            paths = list(suggestion.getResults(0, min(count, 30)))
+            paths = result_paths(suggestion, 0, min(count, 30))
             result = _pick_html_entry(archive, paths, rng)
             if result:
                 return result
@@ -4320,9 +4321,9 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
         searcher = Searcher(archive)
         query = Query().set_query(day_words)
         search = searcher.search(query)
-        count = search.getEstimatedMatches()
+        count = estimated_matches(search)
         if count > 0:
-            paths = list(search.getResults(0, min(count, 10)))
+            paths = result_paths(search, 0, min(count, 10))
             result = _pick_html_entry(archive, paths, rng or _random)
             if result:
                 return result

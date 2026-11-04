@@ -42,7 +42,7 @@
     stonesG = host.querySelector('#go-stones'); marksG = host.querySelector('#go-marks');
     var pts = [];
     for (var i = 0; i < n * n; i++) { var p = xy(i); pts.push({ x: p.x, y: p.y, w: cell }); }
-    btns = WK.overlay(host, VIEW, VIEW, pts, onPoint, 'go-pt');
+    btns = WK.overlay(host, VIEW, VIEW, pts, onPoint, 'go-pt', n);
   }
 
   function liveScore() { return Engine.score(st.board, n, dead, st.caps); }
@@ -127,12 +127,14 @@
     st = ns;
     var note = passed ? T('go.passed', { name: who }) : took ? T('go.took', { name: who, n: took }) : '';
     if (st.passes >= 2) { paint(); enterMark(); return; }
-    paint(); G.say(note ? UI.noted(note, turnText()) : turnText(), !G.human(st.turn - 1));
-    if (!G.human(st.turn - 1)) computerTurn();
+    paint();
+    if (G.human(st.turn - 1)) G.say(note ? UI.noted(note, turnText()) : turnText());
+    else computerTurn(note);
   }
-  function computerTurn() {
+  // note: what the person's last move did (a capture, a pass), kept on the line while the computer thinks.
+  function computerTurn(note) {
     var token = G.begin();
-    paint(); G.say(lastMsg = T('shell.thinking'), true);
+    paint(); G.say(lastMsg = note ? UI.noted(note, T('shell.thinking')) : T('shell.thinking'), true);
     ask({ cmd: 'move', ms: thinkMs(), level: G.settings.level }, function (r) {
       if (!G.done(token)) return;
       var mv = r && typeof r.move === 'number' ? r.move : -1, ns = Engine.move(st, mv);

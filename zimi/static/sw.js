@@ -158,7 +158,7 @@ async function checkVersion() {
 // signed-out phone could be shown them. Offline the page reads the guide's own
 // copy instead (/static/fieldguide-offline.json: public text, kept like any
 // static file), so nothing is lost by never keeping these.
-const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/own-offline'];
+const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/own-offline'];
 // /games-links is filtered per account and follows the library: never kept, so no copy outlives a sign-out or an account change.
 
 // The answers the app cannot start without, which say who is asking and what
@@ -172,6 +172,10 @@ const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/pla
 // with no network used to show nothing at all for the library it carries.
 const KEPT_ANSWER_PREFIXES = ['/whoami', '/list', '/search', '/manage/has-password'];
 const SEARCH_KEPT_MAX = 30;
+// A map's tiles (vector .pbf/.mvt out of a map ZIM) are read by the hundred on one pan: the newest are kept for
+// offline, the rest go, so panning a continent cannot fill the phone's storage.
+const TILE_KEPT_MAX = 600;
+const TILE_PATH_RE = /\.(pbf|mvt)$/i;
 
 // Pages a person read are kept for offline (/w/, /read), under the identity
 // that read them. A sign-in or sign-out changes who is holding the phone, so
@@ -427,7 +431,7 @@ async function networkFirst(event) {
     networkDownUntil = 0;
     if (get && resp.ok && resp.status !== 206 && !_isMedia(resp)) {
       const cache = await caches.open(CACHE_VERSION);
-      cache.put(request, resp.clone()).then(trimSearches).catch(() => {});
+      cache.put(request, resp.clone()).then(() => trimKept(request)).catch(() => {});
     }
     return resp;
   });
@@ -772,11 +776,18 @@ async function ownKeptBefore() {
   return had;
 }
 
-// Only the last few searches are kept, newest first.
-async function trimSearches() {
+// Only the last few searches and tiles are kept, newest first: whichever kind this request was is trimmed.
+async function trimKept(request) {
+  const path = new URL(request.url).pathname;
+  const tile = TILE_PATH_RE.test(path);
+  if (!tile && path !== '/search') return;
   const cache = await caches.open(CACHE_VERSION);
-  const keys = (await cache.keys()).filter(r => new URL(r.url).pathname === '/search');
-  await Promise.all(keys.slice(0, Math.max(0, keys.length - SEARCH_KEPT_MAX)).map(r => cache.delete(r)));
+  const keys = (await cache.keys()).filter(r => {
+    const p = new URL(r.url).pathname;
+    return tile ? TILE_PATH_RE.test(p) : p === '/search';
+  });
+  const max = tile ? TILE_KEPT_MAX : SEARCH_KEPT_MAX;
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - max)).map(r => cache.delete(r)));
 }
 
 // Cache-first: serve from cache, fetch if missing

@@ -38,7 +38,7 @@
                                      returns { say(text), reason(text, ms) } where reason shows for 2 s,
                                      then goes back to the line before it.
      ZimiShell.shake(el)             the illegal-move shake (120 ms; an outline flash under reduced motion).
-     ZimiShell.reducedMotion()       the one answer: the device asks for less motion, or Animation is Off.
+     ZimiShell.reducedMotion()       the one answer: Animation is Off, which is the default where the device asks for less motion and gives way to a choice.
      ZimiShell.settings, .anim(), .ms(n), .sound(), .stripClock(text)   as before.
 
      ZimiShell.persist({ save, load })
@@ -72,7 +72,15 @@
   // fetch), left a blank page. It now says so, with a Reload. Plain English on purpose: the strings (text.js) may be
   // the very file that failed. Errors later in play are the game's own and are not announced here.
   var START_GRACE_MS = 2500;
-  var starting = true, failed = false;
+  var starting = true, failed = false, lastWhy = '';
+  // The banner tells the server too, so a failure seen on someone's phone shows in Zimi's log with its cause.
+  // Under Kiwix or any other reader the endpoint is not there and the request just fails.
+  function reportStart(outcome) {
+    try {
+      root.fetch('/games/start-error', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: root.location.pathname, why: lastWhy, outcome: outcome }) }).catch(function () {});
+    } catch (x) {}
+  }
   // The banner speaks the player's language when the strings loaded (text.js is rarely the file that failed); plain English only if not.
   function bannerText(key, english) { return root.ZimiText && root.ZimiText.has && root.ZimiText.has(key) ? T(key) : english; }
   function failedToStart(late) {
@@ -80,6 +88,7 @@
     failed = true;
     function paint() {
       var box = d.createElement('div');
+      box.className = 'gs-start-alert';
       box.setAttribute('role', 'alert');
       box.dir = (d.documentElement && d.documentElement.dir) || 'ltr';
       box.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:2147483647;padding:14px 16px;border-radius:12px;background:#fff;color:#1b2233;border:2px solid #c62828;font:600 16px/1.35 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.3);display:flex;gap:12px;align-items:center;justify-content:space-between';
@@ -89,12 +98,20 @@
       btn.addEventListener('click', function () { root.location.reload(); });
       box.appendChild(msg); box.appendChild(btn);
       (d.body || d.documentElement).appendChild(box);
+      reportStart('banner');
+      // A slow start (a puzzle's wasm still on its way over the internet) can draw after the grace: the banner then
+      // covers a working game, so it watches for a while and steps down once the game is on screen.
+      var looks = 0, watch = root.setInterval(function () {
+        if (!nothingDrawn()) { box.remove(); root.clearInterval(watch); reportStart('drew ' + (looks + 1) + ' s after the banner'); }
+        else if (++looks >= LATE_DRAW_LOOKS) root.clearInterval(watch);
+      }, LATE_DRAW_EVERY_MS);
     }
     if (d.body) paint(); else d.addEventListener('DOMContentLoaded', paint);
   }
   // A thrown error only counts when the game then has nothing on screen: an error from a later corner of a game
   // that did start (a ResizeObserver loop note, a late listener) must not cover a working table with an alarm.
-  var NOTHING_DRAWN_MIN = 3;
+  var NOTHING_DRAWN_MIN = 3, BOARD_MIN_PX = 120;
+  var LATE_DRAW_EVERY_MS = 1000, LATE_DRAW_LOOKS = 60;   // a minute of looking for a game that drew late
   function nothingDrawn() {
     // A game that put up its own sheet (a setup, a start, a menu) ran far enough to draw it: that is a start
     // (ZimiKart's setup covers a board not drawn until Start, and read as a blank page).
@@ -103,13 +120,16 @@
     var n = 0, els = d.querySelectorAll('body *');
     for (var i = 0; i < els.length && n < NOTHING_DRAWN_MIN; i++) {
       var el = els[i];
-      if (el.closest && el.closest('.ar-bar, .gs-sheet, .ar-sheet, script, style')) continue;
+      if (el.closest && el.closest('.ar-bar, .gs-sheet, .ar-sheet, .gs-start-alert, script, style')) continue;
       if (!/^(CANVAS|SVG|svg|BUTTON|IMG)$/.test(el.tagName) && !(el.childNodes.length === 1 && el.firstChild.nodeType === 3 && el.textContent.trim())) continue;
       var r = el.getBoundingClientRect();
+      // A puzzle is one canvas and nothing else: a board that size is a game on screen by itself.
+      if (el.tagName === 'CANVAS' && r.width >= BOARD_MIN_PX && r.height >= BOARD_MIN_PX) return false;
       if (r.width > 4 && r.height > 4) n++;
     }
     return n < NOTHING_DRAWN_MIN;
   }
+  function sameSite(src) { try { return new URL(src, root.location.href).origin === root.location.origin; } catch (x) { return true; } }
   function threwWhileStarting(e) {
     if (e && /ResizeObserver loop/.test(e.message || '')) return;
     root.setTimeout(function () { if (nothingDrawn()) failedToStart(true); }, START_GRACE_MS);
@@ -117,9 +137,12 @@
   root.addEventListener('error', function (e) {
     var t = e && e.target;
     if (t && t !== root && t.tagName !== 'SCRIPT') return;   // an image or a sound that did not load is not a start
+    // Nor is another site's script: Cloudflare adds its analytics beacon to pages it serves, and a blocker drops it.
+    if (t && t.tagName === 'SCRIPT' && t.src && !sameSite(t.src)) return;
     // Either way the banner waits and asks the page: a helper that failed to load or a stray throw can leave a game
     // that plays fine, and only a page with nothing of the game on it is a failure to start. The cause is kept for a report.
     var why = t && t !== root && t.tagName === 'SCRIPT' ? 'script did not load: ' + (t.src || '') : (e && (e.message || e.reason)) || 'error';
+    lastWhy = String(why).slice(0, 300);
     try { root.localStorage.setItem('zimi.games.lastStartError', JSON.stringify({ at: Date.now(), page: root.location.pathname, why: String(why).slice(0, 300) })); } catch (x) {}
     if (root.console) root.console.warn('ZimiGames start:', why);
     if (starting || (t && t.tagName === 'SCRIPT')) threwWhileStarting(e);
@@ -366,8 +389,9 @@
     // The clock sits before the buttons, the Menu last.
     var firstBtn = Array.prototype.filter.call(bar.children, function (c) { return c.classList.contains('ar-btn') && !c.hidden; })[0];
     Array.prototype.forEach.call(bar.querySelectorAll('.ar-stat'), function (s) { bar.insertBefore(s, firstBtn || null); keepOneStat(s); });
-    // An Undo that cannot be used (a fresh game) is absent, not ghosted.
-    Array.prototype.forEach.call(bar.querySelectorAll('[id$="undo"], [data-gs-bar]'), hideWhileDisabled);
+    // The bar never shifts: Undo has its place from the first frame (disabled until there is a move), and a page's own bar
+    // button (the puzzles' Redo) keeps its room too, unseen while disabled.
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-gs-bar]:not([id$="undo"])'), hideWhileDisabled);
     bar.appendChild(menuBtn);
     // The move timer's thin bar, right under the header.
     mt.label = h('span', { class: 'gs-turn-n', 'aria-hidden': 'true' });
@@ -386,7 +410,7 @@
     fit();
   }
   function hideWhileDisabled(btn) {
-    var sync = function () { btn.hidden = btn.disabled; };
+    var sync = function () { btn.classList.toggle('gs-absent', btn.disabled); };
     if (root.MutationObserver) new root.MutationObserver(sync).observe(btn, { attributes: true, attributeFilter: ['disabled'] });
     sync();
   }
@@ -430,7 +454,10 @@
       if (span && blurb) span.textContent = blurb;
     });
   };
-  // The bar's h1 is English in the page; it changes (and the name is returned) only when it still says exactly what the table's English says.
+  // The bar's h1 is English in the page; it takes the table's word for the game's title when it still says that title, however it
+  // is spelled in the markup (case, typographic or straight apostrophes, entities, spacing). A title the page means to differ from
+  // the game's name carries its own data-t key and is translated by the page kit.
+  function plainTitle(s) { return String(s || '').replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase(); }
   function localizeName() {
     var h1 = d.querySelector('.ar-bar h1'), stem = pageStem(), en = root.ZimiText && root.ZimiText.table && root.ZimiText.table.en;
     if (!h1 || !stem || !en) return '';
@@ -438,14 +465,16 @@
     if (!node) return '';
     var keys = ['game.' + stem + '.title'].concat(stem === 'puzzles' ? ['shelf.section.puzzles'] : []);
     for (var i = 0; i < keys.length; i++) {
-      if (en[keys[i]] === node.nodeValue.trim() && root.ZimiText.has(keys[i])) { node.nodeValue = T(keys[i]); return node.nodeValue; }
+      if (plainTitle(en[keys[i]]) === plainTitle(node.nodeValue) && root.ZimiText.has(keys[i])) { node.nodeValue = T(keys[i]); return node.nodeValue; }
     }
     return '';
   }
 
   // ── motion, status and the shake ──
   // The one answer to "should this move?": the device asks for less motion, or Animation is Off.
-  function reducedMotion() { return deviceReducedMotion() || settings.get('anim') === 'off'; }
+  // The game's own Animation choice outranks the device: settings.get('anim') is 'off' by default on a device that asks for less motion,
+  // and whatever the player chose once they have chosen.
+  function reducedMotion() { return settings.get('anim') === 'off'; }
   Shell.reducedMotion = reducedMotion;
   var SHAKE_MS = 120, REASON_MS = 2000;
   // The illegal-move shake: 120 ms sideways, or an outline flash for a player who asked for less motion.
@@ -548,6 +577,36 @@
     try { card.focus({ preventScroll: true }); } catch (e) { /* no focus */ }
     return api;
   };
+  // ── the start: a quick moment, not a wall of text ──
+  // The game's own art and name, one Play, the choices as compact chips and the one line that says how it starts. It sits over the
+  // playfield under the bar (Menu and Back stay reachable); a tap on it, Play or the game's own start key ends it at once.
+  //   Shell.splash({ hint, chips: [['Best', '120']], onPlay }) -> { close }   (hint and a chip's label may be functions, asked again when the words arrive)
+  Shell.splash = function (opts) {
+    var stem = pageStem(), nameNow = function () { return gameWord(stem, 'title') || titleOf(); }, name = nameNow(), art = null, play, el;
+    if (stem) {
+      art = h('img', { class: 'gs-sp-art', src: HOME + 'thumbs/' + stem + '.svg', alt: '' });
+      art.addEventListener('error', function () { art.remove(); });
+    }
+    var said = function (v) { return typeof v === 'function' ? v() : v; }, labels = [];
+    var chips = (opts.chips || []).slice(0, 3).map(function (c) { var l = h('span', { text: said(c[0]) }); labels.push([l, c[0]]); return h('span', { class: 'gs-chip' }, [l, h('b', { text: String(c[1]) })]); });
+    var hint = opts.hint ? h('p', { class: 'gs-sp-hint', text: said(opts.hint) }) : null;
+    play = h('button', { class: 'ar-btn gs-primary gs-sp-play', type: 'button', text: T('shelf.play') });
+    var title = h('h2', { text: name });
+    el = h('div', { class: 'gs-splash', role: 'group', 'aria-label': name }, [h('div', { class: 'gs-sp-card' }, [
+      art, title, chips.length ? h('div', { class: 'gs-chips' }, chips) : null, play, hint
+    ].filter(Boolean))]);
+    el.addEventListener('pointerdown', function (e) { if (e.button || !opts.onPlay) return; e.preventDefault(); opts.onPlay(); });
+    play.addEventListener('click', function () { if (opts.onPlay) opts.onPlay(); });
+    d.body.appendChild(el);
+    // The words arrive after the first paint when the player's language is not English: the name and Play follow them.
+    var words = function () { if (!el.isConnected) return; name = nameNow(); title.textContent = name; el.setAttribute('aria-label', name); play.textContent = T('shelf.play');
+      if (hint) hint.textContent = said(opts.hint);
+      labels.forEach(function (l) { l[0].textContent = said(l[1]); });
+    };
+    if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { root.setTimeout(words, 0); });
+    return { el: el, close: function () { el.remove(); } };
+  };
+
   var END_TITLES = { win: 'shell.end.win', lose: 'shell.end.lose', draw: 'shell.end.draw', over: 'shell.end.over' };
 
   // ── the end of a game is a moment ──
@@ -555,11 +614,27 @@
   // mark's own colours falls (about 1.8 s, the game's own flourish plays first), then the sheet comes up with its title heavier and its numbers counting up.
   // A loss is dignified: no motion over the board, the sheet settles in softly. A draw is plain. A tap, a key or the
   // sheet being asked for early skips the beat; under reduced motion there is none and the sheet is there at once.
-  var BEAT_MS = 1800, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
+  var BEAT_MS = 1800, LOSS_BEAT_MS = 1100, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
   function haptic(result) {
     try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
   }
   Shell.haptic = haptic;
+  // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
+  var audio = null, TONE_GAIN = 0.22, TONE_ATTACK_S = 0.02, NOTE_GAP_MS = 140;
+  Shell.tone = function (freq, ms, gain, delayMs) {
+    if (!Shell.sound()) return;
+    try {
+      audio = audio || new (root.AudioContext || root.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + (delayMs || 0) / MS_PER_S, len = ms / MS_PER_S, peak = gain || TONE_GAIN;
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + TONE_ATTACK_S); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
+    } catch (e) { /* no audio on this device: play on silently */ }
+  };
+  // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
+  var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
+  function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }
   function momentNode() {
     var kids = [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })], i, a, r;
     for (i = 0; i < SCATTER; i++) {
@@ -571,6 +646,10 @@
       rain.push(h('i', { class: 'gs-m-conf gs-m-conf' + (i % CONFETTI_COLOURS), style: '--x:' + (((i * 0.618034) % 1) * 100).toFixed(1) + '%;--sway:' + (((i * 37) % 11) - 5) * 9 + 'px;--turn:' + (((i * 53) % 9) - 4) * 150 + 'deg;--delay:' + ((i * 29) % 13) * 40 + 'ms;--fall:' + (1050 + ((i * 17) % 7) * 70) + 'ms' }));
     }
     return h('div', { class: 'gs-moment', 'aria-hidden': 'true' }, [h('div', { class: 'gs-m-rain' }, rain), h('div', { class: 'gs-m-at' }, kids)]);
+  }
+  // A loss, dignified and still a moment: the board goes quiet (desaturated, dimmed), a ring closes in and the pebble settles in the middle.
+  function lossNode() {
+    return h('div', { class: 'gs-moment gs-moment-lose', 'aria-hidden': 'true' }, [h('div', { class: 'gs-m-at' }, [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })])]);
   }
   // The figures in the chips count up from nothing; the chip says its final value to a screen reader at once.
   function countUp(chips) {
@@ -607,10 +686,11 @@
     var title = opts.title ? String(opts.title) : opts.name ? T(opts.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: opts.name }) : T(END_TITLES[opts.result] || END_TITLES.over);
     var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
     var newGame = function () { dirty = false; clearRest(); if (opts.onNew) opts.onNew(); else if (newBtn) newBtn.click(); };
-    var after = opts.after === undefined ? (opts.result === 'win' && !reducedMotion() ? BEAT_MS : SHEET_GUARD_MS) : opts.after;
-    // A win always gets its whole beat, even when a game asks for a shorter wait for its own flourish.
-    if (opts.result === 'win' && after > 0 && !reducedMotion()) after = Math.max(after, BEAT_MS);
-    var beat = opts.result === 'win' && after > 0 && !reducedMotion(), shown = false, opened = null, timers = [], overlay = null, release = function () {};
+    var length = opts.result === 'win' ? BEAT_MS : opts.result === 'lose' ? LOSS_BEAT_MS : 0;
+    var after = opts.after === undefined ? (length && !reducedMotion() ? length : SHEET_GUARD_MS) : opts.after;
+    // A win or a loss always gets its whole beat, even when a game asks for a shorter wait for its own flourish.
+    if (length && after > 0 && !reducedMotion()) after = Math.max(after, length);
+    var beat = length > 0 && after > 0 && !reducedMotion(), shown = false, opened = null, timers = [], overlay = null, release = function () {};
     var label = opts.newLabel || T('shell.menu.new');
     var show = function () {
       if (shown) return;
@@ -629,8 +709,8 @@
     if (!(after > 0)) { show(); return; }
     haptic(opts.result);
     if (beat) {
-      // The stamp lands in the last BEAT_MS before the sheet; a game that took longer on its own flourish has finished by then.
-      timers.push(root.setTimeout(function () { if (!shown) { overlay = momentNode(); d.body.appendChild(overlay); } }, Math.max(0, after - BEAT_MS)));
+      // The moment lands in the last stretch before the sheet; a game that took longer on its own flourish has finished by then.
+      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
     }
     // A tap or key anywhere skips the beat (the sheet is up at once); a tap on the bar (Menu, Back) is the player doing something else.
     var armedAt = Date.now();
@@ -742,7 +822,7 @@
       }
       card.appendChild(box);
     }
-    card.appendChild(h('div', { class: 'gs-actions' }, [
+    card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [
       h('button', { class: 'ar-btn', type: 'button', text: T('shell.cancel'), onclick: back }),
       h('button', { class: 'ar-btn gs-primary', type: 'button', text: options.length ? T('shell.start') : T('shell.menu.new'), onclick: startNew })
     ]));
@@ -759,25 +839,60 @@
     return h('button', { class: 'gs-item', type: 'button', onclick: onclick }, [h('span', { class: 'gs-item-l', text: label }), h('span', { class: 'gs-item-r', text: hint || '' })]);
   }
 
-  // The root: the game's own buttons, then the same rows in every game. The page footer's About link lives here now.
+  // The root: New game as a button of its own, then one grid of icon tiles (the game's own buttons first, then the same tiles in
+  // every game), so the way to what the player wants is a glance and a tap, not a list to read. The page footer's About link lives here.
   function aboutLink() { return d.querySelector('.gm-about a[href]'); }
+  var SVG_NS = 'http://www.w3.org/2000/svg', ICON_PX = 22;
+  // One stroke icon each (24 x 24, drawn in the text's colour); `ICON_OF` finds a game's own button's by its id or words.
+  var ICONS = {
+    plus: 'M12 5v14M5 12h14', settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4', how: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1 1-1.1 1.7M12 17h.01',
+    stats: 'M5 20V11M12 20V4M19 20v-6', history: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2', about: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5h.01',
+    watch: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', hint: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
+    undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3', restart: 'M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5',
+    flag: 'M5 21V4M5 4h12l-2.5 4L17 12H5', solve: 'M5 12.5l4.5 4.5L19 7', giveup: 'M6 6l12 12M18 6L6 18', rules: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM8 9h7M8 13h5',
+    pause: 'M8 5v14M16 5v14', pencil: 'M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3', erase: 'M8 20h11M5 15l9-9 5 5-6 6H8z', dot: 'M12 12h.01'
+  };
+  var ICON_OF = [[/undo/i, 'undo'], [/redo/i, 'redo'], [/hint|tip/i, 'hint'], [/give|resign|concede|quit/i, 'giveup'], [/solution|solve|reveal|check/i, 'solve'], [/restart|reset|replay|again|shuffle|reshuffle/i, 'restart'], [/flag/i, 'flag'], [/rule|help|how/i, 'rules'], [/pause/i, 'pause'], [/pencil|note|mark/i, 'pencil'], [/erase|clear/i, 'erase']];
+  function iconNode(name) {
+    var svg = d.createElementNS(SVG_NS, 'svg'), path = d.createElementNS(SVG_NS, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', ICON_PX); svg.setAttribute('height', ICON_PX); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'gs-icon');
+    [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.9'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']].forEach(function (kv) { svg.setAttribute(kv[0], kv[1]); });
+    path.setAttribute('d', ICONS[name] || ICONS.dot); svg.appendChild(path);
+    return svg;
+  }
+  function iconFor(b) {
+    var hay = b.id + ' ' + b.textContent, hit = ICON_OF.filter(function (m) { return m[0].test(hay); })[0];
+    return hit ? hit[1] : 'dot';
+  }
+  function tile(icon, label, hint, onclick) {
+    var b = h('button', { class: 'gs-item gs-tile', type: 'button', onclick: onclick }, [iconNode(icon), h('span', { class: 'gs-item-l', text: label })]);
+    if (hint) b.title = hint;
+    return b;
+  }
   function rootPane() {
     head(titleOf(), true);
-    var options = menuOptions(), list = h('div', { class: 'gs-list' });
-    if (extras.length) {
-      var box = h('div', { class: 'gs-actions gs-extras' });
-      extras.forEach(function (b) { b.classList.add('gs-moved'); box.appendChild(b); });
-      card.appendChild(box);
-      if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }
+    var options = menuOptions(), grid = h('div', { class: 'gs-grid gs-list' });
+    if (newBtn) {
+      var go = h('button', { class: 'gs-item gs-newgame', type: 'button', onclick: newGameTapped }, [iconNode('plus'), h('span', { class: 'gs-item-l', text: T('shell.menu.new') })]);
+      card.appendChild(go);
     }
-    if (newBtn) list.appendChild(chevronRow(T('shell.menu.new'), '', newGameTapped));
-    list.appendChild(chevronRow(T('shell.menu.settings'), summary(), function () { show(settingsPane); }));
-    if (helpFor(ID)) list.appendChild(chevronRow(T('shell.menu.how'), '', function () { show(helpPane); }));
-    if (game.watch) list.appendChild(chevronRow(T('shell.menu.watch'), watching ? T('shell.running') : '', function () { show(watchPane); }));
-    if (historyFor(ID)) list.appendChild(chevronRow(T('shell.menu.history'), '', function () { show(historyPane); }));
-    list.appendChild(chevronRow(T('shell.menu.stats'), '', function () { show(statsPane); }));
-    if (aboutLink()) list.appendChild(chevronRow(T('shell.menu.about'), '', function () { show(aboutPane); }));
-    card.appendChild(list);
+    if (extras.length) {
+      var box = h('div', { class: 'gs-extras' });
+      extras.forEach(function (b) {
+        b.classList.add('gs-moved', 'gs-tile');
+        if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        box.appendChild(b);
+      });
+      if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }
+      grid.appendChild(box);
+    }
+    grid.appendChild(tile('settings', T('shell.menu.settings'), summary(), function () { show(settingsPane); }));
+    if (helpFor(ID)) grid.appendChild(tile('how', T('shell.menu.how'), '', function () { show(helpPane); }));
+    if (game.watch) grid.appendChild(tile('watch', T('shell.menu.watch'), watching ? T('shell.running') : '', function () { show(watchPane); }));
+    if (historyFor(ID)) grid.appendChild(tile('history', T('shell.menu.history'), '', function () { show(historyPane); }));
+    grid.appendChild(tile('stats', T('shell.menu.stats'), '', function () { show(statsPane); }));
+    if (aboutLink()) grid.appendChild(tile('about', T('shell.menu.about'), '', function () { show(aboutPane); }));
+    card.appendChild(grid);
     void options;
   }
   function summary() {
@@ -979,11 +1094,11 @@
     head(T('shell.menu.watch'), false);
     if (watching) {
       card.appendChild(h('p', { class: 'gs-text', text: T('shell.watch.running') }));
-      card.appendChild(h('div', { class: 'gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.stop'), onclick: function () { closeMenu(); stopWatching('stop'); } })]));
+      card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.stop'), onclick: function () { closeMenu(); stopWatching('stop'); } })]));
       return;
     }
     card.appendChild(h('p', { class: 'gs-text', text: T('shell.watch.intro') }));
-    card.appendChild(h('div', { class: 'gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.start'), onclick: function () { closeMenu(); startWatching(); } })]));
+    card.appendChild(h('div', { class: 'ar-sheet-actions gs-actions' }, [h('button', { class: 'ar-btn gs-primary', type: 'button', text: T('shell.watch.start'), onclick: function () { closeMenu(); startWatching(); } })]));
   }
   function loadScript(src, done) {
     var s = d.createElement('script'); s.src = src; s.onload = function () { done(); }; s.onerror = function () { done(new Error(src)); };

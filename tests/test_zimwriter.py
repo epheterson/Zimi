@@ -22,6 +22,7 @@ from libzim.reader import Archive  # noqa: E402
 
 import zimi.server as _srv  # noqa: E402
 import zimi.zimwriter as zw  # noqa: E402
+from zimi.libzimcompat import entry_by_id
 
 
 def _archive(path):
@@ -528,7 +529,7 @@ def _dangling_links(zim_path):
     arc = _archive(zim_path)
     dangling = []
     for i in range(arc.all_entry_count):
-        entry = arc._get_entry_by_id(i)
+        entry = entry_by_id(arc, i)
         if entry.is_redirect:
             continue
         item = entry.get_item()
@@ -704,7 +705,7 @@ def test_every_internal_link_in_an_export_resolves(tmp_path):
     paths = set()
     for i in range(arc.all_entry_count):
         try:
-            paths.add(arc._get_entry_by_id(i).path)
+            paths.add(entry_by_id(arc, i).path)
         except Exception:
             pass
 

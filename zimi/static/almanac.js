@@ -79,6 +79,13 @@ function _almDisplayTz(loc) {
   return loc.stored ? _almTzForLocation(loc.lat, loc.lon) : _almDeviceTz();
 }
 
+// The Sun's rise, set and golden hour (or its polar word) for the day of an instant at a place, in the place's own zone.
+function _almSunTimesAt(date, loc) {
+  var off;
+  try { off = _tzUtcOffsetMin(_almDisplayTz(loc), date); } catch (e) { off = -date.getTimezoneOffset(); }
+  return _computeSunTimes(date, loc.lat, loc.lon, off);
+}
+
 function _saveLocation(lat, lon, name) {
   if (!_almValidLatLon(lat, lon)) return; // reject a bad click/geolocate outright
   var data = { lat: lat, lon: lon };
@@ -611,40 +618,13 @@ function _almHeadHtml(focus) {
   html += _heroMoonOrientNote(loc);
   html += '</div>';
 
-  // Sun cards render in the LOCATION's timezone, not the header clock's: a
-  // sunrise is a fact about a place, and reading "sunrise 8:07 PM" because the
-  // viewer's own zone was applied to somewhere else's sky helps nobody. The two
-  // only differ once a location has actually been chosen (_almDisplayTz falls
-  // back to the device zone otherwise), and the header states its zone.
-  var _locTzOff;
-  try { _locTzOff = _tzUtcOffsetMin(locTz, focus); }
-  catch (e) { _locTzOff = -focus.getTimezoneOffset(); }
-  var sunInfo0 = _computeSunTimes(focus, loc.lat, loc.lon, _locTzOff);
-
   var _nfm = _nextFullMoon(focus);
 
   html += '<div class="alm-cards">';
   html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
-  html += _almHeadCard(t('alm_moon_age'), age + ' ' + t('alm_days'), 'alm-hc-age', { cardId: 'alm-hc-age-card' });
-  html += _almHeadCard(t('alm_distance'), _almFmtNum(Math.round(dist)) + ' ' + t('alm_km'), 'alm-hc-dist', { cardId: 'alm-hc-dist-card' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
-  // Both faces of the sun row live in the DOM at once and only their `hidden`
-  // flags move. Travel crosses into and out of a polar day mid-scrub, and
-  // flipping a flag is something the per-frame updater can do; rebuilding the
-  // card grid is not, so the alternative was a stale row contradicting the
-  // date beside it.
-  html += _almHeadCard('', sunInfo0.polar || '', 'alm-hc-polar',
-    { cardId: 'alm-hc-polar-card', span: 4, hidden: !sunInfo0.polar });
-  html += _almHeadCard(t('alm_sunrise'), sunInfo0.sunrise || '', 'alm-hc-sunrise',
-    { cardId: 'alm-hc-sunrise-card', hidden: !!sunInfo0.polar });
-  html += _almHeadCard(t('alm_sunset'), sunInfo0.sunset || '', 'alm-hc-sunset',
-    { cardId: 'alm-hc-sunset-card', hidden: !!sunInfo0.polar });
-  html += _almHeadCard(t('alm_daylight'), sunInfo0.dayLength || '', 'alm-hc-daylight',
-    { cardId: 'alm-hc-daylight-card', hidden: !!sunInfo0.polar });
-  html += _almHeadCard(_lterm('golden_hour', t('alm_golden')), sunInfo0.goldenHour || '', 'alm-hc-golden',
-    { cardId: 'alm-hc-golden-card', hidden: !sunInfo0.goldenHour, valClass: 'alm-card-golden' });
-  // The sky's four cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
+  // The sky's Moon card and its three Sun cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
   html += '<div id="almanac-sky-facts" class="alm-sky-facts"></div>';
   html += '</div>';
   return html;
@@ -652,18 +632,16 @@ function _almHeadHtml(focus) {
 
 // One card in the hero readout grid. Every value node carries an id so the
 // per-frame travel updater can rewrite it in place instead of the whole grid.
-// opts: cardId (id on the card, for hiding it), span (grid columns), hidden,
-// valClass (colour variant).
+// opts: cardId (id on the card, for hiding it), hidden, valClass (colour
+// variant). Every tile is a label and one value, no tile taller than another.
 function _almHeadCard(lbl, valHtml, valId, opts) {
   opts = opts || {};
   return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
-    (opts.span ? ' style="grid-column:span ' + opts.span + '"' : '') +
     (opts.hidden ? ' hidden' : '') + '>' +
     (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
     '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
     valHtml + '</div></div>';
 }
-
 // Value markup for the next-full-moon card, shared by the full render and the
 // throttled travel refresh so the two can never disagree on format. The year
 // shows only when the full moon falls outside the focused year: a bare "Aug 27"
@@ -673,8 +651,7 @@ function _almNextFullHtml(nfm, lang, focus) {
   if (!nfm) return '';
   var opts = { month: 'short', day: 'numeric' };
   if (nfm.date.getFullYear() !== focus.getFullYear()) opts.year = 'numeric';
-  return nfm.date.toLocaleDateString(lang, opts) +
-    (nfm.isSuper ? ' \u00b7 ' + _lterm('supermoon', t('alm_supermoon')) : '');
+  return nfm.date.toLocaleDateString(lang, opts);
 }
 
 // Render one panel resiliently. Travel now reaches arbitrary epochs, where a
@@ -1045,7 +1022,8 @@ function _almLiveNextFull(focus) {
   try { nfm = _nextFullMoon(focus); } catch (e) {}
   card.hidden = !nfm;
   if (!nfm) return;
-  val.innerHTML = _almNextFullHtml(nfm, (typeof _currentLang !== 'undefined') ? _currentLang : 'en', focus);
+  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
+  val.innerHTML = _almNextFullHtml(nfm, lang, focus);
   val.classList.toggle('alm-card-super', !!nfm.isSuper);
 }
 
@@ -1065,29 +1043,8 @@ function _almLiveHeadCards(focus) {
   var m;
   try { m = _moonPhase(focus); } catch (e) { return; }
   set('alm-hc-illum', m.illumination + '%');
-  set('alm-hc-age', (m.phase * 29.53).toFixed(1) + ' ' + t('alm_days'));
   set('alm-hc-phase', _localMoonName(m.name));
-  try { var dist = _moonDistance(focus); if (dist) set('alm-hc-dist', _almFmtNum(Math.round(dist)) + ' ' + t('alm_km')); } catch (e) {}
   _almLiveNextFull(focus);
-  try {
-    var loc = _getLocation();
-    var off;
-    try { off = _tzUtcOffsetMin(_almDisplayTz(loc), focus); } catch (e) { off = -focus.getTimezoneOffset(); }
-    var s = _computeSunTimes(focus, loc.lat, loc.lon, off);
-    show('alm-hc-polar-card', !!s.polar);
-    show('alm-hc-sunrise-card', !s.polar);
-    show('alm-hc-sunset-card', !s.polar);
-    show('alm-hc-daylight-card', !s.polar);
-    show('alm-hc-golden-card', !!s.goldenHour);
-    if (s.polar) {
-      set('alm-hc-polar', s.polar);
-    } else {
-      set('alm-hc-sunrise', s.sunrise);
-      set('alm-hc-sunset', s.sunset);
-      set('alm-hc-daylight', s.dayLength);
-      if (s.goldenHour) set('alm-hc-golden', s.goldenHour);
-    }
-  } catch (e) {}
 }
 
 // The live update run during time travel — the single hook both the lever loop
@@ -1823,7 +1780,7 @@ var ALM_SECTIONS = [
   ['tables', ['#alm-group-tables'], 'alm_group_tables']
 ];
 var ALM_SECBAR_CHEVRON = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
-var _almSecBar = null;   // { io, ro, sections: [{key, name, els}], seen: Map(el -> bool), cur }
+var _almSecBar = null;   // { io, ro, sections: [{key, name, els}], cur }
 
 function _almSecBarHostHtml() { return '<div class="alm-secbar-host" id="alm-secbar-host"></div>'; }
 function _almSecBarScroller() { return document.getElementById('almanac-content'); }
@@ -1871,13 +1828,10 @@ function _almSecBarInit() {
   if (!host || !root || !('IntersectionObserver' in window)) return;
   var sections = _almSecBarFind();
   host.innerHTML = _almSecBarMarkup(sections);
-  var st = _almSecBar = { io: null, ro: null, sections: sections, seen: new Map(), cur: keep || ALM_SECBAR_HERO, h: root.clientHeight };
-  // One line, a pixel high, under the bar: the section across it is current.
+  var st = _almSecBar = { io: null, ro: null, sections: sections, cur: keep || ALM_SECBAR_HERO, h: root.clientHeight };
+  // One line, a pixel high, under the bar: crossing it wakes the sync, which names the section.
   var line = ALM_SECBAR_LINE, rest = Math.max(0, root.clientHeight - line - 1);
-  st.io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) { st.seen.set(e.target, e.isIntersecting); });
-    _almSecBarSync();
-  }, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
+  st.io = new IntersectionObserver(_almSecBarSync, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
   sections.forEach(function (s) { s.els.forEach(function (e) { st.io.observe(e); }); });
   // A late section (the tide) or an empty one filling in changes the set. The
   // observer already runs once per laid-out frame, so it asks for none: a
@@ -1902,13 +1856,15 @@ function _almSecBarInit() {
   _almSecBarPaint();
 }
 function _almSecBarSync() {
-  var st = _almSecBar;
-  if (!st || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
-  var cur = null;
+  var st = _almSecBar, root = _almSecBarScroller();
+  if (!st || !root || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
+  // The section is the last one that has begun above the line: where it ends is no matter, or a jump that lands
+  // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
+  var line = root.getBoundingClientRect().top + ALM_SECBAR_LINE, cur = ALM_SECBAR_HERO;
   st.sections.forEach(function (s) {
-    if (s.els.some(function (e) { return st.seen.get(e); })) cur = s.key;
+    if (s.els.some(function (e) { return e.getBoundingClientRect().top <= line; })) cur = s.key;
   });
-  if (cur && cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
+  if (cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
 // The bar's face for the current section: shown past the first, the current
 // pill lit and brought to the row's start, the list's current item marked.
@@ -2936,27 +2892,37 @@ function _almHeroLiveUpdate(now) {
   _almLiveHeadCards(now);
 }
 
-// Next full moon after fromDate, with its distance and whether it's a
-// "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).
-function _nextFullMoon(fromDate) {
+// The next instant after fromDate that the Moon's phase reaches target (0.5 =
+// full, 0 = new), found hourly then bisected; null within 45 days.
+function _nextPhaseCrossing(fromDate, target) {
   var t = fromDate.getTime();
-  var prev = _moonPhase(new Date(t)).phase - 0.5;
+  // Signed distance past the target, wrapped to [-0.5, 0.5): a crossing goes from below zero to zero or more.
+  var past = function (ms) { var d = _moonPhase(new Date(ms)).phase - target; return d - Math.floor(d + 0.5); };
+  var prev = past(t);
   for (var h = 1; h <= 45 * 24; h++) {
     var tt = t + h * 3600000;
-    var delta = _moonPhase(new Date(tt)).phase - 0.5;
-    if (prev < 0 && delta >= 0) { // waxing crossing of full
+    var delta = past(tt);
+    if (prev < 0 && delta >= 0 && delta < 0.25) {
       var lo = tt - 3600000, hi = tt;
       for (var b = 0; b < 22; b++) {
         var mid = (lo + hi) / 2;
-        if (_moonPhase(new Date(mid)).phase - 0.5 < 0) lo = mid; else hi = mid;
+        if (past(mid) < 0) lo = mid; else hi = mid;
       }
-      var fm = new Date(hi), d = _moonDistance(fm);
-      return { date: fm, distance: d, isSuper: d <= 361500 };
+      return new Date(hi);
     }
     prev = delta;
   }
   return null;
 }
+// Next full moon after fromDate, with its distance and whether it's a
+// "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).
+function _nextFullMoon(fromDate) {
+  var fm = _nextPhaseCrossing(fromDate, 0.5);
+  if (!fm) return null;
+  var d = _moonDistance(fm);
+  return { date: fm, distance: d, isSuper: d <= 361500 };
+}
+function _nextNewMoon(fromDate) { return _nextPhaseCrossing(fromDate, 0); }
 
 // Small inline-SVG moon at a given phase (0=new .. 0.5=full .. 1=new).
 // Drawn as the lit limb arc + the terminator half-ellipse: crescent when

@@ -41,8 +41,10 @@ function makeSky() {
     'function _lterm(k, h) { return h; } function _tLookup(k, f) { return f; }', S);
   for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_normDeg360', '_moonPhase'])
     vm.runInContext(extractFn(appSrc, fn), S);
-  for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_moonPosition', '_moonDistance', '_eqOfTime', '_solarB', '_dayOfYear', '_solarDeclination', '_jdnToGregorian', '_cnDeltaTdays'])
+  for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_moonPosition', '_moonDistance', '_eqOfTime', '_solarB', '_dayOfYear', '_solarDeclination', '_jdnToGregorian', '_cnDeltaTdays', '_computeSunTimes', '_almSunTimesAt', '_fmtMinutes', '_fmtDuration'])
     vm.runInContext(extractFn(almSrc, fn), S);
+  // The place's zone is the clock's own here: UTC, so a clock time is the instant's hour.
+  vm.runInContext('function _almDisplayTz() { return null; } function _tzUtcOffsetMin() { return 0; }', S);
   vm.runInContext('var _tzFmtCache = {};' + extractFn(almSrc, '_tzFmt'), S);
   vm.runInContext(require('./moon_model.cjs')(), S);
   vm.runInContext(read('almanac-orrery.js'), S);

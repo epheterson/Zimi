@@ -320,31 +320,32 @@ vm.runInContext('var __store = {}; var localStorage = { getItem: function (k) { 
   '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, lm: 7, actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };' +
   'function _skySolarMinutes() { return 360; };' +
   '_skyRand = function () { return 0.99; };', S);   // a meteor's wait is drawn at random: here always a short one, so the timer is the meteor's own
-const MOVING = '_skyPollSatsTick,_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners, the palms' breeze, and the wait for the ISS's elements
+const SATS = '_skyPollSatsTick';   // the wait for the ISS's elements, on any picture of the sky and with motion reduced
+const MOVING = SATS + ',_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners and the palms' breeze, and that wait
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
 // The true horizon, chosen: nothing but the clock's drift, at night or by day, and no twinkle at all.
 vm.runInContext('_skySettings = { skin: "horizon", lines: "off", size: "auto", dial: 0 }', S);
-check(armed() === '_skyLiveTick', 'live at night: the clock\'s drift and nothing else (no twinkle, no breeze, nothing crossing)');
+check(armed() === '_skyLiveTick,' + SATS, 'live at night: the clock\'s drift and nothing else (no twinkle, no breeze, nothing crossing)');
 vm.runInContext('_almFocus = new Date(0)', S);
-check(armed() === '', 'scrubbed: no live timer, the sky holds the focused instant');
+check(armed() === SATS, 'scrubbed: no live timer, the sky holds the focused instant (and waits for the ISS\'s elements)');
 vm.runInContext('_almFocus = null; _skyState.eph.sunGeoAlt = 20', S);
-check(armed() === '_skyLiveTick', 'by day the same');
+check(armed() === '_skyLiveTick,' + SATS, 'by day the same');
 // The beach is the default: its palms sway and its planes, birds, whales and meteors cross, with nothing chosen.
 vm.runInContext('_skySettings = null; localStorage.removeItem("zimi_sky_settings")', S);
 check(vm.runInContext('_skySetting("skin")', S) === 'beach', 'nothing chosen: the scene is the beach with its life');
 check(armed() === '_skyLiveTick,' + MOVING, 'the default scene: the clock, the palms and the moving things');
 // A viewer who chose the true horizon keeps it, and one who chose something else is not made to choose the scene.
 vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ skin: "horizon" }))', S);
-check(vm.runInContext('_skySetting("skin")', S) === 'horizon' && armed() === '_skyLiveTick', 'a saved true horizon stays the true horizon');
+check(vm.runInContext('_skySetting("skin")', S) === 'horizon' && armed() === '_skyLiveTick,' + SATS, 'a saved true horizon stays the true horizon');
 vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ lines: "lines" })); _skySetting("lines")', S);
 check(vm.runInContext('_skySetting("skin")', S) === 'beach', 'saving another choice does not save the scene with it');
 vm.runInContext('_skySet("lines", "names")', S);
 check(JSON.parse(vm.runInContext('localStorage.getItem("zimi_sky_settings")', S)).skin === undefined, 'only what was chosen is kept');
 vm.runInContext('_skySettings = null; localStorage.removeItem("zimi_sky_settings")', S);
 vm.runInContext('__reduce = true', S);
-check(armed() === '_skyLiveTick', 'motion reduced: no breeze and nothing crossing, even on the beach');
+check(armed() === '_skyLiveTick,' + SATS, 'motion reduced: no breeze and nothing crossing, even on the beach');
 vm.runInContext('__reduce = false; _skySettings = null; _skyState.lens = { az: 0, alt: 0, fov: 60 };', S);
-check(armed() === '_skyLiveTick', 'looking through a lens the beach is not drawn, so nothing moves');
+check(armed() === '_skyLiveTick,' + SATS, 'looking through a lens the beach is not drawn, so nothing moves');
 vm.runInContext('_skyState.lens = null; _skyState.eph.sunGeoAlt = -30; _skyState.inView = false', S);
 check(armed() === '', 'scrolled out of sight: nothing runs');
 vm.runInContext('_skyState.inView = true; document.hidden = true', S);

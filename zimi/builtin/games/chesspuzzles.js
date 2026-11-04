@@ -77,7 +77,6 @@
   function setButtons() {
     els.hint.disabled = done || busy;
     els.solution.disabled = done || busy || !failed;
-    els.next.setAttribute('aria-pressed', String(done));
   }
 
   // ── the rating: Elo against the puzzle's rating; a hint or a miss is a loss, a clean solve a win ──

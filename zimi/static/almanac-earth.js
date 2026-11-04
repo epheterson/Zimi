@@ -386,6 +386,8 @@ var AE_FLY_EASE_IN_MS = 500, AE_FLY_EASE_OUT_MS = 800, AE_FLY_TABLE_N = 240;
 var AE_FLY_BEND_MS = 200, AE_FLY_BEND_REACH = 0.5;   // half the span over which the camera rounds the corner at the shoulder
 var AE_SHOULDER_FILL = 1 / 3, AE_SHOULDER_OLD_AT = 0.55, AE_SHOULDER_DEST_AT = -0.3;
 var AE_FLY_MS_PER_LOG = 300;
+// No flight turns the picture faster than this, in degrees a frame at 60 fps: a flight that would is stretched.
+var AE_FLY_MAX_TURN_DEG = 4, AE_FLY_MAX_STRETCH = 4, AE_FRAME_MS = 1000 / 60, AE_FLY_PLAN_STEPS = 60;
 // A body drawn smaller than this across is marked with a ring and its name; the mark fades out by the second size.
 var AE_MARK_SMALL_PX = 24, AE_MARK_GONE_PX = 64, AE_MARK_APART_PX = 36;   // marks closer than this: only the first
 // Through a flight between bodies both ends wear a ring the size of the body as drawn (the Sun from the Moon's night
@@ -483,6 +485,8 @@ function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.l
 function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
 // A flight speeds up, cruises and slows to arrive: cubic in and out.
+// Zero speed and zero acceleration at both ends: a turn eased with it starts and stops without a step in its rate.
+function _aeSmoother(p) { p = _aeClamp(p, 0, 1); return p * p * p * (p * (6 * p - 15) + 10); }
 function _aeEaseInOut(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
 // Isolated left-to-right (U+2066 ... U+2069): inside a right-to-left
 // sentence the bidi algorithm otherwise reorders its runs ("S, 48.5° W 31.3°").
@@ -1494,6 +1498,7 @@ function _aeNewState(el) {
     el: el, gl: null, loading: false, failed: false,
     speed: 1, clockRan: false,            // the speed, and whether it ran the page's clock
     target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
+    flightUp: null, flightOff: 0,         // up carried along a flight (_aeFlightUp)
     fly: null,                            // { start, from:{target pos, dist}, to }
     pointers: {}, pinch: null, drag: null,
     sats: null, satsFailed: false, satsLoading: false,
@@ -1607,6 +1612,36 @@ function _aeViewUp(dir, rollDeg) {
   var e = _aeCross(n, d), r = _aeRad(rollDeg);
   return _aeNorm([n[0] * Math.cos(r) + e[0] * Math.sin(r), n[1] * Math.cos(r) + e[1] * Math.sin(r), n[2] * Math.cos(r) + e[2] * Math.sin(r)]);
 }
+// `v` turned `ang` radians about the unit vector `axis` (Rodrigues).
+function _aeRotateAbout(v, axis, ang) {
+  var c = Math.cos(ang), sn = Math.sin(ang), k = _aeCross(axis, v), dk = _aeDot(axis, v) * (1 - c);
+  return [v[0] * c + k[0] * sn + axis[0] * dk, v[1] * c + k[1] * sn + axis[1] * dk, v[2] * c + k[2] * sn + axis[2] * dk];
+}
+// The camera's up during a flight. North-up (`nominal`) spins the picture about the line of sight, without bound,
+// wherever that line sweeps past the celestial pole, so up is carried along the flight instead (the previous frame's,
+// turned only as far as the line of sight turned) and turned onto north-up over the whole flight, not at its arrival
+// alone (the picture would roll half a turn in the last second). The turn is `f.rollEnd` (what the planning pass found
+// it to be at the arrival) eased by `prog`, how far through the flight in time: the carried up's distance from
+// north-up swings wildly as the line passes the pole, and following it would leak that swing into the picture. Only in
+// the last stretch, where the line has settled, is the turn corrected to the distance itself, so the flight lands on
+// north-up exactly.
+var AE_ROLL_SETTLE = 0.85;
+function _aeFlightUp(dir, nominal, f) {
+  var kept = _ae.flightUp, d = _aeNorm(dir), prog = f.prog || 0;
+  var up = kept ? _aeSub(kept, _aeScale(d, _aeDot(kept, d))) : null;
+  up = up && _aeLen(up) > 1e-6 ? _aeNorm(up) : nominal;
+  _ae.flightUp = up;
+  // How far north-up is from the carried up, kept on the branch the last frame was on (never a half turn either way).
+  var off = Math.atan2(_aeDot(_aeCross(up, nominal), d), _aeDot(up, nominal));
+  off = _ae.flightOff + Math.atan2(Math.sin(off - _ae.flightOff), Math.cos(off - _ae.flightOff));
+  _ae.flightOff = off;
+  var turn = off * _aeSmoother(prog);
+  if (f.rollEnd != null) {
+    var settle = _aeSmoother((prog - AE_ROLL_SETTLE) / (1 - AE_ROLL_SETTLE));
+    turn = f.rollEnd * _aeSmoother(prog) + settle * Math.atan2(Math.sin(off - f.rollEnd), Math.cos(off - f.rollEnd));
+  }
+  return _aeRotateAbout(up, d, turn);
+}
 function _aeCameraOffset(az, el, dist) {
   return [dist * Math.cos(el) * Math.cos(az), dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el)];
 }
@@ -1627,7 +1662,7 @@ function _aeFlyTo(target, dist, azel) {
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
     var hold = !!_ae.scene && target !== from.target;
-    _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, lead: AE_FLY_APPROACH_MS };
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
       _ae.fly.shoulder = sh;
@@ -1636,9 +1671,54 @@ function _aeFlyTo(target, dist, azel) {
       _aeFarFor(sh.far);
     }
     _ae.az = from.az; _ae.el_ = from.el;
+    _aeEaseTurn(_ae.fly);
   }
   _aeMarkViews();
   _aeKick();
+}
+// The most the picture turns between two frames anywhere in flight `f`, in degrees a frame at 60 fps: the camera is
+// stepped through the whole flight as it will be drawn, and the angle between the frames' orientations is taken.
+function _aeFlightTurnPeak(f) {
+  var saved = { fly: _ae.fly, hand: _ae.hand, dist: _ae.dist, az: _ae.az, el: _ae.el_, up: _ae.flightUp, off: _ae.flightOff, roll: _ae.roll,
+    start: f.start, arrive: f.arrive, prog: f.prog, look: f.look };
+  var total = _aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0), dt = total / AE_FLY_PLAN_STEPS, peak = 0;
+  var run = function (onFrame) {
+    _ae.fly = f; _ae.hand = null; _ae.flightUp = null; _ae.flightOff = 0; f.start = 0;
+    for (var i = 0; i <= AE_FLY_PLAN_STEPS; i++) {
+      _aeStepFly(Math.min(i * dt, total - 1e-6));
+      onFrame(_aePoseOf(_aeViewCam()));
+    }
+  };
+  // The first run finds how far the flight turns up in all (f.rollEnd, _aeFlightUp); the second measures the turn.
+  f.rollEnd = null;
+  run(function () {});
+  f.rollEnd = _ae.flightOff;
+  var prev = null;
+  run(function (pose) {
+    var right = _aeCross(pose.look, pose.up);
+    if (prev) {
+      // The angle of the turn between two orthonormal frames, from the trace of the matrix taking one to the other.
+      var trace = _aeDot(prev.look, pose.look) + _aeDot(prev.up, pose.up) + _aeDot(prev.right, right);
+      peak = Math.max(peak, _aeDeg(Math.acos(_aeClamp((trace - 1) / 2, -1, 1))) * AE_FRAME_MS / dt);
+    }
+    prev = { look: pose.look, up: pose.up, right: right };
+  });
+  _ae.fly = saved.fly; _ae.hand = saved.hand; _ae.dist = saved.dist; _ae.az = saved.az; _ae.el_ = saved.el;
+  _ae.flightUp = saved.up; _ae.flightOff = saved.off; _ae.roll = saved.roll;
+  f.start = saved.start; f.arrive = saved.arrive; f.prog = saved.prog; f.look = saved.look;
+  return peak;
+}
+// Stretch a flight that would turn the picture faster than AE_FLY_MAX_TURN_DEG (the camera swinging half way round a
+// body, or its line of sight sweeping past the pole), so the turn is spread over the flight instead of crammed into it.
+function _aeEaseTurn(f) {
+  for (var pass = 0; pass < 2; pass++) {
+    var k = _aeFlightTurnPeak(f) / AE_FLY_MAX_TURN_DEG;
+    if (k <= 1.02 || f.stretch >= AE_FLY_MAX_STRETCH) return;
+    k = Math.min(k, AE_FLY_MAX_STRETCH / (f.stretch || 1));
+    f.stretch = (f.stretch || 1) * k;
+    f.ms *= k;
+    if (f.hold) { f.lead *= k; _aeFlyTables(f); f.bend = _aeBendAfter(f); }
+  }
 }
 // The over-the-shoulder camera: where it stands (behind the body at `from`, away from `dest`, off to one side) and
 // the point it looks at, so the old body fills AE_SHOULDER_FILL of the narrower side of the frame at AE_SHOULDER_OLD_AT
@@ -1666,18 +1746,23 @@ function _aeShoulder(from, rOld, dest) {
   var pos = _aeSub(a, _aeAdd(_aeScale(u, dOld * c), _aeScale(side, dOld * sn)));
   var toDest = _aeSub(dest, pos), gamma = Math.atan2(dOld * sn, dOld * c + len) + (-destTilt);
   var axis = _aeAdd(_aeScale(u, Math.cos(gamma)), _aeScale(side, Math.sin(gamma)));
-  // The turn away from the old body the look-at carries, and which way: held through the swing back, so the old body
-  // slides from the middle of the frame to its place and never leaves it.
+  // The turn away from the old body the look-at carries, and the one axis it turns about: held through the swing
+  // back, so the old body slides from the middle of the frame to its place and never leaves it.
   var dA = _aeNorm(_aeSub(a, pos)), dD = _aeNorm(toDest);
   return { pos: pos, look: _aeAdd(pos, _aeScale(axis, _aeLen(toDest))), far: dOld + len * 1.5,
-    turn: _aeAngle(dA, axis), away: _aePerp(axis, dA), destTurn: _aeAngle(dD, axis), destAway: _aePerp(axis, dD) };
+    turn: _aeAngle(dA, axis), turnAxis: _aeTurnAxis(dA, axis), destTurn: _aeAngle(dD, axis), destTurnAxis: _aeTurnAxis(dD, axis) };
 }
-// The unit direction of `v` across `d` (a unit vector): what is left of it once its part along `d` is taken out.
-function _aePerp(v, d) { return _aeNorm(_aeSub(v, _aeScale(d, _aeDot(v, d)))); }
-// The look-at that is `turn` radians off the direction to `target`, toward `away`, from `pos`.
-function _aeLookOff(pos, target, away, turn) {
-  var to = _aeSub(target, pos), d = _aeNorm(to), w = _aePerp(away, d);
-  return _aeAdd(pos, _aeScale(_aeAdd(_aeScale(d, Math.cos(turn)), _aeScale(w, Math.sin(turn))), _aeLen(to)));
+// The unit axis that turns direction `a` toward direction `b` (any one across `a` when they coincide or oppose).
+function _aeTurnAxis(a, b) {
+  var c = _aeCross(a, b);
+  return _aeLen(c) > 1e-9 ? _aeNorm(c) : _aeNorm(_aeCross(a, Math.abs(a[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+}
+// The look-at that is `turn` radians off the direction to `target`, from `pos`, turned about the fixed `axis`: the
+// direction to the body sweeps round as the camera moves, and an axis taken across it (not held) would flip where the two
+// line up, snapping the picture for a frame.
+function _aeLookOff(pos, target, axis, turn) {
+  var to = _aeSub(target, pos);
+  return _aeAdd(pos, _aeScale(_aeRotateAbout(_aeNorm(to), axis, turn), _aeLen(to)));
 }
 // A point on the way from offset `p` to offset `q` (both from the same centre) at e in 0..1: the direction turns the
 // short way and the distance changes by its ratio, so a camera swinging round a body neither cuts through it nor
@@ -1709,7 +1794,7 @@ function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
   return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
 }
 // How long the flight is before its arrival begins: the leg to the shoulder, when it has one.
-function _aeFlyLead(f) { return f.hold ? AE_FLY_APPROACH_MS : 0; }
+function _aeFlyLead(f) { return f.hold ? f.lead : 0; }
 // The pace shape of a leg: `floor` of its cruise while within AE_FLY_CRAWL_MS of the shoulder (d ms away), rising
 // smoothly to the cruise.
 function _aeCrawlShape(d, floor) {
@@ -1734,7 +1819,7 @@ function _aeShareAt(tab, t, len) {
 // by the crawl-then-rise pace (_aeFlyTables).
 function _aeFlyArrival(f, now) {
   if (!f.hold) return _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1));
-  var q = _aeShareAt(f.inTab, now - f.start - AE_FLY_APPROACH_MS, f.ms + AE_FLY_TAIL_MS);
+  var q = _aeShareAt(f.inTab, now - f.start - f.lead, f.ms + AE_FLY_TAIL_MS);
   if (!f.logIn) return q;
   // g is the log of (distance from the old body over distance to the destination): it carries both ends' apparent
   // zoom, and one eased run of it is the whole leg in.
@@ -1742,7 +1827,7 @@ function _aeFlyArrival(f, now) {
   return _aeClamp(Math.log(Math.max(1e-12, f.r0 - x) / f.r0) / f.logRatio, 0, 1);
 }
 // How far along the leg to the shoulder the camera is.
-function _aeFlyPull(now, f) { return _aeShareAt(f.outTab, now - f.start, AE_FLY_APPROACH_MS); }
+function _aeFlyPull(now, f) { return _aeShareAt(f.outTab, now - f.start, f.lead); }
 function _aeFlyEase(now) {
   var f = _ae.fly;
   return f ? _aeFlyArrival(f, now) : 1;
@@ -1757,8 +1842,8 @@ function _aeFlyTables(f) {
   f.dOld = _aeLen(shOff);
   var legA = _aeLen(_aeSub(shOff, _aeSlerpOffset(start, shOff, 1 - e))) / e;
   var easeIn = function (t) { return _smoothstep(0, AE_FLY_EASE_IN_MS, t); };
-  var outRate = function (t) { return _aeCrawlShape(AE_FLY_APPROACH_MS - t, AE_FLY_CRAWL_SHARE) * easeIn(t); };
-  f.outTab = _aeRunningShare(outRate, AE_FLY_APPROACH_MS);
+  var outRate = function (t) { return _aeCrawlShape(f.lead - t, AE_FLY_CRAWL_SHARE) * easeIn(t); };
+  f.outTab = _aeRunningShare(outRate, f.lead);
   // Apparent speed at the shoulder: the leg's length per ms over the old body's distance.
   var apparent = legA * AE_FLY_CRAWL_SHARE / f.outTab.total / f.dOld;
   f.r0 = _aeLen(_aeSub(sh.pos, dest));
@@ -1779,7 +1864,7 @@ function _aeFlyTables(f) {
 // body's distance away (the leg in begins very slowly, and across a flight's own scale any longer span would throw the
 // camera far from the shoulder before the corner was turned).
 function _aeBendAfter(f) {
-  var near = _aeLen(_aeSub(f.shoulder.pos, f.from.pos)) * AE_FLY_BEND_REACH, at = f.start + AE_FLY_APPROACH_MS;
+  var near = _aeLen(_aeSub(f.shoulder.pos, f.from.pos)) * AE_FLY_BEND_REACH, at = f.start + f.lead;
   f.bend = AE_FLY_BEND_MS;
   var lo = 20, hi = AE_FLY_BEND_MS, sh = f.shoulder.pos;
   if (_aeLen(_aeSub(_aeLegPos(f, at + hi), sh)) < near) return hi;
@@ -1792,13 +1877,13 @@ function _aeBendAfter(f) {
 // The camera's place and the point it looks at, along a shoulder shot: back and round the old body, through the shoulder view without stopping, then
 // in to the destination's own view.
 function _aeShoulderCam(f, now) {
-  var j = AE_FLY_APPROACH_MS, t = now - f.start;
+  var j = f.lead, t = now - f.start;
   var pos = t <= j - AE_FLY_BEND_MS || t >= j + f.bend ? _aeLegPos(f, now) : _aeBend(f, now);
   // Looking at the old body, turned off it by the share of the leg done, then at the destination, framed, then at its
   // middle: the two looks are the same at the shoulder, and are blended across the bend.
   var dest = _aeTargetPos(), sh = f.shoulder;
-  var look1 = _aeLookOff(pos, f.from.pos, sh.away, sh.turn * _aeClamp(_aeFlyPull(now, f), 0, 1));
-  var look2 = _aeLookOff(pos, dest, sh.destAway, sh.destTurn * (1 - _aeFlyArrival(f, now)));
+  var look1 = _aeLookOff(pos, f.from.pos, sh.turnAxis, sh.turn * _aeClamp(_aeFlyPull(now, f), 0, 1));
+  var look2 = _aeLookOff(pos, dest, sh.destTurnAxis, sh.destTurn * (1 - _aeFlyArrival(f, now)));
   var k = _smoothstep(j - AE_FLY_BEND_MS, j + f.bend, t);
   var d1 = _aeNorm(_aeSub(look1, pos)), d2 = _aeNorm(_aeSub(look2, pos)), d = _aeNorm(_aeAdd(_aeScale(d1, 1 - k), _aeScale(d2, k)));
   var r = _aeLen(_aeSub(look1, pos)) * (1 - k) + _aeLen(_aeSub(look2, pos)) * k;
@@ -1807,7 +1892,7 @@ function _aeShoulderCam(f, now) {
 // Where the camera is on the leg to the shoulder (round the old body), then on the leg in (round the destination).
 function _aeLegPos(f, now) {
   var from = f.from, sh = f.shoulder, dest = _aeTargetPos();
-  if (now - f.start >= AE_FLY_APPROACH_MS) {
+  if (now - f.start >= f.lead) {
     var end = _aeCameraOffset(f.toAz, f.toEl, f.toDist);
     return _aeAdd(dest, _aeSlerpOffset(_aeSub(sh.pos, dest), end, _aeFlyArrival(f, now)));
   }
@@ -1818,7 +1903,7 @@ function _aeLegPos(f, now) {
 // short span the camera follows a cubic Hermite curve between the legs' own places and velocities, so it turns
 // round the corner instead of stopping at it.
 function _aeBend(f, now) {
-  var j = f.start + AE_FLY_APPROACH_MS, w = AE_FLY_BEND_MS + f.bend, h = 1;
+  var j = f.start + f.lead, w = AE_FLY_BEND_MS + f.bend, h = 1;
   var t0 = j - AE_FLY_BEND_MS, t1 = j + f.bend;
   var p0 = _aeLegPos(f, t0), p1 = _aeLegPos(f, t1);
   var v0 = _aeScale(_aeSub(_aeLegPos(f, t0 + h), p0), w / h), v1 = _aeScale(_aeSub(p1, _aeLegPos(f, t1 - h)), w / h);
@@ -1832,6 +1917,8 @@ function _aeLerp3(a, b, e) { return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
+  f.arrive = _aeFlyArrival(f, now);
+  f.prog = _aeClamp((now - f.start) / (_aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)), 0, 1);
   if (f.hold) {
     // The orbit model (a point looked at, a direction and a distance) holds any camera and look-at pair.
     var c = _aeShoulderCam(f, now), v = _aeSub(c.pos, c.look), d = _aeLen(v);
@@ -1861,8 +1948,17 @@ function _aeFlyTargetPos() {
 function _aeViewCam() {
   var tp = _aeFlyTargetPos();
   var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
-  if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeFlyEase(performance.now());
+  if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeSmoother(_ae.fly.prog || 0);
   return { tp: tp, az: _ae.az, el: _ae.el_, dist: _ae.dist, tanHalf: Math.tan(_aeRad(AE_FOV_DEG) / 2), roll: roll, frame: null };
+}
+// Where the camera stands and which way is up for a view `c`. Up is the observer's zenith on the Moon, north
+// elsewhere; a flight turns from one to the other on the way, carrying up along as it goes (_aeFlightUp).
+function _aePoseOf(c) {
+  var off = _aeCameraOffset(c.az, c.el, c.dist), pos = [c.tp[0] + off[0], c.tp[1] + off[1], c.tp[2] + off[2]];
+  var look = _aeSub(c.tp, pos), up = _aeViewUp(look, c.roll);
+  if (_ae.fly && !_ae.hand) up = _aeFlightUp(look, up, _ae.fly);
+  else { _ae.flightUp = null; _ae.flightOff = 0; }
+  return { pos: pos, up: up, look: _aeNorm(look) };
 }
 function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
@@ -1871,14 +1967,9 @@ function _aePlaceCamera() {
   _aeFarFor(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0);
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
-  var tp = c.tp;
-  var off = _aeCameraOffset(c.az, c.el, c.dist);
-  var pos = [tp[0] + off[0], tp[1] + off[1], tp[2] + off[2]];
+  var tp = c.tp, pose = _aePoseOf(c), pos = pose.pos, up = pose.up;
   cam.position.set(pos[0], pos[1], pos[2]);
-  // Up is the observer's zenith on the Moon, north elsewhere; a flight
-  // turns from one to the other on the way.
   _ae.roll = c.roll;
-  var up = _aeViewUp(_aeSub(tp, pos), c.roll);
   cam.up.set(up[0], up[1], up[2]);
   cam.lookAt(tp[0], tp[1], tp[2]);
   // The frame the camera fills: the whole view, or a rectangle of it (the
@@ -2588,6 +2679,7 @@ function _aeNoteParts() {
     var line = _aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) });
     if (anyShown && _aeAsking()) dated = line;
     else parts.push(line);
+    if (anyShown && _ae.satMeta && _ae.satMeta.stale && !_aeAsking()) parts.push(_aeT('alm_earth_data_stale'));
     if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));

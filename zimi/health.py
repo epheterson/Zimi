@@ -18,6 +18,7 @@ import threading
 import time
 
 import zimi.server as _srv
+from zimi.libzimcompat import can_walk_entries, entry_by_id
 
 log = logging.getLogger("zimi.health")
 
@@ -149,7 +150,7 @@ def _sample_media(archive):
     space was covered (``full``) or only sampled. ``None`` when the libzim build
     lacks id iteration or the ZIM is empty. Caller holds ``_zim_lock`` — libzim
     is single-threaded — so this stays a bounded, lock-friendly pass."""
-    if not hasattr(archive, "_get_entry_by_id"):
+    if not can_walk_entries(archive):
         return None
     n = _all_entry_count(archive)
     if n <= 0:
@@ -160,7 +161,7 @@ def _sample_media(archive):
     examples = []
     for j in ids:
         try:
-            e = archive._get_entry_by_id(j)
+            e = entry_by_id(archive, j)
             if e.is_redirect or not e.path.lower().endswith(_MEDIA_EXTS):
                 continue
             item = e.get_item()
@@ -188,7 +189,7 @@ def _sample_text(archive):
     confirm they carry content. Returns ``{"sampled","empty"}`` (articles
     examined / of those, 0-byte); ``None`` when id iteration is unavailable or
     the ZIM is empty. Caller holds ``_zim_lock``."""
-    if not hasattr(archive, "_get_entry_by_id"):
+    if not can_walk_entries(archive):
         return None
     n = _all_entry_count(archive)
     if n <= 0:
@@ -199,7 +200,7 @@ def _sample_text(archive):
         if sampled >= _TEXT_SAMPLE:
             break
         try:
-            e = archive._get_entry_by_id(j)
+            e = entry_by_id(archive, j)
             if e.is_redirect:
                 continue
             item = e.get_item()

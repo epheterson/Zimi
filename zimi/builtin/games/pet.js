@@ -332,7 +332,7 @@
       seg.appendChild(b);
     });
     if (store.pets.length < MAX_PETS) {
-      var a = document.createElement('button'); a.type = 'button'; a.className = 'ar-btn'; a.textContent = T('pet.addEgg'); a.setAttribute('aria-pressed', 'false'); a.setAttribute('aria-label', T('pet.findEgg'));
+      var a = document.createElement('button'); a.type = 'button'; a.className = 'ar-btn'; a.textContent = T('pet.addEgg'); a.setAttribute('aria-label', T('pet.findEgg'));
       a.addEventListener('click', function () { addPet(store, now()); pet = current(); careKey = ''; save(); say(T('pet.foundEgg')); hud(); });
       seg.appendChild(a);
     }

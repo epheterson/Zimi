@@ -319,7 +319,7 @@
     if (armed) { armed.cancel(); armed = null; }
     if (setupSheet) return;
     var body = document.createElement('div'), pick = document.createElement('div');
-    body.className = 'cr-setup';
+    body.className = 'cr-setup gs-setup';
     pick.className = 'pl-pick cr-tracks'; pick.setAttribute('role', 'radiogroup'); pick.setAttribute('aria-label', L('circuit.track'));
     TRACKS.forEach(function (d) {
       var lab = document.createElement('label'), inp = document.createElement('input'), sp = document.createElement('span'), nm = document.createElement('b'), sm = document.createElement('small'), em = document.createElement('em');

@@ -125,6 +125,8 @@
       els.grid.appendChild(b);
       return b;
     });
+    ZimiUtil.gridAria(els.grid, buttons, cols(buttons.length));
+    ZimiUtil.gridRove(els.grid, buttons, cols(buttons.length));
     paint();
   }
   function paint() {
@@ -216,15 +218,6 @@
       Object.keys(SETS).forEach(function (k) { Object.keys(SIZES).forEach(function (z) { var v = best[k + '.' + z]; if (v) rows.push([T('memory.bestRow', { set: T('memory.set.' + k), cards: SIZES[z] * 2 }), T('memory.nMoves', { n: v })]); }); });
       return rows;
     }
-  });
-
-  // Arrow keys move between cards; the browser's own Tab and Enter work as well.
-  els.grid.addEventListener('keydown', function (e) {
-    var i = buttons.indexOf(document.activeElement); if (i < 0) return;
-    var n = cols(buttons.length), d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -n, ArrowDown: n }[e.key];
-    if (!d) return;
-    e.preventDefault();
-    var k = i + d; if (k >= 0 && k < buttons.length) buttons[k].focus();
   });
 
   // Leaving and coming back keeps the table: the deal, what is up, the turn and the scores (a mismatched pair is turned back first).

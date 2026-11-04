@@ -95,20 +95,6 @@ ok('a slow voice gets far enough ahead that the rest plays without a pause', ctx
 ok('...counted from where it starts', ctx._ttsLeadEnd(lens(6), 2, slowPace, 1) === 3);
 ok('...a long article waits a minute at most, then pauses to catch up', ctx._ttsLeadEnd(lens(100), 0, slowPace, 1) === 3);
 ok('...faster speech needs more ahead', ctx._ttsLeadEnd(lens(4), 0, slowPace, 2) === 2);
-{
-  // The ring while it gets ahead: how much of the wait is done.
-  const now = { t: 100000 };
-  const rc = { _ttsNow: { readyAt: 0, aheadOf: 0 }, Math, Date: { now: () => now.t } };
-  vm.createContext(rc);
-  vm.runInContext(fn('_ttsAheadDone'), rc);
-  ok('no wait yet: the ring is empty', rc._ttsAheadDone() === 0);
-  rc._ttsNow.aheadOf = 40; rc._ttsNow.readyAt = now.t + 40000;
-  ok('...the wait just begun: still empty', rc._ttsAheadDone() === 0);
-  now.t += 30000;
-  ok('...three quarters of it gone: three quarters closed', Math.abs(rc._ttsAheadDone() - 0.75) < 1e-9);
-  now.t += 20000;
-  ok('...past the estimate: closed, never more', rc._ttsAheadDone() === 1);
-}
 ok('a voice that keeps up starts with its first chunk', ctx._ttsLeadEnd(lens(50), 0, { work: 0.5 / 14, audio: 1 / 14 }, 1) === 0);
 ok('...and so does one not measured yet', ctx._ttsLeadEnd(lens(50), 0, { work: null, audio: 1 / 14 }, 1) === 0);
 ctx._ttsVoices.timings = { kokoro: { rtf: 1.5, cps: 12 } };
@@ -470,7 +456,7 @@ const tick = () => new Promise(r => setImmediate(r));
     _TTS_RATE_STOPS: [1, 1.5, 2], _TTS_RATE_SNAP: 0.05, _TTS_SPEED_SETTLE_MS: 700,
     setTimeout: f => { ctx._settle = f; return 1; }, clearTimeout: () => { ctx._settle = null; },
     document: { querySelectorAll: () => [] } });
-  vm.runInContext(['_ttsPickSpeed', '_ttsApplySpeed', '_ttsSpeedSettled', '_ttsSlideSpeed', '_ttsSpeedChanged', '_ttsSnapRate', '_ttsRateClamp', '_ttsVoiceLabel', '_ttsAheadShown'].map(fn).join('\n'), ctx);
+  vm.runInContext(['_ttsPickSpeed', '_ttsApplySpeed', '_ttsSpeedSettled', '_ttsSlideSpeed', '_ttsSpeedChanged', '_ttsSnapRate', '_ttsRateClamp', '_ttsVoiceLabel'].map(fn).join('\n'), ctx);
   ctx._ttsVoices = { langs: { en: { engine: 'kokoro', engines: ['kokoro', 'piper'] } },
     timings: { kokoro: { gaps: { '1': 0, '1.25': 0, '1.5': 3, '2': 6 } }, piper: { gaps: { '1': 0, '1.25': 0, '1.5': 0, '2': 0 } } } };
   ctx._ttsNow = { engine: 'kokoro', lang: 'en', at: 7 };
@@ -577,15 +563,16 @@ const tick = () => new Promise(r => setImmediate(r));
   // ── read along: the text, its sentences, where the voice is, following ────
   {
     const BLOCK = ' ';
-    const ax = { Node: { DOCUMENT_POSITION_FOLLOWING: 4 }, Map, isFinite, window: { matchMedia: () => ({ matches: false }) },
+    const ax = { setTimeout: () => 0, clearTimeout() {}, Node: { DOCUMENT_POSITION_FOLLOWING: 4 }, Map, isFinite, window: { matchMedia: () => ({ matches: false }) },
       _TTS_CHUNK_MAX: 240, _TTS_FIRST_CHUNK_MAX: 120, _BOOK_EDGE: 0.3, _nightRedOn: () => false, _ttsBarSync: () => {},
       _langPrimary: l => String(l || '').split(/[-_]/)[0].toLowerCase(), _ttsLang: () => 'en' };
     vm.createContext(ax);
     vm.runInContext(extract(/var _TTS_BLOCK = [^\n]*\n/, '_TTS_BLOCK') + extract(/var _TTS_ABBREVS[\s\S]*?\nfunction _ttsSentenceSpans[\s\S]*?\n}\n/, 'the sentence splitter') +
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
+    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
       '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
-      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd'].map(fn).join('\n'), ax);
+      '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle', '_ttsIdleBusy', '_ttsIdleArm'].map(fn).join('\n'), ax);
 
     // A DOM of just what the reading looks at: elements with a display, text nodes, document order.
     const BLOCKS = ['div', 'p', 'h1', 'h2', 'ul', 'li', 'main', 'article', 'section', 'body'];
@@ -598,6 +585,7 @@ const tick = () => new Promise(r => setImmediate(r));
       el.className = el.classes.join(' ');
       Object.defineProperty(el, 'textContent', { get: () => (function t(n) { return n.nodeType === 3 ? n.data : (n.childNodes || []).map(t).join(''); })(el) });
       el.tagName = tag.toUpperCase();
+      el.getAttribute = n => (n === 'lang' && attrs.lang) || null;
       el.querySelector = t => { const find = e => { for (const k of e.childNodes || []) { if (k.nodeType === 1 && (k.localName === t || k.matches(t))) return k; const d = k.nodeType === 1 && find(k); if (d) return d; } return null; }; return find(el); };
       el.matches = sel => sel.split(',').some(x => { const [t, c] = x.trim().split('.'); return (!t || t === tag) && (!c || el.classes.includes(c)); });
       el.contains = n => { for (let x = n; x; x = x.parentNode) if (x === el) return true; return false; };
@@ -635,6 +623,17 @@ const tick = () => new Promise(r => setImmediate(r));
       ['p', {}, 'John was born in Antioch', ['sup', { cls: ['reference'] }, '[3]'], ' and was of Syrian origin.', ['sup', { cls: ['reference'] }, '[4]'], ' He was named legate.']]);
     const wikiText = ax._ttsReadModel(wiki, wiki.main).text.replace(new RegExp(BLOCK, 'g'), '|');
     ok('no citation marks, hatnote or infobox: the prose, sentence by sentence', wikiText === 'John was born in Antioch and was of Syrian origin. He was named legate.|', wikiText);
+    // Wikipedia's lead: a name in another script, its transliteration and the pronunciation are marked by the page (lang, .IPA).
+    const lead = mkDoc(['main', {}, ['p', {}, 'The Western Turkic Khaganate (Chinese: ', ['span', { lang: 'zh' }, '西突厥'], '; pinyin: ', ['i', { lang: 'zh-Latn-pinyin' }, 'Xī Tūjué'], ') or Onoq Khaganate (', ['span', { cls: ['IPA'] }, '/ˈɒnɒk/'],
+      ') was ', ['span', { lang: 'fr' }, 'un empire'], ' (born 1952) in Asia.']]);
+    const leadChunks = ax._ttsPlanFrom(ax._ttsReadModel(lead, lead.main), 0, 1e9, false).chunks.map(c => c.text).join(' ');
+    ok('the marked asides and their parentheses are not said; a foreign phrase in the article\'s script and "(born 1952)" are', leadChunks === 'The Western Turkic Khaganate or Onoq Khaganate was un empire (born 1952) in Asia.', leadChunks);
+    // An aside that opens a later block leaves a mark with no text node of its own: a sentence starting on it still maps into the page.
+    const opens = mkDoc(['main', {}, ['p', {}, 'First block.'], ['p', {}, ['span', { lang: 'zh' }, '西突厥'], ' is a name.']]);
+    const opensModel = ax._ttsReadModel(opens, opens.main);
+    const bad = ax._ttsPlanFrom(opensModel, 0, 1e9, false).chunks.flatMap(c => c.spans).map(sp => ax._ttsRange(opensModel, sp.s, sp.e))
+      .filter(r => r.startOffset < 0 || r.startOffset > r.startContainer.data.length || r.endOffset > r.endContainer.data.length);
+    ok('a sentence that starts on an aside\'s mark maps to offsets inside its text nodes', bad.length === 0, JSON.stringify(bad.map(r => [r.startContainer.data, r.startOffset, r.endContainer.data, r.endOffset])));
     const facts2 = mkDoc(['main', {}, ['details', { cls: ['zw-facts'] }, ['summary', {}, 'Quick facts'], ['table', { cls: ['infobox'] }, ['tr', {}, ['td', {}, 'Born']]]], ['p', {}, 'Prose.']]);
     const factsText = ax._ttsReadModel(facts2, facts2.main).text.replace(new RegExp(BLOCK, 'g'), '|');
     ok('Zimipedia\'s Quick facts label is not read with the article', factsText === 'Prose.|', factsText);
@@ -789,7 +788,45 @@ const tick = () => new Promise(r => setImmediate(r));
     doc.rect = () => ({ top: 700, bottom: 740, left: 0, right: 50, width: 50, height: 40 });
     ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
     ax._ttsFollowResume();
-    ok('tapping the voice state follows again, at once', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224));
+    ok('following again at once is what Play does (below)', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224));
+    // Scrolled away: nothing in the bar; Play brings the page to the sentence and follows again.
+    ax._ttsLose(); win.scrolled = null;
+    Object.assign(ax, { _ttsPaused: false, _ttsNow: { engine: 'kokoro' }, _ttsAudio: { pause() {}, play: () => Promise.resolve() }, _ttsHeld: null, _DEVICE_VOICE: 'device' });
+    ax._ttsPauseToggle();
+    ok('pausing leaves the page where it is, not following', ax._ttsPaused === true && !win.scrolled && ax._ttsRead.following === false);
+    ax._ttsPauseToggle();
+    ok('Play scrolls to the sentence being read and follows it again', ax._ttsPaused === false && ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224), JSON.stringify(win.scrolled));
+    // Left alone for _TTS_IDLE_FOLLOW_MS after scrolling away, it goes back by itself.
+    {
+      const timers = []; ax.setTimeout = (f, ms) => { timers.push({ f, ms }); return timers.length; }; ax.clearTimeout = n => { if (n) timers[n - 1] = null; };
+      const fire = () => { const t = timers.filter(Boolean).pop(); if (t) { timers[timers.indexOf(t)] = null; t.f(); } };
+      ax._TTS_IDLE_FOLLOW_MS = 6000; ax.document = ax.document || {}; ax.document.querySelector = () => null; ax.document.activeElement = null;
+      doc.activeElement = null; win.getSelection = () => ({ isCollapsed: true });
+      doc.rect = () => ({ top: 700, bottom: 740, left: 0, right: 50, width: 50, height: 40 });
+      ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
+      ax._ttsLose(); win.scrolled = null;
+      ok('scrolling away waits the idle time', timers.filter(Boolean).length === 1 && timers.filter(Boolean)[0].ms === 6000, timers.map(t => t && t.ms));
+      ax._ttsLose(); ax._ttsIdleArm();
+      ok('...and any input restarts the clock (one timer, not two)', timers.filter(Boolean).length === 1);
+      win.getSelection = () => ({ isCollapsed: false });
+      fire();
+      ok('...text selected: it does not pull the reader back, and asks again later', !win.scrolled && ax._ttsRead.following === false && timers.filter(Boolean).length === 1);
+      win.getSelection = () => ({ isCollapsed: true }); doc.activeElement = { tagName: 'TEXTAREA' };
+      fire();
+      ok('...nor under a field being typed in', !win.scrolled && ax._ttsRead.following === false);
+      doc.activeElement = null; ax.document.querySelector = () => ({});
+      fire();
+      ok('...nor with a lookup or highlight card open', !win.scrolled && ax._ttsRead.following === false);
+      ax.document.querySelector = () => null; ax._ttsPaused = true;
+      fire();
+      ok('...nor while paused (Play does that)', !win.scrolled && ax._ttsRead.following === false);
+      ax._ttsPaused = false; ax._ttsIdleArm();
+      fire();
+      ok('idle, nothing in hand: it scrolls to the sentence and follows again', ax._ttsRead.following === true && win.scrolled && win.scrolled.top === Math.round(700 - 224) && win.scrolled.behavior === 'smooth', JSON.stringify(win.scrolled));
+      ax.window.matchMedia = () => ({ matches: true }); ax._ttsLose(); win.scrolled = null; ax._ttsRead.key = ''; fire();
+      ok('...under reduced motion it jumps', win.scrolled && win.scrolled.behavior === 'auto', JSON.stringify(win.scrolled));
+      ax.window.matchMedia = () => ({ matches: false });
+    }
     ax.window.matchMedia = () => ({ matches: true });
     win.scrolled = null; ax._ttsRead.key = ''; ax._ttsAlongAt(3, 0);
     ok('reduced motion: it jumps, not glides', win.scrolled && win.scrolled.behavior === 'auto');

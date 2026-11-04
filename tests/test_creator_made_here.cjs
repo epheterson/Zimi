@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 
 const APP_JS = path.join(__dirname, '..', 'zimi', 'static', 'app.js');
-const src = fs.readFileSync(APP_JS, 'utf8');
+const src = [APP_JS.replace('app.js', 'manage.js'), APP_JS].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 
 function grab(name) {
   const needle = `function ${name}(`;

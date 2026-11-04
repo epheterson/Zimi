@@ -46,6 +46,7 @@ import threading
 import urllib.parse
 from collections import OrderedDict
 
+from zimi.libzimcompat import entry_by_id
 from zimi import epub as _epub
 from zimi import server as _srv
 from zimi.safety import loggable
@@ -246,13 +247,13 @@ def _under(archive, root):
     lo, hi = 0, archive.entry_count
     while lo < hi:
         mid = (lo + hi) // 2
-        if archive._get_entry_by_id(mid).path.encode("utf-8") < want:
+        if entry_by_id(archive, mid).path.encode("utf-8") < want:
             lo = mid + 1
         else:
             hi = mid
     out = []
     for i in range(lo, archive.entry_count):
-        e = archive._get_entry_by_id(i)
+        e = entry_by_id(archive, i)
         if not e.path.startswith(root + "/"):
             break
         if not e.is_redirect:

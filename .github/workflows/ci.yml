@@ -67,7 +67,21 @@ jobs:
           done
           exit $stale
 
-  test:
+  # THE WHOLE SUITE, in three kinds of job that run side by side (the old single
+  # `test` job took ~55 minutes: 83% of it was tests that drive a real browser).
+  #
+  #   test-quick    every test that does not need a browser, in parallel
+  #                 (pytest-xdist), plus the node tests and the packaging checks
+  #   test-browser  the browser tests (the `browser` marker, set in
+  #                 tests/conftest.py), split over 4 shards (--shard i/4, which
+  #                 puts every test module in exactly one shard), each parallel
+  #                 inside with xdist
+  #   test          the one check that is green only when both are; the name the
+  #                 branch protection and the release know
+  #
+  # Nothing is dropped: the quick tier is `-m "not browser"`, the shards are
+  # `-m browser`, and together they are the old `pytest tests/`.
+  test-quick:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
@@ -86,45 +100,20 @@ jobs:
       # FastMCP, and their MCP server refused to start.
       # Pillow as requirements.txt has it (favicons; the Red contrast test reads pixels).
       - name: Install package
-        run: pip install -e ".[pdf,mcp]" pytest "Pillow>=13.0.0"
+        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist "Pillow>=13.0.0"
 
-      # A real browser, so the paint gate actually runs somewhere.
-      #
-      # tests/test_reader_paints.py opens a made ZIM, scrolls it end to end and
-      # asks every image whether it decoded. That check exists because a
-      # capture passed every byte-level assertion in this suite — entries
-      # present, hrefs resolving, counts right — and still looked broken to a
-      # reader. Without chromium here it skips, and a gate that skips
-      # everywhere is not a gate.
-      - name: Install chromium for the paint gate
-        run: |
-          pip install playwright
-          python -m playwright install --with-deps chromium
-
-      # THE WHOLE SUITE. This used to name two files, which collected 305 of
-      # 2469 tests — so 88% of the suite only ran when somebody remembered to
-      # run it by hand, and a green tick here meant almost nothing.
-      #
-      # That is not theoretical. Six tests were failing on this branch for two
-      # days: two of them had caught real bugs, including one that silently ran
-      # the wrong capture engine. Every one was a test that already existed,
-      # was already correct, and that nothing was running.
-      #
-      # Tests needing a browser or a sidecar are `pytest.mark.skipif`, so they
-      # skip cleanly here instead of failing. -q because 2469 lines of -v is
-      # not something anybody reads.
-      - name: Run the test suite
-        run: python -m pytest tests/ -q
+      # The tier without a browser. Tests needing a sidecar are
+      # `pytest.mark.skipif`, so they skip cleanly here instead of failing.
+      # --dist loadfile keeps a module's tests (and its module-scoped fixtures)
+      # on one worker.
+      - name: Run the tests that need no browser
+        run: python -m pytest tests/ -m "not browser" -n auto --dist loadfile -q
 
       # Standalone node tests (vm-extracted client logic). They are not
       # collected by pytest, so without this step they only ever run by hand
-      # and rot silently.
+      # and rot silently. The one place they run: in parallel, once.
       - name: Run standalone JS tests
-        run: |
-          for f in tests/*.cjs; do
-            echo "--- $f"
-            node "$f"
-          done
+        run: python scripts/run_node_tests.py
 
       # The hook only protects a clone that has run `git config core.hooksPath
       # .githooks`. This is the backstop for one that has not.
@@ -169,6 +158,62 @@ jobs:
               assert any('assets/icon.png' in n for n in names), 'Missing assets'
               print(f'Wheel OK: {len(names)} files')
           "
+
+
+  test-browser:
+    name: test-browser (${{ matrix.shard }}/4)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # `mcp` too, so the MCP tests RUN rather than skip. They were skipping
+      # invisibly — which is the same failure as not having them, and this
+      # install line is also the only place CI exercises the extras a PyPI user
+      # actually resolves. It caught `mcp = ["mcp>=1.0.0"]` in pyproject having
+      # no upper bound while requirements.txt correctly pinned <2.0: anyone
+      # running `pip install zimi[mcp]` got mcp 2.x, which dropped the vendored
+      # FastMCP, and their MCP server refused to start.
+      # Pillow as requirements.txt has it (favicons; the Red contrast test reads pixels).
+      - name: Install package
+        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist "Pillow>=13.0.0"
+
+      # A real browser, so the paint gate actually runs somewhere.
+      #
+      # tests/test_reader_paints.py opens a made ZIM, scrolls it end to end and
+      # asks every image whether it decoded. That check exists because a
+      # capture passed every byte-level assertion in this suite — entries
+      # present, hrefs resolving, counts right — and still looked broken to a
+      # reader. Without chromium here it skips, and a gate that skips
+      # everywhere is not a gate.
+      - name: Install chromium for the paint gate
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      # --shard i/N: the browser modules, balanced by size, each in exactly one
+      # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
+      # add up to the whole.
+      - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
+        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadfile -q
+
+  test:
+    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    needs: [test-quick, test-browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every test job passed
+        run: |
+          echo "quick: ${{ needs.test-quick.result }}, browser: ${{ needs.test-browser.result }}"
+          [ "${{ needs.test-quick.result }}" = success ] && [ "${{ needs.test-browser.result }}" = success ]
 
   # The environment the DESKTOP release builds in, on every pull request, on
   # every runner it builds on.
@@ -227,7 +272,7 @@ jobs:
             || sudo apt-get install -y libgirepository1.0-dev
 
       - name: Install desktop dependencies
-        run: pip install -r desktop/requirements-desktop.txt pytest
+        run: pip install -r desktop/requirements-desktop.txt pytest pytest-xdist
 
       - name: Install libtorrent (in-process BT engine)
         shell: bash
@@ -249,7 +294,7 @@ jobs:
       # of the suite with nothing but an exit code, and the only way to know
       # which test was running is to have streamed its name before it ran.
       - name: Run the test suite as the desktop build runs it
-        run: python -m pytest tests/ -v -rf --tb=short
+        run: python -m pytest tests/ -v -rf --tb=short -n auto --dist loadfile
 
       # PyInstaller on the runner the AppImage and snap are actually built on.
       # This catches a bundle that stops building at all, which is the other
@@ -425,7 +470,9 @@ jobs:
           # host that file must belong to the user who ran the container, not
           # to a subordinate UID: that is the whole point of keep-id.
           for i in $(seq 1 30); do [ -f zimi-config/cache.json ] && break; sleep 1; done
-          ls -ln zimi-config
+          # Listing only: an atomic write's .tmp can vanish between readdir and
+          # stat, and ls then exits 1 under bash -e.
+          ls -ln zimi-config || true
           owner=$(stat -c %u zimi-config/cache.json)
           if [ "$owner" != "$(id -u)" ]; then
             echo "::error::cache.json is owned by uid $owner, not by $(id -u): the userns mapping is wrong"

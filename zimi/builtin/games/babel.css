@@ -6,7 +6,7 @@
 .bb-clue { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); }
 .bb-clue .bb-lang { flex: none; min-width: 5.5em; font-size: var(--fs-small); font-weight: 600; color: var(--accent); }
 .bb-clue .bb-word { flex: 1; font-size: var(--fs-brand); font-weight: 650; line-height: 1.2; overflow-wrap: anywhere; text-align: end; }
-.bb-clue .bb-tr { display: block; font-size: var(--fs-small); font-weight: 400; color: var(--ink2); }
+.bb-clue .bb-tr { display: block; font-size: var(--fs-small); font-weight: 400; color: var(--ink); }
 .bb-clue.new { border-color: var(--accent); background: var(--accent-glow); }
 .bb-clue.hidden { border-style: dashed; }   /* full-strength text: a dimmed label fails contrast */
 .bb-clue.hidden .bb-word { font-size: var(--fs-body); font-weight: 400; color: var(--ink2); }

@@ -80,15 +80,15 @@ def test_the_solver_is_never_a_win(served, browser):  # noqa: F811
 
 def test_undo_and_redo_are_bar_buttons_that_appear_with_a_move(served, browser):  # noqa: F811
     page = open_lightup(browser, served)
-    assert page.locator(".ar-bar #pz-undo").is_hidden(), "nothing to undo yet"
+    assert page.locator(".ar-bar #pz-undo").is_disabled(), "nothing to undo yet, and its place is kept"
     box = page.locator("#puzzlecanvas").bounding_box()
     # The deal is random: a tap on a black clue square is no move, so tap down the diagonal until one is a lamp.
     for share in (0.3, 0.45, 0.6, 0.75, 0.15, 0.9):
         page.mouse.click(box["x"] + box["width"] * share, box["y"] + box["height"] * share)
         frames(page)
-        if page.locator(".ar-bar #pz-undo").is_visible():
+        if page.locator(".ar-bar #pz-undo").is_enabled():
             break
-    assert page.locator(".ar-bar #pz-undo").is_visible()
+    assert page.locator(".ar-bar #pz-undo").is_enabled()
     page.click(".ar-bar #pz-undo")
     frames(page)
     assert page.locator(".ar-bar #pz-redo").is_visible(), "an undone move can be redone"
