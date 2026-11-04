@@ -842,7 +842,7 @@ function _ttsSpeakDevice(chunks, lang, from) {
     var u = new SpeechSynthesisUtterance(chunk);
     if (lang) u.lang = lang;
     u.rate = _ttsRate();
-    u.onstart = function() { if (!live()) return; clearTimeout(_ttsSpinTimer); _ttsNow.at = from + idx; _ttsNow.engine = _DEVICE_VOICE; _ttsNow.playing = true; _ttsNow.spin = false; _ttsAlongAt(from + idx, null); _ttsBarSync(); };
+    u.onstart = function() { if (!live()) return; clearTimeout(_ttsSpinTimer); _ttsNow.at = from + idx; _ttsNow.engine = _DEVICE_VOICE; _ttsNow.playing = _ttsNow.heard = true; _ttsNow.spin = false; _ttsAlongAt(from + idx, null); _ttsBarSync(); };
     u.onboundary = function(e) { if (live()) _ttsAlongChar(from + idx, e.charIndex); };
     if (idx === rest.length - 1) u.onend = function() { if (live()) _ttsSetSpeaking(false); };
     u.onerror = function(e) { if (live() && !(e && (e.error === 'interrupted' || e.error === 'canceled'))) _ttsSetSpeaking(false); };
@@ -1027,7 +1027,7 @@ function _ttsSpeakServer(chunks, lang, engines, run, onSlow, from) {
     if (waits) make();
     else for (var k = 1, n = _ttsPace(engines[eng]).work === null ? _TTS_AHEAD_UNMEASURED : _TTS_AHEAD; k <= n; k++) ask(i + k);
     clearTimeout(_ttsSpinTimer);
-    _ttsNow.playing = true; _ttsNow.spin = false; _ttsBarSync();
+    _ttsNow.playing = _ttsNow.heard = true; _ttsNow.spin = false; _ttsBarSync();
     _ttsAlongAudio(i, audio);
   };
   audio.ontimeupdate = function() { if (live()) _ttsAlongAudio(i, audio); };
@@ -1057,15 +1057,17 @@ function _ttsToggle() {
 // which voice it was. The bar says all three (a turning ring until the first
 // sound, then the voice), offers this language's voices where it plays
 // (remembered as Read aloud's own, Settings > Voices), and stops it.
-var _ttsNow = { at: 0, engine: '', playing: false, spin: false, lang: '', ahead: 0 }; // ahead: the voice is getting far enough ahead (a wait, never a number of seconds)
+var _ttsNow = { at: 0, engine: '', playing: false, spin: false, heard: false, lang: '', ahead: 0 }; // heard: a first sound came; ahead: the voice is getting far enough ahead (a wait, never a number of seconds)
 // Between sentences, or a sentence started again, the bar holds still; the
 // ring turns only for a wait long enough to notice (Eric, 2026-10-22:
 // "should hide unless it's a longer wait (seamless ui)").
 var _TTS_SPIN_AFTER_MS = 700, _ttsSpinTimer = 0;
 function _ttsHold() {
   clearTimeout(_ttsSpinTimer);
-  _ttsNow.playing = false; _ttsNow.spin = false;
+  // Before the first sound the wait is real: the ring turns at once (three still bars there read as a stuck player).
+  _ttsNow.playing = false; _ttsNow.spin = !_ttsNow.heard;
   _ttsBarSync();
+  if (!_ttsNow.heard) return;
   _ttsSpinTimer = setTimeout(function() {
     if (_ttsSpeaking && !_ttsNow.playing) { _ttsNow.spin = true; _ttsBarSync(); }
   }, _TTS_SPIN_AFTER_MS);

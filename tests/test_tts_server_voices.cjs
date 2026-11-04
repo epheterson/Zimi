@@ -993,7 +993,7 @@ const tick = () => new Promise(r => setImmediate(r));
     // Between sentences the bar holds still; the ring turns only after a wait
     // long enough to notice.
     const timersH = [];
-    const hv = { _ttsNow: { playing: true, spin: false }, _ttsSpeaking: true, _TTS_SPIN_AFTER_MS: 700, _ttsSpinTimer: 0, synced: 0,
+    const hv = { _ttsNow: { playing: true, spin: false, heard: true }, _ttsSpeaking: true, _TTS_SPIN_AFTER_MS: 700, _ttsSpinTimer: 0, synced: 0,
       clearTimeout() {}, setTimeout: (f, ms) => { timersH.push({ f, ms }); return timersH.length; } };
     hv._ttsBarSync = () => { hv.synced++; };
     vm.createContext(hv);
@@ -1004,6 +1004,17 @@ const tick = () => new Promise(r => setImmediate(r));
     ok('...a wait that goes on: the ring', hv._ttsNow.spin === true);
     hv._ttsNow.spin = false; hv._ttsHold(); hv._ttsNow.playing = true; timersH[1].f();
     ok('...one that ended in time: none', hv._ttsNow.spin === false);
+  }
+
+  {
+    // Before the first sound the wait is a real one: the ring turns at once, with no timer to wait for.
+    const timersF = [];
+    const fv = { _ttsNow: { playing: false, spin: false, heard: false }, _ttsSpeaking: true, _TTS_SPIN_AFTER_MS: 700, _ttsSpinTimer: 0,
+      clearTimeout() {}, setTimeout: (f, ms) => { timersF.push({ f, ms }); return timersF.length; }, _ttsBarSync() {} };
+    vm.createContext(fv);
+    vm.runInContext(fn('_ttsHold'), fv);
+    fv._ttsHold();
+    ok('getting ready: the ring at once', fv._ttsNow.spin === true && timersF.length === 0, JSON.stringify(fv._ttsNow));
   }
 
   {
