@@ -179,6 +179,9 @@ def test_tiles_by_view(browser, served):
             assert pg.evaluate("_ae.gl.earth.material.visible") is True
             assert pg.evaluate("AE_TARGETS.earth.min") == pytest.approx(1.12)
             return
+        # A data pack: served to the view, listed nowhere (Home, the library's grid).
+        listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
+        assert "zimi_almanac_hd" not in listed, listed
         # Far: level 0 covers the Earth, and its one map steps aside.
         _settle(
             pg,

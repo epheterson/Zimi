@@ -3004,7 +3004,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, _place.near(lat, lon))
 
             elif parsed.path == "/list":
-                result = _srv.list_zims()
+                # A data pack (server.DATA_PACKS) is a part of Zimi, not a book: not on Home, not in the grid.
+                result = [z for z in _srv.list_zims() if z.get("name") not in _srv.DATA_PACKS]
                 # Per-ZIM category overrides win over the _categorize_zim
                 # heuristic (#37). Applied here, not baked into the disk cache,
                 # so clearing an override instantly reverts to the heuristic.

@@ -1506,7 +1506,7 @@ function _aeLoadMaps(S) {
     S.moonUni.moonMapped.value = 1;
     _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
   });
-  _aeHdLoad(S);
+  if (_ae.hdInstalled && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }   // a view built again (it gives the GPU back)
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
 }
 
@@ -1532,9 +1532,6 @@ var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its s
 var AE_HD_MIN_ALT_KM = 400;
 var AE_DEG = Math.PI / 180;
 
-function _aeHdInstalled() {
-  return typeof zimsCache !== 'undefined' && (zimsCache || []).some(function (z) { return z.name === AE_HD_NAME; });
-}
 // Each body's tiled layers: the sampler each fills in the body's own shader, and the layer's folder in the ZIM.
 function _aeHdBodies(S) {
   return [
@@ -1547,11 +1544,12 @@ function _aeHdBodies(S) {
       minDist: AE_MIN_DIST_MOON }
   ];
 }
-// Reads the ZIM's list of layers once a view is built; a body whose layers are all there is drawn in tiles from then on.
-function _aeHdLoad(S, known) {
-  if (S.hd !== undefined) return;
+// Reads the ZIM's list of layers once the server says it is installed (the satellites answer, _aeHdShow: the library
+// lists it nowhere, server.DATA_PACKS); a body whose layers are all there is drawn in tiles from then on.
+function _aeHdLoad(S) {
+  if (S.hd) return;
   S.hd = null;
-  if (!(known || _aeHdInstalled()) || typeof fetch !== 'function') return;
+  if (typeof fetch !== 'function') return;
   fetch(AE_HD_BASE + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
@@ -1991,7 +1989,8 @@ function _aeHdShow(st) {
   if (!box) return;
   clearTimeout(_ae.hdPoll);
   var S = _ae.gl;
-  if (st && st.installed && S && !S.hd) { S.hd = undefined; _aeHdLoad(S, true); }
+  if (st && st.installed) _ae.hdInstalled = true;
+  if (_ae.hdInstalled && S && !S.hd && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }
   var text = '', offer = false;
   if (st && st.downloading) {
     text = _aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) });
