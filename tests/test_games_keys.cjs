@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
 const DIR = path.join(__dirname, '..', 'zimi', 'builtin', 'games');
 const ids = new Set(fs.readdirSync(DIR).filter(f => /\.html$/.test(f)).map(f => f.replace(/\.html$/, '')));
 // Keys that belong to the shelf or to a kit shared by games, not to one game.
-const SHARED = new Set(['recent', 'snaps', 'sort', 'view', 'players', 'watchspeed', 'save', 'stats', 'settings', 'ghost']);
+const SHARED = new Set(['recent', 'snaps', 'sort', 'view', 'players', 'watchspeed', 'save', 'stats', 'settings', 'ghost', 'room']);
 const bad = [];
 for (const f of fs.readdirSync(DIR).filter(f => /\.js$/.test(f))) {
   const src = fs.readFileSync(path.join(DIR, f), 'utf8');
