@@ -12,18 +12,21 @@ import { RailTool } from './zimcity/engine/railTool.js';
 import { RoadTool } from './zimcity/engine/roadTool.js';
 import { WireTool } from './zimcity/engine/wireTool.js';
 import * as TV from './zimcity/engine/tileValues.js';
+import * as Modern from './zimcity-modern.js';
 
 // The tray, in the order a city is built: a road, power to it, then the three zones; Bulldoze last before More.
 export var TRAY = ['road', 'wire', 'residential', 'commercial', 'industrial', 'bulldozer'];
 // The rest, in the More sheet.
-export var MORE = ['rail', 'park', 'police', 'fire', 'stadium', 'port', 'airport', 'coal', 'nuclear'];
+export var MORE = ['rail', 'park', 'police', 'fire', 'stadium', 'port', 'airport', 'coal', 'nuclear', 'solar', 'wind', 'datacenter'];
 
 // [cost, centre tile, size, animated] for the buildings; the drawn tools say their cost per tile.
 var BUILDINGS = {
   residential: [100, TV.FREEZ, 3, false], commercial: [100, TV.COMCLR, 3, false], industrial: [100, TV.INDCLR, 3, false],
   police: [500, TV.POLICESTATION, 3, false], fire: [500, TV.FIRESTATION, 3, false], stadium: [5000, TV.STADIUM, 4, false],
   port: [3000, TV.PORT, 4, false], airport: [10000, TV.AIRPORT, 6, false], coal: [3000, TV.POWERPLANT, 4, false],
-  nuclear: [5000, TV.NUCLEAR, 4, true]
+  nuclear: [5000, TV.NUCLEAR, 4, true],
+  // the patch layer's own (zimcity-modern.js), in the engine's spare 3 x 3 slots
+  solar: [3500, Modern.SOLAR, 3, false], wind: [2500, Modern.WIND, 3, false], datacenter: [12000, Modern.DATACENTER, 3, false]
 };
 export var PER_TILE = { road: 10, wire: 5, rail: 20, park: 10, bulldozer: 1 };
 
