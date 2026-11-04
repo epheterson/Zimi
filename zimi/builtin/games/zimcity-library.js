@@ -25,7 +25,11 @@ var ARTICLE = {
   'city.msg.pollution': ['Q131123', 'Air pollution'], 'city.msg.monster': ['Q1065444', 'Kaiju'], 'city.msg.meltdown': ['Q105807', 'Nuclear meltdown'],
   'city.msg.tornado': ['Q8081', 'Tornado'], 'city.msg.tax': ['Q8161', 'Tax'], 'city.msg.broke': ['Q152074', 'Bankruptcy'],
   'city.msg.town': ['Q3957', 'Town'], 'city.msg.city': ['Q515', 'City'], 'city.msg.capital': ['Q5119', 'Capital city'],
-  'city.msg.metropolis': ['Q200250', 'Metropolis'], 'city.msg.megalopolis': ['Q471822', 'Megalopolis']
+  'city.msg.metropolis': ['Q200250', 'Metropolis'], 'city.msg.megalopolis': ['Q471822', 'Megalopolis'],
+  'city.kind.datacenter': ['Q671224', 'Data center'], 'city.kind.solar': ['Q1003207', 'Photovoltaic power station'], 'city.kind.wind': ['Q194356', 'Wind farm'],
+  'city.msg.datacenter': ['Q671224', 'Data center'], 'city.msg.solar': ['Q1483757', 'Solar power'], 'city.msg.wind': ['Q43302', 'Wind power'],
+  'city.msg.heatwave': ['Q215864', 'Heat wave'], 'city.msg.sea': ['Q841083', 'Sea level rise'],
+  'climate.change': ['Q125928', 'Climate change'], 'climate.sea': ['Q841083', 'Sea level rise'], 'climate.heat': ['Q215864', 'Heat wave']
 };
 export var KEYS = Object.keys(ARTICLE);
 // More articles to find (the scenarios' and the ready-made cities' real places): call before find().

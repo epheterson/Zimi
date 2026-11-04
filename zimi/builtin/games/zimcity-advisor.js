@@ -4,6 +4,7 @@
 
 import * as TV from './zimcity/engine/tileValues.js';
 import { kindOf, isRoad } from './zimcity-words.js';
+import { SOLAR, WIND } from './zimcity-modern.js';
 
 var ZONES = { 'city.kind.residential': 'res', 'city.kind.commercial': 'com', 'city.kind.industrial': 'ind' };
 
@@ -23,7 +24,7 @@ export function survey(map) {
       var t = map.getTile(x, y), v = t.getValue();
       if (isRoad(v)) s.roads++;
       if (!t.isZone()) continue;
-      if (v === TV.POWERPLANT || v === TV.NUCLEAR) s.plants++;
+      if (v === TV.POWERPLANT || v === TV.NUCLEAR || v === SOLAR || v === WIND) s.plants++;
       var z = ZONES[kindOf(v)];
       if (!z) continue;
       s[z]++;
