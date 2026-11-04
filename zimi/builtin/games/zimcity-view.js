@@ -6,6 +6,7 @@
 
 import { AnimationManager } from './zimcity/engine/animationManager.js';
 import { TILE_INVALID } from './zimcity/engine/tileValues.js';
+import { atlas, ART } from './zimcity-art.js';
 
 export var TILE = 16;                        // the art's tile, in pixels
 var TILES_PER_ROW = 32;                      // tiles.png is 32 x 32 tiles
@@ -86,8 +87,11 @@ View.prototype.setCity = function (city) {
   this.city = city;
   var map = city.map;
   this.world = document.createElement('canvas');
-  this.world.width = map.width * TILE; this.world.height = map.height * TILE;
+  // the city at the atlas's size (twice the engine's tile), drawn in world units through a scale
+  this.world.width = map.width * ART; this.world.height = map.height * ART;
   this.wctx = this.world.getContext('2d');
+  this.wctx.setTransform(ART / TILE, 0, 0, ART / TILE, 0, 0);
+  this.wctx.imageSmoothingEnabled = false;
   this.painted = new Int32Array(map.width * map.height).fill(NOT_PAINTED);
   this.values = new Array(map.width * map.height);
   this.anim = new AnimationManager(map);
@@ -137,7 +141,7 @@ View.prototype.tileAt = function (sx, sy) {
 
 function drawTile(ctx, img, value, dx, dy) {
   if (value === TILE_INVALID || value < 0) { ctx.clearRect(dx, dy, TILE, TILE); return; }
-  ctx.drawImage(img, (value % TILES_PER_ROW) * TILE, Math.floor(value / TILES_PER_ROW) * TILE, TILE, TILE, dx, dy, TILE, TILE);
+  ctx.drawImage(img, (value % TILES_PER_ROW) * ART, Math.floor(value / TILES_PER_ROW) * ART, ART, ART, dx, dy, TILE, TILE);
 }
 
 // Bring the world canvas up to date: only the tiles whose picture changed are drawn again.
@@ -180,7 +184,7 @@ function darkNow() {
 View.prototype.tileArt = function () {
   var dark = darkNow();
   if (!this._art || this._artDark !== dark) {
-    this._art = recolour(this.art.tiles, dark); this._artDark = dark;
+    this._art = atlas(this.art.tiles, recolour(this.art.tiles, dark), dark); this._artDark = dark;
     if (this.painted) this.painted.fill(NOT_PAINTED);
   }
   return this._art;
@@ -196,9 +200,10 @@ View.prototype.draw = function (now) {
   ctx.imageSmoothingEnabled = false;
   ctx.setTransform(k, 0, 0, k, -c.x * k, -c.y * k);
   // Only the part of the city on screen is copied.
+  var ww = map.width * TILE, wh = map.height * TILE, up = ART / TILE;
   var sx = Math.max(0, Math.floor(c.x)), sy = Math.max(0, Math.floor(c.y));
-  var sw = Math.min(this.world.width, Math.ceil(c.x + this.w / c.s) + 1) - sx, sh = Math.min(this.world.height, Math.ceil(c.y + this.h / c.s) + 1) - sy;
-  if (sw > 0 && sh > 0) ctx.drawImage(this.world, sx, sy, sw, sh, sx, sy, sw, sh);
+  var sw = Math.min(ww, Math.ceil(c.x + this.w / c.s) + 1) - sx, sh = Math.min(wh, Math.ceil(c.y + this.h / c.s) + 1) - sy;
+  if (sw > 0 && sh > 0) ctx.drawImage(this.world, sx * up, sy * up, sw * up, sh * up, sx, sy, sw, sh);
   if (this.layer !== 'off' && LAYERS[this.layer]) {
     ctx.imageSmoothingEnabled = true;
     ctx.globalAlpha = LAYER_ALPHA;

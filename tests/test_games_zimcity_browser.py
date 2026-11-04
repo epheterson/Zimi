@@ -330,3 +330,16 @@ def test_keep_open_and_delete_a_city(browser, site):
     pg.click(OURS + " .cy-kept .ar-btn >> nth=1")
     pg.wait_for_timeout(100)
     assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 0
+
+
+def test_the_redrawn_roads_follow_the_engines_shapes(browser, site):
+    """The modern atlas reads each road tile's edges from the original picture: a straight runs one way, a crossing
+    all four, a T three; the light theme's asphalt is #3b3d42 and the ground #cdbf98."""
+    pg = phone(browser, site)
+    got = pg.evaluate("""() => {
+      const a = window.__zimcity.view.tileArt(), ctx = a.getContext('2d'), ART = 32;
+      const road = (t, x, y) => { const d = ctx.getImageData((t % 32) * ART + x, Math.floor(t / 32) * ART + y, 1, 1).data; return d[0] === 0x3b && d[1] === 0x3d && d[2] === 0x42; };
+      const ways = (t) => [road(t, 16, 1), road(t, 30, 13), road(t, 16, 30), road(t, 1, 13)].map(Number).join('');
+      return { h: ways(66), v: ways(67), cross: ways(76), heavy: ways(144 + 12), t: ways(75) };
+    }""")
+    assert got == {"h": "0101", "v": "1010", "cross": "1111", "heavy": "1111", "t": "1011"}, got
