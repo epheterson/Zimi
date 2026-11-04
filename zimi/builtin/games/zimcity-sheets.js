@@ -122,6 +122,8 @@ export function inspectSheet(s, x, y) {
     if (held.length) body.push(el('p', 'gs-text cy-why', T('city.why2.title', { reasons: held.map(function (k) { return T('city.why2.' + k); }).join(T('city.why2.and')) })));
   }
   body.unshift(list(rows));
+  var read = s.library.link(kind, T);
+  if (read) body.push(read);
   Shell.sheet({ title: T(kind), body: body, actions: [{ label: T('shell.close'), primary: true }] });
 }
 

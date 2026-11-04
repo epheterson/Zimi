@@ -69,3 +69,17 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
   .cy-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cy-held { white-space: normal; }
 }
+
+/* The news card: an article's lead over the top of the map when something happens that the library knows about. */
+.cy-news { position: absolute; z-index: 1; top: var(--sp-2); left: var(--gutter); right: var(--gutter); display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
+.cy-news[hidden] { display: none; }
+.cy-news-link { flex: 1 1 auto; min-width: 0; display: flex; gap: var(--sp-3); color: var(--ink); text-decoration: none; }
+.cy-news-img { flex: none; width: 56px; height: 56px; border-radius: var(--r-chip); object-fit: cover; background: var(--surface); }
+.cy-news-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cy-news-text small { font-size: var(--fs-small); color: var(--accent); }
+.cy-news-text b { font-size: var(--fs-body); font-weight: 650; }
+.cy-news-text span { font-size: var(--fs-small); color: var(--ink2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cy-news-close { flex: none; width: var(--target); height: var(--target); margin: calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) 0 0; border: 0; background: none; color: var(--ink2); font-size: 22px; cursor: pointer; }
+@media (prefers-reduced-motion: no-preference) { .cy-news:not([hidden]) { animation: cy-news-in 200ms ease-out; } }
+@keyframes cy-news-in { from { opacity: 0; transform: translateY(-6px); } }
+.cy-read { margin-top: var(--sp-2); }

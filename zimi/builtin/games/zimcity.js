@@ -13,6 +13,7 @@ import { View } from './zimcity-view.js';
 import { Input } from './zimcity-input.js';
 import * as Tools from './zimcity-tools.js';
 import * as Words from './zimcity-words.js';
+import * as Library from './zimcity-library.js';
 import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
@@ -107,8 +108,34 @@ function heard(subject) {
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (subject === Messages.REACHED_METROPOLIS && !city.won) { city.won = true; record('metropolis'); }
   say(T(key), Words.URGENT.indexOf(subject) >= 0);
+  news(key);
   if (subject === Messages.REACHED_METROPOLIS) metropolis();
 }
+
+// The news card: when something happens that the library has an article about (a fire, a jam, a town becoming a
+// city), its lead sits over the top of the map for a while, one at a time, each story at most once in a while.
+var NEWS_MS = 15000, NEWS_AGAIN_MS = 10 * 60000, newsAt = {}, newsTimer = 0, newsEl = $('cy-news');
+function news(key) {
+  if (!Library.articleFor(key) || Date.now() - (newsAt[key] || 0) < NEWS_AGAIN_MS || !newsEl.hidden) return;
+  newsAt[key] = Date.now();
+  Library.lead(key).then(function (l) { if (l) showNews(l); });
+}
+function showNews(l) {
+  newsEl.textContent = '';
+  var link = d.createElement('a'), text = d.createElement('span'), close = d.createElement('button');
+  link.className = 'cy-news-link';
+  if (l.thumbnail) { var img = d.createElement('img'); img.src = l.thumbnail; img.alt = ''; img.className = 'cy-news-img'; link.appendChild(img); }
+  text.className = 'cy-news-text';
+  [['small', T('city.news')], ['b', l.title], ['span', l.blurb]].forEach(function (p) { var e = d.createElement(p[0]); e.textContent = p[1]; text.appendChild(e); });
+  link.appendChild(text);
+  root.GamesLib.articleLink(link, l.zim, l.path);
+  close.type = 'button'; close.className = 'cy-news-close'; close.setAttribute('aria-label', T('shell.close')); close.textContent = '\u00d7';
+  close.addEventListener('click', hideNews);
+  newsEl.appendChild(link); newsEl.appendChild(close);
+  newsEl.hidden = false;
+  clearTimeout(newsTimer); newsTimer = setTimeout(hideNews, NEWS_MS);
+}
+function hideNews() { clearTimeout(newsTimer); newsEl.hidden = true; newsEl.textContent = ''; }
 
 // The status line: one message at a time, each up for a few seconds; an urgent one (a fire, a crash) goes first.
 var messages = [], shownAt = 0, msgTimer = 0;
@@ -345,7 +372,7 @@ var sheets = {
   paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
   level: function (v) { if (v !== undefined) pendingLevel = v; return pendingLevel; },
-  hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
+  library: Library, hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip
 };
 function openBudget(forced) { budgetSheet(sheets, forced); }
 
@@ -411,10 +438,11 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); } };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); }, news: news, library: Library };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: unpack });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }
 demand();
 summary();
+Library.find();
 requestAnimationFrame(frame);
