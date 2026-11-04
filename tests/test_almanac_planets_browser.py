@@ -364,6 +364,55 @@ def test_the_iss_close_up(served):
             br.close()
 
 
+def test_the_iss_flight_rings_and_a_tap_on_it(served):
+    """A flight to the ISS is the fly-between too: a circle on the Earth it leaves and on the station; never a name of
+    its own beside its label. A tap on its dot in the Earth view, or on the model close up, goes to it and follows."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.issBasis; }", timeout=60_000, polling=200)
+            assert pg.evaluate("document.getElementById('ae-bm-iss').hidden"), "no ISS mark outside a flight"
+            rings = pg.evaluate("""() => { _aePreset('iss'); var f = _ae.fly; f.start = performance.now() - AE_FLY_APPROACH_MS; _aeStepFly(performance.now());
+                _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene); var out = { hold: !!f.hold };
+                ['earth', 'iss'].forEach(function (b) { var el = document.getElementById('ae-bm-' + b);
+                  out[b] = { shown: !el.hidden, ringed: el.classList.contains('ae-bm-ringed'), ring: getComputedStyle(el.querySelector('.ae-ring')).display }; });
+                _ae.fly = null; return out; }""")
+            assert rings["hold"], rings
+            for b in ("earth", "iss"):
+                assert rings[b]["shown"] and rings[b]["ringed"] and rings[b]["ring"] != "none", (b, rings)
+            # Back at the Earth, a tap on the ISS's dot.
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('earth');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'earth'; }", timeout=30_000, polling=100)
+            spot = pg.evaluate("""() => { var best = null; for (var az = 0; az < 6.28 && !best; az += 0.4) for (var el = -1.2; el < 1.3 && !best; el += 0.4) {
+                  _ae.az = az; _ae.el_ = el; _aeUpdate(_aeDisplayMs()); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();
+                  var s = _aeProject(_ae.issPos); if (s && !_aeBehindEarth(_ae.issPos) && s.x > 30 && s.x < _ae.w - 30 && s.y > 120 && s.y < _ae.h - 250) best = s; }
+                return best; }""")
+            assert spot, "the ISS is somewhere in sight"
+            pg.evaluate("(s) => _aeTap(s.x, s.y)", spot)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'iss' && _ae.gl.iss && _ae.gl.iss.root.visible; }", timeout=30_000, polling=100)
+            # Close to it from the Earth's target: a tap on the model off its middle. One update and the tap in one
+            # step (at 330 m the station crosses its own length in a hundredth of a second).
+            pg.evaluate("_ae.fly = null; _aePreset('earth');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'earth'; }", timeout=30_000, polling=100)
+            got = pg.evaluate("""() => { _aeUpdate(_aeDisplayMs()); var p = _ae.issPos, d = _aeNorm(p);
+                var at = _aeAdd(p, _aeScale(d, AE_ISS_SPAN_RE * 3)); _ae.dist = _aeLen(at); var a = _aeAzElOf(at); _ae.az = a.az; _ae.el_ = a.el;
+                _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(); var s = _aeProject(p);
+                if (!s) return null; _ae.positions = []; var b = _aeBodyAt(s.x + 25, s.y + 10); _aeTap(s.x + 25, s.y + 10); return [b, _ae.target]; }""")
+            assert got == ["iss", "iss"], got
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_ae.gl.iss && _ae.gl.iss.root.visible; }", timeout=30_000, polling=100)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
 @pytest.mark.parametrize("width,lang", [(390, "en"), (360, "en"), (360, "ru"), (360, "ar")])
 def test_the_row_is_one_line(served, width, lang):
     """Earth, Satellites, Moon, Sun, Planets and Go to share one line on a phone, in English and in the longest

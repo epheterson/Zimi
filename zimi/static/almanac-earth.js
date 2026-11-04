@@ -3336,7 +3336,8 @@ function _aePlaceCamera() {
   // And from every planet and moon, and the probe in view: in a flight the body left behind stands in the foreground,
   // and a near plane set by the Earth or the Sun alone cut it away (its ring went with it).
   var toBody = _aeIsProbe(_ae.target) ? _aeLen(_aeSub(pos, _aeTargetPos())) - AE_PROBE_SURFACE : Infinity;
-  if (_ae.issPos && S.iss && S.iss.root.visible) toBody = Math.min(toBody, _aeLen(_aeSub(pos, _ae.issPos)) - AE_ISS_SPAN_RE / 2);
+  // The station too, drawn or not yet (the first frame close by would put it in front of the near plane).
+  if (_ae.issPos) toBody = Math.min(toBody, _aeLen(_aeSub(pos, _ae.issPos)) - AE_ISS_SPAN_RE / 2);
   var pl = _ae.gl.planets;
   for (var pk in pl) {
     if (!pl[pk].pos) continue;
@@ -3439,7 +3440,7 @@ function _aePreset(name) {
     var side = _aeNorm(_aeAdd(_aeNorm(_aeCross(fromSun, [0, 0, 1])), _aeScale([0, 0, 1], AE_PROBE_VIEW_LIFT)));
     // Near a planet (Juno, Webb), far enough out to have the planet in the picture too.
     var near = AE_MARKED.reduce(function (best, m) {
-      var q = m.body === name || _aeIsProbe(m.body) ? null : _aeBodyPos(m.body);
+      var q = m.body === name || m.flightOnly || _aeIsProbe(m.body) ? null : _aeBodyPos(m.body);
       var d = q ? _aeLen(_aeSub(q, pp)) : Infinity;
       return d < best ? d : best;
     }, Infinity);
@@ -3797,6 +3798,8 @@ var AE_ISS_LOOK = [[[0.86, 0.85, 0.82], 0.25, 24], [[0.62, 0.62, 0.6], 0.3, 30],
   [[0.94, 0.94, 0.96], 0.15, 12], [[0.12, 0.15, 0.3], 1.2, 70]];
 var _aeIssData = null, _aeIssLoading = false;
 AE_TARGETS.iss = { min: AE_ISS_SPAN_RE * 0.9, max: 0.5, surface: AE_ISS_SPAN_RE / 2 };
+// A mark for the flights' circles (and a tap on the model close up), never a name: its own label (ae-lbl-iss) has that.
+AE_MARKED.push({ body: 'iss', flightOnly: true, name: function () { return _aeT('alm_earth_iss_short'); } });
 var AE_ISS_VERT = [
   'attribute float cls;',
   'varying vec3 vView;',
@@ -4064,7 +4067,7 @@ function _aeUpdateMarks(sc) {
     if (!el) continue;
     var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
-    if (!pos[body]) { if (!el.hidden) el.hidden = true; continue; }
+    if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
     // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).
     var s = (_ae.target === 'iss' && !ringed) || (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
@@ -4259,6 +4262,8 @@ function _aeTap(x, y) {
     var d = Math.hypot(s.x - x, s.y - y);
     if (d < bestD) { bestD = d; best = p; }
   }
+  // The ISS: go to it, as Go to does (close up, following it round).
+  if (best && _ae.sats.list[best.idx].iss && _ae.issBasis) { _aePreset('iss'); return; }
   if (best) {
     _ae.selected = { norad: _ae.sats.list[best.idx].omm.NORAD_CAT_ID, tapMs: _aeDisplayMs() };
     _aeRenderCard();
