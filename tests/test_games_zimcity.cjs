@@ -96,16 +96,30 @@ function seeded(seed, fn) {
   two.sim.budget.spend(500);
   check(heard.length === 0, 'the first city hears nothing of the second (' + heard.length + ' events)');
 
-  // A kept city comes back the same: map, money and date.
-  const kept = {};
-  cy.sim.save(kept);
-  const json = JSON.parse(JSON.stringify(kept));
-  const back = new Simulation(new GameMap(W, H), Simulation.LEVEL_EASY, Simulation.SPEED_MED, json);
-  // The engine runs one map scan as it loads (upstream does too), which can move a zone a step; the rest is tile for tile.
-  const was = values(cy.map), now = values(back._map), moved = was.filter((v, i) => v !== now[i]).length;
-  check(moved < W * H / 200, 'the map comes back, but for a zone the loading scan moved (' + moved + ' differ)');
-  check([[25, 24], [40, 24], [21, 20], [24, 23], [24, 25]].every((p) => back._map.getTileValue(p[0], p[1]) === cy.map.getTileValue(p[0], p[1])), 'the roads, the plant and the power line are where they were');
-  check(back.budget.totalFunds === cy.sim.budget.totalFunds && back.getDate().year === cy.sim.getDate().year, 'the money and the year come back');
+  // A kept city comes back the same: every tile, the money and the date (the loading scan's extra growth step is undone).
+  const Save = await mod('zimcity-save.js');
+  const kept = JSON.parse(JSON.stringify(Save.packSim(cy.sim)));
+  const back = Save.unpackSim(kept, Simulation.LEVEL_EASY, Simulation.SPEED_MED);
+  const was = values(cy.map), now = values(back.map), moved = was.filter((v, i) => v !== now[i]).length;
+  check(moved === 0, 'the map comes back tile for tile (' + moved + ' differ)');
+  check(back.sim.budget.totalFunds === cy.sim.budget.totalFunds && back.sim.getDate().year === cy.sim.getDate().year, 'the money and the year come back');
+  let goesOn = null;
+  try { for (let i = 0; i < 500; i++) { back.sim._simulate(back.sim._constructSimData()); back.sim._updateTime(); } } catch (e) { goesOn = e; }
+  check(!goesOn && back.sim._census.resPop > 0, 'and it carries on from there');
+  check(Save.unpackSim({ map: [1, 2] }) === null, 'a save of the wrong size is refused');
+
+  // The advisor names the next step as a city is built, and falls quiet once it stands.
+  const { advise } = await mod('zimcity-advisor.js');
+  const ad = city(15), steps = [];
+  steps.push(advise(ad.map));
+  Tools.build(ad, 'road', [[20, 24]].concat(Tools.steps([20, 24], [43, 24]))); steps.push(advise(ad.map));
+  Tools.build(ad, 'coal', [[22, 21]]); steps.push(advise(ad.map));
+  Tools.build(ad, 'residential', [[40, 30]]); steps.push(advise(ad.map));   // far from power and the road
+  step(ad, 256); steps.push(advise(ad.map));
+  Tools.build(ad, 'bulldozer', [[40, 30]]);
+  Tools.build(ad, 'residential', [[26, 22]]); step(ad, 256); steps.push(advise(ad.map));
+  Tools.build(ad, 'commercial', [[26, 26]]); Tools.build(ad, 'wire', [[24, 24], [24, 25]]); step(ad, 256); steps.push(advise(ad.map));
+  check(steps.join() === 'city.adv.road,city.adv.plant,city.adv.zone,city.adv.power,city.adv.power,city.adv.jobs,', 'the advisor walks the first steps (' + steps.join() + ')');
 
   if (failures) { console.log(failures + ' failed'); process.exit(1); }
   console.log('zimcity: all passed');
