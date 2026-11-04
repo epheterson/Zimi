@@ -5462,8 +5462,78 @@ function _freshDotHtml(list) {
   list.forEach(function(z) { var b = _zimBadge(z); if (b) counts[b.label === 'updated' ? 'updated' : 'added']++; });
   if (!counts.added && !counts.updated) return '';
   var label = ['added', 'updated'].filter(function(k) { return counts[k]; }).map(function(k) { return t('recent_' + k + '_dot', { n: counts[k] }); }).join(', ');
-  return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
+  var names = list.filter(function(z) { return _zimBadge(z); }).map(function(z) { return z.name; });
+  // The dot explains itself: hover it, or tap it on a touch screen (_dotWhy).
+  return '<span class="rc-dot mark why" role="button" tabindex="0" data-why="' + escAttr(names.join(',')) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
 }
+// How a ZIM came to be what it is (zimi.server.zim_updates), newest first: the Zimi release that changed one of
+// Zimi's own ZIMs with what it brought, or a library ZIM's arrival and each update, with its edition and size.
+var _UPD_EDITION = /_(\d{4}-\d{2})[a-z]?\.zim$/;
+function _updateItemHtml(u, title) {
+  var day = u.ts ? fmtDate(new Date(u.ts * 1000), { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  var head, more = '';
+  if (u.event === 'release') {
+    head = t('upd_release', { v: u.version || '' });
+    more = (u.notes || []).map(function(n) { return '<div class="upd-note">' + esc(n) + '</div>'; }).join('');
+  } else {
+    var ed = _UPD_EDITION.exec(u.file || '');
+    head = t(u.event === 'updated' ? 'upd_updated' : 'upd_added') + (ed ? ' \u00b7 ' + t('upd_edition', { date: ed[1] }) : '') +
+      (u.size_bytes ? ' \u00b7 ' + _fmtBytes(u.size_bytes) : '');
+  }
+  return '<li class="upd"><div class="upd-head">' + (title ? '<b>' + esc(title) + '</b> ' : '') + esc(head) +
+    (day ? '<span class="upd-day">' + esc(day) + '</span>' : '') + '</div>' + more + '</li>';
+}
+function _updatesListHtml(updates, title) {
+  return '<ul class="upd-list">' + (updates || []).map(function(u) { return _updateItemHtml(u, title); }).join('') + '</ul>';
+}
+// The dot's popover: what lit it, asked of the server only now (nothing on Home's way to drawing).
+var _DOT_WHY_ID = 'dot-why';
+function _dotWhyClose() { var el = document.getElementById(_DOT_WHY_ID); if (el) el.remove(); }
+function _dotWhy(dot) {
+  var names = (dot.getAttribute('data-why') || '').split(',').filter(Boolean);
+  if (!names.length) return;
+  _dotWhyClose();
+  var pop = document.createElement('div');
+  pop.id = _DOT_WHY_ID; pop.className = 'dot-why'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', t('dot_why'));
+  pop.innerHTML = '<div class="dot-why-h">' + tH('dot_why') + '</div><div class="dot-why-b">' + tH('loading') + '</div>';
+  document.body.appendChild(pop);
+  var r = dot.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 24);
+  pop.style.width = w + 'px';
+  pop.style.left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 12)) + 'px';
+  pop.style.top = (r.bottom + window.scrollY + 8) + 'px';
+  pop._dot = dot;
+  serverFetch('/zim-updates?zims=' + encodeURIComponent(names.join(','))).then(function(res) { return res.json(); }).then(function(d) {
+    var b = pop.querySelector('.dot-why-b'); if (!b || !pop.isConnected) return;
+    var fresh = function(u) { return u.ts && Date.now() / 1000 - u.ts < _ZIM_BADGE_BACKSTOP_DAYS * 86400; };
+    b.innerHTML = names.map(function(n) {
+      var z = _zimInfo(n), list = ((d.updates || {})[n] || []).filter(fresh);
+      // A change the history never recorded (before it kept them, or copied in by hand): the stamps still say when.
+      if (!list.length && z) { var b = _zimBadge(z); if (b) list = [{ event: b.label === 'updated' ? 'updated' : 'download', ts: b.label === 'updated' ? z.updated_at : z.first_seen, file: z.file || '', size_bytes: z.size_bytes || 0 }]; }
+      return list.length ? _updatesListHtml(list.slice(0, 3), (z && (z.title || z.name)) || n) : '';
+    }).join('') || '';
+  }).catch(function() { var b = pop.querySelector('.dot-why-b'); if (b) b.textContent = t('zi_load_failed'); });
+}
+// Hover on a pointer that hovers; a tap on the dot itself on a touch screen (never the tile's tap).
+document.addEventListener('mouseover', function(e) {
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot && matchMedia('(hover: hover)').matches) { var open = document.getElementById(_DOT_WHY_ID); if (!open || open._dot !== dot) _dotWhy(dot); }
+});
+document.addEventListener('mouseout', function(e) {
+  var open = document.getElementById(_DOT_WHY_ID), to = e.relatedTarget;
+  if (open && matchMedia('(hover: hover)').matches && e.target.closest && e.target.closest('.rc-dot.why') && !(to && open.contains(to))) _dotWhyClose();
+});
+document.addEventListener('click', function(e) {
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot) { e.preventDefault(); e.stopPropagation(); _dotWhy(dot); return; }
+  var open = document.getElementById(_DOT_WHY_ID);
+  if (open && !open.contains(e.target)) _dotWhyClose();
+}, true);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') _dotWhyClose();
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); _dotWhy(dot); }
+});
+window.addEventListener('scroll', _dotWhyClose, { passive: true });
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
@@ -6050,6 +6120,11 @@ function _ziOtherHtml(other) {
 // A catalog ZIM's file name ends in its edition's month: what the auto-updater matches on.
 var _DATED_ZIM_FILE_RE = /_\d{4}-\d{2}\.zim$/;
 
+// When it last changed: its newest update, else when it arrived.
+function _ziLastUpdated(info) {
+  var u = (info.updates || [])[0], ts = (u && u.ts) || info.updated_at || info.first_seen;
+  return ts ? esc(fmtDate(new Date(ts * 1000), { day: 'numeric', month: 'long', year: 'numeric' })) : '';
+}
 function _ziBodyHtml(info) {
   // Same icon rule the cards follow: the ZIM's own illustration when it has
   // one, its initial otherwise. An empty frame would read as a broken image.
@@ -6098,13 +6173,15 @@ function _ziBodyHtml(info) {
     _ziRow('zi_entries', num(info.entries)) +
     _ziRow('zi_size', info.size_bytes ? esc(_fmtBytes(info.size_bytes)) : '') +
     _ziRow('zi_date', esc(info.date)) +
+    _ziRow('zi_last_updated', _ziLastUpdated(info)) +
     _ziRow('zi_creator', esc(info.creator)) +
     _ziRow('zi_publisher', esc(info.publisher)) +
     _ziRow('zi_source', _ziSourceHtml(info.source)) +
     _ziRow('zi_scraper', esc(info.scraper)) +
     _ziRow('zi_flavour', esc(info.flavour)) +
     _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
-    '</div>';
+    '</div>' +
+    ((info.updates || []).length ? '<div class="zi-sec">' + tH('zi_update_history') + '</div>' + _updatesListHtml(info.updates) : '');
   // Incomplete, at the top as well as in the history: the latest record that
   // made or re-made the file is the one that decides what is in it now.
   // A ZIM warc2zim wrote (the alive engine) has no history; its capture

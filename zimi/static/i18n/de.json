@@ -3542,5 +3542,12 @@
   "near_pick_largest": "{place} bei {where}: von {n} Orten dieses Namens der größte.",
   "near_not_found": "Keine installierte Karte kennt einen Ort namens {place}.",
   "app_loading_slow": "Wird noch vorbereitet …",
-  "app_loading_failed": "Das konnte nicht geladen werden."
+  "app_loading_failed": "Das konnte nicht geladen werden.",
+  "zi_last_updated": "Zuletzt aktualisiert",
+  "zi_update_history": "Verlauf der Aktualisierungen",
+  "upd_added": "Hinzugefügt",
+  "upd_updated": "Aktualisiert",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "Ausgabe {date}",
+  "dot_why": "Was neu ist"
 }

@@ -3542,5 +3542,12 @@
   "near_pick_largest": "{place}（{where}）：同名的 {n} 个地点中最大的一个。",
   "near_not_found": "已安装的地图上没有名为 {place} 的地点。",
   "app_loading_slow": "仍在准备中…",
-  "app_loading_failed": "未能加载。"
+  "app_loading_failed": "未能加载。",
+  "zi_last_updated": "最近更新",
+  "zi_update_history": "更新记录",
+  "upd_added": "已添加",
+  "upd_updated": "已更新",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "{date} 版",
+  "dot_why": "新内容"
 }

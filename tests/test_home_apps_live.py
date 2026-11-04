@@ -365,3 +365,51 @@ def test_opening_an_app_clears_its_dot(served, route):
             assert not pg.evaluate(tile_dot)
         finally:
             br.close()
+
+
+@pytest.mark.parametrize("touch", [False, True], ids=["hover", "tap"])
+def test_the_dot_says_what_lit_it(served, touch):
+    """Eric, 2026-11-04: "maybe if I hover on a dot show the updates that lead to it". Hover the dot (a
+    mouse), or tap the dot itself (a phone): a small list says what changed, here CrashCourse's update an
+    hour ago, and the tap does not open the app."""
+    from playwright.sync_api import sync_playwright
+
+    dot = "#output .apps-grid .app-tile[data-app='tube'] .rc-dot"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        size = {"width": 390, "height": 844} if touch else {"width": 1280, "height": 900}
+        pg = br.new_context(viewport=size, is_mobile=touch, has_touch=touch).new_page()
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(HOME, timeout=30000)
+            if touch:
+                pg.locator(dot).tap()
+            else:
+                pg.locator(dot).hover()
+            pg.wait_for_function("() => { const p = document.getElementById('dot-why'); return p && p.querySelector('.upd'); }", timeout=10000)
+            text = pg.inner_text("#dot-why")
+            assert "CrashCourse" in text and pg.evaluate("t('upd_updated')") in text, text
+            assert not pg.evaluate("() => typeof _tubeOpen !== 'undefined' && _tubeOpen"), "the dot is not the tile"
+            if os.environ.get("ZIMI_SHOTS"):
+                pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "dot-why-%s.png" % ("tap" if touch else "hover")))
+        finally:
+            br.close()
+
+
+def test_about_says_when_it_last_changed_and_how(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True).new_page()
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(HOME, timeout=30000)
+            pg.evaluate("_openZimAbout('crashcourse')")
+            pg.wait_for_function("() => !!document.querySelector('.zi-panel .zi-rows')", timeout=10000)
+            text = pg.text_content(".zi-panel")
+            assert pg.evaluate("t('zi_last_updated')") in text, text
+            if os.environ.get("ZIMI_SHOTS"):
+                pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "about-updated.png"), full_page=True)
+        finally:
+            br.close()

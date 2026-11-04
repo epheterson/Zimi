@@ -3542,5 +3542,12 @@
   "near_pick_largest": "{place} à {where} : sur {n} lieux de ce nom, le plus grand.",
   "near_not_found": "Aucune carte installée ne nomme un lieu appelé {place}.",
   "app_loading_slow": "Encore un instant…",
-  "app_loading_failed": "Le chargement a échoué."
+  "app_loading_failed": "Le chargement a échoué.",
+  "zi_last_updated": "Dernière mise à jour",
+  "zi_update_history": "Historique des mises à jour",
+  "upd_added": "Ajouté",
+  "upd_updated": "Mis à jour",
+  "upd_release": "Zimi {v}",
+  "upd_edition": "Édition {date}",
+  "dot_why": "Ce qui est nouveau"
 }

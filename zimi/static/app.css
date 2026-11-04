@@ -630,6 +630,8 @@
   .rc-dot { display: inline-flex; align-items: center; gap: 5px; }
   .rc-dot i { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-sizing: border-box; }
   .rc-dot.mark { padding: 0 4px; pointer-events: none; }
+  /* A dot that explains itself (_dotWhy): it takes the pointer, with a target a finger can hit. */
+  .rc-dot.mark.why { pointer-events: auto; cursor: help; min-width: 24px; min-height: 24px; justify-content: center; }
   .app-banner .card-foot { display: none; }
 
   /* ── Pills (categories + search source filters) ── */
@@ -4445,3 +4447,12 @@ body.login-gate .gate-help { margin: 0; }
 
 /* A reload into a game: the bar's middle waits for the game's own header (app.js _gameHeadBoot). */
 .game-booting .topbar-search { visibility: hidden; }
+
+/* What lit a dot (_dotWhy), and a ZIM's update history in About: one list. */
+.dot-why { position: absolute; z-index: 400; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; background: var(--surface, var(--bg)); color: var(--text);
+  border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.18); font-size: 13px; line-height: 1.4; }
+.dot-why-h { font-weight: 600; margin-bottom: 6px; }
+.upd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.upd-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.upd-day { color: var(--text2); font-size: 12px; margin-inline-start: auto; }
+.upd-note { color: var(--text2); font-size: 12.5px; margin-top: 2px; }
