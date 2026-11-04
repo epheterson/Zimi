@@ -191,7 +191,10 @@ def test_tiles_by_view(browser, served):
         # A data pack: served to the view, listed nowhere (Home, the library's grid).
         listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
         assert "zimi_almanac_hd" not in listed, listed
-        # Far: level 0 covers the Earth, and its one map steps aside.
+        # Far: level 0 covers the Earth, and its one map steps aside (a body under 40 px asks for no tiles at all, so
+        # the camera is put far but not that far, the flight in done).
+        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+        pg.evaluate("_ae.dist = 8; _ae.dirty = true; _aeKick()")
         _settle(
             pg,
             "() => { var d = ("

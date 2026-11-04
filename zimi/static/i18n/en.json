@@ -498,6 +498,7 @@
   "alm_orr_arrived": "Arrived at {planet}",
   "alm_orr_au_from_earth": "{d} AU from Earth",
   "alm_orr_earth_view": "See the Earth up close",
+  "alm_orr_planet_view": "See {name} up close",
   "alm_orr_fly": "Fly there",
   "alm_orr_hint_fly": "Tap a planet to fly there",
   "alm_orr_hint_earth": "Tap Earth to see it in 3D",

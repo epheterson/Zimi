@@ -498,6 +498,7 @@
   "alm_orr_arrived": "已抵达{planet}",
   "alm_orr_au_from_earth": "距地球 {d} 天文单位",
   "alm_orr_earth_view": "近看地球",
+  "alm_orr_planet_view": "近看{name}",
   "alm_orr_fly": "飞过去",
   "alm_orr_hint_fly": "点按行星即可飞往",
   "alm_orr_hint_earth": "点按地球查看 3D 视图",

@@ -724,7 +724,11 @@ function _initOrrery() {
       var fly = el.getAttribute('data-orr-fly');
       if (key) { e.stopPropagation(); _orreryOpenLink(key); }
       else if (fly) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; _orreryLaunchRocket(fly); }
-      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(el.getAttribute('data-orr-earth') === 'sun' ? 'sun' : null); }
+      else if (el.hasAttribute('data-orr-earth')) {
+        // "1" is the Earth; any other value names the body to open on (the Sun, a planet).
+        var to = el.getAttribute('data-orr-earth');
+        e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(to === '1' ? null : to);
+      }
     });
   }
   var _tipHideTimer = null;
@@ -764,10 +768,16 @@ function _initOrrery() {
   // The tip's button: Fly to a planet (not while the time machine holds the
   // clock, when launches are refused), or step into the Earth view.
   function _tipButtonHtml(hit) {
+    // A planet: up close in the 3D view (the same planet, the same place round the Sun), and the light-speed ride.
+    var close = hit.type === 'planet' && hit.data.name !== 'Earth' && _orreryEarthViewAvailable()
+      ? '<button type="button" class="orrery-tip-btn" data-orr-earth="' + _almEsc(hit.data.name.toLowerCase()) + '">' +
+        _almEsc(t('alm_orr_planet_view', { name: _tp(hit.data.name) })) + '</button>'
+      : '';
     if (_orreryIsDestination(hit) && !_orreryTravelFocus()) {
-      return '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
+      return close + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
         _almEsc(t('alm_orr_fly')) + '</button>';
     }
+    if (close) return close;
     if (hit.type === 'planet' && hit.data.name === 'Earth' && _orreryEarthViewAvailable()) {
       return '<button type="button" class="orrery-tip-btn" data-orr-earth="1">' + _almEsc(t('alm_orr_earth_view')) + '</button>';
     }

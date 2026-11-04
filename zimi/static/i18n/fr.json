@@ -498,6 +498,7 @@
   "alm_orr_arrived": "Arrivée : {planet}",
   "alm_orr_au_from_earth": "{d} UA de la Terre",
   "alm_orr_earth_view": "Voir la Terre de près",
+  "alm_orr_planet_view": "Voir {name} de près",
   "alm_orr_fly": "Y aller",
   "alm_orr_hint_fly": "Touchez une planète pour y voler",
   "alm_orr_hint_earth": "Touchez la Terre pour la voir en 3D",

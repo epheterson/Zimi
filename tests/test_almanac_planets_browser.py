@@ -132,11 +132,11 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             # The belt lies between Mars and Jupiter round the Sun: every asteroid's distance from the Sun as drawn
             # within the two planets' (a few of the 18,000 stray inside Mars's: the Hungarias).
             belt = pg.evaluate("""() => { var a = _aeAst.cloud.geometry.attributes.position.array, sun = _aeSunShown(_ae.scene), d = [];
-                for (var i = 0; i < _aeAst.n; i++) d.push(Math.hypot(a[i*3] - sun[0], a[i*3+1] - sun[1], a[i*3+2] - sun[2]));
+                for (var i = 0; i < _aeAst.cloud.geometry.drawRange.count; i++) d.push(Math.hypot(a[i*3] - sun[0], a[i*3+1] - sun[1], a[i*3+2] - sun[2]));
                 d.sort(function (x, y) { return x - y; });
                 var r = function (k) { var p = _ae.gl.planets[k].pos; return Math.hypot(p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]); };
-                return { n: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }""")
-            assert belt["n"] > 15000, belt
+                return { n: _aeAst.n, drawn: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }""")
+            assert belt["n"] > 15000 and 5000 < belt["drawn"] < belt["n"] / 2, belt   # a faint ring: a third of them drawn
             # Through the same squeeze as the planets: clear of Mars's orbit at its farthest and Jupiter's at its nearest.
             squeeze = pg.evaluate("[AE_SUN_SHOW_DIST, AE_PLANET_DIST_POW]")
             drawn = lambda au: squeeze[0] * au ** squeeze[1]  # noqa: E731
@@ -168,6 +168,46 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
             card = pg.inner_text("#ae-card")
             assert "Voyager 1" in card and "AU from the Sun" in card and "Saturn" in card, card
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_strip_the_minimap_and_the_orrery_s_way_in(served):
+    """Every destination in one sideways strip; near a planet the corner minimap shows where you are and opens the
+    whole system; the 2D orrery's planet tip opens the 3D view on that planet."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+            ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE))
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            pg.goto(served + "/#almanac", wait_until="load")
+            pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+            # The orrery's way in: open on Jupiter, as its tip's button does.
+            pg.evaluate("_orreryOpenEarthView('jupiter')")
+            pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'jupiter'; }", timeout=60_000, polling=200)
+            # One strip, one row, sideways only, every planet in it.
+            strip = pg.evaluate("""() => { var s = document.getElementById('ae-views'), cs = getComputedStyle(s);
+                var tops = new Set(Array.from(s.children).map(b => b.offsetTop));
+                return { rows: tops.size, wrap: cs.flexWrap, ox: cs.overflowX, keys: Array.from(s.children).map(b => b.dataset.aeView) }; }""")
+            assert strip["rows"] == 1 and strip["wrap"] == "nowrap" and strip["ox"] == "auto", strip
+            assert {"earth", "moon", "sun", "planets", "mercury", "neptune", "io", "titan", "pluto", "ceres"} <= set(strip["keys"]), strip
+            assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"jupiter\"]').getAttribute('aria-pressed')") == "true"
+            # Tap straight to Saturn from Jupiter.
+            pg.click("#ae-views [data-ae-view='saturn']")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'saturn'; }", timeout=60_000, polling=200)
+            # The minimap is up near a planet, and takes you to the whole system.
+            assert pg.is_visible("#ae-mini")
+            pg.click("#ae-mini")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }", timeout=60_000, polling=200)
+            assert not pg.is_visible("#ae-mini")
             assert not errors, errors
             ctx.close()
         finally:
