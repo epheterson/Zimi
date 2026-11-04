@@ -6,6 +6,7 @@
 
 import { AnimationManager } from './zimcity/engine/animationManager.js';
 import { TILE_INVALID } from './zimcity/engine/tileValues.js';
+import { atlas, ART } from './zimcity-art.js';
 
 export var TILE = 16;                        // the art's tile, in pixels
 var TILES_PER_ROW = 32;                      // tiles.png is 32 x 32 tiles
@@ -81,16 +82,11 @@ export function View(canvas, art) {
   this._layerAt = 0;
 }
 
-// A new city (or one loaded): a fresh world canvas and nothing painted yet.
+// A new city (or one loaded): nothing painted yet.
 View.prototype.setCity = function (city) {
   this.city = city;
-  var map = city.map;
-  this.world = document.createElement('canvas');
-  this.world.width = map.width * TILE; this.world.height = map.height * TILE;
-  this.wctx = this.world.getContext('2d');
-  this.painted = new Int32Array(map.width * map.height).fill(NOT_PAINTED);
-  this.values = new Array(map.width * map.height);
-  this.anim = new AnimationManager(map);
+  this.anim = new AnimationManager(city.map);
+  this._cache = null;
   this._layerAt = 0;
 };
 
@@ -137,19 +133,64 @@ View.prototype.tileAt = function (sx, sy) {
 
 function drawTile(ctx, img, value, dx, dy) {
   if (value === TILE_INVALID || value < 0) { ctx.clearRect(dx, dy, TILE, TILE); return; }
-  ctx.drawImage(img, (value % TILES_PER_ROW) * TILE, Math.floor(value / TILES_PER_ROW) * TILE, TILE, TILE, dx, dy, TILE, TILE);
+  ctx.drawImage(img, (value % TILES_PER_ROW) * ART, Math.floor(value / TILES_PER_ROW) * ART, ART, ART, dx, dy, TILE, TILE);
 }
 
-// Bring the world canvas up to date: only the tiles whose picture changed are drawn again.
-View.prototype._paintWorld = function () {
-  var map = this.city.map, w = map.width, h = map.height, v = this.values;
-  map.getTileValuesForPainting(0, 0, w, h, v);
-  this.anim.getTiles(v, 0, 0, w, h, this.paused);
-  for (var i = 0, n = v.length; i < n; i++) {
-    if (v[i] === this.painted[i]) continue;
-    drawTile(this.wctx, this.tileArt(), v[i], (i % w) * TILE, Math.floor(i / w) * TILE);
-    this.painted[i] = v[i];
+// The city is never painted whole (at 32 px a tile it would be 3840 x 3200, about 50 MB, more than a phone's browser
+// gives a tab). Only the tiles on screen and a margin around them are kept, on one canvas, at the detail the screen can
+// show: 32 px a tile when a tile is 24 device pixels or more, 16 below that, 8 for the whole city at once. Moving within
+// the margin repaints nothing; moving past it, or zooming to another detail, paints the new window once.
+var MARGIN = 4;
+function detail(px) { return px >= 24 ? ART : px >= 12 ? 16 : 8; }
+View.prototype._atlasAt = function (r) {
+  var full = this.tileArt();
+  if (r === ART) return full;
+  this._small = this._small || {};
+  if (!this._small[r]) {
+    var c = document.createElement('canvas'), ctx;
+    c.width = c.height = TILES_PER_ROW * r; ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(full, 0, 0, c.width, c.height);
+    this._small[r] = c;
   }
+  return this._small[r];
+};
+View.prototype._window = function () {
+  var c = this.cam, map = this.city.map, r = detail(TILE * c.s * (this.dpr || 1));
+  var x0 = Math.max(0, Math.floor(c.x / TILE) - MARGIN), y0 = Math.max(0, Math.floor(c.y / TILE) - MARGIN);
+  var x1 = Math.min(map.width, Math.ceil((c.x + this.w / c.s) / TILE) + MARGIN), y1 = Math.min(map.height, Math.ceil((c.y + this.h / c.s) / TILE) + MARGIN);
+  var k = this._cache;
+  if (k && k.r === r && x0 >= k.x0 && y0 >= k.y0 && x1 <= k.x1 && y1 <= k.y1) return k;
+  // a new window, one margin wider again, so the next small pan stays inside it
+  x0 = Math.max(0, x0 - MARGIN); y0 = Math.max(0, y0 - MARGIN); x1 = Math.min(map.width, x1 + MARGIN); y1 = Math.min(map.height, y1 + MARGIN);
+  var canvas = k ? k.canvas : document.createElement('canvas');
+  canvas.width = (x1 - x0) * r; canvas.height = (y1 - y0) * r;
+  var ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  this._cache = { r: r, x0: x0, y0: y0, x1: x1, y1: y1, canvas: canvas, ctx: ctx, painted: new Int32Array((x1 - x0) * (y1 - y0)).fill(NOT_PAINTED), values: [] };
+  this.anim = new AnimationManager(this.city.map);   // its frame history is kept per window
+  return this._cache;
+};
+// Bring the window up to date: only the tiles whose picture changed are drawn again.
+View.prototype._paintWorld = function () {
+  var k = this._window(), map = this.city.map, w = k.x1 - k.x0, h = k.y1 - k.y0, v = k.values, r = k.r, art = this._atlasAt(r);
+  map.getTileValuesForPainting(k.x0, k.y0, w, h, v);
+  this.anim.getTiles(v, k.x0, k.y0, w, h, this.paused);
+  for (var i = 0, n = w * h; i < n; i++) {
+    if (v[i] === k.painted[i]) continue;
+    var dx = (i % w) * r, dy = Math.floor(i / w) * r;
+    if (v[i] === TILE_INVALID || v[i] < 0) k.ctx.clearRect(dx, dy, r, r);
+    else k.ctx.drawImage(art, (v[i] % TILES_PER_ROW) * r, Math.floor(v[i] / TILES_PER_ROW) * r, r, r, dx, dy, r, r);
+    k.painted[i] = v[i];
+  }
+  return k;
+};
+// What the city's pictures hold, in bytes (four a pixel): the window and the atlases. For the tests and for measuring.
+View.prototype.bytes = function () {
+  var n = 0, add = function (c) { if (c) n += c.width * c.height * 4; };
+  if (this._cache) add(this._cache.canvas);
+  add(this._art); Object.keys(this._small || {}).forEach(function (r) { add(this._small[r]); }, this);
+  return n;
 };
 
 // The layer's tint: the block map drawn small, then stretched over the city with smoothing (refreshed twice a second).
@@ -180,8 +221,8 @@ function darkNow() {
 View.prototype.tileArt = function () {
   var dark = darkNow();
   if (!this._art || this._artDark !== dark) {
-    this._art = recolour(this.art.tiles, dark); this._artDark = dark;
-    if (this.painted) this.painted.fill(NOT_PAINTED);
+    this._art = atlas(this.art.tiles, recolour(this.art.tiles, dark), dark); this._artDark = dark;
+    this._small = null; this._cache = null;   // repaint in the new theme
   }
   return this._art;
 };
@@ -189,16 +230,13 @@ function loaded(img) { return img.complete && img.naturalWidth > 0; }
 View.prototype.draw = function (now) {
   if (!this.city || !this.w || !loaded(this.art.tiles) || !loaded(this.art.sprites)) return;
   this.tileArt();   // before the world is painted, so a theme change repaints it in one frame
-  this._paintWorld();
+  var win = this._paintWorld();
   var ctx = this.ctx, c = this.cam, map = this.city.map, k = this.dpr * c.s;
   ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   ctx.clearRect(0, 0, this.w, this.h);
   ctx.imageSmoothingEnabled = false;
   ctx.setTransform(k, 0, 0, k, -c.x * k, -c.y * k);
-  // Only the part of the city on screen is copied.
-  var sx = Math.max(0, Math.floor(c.x)), sy = Math.max(0, Math.floor(c.y));
-  var sw = Math.min(this.world.width, Math.ceil(c.x + this.w / c.s) + 1) - sx, sh = Math.min(this.world.height, Math.ceil(c.y + this.h / c.s) + 1) - sy;
-  if (sw > 0 && sh > 0) ctx.drawImage(this.world, sx, sy, sw, sh, sx, sy, sw, sh);
+  ctx.drawImage(win.canvas, win.x0 * TILE, win.y0 * TILE, (win.x1 - win.x0) * TILE, (win.y1 - win.y0) * TILE);
   if (this.layer !== 'off' && LAYERS[this.layer]) {
     ctx.imageSmoothingEnabled = true;
     ctx.globalAlpha = LAYER_ALPHA;

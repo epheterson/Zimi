@@ -28,6 +28,21 @@ var ARTICLE = {
   'city.msg.metropolis': ['Q200250', 'Metropolis'], 'city.msg.megalopolis': ['Q471822', 'Megalopolis']
 };
 export var KEYS = Object.keys(ARTICLE);
+// More articles to find (the scenarios' and the ready-made cities' real places): call before find().
+export function add(more) { Object.keys(more).forEach(function (k) { ARTICLE[k] = more[k]; if (KEYS.indexOf(k) < 0) KEYS.push(k); }); }
+
+// "Open Kyoto on the map": the place on an installed StreetZim map whose box holds it, inside Zimi; else null.
+export function mapLink(lat, lon, label, T) {
+  if (!Lib || Lib.modeNow() !== 'zimi') return Promise.resolve(null);
+  return Lib.library().then(function (list) {
+    var m = Lib.mapFor(list, lat, lon, '', label);
+    if (!m) return null;
+    var a = document.createElement('a');
+    a.textContent = T('learn.map', { place: label });
+    Lib.articleLink(a, m.zim, m.path);
+    return a;
+  }, function () { return null; });
+}
 
 var found = null;   // {qid: {zim, path, title}} once Zimi has answered; {} anywhere else
 function lang() { return window.ZimiText ? String(window.ZimiText.lang || 'en').split('-')[0] : 'en'; }

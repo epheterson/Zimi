@@ -22,6 +22,11 @@ export var MESSAGE = {};
   [M.NO_MONEY, 'city.msg.broke'], [M.REACHED_TOWN, 'city.msg.town'], [M.REACHED_CITY, 'city.msg.city'],
   [M.REACHED_CAPITAL, 'city.msg.capital'], [M.REACHED_METROPOLIS, 'city.msg.metropolis'], [M.REACHED_MEGALOPOLIS, 'city.msg.megalopolis']
 ].forEach(function (p) { MESSAGE[p[0]] = p[1]; });
+// The engine's standing requests ("more homes needed"): while the advisor still has a first step to give, they wait.
+export var NAGS = [M.NEED_AIRPORT, M.NEED_FIRE_STATION, M.NEED_ELECTRICITY, M.NEED_MORE_INDUSTRIAL, M.NEED_MORE_COMMERCIAL,
+  M.NEED_MORE_RESIDENTIAL, M.NEED_MORE_RAILS, M.NEED_MORE_ROADS, M.NEED_POLICE_STATION, M.NEED_SEAPORT, M.NEED_STADIUM];
+// A city reaching a new size.
+export var MILESTONES = [M.REACHED_TOWN, M.REACHED_CITY, M.REACHED_CAPITAL, M.REACHED_METROPOLIS, M.REACHED_MEGALOPOLIS];
 // Disasters and crashes go to the front of the line.
 export var URGENT = M.DISASTER_MESSAGES.concat(M.CRASHES, [M.NOT_ENOUGH_POWER, M.BLACKOUTS_REPORTED]);
 

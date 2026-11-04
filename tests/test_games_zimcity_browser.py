@@ -104,14 +104,19 @@ CLEAR = """() => {
 
 def test_the_map_draws(browser, site):
     pg = phone(browser, site)
-    pg.wait_for_timeout(400)
+    # the art is built on the first frame that has the pictures (a heavy one on a busy machine): wait for the window
+    pg.wait_for_function("() => window.__zimcity.view._cache && window.__zimcity.view._cache.painted.every(v => v !== -2)", timeout=20000)
+    pg.wait_for_timeout(100)
+    # every device pixel over the city itself is drawn (the camera may look a few tiles past the city's edge: not counted)
     seen = pg.evaluate("""() => {
-      const c = document.getElementById('cy-map'), ctx = c.getContext('2d');
-      const d = ctx.getImageData(0, 0, c.width, c.height).data; let lit = 0;
-      for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) lit++;
-      return lit / (d.length / (4 * 97));
+      const v = window.__zimcity.view, c = v.canvas, ctx = c.getContext('2d'), k = v.dpr * v.cam.s;
+      const x0 = Math.max(0, Math.ceil(-v.cam.x * k)), y0 = Math.max(0, Math.ceil(-v.cam.y * k));
+      const x1 = Math.min(c.width, Math.floor((120 * 16 - v.cam.x) * k)), y1 = Math.min(c.height, Math.floor((100 * 16 - v.cam.y) * k));
+      const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data; let lit = 0, n = 0;
+      for (let i = 3; i < d.length; i += 4 * 97) { n++; if (d[i] > 0) lit++; }
+      return lit / n;
     }""")
-    assert seen > 0.95, seen
+    assert seen > 0.99, seen
     assert not pg.errors, pg.errors
 
 
@@ -285,3 +290,119 @@ def test_paused_is_a_speed(browser, site):
     pg.click(OURS + " .gs-seg button >> nth=2")   # Normal
     pg.keyboard.press("Escape")
     assert pg.evaluate("() => document.getElementById('cy-pause').getAttribute('data-t')") == "play.pause"
+
+
+def test_a_new_city_opens_on_open_ground_with_the_first_step(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.clear()")
+    for seed_try in range(3):   # three fresh maps
+        pg.reload()
+        pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+        clear = pg.evaluate("""() => { const v = window.__zimcity.view, map = window.__zimcity.city.map, a = v.tileAt(v.w * 0.2, v.h * 0.3), b = v.tileAt(v.w * 0.8, v.h * 0.7);
+          let n = 0, all = 0; for (let y = a.y; y <= b.y; y++) for (let x = a.x; x <= b.x; x++) { all++; const v = map.testBounds(x, y) ? map.getTileValue(x, y) : 2; if (v < 2 || v > 20) n++; } return n / all; }""")
+        assert clear > 0.9, clear   # land, not water (woods are cleared for a dollar a tile)
+        pg.evaluate("() => localStorage.clear()")
+    assert pg.wait_for_selector("#cy-msg").text_content() == "Lay a road: choose Road and drag"
+
+
+def test_keep_open_and_delete_a_city(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="road"]')
+    y = box["top"] + box["h"] * 0.5
+    stroke(pg, [(x, y) for x in range(40, 200, 12)])
+    first = funds(pg)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 1
+    pg.keyboard.press("Escape")
+    stroke(pg, [(x, y + 40) for x in range(40, 200, 12)])   # the city moves on after it was kept
+    second = funds(pg)
+    assert second < first
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=0")   # Open: the kept city comes back, the one in progress takes its place
+    pg.wait_for_timeout(200)
+    assert funds(pg) == first
+    kept = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))")
+    assert len(kept) == 1 and kept[0]["funds"] == second
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=1")
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 1   # asked first
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=1")
+    pg.wait_for_timeout(100)
+    assert pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).length") == 0
+
+
+def test_the_redrawn_roads_follow_the_engines_shapes(browser, site):
+    """The modern atlas reads each road tile's edges from the original picture: a straight runs one way, a crossing
+    all four, a T three; the light theme's asphalt is #3b3d42 and the ground #cdbf98."""
+    pg = phone(browser, site)
+    got = pg.evaluate("""() => {
+      const a = window.__zimcity.view.tileArt(), ctx = a.getContext('2d'), ART = 32;
+      const road = (t, x, y) => { const d = ctx.getImageData((t % 32) * ART + x, Math.floor(t / 32) * ART + y, 1, 1).data; return d[0] === 0x3b && d[1] === 0x3d && d[2] === 0x42; };
+      const ways = (t) => [road(t, 16, 1), road(t, 30, 13), road(t, 16, 30), road(t, 1, 13)].map(Number).join('');
+      return { h: ways(66), v: ways(67), cross: ways(76), heavy: ways(144 + 12), t: ways(75) };
+    }""")
+    assert got == {"h": "0101", "v": "1010", "cross": "1111", "heavy": "1111", "t": "1011"}, got
+
+
+TOWN = """async () => {
+  const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, map = c.map, v = z.view;
+  v.centreOn(60, 50);   // the middle of the map, so the town is wholly on it
+  const x0 = 50, y0 = 38;
+  for (let y = y0; y < y0 + 26; y++) for (let x = x0; x < x0 + 22; x++) map.setTile(x, y, 0, 0);
+  c.sim.budget.totalFunds = 100000;
+  const line = (a, b) => [a].concat(T.steps(a, b));
+  T.build(c, 'road', line([x0, y0 + 6], [x0 + 21, y0 + 6])); T.build(c, 'road', line([x0 + 10, y0], [x0 + 10, y0 + 25]));
+  T.build(c, 'coal', [[x0 + 2, y0 + 2]]);
+  for (let i = 0; i < 3; i++) T.build(c, 'residential', [[x0 + 12 + i * 3, y0 + 8]]);
+}"""
+
+
+def test_the_advisor_follows_a_city_built_without_a_finger(browser, site):
+    """A town with roads, a plant and unpowered homes (built by script, as a kept city arrives) is told to run power,
+    within a second, not to lay a road."""
+    pg = phone(browser, site)
+    pg.evaluate(TOWN)
+    pg.wait_for_timeout(1300)
+    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Run a power line to the zones that flash"
+
+
+def test_the_city_is_never_painted_whole(browser, site):
+    """At 32 px a tile the whole city would be about 50 MB of canvas, more than a phone's browser gives a tab. Only a
+    window around the screen is painted, at the detail the screen shows: well under 16 MB at every zoom at 390 px."""
+    pg = phone(browser, site)
+    seen = {}
+    for s in (3, 2, 1, 0.2):
+        pg.evaluate("(s) => { const v = window.__zimcity.view; v.cam.s = s; v.clamp(); }", s)
+        pg.wait_for_timeout(120)
+        seen[s] = pg.evaluate("() => window.__zimcity.view.bytes()")
+    assert all(b < 16e6 for b in seen.values()), seen
+    sharp = pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 2; v.clamp(); v.draw(performance.now()); return v._cache.r; }")
+    assert sharp == 32   # a tile 32 CSS px wide at 2x is drawn from the 32 px art
+
+
+def test_a_scenario_and_a_ready_made_city_open_from_the_menu(browser, site):
+    pg = phone(browser, site)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-scenarios")
+    rows = pg.wait_for_selector(OURS + " .ar-sheet-card")
+    assert len(pg.query_selector_all(OURS + " .cy-sc")) == 8 and len(pg.query_selector_all(OURS + " .cy-maps .ar-btn")) == 24
+    pg.click(OURS + " .cy-sc >> nth=1 >> .ar-btn")   # San Francisco, 1906
+    pg.wait_for_function("() => window.__zimcity.city.scenario")
+    got = pg.evaluate("() => { const c = window.__zimcity.city; return { year: c.sim.getDate().year, funds: c.sim.budget.totalFunds, id: c.scenario.id, zones: (() => { let n = 0; for (let y = 0; y < 100; y++) for (let x = 0; x < 120; x++) if (c.map.getTile(x, y).isZone()) n++; return n; })() }; }")
+    assert got["year"] == 1906 and got["funds"] == 20000 and got["id"] == "sanfrancisco" and got["zones"] > 50, got
+    if os.environ.get("SHOTS"):
+        pg.wait_for_timeout(400)
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-sanfrancisco.png"))
+    pg.evaluate("() => window.__zimcity.step(16 * 11)")   # past the tenth tick: the earthquake
+    # an urgent message goes to the front of the line once the one showing has had its few seconds
+    pg.wait_for_function("() => document.getElementById('cy-msg').textContent === 'Earthquake'", timeout=15000)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-scenarios")
+    pg.click(OURS + " .cy-maps .ar-btn >> text=Kyoto")
+    pg.wait_for_function("() => !window.__zimcity.city.scenario && window.__zimcity.city.name === 'Kyoto'")
