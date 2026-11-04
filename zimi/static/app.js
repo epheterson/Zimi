@@ -8756,13 +8756,17 @@ function _renderDiscover(el, items) {
       // Thumbnail — filter out generic site chrome images
       var thumbHtml;
       var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
+      var iconThumb = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
       if (hasGoodThumb) {
         var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
-        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+        // A picture that fails or is too small to show gives way to the source's icon, as a card with no
+        // picture has: hidden alone, it left a card of text stretched to its neighbours' height.
+        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="_dcThumbGone(this)" onload="if(this.naturalWidth<80||this.naturalHeight<60)_dcThumbGone(this)">' +
+          iconThumb.replace('<div ', '<div hidden ');
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
-        thumbHtml = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
+        thumbHtml = iconThumb;
       }
       // Speaker/author line (TED talks, books)
       var speakerHtml = '';
@@ -8807,6 +8811,12 @@ function _renderDiscover(el, items) {
 // and Chinese blurb normalized to "" and was dropped as a repeat. A blurb
 // that opens with the title and goes on ("Athens is the capital...") says
 // more than the title and is kept.
+// A Discover picture that failed or is too small: the source's icon, kept beside it, takes its place.
+function _dcThumbGone(img) {
+  var icon = img.nextElementSibling;
+  if (icon && icon.classList.contains('dc-icon-thumb')) icon.hidden = false;
+  img.remove();
+}
 function _blurbRepeatsTitle(blurb, title) {
   if (!blurb || !title) return false;
   var norm = function(s) { return s.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').toLowerCase().trim(); };
@@ -9394,7 +9404,7 @@ function _moveZimTo(zim, category) {
     var card = target.closest && target.closest('.stat-card, .catalog-item[data-zim]');
     if (!card) return null;
     var app = card.dataset && card.dataset.app;
-    if (app && !card.classList.contains('app-empty')) return { card: card, zim: _OWN_APP_ZIM[app] || '', app: app };
+    if (app && !card.classList.contains('app-empty')) return _appMenuHasMore(app) ? { card: card, zim: _OWN_APP_ZIM[app] || '', app: app } : null;
     var zim = card.dataset && card.dataset.zim;
     if (!zim) {
       var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
@@ -16406,8 +16416,16 @@ function _appSectionHtml(app, n, grid) {
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
   var dot = _freshDotHtml(zims.filter(Boolean));
-  return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' +
-    '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button></span>';
+  var more = _appMenuHasMore(app)
+    ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
+    : '';
+  return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' + more + '</span>';
+}
+// Whether an app's menu has more than Open (showAppMenu): its own ZIM's About and keep, or Hide for a signed-in
+// person. A ⋯ that opens a menu of one item, the tap the tile already is, is no control at all.
+function _appMenuHasMore(app) {
+  var own = _OWN_APP_ZIM[app];
+  return !!((own && _zimInfo(own)) || _userSession);
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
@@ -17699,9 +17717,14 @@ function openReader(url) {
     if (!_frameLoc.startsWith('/static/') && !_isMapPage()) try {
       var iTitle = frame.contentDocument && frame.contentDocument.title;
       if (!iTitle) {
-        // Fallback: extract from iframe URL path
-        var seg = _titleFromPath(frame.contentWindow.location.pathname);
-        if (seg && seg !== 'blank') iTitle = seg;
+        // No <title>: the entry's own title, when this is the entry that was opened ("Water purification",
+        // not "Water" made from its path), else the path's last part.
+        var fpath = decodeURIComponent(frame.contentWindow.location.pathname);
+        var seg = _titleFromPath(fpath), fm = fpath.match(/^\/w\/([^\/]+)\/(.+)/);
+        var known = currentArticle && currentArticle.title && fpath.endsWith('/' + currentArticle.path)
+          ? currentArticle.title : fm && _histTitle(fm[1], fm[2]);
+        if (known) iTitle = known;
+        else if (seg && seg !== 'blank') iTitle = seg;
       }
       if (iTitle) {
         var docTitle = iTitle + ' \u2014 Zimi';
@@ -17716,7 +17739,9 @@ function openReader(url) {
       if (_wm) {
         var _navZim = _decodeSafe(_wm[1]);
         var _navPath = _decodeSafe(_wm[2]);
-        currentArticle = { zim: _navZim, path: _navPath };
+        // The same entry keeps the title it was opened with (a second load event read "Water" off the path again).
+        var _keptTitle = currentArticle && currentArticle.zim === _navZim && currentArticle.path === _navPath ? currentArticle.title : '';
+        currentArticle = { zim: _navZim, path: _navPath, title: _keptTitle || '' };
         // The page's own title, now that it is here: a visit recorded before
         // the page loaded (a deep link, a link inside an article) carried
         // only its path, and Recent history read "ce.html", "cover.453".
@@ -17816,6 +17841,15 @@ function _histRetitle(zim, path, title) {
       return;
     }
   }
+}
+// A recent visit's title, when it was told one (a search result's), not guessed from its path; else ''.
+function _histTitle(zim, path) {
+  var h = _histLoad();
+  for (var i = 0; i < Math.min(5, h.length); i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.path === path) return e.title !== _titleFromPath(path) ? e.title : '';
+  }
+  return '';
 }
 // The fourth argument of a history row's openArticle: the place, when the
 // visit was one. Written into an inline handler, so it is source text.
@@ -21283,8 +21317,11 @@ function openArticle(zim, path, title, opts) {
     return;
   }
   // Track article history: push current article before navigating away
+  // The entry's title as it was found (a search result's, a list's): the page's own <title>, when it has one, wins.
+  // The same entry opened again without one (the address read back as the app starts) keeps the one it had.
+  if (!title && currentArticle && currentArticle.zim === zim && currentArticle.path === path) title = currentArticle.title;
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
-  currentArticle = { zim: zim, path: path };
+  currentArticle = { zim: zim, path: path, title: title || '' };
   // Start interlang prefetch immediately (don't wait for iframe load)
   _prefetchArticleLangs();
   // Persist to browse history (localStorage)
