@@ -1773,6 +1773,17 @@ def _replace_with_retry(tmp, path):
             time.sleep(_REPLACE_RETRY_SLEEP_S)
 
 
+def _read_umask():
+    """The process umask, read once at import (before any thread starts: reading
+    it means setting it for a moment)."""
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return mask
+
+
+_PROCESS_UMASK = _read_umask()
+
+
 def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
@@ -1790,10 +1801,11 @@ def _atomic_write_json(path, data, indent=None):
         # mkstemp creates 0600 and os.replace carries that mode onto the
         # target — which would silently strip group/world read from state
         # files (e.g. .zimi_cache.json inspected host-side over SSH).
-        # Restore the umask-style default the old open()-based writer had.
+        # Give it what an ordinary open() would: 0666 less the umask (0644
+        # by default, 0640 under the systemd unit's UMask=0027).
         # POSIX-only: Windows has no fchmod and no meaningful mode bits.
         if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o644)
+            os.fchmod(fd, 0o666 & ~_PROCESS_UMASK)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", loggable(path), loggable(e))
         return False
@@ -5343,7 +5355,16 @@ def main():
     p_doctor.add_argument("--kind", choices=("docker", "desktop", "pip"), help=argparse.SUPPRESS)
     add_boot_flags(p_doctor)
 
+    p_service = sub.add_parser("service", help="The systemd unit that runs Zimi at boot (Linux)")
+    p_service.add_argument("action", choices=("print", "install"), help="print the unit, or install it for systemd")
+    p_service.add_argument("--to", help="where install writes it (default /etc/systemd/system/zimi.service)")
+
     args = parser.parse_args()
+
+    if args.command == "service":
+        from zimi import service as _service
+
+        return _service.cli_service(args)
 
     settings, config_path, data_dir_problem = _resolve_boot(args)
     host = settings["host"][0]

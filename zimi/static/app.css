@@ -608,7 +608,7 @@
   .tts-menu-check::after { content: ''; flex: none; width: 32px; height: 18px; border-radius: 9px; transition: background 0.15s;
                            background: radial-gradient(circle at 9px 50%, var(--surface) 6px, transparent 6.5px) var(--text2); }
   .tts-menu-check[aria-checked="true"]::after { background: radial-gradient(circle at 23px 50%, var(--surface) 6px, transparent 6.5px) var(--amber); }
-  @media (prefers-reduced-motion: reduce) { .tts-bar-state.ahead { animation: tts-pulse 1.6s ease-in-out infinite; border-top-color: currentColor; } .tts-bar-state i, .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
+  @media (prefers-reduced-motion: reduce) { .tts-bar-state.ahead, .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { animation: tts-pulse 1.6s ease-in-out infinite; border-top-color: currentColor; } .tts-bar-state i { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
   .manage-btn { position: relative; }
   .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .random-btn:hover .dice { transform: rotate(20deg) scale(1.15); }
