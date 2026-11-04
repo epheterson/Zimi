@@ -573,6 +573,9 @@ var AE_CSS = [
   // Go to: a compact sheet over the controls, its places in groups, each with its small disc.
   '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(62vh,520px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(14,14,16,.96);border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
+  // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
+  '@media (max-width:400px){#ae-views{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
+  '@media (max-width:370px){#ae-views{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px}}',
   '.ae-go h4{margin:10px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3)}',
   '.ae-go-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}',
   '.ae-go-row{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:10px;background:none;font:inherit;font-size:14px;color:var(--text);text-align:start;cursor:pointer}',
@@ -677,6 +680,9 @@ function _aeEnsureStyles() {
 // spacecraft (once their table has come: opening the sheet asks for it). A row is the body's small disc and its name;
 // a tap flies there and puts the sheet away.
 var AE_GO_PROBE_COLOR = '#6ee7d8';
+// A compass: Go to sits in the row as one round button, so the row stays one line on a phone.
+var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
 function _aeGoDot(key) {
   if (_aeIsProbe(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_GO_PROBE_COLOR + '"></i>';
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
@@ -797,7 +803,8 @@ function _aeBuildDom() {
         _aeChipHtml('earth', _tp('Earth'), true) + _aeChipHtml('sats', _aeT('alm_earth_view_sats')) +
         _aeChipHtml('moon', _aeT('alm_moon')) + _aeChipHtml('sun', _aeT('alm_sun')) +
         _aeChipHtml('planets', _aeT('alm_earth_view_planets')) +
-        '<button type="button" class="ae-btn" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false">' + _almEsc(_aeT('alm_go_to')) + '</button>' +
+        '<button type="button" class="ae-btn ae-round" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
+          _almEsc(_aeT('alm_go_to')) + '" title="' + _almEsc(_aeT('alm_go_to')) + '">' + AE_GO_SVG + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +

@@ -250,6 +250,29 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             br.close()
 
 
+@pytest.mark.parametrize("width,lang", [(390, "en"), (360, "en"), (360, "ru"), (360, "ar")])
+def test_the_row_is_one_line(served, width, lang):
+    """Earth, Satellites, Moon, Sun, Planets and Go to share one line on a phone, in English and in the longest
+    translations (Russian, Arabic): Go to is a round button named Go to."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br, width)
+            ctx.add_init_script("try { localStorage.setItem('zimi_ui_lang', %r); } catch (e) {}" % lang)
+            pg = ctx.new_page()
+            _open(pg, served)
+            tops = pg.evaluate("Array.from(document.querySelectorAll('#ae-views > *')).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })")
+            assert len(tops) == 6 and len({t[0] for t in tops}) == 1, tops
+            assert min(t[1] for t in tops) >= 0 and max(t[2] for t in tops) <= width, tops
+            if lang == "en":
+                assert pg.get_attribute("#ae-go-btn", "aria-label") == "Go to"
+            ctx.close()
+        finally:
+            br.close()
+
+
 @pytest.mark.parametrize("start", ["earth", "jupiter"])
 def test_every_destination_flies(served, start):
     """Every place in Go to (and the row) takes the camera there: from the Earth and from Jupiter, none is a dead tap
