@@ -158,8 +158,9 @@ async function checkVersion() {
 // signed-out phone could be shown them. Offline the page reads the guide's own
 // copy instead (/static/fieldguide-offline.json: public text, kept like any
 // static file), so nothing is lost by never keeping these.
-const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/own-offline'];
+const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/games-day', '/own-offline'];
 // /games-links is filtered per account and follows the library: never kept, so no copy outlives a sign-out or an account change.
+// /games-day is the server's date: a kept one would be yesterday's daily.
 
 // The answers the app cannot start without, which say who is asking and what
 // the library holds: /whoami, /list, /search (the last few searches are kept

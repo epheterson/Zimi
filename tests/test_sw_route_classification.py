@@ -56,6 +56,8 @@ IDENTITY_ENDPOINTS = [
     # would outlive a sign-out (and answer after an account change, offline).
     "/games-links",
     "/games-search",
+    # The server's day for ZimiGames' dailies: a kept copy is yesterday's.
+    "/games-day",
 ]
 
 # Query strings must not change the classification (the SW keys off pathname).

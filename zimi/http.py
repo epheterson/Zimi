@@ -6,6 +6,7 @@ and static/ZIM content serving. Manage routes delegate to zimi.manage.
 """
 
 import base64
+import datetime
 import gzip
 import hashlib
 import ipaddress
@@ -2962,6 +2963,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import gamelinks
 
                 return self._json(200, gamelinks.links())
+            elif parsed.path == "/games-day":
+                # ZimiGames' dailies: the server's day in its own time zone, so
+                # everyone on one Zimi plays the same edition and it turns over
+                # at the server's midnight, whatever a device's clock says.
+                return self._json(200, {"day": datetime.date.today().isoformat()})
             elif parsed.path == "/games-search":
                 # The main search's Games row: every game's name in ?lang= and
                 # the words it is found by (zimi/gamelinks.py). Read once, a
