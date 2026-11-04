@@ -3555,5 +3555,9 @@
   "upd_updated": "Updated",
   "upd_release": "Zimi {v}",
   "upd_edition": "{date} edition",
-  "dot_why": "What's new here"
+  "dot_why": "What's new here",
+  "alm_lm_layer": "Landmarks",
+  "alm_lm_layer_hint": "Names on the Moon: landing sites, craters, seas",
+  "alm_earth_sat_data_from": "Satellite data: from {date}",
+  "alm_go_landings": "Moon landings"
 }

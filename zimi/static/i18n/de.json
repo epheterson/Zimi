@@ -3555,5 +3555,9 @@
   "upd_updated": "Aktualisiert",
   "upd_release": "Zimi {v}",
   "upd_edition": "Ausgabe {date}",
-  "dot_why": "Was neu ist"
+  "dot_why": "Was neu ist",
+  "alm_lm_layer": "Orte",
+  "alm_lm_layer_hint": "Namen auf dem Mond: Landestellen, Krater, Meere",
+  "alm_earth_sat_data_from": "Satellitendaten: vom {date}",
+  "alm_go_landings": "Mondlandungen"
 }

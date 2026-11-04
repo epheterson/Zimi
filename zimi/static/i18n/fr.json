@@ -3555,5 +3555,9 @@
   "upd_updated": "Mis à jour",
   "upd_release": "Zimi {v}",
   "upd_edition": "Édition {date}",
-  "dot_why": "Ce qui est nouveau"
+  "dot_why": "Ce qui est nouveau",
+  "alm_lm_layer": "Repères",
+  "alm_lm_layer_hint": "Noms sur la Lune : sites d’alunissage, cratères, mers",
+  "alm_earth_sat_data_from": "Données des satellites : du {date}",
+  "alm_go_landings": "Alunissages"
 }

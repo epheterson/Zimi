@@ -566,6 +566,10 @@ var AE_CSS = [
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
   '.ae-set-why{margin:6px 4px 0;font-size:11.5px;color:var(--text2)}',
+  '.ae-set-data{margin:8px 4px 0;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text2)}',
+  '.ae-set-data[hidden]{display:none}',
+  '.ae-set-data .ae-fresh{margin-inline-start:0}',
+  '.ae-set-sep{height:1px;margin:6px 4px;background:var(--border)}',
   '.ae-live{color:#6ec56e}',
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
@@ -680,10 +684,13 @@ function _aeEnsureStyles() {
 // spacecraft (once their table has come: opening the sheet asks for it). A row is the body's small disc and its name;
 // a tap flies there and puts the sheet away.
 var AE_GO_PROBE_COLOR = '#6ee7d8';
+var AE_GO_LM = 'lm:';   // a landing site's row: lm:<its index in the Moon's landmarks>
+function _aeGoLmRow(key) { return _aeLm && key.indexOf(AE_GO_LM) === 0 ? _aeLm.moon[+key.slice(AE_GO_LM.length)] : null; }
 // A compass: Go to sits in the row as one round button, so the row stays one line on a phone.
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
 function _aeGoDot(key) {
+  if (_aeGoLmRow(key)) return '<i class="ae-go-dot ae-go-probe" style="background:#f5c16c;color:#f5c16c"></i>';
   if (key === 'iss') return '<i class="ae-go-dot ae-go-probe" style="background:rgb(255,209,89);color:rgb(255,209,89)"></i>';
   if (_aeIsProbe(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_GO_PROBE_COLOR + '"></i>';
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
@@ -700,10 +707,14 @@ function _aeGoGroups() {
   // not begun is not a place to go then.
   var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
   var craft = (_ae.issPos ? ['iss'] : []).concat(_aeTracks ? _aeTracks.probes.filter(function (k) { return !!_aeTrackAt(_aeTracks.tracks[k], jd); }) : []);
-  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft]]
+  // The Moon's landing sites, by name: flown to, each shows its own label and card whether or not Landmarks is on.
+  var landings = _aeLm ? _aeLm.moon.map(function (r, i) { return r[3] === 'landing' ? AE_GO_LM + i : null; }).filter(Boolean) : [];
+  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
     .filter(function (g) { return g[1].length; });
 }
 function _aeGoName(key) {
+  var lmRow = _aeGoLmRow(key);
+  if (lmRow) return lmRow[0];
   if (key === 'earth') return _tp('Earth');
   if (key === 'iss') return _aeT('alm_earth_iss_short');
   if (key === 'moon') return _aeT('alm_moon');
@@ -726,7 +737,7 @@ function _aeShowGo(on) {
   if (!sheet) return;
   sheet.hidden = !on;
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
-  if (on) { _aeTracksLoad(); _aeGoRender(); }
+  if (on) { _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
 function _aeChipHtml(key, name, on) {
   return '<button type="button" class="ae-btn" data-ae-view="' + key + '" aria-pressed="' + !!on + '">' + _almEsc(name) + '</button>';
@@ -788,7 +799,11 @@ function _aeBuildDom() {
         '</div>' +
       '</div>' +
     '</div>' +
-    '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden></div>' +
+    // The gear's sheet: the view's own switches and the satellite setting (drawn afresh), then the data's date and,
+    // for an admin under Ask first with stale data, Get fresh data.
+    '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden><div id="ae-set-body"></div>' +
+      '<p class="ae-set-data" id="ae-ask" hidden><span id="ae-ask-text"></span><span id="ae-fresh-sep" aria-hidden="true"> · </span>' +
+      '<button type="button" class="ae-fresh" id="ae-fresh"></button></p></div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
     '<div class="ae-bottom">' +
       '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
@@ -815,8 +830,6 @@ function _aeBuildDom() {
         '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
           '<button type="button" class="ae-fresh" id="ae-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button><span aria-hidden="true"> · </span>' +
           '<button type="button" class="ae-fresh" id="ae-hd-later">' + _almEsc(_aeT('alm_hd_later')) + '</button></span><br></span>' +
-        '<span id="ae-ask" hidden><span class="ae-ask-text" id="ae-ask-text"></span>' +
-          '<button type="button" class="ae-fresh" id="ae-fresh"></button><span aria-hidden="true"> · </span></span>' +
         '<span id="ae-note"></span>' +
       '</div>' +
     '</div>';
@@ -2608,11 +2621,21 @@ var AE_LM_KINDS = { landing: 'landing', crater: 'crater', mare: 'mare', mons: 'm
 var AE_LM_MORNING_SUN_DEG = 8;
 var AE_LM_DAWN_STEP_MS = 3 * 3600 * 1000, AE_LM_DAWN_LOOK_MS = 31 * MS_PER_DAY, AE_LM_DAWN_TOL_MS = 10 * 60 * 1000;
 var _aeLm = null, _aeLmLoading = null;
+// Off until this viewer turns them on in the gear (remembered on this device); a landmark flown to by choice (its card,
+// a landing site) still shows, alone.
+var AE_LM_LAYER_KEY = 'zimi_alm_landmarks';
+function _aeLmLayerOn() { try { return localStorage.getItem(AE_LM_LAYER_KEY) === '1'; } catch (e) { return false; } }
+function _aeLmSetLayer(on) {
+  try { if (on) localStorage.setItem(AE_LM_LAYER_KEY, '1'); else localStorage.removeItem(AE_LM_LAYER_KEY); } catch (e) {}
+  if (on) _aeLmLoad();
+  if (_ae) { _ae.dirty = true; _aeKick(); }
+}
 function _aeLmLoad() {
   if (_aeLm || _aeLmLoading || typeof fetch !== 'function') return;
   _aeLmLoading = fetch(AE_LM_URL).then(function (r) { if (!r.ok) throw new Error('landmarks'); return r.json(); }).then(function (d) {
     _aeLm = d;
     if (_ae) { _ae.dirty = true; _aeKick(); }
+    _aeGoRender();
   }).catch(function () { _aeLmLoading = null; });
 }
 // Where each body with landmarks stands: its centre, radius and turn (the rotation part of its matrix, column-major).
@@ -2632,12 +2655,12 @@ function _aeUpdateLandmarks() {
   if (_aeLm && !_ae.fly && !_ae.hand) {
     var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
     var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
-    var cands = [];
+    var cands = [], layer = _aeLmLayerOn(), chosen = _ae.lm;
     _aeLmBodies().forEach(function (b) {
-      var rows = _aeLm[b.key];
+      var rows = layer ? _aeLm[b.key] : chosen && chosen.body === b.key ? [chosen.row] : null;
       if (!rows) return;
       var rPx = b.r / _aeLen(_aeSub(b.center, eye)) * pxPerRad;
-      if (rPx < AE_LM_LANDING_MIN_R_PX / 2) { if (rPx > 4) _aeLmLoad(); return; }
+      if (rPx < AE_LM_LANDING_MIN_R_PX / 2) { if (rPx > 4 && layer) _aeLmLoad(); return; }
       for (var i = 0; i < rows.length; i++) {
         var row = rows[i], n = _aeLmDir(b, row[1], row[2]);
         var p = [b.center[0] + n[0] * b.r, b.center[1] + n[1] * b.r, b.center[2] + n[2] * b.r];
@@ -2657,7 +2680,7 @@ function _aeUpdateLandmarks() {
       if (placed.some(function (q) { return Math.abs(q.s.x - c.s.x) < AE_LM_APART_X && Math.abs(q.s.y - c.s.y) < AE_LM_APART_Y; })) continue;
       placed.push(c);
     }
-  } else if (_ae.target === 'moon') _aeLmLoad();
+  } else if (_ae.target === 'moon' && _aeLmLayerOn()) _aeLmLoad();
   while (host.children.length < placed.length) {
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -2735,6 +2758,7 @@ function _aeRenderLmCard(card) {
 function _aeLmFly(body, row) {
   var b = _aeLmBodies().filter(function (x) { return x.key === body; })[0];
   if (!b) return;
+  if (!_ae.lm || _ae.lm.row !== row) _ae.lm = { body: body, row: row, hit: null };   // its name shows there, layer on or off
   // Over an Apollo site with Almanac HD, all the way down to the inserts' half-metre tiles.
   var hdb = _ae.gl.hd && _ae.gl.hd.bodies.filter(function (x) { return x.key === body; })[0];
   if (hdb) AE_TARGETS[body].min = _aeHdMinOver(hdb, row[1], row[2]);
@@ -3589,11 +3613,16 @@ function _aeSetHint(key) {
     '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
 }
 function _aeRenderSettings() {
-  var panel = _aeById('ae-set');
+  var panel = _aeById('ae-set-body');
   if (!panel || !_ae.setOpen) return;
   var m = _ae.satMeta || {};
   var editable = !!m.canChange && !m.locked && !_ae.setBusy;
-  var html = (typeof _almDismissX === 'function' ? _almDismissX() : '') + '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
+  var html = (typeof _almDismissX === 'function' ? _almDismissX() : '') +
+    // This viewer's own: names of places on the bodies (off until turned on, remembered on this device).
+    '<label class="ae-set-choice"><input type="checkbox" name="ae-lm-layer"' + (_aeLmLayerOn() ? ' checked' : '') + '>' +
+      '<span><b>' + _almEsc(_aeT('alm_lm_layer')) + '</b><small>' + _almEsc(_aeT('alm_lm_layer_hint')) + '</small></span></label>' +
+    '<div class="ae-set-sep" aria-hidden="true"></div>' +
+    '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
     '<div role="radiogroup" aria-labelledby="ae-set-title">';
   AE_SAT_MODES.forEach(function (mode) {
     var key = AE_SAT_MODE_KEY + mode;
@@ -3624,8 +3653,8 @@ function _aeSetMode(mode) {
   }).then(function () {
     _ae.setBusy = false;
     _aeRenderSettings();
-    var checked = _aeById('ae-set');
-    checked = checked && checked.querySelector && checked.querySelector('input:checked');
+    var checked = _aeById('ae-set-body');
+    checked = checked && checked.querySelector && checked.querySelector('input[name="ae-sat-mode"]:checked');
     if (checked) checked.focus({ preventScroll: true });
     _aeLoadSats();
   });
@@ -4287,7 +4316,11 @@ function _aeBodyAt(x, y) {
   if (!sc || !_ae.h) return null;
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
-  var bodies = AE_MARKED.map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; })
+  // The ISS only where its model is drawn (from afar its dot is the satellites' to pick, and from the Sun it stood on
+  // the Earth and took the Earth's taps).
+  var issDrawn = !!(_ae.gl.iss && _ae.gl.iss.root.visible);
+  var bodies = AE_MARKED.filter(function (m) { return !m.flightOnly || issDrawn; })
+    .map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; })
     .filter(function (b) { return !!b[1]; });
   var best = null, bestD = Infinity;
   for (var i = 0; i < bodies.length; i++) {
@@ -4390,10 +4423,11 @@ function _aeNoteParts() {
       if (s.standing && s.standing !== 'none') anyShown = true;
       if (s.iss && s.standing === 'orbit') issOrbit = s;
     });
-    var line = _aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) });
-    if (anyShown && _aeAsking()) dated = line;
-    else parts.push(line);
-    if (anyShown && _ae.satMeta && _ae.satMeta.stale && !_aeAsking()) parts.push(_aeT('alm_earth_data_stale'));
+    // The data's date is in the gear (with Get fresh data); the line under the controls says only that it may be out
+    // of date.
+    if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
+    else parts.push(_aeT('alm_earth_no_sat_data'));
+    if (anyShown && _ae.satMeta && _ae.satMeta.stale) parts.push(_aeT('alm_earth_data_stale'));
     if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));
@@ -4411,14 +4445,16 @@ function _aeNoteParts() {
 // The offer before the note: the data's date, whether the last try failed,
 // and the button.
 function _aeRenderAsk(dated) {
-  var box = _aeById('ae-ask'), btn = _aeById('ae-fresh');
+  var box = _aeById('ae-ask'), btn = _aeById('ae-fresh'), sep = _aeById('ae-fresh-sep');
   if (!box || !btn) return;
-  var on = _aeAsking();
+  var on = !!dated, asking = on && _aeAsking();
   if (box.hidden === on) box.hidden = !on;
   if (!on) return;
-  var parts = dated ? [dated] : [];
-  if (_ae.freshFailed) parts.push(_aeT('alm_earth_fresh_failed'));
+  var parts = [dated];
+  if (asking && _ae.freshFailed) parts.push(_aeT('alm_earth_fresh_failed'));
   _aeSetText(_aeById('ae-ask-text'), parts.join(' · '));
+  if (btn.hidden === asking) btn.hidden = !asking;
+  if (sep && sep.hidden === asking) sep.hidden = !asking;
   _aeSetText(btn, _aeT(_ae.freshBusy ? 'alm_earth_getting_fresh' : 'alm_earth_get_fresh'));
   btn.disabled = !!_ae.freshBusy;
 }
@@ -4800,7 +4836,9 @@ function _aeBindControls() {
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-go]') : null;
     if (!b) return;
     _aeShowGo(false);
-    _aePreset(b.getAttribute('data-ae-go'));
+    var key = b.getAttribute('data-ae-go'), lmRow = _aeGoLmRow(key);
+    if (lmRow) { _aeLmOpen('moon', lmRow); _aeLmFly('moon', lmRow); return; }
+    _aePreset(key);
   };
   if (typeof _almDismissable === 'function') {
     _almDismissable('ae-go', function () { _aeShowGo(false); },
@@ -4823,6 +4861,7 @@ function _aeBindControls() {
   _aeById('ae-set').onchange = function (e) {
     var input = e && e.target;
     if (input && input.name === 'ae-sat-mode') _aeSetMode(input.value);
+    if (input && input.name === 'ae-lm-layer') _aeLmSetLayer(input.checked);
   };
   // Article links in the card need no binding of their own: the view sits
   // inside #almanac-view, where AlmanacLinks already listens.

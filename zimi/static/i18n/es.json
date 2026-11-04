@@ -3555,5 +3555,9 @@
   "upd_updated": "Actualizado",
   "upd_release": "Zimi {v}",
   "upd_edition": "Edición {date}",
-  "dot_why": "Qué hay de nuevo"
+  "dot_why": "Qué hay de nuevo",
+  "alm_lm_layer": "Lugares",
+  "alm_lm_layer_hint": "Nombres en la Luna: alunizajes, cráteres, mares",
+  "alm_earth_sat_data_from": "Datos de satélites: del {date}",
+  "alm_go_landings": "Alunizajes"
 }

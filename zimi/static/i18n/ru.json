@@ -3555,5 +3555,9 @@
   "upd_updated": "Обновлено",
   "upd_release": "Zimi {v}",
   "upd_edition": "Выпуск {date}",
-  "dot_why": "Что нового"
+  "dot_why": "Что нового",
+  "alm_lm_layer": "Ориентиры",
+  "alm_lm_layer_hint": "Названия на Луне: места посадок, кратеры, моря",
+  "alm_earth_sat_data_from": "Данные спутников: от {date}",
+  "alm_go_landings": "Посадки на Луну"
 }

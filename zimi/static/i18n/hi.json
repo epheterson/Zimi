@@ -3555,5 +3555,9 @@
   "upd_updated": "अपडेट किया गया",
   "upd_release": "Zimi {v}",
   "upd_edition": "{date} संस्करण",
-  "dot_why": "यहाँ क्या नया है"
+  "dot_why": "यहाँ क्या नया है",
+  "alm_lm_layer": "स्थल",
+  "alm_lm_layer_hint": "चंद्रमा पर नाम: उतरने के स्थान, क्रेटर, सागर",
+  "alm_earth_sat_data_from": "उपग्रह डेटा: {date} से",
+  "alm_go_landings": "चंद्र अवतरण"
 }

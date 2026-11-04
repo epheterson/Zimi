@@ -3555,5 +3555,9 @@
   "upd_updated": "עודכן",
   "upd_release": "Zimi {v}",
   "upd_edition": "מהדורת {date}",
-  "dot_why": "מה חדש כאן"
+  "dot_why": "מה חדש כאן",
+  "alm_lm_layer": "ציוני דרך",
+  "alm_lm_layer_hint": "שמות על הירח: אתרי נחיתה, מכתשים, ימים",
+  "alm_earth_sat_data_from": "נתוני לוויינים: מ־{date}",
+  "alm_go_landings": "נחיתות על הירח"
 }

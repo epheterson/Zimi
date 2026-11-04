@@ -3555,5 +3555,9 @@
   "upd_updated": "Atualizado",
   "upd_release": "Zimi {v}",
   "upd_edition": "Edição {date}",
-  "dot_why": "O que há de novo"
+  "dot_why": "O que há de novo",
+  "alm_lm_layer": "Marcos",
+  "alm_lm_layer_hint": "Nomes na Lua: locais de pouso, crateras, mares",
+  "alm_earth_sat_data_from": "Dados de satélites: de {date}",
+  "alm_go_landings": "Pousos na Lua"
 }

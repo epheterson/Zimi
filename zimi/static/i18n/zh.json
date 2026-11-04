@@ -3555,5 +3555,9 @@
   "upd_updated": "已更新",
   "upd_release": "Zimi {v}",
   "upd_edition": "{date} 版",
-  "dot_why": "新内容"
+  "dot_why": "新内容",
+  "alm_lm_layer": "地标",
+  "alm_lm_layer_hint": "月球上的名称：着陆点、环形山、月海",
+  "alm_earth_sat_data_from": "卫星数据：{date}",
+  "alm_go_landings": "登月地点"
 }

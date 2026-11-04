@@ -3555,5 +3555,9 @@
   "upd_updated": "حُدّث",
   "upd_release": "Zimi {v}",
   "upd_edition": "إصدار {date}",
-  "dot_why": "ما الجديد هنا"
+  "dot_why": "ما الجديد هنا",
+  "alm_lm_layer": "المعالم",
+  "alm_lm_layer_hint": "أسماء على القمر: مواقع الهبوط والفوهات والبحار",
+  "alm_earth_sat_data_from": "بيانات الأقمار الصناعية: من {date}",
+  "alm_go_landings": "مواقع الهبوط على القمر"
 }

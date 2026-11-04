@@ -84,6 +84,15 @@ def test_fly_to_the_apollo_11_site(served):
                 polling=200,
             )
             pg.evaluate("_aePreset('moon')")
+            # Landmarks are off until turned on: the Moon carries no names.
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            pg.wait_for_timeout(1000)
+            assert pg.evaluate(LABELS) == []
+            # The gear's switch turns them on, remembered on this device.
+            pg.click("#ae-gear")
+            pg.check("#ae-set-body input[name='ae-lm-layer']")
+            assert pg.evaluate("localStorage.getItem('zimi_alm_landmarks')") == "1"
+            pg.click("#ae-gear")
             # Seen from the Earth's side, the near side faces us: its landings are named.
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return ("
@@ -119,6 +128,17 @@ def test_fly_to_the_apollo_11_site(served):
             assert spot["target"] == "moon"
             assert spot["dist"] == pytest.approx(spot["min"], rel=1e-6)
             assert abs(spot["x"] - 0.5) < 0.03 and abs(spot["y"] - 0.5) < 0.03, spot
+            # Off again, a landing site chosen in Go to: the flight there shows that one name and its card, alone.
+            pg.evaluate("_aeLmSetLayer(false); _ae.lm = null; _aeRenderCard(); window._almReduceMotion = function () { return true; }; _aePreset('earth'); window._almReduceMotion = undefined;")
+            pg.click("#ae-go-btn")
+            pg.click("#ae-go .ae-go-row:has-text('Apollo 11')")
+            pg.wait_for_function(
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'moon' && (" + LABELS + ")().length > 0; }",
+                timeout=60_000,
+                polling=200,
+            )
+            assert pg.evaluate(LABELS) == ["Apollo 11"]
+            assert "Apollo 11" in pg.inner_text("#ae-card")
             assert not errors, errors
             ctx.close()
         finally:
