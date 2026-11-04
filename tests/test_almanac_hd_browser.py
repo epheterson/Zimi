@@ -24,6 +24,7 @@ GL_ARGS = [
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
+INSERT = {"site": "apollo11", "lat": 0.67408, "lon": 23.47297, "z": 2, "x0": 4, "x1": 5, "y0": 0, "y1": 1}
 LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
     "installed": False,
@@ -49,13 +50,21 @@ def _build_hd(folder, out):
                     Image.new("RGB", (64, 64), (60 + 60 * z, 120, 200)).save(
                         os.path.join(p, "%d.webp" % y), "WEBP"
                     )
+    # An insert past the Moon's max, round the Apollo 11 site: level 2, the four tiles under level 1's (2, 0).
+    for x in (4, 5):
+        for y in (0, 1):
+            p = os.path.join(folder, "moon/albedo", "2", str(x))
+            os.makedirs(p, exist_ok=True)
+            Image.new("RGB", (64, 64), (250, 250, 250)).save(os.path.join(p, "%d.webp" % y), "WEBP")
+    layers = {k: {"max": v} for k, v in LEVELS.items()}
+    layers["moon/albedo"]["inserts"] = [INSERT]
     with open(os.path.join(folder, "hd.json"), "w") as f:
         json.dump(
             {
                 "version": 1,
                 "tile": 512,
                 "ext": "webp",
-                "layers": {k: {"max": v} for k, v in LEVELS.items()},
+                "layers": layers,
             },
             f,
         )
@@ -219,6 +228,13 @@ def test_tiles_by_view(browser, served):
                      albedoRed: a && a.isTexture ? a.format === AE_THREE_RED_FORMAT : null }; }""")
         assert moon["relief"] and moon["maps"] == ["moonMap", "reliefMap"], moon
         assert moon["reliefRed"] is False and moon["albedoRed"] is True, moon
+        # Over the Apollo 11 site the Moon goes past its max, into the insert; outside it, never.
+        pg.evaluate("""() => { var row = _aeLm && _aeLm.moon ? _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0] : ['Apollo 11', 0.67408, 23.47297, 'landing', '', 0];
+            _ae.fly = null; _aeLmFly('moon', row); _ae.fly = null; _ae.dist = AE_TARGETS.moon.min; }""")
+        _settle(pg, "() => { var b = _ae.gl.hd.bodies.filter(b => b.key === 'moon')[0]; return b.drawn.some(n => n.z === 2); }")
+        deep = pg.evaluate("_ae.gl.hd.bodies.filter(b => b.key === 'moon')[0].drawn.filter(n => n.z === 2).map(n => [n.x, n.y])")
+        assert all(4 <= x <= 5 and 0 <= y <= 1 for x, y in deep), deep
+        assert not any("/moon/albedo/2/" in u and not any("/moon/albedo/2/%d/%d.webp" % (x, y) in u for x in (4, 5) for y in (0, 1)) for u in tiles)
     finally:
         ctx.close()
 

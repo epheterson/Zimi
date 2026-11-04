@@ -354,7 +354,7 @@ var AE_HTTP_UNAUTHORIZED = 401, AE_HTTP_FORBIDDEN = 403;
 // Camera.
 var AE_FOV_DEG = 35;
 var AE_NEAR_FRACTION = 0.05;          // near plane, as a share of the distance to the nearest surface
-var AE_NEAR_MIN = 1e-4;
+var AE_NEAR_MIN = 2e-6;              // 13 m: over an Apollo site the camera comes within a kilometre of the ground
 var AE_FAR = 12000;                   // Earth radii: past Neptune as the planets are shown (AE_PLANET_DIST_POW)
 var AE_STAR_RADIUS = 9500;            // the star sphere, carried with the camera: behind every planet
 var AE_MIN_DIST_EARTH = 1.12;         // closest approach, from the Earth's centre (~770 km up)
@@ -1575,7 +1575,12 @@ function _aeHdLoad(S) {
     S.hd = { man: man, bodies: bodies, queue: [], loading: 0, gpu: 0, frame: 0 };
     bodies.forEach(function (b) {
       b.max = man.layers[b.maps[0].layer].max;
-      b.maps.forEach(function (m) { m.max = man.layers[m.layer].max; });
+      b.maps.forEach(function (m) {
+        m.max = man.layers[m.layer].max;
+        // Inserts: tiles past the layer's max, only round some places (the Apollo sites), by level.
+        m.ins = {};
+        (man.layers[m.layer].inserts || []).forEach(function (e) { (m.ins[e.z] = m.ins[e.z] || []).push(e); });
+      });
       b.nodes = {};
       b.drawn = [];
       b.frag = _aeHdFrag(b.relief && b.maps.some(function (m) { return m.uni === 'reliefMap'; }) ? _aeReliefFrag(b.frag) : b.frag, b.maps);
@@ -1672,9 +1677,46 @@ function _aeHdNode(b, z, x, y) {
 }
 // A layer's tile for node n: the node's own, or (past the layer's deepest level) the ancestor's at that level.
 function _aeHdLayerNode(b, n, m) {
-  if (n.z <= m.max) return n;
+  if (n.z <= m.max || _aeHdInInsert(m, n.z, n.x, n.y)) return n;
   var up = n.z - m.max;
   return _aeHdNode(b, m.max, n.x >> up, n.y >> up);
+}
+function _aeHdInInsert(m, z, x, y) {
+  var list = m.ins && m.ins[z];
+  if (!list) return false;
+  for (var i = 0; i < list.length; i++) { var e = list[i]; if (x >= e.x0 && x <= e.x1 && y >= e.y0 && y <= e.y1) return e; }
+  return false;
+}
+// A tile gives way to its four when they are there: below the layer's max everywhere, past it inside an insert.
+function _aeHdCanSplit(b, z, x, y) {
+  var m = b.maps[0];
+  if (z < b.max) return true;
+  for (var k = 0; k < 4; k++) if (!_aeHdInInsert(m, z + 1, 2 * x + (k & 1), 2 * y + (k >> 1))) return false;
+  return true;
+}
+// The body in view: its closest approach is the one over the point below the camera, and a camera that has moved off
+// an insert is eased back out to the body's own limit.
+function _aeHdKeepAbove(S, b) {
+  var inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
+  var c = S.camera.position.clone().applyMatrix4(inv), r = Math.hypot(c.x, c.y, c.z);
+  var min = _aeHdMinOver(b, Math.asin(c.z / r) / AE_DEG, Math.atan2(c.y, c.x) / AE_DEG);
+  AE_TARGETS[b.key].min = min;
+  if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
+}
+// How near the camera may come over a place: the closest at which the deepest tile there is still two or three device
+// pixels a texel, or the body's own limit where there is no insert.
+var AE_HD_TEXEL_PX = 2.5, AE_HD_INSERT_MIN_ALT_KM = 0.5;
+function _aeHdMinOver(b, lat, lon) {
+  var m = b.maps[0], deepest = -1;
+  for (var z in m.ins) {
+    var span = 180 / Math.pow(2, +z), x = Math.floor((lon + 180) / span), y = Math.floor((90 - lat) / span);
+    if (+z > deepest && _aeHdInInsert(m, +z, x, y)) deepest = +z;
+  }
+  if (deepest < 0) return b.minDist;
+  var texelKm = (180 / Math.pow(2, deepest) / AE_HD_TILE_PX) * AE_DEG * b.radius * AE_EARTH_RADIUS_KM;
+  var cam = _ae.gl.camera, hPx = _ae.h * _ae.gl.dpr;
+  var altKm = Math.max(AE_HD_INSERT_MIN_ALT_KM, texelKm * hPx / (AE_HD_TEXEL_PX * _aeRad(cam.fov)));
+  return Math.min(b.minDist, b.radius + altKm / AE_EARTH_RADIUS_KM);
 }
 function _aeHdTileUrl(m, n) { return AE_HD_BASE + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
 function _aeHdReady(b, n) {
@@ -1757,7 +1799,7 @@ function _aeHdSelect(S, b) {
     }
     var near = Math.max(dist - chord, (d - 1) * 0.5, 1e-6);
     var px = span * AE_DEG / near * focal;
-    if (z < b.max && px > AE_HD_TILE_PX * AE_HD_SPLIT) {
+    if (px > AE_HD_TILE_PX * AE_HD_SPLIT && _aeHdCanSplit(b, z, x, y)) {
       for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 2; dx++) visit(z + 1, 2 * x + dx, 2 * y + dy);
       return;
     }
@@ -1815,6 +1857,7 @@ function _aeHdUpdate(S) {
     }
     // The body's one map steps aside once its tiles cover it.
     b.parent.material.visible = !b.drawn.length;
+    if (_ae.target === b.key && !_ae.fly) _aeHdKeepAbove(S, b);
   });
   _aeHdPump(S);
   _aeHdEvict(S);
@@ -2439,6 +2482,9 @@ function _aeRenderLmCard(card) {
 function _aeLmFly(body, row) {
   var b = _aeLmBodies().filter(function (x) { return x.key === body; })[0];
   if (!b) return;
+  // Over an Apollo site with Almanac HD, all the way down to the inserts' half-metre tiles.
+  var hdb = _ae.gl.hd && _ae.gl.hd.bodies.filter(function (x) { return x.key === body; })[0];
+  if (hdb) AE_TARGETS[body].min = _aeHdMinOver(hdb, row[1], row[2]);
   _aeFlyTo(body, AE_TARGETS[body].min, _aeAzElOf(_aeLmDir(b, row[1], row[2])));
   _ae.preset = null;
 }
