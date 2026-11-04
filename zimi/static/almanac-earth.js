@@ -355,8 +355,8 @@ var AE_HTTP_UNAUTHORIZED = 401, AE_HTTP_FORBIDDEN = 403;
 var AE_FOV_DEG = 35;
 var AE_NEAR_FRACTION = 0.05;          // near plane, as a share of the distance to the nearest surface
 var AE_NEAR_MIN = 1e-4;
-var AE_FAR = 6000;                    // Earth radii: past the Moon at the widest zoom
-var AE_STAR_RADIUS = 5000;            // the star sphere, carried with the camera
+var AE_FAR = 12000;                   // Earth radii: past Neptune as the planets are shown (AE_PLANET_DIST_POW)
+var AE_STAR_RADIUS = 9500;            // the star sphere, carried with the camera: behind every planet
 var AE_MIN_DIST_EARTH = 1.12;         // closest approach, from the Earth's centre (~770 km up)
 var AE_MIN_DIST_MOON = AE_MOON_RADIUS_RE * 1.25;
 var AE_MAX_DIST = 420;                // wide enough to hold the Moon's whole orbit
@@ -644,6 +644,7 @@ function _aeEnsureStyles() {
 }
 
 function _aeBuildDom() {
+  _aeKnowPlanets();
   var host = _aeById('almanac-view');
   if (!host) return null;
   var el = document.createElement('div');
@@ -1441,13 +1442,15 @@ function _aeBuildGl(THREE, canvas) {
   scene.add(issRing);
   var sats = _aePointCloud(THREE, AE_SAT_CAPACITY, dpr, false, { depthTest: true });
   scene.add(sats);
+  var S0 = { THREE: THREE, scene: scene, pv: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
+  _aeBuildPlanets(S0);
 
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
     sky: sky, starCloud: starCloud, starsLoaded: false, starsLoading: false, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
-    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
+    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(), planets: S0.planets, pv: S0.pv,
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
     maps: {}, mapFailed: {}               // by URL: the load under way or done, and what failed
   };
@@ -1796,6 +1799,256 @@ function _aeHdUpdate(S) {
   _aeHdPump(S);
   _aeHdEvict(S);
 }
+// ── The planets and their big moons ──
+// Each planet stands in its true direction from the Earth, lit from its true direction to the Sun (so its phase is
+// the one a telescope shows), at its true size, but drawn nearer, as the Sun is: AE_SUN_SHOW_DIST times its distance
+// in AU to the power AE_PLANET_DIST_POW, so Neptune at 30 AU stands under 8,000 Earth radii out and the view's
+// flights between them stay seconds long. Moons stand round their planet at their true distance. Tap one, or its
+// name, to fly there. Maps: NASA, USGS and JPL mosaics (public domain); Saturn, Uranus and Neptune from Solar System
+// Scope (CC BY 4.0), credited on the view. Saturn's rings are its measured radial structure, with the planet's shadow
+// on them and theirs on it.
+var AE_PLANET_DIST_POW = 0.28;
+var AE_PLANET_SEGMENTS = [64, 32];
+var AE_PLANET_MAP_MIN_PX = 3;          // a disc smaller than this (radius) is its mark; its map is asked for past it
+var AE_PLANET_MIN_RADII = 1.3, AE_PLANET_FIT = 1.5;
+var AE_RING_SEGMENTS = 160;
+var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide, not exported by name by the tree-shaken build
+// IAU WGCCRE 2015 poles and turning (J2000 equatorial; W0 at J2000 and Wd a day, degrees).
+var AE_PLANETS = [
+  { key: 'mercury', eph: 'Mercury', km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
+  { key: 'venus', eph: 'Venus', km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
+  { key: 'mars', eph: 'Mars', km: 3396.2, flat: 0.00589, map: 'mars', color: [0.77, 0.38, 0.25], atmo: [0.9, 0.55, 0.4], pole: [317.269202, 54.432516, 176.049863, 350.891982443297] },
+  { key: 'jupiter', eph: 'Jupiter', km: 71492, flat: 0.06487, map: 'jupiter', color: [0.77, 0.6, 0.41], pole: [268.056595, 64.495303, 284.95, 870.536] },
+  { key: 'saturn', eph: 'Saturn', km: 60268, flat: 0.09796, map: 'saturn', color: [0.83, 0.72, 0.47], pole: [40.589, 83.537, 38.90, 810.7939024], rings: [74500, 140220], cc: true },
+  { key: 'uranus', eph: 'Uranus', km: 25559, flat: 0.0229, map: 'uranus', color: [0.47, 0.78, 0.78], atmo: [0.5, 0.85, 0.9], pole: [257.311, -15.175, 203.81, -501.1600928], cc: true },
+  { key: 'neptune', eph: 'Neptune', km: 24764, flat: 0.0171, map: 'neptune', color: [0.22, 0.41, 0.78], atmo: [0.3, 0.45, 1], pole: [299.36, 43.46, 249.978, 541.1397757], cc: true },
+  // The big moons' mean circular orbits (scripts/fit_moon_orbits.py, against JPL Horizons 1990-2060): radius km,
+  // longitude in the planet's equator at J2000 from the node of that equator on the ecliptic, degrees a day.
+  { key: 'io', parent: 'jupiter', km: 1821.6, map: 'io', color: [0.91, 0.85, 0.44], orbit: [421769, 40.361, 203.488958] },
+  { key: 'europa', parent: 'jupiter', km: 1560.8, map: 'europa', color: [0.85, 0.81, 0.75], orbit: [671090, 234.918, 101.374724] },
+  { key: 'ganymede', parent: 'jupiter', km: 2634.1, map: 'ganymede', color: [0.66, 0.63, 0.58], orbit: [1070432, 242.196, 50.317608] },
+  { key: 'callisto', parent: 'jupiter', km: 2410.3, map: 'callisto', color: [0.49, 0.45, 0.41], orbit: [1882794, 101.383, 21.571073] },
+  { key: 'titan', parent: 'saturn', km: 2574.7, map: 'titan', color: [0.85, 0.65, 0.31], atmo: [1, 0.65, 0.2], orbit: [1222375, 327.598, 22.576976] }
+];
+// Saturn's rings outward from the planet (km): alpha and brightness. C ring faint, B bright, the Cassini Division
+// nearly empty, the A ring between, the Encke gap near its edge.
+var AE_RING_PROFILE = [
+  [74500, 92000, 0.12, 0.55], [92000, 117500, 0.82, 0.95], [117500, 122200, 0.05, 0.6],
+  [122200, 133300, 0.55, 0.85], [133300, 133700, 0.06, 0.6], [133700, 136800, 0.5, 0.8], [136800, 140220, 0.07, 0.6]
+];
+var AE_PLANET_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D map; uniform float mapped; uniform vec3 color; uniform vec3 sunDir; uniform vec3 atmo; uniform float dim;',
+  'uniform float rings; uniform vec3 ringN; uniform vec3 center; uniform vec2 ringR; uniform sampler2D ringMap;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  vec3 N = normalize(vNormal);',
+  '  float ndl = dot(N, sunDir);',
+  '  vec3 base = mapped > 0.5 ? texture2D(map, vUv).rgb : color;',
+  '  float light = max(ndl, 0.0);',
+  // The rings' shadow: the line from here toward the Sun crosses the ring plane inside the rings.
+  '  if (rings > 0.5) {',
+  '    float den = dot(sunDir, ringN);',
+  '    float t = abs(den) > 1e-5 ? -dot(vWorld - center, ringN) / den : -1.0;',
+  '    if (t > 0.0) {',
+  '      float u = (length(vWorld + sunDir * t - center) - ringR.x) / (ringR.y - ringR.x);',
+  '      if (u > 0.0 && u < 1.0) light *= 1.0 - 0.9 * texture2D(ringMap, vec2(u, 0.5)).a;',
+  '    }',
+  '  }',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  vec3 col = base * (light * 0.96 + 0.03);',
+  '  col += atmo * pow(1.0 - max(dot(N, V), 0.0), 3.0) * (0.1 + 0.9 * smoothstep(-0.1, 0.3, ndl)) * 0.6;',
+  '  gl_FragColor = vec4(col * dim, 1.0);',
+  '}'
+].join('\n');
+// The rings: their profile by radius, lit on the Sun's side and through from behind (they scatter forward), dark in
+// the planet's shadow.
+var AE_RING_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D ringMap; uniform vec2 ringR; uniform vec3 sunDir; uniform vec3 center; uniform float radius; uniform vec3 ringN; uniform float dim;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  float u = (length(vWorld - center) - ringR.x) / (ringR.y - ringR.x);',
+  '  if (u < 0.0 || u > 1.0) discard;',
+  '  vec4 p = texture2D(ringMap, vec2(u, 0.5));',
+  '  vec3 toC = center - vWorld;',
+  '  float b = dot(toC, sunDir);',
+  '  float miss = sqrt(max(0.0, dot(toC, toC) - b * b));',
+  '  float shade = (b > 0.0 && miss < radius) ? 0.08 : 1.0;',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  float sameSide = step(0.0, dot(ringN, sunDir) * dot(ringN, V));',
+  '  float lit = mix(0.35, 1.0, sameSide) * max(abs(dot(ringN, sunDir)), 0.12);',
+  '  gl_FragColor = vec4(p.rgb * lit * 1.6 * shade * dim, p.a);',
+  '}'
+].join('\n');
+function _aePlanetBody(key) { for (var i = 0; i < AE_PLANETS.length; i++) if (AE_PLANETS[i].key === key) return AE_PLANETS[i]; return null; }
+function _aeIsPlanet(key) { return !!_aePlanetBody(key); }
+// Each planet and moon becomes a place the view knows: a target to circle, a mark with its name. Once, before the
+// view's markup is built (the marks are made from AE_MARKED).
+var _aePlanetsKnown = false;
+function _aeKnowPlanets() {
+  if (_aePlanetsKnown) return;
+  _aePlanetsKnown = true;
+  AE_PLANETS.forEach(function (b) {
+    b.r = b.km / AE_EARTH_RADIUS_KM;
+    AE_TARGETS[b.key] = { min: b.r * AE_PLANET_MIN_RADII, max: AE_MAX_DIST, surface: b.r };
+    AE_MARKED.push({ body: b.key, name: function () { return b.parent ? b.key.charAt(0).toUpperCase() + b.key.slice(1) : _tp(b.eph); } });
+  });
+}
+function _aeRingCanvas() {
+  var w = 256, cv = document.createElement('canvas');
+  cv.width = w; cv.height = 1;
+  var g = cv.getContext('2d'), lo = AE_RING_PROFILE[0][0], hi = AE_RING_PROFILE[AE_RING_PROFILE.length - 1][1];
+  for (var x = 0; x < w; x++) {
+    var km = lo + (hi - lo) * (x + 0.5) / w, row = AE_RING_PROFILE[AE_RING_PROFILE.length - 1];
+    for (var i = 0; i < AE_RING_PROFILE.length; i++) if (km < AE_RING_PROFILE[i][1]) { row = AE_RING_PROFILE[i]; break; }
+    var ripple = 0.88 + 0.12 * Math.sin(km / 160), v = row[3] * ripple;
+    g.fillStyle = 'rgba(' + Math.round(235 * v) + ',' + Math.round(215 * v) + ',' + Math.round(180 * v) + ',' + (row[2] * ripple).toFixed(3) + ')';
+    g.fillRect(x, 0, 1, 1);
+  }
+  return cv;
+}
+// A flat annulus in a body's xy plane (its equator), radii in its own units: three's RingGeometry is not in the build.
+function _aeRingGeometry(THREE, rin, rout, segs) {
+  var pos = new Float32Array((segs + 1) * 6), idx = [];
+  for (var i = 0; i <= segs; i++) {
+    var a = i / segs * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+    pos.set([c * rin, sn * rin, 0, c * rout, sn * rout, 0], i * 6);
+    if (i < segs) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+  }
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array((segs + 1) * 6).fill(0).map(function (v, k) { return k % 3 === 2 ? 1 : 0; }), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((segs + 1) * 4), 2));
+  g.setIndex(idx);
+  return g;
+}
+function _aeBuildPlanets(S) {
+  _aeKnowPlanets();
+  var THREE = S.THREE;
+  var ringMap = { value: null };   // drawn from AE_RING_PROFILE the first time Saturn is near enough to show
+  S.planets = {};
+  AE_PLANETS.forEach(function (b) {
+    var geo = new THREE.SphereGeometry(b.r, AE_PLANET_SEGMENTS[0], AE_PLANET_SEGMENTS[1]);
+    geo.rotateX(Math.PI / 2);
+    var uni = {
+      map: { value: null }, mapped: { value: 0 }, color: { value: b.color }, sunDir: { value: new THREE.Vector3(1, 0, 0) },
+      atmo: { value: b.atmo || [0, 0, 0] }, dim: { value: 1 }, rings: { value: b.rings ? 1 : 0 }, ringN: { value: new THREE.Vector3(0, 0, 1) },
+      center: { value: new THREE.Vector3() }, ringR: { value: [0, 1] }, ringMap: ringMap
+    };
+    var mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_PLANET_FRAG }));
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = false;
+    S.scene.add(mesh);
+    var p = { b: b, mesh: mesh, uni: uni, pos: [0, 0, 0], sun: [1, 0, 0], frame: null, asked: false };
+    if (b.rings) {
+      uni.ringR.value = [b.rings[0] / AE_EARTH_RADIUS_KM, b.rings[1] / AE_EARTH_RADIUS_KM];
+      var ringUni = { ringMap: uni.ringMap, ringR: uni.ringR, sunDir: uni.sunDir, center: uni.center, radius: { value: b.r }, ringN: uni.ringN, dim: uni.dim };
+      p.ring = new THREE.Mesh(_aeRingGeometry(THREE, b.rings[0] / b.km * b.r, b.rings[1] / b.km * b.r, AE_RING_SEGMENTS),
+        new THREE.ShaderMaterial({ uniforms: ringUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_RING_FRAG, transparent: true, depthWrite: false, side: AE_THREE_DOUBLE_SIDE }));
+      p.ring.matrixAutoUpdate = false;
+      p.ring.visible = false;
+      S.scene.add(p.ring);
+    }
+    S.planets[b.key] = p;
+  });
+}
+// A body's axes in the J2000 ecliptic at jd: x toward its prime meridian on its equator, z its north pole.
+function _aeEqToEclJ2000(v) {
+  var e = _aeRad(EPH_OBLIQUITY_DEG), c = Math.cos(e), sn = Math.sin(e);
+  return [v[0], c * v[1] + sn * v[2], -sn * v[1] + c * v[2]];
+}
+function _aePlanetFrameEcl(b, jd) {
+  var ra = _aeRad(b.pole[0]), dec = _aeRad(b.pole[1]);
+  var z = _aeEqToEclJ2000(_aeEqVec(ra, dec, 1));
+  var node = _aeEqToEclJ2000([-Math.sin(ra), Math.cos(ra), 0]);
+  var w = _aeRad(_aeNormDeg(b.pole[2] + b.pole[3] * (jd - JD_J2000)));
+  var perp = _aeCross(z, node);
+  var x = _aeAdd(_aeScale(node, Math.cos(w)), _aeScale(perp, Math.sin(w)));
+  return { x: x, y: _aeCross(z, x), z: z };
+}
+// Where each planet and moon stands this frame (scene units: Earth radii, equator of date) and its turn and light.
+function _aeUpdatePlanets(sc) {
+  var S = _ae.gl;
+  if (!S || !S.planets || typeof _ephBodyJ2000 !== 'function' || typeof _planetHelio3D !== 'function' || typeof _jdToJulianCentury !== 'function') return;   // the orrery's elements (almanac-orrery.js)
+  var jd = sc.ms / MS_PER_DAY + JD_UNIX_EPOCH, jde = jd + _aeDeltaTDays(jd);
+  var toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, jde); };
+  var earth = _ephBodyJ2000('Earth', jd), helio = {};
+  var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  AE_PLANETS.forEach(function (b) {
+    var p = S.planets[b.key], f, pos, sun;
+    if (!b.parent) {
+      var h = helio[b.key] = _ephBodyJ2000(b.eph, jd), g = _aeSub(h, earth);
+      var dir = _aeNorm(toScene(g));
+      pos = _aeScale(dir, AE_SUN_SHOW_DIST * Math.pow(_aeLen(g), AE_PLANET_DIST_POW));
+      sun = _aeNorm(toScene(_aeScale(h, -1)));
+      f = _aePlanetFrameEcl(b, jd);
+    } else {
+      var par = S.planets[b.parent], pb = par.b, o = b.orbit;
+      var pole = _aePlanetFrameEcl(pb, jd).z, ax = _aeNorm(_aeCross([0, 0, 1], pole)), ay = _aeCross(pole, ax);
+      var lam = _aeRad(o[1] + o[2] * (jd - JD_J2000)), r = o[0] / AE_EARTH_RADIUS_KM;
+      var off = _aeAdd(_aeScale(ax, Math.cos(lam)), _aeScale(ay, Math.sin(lam)));
+      pos = _aeAdd(par.pos, _aeScale(toScene(off), r));
+      sun = par.sun;
+      // Locked to its planet: its prime meridian faces the planet.
+      var zz = toScene(pole), xx = _aeNorm(_aeScale(toScene(off), -1));
+      f = { x: xx, y: _aeCross(zz, xx), z: zz, scene: true };
+    }
+    var x = f.scene ? f.x : toScene(f.x), y = f.scene ? f.y : toScene(f.y), z = f.scene ? f.z : toScene(f.z);
+    p.pos = pos; p.sun = sun;
+    var v = S.pv;   // its own: S.vz carries the Moon's pole to its relief
+    v[0].set(x[0], x[1], x[2]); v[1].set(y[0], y[1], y[2]); v[2].set(z[0], z[1], z[2]);
+    var m = p.mesh.matrix;
+    m.makeBasis(v[0], v[1], v[2]);
+    if (b.flat) { var e = m.elements; e[8] *= 1 - b.flat; e[9] *= 1 - b.flat; e[10] *= 1 - b.flat; }
+    m.setPosition(pos[0], pos[1], pos[2]);
+    p.mesh.matrixWorldNeedsUpdate = true;
+    p.uni.sunDir.value.set(sun[0], sun[1], sun[2]);
+    p.uni.center.value.set(pos[0], pos[1], pos[2]);
+    p.uni.ringN.value.set(z[0], z[1], z[2]);
+    p.uni.dim.value = _aeRedOn() ? AE_RED_EARTH_LIGHT : 1;
+    if (p.ring) {
+      p.ring.matrix.makeBasis(v[0], v[1], v[2]).setPosition(pos[0], pos[1], pos[2]);
+      p.ring.matrixWorldNeedsUpdate = true;
+    }
+    var px = b.r / Math.max(1e-9, _aeLen(_aeSub(pos, eye))) * pxPerRad;
+    var show = px >= AE_PLANET_MAP_MIN_PX / 3 || _ae.target === b.key;
+    p.mesh.visible = show;
+    if (p.ring) p.ring.visible = show;
+    if (show && px >= AE_PLANET_MAP_MIN_PX && !p.asked) {
+      p.asked = true;
+      if (p.ring && !p.uni.ringMap.value) {
+        _aeLoadTexture(S.THREE, _aeRingCanvas().toDataURL()).then(function (tx) { p.uni.ringMap.value = tx; _ae.dirty = true; _aeKick(); });
+      }
+      _aeLoadTexture(S.THREE, '/static/earth/' + b.map + '-v1.webp').then(function (tx) {
+        if (_ae.gl !== S) { tx.dispose(); return; }
+        tx.anisotropy = S.aniso;
+        p.uni.map.value = tx;
+        p.uni.mapped.value = 1;
+        _ae.dirty = true;
+        _aeKick();
+      }, function () { p.asked = false; });
+    }
+  });
+}
+// A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
+function _aeBodyPos(key, sc) {
+  sc = sc || _ae.scene;
+  if (!sc || key === 'earth') return [0, 0, 0];
+  if (key === 'moon') return sc.moon;
+  if (key === 'sun') return _aeSunShown(sc);
+  var p = _ae.gl && _ae.gl.planets && _ae.gl.planets[key];
+  return p ? p.pos : [0, 0, 0];
+}
+// Credit for the maps on show: Solar System Scope's licence asks for it.
+function _aePlanetCredit() {
+  var S = _ae.gl;
+  if (!S || !S.planets) return '';
+  for (var k in S.planets) if (S.planets[k].b.cc && S.planets[k].uni.mapped.value) return _aeT('alm_earth_credit_sss');
+  return '';
+}
+
 // ── Past the pictures: the map ──
 // Come down close over the Earth and an installed map takes over from the globe: Map here opens it at the place under
 // the middle of the screen, at the scale the view was showing (a StreetZim or Kiwix map, the last one used first).
@@ -2136,10 +2389,7 @@ var AE_TARGETS = {
   sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
 };
 function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
-function _aeTargetPos() {
-  if (!_ae.scene || _ae.target === 'earth') return [0, 0, 0];
-  return _ae.target === 'moon' ? _ae.scene.moon : _aeSunShown(_ae.scene);
-}
+function _aeTargetPos() { return _aeBodyPos(_ae.target); }
 // Whose sky the Moon is shown in: the device's place once asked for (the
 // crosshair), else the place chosen for the Almanac; null for neither, and
 // then the Moon stands celestial north up and the view says so.
@@ -2543,7 +2793,8 @@ function _aePlaceCamera() {
   var toEarth = _aeLen(pos) - 1;
   var toMoon = _ae.scene ? _aeLen(_aeSub(pos, _ae.scene.moon)) - AE_MOON_RADIUS_RE : Infinity;
   var toSun = _ae.scene ? _aeLen(_aeSub(pos, _aeSunShown(_ae.scene))) - AE_SUN_SHOW_R : Infinity;
-  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun) * AE_NEAR_FRACTION);
+  var toBody = _aeIsPlanet(_ae.target) ? _aeLen(_aeSub(pos, _aeTargetPos())) - AE_TARGETS[_ae.target].surface : Infinity;
+  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun, toBody) * AE_NEAR_FRACTION);
   cam.updateProjectionMatrix();
   S.sky.position.copy(cam.position);
   // An orbit much wider than the screen shows only as arcs through it, a web
@@ -2626,6 +2877,10 @@ function _aePreset(name) {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
     _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+  } else if (_aeIsPlanet(name)) {
+    // From the Earth's side too, a little off it so the phase shows its edge: as a telescope sees it, nearer.
+    var at = _aeBodyPos(name);
+    _aeFlyTo(name, _aeFitDist(AE_TARGETS[name].surface * AE_PLANET_FIT * (_aePlanetBody(name).rings ? 1.6 : 1)), _ae.scene ? _aeAzElOf(_aeScale(at, -1)) : null);
   } else if (name === 'sun') {
     // From the Earth's side too: the Sun as it stands in our sky, ahead.
     _aeFlyTo('sun', _aeFitDist(AE_FIT_SUN), _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.sun, -1)) : null);
@@ -2960,6 +3215,7 @@ function _aeUpdate(ms) {
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   _aePlaceCamera();
+  _aeUpdatePlanets(sc);
 }
 
 function _aeResize() {
@@ -2987,14 +3243,20 @@ function _aeProject(v) {
   return { x: (_aeProjV.x + 1) / 2 * _ae.w, y: (1 - _aeProjV.y) / 2 * _ae.h };
 }
 // Is a scene point hidden behind the Earth (a unit sphere, near enough)?
-function _aeBehindEarth(p) {
-  var c = _ae.gl.camera.position, o = [c.x, c.y, c.z];
-  var d = _aeSub(p, o), len = _aeLen(d);
+function _aeBehindEarth(p) { return _aeBehindSphere(p, [0, 0, 0], 1); }
+// Whether the line from the camera to p passes through a sphere first.
+function _aeBehindSphere(p, centre, r) {
+  var c = _ae.gl.camera.position, o = [c.x - centre[0], c.y - centre[1], c.z - centre[2]];
+  var d = _aeSub(_aeSub(p, centre), o), len = _aeLen(d);
   d = _aeScale(d, 1 / len);
-  var b = _aeDot(o, d), cc = _aeDot(o, o) - 1, disc = b * b - cc;
+  var b = _aeDot(o, d), cc = _aeDot(o, o) - r * r, disc = b * b - cc;
   if (disc < 0) return false;
   var tHit = -b - Math.sqrt(disc);
-  return tHit > 0 && tHit < len - 1e-3;
+  return tHit > 0 && tHit < len - 1e-3 * r;
+}
+// Behind the planet or moon in view (a moon of Jupiter behind it is not named on its face).
+function _aeBehindTarget(body, p) {
+  return _aeIsPlanet(_ae.target) && body !== _ae.target && _aeBehindSphere(p, _aeTargetPos(), AE_TARGETS[_ae.target].surface);
 }
 // Is a point on the Earth's surface on the side facing the camera?
 function _aeFacing(p) {
@@ -3062,7 +3324,8 @@ function _aeEarthPx() {
 function _aeUpdateMarks(sc) {
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
-  var pos = { earth: [0, 0, 0], moon: sc.moon, sun: _aeSunShown(sc) }, shown = [];
+  var pos = {}, shown = [];
+  AE_MARKED.forEach(function (m) { pos[m.body] = _aeBodyPos(m.body, sc); });
   // The destination first, so a body standing on top of it (the Moon from the Sun) gives way.
   var f = _ae.fly, flying = !!f && f.hold, source = flying ? f.from.target : null;
   var ringFade = flying ? 1 - _smoothstep(AE_RING_FADE_FROM, 1, _aeFlyArrival(f, performance.now())) : 1;
@@ -3072,7 +3335,7 @@ function _aeUpdateMarks(sc) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
     var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
-    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && _aeBehindEarth(pos[body])) ? null : _aeProject(pos[body]);
+    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
     var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
@@ -3134,7 +3397,7 @@ function _aeBodyAt(x, y) {
   if (!sc || !_ae.h) return null;
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
-  var bodies = [['earth', [0, 0, 0], 1], ['moon', sc.moon, AE_MOON_RADIUS_RE], ['sun', _aeSunShown(sc), AE_SUN_SHOW_R]];
+  var bodies = AE_MARKED.map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; });
   var best = null, bestD = Infinity;
   for (var i = 0; i < bodies.length; i++) {
     var b = bodies[i];
@@ -3248,6 +3511,8 @@ function _aeNoteParts() {
   var S = _ae.gl;
   if (S && (S.mapFailed[AE_TEX_NIGHT] || S.mapFailed[AE_TEX_MOON])) parts.push(_aeT('alm_earth_maps_failed'));
   parts.push(_aeT('alm_earth_credit'));
+  var sss = _aePlanetCredit();
+  if (sss) parts.push(sss);
   return { ask: dated, note: parts.join(' · ') };
 }
 

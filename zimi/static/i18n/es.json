@@ -2261,6 +2261,7 @@
   "alm_earth_maps_failed": "Un mapa no se cargó; cierra y vuelve a abrir esta vista para intentarlo de nuevo",
   "alm_earth_no_orbital_data": "No hay datos orbitales aquí, así que no se dibujan satélites",
   "alm_earth_credit": "Imágenes: NASA",
+  "alm_earth_credit_sss": "Saturno, Urano, Neptuno: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "Este reloj gana {net} µs al día frente a los relojes en tierra (+{grav} por la gravedad más débil aquí arriba, −{speed} por sus {v} km/s), así que sin corregirlo el GPS se desviaría unos {km} km cada día.",
   "alm_earth_since_tap": "Ganado desde que tocaste: {t}",
   "alm_earth_time_dilation": "Dilatación del tiempo",

@@ -2261,6 +2261,7 @@
   "alm_earth_maps_failed": "Um mapa não carregou; feche e abra esta vista de novo para tentar outra vez",
   "alm_earth_no_orbital_data": "Não há dados orbitais aqui, então nenhum satélite é desenhado",
   "alm_earth_credit": "Imagens: NASA",
+  "alm_earth_credit_sss": "Saturno, Urano, Netuno: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "Este relógio ganha {net} µs por dia em relação aos relógios no solo (+{grav} pela gravidade mais fraca aqui em cima, −{speed} pelos seus {v} km/s), então sem correção o GPS erraria cerca de {km} km por dia.",
   "alm_earth_since_tap": "Ganho desde o seu toque: {t}",
   "alm_earth_time_dilation": "Dilatação do tempo",
