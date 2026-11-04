@@ -195,6 +195,34 @@ def test_apps_stay_put_when_the_server_does_not_answer(served, phone):
     assert first == last, (first, last)
 
 
+def test_seeding_settings_hide_while_bittorrent_is_off(served, phone):
+    """Eric (2026-10-20): settings that depend on an off switch hide. With
+    BitTorrent off, Mirror (which seeds) and Restrict uploads to the nightly
+    window (which throttles seeding) were shown greyed or live, for nothing.
+    The server here is made to answer that BitTorrent is off."""
+    import json
+
+    pg = phone
+
+    def bt_off(route):
+        got = route.fetch()
+        body = got.json()
+        body["torrent_enabled"] = False
+        body["enabled"] = False
+        route.fulfill(response=got, body=json.dumps(body))
+
+    pg.route("**/manage/mirror*", bt_off)
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-mirror-status input[onchange*=torrent]", state="attached", timeout=15000)
+    pg.wait_for_selector("#ms-dl-schedule .needs-bt", state="attached", timeout=15000)
+    got = pg.evaluate(
+        """() => ({ off: document.getElementById('ms-pane').classList.contains('ms-bt-off'),
+      mirror: !!(document.querySelector('#ms-mirror-status input[onchange*=mirror]') || {}).offsetParent,
+      upload: !!document.querySelector('#ms-dl-schedule .needs-bt').offsetParent })"""
+    )
+    assert got == {"off": True, "mirror": False, "upload": False}, got
+
+
 def test_every_settings_on_off_is_a_switch(served, phone):
     pg = phone
     for section in ("library", "preferences", "creator", "server", "users"):
