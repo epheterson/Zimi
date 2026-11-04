@@ -11,9 +11,9 @@ var SRC = 16, PER_ROW = 32;
 // The style's colours, light and dark (the recolouring's own, so redrawn and recoloured tiles sit together).
 var STYLE = {
   light: { ground: '#cdbf98', grain: '#c2b38b', water: '#5f93d2', ripple: '#7aa7dc', shore: '#b8a77d', asphalt: '#3b3d42', paint: '#e9e4d6',
-           leaf: '#5aa261', leafDark: '#3f8148', leafLight: '#7dbb7f', trunk: '#7a6a4c', wire: '#4a4c52', pole: '#8d9096', car: ['#e4893d', '#d24a3f', '#f7f5ef', '#5f93d2'] },
+           leaf: '#5aa261', leafDark: '#3f8148', leafLight: '#7dbb7f', trunk: '#7a6a4c', wire: '#4a4c52', pole: '#8d9096', car: ['#e4893d', '#d24a3f', '#f7f5ef', '#5f93d2'], res: '#3f9a52', com: '#3b6fc4', ind: '#b9891a' },
   dark:  { ground: '#4d4738', grain: '#463f31', water: '#2c4f80', ripple: '#3a6298', shore: '#5a5240', asphalt: '#2a2b2f', paint: '#9a978e',
-           leaf: '#3c7a44', leafDark: '#2a5c31', leafLight: '#4f9358', trunk: '#4e4433', wire: '#b8bac0', pole: '#6a6c71', car: ['#c97532', '#b83f36', '#d9d7d1', '#3f72b8'] }
+           leaf: '#3c7a44', leafDark: '#2a5c31', leafLight: '#4f9358', trunk: '#4e4433', wire: '#b8bac0', pole: '#6a6c71', car: ['#c97532', '#b83f36', '#d9d7d1', '#3f72b8'], res: '#5cb46d', com: '#6d93e0', ind: '#e0b043' }
 };
 
 function rgbAt(d, w, x, y) { var i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }
@@ -125,6 +125,27 @@ function trees(ctx, x, y, s, d, w, ox, oy, t) {
     ctx.fillStyle = s.leafLight; ctx.beginPath(); ctx.arc(tx - r * 0.35, ty - r * 0.35, r * 0.35, 0, Math.PI * 2); ctx.fill();
   });
 }
+// An empty zone: a 3 x 3 lot with a rounded line in the zone's colour, a soft tint, and the zone's own glyph (house,
+// shop, factory) in the middle tile instead of a serif letter. k is the tile's place in the lot, 0 to 8.
+var GLYPH = {
+  res: 'M8 15l8-7 8 7v9H8zM14 24v-5h4v5',
+  com: 'M7 13l2-5h14l2 5M8 13v11h16V13M8 13h16M13 24v-6h6v6',
+  ind: 'M6 24V14l5 3v-3l5 3V9h4l1 15M6 24h20'
+};
+function lot(ctx, x, y, s, zone, k) {
+  ground(ctx, x, y, s, x + y);
+  var col = s[zone], gx = k % 3, gy = Math.floor(k / 3), inset = 3;
+  var l = gx === 0 ? inset : 0, r = gx === 2 ? ART - inset : ART, t = gy === 0 ? inset : 0, b = gy === 2 ? ART - inset : ART;
+  ctx.globalAlpha = 0.18; ctx.fillStyle = col; ctx.fillRect(x + l, y + t, r - l, b - t); ctx.globalAlpha = 1;
+  ctx.strokeStyle = col; ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (gy === 0) { ctx.moveTo(x + l, y + t); ctx.lineTo(x + r, y + t); }
+  if (gy === 2) { ctx.moveTo(x + l, y + b); ctx.lineTo(x + r, y + b); }
+  if (gx === 0) { ctx.moveTo(x + l, y + t); ctx.lineTo(x + l, y + b); }
+  if (gx === 2) { ctx.moveTo(x + r, y + t); ctx.lineTo(x + r, y + b); }
+  ctx.stroke();
+  if (k === 4) { ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(GLYPH[zone])); }
+}
 function hex(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
 
 // The atlas: `recoloured` (the 16 px tiles in Zimi's colours) doubled, the redrawn tiles over it. `original` is the 1989
@@ -158,5 +179,17 @@ export function atlas(original, recoloured, dark) {
     road(ctx, p[0], p[1], s, shape[base], t >= 144 ? 2 : t >= 80 ? 1 : 0, (t >> 4) & 3);
   }
   for (t = 210; t <= 220; t++) { p = at(t); wire(ctx, p[0], p[1], s, shape[t - 144]); }
+  // empty zones: residential 240 to 248, commercial 423 to 431, industrial 612 to 620 (the lot's tiles in reading order)
+  [[240, 'res'], [423, 'com'], [612, 'ind']].forEach(function (z) {
+    for (var k = 0; k < 9; k++) { var q = at(z[0] + k); inside(ctx, q[0], q[1], function () { lot(ctx, q[0], q[1], s, z[1], k); }); }
+  });
+  // a zone with no power flashes this in its middle: a round amber badge with a bolt, crossed
+  var nb = at(827);
+  inside(ctx, nb[0], nb[1], function () {
+    ctx.clearRect(nb[0], nb[1], ART, ART);
+    ctx.fillStyle = s.ind; ctx.beginPath(); ctx.arc(nb[0] + 16, nb[1] + 16, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = s.asphalt; ctx.fill(new Path2D('M' + (nb[0] + 17) + ' ' + (nb[1] + 7) + 'l-7 10h5l-2 8 7-10h-5z'));
+    ctx.strokeStyle = s.asphalt; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(nb[0] + 8, nb[1] + 8); ctx.lineTo(nb[0] + 24, nb[1] + 24); ctx.stroke();
+  });
   return c;
 }
