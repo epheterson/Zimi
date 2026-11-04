@@ -9,7 +9,6 @@ import * as Words from './zimcity-words.js';
 var Shell = window.ZimiShell, Play = window.ArcadePlay;
 var TAX_MAX = 20, FUND_STEP = 10;
 var PROBLEM_IDS = ['crime', 'pollution', 'housing', 'taxes', 'traffic', 'unemployment', 'fire'];
-var CLASS_IDS = ['village', 'town', 'city', 'capital', 'metropolis', 'megalopolis'];
 var LAYER_IDS = ['off', 'traffic', 'pollution', 'crime', 'land'];
 
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
@@ -79,7 +78,7 @@ export function budgetSheet(s, forced) {
 export function reportSheet(s) {
   var c = s.city(), e = c.sim.evaluation;
   var rows = [[s.T('city.r.approval'), pct(s, e.cityYes)], [s.T('city.r.score'), window.ZimiText.number(e.cityScore)],
-              [s.T('city.r.people'), window.ZimiText.number(s.people())], [s.T('city.r.size'), s.T('city.class.' + CLASS_IDS[e.cityClass])]];
+              [s.T('city.r.people'), window.ZimiText.number(s.people())], [s.T('city.r.size'), s.T('city.class.' + String(e.cityClass).toLowerCase())]];   // the engine names the sizes VILLAGE to MEGALOPOLIS
   var votes = e.problemVotes.filter(function (p) { return p.voteCount > 0; }).slice(0, 4);
   var body = [list(rows), el('h3', 'cy-sub', s.T('city.r.problems'))];
   if (!votes.length) body.push(el('p', 'gs-text', s.T('city.r.none')));

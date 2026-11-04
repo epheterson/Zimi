@@ -337,10 +337,12 @@ var sheets = {
 };
 function openBudget(forced) { budgetSheet(sheets, forced); }
 
-$('cy-budget').addEventListener('click', function () { openBudget(false); });
-$('cy-report').addEventListener('click', function () { reportSheet(sheets); });
-$('cy-layers').addEventListener('click', function () { layersSheet(sheets); });
-$('cy-speed').addEventListener('click', function () { speedSheet(sheets); });
+// These buttons live in the Menu; the Menu closes (and hands focus back) after their click, so the sheet opens just after.
+function fromMenu(id, open) { $(id).addEventListener('click', function () { setTimeout(open, 0); }); }
+fromMenu('cy-budget', function () { openBudget(false); });
+fromMenu('cy-report', function () { reportSheet(sheets); });
+fromMenu('cy-layers', function () { layersSheet(sheets); });
+fromMenu('cy-speed', function () { speedSheet(sheets); });
 $('cy-new').addEventListener('click', function () {
   record('best');
   install(freshCity(pendingLevel));

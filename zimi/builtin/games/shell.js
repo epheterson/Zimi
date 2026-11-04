@@ -852,7 +852,8 @@
     flag: 'M5 21V4M5 4h12l-2.5 4L17 12H5', solve: 'M5 12.5l4.5 4.5L19 7', giveup: 'M6 6l12 12M18 6L6 18', rules: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM8 9h7M8 13h5',
     pause: 'M8 5v14M16 5v14', pencil: 'M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3', erase: 'M8 20h11M5 15l9-9 5 5-6 6H8z', dot: 'M12 12h.01',
     coins: 'M12 4c-4.4 0-8 1.3-8 3s3.6 3 8 3 8-1.3 8-3-3.6-3-8-3zM4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5',
-    layers: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5', speed: 'M4 18a8 8 0 1 1 16 0M12 18l4-6M12 18h.01'
+    layers: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5', speed: 'M4 18a8 8 0 1 1 16 0M12 18l4-6M12 18h.01',
+    city: 'M3 21V10l5-3v14M8 21V4h7v17M15 21v-9h6v9M3 21h18M11 8h1M11 12h1M11 16h1'
   };
   var ICON_OF = [[/undo/i, 'undo'], [/redo/i, 'redo'], [/hint|tip/i, 'hint'], [/give|resign|concede|quit/i, 'giveup'], [/solution|solve|reveal|check/i, 'solve'], [/restart|reset|replay|again|shuffle|reshuffle/i, 'restart'], [/flag/i, 'flag'], [/rule|help|how/i, 'rules'], [/pause/i, 'pause'], [/pencil|note|mark/i, 'pencil'], [/erase|clear/i, 'erase']];
   function iconNode(name) {
