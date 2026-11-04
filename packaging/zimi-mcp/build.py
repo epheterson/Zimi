@@ -45,6 +45,7 @@ MODULES = (
     "wikilang",
     "htmlmd",
     "mapsearch",
+    "mapplaces",
     "subproc",
     "libzimcompat",
     "zimwriter",

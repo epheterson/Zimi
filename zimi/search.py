@@ -2871,6 +2871,7 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
     Zimi Maps. One group per map that answered, StreetZim's from their place
     index, Kiwix's from their place pages. Same shape as ``search_all``'s
     ``places``."""
+    from zimi import mapplaces as _mapplaces
     from zimi import mapsearch
 
     q = (query_str or "").strip()
@@ -2890,6 +2891,8 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
                     found = mapsearch.search_places(archive, q, limit=limit)
                 else:
                     found = _kiwix_places(archive, q, limit)
+            if not z.get("map_search"):
+                found = _with_towns(found, _mapplaces.search(name, q, limit), limit)
         except Exception as e:
             log.debug("place search failed on %s: %s", name, e)
             continue
@@ -2905,26 +2908,57 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
     return groups
 
 
+def _with_towns(pages, towns, limit):
+    """A Kiwix map's place pages, then the towns read from its tiles that are
+    not one of those pages: a page and a town of one name within about ten
+    kilometres are the same place."""
+    out = list(pages)
+    for t in towns:
+        if any(
+            p["name"].lower() == t["name"].lower()
+            and abs(p["lat"] - t["lat"]) < _SAME_PLACE_DEGREES
+            and abs(p["lng"] - t["lng"]) < _SAME_PLACE_DEGREES
+            for p in out
+        ):
+            continue
+        out.append(t)
+    return out[:limit]
+
+
+# How close a place page and a town of the same name must be to be one place.
+_SAME_PLACE_DEGREES = 0.1
+
+
 def _search_places(queries, target_names, parsed=None):
-    """One group per searched map with a place index, best places first:
-    each of ``queries`` (an operator query's alternatives, or the one query)
-    asked, their places merged, each once, and none an exclusion in
-    ``parsed`` names."""
+    """One group per searched map with places to ask, best places first:
+    a StreetZim's place index, or the towns read from a Kiwix map's tiles
+    (zimi.mapplaces). Each of ``queries`` (an operator query's alternatives,
+    or the one query) asked, their places merged, each once, and none an
+    exclusion in ``parsed`` names."""
+    from zimi import mapplaces as _mapplaces
     from zimi import mapsearch
 
     groups = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
-        if not z.get("map_search") or name not in target_names:
+        if z.get("kind") != "map" or name not in target_names:
             continue
         try:
-            archive, lock = _get_fts_archive(name)
-            if archive is None or lock is None:
+            if z.get("map_search"):
+                archive, lock = _get_fts_archive(name)
+                if archive is None or lock is None:
+                    continue
+            elif not _mapplaces.ready(name):
                 continue
             found, seen = [], set()
             for q in queries:
-                with lock:
-                    got = mapsearch.search_places(archive, q, limit=_PLACES_PER_MAP)
+                if z.get("map_search"):
+                    with lock:
+                        got = mapsearch.search_places(
+                            archive, q, limit=_PLACES_PER_MAP
+                        )
+                else:
+                    got = _mapplaces.search(name, q, limit=_PLACES_PER_MAP)
                 for p in got:
                     key = (p.get("name"), p.get("lat"), p.get("lng"))
                     if key in seen or (parsed and _query.excluded(parsed, p.get("name"))):
@@ -4405,6 +4439,10 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         from zimi import books
 
         books.build_sources(zim_name, zim_path)
+    elif kind == "mapplaces":
+        from zimi import mapplaces
+
+        mapplaces.build_places(zim_name, zim_path)
     else:
         raise SystemExit(f"unknown index kind {kind!r}")
 

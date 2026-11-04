@@ -4558,11 +4558,15 @@ async function _renderNetSection() {
 // The server-wide apps switch. The element is looked up after the fetch
 // (see _renderEnvSection for why).
 async function _renderAppsSection() {
-  var d = null;
-  try { d = await _msFetch('/manage/apps'); } catch (e) {}
+  var d = null, refused = false;
+  try { d = await _msFetch('/manage/apps'); } catch (e) { refused = /^http 40[13]$/.test(e && e.message); }
   var wrap = document.getElementById('ms-apps-wrap');
   if (!document.getElementById('ms-apps')) return;
-  if (!d) { if (wrap) wrap.hidden = true; return; }
+  // Only the server saying no takes the rows away. No answer at all (offline,
+  // the server restarting) leaves them as the page drew them, from the apps
+  // it was served with: hiding them then made Preferences jump, and empty
+  // offline.
+  if (!d) { if (wrap && refused) wrap.hidden = true; return; }
   if (wrap) wrap.hidden = false;
   _serverApps = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
   _serverAppsLocked = !!d.env_locked;
@@ -5105,7 +5109,15 @@ var _BT_SETTLE_POLL_MAX = 10;
 
 // Show/hide and enable/disable the BT card's inner controls in place, no
 // re-render (they're always in the DOM). Env-locked fields stay locked.
+// What only seeding uses (Mirror, the nightly upload window) is marked
+// .needs-bt and not shown while BitTorrent is off, unless it is on itself and
+// so can be switched off. #ms-pane carries the state for every card in it.
+function _markBtOff(off) {
+  var pane = document.getElementById('ms-pane');
+  if (pane) pane.classList.toggle('ms-bt-off', off);
+}
 function _applyTorrentToggleInPlace(on) {
+  _markBtOff(!on);
   const controls = document.getElementById('ms-bt-controls');
   const upnp = document.getElementById(_UPNP_ID);
   _showIfOn('ms-bt-more', on);
@@ -5423,6 +5435,7 @@ async function _renderMirrorSection() {
   // reads off and refuses the click; the reason underneath says why.
   const btUsable = !bt || bt.status !== 'unavailable';
   const btOn = !!m.torrent_enabled && btUsable;
+  _markBtOff(!btOn);
   // disabled= when BT off OR the field is env-locked; lock= marks env-locked
   // fields so an in-place toggle never re-enables them.
   const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
@@ -5513,7 +5526,8 @@ async function _renderMirrorSection() {
       '<details class="bt-more" id="ms-bt-more"' + (btOn ? '' : ' hidden') + '>' +
         '<summary class="bt-summary" id="ms-bt-status" onclick="window._btMoreTouched=true">' + (window._btStatusHtml || '') + '</summary>' + btControls + '</details>') +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
-      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
+      'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus)
+      .replace('class="share-row', 'class="needs-bt' + (m.enabled ? ' is-on' : '') + ' share-row') +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
       'share_nearby_title', tH('share_nearby_desc') +
         (m.peer_ip_unreachable ? '<div class="share-row-desc share-nearby-warn">⚠ ' + tH('nearby_bridge_warning') + '</div>' : ''),
@@ -5885,7 +5899,7 @@ async function _renderDownloadSchedule() {
   // Upload restrictor: trickle seeding outside the window (one row; the trickle
   // field + "throttling now" note only appear once it's on).
   var uploadRestrict = !!s.upload_restrict;
-  var uploadRow =
+  var uploadRow = '<div class="needs-bt' + (uploadRestrict ? ' is-on' : '') + '">' +
     _switchRowsHtml([{ title: tH('dl_upload_restrict'), on: uploadRestrict, disabled: locked,
       onchange: '_setUploadRestrict(this.checked)' }]) +
     (uploadRestrict ?
@@ -5897,7 +5911,7 @@ async function _renderDownloadSchedule() {
         '<span class="share-field-note">' + tH('dl_speed_unit') + '</span></span></div>' +
         '<div class="ms-hint">' + tH('dl_upload_trickle_hint') + '</div>' +
         (s.upload_throttled ? '<div class="ms-hint">' + tH('dl_upload_throttled_now') + '</div>' : '')
-      : '');
+      : '') + '</div>';
 
   // How many downloads run at once, HTTP and BitTorrent alike; the rest queue.
   var maxLocked = !!s.max_active_downloads_locked;
