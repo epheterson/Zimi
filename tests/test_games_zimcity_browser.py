@@ -104,14 +104,19 @@ CLEAR = """() => {
 
 def test_the_map_draws(browser, site):
     pg = phone(browser, site)
-    pg.wait_for_timeout(400)
+    # the art is built on the first frame that has the pictures (a heavy one on a busy machine): wait for the window
+    pg.wait_for_function("() => window.__zimcity.view._cache && window.__zimcity.view._cache.painted.every(v => v !== -2)", timeout=20000)
+    pg.wait_for_timeout(100)
+    # every device pixel over the city itself is drawn (the camera may look a few tiles past the city's edge: not counted)
     seen = pg.evaluate("""() => {
-      const c = document.getElementById('cy-map'), ctx = c.getContext('2d');
-      const d = ctx.getImageData(0, 0, c.width, c.height).data; let lit = 0;
-      for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) lit++;
-      return lit / (d.length / (4 * 97));
+      const v = window.__zimcity.view, c = v.canvas, ctx = c.getContext('2d'), k = v.dpr * v.cam.s;
+      const x0 = Math.max(0, Math.ceil(-v.cam.x * k)), y0 = Math.max(0, Math.ceil(-v.cam.y * k));
+      const x1 = Math.min(c.width, Math.floor((120 * 16 - v.cam.x) * k)), y1 = Math.min(c.height, Math.floor((100 * 16 - v.cam.y) * k));
+      const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data; let lit = 0, n = 0;
+      for (let i = 3; i < d.length; i += 4 * 97) { n++; if (d[i] > 0) lit++; }
+      return lit / n;
     }""")
-    assert seen > 0.95, seen
+    assert seen > 0.99, seen
     assert not pg.errors, pg.errors
 
 
