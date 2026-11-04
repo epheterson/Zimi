@@ -478,7 +478,7 @@
     function deal() { view.chooser = seats.people()[0]; seats.begin(function () { refresh(); drive(); }, view.chooser); }
 
     t = T.create({
-      id: 'cribbage', name: 'Cribbage', liftPlay: function (st) { return st.phase === 'peg'; }, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, cols: 6, heightShare: 0.11,
+      id: 'cribbage', name: 'Cribbage', liftPlay: function (st) { return st.phase === 'peg'; }, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.11,
       canPick: function (st, pile) { return st.phase === 'peg' && pile.charAt(0) === 'h' && isLegalPeg(st, seats.view(), idOf(pile)); },
       move: function (pile, idx, to) { return (to === 'table' || to === 'deck') && pile.charAt(0) === 'h' ? play(idOf(pile)) : false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.

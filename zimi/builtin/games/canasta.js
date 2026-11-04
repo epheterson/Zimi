@@ -672,7 +672,7 @@
     // A fresh deal: nobody has seen it, so two people start at a handoff.
     function deal() { seats.begin(function () { repaint(); drive(); }, session.state.turn); }
     t = T.create({
-      id: 'canasta', name: 'Canasta', seats: seats, view: view, geo: function (m, st) { return geo(m, st, seats.view()); }, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, cols: 8, heightShare: 0.085, face: face,
+      id: 'canasta', name: 'Canasta', seats: seats, view: view, geo: function (m, st) { return geo(m, st, seats.view()); }, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.085, face: face,
       canPick: function () { return false; },
       stat: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.scores[seats.view()]; },
       cascadeOrder: function (st) { return st.melds[seats.view()].map(function (mm) { return { id: repCard(mm) }; }); },

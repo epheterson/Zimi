@@ -386,7 +386,7 @@
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     var cards40 = function (st) { return [].concat(st.captured[0], st.captured[1]); };
     t = T.create({
-      id: 'scopa', name: 'Scopa', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, cols: 5, heightShare: 0.13, face: scopaFace,
+      id: 'scopa', name: 'Scopa', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: scopaFace,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },

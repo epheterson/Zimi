@@ -913,17 +913,21 @@
     table.appendChild(countLayer);
     var lastPlace = null, lastState = null, metrics = null, drag = null, sel = null, settleTimer = 0, focusPile = null, slotOrder = [];
 
+    // o.cols: how many card widths the table is wide, or a function (state, W, pad, gap) -> that, for a table whose cards
+    // shrink only when what it holds no longer fits (a hand that grows past one row).
+    function colsFor(state, W, pad, gap) { return typeof o.cols === 'function' ? o.cols(state, W, pad, gap) : o.cols; }
     function measure() {
       d.documentElement.style.setProperty('--zc-px', 1 / dpr() + 'px');
       var W = table.clientWidth, H = table.clientHeight;
       var pad = Math.max(6, Math.min(16, Math.round(W * 0.02))), gap = Math.max(4, Math.round(W * 0.014));
       if (o.tight) { pad = Math.min(pad, TIGHT_PAD); gap = Math.min(gap, TIGHT_GAP); }   // the solitaires' columns take every pixel of the width
-      var cw = Math.floor((W - 2 * pad - (o.cols - 1) * gap) / o.cols);
+      var cols = colsFor(lastState, W, pad, gap);
+      var cw = Math.floor((W - 2 * pad - (cols - 1) * gap) / cols);
       cw = Math.max(MIN_CARD_W, Math.min(cw, MAX_CARD_W, Math.floor(H * (o.heightShare || CARD_H_SHARE))));
       cw = crispWidth(cw);
       // `left` centres the columns when the cards stop growing before the width does.
-      var left = Math.floor((W - (o.cols * cw + (o.cols - 1) * gap)) / 2);
-      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: o.cols };
+      var left = Math.floor((W - (cols * cw + (cols - 1) * gap)) / 2);
+      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: cols };
       stage.style.setProperty('--cw', cw + 'px');
       return metrics;
     }
@@ -991,6 +995,7 @@
     // every transition (resize, first paint); otherwise cards ease to place.
     function render(state, mode) {
       lastState = state;
+      if (metrics && colsFor(state, metrics.W, metrics.pad, metrics.gap) !== metrics.cols) metrics = null;   // the hand outgrew (or no longer needs) its size
       var m = metrics || measure(), p = o.place(state, m), anyMoved = false;
       lastPlace = p;
       // A short layout sits a little above the middle instead of hugging the top bar.

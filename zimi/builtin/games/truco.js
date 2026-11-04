@@ -380,7 +380,7 @@
     // A fresh deal: nobody has seen it, so two people start at a handoff.
     function deal() { var st = session.state; seats.begin(function () { refresh(); drive(); }, actor(st)); }
     t = T.create({
-      id: 'truco', name: 'Truco', liftPlay: function (st) { return st.phase === 'play' && !st.call; }, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, cols: 5, heightShare: 0.13, face: Z.spanishFaceMarkup,
+      id: 'truco', name: 'Truco', liftPlay: function (st) { return st.phase === 'play' && !st.call; }, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: Z.spanishFaceMarkup,
       canPick: function () { return false; },
       stat: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.scores[0] + '-' + st.scores[1]; },
       cascadeOrder: function (st) { return st.orig[0].map(function (id) { return { id: id }; }); },
