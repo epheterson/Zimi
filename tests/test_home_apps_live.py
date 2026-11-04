@@ -337,9 +337,11 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             br.close()
 
 
-def test_opening_an_app_clears_its_dot(served):
-    """An app's dot says one of its ZIMs is new or updated since you looked. Opening the app is looking:
-    its tile comes back without the dot (it stayed until each ZIM was opened one by one in the reader)."""
+@pytest.mark.parametrize("route", ["tile", "search", "address"])
+def test_opening_an_app_clears_its_dot(served, route):
+    """An app's dot says one of its ZIMs is new or updated since you looked. Opening the app is looking,
+    by any way in: its tile, a search result that plays in it, or its address. The dot stayed until each
+    ZIM was opened one by one in the reader."""
     from playwright.sync_api import sync_playwright
 
     tile_dot = "() => !!document.querySelector(\"#output .apps-grid .app-tile[data-app='tube'] .rc-dot\")"
@@ -350,9 +352,15 @@ def test_opening_an_app_clears_its_dot(served):
             pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
             assert pg.evaluate(tile_dot), "CrashCourse updated an hour ago: Tube wears the dot"
-            pg.locator("#output .apps-grid .app-tile[data-app='tube']").click()
+            if route == "tile":
+                pg.locator("#output .apps-grid .app-tile[data-app='tube']").click()
+            elif route == "search":
+                # What a video among the search results does: it plays in ZimiTube.
+                pg.evaluate("_openAppItem('tube', 'crashcourse', 'videos/one')")
+            else:
+                pg.goto(served + "/#tube")
             pg.wait_for_function("() => _tubeOpen && readerOpen")
-            pg.go_back()
+            pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
             assert not pg.evaluate(tile_dot)
         finally:

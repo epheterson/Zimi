@@ -180,8 +180,6 @@
   .sug .t { font: 600 17px/1.3 var(--serif); unicode-bidi: plaintext; overflow-wrap: anywhere; min-width: 0; }
   .sug .in { margin-inline-start: auto; font-size: 11px; color: var(--text2); white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
 
-  .sk { height: 14px; border-radius: 7px; background: var(--surface2); margin: 10px 0; }
-  .sk.big { height: 38px; width: 46%; margin: 4px 0 22px; }
   .note { font-size: 13px; color: var(--text2); }
   @media (pointer: coarse) {
     .trail button, .trail .now { padding-block: 12px; }
@@ -521,7 +519,7 @@ function cloudOf(items, title) {
 }
 function renderHome() {
   var h = _home;
-  if (!h) { $('view').innerHTML = '<div class="sk big"></div><div class="sk"></div><div class="sk" style="width:70%"></div>'; return; }
+  if (!h) { $('view').innerHTML = ''; return; }  // load() shows the apps' waiting state meanwhile
   if (h === FAILED) { $('view').innerHTML = failedHtml(STR.load_failed, 'load()'); return; }
   if (!h.wiktionaries.length) {
     $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
@@ -628,9 +626,11 @@ function renderWord(v, told) {
   var key = wordKey(v.w, v.every);
   document.title = v.w;
   if (_words[key]) return drawWord(v, _words[key], told);
-  $('view').innerHTML = '<div class="hw"><h1>' + esc(v.w) + '</h1></div><div class="sk"></div><div class="sk" style="width:82%"></div><div class="sk" style="width:64%"></div>';
+  $('view').innerHTML = '<div class="hw"><h1>' + esc(v.w) + '</h1></div><div id="word-wait"></div>';
   savedBar(null);
+  var wait = appWait('word-wait', 'lines');
   get(lookupUrl(v.w, v.every)).then(function(d) {
+    wait.done();
     if (seq !== _seq) return;
     if (d === FAILED) { $('view').innerHTML = '<div class="hw"><h1>' + esc(v.w) + '</h1></div>' + failedHtml(STR.load_failed, 'show()'); return; }
     _words[key] = d;
@@ -1258,7 +1258,9 @@ function load() {
   markSpeaking();
   loadVoices();
   renderHome();
+  var wait = appWait('view', 'lines');
   get('/dictionary/home').then(function(d) {
+    wait.done();
     _home = d;
     if (cur().v === 'home') renderHome();
     if (d !== FAILED && d.wiktionaries.length) {

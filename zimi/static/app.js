@@ -16508,6 +16508,19 @@ function _appSeen(app) {
   _appZims(app).forEach(function(z) { if (z) _markZimOpened(z.name); });
   if (_OWN_APP_ZIM[app]) _markZimOpened(_OWN_APP_ZIM[app]);
 }
+// Which app a page the reader opens belongs to: an app's own page, the games' ZIM, or a map. Every way into an
+// app (its tile, search, a link, the address, Back) loads through openReader, so this is the one place it is seen.
+function _appOfReaderUrl(url) {
+  var page = String(url).split('#')[0];
+  var pages = {};
+  pages[_TUBE_PAGE] = 'tube'; pages[_EXCHANGE_PAGE] = 'exchange'; pages[_REDDOT_PAGE] = 'reddot';
+  pages[_WIKI_PAGE] = 'wiki'; pages[_BOOKS_PAGE] = 'books'; pages[_DICT_PAGE] = 'dictionary';
+  if (pages[page]) return pages[page];
+  var m = /^\/w\/([^/]+)\//.exec(page), z = null;
+  try { z = m && _zimInfo(decodeURIComponent(m[1])); } catch (e) {}
+  if (!z) return '';
+  return _OWN_ZIM_APP[z.name] || (z.kind === 'map' ? 'maps' : '');
+}
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
   var dot = _freshDotHtml(zims.filter(Boolean));
@@ -16526,7 +16539,7 @@ function _appMenuHasMore(app) {
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
-    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="_appSeen(\'' + app + '\');return _spaNav(event, ' + openFn + ')">' +
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div>' + _appTileFootHtml(app) + '</a>';
@@ -17328,6 +17341,8 @@ function _whenFrameDocReady(frame, prevDoc, fn) {
   setTimeout(tick, _FRAME_DOC_POLL_MS);
 }
 function openReader(url) {
+  var seenApp = _appOfReaderUrl(url);
+  if (seenApp) _appSeen(seenApp);
   _chromeReset(); // a new page starts with the header in place
   _gamePlayHide();
   // Same-document fragment scroll fast-path. When the frame already holds the
