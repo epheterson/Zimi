@@ -3585,7 +3585,7 @@ function _bindConnEvents() {
   window.addEventListener('resize', _syncConnBannerHeight);
   // The box's room changes with the window: the placeholder is fitted again
   // (on the next frame, once however many resizes come before it).
-  window.addEventListener('resize', function() { _fitSearchPlaceholder(); });
+  window.addEventListener('resize', function() { _fitSearchPlaceholder(); var g = document.getElementById('game-title'); if (g && document.body.classList.contains('game-page')) _fitGameTitle(g); });
 }
 
 // Shared honest-empty markup for any surface that would otherwise assert "no
@@ -16606,6 +16606,15 @@ function _unzoomPage() {
   meta.content = kept + ', maximum-scale=1';
   setTimeout(function () { meta.content = kept; }, 50);
 }
+// A long game name ("Dictionary Bluff") beside the header's buttons on a phone steps down a pixel at a time to
+// _GAME_TITLE_MIN_PX; one still too long ("Snakes and Ladders") takes two lines there before an ellipsis would cut it.
+var _GAME_TITLE_MIN_PX = 13;
+function _fitGameTitle(el) {
+  el.style.fontSize = ''; el.classList.remove('two-lines');
+  var px = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth + 0.5 && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
+  if (el.scrollWidth > el.clientWidth + 0.5) el.classList.add('two-lines');
+}
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
   var on = _isGamePage(), shelf = _isGameShelf();
@@ -16618,7 +16627,8 @@ function _syncGameHead() {
   if (!head) return;
   head.hidden = !on;
   if (!on) return;
-  document.getElementById('game-title').textContent = _gameHead.title;
+  var titleEl = document.getElementById('game-title');
+  titleEl.textContent = _gameHead.title;
   var act = document.getElementById('game-act-btn'), a = _gameHead.act;
   act.hidden = !a;
   if (a) {
@@ -16630,6 +16640,7 @@ function _syncGameHead() {
     act.disabled = a.disabled;
   }
   document.getElementById('game-menu-btn').hidden = !_gameHead.menu;
+  _fitGameTitle(titleEl);
 }
 
 // Where the open map is, as a hash fragment, read from the map itself so it
