@@ -127,6 +127,16 @@ const cited = new Set();
 const unlinkedSources = [...cited].filter((w) => !tb.TB_SOURCE_LINKS[w]);
 check(unlinkedSources.length === 0, 'every body the Source column cites links (' + [...cited].join(', ') + ')', unlinkedSources.join(', '));
 
+// ── Constellations ──────────────────────────────────────────────────────
+// Every one of the 88 figures the sky draws links to its constellation's article from a star's "In ..." line.
+{
+  const conCtx = vm.createContext({});
+  vm.runInContext(grab(skySrc, /function _skyConKey\(c\) \{[\s\S]*?\n\}/, '_skyConKey'), conCtx);
+  const figures = JSON.parse(fs.readFileSync(path.join(STATIC, 'earth', 'constellations-v1.json'), 'utf8')).c;
+  check(figures.length === 88, 'the sky draws the 88 IAU figures', figures.length);
+  allCovered('every figure links to its constellation', figures, (f) => conCtx._skyConKey({ id: f[0], name: f[1] }));
+}
+
 // ── Closed means closed ─────────────────────────────────────────────────
 // Nothing resolved: every wrapper returns the plain text it was given. Then one
 // entity resolved: it, and only it, becomes a link.

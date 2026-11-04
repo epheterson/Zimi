@@ -3180,15 +3180,28 @@ function _skyBodyLines(b) {
 
 // The tip: the name (its article's link when the library has it), the lines,
 // and for a planet the way to it in the solar system.
+// A figure's key in almanac-links.js: its name in ASCII ("Boötes" is const:bootes); Serpens's two halves are one.
+function _skyConKey(c) {
+  if (c.id === 'Ser') return 'const:serpens';
+  return 'const:' + c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ /g, '_');
+}
+// A name, as its article's link when the library has the article.
+function _skyLinkedName(key, text) {
+  var name = _almEsc(text);
+  return key && window.AlmanacLinks && window.AlmanacLinks.linkFor(key) ? window.AlmanacLinks.wrap(key, name) : name;
+}
 function _skyShowTip(b) {
   var tip = document.getElementById('almanac-sky-tip'), wrap = tip && tip.parentElement;
   if (!tip) return;
-  var key = _skyBodyKey(b), name = _almEsc(_skyBodyName(b));
-  if (key && window.AlmanacLinks && window.AlmanacLinks.linkFor(key)) name = window.AlmanacLinks.wrap(key, name);
+  var name = _skyLinkedName(_skyBodyKey(b), _skyBodyName(b));
   var html = '<span class="alm-sky-tip-name">' + name + '</span>';
   var lines = _skyBodyLines(b);
+  var con = b.type === 'star' && b.con ? _skyConById(b.con) : null, conLine = con ? t('alm_sky_in_con', { c: con.name }) : null;
   for (var i = 0; i < lines.length; i++) {
-    html += '<span class="alm-sky-tip-line">' + _almEsc(lines[i]) + '</span>';
+    var line = _almEsc(lines[i]);
+    // The figure a star belongs to links to the constellation's article, as the star's own name does.
+    if (lines[i] === conLine) line = _almEsc(t('alm_sky_in_con', { c: '\u0001' })).replace('\u0001', _skyLinkedName(_skyConKey(con), con.name));
+    html += '<span class="alm-sky-tip-line">' + line + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
     html += '<button type="button" class="alm-sky-tip-go" data-sky-orrery="' + _almEsc(b.name) + '" aria-label="' + _almEsc(t('alm_sky_find_orrery')) + '">' + _almEsc(t('alm_solar_system')) + '</button>';
