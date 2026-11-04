@@ -176,10 +176,10 @@ View.prototype._drawGhost = function (ctx) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = g.ok ? 'rgba(34, 160, 80, 0.32)' : 'rgba(205, 40, 30, 0.38)';
   g.tiles.forEach(function (t) { ctx.fillRect(t[0] * TILE, t[1] * TILE, TILE, TILE); });
-  // A building's footprint gets one outline; a drawn stroke is its tiles alone.
-  if (g.box) {
-    var b = g.box;
-    ctx.strokeStyle = g.ok ? '#1f9d55' : '#c62828'; ctx.lineWidth = 2 / this.cam.s;
+  // Each building's footprint gets its own outline, green where it will go and red where it will not.
+  g.boxes.forEach(function (b) {
+    if (!b[4]) { ctx.fillStyle = 'rgba(205, 40, 30, 0.38)'; ctx.fillRect(b[0] * TILE, b[1] * TILE, (b[2] - b[0] + 1) * TILE, (b[3] - b[1] + 1) * TILE); }
+    ctx.strokeStyle = b[4] ? '#1f9d55' : '#c62828'; ctx.lineWidth = 2 / this.cam.s;
     ctx.strokeRect(b[0] * TILE, b[1] * TILE, (b[2] - b[0] + 1) * TILE, (b[3] - b[1] + 1) * TILE);
-  }
+  }, this);
 };

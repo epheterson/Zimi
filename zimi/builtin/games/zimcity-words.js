@@ -42,6 +42,8 @@ export function kindOf(value) {
   if (KINDS[i][0] === TV.FIRESTBASE) return 'city.kind.firestation';
   return 'city.kind.' + KINDS[i][1];
 }
+// A road or a bridge (a zone grows only beside one).
+export function isRoad(v) { return v >= TV.ROADBASE && v <= TV.LASTROAD; }
 // The query's four-step scales, as upstream reads them from the block maps.
 export function quarter(v) { return (v >> 6) & 3; }
 export function landStep(v) { return v >= 150 ? 3 : v >= 80 ? 2 : v >= 30 ? 1 : 0; }

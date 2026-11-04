@@ -36,38 +36,58 @@ export function isDrawn(name) { return name in PER_TILE; }
 export function sizeOf(name) { return BUILDINGS[name] ? BUILDINGS[name][2] : 1; }
 export function costOf(name) { return BUILDINGS[name] ? BUILDINGS[name][0] : PER_TILE[name]; }
 
-// Why a stroke cannot be built, in the order a person should hear it.
-export var WHY = { ok: '', blocked: 'zc.why.blocked', clear: 'zc.why.clear', money: 'zc.why.money' };
-
-// Try a stroke: the tool along `tiles` ([[x, y]], in order) on the pending layer. Returns
-// { tiles: [[x, y, value]], cost, ok, why, short } and leaves the pending layer filled (apply() builds it, clear() drops it).
+// Try a stroke: the tool along `tiles` ([[x, y]], in order; for a building, the centre of each footprint) on the pending
+// layer, without touching the city. Returns { tiles: [[x, y, value]], parts: [[x, y, ok]], cost, ok, why, short } and leaves
+// the pending layer filled (build() builds it, drop() lets it go). why is 'ok', 'blocked', 'clear' or 'money'.
 export function trial(city, name, tiles) {
-  var tool = city.tools[name], map = city.map, budget = city.sim.budget, any = false, last = tool.TOOLRESULT_FAILED;
+  var tool = city.tools[name], map = city.map, budget = city.sim.budget, any = false, last = tool.TOOLRESULT_FAILED, parts = [];
   tool.clear();
   tiles.forEach(function (p) {
     if (!map.testBounds(p[0], p[1])) return;
     tool.doTool(p[0], p[1], city.sim.blockMaps);
     last = tool.result;
+    parts.push([p[0], p[1], tool.result === tool.TOOLRESULT_OK]);
     if (tool.result === tool.TOOLRESULT_OK) any = true;
   });
   var cost = tool._applicationCost, pending = tool._worldEffects._data, out = [];
   Object.keys(pending).forEach(function (k) {
-    var xy = k.split(','), tile = pending[k];
-    out.push([+xy[0], +xy[1], tile.getValue()]);
+    var xy = k.split(',');
+    out.push([+xy[0], +xy[1], pending[k].getValue()]);
   });
   var why = 'ok';
   if (!any) why = last === tool.TOOLRESULT_NEEDS_BULLDOZE ? 'clear' : 'blocked';
   else if (cost > budget.totalFunds) why = 'money';
-  return { tiles: out, cost: cost, ok: why === 'ok', why: why, short: Math.max(0, cost - budget.totalFunds) };
+  return { tiles: out, parts: parts, cost: cost, ok: why === 'ok', why: why, short: Math.max(0, cost - budget.totalFunds) };
 }
 
-// Build what trial() found: the money is spent and the city changes. Returns the trial's answer.
+// Build what trial() found: the money is spent and the city changes. The answer carries `undo`: each changed tile as it
+// was and as it became, and the cost, so the last placement can be taken back while the city has not grown over it.
 export function build(city, name, tiles) {
-  var r = trial(city, name, tiles), tool = city.tools[name];
+  var r = trial(city, name, tiles), tool = city.tools[name], map = city.map;
   if (!r.ok) { tool.clear(); return r; }
+  var keys = Object.keys(tool._worldEffects._data).map(function (k) { return k.split(',').map(Number); });
+  var was = keys.map(function (p) { return map.getTile(p[0], p[1]).getRawValue(); });
   tool.result = tool.TOOLRESULT_OK;
   tool.modifyIfEnoughFunding(city.sim.budget);
+  r.undo = { cost: r.cost, tiles: keys.map(function (p, i) { return [p[0], p[1], was[i], map.getTile(p[0], p[1]).getRawValue()]; }) };
   return r;
+}
+
+// Take a placement back: every tile it changed must still be as it left it (a zone that has grown, a fire, a flood: no).
+export function undo(city, rec) {
+  var map = city.map;
+  if (!rec || !rec.tiles.every(function (t) { return map.getTile(t[0], t[1]).getRawValue() === t[3]; })) return false;
+  rec.tiles.forEach(function (t) { map.setTileValue(t[0], t[1], t[2]); });
+  city.sim.budget.spend(-rec.cost);
+  return true;
+}
+
+// A building drawn by dragging: footprints side by side along the way the finger went furthest, from where it began.
+export function row(name, from, to) {
+  var size = sizeOf(name), dx = to[0] - from[0], dy = to[1] - from[1], out = [from];
+  var along = Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)], n = Math.floor(Math.max(Math.abs(dx), Math.abs(dy)) / size);
+  for (var k = 1; k <= n; k++) out.push([from[0] + along[0] * size * k, from[1] + along[1] * size * k]);
+  return out;
 }
 
 export function drop(city, name) { if (name && city.tools[name]) city.tools[name].clear(); }

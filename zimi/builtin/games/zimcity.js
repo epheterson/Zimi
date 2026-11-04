@@ -63,7 +63,7 @@ function freshCity(level) {
 }
 function install(c, cam) {
   if (held) Tools.drop(city, held);
-  city = c; stroke = null;
+  city = c; stroke = null; lastBuilt = null; undoBtn.disabled = true;
   city.sim.setSpeed(speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed);
   view.setCity(city);
   view.resize();
@@ -211,21 +211,20 @@ function heldLine(r) {
 
 // ── strokes: the ghost while the finger is down, the city changed when it lifts ──
 function strokeTiles(tile) {
-  if (!Tools.isDrawn(held)) return [[tile.x, tile.y]];
-  if (!stroke) stroke = [[tile.x, tile.y]];
-  else {
-    var last = stroke[stroke.length - 1];
-    if (last[0] !== tile.x || last[1] !== tile.y) stroke = stroke.concat(Tools.steps(last, [tile.x, tile.y]));
-  }
+  if (!stroke) { stroke = [[tile.x, tile.y]]; return stroke; }
+  if (!Tools.isDrawn(held)) return Tools.row(held, stroke[0], [tile.x, tile.y]);   // zones and buildings side by side
+  var last = stroke[stroke.length - 1];
+  if (last[0] !== tile.x || last[1] !== tile.y) stroke = stroke.concat(Tools.steps(last, [tile.x, tile.y]));
   return stroke;
 }
-function ghostOf(tiles, r) {
-  var g = { tiles: r.tiles, ok: r.ok };
+// The ghost: the tiles the stroke would lay, and for buildings each footprint's outline in its own colour (the engine
+// corrects a building's centre to its top left corner).
+function ghostOf(r) {
+  var g = { tiles: r.tiles, ok: r.ok, boxes: [] };
   if (!Tools.isDrawn(held)) {
-    // A building's footprint, whether or not it fits: the engine corrects the finger's tile to the top left.
-    var s = Tools.sizeOf(held), x = tiles[0][0] - 1, y = tiles[0][1] - 1;
-    g.box = [x, y, x + s - 1, y + s - 1];
-    if (!r.ok) { g.tiles = []; for (var dy = 0; dy < s; dy++) for (var dx = 0; dx < s; dx++) g.tiles.push([x + dx, y + dy, -1]); }
+    var s = Tools.sizeOf(held), afford = r.why !== 'money';
+    g.boxes = r.parts.map(function (p) { return [p[0] - 1, p[1] - 1, p[0] - 2 + s, p[1] - 2 + s, p[2] && afford]; });
+    if (!r.ok) g.tiles = [];
   }
   return g;
 }
@@ -235,13 +234,14 @@ function onStroke(tile, done) {
   if (!done) {
     var r = Tools.trial(city, held, tiles);
     Tools.drop(city, held);
-    view.ghost = ghostOf(tiles, r);
+    view.ghost = ghostOf(r);
     heldLine(r);
     return;
   }
   var built = Tools.build(city, held, tiles);
   stroke = null; view.ghost = null;
   if (built.ok) {
+    lastBuilt = built.undo; undoBtn.disabled = false;
     if (!city.built) { city.built = true; messages.length = 0; status.say(''); shownAt = 0; }
     Play.haptic(10);
     strip();
@@ -256,7 +256,7 @@ function onHover(tile) {
   if (!held || Tools.isDrawn(held) || !tile) { if (!stroke) view.ghost = null; return; }
   var r = Tools.trial(city, held, [[tile.x, tile.y]]);
   Tools.drop(city, held);
-  view.ghost = ghostOf([[tile.x, tile.y]], r);
+  view.ghost = ghostOf(r);
 }
 
 // ── the clock ──
@@ -299,6 +299,16 @@ function summary() {
   $('cy-map').setAttribute('aria-label', T('city.summary', { date: dateWords(), people: T('city.people', { n: people() }), money: money(city.sim.budget.totalFunds) }));
 }
 
+// Undo in the bar: the last placement, while the city has not grown over it (the money comes back).
+var lastBuilt = null, undoBtn = $('cy-undo');
+undoBtn.addEventListener('click', function () {
+  if (!lastBuilt) return;
+  if (Tools.undo(city, lastBuilt)) { status.say(T('city.undo.done')); shownAt = Date.now(); strip(); }
+  else say(T('city.undo.grown'), true);
+  lastBuilt = null; undoBtn.disabled = true;
+  Shell.saveNow();
+});
+
 // Pause in the bar: a tap pauses and resumes; leaving the page or opening the Menu pauses (the shell presses it).
 var pauseBtn = $('cy-pause');
 pauseBtn.addEventListener('click', function () { paused = !paused; Play.pauseLabel(pauseBtn, paused); if (!paused) owed = 0; });
@@ -332,6 +342,7 @@ var sheets = {
   city: function () { return city; }, T: T, money: money, people: people,
   layer: function (v) { if (v !== undefined) { layer = v; view.layer = v; } return layer; },
   speed: function (v) { if (v !== undefined) setSpeed(v); return speed; }, fastOK: function () { return fastOK; },
+  paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
   level: function (v) { if (v !== undefined) pendingLevel = v; return pendingLevel; },
   hold: hold, held: function () { return held; }, iconSvg: iconSvg, costWords: costWords, strip: strip

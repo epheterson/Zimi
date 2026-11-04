@@ -5,16 +5,45 @@
    the tile. A wheel zooms about the pointer. The keys move a cursor tile; Enter builds there and I inspects it.
    Everything goes out through the handlers: this file never changes the city. */
 
+import { ZOOM_MAX } from './zimcity-view.js';
+
 var TAP_PX = 10;            // a press that moves less than this is a tap, not a drag
 var LONG_PRESS_MS = 550;
 var EDGE_PX = 32;           // drawing within this of the edge scrolls the map
 var EDGE_SPEED = 9;         // screen pixels a frame at the very edge
 var WHEEL_STEP = 1.0015;    // per wheel pixel
+var GLIDE_DECAY = 0.92;     // a flung map slows by this each frame
+var GLIDE_MIN = 0.3;        // and stops below this many pixels a frame
+var DOUBLE_TAP_MS = 300;
+var TAP_ZOOM = 1.6;
+var ZOOM_MS = 220;
+function still() { return window.ZimiShell && window.ZimiShell.reducedMotion ? window.ZimiShell.reducedMotion() : false; }
 
 export function Input(view, h) {
   // h: { tool(): name or '', stroke(tiles, done), cancel(), inspect(x, y), moved(), cursor(x, y) }
   var el = view.canvas, pts = new Map(), mode = null, start = null, last = null, press = 0, pinch = null, edge = null, raf = 0;
-  var cursor = null;
+  var cursor = null, vel = { x: 0, y: 0, t: 0 }, glide = 0, downAt = 0, lastTap = null;
+  function stopGlide() { if (glide) { cancelAnimationFrame(glide); glide = 0; } }
+  // A fling keeps the map moving and slowing, as a page does; with reduced motion it stops where the finger left it.
+  function fling() {
+    if (still() || Math.hypot(vel.x, vel.y) < GLIDE_MIN * 2) return;
+    (function frame() {
+      vel.x *= GLIDE_DECAY; vel.y *= GLIDE_DECAY;
+      if (Math.hypot(vel.x, vel.y) < GLIDE_MIN) { glide = 0; return; }
+      view.panBy(vel.x, vel.y); h.moved();
+      glide = requestAnimationFrame(frame);
+    })();
+  }
+  // A double tap with no tool zooms in about the tap (back out to the whole city from the closest step), eased.
+  function zoomTo(x, y, target) {
+    if (still()) { view.zoomAt(x, y, target); h.moved(); return; }
+    var from = view.cam.s, t0 = performance.now();
+    (function frame(now) {
+      var k = Math.min(1, (now - t0) / ZOOM_MS), e = 1 - Math.pow(1 - k, 3);
+      view.zoomAt(x, y, from + (target - from) * e); h.moved();
+      if (k < 1) requestAnimationFrame(frame);
+    })(t0);
+  }
 
   function local(e) { var r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
   function clearPress() { if (press) { clearTimeout(press); press = 0; } }
@@ -40,6 +69,7 @@ export function Input(view, h) {
     if (e.button > 0 && e.pointerType === 'mouse' && e.button !== 2) return;
     try { el.setPointerCapture(e.pointerId); } catch (x) { /* synthetic */ }
     var p = local(e);
+    stopGlide();
     pts.set(e.pointerId, p);
     if (pts.size === 2) {
       clearPress();
@@ -48,7 +78,7 @@ export function Input(view, h) {
       return;
     }
     if (pts.size > 2) return;
-    start = last = p;
+    start = last = p; downAt = performance.now(); vel = { x: 0, y: 0, t: downAt };
     // A right button or no tool: the map moves. A tool: a stroke begins where the finger is.
     if (!h.tool() || e.button === 2) {
       mode = 'pan';
@@ -76,7 +106,11 @@ export function Input(view, h) {
       return;
     }
     if (Math.hypot(p.x - start.x, p.y - start.y) > TAP_PX) clearPress();
-    if (mode === 'pan') { view.panBy(p.x - last.x, p.y - last.y); last = p; h.moved(); return; }
+    if (mode === 'pan') {
+      var now = performance.now(), dt = Math.max(1, now - vel.t);
+      vel = { x: (p.x - last.x) * 16 / dt, y: (p.y - last.y) * 16 / dt, t: now };
+      view.panBy(p.x - last.x, p.y - last.y); last = p; h.moved(); return;
+    }
     if (mode === 'stroke') {
       last = p; edge = p;
       h.stroke(view.tileAt(p.x, p.y), false);
@@ -90,6 +124,15 @@ export function Input(view, h) {
     clearPress();
     if (mode === 'pinch') { if (!pts.size) mode = null; return; }   // the finger left after a pinch starts nothing
     if (mode === 'stroke') { stopEdge(); if (e.type === 'pointercancel') h.cancel(); else h.stroke(view.tileAt(last.x, last.y), true); }
+    if (mode === 'pan' && e.type === 'pointerup') {
+      var moved = Math.hypot(last.x - start.x, last.y - start.y), now = performance.now();
+      if (moved <= TAP_PX && now - downAt < LONG_PRESS_MS) {
+        if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(start.x - lastTap.x, start.y - lastTap.y) < 30) {
+          zoomTo(start.x, start.y, view.cam.s >= ZOOM_MAX - 0.01 ? view.minScale() : Math.min(ZOOM_MAX, view.cam.s * TAP_ZOOM));
+          lastTap = null;
+        } else lastTap = { x: start.x, y: start.y, t: now };
+      } else if (now - vel.t < 80) fling();
+    }
     mode = null;
     h.moved();
   }

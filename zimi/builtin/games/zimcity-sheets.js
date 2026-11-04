@@ -96,7 +96,9 @@ export function layersSheet(s) {
 export function speedSheet(s) {
   var choices = [[Simulation.SPEED_SLOW, s.T('city.s.slow')], [Simulation.SPEED_MED, s.T('city.s.normal')]];
   if (s.fastOK()) choices.push([Simulation.SPEED_FAST, s.T('city.s.fast')]);
-  var body = [Play.optionRow(s.T('city.speed'), choices, s.speed(), function (v) { s.speed(v); })];
+  // Paused is a speed too: inside Zimi's own header only Undo fits, so this is where the city stops and goes on there.
+  choices.unshift([0, s.T('city.s.paused')]);
+  var body = [Play.optionRow(s.T('city.speed'), choices, s.paused() ? 0 : s.speed(), function (v) { if (v) { s.paused(false); s.speed(v); } else s.paused(true); }, 'pl-grid')];
   if (!s.fastOK()) body.push(el('p', 'gs-text', s.T('city.s.fastOff')));
   Shell.sheet({ title: s.T('city.speed'), body: body, actions: [{ label: s.T('shell.close'), primary: true }] });
 }
@@ -113,8 +115,43 @@ export function inspectSheet(s, x, y) {
     [T('city.q.pollution'), T('city.lvl.pollution.' + Words.quarter(bm.pollutionDensityMap.worldGet(x, y)))],
     [T('city.q.growth'), T('city.lvl.growth.' + Words.growthStep(bm.rateOfGrowthMap.worldGet(x, y)))]
   ];
-  if (tile.isZone()) rows.unshift([T('city.q.power'), T(tile.isPowered() ? 'city.q.powerOn' : 'city.q.powerOff')]);
-  Shell.sheet({ title: T(Words.kindOf(tile.getValue())), body: [list(rows)], actions: [{ label: T('shell.close'), primary: true }] });
+  var kind = Words.kindOf(tile.getValue()), centre = zoneCentre(map, x, y), body = [];
+  if (centre) {
+    rows.unshift([T('city.q.power'), T(centre.tile.isPowered() ? 'city.q.powerOn' : 'city.q.powerOff')]);
+    var held = holdingBack(c, kind, centre, x, y);
+    if (held.length) body.push(el('p', 'gs-text cy-why', T('city.why2.title', { reasons: held.map(function (k) { return T('city.why2.' + k); }).join(T('city.why2.and')) })));
+  }
+  body.unshift(list(rows));
+  Shell.sheet({ title: T(kind), body: body, actions: [{ label: T('shell.close'), primary: true }] });
+}
+
+// The zone a tile belongs to: its centre tile carries the zone flag (a 3 x 3 zone's centre is at most one step away).
+function zoneCentre(map, x, y) {
+  for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+    if (map.testBounds(x + dx, y + dy) && map.getTile(x + dx, y + dy).isZone()) return { tile: map.getTile(x + dx, y + dy), cx: x + dx, cy: y + dy };
+  }
+  return null;
+}
+// Why homes, shops or industry are not growing, in the order a player can fix it: power, a road beside it, demand,
+// then what keeps people away (pollution and crime for homes).
+var DEMAND = { 'city.kind.residential': '_resValve', 'city.kind.commercial': '_comValve', 'city.kind.industrial': '_indValve' };
+function holdingBack(c, kind, centre, x, y) {
+  if (!DEMAND[kind]) return [];
+  var map = c.map, bm = c.sim.blockMaps, out = [], road = false;
+  if (!centre.tile.isPowered()) out.push('power');
+  for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+    var tx = centre.cx + dx, ty = centre.cy + dy;
+    if (map.testBounds(tx, ty) && Words.isRoad(map.getTileValue(tx, ty))) road = true;
+  }
+  if (!road) out.push('road');
+  var valve = { '_resValve': c.sim._valves.resValve, '_comValve': c.sim._valves.comValve, '_indValve': c.sim._valves.indValve }[DEMAND[kind]];
+  if (valve <= 0) out.push('demand');
+  if (kind === 'city.kind.residential') {
+    if (Words.quarter(bm.pollutionDensityMap.worldGet(x, y)) >= 2) out.push('pollution');
+    if (Words.quarter(bm.crimeRateMap.worldGet(x, y)) >= 2) out.push('crime');
+  }
+  return out;
 }
 
 // The rest of the tools: each with its icon, name and cost; choosing one puts it in the hand.
