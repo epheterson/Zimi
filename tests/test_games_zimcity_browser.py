@@ -343,3 +343,24 @@ def test_the_redrawn_roads_follow_the_engines_shapes(browser, site):
       return { h: ways(66), v: ways(67), cross: ways(76), heavy: ways(144 + 12), t: ways(75) };
     }""")
     assert got == {"h": "0101", "v": "1010", "cross": "1111", "heavy": "1111", "t": "1011"}, got
+
+
+TOWN = """async () => {
+  const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, map = c.map, v = z.view;
+  const m = v.tileAt(v.w / 2, v.h / 2), x0 = m.x - 10, y0 = m.y - 12;
+  for (let y = y0; y < y0 + 26; y++) for (let x = x0; x < x0 + 22; x++) if (map.testBounds(x, y)) map.setTile(x, y, 0, 0);
+  c.sim.budget.totalFunds = 100000;
+  const line = (a, b) => [a].concat(T.steps(a, b));
+  T.build(c, 'road', line([x0, y0 + 6], [x0 + 21, y0 + 6])); T.build(c, 'road', line([x0 + 10, y0], [x0 + 10, y0 + 25]));
+  T.build(c, 'coal', [[x0 + 2, y0 + 2]]);
+  for (let i = 0; i < 3; i++) T.build(c, 'residential', [[x0 + 12 + i * 3, y0 + 8]]);
+}"""
+
+
+def test_the_advisor_follows_a_city_built_without_a_finger(browser, site):
+    """A town with roads, a plant and unpowered homes (built by script, as a kept city arrives) is told to run power,
+    within a second, not to lay a road."""
+    pg = phone(browser, site)
+    pg.evaluate(TOWN)
+    pg.wait_for_timeout(1300)
+    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Run a power line to the zones that flash"

@@ -30,6 +30,7 @@ var FAST_PATIENCE_MS = 3000;
 var MESSAGE_MS = 4000;               // the least time one message stays before the next replaces it
 var SAVE_EVERY_MS = 20000;
 var SUMMARY_EVERY_MS = 5000;
+var ADVISE_EVERY_MS = 1000;          // the advisor looks again each second (a survey of the map is about a millisecond)
 var STATS_KEY = 'zimi.zimcity.stats';
 
 // ── the city ──
@@ -112,6 +113,7 @@ function heard(subject) {
   var key = Words.MESSAGE[subject];
   if (!key) return;
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
+  if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
   if (subject === Messages.REACHED_METROPOLIS && !city.won) { city.won = true; record('metropolis'); }
   say(T(key), Words.URGENT.indexOf(subject) >= 0);
   news(key);
@@ -145,7 +147,7 @@ $('cy-map').addEventListener('pointerdown', function () { if (!newsEl.hidden) hi
 function hideNews() { clearTimeout(newsTimer); newsEl.hidden = true; newsEl.textContent = ''; }
 
 // The status line: one message at a time, each up for a few seconds; an urgent one (a fire, a crash) goes first.
-var messages = [], shownAt = 0, msgTimer = 0;
+var messages = [], shownAt = 0, shownLine = '', msgTimer = 0;
 var status = Play.status($('cy-msg'));
 function say(text, urgent) {
   if (!text) return;
@@ -158,7 +160,8 @@ function pump() {
   var wait = shownAt + MESSAGE_MS - Date.now();
   if (wait > 0) { clearTimeout(msgTimer); msgTimer = setTimeout(pump, wait); return; }
   if (!messages.length) return;
-  status.say(messages.shift());
+  shownLine = messages.shift();
+  status.say(shownLine);
   shownAt = Date.now();
   if (messages.length) msgTimer = setTimeout(pump, MESSAGE_MS);
 }
@@ -296,15 +299,23 @@ function onHover(tile) {
 
 // The advisor: the next useful step, said once when it changes (and again only after something else was said).
 var advice = null;
+// A step that is no longer the next one is never shown late: it leaves the queue, and if it is on the line now, the new
+// step replaces it at once (the few seconds a message is given are for news, not for stale advice).
 function advisor() {
   var next = advise(city.map);
   if (next === advice) return;
+  var old = advice ? T(advice) : null;
   advice = next;
+  if (old) {
+    var at = messages.indexOf(old);
+    if (at >= 0) messages.splice(at, 1);
+    if (shownLine === old) { shownAt = 0; shownLine = ''; if (!next) status.say(''); }
+  }
   if (next) say(T(next));
 }
 
 // ── the clock ──
-var lastFrame = 0, owed = 0, slowSince = 0, lastSave = 0, lastSummary = 0;
+var lastFrame = 0, owed = 0, slowSince = 0, lastSave = 0, lastSummary = 0, lastAdvice = 0;
 function step() {
   if (city.sim.budget.awaitingValues) return;
   city.sim._simulate(city.sim._constructSimData());
@@ -327,7 +338,8 @@ function frame(now) {
   }
   view.paused = paused;
   view.draw(now);
-  if (now - lastSummary > SUMMARY_EVERY_MS) { lastSummary = now; summary(); advisor(); }
+  if (now - lastSummary > SUMMARY_EVERY_MS) { lastSummary = now; summary(); }
+  if (now - lastAdvice > ADVISE_EVERY_MS) { lastAdvice = now; advisor(); }
 }
 // Fast is offered only while the device keeps up with it: frames slower than FAST_FRAME_MS for a few seconds take it away.
 function watchFast(dt, now) {
@@ -347,7 +359,7 @@ function summary() {
 var lastBuilt = null, undoBtn = $('cy-undo');
 undoBtn.addEventListener('click', function () {
   if (!lastBuilt) return;
-  if (Tools.undo(city, lastBuilt)) { status.say(T('city.undo.done')); shownAt = Date.now(); strip(); }
+  if (Tools.undo(city, lastBuilt)) { status.say(T('city.undo.done')); shownAt = Date.now(); strip(); advisor(); }
   else say(T('city.undo.grown'), true);
   lastBuilt = null; undoBtn.disabled = true;
   Shell.saveNow();
@@ -474,7 +486,7 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); }, news: news, library: Library };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: unpack });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }
