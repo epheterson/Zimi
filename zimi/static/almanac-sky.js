@@ -3078,11 +3078,10 @@ function _skyCaption(s) {
   // The season, by the Sun, in this place's hemisphere ("Where do we say the
   // season", Eric, 2026-10-03): the sky is where the year shows.
   var season = typeof _almSeasonText === 'function' ? _almSeasonText(s.nowTime, s.lat) : '';
-  // One lead line (the light of the hour), under it what is true of it here
-  // (the Sun, the way the picture faces, the place) and the year, quieter.
-  var where = [_almEsc(sunAlt), _almEsc(facing)];
-  if (s.stored) where.push(_almEsc(s.name || _skyCoords(s.lat, s.lon)));
-  var html = '<span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub">' + where.join(' · ') + '</span>' +
+  // Two lines at most: the light of the hour with what is true of it now (the Sun, the way the picture faces),
+  // and under it the year, quieter. The place is named once, in the Almanac's place line above.
+  var where = _almEsc(sunAlt) + ' · ' + _almEsc(facing);
+  var html = '<span class="alm-sky-row"><span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub"> · ' + where + '</span></span>' +
     (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.

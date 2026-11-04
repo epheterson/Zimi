@@ -704,3 +704,26 @@ def test_the_light_clock_on_a_ride(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_the_caption_under_the_sky_is_two_lines_at_most(browser, served):
+    """The light of the hour with the Sun and the facing on one line, the season under it. The place
+    is named once, in the Almanac's place line, never again under the sky (it was a third line)."""
+    ctx, pg, errors = _almanac(browser, served, place={"lat": 37.8, "lon": -122.0})
+    try:
+        _settle(pg, NIGHT)
+        cap = pg.inner_text("#almanac-sky-cap")
+        assert "°N" not in cap and "°W" not in cap, cap
+        # Lines as the reader sees them: text rects grouped by their vertical middle (a 15px lead and an 11px
+        # sub on one line have different tops but share a line).
+        lines = pg.evaluate(
+            """() => { const w = document.createTreeWalker(document.getElementById('almanac-sky-cap'), NodeFilter.SHOW_TEXT), mids = [];
+                 for (let n; (n = w.nextNode());) { const r = document.createRange(); r.selectNodeContents(n);
+                   for (const b of r.getClientRects()) if (b.width > 0) mids.push((b.top + b.bottom) / 2); }
+                 mids.sort((a, b) => a - b); let count = 0, last = -1e9;
+                 for (const m of mids) { if (m - last > 8) count++; last = m; } return count; }"""
+        )
+        assert lines <= 2, (lines, cap)
+        assert not errors, errors
+    finally:
+        ctx.close()

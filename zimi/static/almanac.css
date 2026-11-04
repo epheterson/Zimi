@@ -397,6 +397,8 @@
    the hero's own grammar (a label over a value, two columns). */
 .alm-sky-cap { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 20px 10px 0; text-align: center; text-wrap: balance; }
 .alm-sky-lead { font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--text); }
+.alm-sky-row { display: block; }
+.alm-sky-row .alm-sky-sub { white-space: nowrap; }
 .alm-sky-sub { font-size: 11px; line-height: 1.4; color: var(--text2); }
 /* The sky's four cards are items of the hero's grid (the slot and its list step aside), and the six read as
    two rows of three: the Moon (how lit it is, when it rises or sets, when it is next full), then the Sun (when it
