@@ -4,14 +4,18 @@
 #   sudo useradd --system --create-home --home-dir /var/lib/zimi zimi
 #   sudo -u zimi python3 -m venv /var/lib/zimi/venv
 #   sudo -u zimi /var/lib/zimi/venv/bin/pip install zimi
-#   sudo cp zimi.service /etc/systemd/system/
+#   sudo /var/lib/zimi/venv/bin/zimi service install
 #   sudo systemctl daemon-reload && sudo systemctl enable --now zimi
 #
-# Then open http://<this machine>:8899 and set the password. Until you do, a
+# `zimi service install` writes this file to /etc/systemd/system/zimi.service with
+# ExecStart pointing at the Python it was run with; `zimi service print` shows it.
+#
+# Then open http://<this machine>:8899 and set the password at once. Until you do, a
 # device on the local network can claim it during the first hour.
 #
+# Put ZIM files in /var/lib/zimi/zims (systemd makes it, owned by zimi; or point
+# ZIM_DIR elsewhere the zimi user can read).
 # Logs: journalctl -u zimi -f    Stop: sudo systemctl stop zimi
-# Put ZIM files in /var/lib/zimi/zims (or point ZIM_DIR elsewhere the zimi user can read).
 
 [Unit]
 Description=Zimi offline knowledge server
@@ -21,11 +25,15 @@ Wants=network-online.target
 [Service]
 User=zimi
 Group=zimi
+# /var/lib/zimi, its zims and data folders: made at start, owned by zimi, 0750.
+StateDirectory=zimi zimi/zims zimi/data
+StateDirectoryMode=0750
 Environment=ZIM_DIR=/var/lib/zimi/zims
 Environment=ZIMI_DATA_DIR=/var/lib/zimi/data
-ExecStart=/var/lib/zimi/venv/bin/zimi serve --port 8899
+ExecStart=@PYTHON@ -m zimi serve --port 8899
 Restart=on-failure
 RestartSec=5
+# State files 0640, credentials 0600 (Zimi writes those 0600 whatever the umask).
 UMask=0027
 NoNewPrivileges=true
 ProtectSystem=full
