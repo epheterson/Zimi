@@ -3600,6 +3600,13 @@ def _extract_zim_metadata(name, path):
     return info, archive
 
 
+def _is_own_zim_path(path):
+    """Whether ``path`` is one of Zimi's own ZIMs (zimi/ownzims.py)."""
+    from zimi import ownzims
+
+    return ownzims.is_own_path(path)
+
+
 def _self_heal_mass_first_seen(info, file_cache, zims):
     """Repair a library-wide first_seen stamp left by a full cache rebuild.
 
@@ -3856,6 +3863,10 @@ def load_cache(force=False):
             updated_at = cached.get("updated_at")
         else:
             updated_at = time.time()
+        if updated_at and _is_own_zim_path(path):
+            # Zimi's own ZIMs are rebuilt with Zimi itself (a new dated file every deploy): the app
+            # changed, there is nothing new to read, so they never wear the Updated dot.
+            updated_at = None
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
             if (

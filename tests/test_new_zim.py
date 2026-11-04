@@ -273,3 +273,22 @@ def test_self_heal_leaves_genuine_batch_download_alone(tmp_path, monkeypatch):
         assert (
             now - z["first_seen"] < 60
         ), f"{z['name']} is a genuine fresh download and must stay 'New'"
+
+
+def test_a_rebuild_of_zimis_own_zim_is_never_updated(tmp_path, monkeypatch):
+    """Zimi's own ZIMs (the games, the Almanac) are rebuilt with Zimi itself, every deploy under a new
+    dated name. That is the app changing, not something new to read: no Updated dot on the Games tile
+    after every release (Eric, 2026-11-04: "Why so many apps have the updated / new dot?")."""
+    from zimi import ownzims
+
+    zdir = _setup(tmp_path, monkeypatch)
+    old = zdir / "zimi_games_2026-10.zim"
+    build_fixture_zim(str(old))
+    monkeypatch.setattr(ownzims, "is_own_path", lambda p: os.path.basename(p).startswith("zimi_games_"))
+    server.load_cache(force=True)
+    os.rename(str(old), str(zdir / "zimi_games_2026-11a.zim"))
+    server.load_cache(force=False)
+    games = next(z for z in server._zim_list_cache if z["name"] == "zimi_games")
+    assert not games.get("updated_at"), games.get("updated_at")
+    # Anyone else's ZIM still says it changed.
+    assert not _entry(server._zim_list_cache).get("updated_at")
