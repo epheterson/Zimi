@@ -18,7 +18,7 @@ const check = (ok, label) => {
 const ids = list => list.map(g => g.items.map(i => i.path).join(',')).join(' | ');
 
 // Every game page has exactly one row that carries the facts.
-const KINDS = ['cards', 'board', 'tiles', 'dice', 'puzzle', 'word', 'arcade', 'kids', 'library'];
+const KINDS = ['cards', 'board', 'tiles', 'dice', 'puzzle', 'word', 'arcade', 'kids', 'library', 'sim'];
 const pages = [...new Set(rows.map(r => r.path))];
 pages.forEach(p => {
   const withMeta = rows.filter(r => r.path === p && r.origin);

@@ -1057,7 +1057,10 @@
     watch: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', hint: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
     undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3', restart: 'M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5',
     flag: 'M5 21V4M5 4h12l-2.5 4L17 12H5', solve: 'M5 12.5l4.5 4.5L19 7', giveup: 'M6 6l12 12M18 6L6 18', rules: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM8 9h7M8 13h5',
-    pause: 'M8 5v14M16 5v14', pencil: 'M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3', erase: 'M8 20h11M5 15l9-9 5 5-6 6H8z', dot: 'M12 12h.01'
+    pause: 'M8 5v14M16 5v14', pencil: 'M4 20l1-4L16 5l3 3L8 19l-4 1zM14 7l3 3', erase: 'M8 20h11M5 15l9-9 5 5-6 6H8z', dot: 'M12 12h.01',
+    coins: 'M12 4c-4.4 0-8 1.3-8 3s3.6 3 8 3 8-1.3 8-3-3.6-3-8-3zM4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5',
+    layers: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5', speed: 'M4 18a8 8 0 1 1 16 0M12 18l4-6M12 18h.01',
+    city: 'M3 21V10l5-3v14M8 21V4h7v17M15 21v-9h6v9M3 21h18M11 8h1M11 12h1M11 16h1'
   };
   var ICON_OF = [[/undo/i, 'undo'], [/redo/i, 'redo'], [/hint|tip/i, 'hint'], [/give|resign|concede|quit/i, 'giveup'], [/solution|solve|reveal|check/i, 'solve'], [/restart|reset|replay|again|shuffle|reshuffle/i, 'restart'], [/flag/i, 'flag'], [/rule|help|how/i, 'rules'], [/pause/i, 'pause'], [/pencil|note|mark/i, 'pencil'], [/erase|clear/i, 'erase']];
   function iconNode(name) {
@@ -1067,7 +1070,9 @@
     path.setAttribute('d', ICONS[name] || ICONS.dot); svg.appendChild(path);
     return svg;
   }
+  // A game's own button may name its icon (data-gs-icon="coins"); otherwise its id or words pick one.
   function iconFor(b) {
+    if (b.getAttribute('data-gs-icon') && ICONS[b.getAttribute('data-gs-icon')]) return b.getAttribute('data-gs-icon');
     var hay = b.id + ' ' + b.textContent, hit = ICON_OF.filter(function (m) { return m[0].test(hay); })[0];
     return hit ? hit[1] : 'dot';
   }
@@ -1244,7 +1249,7 @@
     var stem = hrefStem(row.path), facts = h('dl', { class: 'gs-help gs-meta' });
     body.appendChild(h('p', { class: 'gs-text', text: gameWord(stem, 'blurb') || row.blurb || gameWord(stem, 'title') || row.title }));
     if (row.why) body.appendChild(h('p', { class: 'gs-text', text: gameWord(stem, 'why') || row.why }));
-    if (source) body.appendChild(h('p', { class: 'gs-text gs-source', text: source }));
+    if (source) body.appendChild(typeof source === 'string' ? h('p', { class: 'gs-text gs-source', text: source }) : source);   // a node: a credit with links
     factRows(row, ABOUT_FACTS).forEach(function (f) { facts.appendChild(h('dt', { text: T(f[0]) })); facts.appendChild(h('dd', { text: f[1] })); });
     if (facts.childNodes.length) body.appendChild(facts);
     // The game's own article (about.html finds it in the library, or says where it would be).
