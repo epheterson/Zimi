@@ -1795,6 +1795,36 @@ def _clean_query(q):
     return " ".join(w.rstrip("?") for w in words) or q
 
 
+def _index_query(q, cleaned):
+    """What the full-text index is asked for ``q``: its cleaned words, and for
+    a question each word's family. A question is written in whatever form of
+    a word the sentence needs ("how to purify water"), and the index keeps
+    "purify" and "purification" apart, so the one article about it did not
+    match at all."""
+    if not _is_question(q.split()):
+        return cleaned
+    return " ".join(_word_family(w) for w in cleaned.split())
+
+
+# Endings a question's words carry that the article's title may not. Longest
+# first; a root shorter than _FAMILY_MIN_ROOT, or a word ending in "ss", stays
+# whole ("cats", "glass").
+_FAMILY_ENDINGS = ("ying", "ies", "ied", "ing", "ed", "es", "s", "y")
+_FAMILY_MIN_ROOT = 4
+
+
+def _word_family(word):
+    """``word`` as the index's wildcard for its family ("purify" is
+    "purif*", "boiling" is "boil*"), or as it is when no ending comes off."""
+    low = word.lower()
+    if not low.isalpha() or low.endswith("ss"):
+        return word
+    for end in _FAMILY_ENDINGS:
+        if low.endswith(end) and len(low) - len(end) >= _FAMILY_MIN_ROOT:
+            return word[: len(word) - len(end)] + "*"
+    return word
+
+
 # ZIM-name → SearXNG category. Heuristic prefix match, lowercase.
 # First match wins; falls through to "general" if nothing matches.
 _CATEGORY_RULES = (
@@ -1828,7 +1858,9 @@ _EXACT_TITLE_SCORE = 125
 def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
-    hits = sum(1 for w in query_words if w in tl)
+    # A word counts where its family's root stands: "purify" asked, "Water
+    # purification" titled.
+    hits = sum(1 for w in query_words if w in tl or _word_family(w).rstrip("*") in tl)
     if hits == len(query_words):
         title_score = 80
     elif hits > 0:
@@ -2647,7 +2679,9 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     def _pick(cands):
         if not cands:
             return None
-        best = max(cands, key=lambda w: vocab[w])
+        # A letter put back before a letter taken away: a dropped letter is the
+        # usual slip, so "watr" is "water" even where "war" is commoner.
+        best = max(cands, key=lambda w: (len(w) >= len(word), vocab[w]))
         if own_count is None or vocab[best] >= freq_ratio * own_count:
             return best
         return None
@@ -2656,6 +2690,11 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     picked = _pick(cands)
     if picked:
         return picked
+    # A word the library knows is mended by one slip at most (a swapped or
+    # wrong letter, "einstien"), never two: two edits from a real word is
+    # another real word ("water" and "war"), not a typo of it.
+    if own_count is not None:
+        return None
     if deadline is None or time.monotonic() <= deadline:
         if len(word) <= _DIST2_MAX_LEN:
             cands2 = set()
@@ -3260,6 +3299,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     # (A search scoped to one ZIM used to send the raw words, so a question
     # found nothing there while the same question across the library did.)
     cleaned = _clean_query(query_str)
+    index_query = _index_query(query_str, cleaned)
     if plan:
         word_sets = [_words(w, _clean_query(w)) for w in map(_query.term_words, plan)]
     else:
@@ -3387,7 +3427,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
                         limit,
                     )
                 else:
-                    results = _full(name, cleaned, limit, query_str)
+                    results = _full(name, index_query, limit, query_str)
                     if results is None:
                         return
                     # One source asked for by name, and the cleaned words found

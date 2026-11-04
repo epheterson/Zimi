@@ -55,6 +55,7 @@ except ModuleNotFoundError:
         ) from exc
 
 import os
+import sys
 import threading
 import time
 from typing import Annotated
@@ -1062,6 +1063,21 @@ def build(tools="full"):
 mcp = build("full")
 
 
+def _keep_stdout_for_the_protocol():
+    """File descriptor 1 carries JSON-RPC and nothing else.
+
+    libzim's C++ writes some notices to descriptor 1 directly ("No stemming
+    for language 'he'" on every search of a Hebrew index), below anything
+    Python can redirect, and a strict client drops the session on the first
+    non-JSON line. So the protocol gets its own copy of the descriptor, and
+    descriptor 1 itself is pointed at stderr, where native chatter is only
+    noise in a log."""
+    sys.stdout.flush()
+    protocol = os.dup(1)
+    os.dup2(2, 1)
+    sys.stdout = open(protocol, "w", encoding="utf-8", buffering=1, closefd=True)
+
+
 def run(tools):
     """Serve ``tools`` over stdio until the client hangs up.
 
@@ -1070,6 +1086,7 @@ def run(tools):
     BitTorrent, mDNS, catalog or web server; search uses an index already on
     disk and libzim's own otherwise. Full also warms every index in the
     background, as it always has, for the tools that want them."""
+    _keep_stdout_for_the_protocol()
     zimi.load_cache()
     if tools == "full":
         threading.Thread(target=zimi.warm_indexes, daemon=True).start()

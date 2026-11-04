@@ -3040,7 +3040,7 @@ function _skyUpdateDesc(s) {
     : _tLookup('alm_sun', 'Sun') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
   var moonDesc;
   if (moonPos0.altitude > -2) {
-    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + moonM0.illumination + '% ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
+    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _moonLitPct(moonM0.illumination) + ' ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
       ', ' + _orrNum(moonPos0.altitude, null, 0) + '° ' + _tLookup('alm_a11y_altitude', 'high');
   } else {
     moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
@@ -3651,7 +3651,7 @@ function _drawStarChart(now) {
     _starChartBodies.push({
       x: mpp.x, y: mpp.y, key: 'planet:moon',
       label: t('alm_moon') + ' \u00b7 ' + _orrNum(mp.altitude, null, 0) + '\u00b0 ' +
-             _azCompass(mp.azimuth) + ' \u00b7 ' + _moonPhase(now).illumination + '%'
+             _azCompass(mp.azimuth) + ' \u00b7 ' + _moonLitPct(_moonPhase(now).illumination)
     });
   }
 
