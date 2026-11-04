@@ -220,7 +220,7 @@
   // ── The page ────────────────────────────────────────────────────────────
   var AUTO_STEP_MS = 120;
   function boot() {
-    var page, session, drawN = Z.store.get(DRAW_KEY, 1) === 3 ? 3 : 1;
+    var page, session, drawN = Z.store.get(DRAW_KEY, 1) === 3 && !Z.daily() ? 3 : 1;   // a daily is draw one
 
     // Watch and learn: the computer plays the hand by explain-solitaire.js's rules, one step at a time.
     var watch = null, watchWaiting = false, watchCtx = null, watchDraw = 0;
@@ -243,7 +243,7 @@
       }, AUTO_STEP_MS);
     }
     function newGame() {
-      session.reset(newState(Z.shuffled(Math.random), drawN));
+      session.reset(newState(Z.shuffled(Z.random()), drawN));
       drawN = session.state.draw === 3 ? 3 : 1;   // a game taken up again keeps the draw it was dealt with
     }
 

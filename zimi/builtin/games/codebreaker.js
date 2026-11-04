@@ -172,7 +172,7 @@
       seats.begin(paint, 1);
       return;
     }
-    code = makeCode(Math.random, settings.repeats); status = 'playing';
+    code = makeCode(root.ZimiShell ? root.ZimiShell.random() : Math.random, settings.repeats && !(root.ZimiShell && root.ZimiShell.daily));   // a daily has no repeats status = 'playing';
     line.say(T('cb.tenGuesses'));
     paint();
     seats.begin(paint);

@@ -104,7 +104,7 @@
       why: function (st, pile, idx) { return TX(canPick(st, pile, idx) ? 'sol.why.neighbor' : 'golf.why.buried'); },
       refuse: function () { page.note(TX('sol.why.stockEmpty')); },
       rules: api, id: 'golf', lowScore: true, fact: true, place: place, cols: COLS, heightShare: HEIGHT_SHARE, enterTaps: true, stock: drawStock,
-      deal: function () { return newState(Z.shuffled(Math.random)); },
+      deal: function () { return newState(Z.shuffled(Z.random())); },
       score: function () { return 0; },
       stuck: {
         is: isStuck, score: left,

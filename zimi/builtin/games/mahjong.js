@@ -157,7 +157,7 @@
   var faceName = root.MahjongTiles.faceName, faceMarkup = root.MahjongTiles.faceMarkup;   // the tile art lives in mahjong-tiles.js
 
   var els = { stage: $('mj-stage'), scroll: $('mj-scroll'), status: $('mj-status'), nu: $('mj-new'), time: $('mj-time'), undo: $('mj-undo'), hint: $('mj-hint'), shuffle: $('mj-shuffle'), zoom: $('mj-zoom'), left: $('mj-left'), stats: $('mj-stats') };
-  var deal0, an, faces, alive, buttons = [], removed = [], selected = -1, hintPair = null, seconds = 0, timer = 0, started = false, won = false, zoomed = false, rng = Math.random, layout;
+  var deal0, an, faces, alive, buttons = [], removed = [], selected = -1, hintPair = null, seconds = 0, timer = 0, started = false, won = false, zoomed = false, rng = root.ZimiShell ? root.ZimiShell.random() : Math.random, layout;
 
   function updateTimeText() { els.time.textContent = BK.fmtTime(seconds); }
   function stopTimer() { clearInterval(timer); timer = 0; }
@@ -301,7 +301,8 @@
 
   function newGame() {
     stopTimer(); seconds = 0; started = false; won = false; selected = -1; hintPair = null; removed = [];
-    layout = LAYOUTS.filter(function (l) { return l.id === settings.layout; })[0];
+    var daily = root.ZimiShell && root.ZimiShell.daily;   // a daily is the turtle
+    layout = LAYOUTS.filter(function (l) { return l.id === (daily ? 'turtle' : settings.layout); })[0];
     deal0 = dealLayout(layout, rng);
     an = deal0.an; faces = deal0.faces; alive = new Uint8Array(an.n).fill(1);
     tabStop = -1;

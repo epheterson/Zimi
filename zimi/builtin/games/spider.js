@@ -16,7 +16,7 @@
 
   var COLUMNS = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'];
   var DONE = ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'];
-  var COLS = 10, SETS = 8, DECK_CARDS = 104, DEAL_ROW = COLS, SUITS_KEY = 'spider.suits';
+  var COLS = 10, SETS = 8, DECK_CARDS = 104, DEAL_ROW = COLS, SUITS_KEY = 'spider.suits', DAILY_SUITS = 2;
   var SCORE = { start: 500, move: -1, run: 100 };
   var SUIT_SETS = { 1: [3, 3, 3, 3, 3, 3, 3, 3], 2: [3, 2, 3, 2, 3, 2, 3, 2], 4: [0, 1, 2, 3, 0, 1, 2, 3] };
   var top = function (pile) { return pile[pile.length - 1]; };
@@ -203,12 +203,12 @@
   // ── The page ────────────────────────────────────────────────────────────
   function boot() {
     var page, session, board;
-    var suits = Z.store.get(SUITS_KEY, 1);
+    var suits = Z.daily() ? DAILY_SUITS : Z.store.get(SUITS_KEY, 1);   // a daily is two suits
     if (!SUIT_SETS[suits]) suits = 1;
 
     function newGame() {
       session.stats = Z.createStats('spider' + suits);
-      session.reset(newState(shuffledDeck(suits, Math.random), suits));
+      session.reset(newState(shuffledDeck(suits, Z.random()), suits));
       if (session.state.suits !== suits) { suits = session.state.suits; session.stats = Z.createStats('spider' + suits); }   // a game taken up again keeps its suits
     }
 

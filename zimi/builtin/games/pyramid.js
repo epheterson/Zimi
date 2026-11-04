@@ -158,7 +158,7 @@
       select(pile);
       return true;
     }
-    function newGame() { view.picked = null; session.reset(newState(Z.shuffled(Math.random))); paintSub(); }
+    function newGame() { view.picked = null; session.reset(newState(Z.shuffled(Z.random()))); paintSub(); }
 
     page = Z.solitairePage({
       refuse: function () { page.note(TX('pyr.why.noRedeals')); },
