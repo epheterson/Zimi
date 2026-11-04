@@ -166,3 +166,8 @@ asteroids-v1.bin (scripts/build_asteroids.py)
   The main belt's asteroids brighter than H 14 (17,992), osculating elements
   from NASA/JPL's Small-Body Database (SBDB Query API), brought to one epoch
   and quantized to 16 bits, 216 KB. Moved by Kepler's laws in the view.
+  - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
+    Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
+    through NASA Moon Trek's tile service, to about 0.65 m a pixel.
+  - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
+    8k maps, CC BY 4.0, credited on the view while drawn.
