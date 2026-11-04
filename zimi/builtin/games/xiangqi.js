@@ -14,10 +14,10 @@
   var G = WK.create({
     id: 'xiangqi',
     options: WK.standardOptions({ base: WK.CLASSIC_LEVELS, levelDef: 'club', first: 'xiangqi.side.red', second: 'board.black' }).concat([{ key: 'labels', legend: 'xiangqi.pieces', def: root.ZimiText && root.ZimiText.lang === 'zh' ? 'han' : 'icons', choices: [['han', 'xiangqi.pieces.han'], ['icons', 'xiangqi.pieces.icons']] }]),
-    onNew: newGame, onUndo: undo
+    onNew: newGame, onUndo: undo, onHint: hint
   });
   var els = { grid: $('xq-grid'), moves: $('xq-moves'), flip: $('xq-flip') };
-  var cells = [], pos, keys, sans, played, sel = -1, targets = {}, lastMove = 0, manualFlip = false;
+  var cells = [], pos, keys, sans, played, sel = -1, targets = {}, lastMove = 0, manualFlip = false, tip = null;
 
   function turnIdx() { return pos.turn === RED ? 0 : 1; }
   function flipped() { return manualFlip !== (G.vsComputer() && G.settings.side === 'second'); }
@@ -74,6 +74,7 @@
       var s = sqAt(d), c = cells[d], v = pos.sq[s], cls = 'xq-pt';
       if (lastMove && (s === E.from(lastMove) || s === E.to(lastMove))) cls += ' last';
       if (s === sel) cls += ' sel';
+      if (tip && tip.indexOf(s) >= 0) cls += ' sel';
       if (s === kingSq) cls += ' bad';
       if (hintsOn() && targets.hasOwnProperty(s)) cls += ' hint' + (v ? ' cap' : '');
       c.className = cls;
@@ -82,7 +83,7 @@
       var name = E.squareName(s), label = v ? T('chess.sq.piece', { sq: name, color: colorName(v > 0 ? RED : BLACK).toLowerCase(), piece: T('xiangqi.piece.' + Math.abs(v)) }) : T(targets.hasOwnProperty(s) ? 'chess.sq.target' : 'chess.sq.empty', { sq: name });
       c.setAttribute('aria-label', s === sel ? T('chess.sq.selected', { label: label }) : label);
     }
-    G.setUndo(played.length > 0);
+    G.setUndo(played.length > 0); G.setHint(!G.over && !G.thinking && G.human(turnIdx()));
     els.flip.setAttribute('aria-pressed', String(manualFlip));
   }
 
@@ -99,7 +100,7 @@
   // ── turns ──
   var WHY = { repetition: 'xiangqi.why.repetition', sixty: 'xiangqi.why.sixty' };
   function finish(st) {
-    sel = -1; targets = {};
+    sel = -1; targets = {}; tip = null;
     var msg, out, name;
     if (st.result === 'mate') {
       var wi = st.winner === RED ? 0 : 1;
@@ -112,7 +113,7 @@
   }
 
   function afterMove() {
-    sel = -1; targets = {};
+    sel = -1; targets = {}; tip = null;
     var st = E.status(pos, keys);
     paintMoves();
     if (st.over) { finish(st); return; }
@@ -162,6 +163,16 @@
     }, COMPUTER_DELAY_MS);
   }
 
+  // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board.
+  function hint() {
+    var token = G.begin(); paint(); G.say(T('board.thinkingHint'), true);
+    brain.ask({ fen: E.toFen(pos), level: 'strong', seen: seenCounts() }, function (r) {
+      if (!G.done(token)) return;
+      tip = r && r.move ? [E.from(r.move), E.to(r.move)] : null; paint();
+      G.say(tip ? T('makruk.hint', { move: E.san(pos, r.move) }) : T('board.noHint'));
+    }, E.LEVELS.strong.ms);
+  }
+
   // ── input ──
   function movesFrom(s) {
     var out = {};
@@ -173,10 +184,10 @@
     var s = sqAt(+e.currentTarget.dataset.d), v = pos.sq[s];
     if (sel >= 0 && targets.hasOwnProperty(s)) { play(E.findMove(pos, sel, s)); return; }
     if (v * pos.turn > 0 && s !== sel) {
-      sel = s; targets = movesFrom(s);
+      sel = s; targets = movesFrom(s); tip = null;
       if (!Object.keys(targets).length) { sel = -1; G.refuse(e.currentTarget, T('chess.cantMove')); }
       else G.say(!G.vsComputer() ? T('board.toMove', { name: colorName(pos.turn) }) : T('board.chooseWhere'));
-    } else { sel = -1; targets = {}; }
+    } else { sel = -1; targets = {}; tip = null; }
     paint();
   }
 
@@ -191,7 +202,7 @@
   }
 
   function newGame() {
-    paintRiver(); sel = -1; targets = {}; lastMove = 0; manualFlip = false; F.cancel();
+    paintRiver(); sel = -1; targets = {}; tip = null; lastMove = 0; manualFlip = false; F.cancel();
     pos = E.startPosition(); keys = [E.key(pos)]; sans = []; played = [];
     paintMoves(); paint();
     afterMove();
@@ -202,7 +213,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('.ar-sheet,input')) return;
     if (e.key.toLowerCase() === 'f') { manualFlip = !manualFlip; paint(); }
-    else if (e.key === 'Escape' && sel >= 0) { sel = -1; targets = {}; paint(); }
+    else if (e.key === 'Escape' && sel >= 0) { sel = -1; targets = {}; tip = null; paint(); }
   });
 
   if (root.ZimiShell) {
@@ -219,7 +230,7 @@
     load: function (d) {
       pos = E.startPosition(); keys = [E.key(pos)]; sans = []; played = [];
       d.played.forEach(function (m) { sans.push(E.san(pos, m)); played.push(m); E.make(pos, m); keys.push(E.key(pos)); });
-      lastMove = played[played.length - 1] || 0; manualFlip = !!d.flip; sel = -1; targets = {};
+      lastMove = played[played.length - 1] || 0; manualFlip = !!d.flip; sel = -1; targets = {}; tip = null;
       paintMoves(); paint(); paintRiver();
     },
     resume: function () { afterMove(); }
