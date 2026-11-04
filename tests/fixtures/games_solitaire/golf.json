@@ -8,7 +8,7 @@
    "stat": "0:00",
    "state": "97d810e3",
    "sub": "",
-   "table": "ffee3cde",
+   "table": "718ca56b",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -21,7 +21,7 @@
    "stat": "0:00",
    "state": "97d810e3",
    "sub": "",
-   "table": "d51028b",
+   "table": "16fde224",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -34,7 +34,7 @@
    "stat": "0:00",
    "state": "9ea19665",
    "sub": "",
-   "table": "d69a06ed",
+   "table": "a376c702",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -47,7 +47,7 @@
    "stat": "0:04",
    "state": "25a27180",
    "sub": "",
-   "table": "d8ee8cdd",
+   "table": "a0c8fa6a",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -60,7 +60,7 @@
    "stat": "0:04",
    "state": "5137d1a9",
    "sub": "",
-   "table": "b8d02ad4",
+   "table": "75d7d02a",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -73,7 +73,7 @@
    "stat": "0:04",
    "state": "25a27180",
    "sub": "",
-   "table": "dad1e2d",
+   "table": "efa919e0",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -86,7 +86,7 @@
    "stat": "0:01",
    "state": "bda0616e",
    "sub": "",
-   "table": "a2da1ab5",
+   "table": "acf17f92",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -99,7 +99,7 @@
    "stat": "0:00",
    "state": "f36a0a1c",
    "sub": "",
-   "table": "bc482b46",
+   "table": "5d5bb69",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -112,7 +112,7 @@
    "stat": "0:00",
    "state": "504c0263",
    "sub": "",
-   "table": "bab79084",
+   "table": "b2201d57",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -125,7 +125,7 @@
    "stat": "0:00",
    "state": "504c0263",
    "sub": "",
-   "table": "bab79084",
+   "table": "b2201d57",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -138,7 +138,7 @@
    "stat": "0:00",
    "state": "6b2cb8e5",
    "sub": "",
-   "table": "ec37ba78",
+   "table": "2231d1a7",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -148,5 +148,5 @@
  "hseed": 45,
  "plays": "stray:7 stock stock stock tap:44>waste tap:32>waste tap:7>waste tap:34>waste stock stock stock tap:29>waste drag:41>waste stock stock tap:10>waste drag:50>waste tap:38>waste stock stock stock stock drag:22>waste stray:30 stock tap:39>waste tap:40>waste drag:15>waste tap:16>waste stock stray:42 drag:20>waste stray:5 tap:47>waste tap:46>waste stock tap:48>waste stock drag:28>waste tap:3>waste drag:3>waste tap:47>waste stock tap:8>waste stock stock stock stock tap:6>waste stock tap:36>waste tap:19>waste",
  "seed": 35,
- "trace": "436c6c6ca69c18600e17d0890360c38d8da6aafa298de57fd34facd46acb17025344c57dbc309dc84445ed93c67f2992e887152ce6e742345c2bac218c8dbe7fe025dbcffe3710d7277a93e5b143cab75d6f4da448219620834c8bafdbcf59658561eee04da0f67ffcd998194683300d11d34363151e4ad64a3caf141546e4a1e51765a81c4746042253927770b96e49d7fe783d8f0ec10fa053f12c5cb2fd6d5328db3950904d459f474dbdde9074fcff322e11e8dbc7002d04f7d53c9dea9b837e89752ef1cd2adab6bfd58e5a9fef37a05a08da6010c998f95fd70da812190f26e2dba3d8d88055fc48fdcfcf50dd4a2e8b6a6fc68660dbc1e461950fcb19776bd6146e2210eb21399409da0e8b49"
+ "trace": "ff1346e04e53ea3e4e60bbb1dc0cb86f20b795763778332cf857274983a3432c081dc85267e853a1430906fa617e301fad66aa23794f2782002fe09760210a0d8bd02e66a496cbe122cc39e91450e7f27ec32c3131ccf6fae8c572593831b3f44c6bbac4de87f6523f8a4a7241ebaa54977a410746153f1283ef3d8e31411b417965cc371b01f6dd24f78446fe350199937bbcdd1a00b0f7ba07b0c3876321a5963ad10f4bbe9384371f7107f2665517aa5b33ce63ffcf488e7de81f34f1dec042d89ea0c00f9780713e827de3d9f5b081e10f4103f4a8c4cbf746da70e595977f2fea89fb2f72d29a5c4030448540d9c224d2cf36c3c62e78ab38fbcd6ec56f34fb96565fbfd1917d1a35de4c981e51"
 }
