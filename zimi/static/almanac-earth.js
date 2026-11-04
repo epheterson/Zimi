@@ -2172,7 +2172,7 @@ function _aeUpdatePlanets(sc) {
   // a planet tens of times: Juno would orbit inside Jupiter, Webb inside the GPS shell): within a planet's reach it
   // goes from the scale's place to the planet's own frame, all the way in by half that reach.
   var earthH = _ephBodyJ2000('Earth', jd);
-  var near = [{ h: earthH, at: [0, 0, 0], reach: AE_PROBE_REACH_AU.earth }];
+  var near = [{ key: 'earth', h: earthH, at: [0, 0, 0], reach: AE_PROBE_REACH_AU.earth, hAt: function (t) { return _ephBodyJ2000('Earth', t); } }];
   var placeNear = function (h) {
     var out = place(h);
     for (var i = 0; i < near.length; i++) {
@@ -2191,7 +2191,7 @@ function _aeUpdatePlanets(sc) {
       var h = helio[b.key] = b.track ? _aeTracked(b, jd) : _ephBodyJ2000(b.eph, jd);
       if (!h) { p.pos = null; p.mesh.visible = false; return; }   // a dwarf before its table has come, or past its years
       pos = place(h);
-      if (AE_PROBE_REACH_AU[b.key]) near.push({ h: h, at: pos, reach: AE_PROBE_REACH_AU[b.key] });
+      if (AE_PROBE_REACH_AU[b.key]) near.push({ key: b.key, h: h, at: pos, reach: AE_PROBE_REACH_AU[b.key], hAt: _aeHelioOf(b) });
       _aeDrawOrbit(S.planets[b.key], jd, place);
       sun = _aeNorm(toScene(_aeScale(h, -1)));
       f = _aePlanetFrameEcl(b, jd);
@@ -2242,7 +2242,7 @@ function _aeUpdatePlanets(sc) {
       }, function () { p.asked = false; });
     }
   });
-  _aeUpdateProbes(jd, placeNear);
+  _aeUpdateProbes(jd, placeNear, near);
 }
 // ── The asteroid belt ──
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
@@ -2351,35 +2351,117 @@ function _aeTracked(b, jd) {
   if (!_aeTracks) { _aeTracksLoad(); return null; }
   return _aeTrackAt(b.track === 'planets' ? _aeTracks.planets[b.eph] : _aeTracks.tracks[b.trackKey], jd);
 }
-function _aeUpdateProbes(jd, place) {
+// Where a planet is (heliocentric AU) at any date: the ephemeris, or the table for Pluto.
+function _aeHelioOf(b) {
+  return function (t) { return b.track ? _aeTracked(b, t) : _ephBodyJ2000(b.eph, t); };
+}
+// GM in AU^3 a day^2: the Sun's, and each planet's as a fraction of it (IAU 2015 mass ratios).
+var AE_GM_SUN = 2.9591220828559115e-4;
+var AE_GM_RATIO = { earth: 1 / 332946.05, mercury: 1 / 6023657, venus: 1 / 408523.7, mars: 1 / 3098703.6, jupiter: 1 / 1047.3486,
+  saturn: 1 / 3497.902, uranus: 1 / 22902.98, neptune: 1 / 19412.26, pluto: 1 / 136047200 };
+var AE_VEL_STEP_DAYS = 0.01;
+var AE_TRAIL_ORBIT_FRAC = 0.3;     // a probe going round and round leaves this much of an orbit behind it, fading
+var AE_TRAIL_LOOPED = 1.2;
+var AE_TRAIL_HELD_DAYS = 180;      // Webb's halo round L2 is about half a year
+var AE_KEPLER_CLOSE = 0.15;        // one period back within this share of the orbit's far side: it is that ellipse         // round its body at least this many times since its table began: it is in orbit
+// A path's place and velocity (AU, AU a day) at jd, by a central difference of its curve.
+function _aeStateOf(at, jd) {
+  var a = at(jd - AE_VEL_STEP_DAYS), b = at(jd + AE_VEL_STEP_DAYS), h = at(jd);
+  return a && b && h ? { r: h, v: _aeScale(_aeSub(b, a), 1 / (2 * AE_VEL_STEP_DAYS)) } : null;
+}
+// The orbit a state is on round a body of this GM (two-body): null unless it is bound.
+function _aeKepler(r, v, mu) {
+  var rl = _aeLen(r), v2 = _aeDot(v, v), inv = 2 / rl - v2 / mu;
+  if (inv <= 0) return null;
+  var a = 1 / inv, hv = _aeCross(r, v), ev = _aeSub(_aeScale(_aeCross(v, hv), 1 / mu), _aeScale(r, 1 / rl)), e = _aeLen(ev);
+  if (e >= 1) return null;
+  var pdir = e > 1e-9 ? _aeScale(ev, 1 / e) : _aeScale(r, 1 / rl), qdir = _aeNorm(_aeCross(hv, pdir));
+  return { a: a, e: e, p: pdir, q: qdir, period: 2 * Math.PI * Math.sqrt(a * a * a / mu) };
+}
+function _aeKeplerAt(o, E) {
+  return _aeAdd(_aeScale(o.p, o.a * (Math.cos(E) - o.e)), _aeScale(o.q, o.a * Math.sqrt(1 - o.e * o.e) * Math.sin(E)));
+}
+// A probe's path, drawn the way a person reads it: one going round and round (Parker round the Sun, Juno round
+// Jupiter) is its present orbit as one clean ellipse and a short trail of where it has just been, fading behind it;
+// one on its way out (the Voyagers, New Horizons) is the whole road it has come. The body it goes round is the
+// planet it is within reach of, or the Sun.
+function _aeProbeOrbit(t, jd, near) {
+  var c = null;
+  for (var i = 0; i < (near || []).length; i++) {
+    var hp = _aeTrackAt(t, jd);
+    if (hp && _aeLen(_aeSub(hp, near[i].h)) < near[i].reach / 2 && AE_GM_RATIO[near[i].key]) { c = near[i]; break; }
+  }
+  var at = c ? function (x) { var a = _aeTrackAt(t, x), b = c.hAt(x); return a && b ? _aeSub(a, b) : null; } : function (x) { return _aeTrackAt(t, x); };
+  var st = _aeStateOf(at, jd);
+  if (!st) return null;
+  var o = _aeKepler(st.r, st.v, AE_GM_SUN * (c ? AE_GM_RATIO[c.key] : 1));
+  if (!o || (jd - t.jd0) < AE_TRAIL_LOOPED * o.period) {
+    // Not on a two-body orbit, but held near a planet all the same (Webb round the Sun-Earth L2 point): a trail of its
+    // last loop, no ellipse.
+    return c && (jd - t.jd0) > AE_TRAIL_HELD_DAYS ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
+  }
+  // Two-body, nearly: one period ago it was where it is now (Parker, Juno). If not, the ellipse would be a guess.
+  var back = at(jd - o.period);
+  if (!back || _aeLen(_aeSub(back, st.r)) > AE_KEPLER_CLOSE * o.a * (1 + o.e)) return c ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
+  o.centre = c ? c.h : [0, 0, 0]; o.round = c ? c.key : 'sun'; o.trail = o.period * AE_TRAIL_ORBIT_FRAC;
+  return o;
+}
+function _aeUpdateProbes(jd, place, near) {
   var S = _ae.gl;
   if (!_aeTracks) return;
   if (!S.probes || S.probes.cloud.parent !== S.scene) {
-    S.probes = { cloud: _aePointCloud(S.THREE, AE_PROBE_CAPACITY, S.dpr, true, { depthTest: true }), trails: {} };
+    S.probes = { cloud: _aePointCloud(S.THREE, AE_PROBE_CAPACITY, S.dpr, true, { depthTest: true }), trails: {}, orbits: {} };
     S.scene.add(S.probes.cloud);
   }
   var out = S.probes, n = 0;
   _aeProbePos = {};
   _aeTracks.probes.forEach(function (k) {
-    var t = _aeTracks.tracks[k], h = _aeTrackAt(t, jd), trail = out.trails[k];
-    if (!trail) { trail = out.trails[k] = _aeLine(S.THREE, S.THREE.Line, AE_TRAIL_POINTS, 0x6ee7d8, AE_TRAIL_ALPHA); S.scene.add(trail); }
-    if (!h) { trail.visible = false; return; }
+    var t = _aeTracks.tracks[k], h = _aeTrackAt(t, jd), trail = out.trails[k], ring = out.orbits[k];
+    if (!trail) {
+      trail = out.trails[k] = _aeLine(S.THREE, S.THREE.Line, AE_TRAIL_POINTS, 0xffffff, AE_TRAIL_ALPHA);
+      trail.geometry.setAttribute('color', new S.THREE.BufferAttribute(new Float32Array(AE_TRAIL_POINTS * 4), 4));
+      trail.material.vertexColors = true;
+      S.scene.add(trail);
+      ring = out.orbits[k] = _aeLine(S.THREE, S.THREE.LineLoop, AE_ORBIT_POINTS, 0x6ee7d8, AE_TRAIL_ALPHA);
+      S.scene.add(ring);
+    }
+    if (!h) { trail.visible = ring.visible = false; return; }
     var pos = _aeProbePos[k] = place(h);
     var ahead = _aeTrackAt(t, jd + AE_PROBE_HEADING_DAYS);   // where it will be: its heading as drawn
     _aeProbeHeading[k] = ahead ? _aeSub(place(ahead), pos) : null;
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, 1, AE_PROBE_PX);
     // Its own path for the probe in view; the others' only in the wide views (near a body a path is a stray line).
-    trail.visible = _ae.target === k || _aeWideView();
-    trail.material.opacity = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
-    if (trail.at != null && Math.abs(jd - trail.at) < AE_TRAIL_REDRAW_DAYS) return;
-    trail.at = jd;
-    var arr = trail.geometry.attributes.position.array;
-    for (var i = 0; i < AE_TRAIL_POINTS; i++) {
-      var q = place(_aeTrackAt(t, t.jd0 + (jd - t.jd0) * i / (AE_TRAIL_POINTS - 1)) || h);
-      arr[i * 3] = q[0]; arr[i * 3 + 1] = q[1]; arr[i * 3 + 2] = q[2];
+    var shown = _ae.target === k || _aeWideView(), alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
+    trail.material.opacity = ring.material.opacity = alpha;
+    // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
+    var o = trail.orbit;
+    var every = o ? Math.min(AE_TRAIL_REDRAW_DAYS, o.trail / 15) : AE_TRAIL_REDRAW_DAYS;
+    if (trail.at == null || Math.abs(jd - trail.at) >= every) {
+      trail.at = jd;
+      o = trail.orbit = _aeProbeOrbit(t, jd, near);
+      var arr = trail.geometry.attributes.position.array, col = trail.geometry.attributes.color.array;
+      var from = o ? Math.max(t.jd0, jd - o.trail) : t.jd0;
+      for (var i = 0; i < AE_TRAIL_POINTS; i++) {
+        var f = i / (AE_TRAIL_POINTS - 1), q = place(_aeTrackAt(t, from + (jd - from) * f) || h);
+        arr[i * 3] = q[0]; arr[i * 3 + 1] = q[1]; arr[i * 3 + 2] = q[2];
+        col[i * 4] = AE_PROBE_COLOR[0]; col[i * 4 + 1] = AE_PROBE_COLOR[1]; col[i * 4 + 2] = AE_PROBE_COLOR[2];
+        col[i * 4 + 3] = o ? f * f : 1;   // in orbit: fading out behind it
+      }
+      trail.geometry.attributes.position.needsUpdate = true;
+      trail.geometry.attributes.color.needsUpdate = true;
+      trail.geometry.setDrawRange(0, AE_TRAIL_POINTS);
+      if (o && o.period) {
+        var ra = ring.geometry.attributes.position.array;
+        for (var j = 0; j < AE_ORBIT_POINTS; j++) {
+          var p = place(_aeAdd(o.centre, _aeKeplerAt(o, 2 * Math.PI * j / AE_ORBIT_POINTS)));
+          ra[j * 3] = p[0]; ra[j * 3 + 1] = p[1]; ra[j * 3 + 2] = p[2];
+        }
+        ring.geometry.attributes.position.needsUpdate = true;
+        ring.geometry.setDrawRange(0, AE_ORBIT_POINTS);
+      }
     }
-    trail.geometry.attributes.position.needsUpdate = true;
-    trail.geometry.setDrawRange(0, AE_TRAIL_POINTS);
+    trail.visible = shown;
+    ring.visible = shown && !!(o && o.period);
   });
   _aeCommitPoints(out.cloud, n);
 }
