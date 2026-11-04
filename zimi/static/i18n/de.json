@@ -2548,7 +2548,6 @@
   "alm_subj_sun": "Sonne",
   "alm_subj_eclipses": "Finsternisse",
   "alm_subj_seasons": "Jahreszeiten",
-  "alm_tide_nearest": "Keine Pegelstation in der Nähe. Gezeigt wird die nächste: {name}, {d} entfernt.",
   "alm_place_no_match": "Keine Station mit diesem Namen",
   "alm_tide_title": "Gezeiten",
   "alm_tide_rising": "Steigend",

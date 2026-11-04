@@ -2548,7 +2548,6 @@
   "alm_subj_sun": "שמש",
   "alm_subj_eclipses": "ליקויים",
   "alm_subj_seasons": "עונות",
-  "alm_tide_nearest": "אין תחנת גאות קרובה. מוצגת הקרובה ביותר: {name}, במרחק {d}.",
   "alm_place_no_match": "אין תחנה בשם הזה",
   "alm_tide_title": "גאות ושפל",
   "alm_tide_rising": "עולה",

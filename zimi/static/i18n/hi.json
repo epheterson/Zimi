@@ -2548,7 +2548,6 @@
   "alm_subj_sun": "सूर्य",
   "alm_subj_eclipses": "ग्रहण",
   "alm_subj_seasons": "ऋतुएँ",
-  "alm_tide_nearest": "पास में कोई ज्वार स्टेशन नहीं। सबसे पास वाला दिखाया गया है: {name}, {d} दूर।",
   "alm_place_no_match": "इस नाम का कोई स्टेशन नहीं",
   "alm_tide_title": "ज्वार-भाटा",
   "alm_tide_rising": "चढ़ रहा है",

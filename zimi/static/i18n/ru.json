@@ -2548,7 +2548,6 @@
   "alm_subj_sun": "Солнце",
   "alm_subj_eclipses": "Затмения",
   "alm_subj_seasons": "Времена года",
-  "alm_tide_nearest": "Рядом нет станции приливов. Показана ближайшая: {name}, в {d}.",
   "alm_place_no_match": "Станции с таким названием нет",
   "alm_tide_title": "Приливы",
   "alm_tide_rising": "Прибывает",
