@@ -86,6 +86,11 @@ LAYERS = {
         "max": 5,
         "mode": "L",
     },
+    # The planets: Solar System Scope's 8k maps (CC BY 4.0, credited in the view and the ZIM), to 8192 px.
+    **{
+        "planets/%s" % k: {"file": "https://www.solarsystemscope.com/textures/download/8k_%s.jpg" % f, "max": 3, "mode": "RGB"}
+        for k, f in (("mercury", "mercury"), ("venus", "venus_surface"), ("mars", "mars"), ("jupiter", "jupiter"), ("saturn", "saturn"))
+    },
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 4,
@@ -107,6 +112,11 @@ PINS = {
     "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
     "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
     "moon/albedo": "dbff4356479764d89f9fd7722140043eddbc2cafbad4dec5950858e2df77ac54",
+    "planets/mercury": "5c8bd885ae3571c6ba2cd34b3446b9c6d767e314bf0ee8c1d5c147cadd388fc3",
+    "planets/venus": "9bc21a50577ed8ac734cda91058724c7a741c19427aa276224ce349351432c5b",
+    "planets/mars": "4cc52149924abc6ae507d63032f994e1d42a55cb82c09e002d1a567ff66c23ee",
+    "planets/jupiter": "0bd844bf20822c4e3e80882b077859833c0dac44c7e4e1e0cd63d1b1b6d43085",
+    "planets/saturn": "0d39a4a490c87c3edabe00a3881a29bb3418364178c79c534fe0986e97e09853",
     "moon/relief": "0f40bce8b42864deddb6943a38474879e691d5b20647aa5e54c2612b23106499",
 }
 
@@ -354,12 +364,13 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 <ul>
 <li>Earth by day: NASA Blue Marble: Next Generation (Reto St&ouml;ckli, NASA Earth Observatory), served by NASA GIBS. Public domain.</li>
 <li>Earth by night: NASA Black Marble 2016 (VIIRS), served by NASA GIBS. Public domain.</li>
-<li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera. Public domain.</li>
+<li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera, and its elevation from the Lunar Orbiter Laser Altimeter. Public domain.</li>
+<li>Mercury, Venus, Mars, Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
 </ul></body></html>
 """
 
 ZIMI_TXT = """Title: Almanac HD · Zimi
-Description: Sharper Earth and Moon for the Almanac's 3D view: NASA imagery as tiles
+Description: Sharper Earth, Moon and planets for the Almanac's 3D view, as tiles
 Language: eng
 Creator: NASA
 Publisher: Zimi

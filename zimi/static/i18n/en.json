@@ -2261,7 +2261,7 @@
   "alm_earth_maps_failed": "A map did not load; close and reopen this view to try again",
   "alm_earth_no_orbital_data": "No orbital data here, so no satellites are drawn",
   "alm_earth_credit": "Images: NASA",
-  "alm_earth_credit_sss": "Saturn, Uranus, Neptune: Solar System Scope (CC BY 4.0)",
+  "alm_earth_credit_sss": "Planet maps: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "This clock gains {net} µs a day on clocks on the ground (+{grav} from weaker gravity up here, −{speed} from its {v} km/s), so ignoring it would put GPS about {km} km off each day.",
   "alm_earth_since_tap": "Gained since you tapped: {t}",
   "alm_earth_time_dilation": "Time dilation",

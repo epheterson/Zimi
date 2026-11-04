@@ -2261,7 +2261,7 @@
   "alm_earth_maps_failed": "एक नक्शा लोड नहीं हुआ; फिर से कोशिश करने के लिए यह दृश्य बंद करके दोबारा खोलें",
   "alm_earth_no_orbital_data": "यहाँ कोई कक्षीय डेटा नहीं है, इसलिए कोई उपग्रह नहीं दिखाया गया",
   "alm_earth_credit": "चित्र: NASA",
-  "alm_earth_credit_sss": "शनि, अरुण, वरुण: Solar System Scope (CC BY 4.0)",
+  "alm_earth_credit_sss": "ग्रहों के नक्शे: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "यह घड़ी ज़मीन की घड़ियों से रोज़ {net} माइक्रोसेकंड आगे निकलती है (ऊपर कमज़ोर गुरुत्वाकर्षण से +{grav}, इसकी {v} किमी/से की रफ़्तार से −{speed}), इसलिए इसे अनदेखा करने पर GPS रोज़ लगभग {km} किमी ग़लत हो जाएगा।",
   "alm_earth_since_tap": "आपके टैप के बाद से आगे: {t}",
   "alm_earth_time_dilation": "काल विस्फारण",

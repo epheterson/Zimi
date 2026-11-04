@@ -2261,7 +2261,7 @@
   "alm_earth_maps_failed": "Eine Karte wurde nicht geladen. Ansicht schließen und erneut öffnen, um es noch einmal zu versuchen",
   "alm_earth_no_orbital_data": "Hier liegen keine Bahndaten vor, daher werden keine Satelliten gezeichnet",
   "alm_earth_credit": "Bilder: NASA",
-  "alm_earth_credit_sss": "Saturn, Uranus, Neptun: Solar System Scope (CC BY 4.0)",
+  "alm_earth_credit_sss": "Planetenkarten: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "Diese Uhr geht gegenüber Uhren am Boden {net} µs am Tag vor (+{grav} durch die schwächere Schwerkraft hier oben, −{speed} durch ihre {v} km/s), ohne Korrektur läge GPS also jeden Tag etwa {km} km daneben.",
   "alm_earth_since_tap": "Gewonnen seit deinem Tippen: {t}",
   "alm_earth_time_dilation": "Zeitdilatation",

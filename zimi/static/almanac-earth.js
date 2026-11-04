@@ -1525,6 +1525,7 @@ var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers 
 var AE_HD_GPU_TILES = 120;       // textures kept on the GPU (day ~1.4 MB with mipmaps, night and Moon a quarter), least recently used go first
 var AE_HD_LOADS = 6;             // tiles fetched at once
 var AE_HD_KEEP_LEVEL = 1;        // levels 0 and 1 (10 tiles a layer) stay: there is always something to draw
+var AE_HD_MIN_BODY_PX = 40;      // a body smaller than this (radius, CSS px) keeps its one map and asks for no tile
 var AE_HD_SEG_DEG = 2.8;         // a tile's mesh no coarser than the base sphere's (AE_EARTH_SEGMENTS)
 var AE_HD_MIN_SEG = 8;
 var AE_HD_SKIRT = 0.002;         // each tile's edges hang this far below the surface (of its radius): no crack shows where levels meet
@@ -1545,7 +1546,11 @@ function _aeHdBodies(S) {
       maps: [{ uni: 'moonMap', layer: 'moon/albedo', red: true }, { uni: 'reliefMap', layer: 'moon/relief', optional: true }],
       extra: { moonMapped: { value: 1 }, moonPole: { value: S.vz } }, relief: true,
       minDist: AE_MIN_DIST_MOON }
-  ];
+  ].concat(AE_PLANETS.filter(function (b) { return S.planets && S.planets[b.key]; }).map(function (b) {
+    var p = S.planets[b.key];
+    return { key: b.key, parent: p.mesh, radius: b.r, frag: AE_PLANET_FRAG, uni: p.uni, cc: true,
+      maps: [{ uni: 'map', layer: 'planets/' + b.key }], extra: { mapped: { value: 1 } }, minDist: AE_TARGETS[b.key].min };
+  }));
 }
 // Reads the ZIM's list of layers once the server says it is installed (the satellites answer, _aeHdShow: the library
 // lists it nowhere, server.DATA_PACKS); a body whose layers are all there is drawn in tiles from then on.
@@ -1762,7 +1767,15 @@ function _aeHdTouch(b, n, frame) {
 function _aeHdUpdate(S) {
   var hd = S.hd;
   hd.frame++;
+  var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z], pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
   hd.bodies.forEach(function (b) {
+    var e = b.parent.matrixWorld.elements, c = [e[12], e[13], e[14]];
+    if (!b.parent.visible || b.radius / Math.max(1e-9, _aeLen(_aeSub(c, eye))) * pxPerRad < AE_HD_MIN_BODY_PX) {
+      b.drawn.forEach(function (n) { if (n.mesh) n.mesh.visible = false; });
+      b.drawn = [];
+      b.parent.material.visible = true;
+      return;
+    }
     b.parent.updateMatrixWorld(true);
     // Levels 0 and 1 first, wanted always: the stand-ins for everything else.
     for (var z = 0; z <= AE_HD_KEEP_LEVEL; z++) {
@@ -2045,8 +2058,9 @@ function _aeBodyPos(key, sc) {
 function _aePlanetCredit() {
   var S = _ae.gl;
   if (!S || !S.planets) return '';
-  for (var k in S.planets) if (S.planets[k].b.cc && S.planets[k].uni.mapped.value) return _aeT('alm_earth_credit_sss');
-  return '';
+  for (var k in S.planets) if (S.planets[k].b.cc && S.planets[k].uni.mapped.value && S.planets[k].mesh.visible) return _aeT('alm_earth_credit_sss');
+  var hdCc = S.hd && S.hd.bodies.some(function (b) { return b.cc && b.drawn.length; });   // Almanac HD's planets
+  return hdCc ? _aeT('alm_earth_credit_sss') : '';
 }
 
 // ── Past the pictures: the map ──

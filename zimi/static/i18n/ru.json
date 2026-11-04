@@ -2261,7 +2261,7 @@
   "alm_earth_maps_failed": "Одна из карт не загрузилась; закройте и снова откройте этот вид, чтобы повторить",
   "alm_earth_no_orbital_data": "Орбитальных данных здесь нет, поэтому спутники не показаны",
   "alm_earth_credit": "Снимки: NASA",
-  "alm_earth_credit_sss": "Сатурн, Уран, Нептун: Solar System Scope (CC BY 4.0)",
+  "alm_earth_credit_sss": "Карты планет: Solar System Scope (CC BY 4.0)",
   "alm_earth_gps_sentence": "Эти часы уходят вперёд на {net} мкс в сутки относительно часов на Земле (+{grav} из-за более слабой гравитации наверху, −{speed} из-за скорости {v} км/с), и без поправки GPS ошибался бы примерно на {km} км в день.",
   "alm_earth_since_tap": "Набежало с вашего нажатия: {t}",
   "alm_earth_time_dilation": "Замедление времени",

@@ -208,6 +208,10 @@ def test_tiles_by_view(browser, served):
             "/earth/night/2/" in u for u in tiles
         ), "night stops at its deepest level"
         # The Moon's relief: lit through its own shader, read in colour (east and north tilt), not as one channel.
+        # Its tiles are asked for once the Moon is big enough to need them.
+        pg.evaluate("_aePreset('moon')")
+        _settle(pg, "() => { var b = _ae.gl.hd.bodies.filter(b => b.key === 'moon')[0]; var n = b.nodes['0/0/0'];"
+                    " return !_ae.fly && n && n.tex['moon/relief'] && n.tex['moon/relief'].isTexture; }")
         moon = pg.evaluate("""() => { var b = _ae.gl.hd.bodies.filter(b => b.key === 'moon')[0];
             var n = b.nodes['0/0/0'], t = n && n.tex['moon/relief'], a = n && n.tex['moon/albedo'];
             return { relief: b.frag.indexOf('reliefMap') >= 0, maps: b.maps.map(m => m.uni),
