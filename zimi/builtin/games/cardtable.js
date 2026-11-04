@@ -18,7 +18,8 @@
   var COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
-  var TRICK_CENTER_SHARE = 0.4, HAND_BOTTOM_PX = 12, SCORE_BAR_H = 26, STATUS_H = 46, SUIT_GAP_SHARE = 0.18, HAND_STEP_SHARE = 0.78;
+  // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
+  var TRICK_CENTER_SHARE = 0.4, HAND_BOTTOM_PX = 12, SCORE_BAR_H = 34, STATUS_H = 46, SUIT_GAP_SHARE = 0.18, HAND_STEP_SHARE = 0.78;
   // A hand of thirteen (Hearts, Spades) is one fanned row: a card five columns of the table wide, the size every such game shares.
   var HAND13_COLS = 5;
   var SIDE_STEP_MIN = 0.07, SIDE_STEP_MAX = 0.2, TOP_STEP_SHARE = 0.3, SIDE_OFFSET_CARDS = 3.4, TRICK_DX = 0.72, TRICK_DY = 0.62;
