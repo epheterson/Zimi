@@ -1885,6 +1885,22 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
     return title_score + rank_score + auth_score + lang_score
 
 
+def _shelf_games_only(name, results):
+    """``results`` from ``name``, where the games ZIM answers with its games only: a page on the shelf, under the
+    game's own name and its blurb ("Chess", not "Chess - ZimiGames" over its button labels "Hint Flip"), never the
+    ZIM's other files (a data README, an engine's notes, a stylesheet)."""
+    from zimi import gamelinks
+
+    if name != gamelinks._GAMES_ZIM:
+        return results
+    shelf = {g["path"]: g for g in gamelinks.rows() if g.get("path")}
+    return [
+        dict(r, title=shelf[r["path"]].get("title") or r.get("title", ""), snippet=shelf[r["path"]].get("blurb") or "")
+        for r in results
+        if r.get("path") in shelf
+    ]
+
+
 def _dedup_results_by_title(results):
     """Collapse same-titled results across ZIMs, keeping the first — the
     list arrives sorted by score, so the strongest source wins. Without
@@ -3212,7 +3228,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 t.join()
 
         for name, results in thread_results.items():
-            valid = [r for r in results if not _junk_re.search(r.get("path", ""))]
+            valid = _shelf_games_only(name, [r for r in results if not _junk_re.search(r.get("path", ""))])
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
@@ -3305,11 +3321,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         for name, (results, dt) in fts_results.items():
             if dt > 0.3:
                 timings.append(f"{name}={dt:.1f}s")
-            valid = [
-                r
-                for r in results
-                if "error" not in r and not _junk_re.search(r.get("path", ""))
-            ]
+            valid = _shelf_games_only(
+                name,
+                [r for r in results if "error" not in r and not _junk_re.search(r.get("path", ""))],
+            )
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
