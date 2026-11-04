@@ -89,6 +89,7 @@ def build_fixture_zim(
     indexing: bool = True,
     files: dict | None = None,
     main_path: str = "A/Water",
+    index_lang: str = "eng",
 ) -> str:
     """Write a 3-article ZIM at `path`; return the path.
 
@@ -116,7 +117,7 @@ def build_fixture_zim(
             b"<html><body><h1>Shelter</h1><p>Stay dry and warm." b"</p></body></html>",
         ),
     ]
-    with Creator(path).config_indexing(indexing, "eng") as creator:
+    with Creator(path).config_indexing(indexing, index_lang) as creator:
         creator.set_mainpath(main_path)
         for p, t, h in articles:
             creator.add_item(_Article(p, t, h))
