@@ -324,7 +324,7 @@
     });
     seats = tg.seats; mine = tg.mine; viewTeam = tg.viewTeam; teamLabel = tg.teamLabel;
     t = tg.create({
-      name: 'Euchre', geo: geo, place: place, hud: hud, newGame: newGame, cols: 6, heightShare: 0.13,
+      name: 'Euchre', geo: geo, place: place, hud: hud, newGame: newGame, heightShare: 0.13,
       cascadeOrder: function (st) { return st.played.map(function (id) { return { id: id }; }); },
       winLines: function (sec, st) { return handLines(st).concat([TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })]); },
       rules: TX('euchre.rules')

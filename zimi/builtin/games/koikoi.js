@@ -474,7 +474,7 @@
     // A fresh deal: nobody has seen it, so two people start at a handoff.
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     t = T.create({
-      id: 'koikoi', name: 'Koi-Koi', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, cols: 6, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
+      id: 'koikoi', name: 'Koi-Koi', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
