@@ -3833,12 +3833,12 @@ var AE_CLUSTER_ZOOM_FILL = 1.35;
 // the middle first, then the other, then above, then below; with nowhere free the ring goes unnamed (a tap still
 // flies there). In a flight the two bodies' names sit over their rings, so the pair's names never meet.
 var AE_NAME_SIDES = ['out', 'in', 't', 'b', 'tout', 'bout', 'tin', 'bin'];
-var AE_NAME_GAP = 7, AE_NAME_H = 16, AE_NAME_CHAR_PX = 6.6;
+var AE_NAME_GAP = 7, AE_NAME_H = 16, AE_NAME_CHAR_PX = 6.6, AE_NAME_EDGE = 6;   // a name keeps this far in from the screen's sides
 // Above or below, a name is centred on its ring, slid sideways to stay on the screen (dx, read by the CSS as --ae-nx).
 function _aeNameBox(m, side, w) {
   var r = m.r, h = AE_NAME_H;
   if (side === 't' || side === 'b') {
-    var x0 = _aeClamp(m.x - w / 2, 0, Math.max(0, _ae.w - w)), y0 = side === 't' ? m.y - r - 4 - h : m.y + r + 4;
+    var x0 = _aeClamp(m.x - w / 2, AE_NAME_EDGE, Math.max(AE_NAME_EDGE, _ae.w - w - AE_NAME_EDGE)), y0 = side === 't' ? m.y - r - 4 - h : m.y + r + 4;
     var box = [x0, y0, x0 + w, y0 + h];
     box.dx = x0 - (m.x - w / 2);
     return box;
@@ -3864,13 +3864,19 @@ function _aePlaceMarkNames(shown) {
   var names = [];
   shown.forEach(function (m, i) {
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
-    if (el._aeNameW == null) el._aeNameW = (label && label.offsetWidth) || String((label || el).textContent || '').length * AE_NAME_CHAR_PX;
+    // Measured once it has been laid out (a hidden name has no width: until then, a generous guess by its letters).
+    if (el._aeNameW == null || el._aeNameGuess) {
+      var meas = label && label.offsetWidth;
+      el._aeNameGuess = !meas;
+      el._aeNameW = meas || String((label || el).textContent || '').length * AE_NAME_CHAR_PX;
+    }
     var w = el._aeNameW || 0, out = m.x > _ae.w / 2 ? 'l' : 'r', inn = out === 'l' ? 'r' : 'l';
     var sides = m.ringed ? ['t'] : AE_NAME_SIDES.map(function (sd) { return sd.replace('out', out).replace('in', inn); });
     var chosen = null;
     for (var k = 0; k < sides.length && !chosen; k++) {
       var box = _aeNameBox(m, sides[k], w);
-      if (box[0] < 0 || box[2] > _ae.w || box[1] < 0 || box[3] > _ae.h) continue;
+      // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
+      if (box[0] < AE_NAME_EDGE || box[2] > _ae.w - AE_NAME_EDGE || box[1] < 0 || box[3] > _ae.h) continue;
       var hit = names.some(function (n) { return _aeBoxesMeet(n, box); }) ||
         rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); });
       if (!hit || m.ringed) chosen = { side: sides[k], box: box };

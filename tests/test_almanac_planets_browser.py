@@ -238,3 +238,34 @@ def test_the_strip_the_minimap_and_the_orrery_s_way_in(served):
             ctx.close()
         finally:
             br.close()
+
+
+@pytest.mark.parametrize("width", [390, 360])
+def test_no_name_runs_off_the_screen(served, width):
+    """In the Planets view every name stays inside the screen, flipping inward at the edge (Neptune ran off at 390)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(viewport={"width": width, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+            ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE))
+            pg = ctx.new_page()
+            pg.goto(served + "/#almanac", wait_until="load")
+            pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+            pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+            pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly", timeout=READY_MS, polling=200)
+            pg.evaluate("_aePreset('planets')")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeTracks; }", timeout=60_000, polling=200)
+            for _ in range(6):
+                pg.evaluate("_ae.dirty = true; _aeKick()")
+                pg.wait_for_timeout(200)
+            names = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden).map(e => {
+                var b = e.querySelector('b'); if (getComputedStyle(b).display === 'none') return null;
+                var r = b.getBoundingClientRect(); return [b.textContent, r.left, r.right]; }).filter(Boolean)""")
+            assert names
+            for text, left, right in names:
+                assert left >= 0 and right <= width, (width, text, left, right)
+            ctx.close()
+        finally:
+            br.close()
