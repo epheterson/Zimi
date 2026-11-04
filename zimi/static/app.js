@@ -16502,6 +16502,11 @@ function _appSectionHtml(app, n, grid) {
 
 // A tile's foot: the solid dot a new or updated ZIM wears (when something inside is), and the
 // same ⋯ a card has, which opens the menu a right click or a long press opens.
+// Opening an app is looking at everything it shows: its ZIMs' New and Updated dots clear together.
+function _appSeen(app) {
+  _appZims(app).forEach(function(z) { if (z) _markZimOpened(z.name); });
+  if (_OWN_APP_ZIM[app]) _markZimOpened(_OWN_APP_ZIM[app]);
+}
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
   var dot = _freshDotHtml(zims.filter(Boolean));
@@ -16520,7 +16525,7 @@ function _appMenuHasMore(app) {
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
-    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="_appSeen(\'' + app + '\');return _spaNav(event, ' + openFn + ')">' +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div>' + _appTileFootHtml(app) + '</a>';

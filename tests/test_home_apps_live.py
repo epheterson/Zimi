@@ -335,3 +335,25 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             assert not errors, errors
         finally:
             br.close()
+
+
+def test_opening_an_app_clears_its_dot(served):
+    """An app's dot says one of its ZIMs is new or updated since you looked. Opening the app is looking:
+    its tile comes back without the dot (it stayed until each ZIM was opened one by one in the reader)."""
+    from playwright.sync_api import sync_playwright
+
+    tile_dot = "() => !!document.querySelector(\"#output .apps-grid .app-tile[data-app='tube'] .rc-dot\")"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True).new_page()
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(HOME, timeout=30000)
+            assert pg.evaluate(tile_dot), "CrashCourse updated an hour ago: Tube wears the dot"
+            pg.locator("#output .apps-grid .app-tile[data-app='tube']").click()
+            pg.wait_for_function("() => _tubeOpen && readerOpen")
+            pg.go_back()
+            pg.wait_for_function(HOME, timeout=30000)
+            assert not pg.evaluate(tile_dot)
+        finally:
+            br.close()
