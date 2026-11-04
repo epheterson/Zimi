@@ -302,11 +302,13 @@ def test_the_shell_features_need_no_server_and_no_file_is_missing(pw, world):
     pg.wait_for_timeout(1500)
     shot(pg, "10-almanac-offline")
     # Kept on first use rather than at install, on purpose (their size): the 3D
-    # Earth's textures and three.js, and one rosetta entry's text. Anything else is a hole.
+    # Earth's textures, three.js and the probes' paths (space-tracks, 286 KB, read
+    # once the view is among the planets), and one rosetta entry's text. Anything else is a hole.
     lazy = (
         "/static/earth/earth-",
         "/static/earth/three-",
         "/static/earth/satellite-",
+        "/static/earth/space-tracks-",
         "/static/rosetta/",
     )
     holes = [

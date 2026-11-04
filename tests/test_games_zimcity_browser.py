@@ -425,8 +425,11 @@ def test_an_ai_data_center_opens_with_its_news_and_a_citizen_answers(browser, si
     })""")
     assert any(l.startswith("The AI data center opens.") for l in seen), seen
     assert any(re.match(r"^(Vivian Crane|Juniper Ash|Dale Pemberton): “.+”$", l) for l in seen), seen
-    pg.evaluate("() => window.__zimcity.step(64)")
-    assert pg.evaluate("() => window.__zimcity.city.sim._census.zc.data") == 1
+    # The census is cleared at the start of each cycle and filled as the scan passes each row, so a read at any one
+    # moment can fall before the scan reaches the data center: the most it counts over two whole cycles is the count.
+    most = pg.evaluate("""() => { let most = 0; for (let i = 0; i < 32; i++) { window.__zimcity.step(1);
+      most = Math.max(most, window.__zimcity.city.sim._census.zc.data); } return most; }""")
+    assert most == 1, most
     assert not pg.errors, pg.errors
 
 
