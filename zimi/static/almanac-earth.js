@@ -643,6 +643,14 @@ function _aeEnsureStyles() {
   document.head.appendChild(st);
 }
 
+function _aeMarkHtml(m) {
+  return '<span class="ae-bm" id="ae-bm-' + m.body + '" hidden><i class="ae-ring" aria-hidden="true"></i><b>' + _almEsc(m.name()) + '</b></span>';
+}
+// A mark for a body known after the view was built (a probe, once its table has come).
+function _aeAddMark(m) {
+  var host = _aeById('ae-labels');
+  if (host && !_aeById('ae-bm-' + m.body)) host.insertAdjacentHTML('beforeend', _aeMarkHtml(m));
+}
 function _aeBuildDom() {
   _aeKnowPlanets();
   var host = _aeById('almanac-view');
@@ -662,9 +670,7 @@ function _aeBuildDom() {
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
-      AE_MARKED.map(function (m) {
-        return '<span class="ae-bm" id="ae-bm-' + m.body + '" hidden><i class="ae-ring" aria-hidden="true"></i><b>' + _almEsc(m.name()) + '</b></span>';
-      }).join('') +
+      AE_MARKED.map(_aeMarkHtml).join('') +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
       '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
@@ -1840,6 +1846,9 @@ var AE_PLANETS = [
   { key: 'saturn', eph: 'Saturn', km: 60268, flat: 0.09796, map: 'saturn', color: [0.83, 0.72, 0.47], pole: [40.589, 83.537, 38.90, 810.7939024], rings: [74500, 140220], cc: true },
   { key: 'uranus', eph: 'Uranus', km: 25559, flat: 0.0229, map: 'uranus', color: [0.47, 0.78, 0.78], atmo: [0.5, 0.85, 0.9], pole: [257.311, -15.175, 203.81, -501.1600928], cc: true },
   { key: 'neptune', eph: 'Neptune', km: 24764, flat: 0.0171, map: 'neptune', color: [0.22, 0.41, 0.78], atmo: [0.3, 0.45, 1], pole: [299.36, 43.46, 249.978, 541.1397757], cc: true },
+  // The dwarf planets the probes visited, from the Horizons table (space-tracks-v1.json) while it covers the date.
+  { key: 'pluto', eph: 'Pluto', track: 'planets', km: 1188.3, map: 'pluto', color: [0.78, 0.72, 0.66], pole: [132.993, -6.163, 302.695, 56.3625225] },
+  { key: 'ceres', eph: 'Ceres', track: 'tracks', trackKey: 'ceres', km: 469.7, color: [0.63, 0.6, 0.56], pole: [291.418, 66.764, 170.65, 952.1532] },
   // The big moons' mean circular orbits (scripts/fit_moon_orbits.py, against JPL Horizons 1990-2060): radius km,
   // longitude in the planet's equator at J2000 from the node of that equator on the ecliptic, degrees a day.
   { key: 'io', parent: 'jupiter', km: 1821.6, map: 'io', color: [0.91, 0.85, 0.44], orbit: [421769, 40.361, 203.488958] },
@@ -1978,7 +1987,7 @@ function _aeBuildPlanets(S) {
 }
 // A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
 function _aeDrawOrbit(p, jd, place) {
-  if (!p.orbit) return;
+  if (!p || !p.orbit) return;
   var held = _ae.target === 'sun' || _aeIsPlanet(_ae.target) ? 1 : 0;
   p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * held * _aeFadeU.value;
   p.orbit.visible = held > 0;
@@ -2015,13 +2024,30 @@ function _aeUpdatePlanets(sc) {
   var helio = {}, sunAt = _aeSunShown(sc);
   var place = function (h) { return _aeAdd(sunAt, _aeScale(_aeNorm(toScene(h)), AE_SUN_SHOW_DIST * Math.pow(_aeLen(h), AE_PLANET_DIST_POW))); };
   _aeUpdateAsteroids(jde, place);
+  // A probe near a planet stands at its true distance from it, as the moons do (the drawn scale squeezes space round
+  // a planet tens of times: Juno would orbit inside Jupiter, Webb inside the GPS shell): within a planet's reach it
+  // goes from the scale's place to the planet's own frame, all the way in by half that reach.
+  var earthH = _ephBodyJ2000('Earth', jd);
+  var near = [{ h: earthH, at: [0, 0, 0], reach: AE_PROBE_REACH_AU.earth }];
+  var placeNear = function (h) {
+    var out = place(h);
+    for (var i = 0; i < near.length; i++) {
+      var d = _aeSub(h, near[i].h), dl = _aeLen(d), w = _smoothstep(near[i].reach, near[i].reach / 2, dl);
+      if (w > 0) out = _aeLerp3(out, _aeAdd(near[i].at, _aeScale(toScene(d), AU_KM / AE_EARTH_RADIUS_KM)), w);
+    }
+    return out;
+  };
+  if (_aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target)) _aeTracksLoad();
+
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
   AE_PLANETS.forEach(function (b) {
     var p = S.planets[b.key], f, pos, sun;
     if (!b.parent) {
-      var h = helio[b.key] = _ephBodyJ2000(b.eph, jd);
+      var h = helio[b.key] = b.track ? _aeTracked(b, jd) : _ephBodyJ2000(b.eph, jd);
+      if (!h) { p.pos = null; p.mesh.visible = false; return; }   // a dwarf before its table has come, or past its years
       pos = place(h);
+      if (AE_PROBE_REACH_AU[b.key]) near.push({ h: h, at: pos, reach: AE_PROBE_REACH_AU[b.key] });
       _aeDrawOrbit(S.planets[b.key], jd, place);
       sun = _aeNorm(toScene(_aeScale(h, -1)));
       f = _aePlanetFrameEcl(b, jd);
@@ -2072,6 +2098,7 @@ function _aeUpdatePlanets(sc) {
       }, function () { p.asked = false; });
     }
   });
+  _aeUpdateProbes(jd, placeNear);
 }
 // ── The asteroid belt ──
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
@@ -2126,6 +2153,100 @@ function _aeUpdateAsteroids(jde, place) {
   }
   _aeCommitPoints(_aeAst.cloud, _aeAst.n);
 }
+// ── The probes ──
+// space-tracks-v1.json (scripts/build_space_tracks.py, JPL Horizons): Voyager 1 and 2, Pioneer 10 and 11, New
+// Horizons, Parker, Juno, Webb, Cassini, Galileo and Europa Clipper as state vectors (AU, AU a day, heliocentric J2000
+// ecliptic) at their own steps, a cubic Hermite curve through them within the table's tolerance; Pluto and Ceres
+// beside them. Fetched when first out among the planets. Each probe flying on the shown date is a dot with its name
+// and the path it has flown, placed as the planets are; a tap flies there and its card says where it is and what it
+// last did.
+var AE_TRACKS_URL = '/static/earth/space-tracks-v1.json';
+// How far round a planet (AU) a probe is placed in that planet's own frame rather than by the drawn scale.
+var AE_PROBE_REACH_AU = { earth: 0.05, mercury: 0.01, venus: 0.02, mars: 0.02, jupiter: 0.5, saturn: 0.4, uranus: 0.2, neptune: 0.3, pluto: 0.05 };
+var AE_PROBE_COLOR = [0.43, 0.9, 0.85], AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
+var AE_PROBE_SURFACE = 0.02;          // a probe is a point: the camera circles it this far in, at most
+var AE_PROBE_VIEW_DIST = 60;          // Earth radii: a flight to a probe ends this far from it
+var AE_PROBE_VIEW_LIFT = 0.35;
+var AE_PROBE_FRAME_NEAR = 1.15, AE_PROBE_FRAME_MAX = 4000;   // a body this near the probe is framed with it, up to this far        // and looks at it from this far above its path (tan of the angle)
+var AE_TRAIL_POINTS = 240, AE_TRAIL_REDRAW_DAYS = 10, AE_TRAIL_ALPHA = 0.55, AE_TRAIL_FAINT = 0.12;
+var _aeTracks = null, _aeTracksLoading = null, _aeProbePos = {};
+function _aeTracksLoad() {
+  if (_aeTracks || _aeTracksLoading || typeof fetch !== 'function') return;
+  _aeTracksLoading = fetch(AE_TRACKS_URL).then(function (r) { if (!r.ok) throw new Error('tracks'); return r.json(); }).then(function (d) {
+    _aeTracks = { tracks: d.tracks || {}, planets: d.planets || {}, probes: [] };
+    _aeTracks.probes = Object.keys(_aeTracks.tracks).filter(function (k) { return k !== 'ceres'; });
+    _aeTracks.probes.forEach(function (k) {
+      AE_TARGETS[k] = { min: AE_PROBE_SURFACE * 2, max: AE_PROBE_FRAME_MAX, surface: AE_PROBE_SURFACE };
+      var m = { body: k, name: function () { return _aeTracks.tracks[k].name; } };
+      AE_MARKED.push(m);
+      _aeAddMark(m);
+    });
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { _aeTracksLoading = null; });
+}
+function _aeHermite(a, b, jd) {
+  var h = b[0] - a[0], t = (jd - a[0]) / h, t2 = t * t, t3 = t2 * t;
+  var h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2, out = [0, 0, 0];
+  for (var k = 0; k < 3; k++) out[k] = h00 * a[1 + k] + h10 * h * a[4 + k] + h01 * b[1 + k] + h11 * h * b[4 + k];
+  return out;
+}
+// A table's place at jd (TDB, near enough the view's UT for a probe), or null outside its years.
+function _aeTrackAt(track, jd) {
+  if (!track || jd < track.jd0 || jd > track.jd1) return null;
+  var s = track.s, lo = 0, hi = s.length - 1;
+  while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (s[mid][0] <= jd) lo = mid; else hi = mid; }
+  return _aeHermite(s[lo], s[hi], jd);
+}
+function _aeTracked(b, jd) {
+  if (!_aeTracks) { _aeTracksLoad(); return null; }
+  return _aeTrackAt(b.track === 'planets' ? _aeTracks.planets[b.eph] : _aeTracks.tracks[b.trackKey], jd);
+}
+function _aeUpdateProbes(jd, place) {
+  var S = _ae.gl;
+  if (!_aeTracks) return;
+  if (!S.probes || S.probes.cloud.parent !== S.scene) {
+    S.probes = { cloud: _aePointCloud(S.THREE, AE_PROBE_CAPACITY, S.dpr, true, { depthTest: true }), trails: {} };
+    S.scene.add(S.probes.cloud);
+  }
+  var out = S.probes, n = 0;
+  _aeProbePos = {};
+  _aeTracks.probes.forEach(function (k) {
+    var t = _aeTracks.tracks[k], h = _aeTrackAt(t, jd), trail = out.trails[k];
+    if (!trail) { trail = out.trails[k] = _aeLine(S.THREE, S.THREE.Line, AE_TRAIL_POINTS, 0x6ee7d8, AE_TRAIL_ALPHA); S.scene.add(trail); }
+    if (!h) { trail.visible = false; return; }
+    var pos = _aeProbePos[k] = place(h);
+    _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, 1, AE_PROBE_PX);
+    trail.visible = true;
+    trail.material.opacity = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
+    if (trail.at != null && Math.abs(jd - trail.at) < AE_TRAIL_REDRAW_DAYS) return;
+    trail.at = jd;
+    var arr = trail.geometry.attributes.position.array;
+    for (var i = 0; i < AE_TRAIL_POINTS; i++) {
+      var q = place(_aeTrackAt(t, t.jd0 + (jd - t.jd0) * i / (AE_TRAIL_POINTS - 1)) || h);
+      arr[i * 3] = q[0]; arr[i * 3 + 1] = q[1]; arr[i * 3 + 2] = q[2];
+    }
+    trail.geometry.attributes.position.needsUpdate = true;
+    trail.geometry.setDrawRange(0, AE_TRAIL_POINTS);
+  });
+  _aeCommitPoints(out.cloud, n);
+}
+function _aeIsProbe(key) { return !!(_aeTracks && _aeTracks.tracks[key] && key !== 'ceres'); }
+// A probe's card: where it is from the Sun now, and what it last did.
+function _aeRenderProbeCard(card) {
+  var k = _ae.probe, t = _aeTracks.tracks[k], ms = _aeDisplayMs(), jd = ms / MS_PER_DAY + JD_UNIX_EPOCH;
+  var h = _aeTrackAt(t, jd), past = (t.events || []).filter(function (e) { return e[0] <= jd; }).slice(-3);
+  var line = function (e) {
+    return _aeT('alm_probe_ev_' + e[1], { body: e[2] ? (_tLookup('alm_planet_' + e[2].toLowerCase(), e[2])) : '' }) + ' · ' +
+      _aeFmtDate((e[0] - JD_UNIX_EPOCH) * MS_PER_DAY);
+  };
+  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
+    '<h3>' + _almEsc(t.name) + '</h3>' +
+    (h ? '<p>' + _almEsc(_aeT('alm_probe_from_sun', { au: _orrNum(_aeLen(h), null, _aeLen(h) < 10 ? 2 : 1) + ' AU' })) + '</p>' : '') +
+    past.map(function (e) { return '<p>' + _almEsc(line(e)) + '</p>'; }).join('');
+  card.hidden = false;
+  _aeById('ae-card-x').onclick = function () { _ae.probe = null; _aeRenderCard(); };
+}
+
 // A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
 function _aeBodyPos(key, sc) {
   sc = sc || _ae.scene;
@@ -2133,7 +2254,8 @@ function _aeBodyPos(key, sc) {
   if (key === 'moon') return sc.moon;
   if (key === 'sun') return _aeSunShown(sc);
   var p = _ae.gl && _ae.gl.planets && _ae.gl.planets[key];
-  return p ? p.pos : [0, 0, 0];
+  if (p) return p.pos;
+  return _aeProbePos[key] || null;   // a probe, while its table covers the date; null for anything not there
 }
 // Credit for the maps on show: Solar System Scope's licence asks for it.
 function _aePlanetCredit() {
@@ -2484,7 +2606,7 @@ var AE_TARGETS = {
   sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
 };
 function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
-function _aeTargetPos() { return _aeBodyPos(_ae.target); }
+function _aeTargetPos() { return _aeBodyPos(_ae.target) || [0, 0, 0]; }
 // Whose sky the Moon is shown in: the device's place once asked for (the
 // crosshair), else the place chosen for the Almanac; null for neither, and
 // then the Moon stands celestial north up and the view says so.
@@ -2888,7 +3010,8 @@ function _aePlaceCamera() {
   var toEarth = _aeLen(pos) - 1;
   var toMoon = _ae.scene ? _aeLen(_aeSub(pos, _ae.scene.moon)) - AE_MOON_RADIUS_RE : Infinity;
   var toSun = _ae.scene ? _aeLen(_aeSub(pos, _aeSunShown(_ae.scene))) - AE_SUN_SHOW_R : Infinity;
-  var toBody = _aeIsPlanet(_ae.target) ? _aeLen(_aeSub(pos, _aeTargetPos())) - AE_TARGETS[_ae.target].surface : Infinity;
+  var far = _ae.target !== 'earth' && _ae.target !== 'moon' && _ae.target !== 'sun';   // a planet, moon or probe
+  var toBody = far ? _aeLen(_aeSub(pos, _aeTargetPos())) - AE_TARGETS[_ae.target].surface : Infinity;
   cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun, toBody) * AE_NEAR_FRACTION);
   cam.updateProjectionMatrix();
   S.sky.position.copy(cam.position);
@@ -2968,6 +3091,7 @@ function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) 
 
 function _aePreset(name) {
   if (!_ae.gl) return;
+  if (_ae.probe && name !== _ae.probe) { _ae.probe = null; _aeRenderCard(); }
   if (name === 'moon') {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
@@ -2977,6 +3101,21 @@ function _aePreset(name) {
     var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
     var up = typeof _ephEclJ2000ToEqOfDate === 'function' ? _ephEclJ2000ToEqOfDate([0, 0, 1], jd + _aeDeltaTDays(jd)) : [0, 0, 1];
     _aeFlyTo('sun', _aeFitDist(AE_SUN_SHOW_DIST * Math.pow(AE_PLANETS_OUTER_AU, AE_PLANET_DIST_POW)), _aeAzElOf(up));
+  } else if (_aeIsProbe(name)) {
+    var pp = _aeBodyPos(name);
+    if (!pp) return;
+    // From the side of its path round the Sun, a little above: the probe against the dark, the Sun off to one side.
+    var fromSun = _ae.scene ? _aeNorm(_aeSub(pp, _aeSunShown(_ae.scene))) : [1, 0, 0];
+    var side = _aeNorm(_aeAdd(_aeNorm(_aeCross(fromSun, [0, 0, 1])), _aeScale([0, 0, 1], AE_PROBE_VIEW_LIFT)));
+    // Near a planet (Juno, Webb), far enough out to have the planet in the picture too.
+    var near = AE_MARKED.reduce(function (best, m) {
+      var q = m.body === name || _aeIsProbe(m.body) ? null : _aeBodyPos(m.body);
+      var d = q ? _aeLen(_aeSub(q, pp)) : Infinity;
+      return d < best ? d : best;
+    }, Infinity);
+    _aeFlyTo(name, _aeClamp(_aeFitDist(near * AE_PROBE_FRAME_NEAR), AE_PROBE_VIEW_DIST, AE_PROBE_FRAME_MAX), _aeAzElOf(side));
+    _ae.probe = name; _ae.lm = null; _ae.selected = null;
+    _aeRenderCard();
   } else if (_aeIsPlanet(name)) {
     // From the Earth's side too, a little off it so the phase shows its edge: as a telescope sees it, nearer.
     var at = _aeBodyPos(name);
@@ -3435,7 +3574,9 @@ function _aeUpdateMarks(sc) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
     var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
-    var s = (body === _ae.target && !dest) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
+    if (!pos[body]) { if (!el.hidden) el.hidden = true; continue; }
+    // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).
+    var s = (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
     var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : AE_RING_MIN_R_PX;
@@ -3497,7 +3638,8 @@ function _aeBodyAt(x, y) {
   if (!sc || !_ae.h) return null;
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
-  var bodies = AE_MARKED.map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; });
+  var bodies = AE_MARKED.map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; })
+    .filter(function (b) { return !!b[1]; });
   var best = null, bestD = Infinity;
   for (var i = 0; i < bodies.length; i++) {
     var b = bodies[i];
@@ -3517,6 +3659,7 @@ function _aeRenderCard() {
   if (!card) return;
   var s = _aeSelectedSat();
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
+  if (!s && _ae.probe && _aeIsProbe(_ae.probe)) { _aeRenderProbeCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
   _ae.lm = null;
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';

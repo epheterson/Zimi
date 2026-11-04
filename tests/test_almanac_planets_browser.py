@@ -138,6 +138,15 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                 return { n: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }""")
             assert belt["n"] > 15000, belt
             assert belt["mars"] < belt["p1"] and belt["p99"] < belt["jupiter"], belt
+            # The probes: once out here their table comes; each flying one is named, Webb stands at L2 at its true
+            # distance from the Earth (1.5 million km, not squeezed by the drawn scale), and a tap's card says where.
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_aeTracks && !!_aeProbePos.voyager1 && !!_aeProbePos.jwst; }", timeout=60_000, polling=200)
+            jwst_km = pg.evaluate("Math.hypot.apply(null, _aeProbePos.jwst) * AE_EARTH_RADIUS_KM")
+            assert 1.2e6 < jwst_km < 1.9e6, jwst_km
+            pg.evaluate("_aePreset('voyager1')")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            card = pg.inner_text("#ae-card")
+            assert "Voyager 1" in card and "AU from the Sun" in card and "Saturn" in card, card
             assert not errors, errors
             ctx.close()
         finally:
