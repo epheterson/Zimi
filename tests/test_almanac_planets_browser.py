@@ -1,8 +1,8 @@
-"""The planets in the 3D view: where the sky has them, a flight to each, Saturn's rings, credits.
+"""The planets in the 3D view: round the Sun where they are, a flight to each, Saturn's rings, credits.
 
-In headless Chromium at a phone's size: each planet's direction from the Earth against JPL Horizons' apparent
-place for 2026-11-04 00:00 UT, the flight to Saturn ending on Saturn with its map and rings drawn and Solar
-System Scope credited, and a moon of Jupiter at its true distance from it.
+In headless Chromium at a phone's size: each planet's direction from the Sun as drawn against JPL Horizons'
+heliocentric vector for 2026-11-04 00:00 TDB, the flight to Saturn ending on Saturn with its map and rings drawn
+and Solar System Scope credited, and a moon of Jupiter at its true distance from it.
 
 Run: pytest tests/test_almanac_planets_browser.py -v
 """
@@ -58,8 +58,7 @@ def served(tmp_path_factory):
 
 
 def _sep(a, b):
-    ra1, d1, ra2, d2 = map(math.radians, (a[0], a[1], b[0], b[1]))
-    c = math.sin(d1) * math.sin(d2) + math.cos(d1) * math.cos(d2) * math.cos(ra1 - ra2)
+    c = sum(x * y for x, y in zip(a, b)) / math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
     return math.degrees(math.acos(max(-1.0, min(1.0, c))))
 
 
@@ -96,18 +95,16 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                 timeout=READY_MS,
                 polling=200,
             )
-            got = pg.evaluate(
-                """(ms) => { var sc = _aeSceneAt(ms); _ae.scene = sc; _aeUpdatePlanets(sc); var out = {};
-                ['mars', 'jupiter', 'saturn'].forEach(function (k) { var p = _ae.gl.planets[k].pos, n = Math.hypot(p[0], p[1], p[2]);
-                  out[k] = [((Math.atan2(p[1], p[0]) * 180 / Math.PI) + 360) % 360, Math.asin(p[2] / n) * 180 / Math.PI]; });
+            got = pg.evaluate("""(a) => { var sc = _aeSceneAt(a.ms); _ae.scene = sc; _aeUpdatePlanets(sc); var out = {};
+                var jd = a.ms / MS_PER_DAY + JD_UNIX_EPOCH, jde = jd + _aeDeltaTDays(jd), sun = _aeSunShown(sc);
+                Object.keys(a.ref).forEach(function (k) { var p = _ae.gl.planets[k].pos;
+                  out[k] = { drawn: [p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]], ref: _ephEclJ2000ToEqOfDate(a.ref[k], jde) }; });
                 var j = _ae.gl.planets.jupiter.pos, io = _ae.gl.planets.io.pos, ca = _ae.gl.planets.callisto.pos;
                 out.io_km = Math.hypot(io[0] - j[0], io[1] - j[1], io[2] - j[2]) * AE_EARTH_RADIUS_KM;
                 out.callisto_km = Math.hypot(ca[0] - j[0], ca[1] - j[1], ca[2] - j[2]) * AE_EARTH_RADIUS_KM;
-                return out; }""",
-                WHEN_MS,
-            )
-            for k, ref in HORIZONS.items():
-                assert _sep(got[k], ref) < 0.3, (k, got[k], ref)
+                return out; }""", {"ms": WHEN_MS, "ref": HORIZONS})
+            for k in HORIZONS:
+                assert _sep(got[k]["drawn"], got[k]["ref"]) < 0.3, (k, got[k])
             assert got["io_km"] == pytest.approx(421769, rel=1e-3)
             assert got["callisto_km"] == pytest.approx(1882794, rel=1e-3)
             # Fly to Saturn: it is the target, framed with its rings, its map asked for and credited.
@@ -127,6 +124,20 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             assert "Solar System Scope" in pg.inner_text(".ae-note")
             # Far away, a planet is a mark and no map is fetched for the ones too small to see.
             assert not any(u.endswith("/static/earth/neptune-v1.webp") for u in asked)
+            # The Planets chip: the whole system from above, every orbit drawn, the belt placed.
+            pg.click("[data-ae-view='planets']")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeAst && _aeAst.at !== null; }", timeout=60_000, polling=200)
+            assert pg.evaluate("_ae.target") == "sun"
+            assert pg.evaluate("Object.keys(_ae.gl.planets).filter(k => _ae.gl.planets[k].orbit && _ae.gl.planets[k].orbit.visible).length") == 7
+            # The belt lies between Mars and Jupiter round the Sun: every asteroid's distance from the Sun as drawn
+            # within the two planets' (a few of the 18,000 stray inside Mars's: the Hungarias).
+            belt = pg.evaluate("""() => { var a = _aeAst.cloud.geometry.attributes.position.array, sun = _aeSunShown(_ae.scene), d = [];
+                for (var i = 0; i < _aeAst.n; i++) d.push(Math.hypot(a[i*3] - sun[0], a[i*3+1] - sun[1], a[i*3+2] - sun[2]));
+                d.sort(function (x, y) { return x - y; });
+                var r = function (k) { var p = _ae.gl.planets[k].pos; return Math.hypot(p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]); };
+                return { n: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }""")
+            assert belt["n"] > 15000, belt
+            assert belt["mars"] < belt["p1"] and belt["p99"] < belt["jupiter"], belt
             assert not errors, errors
             ctx.close()
         finally:

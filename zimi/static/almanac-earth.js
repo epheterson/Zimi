@@ -449,7 +449,7 @@ var AE_GRANULE_CYCLE = 512;           // the pattern's time, wrapped to keep a f
 var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colour: golden centre, deep orange limb
 var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
 var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
-var AE_MAX_DIST_SUN = 1400;
+var AE_MAX_DIST_SUN = 70000;          // out from the Sun far enough to hold every planet's orbit as shown, on a phone
 var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
@@ -707,6 +707,7 @@ function _aeBuildDom() {
         '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_sats')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _almEsc(_aeT('alm_moon')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="sun" aria-pressed="false">' + _almEsc(_aeT('alm_sun')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="planets" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_planets')) + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
@@ -1813,14 +1814,18 @@ function _aeHdUpdate(S) {
   _aeHdEvict(S);
 }
 // ── The planets and their big moons ──
-// Each planet stands in its true direction from the Earth, lit from its true direction to the Sun (so its phase is
-// the one a telescope shows), at its true size, but drawn nearer, as the Sun is: AE_SUN_SHOW_DIST times its distance
-// in AU to the power AE_PLANET_DIST_POW, so Neptune at 30 AU stands under 8,000 Earth radii out and the view's
-// flights between them stay seconds long. Moons stand round their planet at their true distance. Tap one, or its
+// Each planet stands in its true direction from the Sun, lit by it, at its true size, but nearer to it, as the Sun is
+// drawn nearer the Earth: AE_SUN_SHOW_DIST times its distance in AU to the power AE_PLANET_DIST_POW from the Sun as
+// shown. The Earth, at 1 AU, lands where it is, at the middle; the orbits stay round the Sun, the belt a ring; Neptune
+// at 30 AU stands under 8,000 Earth radii from the Sun, so a flight between any two takes seconds. Seen from the
+// Earth a planet is near, not exactly on, its place in the sky (the live sky has that); its phase is its own. Moons stand round their planet at their true distance. Tap one, or its
 // name, to fly there. Maps: NASA, USGS and JPL mosaics (public domain); Saturn, Uranus and Neptune from Solar System
 // Scope (CC BY 4.0), credited on the view. Saturn's rings are its measured radial structure, with the planet's shadow
 // on them and theirs on it.
 var AE_PLANET_DIST_POW = 0.28;
+var AE_PLANETS_OUTER_AU = 30.5;        // Neptune's farthest: what the Planets overview fits
+var AE_ORBIT_POINTS = 180, AE_ORBIT_REDRAW_DAYS = 30;
+var AE_PLANET_ORBIT_COLOR = 0x9aa8c8, AE_PLANET_ORBIT_ALPHA = 0.32;
 var AE_PLANET_SEGMENTS = [64, 32];
 var AE_PLANET_MAP_MIN_PX = 3;          // a disc smaller than this (radius) is its mark; its map is asked for past it
 var AE_PLANET_MIN_RADII = 1.3, AE_PLANET_FIT = 1.5;
@@ -1963,8 +1968,29 @@ function _aeBuildPlanets(S) {
       p.ring.visible = false;
       S.scene.add(p.ring);
     }
+    if (!b.parent && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) {
+      p.orbit = _aeLine(THREE, THREE.LineLoop, AE_ORBIT_POINTS, AE_PLANET_ORBIT_COLOR, AE_PLANET_ORBIT_ALPHA);
+      p.period = 36525 * 360 / _PLANETS[b.eph].dL;   // days, from the orrery's mean motion
+      S.scene.add(p.orbit);
+    }
     S.planets[b.key] = p;
   });
+}
+// A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
+function _aeDrawOrbit(p, jd, place) {
+  if (!p.orbit) return;
+  var held = _ae.target === 'sun' || _aeIsPlanet(_ae.target) ? 1 : 0;
+  p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * held * _aeFadeU.value;
+  p.orbit.visible = held > 0;
+  if (!held || (p.orbitAt != null && Math.abs(jd - p.orbitAt) < AE_ORBIT_REDRAW_DAYS)) return;
+  p.orbitAt = jd;
+  var arr = p.orbit.geometry.attributes.position.array;
+  for (var k = 0; k < AE_ORBIT_POINTS; k++) {
+    var q = place(_ephBodyJ2000(p.b.eph, jd + p.period * k / AE_ORBIT_POINTS));
+    arr[k * 3] = q[0]; arr[k * 3 + 1] = q[1]; arr[k * 3 + 2] = q[2];
+  }
+  p.orbit.geometry.attributes.position.needsUpdate = true;
+  p.orbit.geometry.setDrawRange(0, AE_ORBIT_POINTS);
 }
 // A body's axes in the J2000 ecliptic at jd: x toward its prime meridian on its equator, z its north pole.
 function _aeEqToEclJ2000(v) {
@@ -1986,15 +2012,17 @@ function _aeUpdatePlanets(sc) {
   if (!S || !S.planets || typeof _ephBodyJ2000 !== 'function' || typeof _planetHelio3D !== 'function' || typeof _jdToJulianCentury !== 'function') return;   // the orrery's elements (almanac-orrery.js)
   var jd = sc.ms / MS_PER_DAY + JD_UNIX_EPOCH, jde = jd + _aeDeltaTDays(jd);
   var toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, jde); };
-  var earth = _ephBodyJ2000('Earth', jd), helio = {};
+  var helio = {}, sunAt = _aeSunShown(sc);
+  var place = function (h) { return _aeAdd(sunAt, _aeScale(_aeNorm(toScene(h)), AE_SUN_SHOW_DIST * Math.pow(_aeLen(h), AE_PLANET_DIST_POW))); };
+  _aeUpdateAsteroids(jde, place);
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
   AE_PLANETS.forEach(function (b) {
     var p = S.planets[b.key], f, pos, sun;
     if (!b.parent) {
-      var h = helio[b.key] = _ephBodyJ2000(b.eph, jd), g = _aeSub(h, earth);
-      var dir = _aeNorm(toScene(g));
-      pos = _aeScale(dir, AE_SUN_SHOW_DIST * Math.pow(_aeLen(g), AE_PLANET_DIST_POW));
+      var h = helio[b.key] = _ephBodyJ2000(b.eph, jd);
+      pos = place(h);
+      _aeDrawOrbit(S.planets[b.key], jd, place);
       sun = _aeNorm(toScene(_aeScale(h, -1)));
       f = _aePlanetFrameEcl(b, jd);
     } else {
@@ -2044,6 +2072,59 @@ function _aeUpdatePlanets(sc) {
       }, function () { p.asked = false; });
     }
   });
+}
+// ── The asteroid belt ──
+// asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
+// than H 14, as orbital elements, each moved along its ellipse to the shown date and placed as the planets are. Fetched the first time the view stands out among the planets
+// or wide enough to hold the belt; placed again when the shown date has moved a day.
+var AE_AST_URL = '/static/earth/asteroids-v1.bin';
+var AE_AST_AU_SPAN = 6, AE_AST_Q = 65535, AE_AST_HEADER = 12;
+var AE_AST_GAUSS_K = 0.01720209895;             // radians a day at 1 AU (Kepler's third law)
+var AE_AST_REPLACE_DAYS = 1;
+var AE_AST_WIDE_DIST = 60;                       // Earth radii from the Earth: past this the belt is worth drawing
+var AE_AST_COLOR = [0.78, 0.74, 0.68], AE_AST_ALPHA = 0.55, AE_AST_PX = 1.6;
+var _aeAst = null, _aeAstLoading = null;
+function _aeAstLoad() {
+  if (_aeAst || _aeAstLoading || typeof fetch !== 'function') return;
+  _aeAstLoading = fetch(AE_AST_URL).then(function (r) { if (!r.ok) throw new Error('asteroids'); return r.arrayBuffer(); }).then(function (buf) {
+    var dv = new DataView(buf), n = dv.getUint32(8, true), q = new Uint16Array(buf.slice(AE_AST_HEADER, AE_AST_HEADER + n * 12));
+    var el = new Float64Array(n * 6), d2r = Math.PI / 180;
+    for (var i = 0; i < n; i++) {
+      el[i * 6] = q[i * 6] / AE_AST_Q * AE_AST_AU_SPAN;
+      el[i * 6 + 1] = q[i * 6 + 1] / AE_AST_Q;
+      el[i * 6 + 2] = q[i * 6 + 2] / AE_AST_Q * 180 * d2r;
+      for (var k = 3; k < 6; k++) el[i * 6 + k] = q[i * 6 + k] / AE_AST_Q * 360 * d2r;
+    }
+    _aeAst = { epoch: dv.getFloat64(0, true), n: n, el: el, at: null, cloud: null };
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { _aeAstLoading = null; });
+}
+// One asteroid's place from the Sun (AU, J2000 ecliptic) at a JD (TT).
+function _aeAstHelio(el, i, jde, epoch) {
+  var a = el[i * 6], e = el[i * 6 + 1], inc = el[i * 6 + 2], om = el[i * 6 + 3], w = el[i * 6 + 4];
+  var M = el[i * 6 + 5] + AE_AST_GAUSS_K / Math.pow(a, 1.5) * (jde - epoch), E = M;
+  for (var k = 0; k < 5; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  var xv = a * (Math.cos(E) - e), yv = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  var cw = Math.cos(w), sw = Math.sin(w), co = Math.cos(om), so = Math.sin(om), ci = Math.cos(inc), si = Math.sin(inc);
+  var xp = xv * cw - yv * sw, yp = xv * sw + yv * cw;
+  return [xp * co - yp * so * ci, xp * so + yp * co * ci, yp * si];
+}
+function _aeUpdateAsteroids(jde, place) {
+  var S = _ae.gl, wide = _aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST;
+  if (!wide && !(_aeAst && _aeAst.cloud && _aeAst.cloud.visible)) return;
+  if (!_aeAst) { _aeAstLoad(); return; }
+  if (!_aeAst.cloud || _aeAst.cloud.parent !== S.scene) {   // a view built again (it gives the GPU back) gets its own
+    _aeAst.at = null;
+    _aeAst.cloud = _aePointCloud(S.THREE, _aeAst.n, S.dpr, false, { depthTest: true });
+    S.scene.add(_aeAst.cloud);
+  }
+  _aeAst.cloud.visible = wide;
+  if (!wide || (_aeAst.at !== null && Math.abs(jde - _aeAst.at) < AE_AST_REPLACE_DAYS)) return;
+  _aeAst.at = jde;
+  for (var i = 0; i < _aeAst.n; i++) {
+    _aeSetPoint(_aeAst.cloud, i, place(_aeAstHelio(_aeAst.el, i, jde, _aeAst.epoch)), AE_AST_COLOR, AE_AST_ALPHA, AE_AST_PX);
+  }
+  _aeCommitPoints(_aeAst.cloud, _aeAst.n);
 }
 // A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
 function _aeBodyPos(key, sc) {
@@ -2782,7 +2863,7 @@ function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
   // The far plane reaches the shoulder only while a flight with one is under way: a drag or a hand-in that ends the
   // flight early must not leave it out at the Sun (it costs every later view its depth precision).
-  _aeFarFor(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0);
+  _aeFarFor(Math.max(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0, _ae.dist + AE_FAR));   // far out, the far side of the planets too
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
   var tp = c.tp, pose = _aePoseOf(c), pos = pose.pos, up = pose.up;
@@ -2891,6 +2972,11 @@ function _aePreset(name) {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
     _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+  } else if (name === 'planets') {
+    // The whole system from above the ecliptic's north: every orbit round, the belt a ring, each planet a name to tap.
+    var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
+    var up = typeof _ephEclJ2000ToEqOfDate === 'function' ? _ephEclJ2000ToEqOfDate([0, 0, 1], jd + _aeDeltaTDays(jd)) : [0, 0, 1];
+    _aeFlyTo('sun', _aeFitDist(AE_SUN_SHOW_DIST * Math.pow(AE_PLANETS_OUTER_AU, AE_PLANET_DIST_POW)), _aeAzElOf(up));
   } else if (_aeIsPlanet(name)) {
     // From the Earth's side too, a little off it so the phase shows its edge: as a telescope sees it, nearer.
     var at = _aeBodyPos(name);
@@ -3582,7 +3668,7 @@ function _aeUpdateText(ms) {
   // On the Sun, its line: the cycle's real sunspot number, the spots' honesty.
   var sunNote = _aeById('ae-sunnote');
   if (sunNote) {
-    var onSun = _ae.target === 'sun';
+    var onSun = _ae.target === 'sun' && _ae.preset !== 'planets';   // the overview is about the planets, not the Sun's spots
     if (sunNote.hidden === onSun) sunNote.hidden = !onSun;
     if (onSun) {
       var yr = _aeDecimalYear(ms), cyc = _aeCycleIndex(yr) + 1;

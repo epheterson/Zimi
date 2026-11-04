@@ -161,3 +161,8 @@ saturn-v1.webp, uranus-v1.webp, neptune-v1.webp
 space-tracks-v1.json, scripts/build_space_tracks.py, scripts/fit_moon_orbits.py
   Spacecraft and outer-planet state vectors from JPL Horizons (public), thinned
   for Hermite interpolation; the big moons' mean circular orbits fitted to it.
+
+asteroids-v1.bin (scripts/build_asteroids.py)
+  The main belt's asteroids brighter than H 14 (17,992), osculating elements
+  from NASA/JPL's Small-Body Database (SBDB Query API), brought to one epoch
+  and quantized to 16 bits, 216 KB. Moved by Kepler's laws in the view.

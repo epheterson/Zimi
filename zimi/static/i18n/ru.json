@@ -2239,6 +2239,7 @@
   "create_again_whole_site": "Захватить весь сайт",
   "alm_earth_hint": "Перетаскивайте, чтобы вращать; сведите пальцы или прокрутите для масштаба; коснитесь Земли, Луны или Солнца, чтобы перелететь туда",
   "alm_earth_view_sats": "Спутники",
+  "alm_earth_view_planets": "Планеты",
   "alm_earth_rate_real": "Реальное время",
   "alm_earth_rate_min": "1 мин/с",
   "alm_earth_rate_hour": "1 ч/с",

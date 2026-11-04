@@ -2239,6 +2239,7 @@
   "create_again_whole_site": "التقط الموقع بأكمله",
   "alm_earth_hint": "اسحب للتدوير، وقرّب إصبعيك أو مرّر للتكبير، واضغط على الأرض أو القمر أو الشمس للانتقال إليها",
   "alm_earth_view_sats": "الأقمار الصناعية",
+  "alm_earth_view_planets": "الكواكب",
   "alm_earth_rate_real": "الوقت الحقيقي",
   "alm_earth_rate_min": "1 دقيقة/ث",
   "alm_earth_rate_hour": "1 ساعة/ث",

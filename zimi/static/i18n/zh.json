@@ -2239,6 +2239,7 @@
   "create_again_whole_site": "抓取整个网站",
   "alm_earth_hint": "拖动旋转，双指捏合或滚动缩放，轻点地球、月球或太阳即可飞过去",
   "alm_earth_view_sats": "卫星",
+  "alm_earth_view_planets": "行星",
   "alm_earth_rate_real": "实时",
   "alm_earth_rate_min": "1 分钟/秒",
   "alm_earth_rate_hour": "1 小时/秒",

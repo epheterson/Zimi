@@ -2239,6 +2239,7 @@
   "create_again_whole_site": "Capturer tout le site",
   "alm_earth_hint": "Faites glisser pour tourner, pincez ou faites défiler pour zoomer, touchez la Terre, la Lune ou le Soleil pour y aller",
   "alm_earth_view_sats": "Satellites",
+  "alm_earth_view_planets": "Planètes",
   "alm_earth_rate_real": "Temps réel",
   "alm_earth_rate_min": "1 min/s",
   "alm_earth_rate_hour": "1 h/s",
