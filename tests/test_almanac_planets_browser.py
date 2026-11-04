@@ -250,6 +250,73 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             br.close()
 
 
+def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
+    """Parker round the Sun and Juno round Jupiter: one closed ellipse (their present orbit, which they were on one period
+    ago too) and a trail of under a third of an orbit, fading behind; the Voyagers keep the whole road out."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            got = {}
+            for k in ("parker", "juno", "voyager1"):
+                pg.evaluate("(k) => _aePreset(k)", k)
+                got[k] = pg.evaluate("""(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], o = t.orbit;
+                    var c = t.geometry.attributes.color.array;
+                    return { round: o && o.round, period: o && o.period, trail: o && o.trail, ring: r.visible, first: c[3], last: c[c.length - 1] }; }""", k)
+            assert got["parker"]["round"] == "sun" and 80 < got["parker"]["period"] < 95 and got["parker"]["ring"], got
+            assert got["juno"]["round"] == "jupiter" and 25 < got["juno"]["period"] < 40 and got["juno"]["ring"], got
+            for k in ("parker", "juno"):
+                assert got[k]["trail"] <= got[k]["period"] * 0.31 and got[k]["first"] < 0.01 and got[k]["last"] == 1, got
+            assert got["voyager1"]["round"] is None and not got["voyager1"]["ring"] and got["voyager1"]["first"] == 1, got
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_pull_back_to_the_planets_is_two_seconds_and_smooth(served):
+    """Out to the whole system takes 1.5 to 2.5 s from anywhere (the Earth, Jupiter, Neptune), the camera's distance on a
+    log scale and its turn with no snap (section 8b's bounds), and the asteroid belt is placed over several frames, not
+    in one."""
+    import math
+    from playwright.sync_api import sync_playwright
+
+    def ang(p, q):
+        return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(p, q))))))
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            _open(pg, served)
+            for frm in ("earth", "jupiter", "neptune"):
+                r = pg.evaluate("""(frm) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset(frm); window._almReduceMotion = undefined; _aeUpdate(_aeDisplayMs());
+                    _aePreset('planets'); var f = _ae.fly, total = (f.hold ? (f.lead || AE_FLY_APPROACH_MS) + AE_FLY_TAIL_MS : 0) + f.ms, out = [], FR = 1000 / 60;
+                    for (var t = 0; t <= total + FR; t += FR) { f.start = 0; _aeStepFly(Math.min(t, total - 1e-6)); _aePlaceCamera();
+                      var cam = _ae.gl.camera; cam.updateMatrixWorld(); var e = cam.matrixWorld.elements; out.push([[-e[8], -e[9], -e[10]], [e[4], e[5], e[6]]]); if (!_ae.fly) break; }
+                    _ae.fly = null; return { total: total, hold: f.hold, series: out }; }""", frm)
+                assert 1500 <= r["total"] <= 2500 and not r["hold"], (frm, r["total"])
+                S = r["series"]
+                for k in (0, 1):
+                    w = [ang(S[i][k], S[i + 1][k]) for i in range(len(S) - 1)]
+                    acc = [w[i + 1] - w[i] for i in range(len(w) - 1)]
+                    jerk = [acc[i + 1] - acc[i] for i in range(len(acc) - 1)]
+                    assert max(map(abs, acc)) <= 0.5 and max(map(abs, jerk)) <= 0.1, (frm, k, max(map(abs, acc)), max(map(abs, jerk)))
+                    assert w[0] <= 0.05 and w[-1] <= 0.05, (frm, k, w[0], w[-1])
+            fills = pg.evaluate("""() => { _aeAst.at = null; _aeAst.fill = null; _ae.fly = null; _aePreset('planets'); _ae.fly = null; var n = 0;
+                do { _aeUpdate(_aeDisplayMs()); n++; } while (_aeAst.fill != null && n < 50); return { n: n, drawn: _aeAst.drawn }; }""")
+            assert fills["n"] >= 3 and fills["drawn"] == pg.evaluate("Math.ceil(_aeAst.n / AE_AST_STRIDE)"), fills
+            ctx.close()
+        finally:
+            br.close()
+
+
 @pytest.mark.parametrize("width,lang", [(390, "en"), (360, "en"), (360, "ru"), (360, "ar")])
 def test_the_row_is_one_line(served, width, lang):
     """Earth, Satellites, Moon, Sun, Planets and Go to share one line on a phone, in English and in the longest
