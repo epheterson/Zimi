@@ -17370,6 +17370,10 @@ function _fitWidePictures(d, w, sheet) {
 // the flow. A responsive skin (Vector 2022, Minerva, mwoffliner's own pages)
 // is not matched; nor is any page on a desktop.
 var MW_DESKTOP_SKIN_MAX_W = 720;
+// An infobox floats beside the text from this frame width up: its own 22em
+// plus a 22em line of text and the column's gutters (#136).
+var INFOBOX_W_EM = 22;
+var INFOBOX_FLOAT_MIN_W = 768;
 var MW_DESKTOP_SKIN_CSS = (function () {
   var skin = ':is(body.skin-vector-legacy,body.skin-monobook,body.skin-modern,body.skin-cologneblue):not(.skin--responsive) ';
   var sel = function (list) { return list.split(',').map(function (s) { return skin + s; }).join(','); };
@@ -17700,13 +17704,21 @@ function openReader(url) {
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
           '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
-        // An infobox keeps the column's width the way Wikipedia's phone skin
-        // does: its long words and no-wrap runs break rather than widening it
-        // into a scroll box nobody finds (Roman Empire, #136). A real table
-        // inside it still scrolls on its own.
-        '.infobox{display:table;width:100%}' +
+        // An infobox is a box of its own width (Wikipedia's 22em, or the width
+        // its template sets): its long words and no-wrap runs break rather than
+        // widening it into a scroll box nobody finds (Roman Empire, #136). A real
+        // table inside it still scrolls on its own.
+        '.infobox{display:table}' +
           '.infobox td,.infobox th{overflow-wrap:break-word}' +
-          '.infobox td *,.infobox th *{white-space:normal!important}',
+          '.infobox td *,.infobox th *{white-space:normal!important}' +
+        // Beside the text it floats right, as on Wikipedia, while the column
+        // holds the box and a readable line next to it (22em of box, 22em of
+        // text, the gutters). Narrower, it sits above the text at its own width,
+        // centred; never stretched across the column, and never wider than it.
+        '@media (max-width:' + (INFOBOX_FLOAT_MIN_W - 0.02) + 'px){' +
+          '.infobox{float:none!important;clear:both!important;margin:0 auto 1em!important;max-width:100%!important}' +
+          '.infobox:not([style*="width"]){width:' + INFOBOX_W_EM + 'em!important}' +
+        '}',
         MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
