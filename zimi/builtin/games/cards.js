@@ -1093,9 +1093,13 @@
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (d.querySelector('.zc-cascade')) return;
       var cardNode = e.target.closest('.zc-card'), slotNode = e.target.closest('.zc-slot');
-      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')];
+      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')], slot = slotNode && slotNode.getAttribute('data-pile');
       if (!pos && !slotNode) return;
-      drag = { pos: pos, slot: slotNode && slotNode.getAttribute('data-pile'), sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
+      // A column's place runs down to the table's edge: a tap under its cards (on a phone a column is one card, 35 px
+      // wide in Spider) is a tap on its top card.
+      var under = !pos && byPile[slot];
+      if (under && under.length) pos = cardPos[under[under.length - 1]];
+      drag = { pos: pos, slot: slot, sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
       sel = null; paintSelection(); toast();
       try { table.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     });
