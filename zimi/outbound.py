@@ -162,7 +162,7 @@ def inventory():
     ``hosts`` are names nobody translates. ``control`` says where the switch
     is: a setting in Server settings, "offline" when only ZIMI_OFFLINE turns
     it off, or "" when the person's own action is the control."""
-    from zimi import library, manage, nomadapi, p2p, p2p_discovery, satellites, sso, voices
+    from zimi import almanachd, library, manage, nomadapi, p2p, p2p_discovery, satellites, sso, voices
     from zimi import server as _srv
 
     offline = _offline()
@@ -220,6 +220,12 @@ def inventory():
             "hosts": ["huggingface.co", "github.com"],
             "state": _mode_state(voices.POLICY.mode()[0]),
             "control": "voices",
+        },
+        {
+            "id": "almanac_hd",
+            "hosts": ["github.com"],
+            "state": _mode_state(almanachd.POLICY.mode()[0]),
+            "control": "",
         },
         {
             "id": "streetzim",

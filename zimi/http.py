@@ -348,6 +348,7 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
     "/almanac-satellites",
+    "/almanac-hd",
     "/almanac-ages",
     "/almanac-place",
     "/games-links",
@@ -2939,6 +2940,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                 payload["can_change"] = bool(
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
+                return self._json(200, payload)
+
+            elif parsed.path == "/almanac-hd":
+                # Almanac HD (almanachd.py): installed, or offered with its
+                # size, and the setting. Under Automatically this first ask
+                # queues the download. can_change: may this viewer download
+                # it or change the setting (the admin rule /manage follows).
+                from zimi import almanachd as _hd
+
+                payload = _hd.on_almanac_open()
+                payload["can_change"] = bool(_srv.ZIMI_MANAGE and _users._request_is_admin(self))
                 return self._json(200, payload)
 
             elif parsed.path.startswith("/almanac/pdf/"):

@@ -87,6 +87,10 @@ VARS: dict[str, tuple[str, str]] = {
         "Check for Zimi updates",
     ),
     "ZIMI_INSTALL_TYPE": ("How Zimi was installed, for the updater", ""),
+    "ZIMI_ALMANAC_HD": (
+        "Almanac HD, the sharper Earth and Moon, from Zimi's GitHub release: ask (offered in the Almanac to an admin), auto (on the Almanac's first open) or never",
+        "Almanac HD",
+    ),
     "ZIMI_SATELLITE_UPDATES": (
         "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",
         "Satellite data from the internet",
