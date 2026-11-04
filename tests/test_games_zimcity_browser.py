@@ -347,8 +347,9 @@ def test_the_redrawn_roads_follow_the_engines_shapes(browser, site):
 
 TOWN = """async () => {
   const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, map = c.map, v = z.view;
-  const m = v.tileAt(v.w / 2, v.h / 2), x0 = m.x - 10, y0 = m.y - 12;
-  for (let y = y0; y < y0 + 26; y++) for (let x = x0; x < x0 + 22; x++) if (map.testBounds(x, y)) map.setTile(x, y, 0, 0);
+  v.centreOn(60, 50);   // the middle of the map, so the town is wholly on it
+  const x0 = 50, y0 = 38;
+  for (let y = y0; y < y0 + 26; y++) for (let x = x0; x < x0 + 22; x++) map.setTile(x, y, 0, 0);
   c.sim.budget.totalFunds = 100000;
   const line = (a, b) => [a].concat(T.steps(a, b));
   T.build(c, 'road', line([x0, y0 + 6], [x0 + 21, y0 + 6])); T.build(c, 'road', line([x0 + 10, y0], [x0 + 10, y0 + 25]));
@@ -364,3 +365,17 @@ def test_the_advisor_follows_a_city_built_without_a_finger(browser, site):
     pg.evaluate(TOWN)
     pg.wait_for_timeout(1300)
     assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Run a power line to the zones that flash"
+
+
+def test_the_city_is_never_painted_whole(browser, site):
+    """At 32 px a tile the whole city would be about 50 MB of canvas, more than a phone's browser gives a tab. Only a
+    window around the screen is painted, at the detail the screen shows: well under 16 MB at every zoom at 390 px."""
+    pg = phone(browser, site)
+    seen = {}
+    for s in (3, 2, 1, 0.2):
+        pg.evaluate("(s) => { const v = window.__zimcity.view; v.cam.s = s; v.clamp(); }", s)
+        pg.wait_for_timeout(120)
+        seen[s] = pg.evaluate("() => window.__zimcity.view.bytes()")
+    assert all(b < 16e6 for b in seen.values()), seen
+    sharp = pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 2; v.clamp(); v.draw(performance.now()); return v._cache.r; }")
+    assert sharp == 32   # a tile 32 CSS px wide at 2x is drawn from the 32 px art

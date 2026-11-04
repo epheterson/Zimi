@@ -90,7 +90,7 @@ function water(ctx, x, y, s, d, w, ox, oy, mask, mctx) {
     md[i] = md[i + 1] = md[i + 2] = 255; md[i + 3] = isWater(rgbAt(d, w, ox + sx, oy + sy)) ? 255 : 0;
   }
   mctx.clearRect(0, 0, n, n); mctx.putImageData(img, 0, 0);
-  var big = mask.getContext('2d'), N = n * 2;
+  var big = mask.getContext('2d', { willReadFrequently: true }), N = n * 2;
   big.clearRect(0, 0, N, N); big.imageSmoothingEnabled = true; big.filter = 'blur(1.5px)';
   big.drawImage(mctx.canvas, 0, 0, n, n, 0, 0, N, N); big.filter = 'none';
   var b = big.getImageData(PAD * 2, PAD * 2, ART, ART).data;
@@ -158,7 +158,7 @@ export function atlas(original, recoloured, dark) {
   ctx.drawImage(recoloured, 0, 0, c.width, c.height);
   var src = document.createElement('canvas');
   src.width = original.naturalWidth; src.height = original.naturalHeight;
-  var sctx = src.getContext('2d'); sctx.drawImage(original, 0, 0);
+  var sctx = src.getContext('2d', { willReadFrequently: true }); sctx.drawImage(original, 0, 0);
   var d = sctx.getImageData(0, 0, src.width, src.height).data, w = src.width;
   var small = document.createElement('canvas'); small.width = small.height = SRC + PAD * 2;
   var mctx = small.getContext('2d'), mask = document.createElement('canvas'); mask.width = mask.height = (SRC + PAD * 2) * 2;
