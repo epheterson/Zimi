@@ -15,10 +15,17 @@ import { Config } from './config.js';
 
 // Decorate the given object, by adding {add|remove}EventListener methods, and an internal '_emitEvent' method
 var EventEmitter = function(obj) {
-  var events = {};
+  // ZimCity: each object keeps its own listeners. Upstream kept one table per decorated constructor, so a second
+  // Simulation (a new city in the same page) heard, and re-sent, every event of the first one's parts.
+  var eventsOf = function(self) {
+    if (!Object.prototype.hasOwnProperty.call(self, '_zcEvents'))
+      Object.defineProperty(self, '_zcEvents', {value: {}, enumerable: false});
+    return self._zcEvents;
+  };
 
 
   var addListener = function(event, listener) {
+    var events = eventsOf(this);
     if (!(event in events))
       events[event] = [];
 
@@ -29,6 +36,7 @@ var EventEmitter = function(obj) {
 
 
   var removeListener = function(event, listener) {
+    var events = eventsOf(this);
     if (!(event in events))
       events[event] = [];
 
@@ -40,6 +48,7 @@ var EventEmitter = function(obj) {
 
 
   var emitEvent = function(event, value) {
+    var events = eventsOf(this);
     if (event === undefined) {
       if (!Config.debug)
         console.warn('Sending undefined event!');

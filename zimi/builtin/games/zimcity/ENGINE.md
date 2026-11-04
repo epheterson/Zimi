@@ -21,5 +21,6 @@ Fixes:
 
 - `simulation.js`: the 10- and 120-month census calls passed `budget`, a name that only resolved because the upstream page has an element with the id `budget`; they pass `this.budget`.
 - `boatSprite.js`: imported a `SpriteConstants` export that `spriteConstants` does not have; it imports the module as a namespace.
+- `eventEmitter.js`: listeners were kept in one table per decorated constructor, so every Budget, Simulation and their parts shared one; a second city in the same page heard and re-sent the first city's events. Each object now keeps its own.
 
 Left out: `queryTool.js`, `gameTools.js` and `text.js` (they depend on jQuery and on upstream's page). ZimCity builds its own tool set and inspect sheet from the same engine calls.
