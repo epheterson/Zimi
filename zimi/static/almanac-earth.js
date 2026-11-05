@@ -4447,7 +4447,7 @@ function _aeBodyAt(x, y) {
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
   // The ISS only where it is big enough to be drawn as itself (from afar its dot is the satellites' to pick, and from
   // the Sun it stood on the Earth and took the Earth's taps): its size from this camera, not the last frame's.
-  var issDrawn = !!_ae.issPos && AE_ISS_SPAN_RE / Math.max(1e-12, _aeLen(_aeSub(_ae.issPos, eye))) * pxPerRad >= AE_ISS_MODEL_PX[0];
+  var issDrawn = !!_ae.issPos && AE_ISS_SPAN_RE / Math.max(1e-12, _aeLen(_aeSub(_ae.issPos, eye))) * pxPerRad >= AE_CRAFT_MODEL_PX[0];
   var bodies = AE_MARKED.filter(function (m) { return !m.flightOnly || issDrawn; })
     .map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; })
     .filter(function (b) { return !!b[1]; });
