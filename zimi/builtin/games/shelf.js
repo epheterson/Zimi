@@ -605,7 +605,7 @@
         a.hidden = !roomOf(a);
         if (a.hidden) return;
         if (a.classList.contains('ar-daily-main')) { inside++; if (a.classList.contains('ar-done')) done++; }
-        else if (a.classList.contains('ar-daily-more')) extras++;
+        else extras++;   // the rest, Game of the day among them when it is not one of the seven
       });
       var sep = dl.querySelector('.ar-daily-sep');
       if (sep) sep.hidden = !extras;

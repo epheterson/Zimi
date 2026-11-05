@@ -279,27 +279,26 @@
     return S.serverDay().then(function (day) {
       var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [], moreOpen = [], moreDone = [];
       var g = dayPick(rows, day), pick = g ? { path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') } : null;
+      // Game of the day: when it is one of the everyday seven it is that tile, wider, in its place among them; otherwise it
+      // leads the second group, just after "More dailies".
+      var pickMain = !!(pick && S.DAILY[pick.path] && isMainDaily(pick.path));
       var feature = pick ? featureTile(pick, day, S) : null;
-      dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path] && !(pick && r.path === pick.path); })).forEach(function (g) {
-        var t = tileFor(g);
+      dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path] && !(pick && r.path === pick.path); }).concat(pickMain ? [pick] : [])).forEach(function (g) {
+        var t = pickMain && g === pick ? feature : tileFor(g);
         if (!t) return;
-        ownIds(t);
-        t.setAttribute('href', g.path + '?daily=' + day);
+        if (t !== feature) { ownIds(t); t.setAttribute('href', g.path + '?daily=' + day); }
         var main = isMainDaily(g.path);
         t.classList.add(main ? 'ar-daily-main' : 'ar-daily-more');
         if (done[g.path]) { markDone(t); (main ? finished : moreDone).push(t); } else (main ? open : moreOpen).push(t);
       });
-      if (feature && S.DAILY[pick.path]) {
-        if (isMainDaily(pick.path)) feature.classList.add('ar-daily-main');
-        if (done[pick.path]) markDone(feature);
-      }
-      var rest = moreOpen.concat(moreDone), divider = null;
+      if (feature && !pickMain && S.DAILY[pick.path] && done[pick.path]) markDone(feature);
+      var rest = (feature && !pickMain ? [feature] : []).concat(moreOpen, moreDone), divider = null;
       if (rest.length) {
         divider = doc.createElement('span');
         divider.className = 'ar-daily-sep';
         divider.textContent = T('shelf.daily.more');
       }
-      var tiles = (feature ? [feature] : []).concat(open, finished, divider ? [divider] : [], rest);
+      var tiles = open.concat(finished, divider ? [divider] : [], rest);
       if (!tiles.length) return null;
       var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
       var line = doc.createElement('span');

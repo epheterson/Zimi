@@ -31,19 +31,18 @@ def _shelf(browser, site, scheme="light"):  # noqa: F811
     return ctx, page
 
 
-def test_game_of_the_day_leads_the_daily_row_and_is_not_a_section_of_its_own(
+def test_game_of_the_day_is_a_wider_tile_in_the_daily_row_not_a_section_of_its_own(
     site, browser
 ):  # noqa: F811
     ctx, page = _shelf(browser, site)
     got = page.evaluate("""() => {
-      const first = document.querySelector('.ar-daily a.ar-game');
-      return { today: document.querySelectorAll('.ar-today').length, feature: first.classList.contains('ar-feature'),
-               tag: (first.querySelector('.ar-feature-tag') || {}).textContent || '',
+      const f = document.querySelector('.ar-daily a.ar-feature'), small = document.querySelector('.ar-daily a.ar-game:not(.ar-feature)');
+      return { today: document.querySelectorAll('.ar-today').length, tag: (f.querySelector('.ar-feature-tag') || {}).textContent || '',
                line: document.querySelector('.ar-daily-line').textContent,
-               wide: first.getBoundingClientRect().width, next: first.nextElementSibling.getBoundingClientRect().width };
+               wide: f.getBoundingClientRect().width, next: small.getBoundingClientRect().width };
     }""")
     assert got["today"] == 0, got
-    assert got["feature"] and got["tag"] == "Game of the day", got
+    assert got["tag"] == "Game of the day", got
     assert got["wide"] > got["next"] * 1.6, got
     assert got["line"] == "Done today: 0 of 7", got  # the seven everyday dailies, not "0 of 63"
     ctx.close()
@@ -143,21 +142,49 @@ EVERYDAY = ["fiveletters.html", "sudoku.html", "minicrossword.html", "chesspuzzl
 
 
 def test_the_everyday_dailies_lead_and_the_rest_follow_as_more(site, browser):  # noqa: F811
-    """Eric: "Put the NORMAL dailies first and then the rest like optional after". Five Letters, Sudoku, Mini crossword,
-    Chess puzzle, Spelling Bee, Minesweeper, Solitaire, in that order (Game of the day ahead of them, and out of their list
-    when it is one of them), then a quiet "More dailies" and the rest."""
+    """Eric, twice: the normal dailies first. Five Letters, Sudoku, Mini crossword, Chess puzzle, Spelling Bee,
+    Minesweeper, Solitaire, in that order, then a quiet "More dailies"; Game of the day leads that second group (or,
+    when it is one of the seven, is that tile, wider, in its place)."""
     ctx, page = _shelf(browser, site)
     got = page.evaluate("""() => {
       const row = [...document.querySelectorAll('.ar-daily .ar-games > *')];
       const path = (a) => a.getAttribute('href').split('?')[0];
-      const feature = document.querySelector('.ar-daily a.ar-feature');
       const sep = row.findIndex(e => e.classList.contains('ar-daily-sep'));
-      return { feature: feature ? path(feature) : null, main: row.slice(0, sep).filter(e => e.matches('a.ar-daily-main:not(.ar-feature)')).map(path),
-               before: row.slice(0, sep).filter(e => e.matches('a.ar-daily-more')).length, after: row.slice(sep + 1).filter(e => e.matches('a.ar-daily-more')).length,
-               sep: sep >= 0 ? row[sep].textContent : '', chessHref: (document.querySelector('.ar-daily a[href^="chesspuzzles.html"]') || {}).href || '' };
+      const f = document.querySelector('.ar-daily a.ar-feature');
+      return { main: row.slice(0, sep).map(path), afterSep: path(row[sep + 1]), feature: path(f),
+               featureMain: f.classList.contains('ar-daily-main'), after: row.length - sep - 1,
+               sep: row[sep].textContent, chessHref: (document.querySelector('.ar-daily a[href^="chesspuzzles.html"]') || {}).href || '' };
     }""")
-    want = [p for p in EVERYDAY if p != got["feature"]]
-    assert got["main"] == want, got
-    assert got["sep"] == "More dailies" and got["before"] == 0 and got["after"] > 10, got
+    assert got["main"] == EVERYDAY, got
+    assert got["sep"] == "More dailies" and got["after"] > 10, got
+    if not got["featureMain"]:
+        assert got["afterSep"] == got["feature"], got   # it leads the second group
     assert "?daily=" in got["chessHref"], got
+    ctx.close()
+
+
+def test_game_of_the_day_that_is_an_everyday_daily_stays_in_its_place(site, browser):  # noqa: F811
+    """A day whose pick is one of the seven: that tile is the wider one, in its own place, and is not shown twice."""
+    ctx, page = _shelf(browser, site)
+    day = page.evaluate("""async (want) => {
+      const rows = await (await fetch('games.json')).json(), R = window.ZimiRecent, d = new Date(Date.UTC(2026, 10, 1));
+      for (let i = 0; i < 2000; i++, d.setUTCDate(d.getUTCDate() + 1)) {
+        const day = d.toISOString().slice(0, 10), g = R.dayPick(rows, day);
+        if (g && want.includes(g.path)) return [day, g.path];
+      }
+      return null;
+    }""", EVERYDAY)
+    ctx.close()
+    assert day, "no day in 2000 picks one of the seven"
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True)
+    page = ctx.new_page()
+    # The server's day is the one the shelf goes by: answer it with that day.
+    page.route("**/games-day*", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"day": day[0]})))
+    page.goto(site + "index.html")
+    page.wait_for_selector(".ar-daily a.ar-feature", state="attached")
+    got = page.evaluate("""() => { const row = [...document.querySelectorAll('.ar-daily .ar-games > *')], sep = row.findIndex(e => e.classList.contains('ar-daily-sep'));
+      return { main: row.slice(0, sep).map(a => [a.getAttribute('href').split('?')[0], a.classList.contains('ar-feature')]),
+               copies: [...document.querySelectorAll('.ar-daily a.ar-game')].filter(a => a.getAttribute('href').split('?')[0] === %r).length }; }""" % day[1])
+    assert [p for p, _ in got["main"]] == EVERYDAY, got
+    assert [p for p, f in got["main"] if f] == [day[1]] and got["copies"] == 1, got
     ctx.close()
