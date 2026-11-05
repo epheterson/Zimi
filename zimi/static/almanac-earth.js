@@ -2237,14 +2237,18 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 // and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
 function _aeOrbitShow(key) {
   var b = _aePlanetBody(key), mode = _aeOrbitsMode();
+  // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
+  // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
+  if (_aeWideView()) return b && !b.parent ? 1 : 0;
   if (mode === 'off') return 0;
-  if (_aeWideView()) return b && !b.parent ? 1 : 0;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
   var host = _aeHostOf(key);
   var mine = function (k) { return !!k && (k === key || _aeHostOf(k) === host); };
   if (mode === 'always') return mine(_ae.target) ? 1 : 0;
   var o = _ae.orbitFly;
   if (!o || !(mine(o.from) || mine(o.to))) return 0;
-  if (!o.endAt) return 1;
+  // While flying means while a flight is on: one that ended any other way (a drag, a follow, another preset) starts its
+  // fade the moment no flight is running, so the lines never stay.
+  if (!o.endAt) { if (_ae.fly) return 1; o.endAt = performance.now(); }
   return _aeClamp(1 - (performance.now() - o.endAt) / AE_ORBITS_FADE_MS, 0, 1);
 }
 function _aeDrawOrbit(p, jd, place) {
@@ -3933,6 +3937,8 @@ function _aeOrbitsRowHtml() {
 }
 function _aeSetOrbits(m) {
   try { if (m === 'flying') localStorage.removeItem(AE_ORBITS_KEY); else localStorage.setItem(AE_ORBITS_KEY, m); } catch (e) {}
+  // Chosen while standing still, While flying hides the lines at once: no flight is on, so none of them belongs.
+  if (_ae && m === 'flying' && !_ae.fly) _ae.orbitFly = null;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
 function _aeRenderSettings() {
