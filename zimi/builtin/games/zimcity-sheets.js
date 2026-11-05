@@ -245,7 +245,7 @@ export function followSheet(s) {
   var T = s.T, api = null, body = [];
   if (!s.commutes()) body.push(el('p', 'gs-text', T('city.fw.none')));
   else PEOPLE_IDS.forEach(function (p, i) {
-    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what');
+    var row = el('div', 'gs-row cy-fw-row'), what = el('span', 'cy-kept-what');
     what.appendChild(el('b', '', p[1]));
     what.appendChild(el('small', '', T('city.fw.role.' + p[0])));
     what.appendChild(el('q', 'cy-fw-q', T('city.v.' + p[0] + '.' + s.mood(p[0]) + '.' + (i % 2))));

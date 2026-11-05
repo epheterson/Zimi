@@ -593,7 +593,7 @@ def test_follow_someone_to_work_along_the_roads(browser, site):
     names = [b.text_content() for b in pg.query_selector_all(OURS + " .cy-kept-what b")]
     assert names == ["Dale Pemberton", "Vivian Crane", "Juniper Ash", "Gordon Plumb"], names
     assert all(q.text_content() for q in pg.query_selector_all(OURS + " .cy-fw-q"))
-    pg.click(OURS + " .cy-kept .ar-btn >> nth=0")
+    pg.click(OURS + " .cy-fw-row .ar-btn >> nth=0")
     pg.wait_for_function("() => window.__zimcity.following && !document.getElementById('cy-follow-card').hidden")
     card = pg.text_content("#cy-follow-card")
     assert "Dale Pemberton" in card and "On the way to work" in card, card
@@ -625,4 +625,4 @@ def test_follow_someone_says_so_when_nobody_commutes_yet(browser, site):
     pg.click(".gs-menu-btn")
     pg.click("#cy-follow")
     text = pg.wait_for_selector(OURS + " .ar-sheet-card").text_content()
-    assert "Nobody commutes yet" in text and not pg.query_selector(OURS + " .cy-kept"), text
+    assert "Nobody commutes yet" in text and not pg.query_selector(OURS + " .cy-fw-row"), text

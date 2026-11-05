@@ -476,7 +476,7 @@ function walk(sec) {
   followCard(false);
 }
 function keepInView(dt) {
-  var at = following.walk.at;
+  var w = following.walk, at = w.phase === 'atWork' ? w.trip.work : w.phase === 'atHome' ? w.trip.home : w.at;
   view.follower = { x: at.x, y: at.y, name: following.p.name, slow: following.walk.slow };
   if (!following.cam) return;
   var c = view.cam, k = Math.min(1, dt * CAMERA_EASE);

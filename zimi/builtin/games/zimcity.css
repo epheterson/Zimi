@@ -95,6 +95,9 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-fw-who small { font-size: var(--fs-small); color: var(--accent); }
 .cy-fw-who q, .cy-fw-q { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cy-fw-view { flex: none; }
+.cy-fw-row { flex-wrap: nowrap; align-items: center; gap: var(--sp-3); }
+.cy-fw-row .cy-kept-what { flex: 1 1 auto; }
+.cy-fw-row .ar-btn { flex: none; }
 .cy-follow-card .cy-news-close { margin: 0 calc(var(--sp-2) * -1) 0 0; }
 
 /* Kept cities: when and how big on the left, Open and Delete on the right. */
