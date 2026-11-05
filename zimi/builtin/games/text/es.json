@@ -1295,6 +1295,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "No se puede construir aquí",
  "city.why.clear": "Primero hay que demoler",
+ "city.why.inway": "Estorba: {thing}",
  "city.why.money": "Faltan {money}",
  "city.why2.and": ", ",
  "city.why2.crime": "demasiada delincuencia",

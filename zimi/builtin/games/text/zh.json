@@ -1223,6 +1223,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "这里不能建造",
  "city.why.clear": "请先拆除",
+ "city.why.inway": "挡住了：{thing}",
  "city.why.money": "还差 {money}",
  "city.why2.and": "，",
  "city.why2.crime": "犯罪太多",

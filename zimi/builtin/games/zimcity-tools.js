@@ -60,10 +60,23 @@ export function trial(city, name, tiles) {
     var xy = k.split(',');
     out.push([+xy[0], +xy[1], pending[k].getValue()]);
   });
-  var why = 'ok';
-  if (!any) why = last === tool.TOOLRESULT_NEEDS_BULLDOZE ? 'clear' : 'blocked';
-  else if (cost > budget.totalFunds) why = 'money';
-  return { tiles: out, parts: parts, cost: cost, ok: why === 'ok', why: why, short: Math.max(0, cost - budget.totalFunds) };
+  var why = 'ok', blocker = null;
+  if (!any) {
+    why = last === tool.TOOLRESULT_NEEDS_BULLDOZE ? 'clear' : 'blocked';
+    if (BUILDINGS[name] && parts.length) blocker = inTheWay(map, parts[parts.length - 1], sizeOf(name));
+  } else if (cost > budget.totalFunds) why = 'money';
+  return { tiles: out, parts: parts, cost: cost, ok: why === 'ok', why: why, blocker: blocker, short: Math.max(0, cost - budget.totalFunds) };
+}
+
+// The first thing in a building's footprint (centre `p`, `size` square, as the engine lays it) that is not bare ground:
+// a tile value, or null. A footprint centred on a finger beside a road overlaps the road, and the player is told so.
+function inTheWay(map, p, size) {
+  for (var y = p[1] - 1; y < p[1] - 1 + size; y++) for (var x = p[0] - 1; x < p[0] - 1 + size; x++) {
+    if (!map.testBounds(x, y)) return TV.DIRT;   // past the edge
+    var v = map.getTileValue(x, y);
+    if (v !== TV.DIRT) return v;
+  }
+  return null;
 }
 
 // Build what trial() found: the money is spent and the city changes. The answer carries `undo`: each changed tile as it

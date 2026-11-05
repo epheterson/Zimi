@@ -1259,6 +1259,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "Can’t build there",
  "city.why.clear": "Bulldoze it first",
+ "city.why.inway": "In the way: {thing}",
  "city.why.money": "Short by {money}",
  "city.why2.and": ", ",
  "city.why2.crime": "too much crime",

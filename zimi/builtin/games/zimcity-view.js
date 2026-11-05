@@ -13,7 +13,7 @@ var TILES_PER_ROW = 32;                      // tiles.png is 32 x 32 tiles
 var SPRITE_CELL = 48;                        // sprites.png: one 48 px cell per frame (columns) and kind (rows)
 var NOT_PAINTED = -2;                        // never a tile value: forces the first paint
 export var ZOOM_MAX = 3;                     // three times the art: the plan's two steps past 1:1
-var MARGIN_TILES = 4;                        // how far past the edge of the city the camera may look
+var MARGIN_PX = 16;                          // how far past the edge of the city the camera may look, on the screen
 var LAYER_ALPHA = 0.55;
 var GHOST_ALPHA = 0.85;
 
@@ -106,8 +106,9 @@ View.prototype.minScale = function () {
 };
 View.prototype.clamp = function () {
   if (!this.city) return;
-  var c = this.cam, map = this.city.map, m = MARGIN_TILES * TILE;
+  var c = this.cam, map = this.city.map;
   c.s = Math.max(this.minScale(), Math.min(ZOOM_MAX, c.s));
+  var m = MARGIN_PX / c.s;
   var vw = this.w / c.s, vh = this.h / c.s, ww = map.width * TILE, wh = map.height * TILE;
   // A city narrower than the screen is centred; otherwise the camera stays within a margin of its edges.
   c.x = vw >= ww ? (ww - vw) / 2 : Math.max(-m, Math.min(ww - vw + m, c.x));
