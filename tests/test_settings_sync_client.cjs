@@ -64,10 +64,9 @@ function browser() {
     grab(/var SK = \{[^]*?\n\};/, 'SK'),
     grab(/var _PREF_KEYS = \[[^]*?\];/, '_PREF_KEYS'),
     fn('_getStorageJSON'),
-    'var _accountId = null, _prefPushTimer = null, _prefPushing = null, _prefFilling = false, _prefRetryTimer = null;',
-    ...['_isPrefKey', '_rawGet', '_prefState', '_prefSaveState', '_prefChanged', '_prefWrite',
-      '_accountSet', '_prefPushSoon', '_prefPush', '_prefTake'].map(fn),
-    fnIf('_prefRetryLater'),
+    'var _accountId = null, _prefFilling = false, _prefSync = null;',
+    ...['_isPrefKey', '_rawGet', '_syncState', '_syncSaveState', '_prefState', '_prefSaveState', '_prefChanged', '_prefWrite',
+      '_accountSet', '_accountUrl', '_accountRefused', '_syncStore', '_prefStore', '_prefPushSoon', '_prefPush', '_prefTake'].map(fn),
   ].join('\n'), ctx);
   ctx.store = store;
   ctx.fire = async () => { const t = ctx.timers.filter(Boolean); ctx.timers.length = 0; for (const f of t) await f(); await new Promise((r) => setImmediate(r)); };

@@ -6061,16 +6061,16 @@ class ZimHandler(BaseHTTPRequestHandler):
         return self._json(200, _users.GAMES.load(name))
 
     def _handle_games_post(self, data):
-        """POST /userdata/games — {changes: {key: {v}}, fill: bool}, as
-        /userdata/settings: each change at the account's next revision; ``fill``
-        (a browser's games adopted into an account that has none) only fills."""
+        """POST /userdata/games — {changes: {key: {v}}}, as /userdata/settings:
+        each change at the account's next revision. No ``fill``: a browser's
+        games adopted into an account go up as ordinary changes and are merged
+        there (app.js _gamesFollow). The answer's ``refused`` names any key the
+        account would not keep (over its caps), so the browser keeps it."""
         data = data if isinstance(data, dict) else {}
         name, refused = self._games_owner(data.get("account"))
         if refused:
             return self._json(*refused)
-        ok, err, doc = _users.GAMES.change(
-            name, data.get("changes") or {}, fill_only=bool(data.get("fill")), by=data.get("client")
-        )
+        ok, err, doc = _users.GAMES.change(name, data.get("changes") or {}, by=data.get("client"))
         if not ok:
             return self._json(503 if err == "write failed" else 400, {"error": err})
         return self._json(200, doc)

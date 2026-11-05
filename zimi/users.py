@@ -1184,7 +1184,9 @@ class _RevStore:
         lacks. A store with a total cap refuses what would take it past that.
         Written only when something changed, and then announced to the
         account's open windows (``by``: the window that sent it). Returns (ok,
-        error, doc)."""
+        error, doc); the doc's ``refused`` lists each well-formed key it would
+        not keep (too large, too many keys, over the total), so the sender
+        keeps it rather than taking it as kept."""
         if _safe_userdata_key(name) is None:
             return False, "invalid user", None
         if not isinstance(changes, dict):
@@ -1193,21 +1195,24 @@ class _RevStore:
             doc = self.load(name)
             if fill_only and doc["rev"]:
                 return True, None, doc
-            kept, rev, moved = doc["settings"], doc["rev"], False
+            kept, rev, moved, refused = doc["settings"], doc["rev"], False, []
             size = sum(len(e["v"] or "") for e in kept.values())
             for k, ent in changes.items():
                 if not isinstance(k, str) or not self.key_re.match(k) or not isinstance(ent, dict):
                     continue
                 v = ent.get("v")
                 if not self._value_ok(v):
+                    refused.append(k)
                     continue
                 cur = kept.get(k)
                 if cur is not None and cur["v"] == v:
                     continue
                 if cur is None and len(kept) >= self.max_keys:
+                    refused.append(k)
                     continue
                 grown = size - len((cur or {}).get("v") or "") + len(v or "")
                 if self.total_max is not None and grown > self.total_max and grown > size:
+                    refused.append(k)
                     continue
                 size = grown
                 rev += 1
@@ -1218,6 +1223,8 @@ class _RevStore:
                 return False, "write failed", None
         if moved:
             _changes.announce(self.topic, name, by)
+        if refused:
+            doc = {**doc, "refused": refused}
         return True, None, doc
 
     def delete(self, name):

@@ -208,13 +208,20 @@ var _PREF_KEYS = [
 ];
 function _isPrefKey(k) { return _PREF_KEYS.indexOf(k) >= 0; }
 function _rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function _prefState() {
-  var st = _getStorageJSON(SK.PREF_SYNC, null);
+// An account-synced store's state in this browser (settings, games): whose it
+// follows, what is pending, what the account refused, and ``flags`` of its own
+// ({name: 'bool' | 'object'}).
+function _syncState(key, flags) {
+  var st = _getStorageJSON(key, null);
   if (!st || typeof st !== 'object' || Array.isArray(st)) st = {};
-  return { owner: typeof st.owner === 'string' && st.owner ? st.owner : null,
-    pending: st.pending && typeof st.pending === 'object' ? st.pending : {}, seeded: !!st.seeded };
+  var obj = function (v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; };
+  var out = { owner: typeof st.owner === 'string' && st.owner ? st.owner : null, pending: obj(st.pending), refused: obj(st.refused) };
+  Object.keys(flags || {}).forEach(function (f) { out[f] = flags[f] === 'bool' ? !!st[f] : obj(st[f]); });
+  return out;
 }
-function _prefSaveState(st) { try { localStorage.setItem(SK.PREF_SYNC, JSON.stringify(st)); } catch (e) {} }
+function _syncSaveState(key, st) { try { localStorage.setItem(key, JSON.stringify(st)); } catch (e) {} }
+function _prefState() { return _syncState(SK.PREF_SYNC, { seeded: 'bool' }); }
+function _prefSaveState(st) { _syncSaveState(SK.PREF_SYNC, st); }
 // One of them changed here (``before``: its raw value a moment ago). Signed
 // in, it is the account's to take: pending, and sent soon. Signed out, it is
 // this browser's alone (users.py's convention). The same value is no change.
@@ -6433,8 +6440,9 @@ function _keepOwnForget() {
     _swSay({ type: 'forget-own', zim: zim });
   });
 }
-// ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet): all under one prefix.
-var _GAMES_STORE_PREFIXES = ['zimi.games.', 'zimi.zimcity.'];   // ZimCity's kept cities sit beside the games' keys
+// ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet; ZimCity's cities
+// beside them): under these prefixes, which the account sync (_GAMES_KEY_RE) carries too.
+var _GAMES_STORE_PREFIXES = ['zimi.games.', 'zimi.zimcity.'];
 // What deleting a ZIM asks first: ZimiGames also takes this browser's play with it, and says so.
 function _deleteConfirmText(zim, title) {
   return zim === _GAMES_ZIM ? t('delete_games_confirm') : t('delete_zim_confirm', {name: title || zim});
@@ -20288,8 +20296,15 @@ function _accountSet(id, boot) {
   if (id && !boot) _savedPull();
   _liveRestart();
 }
-// /userdata's address, naming the account this browser follows.
-function _accountUrl(path) { return path + '?account=' + encodeURIComponent(_accountId || ''); }
+// /userdata's address, naming the account this browser follows (``account``:
+// another one it follows, the games').
+function _accountUrl(path, account) { return path + '?account=' + encodeURIComponent((arguments.length > 1 ? account : _accountId) || ''); }
+// Refused (401: no account; 409: not this one): whose it is now is asked again,
+// never written into the wrong one. True when it was.
+function _accountRefused(r) {
+  if (r.status === 401 || r.status === 409) { _accountRecheck(); return true; }
+  return false;
+}
 // Refused (401: no account; 409: not this one): whose it is now, from the
 // server, and this tab follows that (or none). One asking at a time.
 var _accountRechecking = false;
@@ -20373,7 +20388,7 @@ function _savedPush(leaving) {
     if (r.status === 413) { _savedSetPaused(true); return 'too-large'; }
     // Not this account's any more (signed out, or another tab signed in as
     // someone else): asked again whose, never written into the wrong one.
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return 'not-ours'; }
+    if (_accountRefused(r)) return 'not-ours';
     return r.ok ? r.json() : null;
   }).then(function (d) {
     if (d === 'too-large' || d === 'not-ours') return false;
@@ -20396,7 +20411,7 @@ function _savedPull() {
   _savedPulledAt = Date.now();
   var account = Saved.account();
   fetch(_accountUrl('/userdata'), { credentials: 'same-origin' }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
+    if (_accountRefused(r)) return null;
     return r.ok ? r.json() : null;
   }).then(function (d) {
     if (!d || Saved.account() !== account) return;
@@ -20414,67 +20429,96 @@ function _savedPull() {
 // follows, if it never held a setting, takes this browser's own (its settings
 // from before sync), on the keys it lacks (fill). Separate from the saved
 // store's sync: a change sends a few hundred bytes.
-var _prefPushTimer = null, _prefPushing = null, _prefFilling = false;
-// The server out of reach or failing: tried again after a while, as the saved
-// store's push is (_SAVED_PUSH_OFTEN_MS), not on every change's short wait.
-var _prefRetryTimer = null;
-function _prefRetryLater() {
-  if (_prefRetryTimer) return;
-  _prefRetryTimer = setTimeout(function () { _prefRetryTimer = null; _prefPush(); }, _SAVED_PUSH_OFTEN_MS);
+var _prefFilling = false;
+// One account-synced store's sending and fetching (settings, games): the
+// pending keys go to ``cfg.url`` in one request, the account's copy as kept
+// comes back and is taken (``cfg.take``). A failure (the server out of reach
+// or failing) is tried again after a while (_SAVED_PUSH_OFTEN_MS), never on
+// every change; a refusal (not this account) asks whose it is. A key the
+// account would not keep (over its caps: the answer's ``refused``) leaves the
+// pending list for ``refused``, so it is neither sent again and again nor lost.
+// ``cfg``: {url, account(), state(), save(st), keys(st, fill), take(d), pushMs}.
+function _syncStore(cfg) {
+  var s = { timer: null, pushing: null, retry: null };
+  s.retryLater = function () {
+    if (s.retry) return;
+    s.retry = setTimeout(function () { s.retry = null; s.push(); }, _SAVED_PUSH_OFTEN_MS);
+  };
+  s.pushSoon = function () {
+    if (!cfg.account() || s.retry) return;
+    clearTimeout(s.timer);
+    s.timer = setTimeout(function () { s.push(); }, cfg.pushMs());
+  };
+  // leaving: while the page goes, in a request that outlives it. fill: this
+  // browser's own, into an account that has none (cfg.keys decides which).
+  s.push = function (leaving, fill) {
+    clearTimeout(s.timer); s.timer = null;
+    var st = cfg.state(), account = cfg.account();
+    if (!account || st.owner !== account) return Promise.resolve(true);
+    if (s.pushing && !leaving) return s.pushing.then(function () { return s.push(); });
+    var changes = {}, n = 0;
+    cfg.keys(st, fill).forEach(function (k) { changes[k] = { v: _rawGet(k) }; n++; });
+    if (!n) return Promise.resolve(true);
+    var body = JSON.stringify({ changes: changes, fill: fill ? true : undefined, account: account, client: _liveClient });
+    var sent = fetch(cfg.url, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
+      keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
+    }).then(function (r) {
+      if (_accountRefused(r)) return null;
+      if (!r.ok) { s.retryLater(); return null; }
+      return r.json();
+    }, function () { s.retryLater(); return null; }).then(function (d) {
+      if (!d || account !== cfg.account()) return false;
+      clearTimeout(s.retry); s.retry = null;
+      // Taken: no longer pending, unless it changed again since it was sent.
+      var now = cfg.state(), refused = Array.isArray(d.refused) ? d.refused : [];
+      Object.keys(changes).forEach(function (k) {
+        if (refused.indexOf(k) >= 0) { now.refused[k] = 1; delete now.pending[k]; return; }
+        delete now.refused[k];
+        if (_rawGet(k) === changes[k].v) delete now.pending[k];
+      });
+      cfg.save(now);
+      cfg.take(d);
+      return true;
+    }).catch(function () { return false; });
+    if (leaving) return sent;
+    s.pushing = sent.then(function (ok) {
+      s.pushing = null;
+      // Taken, and more changed meanwhile: that goes next. A failure waits for
+      // its retry, never a push every moment.
+      if (ok && Object.keys(cfg.state().pending).length) s.pushSoon();
+      return ok;
+    });
+    return s.pushing;
+  };
+  s.pull = function () {
+    var account = cfg.account();
+    if (!account) return Promise.resolve(null);
+    return fetch(_accountUrl(cfg.url, account), { credentials: 'same-origin' }).then(function (r) {
+      if (_accountRefused(r) || !r.ok) return null;
+      return r.json();
+    }).then(function (d) {
+      if (!d || account !== cfg.account()) return null;
+      cfg.take(d);
+      return d;
+    }).catch(function () { return null; });
+  };
+  return s;
 }
-function _prefPushSoon() {
-  if (!_accountId || _prefRetryTimer) return;
-  clearTimeout(_prefPushTimer);
-  _prefPushTimer = setTimeout(_prefPush, _SAVED_PUSH_MS);
+// The settings' store, made when first used (a setting can be written before
+// the page has run this far).
+var _prefSync = null;
+function _prefStore() {
+  return _prefSync || (_prefSync = _syncStore({
+    url: '/userdata/settings', account: function () { return _accountId; },
+    state: _prefState, save: _prefSaveState, take: _prefTake,
+    pushMs: function () { return _SAVED_PUSH_MS; },
+    keys: function (st, fill) { return _PREF_KEYS.filter(function (k) { return fill ? _rawGet(k) !== null : st.pending[k]; }); },
+  }));
 }
-// The pending changes, sent. leaving: while the page goes, in a request that
-// outlives it. fill: this browser's settings, into an account that has none.
-function _prefPush(leaving, fill) {
-  clearTimeout(_prefPushTimer); _prefPushTimer = null;
-  var st = _prefState();
-  if (!_accountId || st.owner !== _accountId) return Promise.resolve(true);
-  if (_prefPushing && !leaving) return _prefPushing.then(function () { return _prefPush(); });
-  var changes = {}, n = 0;
-  _PREF_KEYS.forEach(function (k) {
-    if (fill ? _rawGet(k) !== null : st.pending[k]) { changes[k] = { v: _rawGet(k) }; n++; }
-  });
-  if (!n) return Promise.resolve(true);
-  var account = _accountId, body = JSON.stringify({ changes: changes, fill: fill ? true : undefined, account: account, client: _liveClient });
-  var sent = fetch('/userdata/settings', {
-    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
-    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
-  }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
-    if (!r.ok) { _prefRetryLater(); return null; }
-    return r.json();
-  }, function () { _prefRetryLater(); return null; }).then(function (d) {
-    if (!d || account !== _accountId) return false;
-    clearTimeout(_prefRetryTimer); _prefRetryTimer = null;
-    // Taken: no longer pending, unless it changed again since it was sent.
-    var now = _prefState();
-    Object.keys(changes).forEach(function (k) { if (_rawGet(k) === changes[k].v) delete now.pending[k]; });
-    _prefSaveState(now);
-    _prefTake(d);
-    return true;
-  }).catch(function () { return false; });
-  if (leaving) return sent;
-  _prefPushing = sent.then(function (ok) {
-    _prefPushing = null;
-    // Taken, and more changed meanwhile: that goes next. A failure waits for
-    // its retry (_prefRetryLater), never a push every moment.
-    if (ok && Object.keys(_prefState().pending).length) _prefPushSoon();
-    return ok;
-  });
-  return _prefPushing;
-}
-function _prefPull() {
-  if (!_accountId) return;
-  var account = _accountId;
-  fetch(_accountUrl('/userdata/settings'), { credentials: 'same-origin' }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
-    return r.ok ? r.json() : null;
-  }).then(function (d) { if (d && account === _accountId) _prefTake(d); }).catch(function () {});
-}
+function _prefPushSoon() { _prefStore().pushSoon(); }
+function _prefPush(leaving, fill) { return _prefStore().push(leaving, fill); }
+function _prefPull() { if (_accountId) _prefStore().pull(); }
 // The account's settings ({rev, settings: {key: {v, r}}}) come in.
 function _prefTake(d) {
   if (!d || typeof d !== 'object' || !d.settings || typeof d.settings !== 'object') return;
@@ -20507,7 +20551,7 @@ function _prefTake(d) {
     }
   }
   // Changed here and not yet taken (the page closed before it went): it goes.
-  if (Object.keys(st.pending).length && !_prefPushing) _prefPushSoon();
+  if (Object.keys(st.pending).length && !_prefStore().pushing) _prefPushSoon();
 }
 // Settings that changed underneath this page (the account's, or another tab's):
 // what shows them is drawn again.
@@ -20562,26 +20606,20 @@ function _prefApplied(keys) {
 // out takes the games off this screen (sent first; what could not go is set
 // aside for that person's next sign-in). Password off, or not signed in: the
 // browser's own, as before (users.games_data_owner).
-var _GAMES_KEY_RE = /^zimi\.(games|zimcity)\./;
+var _GAMES_KEY_RE = new RegExp('^(' + _GAMES_STORE_PREFIXES.map(_reEscape).join('|') + ')');
 // The device's, never the person's: tile pictures, the last start error, this server's clock.
 var _GAMES_LOCAL = ['zimi.games.snaps', 'zimi.games.lastStartError', 'zimi.games.serverOffset'];
 var _GAMES_PUSH_MS = 3000;
 var _GAMES_KEPT_CITIES = 5;   // zimcity.js KEPT_MAX
-var _gamesAccount = null, _gamesPushTimer = null, _gamesPushing = null, _gamesPulledAt = 0;
+var _gamesAccount = null, _gamesPulledAt = 0;
 function _isGamesKey(k) { return typeof k === 'string' && _GAMES_KEY_RE.test(k) && _GAMES_LOCAL.indexOf(k) < 0; }
 function _gamesKeys() {
   var out = [];
   try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (_isGamesKey(k)) out.push(k); } } catch (e) {}
   return out;
 }
-function _gamesState() {
-  var st = _getStorageJSON(SK.GAMES_SYNC, null);
-  if (!st || typeof st !== 'object' || Array.isArray(st)) st = {};
-  return { owner: typeof st.owner === 'string' && st.owner ? st.owner : null,
-    pending: st.pending && typeof st.pending === 'object' ? st.pending : {},
-    aside: st.aside && typeof st.aside === 'object' ? st.aside : {}, adopted: !!st.adopted };
-}
-function _gamesSaveState(st) { try { localStorage.setItem(SK.GAMES_SYNC, JSON.stringify(st)); } catch (e) {} }
+function _gamesState() { return _syncState(SK.GAMES_SYNC, { aside: 'object', adopted: 'bool' }); }
+function _gamesSaveState(st) { _syncSaveState(SK.GAMES_SYNC, st); }
 function _gamesJSON(v) { try { return v == null ? null : JSON.parse(v); } catch (e) { return null; } }
 // Two copies of one key, both changed (this browser offline, another device
 // playing): nothing a person did is lost. Stats take the larger count and every
@@ -20633,61 +20671,21 @@ function _gamesChanged(k) {
   _gamesSaveState(st);
   _gamesPushSoon();
 }
-function _gamesPushSoon() {
-  if (!_gamesAccount) return;
-  clearTimeout(_gamesPushTimer);
-  _gamesPushTimer = setTimeout(_gamesPush, _GAMES_PUSH_MS);
+var _gamesSync = null;
+function _gamesStore() {
+  return _gamesSync || (_gamesSync = _syncStore({
+    url: '/userdata/games', account: function () { return _gamesAccount; },
+    state: _gamesState, save: _gamesSaveState, take: _gamesTake,
+    pushMs: function () { return _GAMES_PUSH_MS; },
+    keys: function (st) { return Object.keys(st.pending); },
+  }));
 }
-function _gamesUrl() { return '/userdata/games?account=' + encodeURIComponent(_gamesAccount || ''); }
-function _gamesRefused(r) {
-  if (r.status === 401 || r.status === 409) { _accountRecheck(); return true; }
-  return false;
-}
-// The pending keys, sent; the account's copy as kept comes back and is taken.
-function _gamesPush(leaving) {
-  clearTimeout(_gamesPushTimer); _gamesPushTimer = null;
-  var st = _gamesState(), account = _gamesAccount;
-  if (!account || st.owner !== account) return Promise.resolve(true);
-  if (_gamesPushing && !leaving) return _gamesPushing.then(function () { return _gamesPush(); });
-  var keys = Object.keys(st.pending);
-  if (!keys.length) return Promise.resolve(true);
-  var changes = {};
-  keys.forEach(function (k) { changes[k] = { v: _rawGet(k) }; });
-  var body = JSON.stringify({ changes: changes, account: account, client: _liveClient });
-  var sent = fetch('/userdata/games', {
-    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
-    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
-  }).then(function (r) {
-    if (_gamesRefused(r) || !r.ok) return null;
-    return r.json();
-  }).then(function (d) {
-    if (!d || account !== _gamesAccount) return false;
-    var now = _gamesState();
-    keys.forEach(function (k) { if (_rawGet(k) === changes[k].v) delete now.pending[k]; });
-    _gamesSaveState(now);
-    _gamesTake(d);
-    return true;
-  }).catch(function () { return false; });
-  if (leaving) return sent;
-  _gamesPushing = sent.then(function (ok) {
-    _gamesPushing = null;
-    if (ok && Object.keys(_gamesState().pending).length) _gamesPushSoon();
-    return ok;
-  });
-  return _gamesPushing;
-}
+function _gamesPushSoon() { _gamesStore().pushSoon(); }
+function _gamesPush(leaving) { return _gamesStore().push(leaving); }
 function _gamesPull() {
   if (!_gamesAccount) return Promise.resolve(null);
-  var account = _gamesAccount;
   _gamesPulledAt = Date.now();
-  return fetch(_gamesUrl(), { credentials: 'same-origin' }).then(function (r) {
-    if (_gamesRefused(r) || !r.ok) return null;
-    return r.json();
-  }).then(function (d) {
-    if (!d || account !== _gamesAccount) return null;
-    _gamesTake(d);
-    return d;
-  }).catch(function () { return null; });
+  return _gamesStore().pull();
 }
 // The account's games ({rev, settings: {key: {v, r}}}) come in: every key it
 // holds that is not pending here is the account's; a pending one meets it.
@@ -20711,6 +20709,16 @@ function _gamesTake(d) {
   if (moved) _gamesTellFrame();
   if (more) _gamesPushSoon();
 }
+// What has not reached a person's account (pending, or refused by it): their values, set aside so it is never lost.
+function _gamesUnsent(st) {
+  var mine = {};
+  Object.keys(st.pending).concat(Object.keys(st.refused)).forEach(function (k) { mine[k] = _rawGet(k); });
+  return mine;
+}
+// The games pages forget whose they were showing (their name, signed in).
+function _gamesForgetPerson() {
+  try { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } catch (e) {}
+}
 // This browser now follows ``id``'s games (null: its own). A person who left
 // without their games going up finds them waiting (aside); a browser's games
 // from before anyone signed in go into the first account that does, once,
@@ -20719,18 +20727,17 @@ function _gamesFollow(id, boot) {
   id = typeof id === 'string' && id ? id : null;
   var st = _gamesState();
   _gamesAccount = id;
-  try { if (!id) { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } } catch (e) {}
+  if (!id) _gamesForgetPerson();
   if (st.owner === id) { if (id && !boot) _gamesPull(); return; }
   if (st.owner) {
     // Someone else's are on this screen (their session ended without a sign-out): set aside, then gone.
-    var mine = {};
-    Object.keys(st.pending).forEach(function (k) { mine[k] = _rawGet(k); });
+    var mine = _gamesUnsent(st);
     if (Object.keys(mine).length) st.aside[st.owner] = mine;
     _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
     _gamesTellFrame();
   }
   var adopt = id && !st.adopted && !st.owner ? _gamesKeys() : [];
-  st.owner = id; st.pending = {};
+  st.owner = id; st.pending = {}; st.refused = {};
   if (id && st.aside[id]) {
     var back = st.aside[id];
     Object.keys(back).forEach(function (k) { _gamesWrite(k, back[k]); st.pending[k] = 1; });
@@ -20751,18 +20758,15 @@ function _gamesFollow(id, boot) {
 function _gamesLeave() {
   if (!_gamesAccount) return Promise.resolve();
   var who = _gamesAccount;
-  return _gamesPush().then(function (ok) {
-    var st = _gamesState();
-    if (!ok && Object.keys(st.pending).length) {
-      var mine = {};
-      Object.keys(st.pending).forEach(function (k) { mine[k] = _rawGet(k); });
-      st.aside[who] = mine;
-    }
+  return _gamesPush().then(function () {
+    // Whatever did not reach the account (not sent, or refused by it) waits for their next sign-in here.
+    var st = _gamesState(), mine = _gamesUnsent(st);
+    if (Object.keys(mine).length) st.aside[who] = mine;
     _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
-    st.owner = null; st.pending = {};
+    st.owner = null; st.pending = {}; st.refused = {};
     _gamesSaveState(st);
     _gamesAccount = null;
-    try { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } catch (e) {}
+    _gamesForgetPerson();
   }, function () {});
 }
 // /whoami's word on whose games this browser keeps, and the name to show.
