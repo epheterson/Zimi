@@ -1,11 +1,10 @@
 """near: in the search bar, in a real browser at a phone's width.
 
-Eric (2026-11-03): "If we're doing location search should we also include
-like radius near a location?" A search for near:Danville 12km lists the
-towns around Danville nearest first, each with its distance, under a line
-saying what it measured from; the query shows as a chip whose x takes the
-distance with it; and with the Almanac's place in California, of the two
-Danvilles the California one is taken, and the line says so.
+A search for near:Springfield 12km lists the towns around Springfield nearest
+first, each with its distance, under a line saying what it measured from; the
+query shows as a chip whose x takes the distance with it; and with the
+Almanac's place beside the made-up town, of the two Springfields that one is
+taken, and the line says so.
 
 Run: pytest tests/test_near_live.py -v
 """
@@ -77,28 +76,28 @@ def _page(served, place=None):
 
 def test_near_lists_the_towns_around_with_their_distance(served):
     base, fx = served
-    pw, br, pg = _page(served, {"lat": fx.DANVILLE[0], "lon": fx.DANVILLE[1]})
+    pw, br, pg = _page(served, {"lat": fx.SPRINGFIELD[0], "lon": fx.SPRINGFIELD[1]})
     try:
-        pg.goto(base + "/?q=" + "near%3ADanville%2012km")
+        pg.goto(base + "/?q=" + "near%3ASpringfield%2012km")
         pg.wait_for_selector(".result.map-place", timeout=15000)
         rows = pg.evaluate(ROWS)
         assert [r[0] for r in rows] == [
-            "Danville",
-            "Alamo",
-            "San Ramon",
-            "Walnut Creek",
+            "Springfield",
+            "Fairview",
+            "Oak Grove",
+            "Greenville",
         ], rows
         assert all(" km" in r[1] and "town" in r[1] for r in rows), rows
         line = pg.locator(".near-from").inner_text()
-        assert "12 km" in line and "Danville" in line, line
-        # Of two Danvilles, the one nearest the Almanac's place, and said so.
+        assert "12 km" in line and "Springfield" in line, line
+        # Of two Springfields, the one nearest the Almanac's place, and said so.
         assert "nearest to you" in pg.locator(".near-which").inner_text()
         # The chip's x takes near: and its distance away together.
         x = pg.locator(".search-chip-x").first
         assert x.get_attribute("data-q").strip() == ""
         assert (
             pg.locator(".search-chip-label").first.inner_text()
-            == "within 12 km of Danville"
+            == "within 12 km of Springfield"
         )
     finally:
         br.close()
@@ -109,11 +108,11 @@ def test_without_a_place_of_your_own_the_largest_is_taken(served):
     base, fx = served
     pw, br, pg = _page(served)
     try:
-        pg.goto(base + "/?q=" + "near%3ADanville%205mi")
+        pg.goto(base + "/?q=" + "near%3ASpringfield%205mi")
         pg.wait_for_selector(".near-which", timeout=15000)
         assert "the largest" in pg.locator(".near-which").inner_text()
         rows = pg.evaluate(ROWS)
-        assert rows and rows[0][0] == "Danville" and " mi" in rows[0][1], rows
+        assert rows and rows[0][0] == "Springfield" and " mi" in rows[0][1], rows
     finally:
         br.close()
         pw.stop()

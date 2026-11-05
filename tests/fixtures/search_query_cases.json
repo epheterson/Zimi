@@ -89,15 +89,15 @@
     {"value": "en", "language": "", "match": false}
   ],
   "near": [
-    {"q": "near:Danville", "place": "danville", "radius_km": 25, "unit": "km", "groups": []},
-    {"q": "near:Danville 10km", "place": "danville", "radius_km": 10, "unit": "km", "groups": []},
-    {"q": "parks near:Danville 10MI", "place": "danville", "radius_km": 16.09344, "unit": "mi", "groups": [["parks"]]},
-    {"q": "near:\"Walnut Creek\" 2.5km", "place": "walnut creek", "radius_km": 2.5, "unit": "km", "groups": []},
-    {"q": "near:37.82,-122.00 5km", "place": "37.82,-122.00", "radius_km": 5, "unit": "km", "groups": []},
+    {"q": "near:Springfield", "place": "springfield", "radius_km": 25, "unit": "km", "groups": []},
+    {"q": "near:Springfield 10km", "place": "springfield", "radius_km": 10, "unit": "km", "groups": []},
+    {"q": "parks near:Springfield 10MI", "place": "springfield", "radius_km": 16.09344, "unit": "mi", "groups": [["parks"]]},
+    {"q": "near:\"San Francisco\" 2.5km", "place": "san francisco", "radius_km": 2.5, "unit": "km", "groups": []},
+    {"q": "near:39.00,-96.00 5km", "place": "39.00,-96.00", "radius_km": 5, "unit": "km", "groups": []},
     {"q": "near:here", "place": "here", "radius_km": 25, "unit": "km", "groups": []},
-    {"q": "10km near:Alamo", "place": "alamo", "radius_km": 25, "unit": "km", "groups": [["10km"]]},
-    {"q": "near:Alamo \"10km\"", "place": "alamo", "radius_km": 25, "unit": "km", "groups": [["\"10km\""]]},
+    {"q": "10km near:Fairview", "place": "fairview", "radius_km": 25, "unit": "km", "groups": [["10km"]]},
+    {"q": "near:Fairview \"10km\"", "place": "fairview", "radius_km": 25, "unit": "km", "groups": [["\"10km\""]]},
     {"q": "near:0,0 20000km", "place": "0,0", "radius_km": 500, "unit": "km", "groups": []},
-    {"q": "near:Danville 9999mi", "place": "danville", "radius_km": 500, "unit": "mi", "groups": []}
+    {"q": "near:Springfield 9999mi", "place": "springfield", "radius_km": 500, "unit": "mi", "groups": []}
   ]
 }

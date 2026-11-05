@@ -5849,7 +5849,7 @@ def warm_indexes():
             log.warning("Bookshelf details phase failed: %s", e)
 
         # Phase 1d: the towns on each Kiwix map, read from its tiles, so a
-        # town its search pages leave out is found by name (Danville, CA).
+        # town its search pages leave out is found by name.
         try:
             from zimi import mapplaces as _mapplaces
 

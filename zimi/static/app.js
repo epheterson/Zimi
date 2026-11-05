@@ -11664,7 +11664,7 @@ function _searchNearRadius(tokens, at, skip) {
 // it is from. near:here becomes the browser's position (asked for, so the
 // browser's own prompt decides), else the Almanac's place; and near_at= is
 // the Almanac's place, which picks among places of one name (several
-// Danvilles). Nothing is added to a search without near:.
+// Springfields). Nothing is added to a search without near:.
 var _NEAR_HERE_TIMEOUT_MS = 8000;
 function _nearParams(query) {
   const plain = 'q=' + encodeURIComponent(query);
@@ -11858,7 +11858,7 @@ function searchQueryChips(q) {
   for (const f of p.filters) {
     // near:'s distance goes with it.
     const q2 = f.radiusAt != null ? _searchRebuild(q, toks, new Set([f.at, f.radiusAt])) : without(f.at);
-    // near: shows its place as typed ("Walnut Creek"), not folded.
+    // near: shows its place as typed ("San Francisco"), not folded.
     const value = f.key === 'near' ? _searchUnquote(toks[f.at][0].slice(toks[f.at][0].indexOf(':') + 1)) : f.value;
     chips.push({ kind: f.key, at: f.at, value: value, negate: f.negate, radius_km: f.radius_km, unit: f.unit, query: q2 });
   }

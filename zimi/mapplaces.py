@@ -2,16 +2,15 @@
 
 Kiwix's maps2zim writes a ``search/<Place>`` page for the places its
 GeoNames list holds, and the world map's list stops well short of every
-town: Danville, California (43,000 people) is on the map, labelled, and in
-no page (Eric, 2026-11-02: "I see my Danville in CA on the map but it
-doesn't show up in search"). The names are in the map itself, in the
+town: plenty of towns of tens of thousands are on the map, labelled, and in
+no page. The names are in the map itself, in the
 ``place`` layer of its vector tiles, so they are read from there: once per
 build of the ZIM, in the background (a child process for a big map), into
 ``<data dir>/mapplaces/<name>.db``, one row per word of each name so a
 search asks an index and never a tile.
 
 Two zooms are read. Zoom 9 carries the cities; zoom 10 is where towns are
-labelled (Danville first appears there). Villages start at 11, four times
+labelled (most towns first appear there). Villages start at 11, four times
 the tiles again, and are left out. Zoom 10 is read only under a zoom 9 tile
 with land in it: the sea's tiles are a few hundred bytes, and skipping them
 leaves under 200,000 of the world map's tiles to read: maps_en_all_2026-06
