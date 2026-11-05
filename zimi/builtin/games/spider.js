@@ -233,7 +233,9 @@
       winLines: function (sec, st) { return [TX('spider.win', { score: st.score, suits: TX('spider.suits', { n: st.suits }) }), Z.winTime(sec, st)]; },
       openMenu: function () {
         var pick = Z.segmented([{ label: TX('spider.suits', { n: 1 }), value: 1 }, { label: TX('spider.suits', { n: 2 }), value: 2 }, { label: TX('spider.suits', { n: 4 }), value: 4 }], suits, function (v) {
-          suits = v; Z.store.set(SUITS_KEY, v);
+          Z.store.set(SUITS_KEY, v);
+          if (Z.daily()) return;   // a daily is two suits for everyone: the choice waits for the next ordinary game
+          suits = v;
           if (!session.state.moves) newGame();
         });
         page.menu('Spider', [Z.h('div', { class: 'zc-row' }, [Z.h('label', { text: TX('spider.suitsRow') }), pick]), Z.h('p', { class: 'zc-note', text: TX('spider.nextDeal') })]);

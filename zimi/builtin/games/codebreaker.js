@@ -49,6 +49,8 @@
   var els = { secret: $('cb-secret'), rows: $('cb-rows'), msg: $('cb-msg'), palette: $('cb-palette'), undo: $('cb-undo'), check: $('cb-check'), nu: $('cb-new') };
   var line = Play.status(els.msg);
   var settings = Play.load(SETTINGS_KEY, { repeats: true }), best = Play.load(BEST_KEY, {});
+  // A daily is the same game for everyone: no repeats, whatever this player's setting.
+  function repeats() { return !!settings.repeats && !(root.ZimiShell && root.ZimiShell.daily); }
   var code, rows, cur, status, seats; // status: 'setting' (a person makes the code) | 'playing' | 'won' | 'lost'
   // Seat 0 breaks the code, seat 1 makes it: the Computer makes it by default; a second person
   // makes it behind a handoff, then the device goes to the breaker.
@@ -107,7 +109,7 @@
     els.palette.textContent = '';
     for (var p = 0; p < COLOURS; p++) {
       var pb = peg(p, 26);
-      pb.disabled = !active() || cur.indexOf(-1) < 0 || (!settings.repeats && cur.indexOf(p) >= 0);
+      pb.disabled = !active() || cur.indexOf(-1) < 0 || (!repeats() && cur.indexOf(p) >= 0);
       (function (c) { pb.addEventListener('click', function () { add(c); }); })(p);
       els.palette.appendChild(pb);
     }
@@ -119,7 +121,7 @@
   function add(c) {
     if (!active()) return;
     var i = cur.indexOf(-1);
-    if (i < 0 || (!settings.repeats && cur.indexOf(c) >= 0)) return;
+    if (i < 0 || (!repeats() && cur.indexOf(c) >= 0)) return;
     cur[i] = c; paint();
   }
   function back() {
@@ -127,7 +129,7 @@
     paint();
   }
   function check() {
-    if (!active() || !isValid(cur, settings.repeats)) return;
+    if (!active() || !isValid(cur, repeats())) return;
     if (status === 'setting') {
       code = cur.slice(); cur = [-1, -1, -1, -1]; status = 'playing'; paint();
       line.say(T('cb.tenGuesses'));
@@ -144,7 +146,7 @@
   }
   // replay: a finished game coming back from a save shows its end sheet again without recording a best twice.
   function finish(replay) {
-    var k = settings.repeats ? 'repeats' : 'single', opts = { after: replay ? 0 : END_AFTER_MS }, text;
+    var k = repeats() ? 'repeats' : 'single', opts = { after: replay ? 0 : END_AFTER_MS }, text;
     if (status === 'won') {
       text = T('cb.cracked', { n: rows.length });
       if (seats.hotseat()) { opts.result = 'win'; opts.name = seats.name(0); text = T('cb.crackedBy', { breaker: seats.name(0), maker: seats.name(1), n: rows.length }); }
@@ -172,7 +174,7 @@
       seats.begin(paint, 1);
       return;
     }
-    code = makeCode(root.ZimiShell ? root.ZimiShell.random() : Math.random, settings.repeats && !(root.ZimiShell && root.ZimiShell.daily)); status = 'playing';   // a daily has no repeats
+    code = makeCode(root.ZimiShell ? root.ZimiShell.random() : Math.random, repeats()); status = 'playing';
     line.say(T('cb.tenGuesses'));
     paint();
     seats.begin(paint);

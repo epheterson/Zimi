@@ -193,10 +193,12 @@
   var best = store(BEST_KEY, {});
 
   var params = new URLSearchParams(location.search);
-  var fixedSeed = params.has('seed') ? Number(params.get('seed')) : undefined;
+  var daily = !!(root.ZimiShell && root.ZimiShell.daily);
+  // A daily's board is the day's: a ?seed= in its address (a test's replay) does not replace it.
+  var fixedSeed = !daily && params.has('seed') ? Number(params.get('seed')) : undefined;
   if (params.get('theme') === 'light' || params.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', params.get('theme'));
   if (params.get('level') && LEVEL_IDS.indexOf(params.get('level')) >= 0 && params.get('level') !== 'custom') settings.level = params.get('level');
-  if (root.ZimiShell && root.ZimiShell.daily) settings.level = 'intermediate';   // a daily is intermediate (kept only if the player picks a level)
+  if (daily) settings.level = 'intermediate';   // a daily is intermediate (kept only if the player picks a level)
 
   var game, cells = [], flagMode = false, cursor = -1, press = null, tickTimer = 0, startedAt = 0, finalMs = 0;
   var els = {
@@ -323,7 +325,7 @@
     updateCounter();
   }
   function recordWin(last) {
-    var lv = settings.level, flags = [];
+    var lv = daily ? 'intermediate' : settings.level, flags = [];
     cells.forEach(function (c, i) { if (game.mine[i]) flags.push(i); });
     ripple(flags, last, 'planted');
     if (lv !== 'custom' && LEVEL_IDS.indexOf(lv) >= 0 && (!best[lv] || finalMs < best[lv])) { best[lv] = finalMs; save(BEST_KEY, best); }
@@ -359,7 +361,8 @@
   }
 
   function newGame() {
-    var lv = settings.level === 'custom' ? settings.custom : LEVELS[settings.level];
+    var level = daily ? 'intermediate' : settings.level;   // every board of a daily is the day's intermediate one
+    var lv = level === 'custom' ? settings.custom : LEVELS[level];
     var resize = !game || game.rows !== lv.rows || game.cols !== lv.cols;
     stopClock(); startedAt = 0; finalMs = 0; cursor = -1; press = null;
     game = createGame(lv.rows, lv.cols, lv.mines, fixedSeed);
