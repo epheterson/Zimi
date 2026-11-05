@@ -2775,12 +2775,12 @@ function _aePlanetCredit() {
 }
 
 // ── The minimap ──
-// Near a planet, a moon, a probe or the Sun, a corner disc shows the whole system from above the ecliptic: every orbit,
-// every planet as the 2D orrery draws it (its painters, almanac-orrery.js), and you, an arrow where the camera is,
-// pointing the way it looks.
+// Everywhere but the Planets view itself (where it would be the view twice), a corner disc shows the whole system from
+// above the ecliptic: every orbit, every planet as the 2D orrery draws it (its painters, almanac-orrery.js), and you,
+// an arrow where the camera is, pointing the way it looks; at the Earth or the Moon, the arrow on the Earth.
 var AE_MINI_FILL = 0.46, AE_MINI_SHIP_PX = 6, AE_MINI_ORBIT_ALPHA = 0.28;
 function _aeMiniShown() {
-  return !!(_ae.gl && _ae.gl.ecl) && _ae.preset !== 'planets' && _ae.target !== 'earth' && _ae.target !== 'moon' && _ae.target !== 'iss' && !_ae.hand;
+  return !!(_ae.gl && _ae.gl.ecl) && _ae.preset !== 'planets' && !_ae.hand;
 }
 function _aeDrawMini() {
   var btn = _aeById('ae-mini'), on = _aeMiniShown() && typeof _orreryPaintPlanets === 'function';
@@ -2802,8 +2802,9 @@ function _aeDrawMini() {
   }
   _orreryPaintSun(g, half, half, W, _ae.miniSun.r);
   var placed = _orreryPaintPlanets(g, half, half, W, _jdToJulianCentury(jd), 0, dpr, dpr, names, { plain: true });
+  var ringed = _ae.target === 'moon' || _ae.target === 'iss' ? 'earth' : _aeHostOf(_ae.target);   // the planet whose system you are in
   placed.forEach(function (r) {
-    if (r.name.toLowerCase() !== _ae.target) return;
+    if (r.name.toLowerCase() !== ringed) return;
     g.strokeStyle = AE_AMBER_HEX; g.lineWidth = dpr;
     g.beginPath(); g.arc(r.x * dpr, r.y * dpr, r.r * dpr + 2.5 * dpr, 0, 2 * Math.PI); g.stroke();
   });

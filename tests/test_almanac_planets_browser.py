@@ -237,7 +237,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             pg.click("#ae-go [data-ae-go='saturn']")
             assert pg.evaluate("document.getElementById('ae-go').hidden")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'saturn'; }", timeout=60_000, polling=200)
-            assert pg.evaluate("Object.keys(_ae.gl.planets).every(k => !_ae.gl.planets[k].orbit || !_ae.gl.planets[k].orbit.visible)")
+            # The flight's orbits fade out shortly after it lands (Orbits: While flying).
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return Object.keys(_ae.gl.planets).every(k => !_ae.gl.planets[k].orbit || !_ae.gl.planets[k].orbit.visible); }", timeout=10_000, polling=100)
             assert not pg.is_visible("#ae-scale")
             pg.evaluate("_aePreset('mars')")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'mars' && _ae.gl.planets.mars.uni.mapped.value === 1; }", timeout=60_000, polling=200)
@@ -520,9 +521,10 @@ def test_every_destination_arrives_with_its_card(served):
 
 
 def test_the_row_follows_where_the_view_is(served):
-    """The quick row says where the view can go from here: home's five at the Earth; at Jupiter, Jupiter's moons, an
-    Orbits switch that draws their orbits, and the way back; at the Moon, its landings. Always one line (it scrolls
-    sideways past its width, Go to at its end inside the screen)."""
+    """The quick row is the body's path from the Sun, then its own: Moon is Sun, Earth, Moon, Landings; Io is Sun,
+    Jupiter, then Jupiter's moons; Jupiter the same; a probe is Sun, the probe, the body it is near; the Earth is Sun,
+    Earth, Satellites, Moon. Then the place just left (if not on it already), the Planets, Go to. No Orbits pill.
+    Always one line (it scrolls sideways past its width, Go to at its end inside the screen)."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -534,28 +536,68 @@ def test_the_row_follows_where_the_view_is(served):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
             row = "() => Array.from(document.querySelectorAll('#ae-views .ae-btn[data-ae-view]')).map(b => b.getAttribute('data-ae-view'))"
+            go = lambda k: (pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k),
+                            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100))
             assert pg.evaluate(row) == ["sun", "earth", "sats", "moon", "planets"]
-            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('jupiter');")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
-            keys = pg.evaluate(row)
-            assert {"io", "europa", "ganymede", "callisto", "orbits", "planets", "earth"} <= set(keys), keys
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            go("moon")
+            assert pg.evaluate(row) == ["sun", "earth", "moon", "landings", "planets"]
+            go("jupiter")
+            jup = ["sun", "jupiter", "io", "europa", "ganymede", "callisto"]
+            assert pg.evaluate(row) == jup + ["moon", "planets"]
             line = pg.evaluate("""() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.getBoundingClientRect());
                 var go = document.getElementById('ae-go-btn').getBoundingClientRect();
                 return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }""")
             assert line == {"tops": 1, "goIn": True}, line
-            assert not pg.evaluate("_ae.gl.planets.io.orbit.visible")
-            pg.click("#ae-views [data-ae-view='orbits']")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.gl.planets.io.orbit.visible; }", timeout=10_000, polling=100)
-            assert pg.get_attribute("#ae-views [data-ae-view='orbits']", "aria-pressed") == "true"
-            # The Sun: the Earth stands after it, then the place just left (Jupiter), then the Planets.
-            pg.evaluate("_ae.fly = null; _aePreset('sun');")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
-            assert pg.evaluate(row) == ["sun", "earth", "jupiter", "planets"], pg.evaluate(row)
-            pg.evaluate("_ae.fly = null; _aePreset('moon');")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
-            assert "landings" in pg.evaluate(row)
-            pg.click("#ae-views [data-ae-view='landings']")
-            assert not pg.evaluate("document.getElementById('ae-go').hidden")
+            go("io")
+            assert pg.evaluate(row) == jup + ["planets"]   # Jupiter, the place just left, is on it already
+            go("voyager1")
+            assert pg.evaluate(row) == ["sun", "voyager1", "io", "planets"]
+            go("juno")
+            assert pg.evaluate(row)[:3] == ["sun", "juno", "jupiter"], pg.evaluate(row)
+            go("earth")
+            assert pg.evaluate(row) == ["sun", "earth", "sats", "moon", "juno", "planets"]
+            go("sun")
+            assert pg.evaluate(row) == ["sun", "earth", "planets"]
+            assert not pg.query_selector("#ae-views [data-ae-view='orbits']")
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_orbits_is_a_setting_shown_while_flying(served):
+    """Orbits live in the gear: While flying (the default) shows the orbits of the bodies a flight involves during it and
+    fades them out after it lands; Always keeps the system in view drawn; Off draws none. The Planets view always has
+    the planets' orbits. The choice is remembered on this device."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            vis = "(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); return _ae.gl.planets[k].orbit.visible; }"
+            assert pg.evaluate("_aeOrbitsMode()") == "flying"
+            pg.evaluate("_aePreset('jupiter')")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.fly; }", timeout=10_000, polling=50)
+            assert pg.evaluate(vis, "jupiter") and pg.evaluate(vis, "io")   # the system it flies to, on the way
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=120_000, polling=100)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); return !_ae.gl.planets.io.orbit.visible; }", timeout=10_000, polling=100)
+            # Always, from the gear: there, and remembered.
+            pg.click("#ae-gear")
+            pg.click("input[name='ae-orbits'][value='always']")
+            assert pg.evaluate("localStorage.getItem('zimi_ae_orbits')") == "always"
+            assert pg.evaluate(vis, "io") and pg.evaluate(vis, "jupiter")
+            pg.click("input[name='ae-orbits'][value='off']")
+            assert not pg.evaluate(vis, "io")
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
+            assert pg.evaluate(vis, "saturn")   # the Planets view keeps its orbits, whatever the setting
             assert not errors, errors
             ctx.close()
         finally:
@@ -777,6 +819,185 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             assert got["aim"] > 0.999, got
             assert 1.5 < got["spans"] < 6, got
             assert got["dot"] < 0.01 and not got["trail"], got
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_moon_s_landings_on_the_first_tap(served):
+    """At the Moon its landing table is there before Landings is tapped: the first tap opens Go to at the landings with
+    their heading in view. Until then the Moon names only Apollo's six; opened, every landing on the near side."""
+    from playwright.sync_api import sync_playwright
+
+    apollo = {"Apollo 11", "Apollo 12", "Apollo 14", "Apollo 15", "Apollo 16", "Apollo 17"}
+    labels = "() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => b.textContent)"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            assert pg.evaluate("_aeLm === null")
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('moon');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeLm; }", timeout=60_000, polling=100)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return (" + labels + ")().length > 0; }", timeout=30_000, polling=200)
+            quiet = pg.evaluate(labels)
+            assert set(quiet) <= apollo, quiet
+            pg.click("#ae-views [data-ae-view='landings']")
+            seen = pg.evaluate("""() => { var s = document.getElementById('ae-go'), h = s.querySelector('h4[data-g="alm_go_landings"]');
+                if (!h) return null; var a = s.getBoundingClientRect(), b = h.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; }""")
+            assert seen is True, seen
+            pg.click("#ae-go-btn")   # put away: the Moon now names all its landings in view
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return (" + labels + ")().some(n => !/^Apollo/.test(n)); }", timeout=30_000, polling=200)
+            assert len(pg.evaluate(labels)) > len(quiet)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_in_the_planets_view_a_tap_on_jupiter_is_jupiter(served):
+    """In the Planets view a moon sits on its planet: not a target. A tap on Jupiter flies to Jupiter."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
+            for k in ("jupiter", "saturn"):
+                at = pg.evaluate("(k) => { _aeUpdate(_aeDisplayMs()); var s = _aeProject(_aeBodyPos(k)); return [s.x, s.y]; }", k)
+                for dx, dy in ((0, 0), (3, 2), (-2, 3)):
+                    assert pg.evaluate("(a) => _aeBodyAt(a[0], a[1])", [at[0] + dx, at[1] + dy]) == k
+            at = pg.evaluate("() => { var s = _aeProject(_aeBodyPos('jupiter')), r = document.getElementById('ae-canvas').getBoundingClientRect(); return { x: r.left + s.x, y: r.top + s.y }; }")
+            pg.mouse.click(at["x"], at["y"])
+            pg.wait_for_function("() => _ae.target !== 'earth' && _ae.preset !== 'planets'", timeout=10_000, polling=100)
+            assert pg.evaluate("_ae.target") == "jupiter"
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_nothing_is_drawn_through_a_nearer_body(served):
+    """A moon passing behind its planet is hidden, its mark and its name too; the same rule for anything behind the Sun
+    (as drawn) or behind a nearer planet."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('jupiter');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
+            # Step through two days at Jupiter (Io goes round in 1.77): when Io is behind Jupiter from here, nothing of it.
+            got = pg.evaluate("""() => { var t0 = _aeDisplayMs(), hits = 0, wrong = [];
+                for (var t = t0; t < t0 + 2 * 86400000; t += 15 * 60000) {
+                  _aeUpdate(t); _aeUpdate(t); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene);
+                  var c = _ae.gl.camera.position, eye = [c.x, c.y, c.z], io = _aeBodyPos('io'), j = _aeBodyPos('jupiter');
+                  if (!(_aeLen(_aeSub(io, eye)) > _aeLen(_aeSub(j, eye)) && _aeBehindSphere(io, j, AE_TARGETS.jupiter.surface))) continue;
+                  hits++;
+                  var el = document.getElementById('ae-bm-io');
+                  if (_ae.gl.planets.io.mesh.visible || (_ae.marksDrawn || []).some(m => m.body === 'io') || (el && !el.hidden)) wrong.push(t);
+                }
+                return { hits: hits, wrong: wrong }; }""")
+            assert got["hits"] > 0, got
+            assert got["wrong"] == [], got
+            # And the Sun: a point straight behind it, as drawn, is behind it.
+            behind = pg.evaluate("""() => { var c = _ae.gl.camera.position, eye = [c.x, c.y, c.z], s = _aeSunShown(_ae.scene);
+                var p = _aeAdd(s, _aeScale(_aeNorm(_aeSub(s, eye)), 50)), q = _aeAdd(p, [0, 0, 10 * AE_SUN_SHOW_R]);
+                return [_aeBehindAny('mars', p), _aeBehindAny('mars', q)]; }""")
+            assert behind == [True, False], behind
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_voyager_carries_its_golden_record(served):
+    """Voyager's model carries the record itself: a round gold disc on the bus with the Almanac's own picture of its
+    cover, and a tap on it opens the Almanac's Golden Record. The craft has a gentle fill beside the Sun's light, so far
+    out its shape still reads."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            pg.evaluate("_ae.fly = null; _aePreset('voyager1');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); var I = _ae.gl.crafts && _ae.gl.crafts.voyager1; return !_ae.fly && !!I && I.root.visible && !!I.record && I.record.material.uniforms.mapped.value === 1; }", timeout=60_000, polling=200)
+            assert pg.evaluate("_ae.gl.crafts.voyager1.uni.fill.value") > 0
+            assert pg.evaluate("AE_RECORD_IMG") == "/static/golden-record/cover.jpg"   # the picture the Golden Record section shows
+            assert pg.evaluate("!!_ae.gl.crafts.voyager1.record.material.uniforms.map.value")
+            pg.evaluate("""() => { window._grOpened = 0; window._scrollToGoldenRecord = function () { window._grOpened++; }; }""")
+            # Turn the view so the record faces the camera, then tap it.
+            at = pg.evaluate("""() => { var I = _ae.gl.crafts.voyager1, c = I.record.userData.at;
+                I.root.updateMatrixWorld(true);
+                var w = new _ae.gl.THREE.Vector3(c[0], c[1], c[2]).applyMatrix4(I.root.matrixWorld), o = new _ae.gl.THREE.Vector3(c[0] + 1, c[1], c[2]).applyMatrix4(I.root.matrixWorld);
+                var n = _aeNorm([o.x - w.x, o.y - w.y, o.z - w.z]), ae = _aeAzElOf(n);
+                _ae.az = ae.az; _ae.el_ = ae.el; _aeUpdate(_aeDisplayMs()); _ae.gl.camera.updateMatrixWorld(); I.root.updateMatrixWorld(true);
+                w = new _ae.gl.THREE.Vector3(c[0], c[1], c[2]).applyMatrix4(I.root.matrixWorld);
+                var s = _aeProject([w.x, w.y, w.z]), r = document.getElementById('ae-canvas').getBoundingClientRect();
+                return { x: r.left + s.x, y: r.top + s.y }; }""")
+            pg.screenshot(path=os.environ.get("ALM_SHOT_DIR", "/tmp") + "/voyager-record.png") if os.environ.get("ALM_SHOT_DIR") else None
+            pg.mouse.click(at["x"], at["y"])
+            pg.wait_for_function("() => window._grOpened === 1", timeout=10_000)
+            pg.wait_for_function("() => !_aeIsOpen", timeout=30_000)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+@pytest.mark.parametrize("width", [360, 1280])
+def test_the_minimap_is_always_there(served, width):
+    """The little solar system is in the corner in every state of the view (the Earth, its satellites, the Moon, a
+    planet, a moon, a probe, the Sun, and in flight), on a phone and a desktop, but not over the Planets view itself;
+    it never covers the way back or the date."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br, width)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("_aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            clear = """() => { var m = document.getElementById('ae-mini').getBoundingClientRect();
+                return ['ae-back', 'ae-when-col', 'ae-now'].every(function (id) { var e = document.getElementById(id); if (!e || !e.offsetParent) return true;
+                  var r = e.getBoundingClientRect(); return r.right <= m.left || r.left >= m.right || r.bottom <= m.top || r.top >= m.bottom; }); }"""
+            shown = "() => { _ae.dirty = true; _aeKick(); return !document.getElementById('ae-mini').hidden; }"
+            for k in ("earth", "sats", "moon", "jupiter", "io", "voyager1", "sun"):
+                pg.evaluate("(k) => { window._almReduceMotion = undefined; _aePreset(k); }", k)
+                if k == "jupiter":   # in flight too
+                    pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.fly; }", timeout=10_000, polling=50)
+                    assert pg.evaluate(shown), "in flight"
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=120_000, polling=100)
+                assert pg.evaluate(shown), k
+                assert pg.evaluate(clear), k
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && document.getElementById('ae-mini').hidden; }", timeout=60_000, polling=100)
             assert not errors, errors
             ctx.close()
         finally:
