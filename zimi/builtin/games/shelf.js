@@ -163,12 +163,11 @@
   var script = doc.currentScript;
   var base = script && script.src ? new URL('.', script.src) : null;
 
-  var LIST_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><line x1="5" y1="3.5" x2="14" y2="3.5"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12.5" x2="14" y2="12.5"/><circle cx="2" cy="3.5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="2" cy="12.5" r="1"/></svg>';
-  var GRID_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="2" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="2" width="4.5" height="4.5" rx="1"/><rect x="2" y="9.5" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1"/></svg>';
   var SEARCH_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>';
   // Zimi's Home sort mark (static/app.js _LIB_SORT_SVG).
   var CHEVRON_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
-  var SORT_ICON = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>';
+  // The view and order button's mark: two sliders.
+  var OPT_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
   var VIEW_LABEL = { lobby: 'shelf.view.lobby', index: 'shelf.view.index' };
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // Where each region sits on world-land.js's 800 x 400 grid: [x, y, radius] spots.
@@ -317,7 +316,7 @@
   state.sec = defaultSection();
   if (state.sort !== 'sections') shelf.classList.add('sh-wait');
 
-  // ── Header: search, the order, and the view toggle ───────────────────────
+  // ── Header: search; the line below it: the room, the types, the view and order ──
   var header = shelf.querySelector('header');
   var tools = el('div', 'sh-tools');
   var search = el('label', 'sh-search', SEARCH_ICON);
@@ -327,42 +326,52 @@
   input.autocomplete = 'off';
   input.spellcheck = false;
   search.appendChild(input);
-  // Zimi's Home control: the order it is in beside a sort mark, the native select lying over it.
-  var sortWrap = el('label', 'sh-sort-wrap', SORT_ICON);
-  sortWrap.title = T('shelf.sortGames');
-  sortWrap.hidden = true;
-  var sortNow = el('span', 'sh-sort-now', SORT_LABEL[state.sort]);
-  var sortSel = el('select', 'sh-sort');
-  sortSel.setAttribute('aria-label', T('shelf.sortGames'));
-  SORTS.forEach(function (k) {
-    var o = el('option', '', SORT_LABEL[k]);
-    o.value = k;
-    sortSel.appendChild(o);
+  // The view and the order are set now and then, not every visit: one small button at the end of the line opens both, so the
+  // line keeps its width for the games. Its mark turns accent while an order other than Sections is on.
+  var optBtn = el('button', 'sh-opt', OPT_ICON);
+  optBtn.type = 'button';
+  optBtn.title = T('shelf.viewSort');
+  optBtn.setAttribute('aria-label', T('shelf.viewSort'));
+  optBtn.setAttribute('aria-haspopup', 'dialog');
+  var sortReady = false;
+  function optRow(label, choices, now, pick) {
+    var row = el('div', 'sh-opt-row');
+    row.appendChild(el('h3', 'gs-subhead', '')).textContent = label;
+    var seg = el('div', 'sh-opt-seg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', label);
+    choices.forEach(function (c) {
+      var b = el('button', 'ar-btn');
+      b.type = 'button';
+      b.textContent = c[1];
+      b.setAttribute('aria-pressed', String(c[0] === now));
+      b.addEventListener('click', function () { pick(c[0]); });
+      seg.appendChild(b);
+    });
+    row.appendChild(seg);
+    return row;
+  }
+  optBtn.addEventListener('click', function () {
+    if (!root.ZimiShell || !root.ZimiShell.sheet) return;
+    var api, body = [optRow(T('shelf.view'), [['lobby', T(VIEW_LABEL.lobby)], ['index', T(VIEW_LABEL.index)]], state.view, function (v) { api.close(); setView(v); })];
+    if (sortReady) body.push(optRow(T('shelf.sortGames'), SORTS.map(function (k) { return [k, SORT_LABEL[k]]; }), state.sort, function (k) { api.close(); setSort(k); }));
+    api = root.ZimiShell.sheet({ title: T('shelf.viewSort'), body: body, actions: [{ label: T('shell.close'), primary: true }] });
   });
-  sortSel.value = state.sort;
-  sortSel.addEventListener('change', function () { setSort(sortSel.value); });
-  sortWrap.appendChild(sortNow);
-  sortWrap.appendChild(sortSel);
-  var toggle = el('span', 'ar-view-toggle');
-  toggle.setAttribute('role', 'group');
-  toggle.setAttribute('aria-label', T('shelf.view'));
-  var viewBtns = {};
-  [['index', LIST_ICON], ['lobby', GRID_ICON]].forEach(function (v) {
-    var b = el('button', 'ar-view-btn', v[1]);
-    b.type = 'button';
-    b.title = T(VIEW_LABEL[v[0]]);
-    b.setAttribute('aria-label', T(VIEW_LABEL[v[0]]));
-    b.addEventListener('click', function () { setView(v[0]); });
-    viewBtns[v[0]] = b;
-    toggle.appendChild(b);
-  });
+  // The room, at the start of the line: one pill showing it, the native list of rooms lying over it (kept like the view).
+  var roomPick = el('label', 'sh-room-pick');
+  var roomNow = el('span', 'sh-room-now', '');
+  var roomSel = el('select', 'sh-room-sel');
+  roomSel.setAttribute('aria-label', T('shelf.room'));
+  ROOMS.forEach(function (id) { var o = el('option', '', ''); o.value = id; o.textContent = T('shelf.room.' + id); roomSel.appendChild(o); });
+  roomSel.addEventListener('change', function () { setRoom(roomSel.value); });
+  roomPick.appendChild(roomNow);
+  roomPick.insertAdjacentHTML('beforeend', CHEVRON_ICON);
+  roomPick.appendChild(roomSel);
   // In Zimi the top bar is the search box (Zimi calls shelfSearch / shelfGo below), so the page has none of its own:
   // one search box. Out of Zimi (a ZIM opened by itself) the page keeps its box.
   var hosted = !!root.parent && root.parent !== root;
-  if (!hosted) tools.appendChild(search);
-  tools.appendChild(sortWrap);
-  tools.appendChild(toggle);
-  header.appendChild(tools);
+  if (!hosted) header.appendChild(search);
+  tools.appendChild(optBtn);
 
   // ── Body: the rail (section chips), the top (the game table, Game of the day), the list ──
   var body = el('div', 'sh-body');
@@ -370,6 +379,7 @@
   var nav = el('nav', 'sh-nav');
   nav.setAttribute('aria-label', T('shelf.head.sections'));
   var chipBar = el('div', 'sh-bar');
+  chipBar.appendChild(roomPick);
   chipBar.appendChild(nav);
   rail.appendChild(chipBar);
   var main = el('div', 'sh-main');
@@ -398,25 +408,6 @@
     nav.appendChild(b);
     return b;
   }
-  // The rooms lead the row (All is everything: every room and every type); a room is kept like the view and the order.
-  var roomChips = {};
-  function roomChip(id) {
-    var b = el('button', 'sh-chip sh-room');
-    b.type = 'button';
-    b.setAttribute('aria-pressed', 'false');
-    b.appendChild(doc.createTextNode(T('shelf.room.' + id)));
-    var n = el('span', 'sh-chip-n', String(roomCount(id)));
-    b.appendChild(n);
-    b.addEventListener('click', function () { setRoom(id); });
-    roomChips[id] = { btn: b, n: n };
-    nav.appendChild(b);
-  }
-  function tilesInRoom(id) {
-    var seen = {};
-    sections.forEach(function (s) { s.tiles.forEach(function (t) { var p = tilePath.get(t); if (p && inRoom(id, meta(p), p)) seen[p] = 1; }); });
-    return Object.keys(seen).length;
-  }
-  function roomCount(id) { return id === 'all' ? total : tilesInRoom(id); }
   function setRoom(id) {
     state.room = id;
     state.sec = 'all';   // a room opens whole, and All is every game; a type chip then narrows it
@@ -427,9 +418,7 @@
   function buildChips() {
     nav.textContent = '';
     chips = {};
-    roomChips = {};
-    ROOMS.forEach(roomChip);
-    nav.appendChild(el('span', 'sh-chip-sep'));
+    chip('all', T('shelf.chip.allTypes'), total);   // every type (the room pill says which room)
     recentChip = chip('recent', T('shelf.chip.recent'), tableCount, 'sh-chip-recent');
     recentChip.hidden = !tableCount;
     nav.setAttribute('aria-label', SORT_HEAD[sortedNow()] || T('shelf.head.sections'));
@@ -545,8 +534,6 @@
     families.forEach(function (f) { f.node.hidden = !!defs; });
     shelf.dataset.sort = order;
     if (state.sec !== 'all' && state.sec !== 'recent' && !groups.some(function (g) { return g.id === state.sec; })) state.sec = defaultSection();
-    sortSel.value = state.sort;
-    sortNow.textContent = SORT_LABEL[state.sort];
     decorateAll();
     buildChips();
     apply();
@@ -561,7 +548,7 @@
   // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well.
   var wide = root.matchMedia('(min-width: 900px)');
   function placeTools() {
-    var target = hosted && !(state.view === 'index' && wide.matches) ? chipBar : header;
+    var target = state.view === 'index' && wide.matches ? header : chipBar;
     if (tools.parentNode !== target) target.appendChild(tools);
   }
   if (wide.addEventListener) wide.addEventListener('change', placeTools);
@@ -593,26 +580,32 @@
     shelf.dataset.view = state.view;
     shelf.dataset.sec = searching ? 'search' : state.sec;
     shelf.classList.add('sh-on');
-    // A phone's lobby header has room for one word beside the mark and the toggle.
+    // A phone's lobby header has room for one word beside the mark.
     input.placeholder = state.view === 'lobby' && root.matchMedia('(max-width: 699px)').matches ? T('shelf.searchShort') : T('shelf.searchN', { n: total });
-    VIEWS.forEach(function (v) { viewBtns[v].setAttribute('aria-pressed', String(v === state.view)); });
     Object.keys(chips).forEach(function (id) { chips[id].btn.setAttribute('aria-pressed', String(!searching && id === state.sec)); });
-    Object.keys(roomChips).forEach(function (id) { roomChips[id].btn.setAttribute('aria-pressed', String(id === state.room && !(id === 'all' && state.sec !== 'all' && !searching))); });
+    roomNow.textContent = T('shelf.room.' + state.room);
+    roomSel.value = state.room;
+    roomPick.classList.toggle('sh-room-on', state.room !== 'all');
     shelf.dataset.room = state.room;
-    var shown = 0;
+    var shown = 0, roomAll = 0;
     sections.concat(made).forEach(function (s) {
       if (groups.indexOf(s) < 0) { s.node.hidden = true; return; }
-      var n = 0;
+      var n = 0, inRoomN = 0;
       s.tiles.forEach(function (t) {
-        var hit = (!searching || words.get(t).indexOf(q) >= 0) && roomOf(t);
+        var room = roomOf(t), hit = room && (!searching || words.get(t).indexOf(q) >= 0);
         t.hidden = !hit;
         if (hit) n++;
+        if (room) inRoomN++;
       });
+      // A type chip counts what the room leaves of its group, and goes when the room leaves none.
+      if (chips[s.id]) { chips[s.id].n.textContent = String(inRoomN); chips[s.id].btn.hidden = !inRoomN; }
+      roomAll += inRoomN;
       var inSec = searching || state.sec === 'all' || state.sec === s.id;
       s.node.hidden = !inSec || n === 0;
       s.node.querySelector('.sh-count').textContent = String(n);
       if (inSec) shown += n;
     });
+    if (chips.all) chips.all.n.textContent = String(roomAll);
     var c = doc.querySelector('.ar-continue'), t = today();
     // The feed shows the table and the day's game on All only; Index keeps a resume row on every tab.
     var feedAll = state.sec === 'all';
@@ -691,7 +684,7 @@
       var m = meta(tilePath.get(t));
       if (m) words.set(t, w + ' ' + [m.region, ageText(m), m.kind, playersText(m), m.computer ? 'computer' : ''].join(' ').toLowerCase());
     });
-    sortWrap.hidden = false;
+    sortReady = true;
     shelf.classList.remove('sh-wait');
     if (state.sort === 'region') withLand(layout); else layout();
   }
