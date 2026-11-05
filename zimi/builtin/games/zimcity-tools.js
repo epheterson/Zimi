@@ -36,6 +36,9 @@ export function makeTools(map) {
   return t;
 }
 export function isDrawn(name) { return name in PER_TILE; }
+// A building put down one at a time (a plant, a station, the airport): dragged into place, not laid in a row as zones are.
+var ZONES = ['residential', 'commercial', 'industrial'];
+export function isSingle(name) { return !!BUILDINGS[name] && ZONES.indexOf(name) < 0; }
 export function sizeOf(name) { return BUILDINGS[name] ? BUILDINGS[name][2] : 1; }
 export function costOf(name) { return BUILDINGS[name] ? BUILDINGS[name][0] : PER_TILE[name]; }
 

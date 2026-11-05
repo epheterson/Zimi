@@ -1,7 +1,8 @@
 /* ZimCity: fingers, a mouse and keys on the map. Our own code, GPL-3.0.
 
-   One finger with no tool held pans; one finger with a tool lays a stroke (drawn tools along the drag, a building where
-   the finger lifts); two fingers pan and pinch and drop any stroke under way. A long press with no tool held inspects
+   One finger with no tool held pans; one finger with a tool lays a stroke (drawn tools along the drag, zones in a row, a
+   single building where the finger lifts: once the finger moves, that building's ghost rides just above it so the finger
+   never hides it, and letting go off the map puts nothing down); two fingers pan and pinch and drop any stroke under way. A long press with no tool held inspects
    the tile. A wheel zooms about the pointer. The keys move a cursor tile; Enter builds there and I inspects it.
    Everything goes out through the handlers: this file never changes the city. */
 
@@ -20,7 +21,8 @@ var ZOOM_MS = 220;
 function still() { return window.ZimiShell && window.ZimiShell.reducedMotion ? window.ZimiShell.reducedMotion() : false; }
 
 export function Input(view, h) {
-  // h: { tool(): name or '', stroke(tiles, done), cancel(), inspect(x, y), moved(), cursor(x, y) }
+  // h: { tool(): name or '', stroke(tiles, done), cancel(), inspect(x, y), moved(), cursor(x, y), lift(): px above the finger }
+  var lifted = false;   // a single building's ghost is riding above the finger
   var el = view.canvas, pts = new Map(), mode = null, start = null, last = null, press = 0, pinch = null, edge = null, raf = 0;
   var cursor = null, vel = { x: 0, y: 0, t: 0 }, glide = 0, downAt = 0, lastTap = null;
   function stopGlide() { if (glide) { cancelAnimationFrame(glide); glide = 0; } }
@@ -55,11 +57,14 @@ export function Input(view, h) {
     var dy = edge.y < EDGE_PX ? EDGE_PX - edge.y : edge.y > view.h - EDGE_PX ? view.h - EDGE_PX - edge.y : 0;
     if (dx || dy) {
       view.panBy(dx / EDGE_PX * EDGE_SPEED, dy / EDGE_PX * EDGE_SPEED);
-      h.stroke(view.tileAt(edge.x, edge.y), false);
+      h.stroke(aim(edge), false);
       h.moved();
       raf = requestAnimationFrame(edgeScroll);
     }
   }
+  // The tile a stroke means: under the finger, or under the ghost riding above it.
+  function aim(p) { return view.tileAt(p.x, lifted ? p.y - h.lift() : p.y); }
+  function offMap(p) { return p.x < 0 || p.y < 0 || p.x > view.w || p.y > view.h; }
   function twoFingers() {
     var a = Array.from(pts.values());
     return { mid: { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 }, dist: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1 };
@@ -84,7 +89,7 @@ export function Input(view, h) {
       mode = 'pan';
       press = setTimeout(function () { press = 0; if (mode === 'pan') { mode = 'inspected'; var t = view.tileAt(start.x, start.y); h.inspect(t.x, t.y); } }, LONG_PRESS_MS);
     } else {
-      mode = 'stroke';
+      mode = 'stroke'; lifted = false;
       h.stroke(view.tileAt(p.x, p.y), false);
     }
     h.moved();
@@ -113,7 +118,8 @@ export function Input(view, h) {
     }
     if (mode === 'stroke') {
       last = p; edge = p;
-      h.stroke(view.tileAt(p.x, p.y), false);
+      if (!lifted && e.pointerType !== 'mouse' && h.lift() && Math.hypot(p.x - start.x, p.y - start.y) > TAP_PX) lifted = true;
+      h.stroke(aim(p), false);
       if (!raf) raf = requestAnimationFrame(edgeScroll);
       h.moved();
     }
@@ -123,7 +129,11 @@ export function Input(view, h) {
     pts.delete(e.pointerId);
     clearPress();
     if (mode === 'pinch') { if (!pts.size) mode = null; return; }   // the finger left after a pinch starts nothing
-    if (mode === 'stroke') { stopEdge(); if (e.type === 'pointercancel') h.cancel(); else h.stroke(view.tileAt(last.x, last.y), true); }
+    if (mode === 'stroke') {
+      stopEdge();
+      if (e.type === 'pointercancel' || (h.lift() && offMap(last))) h.cancel(); else h.stroke(aim(last), true);
+      lifted = false;
+    }
     if (mode === 'pan' && e.type === 'pointerup') {
       var moved = Math.hypot(last.x - start.x, last.y - start.y), now = performance.now();
       if (moved <= TAP_PX && now - downAt < LONG_PRESS_MS) {

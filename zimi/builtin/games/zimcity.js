@@ -8,7 +8,7 @@
 import { Simulation } from './zimcity/engine/simulation.js';
 import { MapGenerator } from './zimcity/engine/mapGenerator.js';
 import * as Messages from './zimcity/engine/messages.js';
-import { View } from './zimcity-view.js';
+import { View, TILE } from './zimcity-view.js';
 import { Input } from './zimcity-input.js';
 import * as Tools from './zimcity-tools.js';
 import * as Words from './zimcity-words.js';
@@ -30,6 +30,7 @@ var STEPS_PER_SECOND = { 1: 10, 2: 20, 3: 60 };   // the engine's slow, normal a
 var MAX_STEPS_PER_FRAME = 4;
 var FAST_FRAME_MS = 28;              // slower than this, held for FAST_PATIENCE_MS, and Fast is too much for this device
 var FAST_PATIENCE_MS = 3000;
+var FINGER_PX = 28;                  // a ghost dragged by a finger rides this far above the fingertip
 var MESSAGE_MS = 4000;               // the least time one message stays before the next replaces it
 var SAVE_EVERY_MS = 20000;
 var SUMMARY_EVERY_MS = 5000;
@@ -96,6 +97,7 @@ function centreOnLand() {
     }
   }
   view.centreOn(best.x, best.y);
+  view.keepInside();
 }
 
 // ── what the engine says ──
@@ -253,7 +255,8 @@ function heldLine(r) {
 // ── strokes: the ghost while the finger is down, the city changed when it lifts ──
 function strokeTiles(tile) {
   if (!stroke) { stroke = [[tile.x, tile.y]]; return stroke; }
-  if (!Tools.isDrawn(held)) return Tools.row(held, stroke[0], [tile.x, tile.y]);   // zones and buildings side by side
+  if (Tools.isSingle(held)) return (stroke = [[tile.x, tile.y]]);   // a single building follows the finger
+  if (!Tools.isDrawn(held)) return Tools.row(held, stroke[0], [tile.x, tile.y]);   // zones side by side
   var last = stroke[stroke.length - 1];
   if (last[0] !== tile.x || last[1] !== tile.y) stroke = stroke.concat(Tools.steps(last, [tile.x, tile.y]));
   return stroke;
@@ -573,6 +576,7 @@ var input = new Input(view, {
   cancel: function () { stroke = null; view.ghost = null; if (held) Tools.drop(city, held); heldLine(); },
   inspect: function (x, y) { inspectSheet(sheets, x, y); },
   hover: onHover,
+  lift: function () { return held && Tools.isSingle(held) ? Tools.sizeOf(held) * TILE * view.cam.s / 2 + FINGER_PX : 0; },
   cursor: function (x, y) { view.cursor = x === null || x === undefined ? null : { x: x, y: y }; if (view.cursor) { onHover(view.cursor); } },
   moved: function () {}
 });
@@ -583,7 +587,7 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, voice: function () { voiceAt = 0; voices(performance.now()); } };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: unpack });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }

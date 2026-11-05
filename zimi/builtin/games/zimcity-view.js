@@ -113,6 +113,12 @@ View.prototype.clamp = function () {
   c.x = vw >= ww ? (ww - vw) / 2 : Math.max(-m, Math.min(ww - vw + m, c.x));
   c.y = vh >= wh ? (wh - vh) / 2 : Math.max(-m, Math.min(wh - vh + m, c.y));
 };
+// The camera pulled wholly inside the city (a new city opens on its land, never on the margin past its edge).
+View.prototype.keepInside = function () {
+  var c = this.cam, map = this.city.map, vw = this.w / c.s, vh = this.h / c.s, ww = map.width * TILE, wh = map.height * TILE;
+  if (vw < ww) c.x = Math.max(0, Math.min(ww - vw, c.x));
+  if (vh < wh) c.y = Math.max(0, Math.min(wh - vh, c.y));
+};
 View.prototype.centreOn = function (tx, ty) {
   this.cam.x = (tx + 0.5) * TILE - this.w / this.cam.s / 2;
   this.cam.y = (ty + 0.5) * TILE - this.h / this.cam.s / 2;

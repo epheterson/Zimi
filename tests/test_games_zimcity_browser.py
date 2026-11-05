@@ -305,6 +305,17 @@ def test_a_new_city_opens_on_open_ground_with_the_first_step(browser, site):
     assert pg.wait_for_selector("#cy-msg").text_content() == "Lay a road: choose Road and drag"
 
 
+def test_a_city_whose_land_is_at_its_edge_opens_on_land_not_past_the_edge(browser, site):
+    """The open ground is the bottom rows: the first view sits on them, with none of the margin past the map showing."""
+    pg = phone(browser, site)
+    got = pg.evaluate("""() => { const z = window.__zimcity, map = z.city.map, v = z.view;
+      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) map.setTile(x, y, y >= map.height - 16 ? 0 : 2, 0);
+      z.land();
+      const a = v.tileAt(0, 0), b = v.tileAt(v.w - 1, v.h - 1);
+      return { a, b, w: map.width, h: map.height }; }""")
+    assert got["a"]["y"] >= 0 and got["b"]["y"] < got["h"] and got["b"]["y"] == got["h"] - 1, got
+
+
 def test_keep_open_and_delete_a_city(browser, site):
     pg = phone(browser, site)
     pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
@@ -469,3 +480,89 @@ def test_the_citizens_speak_in_their_own_names(browser, site):
     pg = phone(browser, site)
     pg.evaluate("() => window.__zimcity.voice()")
     pg.wait_for_function("() => /^(Dale Pemberton|Vivian Crane|Juniper Ash|Gordon Plumb): “.+”$/.test(document.getElementById('cy-msg').textContent)", timeout=10000)
+
+
+PLANTS = "() => { const m = window.__zimcity.city.map, out = []; for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) if (m.getTileValue(x, y) === 750) out.push([x, y]); return out; }"
+
+
+def hold_more(pg, label):
+    pg.click('.cy-tool[data-tool="more"]')
+    pg.click(OURS + ' .cy-more-tool >> text="%s"' % label)
+
+
+def test_a_plant_rides_above_the_finger_and_goes_down_where_it_is_let_go(browser, site):
+    """A single building is dragged into place, not laid in a row: one plant, where its ghost was when the finger
+    lifted, which is above the finger (the finger never hides it)."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    hold_more(pg, "Coal plant")
+    x0, y0 = box["w"] * 0.3, box["top"] + box["h"] * 0.72
+    x1, y1 = box["w"] * 0.6, box["top"] + box["h"] * 0.68
+    before = funds(pg)
+    touch(pg, "touchStart", [(x0, y0)])
+    for k in range(1, 9):
+        touch(pg, "touchMove", [(x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8)])
+        pg.wait_for_timeout(16)
+    want = pg.evaluate("([x, y]) => { const v = window.__zimcity.view, lift = 4 * 16 * v.cam.s / 2 + 28, r = v.canvas.getBoundingClientRect(), t = v.tileAt(x - r.left, y - r.top - lift); return [t.x, t.y]; }", [x1, y1])
+    ghost = pg.evaluate("() => window.__zimcity.view.ghost")
+    assert ghost["ok"] and len(ghost["boxes"]) == 1, ghost
+    touch(pg, "touchEnd", [])
+    pg.wait_for_timeout(120)
+    assert before - funds(pg) == 3000
+    assert pg.evaluate(PLANTS) == [want], (pg.evaluate(PLANTS), want)
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-dragged-plant.png"))
+
+
+def test_a_plant_let_go_off_the_map_puts_nothing_down(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    hold_more(pg, "Coal plant")
+    before = funds(pg)
+    x = box["w"] / 2
+    stroke(pg, [(x, box["top"] + box["h"] * 0.6 + d) for d in range(0, int(box["h"] * 0.4) + 60, 20)])   # down onto the tray
+    assert funds(pg) == before and pg.evaluate(PLANTS) == []
+    assert pg.evaluate("() => window.__zimcity.view.ghost") is None
+
+
+def safe_area(pg, bottom, left=0, right=0, top=0):
+    pg.cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": top, "bottom": bottom, "left": left, "right": right}})
+    pg.wait_for_timeout(150)
+
+
+LOWEST_CONTROL = "() => Math.max(...[...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().bottom))"
+
+
+def test_the_tray_stays_clear_of_the_home_indicator(browser, site):
+    pg = phone(browser, site)
+    safe_area(pg, 34, top=47)
+    assert pg.evaluate(LOWEST_CONTROL) <= 844 - 34
+    pg.set_viewport_size({"width": 844, "height": 390})
+    safe_area(pg, 21, left=47, right=47)
+    assert pg.evaluate(LOWEST_CONTROL) <= 390 - 21
+    sides = pg.evaluate("() => { const f = document.getElementById('cy-funds').getBoundingClientRect(), t = [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect()); return { left: f.left, right: Math.max(...t.map((r) => r.right)) }; }")
+    assert sides["left"] >= 47 and sides["right"] <= 844 - 47, sides
+
+
+def test_inside_zimi_the_frame_gets_only_the_inset_it_reaches_into(browser, site):
+    """WebKit tells a frame its safe-area insets are 0, so the game reads Zimi's own and keeps the part its frame covers.
+    (Chromium hands a frame the screen's inset, so this places the frame 20 px above the bottom of a screen with a 34 px
+    indicator: the game must pad 14, not 34.)"""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    pg = ctx.new_page()
+    pg.goto(site + "zimi-host-test")   # any page of the same origin (Zimi's reader and its games share one)
+    ctx.new_cdp_session(pg).send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": 47, "bottom": 34, "left": 0, "right": 0}})
+    pg.evaluate("""(src) => { document.head.innerHTML = '<meta name="viewport" content="width=device-width, viewport-fit=cover">';
+      document.body.innerHTML = ''; document.body.style.margin = '0';
+      const f = document.createElement('iframe'); f.id = 'reader-frame'; f.src = src;
+      f.style.cssText = 'position:fixed;left:0;top:60px;width:100%;height:calc(100% - 80px);border:0'; document.body.appendChild(f); }""", site + "zimcity.html")
+    frame = None
+    for _ in range(100):
+        frame = next((f for f in pg.frames if f.url.endswith("zimcity.html")), None)
+        if frame:
+            break
+        pg.wait_for_timeout(50)
+    frame.wait_for_function("() => window.__zimcity && window.__zimcity.city && document.documentElement.classList.contains('gs-hosted')")
+    pad = frame.evaluate("() => { const f = document.querySelector('.cy-foot'), cs = getComputedStyle(f), probe = document.createElement('div'); probe.style.paddingTop = 'var(--sp-2)'; f.appendChild(probe); const sp = parseFloat(getComputedStyle(probe).paddingTop); probe.remove(); return parseFloat(cs.paddingBottom) - sp; }")
+    assert pad == 14, pad
+    ctx.close()
