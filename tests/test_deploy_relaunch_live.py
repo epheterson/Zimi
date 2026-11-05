@@ -109,7 +109,10 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
 
     server, engine = served
     with sync_playwright() as p:
-        br = getattr(p, engine).launch()
+        try:
+            br = getattr(p, engine).launch()
+        except Exception as e:  # CI installs only chromium
+            pytest.skip("%s not available: %s" % (engine, e))
         ctx = br.new_context(service_workers="allow", **p.devices["iPhone 13"])
         pg = ctx.new_page()
         pg.goto(server.base + "/#almanac")
@@ -143,10 +146,17 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         print(engine, "first launch after the deploy:", gens, "documents:", len(log), "after %.0fs" % (time.time() - t0))
         first = gens[-1]
         diag = None
+        by = None
+        try:
+            by = pg.evaluate("() => sessionStorage.getItem('zimi_update_by')")
+        except Exception:
+            pass
         if first != 1:
             diag = pg.evaluate("async () => { const r = await navigator.serviceWorker.getRegistration(); const st = w => w && w.state; return [st(r.installing), st(r.waiting), st(r.active), !!navigator.serviceWorker.controller, _BUILD, [...document.scripts].map(x=>x.src).filter(x=>/app\\.js/.test(x)).join(), (await caches.keys()).join(',')]; }")
         br.close()
-    assert first == 1 and time.time() - t0 < 14, (engine, gens, diag)
+    # The new code runs on the first launch, and its reload followed the new worker taking charge, never the page's
+    # 15 s wait for one that does not come (a slow CI runner can take longer than 14 s on the good path).
+    assert first == 1 and by != "timeout", (engine, gens, by, diag)
 
 
 def _kept_almanac_on_device(ctx, server):
@@ -167,7 +177,10 @@ def test_a_relaunch_inside_a_zim_address_has_the_new_build_by_the_second_start(s
 
     server, engine = served
     with sync_playwright() as p:
-        br = getattr(p, engine).launch()
+        try:
+            br = getattr(p, engine).launch()
+        except Exception as e:  # CI installs only chromium
+            pytest.skip("%s not available: %s" % (engine, e))
         ctx = br.new_context(service_workers="allow", **p.devices["iPhone 13"])
         _kept_almanac_on_device(ctx, server)
         server.deploy()

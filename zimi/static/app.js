@@ -21018,6 +21018,7 @@ var _BUILD = (window.__ZIMI_CONFIG && __ZIMI_CONFIG.build) || '';
 var _buildWaiting = ''; // the newer build heard: the page reloads when it may
 var _BUILD_QUIET_POLL_MS = 3000; // how often a build that is waiting looks for the page to go quiet
 var _BUILD_SW_WAIT_MS = 15000; // a worker that never takes charge does not hold the reload
+var _buildWorkerBy = '';
 var _UPDATE_RESUME_KEY = 'zimi_update_resume'; // sessionStorage: the article's place across the reload
 // sessionStorage: the build this tab last reloaded for. Reloaded and still on
 // the old one (a worker that never took charge served the old page), it does
@@ -21055,19 +21056,21 @@ function _workerBuild() {
 function _buildWorker() {
   var sw = navigator.serviceWorker;
   if (!sw || !sw.controller) return Promise.resolve();
-  return new Promise(function (done) {
-    sw.addEventListener('controllerchange', done, { once: true }); // listening before asking: no change slips between
-    setTimeout(done, _BUILD_SW_WAIT_MS);
+  return new Promise(function (resolve) {
+    // How the wait ended is kept (_buildWorkerBy): a reload that only waited out the timer is the slow path.
+    var done = function (by) { return function () { if (!_buildWorkerBy) { _buildWorkerBy = by; resolve(); } }; };
+    sw.addEventListener('controllerchange', done('change'), { once: true }); // listening before asking: no change slips between
+    setTimeout(done('timeout'), _BUILD_SW_WAIT_MS);
     _workerBuild().then(function (build) {
-      if (build === _buildWaiting) { done(); return; }
-      return sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done(); });
-    }).catch(done);
+      if (build === _buildWaiting) { done('build')(); return; }
+      return sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done('none')(); });
+    }).catch(done('error'));
   });
 }
 // Now if nothing is lost by it; else the next time the page is hidden.
 function _buildReload() {
   var go = function () {
-    try { sessionStorage.setItem(_UPDATE_TRIED_KEY, _buildWaiting); } catch (e) {}
+    try { sessionStorage.setItem(_UPDATE_TRIED_KEY, _buildWaiting); sessionStorage.setItem('zimi_update_by', _buildWorkerBy); } catch (e) {}
     _updateResumeKeep();
     location.reload();
   };
