@@ -418,7 +418,6 @@
 #almanac-head .alm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #almanac-head .alm-card-lbl { letter-spacing: 0.03em; }   /* three across: "Next full moon" fits the tile */
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
-.alm-sky-guess { margin: 10px 0 0; font-size: 11px; line-height: 1.4; color: var(--text3); text-align: center; text-wrap: balance; }
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
 .alm-sky-gear[aria-expanded="true"] { color: var(--amber); }
@@ -436,9 +435,9 @@
 .alm-sky-dial small { font-size: 10px; color: var(--text3); }
 /* Red night mode: the sky and what is written under it in deep red, so the eye stays dark-adapted. */
 .almanac-sky-wrap.sky-red canvas { background: #000; }
-.alm-sky-info.sky-red :is(.alm-sky-sub, .alm-card-lbl, .alm-sky-guess) { color: var(--text2); }
+.alm-sky-info.sky-red :is(.alm-sky-sub, .alm-card-lbl) { color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-sub, .almanac-sky-wrap.sky-red .alm-sky-set,
-.almanac-sky-wrap.sky-red .alm-card-lbl, .almanac-sky-wrap.sky-red .alm-sky-guess, .almanac-sky-wrap.sky-red .alm-sky-set-title { color: var(--text2); }
+.almanac-sky-wrap.sky-red .alm-card-lbl, .almanac-sky-wrap.sky-red .alm-sky-set-title { color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-dial small, .almanac-sky-wrap.sky-red .alm-sky-set-row { color: var(--text2); }
 .almanac-sky-wrap.sky-red input { accent-color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-set select { background: var(--surface2); color: var(--text2); border-color: var(--border); }

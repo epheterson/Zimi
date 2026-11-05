@@ -2323,8 +2323,7 @@ function _renderAlmanacContent() {
   // (the facts a person acts on, in the Moon's own grid; the ask for a place; its caption) belongs to the
   // Moon's block above it, the caption last, directly over the picture it describes (Eric, 2026-10-18). Its clock is the page's (the time machine); almanac-sky.js.
   html += '<div class="alm-sky-info">' +
-    '<div id="almanac-sky-guess"></div>' +
-    '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>' +
+    '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almSkyInviteHtml()) + '</div>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
@@ -5188,11 +5187,14 @@ function _almHereBtnHtml(cls) {
 // No place chosen yet: one line asking for it, with the two ways to give it
 // (where I am, or a search on the map). The sky and the tides both say it;
 // nothing pretends to stand somewhere.
-function _almPlaceInviteHtml() {
-  return '<p class="alm-place-invite"><span>' + _almEsc(t('alm_place_invite')) + '</span> ' +
+function _almPlaceInviteHtml(text) {
+  return '<p class="alm-place-invite"><span>' + _almEsc(text || t('alm_place_invite')) + '</span> ' +
     _almHereBtnHtml('') + ' ' +
     '<button type="button" class="alm-invite-btn" onclick="_almPlaceFind()">' + _almEsc(t('alm_place_find')) + '</button></p>';
 }
+// Under the sky the ask says what is being shown meanwhile (the place guessed from the time zone), once: one line and
+// its two buttons, not a guess line and then an ask under it.
+function _almSkyInviteHtml() { return _almPlaceInviteHtml(typeof _skyGuessText === 'function' ? _skyGuessText() : ''); }
 // The search on the map, brought into view.
 function _almPlaceFind() {
   var map = document.getElementById('almanac-sunmap');

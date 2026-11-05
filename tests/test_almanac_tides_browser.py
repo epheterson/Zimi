@@ -537,7 +537,7 @@ def test_without_a_place_one_line_invites_one(browser, served):
         assert pg.evaluate("_getLocation().stored") is False
         invite = pg.locator("#almanac-sky-invite .alm-place-invite")
         assert invite.is_visible()
-        assert "Choose your place" in invite.inner_text()
+        assert "Choose yours" in invite.inner_text()   # the guess and the ask, one line (#almanac-sky-guess is gone)
         # The sky says nothing of a place it was not given.
         pg.wait_for_function("() => _skyState && _skyState.eph", polling=POLL_MS)
         cap = pg.inner_text("#almanac-sky-cap")

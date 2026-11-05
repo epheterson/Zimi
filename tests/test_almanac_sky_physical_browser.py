@@ -474,9 +474,12 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
             "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
-        pg.wait_for_function("() => document.getElementById('almanac-sky-guess').innerText.length > 10", polling=POLL_MS)
-        text = pg.inner_text("#almanac-sky-guess")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-invite').innerText.length > 10", polling=POLL_MS)
+        text = pg.inner_text("#almanac-sky-invite")
         assert "guessed" in text.lower() and "Los Angeles" in text, text
+        # Said once: the guess is the ask's own line, with its two buttons, not a line and then another ask under it.
+        asks = pg.evaluate("() => [...document.querySelectorAll('.alm-sky-info p')].map(p => ({ t: p.innerText, b: p.querySelectorAll('button').length }))")
+        assert len(asks) == 1 and asks[0]["b"] == 2, asks
         assert not errors, errors
     finally:
         ctx.close()
@@ -487,7 +490,7 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
             "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         assert "guessed" not in text.lower(), text
         assert "moon" in text.lower(), text
         assert "sunrise" in text.lower() and "sunset" in text.lower(), text
@@ -679,7 +682,7 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
         _settle(pg, NIGHT)
         _drawn(pg)
         pg.wait_for_function("() => document.getElementById('almanac-sky-facts').innerText.length > 10", polling=POLL_MS)
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         # The rise or set card is two lines, the event and its time: no compass bearing (Eric, 2026-10-29).
         assert not re.search(r"\b(N|NE|E|SE|S|SW|W|NW|NNE|ENE|ESE|SSE|SSW|WSW|WNW|NNW) \d+\u00b0", text), text
         assert "guessed" not in text.lower() and "about" not in text.lower(), text
@@ -692,8 +695,8 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
     ctx, pg, errors = _almanac(browser, served, place=None, timezone_id="America/Chicago")
     try:
         _settle(pg, NIGHT)
-        pg.wait_for_function("() => document.getElementById('almanac-sky-guess').innerText.length > 10", polling=POLL_MS)
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-guess")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-invite').innerText.length > 10", polling=POLL_MS)
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
         assert "Chicago" in text and "about" not in text.lower(), text   # the guess is said once, under the tiles
         # The sunrise tile's time is Chicago's, not an Atlantic longitude's.

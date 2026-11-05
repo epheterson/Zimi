@@ -144,10 +144,11 @@ function _skyFacts(s) {
   var html = _skyFactCards(_skyFactRows(s, s.facts));
   if (el._html !== html && el.innerHTML !== html) el.innerHTML = html;
   el._html = html;
-  // Under the tiles, the word that the place is a guess.
-  var g = document.getElementById('almanac-sky-guess'), city = !s.stored && _skyZoneCity();
-  var gh = s.stored ? '' : '<p class="alm-sky-guess">' + _almEsc(city ? t('alm_sky_f_guess', { city: city }) : t('alm_sky_f_guess_nocity')) + '</p>';
-  if (g && g._html !== gh) { g.innerHTML = gh; g._html = gh; }
+}
+// The word that the place is a guess, said in the ask for a place under the tiles (_almSkyInviteHtml).
+function _skyGuessText() {
+  var city = _skyZoneCity();
+  return city ? t('alm_sky_f_guess', { city: city }) : t('alm_sky_f_guess_nocity');
 }
 
 // ══ The settings ════════════════════════════════════════════════════════

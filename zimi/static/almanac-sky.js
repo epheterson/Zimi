@@ -3108,7 +3108,7 @@ function _skyCaption(s) {
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.
   var inv = document.getElementById('almanac-sky-invite');
-  if (inv && inv._stored !== s.stored) { inv.innerHTML = s.stored ? '' : _almPlaceInviteHtml(); inv._stored = s.stored; }
+  if (inv && inv._stored !== s.stored) { inv.innerHTML = s.stored ? '' : _almSkyInviteHtml(); inv._stored = s.stored; }
 }
 
 // ══ Taps ═════════════════════════════════════════════════════════════════
