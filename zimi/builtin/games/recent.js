@@ -84,7 +84,7 @@
   // With nothing played yet the table offers these, in this order.
   var CLASSICS = ['chess.html', 'solitaire.html', 'checkers.html'];
 
-  var api = { ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago };
+  var api = { dailyOrder: dailyOrder, ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   root.ZimiRecent = api;
 
@@ -244,12 +244,18 @@
   // The Daily row: today's edition of every game that has one (ZimiShell.DAILY in shell.js), each tile opening it with the
   // server's day in its address, so everyone on this Zimi plays the same one. Those done today carry a tick and move to the end.
   // Over the row, one line: how many are done, and the streak.
+  // The two everyone looks for first lead the row; the rest keep the shelf's order.
+  function dailyOrder(games) {
+    var DAILY_FIRST = ['fiveletters.html', 'sudoku.html'];
+    var rank = function (g) { var i = DAILY_FIRST.indexOf(g.path); return i < 0 ? DAILY_FIRST.length : i; };
+    return games.map(function (g, i) { return [g, i]; }).sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; }).map(function (x) { return x[0]; });
+  }
   function dailySection(rows) {
     var S = root.ZimiShell;
     if (!S || !S.DAILY || !S.serverDay || !S.stats) return Promise.resolve(null);
     return S.serverDay().then(function (day) {
       var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [];
-      uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path]; }).forEach(function (g) {
+      dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path]; })).forEach(function (g) {
         var t = tileFor(g);
         if (!t) return;
         ownIds(t);

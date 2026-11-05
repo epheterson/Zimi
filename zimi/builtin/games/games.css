@@ -205,24 +205,32 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-search input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 @media (min-width: 700px) { .sh-search input { font-size: var(--fs-body); } }
 
-/* The view toggle: Zimi's own Home control (list and grid, one pressed). */
-.ar-view-toggle { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
-.ar-view-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 34px; padding: 0; background: none; border: none; color: var(--ink2); cursor: pointer; transition: background 0.15s, color 0.15s; }
-.ar-view-btn + .ar-view-btn { border-left: 1px solid var(--line); }
-.ar-view-btn:hover { color: var(--ink); background: var(--ground); }
-.ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
-@media (pointer: coarse) { .ar-view-btn { width: 44px; min-width: 44px; height: 44px; } .sh-search input { height: 44px; } }
 /* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
 @media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -9px -1px; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
-/* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
-.sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
-[dir="rtl"] .sh-bar .sh-nav { margin: 0 -16px 0 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+/* One line under the header: the room (a pill with its list lying over it), the type chips scrolling sideways, then one button
+   for the view and the order. Every control is a 44px target; nothing wraps at 360px. */
+.sh-room-pick { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; height: 32px; padding: 0 10px 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.sh-room-pick svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sh-room-pick.sh-room-on { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.sh-room-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sh-room-sel { position: absolute; inset: -7px 0; width: 100%; height: auto; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
+.sh-opt { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-inline-end: -8px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--ink2); cursor: pointer; }
+.sh-opt:hover { color: var(--ink); background: var(--ground); }
+.sh-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ar-shelf:not([data-sort="sections"]) .sh-opt { color: var(--accent); }
+.sh-opt-row + .sh-opt-row { margin-top: var(--sp-4); }
+.sh-opt-seg { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.sh-opt-seg .ar-btn { min-height: 44px; }
+.sh-opt-seg .ar-btn[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+@media (max-width: 699px) { .ar-shelf header .sh-search { flex: 1 0 100%; max-width: none; } }
+.sh-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 18px; }
+.sh-bar .sh-nav, [dir] .sh-bar .sh-nav { padding-inline: 2px 24px; }
+.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+[dir="rtl"] .sh-bar .sh-nav { margin: 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
 .sh-bar .sh-tools { flex: none; }
 @media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
 html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
-@media (max-width: 560px) { .sh-bar .sh-sort-now, .sh-bar .ar-view-btn[aria-pressed="true"] { display: none; } .sh-bar .ar-view-toggle { border: 0; background: none; } }
 /* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
 /* Sideways only: no vertical scroll or bounce (touch-action), and the padding is room for the focus ring and the chip's hit area, which the clip would otherwise cut. */
 .sh-nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; scrollbar-width: none; margin: -2px -16px 16px; padding: 4px 16px; }
@@ -324,7 +332,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 /* Index: rows, one section at a time. */
 @media (max-width: 899px) {
   [data-view="index"] .sh-tools { display: contents; }
-  [data-view="index"] .ar-view-toggle { margin-left: auto; }
   [data-view="index"] .sh-search { order: 3; flex: 1 0 100%; max-width: none; }
 }
 [data-view="index"] .sh-top { display: block; margin-bottom: 18px; }
@@ -375,17 +382,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-foot > p { margin: 0 0 8px; line-height: 1.5; }
 .ar-foot[open] > p { animation: sh-fam-in 0.24s ease-out; }
 
-/* The order control: Zimi's Home sort (a mark, the order it is in; the native select lies over it unseen). */
-.sh-sort-wrap { position: relative; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: var(--r-chip); font-size: var(--fs-small); font-weight: 500; color: var(--ink2); cursor: pointer; white-space: nowrap; }
-.sh-sort-wrap[hidden] { display: none; }
-.sh-sort-wrap:hover, .sh-sort-wrap:focus-within { color: var(--ink); }
-.sh-sort-wrap:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
-.sh-sort { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
-.ar-shelf:not([data-sort="sections"]) .sh-sort-wrap { color: var(--accent); }
-@media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; min-width: 44px; justify-content: center; } }
-/* A phone's lobby header has room for the mark only. */
-@media (max-width: 699px) { [data-view="lobby"] header .sh-tools { flex: 1 0 100%; } /* the controls take a row under the title, never over it */ [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; min-width: 44px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
-@media (max-width: 899px) { [data-view="index"] .sh-sort-wrap { margin-left: auto; } [data-view="index"] .ar-view-toggle { margin-left: 0; } }
 .sh-wait .sh-list { visibility: hidden; }
 
 /* What and when, on a tile: small chips. Index shows them on every row; any other order shows them in Lobby too. */
