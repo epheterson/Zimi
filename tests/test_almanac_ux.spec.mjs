@@ -180,9 +180,10 @@ for (const lang of ['', 'he']) {
     const idle = await page.locator('[data-ae-speed="60"]').evaluate((b) => getComputedStyle(b).backgroundColor);
     // (A software-rendered WebGL frame can be slow on a busy machine, and a
     // tap waits for the button to hold still across frames.)
-    await page.locator('#ae-eclipse').tap({ timeout: 30000 });
+    await page.locator('[data-ae-speed="60"]').tap({ timeout: 30000 });
+    await page.locator('[data-ae-speed="1"]').tap({ timeout: 30000 });
     await page.waitForTimeout(300);
-    const tapped = await page.locator('#ae-eclipse').evaluate((b) => getComputedStyle(b).backgroundColor);
+    const tapped = await page.locator('[data-ae-speed="60"]').evaluate((b) => getComputedStyle(b).backgroundColor);
     expect(tapped).toBe(idle);
     await ctx.close();
   });
@@ -315,7 +316,7 @@ test.describe('the Earth view', () => {
       await openAlmanac(page);
       await openEarth(page);
       await expect(page.locator('#ae-now')).toBeHidden();
-      await page.locator('#ae-eclipse').click();
+      await page.evaluate(() => _aeGoTo(Date.UTC(2024, 3, 8, 18, 17, 17)));   // away from now, at the 2024 total solar eclipse
       await expect(page.locator('#ae-now')).toBeVisible();
       const date = await page.locator('#ae-when b').boundingBox();
       const now = await page.locator('#ae-now').boundingBox();

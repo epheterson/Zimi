@@ -274,33 +274,6 @@ function _aeEqEq(scene) {
   return _aeRad(scene.sunEq.nut.dpsi * Math.cos(_aeRad(scene.sunEq.nut.eps)));
 }
 
-// ── The next eclipse after an instant ──
-// Which eclipses happen comes from the Almanac's own list (almanac.js
-// _computeEclipses, Meeus ch. 54, with its NASA-checked filters); the instant
-// of greatest eclipse is refined here from the same geometry the view draws.
-// A candidate the view's own geometry shows no eclipse at is passed over:
-// tens of millennia out the list's series and this view's part ways, and
-// the button landed on an ordinary day with nothing to see.
-var AE_ECLIPSE_MIN_AHEAD_MS = 60 * 60 * 1000;
-var AE_ECLIPSE_CANDIDATES = 6;
-var AE_NOON_HOUR = 12;
-function _aeNextEclipse(ms) {
-  if (typeof _computeEclipses !== 'function') return null;
-  var list = _computeEclipses(new Date(ms - MS_PER_DAY), AE_ECLIPSE_CANDIDATES);
-  for (var i = 0; i < list.length; i++) {
-    var m = /^(-?\d+)-(\d+)-(\d+)$/.exec(list[i].date);
-    if (!m) continue;
-    var guess = new Date(0);
-    guess.setFullYear(+m[1], +m[2] - 1, +m[3]);
-    guess.setHours(AE_NOON_HOUR, 0, 0, 0);
-    var at = _aeGreatestEclipse(guess.getTime(), list[i].solar);
-    if (at <= ms + AE_ECLIPSE_MIN_AHEAD_MS) continue;
-    var seen = _aeEclipseNow(_aeSceneAt(at));
-    if (seen && seen.solar === list[i].solar) return { ms: at, solar: list[i].solar, type: list[i].type };
-  }
-  return null;
-}
-
 // What is being eclipsed right now, for the status line: a solar eclipse
 // while the Moon's penumbra touches the Earth, a lunar one while the Moon is
 // in the Earth's penumbra. The penumbra's half-width at the Earth: the cone
@@ -927,7 +900,6 @@ function _aeBuildDom() {
           _almEsc(_aeT('alm_go_to')) + '" title="' + _almEsc(_aeT('alm_go_to')) + '">' + AE_GO_SVG + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
-        '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
       '</div>' +
       '<div class="ae-note">' +
         '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
@@ -5382,12 +5354,7 @@ function _aeSetSpeed(speed) {
 // After the clock jumps: this view's own run-up is spent, the cached orbits
 // belong to the old instant, and the Almanac's loops (its repaint restarts
 // them) stay paused under the view.
-function _aeEclipseButton(on) {
-  var b = _aeById('ae-eclipse');
-  if (b) b.disabled = !on;
-}
 function _aeJumped() {
-  _aeEclipseButton(true);
   _ae.clockRan = false;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
@@ -5415,24 +5382,6 @@ function _aeNow() {
   _aeSettlePage(null);
   if (typeof _orrerySnapToNow === 'function') _orrerySnapToNow();
   _aeJumped();
-}
-function _aeJumpToNextEclipse() {
-  var next = _aeNextEclipse(_aeDisplayMs());
-  // None found (far outside the centuries the series hold): say so by
-  // standing down until the clock jumps, rather than doing nothing.
-  if (!next) { _aeEclipseButton(false); return; }
-  _aeGoTo(next.ms);
-  var sc = _aeSceneAt(next.ms);
-  _ae.scene = sc;
-  if (next.solar) {
-    // Face the Moon's shadow: look down the shadow's axis onto the Earth.
-    var sh = _aeSolarShadow(sc);
-    var aim = sh.hit ? _aeFixedToScene(_aeGeodeticToFixed(sh.hit.lat, sh.hit.lon), sc.gast) : _aeScale(sc.moon, 1);
-    _ae.preset = 'earth';
-    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(aim));
-  } else {
-    _aePreset('moon');
-  }
 }
 
 function _aeBindControls() {
@@ -5466,7 +5415,6 @@ function _aeBindControls() {
   for (var j = 0; j < speeds.length; j++) {
     speeds[j].onclick = function () { _aeSetSpeed(+this.getAttribute('data-ae-speed')); };
   }
-  _aeById('ae-eclipse').onclick = _aeJumpToNextEclipse;
   _aeById('ae-now').onclick = _aeNow;
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
@@ -5842,7 +5790,6 @@ function _aeShow(fromHero) {
   _aeShowSettings(false);
   _ae.freshFailed = false;
   _ae.clockRan = false;
-  _aeEclipseButton(true);
   _aeSetSpeed(1);
   _aePauseAlmanac();
   // Back goes where the view was opened from: the Almanac's page (the hero,
