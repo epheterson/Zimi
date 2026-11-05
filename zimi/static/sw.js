@@ -86,8 +86,8 @@ self.addEventListener('install', event => {
     caches.open(CACHE_VERSION)
       .then(cache => cache.addAll(PRECACHE_URLS)
         .then(() => Promise.allSettled(SHELL_URLS.map(u => cache.add(u)))))
-      .then(() => hadAlmanac())
-      .then(had => had && keepAlmanac())
+      // Nothing slower than the shell before taking charge: a new worker held up on the Almanac's megabytes never
+      // arrived on a phone that closed the app first (the Almanac is kept again in activate, below).
       .then(() => self.skipWaiting())
   );
 });
@@ -95,15 +95,15 @@ self.addEventListener('install', event => {
 // Activate: clean old caches, claim clients, version check
 self.addEventListener('activate', event => {
   event.waitUntil(
-    ownKeptBefore().catch(() => [])
-      .then(had => caches.keys()
+    Promise.all([ownKeptBefore().catch(() => []), hadAlmanac().catch(() => false)])
+      .then(([had, almanac]) => caches.keys()
         .then(keys => Promise.all(
           keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
         ))
         .then(() => self.clients.claim())
         .then(() => checkVersion())
         // A deploy empties the cache; what was kept whole comes again, once the new worker is in charge.
-        .then(() => Promise.all(had.map(keepOwnZim))))
+        .then(() => Promise.all([almanac && keepAlmanac(), ...had.map(keepOwnZim)])))
   );
 });
 
@@ -309,7 +309,7 @@ self.addEventListener('fetch', event => {
       event.respondWith(
         /(^|[?&])raw(=|&|$)/.test(url.search) || /\.epub$/i.test(url.pathname)
           ? fetchWithin(event.request, DEADLINE_COLD_MS).catch(() => offlineResponse())
-          : caches.match('/').then(r => r || fetchWithin(event.request, DEADLINE_COLD_MS))
+          : caches.match('/').then(r => { if (!r) return fetchWithin(event.request, DEADLINE_COLD_MS); refreshShell(event, new Request('/')); return r; })
               .catch(() => offlineResponse())
       );
       return;
@@ -378,6 +378,18 @@ function asStale(resp) {
   return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: h });
 }
 
+// The kept shell, fetched again for next time, off the path of this start. Every way in does it: an address inside
+// /w/ is answered by the same kept shell, and one that never asked the server again kept the old build for as long
+// as the phone opened the app there.
+function refreshShell(event, request) {
+  event.waitUntil(fetchWithin(request, DEADLINE_COLD_MS).then(async resp => {
+    if (resp.ok && resp.status !== 206 && !_gatewayDown(resp)) {
+      const cache = await caches.open(CACHE_VERSION);
+      await cache.put(request, resp);
+    }
+  }).catch(() => {}));
+}
+
 // A navigation: the shell as the phone last kept it, at once. The page boots
 // from the device and says what is true; waiting on a server first made every
 // start as slow as the worst connection. The copy is the one this worker
@@ -389,13 +401,7 @@ async function shellNavigation(event) {
   const request = event.request;
   const kept = (await caches.match(request)) || (await caches.match('/'));
   if (kept) {
-    // Refresh the kept copy for next time, off the path of this start.
-    event.waitUntil(fetchWithin(request, DEADLINE_COLD_MS).then(async resp => {
-      if (resp.ok && resp.status !== 206 && !_gatewayDown(resp)) {
-        const cache = await caches.open(CACHE_VERSION);
-        await cache.put(request, resp);
-      }
-    }).catch(() => {}));
+    refreshShell(event, request);
     return kept;
   }
   let resp = null;
@@ -687,8 +693,8 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'forget-own' && OWN_ZIM_PREFIXES.includes('/w/' + event.data.zim + '/')) event.waitUntil(forgetOwnZim(event.data.zim));
 });
 
-// A device that kept the Almanac keeps each new deploy's too, before activate
-// drops the old cache: a page asking later may be gone, or gone offline.
+// A device that kept the Almanac keeps each new deploy's too, read before activate drops the old cache: a page
+// asking later may be gone, or gone offline.
 async function hadAlmanac() {
   if (!ALMANAC_URLS.length) return false;
   for (const k of await caches.keys()) {

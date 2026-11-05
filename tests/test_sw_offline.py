@@ -108,7 +108,7 @@ const listeners = {};
 const ctx = {
   self: { addEventListener: (t, fn) => { listeners[t] = fn; }, skipWaiting: () => {},
           clients: { claim: () => Promise.resolve() }, registration: { unregister: () => Promise.resolve() } },
-  caches, URL, fetch: net, Response: FakeResponse, setInterval: () => {}, setTimeout, clearTimeout, AbortController, Headers, console, Promise,
+  caches, URL, fetch: net, Response: FakeResponse, Request: FakeRequest, setInterval: () => {}, setTimeout, clearTimeout, AbortController, Headers, console, Promise,
 };
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
@@ -120,10 +120,17 @@ async function install() {
   listeners.install({ waitUntil: (x) => { waited = x; } });
   try { await waited; return 'installed'; } catch (e) { return 'failed'; }
 }
+async function activate() {
+  let waited = Promise.resolve();
+  listeners.activate({ waitUntil: (x) => { waited = x; } });
+  await waited;
+}
+const pending = [];   // what fetch handlers asked the browser to keep alive for
+const idle = () => Promise.all(pending.splice(0));
 async function request(url, o) {
   let responded = null;
   const req = new FakeRequest(url, o);
-  listeners.fetch({ request: req, respondWith: (p) => { responded = p; }, waitUntil: () => {} });
+  listeners.fetch({ request: req, respondWith: (p) => { responded = p; }, waitUntil: (x) => { pending.push(Promise.resolve(x).catch(() => {})); } });
   if (!responded) return { passed: true };
   const r = await responded;
   return { status: r.status, body: r.body, offline: r.headers.get('X-Zimi-Offline'), passed: false };
@@ -201,15 +208,31 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(out["again"], 0, "what is kept is not fetched again")
 
     def test_a_new_deploy_keeps_the_almanac_a_device_had(self):
-        # Activate drops the old cache; the new pack comes before it does.
+        # Activate drops the old cache; the new pack comes in the same activation, not before the worker may take
+        # charge (a phone that closed the app first never got the worker, and ran the old build for days).
         out = _run(
             "store('zimi-old').set(ORIGIN + '/static/almanac.js?v=a1', new FakeResponse('old'));"
-            "await install(); return { kept: keptPaths() };",
+            "await install(); const atInstall = keptPaths(); await activate();"
+            "return { atInstall, kept: keptPaths() };",
             shell=SHELL,
             almanac=ALMANAC,
         )
         for u in ALMANAC:
+            self.assertNotIn(u, out["atInstall"], "install does not wait on the Almanac")
             self.assertIn(u, out["kept"])
+
+    def test_a_window_inside_w_refreshes_the_kept_shell(self):
+        # The shell answers /w/ addresses at once; it must also be fetched again, or a phone that opens the app
+        # at one keeps the shell (and the scripts it names) of the build it first installed.
+        out = _run(
+            "await install(); network['/'] = { body: 'new shell' };"
+            "const a = await request('/w/water/', { mode: 'navigate', destination: 'document' }); await idle();"
+            "const b = await request('/w/water/', { mode: 'navigate', destination: 'document' });"
+            "return { a: a.body, b: b.body };",
+            shell=SHELL,
+        )
+        self.assertNotEqual(out["a"], "new shell", "the kept shell answers at once")
+        self.assertEqual(out["b"], "new shell", "and the next start has the latest")
 
     def test_one_file_that_cannot_be_had_does_not_stop_the_install(self):
         # Failing the install would leave a phone with no worker at all.
