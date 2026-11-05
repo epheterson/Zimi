@@ -126,16 +126,19 @@ def test_inside_zimi_on_a_phone_the_chips_keep_their_row(browser, served, view):
     ctx.close()
 
 
-def test_game_of_the_day_shows_in_the_compact_view_in_every_section(browser, served):
+def test_the_daily_row_with_the_day_s_game_shows_on_all_and_steps_aside_for_a_section(browser, served):
+    """Eric 2026-11-05: the Daily row only leads the unfiltered shelf; a chosen section shows its own games first."""
     ctx = browser.new_context(viewport=VIEW)
     page = ctx.new_page()
     page.add_init_script("try{localStorage.setItem('zimi.games.view','index')}catch(e){}")
     page.goto("%s/index.html" % served)
-    page.wait_for_selector(".ar-daily .ar-feature", state="attached")   # it leads the Daily row
-    for chip in (0, 1, 2):
-        page.locator(".sh-nav .sh-chip:visible").nth(chip).click()
-        page.wait_for_timeout(150)
-        assert page.locator(".ar-daily .ar-feature").is_visible(), chip
+    page.wait_for_selector(".ar-daily .ar-feature", state="attached")
+    page.locator(".sh-nav .sh-chip:visible").nth(0).click()   # All types
+    page.wait_for_timeout(150)
+    assert page.locator(".ar-daily .ar-feature").is_visible()
+    page.locator(".sh-nav .sh-chip:visible").nth(1).click()
+    page.wait_for_timeout(150)
+    assert page.locator(".ar-daily").is_hidden()
     ctx.close()
 
 

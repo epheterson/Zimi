@@ -556,7 +556,8 @@
   Shell.localizeTiles = function (scope) {
     Array.prototype.forEach.call((scope || d).querySelectorAll('a.ar-game[href]'), function (a) {
       var stem = hrefStem(a.getAttribute('href')), strong = a.querySelector('strong'), span = a.querySelector('.ar-game-text > span');
-      var title = gameWord(stem, 'title'), blurb = gameWord(stem, 'tile') || gameWord(stem, 'blurb');
+      // A small tile (the Daily row's) takes the game's short name when it has one ("Crossword"); the game keeps its full name.
+      var title = (a.closest('.ar-daily') && gameWord(stem, 'short')) || gameWord(stem, 'title'), blurb = gameWord(stem, 'tile') || gameWord(stem, 'blurb');
       if (strong && title) strong.textContent = title;
       if (span && blurb) span.textContent = blurb;
     });

@@ -245,31 +245,25 @@
   // server's day in its address, so everyone on this Zimi plays the same one. Those done today carry a tick and move to the end.
   // Over the row, one line: how many are done, and the streak.
   // The two everyone looks for first lead the row; the rest keep the shelf's order.
-  // The dailies people know from everywhere lead, in this order; the rest follow apart, as more to try.
+  // The dailies people know from everywhere lead, in this order; the rest follow, as more to try.
   var DAILY_FIRST = ['fiveletters.html', 'sudoku.html', 'minicrossword.html', 'chesspuzzles.html', 'spellingbee.html', 'minesweeper.html', 'solitaire.html'];
   function dailyOrder(games) {
     var rank = function (g) { var i = DAILY_FIRST.indexOf(g.path); return i < 0 ? DAILY_FIRST.length : i; };
     return games.map(function (g, i) { return [g, i]; }).sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; }).map(function (x) { return x[0]; });
   }
   function isMainDaily(path) { return DAILY_FIRST.indexOf(path) >= 0; }
-  // The day's game leads the Daily row as its first, larger tile: one "today" on the shelf, not two. When it has a daily of its
-  // own the tile is that daily; otherwise it opens the game as usual.
+  // The day's game is a tile like the others in the Daily row (one "today" on the shelf, not two), marked by a small badge
+  // over its art. When it has a daily of its own the tile is that daily; otherwise it opens the game as usual.
   function featureTile(g, day, S) {
     var t = tileFor(g);
     if (!t) return null;
     ownIds(t);
     t.classList.add('ar-feature');
     if (S.DAILY[g.path]) t.setAttribute('href', g.path + '?daily=' + day);
-    var text = t.querySelector('.ar-game-text');
-    if (text) {
-      var tag = doc.createElement('small');
-      tag.className = 'ar-feature-tag';
-      tag.textContent = T('shelf.today');
-      text.insertBefore(tag, text.firstChild);
-    }
-    // The day's art fills its box, cropped, whatever shape the box is.
-    var art = t.querySelector('svg.ar-game-art');
-    if (art) art.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    var tag = doc.createElement('small');
+    tag.className = 'ar-feature-tag';
+    tag.textContent = T('shelf.today');
+    t.appendChild(tag);
     return t;
   }
   // The day is the server's, so everyone on this Zimi sees the same day's game (gamelinks.game_of_day, Zimi's own card, too).
@@ -279,8 +273,8 @@
     return S.serverDay().then(function (day) {
       var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [], moreOpen = [], moreDone = [];
       var g = dayPick(rows, day), pick = g ? { path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') } : null;
-      // Game of the day: when it is one of the everyday seven it is that tile, wider, in its place among them; otherwise it
-      // leads the second group, just after "More dailies".
+      // Game of the day: when it is one of the everyday seven it is that tile, in its place among them; otherwise it leads
+      // the rest, just after the seven.
       var pickMain = !!(pick && S.DAILY[pick.path] && isMainDaily(pick.path));
       var feature = pick ? featureTile(pick, day, S) : null;
       dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path] && !(pick && r.path === pick.path); }).concat(pickMain ? [pick] : [])).forEach(function (g) {
@@ -292,13 +286,9 @@
         if (done[g.path]) { markDone(t); (main ? finished : moreDone).push(t); } else (main ? open : moreOpen).push(t);
       });
       if (feature && !pickMain && S.DAILY[pick.path] && done[pick.path]) markDone(feature);
-      var rest = (feature && !pickMain ? [feature] : []).concat(moreOpen, moreDone), divider = null;
-      if (rest.length) {
-        divider = doc.createElement('span');
-        divider.className = 'ar-daily-sep';
-        divider.textContent = T('shelf.daily.more');
-      }
-      var tiles = open.concat(finished, divider ? [divider] : [], rest);
+      // The seven, then the rest in the same row: a little more room between them says where the everyday ones end.
+      var rest = (feature && !pickMain ? [feature] : []).concat(moreOpen, moreDone);
+      var tiles = open.concat(finished, rest);
       if (!tiles.length) return null;
       var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
       var line = doc.createElement('span');

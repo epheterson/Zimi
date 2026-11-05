@@ -5924,6 +5924,6 @@
  "stats.setName": "Festlegen",
  "stats.noName": "Dein Name auf den Bestenlisten:",
  "board.youMark": "(du)",
- "shelf.daily.more": "Weitere Tagesaufgaben",
- "city.cl.kept": "Der heutige Strom wärmt nicht weiter; die Erwärmung bisher bleibt."
+ "city.cl.kept": "Der heutige Strom wärmt nicht weiter; die Erwärmung bisher bleibt.",
+ "game.minicrossword.short": "Kreuzworträtsel"
 }

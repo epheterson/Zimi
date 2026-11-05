@@ -319,21 +319,19 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-daily-line { color: var(--ink2); font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; }
 .ar-daily-stats { margin-inline-start: auto; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 2px; min-height: 44px; cursor: pointer; }
 .ar-daily .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin: 0 -16px; padding: 2px 16px 6px; }
-.ar-daily .ar-game { flex: 0 0 132px; position: relative; scroll-snap-align: start; }
+.ar-daily { --daily-w: 132px; }
+.ar-daily .ar-game { flex: 0 0 var(--daily-w); position: relative; scroll-snap-align: start; }
 .ar-daily .ar-game-text span { display: none; }
 .ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
-/* The day's game: twice a daily tile's width, a small tag over its name. */
-.ar-daily .ar-game.ar-feature { flex-basis: 274px; }
-.ar-daily .ar-games:has(.ar-feature) { align-items: flex-start; }   /* the small tiles keep their own height beside it */
-/* Between the everyday dailies and the rest: a quiet word, standing in the row. */
-.ar-daily-sep { flex: none; align-self: flex-start; height: var(--daily-tile-h, 114px); text-align: center; writing-mode: vertical-rl; transform: rotate(180deg); padding: 0 2px; color: var(--ink2); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; white-space: nowrap; }
-.ar-daily-sep[hidden] { display: none; }
-/* As tall as the tiles beside it: the art twice as wide at the same height (cropped), the tag over the name, no line. */
-.ar-daily .ar-game.ar-feature .ar-game-art { aspect-ratio: 32 / 9; }
-.ar-feature-tag { display: block; margin-bottom: 2px; color: var(--accent); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; }
+/* Every Daily tile the same size: the same art crop, a name on one line. The day's game wears a small badge along the foot of its art (the done tick has the top corner). */
+.ar-daily .ar-game-text strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-daily .ar-game-art { aspect-ratio: 16 / 9; height: auto; }
+.ar-feature-tag { position: absolute; top: calc(var(--daily-w) * 9 / 16 - 26px); inset-inline-start: 6px; max-width: calc(100% - 12px); padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Where the everyday seven end and the rest begin: a little more room, no label. */
+.ar-daily .ar-daily-main + .ar-game:not(.ar-daily-main) { margin-inline-start: 14px; }
 .ar-done-mark { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; line-height: 1; }
 [data-view="index"] .ar-daily .ar-games { display: flex; }
-[data-view="index"] .ar-daily .ar-game { flex: 0 0 132px; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+[data-view="index"] .ar-daily .ar-game { flex: 0 0 var(--daily-w); flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
 [data-view="index"] .ar-daily .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
 [data-view="index"] .ar-daily .ar-game-text { padding: 8px 10px 10px; }
 .ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game-text span, [data-view="index"] .ar-daily .ar-game::after { display: none; }
