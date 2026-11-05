@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Highlights
 
 - **ZimCity:** a city builder made for the phone, with the classic scenarios, an AI data center, solar and wind, a toy climate and citizens with opinions.
-- **Daily games:** today's edition of 63 games, the same for everyone on a Zimi server, with streaks, stats and a spoiler-free share line; rooms (Kids, Arcade, Game night, Solo) on the shelf.
-- **Games polish:** one card size across card games, tap-to-aim on small boards, Hint in Xiangqi and Shogi, and full game names on a phone.
+- **Daily games and leaderboards:** today's edition of 63 games, the same for everyone on a Zimi server, with streaks, a spoiler-free share line and a board for the people on your server.
+- **Games follow you:** signed in, your games, stats and ZimCity cities follow you to every browser; rooms on the shelf, one card size across card games, and Hint in Xiangqi and Shogi.
 - **Apps:** a dot means something new you haven't opened and clears when you open the app; tap it to see what changed; apps show their own waiting cards instead of a blank page.
-- **Search:** `near:Danville 10km` lists the towns on your maps nearby; questions find articles written in another form of their words; "Did you mean" leaves real words alone.
-- **AI agents:** Zimi's MCP server keeps a clean stream when the library prints a notice.
+- **Search:** `near:Danville 10km` lists the towns on your maps nearby; questions find articles written in another form of their words; "Did you mean" leaves real words alone; MCP clients keep a clean stream.
+- **Reader:** a wide infobox sits beside the text when there's room and above it, at its own width, when there isn't (#136).
 - **Linux:** `zimi service install` sets up the systemd unit that now ships with Zimi, and `zimi serve -d` runs it in the background without one (#137).
 - **Tides:** shown only where a gauge is near, now about 1,500 places worldwide (#140).
 
