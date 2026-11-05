@@ -1762,8 +1762,13 @@ var ALM_SECBAR_HERO = 'today';
 var ALM_SECBAR_LOCK_MS = 3000;               // the longest a tap's scroll holds the bar
 // [key, the selectors of its parts (the first is where a tap lands), heading string]
 // A part inside a titled section stands for the whole section.
+// On a phone the Moon's block and the live sky are each a screen of their own, so the sky is a section of its own
+// there and the bar names it (Eric, 2026-11-05: "On a mobile phone, it's easy to have those be separate sections");
+// a wider page shows them together, as one (the hero).
+var ALM_SECBAR_SPLIT_MQ = '(max-width: 600px)';
 var ALM_SECTIONS = [
   [ALM_SECBAR_HERO, ['#almanac-head', '.almanac-sky-wrap', '#almanac-sky-invite'], 'alm_today'],
+  ['sky', ['.alm-sky-info', '.almanac-sky-wrap'], 'alm_subj_sky', ALM_SECBAR_SPLIT_MQ],
   ['calendar', ['#almanac-calendar'], 'alm_subj_calendars'],
   ['place', ['#almanac-sunmap'], 'alm_nav_place'],
   ['tides', ['#almanac-place .almanac-section'], 'alm_tide_title'],
@@ -1794,10 +1799,13 @@ function _almSecBarTeardown() {
 }
 // The sections that are on the page now (a late or empty one is left out).
 function _almSecBarFind() {
-  var out = [];
+  var out = [], split = !!(window.matchMedia && window.matchMedia(ALM_SECBAR_SPLIT_MQ).matches);
   ALM_SECTIONS.forEach(function (d) {
+    if (d[3] && !split) return;   // the phone's own section
+    // Split, the hero is the Moon's block alone: the sky's parts are the next section's.
+    var sels = split && d[0] === ALM_SECBAR_HERO ? ['#almanac-head'] : d[1];
     var els = [];
-    d[1].forEach(function (sel) {
+    sels.forEach(function (sel) {
       var el = document.querySelector('#almanac-content ' + sel);
       if (!el) return;
       els.push(el.closest('.almanac-section, .alm-group') || el);
@@ -1868,7 +1876,8 @@ function _almSecBarSync() {
   // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
   var line = root.getBoundingClientRect().top + ALM_SECBAR_LINE, cur = ALM_SECBAR_HERO;
   st.sections.forEach(function (s) {
-    if (s.els.some(function (e) { return e.getBoundingClientRect().top <= line; })) cur = s.key;
+    // A part not laid out (hidden while the time machine is up, or not drawn yet) reads as top 0: it has not begun.
+    if (s.els.some(function (e) { var r = e.getBoundingClientRect(); return r.height > 0 && r.top <= line; })) cur = s.key;
   });
   if (cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
@@ -2303,6 +2312,12 @@ function _almPlaceWatch() {
   whenQuiet(load, { key: 'alm-place', priority: QUIET_PRI_LOAD, maxWaitMs: _ALM_PLACE_IDLE_TIMEOUT_MS });
 }
 
+// The sky's colour for the focused hour, on the canvas before the sky module has drawn a pixel (almanac-sky.js).
+function _almSkyPreStyle(loc) {
+  if (typeof _skyPreBackground !== 'function' || !loc) return '';
+  var alt = _sunPosition(typeof _almFocusInstant === 'function' ? _almFocusInstant() : new Date(), loc.lat, loc.lon).altitude;
+  return ' style="--sky-pre:' + _skyPreBackground(alt).replace(/"/g, '&quot;') + '"';
+}
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -2327,7 +2342,7 @@ function _renderAlmanacContent() {
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
-    '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
+    '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"' + _almSkyPreStyle(_getLocation()) + '></canvas>' +
     '<button type="button" class="alm-sky-look" onclick="openAlmanacLook()" aria-label="' + escAttr(t('look_title')) + '" title="' + escAttr(t('look_title')) + '">' + ALM_LOOK_SVG + '</button>' +
     '<button type="button" class="alm-sky-gear" id="almanac-sky-gear" onclick="_skyToggleSettings()" aria-expanded="false" aria-controls="almanac-sky-set" aria-label="' + escAttr(t('alm_sky_set')) + '" title="' + escAttr(t('alm_sky_set')) + '">' + ALM_GEAR_SVG + '</button>' +
     '<div id="almanac-sky-set" class="alm-sky-set" role="group" aria-label="' + escAttr(t('alm_sky_set')) + '" hidden></div>' +

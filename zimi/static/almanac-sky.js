@@ -511,6 +511,15 @@ function _skyMix(c1, c2, f) { return [_skyLerp(c1[0], c2[0], f), _skyLerp(c1[1],
 function _skyRgb(c, a) { return 'rgba(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ',' + (a == null ? 1 : a.toFixed(3)) + ')'; }
 function _skyTone(alt) { var r = _skyRow(SKY_TONES, alt); return { zen: _skyMix(r.a[1], r.b[1], r.f), hor: _skyMix(r.a[2], r.b[2], r.f) }; }
 // The faintest magnitude that shows under a dark sky by the Sun's geometric altitude: the eye's, from how bright the sky is (almanac-skygl.js).
+// What the canvas shows before its first paint, and whenever it is cleared (a resize, the GPU sky taking over):
+// the hour's own sky, the zenith fading to the horizon over a ground, as a CSS background behind the pixels.
+// Without it a canvas with nothing drawn shows the page through it, black in the dark theme, and the sky
+// flashed dark on opening (Eric, 2026-11-05: "flashes a couple times on initial load, going black").
+function _skyPreBackground(sunAlt) {
+  var t = _skyTone(sunAlt), hor = _skyRgb(t.hor), ground = _skyRgb(_skyMix(t.hor, [0, 0, 0], 0.55));
+  var y = Math.round(SKY_HORIZON_Y * 100);
+  return 'linear-gradient(to bottom,' + _skyRgb(t.zen) + ' 0%,' + hor + ' ' + y + '%,' + ground + ' ' + y + '%,' + ground + ' 100%)';
+}
 function _skyLimitingMag(alt) { return _sgLimitMag(_sgSkyLum(alt, -90, 0, 0)); }
 // How much of the day's light there is, 0 at the end of civil twilight to 1 by day.
 function _skyDaylight(alt) { return _skyClamp((alt - SKY_CIVIL_ALT) / (6 - SKY_CIVIL_ALT), 0, 1); }
@@ -2995,6 +3004,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   }
   canvas.style.width = w + 'px';
   canvas.style.height = h + 'px';
+  if (typeof _sunPosition === 'function') canvas.style.setProperty('--sky-pre', _skyPreBackground(_sunPosition(now, lat, lon).altitude));
   var ts = performance.now();
   var prev = (_skyState && _skyState.canvas === canvas) ? _skyState : null;
   var priorMoon = (animateMoon && prev) ? _skyMoonAt(prev, ts) : null;
