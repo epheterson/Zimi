@@ -698,6 +698,25 @@ def test_no_far_body_is_named_on_the_moon_close_up(served):
             behind = pg.evaluate("""() => { var c = _ae.gl.camera.position, t = _aeTargetPos(), d = _aeNorm(_aeSub(t, [c.x, c.y, c.z]));
                 return _aeBehindTarget('callisto', _aeAdd(t, _aeScale(d, 1000))); }""")
             assert behind is True
+            # As it opens at the Moon (not close in), the same: only the Earth and the Moon are named; a planet is a
+            # faint point with no name, another planet's moons are not drawn; no mark sits under the controls on top.
+            for width in (360, 390):
+                pg.set_viewport_size({"width": width, "height": 844})
+                pg.evaluate("_ae.fly = null; _aePreset('moon');")
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
+                pg.wait_for_timeout(800)
+                got = pg.evaluate("""() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene);
+                    var els = Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden);
+                    var named = els.filter(e => { var b = e.querySelector('b'); return b && getComputedStyle(b).display !== 'none' && b.textContent; }).map(e => e.id.replace('ae-bm-', ''));
+                    var moons = els.map(e => e.id.replace('ae-bm-', '')).filter(k => { var b = _aePlanetBody(k); return b && b.parent; });
+                    var tops = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'].map(id => document.getElementById(id)).filter(e => e && !e.hidden).map(e => e.getBoundingClientRect());
+                    var under = Array.from(document.querySelectorAll('#ae-labels .ae-bm:not([hidden]) b, #ae-labels .ae-bm:not([hidden])')).filter(e => {
+                      var r = e.getBoundingClientRect(); if (!r.width) return false;
+                      return tops.some(t => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top); }).map(e => e.textContent || e.id);
+                    return { named: named, moons: moons, under: under }; }""")
+                assert set(got["named"]) <= {"earth", "moon"}, (width, got)
+                assert got["moons"] == [], (width, got)
+                assert got["under"] == [], (width, got)
             assert not errors, errors
             ctx.close()
         finally:

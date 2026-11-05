@@ -4498,6 +4498,7 @@ function _aeResize() {
   _ae.w = w; _ae.h = h;
   var foot = el.querySelector ? el.querySelector('.ae-bottom') : null;
   _ae.footPx = foot ? foot.offsetHeight : 0;
+  _aeMeasureTop();
   S.renderer.setSize(w, h, false);
   S.camera.aspect = w / h;
   S.camera.updateProjectionMatrix();
@@ -4632,6 +4633,23 @@ function _aeEarthPx() {
   var cam = _ae.gl.camera, d = Math.max(1e-9, _aeLen([cam.position.x, cam.position.y, cam.position.z]));
   return 2 / d * _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
 }
+// The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
+// the foot's height, so no mark or name sits under them.
+var AE_TOP_CONTROLS = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'], AE_TOP_CLEAR_PX = 10;
+function _aeMeasureTop() {
+  var el = _ae.el;
+  if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
+  var o = el.getBoundingClientRect();
+  _ae.topBoxes = AE_TOP_CONTROLS.map(function (id) {
+    var c = _aeById(id);
+    if (!c || c.hidden || !c.getBoundingClientRect) return null;
+    var r = c.getBoundingClientRect();
+    return r.width ? [r.left - o.left - AE_TOP_CLEAR_PX, r.top - o.top - AE_TOP_CLEAR_PX, r.right - o.left + AE_TOP_CLEAR_PX, r.bottom - o.top + AE_TOP_CLEAR_PX] : null;
+  }).filter(Boolean);
+}
+function _aeUnderTop(s) {
+  return (_ae.topBoxes || []).some(function (b) { return s.x >= b[0] && s.x <= b[2] && s.y >= b[1] && s.y <= b[3]; });
+}
 function _aeUpdateMarks(sc) {
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
@@ -4643,6 +4661,7 @@ function _aeUpdateMarks(sc) {
   var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
   var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
   var close = !flying && _aeCloseIn(eye, pxPerRad), group = _aeGroupOf(_ae.target), wide = _aeWideView();
+  var home = !wide && group === 'earth';
   for (var i = 0; i < order.length; i++) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
@@ -4652,7 +4671,11 @@ function _aeUpdateMarks(sc) {
     // planets at that scale) not drawn.
     var bb = _aePlanetBody(body);
     if (wide && bb && bb.parent && !ringed) { if (!el.hidden) el.hidden = true; continue; }
-    var quiet = wide && !ringed && !(bb && !bb.parent && !bb.track) && body !== 'earth';
+    // At home (the Earth, the Moon, the station) only the Earth and the Moon are named: another planet is a faint point,
+    // its moons not drawn, a probe a point.
+    var away = home && !ringed && _aeGroupOf(body) !== 'earth';
+    if (away && bb && bb.parent) { if (!el.hidden) el.hidden = true; continue; }
+    var quiet = away || (wide && !ringed && !(bb && !bb.parent && !bb.track) && body !== 'earth');
     if (el.classList) el.classList.toggle('ae-bm-quiet', quiet);
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
@@ -4668,7 +4691,8 @@ function _aeUpdateMarks(sc) {
     var reach = ringed ? r : 0;
     // Not under the controls at the foot: a mark there could not be tapped and would sit on their words.
     var foot = _ae.h - (_ae.footPx || 0);
-    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > (ringed ? _ae.h + reach : foot)) { if (!el.hidden) el.hidden = true; continue; }
+    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > (ringed ? _ae.h + reach : foot) || (!ringed && _aeUnderTop(s))) { if (!el.hidden) el.hidden = true; continue; }
+    if (away) alpha *= AE_MARK_AWAY_ALPHA;
     shown.push({ x: s.x, y: s.y, r: r, el: el, ringed: ringed, body: body });
     if (el.hidden) el.hidden = false;
     el.style.opacity = alpha.toFixed(2);
@@ -4685,6 +4709,7 @@ function _aeUpdateMarks(sc) {
 // with a tick the way it is heading; a crowd every member's disc where it is, overlapping. Not the Sun (the view draws
 // it) and not a body the view shows big enough to see (in a flight).
 var AE_MARK_DISC = [2.4, 7], AE_MARK_KM = [1188, 71492], AE_MARK_NAME_PAD = 3;
+var AE_MARK_AWAY_ALPHA = 0.55;   // a planet seen from home: a faint point
 var AE_PROBE_DOT_PX = 1.6, AE_PROBE_TICK_PX = 7;
 function _aeMarkDiscR(body) {
   if (_aeIsProbe(body)) return AE_PROBE_DOT_PX;
@@ -4721,6 +4746,7 @@ function _aePaintMarks(kept) {
   kept.forEach(function (m) {
     m.pts.forEach(function (q) { _ae.marksDrawn.push({ body: q.body, x: q.x, y: q.y, r: _aeMarkDiscR(q.body), lead: m.body, el: m.el.id }); });
     if (m.ringed) return;
+    g.globalAlpha = m.el.classList && m.el.classList.contains('ae-bm-quiet') ? Math.min(1, parseFloat(m.el.style.opacity) || 1) : 1;   // faint: away from home
     m.pts.forEach(function (q) {
       var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
       if (!isFinite(x) || !isFinite(y)) return;
@@ -4749,6 +4775,7 @@ function _aePaintMarks(kept) {
       g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
     });
   });
+  g.globalAlpha = 1;
 }
 // Each mark stands for itself (its own disc, its own name). The Planets view had crowds ("Earth +2") for marks whose
 // rings met; it names the planets only now, so there is nothing to gather.
@@ -5046,6 +5073,7 @@ function _aeUpdateText(ms) {
   _aeShowMapHere();
   var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null;
   if (foot) _ae.footPx = foot.offsetHeight;   // the controls' height changes with their notes; marks keep above them
+  _aeMeasureTop();
   var nowBtn = _aeById('ae-now'), live = _aeIsLive();
   if (nowBtn && nowBtn.hidden !== live) {
     nowBtn.hidden = live;
