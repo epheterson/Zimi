@@ -318,7 +318,9 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
         pg.wait_for_function(
             "() => _skyTimers.sway && _skyTimers.plane && _skyTimers.meteor", polling=POLL_MS
         )
-        # The beach's sea mirrors the sky that was drawn: the strip is kept and read.
+        # The beach's sea mirrors the sky that was drawn: the strip is kept and read. The read comes back a frame or
+        # more later (never by waiting on the GPU), so it is waited for here.
+        pg.wait_for_function("() => _skyState.ground && _skyState.ground.hor", polling=POLL_MS, timeout=120_000)
         ground = pg.evaluate("() => _skyState.ground")
         assert ground and len(ground["hor"]) == 3 and len(ground["avg"]) == 3, ground
         assert pg.evaluate("_skyState.reflect.width") > 10
