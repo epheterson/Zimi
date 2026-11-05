@@ -4,7 +4,7 @@ Eric, on his iPhone: "When loading apps it's like fully loaded but blank
 screen, pause, then data." The shell's loader went away on the frame's load,
 and the app page then sat empty until its first fetch answered. Now the page
 says 'ready' once what it opened with is drawn (apps.js), and the loader stays
-until then. A slow server is the NAS on a phone: the server holds the app's
+until then, or until the app's own waiting cards (.app-wait) stand in its place. A slow server is the NAS on a phone: the server holds the app's
 data back so the gap, if any, is wide enough to see.
 
 Run: pytest tests/test_app_loader_live.py -v
@@ -25,9 +25,10 @@ DATA_DELAY_S = 1.2
 # A sample: is the loader gone, and has ZimiTube drawn any words yet (its
 # chrome is icons; before its data it has no text at all).
 PROBE = """() => { var l = document.getElementById('reader-loading');
-  var f = document.getElementById('reader-frame'), words = 0;
+  var f = document.getElementById('reader-frame'), words = 0, waiting = false;
   try { words = f.contentDocument.body.innerText.trim().length; } catch (e) {}
-  return { gone: !!l && l.classList.contains('hidden'), words: words,
+  try { var w = f.contentDocument.querySelector('.app-wait'); waiting = !!w && w.getBoundingClientRect().height > 0; } catch (e) {}
+  return { gone: !!l && l.classList.contains('hidden'), words: words, waiting: waiting,
            app: !!(f && f.contentWindow && f.contentWindow.location.pathname === '/static/tube.html') }; }"""
 
 
@@ -78,7 +79,7 @@ def test_tube_never_shows_blank_between_loader_and_data(served):
         deadline = time.time() + DATA_DELAY_S * 5
         while time.time() < deadline and not drawn:
             s = pg.evaluate(PROBE)
-            if s["app"] and s["gone"] and not s["words"]:
+            if s["app"] and s["gone"] and not s["words"] and not s["waiting"]:
                 blank.append(s)
             drawn = s["gone"] and s["words"] > 0
             time.sleep(0.05)
