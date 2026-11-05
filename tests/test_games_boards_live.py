@@ -63,7 +63,7 @@ def test_boards_inside_zimi(served):
         g.evaluate("() => ZimiShell.boardSheet()")
         g.wait_for_selector(".gs-board-row", timeout=10000)
         rows = g.evaluate("() => [...document.querySelectorAll('.gs-board')].pop().querySelectorAll('.gs-board-row').length")
-        names = g.evaluate("() => [...[...document.querySelectorAll('.gs-board')].pop().querySelectorAll('.gs-board-row')].map(r => [r.querySelector('.gs-board-name').textContent, r.className])")
+        names = g.evaluate("() => [...[...document.querySelectorAll('.gs-board')].pop().querySelectorAll('.gs-board-row')].map(r => [r.querySelector('.gs-board-name').textContent.replace(/\s*\(you\)$/, ''), r.className])")
         assert rows == 10
         assert ["Mum", "gs-board-row"] in names and ["kid", "gs-board-row gs-you"] in names and ["dad", "gs-board-row"] in names
         house = [n for n, c in names if "gs-house" in c]
@@ -76,7 +76,8 @@ def test_boards_inside_zimi(served):
         g.evaluate("() => ZimiShell.boardSheet()")
         g.wait_for_selector(".gs-board-row", timeout=10000)
         day = g.evaluate("() => [...document.querySelectorAll('.gs-board-row .gs-board-name')].map(n => n.textContent.trim())")
-        assert [n.split(" ")[-1] for n in day] == ["kid", "Mum", "dad"], day
+        assert [n.replace(" (you)", "").split(" ")[-1] for n in day] == ["kid", "Mum", "dad"], day
+        assert day[0].endswith("(you)"), "the viewer's own row says so in words"
         g.evaluate("() => { document.querySelectorAll('.ar-sheet').forEach(e => e.remove()); ZimiShell.statsSheet(); }")
         g.wait_for_selector(".gs-boards .gs-board-day", timeout=10000)
         assert g.evaluate("() => document.querySelector('.gs-person').textContent").startswith("Playing as kid")
