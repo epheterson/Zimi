@@ -627,6 +627,7 @@ var AE_CSS = [
   '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-lm{position:absolute;left:0;top:0;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
   '.ae-lm::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:currentColor;transform:translateY(-50%);box-shadow:0 0 3px #000}',
+  '.ae-lm.ae-lm-left{padding:6px 18px 6px 8px}.ae-lm.ae-lm-left::before{left:auto;right:6px}',
   '.ae-lm:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}',
   '.ae-lm[hidden]{display:none}',
   '.ae-lm-landing{color:' + AE_AMBER_HEX + '}',
@@ -761,16 +762,19 @@ function _aeGoRender() {
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
   }).join('');
+  // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
+  var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
+  if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
 }
-// `group`: open scrolled to that group's heading (the Moon's Landings chip).
+// `group`: open scrolled to that group's heading (the Moon's Landings chip), now or as soon as it is there.
 function _aeShowGo(on, group) {
   var sheet = _aeById('ae-go'), btn = _aeById('ae-go-btn');
   if (!sheet) return;
   sheet.hidden = !on;
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
+  _ae.goGroup = on ? group || null : null;
+  if (group === 'alm_go_landings' && on) _ae.allLandings = true;   // every landing site named on the Moon, not only Apollo's
   if (on) { _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
-  var h = on && group ? sheet.querySelector('h4[data-g="' + group + '"]') : null;
-  if (h) sheet.scrollTop = h.offsetTop;
 }
 // The quick row, one shape everywhere (Eric 2026-11-04): the Sun first, always; then the body the view is at and its
 // own (the Earth: its satellites and the Moon; the Moon: its landings; a planet: its moons and their orbits); one
@@ -790,6 +794,8 @@ function _aeRowKeys() {
   if (_ae && c !== _ae.rowCurrent) {
     if (_ae.rowCurrent && _ae.rowCurrent !== 'sun') _ae.rowRecent = _ae.rowCurrent;
     _ae.rowCurrent = c;
+    if (c !== 'moon') _ae.allLandings = false;
+    else _aeLmLoad();   // the Landings chip's table, there before it is tapped
   }
   var mid;
   if (c === 'earth') mid = ['earth', 'sats', 'moon'];
@@ -2814,6 +2820,7 @@ var AE_LM_MIN_PX = 28;
 var AE_LM_LANDING_MIN_R_PX = 80;
 var AE_LM_APART_X = 96, AE_LM_APART_Y = 22;   // labels nearer than this to a placed one wait for a closer view
 var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
+var AE_LM_EDGE_PX = 8;                       // a name keeps this clear of the screen's right edge
 var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
 var AE_LM_KINDS = { landing: 'landing', crater: 'crater', mare: 'mare', mons: 'mons' };
 // A place in the lunar night is black: its card says when the Sun comes up there, and offers that morning instead, with
@@ -2848,6 +2855,16 @@ function _aeLmDir(b, lat, lon) {
   var v = _aeLatLonVec(lat, lon), e = b.m;
   return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
 }
+// With Landmarks off, the Moon still names where people landed, quietly: Apollo's six (all the landings once the
+// Landings group has been opened), and the place chosen. Landmarks on names everything.
+var AE_LM_APOLLO = /^Apollo (11|12|14|15|16|17)$/;
+function _aeLmQuietRows(body, chosen) {
+  var rows = body === 'moon' && _ae.target === 'moon' ? _aeLm[body].filter(function (r) {
+    return r[3] === 'landing' && (_ae.allLandings || AE_LM_APOLLO.test(r[0]));
+  }) : [];
+  if (chosen && chosen.body === body && rows.indexOf(chosen.row) < 0) rows.push(chosen.row);
+  return rows.length ? rows : null;
+}
 function _aeUpdateLandmarks() {
   var host = _aeById('ae-lms');
   if (!host) return;
@@ -2857,7 +2874,7 @@ function _aeUpdateLandmarks() {
     var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
     var cands = [], layer = _aeLmLayerOn(), chosen = _ae.lm;
     _aeLmBodies().forEach(function (b) {
-      var rows = layer ? _aeLm[b.key] : chosen && chosen.body === b.key ? [chosen.row] : null;
+      var rows = layer ? _aeLm[b.key] : _aeLmQuietRows(b.key, chosen);
       if (!rows) return;
       var rPx = b.r / _aeLen(_aeSub(b.center, eye)) * pxPerRad;
       if (rPx < AE_LM_LANDING_MIN_R_PX / 2) { if (rPx > 4 && layer) _aeLmLoad(); return; }
@@ -2880,7 +2897,7 @@ function _aeUpdateLandmarks() {
       if (placed.some(function (q) { return Math.abs(q.s.x - c.s.x) < AE_LM_APART_X && Math.abs(q.s.y - c.s.y) < AE_LM_APART_Y; })) continue;
       placed.push(c);
     }
-  } else if (_ae.target === 'moon' && _aeLmLayerOn()) _aeLmLoad();
+  } else if (_ae.target === 'moon') _aeLmLoad();   // at the Moon its names come with it (the Landings chip works first time)
   while (host.children.length < placed.length) {
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -2895,7 +2912,11 @@ function _aeUpdateLandmarks() {
     el._aeLm = c2;
     _aeSetText(el, c2.row[0]);
     el.classList.toggle('ae-lm-landing', c2.row[3] === 'landing');
-    el.style.transform = 'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
+    // A name that would run off the right edge reads to the left of its dot.
+    var left = c2.s.x - AE_LM_DOT_X + el.offsetWidth > _ae.w - AE_LM_EDGE_PX;
+    el.classList.toggle('ae-lm-left', left);
+    el.style.transform = left ? 'translate(' + Math.round(c2.s.x + AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translate(-100%,-50%)' :
+      'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
   }
 }
 // The Sun's height (its sine) over a place on the Moon at a time.
