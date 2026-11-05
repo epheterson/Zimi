@@ -1378,6 +1378,7 @@
  "daily.doneToday": "Done today",
  "daily.share": "ZimiGames daily · {game} · {day}",
  "daily.shareIt": "Share",
+ "daily.shareName": "Add my name",
  "daily.streak": {
   "one": "{n}-day streak",
   "other": "{n}-day streak"
@@ -5481,6 +5482,7 @@
  "stats.a.week": "A week's streak",
  "stats.all": "All games",
  "stats.best": "Best streak",
+ "stats.changeName": "Change",
  "stats.dailies": "Dailies done",
  "stats.earned": "Milestones",
  "stats.finished": "Games finished",
@@ -5488,6 +5490,7 @@
  "stats.most": "Most played",
  "stats.notYet": "{name}, not yet",
  "stats.playedWon": "{n} played · {w} won",
+ "stats.playingAs": "Playing as {name}",
  "stats.title": "Stats",
  "stats.wins": "Wins",
  "sudoku.bestRow": "Best time, {level}",

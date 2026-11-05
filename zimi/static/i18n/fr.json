@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "Repères",
   "alm_lm_layer_hint": "Noms sur la Lune : sites d’alunissage, cratères, mers",
   "alm_earth_sat_data_from": "Données des satellites : du {date}",
-  "alm_go_landings": "Alunissages"
+  "alm_go_landings": "Alunissages",
+  "games_sync_merged": "Vos parties sur cet appareil et dans votre compte sont maintenant réunies.",
+  "display_name_title": "Votre nom",
+  "display_name_hint": "C'est ainsi que vous apparaissez dans les jeux et les classements de ce serveur. Laissez vide pour utiliser le nom de votre compte.",
+  "display_name_taken": "Quelqu'un sur ce serveur porte déjà ce nom.",
+  "display_name_invalid": "Jusqu'à 32 lettres, chiffres, espaces, points ou tirets.",
+  "display_name_saved": "Nom enregistré",
+  "display_name_label": "Nom dans les jeux :",
+  "display_name_change": "Modifier"
 }

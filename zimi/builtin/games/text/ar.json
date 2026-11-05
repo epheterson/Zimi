@@ -6314,5 +6314,8 @@
  "yacht.row.twos": "الرقم 2",
  "yacht.rowAria": "{row}: ‏{n} نقطة",
  "yacht.top": "الستة العليا ({at} تمنح {bonus})",
- "yacht.total": "المجموع"
+ "yacht.total": "المجموع",
+ "stats.playingAs": "تلعب باسم {name}",
+ "stats.changeName": "تغيير",
+ "daily.shareName": "أضف اسمي"
 }

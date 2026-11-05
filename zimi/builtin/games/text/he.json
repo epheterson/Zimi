@@ -5978,5 +5978,8 @@
  "yacht.row.twos": "שתיות",
  "yacht.rowAria": "{row}: {n} נקודות",
  "yacht.top": "שש העליונות ({at} מזכה ב-{bonus})",
- "yacht.total": "סה״כ"
+ "yacht.total": "סה״כ",
+ "stats.playingAs": "משחק בשם {name}",
+ "stats.changeName": "שינוי",
+ "daily.shareName": "הוספת השם שלי"
 }

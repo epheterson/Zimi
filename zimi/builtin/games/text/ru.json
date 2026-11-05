@@ -6090,5 +6090,8 @@
  "yacht.row.twos": "Двойки",
  "yacht.rowAria": "{row}: {n} очков",
  "yacht.top": "Верхние шесть ({at} дают {bonus})",
- "yacht.total": "Итого"
+ "yacht.total": "Итого",
+ "stats.playingAs": "Вы играете как {name}",
+ "stats.changeName": "Изменить",
+ "daily.shareName": "Добавить моё имя"
 }

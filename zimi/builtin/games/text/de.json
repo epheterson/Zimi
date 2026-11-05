@@ -5866,5 +5866,8 @@
  "yacht.row.twos": "Zweier",
  "yacht.rowAria": "{row}: {n} Punkte",
  "yacht.top": "Oberer Block ({at} bringt {bonus})",
- "yacht.total": "Summe"
+ "yacht.total": "Summe",
+ "stats.playingAs": "Du spielst als {name}",
+ "stats.changeName": "Ändern",
+ "daily.shareName": "Meinen Namen hinzufügen"
 }

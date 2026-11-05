@@ -5976,5 +5976,8 @@
  "yacht.row.twos": "Deux",
  "yacht.rowAria": "{row} : {n} points",
  "yacht.top": "Haut de la grille ({at} rapporte {bonus})",
- "yacht.total": "Total"
+ "yacht.total": "Total",
+ "stats.playingAs": "Vous jouez en tant que {name}",
+ "stats.changeName": "Modifier",
+ "daily.shareName": "Ajouter mon nom"
 }

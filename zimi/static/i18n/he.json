@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "ציוני דרך",
   "alm_lm_layer_hint": "שמות על הירח: אתרי נחיתה, מכתשים, ימים",
   "alm_earth_sat_data_from": "נתוני לוויינים: מ־{date}",
-  "alm_go_landings": "נחיתות על הירח"
+  "alm_go_landings": "נחיתות על הירח",
+  "games_sync_merged": "המשחקים שלך במכשיר הזה ובחשבון שלך אוחדו.",
+  "display_name_title": "השם שלך",
+  "display_name_hint": "כך תופיע במשחקים ובטבלאות השיאים של השרת. השאר ריק כדי להשתמש בשם החשבון.",
+  "display_name_taken": "כבר יש מישהו בשרת עם השם הזה.",
+  "display_name_invalid": "עד 32 אותיות, ספרות, רווחים, נקודות או מקפים.",
+  "display_name_saved": "השם נשמר",
+  "display_name_label": "שם במשחקים:",
+  "display_name_change": "שינוי"
 }

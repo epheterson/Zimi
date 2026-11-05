@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "地标",
   "alm_lm_layer_hint": "月球上的名称：着陆点、环形山、月海",
   "alm_earth_sat_data_from": "卫星数据：{date}",
-  "alm_go_landings": "登月地点"
+  "alm_go_landings": "登月地点",
+  "games_sync_merged": "此设备上和你账户中的游戏记录已合并。",
+  "display_name_title": "你的名字",
+  "display_name_hint": "你在游戏和此服务器排行榜上显示的名字。留空则使用账户名。",
+  "display_name_taken": "此服务器上已有人使用这个名字。",
+  "display_name_invalid": "最多 32 个字母、数字、空格、点或连字符。",
+  "display_name_saved": "名字已保存",
+  "display_name_label": "游戏中的名字：",
+  "display_name_change": "更改"
 }

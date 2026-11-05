@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "Marcos",
   "alm_lm_layer_hint": "Nomes na Lua: locais de pouso, crateras, mares",
   "alm_earth_sat_data_from": "Dados de satélites: de {date}",
-  "alm_go_landings": "Pousos na Lua"
+  "alm_go_landings": "Pousos na Lua",
+  "games_sync_merged": "Seus jogos deste dispositivo e da sua conta agora estão juntos.",
+  "display_name_title": "Seu nome",
+  "display_name_hint": "É como você aparece nos jogos e nos placares deste servidor. Deixe vazio para usar o nome da sua conta.",
+  "display_name_taken": "Alguém neste servidor já usa esse nome.",
+  "display_name_invalid": "Use até 32 letras, números, espaços, pontos ou hífens.",
+  "display_name_saved": "Nome salvo",
+  "display_name_label": "Nome nos jogos:",
+  "display_name_change": "Alterar"
 }

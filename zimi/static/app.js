@@ -184,6 +184,11 @@ var SK = {
   // settings are no longer the ones it had before sync}. apps.js marks a
   // page's change pending under this same name.
   PREF_SYNC: 'zimi_pref_sync',
+  // Whose ZimiGames this browser keeps for (owner), what changed here and has
+  // not gone up (pending), and one who left without it going (aside).
+  GAMES_SYNC: 'zimi_games_sync',
+  // The signed-in player's display name, for the games pages to show.
+  GAMES_PERSON: 'zimi_games_person',
 };
 
 // What a person sets for themselves: carried by My data, and while signed in
@@ -2600,6 +2605,8 @@ function _applyUserSession(name, canCreate) {
   _manageToken = ''; _clearManageToken();
   if (manageBtnEl) manageBtnEl.style.display = 'none';
   _accountSet(name);
+  _gamesFollow(name);
+  _accountRecheck();   // the display name this person goes by (/whoami)
   _refreshAfterAuthChange();
 }
 
@@ -2678,6 +2685,7 @@ async function _bootAuthGate() {
   // account's own saved things and settings, from the browser's copy of them
   // (the account's arrives in the background once the page is up: _savedStart).
   _accountSet(j && j.account, true);
+  _gamesWhoami(j, true);
   if (j && j.role === 'user') {
     _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
@@ -16139,6 +16147,8 @@ window.addEventListener('message', function(e) {
     _gameSkyOpen(d, e.source);
   } else if (d.zimi === 'game-app' && d.app === 'dictionary' && typeof d.w === 'string' && d.w && _gameFrameIs(e.source)) {
     openDictionary(false, d.w.slice(0, 200));
+  } else if (d.zimi === 'games-edit-name' && _gameFrameIs(e.source)) {
+    _displayNameSheet();
   } else if (d.zimi === 'ready') {
     _appReady(e.source);
   } else if (d.zimi === 'top') {
@@ -20285,13 +20295,13 @@ function _accountRecheck() {
   if (_accountRechecking) return;
   _accountRechecking = true;
   serverFetch('/whoami', { credentials: 'same-origin', headers: _manageToken ? _authHeaders() : {} })
-    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); })
+    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); _gamesWhoami(j); })
     .catch(function () {}).then(function () { _accountRechecking = false; });
 }
 // After an admin's sign-in: whose account the server says this is.
 function _accountRefresh() {
   serverFetch('/whoami', { credentials: 'same-origin', headers: _manageToken ? _authHeaders() : {} })
-    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); })
+    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); _gamesWhoami(j); })
     .catch(function () {});
 }
 // Signing out: what the account has not had goes up, then its copy leaves this
@@ -20299,8 +20309,8 @@ function _accountRefresh() {
 // one that could not go stays, to go up at the next sign-in). The settings stay
 // as they are on this screen, the browser's own from now on.
 function _accountLeave() {
-  if (!_accountId) return Promise.resolve();
-  return Promise.all([_savedFlush(), _prefPush()]).then(function (got) {
+  if (!_accountId) return _gamesLeave();
+  return Promise.all([_savedFlush(), _prefPush(), _gamesLeave()]).then(function (got) {
     if (got[0] && !_savedDelta()) Saved.forget();
     _prefSaveState({ owner: null, pending: {}, seeded: true });
     _accountId = null;
@@ -20539,6 +20549,275 @@ function _prefApplied(keys) {
   var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS];
   if (mode === 'home' && !readerOpen && home.some(has)) { try { renderHome(); } catch (e) {} }
 }
+// ── Games: what a person plays, theirs on every browser they sign in on ──
+// ZimiGames keeps everything in this browser's storage under zimi.games. and
+// zimi.zimcity. (saves, stats, dailies, best scores, kept cities); the games
+// themselves never learn of accounts. Signed in, the shell carries those keys
+// to the person's account (/userdata/games, the settings' shape: the server
+// orders changes, one pending here wins until the account has it) and back.
+// A game page writes from the reader frame, so its changes arrive here as
+// storage events. Two people on one browser each see only their own: signing
+// out takes the games off this screen (sent first; what could not go is set
+// aside for that person's next sign-in). Password off, or not signed in: the
+// browser's own, as before (users.games_data_owner).
+var _GAMES_KEY_RE = /^zimi\.(games|zimcity)\./;
+// The device's, never the person's: tile pictures, the last start error, this server's clock.
+var _GAMES_LOCAL = ['zimi.games.snaps', 'zimi.games.lastStartError', 'zimi.games.serverOffset'];
+var _GAMES_PUSH_MS = 3000;
+var _GAMES_KEPT_CITIES = 5;   // zimcity.js KEPT_MAX
+var _gamesAccount = null, _gamesPushTimer = null, _gamesPushing = null, _gamesPulledAt = 0;
+function _isGamesKey(k) { return typeof k === 'string' && _GAMES_KEY_RE.test(k) && _GAMES_LOCAL.indexOf(k) < 0; }
+function _gamesKeys() {
+  var out = [];
+  try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (_isGamesKey(k)) out.push(k); } } catch (e) {}
+  return out;
+}
+function _gamesState() {
+  var st = _getStorageJSON(SK.GAMES_SYNC, null);
+  if (!st || typeof st !== 'object' || Array.isArray(st)) st = {};
+  return { owner: typeof st.owner === 'string' && st.owner ? st.owner : null,
+    pending: st.pending && typeof st.pending === 'object' ? st.pending : {},
+    aside: st.aside && typeof st.aside === 'object' ? st.aside : {}, adopted: !!st.adopted };
+}
+function _gamesSaveState(st) { try { localStorage.setItem(SK.GAMES_SYNC, JSON.stringify(st)); } catch (e) {} }
+function _gamesJSON(v) { try { return v == null ? null : JSON.parse(v); } catch (e) { return null; } }
+// Two copies of one key, both changed (this browser offline, another device
+// playing): nothing a person did is lost. Stats take the larger count and every
+// day played; a save the newer one (never two interleaved); else this browser's.
+function _gamesMerge(k, mine, theirs) {
+  if (mine == null) return theirs;
+  if (theirs == null || mine === theirs) return mine;
+  var a = _gamesJSON(mine), b = _gamesJSON(theirs);
+  if (!a || !b) return mine;
+  if (k === 'zimi.games.stats' && a.g && b.g && a.days && b.days) {
+    var g = {}, days = {};
+    [a.g, b.g].forEach(function (src) { Object.keys(src).forEach(function (p) {
+      var x = src[p] || {}, y = g[p] || { n: 0, w: 0 };
+      g[p] = { n: Math.max(y.n, x.n || 0), w: Math.max(y.w, x.w || 0) };
+    }); });
+    [a.days, b.days].forEach(function (src) { Object.keys(src).forEach(function (d) {
+      var x = days[d] || (days[d] = {});
+      Object.keys(src[d] || {}).forEach(function (p) { if (x[p] !== 'win') x[p] = src[d][p]; });
+    }); });
+    return JSON.stringify({ v: 1, g: g, days: days, best: Math.max(a.best || 0, b.best || 0) });
+  }
+  // ZimCity's kept cities: every city either browser kept, each whole as it was kept (never two mixed), newest first.
+  if (k === 'zimi.zimcity.kept' && Array.isArray(a) && Array.isArray(b)) {
+    var seen = {}, all = a.concat(b).filter(function (c) {
+      if (!c || typeof c.at !== 'number' || seen[c.at]) return false;
+      return (seen[c.at] = true);
+    });
+    all.sort(function (x, y) { return y.at - x.at; });
+    return JSON.stringify(all.slice(0, _GAMES_KEPT_CITIES));
+  }
+  if (typeof a.at === 'number' && typeof b.at === 'number') return a.at >= b.at ? mine : theirs;
+  return mine;
+}
+function _gamesWrite(k, v) {
+  try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+}
+// The games shown here changed underneath (the account's copy came in): the
+// games page on screen is told, so a shelf draws its stats again.
+function _gamesTellFrame() {
+  var f = document.getElementById('reader-frame');
+  try { f.contentWindow.postMessage({ zimi: 'games-synced' }, location.origin); } catch (e) {}
+}
+// A games key changed in this browser: the person's to send, if one is followed.
+function _gamesChanged(k) {
+  if (!_isGamesKey(k)) return;
+  var st = _gamesState();
+  if (!_gamesAccount || st.owner !== _gamesAccount) return;
+  st.pending[k] = 1;
+  _gamesSaveState(st);
+  _gamesPushSoon();
+}
+function _gamesPushSoon() {
+  if (!_gamesAccount) return;
+  clearTimeout(_gamesPushTimer);
+  _gamesPushTimer = setTimeout(_gamesPush, _GAMES_PUSH_MS);
+}
+function _gamesUrl() { return '/userdata/games?account=' + encodeURIComponent(_gamesAccount || ''); }
+function _gamesRefused(r) {
+  if (r.status === 401 || r.status === 409) { _accountRecheck(); return true; }
+  return false;
+}
+// The pending keys, sent; the account's copy as kept comes back and is taken.
+function _gamesPush(leaving) {
+  clearTimeout(_gamesPushTimer); _gamesPushTimer = null;
+  var st = _gamesState(), account = _gamesAccount;
+  if (!account || st.owner !== account) return Promise.resolve(true);
+  if (_gamesPushing && !leaving) return _gamesPushing.then(function () { return _gamesPush(); });
+  var keys = Object.keys(st.pending);
+  if (!keys.length) return Promise.resolve(true);
+  var changes = {};
+  keys.forEach(function (k) { changes[k] = { v: _rawGet(k) }; });
+  var body = JSON.stringify({ changes: changes, account: account, client: _liveClient });
+  var sent = fetch('/userdata/games', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
+    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
+  }).then(function (r) {
+    if (_gamesRefused(r) || !r.ok) return null;
+    return r.json();
+  }).then(function (d) {
+    if (!d || account !== _gamesAccount) return false;
+    var now = _gamesState();
+    keys.forEach(function (k) { if (_rawGet(k) === changes[k].v) delete now.pending[k]; });
+    _gamesSaveState(now);
+    _gamesTake(d);
+    return true;
+  }).catch(function () { return false; });
+  if (leaving) return sent;
+  _gamesPushing = sent.then(function (ok) {
+    _gamesPushing = null;
+    if (ok && Object.keys(_gamesState().pending).length) _gamesPushSoon();
+    return ok;
+  });
+  return _gamesPushing;
+}
+function _gamesPull() {
+  if (!_gamesAccount) return Promise.resolve(null);
+  var account = _gamesAccount;
+  _gamesPulledAt = Date.now();
+  return fetch(_gamesUrl(), { credentials: 'same-origin' }).then(function (r) {
+    if (_gamesRefused(r) || !r.ok) return null;
+    return r.json();
+  }).then(function (d) {
+    if (!d || account !== _gamesAccount) return null;
+    _gamesTake(d);
+    return d;
+  }).catch(function () { return null; });
+}
+// The account's games ({rev, settings: {key: {v, r}}}) come in: every key it
+// holds that is not pending here is the account's; a pending one meets it.
+function _gamesTake(d) {
+  if (!d || typeof d !== 'object' || !d.settings || typeof d.settings !== 'object') return;
+  var st = _gamesState(), moved = false, more = false;
+  if (!_gamesAccount || st.owner !== _gamesAccount) return;
+  Object.keys(d.settings).forEach(function (k) {
+    var acc = d.settings[k];
+    if (!_isGamesKey(k) || !acc || typeof acc !== 'object') return;
+    var v = typeof acc.v === 'string' ? acc.v : null, here = _rawGet(k);
+    if (st.pending[k]) {
+      var m = _gamesMerge(k, here, v);
+      if (m !== here) { _gamesWrite(k, m); moved = true; }
+      if (m === v) delete st.pending[k]; else more = true;
+      return;
+    }
+    if (here !== v) { _gamesWrite(k, v); moved = true; }
+  });
+  _gamesSaveState(st);
+  if (moved) _gamesTellFrame();
+  if (more) _gamesPushSoon();
+}
+// This browser now follows ``id``'s games (null: its own). A person who left
+// without their games going up finds them waiting (aside); a browser's games
+// from before anyone signed in go into the first account that does, once,
+// merged with what that account already has, said only when there was some.
+function _gamesFollow(id, boot) {
+  id = typeof id === 'string' && id ? id : null;
+  var st = _gamesState();
+  _gamesAccount = id;
+  try { if (!id) localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+  if (st.owner === id) { if (id && !boot) _gamesPull(); return; }
+  if (st.owner) {
+    // Someone else's are on this screen (their session ended without a sign-out): set aside, then gone.
+    var mine = {};
+    Object.keys(st.pending).forEach(function (k) { mine[k] = _rawGet(k); });
+    if (Object.keys(mine).length) st.aside[st.owner] = mine;
+    _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
+    _gamesTellFrame();
+  }
+  var adopt = id && !st.adopted && !st.owner ? _gamesKeys() : [];
+  st.owner = id; st.pending = {};
+  if (id && st.aside[id]) {
+    var back = st.aside[id];
+    Object.keys(back).forEach(function (k) { _gamesWrite(k, back[k]); st.pending[k] = 1; });
+    delete st.aside[id];
+  }
+  if (id && adopt.length) adopt.forEach(function (k) { st.pending[k] = 1; });
+  if (id) st.adopted = true;
+  _gamesSaveState(st);
+  if (!id) return;
+  _gamesPull().then(function (d) {
+    var had = d && d.settings && Object.keys(d.settings).some(_isGamesKey);
+    if (adopt.length && had) _showToast(t('games_sync_merged'), 6000);
+    if (Object.keys(_gamesState().pending).length) _gamesPush();
+  });
+}
+// Signing out: what has not gone goes, then this person's games leave the
+// screen; what could not go waits for their next sign-in.
+function _gamesLeave() {
+  if (!_gamesAccount) return Promise.resolve();
+  var who = _gamesAccount;
+  return _gamesPush().then(function (ok) {
+    var st = _gamesState();
+    if (!ok && Object.keys(st.pending).length) {
+      var mine = {};
+      Object.keys(st.pending).forEach(function (k) { mine[k] = _rawGet(k); });
+      st.aside[who] = mine;
+    }
+    _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
+    st.owner = null; st.pending = {};
+    _gamesSaveState(st);
+    _gamesAccount = null;
+    try { localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+  }, function () {});
+}
+// /whoami's word on whose games this browser keeps, and the name to show.
+// ``boot``: the account's copy comes once the page is up (_savedStart).
+function _gamesWhoami(j, boot) {
+  var id = j && j.games;
+  if (boot) {
+    var st = _gamesState();
+    if (st.owner === (id || null)) _gamesAccount = id || null; else _gamesFollow(id, false);
+  } else _gamesFollow(id);
+  _gamesPerson(j && j.games ? j.display : null);
+}
+// What the signed-in person is called on this server (their games, the boards):
+// one field, opened from their account card in Manage and from the games'
+// Stats page. Empty goes back to the account's own name.
+var _displayName = null;
+function _displayNameSheet() {
+  if (!_gamesAccount) return;
+  var old = document.getElementById('name-sheet');
+  if (old) old.remove();
+  var el = document.createElement('div');
+  el.id = 'name-sheet';
+  el.className = 'name-sheet-wrap';
+  el.innerHTML = '<form class="name-sheet" role="dialog" aria-modal="true" aria-labelledby="name-sheet-title">' +
+    '<h2 id="name-sheet-title">' + tH('display_name_title') + '</h2>' +
+    '<p class="name-sheet-hint">' + tH('display_name_hint') + '</p>' +
+    '<input id="name-sheet-input" type="text" maxlength="32" autocomplete="nickname" value="' + esc(_displayName || '') + '">' +
+    '<p class="name-sheet-err" role="alert"></p>' +
+    '<div class="name-sheet-actions"><button type="button" class="pill" data-name="cancel">' + tH('cancel') + '</button>' +
+    '<button type="submit" class="pill active">' + tH('save') + '</button></div></form>';
+  var close = function () { el.remove(); };
+  el.addEventListener('click', function (e) { if (e.target === el || (e.target.closest && e.target.closest('[data-name="cancel"]'))) close(); });
+  el.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  el.querySelector('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var val = el.querySelector('input').value.trim(), err = el.querySelector('.name-sheet-err');
+    fetch('/account/display', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display: val, account: _gamesAccount }) }).then(function (r) {
+      return r.json().then(function (j) { return { status: r.status, j: j }; });
+    }).then(function (res) {
+      if (res.status === 200) { _gamesPerson(res.j.display || null); close(); _showToast(t('display_name_saved'), 3000); return; }
+      err.textContent = t(res.status === 409 ? 'display_name_taken' : 'display_name_invalid');
+    }).catch(function () { err.textContent = t('display_name_invalid'); });
+  });
+  document.body.appendChild(el);
+  var input = el.querySelector('input');
+  input.focus(); input.select();
+}
+// The person's display name, for the games pages (Stats, the share line).
+function _gamesPerson(name) {
+  _displayName = name || null;
+  try { if (name && _gamesAccount) localStorage.setItem(SK.GAMES_PERSON, name); else localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+}
+window.addEventListener('storage', function (e) {
+  if (e.key && _isGamesKey(e.key)) _gamesChanged(e.key);
+});
+
 // Data that holds a store (the account's copy, a My data file) comes in: the
 // store merged, and bookmarks and folders in the pre-1.12 shape migrated. An
 // account's are migrated once and the store flagged, so a later pull never
@@ -20572,14 +20851,15 @@ function _savedFlush(leaving) {
 // what it has not had is sent on leaving it.
 function _savedStart() {
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { _savedFlush(true); _prefPush(true); _liveClose(); return; }
+    if (document.hidden) { _savedFlush(true); _prefPush(true); _gamesPush(true); _liveClose(); return; }
     // Back on the page: the stream picks up where it left off (since), so a
     // change made meanwhile on another device arrives as it reopens.
     if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
+    if (_gamesAccount && Date.now() - _gamesPulledAt > _SAVED_PULL_EVERY_MS) _gamesPull();
     _liveOpen();
     _buildCheck();
   });
-  window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); });
+  window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); _gamesPush(true); });
   // A setting written in another page of this browser (another tab, an app
   // page in the reader): shown here too. Whoever wrote it marked it pending
   // (_prefChanged, apps.js's prefTouched); one this page did not send yet goes.
@@ -20603,6 +20883,7 @@ function _savedStart() {
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   _liveOpen();
   _buildCheck();
+  if (_gamesAccount) (window.requestIdleCallback || setTimeout)(function () { _gamesFollow(_gamesAccount); });
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
@@ -20633,6 +20914,7 @@ function _liveOpen() {
     if (!c || c.by === _liveClient) return;
     if (c.topic === 'settings') _prefPull();
     else if (c.topic === 'saved') _savedPull();
+    else if (c.topic === 'games') _gamesPull();
     else if (c.topic === 'library') _libraryHeard();
   });
   // Each write says where the stream is (lastEventId): kept for reopening,
