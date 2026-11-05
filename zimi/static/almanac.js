@@ -625,7 +625,7 @@ function _almHeadHtml(focus) {
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
   // The sky's Moon card and its three Sun cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
-  html += '<div id="almanac-sky-facts" class="alm-sky-facts"></div>';
+  html += '<div id="almanac-sky-facts" class="alm-sky-facts">' + (typeof _skyFactsPrimeHtml === 'function' ? _skyFactsPrimeHtml(focus, loc, m) : '') + '</div>';
   html += '</div>';
   return html;
 }

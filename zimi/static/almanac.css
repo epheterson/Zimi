@@ -392,10 +392,19 @@
 .alm-sky-look { right: 4px; }
 [dir=rtl] .alm-sky-look { right: auto; left: 4px; }
 .almanac-sky-wrap canvas { width: 100%; display: block; border-radius: 12px; touch-action: pan-y; }
+/* The sky is its final size before its first frame (almanac-sky.js sets the same height once it starts, from
+   SKY_ASPECT and SKY_ASPECT_PHONE under SKY_PHONE_MAX_W): a canvas waiting at its default 2:1 grew when the
+   scene came, and moved everything under it. */
+.almanac-sky-wrap { container-type: inline-size; }
+#almanac-sky-canvas { aspect-ratio: 1.8; }
+@container (max-width: 519.98px) { #almanac-sky-canvas { aspect-ratio: 1.3; } }
 /* What the sky says under the picture: one lead line (the light of the hour),
    what is true of it here and the year, quieter, then the facts as cards in
    the hero's own grammar (a label over a value, two columns). */
-.alm-sky-cap { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 20px 10px 0; text-align: center; text-wrap: balance; }
+.alm-sky-cap { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 20px 10px 0; text-align: center; text-wrap: balance;
+  /* Its two lines' room from the first paint: the sky writes them on its first tick, and an empty caption that grew
+     then pushed the sky down by their height. Padding, the lead line, the gap, the year line (the rules below). */
+  min-height: calc(20px + 15px * 1.3 + 2px + 11px * 1.4); box-sizing: border-box; }
 .alm-sky-lead { font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--text); }
 .alm-sky-row { display: block; }
 .alm-sky-row .alm-sky-sub { white-space: nowrap; }
