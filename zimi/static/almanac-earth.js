@@ -518,6 +518,9 @@ function _aeById(id) { return document.getElementById(id); }
 
 // The styles live with the view (injected on first open), so a device that
 // never opens it never parses them.
+// The view's two marking colours: the spacecraft's teal (AE_PROBE_COLOR is it as GL floats) and the amber of
+// places it names (a landing, you, the status line).
+var AE_PROBE_HEX = '#6ee7d8', AE_AMBER_HEX = '#f5c16c';
 var AE_CSS = [
   '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
   '.ae-view.open{display:block}',
@@ -571,7 +574,7 @@ var AE_CSS = [
   '.ae-set-data .ae-fresh{margin-inline-start:0}',
   '.ae-set-sep{height:1px;margin:6px 4px;background:var(--border)}',
   '.ae-live{color:#6ec56e}',
-  '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
+  '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:' + AE_AMBER_HEX + ';pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls, its places in groups, each with its small disc.
@@ -587,7 +590,7 @@ var AE_CSS = [
   '@media (hover:hover){.ae-go-row:hover{background:rgba(255,255,255,.06)}}',
   '.ae-go-row[aria-current="true"]{color:var(--amber)}',
   '.ae-go-dot{flex:0 0 auto;width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08)}',
-  '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:#6ee7d8}',
+  '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
   '.night-red .ae-go{background:rgba(0,0,0,.94)}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 64px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
@@ -611,7 +614,7 @@ var AE_CSS = [
   '.ae-lm::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:currentColor;transform:translateY(-50%);box-shadow:0 0 3px #000}',
   '.ae-lm:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}',
   '.ae-lm[hidden]{display:none}',
-  '.ae-lm-landing{color:#f5c16c}',
+  '.ae-lm-landing{color:' + AE_AMBER_HEX + '}',
   '.night-red .ae-lm,.night-red .ae-lm-landing{color:var(--text)}',
   '.ae-card .ae-lm-fly{margin-top:8px}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
@@ -636,7 +639,7 @@ var AE_CSS = [
   '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
-  '.ae-label-you{color:#f5c16c}',
+  '.ae-label-you{color:' + AE_AMBER_HEX + '}',
   '.ae-label-shadow{color:#ffb4a0}',
   // Red night light (the Red theme, app.css): the labels' warm and cool tints are one red, the views' bright
   // overlays go black, and the globe is recoloured by the canvas filter.
@@ -683,14 +686,14 @@ function _aeEnsureStyles() {
 // Every place the view can fly to, in groups: Earth and Moon, the planets, their big moons, the dwarf planets, the
 // spacecraft (once their table has come: opening the sheet asks for it). A row is the body's small disc and its name;
 // a tap flies there and puts the sheet away.
-var AE_GO_PROBE_COLOR = '#6ee7d8';
+var AE_GO_PROBE_COLOR = AE_PROBE_HEX;
 var AE_GO_LM = 'lm:';   // a landing site's row: lm:<its index in the Moon's landmarks>
 function _aeGoLmRow(key) { return _aeLm && key.indexOf(AE_GO_LM) === 0 ? _aeLm.moon[+key.slice(AE_GO_LM.length)] : null; }
 // A compass: Go to sits in the row as one round button, so the row stays one line on a phone.
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
 function _aeGoDot(key) {
-  if (_aeGoLmRow(key)) return '<i class="ae-go-dot ae-go-probe" style="background:#f5c16c;color:#f5c16c"></i>';
+  if (_aeGoLmRow(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_AMBER_HEX + ';color:' + AE_AMBER_HEX + '"></i>';
   if (key === 'iss') return '<i class="ae-go-dot ae-go-probe" style="background:rgb(255,209,89);color:rgb(255,209,89)"></i>';
   if (_aeIsProbe(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_GO_PROBE_COLOR + '"></i>';
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
@@ -1647,7 +1650,8 @@ var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its s
 // pixels at 2x); nearer, the picture only blurs. The Moon's 670 m texels already reach that at its own closest
 // approach (AE_MIN_DIST_MOON), so it keeps it: the Blue Marble and LRO mosaics, not the view, are the limit.
 var AE_HD_MIN_ALT_KM = 400;
-var AE_DEG = Math.PI / 180;
+// A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
+function _aeLatLonVec(lat, lon) { return _aeEqVec(_aeRad(lon), _aeRad(lat), 1); }
 
 // Each body's tiled layers: the sampler each fills in the body's own shader, and the layer's folder in the ZIM.
 function _aeHdBodies(S) {
@@ -1737,7 +1741,7 @@ function _aeHdGeometry(THREE, z, x, y, radius) {
   var lon0 = -180 + x * span, lat0 = 90 - y * span;
   var pos = [], nor = [], uv = [], idx = [];
   var vert = function (lat, lon, r) {
-    var cl = Math.cos(lat * AE_DEG), p = [cl * Math.cos(lon * AE_DEG), cl * Math.sin(lon * AE_DEG), Math.sin(lat * AE_DEG)];
+    var p = _aeLatLonVec(lat, lon);
     pos.push(p[0] * r, p[1] * r, p[2] * r);
     nor.push(p[0], p[1], p[2]);
     uv.push((lon + 180) / 360, (lat + 90) / 180);
@@ -1805,7 +1809,7 @@ function _aeHdCanSplit(b, z, x, y) {
 function _aeHdKeepAbove(S, b) {
   var inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
   var c = S.camera.position.clone().applyMatrix4(inv), r = Math.hypot(c.x, c.y, c.z);
-  var min = _aeHdMinOver(b, Math.asin(c.z / r) / AE_DEG, Math.atan2(c.y, c.x) / AE_DEG);
+  var min = _aeHdMinOver(b, _aeDeg(Math.asin(c.z / r)), _aeDeg(Math.atan2(c.y, c.x)));
   AE_TARGETS[b.key].min = min;
   if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
 }
@@ -1819,7 +1823,7 @@ function _aeHdMinOver(b, lat, lon) {
     if (+z > deepest && _aeHdInInsert(m, +z, x, y)) deepest = +z;
   }
   if (deepest < 0) return b.minDist;
-  var texelKm = (180 / Math.pow(2, deepest) / AE_HD_TILE_PX) * AE_DEG * b.radius * AE_EARTH_RADIUS_KM;
+  var texelKm = _aeRad(180 / Math.pow(2, deepest) / AE_HD_TILE_PX) * b.radius * AE_EARTH_RADIUS_KM;
   var cam = _ae.gl.camera, hPx = _ae.h * _ae.gl.dpr;
   var altKm = Math.max(AE_HD_INSERT_MIN_ALT_KM, texelKm * hPx / (AE_HD_TEXEL_PX * _aeRad(cam.fov)));
   return Math.min(b.minDist, b.radius + altKm / AE_EARTH_RADIUS_KM);
@@ -1893,9 +1897,9 @@ function _aeHdSelect(S, b) {
   var halfDiag = Math.atan(Math.tan(_aeRad(cam.fov) / 2) * Math.sqrt(1 + cam.aspect * cam.aspect));
   var leaves = [];
   var visit = function (z, x, y) {
-    var span = _aeHdSpan(z), lon = (-180 + (x + 0.5) * span) * AE_DEG, lat = (90 - (y + 0.5) * span) * AE_DEG;
+    var span = _aeHdSpan(z), lon = _aeRad(-180 + (x + 0.5) * span), lat = _aeRad(90 - (y + 0.5) * span);
     var c = [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
-    var reach = span * AE_DEG * AE_HD_TILE_REACH, chord = 2 * Math.sin(Math.min(reach, Math.PI / 2) / 2);
+    var reach = _aeRad(span) * AE_HD_TILE_REACH, chord = 2 * Math.sin(Math.min(reach, Math.PI / 2) / 2);
     var ang = Math.acos(_aeClamp(_aeDot(c, p) / d, -1, 1));
     if (z > 0 && ang - reach > horizon) return;                       // over the horizon
     var v = _aeSub(c, p), dist = _aeLen(v);
@@ -1904,7 +1908,7 @@ function _aeHdSelect(S, b) {
       if (off > halfDiag) return;                                     // off the screen
     }
     var near = Math.max(dist - chord, (d - 1) * 0.5, 1e-6);
-    var px = span * AE_DEG / near * focal;
+    var px = _aeRad(span) / near * focal;
     if (px > AE_HD_TILE_PX * AE_HD_SPLIT && _aeHdCanSplit(b, z, x, y)) {
       for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 2; dx++) visit(z + 1, 2 * x + dx, 2 * y + dy);
       return;
@@ -2280,12 +2284,12 @@ function _aeAstLoad() {
   if (_aeAst || _aeAstLoading || typeof fetch !== 'function') return;
   _aeAstLoading = fetch(AE_AST_URL).then(function (r) { if (!r.ok) throw new Error('asteroids'); return r.arrayBuffer(); }).then(function (buf) {
     var dv = new DataView(buf), n = dv.getUint32(8, true), q = new Uint16Array(buf.slice(AE_AST_HEADER, AE_AST_HEADER + n * 12));
-    var el = new Float64Array(n * 6), d2r = Math.PI / 180;
+    var el = new Float64Array(n * 6);
     for (var i = 0; i < n; i++) {
       el[i * 6] = q[i * 6] / AE_AST_Q * AE_AST_AU_SPAN;
       el[i * 6 + 1] = q[i * 6 + 1] / AE_AST_Q;
-      el[i * 6 + 2] = q[i * 6 + 2] / AE_AST_Q * 180 * d2r;
-      for (var k = 3; k < 6; k++) el[i * 6 + k] = q[i * 6 + k] / AE_AST_Q * 360 * d2r;
+      el[i * 6 + 2] = _aeRad(q[i * 6 + 2] / AE_AST_Q * 180);
+      for (var k = 3; k < 6; k++) el[i * 6 + k] = _aeRad(q[i * 6 + k] / AE_AST_Q * 360);
     }
     _aeAst = { epoch: dv.getFloat64(0, true), n: n, el: el, at: null, cloud: null };
     if (_ae) { _ae.dirty = true; _aeKick(); }
@@ -2337,11 +2341,11 @@ function _aeUpdateAsteroids(jde, place) {
 var AE_TRACKS_URL = '/static/earth/space-tracks-v1.json';
 // How far round a planet (AU) a probe is placed in that planet's own frame rather than by the drawn scale.
 var AE_PROBE_REACH_AU = { earth: 0.05, mercury: 0.01, venus: 0.02, mars: 0.02, jupiter: 0.5, saturn: 0.4, uranus: 0.2, neptune: 0.3, pluto: 0.05 };
-var AE_PROBE_COLOR = [0.43, 0.9, 0.85], AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
+var AE_PROBE_COLOR = [0.43, 0.9, 0.85] /* AE_PROBE_HEX */, AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
 var AE_PROBE_SURFACE = 0.02;          // a probe is a point: the camera circles it this far in, at most
 var AE_PROBE_VIEW_DIST = 60;          // Earth radii: a flight to a probe ends this far from it
-var AE_PROBE_VIEW_LIFT = 0.35;
-var AE_PROBE_FRAME_NEAR = 1.15, AE_PROBE_FRAME_MAX = 4000;   // a body this near the probe is framed with it, up to this far        // and looks at it from this far above its path (tan of the angle)
+var AE_PROBE_VIEW_LIFT = 0.35;        // and looks at it from this far above its path (tan of the angle)
+var AE_PROBE_FRAME_NEAR = 1.15, AE_PROBE_FRAME_MAX = 4000;   // a body this near the probe is framed with it, up to this far
 var AE_TRAIL_POINTS = 240, AE_TRAIL_REDRAW_DAYS = 10, AE_TRAIL_ALPHA = 0.55, AE_TRAIL_FAINT = 0.12;
 var _aeTracks = null, _aeTracksLoading = null, _aeProbePos = {}, _aeProbeHeading = {};
 var AE_PROBE_HEADING_DAYS = 30;
@@ -2389,9 +2393,9 @@ var AE_GM_RATIO = { earth: 1 / 332946.05, mercury: 1 / 6023657, venus: 1 / 40852
   saturn: 1 / 3497.902, uranus: 1 / 22902.98, neptune: 1 / 19412.26, pluto: 1 / 136047200 };
 var AE_VEL_STEP_DAYS = 0.01;
 var AE_TRAIL_ORBIT_FRAC = 0.3;     // a probe going round and round leaves this much of an orbit behind it, fading
-var AE_TRAIL_LOOPED = 1.2;
+var AE_TRAIL_LOOPED = 1.2;          // round its body at least this many times since its table began: it is in orbit
 var AE_TRAIL_HELD_DAYS = 180;      // Webb's halo round L2 is about half a year
-var AE_KEPLER_CLOSE = 0.15;        // one period back within this share of the orbit's far side: it is that ellipse         // round its body at least this many times since its table began: it is in orbit
+var AE_KEPLER_CLOSE = 0.15;        // one period back within this share of the orbit's far side: it is that ellipse
 // A path's place and velocity (AU, AU a day) at jd, by a central difference of its curve.
 function _aeStateOf(at, jd) {
   var a = at(jd - AE_VEL_STEP_DAYS), b = at(jd + AE_VEL_STEP_DAYS), h = at(jd);
@@ -2559,7 +2563,7 @@ function _aeDrawMini() {
   var placed = _orreryPaintPlanets(g, half, half, W, _jdToJulianCentury(jd), 0, dpr, dpr, names, { plain: true });
   placed.forEach(function (r) {
     if (r.name.toLowerCase() !== _ae.target) return;
-    g.strokeStyle = '#f5c16c'; g.lineWidth = dpr;
+    g.strokeStyle = AE_AMBER_HEX; g.lineWidth = dpr;
     g.beginPath(); g.arc(r.x * dpr, r.y * dpr, r.r * dpr + 2.5 * dpr, 0, 2 * Math.PI); g.stroke();
   });
   // You: the camera's place on the ecliptic, at the same squeeze, and the way it faces.
@@ -2571,7 +2575,7 @@ function _aeDrawMini() {
   var a = Math.atan2(-_aeDot(fv, y), _aeDot(fv, e.x)), L = AE_MINI_SHIP_PX * dpr;
   g.save();
   g.translate(c0[0], c0[1]); g.rotate(a);
-  g.fillStyle = '#6ee7d8';
+  g.fillStyle = AE_PROBE_HEX;
   g.beginPath(); g.moveTo(L, 0); g.lineTo(-L * 0.7, L * 0.6); g.lineTo(-L * 0.35, 0); g.lineTo(-L * 0.7, -L * 0.6); g.closePath(); g.fill();
   g.restore();
 }
@@ -2646,7 +2650,7 @@ function _aeLmBodies() {
   return [{ key: 'moon', center: sc.moon, r: AE_MOON_RADIUS_RE, m: S.moon.matrix.elements }];
 }
 function _aeLmDir(b, lat, lon) {
-  var cl = Math.cos(lat * AE_DEG), v = [cl * Math.cos(lon * AE_DEG), cl * Math.sin(lon * AE_DEG), Math.sin(lat * AE_DEG)], e = b.m;
+  var v = _aeLatLonVec(lat, lon), e = b.m;
   return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
 }
 function _aeUpdateLandmarks() {
@@ -2702,14 +2706,14 @@ function _aeUpdateLandmarks() {
 // The Sun's height (its sine) over a place on the Moon at a time.
 function _aeLmSunAt(row, ms) {
   var sc = _aeSceneAt(ms), m = _aeMoonBasis(sc);
-  var cl = Math.cos(row[1] * AE_DEG), v = [cl * Math.cos(row[2] * AE_DEG), cl * Math.sin(row[2] * AE_DEG), Math.sin(row[1] * AE_DEG)];
+  var v = _aeLatLonVec(row[1], row[2]);
   var n = [m.x[0] * v[0] + m.y[0] * v[1] + m.z[0] * v[2], m.x[1] * v[0] + m.y[1] * v[1] + m.z[1] * v[2], m.x[2] * v[0] + m.y[2] * v[1] + m.z[2] * v[2]];
   var p = _aeAdd(sc.moon, _aeScale(n, AE_MOON_RADIUS_RE));
   return _aeDot(n, _aeNorm(_aeSub(sc.sun, p)));
 }
 // The next lunar morning there after ms: when the Sun climbs past AE_LM_MORNING_SUN_DEG. Null if none within a month.
 function _aeLmMorning(row, ms) {
-  var want = Math.sin(AE_LM_MORNING_SUN_DEG * AE_DEG), a = ms, fa = _aeLmSunAt(row, a) - want;
+  var want = Math.sin(_aeRad(AE_LM_MORNING_SUN_DEG)), a = ms, fa = _aeLmSunAt(row, a) - want;
   for (var t = ms + AE_LM_DAWN_STEP_MS; t <= ms + AE_LM_DAWN_LOOK_MS; t += AE_LM_DAWN_STEP_MS) {
     var ft = _aeLmSunAt(row, t) - want;
     if (fa < 0 && ft >= 0) {
@@ -4279,7 +4283,7 @@ function _aePaintMarks(kept) {
       var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
       if (q.body === 'sun' || !isFinite(x) || !isFinite(y)) return;
       if (_aeIsProbe(q.body)) {
-        g.fillStyle = '#6ee7d8';
+        g.fillStyle = AE_PROBE_HEX;
         g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
         var v = _aeProbeHeading[q.body], tip = v ? _aeProject(_aeAdd(_aeProbePos[q.body], v)) : null;
         if (tip) {
