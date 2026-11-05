@@ -281,6 +281,17 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             for k in ("parker", "juno"):
                 assert got[k]["trail"] <= got[k]["period"] * 0.31 and got[k]["first"] < 0.01 and got[k]["last"] == 1, got
             assert got["voyager1"]["round"] is None and not got["voyager1"]["ring"] and got["voyager1"]["first"] == 1, got
+            # Every day of 2025 to mid-2028 (the table is thinned, so a state at the close pass is far off: the ellipse is
+            # fitted where it moves slowly), Juno is on its ~35-day orbit and Parker on its 88-day one, never held or lost.
+            fits = pg.evaluate("""() => { var near = (k, jd) => [{ key: k, h: _ephBodyJ2000('Jupiter', jd), reach: AE_PROBE_REACH_AU[k], hAt: x => _ephBodyJ2000('Jupiter', x) }];
+                var j = [], p = [];
+                for (var jd = 2460676.5; jd < 2461900.5; jd += 1) {
+                  var o = _aeProbeOrbit(_aeTracks.tracks.juno, jd, near('jupiter', jd)); j.push(o && o.period ? o.period : 0);
+                  var q = _aeProbeOrbit(_aeTracks.tracks.parker, jd, []); p.push(q && q.period ? q.period : 0);
+                }
+                return { j: [Math.min.apply(null, j), Math.max.apply(null, j)], p: [Math.min.apply(null, p), Math.max.apply(null, p)] }; }""")
+            assert 33 < fits["j"][0] and fits["j"][1] < 37, fits
+            assert 87 < fits["p"][0] and fits["p"][1] < 90, fits
             ctx.close()
         finally:
             br.close()

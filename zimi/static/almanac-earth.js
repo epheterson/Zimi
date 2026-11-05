@@ -2538,6 +2538,7 @@ var AE_VEL_STEP_DAYS = 0.01;
 var AE_TRAIL_ORBIT_FRAC = 0.3;     // a probe going round and round leaves this much of an orbit behind it, fading
 var AE_TRAIL_LOOPED = 1.2;          // round its body at least this many times since its table began: it is in orbit
 var AE_TRAIL_HELD_DAYS = 180;      // Webb's halo round L2 is about half a year
+var AE_FIT_WINDOW_DAYS = 120, AE_FIT_STEPS = 120;   // the stretch searched for its farthest point: longer than Parker's 88-day year
 var AE_KEPLER_CLOSE = 0.15;        // one period back within this share of the orbit's far side: it is that ellipse
 // A path's place and velocity (AU, AU a day) at jd, by a central difference of its curve.
 function _aeStateOf(at, jd) {
@@ -2567,7 +2568,16 @@ function _aeProbeOrbit(t, jd, near) {
     if (hp && _aeLen(_aeSub(hp, near[i].h)) < near[i].reach / 2 && AE_GM_RATIO[near[i].key]) { c = near[i]; break; }
   }
   var at = c ? function (x) { var a = _aeTrackAt(t, x), b = c.hAt(x); return a && b ? _aeSub(a, b) : null; } : function (x) { return _aeTrackAt(t, x); };
-  var st = _aeStateOf(at, jd);
+  // The table is thinned to a tolerance (Juno's to ~0.002 AU, a tenth of its orbit), so a state worked out near the
+  // close pass is off by more than the orbit can bear: Juno's period came out anywhere from 20 days to 20 years. Far
+  // out, where it moves slowly, the same table is exact enough: the ellipse is fitted at the farthest point of the
+  // last stretch of its path.
+  var far = jd, farR = -1;
+  for (var k = 0; k <= AE_FIT_STEPS; k++) {
+    var x = jd - AE_FIT_WINDOW_DAYS * k / AE_FIT_STEPS, q = at(x), rq = q ? _aeLen(q) : -1;
+    if (rq > farR) { farR = rq; far = x; }
+  }
+  var st = _aeStateOf(at, far);
   if (!st) return null;
   var o = _aeKepler(st.r, st.v, AE_GM_SUN * (c ? AE_GM_RATIO[c.key] : 1));
   if (!o || (jd - t.jd0) < AE_TRAIL_LOOPED * o.period) {
@@ -2575,8 +2585,9 @@ function _aeProbeOrbit(t, jd, near) {
     // last loop, no ellipse.
     return c && (jd - t.jd0) > AE_TRAIL_HELD_DAYS ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
   }
-  // Two-body, nearly: one period ago it was where it is now (Parker, Juno). If not, the ellipse would be a guess.
-  var back = at(jd - o.period);
+  // Two-body, nearly: one period before that far point it was there too (Parker, Juno). If not, the ellipse would be a
+  // guess.
+  var back = at(far - o.period);
   if (!back || _aeLen(_aeSub(back, st.r)) > AE_KEPLER_CLOSE * o.a * (1 + o.e)) return c ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
   o.centre = c ? c.h : [0, 0, 0]; o.round = c ? c.key : 'sun'; o.trail = o.period * AE_TRAIL_ORBIT_FRAC;
   return o;
