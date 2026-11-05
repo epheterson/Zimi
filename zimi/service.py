@@ -58,6 +58,8 @@ def _port_taken(host, port):
     import socket
 
     probe = socket.socket(socket.AF_INET6 if ":" in str(host) else socket.AF_INET, socket.SOCK_STREAM)
+    # As the server binds (allow_reuse_address): a port a stopped Zimi just left in TIME_WAIT is free, one in use is not.
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         probe.bind((host, int(port)))
         return False
