@@ -4318,9 +4318,26 @@ function _aeBehindSphere(p, centre, r) {
   var tHit = -b - Math.sqrt(disc);
   return tHit > 0 && tHit < len - 1e-3 * r;
 }
-// Behind the planet or moon in view (a moon of Jupiter behind it is not named on its face).
+// Behind the body in view: a planet, a moon, the Moon or the Sun (Callisto was named on the Moon's face close up).
 function _aeBehindTarget(body, p) {
-  return _aeIsPlanet(_ae.target) && body !== _ae.target && _aeBehindSphere(p, _aeTargetPos(), AE_TARGETS[_ae.target].surface);
+  var t = _ae.target, tg = AE_TARGETS[t];
+  if (body === t || !tg || t === 'iss' || _aeIsProbe(t)) return false;
+  return _aeBehindSphere(p, _aeTargetPos(), tg.surface);
+}
+// A body and its own: a planet and its moons, the Earth and the Moon.
+function _aeGroupOf(key) {
+  var b = _aePlanetBody(key);
+  if (b) return b.parent || b.key;
+  return key === 'moon' || key === 'iss' ? 'earth' : key;
+}
+// Close in, the body in view fills the picture: only it and its own are named (a far planet's dot in the corner
+// read as something on its surface).
+var AE_CLOSE_FILL = 1;   // the body in view this many screen widths across (the narrower side) is close in
+function _aeCloseIn(eye, pxPerRad) {
+  var t = _ae.target, tg = AE_TARGETS[t];
+  if (!tg || t === 'iss' || _aeIsProbe(t)) return false;
+  var px = 2 * tg.surface / Math.max(1e-9, _aeLen(_aeSub(_aeTargetPos(), eye))) * pxPerRad;
+  return px >= AE_CLOSE_FILL * Math.min(_ae.w, _ae.h);
 }
 // Is a point on the Earth's surface on the side facing the camera?
 function _aeFacing(p) {
@@ -4396,10 +4413,12 @@ function _aeUpdateMarks(sc) {
   var ringFade = flying ? 1 - _smoothstep(AE_RING_FADE_FROM, 1, _aeFlyArrival(f, performance.now())) : 1;
   var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
   var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
+  var close = !flying && _aeCloseIn(eye, pxPerRad), group = _aeGroupOf(_ae.target);
   for (var i = 0; i < order.length; i++) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
     var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
+    if (close && _aeGroupOf(body) !== group) { if (!el.hidden) el.hidden = true; continue; }
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
     // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).

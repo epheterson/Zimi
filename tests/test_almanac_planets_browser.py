@@ -611,6 +611,37 @@ def test_the_iss_stays_in_view_at_an_hour_a_second(served):
             br.close()
 
 
+def test_no_far_body_is_named_on_the_moon_close_up(served):
+    """At the Moon, a third of the way in: no far body's mark floats on its disc (Callisto did, a dot and a name on the
+    Moon's face). A far body's mark never draws over a nearer body's disc, and close in only the Moon's own group
+    (the Earth, the Moon) is named."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('moon');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'moon'; }", timeout=30_000, polling=100)
+            pg.evaluate("_ae.dist = _ae.dist / 3; _ae.dirty = true; _aeKick();")
+            pg.wait_for_timeout(1500)
+            shown = pg.evaluate("""() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene);
+                return Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden).map(e => e.id.replace('ae-bm-', '')); }""")
+            assert all(_k in ("earth", "moon") for _k in shown), shown
+            # Behind the Moon, not only close in: a point straight behind its centre is hidden by the sphere test.
+            behind = pg.evaluate("""() => { var c = _ae.gl.camera.position, t = _aeTargetPos(), d = _aeNorm(_aeSub(t, [c.x, c.y, c.z]));
+                return _aeBehindTarget('callisto', _aeAdd(t, _aeScale(d, 1000))); }""")
+            assert behind is True
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
 def test_a_flight_to_a_planet_is_the_fly_between(served):
     """1.15.2's shot for every flight: over the shoulder, a circle on the body it leaves and on the one it goes to, and
     the line of sight and up turning with no snap (the bounds of test_almanac_earth_view.cjs's section 8b)."""
