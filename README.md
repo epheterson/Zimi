@@ -22,9 +22,9 @@ Use as much as you need:
 
 ## What it does
 
-- **Search everything.** One query across every ZIM, 100M+ articles, with `-word`, `"exact words"`, `OR`, `lang:` and `in:` when you need them.
+- **Search everything.** One query across every ZIM, 100M+ articles, with `-word`, `"exact words"`, `OR`, `lang:`, `in:` and `near:` (towns on your maps) when you need them.
 - **Apps over your library.** Zimipedia for every wiki, the Dictionary for every Wiktionary, Bookshelf for every book, ZimiTube for video, ZimiExchange for Q&A, Reddot for subreddits, and offline street Maps.
-- **Games and the Almanac.** Over 100 offline games and a sky reference, both real ZIMs: [download them](https://github.com/epheterson/Zimi/releases/latest) or find them in [`zimi/builtin/`](zimi/builtin/).
+- **Games and the Almanac.** Over 100 offline games, ZimCity among them, with a daily edition the same for everyone on your server, leaderboards, and your games following you when you sign in; and a sky reference that flies to every planet. Both are real ZIMs: [download them](https://github.com/epheterson/Zimi/releases/latest) or find them in [`zimi/builtin/`](zimi/builtin/).
 - **Keep what you find.** Bookmarks, lists, likes and highlights in every app, synced across devices when you sign in.
 - **A real library.** The whole Kiwix catalog one click away, even offline, with auto-updates and BitTorrent downloads that seed back.
 - **Make your own ZIMs.** A web page, a whole site, a video playlist, a subreddit, a web archive or a folder of your files.
