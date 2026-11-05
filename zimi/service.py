@@ -55,15 +55,19 @@ def _running(pid_path):
 
 def _port_taken(host, port):
     """Whether something already listens where this server would: a second start must say so, not claim to run.
-    Asked by connecting, not by binding: a listener answers, and a port a stopped Zimi left in TIME_WAIT does not."""
+    It binds as the server does (SO_REUSEADDR), so a port a stopped Zimi left in TIME_WAIT counts as free. It never
+    connects anywhere."""
     import socket
 
-    target = "127.0.0.1" if str(host) in ("", "0.0.0.0") else "::1" if str(host) == "::" else str(host)
+    probe = socket.socket(socket.AF_INET6 if ":" in str(host) else socket.AF_INET, socket.SOCK_STREAM)
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        socket.create_connection((target, int(port)), timeout=0.5).close()
-        return True
-    except OSError:
+        probe.bind((host, int(port)))
         return False
+    except OSError:
+        return True
+    finally:
+        probe.close()
 
 
 def daemonize(data_dir, host="0.0.0.0", port=8899):

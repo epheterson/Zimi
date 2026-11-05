@@ -470,7 +470,7 @@ def test_every_destination_flies(served, start):
             pg.evaluate("_aeShowGo(true)")
             pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
             # Every body (the landing sites are the landmarks test's).
-            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0).concat(['sun', 'planets', 'sats'])")
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING).concat(['sun', 'planets', 'sats'])")
             pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")   # each flight lands at once
             missed = []
             for k in keys:
@@ -508,12 +508,17 @@ def test_every_destination_arrives_with_its_card(served):
             _open(pg, served)
             pg.evaluate("_aeShowGo(true)")
             pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
-            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0).concat(['sun'])")
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING).concat(['sun'])")
             pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")
             bare = []
             for k in keys:
                 pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k)
                 pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset; }", timeout=30_000, polling=100)
+                if k not in ("earth", "sats"):   # the card is put up by the frame after the arrival
+                    try:
+                        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); var c = document.getElementById('ae-card'); return c && !c.hidden; }", timeout=5_000, polling=100)
+                    except Exception:
+                        pass
                 card = pg.evaluate("""() => { var c = document.getElementById('ae-card');
                     return { shown: !c.hidden, name: (c.querySelector('h3') || {}).textContent || '', lines: c.querySelectorAll('p').length }; }""")
                 want = 2
@@ -530,6 +535,19 @@ def test_every_destination_arrives_with_its_card(served):
         finally:
             br.close()
 
+
+
+def _row_settles(pg, row, want, timeout_s=5.0):
+    """The quick row is drawn on the frame after an arrival: it is read until it is `want`, or for `timeout_s`."""
+    import time as _t
+
+    end, got = _t.time() + timeout_s, None
+    while _t.time() < end:
+        got = pg.evaluate("() => { _ae.dirty = true; _aeKick(); }") or pg.evaluate(row)
+        if got == want:
+            return
+        _t.sleep(0.1)
+    assert got == want, got
 
 def test_the_row_follows_where_the_view_is(served):
     """The quick row is the body's path from the Sun, then its own: Moon is Sun, Earth, Moon, Landings; Io is Sun,
@@ -549,28 +567,28 @@ def test_the_row_follows_where_the_view_is(served):
             row = "() => Array.from(document.querySelectorAll('#ae-views .ae-btn[data-ae-view]')).map(b => b.getAttribute('data-ae-view'))"
             go = lambda k: (pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k),
                             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100))
-            assert pg.evaluate(row) == ["sun", "earth", "sats", "moon", "planets"]
+            _row_settles(pg, row, ["sun", "earth", "sats", "moon", "planets"])
             pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             go("moon")
-            assert pg.evaluate(row) == ["sun", "earth", "moon", "landings", "planets"]
+            _row_settles(pg, row, ["sun", "earth", "moon", "landings", "planets"])
             go("jupiter")
             jup = ["sun", "jupiter", "io", "europa", "ganymede", "callisto"]
-            assert pg.evaluate(row) == jup + ["moon", "planets"]
+            _row_settles(pg, row, jup + ["moon", "planets"])
             line = pg.evaluate("""() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.getBoundingClientRect());
                 var go = document.getElementById('ae-go-btn').getBoundingClientRect();
                 return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }""")
             assert line == {"tops": 1, "goIn": True}, line
             go("io")
-            assert pg.evaluate(row) == jup + ["planets"]   # Jupiter, the place just left, is on it already
+            _row_settles(pg, row, jup + ["planets"])   # Jupiter, the place just left, is on it already
             go("voyager1")
-            assert pg.evaluate(row) == ["sun", "voyager1", "io", "planets"]
+            _row_settles(pg, row, ["sun", "voyager1", "io", "planets"])
             go("juno")
             assert pg.evaluate(row)[:3] == ["sun", "juno", "jupiter"], pg.evaluate(row)
             go("earth")
-            assert pg.evaluate(row) == ["sun", "earth", "sats", "moon", "juno", "planets"]
+            _row_settles(pg, row, ["sun", "earth", "sats", "moon", "juno", "planets"])
             go("sun")
-            assert pg.evaluate(row) == ["sun", "earth", "planets"]
+            _row_settles(pg, row, ["sun", "earth", "planets"])
             assert not pg.query_selector("#ae-views [data-ae-view='orbits']")
             assert not errors, errors
             ctx.close()
