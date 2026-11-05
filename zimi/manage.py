@@ -6093,7 +6093,7 @@ def _handle_public_access_post(handler, data):
 
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
-    set-password, set-allowlist, set-role, set-can-create}. Errors are
+    set-password, set-allowlist, set-role, set-can-create, set-display}. Errors are
     returned generically; on success the fresh roster (no hashes) is echoed so
     the UI re-renders in one
     round trip. Reaching here means the admin-auth challenge already passed.
@@ -6139,6 +6139,13 @@ def _handle_users_post(handler, data):
         ok, err = _users.set_allowlist(name, data.get("allowlist"))
     elif action == "set-role":
         ok, err = _users.set_role(name, role, data.get("allowlist"))
+    elif action == "set-display":
+        # What a person goes by in games and on the boards (users.set_display_name's rules).
+        if not _users.get_user(name):
+            return handler._json(400, {"error": "user not found"})
+        ok, err, _shown = _users.set_display_name(name, data.get("display"))
+        if not ok and err == "name taken":
+            return handler._json(409, {"error": err})
     elif action == "set-can-create":
         # Grant/revoke the per-user create permission (see users.set_can_create).
         # The hierarchy gate above already bars a secondary admin from touching

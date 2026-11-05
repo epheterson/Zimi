@@ -3567,5 +3567,8 @@
   "display_name_invalid": "استخدم حتى 32 حرفًا أو رقمًا أو مسافة أو نقطة أو شرطة.",
   "display_name_saved": "تم حفظ الاسم",
   "display_name_label": "الاسم في الألعاب:",
-  "display_name_change": "تغيير"
+  "display_name_change": "تغيير",
+  "users_set_display": "تغيير الاسم في الألعاب",
+  "users_set_display_for": "اسم {name} في الألعاب",
+  "users_goes_by": "يلعب باسم {name}"
 }

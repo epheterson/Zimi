@@ -207,3 +207,82 @@ def test_the_primary_admin_is_not_called_admin(data):
     assert users.display_name(users.PRIMARY_ADMIN_DATA) is None
     assert users.set_display_name(users.PRIMARY_ADMIN_DATA, "Eric")[0]
     assert users.display_name(users.PRIMARY_ADMIN_DATA) == "Eric"
+
+
+# ── an admin names someone ──
+
+
+def test_an_admin_sets_someones_name_by_the_same_rules(data):
+    manage._set_manage_password(ADMIN_PW)
+    users.create_user("Kid", "pw123")
+    users.create_user("Mum", "pw123")
+    h = _Handler({"Authorization": "Bearer " + ADMIN_PW}, path="/manage/users")
+    manage._handle_users_post(h, {"action": "set-display", "name": "Kid", "display": "Captain K"})
+    assert h.status == 200 and next(u for u in h.body["users"] if u["name"] == "Kid")["display"] == "Captain K"
+    h = _Handler({"Authorization": "Bearer " + ADMIN_PW}, path="/manage/users")
+    manage._handle_users_post(h, {"action": "set-display", "name": "Mum", "display": "captain k"})
+    assert h.status == 409, "one name per server, for an admin too"
+
+
+# ── leaderboards ──
+
+import json  # noqa: E402
+
+DAY = "2026-11-04"
+
+
+def _play(who, page, run=None, best=None, shown=None, board=None):
+    users.create_user(who, "pw123")
+    if shown:
+        users.set_display_name(who, shown)
+    ch = {}
+    if run:
+        ch["zimi.games.day." + DAY] = {"v": json.dumps({page: run})}
+    if best is not None:
+        ch["zimi.games.best." + page] = {"v": json.dumps({"score": best, "better": "high", "at": 1})}
+    if board:
+        ch["zimi.games.board"] = {"v": board}
+    users.GAMES.change(who, ch)
+
+
+def test_a_daily_board_puts_the_fastest_solve_first(data):
+    _play("Ann", "sudoku.html", run={"r": "win", "ms": 300000})
+    _play("Bo", "sudoku.html", run={"r": "win", "ms": 200000})
+    _play("Cy", "sudoku.html", run={"r": "lose", "ms": 50000})
+    b = users.leaderboard("sudoku.html", DAY, "Bo")
+    assert [(r["name"], r["you"]) for r in b["runs"]] == [("Bo", True), ("Ann", False), ("Cy", False)]
+
+
+def test_best_scores_highest_first_by_the_name_people_go_by(data):
+    _play("Ann", "rocks.html", best=900, shown="Annie")
+    _play("Bo", "rocks.html", best=2500)
+    b = users.leaderboard("rocks.html", None, "Ann")
+    assert [(r["name"], r["score"]) for r in b["best"]] == [("Bo", 2500), ("Annie", 900)]
+    assert b["better"] == "high"
+
+
+def test_off_means_you_see_the_board_but_are_not_on_it(data):
+    _play("Ann", "rocks.html", best=900, board="off")
+    _play("Bo", "rocks.html", best=2500)
+    assert [r["name"] for r in users.leaderboard("rocks.html", None, "Ann")["best"]] == ["Bo"]
+
+
+def test_the_server_wide_board_names_each_dailys_leader(data):
+    _play("Ann", "sudoku.html", run={"r": "win", "ms": 300000})
+    _play("Bo", "sudoku.html", run={"r": "win", "ms": 200000})
+    t = users.leaderboards_today(DAY, "Ann")
+    assert t["games"]["sudoku.html"]["n"] == 2 and t["games"]["sudoku.html"]["lead"]["name"] == "Bo"
+
+
+def test_the_board_is_for_people_signed_in_only(data):
+    manage._set_manage_password(ADMIN_PW)
+    h = _Handler(path="/games/board?page=rocks.html")
+    h._handle_board_get()
+    assert h.status == 401
+    users.create_user("Kid", "pw123")
+    h = _Handler(_cookie(users.create_session("Kid")), path="/games/board?page=rocks.html")
+    h._handle_board_get()
+    assert h.status == 200 and h.body["you"] == {"name": "Kid", "on": True}
+    h = _Handler(_cookie(users.create_session("Kid")), path="/games/board?page=../etc.html")
+    h._handle_board_get()
+    assert h.status == 400

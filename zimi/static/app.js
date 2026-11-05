@@ -187,8 +187,10 @@ var SK = {
   // Whose ZimiGames this browser keeps for (owner), what changed here and has
   // not gone up (pending), and one who left without it going (aside).
   GAMES_SYNC: 'zimi_games_sync',
-  // The signed-in player's display name, for the games pages to show.
+  // The signed-in player's display name, for the games pages to show, and
+  // whether a player is signed in at all (the games' boards are theirs).
   GAMES_PERSON: 'zimi_games_person',
+  GAMES_SIGNED: 'zimi_games_signed',
 };
 
 // What a person sets for themselves: carried by My data, and while signed in
@@ -20717,7 +20719,7 @@ function _gamesFollow(id, boot) {
   id = typeof id === 'string' && id ? id : null;
   var st = _gamesState();
   _gamesAccount = id;
-  try { if (!id) localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+  try { if (!id) { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } } catch (e) {}
   if (st.owner === id) { if (id && !boot) _gamesPull(); return; }
   if (st.owner) {
     // Someone else's are on this screen (their session ended without a sign-out): set aside, then gone.
@@ -20760,7 +20762,7 @@ function _gamesLeave() {
     st.owner = null; st.pending = {};
     _gamesSaveState(st);
     _gamesAccount = null;
-    try { localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+    try { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } catch (e) {}
   }, function () {});
 }
 // /whoami's word on whose games this browser keeps, and the name to show.
@@ -20777,17 +20779,29 @@ function _gamesWhoami(j, boot) {
 // one field, opened from their account card in Manage and from the games'
 // Stats page. Empty goes back to the account's own name.
 var _displayName = null;
-function _displayNameSheet() {
-  if (!_gamesAccount) return;
+// The sheet. ``opts`` (an admin naming someone in Manage > Users): {current,
+// title, save(value) -> Promise of {status, j}}; without it, the signed-in
+// person's own.
+function _displayNameSheet(opts) {
+  if (!opts && !_gamesAccount) return;
+  opts = opts || {
+    current: _displayName,
+    save: function (val) {
+      return fetch('/account/display', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display: val, account: _gamesAccount }) }).then(function (r) {
+        return r.json().then(function (j) { return { status: r.status, j: j }; });
+      }).then(function (res) { if (res.status === 200) _gamesPerson(res.j.display || null); return res; });
+    },
+  };
   var old = document.getElementById('name-sheet');
   if (old) old.remove();
   var el = document.createElement('div');
   el.id = 'name-sheet';
   el.className = 'name-sheet-wrap';
   el.innerHTML = '<form class="name-sheet" role="dialog" aria-modal="true" aria-labelledby="name-sheet-title">' +
-    '<h2 id="name-sheet-title">' + tH('display_name_title') + '</h2>' +
+    '<h2 id="name-sheet-title">' + esc(opts.title || t('display_name_title')) + '</h2>' +
     '<p class="name-sheet-hint">' + tH('display_name_hint') + '</p>' +
-    '<input id="name-sheet-input" type="text" maxlength="32" autocomplete="nickname" value="' + esc(_displayName || '') + '">' +
+    '<input id="name-sheet-input" type="text" maxlength="32" autocomplete="nickname" value="' + esc(opts.current || '') + '">' +
     '<p class="name-sheet-err" role="alert"></p>' +
     '<div class="name-sheet-actions"><button type="button" class="pill" data-name="cancel">' + tH('cancel') + '</button>' +
     '<button type="submit" class="pill active">' + tH('save') + '</button></div></form>';
@@ -20797,11 +20811,8 @@ function _displayNameSheet() {
   el.querySelector('form').addEventListener('submit', function (e) {
     e.preventDefault();
     var val = el.querySelector('input').value.trim(), err = el.querySelector('.name-sheet-err');
-    fetch('/account/display', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ display: val, account: _gamesAccount }) }).then(function (r) {
-      return r.json().then(function (j) { return { status: r.status, j: j }; });
-    }).then(function (res) {
-      if (res.status === 200) { _gamesPerson(res.j.display || null); close(); _showToast(t('display_name_saved'), 3000); return; }
+    opts.save(val).then(function (res) {
+      if (res.status === 200) { close(); _showToast(t('display_name_saved'), 3000); return; }
       err.textContent = t(res.status === 409 ? 'display_name_taken' : 'display_name_invalid');
     }).catch(function () { err.textContent = t('display_name_invalid'); });
   });
@@ -20812,7 +20823,10 @@ function _displayNameSheet() {
 // The person's display name, for the games pages (Stats, the share line).
 function _gamesPerson(name) {
   _displayName = name || null;
-  try { if (name && _gamesAccount) localStorage.setItem(SK.GAMES_PERSON, name); else localStorage.removeItem(SK.GAMES_PERSON); } catch (e) {}
+  try {
+    if (name && _gamesAccount) localStorage.setItem(SK.GAMES_PERSON, name); else localStorage.removeItem(SK.GAMES_PERSON);
+    if (_gamesAccount) localStorage.setItem(SK.GAMES_SIGNED, '1'); else localStorage.removeItem(SK.GAMES_SIGNED);
+  } catch (e) {}
 }
 window.addEventListener('storage', function (e) {
   if (e.key && _isGamesKey(e.key)) _gamesChanged(e.key);

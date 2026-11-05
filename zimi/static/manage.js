@@ -2918,6 +2918,8 @@ function _msUsersHtml() {
       // Surface the create grant on the row itself — the toggle lives in the
       // ⋯ menu, but a permission nobody can see is a permission nobody audits.
       if (u.can_create && u.role !== 'admin') seen += ' · ' + tH('users_can_create');
+      // The name they go by in games, when it is not their account's.
+      if (u.display && u.display !== u.name) seen += ' · ' + tH('users_goes_by', { name: u.display });
       var menuAttr = canManage
         ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
         : '';
@@ -2987,6 +2989,7 @@ function _openUserMenu(btn, name) {
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
   }
+  h += '<div class="ctx-sep"></div><div class="ctx-item" data-action="display">' + tH('users_set_display') + '</div>';
   h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
   var r = btn.getBoundingClientRect();
   window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
@@ -2994,6 +2997,7 @@ function _openUserMenu(btn, name) {
     else if (action === 'role') _setUserRole(name, item.dataset.role);
     else if (action === 'allowlist') _editUserAllowlist(name);
     else if (action === 'can-create') _setUserCanCreate(name, !u.can_create);
+    else if (action === 'display') _setUserDisplay(u);
     else if (action === 'delete') _deleteUser(name);
   });
 }
@@ -3309,6 +3313,20 @@ function _setUserRole(name, role) {
 
 // Grant or revoke the per-user create permission from the ⋯ menu. Admin-role
 // accounts never show the item (they create implicitly).
+// What someone goes by in games and on the boards, set for them (the same sheet and rules as their own).
+function _setUserDisplay(u) {
+  _displayNameSheet({
+    current: u.display || u.name,
+    title: t('users_set_display_for', { name: u.name }),
+    save: function (val) {
+      return _usersPost({ action: 'set-display', name: u.name, display: val }).then(function (r) {
+        if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+        return { status: r.ok ? 200 : (r.j && r.j.error === 'name taken' ? 409 : 400), j: r.j };
+      });
+    },
+  });
+}
+
 function _setUserCanCreate(name, on) {
   _usersPost({ action: 'set-can-create', name: name, can_create: !!on }).then(function(r) {
     if (r.ok) { _usersData = r.j; _refreshUsersPane(); }

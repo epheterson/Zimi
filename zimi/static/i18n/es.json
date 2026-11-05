@@ -3567,5 +3567,8 @@
   "display_name_invalid": "Usa hasta 32 letras, números, espacios, puntos o guiones.",
   "display_name_saved": "Nombre guardado",
   "display_name_label": "Nombre en los juegos:",
-  "display_name_change": "Cambiar"
+  "display_name_change": "Cambiar",
+  "users_set_display": "Cambiar nombre en los juegos",
+  "users_set_display_for": "Nombre en los juegos para {name}",
+  "users_goes_by": "juega como {name}"
 }

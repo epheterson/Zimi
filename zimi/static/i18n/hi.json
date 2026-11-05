@@ -3567,5 +3567,8 @@
   "display_name_invalid": "अधिकतम 32 अक्षर, अंक, स्पेस, बिंदु या डैश इस्तेमाल करें।",
   "display_name_saved": "नाम सहेजा गया",
   "display_name_label": "गेम में नाम:",
-  "display_name_change": "बदलें"
+  "display_name_change": "बदलें",
+  "users_set_display": "गेम में नाम बदलें",
+  "users_set_display_for": "{name} का गेम में नाम",
+  "users_goes_by": "{name} नाम से खेलते हैं"
 }

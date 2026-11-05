@@ -3567,5 +3567,8 @@
   "display_name_invalid": "最多 32 个字母、数字、空格、点或连字符。",
   "display_name_saved": "名字已保存",
   "display_name_label": "游戏中的名字：",
-  "display_name_change": "更改"
+  "display_name_change": "更改",
+  "users_set_display": "更改游戏中的名字",
+  "users_set_display_for": "{name} 在游戏中的名字",
+  "users_goes_by": "游戏名 {name}"
 }

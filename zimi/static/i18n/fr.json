@@ -3567,5 +3567,8 @@
   "display_name_invalid": "Jusqu'à 32 lettres, chiffres, espaces, points ou tirets.",
   "display_name_saved": "Nom enregistré",
   "display_name_label": "Nom dans les jeux :",
-  "display_name_change": "Modifier"
+  "display_name_change": "Modifier",
+  "users_set_display": "Modifier le nom dans les jeux",
+  "users_set_display_for": "Nom dans les jeux pour {name}",
+  "users_goes_by": "joue sous le nom {name}"
 }

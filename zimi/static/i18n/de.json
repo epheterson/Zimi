@@ -3567,5 +3567,8 @@
   "display_name_invalid": "Bis zu 32 Buchstaben, Ziffern, Leerzeichen, Punkte oder Bindestriche.",
   "display_name_saved": "Name gespeichert",
   "display_name_label": "Name in Spielen:",
-  "display_name_change": "Ändern"
+  "display_name_change": "Ändern",
+  "users_set_display": "Namen in Spielen ändern",
+  "users_set_display_for": "Name in Spielen für {name}",
+  "users_goes_by": "spielt als {name}"
 }

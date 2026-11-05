@@ -3567,5 +3567,8 @@
   "display_name_invalid": "До 32 букв, цифр, пробелов, точек или дефисов.",
   "display_name_saved": "Имя сохранено",
   "display_name_label": "Имя в играх:",
-  "display_name_change": "Изменить"
+  "display_name_change": "Изменить",
+  "users_set_display": "Изменить имя в играх",
+  "users_set_display_for": "Имя в играх для {name}",
+  "users_goes_by": "играет как {name}"
 }
