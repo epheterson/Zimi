@@ -4739,10 +4739,12 @@ function _aeBodyAt(x, y) {
   // The ISS only where it is big enough to be drawn as itself (from afar its dot is the satellites' to pick, and from
   // the Sun it stood on the Earth and took the Earth's taps): its size from this camera, not the last frame's.
   var issDrawn = !!_ae.issPos && AE_ISS_SPAN_RE / Math.max(1e-12, _aeLen(_aeSub(_ae.issPos, eye))) * pxPerRad >= AE_CRAFT_MODEL_PX[0];
-  var bodies = AE_MARKED.filter(function (m) { return !m.flightOnly || issDrawn; })
+  // The Planets view: a moon sits on its planet at that scale and is not a target; a tap there is the planet's.
+  var wide = _aeWideView();
+  var bodies = AE_MARKED.filter(function (m) { var b = _aePlanetBody(m.body); return (!m.flightOnly || issDrawn) && !(wide && b && b.parent); })
     .map(function (m) { return [m.body, _aeBodyPos(m.body, sc), AE_TARGETS[m.body].surface]; })
     .filter(function (b) { return !!b[1]; });
-  var best = null, bestD = Infinity;
+  var best = null, bestD = Infinity, bestRank = Infinity;
   for (var i = 0; i < bodies.length; i++) {
     var b = bodies[i];
     if (b[0] !== 'earth' && _aeBehindEarth(b[1])) continue;
@@ -4750,7 +4752,10 @@ function _aeBodyAt(x, y) {
     if (!s) continue;
     var d = _aeLen(_aeSub(b[1], eye));
     var reach = Math.max(b[2] / d * pxPerRad, AE_TAP_BODY_PX);
-    if (Math.hypot(s.x - x, s.y - y) <= reach && d < bestD) { bestD = d; best = b[0]; }
+    if (Math.hypot(s.x - x, s.y - y) > reach) continue;
+    // A planet wins over anything else under the same finger; then the nearest.
+    var rank = _aeIsPlanet(b[0]) && !_aePlanetBody(b[0]).parent ? 0 : 1;
+    if (best === null || rank < bestRank || (rank === bestRank && d < bestD)) { bestD = d; best = b[0]; bestRank = rank; }
   }
   return best;
 }
