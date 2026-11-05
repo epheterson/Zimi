@@ -44,3 +44,19 @@ def test_the_shipped_whatsnew_is_the_changelogs():
     assert r.returncode == 0, "run: python scripts/whatsnew.py"
     with open(os.path.join(ROOT, "zimi", "assets", "whatsnew.json"), encoding="utf-8") as f:
         assert any("ZimCity" in line for line in json.load(f)["1.15.3"]["zimi_games"])
+
+
+def test_asking_for_many_dots_reads_the_history_once_and_is_rate_limited(tmp_path, monkeypatch):
+    from zimi import http as zhttp
+
+    _setup(tmp_path, monkeypatch)
+    server.load_cache(force=True)
+    server._append_history({"event": "download", "ts": time.time(), "filename": "survival_en_2026-06.zim", "size_bytes": 1, "name": "survival"})
+    reads = []
+    real = server._load_history
+    monkeypatch.setattr(server, "_load_history", lambda: reads.append(1) or real())
+    history = server._load_history()
+    reads.clear()
+    got = {n: server.zim_updates(n, history) for n in ["survival"] * 20}
+    assert reads == [] and got["survival"][0]["file"] == "survival_en_2026-06.zim"
+    assert "/zim-updates" in zhttp._RATE_LIMITED_API_PATHS and "/games/board" in zhttp._RATE_LIMITED_API_PATHS

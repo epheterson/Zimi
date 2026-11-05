@@ -337,6 +337,10 @@ def create_user(name, password, allowlist=None, role=None):
         users = _load_users()
         if _key(name) in users:
             return False, "user already exists"
+        # Someone may already go by this name in the games (a display name): a
+        # new account under it would put two of them on the boards.
+        if any(_key(v) == _key(name) for k, v in _load_displays().items() if k != _key(name)):
+            return False, "name taken"
         users[_key(name)] = {
             "name": name.strip(),
             "role": role,
@@ -362,8 +366,8 @@ def delete_user(name):
         _save_users(users)
         _drop_user_sessions_locked(_key(name))
     delete_user_data(name)  # their server-side bookmarks/history go with them
-    delete_settings(name)
-    GAMES.delete(name)
+    for store in _PER_PERSON_STORES:
+        store.delete(name)
     with _lock:
         shown = _load_displays()
         if shown.pop(_key(name), None) is not None:
@@ -1236,32 +1240,25 @@ SETTINGS = _RevStore("usersettings", _SETTINGS_KEY_RE, _SETTINGS_MAX_KEYS, _SETT
 # own settings, ZimCity's kept cities), as the games keep it in the browser
 # under these prefixes. A kept city is the biggest value (a few hundred KB).
 _GAMES_KEY_RE = re.compile(r"^zimi\.(games|zimcity)\.[A-Za-z0-9_.@:\-/]{1,160}$")
-GAMES = _RevStore("usergames", _GAMES_KEY_RE, 2000, 1024 * 1024, "games", total_max=4 * 1024 * 1024)
+_GAMES_MAX_KEYS = 2000
+_GAMES_VALUE_MAX = 1024 * 1024
+_GAMES_TOTAL_MAX = 4 * 1024 * 1024
+GAMES = _RevStore("usergames", _GAMES_KEY_RE, _GAMES_MAX_KEYS, _GAMES_VALUE_MAX, "games", total_max=_GAMES_TOTAL_MAX)
+# Every per-person store, so a person deleted or a backup restored over the top takes all of them.
+_PER_PERSON_STORES = (SETTINGS, GAMES)
 
 
 def _settings_path(name):
     return SETTINGS.path(name)
 
 
-def _settings_doc(raw):
-    return SETTINGS.doc(raw)
-
-
 def load_settings(name):
     return SETTINGS.load(name)
-
-
-def _write_settings(name, doc):
-    return SETTINGS.write(name, doc)
 
 
 def change_settings(name, changes, fill_only=False, by=None):
     """What POST /userdata/settings does (_RevStore.change)."""
     return SETTINGS.change(name, changes, fill_only=fill_only, by=by)
-
-
-def delete_settings(name):
-    SETTINGS.delete(name)
 
 
 def _safe_userdata_key(name):
@@ -1490,8 +1487,8 @@ def restore_user_data(blobs, overwrite=False):
     if overwrite:
         for key in list(all_user_data().keys()):
             delete_user_data(key)
-            delete_settings(key)
-            GAMES.delete(key)
+            for store in _PER_PERSON_STORES:
+                store.delete(key)
     written = 0
     for key, blob in blobs.items():
         # key is already casefold; _key is idempotent
@@ -2001,26 +1998,72 @@ BOARD_ROWS = 10
 _BOARD_PAGE_RE = re.compile(r"^(puzzles/)?[a-z0-9_-]{1,40}\.html$")
 _BOARD_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DAILY_RANK = {"win": 0, "draw": 1, "over": 2, "lose": 3}
+# A person's "Show me on this server's leaderboards" switch, kept with their games.
+BOARD_OPT_KEY = "zimi.games.board"
+# The longest a daily run can count for (a week): beyond it a time is not a run.
+_BOARD_MS_MAX = 7 * 24 * 3600 * 1000
+# What the boards read of a person's games: their dailies, their bests and the switch.
+_BOARD_KEY_PREFIXES = ("zimi.games.day.", "zimi.games.best.", BOARD_OPT_KEY)
+# Each account's board facts, read once per change of its games file: {path: (mtime, size, facts)}.
+_board_seen = {}
+
+
+def on_boards(kept):
+    """Whether a person (their kept games) shows on this server's leaderboards."""
+    return (kept.get(BOARD_OPT_KEY) or {}).get("v") != "off"
+
+
+def _number(v):
+    """``v`` when it is a real, finite number (a person's own synced data can
+    hold anything JSON reads, Infinity and NaN included), else None."""
+    import math
+
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return v
+
+
+def _board_facts(key):
+    """The board keys of one account's games, parsed only when its file changed."""
+    path = GAMES.path(key)
+    try:
+        st = os.stat(path)
+    except OSError:
+        _board_seen.pop(path, None)
+        return {}
+    seen = _board_seen.get(path)
+    if seen and seen[0] == st.st_mtime_ns and seen[1] == st.st_size:
+        return seen[2]
+    kept = GAMES.load(key)["settings"]
+    facts = {k: v for k, v in kept.items() if k.startswith(_BOARD_KEY_PREFIXES)}
+    _board_seen[path] = (st.st_mtime_ns, st.st_size, facts)
+    return facts
 
 
 def _board_people():
-    """[(owner key, display, games settings)] for everyone on the boards."""
+    """[(owner key, display, board facts)] for everyone on the boards. Display
+    names and accounts are read once for the whole board, not per person."""
     folder = os.path.join(_srv.ZIMI_DATA_DIR, GAMES.folder)
     try:
         names = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
     except OSError:
         names = []
+    shown_by = _load_displays()
+    accounts = {_key(u.get("name")): u.get("name") for u in list_users() if u.get("name")}
     out = []
     for fn in names[:1000]:
         if not fn.endswith(".json"):
             continue
         key = fn[: -len(".json")]
-        kept = GAMES.load(key)["settings"]
-        if (kept.get("zimi.games.board") or {}).get("v") == "off":
+        facts = _board_facts(key)
+        if not on_boards(facts):
             continue
-        shown = display_name(key)
+        if key == PRIMARY_ADMIN_DATA:
+            shown = shown_by.get(key) or _default_display(key)
+        else:
+            shown = shown_by.get(key) or accounts.get(key)
         if shown:
-            out.append((key, shown, kept))
+            out.append((key, shown, facts))
     return out
 
 
@@ -2032,6 +2075,21 @@ def _board_json(kept, key):
     except ValueError:
         return None
     return v if isinstance(v, dict) else None
+
+
+def _board_run(run, shown, key, me):
+    """A daily's run as a board row, or None when it is not one (a result the
+    boards do not rank, or a time that is not a real time)."""
+    if not isinstance(run, dict) or run.get("r") not in _DAILY_RANK:
+        return None
+    ms = _number(run.get("ms"))
+    if ms is None or ms < 0 or ms > _BOARD_MS_MAX:
+        return None
+    return {"name": shown, "r": run["r"], "ms": int(ms), "you": key == me}
+
+
+def _run_rank(row):
+    return (_DAILY_RANK[row["r"]], row["ms"])
 
 
 def leaderboard(page, day, viewer):
@@ -2046,15 +2104,16 @@ def leaderboard(page, day, viewer):
     runs, bests, better = [], [], None
     for key, shown, kept in _board_people():
         if day:
-            run = (_board_json(kept, "zimi.games.day." + day) or {}).get(page)
-            if isinstance(run, dict) and run.get("r") in _DAILY_RANK and isinstance(run.get("ms"), (int, float)):
-                runs.append({"name": shown, "r": run["r"], "ms": int(run["ms"]), "you": key == me})
+            row = _board_run((_board_json(kept, "zimi.games.day." + day) or {}).get(page), shown, key, me)
+            if row:
+                runs.append(row)
         best = _board_json(kept, "zimi.games.best." + page)
-        if best and isinstance(best.get("score"), (int, float)) and best.get("better") in ("high", "low"):
+        score = _number((best or {}).get("score"))
+        if score is not None and best.get("better") in ("high", "low"):
             better = better or best["better"]
             if best["better"] == better:
-                bests.append({"name": shown, "score": best["score"], "at": best.get("at") or 0, "you": key == me})
-    runs.sort(key=lambda x: (_DAILY_RANK[x["r"]], x["ms"]))
+                bests.append({"name": shown, "score": score, "at": _number(best.get("at")) or 0, "you": key == me})
+    runs.sort(key=_run_rank)
     bests.sort(key=lambda x: (-x["score"] if better == "high" else x["score"], x["at"]))
     return {"page": page, "day": day, "runs": runs[:BOARD_ROWS], "best": bests[:BOARD_ROWS], "better": better}
 
@@ -2068,14 +2127,14 @@ def leaderboards_today(day, viewer):
     games = {}
     for key, shown, kept in _board_people():
         for page, run in (_board_json(kept, "zimi.games.day." + day) or {}).items():
-            if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page) or not isinstance(run, dict):
+            if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page):
                 continue
-            if run.get("r") not in _DAILY_RANK or not isinstance(run.get("ms"), (int, float)):
+            row = _board_run(run, shown, key, me)
+            if not row:
                 continue
             g = games.setdefault(page, {"n": 0, "lead": None})
             g["n"] += 1
-            row = {"name": shown, "r": run["r"], "ms": int(run["ms"]), "you": key == me}
-            if g["lead"] is None or (_DAILY_RANK[row["r"]], row["ms"]) < (_DAILY_RANK[g["lead"]["r"]], g["lead"]["ms"]):
+            if g["lead"] is None or _run_rank(row) < _run_rank(g["lead"]):
                 g["lead"] = row
     return {"day": day, "games": games}
 

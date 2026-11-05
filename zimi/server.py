@@ -3645,17 +3645,18 @@ def _whatsnew_lines(version, own_name):
     return list((_whatsnew.get(version) or {}).get(own_name) or [])
 
 
-def zim_updates(name):
+def zim_updates(name, history=None):
     """How ``name`` came to be what it is, newest first: each arrival and update of a library ZIM from
     the event history (its file, so its edition, and its size), or for one of Zimi's own ZIMs, each Zimi
-    release that changed it with that release's highlights. For a dot that explains itself and About."""
+    release that changed it with that release's highlights. For a dot that explains itself and About.
+    ``history``: the event history when the caller already read it (several ZIMs in one request)."""
     out = []
     for z in _zim_list_cache or []:
         if z.get("name") == name and z.get("own_h"):
             for h in z["own_h"]:
                 out.append({"event": "release", "ts": h.get("ts"), "version": h.get("v"), "notes": _whatsnew_lines(h.get("v"), name)})
             return out
-    for ev in _load_history():
+    for ev in _load_history() if history is None else history:
         if ev.get("name") == name and ev.get("event") in ("download", "updated"):
             out.append({"event": ev["event"], "ts": ev.get("ts"), "file": ev.get("filename", ""), "size_bytes": ev.get("size_bytes") or 0})
             if len(out) >= _ZIM_UPDATES_MAX:

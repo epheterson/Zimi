@@ -337,6 +337,8 @@ def games_day(now=None):
 # regression, not a cleanup.
 _RATE_LIMITED_API_PATHS = (
     "/search",
+    "/games/board",
+    "/zim-updates",
     "/places",
     "/tube",
     "/tube/play",
@@ -3082,7 +3084,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # What lit a dot, asked only when someone opens the dot: each ZIM's arrivals and updates
                 # (zimi.server.zim_updates). Only the ZIMs this person may see.
                 names = [n for n in (param("zims") or "").split(",") if n][:_ZIM_UPDATES_ASK_MAX]
-                return self._json(200, {"updates": {n: _srv.zim_updates(n) for n in names if _srv.zim_allowed(n)}})
+                history = _srv._load_history()  # read once for every name asked
+                return self._json(200, {"updates": {n: _srv.zim_updates(n, history) for n in names if _srv.zim_allowed(n)}})
 
             elif parsed.path == "/whoami":
                 return self._uncached(self._handle_whoami)
@@ -6084,7 +6087,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         got = _users.leaderboard(page, day, viewer) if page else _users.leaderboards_today(day, viewer)
         if got is None:
             return self._json(400, {"error": "invalid board"})
-        got["you"] = {"name": _users.display_name(viewer), "on": (_users.GAMES.load(viewer)["settings"].get("zimi.games.board") or {}).get("v") != "off"}
+        got["you"] = {"name": _users.display_name(viewer), "on": _users.on_boards(_users.GAMES.load(viewer)["settings"])}
         return self._json(200, got)
 
     def _handle_display_post(self, data):

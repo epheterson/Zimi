@@ -286,3 +286,42 @@ def test_the_board_is_for_people_signed_in_only(data):
     h = _Handler(_cookie(users.create_session("Kid")), path="/games/board?page=../etc.html")
     h._handle_board_get()
     assert h.status == 400
+
+
+def _raw(who, key, text):
+    """What a person's own browser could send: any text JSON reads, Infinity and NaN included."""
+    users.create_user(who, "pw123")
+    users.GAMES.change(who, {key: {"v": text}})
+
+
+def test_a_runaway_number_in_one_persons_games_never_breaks_the_board(data):
+    _play("Ann", "rocks.html", best=900, run={"r": "win", "ms": 1000})
+    _raw("Eve", "zimi.games.day." + DAY, '{"rocks.html": {"r": "win", "ms": Infinity}}')
+    _raw("Mal", "zimi.games.best.rocks.html", '{"score": NaN, "better": "high", "at": 1}')
+    _raw("Tie", "zimi.games.best.rocks.html", '{"score": 900, "better": "high", "at": "x"}')
+    b = users.leaderboard("rocks.html", DAY, "Ann")
+    t = users.leaderboards_today(DAY, "Ann")
+    json.dumps(b, allow_nan=False)  # what a browser's r.json() can read
+    json.dumps(t, allow_nan=False)
+    assert [r["name"] for r in b["runs"]] == ["Ann"]
+    assert sorted(r["name"] for r in b["best"]) == ["Ann", "Tie"]
+    assert t["games"]["rocks.html"]["n"] == 1
+
+
+def test_the_board_reads_a_persons_games_again_only_when_they_change(data, monkeypatch):
+    _play("Ann", "rocks.html", best=900)
+    users.leaderboard("rocks.html", None, "Ann")
+    loads = []
+    real = users.GAMES.load
+    monkeypatch.setattr(users.GAMES, "load", lambda name: loads.append(name) or real(name))
+    users.leaderboard("rocks.html", None, "Ann")
+    assert loads == []
+    users.GAMES.change("Ann", {"zimi.games.best.rocks.html": {"v": json.dumps({"score": 1200, "better": "high", "at": 2})}})
+    assert users.leaderboard("rocks.html", None, "Ann")["best"][0]["score"] == 1200
+
+
+def test_a_new_account_cannot_take_a_name_someone_goes_by(data):
+    users.create_user("bob", "pw123")
+    assert users.set_display_name("bob", "Carol")[0]
+    assert users.create_user("carol", "pw123") == (False, "name taken")
+    assert users.create_user("dave", "pw123") == (True, None)
