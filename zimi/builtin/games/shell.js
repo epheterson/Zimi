@@ -1406,17 +1406,34 @@
   function hostMarkCss(url) {
     var at = 'content:"";position:absolute;pointer-events:none;width:' + MARK_PX + 'px;height:' + MARK_PX + 'px;background:url(' + url + ') center/contain no-repeat;';
     return 'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
-      'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + env(safe-area-inset-bottom))}' +
+      'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + var(--safe-b, 0px))}' +
       ':root[data-theme="dark"].gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}' +
       '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]).gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}}';
   }
   function inZimi() {
     try { var f = root.parent !== root && root.parent.document.getElementById('reader-frame'); return !!f && f.contentWindow === root; } catch (e) { return false; }
   }
+  // WebKit gives a frame no safe-area insets, so a game in Zimi's reader would lay its controls under the home indicator.
+  // The insets are read in Zimi's page instead, and the frame gets only the part it reaches into (--safe-b, -l, -r).
+  function hostInsets() {
+    try {
+      var pw = root.parent, probe = pw.document.createElement('div');
+      probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      pw.document.body.appendChild(probe);
+      var cs = pw.getComputedStyle(probe), r = root.frameElement.getBoundingClientRect(), st = d.documentElement.style;
+      var reach = function (inset, gap) { return Math.max(0, (parseFloat(inset) || 0) - gap) + 'px'; };
+      st.setProperty('--safe-b', reach(cs.paddingBottom, pw.innerHeight - r.bottom));
+      st.setProperty('--safe-l', reach(cs.paddingLeft, r.left));
+      st.setProperty('--safe-r', reach(cs.paddingRight, pw.innerWidth - r.right));
+      probe.remove();
+    } catch (e) { /* not reachable: the page's own env() stands */ }
+  }
   var hosted = Shell.hosted = inZimi();
   if (hosted) {
     d.documentElement.classList.add('gs-hosted');
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
+    hostInsets();
+    root.addEventListener('resize', hostInsets);
   }
   function hostAct() { return d.querySelector('.ar-bar [id$="undo"], .ar-bar [id$="pause"]'); }
   function hostSay() {

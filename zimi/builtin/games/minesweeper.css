@@ -17,7 +17,7 @@
 
 .ms-flagbtn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); }
 .ms-flagbtn svg { width: 20px; height: 20px; }
-.ms-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); }
+.ms-main { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), var(--safe-b)); }
 
 .ms-win { --cs: 36px; max-width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; }
 /* The counters sit either side of a status face (a picture of how the game stands, not a button). */
@@ -50,7 +50,7 @@
 .ms-custom label { flex: 1; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-small); color: var(--ink2); }
 .ms-num { width: 100%; min-height: var(--target); padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; }
 
-@media (max-width: 420px) { .ms-main { padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom)); } }
+@media (max-width: 420px) { .ms-main { padding: var(--sp-3) var(--sp-4) max(var(--sp-3), var(--safe-b)); } }
 @media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .ms-c.pop { animation: none; } }
 
 /* Moments: an opening spreads from the tap, a cell held for a flag sinks first, the mines go off outward from the one that did, and a win plants its flags. */

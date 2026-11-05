@@ -5,7 +5,7 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; } }
 :root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; }
 
-body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; }
+body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; padding-left: var(--safe-l); padding-right: var(--safe-r); box-sizing: border-box; }
 .cy-page .gm-about { display: none; }
 .cy-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: var(--column); margin: 0 auto; }
 
@@ -31,7 +31,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 #cy-map:focus-visible { outline-offset: -3px; }
 
 /* The held tool's line and the tray, clear of the home indicator. */
-.cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + var(--safe-b)); display: flex; flex-direction: column; gap: var(--sp-2); }
 .cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .cy-held.cy-bad { color: var(--bad); }
 .cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
@@ -65,8 +65,11 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
   .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; }
   .cy-strip, .cy-msg { grid-column: 1 / -1; }
   .cy-stage { grid-column: 1; grid-row: 3; }
-  .cy-foot { grid-column: 2; grid-row: 3; width: 128px; padding-bottom: var(--sp-2); justify-content: flex-end; }
-  .cy-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cy-foot { grid-column: 2; grid-row: 3; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
+  /* Icons only, three across: seven tools in three rows fit the height a phone on its side leaves. */
+  .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cy-tool { min-height: var(--target); }
+  .cy-tool .cy-tool-l { display: none; }
   .cy-held { white-space: normal; }
 }
 
