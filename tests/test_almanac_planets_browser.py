@@ -253,7 +253,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
 
 def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
     """Parker round the Sun and Juno round Jupiter: one closed ellipse (their present orbit, which they were on one period
-    ago too) and a trail of under a third of an orbit, fading behind; the Voyagers keep the whole road out."""
+    ago too) and a trail of under a third of an orbit, fading behind; the Voyagers keep the whole road out. Seen from
+    out where the probe is a point: close up, on its model, its path is not drawn through it."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -267,7 +268,9 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             got = {}
             for k in ("parker", "juno", "voyager1"):
                 pg.evaluate("(k) => _aePreset(k)", k)
-                got[k] = pg.evaluate("""(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], o = t.orbit;
+                pg.wait_for_function("(k) => { _ae.dirty = true; _aeKick(); return _ae.target === k && !_ae.fly; }", arg=k, timeout=60_000, polling=100)
+                pg.evaluate("() => { _ae.dist = AE_PROBE_VIEW_DIST; }")
+                got[k] = pg.evaluate("""(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); _aeUpdate(_aeDisplayMs()); var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], o = t.orbit;
                     var c = t.geometry.attributes.color.array;
                     return { round: o && o.round, period: o && o.period, trail: o && o.trail, ring: r.visible, first: c[3], last: c[c.length - 1] }; }""", k)
             assert got["parker"]["round"] == "sun" and 80 < got["parker"]["period"] < 95 and got["parker"]["ring"], got
