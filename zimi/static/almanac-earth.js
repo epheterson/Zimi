@@ -677,7 +677,10 @@ var AE_CSS = [
   '.ae-card p{margin:0}',
   '.ae-card p+p{margin-top:2px}',
   // A third of an upright phone at most: the card is read in a glance, the view stays the picture.
-  '.ae-card{max-height:33vh;overflow-y:auto;overscroll-behavior:contain}',
+  '.ae-card{max-height:25vh;overflow-y:auto;overscroll-behavior:contain}',
+  // A card open on a phone: the time row steps aside (it comes back with the card's ×), so card and chips leave the view
+  // most of the screen.
+  '@media (max-width:500px){.ae-view.ae-carded #ae-time{display:none}}',
   '.ae-card .ae-card-note{color:var(--amber)}',
   '.ae-card .ae-card-more,.ae-card .ae-lm-dark{margin-top:6px;font-size:12px}',
   '.ae-card .ae-lm-dark a,.ae-card .ae-card-more a{color:var(--amber);text-decoration:none}',
@@ -2961,16 +2964,19 @@ function _aeRenderLmCard(card) {
   var name = _almEsc(row[0]);
   var now = _aeDisplayMs();
   if (lm.morning === undefined) lm.morning = lm.body === 'moon' && _aeLmSunAt(row, now) < 0 ? _aeLmMorning(row, now) : null;
-  // One way there; in the lunar night a quiet second way, at sunrise, under it (not a second button beside it).
+  // One way there; in the lunar night a quiet second way, at sunrise, under it (not a second button beside it). Once
+  // there, no way there: the card says what the place is, and the night (with sunrise as the link) if it is dark.
+  var here = !!lm.flown;
   var night = lm.morning ? '<p class="ae-lm-dark"><a href="#" id="ae-lm-morning">' +
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
     '<p>' + _almEsc(line) + '</p>' +
-    '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>' + night;
+    (here ? '' : '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>') + night;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.lm = null; _aeRenderCard(); };
-  _aeById('ae-lm-fly').onclick = function () { _aeLmFly(lm.body, row); };
+  var fly = _aeById('ae-lm-fly');
+  if (fly) fly.onclick = function () { _aeLmFly(lm.body, row); };
   var morning = _aeById('ae-lm-morning');
   if (morning) morning.onclick = function (e) { e.preventDefault(); var at = lm.morning; lm.morning = null; _aeGoTo(at); _aeLmFly(lm.body, row); _aeRenderCard(); };
   var read = _aeById('ae-lm-read');
@@ -2981,6 +2987,8 @@ function _aeLmFly(body, row) {
   var b = _aeLmBodies().filter(function (x) { return x.key === body; })[0];
   if (!b) return;
   if (!_ae.lm || _ae.lm.row !== row) _ae.lm = { body: body, row: row, hit: null };   // its name shows there, layer on or off
+  _ae.lm.flown = true;
+  _aeRenderCard();
   // Over an Apollo site with Almanac HD, all the way down to the inserts' half-metre tiles.
   var hdb = _ae.gl.hd && _ae.gl.hd.bodies.filter(function (x) { return x.key === body; })[0];
   if (hdb) AE_TARGETS[body].min = _aeHdMinOver(hdb, row[1], row[2]);
@@ -3713,6 +3721,7 @@ function _aeArrive(name) { _ae.arrived = name; _ae.lm = null; _ae.selected = nul
 function _aePreset(name) {
   if (!_ae.gl) return;
   if (_ae.arrived && name !== _ae.arrived) { _ae.arrived = null; _aeRenderCard(); }
+  if (_ae.lm && name !== _ae.lm.body) { _ae.lm = null; _aeRenderCard(); }   // a site's card stays at its body
   // The row says where the view is going at once, also for a destination that flies from a callback (a probe's model
   // loading first): the last chip pressed no longer stays lit over Voyager.
   _ae.preset = name;
@@ -4748,6 +4757,11 @@ function _aeBodyAt(x, y) {
 
 // ── The card for a tapped satellite ──
 function _aeRenderCard() {
+  _aeRenderCardBody();
+  var card = _aeById('ae-card'), view = _aeById('ae-view');
+  if (card && view && view.classList) view.classList.toggle('ae-carded', !card.hidden);
+}
+function _aeRenderCardBody() {
   var card = _aeById('ae-card');
   if (!card) return;
   var s = _aeSelectedSat();

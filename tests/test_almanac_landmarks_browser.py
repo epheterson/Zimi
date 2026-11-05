@@ -51,6 +51,8 @@ def served(tmp_path_factory):
 
 LABELS = "() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => b.textContent)"
 
+APOLLO = {"Apollo 11", "Apollo 12", "Apollo 14", "Apollo 15", "Apollo 16", "Apollo 17"}
+
 
 def test_fly_to_the_apollo_11_site(served):
     from playwright.sync_api import sync_playwright
@@ -84,10 +86,11 @@ def test_fly_to_the_apollo_11_site(served):
                 polling=200,
             )
             pg.evaluate("_aePreset('moon')")
-            # Landmarks are off until turned on: the Moon carries no names.
+            # Landmarks are off until turned on: the Moon names only Apollo's six landings (the ones on the near side).
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
-            pg.wait_for_timeout(1000)
-            assert pg.evaluate(LABELS) == []
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return (" + LABELS + ")().length > 0; }", timeout=60_000, polling=250)
+            quiet = pg.evaluate(LABELS)
+            assert set(quiet) <= APOLLO and "Apollo 11" in quiet, quiet
             # The gear's switch turns them on, remembered on this device.
             pg.click("#ae-gear")
             pg.check("#ae-set-body input[name='ae-lm-layer']")
@@ -117,6 +120,14 @@ def test_fly_to_the_apollo_11_site(served):
                 timeout=30_000,
                 polling=100,
             )
+            # There: no way there any more, and the card is a small thing at the bottom (a quarter of the screen at most;
+            # with the row under it, the view keeps most of the screen).
+            assert not pg.query_selector("#ae-lm-fly")
+            box = pg.evaluate("""() => { var c = document.getElementById('ae-card').getBoundingClientRect(), v = document.getElementById('ae-views').getBoundingClientRect(),
+                t = document.getElementById('ae-time'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
+            assert box["card"] <= 0.25 * VIEW["height"] + 1, box
+            assert box["top"] >= 0.6 * VIEW["height"], box
+            assert not box["time"], box   # the time row steps aside while a card is open
             # Over the site, as near as allowed, the site at the middle of the screen.
             spot = pg.evaluate("""() => {
                 var b = _aeLmBodies()[0], d = _aeLmDir(b, 0.67408, 23.47297);
@@ -137,7 +148,7 @@ def test_fly_to_the_apollo_11_site(served):
                 timeout=60_000,
                 polling=200,
             )
-            assert pg.evaluate(LABELS) == ["Apollo 11"]
+            assert "Apollo 11" in pg.evaluate(LABELS) and set(pg.evaluate(LABELS)) <= APOLLO
             assert "Apollo 11" in pg.inner_text("#ae-card")
             assert not errors, errors
             ctx.close()
