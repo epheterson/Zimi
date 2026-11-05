@@ -578,6 +578,8 @@ var AE_CSS = [
   '.ae-set-data{margin:8px 4px 0;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text2)}',
   '.ae-set-data[hidden]{display:none}',
   '.ae-set-data .ae-fresh{margin-inline-start:0}',
+  '.ae-set-hd{margin-top:4px;border-top:0;padding-top:0}',
+  '.ae-set-hd b{color:var(--text);font-weight:600}',
   '.ae-set-sep{height:1px;margin:6px 4px;background:var(--border)}',
   '.ae-live{color:#6ec56e}',
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:' + AE_AMBER_HEX + ';pointer-events:none;text-shadow:0 1px 3px #000}',
@@ -2947,6 +2949,7 @@ function _aeHdShow(st) {
   if (!box) return;
   clearTimeout(_ae.hdPoll);
   var S = _ae.gl;
+  if (st) _ae.hdSt = st;   // what the gear's row says (Not now hides only the line, never the row)
   if (st && st.installed) _ae.hdInstalled = true;
   if (_ae.hdInstalled && S && !S.hd && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }
   var text = '', offer = false;
@@ -2962,9 +2965,28 @@ function _aeHdShow(st) {
   _aeSetText(_aeById('ae-hd-text'), text);
   var act = _aeById('ae-hd-act');
   if (act) act.hidden = !offer;
+  _aeRenderSettings();
+}
+// Almanac HD in the gear, whatever the line under the controls says: after Not now this is where it is found again.
+// Installed; downloading and how far; a Download with its size for someone who may; for anyone else, who can.
+// Nothing under Never (or ZIMI_OFFLINE), or when this version names no file.
+function _aeHdRowHtml() {
+  var st = _ae.hdSt;
+  if (!st || (!st.installed && (!st.offer || st.mode === 'never'))) return '';
+  var head = '<b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>', tail;
+  if (st.installed || _ae.hdInstalled) tail = _almEsc(_aeT('alm_hd_installed'));
+  else if (st.downloading) tail = _almEsc(_aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) }));
+  else {
+    var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
+    tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
+      : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
+  }
+  return '<p class="ae-set-data ae-set-hd">' + head + '<br>' + tail + '</p>';
 }
 function _aeHdGet() {
   _aeById('ae-hd-get').disabled = true;
+  var row = _aeById('ae-set-hd-get');
+  if (row) row.disabled = true;
   _aePost(AE_HD_SET_URL, { start: true }).then(function (st) {
     st.can_change = true;
     _aeHdShow(st);
@@ -3820,6 +3842,7 @@ function _aeRenderSettings() {
     // This viewer's own: names of places on the bodies (off until turned on, remembered on this device).
     '<label class="ae-set-choice"><input type="checkbox" name="ae-lm-layer"' + (_aeLmLayerOn() ? ' checked' : '') + '>' +
       '<span><b>' + _almEsc(_aeT('alm_lm_layer')) + '</b><small>' + _almEsc(_aeT('alm_lm_layer_hint')) + '</small></span></label>' +
+    _aeHdRowHtml() +
     '<div class="ae-set-sep" aria-hidden="true"></div>' +
     '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
     '<div role="radiogroup" aria-labelledby="ae-set-title">';
@@ -3834,6 +3857,8 @@ function _aeRenderSettings() {
   var why = _aeSettingsWhy(m);
   if (why) html += '<p class="ae-set-why">' + _almEsc(why) + '</p>';
   panel.innerHTML = html;
+  var get = _aeById('ae-set-hd-get');
+  if (get) get.onclick = _aeHdGet;
 }
 // An admin's choice, saved on the server; then the view asks again, since
 // the choice changes what a stale answer brings (Automatically fetches

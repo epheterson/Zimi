@@ -2339,8 +2339,8 @@
   "net_satellites": "Спутниковые данные",
   "net_satellites_when": "Орбиты МКС и GPS для 3D-Земли",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "Более чёткие Земля и Луна для Альманаха, один раз, по запросу",
-  "alm_hd_offer": "Более чёткие Земля и Луна",
+  "net_almanac_hd_when": "Более чёткие Земля, Луна и планеты для Альманаха, один раз, по запросу",
+  "alm_hd_offer": "Более чёткие Земля, Луна и планеты",
   "alm_hd_offer_sub": "{size}, загружается в библиотеку один раз",
   "alm_hd_get": "Загрузить",
   "alm_hd_later": "Не сейчас",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "Золотая пластинка на борту",
   "alm_row_orbits": "Орбиты",
   "alm_row_landings": "Посадки",
-  "alm_lm_night_until": "Там ночь до {date} · прилететь к восходу"
+  "alm_lm_night_until": "Там ночь до {date} · прилететь к восходу",
+  "alm_hd_installed": "Установлено",
+  "alm_hd_ask_admin": "это может добавить тот, кто управляет этим Zimi"
 }

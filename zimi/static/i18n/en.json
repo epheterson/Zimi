@@ -2339,8 +2339,8 @@
   "net_satellites": "Satellite data",
   "net_satellites_when": "ISS and GPS orbits for the 3D Earth",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "Sharper Earth and Moon for the Almanac, once, when asked",
-  "alm_hd_offer": "Sharper Earth and Moon",
+  "net_almanac_hd_when": "Sharper Earth, Moon and planets for the Almanac, once, when asked",
+  "alm_hd_offer": "Sharper Earth, Moon and planets",
   "alm_hd_offer_sub": "{size}, downloaded once into your library",
   "alm_hd_get": "Download",
   "alm_hd_later": "Not now",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "The Golden Record it carries",
   "alm_row_orbits": "Orbits",
   "alm_row_landings": "Landings",
-  "alm_lm_night_until": "Night there until {date} · arrive at sunrise"
+  "alm_lm_night_until": "Night there until {date} · arrive at sunrise",
+  "alm_hd_installed": "Installed",
+  "alm_hd_ask_admin": "whoever runs this Zimi can add it"
 }

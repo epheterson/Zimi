@@ -2339,8 +2339,8 @@
   "net_satellites": "उपग्रह डेटा",
   "net_satellites_when": "3D पृथ्वी के लिए ISS और GPS कक्षाएँ",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "पंचांग के लिए अधिक स्पष्ट पृथ्वी और चंद्रमा, एक बार, पूछने पर",
-  "alm_hd_offer": "अधिक स्पष्ट पृथ्वी और चंद्रमा",
+  "net_almanac_hd_when": "पंचांग के लिए अधिक स्पष्ट पृथ्वी, चंद्रमा और ग्रह, एक बार, माँगने पर",
+  "alm_hd_offer": "अधिक स्पष्ट पृथ्वी, चंद्रमा और ग्रह",
   "alm_hd_offer_sub": "{size}, आपकी लाइब्रेरी में एक बार डाउनलोड",
   "alm_hd_get": "डाउनलोड करें",
   "alm_hd_later": "अभी नहीं",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "इसके साथ गया गोल्डन रिकॉर्ड",
   "alm_row_orbits": "कक्षाएँ",
   "alm_row_landings": "अवतरण स्थल",
-  "alm_lm_night_until": "वहाँ {date} तक रात · सूर्योदय पर पहुँचें"
+  "alm_lm_night_until": "वहाँ {date} तक रात · सूर्योदय पर पहुँचें",
+  "alm_hd_installed": "इंस्टॉल है",
+  "alm_hd_ask_admin": "इस Zimi को चलाने वाला इसे जोड़ सकता है"
 }

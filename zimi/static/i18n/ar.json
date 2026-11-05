@@ -2339,8 +2339,8 @@
   "net_satellites": "بيانات الأقمار الصناعية",
   "net_satellites_when": "مدارات محطة الفضاء الدولية وGPS للأرض ثلاثية الأبعاد",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "أرض وقمر أوضح للتقويم الفلكي، مرة واحدة عند الطلب",
-  "alm_hd_offer": "أرض وقمر أوضح",
+  "net_almanac_hd_when": "أرض وقمر وكواكب أوضح للتقويم، مرة واحدة، عند الطلب",
+  "alm_hd_offer": "أرض وقمر وكواكب أوضح",
   "alm_hd_offer_sub": "{size}، يُنزَّل مرة واحدة إلى مكتبتك",
   "alm_hd_get": "تنزيل",
   "alm_hd_later": "ليس الآن",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "الأسطوانة الذهبية التي يحملها",
   "alm_row_orbits": "المدارات",
   "alm_row_landings": "مواقع الهبوط",
-  "alm_lm_night_until": "ليل هناك حتى {date} · الوصول عند الشروق"
+  "alm_lm_night_until": "ليل هناك حتى {date} · الوصول عند الشروق",
+  "alm_hd_installed": "مثبّت",
+  "alm_hd_ask_admin": "يمكن لمن يدير Zimi هذا إضافته"
 }

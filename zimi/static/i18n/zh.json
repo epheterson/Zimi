@@ -2339,8 +2339,8 @@
   "net_satellites": "卫星数据",
   "net_satellites_when": "3D 地球所用的 ISS 与 GPS 轨道",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "为天文历提供更清晰的地球和月球，按需下载一次",
-  "alm_hd_offer": "更清晰的地球和月球",
+  "net_almanac_hd_when": "为年鉴提供更清晰的地球、月球和行星，按需下载一次",
+  "alm_hd_offer": "更清晰的地球、月球和行星",
   "alm_hd_offer_sub": "{size}，只需下载一次到你的资料库",
   "alm_hd_get": "下载",
   "alm_hd_later": "以后再说",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "它携带的金唱片",
   "alm_row_orbits": "轨道",
   "alm_row_landings": "登月点",
-  "alm_lm_night_until": "那里是夜晚，直到 {date} · 日出时抵达"
+  "alm_lm_night_until": "那里是夜晚，直到 {date} · 日出时抵达",
+  "alm_hd_installed": "已安装",
+  "alm_hd_ask_admin": "此 Zimi 的管理者可以添加"
 }
