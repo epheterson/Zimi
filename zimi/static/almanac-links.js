@@ -55,7 +55,15 @@
     'planet:uranus':  { q: 'Q324', en: 'Uranus' },
     'planet:neptune': { q: 'Q332', en: 'Neptune' },
     'planet:sun':     { q: 'Q525', en: 'Sun' },
-    'planet:moon':    { q: 'Q405', en: 'Moon' }
+    'planet:moon':    { q: 'Q405', en: 'Moon' },
+    // The 3D view's other destinations (its arrival cards); Q-IDs by exact enwiki title, Wikidata 2026-11-04.
+    'planet:pluto':    { q: 'Q339',  en: 'Pluto' },
+    'planet:ceres':    { q: 'Q596',  en: 'Ceres (dwarf planet)' },
+    'planet:io':       { q: 'Q3123', en: 'Io (moon)' },
+    'planet:europa':   { q: 'Q3143', en: 'Europa (moon)' },
+    'planet:ganymede': { q: 'Q3169', en: 'Ganymede (moon)' },
+    'planet:callisto': { q: 'Q3134', en: 'Callisto (moon)' },
+    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' }
   };
 
   var PROBES = {
@@ -63,7 +71,13 @@
     'probe:voyager2':    { q: 'Q48475', en: 'Voyager 2' },
     'probe:pioneer10':   { q: 'Q59103', en: 'Pioneer 10' },
     'probe:pioneer11':   { q: 'Q59113', en: 'Pioneer 11' },
-    'probe:newhorizons': { q: 'Q48461', en: 'New Horizons' }
+    'probe:newhorizons': { q: 'Q48461', en: 'New Horizons' },
+    'probe:parker':      { q: 'Q899091', en: 'Parker Solar Probe' },
+    'probe:juno':        { q: 'Q48546', en: 'Juno (spacecraft)' },
+    'probe:jwst':        { q: 'Q186447', en: 'James Webb Space Telescope' },
+    'probe:cassini':     { q: 'Q165585', en: 'Cassini–Huygens' },
+    'probe:galileo':     { q: 'Q105425030', en: 'Galileo (spacecraft)' },
+    'probe:europaclipper': { q: 'Q15637513', en: 'Europa Clipper' }
   };
 
   // Constellations — `en` is the disambiguated article title so English

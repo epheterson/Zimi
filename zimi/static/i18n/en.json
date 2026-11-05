@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "Named feature",
   "alm_lm_size": "{km} km across",
   "alm_lm_fly": "Fly there",
-  "alm_lm_night": "Night there now. Morning comes {date}",
-  "alm_lm_fly_morning": "Fly there in the morning",
   "alm_earth_map_here": "Map here",
   "net_voices": "Dictionary voices",
   "net_voices_when": "A clearer voice for a language, about 60 MB",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "In the Earth's shadow",
   "alm_card_shadow_until": "In the Earth's shadow · sunlight in {t}",
   "alm_card_round_sun": "Goes round the Sun every {t}",
-  "alm_card_round_earth": "Goes round the Earth every {t}"
+  "alm_card_round_earth": "Goes round the Earth every {t}",
+  "alm_card_light": "light takes {t}",
+  "alm_card_golden_record": "The Golden Record it carries",
+  "alm_row_orbits": "Orbits",
+  "alm_row_landings": "Landings",
+  "alm_lm_night_until": "Night there until {date} · arrive at sunrise"
 }

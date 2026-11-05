@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "नामित स्थल",
   "alm_lm_size": "{km} किमी चौड़ा",
   "alm_lm_fly": "वहाँ उड़ें",
-  "alm_lm_night": "वहाँ अभी रात है। सुबह {date} को होगी",
-  "alm_lm_fly_morning": "सुबह वहाँ उड़ें",
   "alm_earth_map_here": "यहाँ का नक्शा",
   "net_voices": "शब्दकोश की आवाज़ें",
   "net_voices_when": "किसी भाषा के लिए ज़्यादा साफ़ आवाज़, लगभग 60 MB",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "पृथ्वी की छाया में",
   "alm_card_shadow_until": "पृथ्वी की छाया में · {t} में धूप",
   "alm_card_round_sun": "सूर्य का एक चक्कर {t} में",
-  "alm_card_round_earth": "पृथ्वी का एक चक्कर {t} में"
+  "alm_card_round_earth": "पृथ्वी का एक चक्कर {t} में",
+  "alm_card_light": "प्रकाश को {t} लगते हैं",
+  "alm_card_golden_record": "इसके साथ गया गोल्डन रिकॉर्ड",
+  "alm_row_orbits": "कक्षाएँ",
+  "alm_row_landings": "अवतरण स्थल",
+  "alm_lm_night_until": "वहाँ {date} तक रात · सूर्योदय पर पहुँचें"
 }

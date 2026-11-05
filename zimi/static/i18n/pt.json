@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "Formação nomeada",
   "alm_lm_size": "{km} km de diâmetro",
   "alm_lm_fly": "Voar até lá",
-  "alm_lm_night": "Agora é noite lá. A manhã chega em {date}",
-  "alm_lm_fly_morning": "Voar até lá de manhã",
   "alm_earth_map_here": "Mapa aqui",
   "net_voices": "Vozes do dicionário",
   "net_voices_when": "Uma voz mais clara para um idioma, cerca de 60 MB",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "Na sombra da Terra",
   "alm_card_shadow_until": "Na sombra da Terra · luz do Sol em {t}",
   "alm_card_round_sun": "Dá a volta ao Sol a cada {t}",
-  "alm_card_round_earth": "Dá a volta à Terra a cada {t}"
+  "alm_card_round_earth": "Dá a volta à Terra a cada {t}",
+  "alm_card_light": "a luz leva {t}",
+  "alm_card_golden_record": "O Disco de Ouro que leva",
+  "alm_row_orbits": "Órbitas",
+  "alm_row_landings": "Alunissagens",
+  "alm_lm_night_until": "Noite lá até {date} · chegar ao nascer do Sol"
 }

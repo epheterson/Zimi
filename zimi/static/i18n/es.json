@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "Accidente con nombre",
   "alm_lm_size": "{km} km de diámetro",
   "alm_lm_fly": "Volar allí",
-  "alm_lm_night": "Ahora es de noche allí. Amanece el {date}",
-  "alm_lm_fly_morning": "Volar allí por la mañana",
   "alm_earth_map_here": "Mapa aquí",
   "net_voices": "Voces del diccionario",
   "net_voices_when": "Una voz más clara para un idioma, unos 60 MB",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "En la sombra de la Tierra",
   "alm_card_shadow_until": "En la sombra de la Tierra · luz del Sol en {t}",
   "alm_card_round_sun": "Da la vuelta al Sol cada {t}",
-  "alm_card_round_earth": "Da la vuelta a la Tierra cada {t}"
+  "alm_card_round_earth": "Da la vuelta a la Tierra cada {t}",
+  "alm_card_light": "la luz tarda {t}",
+  "alm_card_golden_record": "El Disco de Oro que lleva",
+  "alm_row_orbits": "Órbitas",
+  "alm_row_landings": "Alunizajes",
+  "alm_lm_night_until": "Noche allí hasta {date} · llegar al amanecer"
 }

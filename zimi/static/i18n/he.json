@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "תצורה בעלת שם",
   "alm_lm_size": "קוטר {km} ק\"מ",
   "alm_lm_fly": "טוס לשם",
-  "alm_lm_night": "עכשיו לילה שם. הבוקר יגיע ב-{date}",
-  "alm_lm_fly_morning": "טוס לשם בבוקר",
   "alm_earth_map_here": "מפה כאן",
   "net_voices": "קולות המילון",
   "net_voices_when": "קול ברור יותר לשפה, כ־60 MB",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "בצל כדור הארץ",
   "alm_card_shadow_until": "בצל כדור הארץ · אור שמש בעוד {t}",
   "alm_card_round_sun": "מקיף את השמש כל {t}",
-  "alm_card_round_earth": "מקיף את כדור הארץ כל {t}"
+  "alm_card_round_earth": "מקיף את כדור הארץ כל {t}",
+  "alm_card_light": "לאור לוקח {t}",
+  "alm_card_golden_record": "תקליט הזהב שהיא נושאת",
+  "alm_row_orbits": "מסלולים",
+  "alm_row_landings": "נחיתות",
+  "alm_lm_night_until": "לילה שם עד {date} · להגיע בזריחה"
 }

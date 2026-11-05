@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "Formation nommée",
   "alm_lm_size": "{km} km de diamètre",
   "alm_lm_fly": "Y aller",
-  "alm_lm_night": "Il y fait nuit. Le matin vient le {date}",
-  "alm_lm_fly_morning": "Y aller au matin",
   "alm_earth_map_here": "Carte ici",
   "net_voices": "Voix du dictionnaire",
   "net_voices_when": "Une voix plus claire pour une langue, environ 60 Mo",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "Dans l’ombre de la Terre",
   "alm_card_shadow_until": "Dans l’ombre de la Terre · soleil dans {t}",
   "alm_card_round_sun": "Fait le tour du Soleil en {t}",
-  "alm_card_round_earth": "Fait le tour de la Terre en {t}"
+  "alm_card_round_earth": "Fait le tour de la Terre en {t}",
+  "alm_card_light": "la lumière met {t}",
+  "alm_card_golden_record": "Le Golden Record à son bord",
+  "alm_row_orbits": "Orbites",
+  "alm_row_landings": "Alunissages",
+  "alm_lm_night_until": "Nuit là-bas jusqu’au {date} · arriver au lever du Soleil"
 }

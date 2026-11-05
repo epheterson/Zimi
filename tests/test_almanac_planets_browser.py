@@ -184,9 +184,10 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             jwst_km = pg.evaluate("Math.hypot.apply(null, _aeProbePos.jwst) * AE_EARTH_RADIUS_KM")
             assert 1.2e6 < jwst_km < 1.9e6, jwst_km
             pg.evaluate("_aePreset('voyager1')")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            # Its model loads first, then the flight and its card: the card names it, where it is, and what it last did.
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.arrived === 'voyager1'; }", timeout=60_000, polling=200)
             card = pg.inner_text("#ae-card")
-            assert "Voyager 1" in card and "AU from the Sun" in card and "Saturn" in card, card
+            assert "Voyager 1" in card and "AU from the Sun" in card and "2012" in card, card
             assert not errors, errors
             ctx.close()
         finally:
@@ -225,8 +226,9 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             pg.evaluate("_orreryOpenEarthView('jupiter')")
             pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'jupiter'; }", timeout=60_000, polling=200)
-            row = pg.evaluate("Array.from(document.querySelectorAll('#ae-views > *')).map(b => b.dataset.aeView || b.id)")
-            assert row == ["earth", "sats", "moon", "sun", "planets", "ae-go-btn"], row
+            row = pg.evaluate("Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.dataset.aeView || b.id)")
+            # At Jupiter the row is Jupiter's: its moons and the way back, Go to at the end.
+            assert row[:3] == ["planets", "earth", "jupiter"] and "io" in row and row[-1] == "ae-go-btn", row
             pg.click("#ae-go-btn")
             pg.wait_for_function("() => !document.getElementById('ae-go').hidden && document.querySelectorAll('#ae-go [data-ae-go=\"voyager1\"]').length === 1 && document.querySelectorAll('#ae-go [data-ae-go^=\"lm:\"]').length > 20", timeout=60_000)
             groups = pg.evaluate("Array.from(document.querySelectorAll('#ae-go h4')).length")
@@ -429,7 +431,7 @@ def test_the_row_is_one_line(served, width, lang):
             ctx.add_init_script("try { localStorage.setItem('zimi_ui_lang', %r); } catch (e) {}" % lang)
             pg = ctx.new_page()
             _open(pg, served)
-            tops = pg.evaluate("Array.from(document.querySelectorAll('#ae-views > *')).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })")
+            tops = pg.evaluate("Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })")
             assert len(tops) == 6 and len({t[0] for t in tops}) == 1, tops
             assert min(t[1] for t in tops) >= 0 and max(t[2] for t in tops) <= width, tops
             if lang == "en":
@@ -502,15 +504,107 @@ def test_every_destination_arrives_with_its_card(served):
                 pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset; }", timeout=30_000, polling=100)
                 card = pg.evaluate("""() => { var c = document.getElementById('ae-card');
                     return { shown: !c.hidden, name: (c.querySelector('h3') || {}).textContent || '', lines: c.querySelectorAll('p').length }; }""")
-                want = 1 if k == "iss" else 2
+                want = 2
                 if k not in ("earth", "sats") and (not card["shown"] or not card["name"].strip() or card["lines"] < want):
                     bare.append((k, card))
             assert not bare, bare
             shade = pg.evaluate("""() => ({ behind: _aeInShadow([-2, 0, 0], [5, 0, 0]), beside: _aeInShadow([0, 2, 0], [5, 0, 0]), front: _aeInShadow([2, 0, 0], [5, 0, 0]) })""")
             assert shade == {"behind": True, "beside": False, "front": False}, shade
-            iss = pg.evaluate("""() => { var lines = _aeArrivalLines('iss', _aeDisplayMs()); return { dark: _aeInShadow(_ae.issPos, _ae.scene.sun),
-                says: lines.some(function (l) { return l.indexOf(_aeT('alm_card_shadow')) === 0; }) }; }""")
+            iss = pg.evaluate("""() => { return { dark: _aeInShadow(_ae.issPos, _ae.scene.sun),
+                says: !!_aeArrival('iss', _aeDisplayMs()).note }; }""")
             assert iss["dark"] == iss["says"], iss
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_row_follows_where_the_view_is(served):
+    """The quick row says where the view can go from here: home's five at the Earth; at Jupiter, Jupiter's moons, an
+    Orbits switch that draws their orbits, and the way back; at the Moon, its landings. Always one line (it scrolls
+    sideways past its width, Go to at its end inside the screen)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br, 360)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            row = "() => Array.from(document.querySelectorAll('#ae-views .ae-btn[data-ae-view]')).map(b => b.getAttribute('data-ae-view'))"
+            assert pg.evaluate(row) == ["earth", "sats", "moon", "sun", "planets"]
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('jupiter');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
+            keys = pg.evaluate(row)
+            assert {"io", "europa", "ganymede", "callisto", "orbits", "planets", "earth"} <= set(keys), keys
+            line = pg.evaluate("""() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.getBoundingClientRect());
+                var go = document.getElementById('ae-go-btn').getBoundingClientRect();
+                return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }""")
+            assert line == {"tops": 1, "goIn": True}, line
+            assert not pg.evaluate("_ae.gl.planets.io.orbit.visible")
+            pg.click("#ae-views [data-ae-view='orbits']")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.gl.planets.io.orbit.visible; }", timeout=10_000, polling=100)
+            assert pg.get_attribute("#ae-views [data-ae-view='orbits']", "aria-pressed") == "true"
+            pg.evaluate("_ae.fly = null; _aePreset('moon');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
+            assert "landings" in pg.evaluate(row)
+            pg.click("#ae-views [data-ae-view='landings']")
+            assert not pg.evaluate("document.getElementById('ae-go').hidden")
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_a_tap_on_the_craft_in_view_opens_its_card(served):
+    """The model itself is what to tap, not only its little circle: at Voyager with its card put away, a tap on the
+    craft brings the card back, and its name and the Golden Record link to their articles where the library has them."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            pg.evaluate("_ae.fly = null; _aePreset('voyager1');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'voyager1' && !!_ae.gl.crafts && !!_ae.gl.crafts.voyager1 && _ae.gl.crafts.voyager1.root.visible; }", timeout=60_000, polling=200)
+            pg.click("#ae-card-x")
+            assert pg.evaluate("document.getElementById('ae-card').hidden")
+            at = pg.evaluate("() => { var s = _aeProject(_aeTargetPos()), r = document.getElementById('ae-canvas').getBoundingClientRect(); return { x: r.left + s.x, y: r.top + s.y }; }")
+            pg.mouse.click(at["x"], at["y"])
+            pg.wait_for_function("() => !document.getElementById('ae-card').hidden", timeout=10_000)
+            assert "Voyager 1" in pg.inner_text("#ae-card h3")
+            keys = pg.evaluate("() => [_aeArrivalKey('voyager1'), AE_ARRIVAL_EXTRA.voyager1.key].map(k => !!AlmanacLinks.MAP[k])")
+            assert keys == [True, True], keys
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_iss_stays_in_view_at_an_hour_a_second(served):
+    """At an hour a second a fortnight passes in minutes: the station keeps its (approximate) dot and can still be
+    flown to and followed, instead of going out once its elements age past the dot's days."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.issPos; }", timeout=60_000, polling=200)
+            pg.evaluate("() => { var s = _ae.sats.list.filter(x => x.iss)[0]; _aeGoTo(s.epochMs + 30 * 86400000); _ae.speed = 3600; }")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); var s = _ae.sats.list.filter(x => x.iss)[0]; return s.standing === 'approximate' && !!_ae.issPos; }", timeout=30_000, polling=200)
             assert not errors, errors
             ctx.close()
         finally:

@@ -2352,8 +2352,6 @@
   "alm_lm_kind_other": "Именованный объект",
   "alm_lm_size": "{km} км в поперечнике",
   "alm_lm_fly": "Лететь туда",
-  "alm_lm_night": "Сейчас там ночь. Утро наступит {date}",
-  "alm_lm_fly_morning": "Лететь туда утром",
   "alm_earth_map_here": "Карта здесь",
   "net_voices": "Голоса словаря",
   "net_voices_when": "Более чёткий голос для языка, около 60 МБ",
@@ -3578,5 +3576,10 @@
   "alm_card_shadow": "В тени Земли",
   "alm_card_shadow_until": "В тени Земли · Солнце через {t}",
   "alm_card_round_sun": "Оборот вокруг Солнца за {t}",
-  "alm_card_round_earth": "Оборот вокруг Земли за {t}"
+  "alm_card_round_earth": "Оборот вокруг Земли за {t}",
+  "alm_card_light": "свет идёт {t}",
+  "alm_card_golden_record": "Золотая пластинка на борту",
+  "alm_row_orbits": "Орбиты",
+  "alm_row_landings": "Посадки",
+  "alm_lm_night_until": "Там ночь до {date} · прилететь к восходу"
 }

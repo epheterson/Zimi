@@ -227,6 +227,8 @@ const utc = (iso) => Date.parse(iso);
   check(S._aeSatStanding(14, true) === 'approximate', 'two weeks on, the ISS still has its (approximate) dot');
   check(S._aeSatStanding(20, true) === 'orbit' && S._aeSatStanding(-20, true) === 'orbit' && S._aeSatStanding(179, true) === 'orbit',
     'past two weeks only the ISS\'s orbit is drawn, not a dot at an arbitrary place');
+  check(S._aeSatStanding(20, true, true) === 'approximate' && S._aeSatStanding(179, true, true) === 'approximate',
+    'with time running fast or the view on it, the ISS keeps its approximate dot');
   check(S._aeSatStanding(20, false) === 'exact' && S._aeSatStanding(90, false) === 'exact', 'GPS holds for months at this scale');
   check(S._aeSatStanding(181, false) === 'none' && S._aeSatStanding(-400, true) === 'none', 'far from its data, nothing is drawn');
 }
