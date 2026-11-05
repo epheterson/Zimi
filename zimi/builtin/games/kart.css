@@ -29,7 +29,7 @@ body.touch .kt-pad { display: flex; }
   body.touch .kt-stage:not(.kt-split) { flex: 1 1 auto; width: 100%; align-items: stretch; }
   body.touch .kt-stage:not(.kt-split) .kt-board { align-self: center; }
   body.touch .kt-stage:not(.kt-split) .pl-msg { align-self: center; margin: var(--sp-1) 0; }
-  body.touch .kt-stage:not(.kt-split) .kt-pads { flex: 1 1 0; display: flex; flex-direction: column; max-width: 560px; align-self: center; padding-bottom: env(safe-area-inset-bottom); }
+  body.touch .kt-stage:not(.kt-split) .kt-pads { flex: 1 1 0; display: flex; flex-direction: column; max-width: 560px; align-self: center; padding-bottom: var(--safe-b); }
   body.touch .kt-stage:not(.kt-split) .kt-pad { flex: 1 1 0; flex-direction: column; align-items: stretch; gap: var(--sp-2); padding: 0; }
   body.touch .kt-stage:not(.kt-split) .kt-pad > div { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; gap: var(--sp-2); }
   body.touch .kt-stage:not(.kt-split) .kt-steer { flex: 3 1 0; min-height: calc(var(--pad-key) + var(--sp-4)); }

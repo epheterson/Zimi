@@ -73,6 +73,10 @@ button { font: inherit; color: inherit; }
 .ar-back:hover { color: var(--accent); }
 /* In dark the pebble gets a 1px ring so it never vanishes into the bar: the one allowed change to it. The ground is no lighter than
    the bar, so the ring is the ink at 28 percent. */
+/* The screen's safe edges (the home indicator, a notch in landscape). In a page of its own they are the browser's; inside
+   Zimi's reader the frame hears 0 from WebKit, so the shell measures how far the frame reaches into Zimi's own and sets
+   these on the root (shell.js, hostInsets). Use these, never env(safe-area-inset-*), in a game. */
+:root { --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
 :root { --mark-ring: color-mix(in srgb, var(--ink) 28%, transparent); }
 :root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }
@@ -97,10 +101,10 @@ button { font: inherit; color: inherit; }
 .ar-stat { font: 600 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; color: var(--ink2); white-space: nowrap; }
 
 /* Pages that are not a felt table: the content starts under the bar, in one centred column. Space falls below it. */
-.pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom)); }
+.pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), var(--safe-b)); }
 @media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
 body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
-body.zc-game { padding-bottom: env(safe-area-inset-bottom); }
+body.zc-game { padding-bottom: var(--safe-b); }
 /* Bare grids (2048, Sudoku, Minesweeper, Sokoban) sit in one frame: radius 14, a 1px line, surface2, 12px padding.
    A wood board is its own frame and gets no card around it; felt tables stay full bleed. */
 .gs-frame, .pl-main :is(.tf-board, .su-board, .sk-board), .ms-main .ms-box { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
@@ -592,7 +596,7 @@ html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gs-tm-item:hover, .gs-tm-item:focus-visible { background: var(--accent-glow); color: var(--accent); outline: none; }
 .gs-tm-danger:hover, .gs-tm-danger:focus-visible { background: rgba(179, 38, 30, 0.1); color: var(--danger, #b3261e); }
 .gs-tm-head { display: none; }
-.gs-tm-sheet { left: 0; right: 0; bottom: 0; min-width: 0; max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: var(--sp-2) 0 calc(12px + env(safe-area-inset-bottom)); animation: gs-tm-up 0.2s cubic-bezier(0.25, 1, 0.5, 1); }
+.gs-tm-sheet { left: 0; right: 0; bottom: 0; min-width: 0; max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: var(--sp-2) 0 calc(12px + var(--safe-b)); animation: gs-tm-up 0.2s cubic-bezier(0.25, 1, 0.5, 1); }
 .gs-tm-sheet::before { content: ""; display: block; width: 36px; height: 4px; margin: 0 auto 6px; border-radius: 2px; background: var(--line-strong); opacity: 0.5; }
 .gs-tm-sheet .gs-tm-head { display: flex; align-items: center; gap: 12px; padding: 6px 20px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .gs-tm-head img { flex: none; width: 64px; height: 36px; border-radius: var(--r-chip); object-fit: cover; }
@@ -627,7 +631,7 @@ body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 .gs-m-conf4 { background: #fdfcf8; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); }
 @keyframes gs-conf { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--sway), 105vh) rotate(var(--turn)); } }
 /* The result and a big New game stay on a finished board once its sheet is closed (shell.js, showRest): never a dead end. */
-.gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), env(safe-area-inset-bottom)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
+.gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), var(--safe-b)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
 .gs-rest p { margin: 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
 .gs-rest .gs-rest-new { width: 100%; min-height: 56px; font-size: var(--fs-title); font-weight: 650; }
 .gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } }

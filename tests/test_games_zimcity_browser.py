@@ -305,6 +305,17 @@ def test_a_new_city_opens_on_open_ground_with_the_first_step(browser, site):
     assert pg.wait_for_selector("#cy-msg").text_content() == "Lay a road: choose Road and drag"
 
 
+def test_a_city_whose_land_is_at_its_edge_opens_on_land_not_past_the_edge(browser, site):
+    """The open ground is the bottom rows: the first view sits on them, with none of the margin past the map showing."""
+    pg = phone(browser, site)
+    got = pg.evaluate("""() => { const z = window.__zimcity, map = z.city.map, v = z.view;
+      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) map.setTile(x, y, y >= map.height - 16 ? 0 : 2, 0);
+      z.land();
+      const a = v.tileAt(0, 0), b = v.tileAt(v.w - 1, v.h - 1);
+      return { a, b, w: map.width, h: map.height }; }""")
+    assert got["a"]["y"] >= 0 and got["b"]["y"] < got["h"] and got["b"]["y"] == got["h"] - 1, got
+
+
 def test_keep_open_and_delete_a_city(browser, site):
     pg = phone(browser, site)
     pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
@@ -469,3 +480,235 @@ def test_the_citizens_speak_in_their_own_names(browser, site):
     pg = phone(browser, site)
     pg.evaluate("() => window.__zimcity.voice()")
     pg.wait_for_function("() => /^(Dale Pemberton|Vivian Crane|Juniper Ash|Gordon Plumb): “.+”$/.test(document.getElementById('cy-msg').textContent)", timeout=10000)
+
+
+PLANTS = "() => { const m = window.__zimcity.city.map, out = []; for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) if (m.getTileValue(x, y) === 750) out.push([x, y]); return out; }"
+
+
+def hold_more(pg, label):
+    pg.click('.cy-tool[data-tool="more"]')
+    pg.click(OURS + ' .cy-more-tool >> text="%s"' % label)
+
+
+def test_a_plant_rides_above_the_finger_and_goes_down_where_it_is_let_go(browser, site):
+    """A single building is dragged into place, not laid in a row: one plant, where its ghost was when the finger
+    lifted, which is above the finger (the finger never hides it)."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    hold_more(pg, "Coal plant")
+    x0, y0 = box["w"] * 0.3, box["top"] + box["h"] * 0.72
+    x1, y1 = box["w"] * 0.6, box["top"] + box["h"] * 0.68
+    before = funds(pg)
+    touch(pg, "touchStart", [(x0, y0)])
+    for k in range(1, 9):
+        touch(pg, "touchMove", [(x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8)])
+        pg.wait_for_timeout(16)
+    want = pg.evaluate("([x, y]) => { const v = window.__zimcity.view, lift = 4 * 16 * v.cam.s / 2 + 28, r = v.canvas.getBoundingClientRect(), t = v.tileAt(x - r.left, y - r.top - lift); return [t.x, t.y]; }", [x1, y1])
+    ghost = pg.evaluate("() => window.__zimcity.view.ghost")
+    assert ghost["ok"] and len(ghost["boxes"]) == 1, ghost
+    touch(pg, "touchEnd", [])
+    pg.wait_for_timeout(120)
+    assert before - funds(pg) == 3000
+    assert pg.evaluate(PLANTS) == [want], (pg.evaluate(PLANTS), want)
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-dragged-plant.png"))
+
+
+def test_a_plant_let_go_off_the_map_puts_nothing_down(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    hold_more(pg, "Coal plant")
+    before = funds(pg)
+    x = box["w"] / 2
+    stroke(pg, [(x, box["top"] + box["h"] * 0.6 + d) for d in range(0, int(box["h"] * 0.4) + 60, 20)])   # down onto the tray
+    assert funds(pg) == before and pg.evaluate(PLANTS) == []
+    assert pg.evaluate("() => window.__zimcity.view.ghost") is None
+
+
+def safe_area(pg, bottom, left=0, right=0, top=0):
+    pg.cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": top, "bottom": bottom, "left": left, "right": right}})
+    pg.wait_for_timeout(150)
+
+
+LOWEST_CONTROL = "() => Math.max(...[...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().bottom))"
+
+
+def test_the_tray_stays_clear_of_the_home_indicator(browser, site):
+    pg = phone(browser, site)
+    safe_area(pg, 34, top=47)
+    assert pg.evaluate(LOWEST_CONTROL) <= 844 - 34
+    pg.set_viewport_size({"width": 844, "height": 390})
+    safe_area(pg, 21, left=47, right=47)
+    assert pg.evaluate(LOWEST_CONTROL) <= 390 - 21
+    sides = pg.evaluate("() => { const f = document.getElementById('cy-funds').getBoundingClientRect(), t = [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect()); return { left: f.left, right: Math.max(...t.map((r) => r.right)) }; }")
+    assert sides["left"] >= 47 and sides["right"] <= 844 - 47, sides
+
+
+def test_inside_zimi_the_frame_gets_only_the_inset_it_reaches_into(browser, site):
+    """WebKit tells a frame its safe-area insets are 0, so the game reads Zimi's own and keeps the part its frame covers.
+    (Chromium hands a frame the screen's inset, so this places the frame 20 px above the bottom of a screen with a 34 px
+    indicator: the game must pad 14, not 34.)"""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    pg = ctx.new_page()
+    pg.goto(site + "zimi-host-test")   # any page of the same origin (Zimi's reader and its games share one)
+    ctx.new_cdp_session(pg).send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": 47, "bottom": 34, "left": 0, "right": 0}})
+    pg.evaluate("""(src) => { document.head.innerHTML = '<meta name="viewport" content="width=device-width, viewport-fit=cover">';
+      document.body.innerHTML = ''; document.body.style.margin = '0';
+      const f = document.createElement('iframe'); f.id = 'reader-frame'; f.src = src;
+      f.style.cssText = 'position:fixed;left:0;top:60px;width:100%;height:calc(100% - 80px);border:0'; document.body.appendChild(f); }""", site + "zimcity.html")
+    frame = None
+    for _ in range(100):
+        frame = next((f for f in pg.frames if f.url.endswith("zimcity.html")), None)
+        if frame:
+            break
+        pg.wait_for_timeout(50)
+    frame.wait_for_function("() => window.__zimcity && window.__zimcity.city && document.documentElement.classList.contains('gs-hosted')")
+    pad = frame.evaluate("() => { const f = document.querySelector('.cy-foot'), cs = getComputedStyle(f), probe = document.createElement('div'); probe.style.paddingTop = 'var(--sp-2)'; f.appendChild(probe); const sp = parseFloat(getComputedStyle(probe).paddingTop); probe.remove(); return parseFloat(cs.paddingBottom) - sp; }")
+    assert pad == 14, pad
+    ctx.close()
+
+
+# A town where people live and work: homes north of a long road, shops and industry south, powered, grown for years.
+COMMUTERS = """async () => {
+  const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, map = c.map, v = z.view;
+  v.centreOn(60, 50);
+  const x0 = 46, y0 = 44;
+  for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 26; x++) map.setTile(x, y, 0, 0);
+  c.sim.budget.totalFunds = 100000;
+  T.build(c, 'road', [[x0, y0 + 4]].concat(T.steps([x0, y0 + 4], [x0 + 25, y0 + 4])));
+  T.build(c, 'coal', [[x0 + 2, y0 + 1]]);
+  for (let i = 0; i < 6; i++) T.build(c, 'residential', [[x0 + 6 + i * 3, y0 + 2]]);
+  T.build(c, 'commercial', [[x0 + 6, y0 + 6]]); T.build(c, 'industrial', [[x0 + 18, y0 + 6]]);
+  T.build(c, 'wire', [[x0 + 4, y0 + 4], [x0 + 4, y0 + 5], [x0 + 4, y0 + 6]].concat(T.steps([x0 + 4, y0 + 6], [x0 + 16, y0 + 6]).filter((p) => p[0] < x0 + 5 || p[0] > x0 + 7)));
+  z.step(6000);
+}"""
+
+
+def test_follow_someone_to_work_along_the_roads(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-follow")
+    rows = pg.wait_for_selector(OURS + " .ar-sheet-card")
+    names = [b.text_content() for b in pg.query_selector_all(OURS + " .cy-kept-what b")]
+    assert names == ["Dale Pemberton", "Vivian Crane", "Juniper Ash", "Gordon Plumb"], names
+    assert all(q.text_content() for q in pg.query_selector_all(OURS + " .cy-fw-q"))
+    pg.click(OURS + " .cy-fw-row .ar-btn >> nth=0")
+    pg.wait_for_function("() => window.__zimcity.following && !document.getElementById('cy-follow-card').hidden")
+    card = pg.text_content("#cy-follow-card")
+    assert "Dale Pemberton" in card and "On the way to work" in card, card
+    path = pg.evaluate("() => window.__zimcity.following.walk.trip.path")
+    pg.click("#cy-pause")   # the city runs, and the figure with it
+    seen = pg.evaluate("""() => new Promise((done) => { const out = [], t0 = performance.now();
+      (function look() { const f = window.__zimcity.following, v = window.__zimcity.view, c = v.tileAt(v.w / 2, v.h / 2);
+        out.push({ at: f.walk.at, centre: c }); if (performance.now() - t0 < 2500) requestAnimationFrame(look); else done(out); })(); })""")
+    on_road = {(p[0], p[1]) for p in path}
+    assert all((round(s["at"]["x"]), round(s["at"]["y"])) in on_road for s in seen), seen[:3]
+    assert seen[-1]["at"] != seen[0]["at"]
+    last = seen[-1]
+    assert abs(last["centre"]["x"] - last["at"]["x"]) <= 2 and abs(last["centre"]["y"] - last["at"]["y"]) <= 2, last
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-follow.png"))
+    # A finger moving the map lets go of the camera (the figure walks on); Keep in view takes it back.
+    box = pg.evaluate("() => { const r = window.__zimcity.view.canvas.getBoundingClientRect(); return { top: r.top, h: r.height, w: r.width }; }")
+    stroke(pg, [(box["w"] / 2, box["top"] + box["h"] * 0.4 + d) for d in range(0, 120, 20)])
+    pg.wait_for_selector("#cy-follow-card .cy-fw-view")
+    pg.click("#cy-follow-card .cy-fw-view")
+    assert pg.evaluate("() => window.__zimcity.following.cam") is True
+    pg.click("#cy-follow-card .cy-news-close")
+    assert pg.evaluate("() => window.__zimcity.following") is None and pg.is_hidden("#cy-follow-card")
+    assert not pg.errors, pg.errors
+
+
+def test_follow_someone_says_so_when_nobody_commutes_yet(browser, site):
+    pg = phone(browser, site)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-follow")
+    text = pg.wait_for_selector(OURS + " .ar-sheet-card").text_content()
+    assert "Nobody commutes yet" in text and not pg.query_selector(OURS + " .cy-fw-row"), text
+
+
+SAVE_KEY = "zimi.games.save.zimcity"
+HOUR_MS = 3600000
+
+
+def saved(pg):
+    pg.evaluate("() => ZimiShell.saveNow()")
+    return pg.evaluate("(k) => localStorage.getItem(k)", SAVE_KEY)
+
+
+def come_back(pg, save, hours_ago=None, at=None, pace=None):
+    """Put `save` back as if it was made `hours_ago` (or at the moment `at`), open the page again and wait for the
+    catching up (if any) to end."""
+    game = pg.url
+    pg.goto(game.rsplit("/", 1)[0] + "/away-test")   # leave first: the page saves as it goes, which would stamp it now
+    pg.evaluate("""([k, raw, at, pace]) => { const v = JSON.parse(raw); v.data.savedAt = at; if (pace) v.data.away = pace;
+      localStorage.setItem(k, JSON.stringify(v)); }""", [SAVE_KEY, save, at if at is not None else pg.evaluate("() => Date.now()") - hours_ago * HOUR_MS, pace])
+    pg.goto(game)
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    pg.wait_for_timeout(100)
+    pg.wait_for_function("() => !window.__zimcity.catching", timeout=60000)
+
+
+CITY_NOW = "() => { const c = window.__zimcity.city, m = c.map; let h = 0; for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) h = (Math.imul(h, 31) + m.getTileValue(x, y)) | 0; return { t: c.sim._cityTime, funds: c.sim.budget.totalFunds, tiles: h }; }"
+AWAY_CARD = OURS + " .ar-sheet-card[aria-label='While you were away']"
+
+
+def test_the_same_save_away_the_same_time_becomes_the_same_city(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    at = pg.evaluate("() => Date.now()") - 30 * HOUR_MS   # 30 hours at Slow: 120 ticks, two and a half years
+    runs = []
+    for _ in range(2):
+        come_back(pg, save, at=at)
+        pg.wait_for_selector(AWAY_CARD)
+        runs.append(pg.evaluate(CITY_NOW))
+        pg.keyboard.press("Escape")
+    assert runs[0] == runs[1], runs
+    assert runs[0]["t"] - t0 == 120, (t0, runs[0])
+    assert not pg.errors, pg.errors
+
+
+def test_a_long_absence_stops_at_five_years_and_the_card_says_what_happened(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.evaluate("""async () => { const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, v = z.view, a = v.tileAt(v.w * 0.1, v.h * 0.45);
+      c.sim.budget.totalFunds = 100000;
+      T.build(c, 'coal', [[a.x + 2, a.y + 2]]); T.build(c, 'datacenter', [[a.x + 6, a.y + 2]]); T.build(c, 'datacenter', [[a.x + 10, a.y + 2]]); }""")
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=48, pace="normal")
+    card = pg.wait_for_selector(AWAY_CARD)
+    text = card.text_content()
+    assert pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0 == 5 * 48
+    assert "5 years at most" in text and "Not enough power" in text and "City report" in text, text
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-away.png"))
+    pg.click(AWAY_CARD + " .ar-btn >> text=City report")
+    pg.wait_for_selector(OURS + " .ar-sheet-card[aria-label='City report']")
+
+
+def test_while_away_at_pause_the_city_waits(browser, site):
+    pg = phone(browser, site)
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=30, pace="pause")
+    assert pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0 < 4   # a frame or two of play since, not 120 ticks
+    assert not pg.query_selector(AWAY_CARD)
+
+
+def test_a_city_that_runs_out_of_money_while_away_waits_and_says_so(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    pg.evaluate("() => { const b = window.__zimcity.city.sim.budget; b.totalFunds = 0; b.setTax(0); }")
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=24 * 10)   # Slow: five years' worth, but the year's bills come first
+    text = pg.wait_for_selector(AWAY_CARD).text_content()
+    ran = pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0
+    assert "The money ran out" in text and 0 < ran < 5 * 48, (ran, text)
+    assert "City report" not in text   # Close leads to the budget
+    pg.click(AWAY_CARD + " .gs-primary")
+    pg.wait_for_selector(OURS + " .ar-sheet-card[aria-label='The year’s budget']")

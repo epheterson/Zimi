@@ -5,7 +5,7 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; } }
 :root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; }
 
-body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; }
+body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; padding-left: var(--safe-l); padding-right: var(--safe-r); box-sizing: border-box; }
 .cy-page .gm-about { display: none; }
 .cy-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: var(--column); margin: 0 auto; }
 
@@ -31,7 +31,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 #cy-map:focus-visible { outline-offset: -3px; }
 
 /* The held tool's line and the tray, clear of the home indicator. */
-.cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + var(--safe-b)); display: flex; flex-direction: column; gap: var(--sp-2); }
 .cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .cy-held.cy-bad { color: var(--bad); }
 .cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
@@ -65,8 +65,11 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
   .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; }
   .cy-strip, .cy-msg { grid-column: 1 / -1; }
   .cy-stage { grid-column: 1; grid-row: 3; }
-  .cy-foot { grid-column: 2; grid-row: 3; width: 128px; padding-bottom: var(--sp-2); justify-content: flex-end; }
-  .cy-tray { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cy-foot { grid-column: 2; grid-row: 3; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
+  /* Icons only, three across: seven tools in three rows fit the height a phone on its side leaves. */
+  .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cy-tool { min-height: var(--target); }
+  .cy-tool .cy-tool-l { display: none; }
   .cy-held { white-space: normal; }
 }
 
@@ -83,6 +86,25 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 @media (prefers-reduced-motion: no-preference) { .cy-news:not([hidden]) { animation: cy-news-in 200ms ease-out; } }
 @keyframes cy-news-in { from { transform: translateY(-8px); } }
 .cy-read { margin-top: var(--sp-2); }
+
+/* Following a citizen: a card along the bottom of the map, who and where, their line, Keep in view and close. */
+.cy-follow-card { position: absolute; z-index: 1; bottom: var(--sp-2); left: var(--sp-2); right: var(--sp-2); max-width: 520px; margin: 0 auto; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
+.cy-follow-card[hidden] { display: none; }
+.cy-fw-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cy-fw-who b { font-size: var(--fs-body); font-weight: 650; }
+.cy-fw-who small { font-size: var(--fs-small); color: var(--accent); }
+.cy-fw-who q, .cy-fw-q { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cy-fw-view { flex: none; }
+.cy-fw-row { flex-wrap: nowrap; align-items: center; gap: var(--sp-3); }
+.cy-fw-row .cy-kept-what { flex: 1 1 auto; }
+.cy-fw-row .ar-btn { flex: none; }
+.cy-follow-card .cy-news-close { margin: 0 calc(var(--sp-2) * -1) 0 0; }
+
+/* While you were away: the catching up, then the news. */
+.cy-aw-bar { width: 100%; height: 6px; accent-color: var(--accent); }
+.cy-aw-news { margin: 0 0 var(--sp-2); padding-inline-start: 1.2em; }
+.cy-aw-news li { margin: 2px 0; }
+.cy-aw-voice { font-style: italic; }
 
 /* Kept cities: when and how big on the left, Open and Delete on the right. */
 .cy-keep { width: 100%; margin-bottom: var(--sp-2); }
