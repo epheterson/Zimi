@@ -274,33 +274,6 @@ function _aeEqEq(scene) {
   return _aeRad(scene.sunEq.nut.dpsi * Math.cos(_aeRad(scene.sunEq.nut.eps)));
 }
 
-// ── The next eclipse after an instant ──
-// Which eclipses happen comes from the Almanac's own list (almanac.js
-// _computeEclipses, Meeus ch. 54, with its NASA-checked filters); the instant
-// of greatest eclipse is refined here from the same geometry the view draws.
-// A candidate the view's own geometry shows no eclipse at is passed over:
-// tens of millennia out the list's series and this view's part ways, and
-// the button landed on an ordinary day with nothing to see.
-var AE_ECLIPSE_MIN_AHEAD_MS = 60 * 60 * 1000;
-var AE_ECLIPSE_CANDIDATES = 6;
-var AE_NOON_HOUR = 12;
-function _aeNextEclipse(ms) {
-  if (typeof _computeEclipses !== 'function') return null;
-  var list = _computeEclipses(new Date(ms - MS_PER_DAY), AE_ECLIPSE_CANDIDATES);
-  for (var i = 0; i < list.length; i++) {
-    var m = /^(-?\d+)-(\d+)-(\d+)$/.exec(list[i].date);
-    if (!m) continue;
-    var guess = new Date(0);
-    guess.setFullYear(+m[1], +m[2] - 1, +m[3]);
-    guess.setHours(AE_NOON_HOUR, 0, 0, 0);
-    var at = _aeGreatestEclipse(guess.getTime(), list[i].solar);
-    if (at <= ms + AE_ECLIPSE_MIN_AHEAD_MS) continue;
-    var seen = _aeEclipseNow(_aeSceneAt(at));
-    if (seen && seen.solar === list[i].solar) return { ms: at, solar: list[i].solar, type: list[i].type };
-  }
-  return null;
-}
-
 // What is being eclipsed right now, for the status line: a solar eclipse
 // while the Moon's penumbra touches the Earth, a lunar one while the Moon is
 // in the Earth's penumbra. The penumbra's half-width at the Earth: the cone
@@ -927,7 +900,6 @@ function _aeBuildDom() {
           _almEsc(_aeT('alm_go_to')) + '" title="' + _almEsc(_aeT('alm_go_to')) + '">' + AE_GO_SVG + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
-        '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
       '</div>' +
       '<div class="ae-note">' +
         '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
@@ -2259,14 +2231,16 @@ var AE_ORBITS_KEY = 'zimi_ae_orbits', AE_ORBITS_MODES = ['flying', 'always', 'of
 function _aeOrbitsMode() {
   try { var m = localStorage.getItem(AE_ORBITS_KEY); return AE_ORBITS_MODES.indexOf(m) >= 0 ? m : 'flying'; } catch (e) { return 'flying'; }
 }
-function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' ? 'earth' : k; }
-// How much of a body's orbit shows now, 0..1: `key` a planet (its path round the Sun) or a moon (round its planet).
+function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' || k === 'iss' ? 'earth' : k; }
+// How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
+// a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
+// and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
 function _aeOrbitShow(key) {
   var b = _aePlanetBody(key), mode = _aeOrbitsMode();
-  if (!b) return 0;
-  if (_aeWideView()) return b.parent ? 0 : 1;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
   if (mode === 'off') return 0;
-  var mine = function (k) { return !!k && (key === k || (b.parent || key) === _aeHostOf(k)); };
+  if (_aeWideView()) return b && !b.parent ? 1 : 0;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
+  var host = _aeHostOf(key);
+  var mine = function (k) { return !!k && (k === key || _aeHostOf(k) === host); };
   if (mode === 'always') return mine(_ae.target) ? 1 : 0;
   var o = _ae.orbitFly;
   if (!o || !(mine(o.from) || mine(o.to))) return 0;
@@ -2538,6 +2512,7 @@ var AE_VEL_STEP_DAYS = 0.01;
 var AE_TRAIL_ORBIT_FRAC = 0.3;     // a probe going round and round leaves this much of an orbit behind it, fading
 var AE_TRAIL_LOOPED = 1.2;          // round its body at least this many times since its table began: it is in orbit
 var AE_TRAIL_HELD_DAYS = 180;      // Webb's halo round L2 is about half a year
+var AE_FIT_WINDOW_DAYS = 120, AE_FIT_STEPS = 120;   // the stretch searched for its farthest point: longer than Parker's 88-day year
 var AE_KEPLER_CLOSE = 0.15;        // one period back within this share of the orbit's far side: it is that ellipse
 // A path's place and velocity (AU, AU a day) at jd, by a central difference of its curve.
 function _aeStateOf(at, jd) {
@@ -2567,7 +2542,16 @@ function _aeProbeOrbit(t, jd, near) {
     if (hp && _aeLen(_aeSub(hp, near[i].h)) < near[i].reach / 2 && AE_GM_RATIO[near[i].key]) { c = near[i]; break; }
   }
   var at = c ? function (x) { var a = _aeTrackAt(t, x), b = c.hAt(x); return a && b ? _aeSub(a, b) : null; } : function (x) { return _aeTrackAt(t, x); };
-  var st = _aeStateOf(at, jd);
+  // The table is thinned to a tolerance (Juno's to ~0.002 AU, a tenth of its orbit), so a state worked out near the
+  // close pass is off by more than the orbit can bear: Juno's period came out anywhere from 20 days to 20 years. Far
+  // out, where it moves slowly, the same table is exact enough: the ellipse is fitted at the farthest point of the
+  // last stretch of its path.
+  var far = jd, farR = -1;
+  for (var k = 0; k <= AE_FIT_STEPS; k++) {
+    var x = jd - AE_FIT_WINDOW_DAYS * k / AE_FIT_STEPS, q = at(x), rq = q ? _aeLen(q) : -1;
+    if (rq > farR) { farR = rq; far = x; }
+  }
+  var st = _aeStateOf(at, far);
   if (!st) return null;
   var o = _aeKepler(st.r, st.v, AE_GM_SUN * (c ? AE_GM_RATIO[c.key] : 1));
   if (!o || (jd - t.jd0) < AE_TRAIL_LOOPED * o.period) {
@@ -2575,8 +2559,9 @@ function _aeProbeOrbit(t, jd, near) {
     // last loop, no ellipse.
     return c && (jd - t.jd0) > AE_TRAIL_HELD_DAYS ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
   }
-  // Two-body, nearly: one period ago it was where it is now (Parker, Juno). If not, the ellipse would be a guess.
-  var back = at(jd - o.period);
+  // Two-body, nearly: one period before that far point it was there too (Parker, Juno). If not, the ellipse would be a
+  // guess.
+  var back = at(far - o.period);
   if (!back || _aeLen(_aeSub(back, st.r)) > AE_KEPLER_CLOSE * o.a * (1 + o.e)) return c ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
   o.centre = c ? c.h : [0, 0, 0]; o.round = c ? c.key : 'sun'; o.trail = o.period * AE_TRAIL_ORBIT_FRAC;
   return o;
@@ -2607,7 +2592,8 @@ function _aeUpdateProbes(jd, place, near) {
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, _aeProbeCraftDot(k), AE_PROBE_PX);
     // Only the path of the probe gone to: others' paths crossed the Planets view as stray lines, and near a body they
     // run past the camera. Not its own either once its model fills the view (the path runs through it).
-    var shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5, alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
+    var line = _aeOrbitShow(k), shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5 && line > 0;
+    var alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value * line;
     trail.material.opacity = ring.material.opacity = alpha;
     // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
     var o = trail.orbit;
@@ -3670,7 +3656,7 @@ function _aePlaceCamera() {
 // Opacity from how much of an orbit the view holds (half-view over radius),
 // and from how far the view has come in from the hero (_aeFadeU).
 function _aeFadeLine(line, alpha, held) {
-  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1) * _aeFadeU.value;
+  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1) * _aeFadeU.value * _aeOrbitShow('moon');
   line.material.opacity = alpha * out;
   line.visible = out > 0;
 }
@@ -4074,7 +4060,9 @@ function _aeUpdateSats(ms, sc) {
       // that is drawn, and it is right (the orbit's shape and tilt hold), so
       // it is drawn in full: at the faded strength it all but vanished and
       // the note's "orbit only" pointed at nothing.
-      S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value;
+      var issLine = _aeOrbitShow('iss');
+      S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value * issLine;
+      S.issRing.visible = issLine > 0;
     } else if (refreshRings) {
       var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
       if (pts) {
@@ -4487,6 +4475,7 @@ function _aeResize() {
   _ae.w = w; _ae.h = h;
   var foot = el.querySelector ? el.querySelector('.ae-bottom') : null;
   _ae.footPx = foot ? foot.offsetHeight : 0;
+  _aeMeasureTop();
   S.renderer.setSize(w, h, false);
   S.camera.aspect = w / h;
   S.camera.updateProjectionMatrix();
@@ -4621,6 +4610,23 @@ function _aeEarthPx() {
   var cam = _ae.gl.camera, d = Math.max(1e-9, _aeLen([cam.position.x, cam.position.y, cam.position.z]));
   return 2 / d * _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
 }
+// The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
+// the foot's height, so no mark or name sits under them.
+var AE_TOP_CONTROLS = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'], AE_TOP_CLEAR_PX = 10;
+function _aeMeasureTop() {
+  var el = _ae.el;
+  if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
+  var o = el.getBoundingClientRect();
+  _ae.topBoxes = AE_TOP_CONTROLS.map(function (id) {
+    var c = _aeById(id);
+    if (!c || c.hidden || !c.getBoundingClientRect) return null;
+    var r = c.getBoundingClientRect();
+    return r.width ? [r.left - o.left - AE_TOP_CLEAR_PX, r.top - o.top - AE_TOP_CLEAR_PX, r.right - o.left + AE_TOP_CLEAR_PX, r.bottom - o.top + AE_TOP_CLEAR_PX] : null;
+  }).filter(Boolean);
+}
+function _aeUnderTop(s) {
+  return (_ae.topBoxes || []).some(function (b) { return s.x >= b[0] && s.x <= b[2] && s.y >= b[1] && s.y <= b[3]; });
+}
 function _aeUpdateMarks(sc) {
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
@@ -4632,6 +4638,7 @@ function _aeUpdateMarks(sc) {
   var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
   var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
   var close = !flying && _aeCloseIn(eye, pxPerRad), group = _aeGroupOf(_ae.target), wide = _aeWideView();
+  var home = !wide && group === 'earth';
   for (var i = 0; i < order.length; i++) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
@@ -4641,7 +4648,11 @@ function _aeUpdateMarks(sc) {
     // planets at that scale) not drawn.
     var bb = _aePlanetBody(body);
     if (wide && bb && bb.parent && !ringed) { if (!el.hidden) el.hidden = true; continue; }
-    var quiet = wide && !ringed && !(bb && !bb.parent && !bb.track) && body !== 'earth';
+    // At home (the Earth, the Moon, the station) only the Earth and the Moon are named: another planet is a faint point,
+    // its moons not drawn, a probe a point.
+    var away = home && !ringed && _aeGroupOf(body) !== 'earth';
+    if (away && bb && bb.parent) { if (!el.hidden) el.hidden = true; continue; }
+    var quiet = away || (wide && !ringed && !(bb && !bb.parent && !bb.track) && body !== 'earth');
     if (el.classList) el.classList.toggle('ae-bm-quiet', quiet);
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
@@ -4657,7 +4668,8 @@ function _aeUpdateMarks(sc) {
     var reach = ringed ? r : 0;
     // Not under the controls at the foot: a mark there could not be tapped and would sit on their words.
     var foot = _ae.h - (_ae.footPx || 0);
-    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > (ringed ? _ae.h + reach : foot)) { if (!el.hidden) el.hidden = true; continue; }
+    if (!s || crowded || alpha <= 0 || s.x < -reach || s.y < -reach || s.x > _ae.w + reach || s.y > (ringed ? _ae.h + reach : foot) || (!ringed && _aeUnderTop(s))) { if (!el.hidden) el.hidden = true; continue; }
+    if (away) alpha *= AE_MARK_AWAY_ALPHA;
     shown.push({ x: s.x, y: s.y, r: r, el: el, ringed: ringed, body: body });
     if (el.hidden) el.hidden = false;
     el.style.opacity = alpha.toFixed(2);
@@ -4674,6 +4686,7 @@ function _aeUpdateMarks(sc) {
 // with a tick the way it is heading; a crowd every member's disc where it is, overlapping. Not the Sun (the view draws
 // it) and not a body the view shows big enough to see (in a flight).
 var AE_MARK_DISC = [2.4, 7], AE_MARK_KM = [1188, 71492], AE_MARK_NAME_PAD = 3;
+var AE_MARK_AWAY_ALPHA = 0.55;   // a planet seen from home: a faint point
 var AE_PROBE_DOT_PX = 1.6, AE_PROBE_TICK_PX = 7;
 function _aeMarkDiscR(body) {
   if (_aeIsProbe(body)) return AE_PROBE_DOT_PX;
@@ -4710,6 +4723,7 @@ function _aePaintMarks(kept) {
   kept.forEach(function (m) {
     m.pts.forEach(function (q) { _ae.marksDrawn.push({ body: q.body, x: q.x, y: q.y, r: _aeMarkDiscR(q.body), lead: m.body, el: m.el.id }); });
     if (m.ringed) return;
+    g.globalAlpha = m.el.classList && m.el.classList.contains('ae-bm-quiet') ? Math.min(1, parseFloat(m.el.style.opacity) || 1) : 1;   // faint: away from home
     m.pts.forEach(function (q) {
       var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
       if (!isFinite(x) || !isFinite(y)) return;
@@ -4738,6 +4752,7 @@ function _aePaintMarks(kept) {
       g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
     });
   });
+  g.globalAlpha = 1;
 }
 // Each mark stands for itself (its own disc, its own name). The Planets view had crowds ("Earth +2") for marks whose
 // rings met; it names the planets only now, so there is nothing to gather.
@@ -5035,6 +5050,7 @@ function _aeUpdateText(ms) {
   _aeShowMapHere();
   var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null;
   if (foot) _ae.footPx = foot.offsetHeight;   // the controls' height changes with their notes; marks keep above them
+  _aeMeasureTop();
   var nowBtn = _aeById('ae-now'), live = _aeIsLive();
   if (nowBtn && nowBtn.hidden !== live) {
     nowBtn.hidden = live;
@@ -5338,12 +5354,7 @@ function _aeSetSpeed(speed) {
 // After the clock jumps: this view's own run-up is spent, the cached orbits
 // belong to the old instant, and the Almanac's loops (its repaint restarts
 // them) stay paused under the view.
-function _aeEclipseButton(on) {
-  var b = _aeById('ae-eclipse');
-  if (b) b.disabled = !on;
-}
 function _aeJumped() {
-  _aeEclipseButton(true);
   _ae.clockRan = false;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
@@ -5371,24 +5382,6 @@ function _aeNow() {
   _aeSettlePage(null);
   if (typeof _orrerySnapToNow === 'function') _orrerySnapToNow();
   _aeJumped();
-}
-function _aeJumpToNextEclipse() {
-  var next = _aeNextEclipse(_aeDisplayMs());
-  // None found (far outside the centuries the series hold): say so by
-  // standing down until the clock jumps, rather than doing nothing.
-  if (!next) { _aeEclipseButton(false); return; }
-  _aeGoTo(next.ms);
-  var sc = _aeSceneAt(next.ms);
-  _ae.scene = sc;
-  if (next.solar) {
-    // Face the Moon's shadow: look down the shadow's axis onto the Earth.
-    var sh = _aeSolarShadow(sc);
-    var aim = sh.hit ? _aeFixedToScene(_aeGeodeticToFixed(sh.hit.lat, sh.hit.lon), sc.gast) : _aeScale(sc.moon, 1);
-    _ae.preset = 'earth';
-    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(aim));
-  } else {
-    _aePreset('moon');
-  }
 }
 
 function _aeBindControls() {
@@ -5422,7 +5415,6 @@ function _aeBindControls() {
   for (var j = 0; j < speeds.length; j++) {
     speeds[j].onclick = function () { _aeSetSpeed(+this.getAttribute('data-ae-speed')); };
   }
-  _aeById('ae-eclipse').onclick = _aeJumpToNextEclipse;
   _aeById('ae-now').onclick = _aeNow;
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
@@ -5798,7 +5790,6 @@ function _aeShow(fromHero) {
   _aeShowSettings(false);
   _ae.freshFailed = false;
   _ae.clockRan = false;
-  _aeEclipseButton(true);
   _aeSetSpeed(1);
   _aePauseAlmanac();
   // Back goes where the view was opened from: the Almanac's page (the hero,

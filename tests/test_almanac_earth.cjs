@@ -179,12 +179,6 @@ const utc = (iso) => Date.parse(iso);
   const ls = S._aeEclipseNow(lsc);
   check(ls && !ls.solar && ls.total, 'the status line reads a total lunar eclipse');
 
-  const n1 = S._aeNextEclipse(utc('2024-04-01T12:00:00Z'));
-  check(n1 && n1.solar && Math.abs(n1.ms - solarAt) < 2000, 'Next eclipse from 2024-04-01 is 2024-04-08, solar');
-  const n2 = S._aeNextEclipse(utc('2025-03-10T12:00:00Z'));
-  check(n2 && !n2.solar && Math.abs(n2.ms - lunarAt) < 2000, 'Next eclipse from 2025-03-10 is 2025-03-14, lunar');
-  const n3 = S._aeNextEclipse(solarAt);
-  check(n3 && n3.ms > solarAt + 86400000, 'Next eclipse from an eclipse moves on to the one after');
 }
 
 // ── 4. Satellites ──────────────────────────────────────────────────────────

@@ -266,7 +266,7 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             ctx = _ctx(br)
             pg = ctx.new_page()
             _open(pg, served)
-            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad(); localStorage.setItem('zimi_ae_orbits', 'always');")   # paths stay drawn
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             got = {}
             for k in ("parker", "juno", "voyager1"):
@@ -281,6 +281,17 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             for k in ("parker", "juno"):
                 assert got[k]["trail"] <= got[k]["period"] * 0.31 and got[k]["first"] < 0.01 and got[k]["last"] == 1, got
             assert got["voyager1"]["round"] is None and not got["voyager1"]["ring"] and got["voyager1"]["first"] == 1, got
+            # Every day of 2025 to mid-2028 (the table is thinned, so a state at the close pass is far off: the ellipse is
+            # fitted where it moves slowly), Juno is on its ~35-day orbit and Parker on its 88-day one, never held or lost.
+            fits = pg.evaluate("""() => { var near = (k, jd) => [{ key: k, h: _ephBodyJ2000('Jupiter', jd), reach: AE_PROBE_REACH_AU[k], hAt: x => _ephBodyJ2000('Jupiter', x) }];
+                var j = [], p = [];
+                for (var jd = 2460676.5; jd < 2461900.5; jd += 1) {
+                  var o = _aeProbeOrbit(_aeTracks.tracks.juno, jd, near('jupiter', jd)); j.push(o && o.period ? o.period : 0);
+                  var q = _aeProbeOrbit(_aeTracks.tracks.parker, jd, []); p.push(q && q.period ? q.period : 0);
+                }
+                return { j: [Math.min.apply(null, j), Math.max.apply(null, j)], p: [Math.min.apply(null, p), Math.max.apply(null, p)] }; }""")
+            assert 33 < fits["j"][0] and fits["j"][1] < 37, fits
+            assert 87 < fits["p"][0] and fits["p"][1] < 90, fits
             ctx.close()
         finally:
             br.close()
@@ -597,7 +608,12 @@ def test_orbits_is_a_setting_shown_while_flying(served):
             assert not pg.evaluate(vis, "io")
             pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
-            assert pg.evaluate(vis, "saturn")   # the Planets view keeps its orbits, whatever the setting
+            assert pg.evaluate("_aeOrbitsMode()") == "off"
+            assert not pg.evaluate(vis, "saturn")   # Off is off, the Planets view too
+            if not pg.is_visible("input[name='ae-orbits'][value='flying']"):
+                pg.click("#ae-gear")
+            pg.click("input[name='ae-orbits'][value='flying']")
+            assert pg.evaluate(vis, "saturn")   # by default the Planets view has the planets' orbits
             assert not errors, errors
             ctx.close()
         finally:
@@ -687,6 +703,25 @@ def test_no_far_body_is_named_on_the_moon_close_up(served):
             behind = pg.evaluate("""() => { var c = _ae.gl.camera.position, t = _aeTargetPos(), d = _aeNorm(_aeSub(t, [c.x, c.y, c.z]));
                 return _aeBehindTarget('callisto', _aeAdd(t, _aeScale(d, 1000))); }""")
             assert behind is True
+            # As it opens at the Moon (not close in), the same: only the Earth and the Moon are named; a planet is a
+            # faint point with no name, another planet's moons are not drawn; no mark sits under the controls on top.
+            for width in (360, 390):
+                pg.set_viewport_size({"width": width, "height": 844})
+                pg.evaluate("_ae.fly = null; _aePreset('moon');")
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
+                pg.wait_for_timeout(800)
+                got = pg.evaluate("""() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); _ae.gl.camera.updateMatrixWorld(); _aeUpdateMarks(_ae.scene);
+                    var els = Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden);
+                    var named = els.filter(e => { var b = e.querySelector('b'); return b && getComputedStyle(b).display !== 'none' && b.textContent; }).map(e => e.id.replace('ae-bm-', ''));
+                    var moons = els.map(e => e.id.replace('ae-bm-', '')).filter(k => { var b = _aePlanetBody(k); return b && b.parent; });
+                    var tops = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'].map(id => document.getElementById(id)).filter(e => e && !e.hidden).map(e => e.getBoundingClientRect());
+                    var under = Array.from(document.querySelectorAll('#ae-labels .ae-bm:not([hidden]) b, #ae-labels .ae-bm:not([hidden])')).filter(e => {
+                      var r = e.getBoundingClientRect(); if (!r.width) return false;
+                      return tops.some(t => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top); }).map(e => e.textContent || e.id);
+                    return { named: named, moons: moons, under: under }; }""")
+                assert set(got["named"]) <= {"earth", "moon"}, (width, got)
+                assert got["moons"] == [], (width, got)
+                assert got["under"] == [], (width, got)
             assert not errors, errors
             ctx.close()
         finally:
@@ -819,6 +854,56 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             assert got["aim"] > 0.999, got
             assert 1.5 < got["spans"] < 6, got
             assert got["dot"] < 0.01 and not got["trail"], got
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+LINES = """() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var S = _ae.gl, out = [];
+    Object.keys(S.planets).forEach(k => { var o = S.planets[k].orbit; if (o && o.visible && o.material.opacity > 0) out.push(k); });
+    if (S.probes) Object.keys(S.probes.trails).forEach(k => { if (S.probes.trails[k].visible && S.probes.trails[k].material.opacity > 0) out.push(k + ':trail'); if (S.probes.orbits[k].visible) out.push(k + ':ellipse'); });
+    [['moonPath', 'moon:path'], ['gpsRings', 'gps'], ['issRing', 'iss:ring']].forEach(p => { var l = S[p[0]]; if (l.visible && l.material.opacity > 0 && l.geometry.drawRange.count > 0) out.push(p[1]); });
+    return out; }"""
+
+
+@pytest.mark.parametrize("mode", ["off", "always", "flying"])
+def test_the_orbits_setting_holds_after_a_reload(served, mode):
+    """The remembered Orbits choice applies from the moment the view opens, for every line the scene draws (planets',
+    moons', a probe's path and ellipse, the Moon's path, the GPS and station rings): Off draws none anywhere, the Planets
+    view too; Always draws those of the place in view; While flying draws them in flight and none once landed (the Planets
+    view keeps the planets')."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            ctx.add_init_script("try { localStorage.setItem('zimi_ae_orbits', %r); } catch (e) {}" % mode)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            seen = {}
+            for k in ("earth", "moon", "jupiter", "juno", "planets"):
+                pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k)
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
+                if k == "juno":
+                    pg.evaluate("() => { _ae.dist = AE_PROBE_VIEW_DIST; }")   # out where Juno is a point and its path is drawn
+                pg.wait_for_timeout(1800)   # past While flying's fade
+                seen[k] = pg.evaluate(LINES)
+            if mode == "off":
+                assert all(v == [] for v in seen.values()), seen
+            elif mode == "always":
+                assert "io" in seen["jupiter"] and "jupiter" in seen["jupiter"], seen
+                assert "juno:trail" in seen["juno"], seen
+                assert "saturn" in seen["planets"], seen
+            else:
+                assert all(v == [] for k, v in seen.items() if k != "planets"), seen
+                assert "saturn" in seen["planets"] and "io" not in seen["planets"], seen
+            assert pg.evaluate("_aeOrbitsMode()") == mode
             assert not errors, errors
             ctx.close()
         finally:
