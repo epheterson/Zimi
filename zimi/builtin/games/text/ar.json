@@ -1403,6 +1403,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "لا يمكن البناء هنا",
  "city.why.clear": "اهدم أولًا",
+ "city.why.inway": "يعترض الطريق: {thing}",
  "city.why.money": "ينقص {money}",
  "city.why2.and": "، ",
  "city.why2.crime": "جريمة كثيرة",

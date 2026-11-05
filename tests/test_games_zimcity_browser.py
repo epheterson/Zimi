@@ -849,3 +849,44 @@ def test_a_complaint_is_said_only_when_the_census_supports_it(browser, site):
       c.bornAt = c.sim._cityTime - 100; ask();         // people, measured
       return out; }""")
     assert said == [False, False, True], said
+
+
+def test_a_plant_over_a_road_says_the_road_is_in_the_way(browser, site):
+    """A 4 x 4 footprint centred on a finger just below a road overlaps it: the line names the road, not "Bulldoze"."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    y = box["top"] + box["h"] * 0.55
+    pg.evaluate("""(y) => import('./zimcity-tools.js').then((T) => { const z = window.__zimcity, v = z.view, r = v.canvas.getBoundingClientRect(), t = v.tileAt(v.w / 2, y - r.top);
+      T.build(z.city, 'road', [[t.x - 4, t.y - 1]].concat(T.steps([t.x - 4, t.y - 1], [t.x + 4, t.y - 1]))); })""", y)
+    hold_more(pg, "Coal plant")
+    touch(pg, "touchStart", [(box["w"] / 2, y)])
+    assert pg.text_content("#cy-held") == "In the way: Road"
+    touch(pg, "touchEnd", [])
+
+
+def test_closing_the_menu_lets_the_city_run_again(browser, site):
+    pg = phone(browser, site)
+    pg.click("#cy-pause")   # running
+    pg.click(".gs-menu-btn")
+    assert pg.evaluate("() => document.getElementById('cy-pause').textContent.trim()") == "Resume"
+    pg.keyboard.press("Escape")
+    pg.wait_for_function("() => document.getElementById('cy-pause').textContent.trim() === 'Pause'", timeout=3000)
+
+
+def test_brownouts_with_power_to_spare_ask_for_a_line_not_a_plant(browser, site):
+    said = phone(browser, site).evaluate("""async () => { const M = await import('./zimcity/engine/messages.js'), z = window.__zimcity, c = z.city, out = [];
+      c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
+      c.shortAt = c.sim._cityTime; c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
+      return out; }""")
+    assert "Run a power line to the zones that flash" in said[0] and not any(s.startswith("Brownouts") for s in said[0]), said
+    assert any(s.startswith("Brownouts") for s in said[1]), said
+
+
+def test_the_away_card_starts_from_the_people_the_city_had(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    had = pg.evaluate("() => window.__zimcity.city.sim.evaluation.cityPop")
+    save = saved(pg)
+    come_back(pg, save, hours_ago=3)
+    text = pg.wait_for_selector(AWAY_CARD).text_content()
+    assert had > 0 and ("%s to" % format(had, ",")) in text, (had, text)

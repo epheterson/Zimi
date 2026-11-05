@@ -620,11 +620,15 @@
 
   // ── the arcade pause: opening the Menu and leaving the page both pause a running game ──
   function pauseButton() { return d.querySelector('.ar-bar [id$="pause"]'); }
-  function pauseNow() {
+  // Shell.pausing says why while the click runs ('menu' or 'away'), so a game may resume itself when the Menu closes.
+  function pauseNow(why) {
     var pause = pauseButton();
     // Running is the state whose key is play.pause (the label is translated); a button with no key falls back to its English label.
     var key = pause && pause.getAttribute('data-t');
-    if (pause && !pause.disabled && (key ? key === 'play.pause' : /^pause/i.test(pause.textContent.trim()))) { try { pause.click(); } catch (e) { /* not running */ } }
+    if (pause && !pause.disabled && (key ? key === 'play.pause' : /^pause/i.test(pause.textContent.trim()))) {
+      Shell.pausing = typeof why === 'string' ? why : 'away';
+      try { pause.click(); } catch (e) { /* not running */ } finally { Shell.pausing = null; }
+    }
   }
   function watchBlur() {
     d.addEventListener('visibilitychange', function () { if (d.hidden) pauseNow(); });
@@ -1198,7 +1202,7 @@
     ensureSheet();
     if (!sheet.hidden) return;
     opener = d.activeElement;
-    pauseNow();   // a running arcade game waits while the menu is open
+    pauseNow('menu');   // a running arcade game waits while the menu is open
     holdAll(true);
     paneStack = [];
     sheet.hidden = false;

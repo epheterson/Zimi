@@ -1295,6 +1295,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "אי אפשר לבנות כאן",
  "city.why.clear": "צריך להרוס קודם",
+ "city.why.inway": "חוסם: {thing}",
  "city.why.money": "חסרים {money}",
  "city.why2.and": ", ",
  "city.why2.crime": "יותר מדי פשיעה",

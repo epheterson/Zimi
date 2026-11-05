@@ -1259,6 +1259,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "यहाँ नहीं बन सकता",
  "city.why.clear": "पहले गिराइए",
+ "city.why.inway": "रास्ते में: {thing}",
  "city.why.money": "{money} कम हैं",
  "city.why2.and": ", ",
  "city.why2.crime": "बहुत अपराध",

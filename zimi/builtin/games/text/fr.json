@@ -1295,6 +1295,7 @@
  "city.when": "{date} · {people}",
  "city.why.blocked": "Impossible de construire ici",
  "city.why.clear": "Rasez d’abord",
+ "city.why.inway": "Gêne : {thing}",
  "city.why.money": "Il manque {money}",
  "city.why2.and": ", ",
  "city.why2.crime": "trop de criminalité",

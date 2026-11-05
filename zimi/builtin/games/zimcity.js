@@ -123,7 +123,7 @@ function listen(sim) {
   on(Messages.BUDGET_NEEDED, function () { if (catching) { catching.budget = true; return; } setTimeout(function () { if (!city.ending) openBudget(true); }, 0); });
   on(Messages.FRONT_END_MESSAGE, function (m) { if (m && m.subject) heard(m.subject); });
   // The engine says a shortage at most every two real minutes; away, minutes are years, so the shortage itself is heard.
-  var short = function () { if (catching) caughtUp(Messages.NOT_ENOUGH_POWER, Words.MESSAGE[Messages.NOT_ENOUGH_POWER]); };
+  var short = function () { city.shortAt = city.sim._cityTime; if (catching) caughtUp(Messages.NOT_ENOUGH_POWER, Words.MESSAGE[Messages.NOT_ENOUGH_POWER]); };
   sim._powerManager.addEventListener(Messages.NOT_ENOUGH_POWER, short);
   unlisten.push(function () { sim._powerManager.removeEventListener(Messages.NOT_ENOUGH_POWER, short); });
 }
@@ -131,6 +131,9 @@ function heard(subject) {
   var key = Words.MESSAGE[subject];
   if (!key) return;
   if (!truthful(subject)) return;
+  // "Brownouts: build another plant" is only true when the plants ran short; zones left off the grid need a line.
+  if (subject === Messages.BLACKOUTS_REPORTED && !(city.shortAt >= city.sim._cityTime - SHORT_RECENT_TICKS)) { subject = null; key = 'city.adv.power'; }
+  if (!subject) { if (catching) { if (catching.events.indexOf(key) < 0) catching.events.push(key); } else say(T(key)); return; }
   if (catching) { caughtUp(subject, key); return; }
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
@@ -145,7 +148,7 @@ function heard(subject) {
 // traffic at all, and which can stand from before the city was measured: one coal plant in an empty valley is "very
 // high". A complaint is said only when people live there to complain, the average says so now, and the city has had a
 // few months to be measured.
-var COMPLAINTS = {}, COMPLAIN_PEOPLE = 20, SETTLE_TICKS = 16;
+var COMPLAINTS = {}, COMPLAIN_PEOPLE = 20, SETTLE_TICKS = 16, SHORT_RECENT_TICKS = 16;
 COMPLAINTS[Messages.HIGH_POLLUTION] = ['pollutionAverage', 60];
 COMPLAINTS[Messages.HIGH_CRIME] = ['crimeAverage', 100];
 COMPLAINTS[Messages.TRAFFIC_JAMS] = ['trafficAverage', 60];
@@ -280,7 +283,8 @@ function heldLine(r) {
   var name = T('city.tool.' + held);
   if (!r) { heldEl.textContent = T('city.held', { tool: name, cost: costWords(held) }); return; }
   heldEl.textContent = r.ok ? T('city.stroke', { tool: name, money: money(r.cost) })
-    : r.why === 'money' ? T('city.why.money', { money: money(r.short) }) : T('city.why.' + r.why);
+    : r.why === 'money' ? T('city.why.money', { money: money(r.short) })
+    : r.blocker !== null && r.blocker !== undefined ? T('city.why.inway', { thing: T(Words.kindOf(r.blocker)) }) : T('city.why.' + r.why);
 }
 
 // ── strokes: the ghost while the finger is down, the city changed when it lifts ──
@@ -463,6 +467,7 @@ function frame(now) {
     walk(dt * STEPS_PER_SECOND[speed] / STEPS_PER_SECOND[Simulation.SPEED_MED] / 1000);
     if (now - lastSave > SAVE_EVERY_MS) { lastSave = now; Shell.saveNow(); }
   }
+  if (menuPaused && !sheetOpen()) { menuPaused = false; if (paused) pauseBtn.click(); }
   view.paused = paused;
   if (following) keepInView(dt);
   view.draw(now);
@@ -560,7 +565,11 @@ undoBtn.addEventListener('click', function () {
 
 // Pause in the bar: a tap pauses and resumes; leaving the page or opening the Menu pauses (the shell presses it).
 var pauseBtn = $('cy-pause');
-pauseBtn.addEventListener('click', function () { paused = !paused; Play.pauseLabel(pauseBtn, paused); if (!paused) owed = 0; });
+pauseBtn.addEventListener('click', function () {
+  paused = !paused; Play.pauseLabel(pauseBtn, paused); if (!paused) owed = 0;
+  menuPaused = paused && Shell.pausing === 'menu';   // the Menu's pause ends with the Menu; one the player chose stays
+});
+var menuPaused = false;
 
 // ── the end of a city, both ways ──
 // Going broke ends the city once (the end sheet); after that the city may be nursed back, and the line says it again.
@@ -622,7 +631,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, savedAt: Date.now(),
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, savedAt: Date.now(), people: people(),
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -648,12 +657,13 @@ function awayFrom(k) {
   if (!city || city.scenario || !k.savedAt) return;
   var ticks = Away.ticksFor(Date.now() - k.savedAt, awayPace);
   if (ticks < 1) return;
-  catchUp(ticks, Away.seedFor(k.seed, k.savedAt, ticks));
+  catchUp(ticks, Away.seedFor(k.seed, k.savedAt, ticks), k.people);
 }
-function catchUp(ticks, seed) {
+// `before` is the population the save recorded: just opened, the evaluation that counts people has not run yet.
+function catchUp(ticks, seed, before) {
   var c = city, date = c.sim.getDate();
   catching = { events: [], budget: false, broke: false, metropolis: false, ticks: ticks,
-               before: { people: people(), funds: c.sim.budget.totalFunds, month: date.month, year: date.year } };
+               before: { people: typeof before === 'number' ? before : people(), funds: c.sim.budget.totalFunds, month: date.month, year: date.year } };
   var line = d.createElement('p'), bar = d.createElement('progress');
   line.className = 'gs-text'; bar.className = 'cy-aw-bar'; bar.max = ticks; bar.value = 0;
   line.textContent = T('city.aw.busy', { date: dateWords() });
