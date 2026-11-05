@@ -6019,7 +6019,7 @@
  "board.open": "Placar",
  "board.today": "O diário de hoje",
  "board.allTime": "Melhores pontuações",
- "board.noneToday": "Ninguém neste servidor jogou o de hoje ainda.",
+ "board.noneToday": "Ninguém aqui jogou ainda o desafio de hoje.",
  "board.house": "As pontuações da casa preenchem a tabela até alguém superá-las.",
  "board.nameFirst": "Escolha seu nome na página de estatísticas para aparecer aqui.",
  "board.showMe": "Mostrar-me nos placares deste servidor",
@@ -6032,5 +6032,7 @@
  "board.r.over": "Terminado",
  "board.r.lose": "Não resolvido",
  "stats.setName": "Definir",
- "stats.noName": "Escolha o nome com que você joga aqui"
+ "stats.noName": "Seu nome nos placares:",
+ "board.youMark": "(você)",
+ "shelf.daily.more": "Mais desafios diários"
 }

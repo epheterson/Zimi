@@ -5797,7 +5797,7 @@
  "board.open": "排行榜",
  "board.today": "今日每日挑战",
  "board.allTime": "最高分",
- "board.noneToday": "此服务器上还没有人玩过今天的挑战。",
+ "board.noneToday": "这里还没有人玩过今天的每日挑战。",
  "board.house": "在有人超过之前，表中是“本机纪录”。",
  "board.nameFirst": "在统计页面设置名字后即可出现在这里。",
  "board.showMe": "在此服务器的排行榜上显示我",
@@ -5810,5 +5810,7 @@
  "board.r.over": "已结束",
  "board.r.lose": "未完成",
  "stats.setName": "设置",
- "stats.noName": "选择你在这里使用的名字"
+ "stats.noName": "你在排行榜上的名字：",
+ "board.youMark": "（你）",
+ "shelf.daily.more": "更多每日挑战"
 }

@@ -255,7 +255,8 @@ function hold(name) {
 var heldEl = $('cy-held');
 function heldLine(r) {
   heldEl.classList.toggle('cy-bad', !!(r && !r.ok));
-  if (!held) { heldEl.textContent = T('city.idle'); return; }
+  // With no tool held the advisor is the one voice: the tray's own hint shows only while it has nothing to say.
+  if (!held) { heldEl.textContent = advice ? '' : T('city.idle'); return; }
   var name = T('city.tool.' + held);
   if (!r) { heldEl.textContent = T('city.held', { tool: name, cost: costWords(held) }); return; }
   heldEl.textContent = r.ok ? T('city.stroke', { tool: name, money: money(r.cost) })
@@ -330,6 +331,7 @@ function advisor() {
     if (shownLine === old) { shownAt = 0; shownLine = ''; if (!next) status.say(''); }
   }
   if (next) say(T(next));
+  if (!held) heldLine();
 }
 
 // ── the clock ──

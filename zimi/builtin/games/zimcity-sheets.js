@@ -211,12 +211,16 @@ export function scenariosSheet(s) {
     s.library.mapLink(lat, lon, label, s.T).then(function (a) { if (a) { if (box.childNodes.length) box.appendChild(document.createTextNode(' \u00b7 ')); box.appendChild(a); } });
     row.appendChild(box);
   }
+  // Each scenario is one tap target (its name, its line and a chevron); its article and map links sit under it, apart.
   sc.list.forEach(function (x) {
-    var row = el('div', 'gs-row cy-sc'), what = el('span', 'cy-kept-what'), play = el('button', 'ar-btn', s.T('city.sc.play'));
+    var row = el('div', 'cy-sc'), go = el('button', 'cy-sc-go'), what = el('span', 'cy-kept-what');
     what.appendChild(el('b', '', s.T('city.sct.' + x.id))); what.appendChild(el('small', '', s.T('city.scl.' + x.id)));
-    if (x.place) placeLinks(what, 'place.' + x.id, x.place[1], x.place[2], s.T('city.sct.' + x.id).split(',')[0]);
-    play.type = 'button'; play.addEventListener('click', function () { api.close(); sc.play(x); });
-    row.appendChild(what); row.appendChild(play); body.push(row);
+    go.type = 'button'; go.appendChild(what); go.appendChild(el('span', 'cy-sc-chev'));
+    go.setAttribute('aria-label', s.T('city.sc.play') + ': ' + s.T('city.sct.' + x.id));
+    go.addEventListener('click', function () { api.close(); sc.play(x); });
+    row.appendChild(go);
+    if (x.place) placeLinks(row, 'place.' + x.id, x.place[1], x.place[2], s.T('city.sct.' + x.id).split(',')[0]);
+    body.push(row);
   });
   body.push(el('h3', 'cy-sub', s.T('city.sc.maps')));
   var grid = el('div', 'cy-maps');
@@ -272,8 +276,9 @@ export function awayCard(s, a) {
   if (a.voice) body.push(el('p', 'gs-text cy-aw-voice', a.voice));
   var report = false;
   Shell.sheet({ title: T('city.aw.title'), body: body,
-    // with the year's budget waiting, Close leads straight to it; otherwise the report is one tap away
-    actions: (a.budgetWaiting ? [] : [{ label: T('city.aw.report'), onclick: function () { report = true; } }]).concat([{ label: T('shell.close'), primary: true }]),
+    // with the year's budget waiting the one way on is the budget, and the button says so; otherwise the report is a tap away
+    actions: a.budgetWaiting ? [{ label: T('city.budget'), primary: true }]
+      : [{ label: T('city.aw.report'), onclick: function () { report = true; } }, { label: T('shell.close'), primary: true }],
     onClose: function () { setTimeout(function () { if (report) reportSheet(s); else a.done(); }, 0); } });
 }
 

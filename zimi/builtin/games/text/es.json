@@ -6019,7 +6019,7 @@
  "board.open": "Clasificación",
  "board.today": "El diario de hoy",
  "board.allTime": "Mejores puntuaciones",
- "board.noneToday": "Nadie en este servidor ha jugado el de hoy todavía.",
+ "board.noneToday": "Nadie aquí ha jugado todavía el desafío de hoy.",
  "board.house": "Las puntuaciones de la casa llenan la tabla hasta que alguien las supere.",
  "board.nameFirst": "Elige tu nombre en la página de estadísticas para aparecer aquí.",
  "board.showMe": "Mostrarme en las clasificaciones de este servidor",
@@ -6032,5 +6032,7 @@
  "board.r.over": "Terminado",
  "board.r.lose": "Sin resolver",
  "stats.setName": "Elegir",
- "stats.noName": "Elige el nombre con el que juegas aquí"
+ "stats.noName": "Tu nombre en las clasificaciones:",
+ "board.youMark": "(tú)",
+ "shelf.daily.more": "Más desafíos diarios"
 }

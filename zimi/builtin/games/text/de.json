@@ -5909,7 +5909,7 @@
  "board.open": "Bestenliste",
  "board.today": "Heutiges Tagesspiel",
  "board.allTime": "Bestwerte",
- "board.noneToday": "Auf diesem Server hat das heutige noch niemand gespielt.",
+ "board.noneToday": "Hier hat noch niemand die heutige Tagesaufgabe gespielt.",
  "board.house": "Hausrekorde füllen die Tabelle, bis jemand sie schlägt.",
  "board.nameFirst": "Wähle auf der Statistikseite deinen Namen, um hier zu erscheinen.",
  "board.showMe": "Mich in den Bestenlisten dieses Servers zeigen",
@@ -5922,5 +5922,7 @@
  "board.r.over": "Beendet",
  "board.r.lose": "Nicht gelöst",
  "stats.setName": "Festlegen",
- "stats.noName": "Wähle den Namen, unter dem du hier spielst"
+ "stats.noName": "Dein Name auf den Bestenlisten:",
+ "board.youMark": "(du)",
+ "shelf.daily.more": "Weitere Tagesaufgaben"
 }

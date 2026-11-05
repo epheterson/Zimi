@@ -57,7 +57,7 @@ export function growthStep(v) { return v < -20 ? 0 : v <= 20 ? 1 : v <= 100 ? 2 
 
 // One stroke path per tool (24 x 24, drawn in the text's colour; a zone's square takes its zone colour from the CSS).
 export var ICON = {
-  road: 'M7 3v18M17 3v18M12 4v3M12 10.5v3M12 17v3',
+  road: 'M5 21L10 3M19 21L14 3M12 17.5v3M12 11v3M12 5.5v2',   // a road going away, its centre line dashed: not the rail's two straight lines
   wire: 'M13 2L5 13h6l-1 9 8-11h-6l1-9z',
   residential: 'M4 11l8-7 8 7v9H4zM10 20v-5h4v5',
   commercial: 'M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6',
