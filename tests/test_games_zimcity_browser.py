@@ -305,6 +305,17 @@ def test_a_new_city_opens_on_open_ground_with_the_first_step(browser, site):
     assert pg.wait_for_selector("#cy-msg").text_content() == "Lay a road: choose Road and drag"
 
 
+def test_the_advisor_is_the_one_instruction_voice(browser, site):
+    """With the advisor speaking and no tool held, the tray's own hint is quiet; holding a tool brings its line back."""
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.clear()")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city && document.getElementById('cy-msg').textContent")
+    assert pg.text_content("#cy-held") == ""
+    pg.click('.cy-tool[data-tool="road"]')
+    assert pg.text_content("#cy-held").startswith("Road")
+
+
 def test_a_city_whose_land_is_at_its_edge_opens_on_land_not_past_the_edge(browser, site):
     """The open ground is the bottom rows: the first view sits on them, with none of the margin past the map showing."""
     pg = phone(browser, site)
@@ -403,7 +414,8 @@ def test_a_scenario_and_a_ready_made_city_open_from_the_menu(browser, site):
     pg.click("#cy-scenarios")
     rows = pg.wait_for_selector(OURS + " .ar-sheet-card")
     assert len(pg.query_selector_all(OURS + " .cy-sc")) == 8 and len(pg.query_selector_all(OURS + " .cy-maps .ar-btn")) == 24
-    pg.click(OURS + " .cy-sc >> nth=1 >> .ar-btn")   # San Francisco, 1906
+    assert not pg.query_selector_all(OURS + " .cy-sc .ar-btn") and len(pg.query_selector_all(OURS + " .cy-sc-go .cy-sc-chev")) == 8   # the row plays it
+    pg.click(OURS + " .cy-sc >> nth=1 >> .cy-sc-go")   # San Francisco, 1906: the row is the button
     pg.wait_for_function("() => window.__zimcity.city.scenario")
     got = pg.evaluate("() => { const c = window.__zimcity.city; return { year: c.sim.getDate().year, funds: c.sim.budget.totalFunds, id: c.scenario.id, zones: (() => { let n = 0; for (let y = 0; y < 100; y++) for (let x = 0; x < 120; x++) if (c.map.getTile(x, y).isZone()) n++; return n; })() }; }")
     assert got["year"] == 1906 and got["funds"] == 20000 and got["id"] == "sanfrancisco" and got["zones"] > 50, got

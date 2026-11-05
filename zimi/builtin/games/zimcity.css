@@ -114,8 +114,14 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-kept-acts { display: flex; gap: var(--sp-2); flex: none; }
 
 /* Scenarios: each a row (name, story, links; Play), then the ready-made cities as a grid of buttons. */
-.cy-sc { align-items: center; }
-.cy-sc-links { display: block; margin-top: 2px; font-size: var(--fs-small); }
+/* A scenario row: the whole row plays it (a chevron says so); its links sit under it, outside the button. */
+.cy-sc { padding: var(--sp-1) 0; }
+.cy-sc + .cy-sc { border-top: 1px solid var(--line); }
+.cy-sc-go { display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-height: var(--target); padding: var(--sp-1) 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.cy-sc-go .cy-kept-what { flex: 1 1 auto; }
+.cy-sc-chev { flex: none; width: 8px; height: 8px; border-top: 2px solid var(--ink2); border-right: 2px solid var(--ink2); transform: rotate(45deg); margin-inline-end: 4px; }
+[dir="rtl"] .cy-sc-chev { transform: rotate(-135deg); }
+.cy-sc-links { display: block; margin: -2px 0 var(--sp-1); font-size: var(--fs-small); }
 .cy-maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
 .cy-maps .ar-btn { min-height: var(--target); padding: 0 var(--sp-1); font-size: var(--fs-small); }
 .cy-sc-note { font-size: var(--fs-small); color: var(--ink2); margin-top: var(--sp-3); }
