@@ -2339,8 +2339,8 @@
   "net_satellites": "Satellitendaten",
   "net_satellites_when": "ISS- und GPS-Bahnen für die 3D-Erde",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "Schärfere Erde und schärferer Mond für den Almanach, einmal, auf Nachfrage",
-  "alm_hd_offer": "Schärfere Erde und schärferer Mond",
+  "net_almanac_hd_when": "Schärfere Erde, Mond und Planeten für den Almanach, einmal, auf Nachfrage",
+  "alm_hd_offer": "Schärfere Erde, Mond und Planeten",
   "alm_hd_offer_sub": "{size}, einmal in Ihre Bibliothek geladen",
   "alm_hd_get": "Herunterladen",
   "alm_hd_later": "Nicht jetzt",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "Die Golden Record an Bord",
   "alm_row_orbits": "Bahnen",
   "alm_row_landings": "Landungen",
-  "alm_lm_night_until": "Dort Nacht bis {date} · zum Sonnenaufgang ankommen"
+  "alm_lm_night_until": "Dort Nacht bis {date} · zum Sonnenaufgang ankommen",
+  "alm_hd_installed": "Installiert",
+  "alm_hd_ask_admin": "wer dieses Zimi betreibt, kann es hinzufügen"
 }

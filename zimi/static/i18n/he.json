@@ -2339,8 +2339,8 @@
   "net_satellites": "נתוני לווינים",
   "net_satellites_when": "מסלולי ISS ו-GPS לכדור הארץ בתלת-ממד",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "כדור ארץ וירח חדים יותר לאלמנך, פעם אחת, לפי בקשה",
-  "alm_hd_offer": "כדור ארץ וירח חדים יותר",
+  "net_almanac_hd_when": "כדור ארץ, ירח וכוכבי לכת חדים יותר לאלמנך, פעם אחת, לפי בקשה",
+  "alm_hd_offer": "כדור ארץ, ירח וכוכבי לכת חדים יותר",
   "alm_hd_offer_sub": "{size}, יורד פעם אחת לספרייה שלך",
   "alm_hd_get": "הורדה",
   "alm_hd_later": "לא עכשיו",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "תקליט הזהב שהיא נושאת",
   "alm_row_orbits": "מסלולים",
   "alm_row_landings": "נחיתות",
-  "alm_lm_night_until": "לילה שם עד {date} · להגיע בזריחה"
+  "alm_lm_night_until": "לילה שם עד {date} · להגיע בזריחה",
+  "alm_hd_installed": "מותקן",
+  "alm_hd_ask_admin": "מי שמנהל את ה-Zimi הזה יכול להוסיף"
 }

@@ -263,3 +263,29 @@ def test_the_offer_line(browser, served):
         assert pg.evaluate("localStorage.getItem('zimi_alm_hd_later')") == "1"
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("who", ["admin", "viewer", "never"])
+def test_the_gear_keeps_hd_after_not_now(browser, served, who):
+    """Not now hides the line under the controls, never the way to it: the gear keeps a row for Almanac HD with its
+    size and Download for someone who may; for anyone else it says who can add it; under Never there is none."""
+    with_hd, url = served
+    if with_hd:
+        pytest.skip("offered only while it is not installed")
+    st = dict(OFFER, can_change=who == "admin", mode="never" if who == "never" else "ask")
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=st)
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        if who == "admin":
+            pg.click("#ae-hd-later")
+        pg.click("#ae-gear")
+        row = pg.evaluate("() => { var r = document.querySelector('#ae-set-body .ae-set-hd'); return r ? r.innerText : null; }")
+        if who == "never":
+            assert row is None, row
+        else:
+            assert row and "Sharper Earth, Moon and planets" in row and "312" in row, row
+            assert pg.evaluate("!!document.getElementById('ae-set-hd-get')") == (who == "admin"), row
+            if who == "viewer":
+                assert "runs this Zimi" in row, row
+    finally:
+        ctx.close()

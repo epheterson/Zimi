@@ -2339,8 +2339,8 @@
   "net_satellites": "Données satellites",
   "net_satellites_when": "Orbites de l'ISS et du GPS pour la Terre en 3D",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "Terre et Lune plus nettes pour l'Almanach, une fois, sur demande",
-  "alm_hd_offer": "Terre et Lune plus nettes",
+  "net_almanac_hd_when": "Terre, Lune et planètes plus nettes pour l’Almanach, une fois, sur demande",
+  "alm_hd_offer": "Terre, Lune et planètes plus nettes",
   "alm_hd_offer_sub": "{size}, téléchargé une fois dans votre bibliothèque",
   "alm_hd_get": "Télécharger",
   "alm_hd_later": "Plus tard",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "Le Golden Record à son bord",
   "alm_row_orbits": "Orbites",
   "alm_row_landings": "Alunissages",
-  "alm_lm_night_until": "Nuit là-bas jusqu’au {date} · arriver au lever du Soleil"
+  "alm_lm_night_until": "Nuit là-bas jusqu’au {date} · arriver au lever du Soleil",
+  "alm_hd_installed": "Installé",
+  "alm_hd_ask_admin": "la personne qui gère ce Zimi peut l’ajouter"
 }

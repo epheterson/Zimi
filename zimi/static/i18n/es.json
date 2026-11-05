@@ -2339,8 +2339,8 @@
   "net_satellites": "Datos de satélites",
   "net_satellites_when": "Órbitas de la ISS y del GPS para la Tierra en 3D",
   "net_almanac_hd": "Almanac HD",
-  "net_almanac_hd_when": "Tierra y Luna más nítidas para el Almanaque, una vez, cuando se pide",
-  "alm_hd_offer": "Tierra y Luna más nítidas",
+  "net_almanac_hd_when": "Tierra, Luna y planetas más nítidos para el Almanaque, una vez, cuando se pide",
+  "alm_hd_offer": "Tierra, Luna y planetas más nítidos",
   "alm_hd_offer_sub": "{size}, se descarga una vez en tu biblioteca",
   "alm_hd_get": "Descargar",
   "alm_hd_later": "Ahora no",
@@ -3581,5 +3581,7 @@
   "alm_card_golden_record": "El Disco de Oro que lleva",
   "alm_row_orbits": "Órbitas",
   "alm_row_landings": "Alunizajes",
-  "alm_lm_night_until": "Noche allí hasta {date} · llegar al amanecer"
+  "alm_lm_night_until": "Noche allí hasta {date} · llegar al amanecer",
+  "alm_hd_installed": "Instalado",
+  "alm_hd_ask_admin": "quien administra este Zimi puede añadirlo"
 }

@@ -977,17 +977,20 @@ function _orreryPaintOrbits(ctx, cx, cy, W, z, u, names, alpha) {
     ctx.stroke();
   }
 }
-function _orreryPaintSun(ctx, cx, cy, W) {
-  var sunR = W * 0.022;
+// `discR` (optional): the disc's radius when another drawing sizes it (the 3D view's marks and minimap put the Sun on
+// their planets' scale); its haze keeps the orrery's proportion to the disc.
+var _ORR_SUN_R = 0.022, _ORR_SUN_HAZE = 0.14;
+function _orreryPaintSun(ctx, cx, cy, W, discR) {
+  var sunR = discR || W * _ORR_SUN_R, hazeR = sunR * _ORR_SUN_HAZE / _ORR_SUN_R;
 
   // Wide outer haze
-  var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.14);
+  var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, hazeR);
   haze.addColorStop(0, 'rgba(255,210,100,0.10)');
   haze.addColorStop(0.2, 'rgba(255,180,60,0.04)');
   haze.addColorStop(0.6, 'rgba(255,150,40,0.01)');
   haze.addColorStop(1, 'transparent');
   ctx.fillStyle = haze;
-  ctx.beginPath(); ctx.arc(cx, cy, W * 0.14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, hazeR, 0, Math.PI * 2); ctx.fill();
 
   // Inner corona
   var corona = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR * 4);
