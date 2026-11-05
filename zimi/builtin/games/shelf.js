@@ -600,12 +600,17 @@
     var dl = daily();
     if (dl) {
       var inside = 0, done = 0;
+      var extras = 0;
       Array.prototype.forEach.call(dl.querySelectorAll('a.ar-game'), function (a) {
         a.hidden = !roomOf(a);
-        if (!a.hidden) { inside++; if (a.classList.contains('ar-done')) done++; }
+        if (a.hidden) return;
+        if (a.classList.contains('ar-daily-main')) { inside++; if (a.classList.contains('ar-done')) done++; }
+        else if (a.classList.contains('ar-daily-more')) extras++;
       });
+      var sep = dl.querySelector('.ar-daily-sep');
+      if (sep) sep.hidden = !extras;
       if (dl.dailyLine) dl.dailyLine(done, inside);
-      dl.hidden = searching || !inside || (state.view === 'lobby' && !feedAll);
+      dl.hidden = searching || !dl.querySelector('a.ar-game:not([hidden])') || (state.view === 'lobby' && !feedAll);
     }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;

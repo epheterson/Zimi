@@ -5211,7 +5211,7 @@
  "shelf.chip.recent": "Недавние",
  "shelf.credits": "Благодарности",
  "shelf.daily": "Каждый день",
- "shelf.daily.done": "Сегодня сыграно: {n}",
+ "shelf.daily.done": "Сегодня сыграно: {n} из {total}",
  "shelf.era.ancient": "Древние",
  "shelf.era.ancient.note": "до 500 года н. э.",
  "shelf.era.medieval": "Средневековье и позже",
@@ -6147,5 +6147,6 @@
  "board.r.lose": "Не решено",
  "stats.setName": "Задать",
  "stats.noName": "Ваше имя в таблицах лидеров:",
- "board.youMark": "(вы)"
+ "board.youMark": "(вы)",
+ "shelf.daily.more": "Ещё задания дня"
 }

@@ -95,5 +95,6 @@ def test_a_room_filters_the_shelf_and_the_daily_row_and_is_kept(site, browser, v
 
 def test_five_letters_and_sudoku_lead_the_daily_row(site, browser):  # noqa: F811
     ctx, page = _open(browser, site, "lobby")
-    assert page.evaluate(DAILY)[:2] == ["fiveletters.html", "sudoku.html"]
+    feature = page.evaluate("() => { const f = document.querySelector('.ar-daily a.ar-feature'); return f ? f.getAttribute('href').split('?')[0] : null; }")
+    assert page.evaluate(DAILY)[:2] == [p for p in ["fiveletters.html", "sudoku.html", "minicrossword.html"] if p != feature][:2]   # Game of the day leads, apart
     ctx.close()

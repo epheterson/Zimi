@@ -5115,7 +5115,7 @@
  "shelf.chip.recent": "Recentes",
  "shelf.credits": "Créditos",
  "shelf.daily": "Diário",
- "shelf.daily.done": "Feitos hoje: {n}",
+ "shelf.daily.done": "Feitos hoje: {n} de {total}",
  "shelf.era.ancient": "Antiguidade",
  "shelf.era.ancient.note": "antes de 500 d.C.",
  "shelf.era.medieval": "Medieval e depois",
@@ -6033,5 +6033,6 @@
  "board.r.lose": "Não resolvido",
  "stats.setName": "Definir",
  "stats.noName": "Seu nome nos placares:",
- "board.youMark": "(você)"
+ "board.youMark": "(você)",
+ "shelf.daily.more": "Mais desafios diários"
 }

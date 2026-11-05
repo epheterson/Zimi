@@ -5023,7 +5023,7 @@
  "shelf.chip.recent": "हाल के",
  "shelf.credits": "श्रेय",
  "shelf.daily": "रोज़ाना",
- "shelf.daily.done": "आज पूरे हुए: {n}",
+ "shelf.daily.done": "आज पूरे हुए: {total} में से {n}",
  "shelf.era.ancient": "प्राचीन",
  "shelf.era.ancient.note": "ईस्वी 500 से पहले",
  "shelf.era.medieval": "मध्यकाल और बाद",
@@ -5923,5 +5923,6 @@
  "board.r.lose": "हल नहीं हुआ",
  "stats.setName": "सेट करें",
  "stats.noName": "लीडरबोर्ड पर आपका नाम:",
- "board.youMark": "(आप)"
+ "board.youMark": "(आप)",
+ "shelf.daily.more": "और दैनिक चुनौतियाँ"
 }

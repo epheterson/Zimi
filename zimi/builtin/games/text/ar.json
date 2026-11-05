@@ -5399,7 +5399,7 @@
  "shelf.chip.recent": "الأخيرة",
  "shelf.credits": "الشكر والتقدير",
  "shelf.daily": "يوميًا",
- "shelf.daily.done": "أُنجز اليوم: {n}",
+ "shelf.daily.done": "أُنجز اليوم: {n} من {total}",
  "shelf.era.ancient": "قديمة",
  "shelf.era.ancient.note": "قبل 500 م",
  "shelf.era.medieval": "العصور الوسطى وما بعدها",
@@ -6371,5 +6371,6 @@
  "board.r.lose": "لم يُحل",
  "stats.setName": "تعيين",
  "stats.noName": "اسمك في لوحات المتصدرين:",
- "board.youMark": "(أنت)"
+ "board.youMark": "(أنت)",
+ "shelf.daily.more": "تحديات يومية أخرى"
 }

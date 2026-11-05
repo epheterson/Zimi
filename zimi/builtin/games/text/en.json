@@ -5023,7 +5023,7 @@
  "shelf.chip.recent": "Recent",
  "shelf.credits": "Credits",
  "shelf.daily": "Daily",
- "shelf.daily.done": "Done today: {n}",
+ "shelf.daily.done": "Done today: {n} of {total}",
  "shelf.era.ancient": "Ancient",
  "shelf.era.ancient.note": "before AD 500",
  "shelf.era.medieval": "Medieval and after",
@@ -5923,5 +5923,6 @@
  "board.r.lose": "Not solved",
  "stats.setName": "Set",
  "stats.noName": "Your name on the boards:",
- "board.youMark": "(you)"
+ "board.youMark": "(you)",
+ "shelf.daily.more": "More dailies"
 }

@@ -5115,7 +5115,7 @@
  "shelf.chip.recent": "Récents",
  "shelf.credits": "Crédits",
  "shelf.daily": "Chaque jour",
- "shelf.daily.done": "Faits aujourd'hui : {n}",
+ "shelf.daily.done": "Faits aujourd'hui : {n} sur {total}",
  "shelf.era.ancient": "Antiquité",
  "shelf.era.ancient.note": "avant l’an 500",
  "shelf.era.medieval": "Moyen Âge et après",
@@ -6033,5 +6033,6 @@
  "board.r.lose": "Non résolu",
  "stats.setName": "Choisir",
  "stats.noName": "Votre nom dans les classements :",
- "board.youMark": "(vous)"
+ "board.youMark": "(vous)",
+ "shelf.daily.more": "Autres défis du jour"
 }

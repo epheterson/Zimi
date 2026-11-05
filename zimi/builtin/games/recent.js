@@ -245,11 +245,13 @@
   // server's day in its address, so everyone on this Zimi plays the same one. Those done today carry a tick and move to the end.
   // Over the row, one line: how many are done, and the streak.
   // The two everyone looks for first lead the row; the rest keep the shelf's order.
+  // The dailies people know from everywhere lead, in this order; the rest follow apart, as more to try.
+  var DAILY_FIRST = ['fiveletters.html', 'sudoku.html', 'minicrossword.html', 'chesspuzzles.html', 'spellingbee.html', 'minesweeper.html', 'solitaire.html'];
   function dailyOrder(games) {
-    var DAILY_FIRST = ['fiveletters.html', 'sudoku.html'];
     var rank = function (g) { var i = DAILY_FIRST.indexOf(g.path); return i < 0 ? DAILY_FIRST.length : i; };
     return games.map(function (g, i) { return [g, i]; }).sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; }).map(function (x) { return x[0]; });
   }
+  function isMainDaily(path) { return DAILY_FIRST.indexOf(path) >= 0; }
   // The day's game leads the Daily row as its first, larger tile: one "today" on the shelf, not two. When it has a daily of its
   // own the tile is that daily; otherwise it opens the game as usual.
   function featureTile(g, day, S) {
@@ -275,7 +277,7 @@
     var S = root.ZimiShell;
     if (!S || !S.DAILY || !S.serverDay || !S.stats) return Promise.resolve(null);
     return S.serverDay().then(function (day) {
-      var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [];
+      var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [], moreOpen = [], moreDone = [];
       var g = dayPick(rows, day), pick = g ? { path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') } : null;
       var feature = pick ? featureTile(pick, day, S) : null;
       dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path] && !(pick && r.path === pick.path); })).forEach(function (g) {
@@ -283,17 +285,28 @@
         if (!t) return;
         ownIds(t);
         t.setAttribute('href', g.path + '?daily=' + day);
-        if (done[g.path]) { markDone(t); finished.push(t); } else open.push(t);
+        var main = isMainDaily(g.path);
+        t.classList.add(main ? 'ar-daily-main' : 'ar-daily-more');
+        if (done[g.path]) { markDone(t); (main ? finished : moreDone).push(t); } else (main ? open : moreOpen).push(t);
       });
-      if (feature && done[pick.path] && S.DAILY[pick.path]) markDone(feature);
-      var tiles = (feature ? [feature] : []).concat(open, finished);
+      if (feature && S.DAILY[pick.path]) {
+        if (isMainDaily(pick.path)) feature.classList.add('ar-daily-main');
+        if (done[pick.path]) markDone(feature);
+      }
+      var rest = moreOpen.concat(moreDone), divider = null;
+      if (rest.length) {
+        divider = doc.createElement('span');
+        divider.className = 'ar-daily-sep';
+        divider.textContent = T('shelf.daily.more');
+      }
+      var tiles = (feature ? [feature] : []).concat(open, finished, divider ? [divider] : [], rest);
       if (!tiles.length) return null;
       var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
       var line = doc.createElement('span');
       line.className = 'ar-daily-line';
-      // How many are done of those shown: the shelf calls it again when a room leaves fewer in the row.
-      s.dailyLine = function (n) { line.textContent = T('shelf.daily.done', { n: n }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
-      s.dailyLine(s.querySelectorAll('a.ar-done').length);
+      // How many of the everyday dailies are done (the rest are extra): the shelf calls it again when a room leaves fewer.
+      s.dailyLine = function (n, total) { line.textContent = T('shelf.daily.done', { n: n, total: total }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
+      s.dailyLine(s.querySelectorAll('a.ar-daily-main.ar-done').length, s.querySelectorAll('a.ar-daily-main').length);
       var stats = doc.createElement('button');
       stats.type = 'button';
       stats.className = 'ar-daily-stats';

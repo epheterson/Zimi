@@ -45,7 +45,7 @@ def test_game_of_the_day_leads_the_daily_row_and_is_not_a_section_of_its_own(
     assert got["today"] == 0, got
     assert got["feature"] and got["tag"] == "Game of the day", got
     assert got["wide"] > got["next"] * 1.6, got
-    assert got["line"] == "Done today: 0", got  # a count, not "0 of 63"
+    assert got["line"] == "Done today: 0 of 7", got  # the seven everyday dailies, not "0 of 63"
     ctx.close()
 
 
@@ -136,4 +136,28 @@ def test_an_empty_daily_board_says_so_plainly(site, browser):  # noqa: F811
     assert "No one here has played today's daily yet." in page.inner_text(
         ".ar-sheet-card"
     )
+    ctx.close()
+
+
+EVERYDAY = ["fiveletters.html", "sudoku.html", "minicrossword.html", "chesspuzzles.html", "spellingbee.html", "minesweeper.html", "solitaire.html"]
+
+
+def test_the_everyday_dailies_lead_and_the_rest_follow_as_more(site, browser):  # noqa: F811
+    """Eric: "Put the NORMAL dailies first and then the rest like optional after". Five Letters, Sudoku, Mini crossword,
+    Chess puzzle, Spelling Bee, Minesweeper, Solitaire, in that order (Game of the day ahead of them, and out of their list
+    when it is one of them), then a quiet "More dailies" and the rest."""
+    ctx, page = _shelf(browser, site)
+    got = page.evaluate("""() => {
+      const row = [...document.querySelectorAll('.ar-daily .ar-games > *')];
+      const path = (a) => a.getAttribute('href').split('?')[0];
+      const feature = document.querySelector('.ar-daily a.ar-feature');
+      const sep = row.findIndex(e => e.classList.contains('ar-daily-sep'));
+      return { feature: feature ? path(feature) : null, main: row.slice(0, sep).filter(e => e.matches('a.ar-daily-main:not(.ar-feature)')).map(path),
+               before: row.slice(0, sep).filter(e => e.matches('a.ar-daily-more')).length, after: row.slice(sep + 1).filter(e => e.matches('a.ar-daily-more')).length,
+               sep: sep >= 0 ? row[sep].textContent : '', chessHref: (document.querySelector('.ar-daily a[href^="chesspuzzles.html"]') || {}).href || '' };
+    }""")
+    want = [p for p in EVERYDAY if p != got["feature"]]
+    assert got["main"] == want, got
+    assert got["sep"] == "More dailies" and got["before"] == 0 and got["after"] > 10, got
+    assert "?daily=" in got["chessHref"], got
     ctx.close()

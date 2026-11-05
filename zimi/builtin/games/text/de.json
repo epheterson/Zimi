@@ -5023,7 +5023,7 @@
  "shelf.chip.recent": "Zuletzt",
  "shelf.credits": "Danksagung",
  "shelf.daily": "Täglich",
- "shelf.daily.done": "Heute erledigt: {n}",
+ "shelf.daily.done": "Heute erledigt: {n} von {total}",
  "shelf.era.ancient": "Antike",
  "shelf.era.ancient.note": "vor 500 n. Chr.",
  "shelf.era.medieval": "Mittelalter und danach",
@@ -5923,5 +5923,6 @@
  "board.r.lose": "Nicht gelöst",
  "stats.setName": "Festlegen",
  "stats.noName": "Dein Name auf den Bestenlisten:",
- "board.youMark": "(du)"
+ "board.youMark": "(du)",
+ "shelf.daily.more": "Weitere Tagesaufgaben"
 }
