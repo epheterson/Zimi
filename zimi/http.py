@@ -3100,6 +3100,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._uncached(self._handle_userdata_get)
             elif parsed.path == "/userdata/settings":
                 return self._uncached(self._handle_settings_get)
+            elif parsed.path == "/userdata/games":
+                return self._uncached(self._handle_games_get)
             elif parsed.path == "/events":
                 return self._handle_events()
 
@@ -3877,7 +3879,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Backup import + per-user data save legitimately run large (a full
             # server bundle carries users/history/every per-user blob); every
             # other endpoint stays under the tight default cap.
-            if parsed.path in ("/manage/backup", "/userdata"):
+            if parsed.path in ("/manage/backup", "/userdata", "/userdata/games"):
                 body_cap = _srv.MAX_BACKUP_BODY
             elif parsed.path == "/almanac/pdf":
                 from zimi import almanacpdf as _apdf
@@ -3965,6 +3967,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._handle_userdata_post(data)
             if parsed.path == "/userdata/settings":
                 return self._handle_settings_post(data)
+            if parsed.path == "/userdata/games":
+                return self._handle_games_post(data)
+            if parsed.path == "/account/display":
+                return self._handle_display_post(data)
 
             if parsed.path == "/resolve":
                 retry_after = _check_rate_limit(
@@ -5858,6 +5864,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         """GET /whoami — the current identity for the client to shape its UI.
         role ∈ {user, admin, anonymous}. Server-side filtering is independent
         of this — it keys off the cookie/token, not the client's belief.
+        ``games``: whose games follow this browser (users.games_data_owner),
+        None to keep them the browser's own (password off, anonymous).
         ``account``: whose /userdata this request has (users.request_data_owner),
         or None; the client follows an account only when this names one (with
         the password switched off, every browser is the admin's)."""
@@ -5880,6 +5888,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "name": name,
                         "secondary": True,
                         "account": name,
+                        "games": name,
+                        "display": _users.display_name(name),
                         "apps": apps,
                     },
                 )
@@ -5895,6 +5905,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Create page consult this (the server gates regardless).
                     "can_create": _users.user_can_create(name),
                     "account": name,
+                    "games": name,
+                    "display": _users.display_name(name),
                     "apps": apps,
                 },
             )
@@ -5908,6 +5920,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 "role": "admin",
                 "name": _manage._get_manage_user() or "admin",
                 "account": _users.request_data_owner(self),
+                "games": _users.games_data_owner(self),
+                "display": _users.display_name(_users.games_data_owner(self)),
                 "apps": apps,
             }
             # Ensure the header-less transports (reader iframe, plain-fetch data
@@ -5925,7 +5939,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous", "account": _users.request_data_owner(self), "apps": apps}
+        resp = {"role": "anonymous", "account": _users.request_data_owner(self), "games": None, "apps": apps}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``
@@ -6021,6 +6035,53 @@ class ZimHandler(BaseHTTPRequestHandler):
         if not ok:
             return self._json(503 if err == "write failed" else 400, {"error": err})
         return self._json(200, doc)
+
+    def _games_owner(self, sent):
+        """Whose games this request reaches (users.games_data_owner): 401 when no
+        one signed in (the browser keeps its own), 409 when not the account the
+        browser follows."""
+        name = _users.games_data_owner(self)
+        if not name:
+            return None, (401, {"error": "sign in required"})
+        if sent is not None and str(sent).casefold() != name.casefold():
+            return None, (409, {"error": "account_changed"})
+        return name, None
+
+    def _handle_games_get(self):
+        """GET /userdata/games — the signed-in person's games (saves, stats,
+        dailies, kept cities), each key with the revision the server gave it."""
+        name, refused = self._games_owner(self._query_account())
+        if refused:
+            return self._json(*refused)
+        return self._json(200, _users.GAMES.load(name))
+
+    def _handle_games_post(self, data):
+        """POST /userdata/games — {changes: {key: {v}}, fill: bool}, as
+        /userdata/settings: each change at the account's next revision; ``fill``
+        (a browser's games adopted into an account that has none) only fills."""
+        data = data if isinstance(data, dict) else {}
+        name, refused = self._games_owner(data.get("account"))
+        if refused:
+            return self._json(*refused)
+        ok, err, doc = _users.GAMES.change(
+            name, data.get("changes") or {}, fill_only=bool(data.get("fill")), by=data.get("client")
+        )
+        if not ok:
+            return self._json(503 if err == "write failed" else 400, {"error": err})
+        return self._json(200, doc)
+
+    def _handle_display_post(self, data):
+        """POST /account/display — {display}: what the signed-in person is called
+        on this server's games (users.set_display_name; empty: their account's
+        name). 409 when someone else is called that already."""
+        data = data if isinstance(data, dict) else {}
+        name, refused = self._games_owner(data.get("account"))
+        if refused:
+            return self._json(*refused)
+        ok, err, shown = _users.set_display_name(name, data.get("display"))
+        if not ok:
+            return self._json(409 if err == "name taken" else 503 if err == "write failed" else 400, {"error": err})
+        return self._json(200, {"display": shown})
 
     def _handle_events(self):
         """GET /events — what an open window should hear as server-sent
