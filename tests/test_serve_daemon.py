@@ -37,7 +37,7 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
     assert time.monotonic() - started < 30, "the command returns, the server stays"
     pid_path = data / "zimi.pid"
     assert pid_path.exists(), out.stdout
-    pid = int(pid_path.read_text())
+    pid = int(pid_path.read_text(encoding="utf-8"))
     try:
         assert "running in the background" in out.stdout, out.stdout
         health = None
@@ -48,7 +48,7 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
                 break
             except OSError:
                 time.sleep(0.3)
-        assert health is not None, (data / "zimi.log").read_text() if (data / "zimi.log").exists() else "no log"
+        assert health is not None, (data / "zimi.log").read_text(encoding="utf-8") if (data / "zimi.log").exists() else "no log"
         assert (data / "zimi.log").exists()
         # A second start while it runs says so and leaves the running one alone.
         again = subprocess.run(
@@ -57,7 +57,7 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
             env=env, capture_output=True, text=True, timeout=60, cwd=ROOT,
         )
         assert again.returncode != 0 and "already running" in again.stderr, (again.stdout, again.stderr)
-        assert int(pid_path.read_text()) == pid
+        assert int(pid_path.read_text(encoding="utf-8")) == pid
     finally:
         os.kill(pid, signal.SIGTERM)
         for _ in range(50):
