@@ -2462,7 +2462,7 @@ function _skyPaintBase(s, ts) {
   _skyApplyView(s);
   s.moonDisc = _skyMoonDisc(s);
   var gl = _skyGLSky(s), M = _sgHorizonMatrix(e.P, e.lst, s.lat), beach = _skySetting('skin') === 'beach' && !s.lens;
-  if (gl) ctx.drawImage(gl, 0, 0); else if (s.lens) _skyPaintSkyLens(ctx, s); else _skyPaintSky(ctx, s);
+  if (gl && gl.width && gl.height) ctx.drawImage(gl, 0, 0); else if (s.lens) _skyPaintSkyLens(ctx, s); else _skyPaintSky(ctx, s);
   if (beach) _skyCaptureLight(s, ctx.canvas, !!gl);   // the sea mirrors the sky as drawn, before the stars and bodies go on it
   _skyPaintAurora(ctx, s);
   if (_skyFiguresWanted(s)) _skyLoadConstellations(_skyKickDirty);
@@ -2483,6 +2483,7 @@ function _skyPaintBase(s, ts) {
 function _skyPaint(ts) {
   var s = _skyState;
   if (!s || !s.eph || !s.canvas.isConnected) return;
+  if (!(s.W > 0 && s.H > 0)) return;   // not laid out (hidden, or 0 tall): a 0-sized canvas cannot be drawn from
   if (s.baseDirty || !s.base || s.moonAnim) _skyPaintBase(s, ts);
   var ctx = s.canvas.getContext('2d'), beach = _skySetting('skin') === 'beach' && !s.lens;
   ctx.clearRect(0, 0, s.W, s.H);
@@ -2563,6 +2564,7 @@ function _skyHostDraw() {
   if (!h || !h.host.isConnected) return;
   var s = h.s, ms = _skyLive() ? Date.now() : _almFocusInstant().getTime();
   if (!s.eph || Math.abs(ms - s.nowTime) > SKY_HOST_FRESH_MS) _skyHostCompute(s, new Date(ms));
+  if (!(s.W > 0 && s.H > 0)) return;
   s.lens = _skyMakeLens(h.look, s.W);
   _skyPaintBase(s, performance.now());
   var ctx = h.canvas.getContext('2d');
