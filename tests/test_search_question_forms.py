@@ -27,10 +27,12 @@ def test_the_question_reaches_the_article_in_another_form(tmp_path):
     from libzim.reader import Archive
     from libzim.search import Query, Searcher
 
+    from zimi.libzimcompat import result_paths
+
     path = build_fixture_zim(str(tmp_path / "survival.zim"))
     q = "how to purify water"
     hits = Searcher(Archive(path)).search(Query().set_query(_search._index_query(q, _search._clean_query(q))))
-    assert "A/Water" in list(hits.getResults(0, 10))
+    assert "A/Water" in result_paths(hits, 0, 10)
 
 
 def test_the_title_that_answers_outranks_a_book_that_mentions_the_words():
