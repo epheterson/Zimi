@@ -3553,7 +3553,9 @@ function _aeFlyToCraft(name, pp, span) {
   if (AE_CRAFT_POINTS[AE_CRAFT_MODEL[name]] === 'sun') dir = _aeAdd(_aeAdd(_aeScale(side, 0.85), _aeScale(toSun, 0.35)), [0, 0, 0.3]);   // a shield in profile, lit
   else if (near && nearD < AE_PROBE_FRAME_MAX) dir = _aeAdd(_aeScale(_aeNorm(_aeSub(pp, near)), 0.8), _aeScale(toSun, 0.5));
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
-  _aeFlyTo(name, span * AE_CRAFT_VIEW_SPANS, _aeAzElOf(_aeNorm(dir)));
+  // Its whole span inside the narrower side of the screen (a phone held upright is narrow across: three spans along
+  // the view left Voyager's booms off both edges).
+  _aeFlyTo(name, Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)), _aeAzElOf(_aeNorm(dir)));
   _aeArrive(name);
 }
 // A flight to one place: its card comes with it, and any other card goes.
@@ -3964,7 +3966,8 @@ var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pio
   parker: 'parker', juno: 'juno', jwst: 'webb', cassini: 'cassini', galileo: 'galileo' };
 // What each points: its high-gain antenna at the Earth, or (Parker, Webb) its shield at the Sun.
 var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun' };
-var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends this many of its spans off
+var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
+var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
 var _aeCraft = {};                                          // model -> { data, loading }
 var AE_CRAFT_VERT = [
   'attribute float cls;',
@@ -4043,11 +4046,6 @@ function _aeCraftLoad(model, then) {
 function _aeCraftData(model) { return (_aeCraft[model] && _aeCraft[model].data) || null; }
 // Its span in Earth radii, once loaded (0 before).
 function _aeCraftSpanRe(model) { var d = _aeCraftData(model); return d ? d.span * d.metres / 1000 / AE_EARTH_RADIUS_KM : 0; }
-function _aeBoxCentre(pos) {
-  var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  for (var i = 0; i < pos.length; i += 3) for (var k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[i + k]); hi[k] = Math.max(hi[k], pos[i + k]); }
-  return [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
-}
 function _aeCraftBuild(S, model) {
   var THREE = S.THREE, d = _aeCraftData(model);
   var position = new THREE.BufferAttribute(d.pos, 3), cls = new THREE.BufferAttribute(d.cls, 1);
@@ -4069,9 +4067,6 @@ function _aeCraftBuild(S, model) {
   for (var t = 0; t < d.idx.length; t += 3) (d.axis && d.cls[d.idx[t]] === 2 ? turning : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
   var main = new THREE.Mesh(geo(body), mat);
   main.frustumCulled = false;
-  // A probe's file has its origin wherever its makers put it (Voyager's at the dish's rim), and the camera frames the
-  // origin: the model is moved so the middle of its box is there, and a flight ends on the whole craft.
-  if (!d.axis) { var c = _aeBoxCentre(d.pos); main.position.set(-c[0], -c[1], -c[2]); }
   root.add(main);
   if (d.axis) {
     var arr = new THREE.Mesh(geo(turning), mat);
