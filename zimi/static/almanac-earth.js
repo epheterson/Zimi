@@ -622,6 +622,7 @@ var AE_CSS = [
   '@media (pointer:coarse){.ae-fresh{min-height:32px;padding:8px 12px}}',
   '.ae-fresh[disabled]{opacity:.7;cursor:default}',
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
+  '.ae-bm-quiet b{display:none}',
   // Landmarks: a dot and a name each, tappable (the dot sits on the place, AE_LM_DOT_X from the button's edge).
   '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-lm{position:absolute;left:0;top:0;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
@@ -771,18 +772,36 @@ function _aeShowGo(on, group) {
   var h = on && group ? sheet.querySelector('h4[data-g="' + group + '"]') : null;
   if (h) sheet.scrollTop = h.offsetTop;
 }
-// The quick row says where the view can go from here: home's five at the Earth; at the Moon, its landings; at a planet
-// with moons, the planet, its moons and their orbits, with the way back (Planets, Earth). One line; past its width it
-// scrolls sideways (Go to stays at its end).
+// The quick row, one shape everywhere (Eric 2026-11-04): the Sun first, always; then the body the view is at and its
+// own (the Earth: its satellites and the Moon; the Moon: its landings; a planet: its moons and their orbits); one
+// recent place to go back to; the Planets; Go to. At the Sun the Earth stands after it. Past its width it scrolls
+// sideways (Go to stays at its end).
 var AE_ROW_ORBITS = 'orbits', AE_ROW_LANDINGS = 'landings';
-var AE_ROW_HOME = ['earth', 'sats', 'moon', 'sun', 'planets'];
+var AE_ROW_HOME = ['sun', 'earth', 'sats', 'moon', 'planets'];
+// The body a target belongs to on the row: the ISS and the satellites are the Earth's, a moon's row is its planet's.
+function _aeRowBody() {
+  var t = _ae && _ae.target, b = t ? _aePlanetBody(t) : null;
+  if (!t || t === 'earth' || t === 'iss') return 'earth';
+  if (b && b.parent) return b.parent;
+  return t;
+}
 function _aeRowKeys() {
-  var t = _ae && _ae.target, b = t ? _aePlanetBody(t) : null, host = b ? (b.parent ? _aePlanetBody(b.parent) : b) : null;
-  var moons = host ? AE_PLANETS.filter(function (m) { return m.parent === host.key; }).map(function (m) { return m.key; }) : [];
-  if (moons.length) return ['planets', 'earth', host.key].concat(moons, [AE_ROW_ORBITS]);
-  if (b) return ['planets', 'earth', 'sun', t];
-  if (t === 'moon') return ['earth', 'moon', AE_ROW_LANDINGS, 'sun', 'planets'];
-  return AE_ROW_HOME;
+  var c = _aeRowBody();
+  if (_ae && c !== _ae.rowCurrent) {
+    if (_ae.rowCurrent && _ae.rowCurrent !== 'sun') _ae.rowRecent = _ae.rowCurrent;
+    _ae.rowCurrent = c;
+  }
+  var mid;
+  if (c === 'earth') mid = ['earth', 'sats', 'moon'];
+  else if (c === 'moon') mid = ['moon', AE_ROW_LANDINGS];
+  else if (c === 'sun') mid = ['earth'];
+  else {
+    var moons = AE_PLANETS.filter(function (m) { return m.parent === c; }).map(function (m) { return m.key; });
+    mid = [c].concat(moons, moons.length ? [AE_ROW_ORBITS] : []);
+  }
+  var recent = _ae && _ae.rowRecent;
+  if (recent && mid.indexOf(recent) < 0 && recent !== 'sun') mid.push(recent);
+  return ['sun'].concat(mid, ['planets']);
 }
 function _aeRowName(k) {
   if (k === 'sats') return _aeT('alm_earth_view_sats');
@@ -2657,7 +2676,10 @@ function _aeArrivalKey(k) {
   return 'planet:' + k;
 }
 // More to read from a card than its name: Voyager's record.
-var AE_ARRIVAL_EXTRA = { voyager1: { key: 'ev:goldenrecord', label: 'alm_card_golden_record' }, voyager2: { key: 'ev:goldenrecord', label: 'alm_card_golden_record' } };
+// More from a card than its name: Voyager's record opens the Almanac's own Golden Record (its pictures and sounds),
+// the article only where that section is not here.
+var AE_GOLDEN_RECORD = { key: 'ev:goldenrecord', label: 'alm_card_golden_record', open: '_scrollToGoldenRecord' };
+var AE_ARRIVAL_EXTRA = { voyager1: AE_GOLDEN_RECORD, voyager2: AE_GOLDEN_RECORD };
 function _aeArrivalName(k) {
   var b = _aePlanetBody(k);
   var name = _aeIsProbe(k) ? _aeTracks.tracks[k].name : k === 'iss' ? _aeT('alm_earth_iss_name') : k === 'sun' ? _aeT('alm_sun') :
@@ -2667,13 +2689,20 @@ function _aeArrivalName(k) {
 function _aeRenderArrivalCard(card) {
   var k = _ae.arrived, a = _aeArrival(k, _aeDisplayMs());
   var p = function (cls, text) { return text ? '<p class="' + cls + '">' + _almEsc(text) + '</p>' : ''; };
-  var extra = a.links.filter(function (l) { return _aeLinked(l.key); }).map(function (l) {
-    return '<p class="ae-card-more">' + _aeLink(l.key, _almEsc(_aeT(l.label))) + '</p>';
+  var extra = a.links.map(function (l, i) {
+    if (l.open && typeof window[l.open] === 'function') {
+      return '<p class="ae-card-more"><a href="#" data-ae-open="' + i + '">' + _almEsc(_aeT(l.label)) + '</a></p>';
+    }
+    return _aeLinked(l.key) ? '<p class="ae-card-more">' + _aeLink(l.key, _almEsc(_aeT(l.label))) + '</p>' : '';
   }).join('');
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + _aeArrivalName(k) + '</h3>' + p('ae-card-fact', a.fact) + p('ae-card-where', a.where) + p('ae-card-note', a.note) + extra;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.arrived = null; _aeRenderCard(); };
+  Array.prototype.forEach.call(card.querySelectorAll ? card.querySelectorAll('[data-ae-open]') : [], function (el) {
+    var l = a.links[+el.getAttribute('data-ae-open')];
+    el.onclick = function (e) { e.preventDefault(); _aeClose(); window[l.open](); };
+  });
 }
 
 // A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
@@ -2720,7 +2749,12 @@ function _aeDrawMini() {
   // The orrery's own picture of the system (its painters), at this size: one drawing for both.
   g.clearRect(0, 0, size, size);
   _orreryPaintOrbits(g, half, half, W, 0, dpr, names, AE_MINI_ORBIT_ALPHA);
-  _orreryPaintSun(g, half, half, W);
+  // The Sun on the minimap's planets' own scale: as much bigger than Jupiter as the marks' gentle log makes it.
+  if (!_ae.miniSun || _ae.miniSun.size !== size) {   // worked out once per size: Jupiter's disc there, off screen
+    var jup = _orreryPaintPlanets(document.createElement('canvas').getContext('2d'), half, half, W, _jdToJulianCentury(jd), 0, dpr, dpr, ['Jupiter'], { plain: true })[0];
+    _ae.miniSun = { size: size, r: jup ? jup.r * dpr * _aeMarkDiscR('sun') / _aeMarkDiscR('jupiter') : 0 };
+  }
+  _orreryPaintSun(g, half, half, W, _ae.miniSun.r);
   var placed = _orreryPaintPlanets(g, half, half, W, _jdToJulianCentury(jd), 0, dpr, dpr, names, { plain: true });
   placed.forEach(function (r) {
     if (r.name.toLowerCase() !== _ae.target) return;
@@ -4438,12 +4472,18 @@ function _aeUpdateMarks(sc) {
   var ringFade = flying ? 1 - _smoothstep(AE_RING_FADE_FROM, 1, _aeFlyArrival(f, performance.now())) : 1;
   var rank = function (b) { return b === _ae.target ? 2 : flying && b === source ? 1 : 0; };
   var order = AE_MARKED.slice().sort(function (a, b) { return rank(b.body) - rank(a.body); });
-  var close = !flying && _aeCloseIn(eye, pxPerRad), group = _aeGroupOf(_ae.target);
+  var close = !flying && _aeCloseIn(eye, pxPerRad), group = _aeGroupOf(_ae.target), wide = _aeWideView();
   for (var i = 0; i < order.length; i++) {
     var body = order[i].body, el = _aeById('ae-bm-' + body);
     if (!el) continue;
     var dest = !!_ae.fly && body === _ae.target, ringed = flying && (dest || body === source);
     if (close && _aeGroupOf(body) !== group) { if (!el.hidden) el.hidden = true; continue; }
+    // The Planets view: the planets named, the probes and the dwarf planets points without names, the moons (on their
+    // planets at that scale) not drawn.
+    var bb = _aePlanetBody(body);
+    if (wide && bb && bb.parent && !ringed) { if (!el.hidden) el.hidden = true; continue; }
+    var quiet = wide && !ringed && !(bb && !bb.parent && !bb.track) && body !== 'earth';
+    if (el.classList) el.classList.toggle('ae-bm-quiet', quiet);
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
     // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).
@@ -4478,10 +4518,20 @@ var AE_MARK_DISC = [2.4, 7], AE_MARK_KM = [1188, 71492], AE_MARK_NAME_PAD = 3;
 var AE_PROBE_DOT_PX = 1.6, AE_PROBE_TICK_PX = 7;
 function _aeMarkDiscR(body) {
   if (_aeIsProbe(body)) return AE_PROBE_DOT_PX;
-  var b = _aePlanetBody(body), km = b ? b.km : body === 'earth' ? AE_EARTH_RADIUS_KM : body === 'moon' ? AE_MOON_RADIUS_KM : 0;
+  var b = _aePlanetBody(body), km = b ? b.km : body === 'earth' ? AE_EARTH_RADIUS_KM : body === 'moon' ? AE_MOON_RADIUS_KM : body === 'sun' ? AE_SUN_RADIUS_KM : 0;
   if (!km) return AE_MARK_DISC[1];
-  var t = _aeClamp(Math.log(km / AE_MARK_KM[0]) / Math.log(AE_MARK_KM[1] / AE_MARK_KM[0]), 0, 1);
+  // The same gentle log for every body: the Sun carries on past Jupiter on it (not clamped to the planets' range).
+  var t = Math.max(0, Math.log(km / AE_MARK_KM[0]) / Math.log(AE_MARK_KM[1] / AE_MARK_KM[0]));
+  if (body !== 'sun') t = Math.min(1, t);
   return AE_MARK_DISC[0] + (AE_MARK_DISC[1] - AE_MARK_DISC[0]) * t;
+}
+// The Sun is painted as a mark while the view's own Sun is smaller than that disc would be (the Planets view, and
+// the Sun from far off); close to it the view's own Sun is the picture.
+function _aeSunAsMark() {
+  if (!_aeWideView() || !_ae.scene || !_ae.gl) return false;
+  var cam = _ae.gl.camera, pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var d = _aeLen(_aeSub(_aeSunShown(_ae.scene), [cam.position.x, cam.position.y, cam.position.z]));
+  return AE_SUN_SHOW_R / Math.max(1e-9, d) * pxPerRad < _aeMarkDiscR('sun');
 }
 function _aePaintMarks(kept) {
   var cv = _aeById('ae-marks-c');
@@ -4492,12 +4542,19 @@ function _aePaintMarks(kept) {
   if (sun && !(isFinite(sun.x) && isFinite(sun.y))) sun = null;
   g.clearRect(0, 0, w, h);
   _ae.marksDrawn = [];   // what is on the screen (CSS px): the tests read it
+  // The Planets view: the Sun as a disc on the planets' scale (the gentle log of true size), not the view's own speck.
+  if (_aeSunAsMark() && sun && typeof _orreryPaintSun === 'function') {
+    var sr = _aeMarkDiscR('sun');
+    _orreryPaintSun(g, sun.x * dpr, sun.y * dpr, 0, sr * dpr);
+    _ae.marksDrawn.push({ body: 'sun', x: sun.x, y: sun.y, r: sr, lead: 'sun', el: '' });
+  }
   kept.forEach(function (m) {
     m.pts.forEach(function (q) { _ae.marksDrawn.push({ body: q.body, x: q.x, y: q.y, r: _aeMarkDiscR(q.body), lead: m.body, el: m.el.id }); });
     if (m.ringed) return;
     m.pts.forEach(function (q) {
       var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
-      if (q.body === 'sun' || !isFinite(x) || !isFinite(y)) return;
+      if (!isFinite(x) || !isFinite(y)) return;
+      if (q.body === 'sun') return;   // the view's own, or painted below in the Planets view
       if (_aeIsProbe(q.body)) {
         g.fillStyle = AE_PROBE_HEX;
         g.beginPath(); g.arc(x, y, r, 0, 2 * Math.PI); g.fill();
@@ -4523,39 +4580,12 @@ function _aePaintMarks(kept) {
     });
   });
 }
-// In the wide views, marks whose rings would overlap become one: the first (the nearest to what you chose, then the
-// planets before the probes) stands for the group, named "Earth +3"; a tap on it comes in close enough to part them.
-var AE_CLUSTER_GAP_PX = 2;
+// Each mark stands for itself (its own disc, its own name). The Planets view had crowds ("Earth +2") for marks whose
+// rings met; it names the planets only now, so there is nothing to gather.
 function _aeClusterMarks(shown) {
-  _ae.clusters = [];
-  var out = [];
-  shown.forEach(function (m) {
-    var lead = _aeWideView() && !m.ringed ? out.filter(function (o) { return o.members && Math.hypot(o.x - m.x, o.y - m.y) < o.r + m.r + AE_CLUSTER_GAP_PX; })[0] : null;
-    if (lead) { lead.members.push(m.body); lead.pts.push(m); m.el.hidden = true; return; }
-    m.members = [m.body];
-    m.pts = [m];
-    out.push(m);
-  });
-  out.forEach(function (m) {
-    var b = m.el.querySelector ? m.el.querySelector('b') : null;
-    if (!b) return;
-    if (m.el._aeName == null) m.el._aeName = b.textContent;
-    var text = m.members.length > 1 ? m.el._aeName + ' +' + (m.members.length - 1) : m.el._aeName;
-    if (b.textContent !== text) { b.textContent = text; m.el._aeNameW = null; }
-    if (m.members.length > 1) _ae.clusters.push({ x: m.x, y: m.y, r: m.r, members: m.members });
-  });
-  return out;
+  shown.forEach(function (m) { m.members = [m.body]; m.pts = [m]; });
+  return shown;
 }
-// Into a cluster: the same look from above, near enough that its members' rings part.
-function _aeOpenCluster(c) {
-  var far = 0;
-  c.members.forEach(function (k) {
-    var q = _aeBodyPos(k);
-    if (q) far = Math.max(far, _aeLen(_aeSub(q, _aeSunShown(_ae.scene))));
-  });
-  _aeFlyTo('sun', _aeFitDist(far * AE_CLUSTER_ZOOM_FILL), { az: _ae.az, el: _ae.el_ });
-}
-var AE_CLUSTER_ZOOM_FILL = 1.35;
 // Each shown mark's name, beside its ring where it covers no other ring and no name already placed: the side away from
 // the middle first, then the other, then above, then below; with nowhere free the ring goes unnamed (a tap still
 // flies there). In a flight the two bodies' names sit over their rings, so the pair's names never meet.
@@ -4588,9 +4618,13 @@ function _aePlaceMarkNames(shown) {
       rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r] });
     });
   });
+  // In the Planets view the Sun's disc is drawn on the planets' scale: no name on it either.
+  var sunAt = _aeSunAsMark() && _ae.scene ? _aeProject(_aeSunShown(_ae.scene)) : null;
+  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr] }); }
   var names = [];
   shown.forEach(function (m, i) {
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
+    if (el.classList && el.classList.contains('ae-bm-quiet')) return;   // a point, no name (the Planets view's probes)
     // Measured once it has been laid out (a hidden name has no width: until then, a generous guess by its letters).
     if (el._aeNameW == null || el._aeNameGuess) {
       var meas = label && label.offsetWidth;
@@ -4626,8 +4660,6 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
-  var cl = (_ae.clusters || []).filter(function (c) { return Math.hypot(c.x - x, c.y - y) <= Math.max(c.r, AE_TAP_RADIUS_PX); })[0];
-  if (cl) { _aeOpenCluster(cl); return; }
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
   // speck on it, and a tap there means the Earth.

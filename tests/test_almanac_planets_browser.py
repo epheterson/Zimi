@@ -159,6 +159,9 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                         assert not meet(m["name"], o["box"]), (m, o)
                         assert not (o["name"] and meet(m["name"], o["name"])), (m, o)
             named = {m["body"] for m in marks if m["name"]}
+            # The Sun is a disc on the planets' own scale, bigger than Jupiter's, not a speck.
+            sizes = pg.evaluate("() => Object.fromEntries(_ae.marksDrawn.map(d => [d.body, d.r]))")
+            assert sizes.get("sun", 0) > sizes.get("jupiter", 99), sizes
             assert {"jupiter", "saturn", "uranus", "neptune"} <= named, named
             radius = {m["body"]: m["box"][2] - m["box"][0] for m in marks}
             assert radius.get("jupiter", 0) > radius.get("mercury", radius.get("mars", 99)) or "mercury" not in radius, radius
@@ -171,13 +174,10 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             # Nothing under the controls at the foot.
             foot = pg.evaluate("document.querySelector('.ae-bottom').getBoundingClientRect().top - _ae.el.getBoundingClientRect().top")
             assert all(m["box"][1] < foot for m in marks), (foot, marks)
-            clusters = pg.evaluate("_ae.clusters")
-            if clusters:
-                dist0 = pg.evaluate("_ae.dist")
-                c = clusters[0]
-                pg.evaluate("(c) => _aeTap(c.x, c.y)", c)
-                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
-                assert pg.evaluate("_ae.dist") < dist0 / 2
+            # The planets only are named out here: no probe, moon or dwarf planet name, no crowd counts.
+            planets = {"mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"}
+            assert named <= planets, named
+            assert not pg.evaluate("Array.from(document.querySelectorAll('#ae-labels .ae-bm b')).some(b => / \\+\\d/.test(b.textContent))")
             # The probes: once out here their table comes; each flying one is named, Webb stands at L2 at its true
             # distance from the Earth (1.5 million km, not squeezed by the drawn scale), and a tap's card says where.
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_aeTracks && !!_aeProbePos.voyager1 && !!_aeProbePos.jwst; }", timeout=60_000, polling=200)
@@ -228,7 +228,7 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'jupiter'; }", timeout=60_000, polling=200)
             row = pg.evaluate("Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.dataset.aeView || b.id)")
             # At Jupiter the row is Jupiter's: its moons and the way back, Go to at the end.
-            assert row[:3] == ["planets", "earth", "jupiter"] and "io" in row and row[-1] == "ae-go-btn", row
+            assert row[:3] == ["sun", "jupiter", "io"] and row[-2:] == ["planets", "ae-go-btn"], row
             pg.click("#ae-go-btn")
             pg.wait_for_function("() => !document.getElementById('ae-go').hidden && document.querySelectorAll('#ae-go [data-ae-go=\"voyager1\"]').length === 1 && document.querySelectorAll('#ae-go [data-ae-go^=\"lm:\"]').length > 20", timeout=60_000)
             groups = pg.evaluate("Array.from(document.querySelectorAll('#ae-go h4')).length")
@@ -534,7 +534,7 @@ def test_the_row_follows_where_the_view_is(served):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
             row = "() => Array.from(document.querySelectorAll('#ae-views .ae-btn[data-ae-view]')).map(b => b.getAttribute('data-ae-view'))"
-            assert pg.evaluate(row) == ["earth", "sats", "moon", "sun", "planets"]
+            assert pg.evaluate(row) == ["sun", "earth", "sats", "moon", "planets"]
             pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('jupiter');")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
             keys = pg.evaluate(row)
@@ -547,6 +547,10 @@ def test_the_row_follows_where_the_view_is(served):
             pg.click("#ae-views [data-ae-view='orbits']")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.gl.planets.io.orbit.visible; }", timeout=10_000, polling=100)
             assert pg.get_attribute("#ae-views [data-ae-view='orbits']", "aria-pressed") == "true"
+            # The Sun: the Earth stands after it, then the place just left (Jupiter), then the Planets.
+            pg.evaluate("_ae.fly = null; _aePreset('sun');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
+            assert pg.evaluate(row) == ["sun", "earth", "jupiter", "planets"], pg.evaluate(row)
             pg.evaluate("_ae.fly = null; _aePreset('moon');")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=30_000, polling=100)
             assert "landings" in pg.evaluate(row)
@@ -583,6 +587,11 @@ def test_a_tap_on_the_craft_in_view_opens_its_card(served):
             assert "Voyager 1" in pg.inner_text("#ae-card h3")
             keys = pg.evaluate("() => [_aeArrivalKey('voyager1'), AE_ARRIVAL_EXTRA.voyager1.key].map(k => !!AlmanacLinks.MAP[k])")
             assert keys == [True, True], keys
+            # Its Golden Record opens the Almanac's own section: the view closes and lands there.
+            pg.evaluate("""() => { window._grOpened = 0; window._grStacks = []; window._scrollToGoldenRecord = function () { window._grOpened++; window._grStacks.push(new Error().stack); }; }""")
+            got = pg.evaluate("() => { try { document.querySelector('#ae-card [data-ae-open]').click(); return window._grOpened; } catch (e) { return String(e); } }")
+            assert got == 1, (got, pg.evaluate("window._grStacks"))
+            pg.wait_for_function("() => !_aeIsOpen", timeout=30_000)
             assert not errors, errors
             ctx.close()
         finally:
