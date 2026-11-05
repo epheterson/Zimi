@@ -10,6 +10,9 @@ const { pathToFileURL } = require('url');
 
 const games = path.join(__dirname, '..', 'zimi', 'builtin', 'games');
 const mod = (p) => import(pathToFileURL(path.join(games, p)).href);
+// The page's globals the city's modules use: ZimiUtil's generator and the shell's hash.
+globalThis.ZimiUtil = globalThis.ZimiUtil || (() => { const b = {}; require('vm').createContext(b); require('vm').runInContext(require('fs').readFileSync(path.join(games, 'util.js'), 'utf8'), b); return b.ZimiUtil; })();
+globalThis.ZimiShell = globalThis.ZimiShell || { hash: require(path.join(games, 'shell.js')).hash };
 
 let failures = 0;
 const check = (ok, label) => { if (!ok) { failures++; console.log('FAIL ' + label); } else console.log('ok   ' + label); };

@@ -33,14 +33,8 @@ export function unpackSim(sd, level, speed) {
   return { sim: sim, map: map };
 }
 
-// A small seeded generator (FNV-1a of the key into mulberry32), so loading needs nothing from the page.
+// The games' one seeded generator (util.js) on the shell's one hash (shell.js) of the key, so a load's scan always
+// rolls the same dice for the same city.
 function rngFor(key) {
-  var h = 2166136261 >>> 0;
-  for (var i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
-  return function () {
-    h = (h + 0x6D2B79F5) >>> 0;
-    var t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return globalThis.ZimiUtil.mulberry32(globalThis.ZimiShell.hash(key));
 }
