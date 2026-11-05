@@ -4121,7 +4121,10 @@ AE_MARKED.push({ body: 'iss', flightOnly: true, name: function () { return _aeT(
 // (craft-<model>-v1.bin, "ZCRF": their materials' colours as a palette, the axis that points stored), all from NASA 3D
 // Resources (free and without copyright) and built by scripts/build_craft_models.py. Each is fetched the first time
 // the view goes to it or comes near, and drawn from AE_CRAFT_MODEL_PX across, its dot giving way to it.
-var AE_CRAFT_PAL = 8;                                       // palette entries a model may use
+var AE_CRAFT_PAL = 8;
+// A gentle fill from the camera beside the Sun's key light: far out the Sun is a bright star, and a probe lit only by it
+// read as a dim grey shape. The station keeps less, so the Earth's shadow still reads as night.
+var AE_CRAFT_FILL = 0.3, AE_ISS_FILL = 0.08;                                       // palette entries a model may use
 var AE_CRAFT_MODEL_PX = [6, 14];                            // the model fades in across these widths, the dot out
 var AE_CRAFT_NEAR_MIN = 0.3 / 1000 / AE_EARTH_RADIUS_KM;    // 30 cm: a craft a few metres across, framed close
 // A probe's table key and its model (one model for both Voyagers and both Pioneers); one without a model stays a dot.
@@ -4148,6 +4151,7 @@ var AE_CRAFT_FRAG = [
   'uniform float lit;',
   'uniform float earthLight;',
   'uniform float fade;',
+  'uniform float fill;',
   'uniform vec3 albedo[' + AE_CRAFT_PAL + '];',
   'uniform vec3 shine[' + AE_CRAFT_PAL + '];',
   'varying vec3 vView;',
@@ -4163,7 +4167,7 @@ var AE_CRAFT_FRAG = [
   '  vec3 h = normalize(sunView + v);',
   '  float s = sp.x * pow(max(dot(n, h), 0.0), sp.y) * lit * step(0.0, dot(n, sunView));',
   '  float e = max(dot(n, nadirView), 0.0) * earthLight;',
-  '  vec3 lin = a * (d + e * vec3(0.55, 0.7, 1.0) + 0.02) + vec3(s);',
+  '  vec3 lin = a * (d + e * vec3(0.55, 0.7, 1.0) + 0.02 + fill * max(dot(n, v), 0.0)) + vec3(s);',   // fill: from the camera, gentle
   '  gl_FragColor = vec4(sqrt(min(lin, vec3(1.0))), fade);',
   '}'
 ].join('\n');
@@ -4221,6 +4225,7 @@ function _aeCraftBuild(S, model) {
   var pal = [];
   for (var i = 0; i < AE_CRAFT_PAL; i++) pal.push(d.look[Math.min(i, d.look.length - 1)]);
   var uni = { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, lit: { value: 1 },
+    fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL },
     earthLight: { value: 0 }, fade: { value: 1 },
     albedo: { value: pal.map(function (l) { return new THREE.Vector3(l[0][0], l[0][1], l[0][2]); }) },
     shine: { value: pal.map(function (l) { return new THREE.Vector3(l[1], l[2], 0); }) } };   // (the build has no Vector2)
@@ -4239,10 +4244,60 @@ function _aeCraftBuild(S, model) {
     pivot.add(arr);
     root.add(pivot);
   }
+  var record = AE_CRAFT_RECORD[model] ? _aeRecordMesh(THREE, d, AE_CRAFT_RECORD[model], uni) : null;
+  if (record) root.add(record);
   root.scale.setScalar(d.metres / 1000 / AE_EARTH_RADIUS_KM);
   root.visible = false;
   S.scene.add(root);
-  return { root: root, pivot: pivot, uni: uni, model: model };
+  return { root: root, pivot: pivot, uni: uni, model: model, record: record };
+}
+// Voyager's Golden Record where it is on the craft: on the face of the bus beside its plate, 30 cm across, facing out
+// (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
+// Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
+var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
+var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_RECORD_VERT = [
+  'varying vec2 vUv;',
+  'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
+].join('\n');
+var AE_RECORD_FRAG = [
+  'uniform sampler2D map; uniform float mapped; uniform float lit; uniform float fill; uniform float fade;',
+  'varying vec2 vUv;',
+  'void main() {',
+  '  vec2 q = vUv - 0.5;',
+  '  if (dot(q, q) > ' + (AE_RECORD_IMG_R * AE_RECORD_IMG_R).toFixed(4) + ') discard;',
+  '  vec3 c = mapped > 0.5 ? texture2D(map, vUv).rgb : vec3(0.78, 0.58, 0.24);',   // gold until its picture is in
+  '  gl_FragColor = vec4(min(c * 1.3, vec3(1.0)) * min(1.0, 0.35 + 0.65 * lit + fill), fade);',
+  '}'
+].join('\n');
+function _aeRecordMesh(THREE, d, rec, craftUni) {
+  var u = 1 / d.metres, half = rec.r / AE_RECORD_IMG_R * 0.5 * u, c = rec.at.map(function (x) { return x * u; });
+  var gg = new THREE.BufferGeometry();
+  gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    c[0], c[1] - half, c[2] - half, c[0], c[1] + half, c[2] - half, c[0], c[1] + half, c[2] + half, c[0], c[1] - half, c[2] + half]), 3));
+  gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  gg.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
+  var uni = { map: { value: null }, mapped: { value: 0 }, lit: craftUni.lit, fill: craftUni.fill, fade: craftUni.fade };
+  var mesh = new THREE.Mesh(gg, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_RECORD_VERT, fragmentShader: AE_RECORD_FRAG, transparent: true, side: THREE.DoubleSide }));
+  mesh.frustumCulled = false;
+  mesh.userData.at = c; mesh.userData.metres = rec.r;
+  _aeLoadTexture(THREE, AE_RECORD_IMG).then(function (tx) { uni.map.value = tx; uni.mapped.value = 1; if (_ae) { _ae.dirty = true; _aeKick(); } }).catch(function () {});
+  return mesh;
+}
+// A tap on Voyager's record (drawn as itself, close up): the Almanac's Golden Record. True when it took the tap.
+var AE_RECORD_TAP_PX = 22;
+function _aeRecordTap(x, y) {
+  var S = _ae.gl, I = S && S.crafts && S.crafts[_ae.target];
+  if (!I || !I.record || !I.root.visible || typeof window._scrollToGoldenRecord !== 'function') return false;
+  var c = I.record.userData.at, w = new S.THREE.Vector3(c[0], c[1], c[2]).applyMatrix4(I.root.matrixWorld);
+  var p = [w.x, w.y, w.z], s = _aeProject(p);
+  if (!s) return false;
+  var cam = S.camera, pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var rPx = I.record.userData.metres / 1000 / AE_EARTH_RADIUS_KM / Math.max(1e-12, _aeLen(_aeSub(p, [cam.position.x, cam.position.y, cam.position.z]))) * pxPerRad;
+  if (Math.hypot(s.x - x, s.y - y) > Math.max(rPx, AE_RECORD_TAP_PX)) return false;
+  _aeClose();
+  window._scrollToGoldenRecord();
+  return true;
 }
 // A model's light: the Sun (dark in the Earth's shadow), and the Earth's day side below when it flies over it (nadir),
 // both turned into the camera's frame for the shader.
@@ -4711,6 +4766,7 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
+  if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
   // speck on it, and a tap there means the Earth.
