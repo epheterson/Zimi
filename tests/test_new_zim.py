@@ -287,6 +287,13 @@ def _own_rebuild(tmp_path, monkeypatch, version_then, src_then, version_now, src
     monkeypatch.setattr(ownzims, "is_own_path", lambda p: os.path.basename(p).startswith("zimi_games_"))
     monkeypatch.setattr(server, "ZIMI_VERSION", version_then)
     server.load_cache(force=True)
+    # A deploy writes a new file while nothing holds the old one; here the first scan pooled the old file's handle
+    # (_archive_pool), and Windows refuses to rename a file that is still open, so it goes first.
+    with server._archive_lock:
+        server._archive_pool.clear()
+    import gc
+
+    gc.collect()
     os.rename(str(old), str(zdir / "zimi_games_2026-11a.zim"))
     os.rename(str(zdir / "zimi_games_2026-10.zim.source"), str(zdir / "zimi_games_2026-11a.zim.source"))
     (zdir / "zimi_games_2026-11a.zim.source").write_text(src_now, encoding="ascii")
