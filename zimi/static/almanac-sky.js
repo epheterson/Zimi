@@ -1402,7 +1402,8 @@ function _skyLuma(c) { return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 
 function _skyPxPerDegY(s) { return (s.H * SKY_HORIZON_Y - s.H * SKY_ZENITH_Y) / 90; }
 
 // Keep the sky's strip above the horizon, mirrored, and the colours read from it.
-function _skyCaptureLight(s, src) {
+var SKY_LIGHT_POLL_MS = 32;          // how soon a read on its way is looked for again (about two frames)
+function _skyCaptureLight(s, src, gpu) {
   var yh = Math.round(s.H * SKY_HORIZON_Y), band = s.H - yh, d = SKY_REFLECT_DOWN;
   var cw = Math.max(1, Math.ceil(s.W / d)), ch = Math.max(1, Math.ceil(band / d));
   var c = s.reflect || (s.reflect = document.createElement('canvas'));
@@ -1410,24 +1411,45 @@ function _skyCaptureLight(s, src) {
   var g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
   g.setTransform(1, 0, 0, -1, 0, ch);
-  g.drawImage(src, 0, yh - band, s.W, band, 0, 0, cw, ch);
+  g.drawImage(src, 0, yh - band, s.W, band, 0, 0, cw, ch);   // a copy canvas to canvas: nothing comes back to the page
   g.setTransform(1, 0, 0, 1, 0, 0);
-  // The ground's colours are read back from the GPU, which stops everything until it answers: only when the light has
-  // changed (the Sun or Moon's height, the Moon's phase, the dial), not on each frame of the Moon's glide.
+  // The ground's colours are the sky's as drawn, read back only when the light has changed (the Sun or Moon's height,
+  // the Moon's phase, the dial), and never by waiting: the GPU sky shrinks the strip and hands the few bytes over on a
+  // later frame (_sgReadStripAsync). Until then, and under the Canvas 2D sky (painted from the same tones), the
+  // ground takes the horizon's tone (_skyGroundLight), so no frame stops for a read.
   var lightKey = Math.round(s.eph.sunGeoAlt * SKY_LIGHT_KEY_PER_DEG) + ':' + Math.round(s.eph.moon.altitude) + ':' + s.moonData.phase.illumination + ':' + _skySetting('dial');
-  if (s.ground && s.lightKey === lightKey) return;
-  s.lightKey = lightKey;
-  var gw = SKY_LIGHT_GRID[0], gh = SKY_LIGHT_GRID[1];
-  var t = s.lightGrid || (s.lightGrid = document.createElement('canvas'));
-  if (t.width !== gw) { t.width = gw; t.height = gh; }
-  var tg = t.getContext('2d', { willReadFrequently: true });
-  tg.imageSmoothingQuality = 'high';
-  tg.drawImage(c, 0, 0, cw, ch, 0, 0, gw, gh);
-  try {
-    var px = tg.getImageData(0, 0, gw, gh).data, hor = [0, 0, 0], avg = [0, 0, 0];
-    for (var i = 0; i < gw * gh; i++) for (var k = 0; k < 3; k++) { avg[k] += px[4 * i + k] / (gw * gh); if (i < gw) hor[k] += px[4 * i + k] / gw; }
-    s.ground = { hor: hor, avg: avg };
-  } catch (err) { s.ground = null; }
+  if (s.lightKey === lightKey) return;
+  if (!gpu) { s.lightKey = lightKey; s.ground = null; return; }
+  if (_sgReadStripAsync([0, yh - band, s.W, band], SKY_LIGHT_GRID[0], SKY_LIGHT_GRID[1], lightKey)) {
+    s.lightKey = lightKey;
+    _skyLightPollSoon();
+  } else if (_sgReadStripPending()) _skyLightPollSoon();   // asked again once the read on its way has come
+}
+// The read's answer, on a later task: the ground's colours, then one repaint of the picture with them. It is looked for
+// until it comes whatever happened meanwhile (a new sky, a closed Almanac), so the GPU sky is never left holding a read
+// that blocks the next. An answer for an older light is still the nearest there is; the newer light is asked for next.
+var _skyLightPolling = false;
+function _skyLightPollSoon() {
+  if (_skyLightPolling) return;
+  _skyLightPolling = true;
+  setTimeout(function () {
+    _skyLightPolling = false;
+    if (typeof _sgReadStripPoll !== 'function') return;
+    var got = _sgReadStripPoll();
+    if (!got) { if (_sgReadStripPending()) _skyLightPollSoon(); return; }
+    var s = _skyState;
+    if (!s) return;
+    s.ground = _skyGroundColours(got.px, SKY_LIGHT_GRID[0], SKY_LIGHT_GRID[1]);
+    if (s.lightKey !== got.tag) s.lightKey = null;
+    s.baseDirty = true;
+    _skyKick();
+  }, SKY_LIGHT_POLL_MS);
+}
+// The strip's average colour, and its bottom row's (at the horizon), from its pixels (RGBA, row 0 at the horizon).
+function _skyGroundColours(px, gw, gh) {
+  var hor = [0, 0, 0], avg = [0, 0, 0];
+  for (var i = 0; i < gw * gh; i++) for (var k = 0; k < 3; k++) { avg[k] += px[4 * i + k] / (gw * gh); if (i < gw) hor[k] += px[4 * i + k] / gw; }
+  return { hor: hor, avg: avg };
 }
 // The ground's light: the sky's colours, the Sun's own once it is up, the
 // Moon's when it is up in a dark sky; each channel 0 to 1.
@@ -2430,7 +2452,7 @@ function _skyPaintBase(s, ts) {
   s.moonDisc = _skyMoonDisc(s);
   var gl = _skyGLSky(s), M = _sgHorizonMatrix(e.P, e.lst, s.lat), beach = _skySetting('skin') === 'beach' && !s.lens;
   if (gl) ctx.drawImage(gl, 0, 0); else if (s.lens) _skyPaintSkyLens(ctx, s); else _skyPaintSky(ctx, s);
-  if (beach) _skyCaptureLight(s, ctx.canvas);   // the sea mirrors the sky as drawn, before the stars and bodies go on it
+  if (beach) _skyCaptureLight(s, ctx.canvas, !!gl);   // the sea mirrors the sky as drawn, before the stars and bodies go on it
   _skyPaintAurora(ctx, s);
   if (_skyFiguresWanted(s)) _skyLoadConstellations(_skyKickDirty);
   _skyEnsureStarData(_skyKickDirty);

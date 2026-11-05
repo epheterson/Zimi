@@ -668,6 +668,9 @@ function _sgDispose(sg) {
     var gl = sg.gl, t = [sg.trans, sg.multi, sg.viewS, sg.viewM], i;
     for (i = 0; i < t.length; i++) if (t[i]) { gl.deleteTexture(t[i].tex); gl.deleteFramebuffer(t[i].fb); }
     if (sg.mwTex) gl.deleteTexture(sg.mwTex);
+    [sg.readMid, sg.readGrid].forEach(function (t) { if (t) { gl.deleteRenderbuffer(t.rb); gl.deleteFramebuffer(t.fb); } });
+    if (sg.readBuf) gl.deleteBuffer(sg.readBuf);
+    if (sg.read) gl.deleteSync(sg.read.sync);
     for (i = 0; i < (sg.buffers || []).length; i++) gl.deleteBuffer(sg.buffers[i]);
     if (sg.vao) gl.deleteVertexArray(sg.vao);
     if (sg.vaoStars) gl.deleteVertexArray(sg.vaoStars);
@@ -859,6 +862,68 @@ function _sgDraw(p) {
   }
   return sg.canvas;
 }
+// The colours of a strip of the sky as drawn, read back without stopping the page. readPixels into a buffer on the
+// GPU, a fence after it, and the bytes taken on a later frame once the fence has passed: the page never waits for the
+// GPU to finish (a plain readPixels or getImageData did, up to seconds on a slow phone or a software GPU). The strip is
+// shrunk on the GPU first, by two linear blits (to a sixth, then to the grid), so what comes back is a few bytes.
+// rect is in canvas pixels, y down: the strip's left, top, width, height. Row 0 of the answer is the strip's bottom.
+var SG_READ_STEP = 6;              // the first blit's shrink (the sea's own blur)
+function _sgReadTarget(gl, t, w, h) {
+  if (t && t.w === w && t.h === h) return t;
+  if (t) { gl.deleteRenderbuffer(t.rb); gl.deleteFramebuffer(t.fb); }
+  var rb = gl.createRenderbuffer(), fb = gl.createFramebuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb);
+  return { rb: rb, fb: fb, w: w, h: h };
+}
+// Ask for the strip of what was just drawn (call in the same task as _sgDraw: the canvas is cleared once shown).
+// False when a read is already on its way, or the GPU sky is not there.
+function _sgReadStripAsync(rect, gw, gh, tag) {
+  var sg = _sg;
+  if (!sg || !sg.ready || sg.read) return false;
+  var gl = sg.gl, x0 = Math.max(0, Math.round(rect[0])), y1 = sg.H - Math.round(rect[1]), y0 = Math.max(0, y1 - Math.round(rect[3]));
+  var w = Math.max(1, Math.min(sg.W - x0, Math.round(rect[2]))), mw = Math.max(gw, Math.ceil(w / SG_READ_STEP)), mh = Math.max(gh, Math.ceil((y1 - y0) / SG_READ_STEP));
+  sg.readMid = _sgReadTarget(gl, sg.readMid, mw, mh);
+  sg.readGrid = _sgReadTarget(gl, sg.readGrid, gw, gh);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, sg.readMid.fb);
+  gl.blitFramebuffer(x0, y0, x0 + w, y1, 0, 0, mw, mh, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, sg.readMid.fb);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, sg.readGrid.fb);
+  gl.blitFramebuffer(0, 0, mw, mh, 0, 0, gw, gh, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, sg.readGrid.fb);
+  if (!sg.readBuf) sg.readBuf = gl.createBuffer();
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, sg.readBuf);
+  gl.bufferData(gl.PIXEL_PACK_BUFFER, gw * gh * 4, gl.STREAM_READ);
+  gl.readPixels(0, 0, gw, gh, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  sg.read = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), n: gw * gh * 4, tag: tag };
+  gl.flush();
+  return true;
+}
+// The bytes of the last read once the GPU has them ({ px, tag }), else null; never waits.
+function _sgReadStripPoll() {
+  var sg = _sg, r = sg && sg.read;
+  if (!r) return null;
+  var gl = sg.gl, st = gl.clientWaitSync(r.sync, 0, 0);
+  if (st !== gl.ALREADY_SIGNALED && st !== gl.CONDITION_SATISFIED) {
+    if (st === gl.WAIT_FAILED) { gl.deleteSync(r.sync); sg.read = null; }
+    return null;
+  }
+  gl.deleteSync(r.sync);
+  sg.read = null;
+  var px = new Uint8Array(r.n);
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, sg.readBuf);
+  gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px);
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  return { px: px, tag: r.tag };
+}
+// A read on its way, whose answer a later frame takes.
+function _sgReadStripPending() { return !!(_sg && _sg.read); }
+
 var SG_MW_LUM = 0.008;          // cd/m2 at a pixel of the panorama's full brightness (the galactic bulge)
 var SG_MOON_GAIN = 0.25;        // what the tables' Moon needs to give the sky the brightness a full Moon measures
 
