@@ -122,6 +122,9 @@ body:has(> .ar-bar) .ar-sheet { top: var(--bar-h); }
 /* No pebble on a sheet: the bar above it already carries it, and two on one screen is wallpaper. A sheet on a page with no bar (the shelf's) keeps it, 20px. */
 body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inline-block; width: 20px; height: 20px; margin: -3px 8px 0 0; vertical-align: middle; background: url(mark.svg) center / contain no-repeat; }
 .ar-sheet-card > p { margin: 0 0 var(--sp-3); color: var(--ink2); }
+/* A sheet that only closes: its title and a quiet × share the first row. */
+.ar-sheet-head { margin: calc(-1 * var(--sp-2)) 0 var(--sp-2); }
+.ar-sheet-head h2 { margin: 0; }
 /* One action anatomy on every sheet: a single 44px row across the card. The quiet actions (ghost, a third) sit left and the
    primary (amber, two thirds) last; a row with no primary shares the width equally. */
 .ar-sheet-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
@@ -248,6 +251,9 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
 .sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink2); }
 .sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the accent fill is under 4.5:1 */
+/* All types is the state where nothing is chosen: it stays quiet when pressed, and only a chosen type fills with the accent. */
+.sh-chip.sh-chip-all[aria-pressed="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.sh-chip.sh-chip-all[aria-pressed="true"] .sh-chip-n { color: var(--ink2); }
 .sh-count { margin-inline-start: 8px; letter-spacing: 0; }
 .sh-rail-head, .sh-chip-recent { display: none; }
 /* The rooms lead the row; a thin line, then the types. */
@@ -305,17 +311,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-top { display: flex; flex-wrap: wrap; align-items: stretch; gap: 18px; margin-bottom: 26px; }
 .sh-top[hidden] { display: none; }
 .sh-top .ar-section { margin: 0; }
-.ar-today { flex: 1 1 340px; max-width: 460px; display: flex; flex-direction: column; }
-.ar-today[hidden], .ar-continue[hidden] { display: none; }
-.ar-today .ar-games { display: block; flex: 1; }
-.ar-today .ar-game { flex-direction: row; align-items: stretch; height: 100%; }
-.ar-today .ar-game-art { flex: 0 0 44%; width: 44%; height: auto; aspect-ratio: auto; min-height: 112px; }
-.ar-today .ar-game-text { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 14px; }
-.ar-today .ar-game-text strong { font-size: var(--fs-title); }
-.ar-today > h2 { color: var(--accent); }
-.ar-today .ar-game-text span { -webkit-line-clamp: 4; color: var(--ink); font-size: 13px; }
-.ar-today .ar-game-text::after { content: var(--play-label, "Play"); align-self: flex-start; margin-top: 8px; padding: 5px 16px; border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-small); font-weight: 650; }
-@media (max-width: 699px) { .ar-today { max-width: none; } }
+.ar-continue[hidden] { display: none; }
 /* Daily: today's edition of each game, one row you scroll sideways only; the ones done carry a tick and sit at the end. */
 .ar-daily { flex: 1 1 100%; min-width: 0; }
 .ar-daily[hidden] { display: none; }
@@ -326,6 +322,11 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-daily .ar-game { flex: 0 0 132px; position: relative; scroll-snap-align: start; }
 .ar-daily .ar-game-text span { display: none; }
 .ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
+/* The day's game leads the row: twice a daily tile's width, its line under the name, a small tag over it. */
+.ar-daily .ar-game.ar-feature { flex-basis: 274px; }
+.ar-daily .ar-games:has(.ar-feature) { align-items: flex-start; }   /* the small tiles keep their own height beside it */
+.ar-daily .ar-game.ar-feature .ar-game-text span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--ink2); font-size: var(--fs-small); }
+.ar-feature-tag { display: block; margin-bottom: 2px; color: var(--accent); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; }
 .ar-done-mark { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; line-height: 1; }
 [data-view="index"] .ar-daily .ar-games { display: flex; }
 [data-view="index"] .ar-daily .ar-game { flex: 0 0 132px; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
@@ -350,12 +351,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 [data-view="index"] .ar-game-text span { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 [data-view="index"] .ar-game::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 4px 0 2px; border-top: 2px solid var(--ink3); border-right: 2px solid var(--ink3); transform: rotate(45deg); }
 /* The day's game, under the tabs on a phone: one row, on All only. */
-[data-view="index"] .ar-today { max-width: none; margin-bottom: 14px; }
-[data-view="index"] .ar-today .ar-game { height: auto; align-items: center; }
-[data-view="index"] .ar-today .ar-game-art { flex-basis: 96px; width: 96px; min-height: 0; height: 54px; }
-[data-view="index"] .ar-today .ar-game-text { justify-content: center; padding: 0; }
-[data-view="index"] .ar-today .ar-game-text span { display: block; }
-[data-view="index"] .ar-today .ar-game-text::after { display: none; }
 @media (min-width: 900px) {
   [data-view="index"] .sh-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
   [data-view="index"] .sh-rail { position: sticky; top: 16px; }
@@ -367,13 +362,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
   [data-view="index"] .sh-chip-sep { width: auto; height: 1px; margin: 10px 12px; }
   [data-view="index"] .sh-rail-head { display: block; margin: 14px 12px 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
   [data-view="index"] .ar-games { grid-template-columns: 1fr 1fr; }
-  [data-view="index"] .ar-today { margin: 0; display: flex !important; }
-  [data-view="index"] .ar-today[hidden] { display: none !important; }
-  [data-view="index"] .ar-today .ar-game { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
-  [data-view="index"] .ar-today .ar-game::after { display: none; }
-  [data-view="index"] .ar-today .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
-  [data-view="index"] .ar-today .ar-game-text { padding: 10px 12px 12px; }
-  [data-view="index"] .ar-today .ar-game-text span { white-space: normal; display: -webkit-box; }
 }
 .ar-foot { margin-top: 32px; color: var(--ink2); font-size: var(--fs-small); }
 /* The credits: closed until asked for, the long list of licences out of the way of the games. */
@@ -396,7 +384,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-meta .sh-m-age { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 [data-sort="oldest"] .sh-m-age, [data-sort="quick"] .sh-m-length { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 [data-sort="region"] .sh-m-region, [data-sort="players"] .sh-m-players { display: none; }
-.ar-today .sh-meta { display: flex; }
 
 /* Groups of an order: a header with a note, and for Oldest first a spine with a dot per era; for By region the world with the region lit. */
 .sh-group h2 { position: relative; display: flex; align-items: center; gap: 8px; }
@@ -439,8 +426,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
 .ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ar-continue h2 { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--ink2); }
-.ar-continue.ar-table-idle h2 { font-weight: 500; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
 @media (max-width: 699px) {
@@ -695,6 +680,9 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-board-val { font-variant-numeric: tabular-nums; font-weight: 600; }
 .gs-board-row.gs-you { color: var(--accent); }
+.gs-you-mark { font-weight: 500; }
+/* A daily left unsolved or unfinished: the quiet row, never as loud as a time. */
+.gs-board-row.gs-board-quiet .gs-board-val { font-weight: 400; color: var(--ink2); }
 .gs-board-row.gs-house { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.08em; color: var(--ink2); }
 .gs-board-note { margin: 0 0 var(--sp-3); color: var(--ink2); font-size: var(--fs-small); }
 .gs-board-open { display: block; margin: 4px auto 0; }

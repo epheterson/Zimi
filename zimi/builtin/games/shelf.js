@@ -418,7 +418,7 @@
   function buildChips() {
     nav.textContent = '';
     chips = {};
-    chip('all', T('shelf.chip.allTypes'), total);   // every type (the room pill says which room)
+    chip('all', T('shelf.chip.allTypes'), total, 'sh-chip-all');   // every type (the room pill says which room); quiet, being no choice
     recentChip = chip('recent', T('shelf.chip.recent'), tableCount, 'sh-chip-recent');
     recentChip.hidden = !tableCount;
     nav.setAttribute('aria-label', SORT_HEAD[sortedNow()] || T('shelf.head.sections'));
@@ -452,12 +452,6 @@
   }
   function decorateAll() {
     sections.forEach(function (s) { s.tiles.forEach(function (t) { decorate(t, tilePath.get(t)); }); });
-    decorateToday();
-  }
-  // Game of the day is a copy of a tile (a Tatham puzzle borrows the puzzles tile's), made after the page is up.
-  function decorateToday() {
-    var t = today(), a = t && t.querySelector('a.ar-game');
-    if (a) decorate(a, a.getAttribute('href'));
   }
 
   // ── Layout: the sections as written, or the groups of an order ───────────
@@ -540,10 +534,9 @@
   }
 
   // ── Layout and filtering ─────────────────────────────────────────────────
-  function today() { return doc.querySelector('.ar-today'); }
   function daily() { return doc.querySelector('.ar-daily'); }
 
-  // Continue and Game of the day come from recent.js, after the page is up.
+  // Continue and the Daily row (Game of the day leads it) come from recent.js, after the page is up.
   // The order and the view switch share the chips' row, so no row is spent on them. Index on a wide screen has the
   // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well.
   var wide = root.matchMedia('(min-width: 900px)');
@@ -553,14 +546,8 @@
   }
   if (wide.addEventListener) wide.addEventListener('change', placeTools);
   function place() {
-    var c = doc.querySelector('.ar-continue'), t = today();
+    var c = doc.querySelector('.ar-continue');
     if (c && c.parentNode !== top) top.appendChild(c);
-    if (t) {
-      // The day's art fills its box, cropped, whatever shape the box is.
-      var art = t.querySelector('svg.ar-game-art');
-      if (art) art.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-      if (state.view === 'index') rail.appendChild(t); else top.appendChild(t);
-    }
     var dl = daily();
     if (dl && dl.parentNode !== top) top.appendChild(dl);
     tableCount = c && !c.classList.contains('ar-table-idle') ? c.querySelectorAll('.ar-box').length : 0;
@@ -606,11 +593,10 @@
       if (inSec) shown += n;
     });
     if (chips.all) chips.all.n.textContent = String(roomAll);
-    var c = doc.querySelector('.ar-continue'), t = today();
-    // The feed shows the table and the day's game on All only; Index keeps a resume row on every tab.
+    var c = doc.querySelector('.ar-continue');
+    // The feed shows the table and the Daily row on All only; Index keeps them on every tab.
     var feedAll = state.sec === 'all';
     if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll);
-    if (t) t.hidden = searching || (state.view === 'lobby' && !feedAll);
     var dl = daily();
     if (dl) {
       var inside = 0, done = 0;
@@ -623,7 +609,7 @@
     }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;
-    top.hidden = [c, t, dl].every(function (x) { return !x || x.hidden; });
+    top.hidden = [c, dl].every(function (x) { return !x || x.hidden; });
   }
 
   function setView(v) {
@@ -668,7 +654,7 @@
       (bar || input).focus();
     }
   });
-  doc.addEventListener('zimi-shelf-today', function () { place(); decorateToday(); apply(); });
+  doc.addEventListener('zimi-shelf-today', function () { place(); apply(); });
 
   buildChips();
   place();

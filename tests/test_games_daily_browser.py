@@ -83,8 +83,9 @@ def _daily_hrefs(ctx, site):
     page = ctx.new_page()
     page.goto(site + "index.html")
     page.wait_for_selector(".ar-daily a.ar-game")
+    # Every tile with a daily (Game of the day leads the row; it is a daily only when its game has one).
     hrefs = page.eval_on_selector_all(
-        ".ar-daily a.ar-game", "els => els.map(e => e.getAttribute('href'))"
+        ".ar-daily a.ar-game:not(.ar-feature), .ar-daily a.ar-feature[href*='?daily=']", "els => els.map(e => e.getAttribute('href'))"
     )
     page.close()
     return hrefs
@@ -180,7 +181,7 @@ def test_off_zimi_the_devices_own_day_is_the_daily(site, browser):
         device_day = page.evaluate(
             "() => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }"
         )
-        href = page.get_attribute(".ar-daily a.ar-game", "href")
+        href = page.get_attribute(".ar-daily a.ar-game:not(.ar-feature)", "href")
         assert href.endswith("?daily=" + device_day)
         ctx.close()
     finally:
@@ -219,7 +220,7 @@ def test_a_finished_daily_is_ticked_on_the_shelf_and_its_end_sheet_shares_no_ans
         ".ar-daily a.ar-done", "els => els.map(e => e.getAttribute('href'))"
     )
     assert done == ["sudoku.html?daily=" + SERVER_DAY]
-    assert "1 of" in page.inner_text(".ar-daily-line")
+    assert "Done today: 1" in page.inner_text(".ar-daily-line")
     _shot(page, "daily-shelf.png")
     ctx.close()
 

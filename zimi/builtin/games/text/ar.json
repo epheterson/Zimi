@@ -5399,7 +5399,7 @@
  "shelf.chip.recent": "الأخيرة",
  "shelf.credits": "الشكر والتقدير",
  "shelf.daily": "يوميًا",
- "shelf.daily.done": "أُنجز اليوم: {n} من {total}",
+ "shelf.daily.done": "أُنجز اليوم: {n}",
  "shelf.era.ancient": "قديمة",
  "shelf.era.ancient.note": "قبل 500 م",
  "shelf.era.medieval": "العصور الوسطى وما بعدها",
@@ -6357,7 +6357,7 @@
  "board.open": "لوحة المتصدرين",
  "board.today": "تحدي اليوم",
  "board.allTime": "أفضل النتائج",
- "board.noneToday": "لم يلعب أحد على هذا الخادم تحدي اليوم بعد.",
+ "board.noneToday": "لم يلعب أحد هنا تحدي اليوم بعد.",
  "board.house": "نتائج المنزل تملأ الجدول حتى يتفوق عليها أحد.",
  "board.nameFirst": "اختر اسمك في صفحة الإحصاءات لتظهر هنا.",
  "board.showMe": "أظهرني في لوحات المتصدرين على هذا الخادم",
@@ -6370,5 +6370,6 @@
  "board.r.over": "انتهى",
  "board.r.lose": "لم يُحل",
  "stats.setName": "تعيين",
- "stats.noName": "اختر الاسم الذي تلعب به هنا"
+ "stats.noName": "اسمك في لوحات المتصدرين:",
+ "board.youMark": "(أنت)"
 }

@@ -5115,7 +5115,7 @@
  "shelf.chip.recent": "Récents",
  "shelf.credits": "Crédits",
  "shelf.daily": "Chaque jour",
- "shelf.daily.done": "Faits aujourd'hui : {n} sur {total}",
+ "shelf.daily.done": "Faits aujourd'hui : {n}",
  "shelf.era.ancient": "Antiquité",
  "shelf.era.ancient.note": "avant l’an 500",
  "shelf.era.medieval": "Moyen Âge et après",
@@ -6019,7 +6019,7 @@
  "board.open": "Classement",
  "board.today": "Le défi du jour",
  "board.allTime": "Meilleurs scores",
- "board.noneToday": "Personne sur ce serveur n'a encore joué celui du jour.",
+ "board.noneToday": "Personne ici n'a encore joué le défi du jour.",
  "board.house": "Les scores maison remplissent le tableau jusqu'à ce que quelqu'un les batte.",
  "board.nameFirst": "Choisissez votre nom dans les statistiques pour apparaître ici.",
  "board.showMe": "M'afficher dans les classements de ce serveur",
@@ -6032,5 +6032,6 @@
  "board.r.over": "Terminé",
  "board.r.lose": "Non résolu",
  "stats.setName": "Choisir",
- "stats.noName": "Choisissez le nom sous lequel vous jouez ici"
+ "stats.noName": "Votre nom dans les classements :",
+ "board.youMark": "(vous)"
 }

@@ -5117,7 +5117,7 @@
  "shelf.chip.recent": "אחרונים",
  "shelf.credits": "קרדיטים",
  "shelf.daily": "יומי",
- "shelf.daily.done": "הושלמו היום: {n} מתוך {total}",
+ "shelf.daily.done": "הושלמו היום: {n}",
  "shelf.era.ancient": "עתיק",
  "shelf.era.ancient.note": "לפני שנת 500 לספירה",
  "shelf.era.medieval": "ימי הביניים ואחריהם",
@@ -6021,7 +6021,7 @@
  "board.open": "טבלת שיאים",
  "board.today": "האתגר של היום",
  "board.allTime": "התוצאות הטובות ביותר",
- "board.noneToday": "אף אחד בשרת עוד לא שיחק את האתגר של היום.",
+ "board.noneToday": "אף אחד כאן עוד לא שיחק את האתגר של היום.",
  "board.house": "שיאי הבית ממלאים את הטבלה עד שמישהו שובר אותם.",
  "board.nameFirst": "בחר שם בעמוד הסטטיסטיקה כדי להופיע כאן.",
  "board.showMe": "הצג אותי בטבלאות השיאים של השרת",
@@ -6034,5 +6034,6 @@
  "board.r.over": "הסתיים",
  "board.r.lose": "לא נפתר",
  "stats.setName": "הגדרה",
- "stats.noName": "בחר את השם שבו תשחק כאן"
+ "stats.noName": "השם שלך בטבלאות המובילים:",
+ "board.youMark": "(את/ה)"
 }

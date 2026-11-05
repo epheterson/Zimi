@@ -665,10 +665,20 @@
       if (e.shiftKey && (d.activeElement === first || d.activeElement === card)) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && d.activeElement === last) { e.preventDefault(); first.focus(); }
     });
   }
+  // A sheet whose only action is Close (its choices apply as they are made) closes from a quiet × beside its title instead
+  // of a full-width button: the one loud thing on such a sheet would otherwise be the way out.
+  function closeOnly(actions) {
+    return !!actions && actions.length === 1 && !actions[0].onclick && actions[0].label === T('shell.close');
+  }
   Shell.sheet = function (opts) {
-    var prev = d.activeElement, el, card, api = { el: null, close: null };
+    var prev = d.activeElement, el, card, api = { el: null, close: null }, quietClose = closeOnly(opts.actions);
     card = h('div', { class: 'ar-sheet-card', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title, tabindex: '-1' });
-    card.appendChild(h('h2', { text: opts.title }));
+    var title = h('h2', { text: opts.title });
+    if (quietClose) {
+      var x = h('button', { class: 'gs-x', type: 'button', 'aria-label': T('shell.close') });
+      x.addEventListener('click', function () { api.close(); });
+      card.appendChild(h('div', { class: 'gs-head ar-sheet-head' }, [title, x]));
+    } else card.appendChild(title);
     if (opts.text) card.appendChild(h('p', { class: 'gs-text', text: opts.text }));
     (opts.body || []).forEach(function (n) { card.appendChild(n); });
     api.close = function () {
@@ -677,7 +687,7 @@
       if (prev && prev.focus && d.contains(prev)) try { prev.focus(); } catch (e) { /* gone */ }
       if (opts.onClose) opts.onClose();
     };
-    if (opts.actions && opts.actions.length) {
+    if (opts.actions && opts.actions.length && !quietClose) {
       var row = h('div', { class: 'ar-sheet-actions' });
       opts.actions.forEach(function (a) {
         var b = h('button', { class: 'ar-btn' + (a.primary ? ' gs-primary' : ''), type: 'button', text: a.label });
@@ -953,9 +963,11 @@
     var sec = Math.round(ms / 1000), m = Math.floor(sec / 60), s2 = sec % 60;
     return (m >= 60 ? Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') : String(m)) + ':' + String(s2).padStart(2, '0');
   }
-  function boardRow(i, name, value, cls, glyph) {
-    return h('li', { class: 'gs-board-row' + (cls ? ' ' + cls : '') }, [h('span', { class: 'gs-board-rank', text: String(i + 1) }),
-      h('span', { class: 'gs-board-name' }, [glyph ? h('span', { 'aria-hidden': 'true', text: glyph + ' ' }) : null, name]), h('span', { class: 'gs-board-val', text: value })]);
+  // A row: rank, name and value. The viewer's own row says so in words as well as colour; a daily left unsolved or unfinished is
+  // the quiet row, never as loud as a time.
+  function boardRow(i, name, value, cls, you) {
+    return h('li', { class: 'gs-board-row' + (cls ? ' ' + cls : '') + (you ? ' gs-you' : '') }, [h('span', { class: 'gs-board-rank', text: String(i + 1) }),
+      h('span', { class: 'gs-board-name' }, [name, you ? h('span', { class: 'gs-you-mark', text: ' ' + T('board.youMark') }) : null]), h('span', { class: 'gs-board-val', text: value })]);
   }
   function boardList(rows) { return h('ol', { class: 'gs-board' }, rows); }
   function boardBody(page, j, day) {
@@ -963,14 +975,14 @@
     if (day && DAILY[page]) {
       out.push(h('h3', { class: 'gs-subhead', text: T('board.today') }));
       out.push(j.runs.length ? boardList(j.runs.map(function (r, i) {
-        return boardRow(i, r.name, r.r === 'win' ? fmtRunTime(r.ms) : T('board.r.' + r.r), r.you ? 'gs-you' : '', RESULT_SQUARE[r.r]);
+        return boardRow(i, r.name, r.r === 'win' ? fmtRunTime(r.ms) : T('board.r.' + r.r), r.r === 'win' ? '' : 'gs-board-quiet', r.you);
       })) : h('p', { class: 'gs-text', text: T('board.noneToday') }));
     }
     if (BOARDS[page]) {
       var real = j.best.map(function (b) { return { name: b.name, score: b.score, you: b.you }; });
       var all = real.concat(houseTable(page)).sort(function (a, b) { return b.score - a.score; }).slice(0, BOARD_ROWS);
       out.push(h('h3', { class: 'gs-subhead', text: T('board.allTime') }));
-      out.push(boardList(all.map(function (b, i) { return boardRow(i, b.name, F(b.score), b.house ? 'gs-house' : b.you ? 'gs-you' : ''); })));
+      out.push(boardList(all.map(function (b, i) { return boardRow(i, b.name, F(b.score), b.house ? 'gs-house' : '', !b.house && b.you); })));
       if (all.some(function (b) { return b.house; })) out.push(h('p', { class: 'gs-board-note', text: T('board.house') }));
     }
     out.push(boardSwitch(j));
@@ -1016,8 +1028,9 @@
         // A row a game: its name, who leads and how many played; a tap opens that game's board.
         box.appendChild(boardList(pages.map(function (p) {
           var g = j.games[p], lead = g.lead;
-          var open = h('button', { class: 'gs-board-day', type: 'button' }, [h('span', { class: 'gs-board-sq', 'aria-hidden': 'true', text: RESULT_SQUARE[lead.r] }),
-            h('span', { class: 'gs-board-name' }, [h('span', { text: pageName(p) }), h('small', { class: lead.you ? 'gs-you' : '', text: T('board.leads', { name: lead.name, n: g.n }) })])]);
+          var leads = T('board.leads', { name: lead.name, n: g.n }) + (lead.you ? ' ' + T('board.youMark') : '');
+          var open = h('button', { class: 'gs-board-day', type: 'button' }, [
+            h('span', { class: 'gs-board-name' }, [h('span', { text: pageName(p) }), h('small', { class: lead.you ? 'gs-you' : '', text: leads })])]);
           open.addEventListener('click', function () { Shell.boardSheet(p); });
           return h('li', { class: 'gs-board-row gs-board-row-day' }, [open]);
         })));
@@ -1086,7 +1099,7 @@
       .map(function (p) { return [pageName(p), T('stats.playedWon', { n: F(all.g[p].n), w: F(all.g[p].w) })]; });
     var earned = h('ul', { class: 'gs-earned' }, ACHIEVEMENTS.map(function (a) {
       var got = t.earned.indexOf(a[0]) >= 0, name = T('stats.a.' + a[0]);
-      return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '○' }), h('span', { 'aria-hidden': 'true', text: name })]);
+      return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '–' }), h('span', { 'aria-hidden': 'true', text: name })]);
     }));
     var boards = null;
     if (signedIn()) {

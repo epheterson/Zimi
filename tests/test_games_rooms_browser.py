@@ -20,7 +20,8 @@ from test_games_daily_browser import browser, site  # noqa: E402,F401
 
 SHOTS = os.environ.get("ROOMS_SHOT_DIR")
 VISIBLE = """() => [...new Set([...document.querySelectorAll('.sh-list a.ar-game')].filter(a => !a.hidden && !a.closest('section[hidden]')).map(a => a.getAttribute('href')))]"""
-DAILY = """() => [...document.querySelectorAll('.ar-daily a.ar-game')].filter(a => !a.hidden).map(a => a.getAttribute('href').split('?')[0])"""
+# The dailies themselves (Game of the day leads the row as its own larger tile, ahead of them).
+DAILY = """() => [...document.querySelectorAll('.ar-daily a.ar-game:not(.ar-feature)')].filter(a => !a.hidden).map(a => a.getAttribute('href').split('?')[0])"""
 LINE = """() => {
   const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, h: b.height, w: b.width }; };
   return { pill: r('.sh-room-pick'), sel: r('.sh-room-sel'), nav: r('.sh-bar .sh-nav'), opt: r('.sh-opt'), roomChipsInNav: document.querySelectorAll('.sh-nav .sh-room, .sh-nav .sh-chip-sep').length, vw: innerWidth };

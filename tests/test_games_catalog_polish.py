@@ -131,11 +131,11 @@ def test_game_of_the_day_shows_in_the_compact_view_in_every_section(browser, ser
     page = ctx.new_page()
     page.add_init_script("try{localStorage.setItem('zimi.games.view','index')}catch(e){}")
     page.goto("%s/index.html" % served)
-    page.wait_for_selector(".ar-today .ar-game", state="attached")
+    page.wait_for_selector(".ar-daily .ar-feature", state="attached")   # it leads the Daily row
     for chip in (0, 1, 2):
         page.locator(".sh-nav .sh-chip:visible").nth(chip).click()
         page.wait_for_timeout(150)
-        assert page.locator(".ar-today").is_visible(), chip
+        assert page.locator(".ar-daily .ar-feature").is_visible(), chip
     ctx.close()
 
 
