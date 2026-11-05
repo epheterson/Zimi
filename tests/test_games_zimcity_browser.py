@@ -760,6 +760,8 @@ def test_a_new_city_during_a_catch_up_is_not_stepped_by_it(browser, site):
 def test_a_pinch_keeps_the_place_between_the_fingers_under_them(browser, site):
     """Two fingers spread and drift: the spot of the city between them at the start ends between them at the end."""
     pg = phone(browser, site)
+    # Away from the map's edges at a middling zoom, so the camera's clamp at an edge plays no part.
+    pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 1; v.centreOn(60, 50); }")
     r = pg.evaluate("() => { const c = window.__zimcity.view.canvas.getBoundingClientRect(); return { x: c.left, y: c.top, w: c.width, h: c.height }; }")
     cx, cy = r["x"] + r["w"] / 2, r["y"] + r["h"] / 2
     world = "([sx, sy]) => { const c = window.__zimcity.view.cam; return [c.x + sx / c.s, c.y + sy / c.s]; }"
@@ -771,6 +773,7 @@ def test_a_pinch_keeps_the_place_between_the_fingers_under_them(browser, site):
         touch(pg, "touchMove", [(a[0] + 30 * i / 8, a[1] + 20 * i / 8), (b[0] + 90 * i / 8, b[1] + 20 * i / 8)])
         pg.wait_for_timeout(16)
     end_mid = ((a[0] + 30 + b[0] + 90) / 2, cy + 20)
+    pg.wait_for_function("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))")
     after = pg.evaluate(world, [end_mid[0] - r["x"], end_mid[1] - r["y"]])
     touch(pg, "touchEnd", [])
     assert abs(after[0] - before[0]) < 0.5 and abs(after[1] - before[1]) < 0.5, (before, after)
