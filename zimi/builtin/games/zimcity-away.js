@@ -16,6 +16,7 @@ var CHUNK_STEPS = 12 * STEPS_PER_TICK;   // a quarter of a year, then a breath
 
 // How many game ticks an absence of `ms` is worth at `pace`.
 export function ticksFor(ms, pace) {
+  if (!isFinite(ms)) return 0;   // a save with no time on it, or a broken one, adds nothing
   var r = TICKS_PER_HOUR[pace] || 0;
   return Math.max(0, Math.min(CAP_YEARS * TICKS_PER_YEAR, Math.floor(Math.max(0, ms) * r / MS_PER_HOUR)));
 }
@@ -32,6 +33,7 @@ export function seedFor(seed, savedAt, ticks) {
 // generator only while a chunk runs. Returns { cancel() }; result: { ran, stalled, cancelled }.
 export function run(o) {
   var start = o.time(), stop = false, finished = false;
+  if (!(o.ticks > 0)) { setTimeout(function () { o.done({ ran: 0 }); }, 0); return { cancel: function () {} }; }
   function ran() { return o.time() - start; }
   function finish(r) { if (finished) return; finished = true; r.ran = ran(); o.done(r); }
   function chunk() {

@@ -108,7 +108,7 @@ Traffic.prototype.tryDrive = function(startPos, destFn) {
   for (var dist = 0; dist < MAX_TRAFFIC_DISTANCE; dist++) {
     var  dir = this.tryGo(drivePos, dirLast);
     if (dir) {
-      drivePos = Position.move(pos, dir);
+      drivePos = Position.move(drivePos, dir);   // ZimCity fix: upstream moved an undefined `pos`
       dirLast = dir.oppositeDirection();
 
       if (dist & 1)

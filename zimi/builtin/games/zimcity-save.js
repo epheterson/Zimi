@@ -24,7 +24,23 @@ export function unpackSim(sd, level, speed) {
   if (!sd || !Array.isArray(sd.map) || sd.map.length !== MAP_W * MAP_H) return null;
   var engineSave = Object.assign({}, sd, { map: sd.map.map(function (v) { return { value: v }; }) });
   var map = new GameMap(MAP_W, MAP_H);
-  var sim = new Simulation(map, level || 0, speed || Simulation.SPEED_MED, engineSave);
+  // The scan that rebuilds what is not saved draws on chance (traffic's routes, a zone's turn): seeded from the save,
+  // so the same save comes back the same, and a catch-up from it becomes the same city.
+  var real = Math.random, sim;
+  Math.random = rngFor(String(sd._cityTime) + '|' + String(sd.totalFunds) + '|' + String(sd.map.length));
+  try { sim = new Simulation(map, level || 0, speed || Simulation.SPEED_MED, engineSave); } finally { Math.random = real; }
   for (var i = 0; i < sd.map.length; i++) map.setTileValue(i % MAP_W, Math.floor(i / MAP_W), sd.map[i]);
   return { sim: sim, map: map };
+}
+
+// A small seeded generator (FNV-1a of the key into mulberry32), so loading needs nothing from the page.
+function rngFor(key) {
+  var h = 2166136261 >>> 0;
+  for (var i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return function () {
+    h = (h + 0x6D2B79F5) >>> 0;
+    var t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }

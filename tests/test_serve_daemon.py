@@ -68,3 +68,38 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
                 break
     time.sleep(0.5)
     assert not pid_path.exists(), "a stopped server takes its pid file with it"
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="-d is POSIX only")
+def test_serve_d_with_relative_folders_keeps_them_where_they_were_given(tmp_path):
+    """`zimi serve -d --zim-dir zims --data-dir data` from a folder (a USB disk): the pid and log land in that folder's
+    data, and the server reads that folder's zims (it used to move to / first, so relative paths pointed there)."""
+    (tmp_path / "zims").mkdir()
+    port = _free_port()
+    env = dict(os.environ, ZIMI_TORRENT="0", ZIMI_OFFLINE="1", ZIMI_BUILTIN_ZIMS="0", PYTHONPATH=ROOT)
+    out = subprocess.run(
+        [sys.executable, "-m", "zimi", "serve", "-d", "--host", "127.0.0.1", "--port", str(port),
+         "--zim-dir", "zims", "--data-dir", "data"],
+        env=env, capture_output=True, text=True, timeout=60, cwd=str(tmp_path),
+    )
+    assert out.returncode == 0, out.stderr
+    pid_path = tmp_path / "data" / "zimi.pid"
+    for _ in range(50):
+        if pid_path.exists():
+            break
+        time.sleep(0.1)
+    assert pid_path.exists(), (out.stdout, out.stderr)
+    pid = int(pid_path.read_text(encoding="utf-8"))
+    try:
+        health = None
+        for _ in range(100):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
+                    health = json.load(r)
+                break
+            except OSError:
+                time.sleep(0.3)
+        assert health is not None, (tmp_path / "data" / "zimi.log").read_text(encoding="utf-8")
+        assert (tmp_path / "data" / "zimi.log").exists()
+    finally:
+        os.kill(pid, signal.SIGTERM)

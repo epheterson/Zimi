@@ -7,7 +7,7 @@
 
    One tick is one of the engine's 48 a year. Chance is seeded by the city's clock, so a city plays out the same way. */
 
-import { mix, isWater, WIND_LOW, WIND_SPAN } from './zimcity-modern.js';
+import { mix, counted, isWater, WIND_LOW, WIND_SPAN } from './zimcity-modern.js';
 import { DIRT, RIVER, REDGE, TREEBASE, WOODS5, RUBBLE, LASTRUBBLE } from './zimcity/engine/tileValues.js';
 
 export var PER_DEGREE = 6000;     // carbon (a coal plant's tick is 1) for one degree of warming: a few plants, decades
@@ -53,8 +53,9 @@ function wetTile(wet) { return wet >= 3 ? RIVER : REDGE; }
 export function tick(sim, state, on, disasters) {
   var census = sim._census, t = sim._cityTime, out = [];
   if (!on) { census.zcHeat = 1; return out; }
-  var m = mix(census), zc = census.zc || { data: 0 };
-  state.carbon += census.coalPowerPop + zc.data * m.coal * DATA_COAL_SHARE;
+  // Called right after the month's clear, so it reads the last whole count, not the census just emptied.
+  var full = counted(census), m = mix(full), zc = full.zc || { data: 0 };
+  state.carbon += full.coalPowerPop + zc.data * m.coal * DATA_COAL_SHARE;
   state.warm = Math.min(MAX_WARM, state.carbon / PER_DEGREE);
   state.sea += (state.warm * SEA_PER_DEGREE - state.sea) * SEA_EASE;
   var steps = Math.floor(state.sea / SEA_STEP);
@@ -76,7 +77,7 @@ export function tick(sim, state, on, disasters) {
 
 // What the sheet says: degrees, centimetres, the share of coal, and whether it is a heat wave.
 export function summary(sim, state) {
-  var m = mix(sim._census);
+  var m = mix(counted(sim._census));
   return { warm: state.warm, seaCm: Math.round(state.sea * 100), coal: m.coal, nuclear: m.nuclear, solar: m.solar, wind: m.wind, heat: state.heat };
 }
 

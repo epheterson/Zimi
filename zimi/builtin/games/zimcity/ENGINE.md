@@ -22,6 +22,11 @@ Fixes:
 - `simulation.js`: the 10- and 120-month census calls passed `budget`, a name that only resolved because the upstream page has an element with the id `budget`; they pass `this.budget`.
 - `boatSprite.js`: imported a `SpriteConstants` export that `spriteConstants` does not have; it imports the module as a namespace.
 - `eventEmitter.js`: listeners were kept in one table per decorated constructor, so every Budget, Simulation and their parts shared one; a second city in the same page heard and re-sent the first city's events. Each object now keeps its own.
+- `miscTiles.js`: a fire read and burned the burning tile itself instead of its neighbour, through an undefined lowercase `tileUtils`, so fire never spread; it now lights the neighbour.
+- `blockMapUtils.js`: the crime scan looped to `mapWidth`/`mapHeight`, names the block map does not have (`gameMapWidth`/`gameMapHeight`), so crime was never counted.
+- `position.js`: the TypeScript port dropped the copy and offset forms (`new Position(p)`, `new Position(p, dx, dy)`) that `traffic.js` and `mapGenerator.js` use; both are back. `traffic.js` then moved an undefined `pos`; it moves the car's own position, so trips arrive.
+- `census.js`: residential, commercial and industrial population were saved and then counted again by the scan that follows a load; they are no longer saved. The hospital check compared with an undefined `this.resPopScaled`; it uses the local.
+- `budget.js`: the police and fire funding maxima were named `MAX_POLICESTATION_EFFECT`/`MAX_FIRESTATION_EFFECT` while the evaluation and the simulation read `MAX_POLICE_STATION_EFFECT`/`MAX_FIRE_STATION_EFFECT`, so underfunding never cost anything; renamed to the readers' names.
 - `disasterManager.js`: `makeEarthquake` called a `doEarthquake` that does not exist (the original's only shook the screen), so an earthquake threw; the call is gone and the damage stands.
 
 Left out: `queryTool.js`, `gameTools.js` and `text.js` (they depend on jQuery and on upstream's page). ZimCity builds its own tool set and inspect sheet from the same engine calls.

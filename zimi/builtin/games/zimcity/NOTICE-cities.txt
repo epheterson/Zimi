@@ -1,6 +1,7 @@
 The scenarios (scenarios/snro.111 to snro.888) and cities (cities/*.cty) are files from the Micropolis source
 release (https://github.com/SimHacker/micropolis, micropolis-activity/res and micropolis-activity/cities), unchanged.
 Its README's notice, which covers them ("res/snro.* Scenarios", "cities/* All loadable city images"), follows verbatim.
+The file it calls "COPYING", the full text of the GNU General Public License, is COPYING.txt beside this file.
 
 ========================================================================
 

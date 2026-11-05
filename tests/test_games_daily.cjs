@@ -60,6 +60,9 @@ function page(pathname, search, opts) {
   check(plain.S.daily === null && plain.S.seed() !== plain.S.seed(), 'without ?daily= a game is dealt by chance');
   check(page('sudoku.html', '?daily=2026-02-30').S.daily === null, 'a date that does not exist is no daily');
   check(page('chess.html', '?daily=' + DAY).S.daily === null, 'a game with no daily ignores ?daily=');
+  let broken = null;
+  try { broken = page('sudoku.html', '?daily=%E0%A4%A'); } catch (e) { broken = null; }
+  check(!!broken && broken.S.daily === null, 'a broken ?daily= starts an ordinary game');
   const pz = page('puzzles/loopy.html', '?daily=' + DAY);
   check(pz.S.daily && pz.S.daily.kind === '10x10t0dn', 'a Tatham puzzle\'s daily carries its fixed type');
 }

@@ -84,7 +84,9 @@ Census.prototype.clearCensus = function() {
 };
 
 
-var saveProps = ['resPop', 'comPop', 'indPop', 'crimeRamp', 'pollutionRamp', 'landValueAverage', 'pollutionAverage',
+// ZimCity fix: resPop, comPop and indPop are counted afresh by the scan that follows a load; saved too, a loaded city
+// had them twice until the next census.
+var saveProps = ['crimeRamp', 'pollutionRamp', 'landValueAverage', 'pollutionAverage',
              'crimeAverage', 'totalPop', 'resHist10', 'resHist120', 'comHist10', 'comHist120', 'indHist10',
              'indHist120', 'crimeHist10', 'crimeHist120', 'moneyHist10', 'moneyHist120', 'pollutionHist10',
              'pollutionHist120'];
@@ -121,11 +123,12 @@ Census.prototype.take10Census = function(budget) {
 
   var resPopScaled = this.resPop >> 8;
 
-  if (this.hospitalPop < this.resPopScaled)
+  // ZimCity fix: the local (upstream compared with an undefined this.resPopScaled, so no hospital was ever asked for).
+  if (this.hospitalPop < resPopScaled)
     this.needHospital = 1;
-  else if (this.hospitalPop > this.resPopScaled)
+  else if (this.hospitalPop > resPopScaled)
     this.needHospital = -1;
-  else if (this.hospitalPop === this.resPopScaled)
+  else
     this.needHospital = 0;
 
   this.changed = true;

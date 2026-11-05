@@ -70,6 +70,7 @@ def daemonize(data_dir, host="0.0.0.0", port=8899):
     """Detach this process (POSIX double fork); the parent prints where things went and exits."""
     if not hasattr(os, "fork"):
         sys.exit("zimi: -d needs a POSIX system; on Windows run Zimi as a service or from the desktop app")
+    data_dir = os.path.abspath(data_dir)
     os.makedirs(data_dir, exist_ok=True)
     pid_path, log_path = os.path.join(data_dir, PID_NAME), os.path.join(data_dir, LOG_NAME)
     other = _running(pid_path)
@@ -92,7 +93,8 @@ def daemonize(data_dir, host="0.0.0.0", port=8899):
     os.setsid()
     if os.fork() > 0:
         os._exit(0)
-    os.chdir("/")
+    # The working directory stays: a relative --zim-dir or --data-dir (zimi serve -d --zim-dir ./zims, on a USB disk) is
+    # read after this, and the server holds files on that disk anyway.
     log = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     null = os.open(os.devnull, os.O_RDONLY)
     os.dup2(null, 0)

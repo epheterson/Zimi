@@ -72,6 +72,9 @@ function freshCity(level) {
   return cityOf(map, new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed), level, seed);
 }
 function install(c, cam) {
+  // A catch-up still running belongs to the city being left: stop it and its sheet, so it never steps this one.
+  if (awayJob) { var job = awayJob; awayJob = null; job.cancel(); if (awayWait) awayWait.close(); }
+  awayWait = null; catching = null;
   if (held) Tools.drop(city, held);
   city = c; stroke = null; lastBuilt = null; undoBtn.disabled = true;
   unfollow();
@@ -623,7 +626,7 @@ function unpack(k) {
 
 // ── while you were away: the time since the save, lived at the chosen pace, then what happened ──
 // A scenario waits (its clock is the challenge); so does a city whose save has no time on it (made before this).
-var awayJob = null;
+var awayJob = null, awayWait = null;
 function awayFrom(k) {
   if (!city || city.scenario || !k.savedAt) return;
   var ticks = Away.ticksFor(Date.now() - k.savedAt, awayPace);
@@ -637,14 +640,14 @@ function catchUp(ticks, seed) {
   var line = d.createElement('p'), bar = d.createElement('progress');
   line.className = 'gs-text'; bar.className = 'cy-aw-bar'; bar.max = ticks; bar.value = 0;
   line.textContent = T('city.aw.busy', { date: dateWords() });
-  var wait = Shell.sheet({ title: T('city.aw.title'), body: [line, bar], actions: [{ label: T('city.aw.cancel') }],
+  var wait = awayWait = Shell.sheet({ title: T('city.aw.title'), body: [line, bar], actions: [{ label: T('city.aw.cancel') }],
                            onClose: function () { if (awayJob) awayJob.cancel(); } });
   awayJob = Away.run({
     ticks: ticks, random: root.ZimiUtil.mulberry32(seed),
     time: function () { return c.sim._cityTime; },
-    step: function () { if (c.sim.budget.awaitingValues) return false; step(); return true; },
+    step: function () { if (city !== c || c.sim.budget.awaitingValues) return false; step(); return true; },
     progress: function (n) { bar.value = n; line.textContent = T('city.aw.busy', { date: dateWords() }); },
-    done: function (r) { awayJob = null; wait.close(); if (city === c) awaySheet(r); else catching = null; }
+    done: function (r) { awayJob = null; awayWait = null; wait.close(); if (city === c) awaySheet(r); else catching = null; }
   });
 }
 // What the engine said while the city caught up: the notable things, in order, once each.
@@ -731,7 +734,7 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, get catching() { return catching; }, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, get catching() { return catching; }, catchUp: catchUp, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); return true; } });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }

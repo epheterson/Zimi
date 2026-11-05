@@ -1338,6 +1338,9 @@ def _persist_pending_downloads():
                 "size_bytes": dl.get("size_bytes"),
                 "source": dl.get("_source", ""),
                 "peer_name": dl.get("peer_name", ""),
+                # A download that names its file's checksum keeps it across a restart, so the resumed file is
+                # still checked (Almanac HD's release file).
+                "sha256": dl.get("_sha256") or None,
             }
         )
     _srv._atomic_write_json(_pending_downloads_path(), {"pending": items})
@@ -1399,6 +1402,13 @@ def resume_pending_downloads():
                     # restart instead of silently discarding the transfer.
                     kept.append(it)
                     log.info("Peer resume deferred for %s: %s", filename, err)
+                    continue
+            elif it.get("source") == "almanac_hd":
+                # Through its own entry point: the release, its checksum and the outbound setting are asked afresh.
+                from zimi import almanachd
+
+                dl_id, err = almanachd.start(None)
+                if err in ("installed", "never"):
                     continue
             elif _offline_refusal():
                 # Waits for a run that may use the internet, rather than
