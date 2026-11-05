@@ -242,7 +242,9 @@
     return base && p.indexOf(base) === 0 ? p.slice(base.length) : ((/(?:puzzles\/)?[^/]*$/.exec(p) || [''])[0]);
   })();
   function dailySeed(day, page) { return fnv1a('zimi-daily|' + day + '|' + page); }
-  var asked = /(?:^|[?&])daily=([^&]*)/.exec(root.location.search || ''), askedDay = asked ? decodeURIComponent(asked[1]) : '';
+  // A broken or cut-off shared link (?daily=%E0%A4%A) is no daily, not a page that cannot start.
+  var asked = /(?:^|[?&])daily=([^&]*)/.exec(root.location.search || ''), askedDay = '';
+  if (asked) { try { askedDay = decodeURIComponent(asked[1]); } catch (e) { askedDay = ''; } }
   Shell.page = PAGE;
   Shell.DAILY = DAILY;
   Shell.dailySeed = dailySeed;
