@@ -570,7 +570,7 @@ def test_the_row_follows_where_the_view_is(served):
             _open(pg, served)
             row = "() => Array.from(document.querySelectorAll('#ae-views .ae-btn[data-ae-view]')).map(b => b.getAttribute('data-ae-view'))"
             go = lambda k: (pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k),
-                            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100))
+                            pg.wait_for_function("(k) => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset && _ae.target === k; }", arg=k, timeout=60_000, polling=100))
             _row_settles(pg, row, ["sun", "earth", "sats", "moon", "planets"])
             pg.evaluate("window._almReduceMotion = function () { return true; }; _aeTracksLoad();")
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
