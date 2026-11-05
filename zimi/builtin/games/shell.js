@@ -1628,28 +1628,47 @@
   function inZimi() {
     try { var f = root.parent !== root && root.parent.document.getElementById('reader-frame'); return !!f && f.contentWindow === root; } catch (e) { return false; }
   }
-  // WebKit gives a frame no safe-area insets, so a game in Zimi's reader would lay its controls under the home indicator.
-  // The insets are read in Zimi's page instead, and the frame gets only the part it reaches into (--safe-b, -l, -r).
-  function hostInsets() {
+  // The screen's safe edges, as --safe-b, -l and -r on the root (games.css reads env() for them by default).
+  // Two things hide the home indicator's edge from a page. WebKit gives a frame no safe-area insets, so inside Zimi's reader
+  // the insets are read in Zimi's page and the frame keeps the part it reaches into. And on an iPhone the window that
+  // reaches the bottom of the screen can still read 0 (a page without viewport-fit=cover, a browser that draws its bar over
+  // the page): there a home-indicator iPhone's own edge is the least the bottom gets. A browser bar below the page keeps
+  // the indicator clear itself, and the window then stops short of the screen's bottom, so nothing is added.
+  var INDICATOR_PX = 34, INDICATOR_SIDEWAYS_PX = 21, HOME_BUTTON_LONG_SIDE = 812;
+  function indicatorFloor(w) {
+    if (!/iPhone/.test(w.navigator.userAgent || '')) return 0;
+    var long = Math.max(w.screen.width, w.screen.height), short = Math.min(w.screen.width, w.screen.height);
+    if (long < HOME_BUTTON_LONG_SIDE) return 0;   // an iPhone with a home button has no indicator
+    var sideways = w.innerWidth > w.innerHeight;
+    return w.innerHeight >= (sideways ? short : long) - 1 ? (sideways ? INDICATOR_SIDEWAYS_PX : INDICATOR_PX) : 0;
+  }
+  function safeEdges() {
     try {
-      var pw = root.parent, probe = pw.document.createElement('div');
+      var w = hosted ? root.parent : root, probe = w.document.createElement('div');
       probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
-      pw.document.body.appendChild(probe);
-      var cs = pw.getComputedStyle(probe), r = root.frameElement.getBoundingClientRect(), st = d.documentElement.style;
-      var reach = function (inset, gap) { return Math.max(0, (parseFloat(inset) || 0) - gap) + 'px'; };
-      st.setProperty('--safe-b', reach(cs.paddingBottom, pw.innerHeight - r.bottom));
-      st.setProperty('--safe-l', reach(cs.paddingLeft, r.left));
-      st.setProperty('--safe-r', reach(cs.paddingRight, pw.innerWidth - r.right));
+      w.document.body.appendChild(probe);
+      var cs = w.getComputedStyle(probe), st = d.documentElement.style;
+      var bottom = Math.max(parseFloat(cs.paddingBottom) || 0, indicatorFloor(w)), left = parseFloat(cs.paddingLeft) || 0, right = parseFloat(cs.paddingRight) || 0;
       probe.remove();
+      var r = hosted ? root.frameElement.getBoundingClientRect() : { left: 0, right: w.innerWidth, bottom: w.innerHeight };
+      var reach = function (inset, gap) { return Math.max(0, inset - gap) + 'px'; };
+      st.setProperty('--safe-b', reach(bottom, w.innerHeight - r.bottom));
+      st.setProperty('--safe-l', reach(left, r.left));
+      st.setProperty('--safe-r', reach(right, w.innerWidth - r.right));
     } catch (e) { /* not reachable: the page's own env() stands */ }
   }
   var hosted = Shell.hosted = inZimi();
   if (hosted) {
     d.documentElement.classList.add('gs-hosted');
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
-    hostInsets();
-    root.addEventListener('resize', hostInsets);
   }
+  // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
+  // height), and whenever the window changes (turning the phone, a browser bar coming or going).
+  if (d.body) safeEdges();
+  d.addEventListener('DOMContentLoaded', safeEdges);
+  root.addEventListener('load', safeEdges);
+  root.addEventListener('resize', safeEdges);
+  if (root.visualViewport) root.visualViewport.addEventListener('resize', safeEdges);
   function hostAct() { return d.querySelector('.ar-bar [id$="undo"], .ar-bar [id$="pause"]'); }
   function hostSay() {
     var a = hostAct(), msg = { zimi: 'game', title: titleOf(), menu: !!menuBtn };

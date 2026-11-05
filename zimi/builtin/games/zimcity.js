@@ -77,6 +77,7 @@ function install(c, cam) {
   awayWait = null; catching = null;
   if (held) Tools.drop(city, held);
   city = c; stroke = null; lastBuilt = null; undoBtn.disabled = true;
+  city.bornAt = city.sim._cityTime;   // the census is measured afresh from here (complaints and news wait for it)
   unfollow();
   city.sim.setSpeed(speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed);
   view.setCity(city);
@@ -129,6 +130,7 @@ function listen(sim) {
 function heard(subject) {
   var key = Words.MESSAGE[subject];
   if (!key) return;
+  if (!truthful(subject)) return;
   if (catching) { caughtUp(subject, key); return; }
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
@@ -139,10 +141,25 @@ function heard(subject) {
   if (subject === Messages.REACHED_METROPOLIS) metropolis();
 }
 
+// The engine's complaints read the census's averages, which are taken only over tiles that have any pollution, crime or
+// traffic at all, and which can stand from before the city was measured: one coal plant in an empty valley is "very
+// high". A complaint is said only when people live there to complain, the average says so now, and the city has had a
+// few months to be measured.
+var COMPLAINTS = {}, COMPLAIN_PEOPLE = 20, SETTLE_TICKS = 16;
+COMPLAINTS[Messages.HIGH_POLLUTION] = ['pollutionAverage', 60];
+COMPLAINTS[Messages.HIGH_CRIME] = ['crimeAverage', 100];
+COMPLAINTS[Messages.TRAFFIC_JAMS] = ['trafficAverage', 60];
+function truthful(subject) {
+  var c = COMPLAINTS[subject];
+  if (!c) return true;
+  return people() >= COMPLAIN_PEOPLE && city.sim._census[c[0]] > c[1] && city.sim._cityTime >= city.bornAt + SETTLE_TICKS;
+}
+
 // The news card: when something happens that the library has an article about (a fire, a jam, a town becoming a
 // city), its lead sits over the top of the map for a while, one at a time, each story at most once in a while.
 var NEWS_MS = 15000, NEWS_AGAIN_MS = 10 * 60000, newsAt = {}, newsTimer = 0, newsEl = $('cy-news');
 function news(key) {
+  if (city.sim._cityTime < city.bornAt + SETTLE_TICKS) return;   // not in a city's first months
   if (!Library.articleFor(key) || Date.now() - (newsAt[key] || 0) < NEWS_AGAIN_MS || !newsEl.hidden) return;
   newsAt[key] = Date.now();
   Library.lead(key).then(function (l) { if (l) showNews(l); });
@@ -734,7 +751,7 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, get catching() { return catching; }, catchUp: catchUp, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, said: function () { return messages.concat(shownLine); }, get catching() { return catching; }, catchUp: catchUp, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
 Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); return true; } });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }

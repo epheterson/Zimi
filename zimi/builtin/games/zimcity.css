@@ -74,8 +74,10 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 }
 
 /* The news card: an article's lead over the top of the map when something happens that the library knows about. */
-.cy-news { position: absolute; z-index: 1; top: var(--sp-2); left: var(--sp-2); right: var(--sp-2); max-width: 520px; margin: 0 auto; display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
+.cy-news { position: absolute; z-index: 1; top: var(--sp-2); left: var(--sp-2); right: var(--sp-2); max-width: 520px; max-height: calc(50% - var(--sp-4)); overflow: hidden; margin: 0 auto; display: flex; align-items: flex-start; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
 .cy-news[hidden] { display: none; }
+/* never over the middle of the map: on a short stage (a phone on its side) the picture goes and the lead keeps one line */
+@media (max-height: 520px) { .cy-news { right: auto; max-width: min(360px, 60%); } .cy-news-img { display: none; } .cy-news-text span { -webkit-line-clamp: 1; } }
 .cy-news-link { flex: 1 1 auto; min-width: 0; display: flex; gap: var(--sp-3); color: var(--ink); text-decoration: none; }
 .cy-news-img { flex: none; width: 56px; height: 56px; border-radius: var(--r-chip); object-fit: cover; background: var(--surface); }
 .cy-news-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }

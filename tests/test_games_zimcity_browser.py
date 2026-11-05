@@ -777,3 +777,75 @@ def test_a_pinch_keeps_the_place_between_the_fingers_under_them(browser, site):
     after = pg.evaluate(world, [end_mid[0] - r["x"], end_mid[1] - r["y"]])
     touch(pg, "touchEnd", [])
     assert abs(after[0] - before[0]) < 0.5 and abs(after[1] - before[1]) < 0.5, (before, after)
+
+
+IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+
+
+def iphone(browser, site, height):
+    ctx = browser.new_context(viewport={"width": 390, "height": height}, screen={"width": 390, "height": 844}, user_agent=IPHONE_UA,
+                              device_scale_factor=3, is_mobile=True, has_touch=True)
+    pg = ctx.new_page()
+    pg.goto(site + "zimcity.html")
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    return pg
+
+
+def test_on_an_iphone_reporting_no_inset_the_tray_still_clears_the_indicator(browser, site):
+    """A page that reaches the bottom of a home-indicator iPhone's screen but reads env() as 0 still keeps the tray
+    34 px up; with a browser bar below the page (the window stops short of the screen) nothing is added."""
+    pg = iphone(browser, site, 844)
+    assert pg.evaluate(LOWEST_CONTROL) <= 844 - 34
+    pg = iphone(browser, site, 664)
+    assert pg.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--safe-b').trim()") == "0px"
+
+
+MAP_ON_SCREEN = """() => { const v = window.__zimcity.view, m = v.city.map, s = v.cam.s, l = -v.cam.x * s, t = -v.cam.y * s, r = l + m.width * 16 * s, b = t + m.height * 16 * s;
+  return { l, t, r, b, w: v.w, h: v.h }; }"""
+
+
+def map_held(g, margin=16.5):
+    """The map never leaves the screen by more than the margin; narrower (or shorter) than the screen, it is centred."""
+    for lo, hi, size in (("l", "r", "w"), ("t", "b", "h")):
+        span = g[hi] - g[lo]
+        if span <= g[size]:
+            assert abs(g[lo] - (g[size] - span) / 2) < 1, g
+        else:
+            assert g[lo] <= margin and g[hi] >= g[size] - margin, g
+
+
+def test_pan_and_pinch_keep_the_map_on_the_screen(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate("() => { const r = window.__zimcity.view.canvas.getBoundingClientRect(); return { top: r.top, h: r.height, w: r.width }; }")
+    mid = (box["w"] / 2, box["top"] + box["h"] / 2)
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        for _ in range(12):   # far past any edge
+            stroke(pg, [(mid[0] + dx * k, mid[1] + dy * k) for k in range(0, 180, 30)])
+        map_held(pg.evaluate(MAP_ON_SCREEN))
+    # pinch all the way out, then in, then pan again
+    for spread in ((160, 10), (10, 160)):
+        touch(pg, "touchStart", [(mid[0] - spread[0] / 2, mid[1]), (mid[0] + spread[0] / 2, mid[1])])
+        for k in range(1, 9):
+            w = spread[0] + (spread[1] - spread[0]) * k / 8
+            touch(pg, "touchMove", [(mid[0] - w / 2, mid[1]), (mid[0] + w / 2, mid[1])])
+            pg.wait_for_timeout(16)
+        touch(pg, "touchEnd", [])
+        map_held(pg.evaluate(MAP_ON_SCREEN))
+    for _ in range(12):
+        stroke(pg, [(mid[0] + k, mid[1] + k) for k in range(0, 180, 30)])
+    map_held(pg.evaluate(MAP_ON_SCREEN))
+    pg.evaluate("(s) => { const v = window.__zimcity.view; v.zoomAt(v.w / 2, v.h / 2, 0.01); }", 0)
+    map_held(pg.evaluate(MAP_ON_SCREEN))   # all the way out: the whole map, centred
+
+
+def test_a_complaint_is_said_only_when_the_census_supports_it(browser, site):
+    """An empty city with a coal plant has a high pollution "average" (it is taken over polluted tiles only): with no
+    people there it says nothing. With people, and the city measured, it does."""
+    pg = phone(browser, site)
+    said = pg.evaluate("""async () => { const M = await import('./zimcity/engine/messages.js'), z = window.__zimcity, c = z.city, out = [];
+      const ask = () => { c.sim._census.pollutionAverage = 200; c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.HIGH_POLLUTION }); out.push(z.said().indexOf('Pollution is very high') >= 0); };
+      ask();                                           // nobody lives here
+      c.sim.evaluation.cityPop = 500; ask();           // people, but the city not measured yet
+      c.bornAt = c.sim._cityTime - 100; ask();         // people, measured
+      return out; }""")
+    assert said == [False, False, True], said

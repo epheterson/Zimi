@@ -102,10 +102,46 @@ def test_a_coal_plant_inspected_links_to_its_article(page):
     pg.keyboard.press("Escape")
 
 
+NEWS_CLEAR_OF_THE_MIDDLE = "() => { const n = document.getElementById('cy-news').getBoundingClientRect(), m = document.getElementById('cy-map').getBoundingClientRect(); return n.bottom < m.top + m.height / 2; }"
+IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+
+
+def test_on_an_iphone_inside_zimi_the_tray_clears_the_home_indicator(zimi, page):
+    """WebKit gives the reader's frame no insets and can give Zimi's page none either (a page under a browser bar that
+    floats over it). On an iPhone whose window reaches the bottom of the screen the tray still stands clear of the
+    34 px indicator, upright and (21 px) on its side, and the news card keeps off the middle of the map."""
+    ctx = page[0].context.browser.new_context(viewport={"width": 390, "height": 844}, screen={"width": 390, "height": 844}, user_agent=IPHONE_UA,
+                                              device_scale_factor=3, is_mobile=True, has_touch=True)
+    pg = ctx.new_page()
+    pg.goto(zimi + "/w/zimi_games/zimcity.html")
+    pg.wait_for_function("() => { const f = document.getElementById('reader-frame'); return f && f.contentWindow && f.contentWindow.__zimcity && f.contentWindow.__zimcity.city; }", timeout=30000)
+    fr = next(f for f in pg.frames if f is not pg.main_frame and "zimcity.html" in f.url)
+    lowest = "() => { const t = [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().bottom); return Math.max(...t) + window.frameElement.getBoundingClientRect().top; }"
+    assert fr.evaluate(lowest) <= 844 - 34
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-iphone-in-zimi.png"))
+    pg.set_viewport_size({"width": 844, "height": 390})
+    pg.wait_for_timeout(300)
+    assert fr.evaluate(lowest) <= 390 - 21
+    fr.wait_for_function("() => window.__zimcity.library.articleFor('city.msg.tornado')", timeout=30000)
+    fr.evaluate("() => { window.__zimcity.step(16 * 17); window.__zimcity.news('city.msg.tornado'); }")
+    fr.wait_for_selector("#cy-news:not([hidden])")
+    assert fr.evaluate(NEWS_CLEAR_OF_THE_MIDDLE)
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-iphone-in-zimi-side.png"))
+    ctx.close()
+
+
 def test_a_tornado_brings_a_news_card_with_the_lead(page):
+    """Not in a city's first months (its census is not measured yet); after that the card, clear of the map's middle."""
     pg, page = page
+    page.evaluate("() => { const z = window.__zimcity; z.city.bornAt = z.city.sim._cityTime; z.news('city.msg.tornado'); }")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => document.getElementById('cy-news').hidden")
+    page.evaluate("() => window.__zimcity.step(16 * 17)")
     page.evaluate("() => window.__zimcity.news('city.msg.tornado')")
     card = page.wait_for_selector("#cy-news:not([hidden])")
+    assert page.evaluate(NEWS_CLEAR_OF_THE_MIDDLE)
     text = card.text_content()
     assert "Tornado" in text and "violently rotating column of air" in text, text
     assert page.query_selector("#cy-news img")   # the article's picture
