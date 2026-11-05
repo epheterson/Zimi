@@ -407,7 +407,10 @@ def test_german_almanac_speaks_german(browser, served):
 def test_the_orrery_is_still_at_now_under_reduced_motion(browser, served):
     ctx, pg, errors = _page(browser, served, reduced=True)
     try:
-        pg.wait_for_timeout(1500)
+        try:   # the orrery is set up after the page's first paint; a slow runner takes longer than a fixed wait
+            pg.wait_for_function("() => typeof _orreryPlaying !== 'undefined' && document.getElementById('orrery-speed-label') && !_orreryPlaying", timeout=15_000)
+        except Exception:
+            pass
         got = pg.evaluate(
             "() => ({ playing: _orreryPlaying, speed: _orrerySpeed, raf: !!_almanacOrreryRAF, offset: _orreryTimeOffset,"
             " label: document.getElementById('orrery-speed-label').textContent })"
