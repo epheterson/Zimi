@@ -2259,14 +2259,16 @@ var AE_ORBITS_KEY = 'zimi_ae_orbits', AE_ORBITS_MODES = ['flying', 'always', 'of
 function _aeOrbitsMode() {
   try { var m = localStorage.getItem(AE_ORBITS_KEY); return AE_ORBITS_MODES.indexOf(m) >= 0 ? m : 'flying'; } catch (e) { return 'flying'; }
 }
-function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' ? 'earth' : k; }
-// How much of a body's orbit shows now, 0..1: `key` a planet (its path round the Sun) or a moon (round its planet).
+function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' || k === 'iss' ? 'earth' : k; }
+// How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
+// a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
+// and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
 function _aeOrbitShow(key) {
   var b = _aePlanetBody(key), mode = _aeOrbitsMode();
-  if (!b) return 0;
-  if (_aeWideView()) return b.parent ? 0 : 1;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
   if (mode === 'off') return 0;
-  var mine = function (k) { return !!k && (key === k || (b.parent || key) === _aeHostOf(k)); };
+  if (_aeWideView()) return b && !b.parent ? 1 : 0;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
+  var host = _aeHostOf(key);
+  var mine = function (k) { return !!k && (k === key || _aeHostOf(k) === host); };
   if (mode === 'always') return mine(_ae.target) ? 1 : 0;
   var o = _ae.orbitFly;
   if (!o || !(mine(o.from) || mine(o.to))) return 0;
@@ -2618,7 +2620,8 @@ function _aeUpdateProbes(jd, place, near) {
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, _aeProbeCraftDot(k), AE_PROBE_PX);
     // Only the path of the probe gone to: others' paths crossed the Planets view as stray lines, and near a body they
     // run past the camera. Not its own either once its model fills the view (the path runs through it).
-    var shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5, alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
+    var line = _aeOrbitShow(k), shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5 && line > 0;
+    var alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value * line;
     trail.material.opacity = ring.material.opacity = alpha;
     // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
     var o = trail.orbit;
@@ -3681,7 +3684,7 @@ function _aePlaceCamera() {
 // Opacity from how much of an orbit the view holds (half-view over radius),
 // and from how far the view has come in from the hero (_aeFadeU).
 function _aeFadeLine(line, alpha, held) {
-  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1) * _aeFadeU.value;
+  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1) * _aeFadeU.value * _aeOrbitShow('moon');
   line.material.opacity = alpha * out;
   line.visible = out > 0;
 }
@@ -4085,7 +4088,9 @@ function _aeUpdateSats(ms, sc) {
       // that is drawn, and it is right (the orbit's shape and tilt hold), so
       // it is drawn in full: at the faded strength it all but vanished and
       // the note's "orbit only" pointed at nothing.
-      S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value;
+      var issLine = _aeOrbitShow('iss');
+      S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value * issLine;
+      S.issRing.visible = issLine > 0;
     } else if (refreshRings) {
       var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
       if (pts) {
