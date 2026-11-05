@@ -146,3 +146,34 @@ def test_a_data_pack_is_neither_on_home_nor_searched(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "get_zim_files", lambda: files)
     assert almanachd.NAME in srv.DATA_PACKS
     assert set(srv.content_zims()) == {"wikipedia_en_test"}
+
+
+def test_installed_means_on_the_server_whoever_asks(monkeypatch, tmp_path):
+    """A person who may not see the data pack (an allowlist, limited public access) must not make the
+    server fetch it again on every visit: installed is the server's library, not theirs."""
+    import zimi.server as srv
+
+    monkeypatch.setattr(srv, "_zim_files_cache", {almanachd.NAME: str(tmp_path / "hd.zim")})
+    monkeypatch.setattr(srv, "current_allow", lambda: set())
+    assert srv.get_zim_files() == {}  # what that person sees
+    assert almanachd.installed()
+
+
+def test_a_file_already_on_disk_is_never_fetched_over(hd, monkeypatch, tmp_path):
+    import zimi.server as srv
+
+    monkeypatch.setattr(srv, "ZIM_DIR", str(tmp_path))
+    (tmp_path / REL["file"]).write_bytes(b"zim")
+    assert almanachd.start() == (None, "installed") and hd == []
+
+
+def test_the_release_files_checksum_is_checked_before_it_is_installed(hd, tmp_path):
+    almanachd.start()
+    assert hd[0]["extra"]["_sha256"] == REL["sha256"]
+    f = tmp_path / "x.tmp"
+    f.write_bytes(b"not the release")
+    import hashlib
+
+    assert not library._checksum_ok({"_sha256": REL["sha256"]}, str(f))
+    assert library._checksum_ok({"_sha256": hashlib.sha256(b"not the release").hexdigest()}, str(f))
+    assert library._checksum_ok({}, str(f))

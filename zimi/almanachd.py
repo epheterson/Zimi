@@ -61,9 +61,13 @@ def url(rel):
 
 
 def installed():
+    """Whether the server has it, whoever is asking: the library as the server
+    sees it, never the asking person's allowed part of it (a person who may not
+    see it would otherwise fetch it again on every visit)."""
     from zimi import server as _srv
 
-    return NAME in _srv.get_zim_files()
+    _srv.get_zim_files()  # the startup scan, if it has not run
+    return NAME in (_srv._zim_files_cache or {})
 
 
 def _downloading(rel):
@@ -116,6 +120,12 @@ def start(actor=None):
     rel = release()
     if not rel:
         return None, "unavailable"
+    from zimi import server as _srv
+    from zimi.safety import join_inside
+
+    dest = join_inside(_srv.ZIM_DIR, rel["file"])
+    if dest is None or os.path.exists(dest):
+        return None, "installed"  # on disk already (a scan not yet run): never fetched over it
     dl = _downloading(rel)
     if dl:
         return dl.get("id"), None
@@ -128,7 +138,7 @@ def start(actor=None):
         [link],
         rel["file"],
         size_bytes=rel["size"],
-        extra={"_source": SOURCE, "_activity": {"actor": actor}},
+        extra={"_source": SOURCE, "_activity": {"actor": actor}, "_sha256": rel.get("sha256") or None},
     )
 
 
