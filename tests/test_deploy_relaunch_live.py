@@ -2,10 +2,12 @@
 
 Eric, on his installed app: a fix was live on the server, and the home-screen app kept
 running the old code through several force-quits while Safari's tab had it at once. The
-device had opened the Almanac, so the new worker's install fetched the whole Almanac pack
-before taking charge. The page's build check gives the worker a short wait and then
-reloads: the old worker, still in charge, answered with the old kept shell, and the
-once-per-build rule stopped any second try. Every relaunch began the same race again.
+device had opened the Almanac, so the new worker held its install (Chromium) or its
+activation (WebKit, which holds every fetch until a worker has activated) until the whole
+Almanac pack was fetched. The page's build check waited a short while for the worker,
+reloaded, and was answered by the old kept shell. The page also never heard a worker that
+claimed it before the build was asked for, and an address inside /w/ never fetched the
+kept shell again at all.
 
 The deploy is faked in the running server (a new bundle hash, a new app.js) and the
 Almanac's files are slow to arrive, as they are over a phone's connection.
@@ -28,6 +30,12 @@ SLOW_PACK_S = 22  # longer than the page's wait for a new worker (15 s)
 GEN_MARK = ";window.__gen=%d;"
 
 
+def _forget_served_files(handler):
+    """A process starts with nothing read: sw.js carries the build it was served under."""
+    with handler._static_cache_lock:
+        handler._static_cache.clear()
+
+
 class _Server:
     """The running server, and a way to deploy a new build of it."""
 
@@ -47,6 +55,7 @@ class _Server:
         app_hash = "g%d" % self.gen
         h.SEARCH_UI_HTML = re.sub(r"(/static/app\.js\?v=)\w+", r"\g<1>" + app_hash, h.SEARCH_UI_HTML.replace(old_build, new_build))
         h.ZimHandler._index_etag = '"z-gen%d"' % self.gen
+        _forget_served_files(h.ZimHandler)  # a deploy restarts the process
 
 
 @pytest.fixture(params=["chromium", "webkit"])
@@ -71,6 +80,7 @@ def served(request, tmp_path, monkeypatch):
     monkeypatch.setattr(http, "SEARCH_UI_HTML", http.SEARCH_UI_HTML)
     monkeypatch.setattr(http, "_ASSET_BUNDLE_HASH", http._ASSET_BUNDLE_HASH)
     monkeypatch.setattr(ZimHandler, "_index_etag", ZimHandler._index_etag)
+    _forget_served_files(ZimHandler)
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -80,13 +90,14 @@ def served(request, tmp_path, monkeypatch):
     real_get = ZimHandler.do_GET
 
     def slow_get(self):
-        if server.slow_pack and re.match(r"/static/(almanac|earth/)", self.path.split("?")[0].replace("/static/", "/static/")) is not None:
+        if server.slow_pack and re.match(r"/static/almanac", self.path.split("?")[0].replace("/static/", "/static/")) is not None:
             time.sleep(server.slow_pack)
         return real_get(self)
 
     monkeypatch.setattr(ZimHandler, "do_GET", slow_get)
     yield server, request.param
     httpd.shutdown()
+    _forget_served_files(ZimHandler)
 
 
 def _gen(page):
@@ -118,7 +129,7 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         log = []
         pg = ctx.new_page()
         pg.on("request", lambda r: log.append(r.url) if r.resource_type == "document" and r.frame.parent_frame is None else None)
-        pg.goto(server.base + "/")
+        pg.goto(server.base + "/", wait_until="commit")
         t0 = time.time()
         gens = []
         while time.time() - t0 < 40:  # the page waits up to 15 s for a worker; this one must not need it
@@ -131,8 +142,11 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
                 break
         print(engine, "first launch after the deploy:", gens, "documents:", len(log), "after %.0fs" % (time.time() - t0))
         first = gens[-1]
+        diag = None
+        if first != 1:
+            diag = pg.evaluate("async () => { const r = await navigator.serviceWorker.getRegistration(); const st = w => w && w.state; return [st(r.installing), st(r.waiting), st(r.active), !!navigator.serviceWorker.controller, _BUILD, [...document.scripts].map(x=>x.src).filter(x=>/app\\.js/.test(x)).join(), (await caches.keys()).join(',')]; }")
         br.close()
-    assert first == 1 and time.time() - t0 < 14, (engine, gens)
+    assert first == 1 and time.time() - t0 < 14, (engine, gens, diag)
 
 
 def _kept_almanac_on_device(ctx, server):
@@ -161,7 +175,7 @@ def test_a_relaunch_inside_a_zim_address_has_the_new_build_by_the_second_start(s
         seen = []
         for _ in range(3):
             pg = ctx.new_page()
-            pg.goto(server.base + "/w/water/")
+            pg.goto(server.base + "/w/water/", wait_until="commit")  # the slow Almanac files hold the load event
             pg.wait_for_timeout(5000)
             seen.append(_gen(pg))
             pg.close()

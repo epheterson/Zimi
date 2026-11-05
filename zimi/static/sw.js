@@ -102,8 +102,14 @@ self.addEventListener('activate', event => {
         ))
         .then(() => self.clients.claim())
         .then(() => checkVersion())
-        // A deploy empties the cache; what was kept whole comes again, once the new worker is in charge.
-        .then(() => Promise.all([almanac && keepAlmanac(), ...had.map(keepOwnZim)])))
+        // A deploy empties the cache; what was kept whole comes again, once the new worker is in charge. Activation
+        // does not wait for it past a moment: WebKit holds every fetch until the worker has activated, so a window
+        // reloading for the new build sat on the old page for as long as the Almanac took to come. What is not in
+        // by then goes on, and is asked for again whenever the Almanac or the games open.
+        .then(() => Promise.race([
+          Promise.all([almanac && keepAlmanac(), ...had.map(keepOwnZim)]),
+          new Promise(r => setTimeout(r, ACTIVATE_KEEP_WAIT_MS)),
+        ])))
   );
 });
 
@@ -684,6 +690,8 @@ async function refreshCachedCatalogs() {
 }
 
 self.addEventListener('message', event => {
+  // The page asks which build is in charge (app.js _workerBuild): a worker that claimed it before it asked has no change to announce.
+  if (event.data && event.data.type === 'build' && event.ports[0]) event.ports[0].postMessage(CACHE_VERSION);
   if (event.data && event.data.type === 'keep-changed') {
     if (self.KeepStore) KeepStore.forgetNames();
     event.waitUntil(refreshCachedCatalogs());
@@ -717,6 +725,7 @@ async function keepAlmanac() {
 const OWN_KEEP_PARALLEL = 4;
 const OWN_KEEP_MARK = '/_kept/own/';   // a small answer saying this cache holds a ZIM's pages whole
 const OWN_KEEP_DELAY_MS = 4000;
+const ACTIVATE_KEEP_WAIT_MS = 2500;   // how long activation lets the deploy's re-keeping run before the worker is in charge
 const OWN_KEEP_MAX_FAILS = 5;   // a network that went away stops the keeping; the next open asks again
 const _ownKeeping = {};
 let _ownKeepAsked = false;   // once per worker life: a page of the games has been asked for

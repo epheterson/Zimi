@@ -21039,14 +21039,29 @@ function _buildCheck() {
   fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); }).catch(function () {});
 }
+// The build the worker in charge is (sw.js answers its CACHE_VERSION, the server's build): the new worker may have
+// claimed this page before the build was asked for, and its change was then fired with no one listening.
+var _BUILD_ASK_MS = 1500; // an older worker does not answer
+function _workerBuild() {
+  return new Promise(function (done) {
+    var ctl = navigator.serviceWorker.controller, ch = new MessageChannel();
+    if (!ctl) { done(''); return; }
+    ch.port1.onmessage = function (e) { done(e.data); };
+    setTimeout(function () { done(''); }, _BUILD_ASK_MS);
+    ctl.postMessage({ type: 'build' }, [ch.port2]);
+  });
+}
 // The new build's worker in charge (its cache is the new page), or a moment's wait for it.
 function _buildWorker() {
   var sw = navigator.serviceWorker;
   if (!sw || !sw.controller) return Promise.resolve();
   return new Promise(function (done) {
-    sw.addEventListener('controllerchange', done, { once: true });
+    sw.addEventListener('controllerchange', done, { once: true }); // listening before asking: no change slips between
     setTimeout(done, _BUILD_SW_WAIT_MS);
-    sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done(); }).catch(done);
+    _workerBuild().then(function (build) {
+      if (build === _buildWaiting) { done(); return; }
+      return sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done(); });
+    }).catch(done);
   });
 }
 // Now if nothing is lost by it; else the next time the page is hidden.
