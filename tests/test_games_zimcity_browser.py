@@ -626,3 +626,89 @@ def test_follow_someone_says_so_when_nobody_commutes_yet(browser, site):
     pg.click("#cy-follow")
     text = pg.wait_for_selector(OURS + " .ar-sheet-card").text_content()
     assert "Nobody commutes yet" in text and not pg.query_selector(OURS + " .cy-fw-row"), text
+
+
+SAVE_KEY = "zimi.games.save.zimcity"
+HOUR_MS = 3600000
+
+
+def saved(pg):
+    pg.evaluate("() => ZimiShell.saveNow()")
+    return pg.evaluate("(k) => localStorage.getItem(k)", SAVE_KEY)
+
+
+def come_back(pg, save, hours_ago=None, at=None, pace=None):
+    """Put `save` back as if it was made `hours_ago` (or at the moment `at`), open the page again and wait for the
+    catching up (if any) to end."""
+    game = pg.url
+    pg.goto(game.rsplit("/", 1)[0] + "/away-test")   # leave first: the page saves as it goes, which would stamp it now
+    pg.evaluate("""([k, raw, at, pace]) => { const v = JSON.parse(raw); v.data.savedAt = at; if (pace) v.data.away = pace;
+      localStorage.setItem(k, JSON.stringify(v)); }""", [SAVE_KEY, save, at if at is not None else pg.evaluate("() => Date.now()") - hours_ago * HOUR_MS, pace])
+    pg.goto(game)
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    pg.wait_for_timeout(100)
+    pg.wait_for_function("() => !window.__zimcity.catching", timeout=60000)
+
+
+CITY_NOW = "() => { const c = window.__zimcity.city, m = c.map; let h = 0; for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) h = (Math.imul(h, 31) + m.getTileValue(x, y)) | 0; return { t: c.sim._cityTime, funds: c.sim.budget.totalFunds, tiles: h }; }"
+AWAY_CARD = OURS + " .ar-sheet-card[aria-label='While you were away']"
+
+
+def test_the_same_save_away_the_same_time_becomes_the_same_city(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    at = pg.evaluate("() => Date.now()") - 30 * HOUR_MS   # 30 hours at Slow: 120 ticks, two and a half years
+    runs = []
+    for _ in range(2):
+        come_back(pg, save, at=at)
+        pg.wait_for_selector(AWAY_CARD)
+        runs.append(pg.evaluate(CITY_NOW))
+        pg.keyboard.press("Escape")
+    assert runs[0] == runs[1], runs
+    assert runs[0]["t"] - t0 == 120, (t0, runs[0])
+    assert not pg.errors, pg.errors
+
+
+def test_a_long_absence_stops_at_five_years_and_the_card_says_what_happened(browser, site):
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.evaluate("""async () => { const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, v = z.view, a = v.tileAt(v.w * 0.1, v.h * 0.45);
+      c.sim.budget.totalFunds = 100000;
+      T.build(c, 'coal', [[a.x + 2, a.y + 2]]); T.build(c, 'datacenter', [[a.x + 6, a.y + 2]]); T.build(c, 'datacenter', [[a.x + 10, a.y + 2]]); }""")
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=48, pace="normal")
+    card = pg.wait_for_selector(AWAY_CARD)
+    text = card.text_content()
+    assert pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0 == 5 * 48
+    assert "5 years at most" in text and "Not enough power" in text and "City report" in text, text
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-away.png"))
+    pg.click(AWAY_CARD + " .ar-btn >> text=City report")
+    pg.wait_for_selector(OURS + " .ar-sheet-card[aria-label='City report']")
+
+
+def test_while_away_at_pause_the_city_waits(browser, site):
+    pg = phone(browser, site)
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=30, pace="pause")
+    assert pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0 < 4   # a frame or two of play since, not 120 ticks
+    assert not pg.query_selector(AWAY_CARD)
+
+
+def test_a_city_that_runs_out_of_money_while_away_waits_and_says_so(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    pg.evaluate("() => { const b = window.__zimcity.city.sim.budget; b.totalFunds = 0; b.setTax(0); }")
+    save = saved(pg)
+    t0 = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    come_back(pg, save, hours_ago=24 * 10)   # Slow: five years' worth, but the year's bills come first
+    text = pg.wait_for_selector(AWAY_CARD).text_content()
+    ran = pg.evaluate("() => window.__zimcity.city.sim._cityTime") - t0
+    assert "The money ran out" in text and 0 < ran < 5 * 48, (ran, text)
+    assert "City report" not in text   # Close leads to the budget
+    pg.click(AWAY_CARD + " .gs-primary")
+    pg.wait_for_selector(OURS + " .ar-sheet-card[aria-label='The year’s budget']")

@@ -19,7 +19,8 @@ import * as Scen from './zimcity-scenarios.js';
 import * as Climate from './zimcity-climate.js';
 import * as Voices from './zimcity-voices.js';
 import * as Follow from './zimcity-follow.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, settingsRows, newGameRows } from './zimcity-sheets.js';
+import * as Away from './zimcity-away.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
@@ -43,6 +44,7 @@ var city = null;                     // { sim, map, tools, seed, level, won, bro
 var held = '';                       // the tool in hand ('' for none)
 var stroke = null;                   // the tiles of the stroke under way
 var paused = false, speed = Simulation.SPEED_MED, fastOK = true, layer = 'off', disasters = false, climateOn = true;
+var awayPace = Away.DEFAULT_PACE, catching = null;   // While I'm away, and what happened while the city caught up
 var pendingLevel = Simulation.LEVEL_EASY;
 
 var view = new View($('cy-map'), { tiles: new Image(), sprites: new Image() });
@@ -113,12 +115,17 @@ function listen(sim) {
   on(Messages.POPULATION_UPDATED, strip);
   on(Messages.VALVES_UPDATED, demand);
   // The year's budget: asked once the moment has passed, unless the city has just gone broke (its sheet asks after it).
-  on(Messages.BUDGET_NEEDED, function () { setTimeout(function () { if (!city.ending) openBudget(true); }, 0); });
+  on(Messages.BUDGET_NEEDED, function () { if (catching) { catching.budget = true; return; } setTimeout(function () { if (!city.ending) openBudget(true); }, 0); });
   on(Messages.FRONT_END_MESSAGE, function (m) { if (m && m.subject) heard(m.subject); });
+  // The engine says a shortage at most every two real minutes; away, minutes are years, so the shortage itself is heard.
+  var short = function () { if (catching) caughtUp(Messages.NOT_ENOUGH_POWER, Words.MESSAGE[Messages.NOT_ENOUGH_POWER]); };
+  sim._powerManager.addEventListener(Messages.NOT_ENOUGH_POWER, short);
+  unlisten.push(function () { sim._powerManager.removeEventListener(Messages.NOT_ENOUGH_POWER, short); });
 }
 function heard(subject) {
   var key = Words.MESSAGE[subject];
   if (!key) return;
+  if (catching) { caughtUp(subject, key); return; }
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
   if (city.settleUntil && city.sim._cityTime < city.settleUntil && Words.MILESTONES.indexOf(subject) >= 0) return;
@@ -332,13 +339,14 @@ function step() {
   city.sim._simulate(city.sim._constructSimData());
   city.sim._updateTime();
   if (city.sim._cityTime === t) return;
-  if (city.scenario) scenarioTick();
+  if (city.scenario && !catching) scenarioTick();
   Climate.tick(city.sim, city.climate, climateOn, disasters).forEach(happened);
 }
 
 // ── what the modern city adds: the climate's events, the new buildings' news, and the citizens' voices ──
 var NEWS_KEYS = { heatwave: 'city.msg.heatwave', sea: 'city.msg.sea' };
 function happened(what) {
+  if (catching) { if (NEWS_KEYS[what]) catching.events.push(NEWS_KEYS[what]); return; }
   if (NEWS_KEYS[what]) { say(T(NEWS_KEYS[what]), true); news(NEWS_KEYS[what]); }
   react(what);
 }
@@ -420,7 +428,7 @@ function frame(now) {
   if (!city || d.hidden) { lastFrame = now; return; }
   var dt = Math.min(250, now - (lastFrame || now));
   lastFrame = now;
-  if (!paused && !sheetOpen()) {
+  if (!paused && !sheetOpen() && !catching) {
     owed += dt / 1000 * STEPS_PER_SECOND[speed];
     var n = Math.min(MAX_STEPS_PER_FRAME, Math.floor(owed));
     owed -= n;
@@ -563,6 +571,7 @@ var sheets = {
   paused: function (v) { if (v !== undefined && v !== paused) pauseBtn.click(); return paused; },
   disasters: function (v) { if (v !== undefined) { disasters = v; if (city) city.sim.disasterManager.disastersEnabled = v; } return disasters; },
   climateOn: function (v) { if (v !== undefined) climateOn = v; return climateOn; },
+  away: function (v) { if (v !== undefined) awayPace = v; return awayPace; },
   climate: function () { return Climate.summary(city.sim, city.climate); },
   commutes: function () { var z = Follow.zones(city.map); return z.homes.length && z.work.length; },
   follow: follow, mood: function (id) { var st = Voices.stats(city.sim, city.climate.warm); return Voices.mood(id, st); },
@@ -590,7 +599,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn,
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, savedAt: Date.now(),
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -604,8 +613,67 @@ function unpack(k) {
   if (k.scenario && scenarioOf(k.scenario.id)) c.scenario = k.scenario;
   if (k.climate && typeof k.climate.carbon === 'number') c.climate = Object.assign(Climate.fresh(), k.climate);   // older cities start with none
   climateOn = k.climateOn !== false;
+  awayPace = Away.PACES.indexOf(k.away) >= 0 ? k.away : Away.DEFAULT_PACE;
   install(c, k.cam);
   return true;
+}
+
+// ── while you were away: the time since the save, lived at the chosen pace, then what happened ──
+// A scenario waits (its clock is the challenge); so does a city whose save has no time on it (made before this).
+var awayJob = null;
+function awayFrom(k) {
+  if (!city || city.scenario || !k.savedAt) return;
+  var ticks = Away.ticksFor(Date.now() - k.savedAt, awayPace);
+  if (ticks < 1) return;
+  catchUp(ticks, Away.seedFor(k.seed, k.savedAt, ticks));
+}
+function catchUp(ticks, seed) {
+  var c = city, date = c.sim.getDate();
+  catching = { events: [], budget: false, broke: false, metropolis: false, ticks: ticks,
+               before: { people: people(), funds: c.sim.budget.totalFunds, month: date.month, year: date.year } };
+  var line = d.createElement('p'), bar = d.createElement('progress');
+  line.className = 'gs-text'; bar.className = 'cy-aw-bar'; bar.max = ticks; bar.value = 0;
+  line.textContent = T('city.aw.busy', { date: dateWords() });
+  var wait = Shell.sheet({ title: T('city.aw.title'), body: [line, bar], actions: [{ label: T('city.aw.cancel') }],
+                           onClose: function () { if (awayJob) awayJob.cancel(); } });
+  awayJob = Away.run({
+    ticks: ticks, random: root.ZimiUtil.mulberry32(seed),
+    time: function () { return c.sim._cityTime; },
+    step: function () { if (c.sim.budget.awaitingValues) return false; step(); return true; },
+    progress: function (n) { bar.value = n; line.textContent = T('city.aw.busy', { date: dateWords() }); },
+    done: function (r) { awayJob = null; wait.close(); if (city === c) awaySheet(r); else catching = null; }
+  });
+}
+// What the engine said while the city caught up: the notable things, in order, once each.
+function caughtUp(subject, key) {
+  if (subject === Messages.NO_MONEY) { catching.broke = true; return; }
+  if (Words.NAGS.indexOf(subject) >= 0) return;
+  if (subject === Messages.REACHED_METROPOLIS && !city.won) { city.won = true; record('metropolis'); catching.metropolis = true; }
+  if (catching.events.indexOf(key) < 0) catching.events.push(key);
+}
+function awaySheet(r) {
+  var a = catching, c = city, now = c.sim.getDate(), b = a.before, z = root.ZimiText;
+  catching = null;
+  var note = a.broke ? 'city.aw.broke' : r.stalled || a.budget ? 'city.aw.budget' : r.cancelled ? 'city.aw.cut'
+           : a.ticks >= Away.CAP_YEARS * Away.TICKS_PER_YEAR ? 'city.aw.capped' : '';
+  var st = Voices.stats(c.sim, c.climate.warm), p = Voices.next(st, '');
+  if (a.broke) { c.broke = true; record('broke'); }
+  strip(); demand(); advisor();
+  Shell.saveNow();
+  awayCard(sheets, {
+    rows: [[T('city.aw.from'), sheets.dateOf(b.month, b.year)], [T('city.aw.to'), sheets.dateOf(now.month, now.year)],
+           [T('city.r.people'), T('city.aw.change', { from: z.number(b.people), to: z.number(people()) })],
+           [T('city.aw.money'), T('city.aw.change', { from: money(b.funds), to: money(c.sim.budget.totalFunds) })]],
+    note: note && T(note, { date: dateWords(), n: Away.CAP_YEARS }),
+    events: a.events.map(function (k) { return T(k); }),
+    budgetWaiting: c.sim.budget.awaitingValues,
+    voice: people() ? T('city.v.say', { name: p.name, line: T('city.v.' + p.id + '.' + Voices.mood(p.id, st) + '.0') }) : '',   // nobody lives here to say it
+    done: function () {
+      if (city !== c) return;
+      if (c.sim.budget.awaitingValues && !sheetOpen()) openBudget(true);
+      else if (a.metropolis) metropolis();
+    }
+  });
 }
 
 // ── kept cities: up to five, beside the one in progress ──
@@ -660,9 +728,9 @@ buildTray();
 if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () { buildTray(); if (city) { strip(); demand(); summary(); } });
 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
-root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
+root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, get catching() { return catching; }, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
-Shell.persist({ save: function () { return city ? pack() : null; }, load: unpack });
+Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); return true; } });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }
 demand();
 summary();

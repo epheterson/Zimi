@@ -235,7 +235,8 @@ export function newGameRows(s) {
 }
 export function settingsRows(s) {
   return [Play.optionRow(s.T('city.set.disasters'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.disasters(), function (v) { s.disasters(v); }),
-          Play.optionRow(s.T('city.set.climate'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.climateOn(), function (v) { s.climateOn(v); })];
+          Play.optionRow(s.T('city.set.climate'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.climateOn(), function (v) { s.climateOn(v); }),
+          Play.optionRow(s.T('city.set.away'), [['pause', s.T('city.away.pause')], ['slow', s.T('city.away.slow')], ['normal', s.T('city.away.normal')]], s.away(), function (v) { s.away(v); })];
 }
 
 // Follow someone: the four citizens, each with what they do and what they think right now, and Follow. With no home
@@ -257,6 +258,23 @@ export function followSheet(s) {
     row.appendChild(what); row.appendChild(go); body.push(row);
   });
   api = Shell.sheet({ title: T('city.follow'), text: s.commutes() ? T('city.fw.text') : '', body: body, actions: [{ label: T('shell.close'), primary: !s.commutes() }] });
+}
+
+// While you were away: from when to when, people and money then and now, why it stopped if it stopped early, what
+// made the news (once each, the first few), a citizen's line, and the city report.
+var AWAY_EVENTS_MAX = 6;
+export function awayCard(s, a) {
+  var T = s.T, body = [list(a.rows)];
+  if (a.note) body.push(el('p', 'gs-text', a.note));
+  body.push(el('h3', 'cy-sub', T('city.aw.news')));
+  if (!a.events.length) body.push(el('p', 'gs-text', T('city.aw.quiet')));
+  else { var ul = el('ul', 'cy-aw-news'); a.events.slice(0, AWAY_EVENTS_MAX).forEach(function (e) { ul.appendChild(el('li', '', e)); }); body.push(ul); }
+  if (a.voice) body.push(el('p', 'gs-text cy-aw-voice', a.voice));
+  var report = false;
+  Shell.sheet({ title: T('city.aw.title'), body: body,
+    // with the year's budget waiting, Close leads straight to it; otherwise the report is one tap away
+    actions: (a.budgetWaiting ? [] : [{ label: T('city.aw.report'), onclick: function () { report = true; } }]).concat([{ label: T('shell.close'), primary: true }]),
+    onClose: function () { setTimeout(function () { if (report) reportSheet(s); else a.done(); }, 0); } });
 }
 
 // The climate, plainly: how much warmer, how much higher the sea, where the power comes from, and a heat wave if there
