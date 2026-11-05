@@ -566,3 +566,63 @@ def test_inside_zimi_the_frame_gets_only_the_inset_it_reaches_into(browser, site
     pad = frame.evaluate("() => { const f = document.querySelector('.cy-foot'), cs = getComputedStyle(f), probe = document.createElement('div'); probe.style.paddingTop = 'var(--sp-2)'; f.appendChild(probe); const sp = parseFloat(getComputedStyle(probe).paddingTop); probe.remove(); return parseFloat(cs.paddingBottom) - sp; }")
     assert pad == 14, pad
     ctx.close()
+
+
+# A town where people live and work: homes north of a long road, shops and industry south, powered, grown for years.
+COMMUTERS = """async () => {
+  const T = await import('./zimcity-tools.js'), z = window.__zimcity, c = z.city, map = c.map, v = z.view;
+  v.centreOn(60, 50);
+  const x0 = 46, y0 = 44;
+  for (let y = y0; y < y0 + 16; y++) for (let x = x0; x < x0 + 26; x++) map.setTile(x, y, 0, 0);
+  c.sim.budget.totalFunds = 100000;
+  T.build(c, 'road', [[x0, y0 + 4]].concat(T.steps([x0, y0 + 4], [x0 + 25, y0 + 4])));
+  T.build(c, 'coal', [[x0 + 2, y0 + 1]]);
+  for (let i = 0; i < 6; i++) T.build(c, 'residential', [[x0 + 6 + i * 3, y0 + 2]]);
+  T.build(c, 'commercial', [[x0 + 6, y0 + 6]]); T.build(c, 'industrial', [[x0 + 18, y0 + 6]]);
+  T.build(c, 'wire', [[x0 + 4, y0 + 4], [x0 + 4, y0 + 5], [x0 + 4, y0 + 6]].concat(T.steps([x0 + 4, y0 + 6], [x0 + 16, y0 + 6]).filter((p) => p[0] < x0 + 5 || p[0] > x0 + 7)));
+  z.step(6000);
+}"""
+
+
+def test_follow_someone_to_work_along_the_roads(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate(COMMUTERS)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-follow")
+    rows = pg.wait_for_selector(OURS + " .ar-sheet-card")
+    names = [b.text_content() for b in pg.query_selector_all(OURS + " .cy-kept-what b")]
+    assert names == ["Dale Pemberton", "Vivian Crane", "Juniper Ash", "Gordon Plumb"], names
+    assert all(q.text_content() for q in pg.query_selector_all(OURS + " .cy-fw-q"))
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=0")
+    pg.wait_for_function("() => window.__zimcity.following && !document.getElementById('cy-follow-card').hidden")
+    card = pg.text_content("#cy-follow-card")
+    assert "Dale Pemberton" in card and "On the way to work" in card, card
+    path = pg.evaluate("() => window.__zimcity.following.walk.trip.path")
+    pg.click("#cy-pause")   # the city runs, and the figure with it
+    seen = pg.evaluate("""() => new Promise((done) => { const out = [], t0 = performance.now();
+      (function look() { const f = window.__zimcity.following, v = window.__zimcity.view, c = v.tileAt(v.w / 2, v.h / 2);
+        out.push({ at: f.walk.at, centre: c }); if (performance.now() - t0 < 2500) requestAnimationFrame(look); else done(out); })(); })""")
+    on_road = {(p[0], p[1]) for p in path}
+    assert all((round(s["at"]["x"]), round(s["at"]["y"])) in on_road for s in seen), seen[:3]
+    assert seen[-1]["at"] != seen[0]["at"]
+    last = seen[-1]
+    assert abs(last["centre"]["x"] - last["at"]["x"]) <= 2 and abs(last["centre"]["y"] - last["at"]["y"]) <= 2, last
+    if os.environ.get("SHOTS"):
+        pg.screenshot(path=os.path.join(os.environ["SHOTS"], "zimcity-follow.png"))
+    # A finger moving the map lets go of the camera (the figure walks on); Keep in view takes it back.
+    box = pg.evaluate("() => { const r = window.__zimcity.view.canvas.getBoundingClientRect(); return { top: r.top, h: r.height, w: r.width }; }")
+    stroke(pg, [(box["w"] / 2, box["top"] + box["h"] * 0.4 + d) for d in range(0, 120, 20)])
+    pg.wait_for_selector("#cy-follow-card .cy-fw-view")
+    pg.click("#cy-follow-card .cy-fw-view")
+    assert pg.evaluate("() => window.__zimcity.following.cam") is True
+    pg.click("#cy-follow-card .cy-news-close")
+    assert pg.evaluate("() => window.__zimcity.following") is None and pg.is_hidden("#cy-follow-card")
+    assert not pg.errors, pg.errors
+
+
+def test_follow_someone_says_so_when_nobody_commutes_yet(browser, site):
+    pg = phone(browser, site)
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-follow")
+    text = pg.wait_for_selector(OURS + " .ar-sheet-card").text_content()
+    assert "Nobody commutes yet" in text and not pg.query_selector(OURS + " .cy-kept"), text

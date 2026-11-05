@@ -238,6 +238,27 @@ export function settingsRows(s) {
           Play.optionRow(s.T('city.set.climate'), [[false, s.T('shell.off')], [true, s.T('shell.on')]], s.climateOn(), function (v) { s.climateOn(v); })];
 }
 
+// Follow someone: the four citizens, each with what they do and what they think right now, and Follow. With no home
+// and job joined by a road yet, it says so instead.
+var PEOPLE_IDS = [['commuter', 'Dale Pemberton'], ['developer', 'Vivian Crane'], ['activist', 'Juniper Ash'], ['rival', 'Gordon Plumb']];
+export function followSheet(s) {
+  var T = s.T, api = null, body = [];
+  if (!s.commutes()) body.push(el('p', 'gs-text', T('city.fw.none')));
+  else PEOPLE_IDS.forEach(function (p, i) {
+    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what');
+    what.appendChild(el('b', '', p[1]));
+    what.appendChild(el('small', '', T('city.fw.role.' + p[0])));
+    what.appendChild(el('q', 'cy-fw-q', T('city.v.' + p[0] + '.' + s.mood(p[0]) + '.' + (i % 2))));
+    var go = el('button', 'ar-btn', T('city.fw.go')); go.type = 'button';
+    go.addEventListener('click', function () {
+      if (s.follow(p[0])) { api.close(); return; }
+      go.disabled = true; go.textContent = T('city.fw.noway');
+    });
+    row.appendChild(what); row.appendChild(go); body.push(row);
+  });
+  api = Shell.sheet({ title: T('city.follow'), text: s.commutes() ? T('city.fw.text') : '', body: body, actions: [{ label: T('shell.close'), primary: !s.commutes() }] });
+}
+
 // The climate, plainly: how much warmer, how much higher the sea, where the power comes from, and a heat wave if there
 // is one; that it is a toy model; and the real articles, when the library has them.
 export function climateSheet(s) {

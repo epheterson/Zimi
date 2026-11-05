@@ -251,6 +251,7 @@ View.prototype.draw = function (now) {
     ctx.imageSmoothingEnabled = false;
   }
   this._drawSprites(ctx);
+  if (this.follower) this._drawFollower(ctx);
   if (this.ghost) this._drawGhost(ctx);
   if (this.cursor) {   // the keyboard's tile: the focus ring's amber
     ctx.strokeStyle = getComputedStyle(this.canvas).getPropertyValue('--accent') || '#f59e0b';
@@ -259,6 +260,23 @@ View.prototype.draw = function (now) {
   }
 };
 
+// The citizen being followed: a figure on the road (a dot with a ring, amber when stuck in traffic) and the name over
+// it, both a constant size on screen whatever the zoom.
+View.prototype._drawFollower = function (ctx) {
+  var f = this.follower, s = this.cam.s, x = (f.x + 0.5) * TILE, y = (f.y + 0.5) * TILE, css = getComputedStyle(this.canvas);
+  var accent = css.getPropertyValue('--accent').trim() || '#c2410c';
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'; ctx.beginPath(); ctx.ellipse(x + 1 / s, y + 5 / s, 6 / s, 2.5 / s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = f.slow ? '#e0a020' : accent; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5 / s;
+  ctx.beginPath(); ctx.arc(x, y, 7 / s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.font = '600 ' + 12 / s + 'px ' + (css.getPropertyValue('--font').trim() || 'system-ui');
+  var w = ctx.measureText(f.name).width, pad = 6 / s, top = y - 30 / s;
+  ctx.fillStyle = 'rgba(20, 20, 24, 0.82)';
+  ctx.beginPath(); ctx.roundRect(x - w / 2 - pad, top, w + pad * 2, 18 / s, 9 / s); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(f.name, x, top + 9 / s);
+  ctx.restore();
+};
 View.prototype._drawSprites = function (ctx) {
   var list = this.city.sim.spriteManager.getSpriteList(), img = this.art.sprites;
   for (var i = 0; i < list.length; i++) {

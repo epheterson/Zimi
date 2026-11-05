@@ -87,6 +87,16 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 @keyframes cy-news-in { from { transform: translateY(-8px); } }
 .cy-read { margin-top: var(--sp-2); }
 
+/* Following a citizen: a card along the bottom of the map, who and where, their line, Keep in view and close. */
+.cy-follow-card { position: absolute; z-index: 1; bottom: var(--sp-2); left: var(--sp-2); right: var(--sp-2); max-width: 520px; margin: 0 auto; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface2); box-shadow: var(--shadow-popup); }
+.cy-follow-card[hidden] { display: none; }
+.cy-fw-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cy-fw-who b { font-size: var(--fs-body); font-weight: 650; }
+.cy-fw-who small { font-size: var(--fs-small); color: var(--accent); }
+.cy-fw-who q, .cy-fw-q { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cy-fw-view { flex: none; }
+.cy-follow-card .cy-news-close { margin: 0 calc(var(--sp-2) * -1) 0 0; }
+
 /* Kept cities: when and how big on the left, Open and Delete on the right. */
 .cy-keep { width: 100%; margin-bottom: var(--sp-2); }
 .cy-kept { align-items: center; }

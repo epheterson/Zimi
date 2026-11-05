@@ -104,6 +104,7 @@ export function Input(view, h) {
     pts.set(e.pointerId, p);
     if (mode === 'pinch' && pts.size === 2) {
       var f = twoFingers();
+      if (h.panned) h.panned();
       view.zoomAt(f.mid.x, f.mid.y, pinch.s * f.dist / pinch.dist);
       view.panBy(f.mid.x - pinch.mid.x, f.mid.y - pinch.mid.y);
       pinch.mid = f.mid;
@@ -112,6 +113,7 @@ export function Input(view, h) {
     }
     if (Math.hypot(p.x - start.x, p.y - start.y) > TAP_PX) clearPress();
     if (mode === 'pan') {
+      if (h.panned) h.panned();
       var now = performance.now(), dt = Math.max(1, now - vel.t);
       vel = { x: (p.x - last.x) * 16 / dt, y: (p.y - last.y) * 16 / dt, t: now };
       view.panBy(p.x - last.x, p.y - last.y); last = p; h.moved(); return;
