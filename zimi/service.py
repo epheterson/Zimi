@@ -54,19 +54,16 @@ def _running(pid_path):
 
 
 def _port_taken(host, port):
-    """Whether something already listens where this server would: a second start must say so, not claim to run."""
+    """Whether something already listens where this server would: a second start must say so, not claim to run.
+    Asked by connecting, not by binding: a listener answers, and a port a stopped Zimi left in TIME_WAIT does not."""
     import socket
 
-    probe = socket.socket(socket.AF_INET6 if ":" in str(host) else socket.AF_INET, socket.SOCK_STREAM)
-    # As the server binds (allow_reuse_address): a port a stopped Zimi just left in TIME_WAIT is free, one in use is not.
-    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    target = "127.0.0.1" if str(host) in ("", "0.0.0.0") else "::1" if str(host) == "::" else str(host)
     try:
-        probe.bind((host, int(port)))
-        return False
-    except OSError:
+        socket.create_connection((target, int(port)), timeout=0.5).close()
         return True
-    finally:
-        probe.close()
+    except OSError:
+        return False
 
 
 def daemonize(data_dir, host="0.0.0.0", port=8899):
@@ -96,7 +93,7 @@ def daemonize(data_dir, host="0.0.0.0", port=8899):
     if os.fork() > 0:
         os._exit(0)
     os.chdir("/")
-    log = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
+    log = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     null = os.open(os.devnull, os.O_RDONLY)
     os.dup2(null, 0)
     os.dup2(log, 1)

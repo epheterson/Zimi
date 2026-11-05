@@ -690,6 +690,7 @@ async function refreshCachedCatalogs() {
 }
 
 self.addEventListener('message', event => {
+  if (event.origin && event.origin !== self.location.origin) return;   // only Zimi's own pages speak to its worker
   // The page asks which build is in charge (app.js _workerBuild): a worker that claimed it before it asked has no change to announce.
   if (event.data && event.data.type === 'build' && event.ports[0]) event.ports[0].postMessage(CACHE_VERSION);
   if (event.data && event.data.type === 'keep-changed') {

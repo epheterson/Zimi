@@ -830,6 +830,8 @@
     return n;
   }
   function addResult(all, page, result, daily) {
+    if (page === '__proto__' || page === 'constructor' || page === 'prototype') return;
+    if (daily === '__proto__' || daily === 'constructor' || daily === 'prototype') daily = null;
     var g = all.g[page] || (all.g[page] = { n: 0, w: 0 });
     g.n++;
     if (result === 'win') g.w++;
