@@ -2350,7 +2350,7 @@ function _aeUpdatePlanets(sc) {
       p.ring.matrixWorldNeedsUpdate = true;
     }
     var px = p.px = b.r / Math.max(1e-9, _aeLen(_aeSub(pos, eye))) * pxPerRad;
-    var show = px >= AE_PLANET_MAP_MIN_PX / 3 || _ae.target === b.key;
+    var show = (px >= AE_PLANET_MAP_MIN_PX / 3 || _ae.target === b.key) && !_aeBehindAny(b.key, pos);
     p.mesh.visible = show;
     if (p.ring) p.ring.visible = show;
     if (show && px >= AE_PLANET_MAP_MIN_PX && !p.asked) {
@@ -4413,6 +4413,27 @@ function _aeBehindTarget(body, p) {
   if (body === t || !tg || t === 'iss' || _aeIsProbe(t)) return false;
   return _aeBehindSphere(p, _aeTargetPos(), tg.surface);
 }
+// Behind any nearer body: the Sun, the Earth, the Moon, a planet or a moon (as drawn now). Nothing is drawn through a
+// nearer disc: a planet through the Sun, a moon through its planet; their marks and names follow the same rule.
+// `marks`: for a mark, also behind a nearer body's painted disc (a body too small to see is painted larger than
+// itself, and the Sun in the Planets view on the planets' scale).
+function _aeBehindAny(body, p, marks) {
+  var cam = _ae.gl.camera, c = cam.position, eye = [c.x, c.y, c.z], d = _aeLen(_aeSub(p, eye));
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2), sp = marks ? _aeProject(p) : null;
+  for (var i = 0; i < AE_MARKED.length; i++) {
+    var k = AE_MARKED[i].body;
+    if (k === body || k === 'iss' || _aeIsProbe(k) || !AE_TARGETS[k]) continue;
+    var q = _aeBodyPos(k), dq = q ? _aeLen(_aeSub(q, eye)) : Infinity;
+    if (dq >= d) continue;
+    if (_aeBehindSphere(p, q, AE_TARGETS[k].surface)) return true;
+    if (!sp) continue;
+    var sq = _aeProject(q), rq = AE_TARGETS[k].surface / Math.max(1e-9, dq) * pxPerRad;
+    // A painted disc hides only what is painted no bigger: Io's speck never hides Jupiter, the planet wins.
+    var painted = k === 'sun' ? (_aeSunAsMark() ? _aeMarkDiscR('sun') : 0) : rq < AE_MARK_GONE_PX / 2 && _aeMarkDiscR(k) >= _aeMarkDiscR(body) ? _aeMarkDiscR(k) : 0;
+    if (sq && Math.hypot(sq.x - sp.x, sq.y - sp.y) < Math.max(rq, painted)) return true;
+  }
+  return false;
+}
 // A body and its own: a planet and its moons, the Earth and the Moon.
 function _aeGroupOf(key) {
   var b = _aePlanetBody(key);
@@ -4517,7 +4538,7 @@ function _aeUpdateMarks(sc) {
     if (!ringed && el.classList) el.classList.remove('ae-bm-ringed');   // a flight's ring goes with it, shown or not
     if (!pos[body] || (order[i].flightOnly && !ringed)) { if (!el.hidden) el.hidden = true; continue; }
     // A probe is a point: its mark stays on it in view (a body in view is its own picture and needs none).
-    var s = (_ae.target === 'iss' && !ringed) || (body === _ae.target && !dest && !_aeIsProbe(body)) || (body !== 'earth' && !dest && !ringed && (_aeBehindEarth(pos[body]) || _aeBehindTarget(body, pos[body]))) ? null : _aeProject(pos[body]);
+    var s = (_ae.target === 'iss' && !ringed) || (body === _ae.target && !dest && !_aeIsProbe(body)) || (!dest && !ringed && _aeBehindAny(body, pos[body], true)) ? null : _aeProject(pos[body]);
     var px = 2 * AE_TARGETS[body].surface / Math.max(1e-9, _aeLen(_aeSub(pos[body], eye))) * pxPerRad;
     var alpha = ringed ? ringFade : _aeClamp((AE_MARK_GONE_PX - px) / (AE_MARK_GONE_PX - AE_MARK_SMALL_PX), 0, 1);
     // The name stands off the body's drawn disc (or, in a flight, off the body itself as the view shows it).
