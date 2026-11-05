@@ -42,12 +42,42 @@ PID_NAME = "zimi.pid"
 LOG_NAME = "zimi.log"
 
 
-def daemonize(data_dir):
+def _running(pid_path):
+    """The pid a live Zimi wrote here, or None (no file, unreadable, or that process is gone)."""
+    try:
+        with open(pid_path, encoding="utf-8") as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def _port_taken(host, port):
+    """Whether something already listens where this server would: a second start must say so, not claim to run."""
+    import socket
+
+    probe = socket.socket(socket.AF_INET6 if ":" in str(host) else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((host, int(port)))
+        return False
+    except OSError:
+        return True
+    finally:
+        probe.close()
+
+
+def daemonize(data_dir, host="0.0.0.0", port=8899):
     """Detach this process (POSIX double fork); the parent prints where things went and exits."""
     if not hasattr(os, "fork"):
         sys.exit("zimi: -d needs a POSIX system; on Windows run Zimi as a service or from the desktop app")
     os.makedirs(data_dir, exist_ok=True)
     pid_path, log_path = os.path.join(data_dir, PID_NAME), os.path.join(data_dir, LOG_NAME)
+    other = _running(pid_path)
+    if other:
+        sys.exit(f"zimi: already running in the background (pid {other}); stop it with: kill {other}")
+    if _port_taken(host, port):
+        sys.exit(f"zimi: port {port} is already in use; stop what is on it or pass --port")
     if os.fork() > 0:
         # The first parent waits only for the pid file, so the person sees where the server is before the prompt.
         for _ in range(50):
@@ -77,4 +107,14 @@ def daemonize(data_dir):
         f.write(str(os.getpid()))
     import atexit
 
-    atexit.register(lambda: os.path.exists(pid_path) and os.remove(pid_path))
+    mine = str(os.getpid())
+
+    def _forget():
+        try:
+            with open(pid_path, encoding="utf-8") as f:
+                if f.read().strip() == mine:
+                    os.remove(pid_path)
+        except OSError:
+            pass
+
+    atexit.register(_forget)

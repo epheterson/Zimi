@@ -50,6 +50,14 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
                 time.sleep(0.3)
         assert health is not None, (data / "zimi.log").read_text() if (data / "zimi.log").exists() else "no log"
         assert (data / "zimi.log").exists()
+        # A second start while it runs says so and leaves the running one alone.
+        again = subprocess.run(
+            [sys.executable, "-m", "zimi", "serve", "-d", "--host", "127.0.0.1", "--port", str(port),
+             "--zim-dir", str(zims), "--data-dir", str(data)],
+            env=env, capture_output=True, text=True, timeout=60, cwd=ROOT,
+        )
+        assert again.returncode != 0 and "already running" in again.stderr, (again.stdout, again.stderr)
+        assert int(pid_path.read_text()) == pid
     finally:
         os.kill(pid, signal.SIGTERM)
         for _ in range(50):
@@ -58,3 +66,5 @@ def test_serve_d_detaches_and_leaves_a_pid_and_a_log(tmp_path):
                 time.sleep(0.1)
             except OSError:
                 break
+    time.sleep(0.5)
+    assert not pid_path.exists(), "a stopped server takes its pid file with it"

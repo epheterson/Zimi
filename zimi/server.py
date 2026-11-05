@@ -5551,7 +5551,7 @@ def main():
         if getattr(args, "daemon", False):
             from zimi import service as _service
 
-            _service.daemonize(ZIMI_DATA_DIR)
+            _service.daemonize(ZIMI_DATA_DIR, host, port)
         print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
         # Asked before the first scan writes one: whether this install ran
