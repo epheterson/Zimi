@@ -253,7 +253,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
 
 def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
     """Parker round the Sun and Juno round Jupiter: one closed ellipse (their present orbit, which they were on one period
-    ago too) and a trail of under a third of an orbit, fading behind; the Voyagers keep the whole road out."""
+    ago too) and a trail of under a third of an orbit, fading behind; the Voyagers keep the whole road out. Seen from
+    out where the probe is a point: close up, on its model, its path is not drawn through it."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -267,7 +268,9 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             got = {}
             for k in ("parker", "juno", "voyager1"):
                 pg.evaluate("(k) => _aePreset(k)", k)
-                got[k] = pg.evaluate("""(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], o = t.orbit;
+                pg.wait_for_function("(k) => { _ae.dirty = true; _aeKick(); return _ae.target === k && !_ae.fly; }", arg=k, timeout=60_000, polling=100)
+                pg.evaluate("() => { _ae.dist = AE_PROBE_VIEW_DIST; }")
+                got[k] = pg.evaluate("""(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); _aeUpdate(_aeDisplayMs()); var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], o = t.orbit;
                     var c = t.geometry.attributes.color.array;
                     return { round: o && o.round, period: o && o.period, trail: o && o.trail, ring: r.visible, first: c[3], last: c[c.length - 1] }; }""", k)
             assert got["parker"]["round"] == "sun" and 80 < got["parker"]["period"] < 95 and got["parker"]["ring"], got
@@ -544,6 +547,64 @@ def test_no_name_runs_off_the_screen(served, width):
             assert names
             for text, left, right in names:
                 assert left >= 0 and right <= width, (width, text, left, right)
+            ctx.close()
+        finally:
+            br.close()
+
+
+CRAFT = {"voyager1": None, "pioneer10": None, "juno": None, "parker": None, "jwst": None,
+         "galileo": "1996-06-27T12:00:00Z", "cassini": "2005-01-14T12:00:00Z"}
+
+
+def test_every_probe_model_is_small_and_knows_where_it_points():
+    """Each probe's model (scripts/build_craft_models.py) is under 400 KB gzipped and carries a unit pointing axis
+    and a unit axis across it: the view turns the first to the Earth (or the Sun) and holds the second level."""
+    import gzip
+    import struct
+
+    earth = os.path.join(ROOT, "zimi", "static", "earth")
+    for model in ("voyager", "pioneer", "juno", "parker", "webb", "galileo", "cassini"):
+        raw = open(os.path.join(earth, "craft-%s-v1.bin" % model), "rb").read()
+        assert len(gzip.compress(raw, 9)) < 400_000, model
+        head = struct.unpack("<4sIf6f3f3fI", raw[:64])
+        assert head[0] == b"ZCRF" and 1 <= head[15] <= 8, (model, head[0], head[15])
+        aim, across = head[9:12], head[12:15]
+        assert abs(math.hypot(*aim) - 1) < 1e-3 and abs(math.hypot(*across) - 1) < 1e-3, model
+        assert abs(sum(a * b for a, b in zip(aim, across))) < 1e-3, model
+
+
+@pytest.mark.parametrize("key", list(CRAFT))
+def test_a_flight_to_a_probe_ends_on_its_model(served, key):
+    """Go to a probe and the flight ends on NASA's model of it, a few of its spans off, its dot gone: Voyager, Pioneer,
+    Juno, Cassini and Galileo with the high-gain antenna on the Earth, Parker's heat shield and Webb's sunshield on the
+    Sun; its own path is not drawn through it."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("_aeTracksLoad()")
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            if CRAFT[key]:
+                pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", CRAFT[key])
+            pg.evaluate("(k) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aeUpdate(_aeDisplayMs()); _aePreset(k); }", key)
+            pg.wait_for_function("(k) => { _ae.dirty = true; _aeKick(); var I = _ae.gl.crafts && _ae.gl.crafts[k]; return !_ae.fly && _ae.target === k && !!I && I.root.visible && I.show > 0.99; }",
+                                 arg=key, timeout=60_000, polling=200)
+            got = pg.evaluate("""(k) => { _aeUpdate(_aeDisplayMs()); var I = _ae.gl.crafts[k], m = AE_CRAFT_MODEL[k], d = _aeCraftData(m), V = _ae.gl.THREE.Vector3;
+                var a = new V(d.aim[0], d.aim[1], d.aim[2]).applyQuaternion(I.root.quaternion), p = _aeBodyPos(k);
+                var goal = AE_CRAFT_POINTS[m] === 'sun' ? _aeSunShown(_ae.scene) : [0, 0, 0], to = _aeNorm(_aeSub(goal, p));
+                var c = _ae.gl.camera.position, dist = Math.hypot(c.x - p[0], c.y - p[1], c.z - p[2]);
+                return { aim: a.x * to[0] + a.y * to[1] + a.z * to[2], spans: dist / _aeCraftSpanRe(m), dot: _aeProbeCraftDot(k),
+                         trail: _ae.gl.probes.trails[k].visible }; }""", key)
+            assert got["aim"] > 0.999, got
+            assert 1.5 < got["spans"] < 6, got
+            assert got["dot"] < 0.01 and not got["trail"], got
+            assert not errors, errors
             ctx.close()
         finally:
             br.close()

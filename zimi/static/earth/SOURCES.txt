@@ -167,11 +167,27 @@ asteroids-v1.bin (scripts/build_asteroids.py)
   from NASA/JPL's Small-Body Database (SBDB Query API), brought to one epoch
   and quantized to 16 bits, 216 KB. Moved by Kepler's laws in the view.
 
-iss-v1.bin (scripts/build_iss_model.py)
+iss-v1.bin (scripts/build_craft_models.py)
   The International Space Station: NASA 3D Resources' "International Space
   Station (ISS) (B)", credit NASA/Michael D. Carbajal; the collection's terms:
   "These assets are free and without copyright". No textures (no logo).
   Simplified from 174,000 triangles to 31,000 and quantized, 331 KB.
+
+craft-<model>-v1.bin (scripts/build_craft_models.py)
+  The probes close up, from NASA 3D Resources (github.com/nasa/NASA-3D-Resources;
+  "These assets are free and without copyright"), each page's Source credit:
+  voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
+  pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
+  juno: "Juno (B)" (no individual credit listed)
+  parker: "Parker Solar Probe", NASA/Matthew J. Garcia
+  webb: "James Webb Space Telescope (B)", NASA/Christopher R. Meaney
+  galileo: "Galileo", NASA/JPL/Solar System Simulator
+  cassini: "Cassini-Huygens (B)", NASA/JPL/Solar System Simulator
+  Each material's colour (a texture's mean colour, so no printed logo carries
+  over) as a palette of up to eight, simplified to 10,000-31,000 triangles and
+  quantized; 50-200 KB gzipped each. New Horizons and Europa Clipper have no
+  model there and stay a point.
+
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
