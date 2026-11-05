@@ -562,13 +562,22 @@ def safe_area(pg, bottom, left=0, right=0, top=0):
 LOWEST_CONTROL = "() => Math.max(...[...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().bottom))"
 
 
+def _settles(pg, bound):
+    try:
+        pg.wait_for_function("(b) => (" + LOWEST_CONTROL + ")() <= b", arg=bound, timeout=5000)
+    except Exception:
+        pass
+    assert pg.evaluate(LOWEST_CONTROL) <= bound
+
+
 def test_the_tray_stays_clear_of_the_home_indicator(browser, site):
     pg = phone(browser, site)
+    # The layout takes the insets on its next frame: each is read once it has settled (a slow runner lags a frame).
     safe_area(pg, 34, top=47)
-    assert pg.evaluate(LOWEST_CONTROL) <= 844 - 34
+    _settles(pg, 844 - 34)
     pg.set_viewport_size({"width": 844, "height": 390})
     safe_area(pg, 21, left=47, right=47)
-    assert pg.evaluate(LOWEST_CONTROL) <= 390 - 21
+    _settles(pg, 390 - 21)
     sides = pg.evaluate("() => { const f = document.getElementById('cy-funds').getBoundingClientRect(), t = [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect()); return { left: f.left, right: Math.max(...t.map((r) => r.right)) }; }")
     assert sides["left"] >= 47 and sides["right"] <= 844 - 47, sides
 

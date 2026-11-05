@@ -478,6 +478,10 @@ def test_every_destination_flies(served, start):
                 pg.wait_for_function("(s) => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset && (_ae.target === s || (s === 'jupiter' ? false : true)); }", arg=start, timeout=30_000, polling=100)
                 pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k)
                 pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset; }", timeout=30_000, polling=100)
+                try:   # a probe's first visit fetches its model; the view moves to it on the frame after
+                    pg.wait_for_function("(k) => { _ae.dirty = true; _aeKick(); var w = k === 'planets' ? 'sun' : k === 'sats' ? 'earth' : k; return _ae.target === w && !_ae.fly; }", arg=k, timeout=10_000, polling=100)
+                except Exception:
+                    pass
                 got = pg.evaluate("""(k) => { var want = k === 'planets' ? 'sun' : k === 'sats' ? 'earth' : k;
                     _aeUpdate(_aeDisplayMs());   // where the camera stands now
                     var t = _aeTargetPos(), b = _aeBodyPos(want), c = _ae.gl.camera.position;

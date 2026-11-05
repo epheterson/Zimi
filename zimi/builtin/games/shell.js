@@ -1649,7 +1649,14 @@
   }
   function safeEdges() {
     try {
-      var w = hosted ? root.parent : root, probe = w.document.createElement('div');
+      var w = hosted ? root.parent : root, probe;
+      // On its own, a page whose screen needs no floor keeps the live env() values (games.css): a measured px would go
+      // stale when the insets change without a resize (a rotation's second step, an emulated inset).
+      if (!hosted && !indicatorFloor(w)) {
+        ['--safe-b', '--safe-l', '--safe-r'].forEach(function (k) { d.documentElement.style.removeProperty(k); });
+        return;
+      }
+      probe = w.document.createElement('div');
       probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
       w.document.body.appendChild(probe);
       var cs = w.getComputedStyle(probe), st = d.documentElement.style;
