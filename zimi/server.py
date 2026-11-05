@@ -5074,6 +5074,12 @@ def main():
         action="store_true",
         help="Open in a native desktop window (requires pywebview)",
     )
+    p_serve.add_argument(
+        "-d",
+        "--daemon",
+        action="store_true",
+        help="Run in the background, with zimi.pid and zimi.log in the data directory",
+    )
 
     p_config = sub.add_parser(
         "config", help="Print the resolved configuration and where each value came from"
@@ -5542,6 +5548,10 @@ def main():
         desktop_main()
 
     elif args.command == "serve":
+        if getattr(args, "daemon", False):
+            from zimi import service as _service
+
+            _service.daemonize(ZIMI_DATA_DIR)
         print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
         # Asked before the first scan writes one: whether this install ran

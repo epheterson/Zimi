@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Apps:** a dot means something new you haven't opened and clears when you open the app; tap it to see what changed; apps show their own waiting cards instead of a blank page.
 - **Search:** `near:Danville 10km` lists the towns on your maps nearby; questions find articles written in another form of their words; "Did you mean" leaves real words alone.
 - **AI agents:** Zimi's MCP server keeps a clean stream when the library prints a notice.
-- **Linux:** `zimi service install` sets up the systemd unit that now ships with Zimi (#137).
+- **Linux:** `zimi service install` sets up the systemd unit that now ships with Zimi, and `zimi serve -d` runs it in the background without one (#137).
 - **Tides:** shown only where a gauge is near, now about 1,500 places worldwide (#140).
 
 ## [1.15.2]

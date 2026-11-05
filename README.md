@@ -85,6 +85,8 @@ ZIM_DIR=./zims zimi serve --port 8899
 
 **Run at boot on Linux (systemd):** `zimi service print` shows the unit and `sudo zimi service install` writes it to /etc/systemd/system; the steps for a `zimi` user and its venv are at the top of the unit. ZIM files go in /var/lib/zimi/zims.
 
+**In the background without systemd** (a Pi, a USB disk): `zimi serve -d --zim-dir /path/to/zims` detaches and writes `zimi.pid` and `zimi.log` in the data directory; stop it with `kill $(cat <data-dir>/zimi.pid)`.
+
 Two packages: `pip install zimi` is the complete experience; `pip install zimi-mcp` is only the [MCP server](#mcp-server) and search, for AI agents (280 KB, no web app).
 
 Most people configure nothing. Everything is in Settings; `zimi config` prints every effective value and where it came from, and each `ZIMI_*` variable is documented in the guides below.
