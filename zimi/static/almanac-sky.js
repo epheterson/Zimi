@@ -1405,6 +1405,8 @@ function _skyPxPerDegY(s) { return (s.H * SKY_HORIZON_Y - s.H * SKY_ZENITH_Y) / 
 var SKY_LIGHT_POLL_MS = 32;          // how soon a read on its way is looked for again (about two frames)
 function _skyCaptureLight(s, src, gpu) {
   var yh = Math.round(s.H * SKY_HORIZON_Y), band = s.H - yh, d = SKY_REFLECT_DOWN;
+  // A sky not laid out yet (hidden, or its canvas not sized) has nothing to copy: drawImage throws on a 0-wide canvas.
+  if (!src || !src.width || !src.height || !(band > 0) || !(s.W > 0)) return;
   var cw = Math.max(1, Math.ceil(s.W / d)), ch = Math.max(1, Math.ceil(band / d));
   var c = s.reflect || (s.reflect = document.createElement('canvas'));
   if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
