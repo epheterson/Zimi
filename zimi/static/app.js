@@ -6434,7 +6434,7 @@ function _keepOwnForget() {
   });
 }
 // ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet): all under one prefix.
-var _GAMES_STORE_PREFIX = 'zimi.games.';
+var _GAMES_STORE_PREFIXES = ['zimi.games.', 'zimi.zimcity.'];   // ZimCity's kept cities sit beside the games' keys
 // What deleting a ZIM asks first: ZimiGames also takes this browser's play with it, and says so.
 function _deleteConfirmText(zim, title) {
   return zim === _GAMES_ZIM ? t('delete_games_confirm') : t('delete_zim_confirm', {name: title || zim});
@@ -6444,7 +6444,7 @@ function _deleteConfirmText(zim, title) {
 function _afterZimDeleted(zim) {
   if (zim !== _GAMES_ZIM) return;
   try {
-    Object.keys(localStorage).filter(function(k) { return k.indexOf(_GAMES_STORE_PREFIX) === 0; })
+    Object.keys(localStorage).filter(function(k) { return _GAMES_STORE_PREFIXES.some(function(p) { return k.indexOf(p) === 0; }); })
       .forEach(function(k) { localStorage.removeItem(k); });
   } catch (e) {}
   _ownForgotten[zim] = true;

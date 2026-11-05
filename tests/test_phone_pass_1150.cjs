@@ -91,7 +91,8 @@ ok('the lit pill is brought to the start edge, not the middle', /a\.left - b\.le
 // 11. ZimiGames' delete.
 ok('deleting ZimiGames says what goes', /_deleteConfirmText\(zim, zinfo\.title\)/.test(src) && /zim === _GAMES_ZIM \? t\('delete_games_confirm'\)/.test(src));
 const after = body('_afterZimDeleted');
-ok('it clears the games\' keys and the worker\'s copy', /_GAMES_STORE_PREFIX/.test(after) && /forget-own/.test(after));
+ok('it clears the games\' keys and the worker\'s copy', /_GAMES_STORE_PREFIXES/.test(after) && /forget-own/.test(after));
+ok('ZimCity\'s kept cities go with them', /var _GAMES_STORE_PREFIXES = \[[^\]]*'zimi\.zimcity\.'/.test(src));
 
 console.log(failures ? failures + ' failed' : 'all passed');
 process.exit(failures ? 1 : 0);
