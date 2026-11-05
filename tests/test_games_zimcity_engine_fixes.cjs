@@ -63,6 +63,26 @@ const check = (ok, label) => { if (!ok) { failures++; console.log('FAIL ' + labe
     check(lit(6, 12) && lit(24, 16), 'both branches off a forked wire are powered');
   }
 
+  // A coal plant at the very edge of the map (the Bluebird city has one) is found without throwing.
+  {
+    const { PowerManager } = await mod('zimcity/engine/powerManager.js');
+    const map = new GameMap(30, 30);
+    const pm = new PowerManager(map);
+    let threw = null;
+    try { pm.coalPowerFound(map, 29, 10, { census: { coalPowerPop: 0 } }); } catch (e) { threw = e; }
+    check(!threw, 'a coal plant at the map edge is found without throwing');
+  }
+
+  // Score: a city that shrank a little keeps most of its score. Upstream took Math.floor of a ratio between -1 and 0,
+  // so any dip scaled the score by -0.05 and the smoothed score halved every year (Tokyo, Boston, Rio lost at random).
+  // getScore reads module state the page's problem scan fills, so this checks the scale itself.
+  {
+    const src = require('fs').readFileSync(path.join(games, 'zimcity/engine/evaluation.js'), 'utf8');
+    const line = (src.match(/scale = 0\.95 \+[^;]*;/) || [''])[0];
+    const scale = (pop, delta) => 0.95 + delta / (pop - delta);
+    check(line && !/Math\.floor/.test(line) && scale(100000, -1000) > 0.9, 'a small dip in population keeps the score scale near 1');
+  }
+
   // Crime: developed land with no police has crime.
   {
     const W = 40, H = 40, bm = (s) => new BlockMap(W, H, s);

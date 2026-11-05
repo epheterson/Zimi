@@ -122,8 +122,8 @@ PowerManager.prototype.coalPowerFound = function(map, x, y, simData) {
   var dX = [-1, 2, 1, 2];
   var dY = [-1, -1, 0, 0];
 
-  for (var i = 0; i < 4; i++)
-    map.addTileFlags(x + dX[i], y + dY[i], ANIMBIT);
+  for (var i = 0; i < 4; i++)   // ZimCity fix: a plant at the map's edge (Bluebird) has animation tiles off the map
+    if (map.testBounds(x + dX[i], y + dY[i])) map.addTileFlags(x + dX[i], y + dY[i], ANIMBIT);
 };
 
 

@@ -19,6 +19,8 @@ Mechanical, so the modules load in a browser with no build step:
 
 Fixes:
 
+- `powerManager.js`: a coal plant at the map's edge (the Bluebird city) set animation flags off the map and threw, so the city could not open; flags off the map are skipped.
+- `evaluation.js`: a shrinking city's score scale took `Math.floor` of a ratio between -1 and 0, so any dip gave -0.05 and halved the score; it is the plain ratio, as Micropolis has it.
 - `simulation.js`: the 10- and 120-month census calls passed `budget`, a name that only resolved because the upstream page has an element with the id `budget`; they pass `this.budget`.
 - `boatSprite.js`: imported a `SpriteConstants` export that `spriteConstants` does not have; it imports the module as a namespace.
 - `eventEmitter.js`: listeners were kept in one table per decorated constructor, so every Budget, Simulation and their parts shared one; a second city in the same page heard and re-sent the first city's events. Each object now keeps its own.
