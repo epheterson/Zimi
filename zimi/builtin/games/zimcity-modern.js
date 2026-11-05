@@ -39,6 +39,10 @@ export function isWater(v) { return v >= RIVER && v <= LASTRIVEDGE; }
 // Each cycle's counts start again with the engine's own census.
 var clearCensus = Simulation.prototype._clearCensus;
 Simulation.prototype._clearCensus = function () {
+  // The counts of the scan just finished, kept as the city's last full count before they are cleared: the month's
+  // tick (it runs right after this clear) and the climate sheet read these, never a scan half done or just emptied.
+  var c = this._census;
+  if (c.zc) c.zcLast = { coalPowerPop: c.coalPowerPop, nuclearPowerPop: c.nuclearPowerPop, zc: c.zc, zcWind: c.zcWind };
   clearCensus.call(this);
   this._census.zc = fresh();
   if (this._census.zcWind === undefined) this._census.zcWind = 1;
@@ -83,6 +87,8 @@ export function dataDemand(census) {
   var z = census.zc || fresh(), heat = census.zcHeat || 1;
   return Math.round((z.cooled * DATA_DEMAND + (z.data - z.cooled) * DATA_DEMAND * DATA_HOT) * heat);
 }
+// The city's last whole count (see _clearCensus), or the live one before the first scan has finished.
+export function counted(census) { return census.zcLast || census; }
 // The share of the city's power from each source, for the climate sheet and the warming.
 export function mix(census) {
   var z = census.zc || fresh(), parts = { coal: census.coalPowerPop * COAL, nuclear: census.nuclearPowerPop * NUCLEAR_POWER,

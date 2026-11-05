@@ -31,12 +31,12 @@ var railMaintenanceCost = 2;
 var Budget = EventEmitter(function() {
   Object.defineProperties(this,
    {MAX_ROAD_EFFECT: MiscUtils.makeConstantDescriptor(32),
-    MAX_POLICESTATION_EFFECT: MiscUtils.makeConstantDescriptor(1000),
-    MAX_FIRESTATION_EFFECT:  MiscUtils.makeConstantDescriptor(1000)});
+    MAX_POLICE_STATION_EFFECT: MiscUtils.makeConstantDescriptor(1000),
+    MAX_FIRE_STATION_EFFECT:  MiscUtils.makeConstantDescriptor(1000)});
 
   this.roadEffect = this.MAX_ROAD_EFFECT;
-  this.policeEffect = this.MAX_POLICESTATION_EFFECT;
-  this.fireEffect = this.MAX_FIRESTATION_EFFECT;
+  this.policeEffect = this.MAX_POLICE_STATION_EFFECT;
+  this.fireEffect = this.MAX_FIRE_STATION_EFFECT;
   this.totalFunds = 0;
   this.cityTax = 7;
   this.cashFlow = 0;
@@ -215,8 +215,8 @@ Budget.prototype.updateFundEffects = function() {
 
   // Update the effect this level of spending will have on infrastructure deterioration
   this.roadEffect = this.MAX_ROAD_EFFECT;
-  this.policeEffect = this.MAX_POLICESTATION_EFFECT;
-  this.fireEffect = this.MAX_FIRESTATION_EFFECT;
+  this.policeEffect = this.MAX_POLICE_STATION_EFFECT;
+  this.fireEffect = this.MAX_FIRE_STATION_EFFECT;
 
   if (this.roadMaintenanceBudget > 0)
     this.roadEffect = Math.floor(this.roadEffect * this.roadSpend / this.roadMaintenanceBudget);
@@ -249,8 +249,8 @@ Budget.prototype.collectTax = function(gameLevel, census) {
     // We don't want roads etc deteriorating when population hasn't yet been established
     // (particularly early game)
     this.roadEffect   = this.MAX_ROAD_EFFECT;
-    this.policeEffect = this.MAX_POLICESTATION_EFFECT;
-    this.fireEffect   = this.MAX_FIRESTATION_EFFECT;
+    this.policeEffect = this.MAX_POLICE_STATION_EFFECT;
+    this.fireEffect   = this.MAX_FIRE_STATION_EFFECT;
   }
 };
 

@@ -48,7 +48,14 @@ export class Position {
     static origin() {
         return new Position(0, 0);
     }
-    constructor(x, y) {
+    // ZimCity fix: traffic.js and mapGenerator.js also call new Position(pos) and new Position(pos, dx, dy), the
+    // original's copy and offset forms, which the TypeScript port dropped (a copy got x = the object, y undefined).
+    constructor(x, y, dy) {
+        if (x !== null && typeof x === 'object') {
+            this.x = x.x + (y || 0);
+            this.y = x.y + (dy || 0);
+            return;
+        }
         this.x = x;
         this.y = y;
     }

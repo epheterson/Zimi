@@ -32,20 +32,21 @@ var fireFound = function(map, x, y, simData) {
       var yTem = y + yDelta[i];
 
       if (map.testBounds(xTem, yTem)) {
-        var tile = map.getTile(x, y);
+        // ZimCity fix: the neighbour (upstream read the burning tile itself, so nothing ever caught).
+        var tile = map.getTile(xTem, yTem);
         if (!tile.isCombustible())
             continue;
 
         if (tile.isZone()) {
           // Neighbour is a ione and burnable
-          ZoneUtils.fireZone(map, x, y, simData.blockMaps);
+          ZoneUtils.fireZone(map, xTem, yTem, simData.blockMaps);
 
           // Industrial zones etc really go boom
           if (tile.getValue() > IZB)
-            simData.spriteManager.makeExplosionAt(x, y);
+            simData.spriteManager.makeExplosionAt(xTem, yTem);
         }
 
-        map.setTo(tileUtils.randomFire());
+        map.setTo(xTem, yTem, TileUtils.randomFire());
       }
     }
   }
