@@ -288,7 +288,7 @@ Evaluation.prototype.getScore = function(simData) {
     scale = (this.cityPopDelta / this.cityPop) + 1.0;
   } else if (this.cityPopDelta < 0) {
     // If the city is shrinking, scale down by up to 5% based on level of outward migration
-    scale = 0.95 + Math.floor(this.cityPopDelta / (this.cityPop - this.cityPopDelta));
+    scale = 0.95 + this.cityPopDelta / (this.cityPop - this.cityPopDelta);   // ZimCity fix: as Micropolis has it; the floor made any dip -0.05 and halved the score
   }
 
   score = Math.round(score * scale);

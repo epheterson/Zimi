@@ -138,10 +138,10 @@ function heard(subject) {
   if (subject === Messages.NO_MONEY) { goneBroke(); return; }
   if (advice && Words.NAGS.indexOf(subject) >= 0) return;   // the advisor's step says it better
   if (city.settleUntil && city.sim._cityTime < city.settleUntil && Words.MILESTONES.indexOf(subject) >= 0) return;
-  if (subject === Messages.REACHED_METROPOLIS && !city.won) { city.won = true; record('metropolis'); }
+  if (subject === Messages.REACHED_METROPOLIS && !city.won && !city.scenario) { city.won = true; record('metropolis'); }
   say(T(key), Words.URGENT.indexOf(subject) >= 0);
   news(key);
-  if (subject === Messages.REACHED_METROPOLIS) metropolis();
+  if (subject === Messages.REACHED_METROPOLIS && !city.scenario) metropolis();   // a scenario is judged by its own goal
 }
 
 // The engine's complaints read the census's averages, which are taken only over tiles that have any pollution, crime or
