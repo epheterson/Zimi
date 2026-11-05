@@ -801,6 +801,8 @@
   // Every finished game (the end sheet) is counted once: its page's played and won, and a daily its day. Nothing leaves the
   // device. Stats are a page to look at (Menu > Stats > All games, the shelf's Daily row), never a badge or a nag.
   var STATS_KEY = 'zimi.games.stats', STATS_DAYS_KEPT = 400, STATS_TOP_GAMES = 8, COPIED_MS = 1600;
+  // Zimi's shell writes the signed-in player's name here (app.js SK.GAMES_PERSON); the share line's name is the player's choice.
+  var PERSON_KEY = 'zimi_games_person', SHARE_NAME_KEY = 'zimi.games.shareName';
   function blankStats() { return { v: 1, g: {}, days: {}, best: 0 }; }
   function readStats() {
     try { var v = JSON.parse(root.localStorage.getItem(STATS_KEY)); if (v && v.v === 1 && v.g && v.days) return v; } catch (e) { /* blocked */ }
@@ -879,8 +881,13 @@
   // The daily's line to paste: the game and the date, the result as a square (or the game's own squares) with its chips, the streak.
   // Nothing in it gives the day's answer away.
   var RESULT_SQUARE = { win: '🟩', lose: '🟥', draw: '🟨', over: '⬜' };
+  // The signed-in player's name, as Zimi's shell keeps it for the games (none: not signed in, or password off).
+  function personName() { try { return root.localStorage.getItem(PERSON_KEY) || ''; } catch (e) { return ''; } }
+  // Whether the share line carries that name: the player's choice, off until they turn it on.
+  function shareWithName() { try { return root.localStorage.getItem(SHARE_NAME_KEY) === 'on'; } catch (e) { return false; } }
   function shareText(day, result, chips) {
-    var lines = [T('daily.share', { game: pageName(PAGE), day: day })];
+    var who = shareWithName() ? personName() : '';
+    var lines = [(who ? who + ' · ' : '') + T('daily.share', { game: pageName(PAGE), day: day })];
     lines.push(game.share ? game.share() : [RESULT_SQUARE[result] || RESULT_SQUARE.over].concat(chips.map(function (c) { return c[0] + ' ' + c[1]; })).join(' '));
     var n = streakOf(readStats(), day, PAGE);
     if (n > 1) lines.push(T('daily.streak', { n: n }));
@@ -889,7 +896,23 @@
   function shareRow(day, result, chips) {
     var btn = h('button', { class: 'ar-btn gs-share', type: 'button', text: T('daily.shareIt') });
     btn.addEventListener('click', function () { Shell.share(shareText(day, result, chips), btn); });
-    return h('div', { class: 'gs-share-row' }, [h('span', { class: 'gs-daily-tag', text: T('daily.tag') }), btn]);
+    var kids = [h('span', { class: 'gs-daily-tag', text: T('daily.tag') })];
+    if (personName()) {
+      var box = h('input', { type: 'checkbox', class: 'gs-share-name-box' });
+      box.checked = shareWithName();
+      box.addEventListener('change', function () { try { root.localStorage.setItem(SHARE_NAME_KEY, box.checked ? 'on' : 'off'); } catch (e) { /* blocked */ } });
+      kids.push(h('label', { class: 'gs-share-name' }, [box, h('span', { text: T('daily.shareName') })]));
+    }
+    kids.push(btn);
+    return h('div', { class: 'gs-share-row' }, kids);
+  }
+  // Who these stats are (signed in): the name, a tap away from changing it in Zimi.
+  function personLine() {
+    var who = personName();
+    if (!who) return null;
+    var change = h('button', { class: 'gs-person-change', type: 'button', text: T('stats.changeName') });
+    change.addEventListener('click', function () { try { root.parent.postMessage({ zimi: 'games-edit-name' }, root.location.origin); } catch (e) { /* not in Zimi */ } });
+    return h('p', { class: 'gs-person' }, [h('span', { text: T('stats.playingAs', { name: who }) }), change]);
   }
   // The stats page: the streak line first, then the totals, then what was earned (quiet, never announced).
   // The day the stats count to: a daily's, else the server's (asked once), so the streak here is the shelf's.
@@ -904,7 +927,7 @@
       var got = t.earned.indexOf(a[0]) >= 0, name = T('stats.a.' + a[0]);
       return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '○' }), h('span', { 'aria-hidden': 'true', text: name })]);
     }));
-    return [h('div', { class: 'gs-stats' }, [statRows(lines)])].concat(most.length ? [h('h3', { class: 'gs-subhead', text: T('stats.most') }), h('div', { class: 'gs-stats' }, [statRows(most)])] : [])
+    return [personLine(), h('div', { class: 'gs-stats' }, [statRows(lines)])].filter(Boolean).concat(most.length ? [h('h3', { class: 'gs-subhead', text: T('stats.most') }), h('div', { class: 'gs-stats' }, [statRows(most)])] : [])
       .concat([h('h3', { class: 'gs-subhead', text: T('stats.earned') }), earned]);
   }
   Shell.statsSheet = function () { withDay(function (day) { Shell.sheet({ title: T('stats.title'), body: statsBody(day), actions: [{ label: T('shell.close'), primary: true }] }); }); };

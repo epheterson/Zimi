@@ -678,3 +678,10 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-extras .ar-btn.gs-tile { flex: none; }
 .gs-tile.ar-btn:disabled .gs-icon { color: var(--ink3); }
 .gs-grid > .gs-extras { display: contents; }
+
+/* Who the stats are (signed in to Zimi): the name, and a quiet way to change it. */
+.gs-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; color: var(--ink2); }
+.gs-person-change { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+/* The share line's name: the player's choice, beside Share. */
+.gs-share-name { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--ink2); font-size: var(--fs-small); }
+.gs-share-name input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }

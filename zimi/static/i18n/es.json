@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "Lugares",
   "alm_lm_layer_hint": "Nombres en la Luna: alunizajes, cráteres, mares",
   "alm_earth_sat_data_from": "Datos de satélites: del {date}",
-  "alm_go_landings": "Alunizajes"
+  "alm_go_landings": "Alunizajes",
+  "games_sync_merged": "Tus partidas de este dispositivo y de tu cuenta ya están juntas.",
+  "display_name_title": "Tu nombre",
+  "display_name_hint": "Así apareces en los juegos y en las clasificaciones de este servidor. Déjalo vacío para usar el nombre de tu cuenta.",
+  "display_name_taken": "Alguien de este servidor ya usa ese nombre.",
+  "display_name_invalid": "Usa hasta 32 letras, números, espacios, puntos o guiones.",
+  "display_name_saved": "Nombre guardado",
+  "display_name_label": "Nombre en los juegos:",
+  "display_name_change": "Cambiar"
 }

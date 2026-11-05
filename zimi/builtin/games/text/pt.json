@@ -6011,5 +6011,8 @@
  "yacht.row.twos": "Duques",
  "yacht.rowAria": "{row}: {n} pontos",
  "yacht.top": "Seis de cima ({at} vale {bonus})",
- "yacht.total": "Total"
+ "yacht.total": "Total",
+ "stats.playingAs": "Jogando como {name}",
+ "stats.changeName": "Alterar",
+ "daily.shareName": "Adicionar meu nome"
 }

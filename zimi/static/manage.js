@@ -2687,6 +2687,7 @@ function _renderUserManage() {
         '<span style="flex:1"><strong>' + esc(name) + '</strong> ' + _roleBadge(role) +
         ' <span style="color:var(--text2);font-size:12px">' + scope + '</span></span>' +
       '</div>' +
+      _displayNameRowHtml() +
       '<div class="ms-actions" style="margin-top:16px">' +
         '<button class="set-btn" onclick="userLogout()">' + tH('log_out') + '</button>' +
       '</div>' +
@@ -2868,6 +2869,7 @@ function _msUsersHtml() {
           : '') +
       '</span>' +
     '</div>' +
+    _displayNameRowHtml() +
   '</div>';
 
   // (b) Everyone else. Build the list excluding yourself, so a single-admin
@@ -6003,6 +6005,14 @@ function _replaceChosen(id) {
 // "My data" is the only card a signed-in non-admin sees (rendered standalone by
 // _renderUserManage); an admin finds it under Preferences (it is this
 // browser's), the server's backup under Server.
+// What the signed-in person is called in games and on this server's boards
+// (app.js _displayNameSheet), with the way to change it.
+function _displayNameRowHtml() {
+  if (typeof _gamesAccount === 'undefined' || !_gamesAccount) return '';
+  return '<div class="ms-user-row ms-display-row"><span class="ms-user-main">' + tH('display_name_label') + ' <strong>' +
+    esc(_displayName || '') + '</strong></span><button class="ms-btn" onclick="_displayNameSheet()">' + tH('display_name_change') + '</button></div>';
+}
+
 function _myDataCardHtml() {
   var signedIn = !!(_userSession && _userSession.name);
   var serverBtns = signedIn

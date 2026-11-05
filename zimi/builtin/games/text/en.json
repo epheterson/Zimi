@@ -5901,5 +5901,8 @@
  "yacht.row.twos": "Twos",
  "yacht.rowAria": "{row}: score {n}",
  "yacht.top": "Top six ({at} earns {bonus})",
- "yacht.total": "Total"
+ "yacht.total": "Total",
+ "stats.playingAs": "Playing as {name}",
+ "stats.changeName": "Change",
+ "daily.shareName": "Add my name"
 }

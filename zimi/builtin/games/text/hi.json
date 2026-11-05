@@ -5901,5 +5901,8 @@
  "yacht.row.twos": "दुक्के",
  "yacht.rowAria": "{row}: {n} अंक",
  "yacht.top": "ऊपरी छह ({at} पर {bonus} मिलते हैं)",
- "yacht.total": "कुल"
+ "yacht.total": "कुल",
+ "stats.playingAs": "{name} के रूप में खेल रहे हैं",
+ "stats.changeName": "बदलें",
+ "daily.shareName": "मेरा नाम जोड़ें"
 }

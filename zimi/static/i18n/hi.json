@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "स्थल",
   "alm_lm_layer_hint": "चंद्रमा पर नाम: उतरने के स्थान, क्रेटर, सागर",
   "alm_earth_sat_data_from": "उपग्रह डेटा: {date} से",
-  "alm_go_landings": "चंद्र अवतरण"
+  "alm_go_landings": "चंद्र अवतरण",
+  "games_sync_merged": "इस डिवाइस और आपके खाते के गेम अब एक साथ हैं।",
+  "display_name_title": "आपका नाम",
+  "display_name_hint": "गेम और इस सर्वर के लीडरबोर्ड पर आप ऐसे दिखेंगे। खाते का नाम इस्तेमाल करने के लिए खाली छोड़ें।",
+  "display_name_taken": "इस सर्वर पर कोई पहले से इस नाम से है।",
+  "display_name_invalid": "अधिकतम 32 अक्षर, अंक, स्पेस, बिंदु या डैश इस्तेमाल करें।",
+  "display_name_saved": "नाम सहेजा गया",
+  "display_name_label": "गेम में नाम:",
+  "display_name_change": "बदलें"
 }

@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "Landmarks",
   "alm_lm_layer_hint": "Names on the Moon: landing sites, craters, seas",
   "alm_earth_sat_data_from": "Satellite data: from {date}",
-  "alm_go_landings": "Moon landings"
+  "alm_go_landings": "Moon landings",
+  "games_sync_merged": "Your games on this device and in your account are together now.",
+  "display_name_title": "Your name",
+  "display_name_hint": "How you appear in games and on this server's leaderboards. Leave it empty to use your account name.",
+  "display_name_taken": "Someone on this server already goes by that name.",
+  "display_name_invalid": "Use up to 32 letters, numbers, spaces, dots or dashes.",
+  "display_name_saved": "Name saved",
+  "display_name_label": "Name in games:",
+  "display_name_change": "Change"
 }

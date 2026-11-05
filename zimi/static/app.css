@@ -4456,3 +4456,14 @@ body.login-gate .gate-help { margin: 0; }
 .upd-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
 .upd-day { color: var(--text2); font-size: 12px; margin-inline-start: auto; }
 .upd-note { color: var(--text2); font-size: 12.5px; margin-top: 2px; }
+
+/* The signed-in person's display name (app.js _displayNameSheet): one field, over everything. */
+.name-sheet-wrap { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+.name-sheet { width: 100%; max-width: 360px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.name-sheet h2 { margin: 0 0 6px; font-size: 17px; }
+.name-sheet-hint { margin: 0 0 12px; color: var(--text2); font-size: 13px; }
+.name-sheet input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+.name-sheet-err { min-height: 18px; margin: 6px 0 0; color: var(--red, #c0392b); font-size: 13px; }
+.name-sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.name-sheet-actions .pill { min-height: 44px; }
+.ms-display-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

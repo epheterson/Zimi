@@ -3559,5 +3559,13 @@
   "alm_lm_layer": "Orte",
   "alm_lm_layer_hint": "Namen auf dem Mond: Landestellen, Krater, Meere",
   "alm_earth_sat_data_from": "Satellitendaten: vom {date}",
-  "alm_go_landings": "Mondlandungen"
+  "alm_go_landings": "Mondlandungen",
+  "games_sync_merged": "Deine Spiele auf diesem Gerät und in deinem Konto sind jetzt zusammengeführt.",
+  "display_name_title": "Dein Name",
+  "display_name_hint": "So erscheinst du in Spielen und in den Bestenlisten dieses Servers. Leer lassen, um deinen Kontonamen zu verwenden.",
+  "display_name_taken": "Auf diesem Server heißt schon jemand so.",
+  "display_name_invalid": "Bis zu 32 Buchstaben, Ziffern, Leerzeichen, Punkte oder Bindestriche.",
+  "display_name_saved": "Name gespeichert",
+  "display_name_label": "Name in Spielen:",
+  "display_name_change": "Ändern"
 }

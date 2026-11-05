@@ -5789,5 +5789,8 @@
  "yacht.row.twos": "二点",
  "yacht.rowAria": "{row}：{n} 分",
  "yacht.top": "上半区（{at} 分得 {bonus} 分）",
- "yacht.total": "合计"
+ "yacht.total": "合计",
+ "stats.playingAs": "当前玩家：{name}",
+ "stats.changeName": "更改",
+ "daily.shareName": "加上我的名字"
 }

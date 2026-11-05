@@ -6011,5 +6011,8 @@
  "yacht.row.twos": "Doses",
  "yacht.rowAria": "{row}: {n} puntos",
  "yacht.top": "Seis de arriba ({at} da {bonus})",
- "yacht.total": "Total"
+ "yacht.total": "Total",
+ "stats.playingAs": "Juegas como {name}",
+ "stats.changeName": "Cambiar",
+ "daily.shareName": "Añadir mi nombre"
 }
