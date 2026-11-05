@@ -802,7 +802,7 @@
   // device. Stats are a page to look at (Menu > Stats > All games, the shelf's Daily row), never a badge or a nag.
   var STATS_KEY = 'zimi.games.stats', STATS_DAYS_KEPT = 400, STATS_TOP_GAMES = 8, COPIED_MS = 1600;
   // Zimi's shell writes the signed-in player's name here (app.js SK.GAMES_PERSON); the share line's name is the player's choice.
-  var PERSON_KEY = 'zimi_games_person', SHARE_NAME_KEY = 'zimi.games.shareName';
+  var PERSON_KEY = 'zimi_games_person', SIGNED_KEY = 'zimi_games_signed', SHARE_NAME_KEY = 'zimi.games.shareName';
   function blankStats() { return { v: 1, g: {}, days: {}, best: 0 }; }
   function readStats() {
     try { var v = JSON.parse(root.localStorage.getItem(STATS_KEY)); if (v && v.v === 1 && v.g && v.days) return v; } catch (e) { /* blocked */ }
@@ -854,7 +854,11 @@
   // its save shows its end sheet again, uncounted), and a Watch and learn demo is never the player's.
   var touched = false;
   if (d) ['pointerdown', 'keydown'].forEach(function (t) {
-    d.addEventListener(t, function (e) { if (!(e.target && e.target.closest && e.target.closest('.ar-bar, .ar-sheet'))) touched = true; }, true);
+    d.addEventListener(t, function (e) {
+      if (e.target && e.target.closest && e.target.closest('.ar-bar, .ar-sheet')) return;
+      touched = true;
+      dayStarted();
+    }, true);
   });
   function countResult(result) {
     if (!touched || (Shell.isWatching && Shell.isWatching())) return null;
@@ -863,7 +867,163 @@
     if (day && all.days[day] && all.days[day][PAGE]) return day;   // the day's daily is counted once, however often it is opened
     all = addResult(all, PAGE, result, day);
     try { root.localStorage.setItem(STATS_KEY, JSON.stringify(all)); } catch (e) { /* full or blocked: play on */ }
+    if (day) dayRun(day, result);
     return day;
+  }
+  // ── a daily's run, for this server's boards ──
+  // The day's own key holds each game's run: when the player first touched it (kept, so a daily picked up again later counts
+  // from its start) and, once it ends, how it ended and how long it took. Only the last week is kept.
+  var DAY_RUN_PREFIX = 'zimi.games.day.', DAY_RUNS_KEPT = 7;
+  function dayRuns(day) { try { var v = JSON.parse(root.localStorage.getItem(DAY_RUN_PREFIX + day)); return v && typeof v === 'object' ? v : {}; } catch (e) { return {}; } }
+  function putDayRuns(day, runs) {
+    try {
+      root.localStorage.setItem(DAY_RUN_PREFIX + day, JSON.stringify(runs));
+      var old = [];
+      for (var i = 0; i < root.localStorage.length; i++) { var k = root.localStorage.key(i); if (k && k.indexOf(DAY_RUN_PREFIX) === 0) old.push(k); }
+      old.sort().slice(0, -DAY_RUNS_KEPT).forEach(function (k) { root.localStorage.removeItem(k); });
+    } catch (e) { /* full or blocked: the board goes without it */ }
+  }
+  function dayStarted() {
+    var day = Shell.daily && Shell.daily.kind !== 'own' ? Shell.daily.day : null;
+    if (!day || (Shell.isWatching && Shell.isWatching())) return;
+    var runs = dayRuns(day);
+    if (runs[PAGE]) return;
+    runs[PAGE] = { start: Date.now() };
+    putDayRuns(day, runs);
+  }
+  function dayRun(day, result) {
+    var runs = dayRuns(day), run = runs[PAGE] || {};
+    if (run.r) return;
+    var now = Date.now();
+    runs[PAGE] = { start: run.start || now, r: result, ms: Math.max(0, now - (run.start || now)) };
+    putDayRuns(day, runs);
+  }
+
+  // ── a game's best, in one shape for every board ──
+  // zimi.games.best.<page>: {score, better: 'high'|'low', at}. Each game keeps its own best its own way; this reads it (the
+  // first time too, so a best from before the boards counts) and keeps the one shape beside it.
+  var BEST_PREFIX = 'zimi.games.best.';
+  var scoreOf = function (key, field) { return function () { try { var v = JSON.parse(root.localStorage.getItem(key)); return v && typeof v[field] === 'number' ? v[field] : null; } catch (e) { return null; } }; };
+  var BOARDS = {
+    '2048.html': { better: 'high', read: scoreOf('zimi.games.2048.best', 'score'), house: [24000, 2400] },
+    'bricks.html': { better: 'high', read: scoreOf('zimi.games.bricks.best', 'score'), house: [4200, 600] },
+    'stacker.html': { better: 'high', read: scoreOf('zimi.games.stacker.best', 'score'), house: [30000, 2000] },
+    'crossing.html': { better: 'high', read: scoreOf('zimi.games.crossing.best', 'score'), house: [1200, 150] },
+    'lander.html': { better: 'high', read: scoreOf('zimi.games.lander.best', 'score'), house: [2500, 300] },
+    'lastline.html': { better: 'high', read: scoreOf('zimi.games.lastline.best', 'score'), house: [9000, 900] },
+    'muncher.html': { better: 'high', read: scoreOf('zimi.games.muncher.best', 'score'), house: [12000, 1200] },
+    'pinball.html': { better: 'high', read: scoreOf('zimi.games.pinball.best', 'score'), house: [150000, 15000] },
+    'rocks.html': { better: 'high', read: scoreOf('zimi.games.rocks.best', 'score'), house: [25000, 2500] },
+    'echo.html': { better: 'high', read: scoreOf('zimi.games.echo.best', 'length'), house: [20, 5] }
+  };
+  Shell.BOARDS = BOARDS;
+  function bestNow(page) {
+    try { var v = JSON.parse(root.localStorage.getItem(BEST_PREFIX + page)); return v && typeof v.score === 'number' ? v : null; } catch (e) { return null; }
+  }
+  // The game's own best, carried into the one shape when it is better than what is kept there.
+  function syncBest(page) {
+    var b = BOARDS[page];
+    if (!b) return;
+    var score = b.read(), kept = bestNow(page);
+    if (typeof score !== 'number' || !(score > 0)) return;
+    if (kept && kept.better === b.better && (b.better === 'high' ? kept.score >= score : kept.score <= score)) return;
+    try { root.localStorage.setItem(BEST_PREFIX + page, JSON.stringify({ score: score, better: b.better, at: Date.now() })); } catch (e) { /* blocked */ }
+  }
+  Shell.syncBest = syncBest;
+  syncBest(PAGE);
+
+  // ── this server's boards ──
+  // Asked of Zimi (/games/board) when the board is opened, never on the way to a game. Only for a player signed in: the boards
+  // name the people on this server. An arcade game's board starts as a house table, cabinet style, that real scores push down.
+  var HOUSE_INITIALS = ['ACE', 'BOB', 'CJM', 'DOT', 'EVA', 'FOX', 'GUS', 'HAL', 'IKE', 'JAY', 'KIT', 'LOU', 'MAX', 'NED', 'OLA', 'PAZ',
+    'RAY', 'SAM', 'TED', 'UMA', 'VIC', 'WES', 'YUL', 'ZOE'];
+  var HOUSE_ROWS = 8, BOARD_ROWS = 10;
+  function houseTable(page) {
+    var b = BOARDS[page];
+    if (!b || !b.house) return [];
+    var top = b.house[0], low = b.house[1], step = Math.pow(low / top, 1 / (HOUSE_ROWS - 1)), seed = fnv1a('zimi-house|' + page), out = [];
+    for (var i = 0; i < HOUSE_ROWS; i++) {
+      var raw = top * Math.pow(step, i), unit = raw >= 1000 ? 50 : raw >= 100 ? 10 : 1;
+      var who = HOUSE_INITIALS[(seed + i * 7) % HOUSE_INITIALS.length];
+      out.push({ name: who, score: Math.max(unit, Math.round(raw / unit) * unit), house: true });
+    }
+    return out;
+  }
+  function fmtRunTime(ms) {
+    var sec = Math.round(ms / 1000), m = Math.floor(sec / 60), s2 = sec % 60;
+    return (m >= 60 ? Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') : String(m)) + ':' + String(s2).padStart(2, '0');
+  }
+  function boardRow(i, name, value, cls, glyph) {
+    return h('li', { class: 'gs-board-row' + (cls ? ' ' + cls : '') }, [h('span', { class: 'gs-board-rank', text: String(i + 1) }),
+      h('span', { class: 'gs-board-name' }, [glyph ? h('span', { 'aria-hidden': 'true', text: glyph + ' ' }) : null, name]), h('span', { class: 'gs-board-val', text: value })]);
+  }
+  function boardList(rows) { return h('ol', { class: 'gs-board' }, rows); }
+  function boardBody(page, j, day) {
+    var F = function (n) { return root.ZimiText ? root.ZimiText.number(n) : String(n); }, out = [];
+    if (day && DAILY[page]) {
+      out.push(h('h3', { class: 'gs-subhead', text: T('board.today') }));
+      out.push(j.runs.length ? boardList(j.runs.map(function (r, i) {
+        return boardRow(i, r.name, r.r === 'win' ? fmtRunTime(r.ms) : T('board.r.' + r.r), r.you ? 'gs-you' : '', RESULT_SQUARE[r.r]);
+      })) : h('p', { class: 'gs-text', text: T('board.noneToday') }));
+    }
+    if (BOARDS[page]) {
+      var real = j.best.map(function (b) { return { name: b.name, score: b.score, you: b.you }; });
+      var all = real.concat(houseTable(page)).sort(function (a, b) { return b.score - a.score; }).slice(0, BOARD_ROWS);
+      out.push(h('h3', { class: 'gs-subhead', text: T('board.allTime') }));
+      out.push(boardList(all.map(function (b, i) { return boardRow(i, b.name, F(b.score), b.house ? 'gs-house' : b.you ? 'gs-you' : ''); })));
+      if (all.some(function (b) { return b.house; })) out.push(h('p', { class: 'gs-board-note', text: T('board.house') }));
+    }
+    out.push(boardSwitch(j));
+    return out;
+  }
+  // Whether the player is on this server's boards: theirs to choose, on until they turn it off (kept with their games).
+  var BOARD_ON_KEY = 'zimi.games.board';
+  function boardSwitch(j) {
+    if (!j.you || !j.you.name) return h('p', { class: 'gs-board-note', text: T('board.nameFirst') });
+    var box = h('input', { type: 'checkbox', class: 'gs-board-on' });
+    box.checked = j.you.on;
+    box.addEventListener('change', function () { try { root.localStorage.setItem(BOARD_ON_KEY, box.checked ? 'on' : 'off'); } catch (e) { /* blocked */ } });
+    return h('label', { class: 'gs-share-name gs-board-me' }, [box, h('span', { text: T('board.showMe') })]);
+  }
+  function boardFetch(q) {
+    return root.fetch('/games/board?' + q, { credentials: 'same-origin' }).then(function (r) {
+      if (r.status === 401) return { signedOut: true };
+      return r.ok ? r.json() : null;
+    }).catch(function () { return null; });
+  }
+  function boardMessage(key) { return [h('p', { class: 'gs-text', text: T(key) })]; }
+  // One game's boards, as a sheet: today's daily (when the game has one) and its best scores (an arcade game).
+  Shell.boardSheet = function (page) {
+    page = page || PAGE;
+    syncBest(page);
+    withDay(function (day) {
+      boardFetch('page=' + encodeURIComponent(page) + '&day=' + encodeURIComponent(day)).then(function (j) {
+        var body = !j ? boardMessage('board.unreachable') : j.signedOut ? boardMessage('board.signIn') : boardBody(page, j, day);
+        Shell.sheet({ title: T('board.title', { game: pageName(page) }), body: body, actions: [{ label: T('shell.close'), primary: true }] });
+      });
+    });
+  };
+  Shell.boardParts = { house: houseTable, dayRuns: dayRuns, dayRun: dayRun };   // the tests' handle
+  Shell.hasBoard = function (page) { page = page || PAGE; return !!(DAILY[page] || BOARDS[page]); };
+  // The server's dailies today: each one played here, who leads it and how many played.
+  function serverBoardsInto(box) {
+    withDay(function (day) {
+      boardFetch('day=' + encodeURIComponent(day)).then(function (j) {
+        box.textContent = '';
+        if (!j || j.signedOut) { box.appendChild(h('p', { class: 'gs-text', text: T(j ? 'board.signIn' : 'board.unreachable') })); return; }
+        var pages = Object.keys(j.games).sort(function (a, b) { return j.games[b].n - j.games[a].n; });
+        if (!pages.length) { box.appendChild(h('p', { class: 'gs-text', text: T('board.noneToday') })); return; }
+        // A row a game: its name, who leads and how many played; a tap opens that game's board.
+        box.appendChild(boardList(pages.map(function (p) {
+          var g = j.games[p], lead = g.lead;
+          var open = h('button', { class: 'gs-board-day', type: 'button' }, [h('span', { class: 'gs-board-sq', 'aria-hidden': 'true', text: RESULT_SQUARE[lead.r] }),
+            h('span', { class: 'gs-board-name' }, [h('span', { text: pageName(p) }), h('small', { class: lead.you ? 'gs-you' : '', text: T('board.leads', { name: lead.name, n: g.n }) })])]);
+          open.addEventListener('click', function () { Shell.boardSheet(p); });
+          return h('li', { class: 'gs-board-row gs-board-row-day' }, [open]);
+        })));
+        box.appendChild(boardSwitch(j));
+      });
+    });
   }
   // The page's name in the player's language, for the stats and the share line.
   function pageName(page) {
@@ -883,6 +1043,7 @@
   var RESULT_SQUARE = { win: '🟩', lose: '🟥', draw: '🟨', over: '⬜' };
   // The signed-in player's name, as Zimi's shell keeps it for the games (none: not signed in, or password off).
   function personName() { try { return root.localStorage.getItem(PERSON_KEY) || ''; } catch (e) { return ''; } }
+  function signedIn() { try { return root.localStorage.getItem(SIGNED_KEY) === '1'; } catch (e) { return false; } }
   // Whether the share line carries that name: the player's choice, off until they turn it on.
   function shareWithName() { try { return root.localStorage.getItem(SHARE_NAME_KEY) === 'on'; } catch (e) { return false; } }
   function shareText(day, result, chips) {
@@ -908,11 +1069,11 @@
   }
   // Who these stats are (signed in): the name, a tap away from changing it in Zimi.
   function personLine() {
+    if (!signedIn()) return null;
     var who = personName();
-    if (!who) return null;
-    var change = h('button', { class: 'gs-person-change', type: 'button', text: T('stats.changeName') });
+    var change = h('button', { class: 'gs-person-change', type: 'button', text: T(who ? 'stats.changeName' : 'stats.setName') });
     change.addEventListener('click', function () { try { root.parent.postMessage({ zimi: 'games-edit-name' }, root.location.origin); } catch (e) { /* not in Zimi */ } });
-    return h('p', { class: 'gs-person' }, [h('span', { text: T('stats.playingAs', { name: who }) }), change]);
+    return h('p', { class: 'gs-person' }, [h('span', { text: who ? T('stats.playingAs', { name: who }) : T('stats.noName') }), change]);
   }
   // The stats page: the streak line first, then the totals, then what was earned (quiet, never announced).
   // The day the stats count to: a daily's, else the server's (asked once), so the streak here is the shelf's.
@@ -927,7 +1088,13 @@
       var got = t.earned.indexOf(a[0]) >= 0, name = T('stats.a.' + a[0]);
       return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '○' }), h('span', { 'aria-hidden': 'true', text: name })]);
     }));
-    return [personLine(), h('div', { class: 'gs-stats' }, [statRows(lines)])].filter(Boolean).concat(most.length ? [h('h3', { class: 'gs-subhead', text: T('stats.most') }), h('div', { class: 'gs-stats' }, [statRows(most)])] : [])
+    var boards = null;
+    if (signedIn()) {
+      boards = h('div', { class: 'gs-boards' });
+      serverBoardsInto(boards);
+    }
+    return [personLine(), h('div', { class: 'gs-stats' }, [statRows(lines)])].filter(Boolean)
+      .concat(boards ? [h('h3', { class: 'gs-subhead', text: T('board.serverToday') }), boards] : []).concat(most.length ? [h('h3', { class: 'gs-subhead', text: T('stats.most') }), h('div', { class: 'gs-stats' }, [statRows(most)])] : [])
       .concat([h('h3', { class: 'gs-subhead', text: T('stats.earned') }), earned]);
   }
   Shell.statsSheet = function () { withDay(function (day) { Shell.sheet({ title: T('stats.title'), body: statsBody(day), actions: [{ label: T('shell.close'), primary: true }] }); }); };
@@ -936,6 +1103,12 @@
     countResult(opts.result || 'over');
     var daily = roundDaily();
     if (daily) opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([shareRow(daily, opts.result, opts.stats || [])]) });
+    syncBest(PAGE);   // the game has kept its own best by the time it ends; the board's shape follows it
+    if (Shell.hasBoard() && signedIn()) {
+      var boardBtn = h('button', { class: 'gs-person-change gs-board-open', type: 'button', text: T('board.open') });
+      boardBtn.addEventListener('click', function () { Shell.boardSheet(); });
+      opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([boardBtn]) });
+    }
     // `title`: the caller's own headline, already in the player's language ("2nd of 5", "Solved"), over the result's.
     var title = opts.title ? String(opts.title) : opts.name ? T(opts.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: opts.name }) : T(END_TITLES[opts.result] || END_TITLES.over);
     var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
@@ -1353,6 +1526,7 @@
     lines = lines.filter(function (t) { return t && (Array.isArray(t) || String(t).trim()); });
     var box = h('div', { class: 'gs-stats' }), pane = paneStack[paneStack.length - 1];
     card.appendChild(box);
+    if (Shell.hasBoard() && signedIn()) card.appendChild(chevronRow(T('board.open'), '', function () { Shell.boardSheet(); }));
     card.appendChild(chevronRow(T('stats.all'), '', function () { show(allStatsPane); }));
     withDay(function (day) {
       if (paneStack[paneStack.length - 1] !== pane) return;   // the player has moved on

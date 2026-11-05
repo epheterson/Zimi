@@ -3567,5 +3567,8 @@
   "display_name_invalid": "עד 32 אותיות, ספרות, רווחים, נקודות או מקפים.",
   "display_name_saved": "השם נשמר",
   "display_name_label": "שם במשחקים:",
-  "display_name_change": "שינוי"
+  "display_name_change": "שינוי",
+  "users_set_display": "שינוי השם במשחקים",
+  "users_set_display_for": "השם במשחקים עבור {name}",
+  "users_goes_by": "משחק בשם {name}"
 }

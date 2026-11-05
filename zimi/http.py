@@ -3102,6 +3102,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._uncached(self._handle_settings_get)
             elif parsed.path == "/userdata/games":
                 return self._uncached(self._handle_games_get)
+            elif parsed.path == "/games/board":
+                return self._uncached(self._handle_board_get)
             elif parsed.path == "/events":
                 return self._handle_events()
 
@@ -6069,6 +6071,21 @@ class ZimHandler(BaseHTTPRequestHandler):
         if not ok:
             return self._json(503 if err == "write failed" else 400, {"error": err})
         return self._json(200, doc)
+
+    def _handle_board_get(self):
+        """GET /games/board?page=<game page>&day=<YYYY-MM-DD> — that game's
+        boards (users.leaderboard); without ``page``, the day's dailies across
+        the server (users.leaderboards_today). For people signed in only: the
+        boards name the people on this server."""
+        viewer = _users.games_data_owner(self)
+        if not viewer:
+            return self._json(401, {"error": "sign in required"})
+        page, day = self._query_param("page"), self._query_param("day")
+        got = _users.leaderboard(page, day, viewer) if page else _users.leaderboards_today(day, viewer)
+        if got is None:
+            return self._json(400, {"error": "invalid board"})
+        got["you"] = {"name": _users.display_name(viewer), "on": (_users.GAMES.load(viewer)["settings"].get("zimi.games.board") or {}).get("v") != "off"}
+        return self._json(200, got)
 
     def _handle_display_post(self, data):
         """POST /account/display — {display}: what the signed-in person is called

@@ -3567,5 +3567,8 @@
   "display_name_invalid": "Use até 32 letras, números, espaços, pontos ou hífens.",
   "display_name_saved": "Nome salvo",
   "display_name_label": "Nome nos jogos:",
-  "display_name_change": "Alterar"
+  "display_name_change": "Alterar",
+  "users_set_display": "Alterar nome nos jogos",
+  "users_set_display_for": "Nome nos jogos para {name}",
+  "users_goes_by": "joga como {name}"
 }

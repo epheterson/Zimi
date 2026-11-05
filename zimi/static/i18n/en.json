@@ -3567,5 +3567,8 @@
   "display_name_invalid": "Use up to 32 letters, numbers, spaces, dots or dashes.",
   "display_name_saved": "Name saved",
   "display_name_label": "Name in games:",
-  "display_name_change": "Change"
+  "display_name_change": "Change",
+  "users_set_display": "Change name in games",
+  "users_set_display_for": "Name in games for {name}",
+  "users_goes_by": "goes by {name}"
 }

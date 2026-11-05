@@ -681,3 +681,22 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 /* The share line's name: the player's choice, beside Share. */
 .gs-share-name { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--ink2); font-size: var(--fs-small); }
 .gs-share-name input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+/* This server's boards (shell.js boardSheet): rank, name, result. The player's own row in the accent; an arcade
+   game's house table in the cabinet's own type, so it never reads as people. */
+.gs-board { list-style: none; margin: 0 0 var(--sp-3); padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.gs-board-row { display: grid; grid-template-columns: 2em 1fr auto; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; }
+.gs-board-row + .gs-board-row { border-top: 1px solid var(--line); }
+.gs-board-rank { color: var(--ink2); font-variant-numeric: tabular-nums; }
+.gs-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-board-val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.gs-board-row.gs-you { color: var(--accent); }
+.gs-board-row.gs-house { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.08em; color: var(--ink2); }
+.gs-board-note { margin: 0 0 var(--sp-3); color: var(--ink2); font-size: var(--fs-small); }
+.gs-board-open { display: block; margin: 4px auto 0; }
+/* The server's dailies today: a row a game, who leads under its name; a tap opens its board. */
+.gs-board-row-day { display: block; padding: 0; }
+.gs-board-day { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.gs-board-day .gs-board-name { display: flex; flex-direction: column; white-space: normal; }
+.gs-board-day small { color: var(--ink2); font-size: var(--fs-small); }
+.gs-board-day small.gs-you { color: var(--accent); }

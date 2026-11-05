@@ -294,12 +294,15 @@ def get_user(name):
 def list_users():
     """Public listing (NO password hashes) sorted by display name."""
     users = _load_users()
+    shown = _load_displays()
     out = []
     for rec in users.values():
         allowlist = rec.get("allowlist")
         out.append(
             {
                 "name": rec.get("name", ""),
+                # What they go by in games and on the boards (their own name until they choose).
+                "display": shown.get(_key(rec.get("name"))) or rec.get("name", ""),
                 "role": _effective_role(rec),
                 # How the account authenticates. Absent on every 1.8 record, so
                 # a local password account keeps reporting "local" untouched.
@@ -1985,6 +1988,96 @@ def set_display_name(owner, text):
         if not _srv._atomic_write_json(_display_path(), shown, indent=2):
             return False, "write failed", None
     return True, None, display_name(owner)
+
+
+# ── Leaderboards: each person's results, as their games keep them ──
+# Read from the games each account keeps (GAMES): a daily's run that day
+# (zimi.games.day.<day>: {page: {"r": result, "ms": time}}) and a game's best
+# (zimi.games.best.<page>: {"score", "better": "high"|"low", "at"}), for every
+# person who has not turned "Show me on this server's leaderboards" off
+# (zimi.games.board = "off"), under the name they go by. A person with no name
+# yet (the primary admin before choosing one) is not on a board.
+BOARD_ROWS = 10
+_BOARD_PAGE_RE = re.compile(r"^(puzzles/)?[a-z0-9_-]{1,40}\.html$")
+_BOARD_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DAILY_RANK = {"win": 0, "draw": 1, "over": 2, "lose": 3}
+
+
+def _board_people():
+    """[(owner key, display, games settings)] for everyone on the boards."""
+    folder = os.path.join(_srv.ZIMI_DATA_DIR, GAMES.folder)
+    try:
+        names = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+    except OSError:
+        names = []
+    out = []
+    for fn in names[:1000]:
+        if not fn.endswith(".json"):
+            continue
+        key = fn[: -len(".json")]
+        kept = GAMES.load(key)["settings"]
+        if (kept.get("zimi.games.board") or {}).get("v") == "off":
+            continue
+        shown = display_name(key)
+        if shown:
+            out.append((key, shown, kept))
+    return out
+
+
+def _board_json(kept, key):
+    import json
+
+    try:
+        v = json.loads((kept.get(key) or {}).get("v") or "null")
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None
+
+
+def leaderboard(page, day, viewer):
+    """A game's boards: today's daily runs (fastest win first) and its best
+    scores, ``viewer`` (a games owner) marked. None for a page or day that
+    cannot be one."""
+    if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page):
+        return None
+    if day is not None and (not isinstance(day, str) or not _BOARD_DAY_RE.match(day)):
+        return None
+    me = _key(viewer) if viewer else None
+    runs, bests, better = [], [], None
+    for key, shown, kept in _board_people():
+        if day:
+            run = (_board_json(kept, "zimi.games.day." + day) or {}).get(page)
+            if isinstance(run, dict) and run.get("r") in _DAILY_RANK and isinstance(run.get("ms"), (int, float)):
+                runs.append({"name": shown, "r": run["r"], "ms": int(run["ms"]), "you": key == me})
+        best = _board_json(kept, "zimi.games.best." + page)
+        if best and isinstance(best.get("score"), (int, float)) and best.get("better") in ("high", "low"):
+            better = better or best["better"]
+            if best["better"] == better:
+                bests.append({"name": shown, "score": best["score"], "at": best.get("at") or 0, "you": key == me})
+    runs.sort(key=lambda x: (_DAILY_RANK[x["r"]], x["ms"]))
+    bests.sort(key=lambda x: (-x["score"] if better == "high" else x["score"], x["at"]))
+    return {"page": page, "day": day, "runs": runs[:BOARD_ROWS], "best": bests[:BOARD_ROWS], "better": better}
+
+
+def leaderboards_today(day, viewer):
+    """The server's dailies on ``day``: for each game played, how many played
+    and who leads (the board's first row)."""
+    if not isinstance(day, str) or not _BOARD_DAY_RE.match(day):
+        return None
+    me = _key(viewer) if viewer else None
+    games = {}
+    for key, shown, kept in _board_people():
+        for page, run in (_board_json(kept, "zimi.games.day." + day) or {}).items():
+            if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page) or not isinstance(run, dict):
+                continue
+            if run.get("r") not in _DAILY_RANK or not isinstance(run.get("ms"), (int, float)):
+                continue
+            g = games.setdefault(page, {"n": 0, "lead": None})
+            g["n"] += 1
+            row = {"name": shown, "r": run["r"], "ms": int(run["ms"]), "you": key == me}
+            if g["lead"] is None or (_DAILY_RANK[row["r"]], row["ms"]) < (_DAILY_RANK[g["lead"]["r"]], g["lead"]["ms"]):
+                g["lead"] = row
+    return {"day": day, "games": games}
 
 
 def _request_is_admin(handler):
