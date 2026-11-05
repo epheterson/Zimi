@@ -568,6 +568,10 @@ var AE_CSS = [
   '@media (pointer:coarse){.ae-set h3{padding-inline-end:40px}}',
   '.ae-set-choice{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;border-radius:8px;cursor:pointer}',
   '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
+  '.ae-set-orbits{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:7px 4px}',
+  '.ae-set-orbits b{font-weight:500;color:var(--text);margin-right:auto}',
+  '.ae-set-orbits label{display:flex;gap:5px;align-items:center;cursor:pointer;color:var(--text2)}',
+  '.ae-set-orbits input{margin:0;accent-color:var(--amber)}',
   '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
   '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
   '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
@@ -779,18 +783,38 @@ function _aeShowGo(on, group) {
   if (group === 'alm_go_landings' && on) _ae.allLandings = true;   // every landing site named on the Moon, not only Apollo's
   if (on) { _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
-// The quick row, one shape everywhere (Eric 2026-11-04): the Sun first, always; then the body the view is at and its
-// own (the Earth: its satellites and the Moon; the Moon: its landings; a planet: its moons and their orbits); one
-// recent place to go back to; the Planets; Go to. At the Sun the Earth stands after it. Past its width it scrolls
-// sideways (Go to stays at its end).
-var AE_ROW_ORBITS = 'orbits', AE_ROW_LANDINGS = 'landings';
+// The quick row (Eric 2026-11-04): the body's path from the Sun, then its own children; the recent place if it is not
+// on it already; the Planets; Go to. The Moon: Sun · Earth · Moon · Landings. Io: Sun · Jupiter · Io · Jupiter's other
+// moons. Jupiter: Sun · Jupiter · its moons. A probe: Sun · the probe · the body it is near. The Earth: Sun · Earth ·
+// Satellites · Moon. At the Sun: Sun · Earth. Past its width it scrolls sideways (Go to stays at its end).
+var AE_ROW_LANDINGS = 'landings';
 var AE_ROW_HOME = ['sun', 'earth', 'sats', 'moon', 'planets'];
-// The body a target belongs to on the row: the ISS and the satellites are the Earth's, a moon's row is its planet's.
+// Where a target sits on the way out from the Sun ('sun' at the Sun): the ISS and the satellites are the Earth's.
 function _aeRowBody() {
-  var t = _ae && _ae.target, b = t ? _aePlanetBody(t) : null;
+  var t = _ae && _ae.target;
   if (!t || t === 'earth' || t === 'iss') return 'earth';
-  if (b && b.parent) return b.parent;
   return t;
+}
+// The body a probe is near (Juno: Ganymede or Jupiter), or none: the same reach its flight frames by.
+function _aeRowNear(k) {
+  var pp = _aeBodyPos(k), near = null, nearD = Infinity;
+  if (!pp) return null;
+  AE_MARKED.forEach(function (m) {
+    if (m.body === k || m.flightOnly || _aeIsProbe(m.body) || m.body === 'sun') return;
+    var q = _aeBodyPos(m.body), d = q ? _aeLen(_aeSub(q, pp)) : Infinity;
+    if (d < nearD) { nearD = d; near = m.body; }
+  });
+  return nearD < AE_PROBE_FRAME_MAX ? near : null;
+}
+function _aeRowPath(c) {
+  var b = _aePlanetBody(c);
+  if (c === 'earth') return ['earth', 'sats', 'moon'];
+  if (c === 'moon') return ['earth', 'moon', AE_ROW_LANDINGS];
+  if (c === 'sun') return ['earth'];
+  if (_aeIsProbe(c)) { var n = _aeRowNear(c); return n ? [c, _aeHostOf(n)] : [c]; }   // near Ganymede is at Jupiter
+  var host = b && b.parent ? b.parent : c;
+  var moons = AE_PLANETS.filter(function (m) { return m.parent === host; }).map(function (m) { return m.key; });
+  return [host].concat(moons);   // a moon is among its planet's moons, in their order
 }
 function _aeRowKeys() {
   var c = _aeRowBody();
@@ -800,15 +824,7 @@ function _aeRowKeys() {
     if (c !== 'moon') _ae.allLandings = false;
     else _aeLmLoad();   // the Landings chip's table, there before it is tapped
   }
-  var mid;
-  if (c === 'earth') mid = ['earth', 'sats', 'moon'];
-  else if (c === 'moon') mid = ['moon', AE_ROW_LANDINGS];
-  else if (c === 'sun') mid = ['earth'];
-  else {
-    var moons = AE_PLANETS.filter(function (m) { return m.parent === c; }).map(function (m) { return m.key; });
-    mid = [c].concat(moons, moons.length ? [AE_ROW_ORBITS] : []);
-  }
-  var recent = _ae && _ae.rowRecent;
+  var mid = _aeRowPath(c), recent = _ae && _ae.rowRecent;
   if (recent && mid.indexOf(recent) < 0 && recent !== 'sun') mid.push(recent);
   return ['sun'].concat(mid, ['planets']);
 }
@@ -816,14 +832,13 @@ function _aeRowName(k) {
   if (k === 'sats') return _aeT('alm_earth_view_sats');
   if (k === 'sun') return _aeT('alm_sun');
   if (k === 'planets') return _aeT('alm_earth_view_planets');
-  if (k === AE_ROW_ORBITS) return _aeT('alm_row_orbits');
   if (k === AE_ROW_LANDINGS) return _aeT('alm_row_landings');
   return _aeGoName(k);
 }
 function _aeRowHtml() {
   var keys = _aeRowKeys();
   if (_ae) _ae.rowKeys = keys.join(',');
-  return keys.map(function (k) { return _aeChipHtml(k, _aeRowName(k), k === AE_ROW_ORBITS ? !!(_ae && _ae.moonOrbits) : !!_ae && k === _ae.preset); }).join('');
+  return keys.map(function (k) { return _aeChipHtml(k, _aeRowName(k), !!_ae && k === _ae.preset); }).join('');
 }
 function _aeRenderRow() {
   var chips = _aeById('ae-chips');
@@ -2236,11 +2251,33 @@ function _aeBuildPlanets(S) {
 }
 // A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
 function _aeWideView() { return _ae.preset === 'planets' || _ae.target === 'sun'; }
+// Orbits, a setting in the gear (remembered on this device): While flying (the default) shows the orbits of the
+// bodies a flight involves (where it left, where it goes, and their systems) during it, fading out shortly after it
+// lands; Always keeps those of the body in view and its system; Off shows none. The Planets view always shows the
+// planets' orbits.
+var AE_ORBITS_KEY = 'zimi_ae_orbits', AE_ORBITS_MODES = ['flying', 'always', 'off'], AE_ORBITS_FADE_MS = 1500;
+function _aeOrbitsMode() {
+  try { var m = localStorage.getItem(AE_ORBITS_KEY); return AE_ORBITS_MODES.indexOf(m) >= 0 ? m : 'flying'; } catch (e) { return 'flying'; }
+}
+function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' ? 'earth' : k; }
+// How much of a body's orbit shows now, 0..1: `key` a planet (its path round the Sun) or a moon (round its planet).
+function _aeOrbitShow(key) {
+  var b = _aePlanetBody(key), mode = _aeOrbitsMode();
+  if (!b) return 0;
+  if (_aeWideView()) return b.parent ? 0 : 1;   // the Planets view: the planets' orbits, not the moons' (on their planets there)
+  if (mode === 'off') return 0;
+  var mine = function (k) { return !!k && (key === k || (b.parent || key) === _aeHostOf(k)); };
+  if (mode === 'always') return mine(_ae.target) ? 1 : 0;
+  var o = _ae.orbitFly;
+  if (!o || !(mine(o.from) || mine(o.to))) return 0;
+  if (!o.endAt) return 1;
+  return _aeClamp(1 - (performance.now() - o.endAt) / AE_ORBITS_FADE_MS, 0, 1);
+}
 function _aeDrawOrbit(p, jd, place) {
   if (!p || !p.orbit) return;
-  // Only in the wide views (the Planets view, the Sun): near a body an orbit runs past the camera as a line across the
-  // screen. They are still worked out there, for the minimap.
-  var held = _aeWideView() ? 1 : 0, wanted = _ae.target !== 'earth' && _ae.target !== 'moon';
+  // The Planets view always, elsewhere by the setting (near a body an orbit runs past the camera as a line, so it is
+  // not there unasked). They are still worked out, for the minimap.
+  var held = _aeOrbitShow(p.b.key), wanted = held > 0 || (_ae.target !== 'earth' && _ae.target !== 'moon');
   p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * held * _aeFadeU.value;
   p.orbit.visible = held > 0;
   if (!wanted || (p.orbitAt != null && Math.abs(jd - p.orbitAt) < AE_ORBIT_REDRAW_DAYS) || !_aeMayRedraw()) return;
@@ -2254,12 +2291,12 @@ function _aeDrawOrbit(p, jd, place) {
   p.orbit.geometry.setDrawRange(0, AE_ORBIT_POINTS);
 }
 // A moon's orbit: a circle in its planet's equator (the orbits are fitted as circles), round where the planet is now.
-// Shown with the row's Orbits on while the view is at that planet or one of its moons.
+// Shown by the Orbits setting (_aeOrbitShow).
 function _aeDrawMoonOrbit(p, b, centre, ax, ay, r, toScene) {
-  var t = _aePlanetBody(_ae.target), on = !!_ae.moonOrbits && !!t && (t.key === b.parent || t.parent === b.parent);
-  p.orbit.visible = on;
-  if (!on) return;
-  p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * _aeFadeU.value;
+  var show = _aeOrbitShow(b.key);
+  p.orbit.visible = show > 0;
+  if (!(show > 0)) return;
+  p.orbit.material.opacity = AE_PLANET_ORBIT_ALPHA * show * _aeFadeU.value;
   var arr = p.orbit.geometry.attributes.position.array;
   for (var k = 0; k < AE_ORBIT_POINTS; k++) {
     var a = 2 * Math.PI * k / AE_ORBIT_POINTS, q = _aeAdd(centre, _aeScale(toScene(_aeAdd(_aeScale(ax, Math.cos(a)), _aeScale(ay, Math.sin(a)))), r));
@@ -3258,10 +3295,11 @@ function _aeAzElOf(v) {
 var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_KEEP = [0.3, 5];
 function _aeFlyTo(target, dist, azel, overview) {
   var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
+  _ae.orbitFly = { from: from.target, to: target, endAt: null };   // whose orbits show while it flies
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
   var to = { dist: _aeClampDist(dist) };
-  if (_aeReduceMotion()) { _ae.dist = to.dist; _ae.fly = null; }
+  if (_aeReduceMotion()) { _ae.dist = to.dist; _ae.fly = null; _ae.orbitFly.endAt = performance.now(); }
   else {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
@@ -3541,7 +3579,7 @@ function _aeStepFly(now) {
     _ae.az = f.from.az + (f.toAz - f.from.az) * arrive;
     _ae.el_ = f.from.el + (f.toEl - f.from.el) * arrive;
   }
-  if (now - f.start >= _aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)) { _ae.fly = null; _aeFarFor(0); }
+  if (now - f.start >= _aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)) { _ae.fly = null; _aeFarFor(0); if (_ae.orbitFly) _ae.orbitFly.endAt = now; }
   return true;
 }
 function _aeFlyTargetPos() {
@@ -3786,7 +3824,7 @@ function _aeMarkViews() {
   _aeRenderRow();
   var btns = document.querySelectorAll('#ae-views [data-ae-view]');
   for (var i = 0; i < btns.length; i++) {
-    var k = btns[i].getAttribute('data-ae-view'), on = k === AE_ROW_ORBITS ? !!_ae.moonOrbits : k === _ae.preset;
+    var k = btns[i].getAttribute('data-ae-view'), on = k === _ae.preset;
     btns[i].setAttribute('aria-pressed', String(on));
   }
 }
@@ -3897,6 +3935,19 @@ function _aeSetHint(key) {
   return _almEsc(_aeT(key, { src: mark })).replace(mark,
     '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
 }
+// Orbits: one line, three choices (this viewer's own, remembered on this device).
+function _aeOrbitsRowHtml() {
+  var mode = _aeOrbitsMode();
+  return '<div class="ae-set-orbits" role="radiogroup" aria-labelledby="ae-orbits-title"><b id="ae-orbits-title">' + _almEsc(_aeT('alm_orbits')) + '</b>' +
+    AE_ORBITS_MODES.map(function (m) {
+      return '<label><input type="radio" name="ae-orbits" value="' + m + '"' + (m === mode ? ' checked' : '') + '>' +
+        '<span>' + _almEsc(_aeT('alm_orbits_' + m)) + '</span></label>';
+    }).join('') + '</div>';
+}
+function _aeSetOrbits(m) {
+  try { if (m === 'flying') localStorage.removeItem(AE_ORBITS_KEY); else localStorage.setItem(AE_ORBITS_KEY, m); } catch (e) {}
+  if (_ae) { _ae.dirty = true; _aeKick(); }
+}
 function _aeRenderSettings() {
   var panel = _aeById('ae-set-body');
   if (!panel || !_ae.setOpen) return;
@@ -3906,6 +3957,7 @@ function _aeRenderSettings() {
     // This viewer's own: names of places on the bodies (off until turned on, remembered on this device).
     '<label class="ae-set-choice"><input type="checkbox" name="ae-lm-layer"' + (_aeLmLayerOn() ? ' checked' : '') + '>' +
       '<span><b>' + _almEsc(_aeT('alm_lm_layer')) + '</b><small>' + _almEsc(_aeT('alm_lm_layer_hint')) + '</small></span></label>' +
+    _aeOrbitsRowHtml() +
     _aeHdRowHtml() +
     '<div class="ae-set-sep" aria-hidden="true"></div>' +
     '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
@@ -5056,7 +5108,8 @@ function _aeKick() {
   if (!_ae.raf) _ae.raf = requestAnimationFrame(_aeFrame);
 }
 function _aeBusy() {
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1 || _ae.hand);
+  var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1 || _ae.hand || fading);
 }
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
@@ -5348,7 +5401,6 @@ function _aeBindControls() {
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-view]') : null;
     var k = b && b.getAttribute('data-ae-view');
     if (!k) return;
-    if (k === AE_ROW_ORBITS) { _ae.moonOrbits = !_ae.moonOrbits; _aeMarkViews(); _ae.dirty = true; _aeKick(); return; }
     if (k === AE_ROW_LANDINGS) { _aeShowGo(true, 'alm_go_landings'); return; }
     _aePreset(k);
   };
@@ -5383,6 +5435,7 @@ function _aeBindControls() {
     var input = e && e.target;
     if (input && input.name === 'ae-sat-mode') _aeSetMode(input.value);
     if (input && input.name === 'ae-lm-layer') _aeLmSetLayer(input.checked);
+    if (input && input.name === 'ae-orbits') _aeSetOrbits(input.value);
   };
   // Article links in the card need no binding of their own: the view sits
   // inside #almanac-view, where AlmanacLinks already listens.
