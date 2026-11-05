@@ -984,6 +984,7 @@
  "city.cl.deg": "+{n} °C",
  "city.cl.heatNone": "No heat wave",
  "city.cl.heatNow": "A heat wave",
+ "city.cl.kept": "Today’s power adds no warmth; the warming so far stays.",
  "city.cl.mostlyCoal": "Most of the city’s power burns coal, and every year of it warms things a little.",
  "city.cl.noCoal": "None of the city’s power burns coal, so the warming has stopped growing.",
  "city.cl.noPower": "The city has no power yet, so it adds no warmth.",

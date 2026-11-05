@@ -284,13 +284,23 @@ export function awayCard(s, a) {
 
 // The climate, plainly: how much warmer, how much higher the sea, where the power comes from, and a heat wave if there
 // is one; that it is a toy model; and the real articles, when the library has them.
+// What today's power does to the warming, true in every state: a city that burned coal and no longer does (or has no
+// power at all) keeps the warming it made, so the line says so instead of claiming it adds none and leaving it at that.
+var SHOWN_WARMING = 0.05;   // °C: the sheet shows a tenth, so less than this reads as none
+function powerLine(c) {
+  var power = c.coal + c.nuclear + c.solar + c.wind;
+  if (c.coal > 0.5) return 'city.cl.mostlyCoal';
+  if (c.coal > 0) return 'city.cl.someCoal';
+  if (c.warm >= SHOWN_WARMING) return 'city.cl.kept';
+  return power === 0 ? 'city.cl.noPower' : 'city.cl.noCoal';
+}
 export function climateSheet(s) {
   var c = s.climate(), Z = window.ZimiText, T = s.T;
   var deg = Z.number(c.warm, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   var rows = [[T('city.cl.warm'), T('city.cl.deg', { n: deg })], [T('city.cl.sea'), T('city.cl.cm', { n: c.seaCm })],
               [T('city.cl.coal'), pct(s, c.coal * 100)], [T('city.cl.clean'), pct(s, (c.solar + c.wind + c.nuclear) * 100)],
               [T('city.cl.summer'), T(c.heat ? 'city.cl.heatNow' : 'city.cl.heatNone')]];
-  var body = [list(rows), el('p', 'gs-text', T(c.coal + c.nuclear + c.solar + c.wind === 0 ? 'city.cl.noPower' : c.coal > 0.5 ? 'city.cl.mostlyCoal' : c.coal > 0 ? 'city.cl.someCoal' : 'city.cl.noCoal')),
+  var body = [list(rows), el('p', 'gs-text', T(powerLine(c))),
               el('p', 'gs-text cy-sc-note', T('city.cl.toy'))];
   if (!s.climateOn()) body.unshift(el('p', 'gs-text', T('city.cl.off')));
   ['climate.change', 'climate.sea', 'climate.heat'].forEach(function (k) { var a = s.library.link(k, T); if (a) body.push(a); });

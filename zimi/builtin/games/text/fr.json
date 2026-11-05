@@ -6034,5 +6034,6 @@
  "stats.setName": "Choisir",
  "stats.noName": "Votre nom dans les classements :",
  "board.youMark": "(vous)",
- "shelf.daily.more": "Autres défis du jour"
+ "shelf.daily.more": "Autres défis du jour",
+ "city.cl.kept": "L’énergie d’aujourd’hui n’ajoute aucune chaleur ; le réchauffement déjà là reste."
 }

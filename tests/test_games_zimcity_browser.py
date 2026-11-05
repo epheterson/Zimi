@@ -474,6 +474,23 @@ def test_the_climate_sheet_says_it_plainly_and_comes_back_after_a_reload(browser
     assert pg.evaluate("() => window.__zimcity.city.climate.carbon") >= 9000
 
 
+def test_the_climate_sheet_never_says_no_warmth_beside_warming_already_made(browser, site):
+    """A city that tore down its coal (or has no power now) keeps the warming it made: the sheet says today's power adds
+    none and the warming so far stays, never only "adds no warmth" beside +1.5 °C. A new city with none says it has no power."""
+    pg = phone(browser, site)
+    def sheet():
+        pg.click(".gs-menu-btn")
+        pg.click("#cy-climate")
+        text = pg.wait_for_selector(OURS + " .ar-sheet-card").text_content()
+        pg.keyboard.press("Escape")
+        return text
+    fresh = sheet()
+    assert "The city has no power yet" in fresh and "so far stays" not in fresh, fresh
+    pg.evaluate("() => { const c = window.__zimcity.city; c.climate.carbon = 9000; c.climate.warm = 1.5; }")
+    after = sheet()
+    assert "+1.5 °C" in after and "the warming so far stays" in after and "so it adds no warmth" not in after, after
+
+
 def test_a_city_saved_before_the_climate_still_opens(browser, site):
     """Saves from 1.15.3 have no climate: they open with none and start counting."""
     pg = phone(browser, site)
