@@ -3570,5 +3570,13 @@
   "display_name_change": "Modifier",
   "users_set_display": "Modifier le nom dans les jeux",
   "users_set_display_for": "Nom dans les jeux pour {name}",
-  "users_goes_by": "joue sous le nom {name}"
+  "users_goes_by": "joue sous le nom {name}",
+  "alm_card_from_earth": "à {d} de la Terre",
+  "alm_card_across": "{d} de diamètre",
+  "alm_card_circles": "Fait le tour de {body} en {t}",
+  "alm_card_up": "à {d} d’altitude",
+  "alm_card_shadow": "Dans l’ombre de la Terre",
+  "alm_card_shadow_until": "Dans l’ombre de la Terre · soleil dans {t}",
+  "alm_card_round_sun": "Fait le tour du Soleil en {t}",
+  "alm_card_round_earth": "Fait le tour de la Terre en {t}"
 }

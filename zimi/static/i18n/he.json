@@ -3570,5 +3570,13 @@
   "display_name_change": "שינוי",
   "users_set_display": "שינוי השם במשחקים",
   "users_set_display_for": "השם במשחקים עבור {name}",
-  "users_goes_by": "משחק בשם {name}"
+  "users_goes_by": "משחק בשם {name}",
+  "alm_card_from_earth": "{d} מכדור הארץ",
+  "alm_card_across": "קוטר {d}",
+  "alm_card_circles": "מקיף את {body} כל {t}",
+  "alm_card_up": "בגובה {d}",
+  "alm_card_shadow": "בצל כדור הארץ",
+  "alm_card_shadow_until": "בצל כדור הארץ · אור שמש בעוד {t}",
+  "alm_card_round_sun": "מקיף את השמש כל {t}",
+  "alm_card_round_earth": "מקיף את כדור הארץ כל {t}"
 }

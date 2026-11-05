@@ -3570,5 +3570,13 @@
   "display_name_change": "تغيير",
   "users_set_display": "تغيير الاسم في الألعاب",
   "users_set_display_for": "اسم {name} في الألعاب",
-  "users_goes_by": "يلعب باسم {name}"
+  "users_goes_by": "يلعب باسم {name}",
+  "alm_card_from_earth": "على بعد {d} من الأرض",
+  "alm_card_across": "قطره {d}",
+  "alm_card_circles": "يدور حول {body} كل {t}",
+  "alm_card_up": "على ارتفاع {d}",
+  "alm_card_shadow": "في ظل الأرض",
+  "alm_card_shadow_until": "في ظل الأرض · ضوء الشمس بعد {t}",
+  "alm_card_round_sun": "يدور حول الشمس كل {t}",
+  "alm_card_round_earth": "يدور حول الأرض كل {t}"
 }

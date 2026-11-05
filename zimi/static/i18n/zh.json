@@ -3570,5 +3570,13 @@
   "display_name_change": "更改",
   "users_set_display": "更改游戏中的名字",
   "users_set_display_for": "{name} 在游戏中的名字",
-  "users_goes_by": "游戏名 {name}"
+  "users_goes_by": "游戏名 {name}",
+  "alm_card_from_earth": "距地球 {d}",
+  "alm_card_across": "直径 {d}",
+  "alm_card_circles": "绕{body}一周需 {t}",
+  "alm_card_up": "高度 {d}",
+  "alm_card_shadow": "在地球阴影中",
+  "alm_card_shadow_until": "在地球阴影中 · {t} 后见到阳光",
+  "alm_card_round_sun": "绕太阳一周需 {t}",
+  "alm_card_round_earth": "绕地球一周需 {t}"
 }

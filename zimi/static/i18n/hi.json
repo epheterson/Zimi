@@ -3570,5 +3570,13 @@
   "display_name_change": "बदलें",
   "users_set_display": "गेम में नाम बदलें",
   "users_set_display_for": "{name} का गेम में नाम",
-  "users_goes_by": "{name} नाम से खेलते हैं"
+  "users_goes_by": "{name} नाम से खेलते हैं",
+  "alm_card_from_earth": "पृथ्वी से {d}",
+  "alm_card_across": "व्यास {d}",
+  "alm_card_circles": "{body} का एक चक्कर {t} में",
+  "alm_card_up": "{d} ऊँचाई पर",
+  "alm_card_shadow": "पृथ्वी की छाया में",
+  "alm_card_shadow_until": "पृथ्वी की छाया में · {t} में धूप",
+  "alm_card_round_sun": "सूर्य का एक चक्कर {t} में",
+  "alm_card_round_earth": "पृथ्वी का एक चक्कर {t} में"
 }

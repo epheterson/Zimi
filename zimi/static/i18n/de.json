@@ -3570,5 +3570,13 @@
   "display_name_change": "Ändern",
   "users_set_display": "Namen in Spielen ändern",
   "users_set_display_for": "Name in Spielen für {name}",
-  "users_goes_by": "spielt als {name}"
+  "users_goes_by": "spielt als {name}",
+  "alm_card_from_earth": "{d} von der Erde",
+  "alm_card_across": "{d} Durchmesser",
+  "alm_card_circles": "Umrundet {body} in {t}",
+  "alm_card_up": "{d} hoch",
+  "alm_card_shadow": "Im Erdschatten",
+  "alm_card_shadow_until": "Im Erdschatten · Sonnenlicht in {t}",
+  "alm_card_round_sun": "Umrundet die Sonne in {t}",
+  "alm_card_round_earth": "Umrundet die Erde in {t}"
 }

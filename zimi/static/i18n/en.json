@@ -3570,5 +3570,13 @@
   "display_name_change": "Change",
   "users_set_display": "Change name in games",
   "users_set_display_for": "Name in games for {name}",
-  "users_goes_by": "goes by {name}"
+  "users_goes_by": "goes by {name}",
+  "alm_card_from_earth": "{d} from Earth",
+  "alm_card_across": "{d} across",
+  "alm_card_circles": "Goes round {body} every {t}",
+  "alm_card_up": "{d} up",
+  "alm_card_shadow": "In the Earth's shadow",
+  "alm_card_shadow_until": "In the Earth's shadow · sunlight in {t}",
+  "alm_card_round_sun": "Goes round the Sun every {t}",
+  "alm_card_round_earth": "Goes round the Earth every {t}"
 }

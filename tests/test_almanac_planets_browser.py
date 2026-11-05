@@ -478,6 +478,45 @@ def test_every_destination_flies(served, start):
             br.close()
 
 
+def test_every_destination_arrives_with_its_card(served):
+    """Every place Go to flies to arrives with the same card: its name, a line of what it is, and where it is from here
+    (a probe: from the Sun, and what it last did). Saturn used to arrive with nothing. The ISS says when it is in the
+    Earth's shadow and when the Sun comes back."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("_aeShowGo(true)")
+            pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0).concat(['sun'])")
+            pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")
+            bare = []
+            for k in keys:
+                pg.evaluate("(k) => { _ae.fly = null; _aePreset(k); }", k)
+                pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !_ae.pendingPreset; }", timeout=30_000, polling=100)
+                card = pg.evaluate("""() => { var c = document.getElementById('ae-card');
+                    return { shown: !c.hidden, name: (c.querySelector('h3') || {}).textContent || '', lines: c.querySelectorAll('p').length }; }""")
+                want = 1 if k == "iss" else 2
+                if k not in ("earth", "sats") and (not card["shown"] or not card["name"].strip() or card["lines"] < want):
+                    bare.append((k, card))
+            assert not bare, bare
+            shade = pg.evaluate("""() => ({ behind: _aeInShadow([-2, 0, 0], [5, 0, 0]), beside: _aeInShadow([0, 2, 0], [5, 0, 0]), front: _aeInShadow([2, 0, 0], [5, 0, 0]) })""")
+            assert shade == {"behind": True, "beside": False, "front": False}, shade
+            iss = pg.evaluate("""() => { var lines = _aeArrivalLines('iss', _aeDisplayMs()); return { dark: _aeInShadow(_ae.issPos, _ae.scene.sun),
+                says: lines.some(function (l) { return l.indexOf(_aeT('alm_card_shadow')) === 0; }) }; }""")
+            assert iss["dark"] == iss["says"], iss
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
 def test_a_flight_to_a_planet_is_the_fly_between(served):
     """1.15.2's shot for every flight: over the shoulder, a circle on the body it leaves and on the one it goes to, and
     the line of sight and up turning with no snap (the bounds of test_almanac_earth_view.cjs's section 8b)."""

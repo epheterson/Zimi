@@ -3570,5 +3570,13 @@
   "display_name_change": "Изменить",
   "users_set_display": "Изменить имя в играх",
   "users_set_display_for": "Имя в играх для {name}",
-  "users_goes_by": "играет как {name}"
+  "users_goes_by": "играет как {name}",
+  "alm_card_from_earth": "{d} от Земли",
+  "alm_card_across": "{d} в поперечнике",
+  "alm_card_circles": "Оборот вокруг: {body}, за {t}",
+  "alm_card_up": "{d} над Землёй",
+  "alm_card_shadow": "В тени Земли",
+  "alm_card_shadow_until": "В тени Земли · Солнце через {t}",
+  "alm_card_round_sun": "Оборот вокруг Солнца за {t}",
+  "alm_card_round_earth": "Оборот вокруг Земли за {t}"
 }

@@ -521,6 +521,9 @@ function _aeById(id) { return document.getElementById(id); }
 // The view's two marking colours: the spacecraft's teal (AE_PROBE_COLOR is it as GL floats) and the amber of
 // places it names (a landing, you, the status line).
 var AE_PROBE_HEX = '#6ee7d8', AE_AMBER_HEX = '#f5c16c';
+// The view's sheets and cards (Go to, settings, a body's card) are solid: the scene and the labels under them never
+// show through what is being read.
+var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
 var AE_CSS = [
   '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
   '.ae-view.open{display:block}',
@@ -556,7 +559,7 @@ var AE_CSS = [
   '@media (hover:hover){.ae-btn.ae-now:hover{color:#000;background:var(--amber);filter:brightness(1.1)}}',
   '.ae-round{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
   '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',
-  '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.96);border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
+  '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
   '.ae-set[hidden]{display:none}',
   '.ae-set h3{margin:0 4px 6px;font-size:13px;font-weight:600;color:var(--text)}',
   '@media (pointer:coarse){.ae-set h3{padding-inline-end:40px}}',
@@ -578,11 +581,12 @@ var AE_CSS = [
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls, its places in groups, each with its small disc.
-  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(62vh,520px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(14,14,16,.96);border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
+  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(62vh,520px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '@media (max-width:400px){#ae-views{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
   '@media (max-width:370px){#ae-views{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px}}',
+  '.ae-go-wait{grid-column:1/-1;padding:10px 12px;font-size:13px;color:var(--text3)}',
   '.ae-go h4{margin:10px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3)}',
   '.ae-go-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}',
   '.ae-go-row{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:10px;background:none;font:inherit;font-size:14px;color:var(--text);text-align:start;cursor:pointer}',
@@ -591,7 +595,7 @@ var AE_CSS = [
   '.ae-go-row[aria-current="true"]{color:var(--amber)}',
   '.ae-go-dot{flex:0 0 auto;width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08)}',
   '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
-  '.night-red .ae-go{background:rgba(0,0,0,.94)}',
+  '.night-red .ae-go{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 64px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
@@ -644,7 +648,7 @@ var AE_CSS = [
   // Red night light (the Red theme, app.css): the labels' warm and cool tints are one red, the views' bright
   // overlays go black, and the globe is recoloured by the canvas filter.
   '.night-red .ae-label,.night-red .ae-label-you,.night-red .ae-label-shadow,.night-red .ae-status,.night-red .ae-live{color:var(--text)}',
-  '.night-red .ae-btn,.night-red .ae-set,.night-red .ae-card{background:rgba(0,0,0,.9)}',
+  '.night-red .ae-btn,.night-red .ae-set,.night-red .ae-card{background:' + AE_PANEL_BG_RED + '}',
   '.night-red .ae-btn[aria-pressed="true"]{background:var(--amber-glow)}',
   '.night-red .ae-set-choice:hover{background:var(--amber-glow)}',
   // A label that marks a place carries its dot ON the place: the dot hangs
@@ -655,7 +659,7 @@ var AE_CSS = [
   '.ae-label-shadow .ae-mark{width:10px;height:10px;border:1.5px solid currentColor;background:radial-gradient(currentColor 30%,transparent 38%)}',
   // The card and the hint stand just above the controls, however tall the
   // controls and the note under them grow (a two-line note overlapped them).
-  '.ae-card{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% - 18px);width:min(420px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.94);border:1px solid var(--border);border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.5;color:var(--text2);pointer-events:auto}',
+  '.ae-card{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% - 18px);width:min(420px,calc(100% - 32px));box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.5;color:var(--text2);pointer-events:auto}',
   '.ae-card[hidden]{display:none}',
   '.ae-card h3{margin:0 0 4px;font-size:14px;font-weight:600;color:var(--text)}',
   '.ae-card p{margin:0}',
@@ -702,6 +706,7 @@ function _aeGoDot(key) {
   var c = hex || 'rgb(' + rgb.map(function (v) { return Math.round(v * 255); }).join(',') + ')';
   return '<i class="ae-go-dot" style="background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%),' + c + '"></i>';
 }
+var AE_GO_LOADING = '…';   // a group's place while its table loads (never a body's key)
 function _aeGoGroups() {
   var planets = AE_PLANETS.filter(function (b) { return !b.parent && !b.track; }).map(function (b) { return b.key; });
   var moons = AE_PLANETS.filter(function (b) { return b.parent; }).map(function (b) { return b.key; });
@@ -712,6 +717,9 @@ function _aeGoGroups() {
   var craft = (_ae.issPos ? ['iss'] : []).concat(_aeTracks ? _aeTracks.probes.filter(function (k) { return !!_aeTrackAt(_aeTracks.tracks[k], jd); }) : []);
   // The Moon's landing sites, by name: flown to, each shows its own label and card whether or not Landmarks is on.
   var landings = _aeLm ? _aeLm.moon.map(function (r, i) { return r[3] === 'landing' ? AE_GO_LM + i : null; }).filter(Boolean) : [];
+  // A group whose table is still on its way shows where it will be, quietly, rather than being missing until it lands.
+  if (!_aeTracks && _aeTracksLoading) craft.push(AE_GO_LOADING);
+  if (!_aeLm && _aeLmLoading) landings.push(AE_GO_LOADING);
   return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
     .filter(function (g) { return g[1].length; });
 }
@@ -730,6 +738,7 @@ function _aeGoRender() {
   if (!sheet || sheet.hidden) return;
   sheet.innerHTML = _aeGoGroups().map(function (g) {
     return '<h4>' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(function (k) {
+      if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
       return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoDot(k) +
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
@@ -2364,7 +2373,7 @@ function _aeTracksLoad() {
     if (_ae) { _ae.dirty = true; _aeKick(); }
     _aeGoRender();
     if (_ae && _ae.pendingPreset) { var go = _ae.pendingPreset; _ae.pendingPreset = null; _aePreset(go); }
-  }).catch(function () { _aeTracksLoading = null; });
+  }).catch(function () { _aeTracksLoading = null; _aeGoRender(); });   // no loading row left behind a failed table
 }
 function _aeHermite(a, b, jd) {
   var h = b[0] - a[0], t = (jd - a[0]) / h, t2 = t * t, t3 = t2 * t;
@@ -2462,9 +2471,9 @@ function _aeUpdateProbes(jd, place, near) {
     var ahead = _aeTrackAt(t, jd + AE_PROBE_HEADING_DAYS);   // where it will be: its heading as drawn
     _aeProbeHeading[k] = ahead ? _aeSub(place(ahead), pos) : null;
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, _aeProbeCraftDot(k), AE_PROBE_PX);
-    // Its own path for the probe in view; the others' only in the wide views (near a body a path is a stray line).
-    // (and not its own once its model fills the view: the path runs through it, a line across the screen)
-    var shown = (_ae.target === k && _aeProbeCraftDot(k) > 0.5) || _aeWideView(), alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
+    // Only the path of the probe gone to: others' paths crossed the Planets view as stray lines, and near a body they
+    // run past the camera. Not its own either once its model fills the view (the path runs through it).
+    var shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5, alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value;
     trail.material.opacity = ring.material.opacity = alpha;
     // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
     var o = trail.orbit;
@@ -2499,20 +2508,98 @@ function _aeUpdateProbes(jd, place, near) {
   _aeCommitPoints(out.cloud, n);
 }
 function _aeIsProbe(key) { return !!(_aeTracks && _aeTracks.tracks[key] && key !== 'ceres'); }
-// A probe's card: where it is from the Sun now, and what it last did.
-function _aeRenderProbeCard(card) {
-  var k = _ae.probe, t = _aeTracks.tracks[k], ms = _aeDisplayMs(), jd = ms / MS_PER_DAY + JD_UNIX_EPOCH;
-  var h = _aeTrackAt(t, jd), past = (t.events || []).filter(function (e) { return e[0] <= jd; }).slice(-3);
-  var line = function (e) {
-    return _aeT('alm_probe_ev_' + e[1], { body: e[2] ? (_tLookup('alm_planet_' + e[2].toLowerCase(), e[2])) : '' }) + ' · ' +
-      _aeFmtDate((e[0] - JD_UNIX_EPOCH) * MS_PER_DAY);
+// The card a flight arrives with, the same for every destination: its name, one line of what it is (its size and how
+// long it takes to go round), and where it is from here (how far, and how long light takes). A probe adds where it is
+// from the Sun and the last things it did; the ISS, whether it is in the Earth's shadow and when the Sun comes back.
+var AE_GM_EARTH_KM3_S2 = 398600.4418;   // the Earth's GM, km^3/s^2: the ISS's period from its height
+var AE_MOON_SIDEREAL_DAYS = 27.321661;  // the Moon round the Earth, against the stars
+var AE_ISS_SUN_STEP_MS = 30000, AE_ISS_SUN_LOOK_MS = 2 * 3600000;   // how finely, and how far ahead, the ISS's next sunlight is looked for
+function _aeKmText(km) { return _orrNum(km, 'kilometer', 0); }
+function _aeAuText(au) { return _orrNum(au, null, au < 10 ? 2 : 1) + ' AU'; }
+// The ISS is in the Earth's shadow when it is behind the Earth from the Sun and within its cylinder (Earth radii).
+function _aeInShadow(pos, sun) {
+  var s = _aeNorm(sun), along = _aeDot(pos, s);
+  return along < 0 && _aeLen(_aeSub(pos, _aeScale(s, along))) < 1;
+}
+function _aeIssSunlightIn(ms) {
+  var s = _ae.sats && _ae.sats.list.filter(function (x) { return x.iss; })[0], sc = _ae.scene;
+  if (!s || !sc) return null;
+  var eqeq = _aeEqEq(sc);
+  for (var t = ms; t <= ms + AE_ISS_SUN_LOOK_MS; t += AE_ISS_SUN_STEP_MS) {
+    var st = _aeSatAt(s, t, eqeq);
+    if (!st) return null;
+    if (!_aeInShadow(st.pos, sc.sun)) return t - ms;
+  }
+  return null;
+}
+function _aeArrivalLines(k, ms) {
+  var jd = ms / MS_PER_DAY + JD_UNIX_EPOCH, sc = _ae.scene, lines = [];
+  var earthAU = typeof _ephBodyJ2000 === 'function' ? _ephBodyJ2000('Earth', jd) : null;
+  var far = function (au, toName) {
+    lines.push(_aeT('alm_card_from_earth', { d: _aeAuText(au) }));
+    var span = _orrFmtSpan(_lightDelaySeconds(au));
+    lines.push(toName ? _aeT('alm_orr_msg_to', { planet: toName, t: span }) : _aeT('alm_orr_sun_light', { t: span }));
   };
+  if (_aeIsProbe(k)) {
+    var t = _aeTracks.tracks[k], h = _aeTrackAt(t, jd);
+    if (h) lines.push(_aeT('alm_probe_from_sun', { au: _aeAuText(_aeLen(h)) }));
+    (t.events || []).filter(function (e) { return e[0] <= jd; }).slice(-3).forEach(function (e) {
+      lines.push(_aeT('alm_probe_ev_' + e[1], { body: e[2] ? (_tLookup('alm_planet_' + e[2].toLowerCase(), e[2])) : '' }) + ' · ' +
+        _aeFmtDate((e[0] - JD_UNIX_EPOCH) * MS_PER_DAY));
+    });
+    return lines;
+  }
+  if (k === 'iss') {
+    if (!_ae.issPos) return lines;
+    var r = _aeLen(_ae.issPos) * AE_EARTH_RADIUS_KM, period = 2 * Math.PI * Math.sqrt(r * r * r / AE_GM_EARTH_KM3_S2);
+    lines.push(_aeT('alm_card_up', { d: _aeKmText(r - AE_EARTH_RADIUS_KM) }) + ' · ' +
+      _aeT('alm_card_round_earth', { t: _orrFmtSpan(period) }));
+    if (sc && _aeInShadow(_ae.issPos, sc.sun)) {
+      var back = _aeIssSunlightIn(ms);
+      lines.push(back == null ? _aeT('alm_card_shadow') : _aeT('alm_card_shadow_until', { t: _orrFmtSpan(back / 1000) }));
+    }
+    return lines;
+  }
+  if (k === 'moon') {
+    lines.push(_aeT('alm_card_across', { d: _aeKmText(2 * AE_MOON_RADIUS_KM) }) + ' · ' +
+      _aeT('alm_card_round_earth', { t: _orrFmtSpan(AE_MOON_SIDEREAL_DAYS * SECONDS_PER_DAY) }));
+    if (sc) {
+      var km = _aeLen(sc.moon) * AE_EARTH_RADIUS_KM;
+      lines.push(_aeT('alm_card_from_earth', { d: _aeKmText(km) }));
+      lines.push(_aeT('alm_orr_msg_to', { planet: _aeT('alm_moon'), t: _orrFmtSpan(km / AU_KM * LIGHT_SECONDS_PER_AU) }));
+    }
+    return lines;
+  }
+  if (k === 'sun') {
+    lines.push(_aeT('alm_card_across', { d: _aeKmText(2 * AE_SUN_RADIUS_KM) }));
+    if (earthAU) far(_aeLen(earthAU), null);
+    return lines;
+  }
+  var b = _aePlanetBody(k);
+  if (!b) return lines;
+  var parent = b.parent ? _aePlanetBody(b.parent) : null, orb = parent ? null : (typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]);
+  var fact = _aeT('alm_card_across', { d: _aeKmText(2 * b.km) });
+  if (parent) fact += ' · ' + _aeT('alm_card_circles', { body: _aeBodyName(parent), t: _orrFmtSpan(360 / b.orbit[2] * SECONDS_PER_DAY) });
+  else if (orb) fact += ' · ' + _aeT('alm_card_round_sun', { t: _orrFmtSpan(Math.pow(orb.a, 1.5) * SECONDS_PER_JULIAN_YEAR) });
+  lines.push(fact);
+  var h = _aeHelioOf(parent || b)(jd);
+  if (h && earthAU) far(_aeLen(_aeSub(h, earthAU)), _aeBodyName(b));
+  return lines;
+}
+var AE_ARRIVAL_LINK = { sun: 'planet:sun', moon: 'planet:moon' };
+function _aeArrivalName(k) {
+  if (_aeIsProbe(k)) return _almEsc(_aeTracks.tracks[k].name);
+  if (k === 'iss') return _aeLink('term:iss', _almEsc(_aeT('alm_earth_iss_name')));
+  var b = _aePlanetBody(k), name = k === 'sun' ? _aeT('alm_sun') : k === 'moon' ? _aeT('alm_moon') : b ? _aeBodyName(b) : k;
+  return _aeLink(AE_ARRIVAL_LINK[k] || (b && !b.parent ? 'planet:' + k : ''), _almEsc(name));
+}
+function _aeRenderArrivalCard(card) {
+  var k = _ae.arrived;
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
-    '<h3>' + _almEsc(t.name) + '</h3>' +
-    (h ? '<p>' + _almEsc(_aeT('alm_probe_from_sun', { au: _orrNum(_aeLen(h), null, _aeLen(h) < 10 ? 2 : 1) + ' AU' })) + '</p>' : '') +
-    past.map(function (e) { return '<p>' + _almEsc(line(e)) + '</p>'; }).join('');
+    '<h3>' + _aeArrivalName(k) + '</h3>' +
+    _aeArrivalLines(k, _aeDisplayMs()).map(function (l) { return '<p>' + _almEsc(l) + '</p>'; }).join('');
   card.hidden = false;
-  _aeById('ae-card-x').onclick = function () { _ae.probe = null; _aeRenderCard(); };
+  _aeById('ae-card-x').onclick = function () { _ae.arrived = null; _aeRenderCard(); };
 }
 
 // A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
@@ -2641,7 +2728,7 @@ function _aeLmLoad() {
     _aeLm = d;
     if (_ae) { _ae.dirty = true; _aeKick(); }
     _aeGoRender();
-  }).catch(function () { _aeLmLoading = null; });
+  }).catch(function () { _aeLmLoading = null; _aeGoRender(); });
 }
 // Where each body with landmarks stands: its centre, radius and turn (the rotation part of its matrix, column-major).
 function _aeLmBodies() {
@@ -3467,16 +3554,22 @@ function _aeFlyToCraft(name, pp, span) {
   else if (near && nearD < AE_PROBE_FRAME_MAX) dir = _aeAdd(_aeScale(_aeNorm(_aeSub(pp, near)), 0.8), _aeScale(toSun, 0.5));
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
   _aeFlyTo(name, span * AE_CRAFT_VIEW_SPANS, _aeAzElOf(_aeNorm(dir)));
-  _ae.probe = name; _ae.lm = null; _ae.selected = null;
-  _aeRenderCard();
+  _aeArrive(name);
 }
+// A flight to one place: its card comes with it, and any other card goes.
+function _aeArrive(name) { _ae.arrived = name; _ae.lm = null; _ae.selected = null; _aeRenderCard(); }
 function _aePreset(name) {
   if (!_ae.gl) return;
-  if (_ae.probe && name !== _ae.probe) { _ae.probe = null; _aeRenderCard(); }
+  if (_ae.arrived && name !== _ae.arrived) { _ae.arrived = null; _aeRenderCard(); }
+  // The row says where the view is going at once, also for a destination that flies from a callback (a probe's model
+  // loading first): the last chip pressed no longer stays lit over Voyager.
+  _ae.preset = name;
+  _aeMarkViews();
   if (name === 'moon') {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
     _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+    _aeArrive('moon');
   } else if (name === 'planets') {
     // The whole system from above the ecliptic's north: every orbit round, the belt a ring, each planet a name to tap.
     var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
@@ -3497,8 +3590,7 @@ function _aePreset(name) {
       return d < best ? d : best;
     }, Infinity);
     _aeFlyTo(name, _aeClamp(_aeFitDist(near * AE_PROBE_FRAME_NEAR), AE_PROBE_VIEW_DIST, AE_PROBE_FRAME_MAX), _aeAzElOf(side));
-    _ae.probe = name; _ae.lm = null; _ae.selected = null;
-    _aeRenderCard();
+    _aeArrive(name);
   } else if (_aeIsPlanet(name)) {
     if (_ae.scene) _aeUpdatePlanets(_ae.scene);   // opened straight onto it (the orrery): placed before the flight
     // From the Earth's side too, a little off it so the phase shows its edge: as a telescope sees it, nearer.
@@ -3506,6 +3598,7 @@ function _aePreset(name) {
     // Pluto and Ceres come with the probes' table: not here yet, the tap waits for it and then flies.
     if (!at) { _ae.pendingPreset = name; _aeTracksLoad(); return; }
     _aeFlyTo(name, _aeFitDist(AE_TARGETS[name].surface * AE_PLANET_FIT * (_aePlanetBody(name).rings ? 1.6 : 1)), _ae.scene ? _aeAzElOf(_aeScale(at, -1)) : null);
+    _aeArrive(name);
   } else if (name === 'iss') {
     if (!_ae.issPos || !_ae.issBasis) return;
     // From above, behind and to starboard: the truss across the picture, the Earth below it to the horizon.
@@ -3515,9 +3608,11 @@ function _aePreset(name) {
     if (_ae.scene && _aeDot(dir, _ae.scene.sun) < 0) dir = _aeAdd(_aeScale(B[0], AE_ISS_VIEW_DIR[0]), _aeAdd(_aeScale(B[1], -AE_ISS_VIEW_DIR[1]), _aeScale(B[2], -AE_ISS_VIEW_DIR[2])));
     _aeCraftLoad('iss');
     _aeFlyTo('iss', AE_ISS_VIEW_DIST, _aeAzElOf(dir));
+    _aeArrive('iss');
   } else if (name === 'sun') {
     // From the Earth's side too: the Sun as it stands in our sky, ahead.
     _aeFlyTo('sun', _aeFitDist(AE_FIT_SUN), _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.sun, -1)) : null);
+    _aeArrive('sun');
   } else {
     // Back from the Sun, arrive over the day side, the Sun behind the camera.
     var fromSun = _ae.target === 'sun' && _ae.scene ? _aeAzElOf(_ae.scene.sun) : null;
@@ -3948,6 +4043,11 @@ function _aeCraftLoad(model, then) {
 function _aeCraftData(model) { return (_aeCraft[model] && _aeCraft[model].data) || null; }
 // Its span in Earth radii, once loaded (0 before).
 function _aeCraftSpanRe(model) { var d = _aeCraftData(model); return d ? d.span * d.metres / 1000 / AE_EARTH_RADIUS_KM : 0; }
+function _aeBoxCentre(pos) {
+  var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (var i = 0; i < pos.length; i += 3) for (var k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[i + k]); hi[k] = Math.max(hi[k], pos[i + k]); }
+  return [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
+}
 function _aeCraftBuild(S, model) {
   var THREE = S.THREE, d = _aeCraftData(model);
   var position = new THREE.BufferAttribute(d.pos, 3), cls = new THREE.BufferAttribute(d.cls, 1);
@@ -3969,6 +4069,9 @@ function _aeCraftBuild(S, model) {
   for (var t = 0; t < d.idx.length; t += 3) (d.axis && d.cls[d.idx[t]] === 2 ? turning : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
   var main = new THREE.Mesh(geo(body), mat);
   main.frustumCulled = false;
+  // A probe's file has its origin wherever its makers put it (Voyager's at the dish's rim), and the camera frames the
+  // origin: the model is moved so the middle of its box is there, and a flight ends on the whole craft.
+  if (!d.axis) { var c = _aeBoxCentre(d.pos); main.position.set(-c[0], -c[1], -c[2]); }
   root.add(main);
   if (d.axis) {
     var arr = new THREE.Mesh(geo(turning), mat);
@@ -4474,7 +4577,7 @@ function _aeRenderCard() {
   if (!card) return;
   var s = _aeSelectedSat();
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
-  if (!s && _ae.probe && _aeIsProbe(_ae.probe)) { _aeRenderProbeCard(card); return; }
+  if (!s && _ae.arrived && (!_aeIsProbe(_ae.arrived) || _aeTracks)) { _aeRenderArrivalCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
   _ae.lm = null;
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
@@ -4549,6 +4652,9 @@ function _aeFmtGain(sec) {
 // offer: { ask, note }.
 function _aeNoteParts() {
   var parts = [], dated = '', sats = _ae.sats;
+  // What the satellites' data is like is said where satellites are drawn: the Earth (and its Satellites view) and the
+  // ISS. At Saturn or Voyager it was a line about something not on the screen. The gear keeps the data's date anywhere.
+  var aboutSats = _ae.target === 'earth' || _ae.target === 'iss';
   if (sats && sats.list.length) {
     var newest = 0, anyShown = false, issOrbit = null;
     sats.list.forEach(function (s) {
@@ -4559,12 +4665,12 @@ function _aeNoteParts() {
     // The data's date is in the gear (with Get fresh data); the line under the controls says only that it may be out
     // of date.
     if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
-    else parts.push(_aeT('alm_earth_no_sat_data'));
-    if (anyShown && _ae.satMeta && _ae.satMeta.stale) parts.push(_aeT('alm_earth_data_stale'));
-    if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
-  } else if (sats) {
+    else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data'));
+    if (aboutSats && anyShown && _ae.satMeta && _ae.satMeta.stale) parts.push(_aeT('alm_earth_data_stale'));
+    if (aboutSats && issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
+  } else if (aboutSats && sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));
-  } else if (_ae.satsFailed) {
+  } else if (aboutSats && _ae.satsFailed) {
     parts.push(_aeT('alm_earth_sats_unavailable'));
   }
   var S = _ae.gl;
@@ -4660,7 +4766,14 @@ function _aeUpdateText(ms) {
     if (canvas.getAttribute('aria-label') !== aria) canvas.setAttribute('aria-label', aria);
   }
   _aeUpdateCard(ms);
+  // The arrival card keeps up: the ISS goes in and out of the Earth's shadow, a planet's distance changes as time runs.
+  if (_ae.arrived && !_ae.selected && !_ae.lm && (!_ae.arrivedAt || Math.abs(ms - _ae.arrivedAt) >= AE_ARRIVAL_REFRESH_MS)) {
+    _ae.arrivedAt = ms;
+    var card = _aeById('ae-card');
+    if (card && !card.hidden) _aeRenderArrivalCard(card);
+  }
 }
+var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the arrival card's numbers
 
 // ── The loop ──
 // Renders every frame while something moves (a drag, a flight, a faster
