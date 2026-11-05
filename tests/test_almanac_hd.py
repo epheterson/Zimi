@@ -177,3 +177,23 @@ def test_the_release_files_checksum_is_checked_before_it_is_installed(hd, tmp_pa
     assert not library._checksum_ok({"_sha256": REL["sha256"]}, str(f))
     assert library._checksum_ok({"_sha256": hashlib.sha256(b"not the release").hexdigest()}, str(f))
     assert library._checksum_ok({}, str(f))
+
+
+def test_a_restart_resumes_it_still_checked_against_its_checksum(hd, tmp_path, monkeypatch):
+    """The pending list keeps the checksum, and the resume goes back through Almanac HD's own start (the release, its
+    checksum and the setting asked afresh), never the generic import path that drops it."""
+    from zimi import server as srv
+
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path))
+    rec = {"id": "9", "url": "https://github.com/x/hd.zim", "filename": REL["file"], "size_bytes": REL["size"],
+           "_source": almanachd.SOURCE, "_sha256": "ab" * 32}
+    monkeypatch.setattr(library, "_active_downloads", {"9": rec})
+    monkeypatch.setattr(library, "_download_queue", [])
+    library._persist_pending_downloads()
+    saved = json.load(open(tmp_path / "downloads.json", encoding="utf-8"))["pending"]
+    assert saved[0]["sha256"] == "ab" * 32
+    monkeypatch.setattr(library, "_active_downloads", {})
+    imported = []
+    monkeypatch.setattr(library, "_start_import", lambda *a, **k: imported.append(a) or ("x", None))
+    assert library.resume_pending_downloads() == 1
+    assert not imported and hd and hd[-1]["extra"]["_sha256"] == REL.get("sha256")
