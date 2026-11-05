@@ -2976,15 +2976,15 @@ def _with_towns(pages, towns, limit):
     kilometres are the same place."""
     out = list(pages)
     for t in towns:
-        if any(
-            p["name"].lower() == t["name"].lower()
-            and abs(p["lat"] - t["lat"]) < _SAME_PLACE_DEGREES
-            and abs(p["lng"] - t["lng"]) < _SAME_PLACE_DEGREES
-            for p in out
-        ):
+        if any(p["name"].lower() == t["name"].lower() and _same_place(p, t) for p in out):
             continue
         out.append(t)
     return out[:limit]
+
+
+def _same_place(a, b):
+    """Two places close enough to be one (``_SAME_PLACE_DEGREES`` apart or less, each way)."""
+    return abs(a["lat"] - b["lat"]) < _SAME_PLACE_DEGREES and abs(a["lng"] - b["lng"]) < _SAME_PLACE_DEGREES
 
 
 # How close a place page and a town of the same name must be to be one place.
@@ -3157,8 +3157,7 @@ def near_places(parsed, at=None):
     maps = [
         z
         for z in _srv._zim_list_cache or []
-        if z.get("kind") == "map"
-        and not z.get("map_search")
+        if _mapplaces.is_kiwix_map(z)
         and z.get("name")
         and _srv.zim_allowed(z["name"])
     ]
@@ -3170,11 +3169,7 @@ def near_places(parsed, at=None):
         seen = []
         for z in maps:
             for p in _mapplaces.named(z["name"], f["value"]):
-                if not any(
-                    abs(p["lat"] - q["lat"]) < _SAME_PLACE_DEGREES
-                    and abs(p["lng"] - q["lng"]) < _SAME_PLACE_DEGREES
-                    for q in seen
-                ):
+                if not any(_same_place(p, q) for q in seen):
                     seen.append(p)
         anchor = _mapplaces.pick(seen, at)
         others = max(len(seen) - 1, 0)

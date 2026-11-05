@@ -11601,7 +11601,7 @@ const SEARCH_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
 const SEARCH_BAR_FILTERS = Object.assign({ near: 'near' }, SEARCH_FILTERS);
 // near:'s distance, the token after it (query.NEAR_RADIUS), and its default.
 const SEARCH_NEAR_RADIUS = /^(\d+(?:\.\d+)?)(km|mi)$/i;
-const SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_KM_PER_MILE = 1.609344;
+const SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_NEAR_MAX_KM = 500, SEARCH_KM_PER_MILE = 1.609344;   // query.NEAR_MAX_KM
 
 // Each token is [text, phrase, negated, start, end]: where it sits in what
 // was typed is what lets a chip take one operator back out (searchQueryChips).
@@ -11649,7 +11649,7 @@ function _searchNearRadius(tokens, at, skip) {
   if (!m) return { radius_km: SEARCH_NEAR_DEFAULT_KM, unit: 'km' };
   skip.add(at);
   const unit = m[2].toLowerCase(), n = parseFloat(m[1]);
-  return { radius_km: unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, unit: unit, radiusAt: at };
+  return { radius_km: Math.min(unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, SEARCH_NEAR_MAX_KM), unit: unit, radiusAt: at };
 }
 
 // The query as the server is asked it: q=, and for a near: search the place

@@ -43,6 +43,8 @@ LIBRARY_FILTERS = {"in": "source", "source": "source", "lang": "lang", "near": "
 # near:'s distance, the token after it: a number and km or mi.
 NEAR_RADIUS = re.compile(r"^(\d+(?:\.\d+)?)(km|mi)$", re.I)
 NEAR_DEFAULT_KM = 25.0
+# The widest near: reaches: past it the box is a continent and every place on a map is read.
+NEAR_MAX_KM = 500.0
 KM_PER_MILE = 1.609344
 
 
@@ -186,7 +188,7 @@ def _near_radius(tokens, at, skip):
     skip.add(at)
     unit = m.group(2).lower()
     n = float(m.group(1))
-    return {"radius_km": n * KM_PER_MILE if unit == "mi" else n, "unit": unit}
+    return {"radius_km": min(n * KM_PER_MILE if unit == "mi" else n, NEAR_MAX_KM), "unit": unit}
 
 
 def near_filter(parsed):

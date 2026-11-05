@@ -182,9 +182,13 @@ def _tile_range(archive, z):
     return range(clamp(x0), clamp(x1) + 1), range(clamp(y0), clamp(y1) + 1)
 
 
+# Web Mercator's edge: the latitude its square world map stops at.
+MERCATOR_MAX_LAT = 85.0511
+
+
 def _xy(z, lat, lng):
     n = 2**z
-    lat = max(min(lat, 85.0511), -85.0511)
+    lat = max(min(lat, MERCATOR_MAX_LAT), -MERCATOR_MAX_LAT)
     fx = (lng + 180.0) / 360.0 * n
     fy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
     return int(fx), int(fy), fx - int(fx), fy - int(fy)
@@ -240,7 +244,7 @@ def build_places(zim_name, zim_path):
     return _builder.write(zim_name, zim_path, archive, _rows(read_places(archive)))
 
 
-def _ours(z):
+def is_kiwix_map(z):
     """A Kiwix map: a map with tiles and no place index of its own."""
     return z.get("kind") == "map" and not z.get("map_search")
 
@@ -248,7 +252,7 @@ def _ours(z):
 _lock = threading.Lock()
 _builder = DetailsBuilder(
     "mapplaces",
-    zims=_ours,
+    zims=is_kiwix_map,
     label="Maps",
     what="town names",
     version="2",
@@ -274,56 +278,13 @@ def ready(name):
     path = _srv.get_zim_files().get(name)
     if not path:
         return False
-    if _builder.kept(name, path):
-        return True
+    got = _builder.kept(name, path)
+    if got is not None:
+        # Read: {} when the read failed, kept empty until the next start rather than read again on
+        # every search (a world map takes minutes).
+        return bool(got)
     _builder.request(name)
     return False
-
-
-def search(name, query, limit=mapsearch.MAX_RESULTS):
-    """Places on map ``name`` matching ``query``, best first, in the shape
-    mapsearch.search_places answers in. [] until the map has been read."""
-    words = mapsearch.normalize_text(query).split()
-    if not words or not ready(name):
-        return []
-    first = max(words, key=len)
-    try:
-        conn = sqlite3.connect(_builder.path(name), timeout=5)
-        try:
-            rows = conn.execute(
-                "SELECT DISTINCT name, class, lat, lng FROM places"
-                " WHERE word >= ? AND word < ? LIMIT ?",
-                (first, first + "￿", CANDIDATES_MAX),
-            ).fetchall()
-        finally:
-            conn.close()
-    except sqlite3.Error as e:
-        log.debug("map places %s: %s", name, e)
-        return []
-    query_norm = " ".join(words)
-    scored = []
-    for place, cls, lat, lng in rows:
-        entry = {"n": place, "t": "place", "s": cls, "a": lat, "o": lng}
-        s = mapsearch.score(entry, query_norm, words)
-        if s is not None:
-            scored.append((s, entry))
-    scored.sort(key=lambda p: -p[0])
-    out = []
-    for s, entry in scored[:limit]:
-        place = mapsearch._place_dict(entry)
-        place["zoom"] = ZOOM_FOR_CLASS.get(entry["s"], place["zoom"])
-        place["score"] = s
-        out.append(place)
-    return out
-
-
-# ── near: places within a distance of a place ─────────────────────────────
-
-KM_PER_DEGREE_LAT = 111.32
-# The most places a near: answers with, nearest first.
-NEAR_MAX_RESULTS = 30
-# The rank of a place's class when several share its name: the largest first.
-_CLASS_RANK = {"city": 2, "town": 1}
 
 
 def _query(name, sql, args):
@@ -336,6 +297,50 @@ def _query(name, sql, args):
     except sqlite3.Error as e:
         log.debug("map places %s: %s", name, e)
         return []
+
+
+def _place_row(n, c, la, lo):
+    """A town as the map answers in (mapsearch.place_dict), zoomed for its class."""
+    place = mapsearch.place_dict({"n": n, "t": "place", "s": c, "a": la, "o": lo})
+    place["zoom"] = ZOOM_FOR_CLASS.get(c, place["zoom"])
+    return place
+
+
+def search(name, query, limit=mapsearch.MAX_RESULTS):
+    """Places on map ``name`` matching ``query``, best first, in the shape
+    mapsearch.search_places answers in. [] until the map has been read."""
+    words = mapsearch.normalize_text(query).split()
+    if not words or not ready(name):
+        return []
+    first = max(words, key=len)
+    rows = _query(
+        name,
+        "SELECT DISTINCT name, class, lat, lng FROM places WHERE word >= ? AND word < ? LIMIT ?",
+        (first, first + "\uffff", CANDIDATES_MAX),
+    )
+    query_norm = " ".join(words)
+    scored = []
+    for place, cls, lat, lng in rows:
+        entry = {"n": place, "t": "place", "s": cls, "a": lat, "o": lng}
+        s = mapsearch.score(entry, query_norm, words)
+        if s is not None:
+            scored.append((s, entry))
+    scored.sort(key=lambda p: -p[0])
+    out = []
+    for s, entry in scored[:limit]:
+        place = _place_row(entry["n"], entry["s"], entry["a"], entry["o"])
+        place["score"] = s
+        out.append(place)
+    return out
+
+
+# ── near: places within a distance of a place ─────────────────────────────
+
+KM_PER_DEGREE_LAT = 111.32
+# The most places a near: answers with, nearest first.
+NEAR_MAX_RESULTS = 30
+# The rank of a place's class when several share its name: the largest first.
+_CLASS_RANK = {"city": 2, "town": 1}
 
 
 def named(name, place):
@@ -406,8 +411,7 @@ def near(name, lat, lng, radius_km, words=(), limit=NEAR_MAX_RESULTS):
             found[(n, round(la, 3), round(lo2, 3))] = (km, n, c, la, lo2)
     out = []
     for km, n, c, la, lo2 in sorted(found.values())[:limit]:
-        place = mapsearch._place_dict({"n": n, "t": "place", "s": c, "a": la, "o": lo2})
-        place["zoom"] = ZOOM_FOR_CLASS.get(c, place["zoom"])
+        place = _place_row(n, c, la, lo2)
         place["km"] = round(km, 1)
         out.append(place)
     return out

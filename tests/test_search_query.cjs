@@ -34,7 +34,8 @@ vm.createContext(sandbox);
 for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', 'SEARCH_BAR_FILTERS', 'SEARCH_NEAR_RADIUS', '_searchUnquote', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES', '_LIBRARY_FILTER_TESTS']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
-vm.runInContext('var SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_KM_PER_MILE = 1.609344;', sandbox);
+// near:'s numbers, as app.js writes them (the default, the widest it reaches, a mile).
+vm.runInContext(src.match(/const SEARCH_NEAR_DEFAULT_KM = [^;]+;/)[0].replace(/^const /, 'var '), sandbox);
 for (const f of ['_searchTokens', '_searchNearRadius', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
   vm.runInContext(grab(f), sandbox);
 }

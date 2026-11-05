@@ -208,6 +208,19 @@ def test_a_map_not_read_yet_answers_nothing_and_asks_for_the_read(
     assert asked == [name]
 
 
+def test_a_map_whose_read_failed_is_not_read_again_on_every_search(tmp_path, monkeypatch):
+    """A failed read keeps {} until the next start: reading the world map takes minutes, so a search
+    that touches a map whose read failed must not start it again."""
+    name = _library(tmp_path, monkeypatch)
+    path = srv.get_zim_files()[name]
+    mapplaces._builder.keep(name, path, {})
+    asked = []
+    monkeypatch.setattr(mapplaces._builder, "request", asked.append)
+    assert mapplaces.search(name, "Danville") == []
+    assert mapplaces.near(name, DANVILLE[0], DANVILLE[1], 25) == []
+    assert asked == []
+
+
 # ── near: places within a distance of a place ─────────────────────────────
 # Eric (2026-11-03): "If we're doing location search should we also include
 # like radius near a location?"

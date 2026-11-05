@@ -281,7 +281,7 @@ def search_places(archive, query, limit=MAX_RESULTS, max_chunks=MAX_CHUNKS):
     return out
 
 
-def _place_dict(e):
+def place_dict(e):
     return {
         "name": e.get("n", ""),
         "type": e.get("t", ""),
@@ -330,7 +330,7 @@ def random_place(archive, rng=None):
         # named thing, then an address when that is all the chunk holds.
         towns = [e for e in usable if e.get("t") == "place"]
         named = [e for e in usable if e.get("t") != "address"]
-        return _place_dict(rng.choice(towns or named or usable))
+        return place_dict(rng.choice(towns or named or usable))
     return None
 
 
