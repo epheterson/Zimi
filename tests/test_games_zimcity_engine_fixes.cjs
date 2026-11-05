@@ -50,6 +50,22 @@ const check = (ok, label) => { if (!ok) { failures++; console.log('FAIL ' + labe
     check(lit.length > 0, 'fire spreads to the woods beside it');
   }
 
+  // Power: a wire that forks powers both branches. The scan's direction must start fresh for each branch it pops;
+  // carried over from the last branch, it moved the next one off its fork and the branch stayed dark.
+  {
+    const { PowerManager } = await mod('zimcity/engine/powerManager.js');
+    const map = new GameMap(30, 30);
+    const wire = (x, y) => map.setTile(x, y, TV.HPOWER, TF.CONDBIT | TF.BURNBIT | TF.BULLBIT);
+    for (let y = 5; y <= 20; y++) wire(15, y);           // a line down from the plant
+    for (let x = 6; x < 15; x++) wire(x, 12);            // a branch west off it
+    for (let x = 16; x <= 24; x++) wire(x, 16);          // and one east, further down
+    const pm = new PowerManager(map);
+    pm._powerStack.push(new Position(15, 5));
+    pm.doPowerScan({ coalPowerPop: 1, nuclearPowerPop: 0 });
+    const lit = (x, y) => pm.powerGridMap.worldGet(x, y) > 0;
+    check(lit(6, 12) && lit(24, 16), 'both branches off a forked wire are powered');
+  }
+
   // Crime: developed land with no police has crime.
   {
     const W = 40, H = 40, bm = (s) => new BlockMap(W, H, s);

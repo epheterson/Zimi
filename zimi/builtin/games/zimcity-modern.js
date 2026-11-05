@@ -105,7 +105,7 @@ PowerManager.prototype.doPowerScan = function (census) {
   var maxPower = supply(census), heat = census.zcHeat || 1;
   var powerConsumption = dataDemand(census);
   while (this._powerStack.length > 0) {
-    var pos = this._powerStack.pop(), anyDir, conNum;
+    var pos = this._powerStack.pop(), anyDir = undefined, conNum;   // per branch, as the engine has it: a direction left from the last branch moved the next one off its fork
     do {
       powerConsumption += heat;
       if (powerConsumption > maxPower) { this._emitEvent(NOT_ENOUGH_POWER); return; }
