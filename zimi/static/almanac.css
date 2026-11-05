@@ -397,6 +397,8 @@
    scene came, and moved everything under it. */
 .almanac-sky-wrap { container-type: inline-size; }
 #almanac-sky-canvas { aspect-ratio: 1.8; }
+/* Before the first paint and through a clear, the hour's sky (almanac-sky.js _skyPreBackground), never the page behind. */
+.almanac-sky-wrap:not(.sky-red) #almanac-sky-canvas { background: var(--sky-pre, none); }
 @container (max-width: 519.98px) { #almanac-sky-canvas { aspect-ratio: 1.3; } }
 /* What the sky says under the picture: one lead line (the light of the hour),
    what is true of it here and the year, quieter, then the facts as cards in
