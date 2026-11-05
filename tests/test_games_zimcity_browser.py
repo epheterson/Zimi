@@ -741,3 +741,36 @@ def test_a_city_that_runs_out_of_money_while_away_waits_and_says_so(browser, sit
     assert "City report" not in text   # Close leads to the budget
     pg.click(AWAY_CARD + " .gs-primary")
     pg.wait_for_selector(OURS + " .ar-sheet-card[aria-label='The year’s budget']")
+
+
+def test_a_new_city_during_a_catch_up_is_not_stepped_by_it(browser, site):
+    """New game while the old city is still catching up: the catch-up stops with its sheet, and the new city starts at
+    its own beginning (the job used to keep stepping whatever city was showing)."""
+    pg = phone(browser, site)
+    # Five years to catch up, and New game in the same moment, before its first chunk runs.
+    pg.evaluate("() => { window.__zimcity.catchUp(240, 1); document.getElementById('cy-new').click(); }")
+    pg.wait_for_function("() => !window.__zimcity.catching", timeout=30000)
+    pg.wait_for_timeout(1500)
+    t = pg.evaluate("() => window.__zimcity.city.sim._cityTime")
+    assert t < 48, t   # a new city's first moments, not years of someone else's catch-up
+    assert not pg.query_selector(AWAY_CARD)
+    assert not pg.errors, pg.errors
+
+
+def test_a_pinch_keeps_the_place_between_the_fingers_under_them(browser, site):
+    """Two fingers spread and drift: the spot of the city between them at the start ends between them at the end."""
+    pg = phone(browser, site)
+    r = pg.evaluate("() => { const c = window.__zimcity.view.canvas.getBoundingClientRect(); return { x: c.left, y: c.top, w: c.width, h: c.height }; }")
+    cx, cy = r["x"] + r["w"] / 2, r["y"] + r["h"] / 2
+    world = "([sx, sy]) => { const c = window.__zimcity.view.cam; return [c.x + sx / c.s, c.y + sy / c.s]; }"
+    a = (cx - 40, cy)
+    b = (cx + 40, cy)
+    before = pg.evaluate(world, [cx - r["x"], cy - r["y"]])
+    touch(pg, "touchStart", [a, b])
+    for i in range(1, 9):
+        touch(pg, "touchMove", [(a[0] + 30 * i / 8, a[1] + 20 * i / 8), (b[0] + 90 * i / 8, b[1] + 20 * i / 8)])
+        pg.wait_for_timeout(16)
+    end_mid = ((a[0] + 30 + b[0] + 90) / 2, cy + 20)
+    after = pg.evaluate(world, [end_mid[0] - r["x"], end_mid[1] - r["y"]])
+    touch(pg, "touchEnd", [])
+    assert abs(after[0] - before[0]) < 0.5 and abs(after[1] - before[1]) < 0.5, (before, after)

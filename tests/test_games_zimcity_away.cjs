@@ -36,6 +36,7 @@ const HOUR = 3600000, DAY = 24 * HOUR;
   check(Away.ticksFor(DAY, 'normal') === 5 * 48, 'a day away at Normal stops at five years');
   check(Away.ticksFor(30 * DAY, 'pause') === 0, 'at Pause nothing happens');
   check(Away.ticksFor(-HOUR, 'slow') === 0, 'a clock behind the save adds nothing');
+  check(Away.ticksFor(NaN, 'slow') === 0 && Away.ticksFor(Date.now() - undefined, 'normal') === 0, 'a save with no time on it adds nothing');
 
   // A grown town, saved; brought back twice and left the same time, it becomes the same city both times.
   const map = seeded(12, () => MapGenerator(120, 100));
@@ -76,6 +77,11 @@ const HOUR = 3600000, DAY = 24 * HOUR;
       progress: (n) => { if (n >= 24) job.cancel(); }, done: done });
   });
   check(part.cancelled && part.ran >= 24 && part.ran < 240, 'Stop here stops it (' + part.ran + ' ticks)');
+
+  // No ticks (or NaN ones) finish at once instead of stepping forever.
+  const none = await new Promise((done) => { let n = 0;
+    Away.run({ ticks: NaN, random: Util.mulberry32(1), time: () => 0, step: () => { n++; return n < 100000; }, done: (r) => done({ r, n }) }); });
+  check(none.n === 0 && none.r.ran === 0, 'a run of no ticks ends at once without stepping');
 
   if (failures) { console.log(failures + ' failed'); process.exit(1); }
   console.log('zimcity away: all passed');

@@ -105,7 +105,7 @@ export function Input(view, h) {
     if (mode === 'pinch' && pts.size === 2) {
       var f = twoFingers();
       if (h.panned) h.panned();
-      view.zoomAt(f.mid.x, f.mid.y, pinch.s * f.dist / pinch.dist);
+      view.zoomAt(pinch.mid.x, pinch.mid.y, pinch.s * f.dist / pinch.dist);   // the point under the fingers stays under them
       view.panBy(f.mid.x - pinch.mid.x, f.mid.y - pinch.mid.y);
       pinch.mid = f.mid;
       h.moved();
