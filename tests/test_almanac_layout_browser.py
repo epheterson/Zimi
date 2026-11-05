@@ -249,3 +249,61 @@ def test_the_light_pollution_setting_is_named_for_what_it_does(browser, served):
         assert "Dark site" in text and "City" in text, text
     finally:
         ctx.close()
+
+
+# Sampled every frame while the Almanac opens: how many tiles show, and where the sky stands and how tall it is (its
+# place in the page, so a scroll is not a move).
+_ENTRY_SAMPLER = """() => {
+  window.__entry = [];
+  const t0 = performance.now();
+  function tick() {
+    const view = document.getElementById('almanac-view'), sky = document.querySelector('#almanac-view .almanac-sky-wrap');
+    const sc = document.getElementById('almanac-content');
+    if (view && view.classList.contains('open') && sky) {
+      const cards = [...document.querySelectorAll('#almanac-view .alm-card')].filter(c => c.getBoundingClientRect().height > 0);
+      const r = sky.getBoundingClientRect();
+      window.__entry.push({ cards: cards.length, top: Math.round(r.top + sc.scrollTop), h: Math.round(r.height) });
+    }
+    if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}"""
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_opening_the_almanac_holds_still(browser, served, dark):
+    """Eric (2026-11-04): "Almanac reloads weird when I enter, like the tiles go away and the sky jumps up and down a
+    little bit." From its first frame open, cold and opened again, the Almanac shows all six tiles, and the sky stands
+    where it will stay at the height it will keep: the Sun's tiles came a frame or more after the Moon's (the sky
+    filled them), the canvas waited at its default size, and the sky's caption was empty until its first tick, each
+    moving the sky when it came."""
+    ctx = browser.new_context(
+        viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block",
+        timezone_id="America/Los_Angeles", color_scheme="dark" if dark else "light",
+    )
+    ctx.add_init_script("localStorage.setItem('zimi_almanac_place', %s);" % json.dumps(json.dumps(PLACE)))
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(served + "/", wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanac === 'function'", timeout=60_000, polling=POLL_MS)
+        for entry in ("cold", "again"):
+            pg.evaluate(_ENTRY_SAMPLER)
+            pg.evaluate("openAlmanac()")
+            pg.wait_for_function("() => window.__entry.length && performance.now() > 0", timeout=60_000, polling=POLL_MS)
+            pg.wait_for_function(  # settled: the sky's own state has written its tiles and caption
+                "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && _skyState.factsAt",
+                timeout=60_000, polling=POLL_MS,
+            )
+            pg.wait_for_timeout(600)
+            frames = pg.evaluate("window.__entry")
+            final = frames[-1]
+            assert final["cards"] == 6, (entry, final)
+            moved = [f for f in frames if (f["cards"], f["top"], f["h"]) != (final["cards"], final["top"], final["h"])]
+            assert not moved, (entry, "first frame %s, settled %s" % (frames[0], final), moved[:5])
+            pg.evaluate("closeAlmanac()")
+            pg.wait_for_timeout(300)
+        assert not errors, errors
+    finally:
+        ctx.close()
