@@ -254,9 +254,10 @@
   // pts: [{x, y, w, h, label}] in the drawing's units (W by H); arrows move to the nearest
   // place in that direction. Returns the buttons.
   var DIRVEC = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-  // A place smaller than this under a finger (Gomoku's 15 by 15 is 24 px on a phone) is aimed, then played: the
-  // first touch rings it, a second touch on the same place plays it, a touch elsewhere moves the ring.
-  var AIM_BELOW_PX = 36;
+  // A place smaller than this under a finger (Gomoku's 15 by 15 is 24 px on a phone, Go 13 by 13 and Hex about 26) is
+  // aimed, then played: the first touch rings it, a second touch on the same place plays it, a touch elsewhere moves the
+  // ring. Places of 30 px and more (Morris's are 35 on a 360 px phone, Backgammon's 40) take one tap.
+  var AIM_BELOW_PX = 30;
   function overlay(host, W, H, pts, onPick, cls, cols) {
     var btns = [], touched = false, aimed = null;
     function aim(b) {

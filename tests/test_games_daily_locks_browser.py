@@ -120,3 +120,23 @@ def test_a_minesweeper_daily_ignores_a_seed_in_its_address(site, browser):
     assert boards[0]["rows"] == 16 and boards[0]["cols"] == 16, boards[
         0
     ]  # the day's intermediate board
+
+
+@pytest.mark.parametrize("width", [360, 390])
+def test_a_morris_point_on_a_phone_is_played_with_one_tap(site, browser, width):
+    """Aim-then-confirm is only for places under 30 px (Gomoku's 24): Morris's points are 35 px and more on a phone, so one
+    tap places a man (cubic feared a second tap on every move)."""
+    ctx = browser.new_context(viewport={"width": width, "height": 844}, has_touch=True, is_mobile=True)
+    pg = ctx.new_page()
+    try:
+        pg.goto(site + "morris.html?debug=1")
+        pg.wait_for_function("() => window.__mo && window.__mo.state()")
+        small = pg.eval_on_selector_all(".wk-pt", "els => els.filter(e => e.getBoundingClientRect().width < 30).length")
+        assert small == 0, small
+        before = pg.evaluate("() => JSON.stringify(window.__mo.state().board)")
+        pg.locator(".wk-pt").nth(0).tap()
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("() => JSON.stringify(window.__mo.state().board)") != before
+        assert pg.locator(".wk-aim").count() == 0
+    finally:
+        ctx.close()
