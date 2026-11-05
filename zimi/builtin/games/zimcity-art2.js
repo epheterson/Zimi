@@ -7,10 +7,7 @@
    a roof, a darker face to the south and a soft shadow to the east, so height reads at a glance. */
 
 import * as TV from './zimcity/engine/tileValues.js';
-import { ART } from './zimcity-art.js';
-
-// Deterministic choices: the same block always grows the same buildings.
-function chance(seed) { return function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }; }
+import { ART, parkMiller as chance } from './zimcity-art.js';
 
 function box(ctx, x, y, w, h, tall, roof, face) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.16)'; ctx.fillRect(x + w, y + tall * 0.6, Math.max(2, tall * 0.5), h);   // shadow to the east

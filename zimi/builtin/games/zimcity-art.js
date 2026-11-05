@@ -6,6 +6,10 @@
    tile not redrawn yet keeps its recoloured picture. */
 
 import { buildings } from './zimcity-art2.js';
+import { RIVER, LASTRIVEDGE } from './zimcity/engine/tileValues.js';
+
+// Deterministic choices (Park-Miller): the same seed always draws the same, so a tile or a block looks the same each time.
+export function parkMiller(seed) { return function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }; }
 
 export var ART = 32;           // a tile in the atlas: twice the engine's 16
 var SRC = 16, PER_ROW = 32;
@@ -115,7 +119,7 @@ function water(ctx, x, y, s, d, w, ox, oy, mask, mctx) {
 // (each tile its own, so a wood does not read as a pattern of dots).
 function trees(ctx, x, y, s, d, w, ox, oy, t) {
   ground(ctx, x, y, s, x + y * 5);
-  var seed = t * 7919, rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  var rnd = parkMiller(t * 7919);
   var patches = [];
   for (var cy = 0; cy < SRC; cy += 4) {
     for (var cx = 0; cx < SRC; cx += 4) {
@@ -210,7 +214,7 @@ export function atlas(original, recoloured, dark) {
   function at(t) { return [(t % PER_ROW) * ART, Math.floor(t / PER_ROW) * ART, (t % PER_ROW) * SRC, Math.floor(t / PER_ROW) * SRC]; }
   var p;
   p = at(0); ground(ctx, p[0], p[1], s, 1);
-  for (var t = 2; t <= 20; t++) { p = at(t); water(ctx, p[0], p[1], s, d, w, p[2], p[3], mask, mctx); }
+  for (var t = RIVER; t <= LASTRIVEDGE; t++) { p = at(t); water(ctx, p[0], p[1], s, d, w, p[2], p[3], mask, mctx); }
   for (t = 21; t <= 43; t++) { if (t === 38 || t === 39) continue; p = at(t); (function (p, t) { inside(ctx, p[0], p[1], function () { trees(ctx, p[0], p[1], s, d, w, p[2], p[3], t); }); })(p, t); }
   // roads: the plain shapes (66 to 76; a road under a power line keeps its picture) and their light (80 to 143) and heavy
   // (144 to 206) traffic frames; bridges keep theirs. Power lines over land (210 to 220) come in the same order as the

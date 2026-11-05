@@ -7,8 +7,8 @@
 
    One tick is one of the engine's 48 a year. Chance is seeded by the city's clock, so a city plays out the same way. */
 
-import { mix } from './zimcity-modern.js';
-import { DIRT, RIVER, REDGE, LASTRIVEDGE, TREEBASE, WOODS5, RUBBLE, LASTRUBBLE } from './zimcity/engine/tileValues.js';
+import { mix, isWater, WIND_LOW, WIND_SPAN } from './zimcity-modern.js';
+import { DIRT, RIVER, REDGE, TREEBASE, WOODS5, RUBBLE, LASTRUBBLE } from './zimcity/engine/tileValues.js';
 
 export var PER_DEGREE = 6000;     // carbon (a coal plant's tick is 1) for one degree of warming: a few plants, decades
 export var MAX_WARM = 4;
@@ -19,6 +19,9 @@ var SHORE_TAKEN = 3;              // land tiles the water takes at each step
 var HEAT_HEAT = 1.25;             // a heat wave's extra draw on the power
 var DATA_COAL_SHARE = 0.7;        // a data center's carbon, per tick, at a fully coal-fired grid
 var SUMMER = [5, 6, 7];           // June, July, August
+var HEAT_CHANCE_PER_DEGREE = 0.2; // a summer month's chance of a heat wave, for each degree of warming
+var HEAT_CHANCE_MAX = 0.6;        // ...at most
+var FIRE_CHANCE_PER_DEGREE = 0.04; // a heat wave's chance each tick of starting a fire (disasters on), per degree
 
 export function fresh() { return { carbon: 0, warm: 0, sea: 0, steps: 0, heat: false }; }
 
@@ -29,7 +32,6 @@ function chance(t, salt) {
   return (h >>> 0) / 4294967296;
 }
 
-function isWater(v) { return v >= RIVER && v <= LASTRIVEDGE; }
 function bare(v) { return v === DIRT || (v >= TREEBASE && v <= WOODS5) || (v >= RUBBLE && v <= LASTRUBBLE); }
 
 // The sea takes a few bare shore tiles (land beside water), the lowest first: those touching the most water.
@@ -62,13 +64,13 @@ export function tick(sim, state, on, disasters) {
   }
   // Each month: the wind for the wind farms, and in summer perhaps a heat wave (likelier the warmer the city).
   if (t % 4 === 0) {
-    census.zcWind = 0.2 + chance(t, 1) * 1.6;
+    census.zcWind = WIND_LOW + chance(t, 1) * WIND_SPAN;
     var month = (t % 48) >> 2, was = state.heat;
-    state.heat = SUMMER.indexOf(month) >= 0 && chance(t, 2) < Math.min(0.6, state.warm * 0.2);
+    state.heat = SUMMER.indexOf(month) >= 0 && chance(t, 2) < Math.min(HEAT_CHANCE_MAX, state.warm * HEAT_CHANCE_PER_DEGREE);
     if (state.heat && !was) out.push('heatwave');
   }
   census.zcHeat = state.heat ? HEAT_HEAT : 1;
-  if (state.heat && disasters && chance(t, 3) < 0.04 * state.warm) { sim.disasterManager.makeFire(); out.push('fire'); }
+  if (state.heat && disasters && chance(t, 3) < FIRE_CHANCE_PER_DEGREE * state.warm) { sim.disasterManager.makeFire(); out.push('fire'); }
   return out;
 }
 

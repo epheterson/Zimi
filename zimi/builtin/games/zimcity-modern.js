@@ -15,14 +15,16 @@ import { Position } from './zimcity/engine/position.js';
 import { forEachCardinalDirection } from './zimcity/engine/direction.js';
 import { NOT_ENOUGH_POWER } from './zimcity/engine/messages.js';
 import { NUCLEAR, POWERPLANT, RIVER, LASTRIVEDGE } from './zimcity/engine/tileValues.js';
+import { POWERBIT } from './zimcity/engine/tileFlags.js';
 
 // The spare slots: [first tile, centre tile].
 export var DATACENTER = 960, SOLAR = 969, WIND = 978;
-export var SLOTS = { datacenter: 956, solar: 965, wind: 974 };
 
 var COAL = 700, NUCLEAR_POWER = 2000;   // the engine's own strengths, for the scan this layer runs
 export var SOLAR_POWER = 300;           // a farm of panels: clean, steady, smaller than coal
-export var WIND_MEAN = 250, WIND_SPREAD = 200;   // a wind farm: clean, but the month's wind decides
+export var WIND_MEAN = 250;            // a wind farm: clean, but the month's wind decides
+// A month's wind, as a share of the mean: from WIND_LOW to WIND_LOW + WIND_SPAN (zimcity-climate.js draws it).
+export var WIND_LOW = 0.2, WIND_SPAN = 1.6;
 export var DATA_DEMAND = 500;           // a data center draws most of a coal plant
 export var DATA_HOT = 1.5;              // with no water nearby to cool it, half as much again
 export var DATA_TAX = 1500;             // and pays well, a year
@@ -30,6 +32,9 @@ var DATA_RADIUS = 6, DATA_LAND = 48;    // its heat and hum: land value down by 
 var WATER_NEAR = 3;                     // water this close cools it
 
 function fresh() { return { solar: 0, wind: 0, data: 0, cooled: 0, dataAt: [] }; }
+
+// A tile of water (river, lake or sea, and its edges).
+export function isWater(v) { return v >= RIVER && v <= LASTRIVEDGE; }
 
 // Each cycle's counts start again with the engine's own census.
 var clearCensus = Simulation.prototype._clearCensus;
@@ -44,7 +49,7 @@ function nearWater(map, x, y) {
   for (var dy = -WATER_NEAR; dy <= WATER_NEAR; dy++) for (var dx = -WATER_NEAR; dx <= WATER_NEAR; dx++) {
     if (!map.testBounds(x + dx, y + dy)) continue;
     var v = map.getTileValue(x + dx, y + dy);
-    if (v >= RIVER && v <= LASTRIVEDGE) return true;
+    if (isWater(v)) return true;
   }
   return false;
 }
@@ -64,10 +69,15 @@ Simulation.prototype.init = function () {
   init.call(this);
 };
 
+// The wind farms' power this month.
+function windPower(census) {
+  var z = census.zc || fresh();
+  return Math.round(z.wind * WIND_MEAN * (census.zcWind || 1));
+}
 // What the city's power can give and what its data centers take, from this cycle's counts.
 export function supply(census) {
   var z = census.zc || fresh();
-  return census.coalPowerPop * COAL + census.nuclearPowerPop * NUCLEAR_POWER + z.solar * SOLAR_POWER + Math.round(z.wind * WIND_MEAN * (census.zcWind || 1));
+  return census.coalPowerPop * COAL + census.nuclearPowerPop * NUCLEAR_POWER + z.solar * SOLAR_POWER + windPower(census);
 }
 export function dataDemand(census) {
   var z = census.zc || fresh(), heat = census.zcHeat || 1;
@@ -76,7 +86,7 @@ export function dataDemand(census) {
 // The share of the city's power from each source, for the climate sheet and the warming.
 export function mix(census) {
   var z = census.zc || fresh(), parts = { coal: census.coalPowerPop * COAL, nuclear: census.nuclearPowerPop * NUCLEAR_POWER,
-    solar: z.solar * SOLAR_POWER, wind: Math.round(z.wind * WIND_MEAN * (census.zcWind || 1)) };
+    solar: z.solar * SOLAR_POWER, wind: windPower(census) };
   var all = parts.coal + parts.nuclear + parts.solar + parts.wind;
   Object.keys(parts).forEach(function (k) { parts[k] = all ? parts[k] / all : 0; });
   return parts;
@@ -108,7 +118,7 @@ PowerManager.prototype.doPowerScan = function (census) {
 var setTilePower = PowerManager.prototype.setTilePower;
 PowerManager.prototype.setTilePower = function (x, y) {
   var v = this._map.getTileValue(x, y);
-  if (v === SOLAR || v === WIND) { this._map.getTile(x, y).addFlags(0x8000); return; }
+  if (v === SOLAR || v === WIND) { this._map.getTile(x, y).addFlags(POWERBIT); return; }
   setTilePower.call(this, x, y);
 };
 

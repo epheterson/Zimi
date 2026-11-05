@@ -20,6 +20,7 @@ import * as Climate from './zimcity-climate.js';
 import * as Voices from './zimcity-voices.js';
 import * as Follow from './zimcity-follow.js';
 import * as Away from './zimcity-away.js';
+import { isWater } from './zimcity-modern.js';
 import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
@@ -89,7 +90,7 @@ function install(c, cam) {
 var START_W = 24, START_H = 16;
 function centreOnLand() {
   var map = city.map, best = null, clear = [];
-  for (var y = 0; y < MAP_H; y++) { clear[y] = []; for (var x = 0; x < MAP_W; x++) { var v = map.getTileValue(x, y); clear[y][x] = v === 0 ? 1 : v >= 2 && v <= 20 ? 0 : 0.7; } }
+  for (var y = 0; y < MAP_H; y++) { clear[y] = []; for (var x = 0; x < MAP_W; x++) { var v = map.getTileValue(x, y); clear[y][x] = v === 0 ? 1 : isWater(v) ? 0 : 0.7; } }
   // a summed-area table answers "how much clear ground in this box" at once for every box
   var sum = [];
   for (y = 0; y <= MAP_H; y++) { sum[y] = []; for (x = 0; x <= MAP_W; x++) sum[y][x] = y && x ? clear[y - 1][x - 1] + sum[y - 1][x] + sum[y][x - 1] - sum[y - 1][x - 1] : 0; }
