@@ -4,7 +4,7 @@ Eric: "The top game pills area is so small. Can we make the compact and sort cho
 free up space? And that's actually two separate pill choosers side-by-side in that scrollable area that makes no sense."
 The room is a single pill at the start of the line (its list of rooms lying over it), the scroller holds only the types,
 and one small button at the end opens View and Order. One line at 360 and 390px, 44px targets, both views, light and
-dark; a room filters the shelf and the Daily row, and every choice is kept. Daily: Five Letters and Sudoku lead.
+dark; a room filters the shelf (the Daily row steps aside while one is chosen), and every choice is kept. Daily: Five Letters and Sudoku lead.
 
 Run: pytest tests/test_games_rooms_browser.py -v
 """
@@ -72,7 +72,7 @@ def test_the_options_button_sets_the_view_and_the_order_and_they_are_kept(site, 
 
 
 @pytest.mark.parametrize("view", ["lobby", "index"])
-def test_a_room_filters_the_shelf_and_the_daily_row_and_is_kept(site, browser, view):  # noqa: F811
+def test_a_room_filters_the_shelf_and_is_kept(site, browser, view):  # noqa: F811
     ctx, page = _open(browser, site, view)
     assert page.inner_text(".sh-room-now") == "All"
     page.select_option(".sh-room-sel", "all")
@@ -81,9 +81,8 @@ def test_a_room_filters_the_shelf_and_the_daily_row_and_is_kept(site, browser, v
     kids = page.evaluate(VISIBLE)
     assert kids and len(kids) < len(everything) and "memory.html" in kids and "chess.html" not in kids
     assert page.inner_text(".sh-room-now") == "Kids"
-    if view == "lobby":
-        daily = page.evaluate(DAILY)
-        assert daily and set(daily) <= {"memory.html", "echo.html", "noughts.html", "snakesandladders.html", "fourinarow.html", "dotsandboxes.html", "crazyeights.html", "higherlower.html", "jigsaw.html", "ludo.html"}, daily
+    # With a room chosen the Daily row steps aside, so the room's games come first.
+    assert page.locator(".ar-daily").is_hidden()
     page.reload()
     page.wait_for_selector(".ar-daily a.ar-game", state="attached")
     assert page.inner_text(".sh-room-now") == "Kids", "the room was not kept"

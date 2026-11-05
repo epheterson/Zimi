@@ -600,17 +600,11 @@
     var dl = daily();
     if (dl) {
       var inside = 0, done = 0;
-      var extras = 0;
-      Array.prototype.forEach.call(dl.querySelectorAll('a.ar-game'), function (a) {
-        a.hidden = !roomOf(a);
-        if (a.hidden) return;
-        if (a.classList.contains('ar-daily-main')) { inside++; if (a.classList.contains('ar-done')) done++; }
-        else extras++;   // the rest, Game of the day among them when it is not one of the seven
-      });
-      var sep = dl.querySelector('.ar-daily-sep');
-      if (sep) sep.hidden = !extras;
+      Array.prototype.forEach.call(dl.querySelectorAll('a.ar-daily-main'), function (a) { inside++; if (a.classList.contains('ar-done')) done++; });
       if (dl.dailyLine) dl.dailyLine(done, inside);
-      dl.hidden = searching || !dl.querySelector('a.ar-game:not([hidden])') || (state.view === 'lobby' && !feedAll);
+      // The day's games are the unfiltered shelf's opening: with a room or a type chosen (or a search) they step aside, so the
+      // games asked for come first.
+      dl.hidden = searching || !feedAll || state.room !== 'all';
     }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;
