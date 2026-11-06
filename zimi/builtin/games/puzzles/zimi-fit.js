@@ -26,6 +26,18 @@
   var CLOCK_TICK_MS = 500;     // how often the solving clock counts
   var BEST_KEY = "zimi.games.puzzleBest";
   var ADVANCED_OPEN_KEY = "zimi.games.puzzleAdvanced";
+  // The puzzle's own preferences are the person's, and the frontend keeps them under this page's address + " preferences",
+  // which differs by reader (Zimi's /w/..., Kiwix's /content/...) and so cannot ride the account. That one key is kept
+  // under a name that can (zimi.games.puzzleprefs.<puzzle>); what an older visit left under the address is read until
+  // the first save.
+  (function () {
+    var name = (root.location.pathname.split("/").pop() || "").replace(/\.html?$/, "").replace(/[^A-Za-z0-9_-]/g, "");
+    var proto = root.Storage && root.Storage.prototype;
+    if (!name || !proto) return;
+    var old = root.location.pathname + " preferences", key = "zimi.games.puzzleprefs." + name, get = proto.getItem, set = proto.setItem;
+    proto.getItem = function (k) { var v = k === old ? get.call(this, key) : null; return v === null ? get.call(this, k) : v; };
+    proto.setItem = function (k, v) { return set.call(this, k === old ? key : k, v); };
+  })();
   // Pages that stay in the ZIM but are not on the shelf: the shelf's own game of the same kind is the one tile, and Back goes to it.
   var FOLDED = { mines: "minesweeper", solo: "sudoku", guess: "codebreaker" };
   // Puzzles whose right button does nothing the left does not: no Mark toggle for them.
