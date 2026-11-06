@@ -2955,6 +2955,9 @@ def _zim_base_name(filename):
       stackoverflow.com_es_all_2024-01.zim → stackoverflow_es
     """
     name = filename.split(".zim")[0]
+    # The Almanac's HD flavour is the tile library, not a build of the Almanac the package serves: its own name.
+    if re.match(r"zimi_almanac_maxi_\d{4}-\d{2}[a-z]?$", name):
+        return "zimi_almanac_maxi"
     # Extract language code before stripping (e.g. _fr_, _de_, _es_)
     lang_match = re.search(r"(?:\.com)?_([a-z]{2,3})_(?:all|maxi|2\d{3})", name)
     lang_code = lang_match.group(1) if lang_match else ""
@@ -3253,8 +3256,8 @@ def get_zim_files():
 
 
 #: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
-#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles).
-DATA_PACKS = frozenset(("zimi_almanac_hd",))
+#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles, in the Almanac's maxi flavour or 1.15.3's tile ZIM).
+DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd"))
 
 
 def content_zims():

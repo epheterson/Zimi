@@ -1407,7 +1407,7 @@ def resume_pending_downloads():
                 # Through its own entry point: the release, its checksum and the outbound setting are asked afresh.
                 from zimi import almanachd
 
-                dl_id, err = almanachd.start(None)
+                dl_id, err = almanachd.start(None, saved=it)
                 if err in ("installed", "never"):
                     continue
             elif _offline_refusal():

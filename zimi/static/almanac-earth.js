@@ -1706,8 +1706,10 @@ function _aeLoadMaps(S) {
 // (level z: 2^(z+1) columns by 2^z rows, 180 / 2^z degrees a side, from longitude -180 and latitude +90). Installed,
 // the view draws each body as the tiles in sight instead of its one map, each at the level whose texels are no smaller
 // than the screen's pixels, and lets the camera nearer. Without it nothing here runs: the one map is the view.
-var AE_HD_NAME = 'zimi_almanac_hd';
-var AE_HD_BASE = '/w/' + AE_HD_NAME + '/';
+// Where the tiles are: the server says (the HD flavour of the Almanac, /w/zimi_almanac_maxi/hd/, or the 1.15.3 tile
+// ZIM, below) or the Almanac ZIM's own answer (hd/, a path from its page, so Kiwix finds them beside it).
+var AE_HD_BASE_LEGACY = '/w/zimi_almanac_hd/';
+function _aeHdBase() { return (_ae.hdSt && _ae.hdSt.base) || AE_HD_BASE_LEGACY; }
 var AE_HD_TILE_PX = 512;
 var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
 var AE_HD_GPU_TILES = 120;       // textures kept on the GPU (day ~1.4 MB with mipmaps, night and Moon a quarter), least recently used go first
@@ -1747,7 +1749,7 @@ function _aeHdLoad(S) {
   if (S.hd) return;
   S.hd = null;
   if (typeof fetch !== 'function') return;
-  fetch(AE_HD_BASE + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
+  fetch(_aeHdBase() + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
       b.maps = b.maps.filter(function (m) { return man.layers[m.layer] || !m.optional; });
@@ -1900,7 +1902,7 @@ function _aeHdMinOver(b, lat, lon) {
   var altKm = Math.max(AE_HD_INSERT_MIN_ALT_KM, texelKm * hPx / (AE_HD_TEXEL_PX * _aeRad(cam.fov)));
   return Math.min(b.minDist, b.radius + altKm / AE_EARTH_RADIUS_KM);
 }
-function _aeHdTileUrl(m, n) { return AE_HD_BASE + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
+function _aeHdTileUrl(m, n) { return _aeHdBase() + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
 function _aeHdReady(b, n) {
   return b.maps.every(function (m) { var t = _aeHdLayerNode(b, n, m).tex[m.layer]; return t && t.isTexture; });
 }

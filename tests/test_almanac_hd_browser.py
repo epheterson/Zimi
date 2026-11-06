@@ -77,16 +77,27 @@ def _build_hd(folder, out):
     creator.create_folder_zim(folder, out_path=out, register=False)
 
 
-def _serve(tmp, with_hd):
+#: What the library holds: nothing; the HD flavour of the Almanac (tiles under hd/); or 1.15.3's tiles-only ZIM.
+KINDS = {"without": None, "flavour": "/w/zimi_almanac_maxi/hd/", "tiles-only": "/w/zimi_almanac_hd/"}
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+
+
+def _serve(tmp, kind, fresh=True):
     from http.server import ThreadingHTTPServer
 
     import zimi.server as srv
     from zimi.http import ZimHandler
 
-    (tmp / "zims").mkdir()
+    (tmp / "zims").mkdir(exist_ok=not fresh)
     (tmp / "data").mkdir()
-    if with_hd:
+    if kind == "tiles-only":
         _build_hd(str(tmp / "stage"), str(tmp / "zims" / "zimi_almanac_hd_2026-11.zim"))
+    elif kind == "flavour":
+        _build_hd(str(tmp / "stage"), str(tmp / "tiles.zim"))
+        sys.path.insert(0, SCRIPTS)
+        import build_almanac_maxi
+
+        build_almanac_maxi.build(str(tmp / "tiles.zim"), str(tmp / "zims"), month="2026-11")
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp / "zims"), str(tmp / "data")
     srv.load_cache(force=True)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
@@ -108,18 +119,18 @@ def browser():
         br.close()
 
 
-@pytest.fixture(params=[False, True], ids=["without", "with"])
+@pytest.fixture(params=list(KINDS), ids=list(KINDS))
 def served(request, tmp_path):
     import zimi.server as srv
 
     old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
     httpd = _serve(tmp_path, request.param)
-    yield request.param, "http://127.0.0.1:%d" % httpd.server_address[1]
+    yield request.param != "without", "http://127.0.0.1:%d" % httpd.server_address[1], KINDS[request.param]
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
 
 
-def _open_earth(browser, url, route_hd=None):
+def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
     ctx = browser.new_context(
         viewport=VIEW,
         device_scale_factor=2,
@@ -137,7 +148,7 @@ def _open_earth(browser, url, route_hd=None):
         "request",
         lambda r: (
             tiles.append(r.url)
-            if "/w/zimi_almanac_hd/" in r.url and r.url.endswith(".webp")
+            if base in r.url and r.url.endswith(".webp")
             else None
         ),
     )
@@ -178,8 +189,8 @@ def _settle(pg, js_true, ms=60_000):
 
 
 def test_tiles_by_view(browser, served):
-    with_hd, url = served
-    ctx, pg, tiles = _open_earth(browser, url)
+    with_hd, url, base = served
+    ctx, pg, tiles = _open_earth(browser, url, base=base or "/w/zimi_almanac_")
     try:
         if not with_hd:
             pg.wait_for_timeout(2500)
@@ -190,7 +201,9 @@ def test_tiles_by_view(browser, served):
             return
         # A data pack: served to the view, listed nowhere (Home, the library's grid).
         listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
-        assert "zimi_almanac_hd" not in listed, listed
+        assert not [n for n in listed if n.startswith("zimi_almanac_")], listed
+        # Every tile came from where this library keeps them: inside the flavour's hd/, or the tiles-only ZIM's root.
+        assert tiles and all(base in u for u in tiles), (base, tiles[:3])
         # Far: level 0 covers the Earth, and its one map steps aside. Far enough that a level-0 tile covers no more
         # device pixels than it has (nearer, at 8 Earth radii and 2x, level 2 is the right choice, and the old check
         # passed only while level 2's tiles were still on their way), not so far the Earth is under 40 px and asks for
@@ -247,7 +260,7 @@ def test_tiles_by_view(browser, served):
 
 
 def test_the_offer_line(browser, served):
-    with_hd, url = served
+    with_hd, url, base = served
     if with_hd:
         pytest.skip("offered only while it is not installed")
     ctx, pg, _tiles = _open_earth(browser, url, route_hd=OFFER)
@@ -269,7 +282,7 @@ def test_the_offer_line(browser, served):
 def test_the_gear_keeps_hd_after_not_now(browser, served, who):
     """Not now hides the line under the controls, never the way to it: the gear keeps a row for Almanac HD with its
     size and Download for someone who may; for anyone else it says who can add it; under Never there is none."""
-    with_hd, url = served
+    with_hd, url, base = served
     if with_hd:
         pytest.skip("offered only while it is not installed")
     st = dict(OFFER, can_change=who == "admin", mode="never" if who == "never" else "ask")
@@ -289,3 +302,49 @@ def test_the_gear_keeps_hd_after_not_now(browser, served, who):
                 assert "runs this Zimi" in row, row
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("flavour", ["standard", "maxi"])
+def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tiles(browser, tmp_path, flavour):
+    """What Kiwix does: the ZIM's page with nothing of Zimi's app around it (?raw=1), reading only its own files. The
+    standard flavour starts with no page error and no tile; the HD flavour draws the sharp tiles from hd/ inside itself."""
+    import zimi.server as srv
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    if flavour == "maxi":
+        httpd = _serve(tmp_path, "flavour")
+        page = "/w/zimi_almanac_maxi/index.html?raw=1"
+    else:
+        from zimi import ownzims
+
+        (tmp_path / "zims").mkdir()
+        ownzims.write_zim(next(o for o in ownzims.OWN if o.name == "zimi_almanac"), str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"))
+        httpd = _serve(tmp_path, "without", fresh=False)
+        page = "/w/zimi_almanac/index.html?raw=1"
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
+    pg = ctx.new_page()
+    reqs, errors = [], []
+    pg.on("request", lambda r: reqs.append(r.url))
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto("http://127.0.0.1:%d%s" % (httpd.server_address[1], page), wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
+        if flavour == "standard":
+            pg.wait_for_timeout(2500)
+            assert pg.evaluate("_ae.gl.hd") is None and not [u for u in reqs if "/hd/" in u and u.endswith(".webp")]
+        else:
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.gl.hd; }", timeout=60_000, polling=250)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            pg.evaluate("_ae.dist = AE_TARGETS.earth.min; _ae.dirty = true; _aeKick()")
+            _settle(pg, "() => { var d = (" + DRAWN + ")(); return d && d.length && d.every(z => z === 2); }")
+            tiles = [u for u in reqs if u.endswith(".webp") and "/earth/day/" in u and "/hd/" in u]
+            assert tiles and all("/w/zimi_almanac_maxi/hd/earth/day/" in u for u in tiles), tiles[:3]
+            assert not [u for u in reqs if "zimi_almanac_hd" in u]
+        assert errors == []
+    finally:
+        ctx.close()
+        httpd.shutdown()
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
