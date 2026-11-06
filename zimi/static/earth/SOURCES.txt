@@ -82,8 +82,9 @@ landmarks-v1.json
   the Moon is near.
   https://planetarynames.wr.usgs.gov/
 
-Almanac HD (zimi_almanac_hd_<month>.zim, not in this folder: a ZIM of its own,
-attached to a release and fetched once on an admin's yes; zimi/almanachd.py)
+Almanac HD (zimi_almanac_maxi_<month>.zim, not in this folder: the HD flavour of the
+Almanac, built on each release from a pinned tile source and fetched once on an
+admin's yes; zimi/almanachd.py, scripts/build_almanac_maxi.py)
   The Earth and the Moon as 512 px tile pyramids, built by
   scripts/build_almanac_hd.py, all public domain:
   - Earth by day: NASA Blue Marble: Next Generation (Reto Stockli, NASA Earth

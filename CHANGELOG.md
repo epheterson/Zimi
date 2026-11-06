@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
+- **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
 
 ## [1.15.3]
 
