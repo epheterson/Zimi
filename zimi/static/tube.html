@@ -420,12 +420,12 @@ function load() {
 }
 function tubeMore() { _shown += PAGE; renderHome(); }
 function tubeSearch(q) { _q = (q || '').trim(); closePlayer(true); load(); }
-function setSort(v) { _sort = v; try { localStorage.setItem('zimitube_sort', v); } catch (e) {} _shown = 0; renderHome(); }
+function setSort(v) { _sort = v; prefWrite('zimitube_sort', v); _shown = 0; renderHome(); }
 function setZim(name) { _zim = name; _shown = 0; renderHome(); window.scrollTo(0, 0); }
-function toggleAutoplay() { _autoplay = !_autoplay; try { localStorage.setItem('zimitube_autoplay', _autoplay ? '1' : '0'); } catch (e) {} paintAutoplay(); }
+function toggleAutoplay() { _autoplay = !_autoplay; prefWrite('zimitube_autoplay', _autoplay ? '1' : '0'); paintAutoplay(); }
 function paintAutoplay() { var b = document.getElementById('autoplay'); b.textContent = STR.autoplay + (_autoplay ? ' ✓' : ''); b.className = _autoplay ? 'on' : ''; b.setAttribute('aria-pressed', String(_autoplay)); }
 // Theater: the stage across the whole width, remembered.
-function toggleTheater() { _theater = !_theater; try { localStorage.setItem('zimitube_theater', _theater ? '1' : '0'); } catch (e) {} paintTheater(); }
+function toggleTheater() { _theater = !_theater; prefWrite('zimitube_theater', _theater ? '1' : '0'); paintTheater(); }
 function paintTheater() {
   document.querySelector('.player').classList.toggle('theater', _theater);
   var b = document.getElementById('theater'); if (b) { b.className = _theater ? 'on' : ''; b.setAttribute('aria-pressed', String(_theater)); }

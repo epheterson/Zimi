@@ -75,6 +75,12 @@
   }
   function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return null; }
+  // A choice of the person's (dark pages, spread, view): through the shell's door when there is one, so the account
+  // keeps it and their other windows follow; the page's place and turn stay this device's (store).
+  function choose(k, v) {
+    try { if (shell && typeof shell._prefWrite === 'function') { shell._prefWrite(k, v); return; } } catch (e) {}
+    store(k, v);
+  }
   // The shell's language (its <html lang>), for numbers and dates.
   var lang;
   try { lang = shell && shell.document.documentElement.lang || undefined; } catch (e) { lang = undefined; }
@@ -444,7 +450,7 @@
     var m = spreadWanted() ? SPREAD_ODD : 0;
     if (app.pdfViewer.spreadMode !== m) app.pdfViewer.spreadMode = m;
   }
-  function setSpread(two) { store(SPREAD_KEY, two ? '2' : '1'); applySpread(); }
+  function setSpread(two) { choose(SPREAD_KEY, two ? '2' : '1'); applySpread(); }
   // ── turned: a sideways scan, a quarter turn at a time, kept per document ──
   function rotation() { return app && app.pdfViewer ? app.pdfViewer.pagesRotation || 0 : 0; }
   function turnAsKept() {
@@ -568,7 +574,7 @@
   }
   paintFit();
   fitBtn.addEventListener('click', function () {
-    store(VIEW_KEY, pageByPage() ? 'scroll' : 'pages');
+    choose(VIEW_KEY, pageByPage() ? 'scroll' : 'pages');
     applyView();
   });
   // A page at a time turns with a sideways swipe, unless the page is zoomed
@@ -798,7 +804,7 @@
     var what = b.getAttribute('data-zp');
     if (what === 'dark') {
       if (b.getAttribute('aria-disabled') === 'true') return;   // Red decides; the choice is kept for after
-      store(DARK_KEY, darkWanted() ? '0' : '1');
+      choose(DARK_KEY, darkWanted() ? '0' : '1');
       paintDark();
       return;   // a switch: the menu stays, showing it
     }

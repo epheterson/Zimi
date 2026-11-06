@@ -178,6 +178,33 @@ var SK = {
   // articles that have none. It used to decide darkness outright.
   DARKEN_ARTICLES: 'zimi_darken_articles',
   ARTICLE_THEME: 'zimi_article_theme',
+  // The language welcome card's x: {lang: 1} for each language it was dismissed in.
+  WELCOME_DISMISSED: 'zimi_welcome_dismissed',
+  // Which source Catalog > Maps lists: 'kiwix' (absent) | 'streetzim'.
+  MAPS_SOURCE: 'zimi_maps_source',
+  // The Almanac's choices (almanac*.js read and write them under these names; the
+  // ZIM build shares SK). Place: {lat, lon, name}; clocks: [IANA zone]; clocks view:
+  // 'all'|'saved'; units: 'ft'|'m'; sky: {skin, lines, size, dial}; orbits:
+  // 'flying'(absent)|'always'|'off'; landmarks and HD-later: '1'; tried: {hint: 1}.
+  ALM_CLOCKS: 'zimi_almanac_clocks',
+  ALM_CLOCKS_VIEW: 'zimi_almanac_clocks_view',
+  ALM_UNITS: 'zimi_almanac_units',
+  ALM_SKY: 'zimi_sky_settings',
+  ALM_ORBITS: 'zimi_ae_orbits',
+  ALM_LANDMARKS: 'zimi_alm_landmarks',
+  ALM_HD_LATER: 'zimi_alm_hd_later',
+  ALM_ORRERY_TRIED: 'zimi_orrery_tried',
+  // The app pages' choices (apps.js prefWrite, pdfreader.js): they cannot read SK
+  // from inside their frames, so they spell these names themselves.
+  WIKI_VIEW: 'zimi_wiki_view',
+  WIKI_LANG: 'zimi_wiki_lang',
+  PDF_DARK: 'zimi_pdf_dark',
+  PDF_SPREAD: 'zimi_pdf_spread',
+  PDF_VIEW: 'zimi_pdf_view',
+  TUBE_SORT: 'zimitube_sort',
+  TUBE_AUTOPLAY: 'zimitube_autoplay',
+  TUBE_THEATER: 'zimitube_theater',
+  REDDOT_FOLLOW: 'reddot_follow',
   // Settings sync's state in this browser: {owner: the account it follows, or
   // null; pending: {key: 1} changed here while signed in to it and not yet
   // taken by it; seeded: this browser has followed an account before, so its
@@ -196,8 +223,8 @@ var SK = {
 // What a person sets for themselves: carried by My data, and while signed in
 // kept by the account and followed in every browser (Eric, 2026-10-21:
 // "Things a user changes while signed in should sync to all sessions all
-// browsers"). Not here: what belongs to this device or this server (the
-// Almanac's place, timed voices, a highlight's colour), or to this tab.
+// browsers"). Not here: what belongs to this device or this server (timed
+// voices, a highlight's colour, window sizes, caches), or to this tab.
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.VOICE_PREFS, SK.PREF_FLAVOR,
@@ -205,6 +232,11 @@ var _PREF_KEYS = [
   SK.EXT_LINKS, SK.OPEN_IN_APPS,
   SK.APP_THEME, SK.APP_THEME_BEFORE_RED, SK.ARTICLE_THEME, SK.DARKEN_ARTICLES,
   SK.LIBRARY_SORT, SK.TTS_RATE, SK.BOOK_PREFS, SK.WIKI_PREFS,
+  SK.READER_COACH, SK.TTS_SUGGESTED, SK.WELCOME_DISMISSED, SK.MAPS_SOURCE,
+  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_LANDMARKS,
+  SK.ALM_HD_LATER, SK.ALM_ORRERY_TRIED,
+  SK.WIKI_VIEW, SK.WIKI_LANG, SK.PDF_DARK, SK.PDF_SPREAD, SK.PDF_VIEW,
+  SK.TUBE_SORT, SK.TUBE_AUTOPLAY, SK.TUBE_THEATER, SK.REDDOT_FOLLOW,
 ];
 function _isPrefKey(k) { return _PREF_KEYS.indexOf(k) >= 0; }
 function _rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -5223,9 +5255,9 @@ function renderHome(filter) {
   if (!homeScope && !filter && _currentLang !== 'en') {
     var _welcomeLang = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
     var _hasLangZims = (zimsCache || []).some(function(z) { return z.language === _currentLang; });
-    var _welcomeDismissed = localStorage.getItem('zimi_welcome_' + _currentLang) === '0';
+    var _welcomeDismissed = _welcomeIsDismissed();
     // The card's ×, named for a screen reader ("✕" read as a letter).
-    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
+    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="_welcomeDismiss();var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
     if (!_welcomeDismissed) {
       if (!_hasLangZims && manageEnabled) {
         h += '<div class="lang-welcome-card" id="lang-welcome">' +
@@ -5234,7 +5266,7 @@ function renderHome(filter) {
             '<p>' + tH('welcome_lang_body', {lang: _welcomeLang}) + '</p>' +
           '</div>' +
           '<div class="lang-welcome-actions">' +
-            '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
+            '<button class="lang-banner-btn" onclick="_welcomeDismiss();_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
             _welcomeX +
           '</div>' +
         '</div>';
@@ -13540,6 +13572,17 @@ function _syncReaderViewBtn() {
   _syncTopbarMore();
 }
 
+// The language welcome card, dismissed per language. Before this setting followed the
+// person it was one key per language ('zimi_welcome_<lang>' = '0'), still honoured.
+function _welcomeIsDismissed() {
+  return !!_getStorageJSON(SK.WELCOME_DISMISSED, {})[_currentLang] || _rawGet('zimi_welcome_' + _currentLang) === '0';
+}
+function _welcomeDismiss() {
+  var d = _getStorageJSON(SK.WELCOME_DISMISSED, {});
+  d[_currentLang] = 1;
+  _setStorageJSON(SK.WELCOME_DISMISSED, d);
+}
+
 // First time a device lands in Reader View, float a one-shot coachmark by the
 // book button — "tap again for reading settings" — so the hidden palette gets
 // discovered. Fires at most once (localStorage flag), auto-dismisses after 4s,
@@ -13553,7 +13596,7 @@ function _maybeShowReaderCoach() {
   // top-level inside the ⋯ menu, so the "tap again" hint is redundant — skip it
   // (offsetParent is null / zero-size when hidden by the max-width media query).
   if (!btn.offsetParent && !(btn.offsetWidth || btn.offsetHeight)) return;
-  try { localStorage.setItem(SK.READER_COACH, '1'); } catch (e) {}
+  _setStorageFlag(SK.READER_COACH, true);
   var tip = document.createElement('div');
   tip.className = 'reader-coach';
   tip.setAttribute('role', 'status');
@@ -20588,11 +20631,14 @@ function _prefApplied(keys) {
     if (ext) ext.innerHTML = _extLinksSegInner();
     try { _extRemarkOpen(); } catch (e) {}
   }
+  // The Almanac, if it is loaded, draws what changed (almanac.js _almPrefsApplied; in the ZIM it hears the
+  // same change as a storage event instead).
+  if (typeof _almPrefsApplied === 'function') try { _almPrefsApplied(keys); } catch (e) {}
   if (has(SK.PREF_FLAVOR)) {
     var fl = document.getElementById('ms-flavor-seg');
     if (fl) fl.innerHTML = _flavorSegInner();
   }
-  var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS];
+  var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS, SK.WELCOME_DISMISSED];
   if (mode === 'home' && !readerOpen && home.some(has)) { try { renderHome(); } catch (e) {} }
 }
 // ── Games: what a person plays, theirs on every browser they sign in on ──
@@ -20880,7 +20926,7 @@ function _savedStart() {
   window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); _gamesPush(true); });
   // A setting written in another page of this browser (another tab, an app
   // page in the reader): shown here too. Whoever wrote it marked it pending
-  // (_prefChanged, apps.js's prefTouched); one this page did not send yet goes.
+  // (_prefChanged, via apps.js's prefWrite); one this page did not send yet goes.
   window.addEventListener('storage', function (e) {
     if (e.key && _isPrefKey(e.key)) { _prefApplied([e.key]); return; }
     if (e.key !== SK.PREF_SYNC) return;

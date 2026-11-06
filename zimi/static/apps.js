@@ -20,17 +20,12 @@ function nightSet(on) {
 }
 nightApply();
 window.addEventListener('storage', function(e) { if (e.key === APP_THEME_KEY || e.key === null) nightApply(); });
-// A setting this page changed (one of app.js's _PREF_KEYS): signed in, the
-// account takes it as it takes the shell's (app.js _prefChanged), so the
-// shell sends it; signed out it stays this browser's.
-function prefTouched(key) {
-  try {
-    var st = JSON.parse(localStorage.getItem('zimi_pref_sync') || 'null');
-    if (!st || !st.owner) return;
-    st.pending = st.pending && typeof st.pending === 'object' ? st.pending : {};
-    st.pending[key] = 1;
-    localStorage.setItem('zimi_pref_sync', JSON.stringify(st));
-  } catch (e) {}
+// A setting this page changed (one of app.js's _PREF_KEYS; null: back to its default): through the shell's
+// door, so signed in the account takes it and the person's other windows follow (app.js _prefWrite); signed out,
+// or with no shell around the page, it stays this browser's.
+function prefWrite(key, value) {
+  try { if (window.parent !== window && typeof window.parent._prefWrite === 'function') { window.parent._prefWrite(key, value); return; } } catch (e) {}
+  try { if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, String(value)); } catch (e) {}
 }
 function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // A ZIM entry's address in Zimi.
