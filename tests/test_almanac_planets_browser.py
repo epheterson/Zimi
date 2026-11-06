@@ -470,7 +470,7 @@ def test_every_destination_flies(served, start):
             pg.evaluate("_aeShowGo(true)")
             pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
             # Every body (the landing sites are the landmarks test's).
-            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING).concat(['sun', 'planets', 'sats'])")
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun', 'planets', 'sats'])")
             pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")   # each flight lands at once
             missed = []
             for k in keys:
@@ -512,7 +512,7 @@ def test_every_destination_arrives_with_its_card(served):
             _open(pg, served)
             pg.evaluate("_aeShowGo(true)")
             pg.wait_for_function("() => !!_aeTracks && document.querySelectorAll('#ae-go .ae-go-row').length > 20", timeout=60_000)
-            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING).concat(['sun'])")
+            keys = pg.evaluate("_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun'])")
             pg.evaluate("_aeShowGo(false); window._almReduceMotion = function () { return true; };")
             bare = []
             for k in keys:
@@ -592,7 +592,7 @@ def test_the_row_follows_where_the_view_is(served):
             go("earth")
             _row_settles(pg, row, ["sun", "earth", "sats", "moon", "juno", "planets"])
             go("sun")
-            _row_settles(pg, row, ["sun", "earth", "planets"])
+            _row_settles(pg, row, ["sun", "earth", "planets", "spin"])   # Side by side stands beside the Planets view
             assert not pg.query_selector("#ae-views [data-ae-view='orbits']")
             assert not errors, errors
             ctx.close()
