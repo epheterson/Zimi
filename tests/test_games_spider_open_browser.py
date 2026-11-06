@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 
 
@@ -22,7 +23,8 @@ def test_face_down_cards_open_up_with_room(served, browser, game, api, col):
     page = ctx.new_page()
     page.goto("%s/%s.html" % (served, game))
     page.wait_for_function("() => window.%s && %s.session && %s.session.state" % (api, api, api))
-    page.wait_for_timeout(1500)   # the deal lands
+    game_ready(page)   # the deal lands
+    quiet(page, 1500)
     ys = page.evaluate("""([api, col]) => window[api].session.state.piles[col].map(c => {
         const e = document.querySelector('.zc-card[data-id="' + c.id + '"]'); return [c.up, e.getBoundingClientRect().top]; })""", [api, col])
     downs = [b[1] - a[1] for a, b in zip(ys, ys[1:]) if not a[0]]
