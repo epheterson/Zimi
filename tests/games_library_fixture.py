@@ -850,7 +850,7 @@ def build_more(base):
         print("no map fixture:", e)
     return out
 
-def build(base):
+def _build_all(base):
     out = os.path.join(os.path.abspath(base), "zims")
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
@@ -896,6 +896,48 @@ def build(base):
         print("no map fixture:", e)
     build_more(base)
     return out
+
+
+def _inputs_key():
+    """What the built ZIMs are made from: this file, the fixture helpers and the games folder it reads (size and mtime of each,
+    so a changed file is a different key and a checkout elsewhere only costs a rebuild)."""
+    import hashlib
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    games = os.path.join(os.path.dirname(here), "zimi", "builtin", "games")
+    files = [os.path.abspath(__file__), os.path.join(here, "wiki_fixture.py")]
+    for top, _dirs, names in os.walk(games):
+        files.extend(os.path.join(top, n) for n in names)
+    h = hashlib.sha256()
+    for f in sorted(files):
+        st = os.stat(f)
+        h.update(("%s:%d:%d\n" % (f, st.st_size, st.st_mtime_ns)).encode())
+    import libzim
+    h.update(str(getattr(libzim, "__version__", "")).encode())
+    return h.hexdigest()[:16]
+
+
+def build(base):
+    """zims/ and zims2/ under `base`. Built once per machine for a given set of inputs (about twenty seconds, and six test
+    modules ask for them), then copied: a test gets its own files to change, and a worker never rebuilds what another has."""
+    import tempfile
+
+    base = os.path.abspath(base)
+    cache = os.path.join(tempfile.gettempdir(), "zimi-games-fixture-%s" % os.getuid(), _inputs_key())
+    if not os.path.isdir(os.path.join(cache, "zims2")):
+        stage = "%s.%d.tmp" % (cache, os.getpid())
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        shutil.rmtree(stage, ignore_errors=True)
+        os.makedirs(stage)
+        _build_all(stage)
+        try:
+            os.rename(stage, cache)   # a worker that got there first wins; the files are the same
+        except OSError:
+            shutil.rmtree(stage, ignore_errors=True)
+    for name in ("zims", "zims2"):
+        shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+        shutil.copytree(os.path.join(cache, name), os.path.join(base, name))
+    return os.path.join(base, "zims")
 
 
 if __name__ == "__main__":
