@@ -86,6 +86,7 @@ VARS: dict[str, tuple[str, str]] = {
         "Whether Zimi looks for its own updates: ask (only on Check now), auto or never",
         "Check for Zimi updates",
     ),
+    "ZIMI_PORTABLE": ("Keep state in zimi-data beside the executable, ZIMs in zims (--portable)", ""),
     "ZIMI_INSTALL_TYPE": ("How Zimi was installed, for the updater", ""),
     "ZIMI_ALMANAC_HD": (
         "Almanac HD, the sharper Earth and Moon, from Zimi's GitHub release: ask (offered in the Almanac to an admin), auto (on the Almanac's first open) or never",

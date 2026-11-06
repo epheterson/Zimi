@@ -10,11 +10,34 @@ import os
 import sys
 
 UNIT_PATH = "/etc/systemd/system/zimi.service"
-_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "zimi.service")
+_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+_TEMPLATE = os.path.join(_ASSETS, "zimi.service")
+_PORTABLE_TEMPLATE = os.path.join(_ASSETS, "zimi-portable.service")
 
 
-def unit_text(python=None):
-    """The unit, with ExecStart on ``python`` (this interpreter by default)."""
+def _owner(path):
+    """The account that owns this folder: the one that should run a service kept in it."""
+    try:
+        import pwd
+
+        return pwd.getpwuid(os.stat(path).st_uid).pw_name
+    except (ImportError, KeyError, OSError):
+        return "root"
+
+
+def unit_text(python=None, exe=None):
+    """The unit, with ExecStart on ``python`` (this interpreter by default).
+
+    A frozen portable build has no Python to point at: ``exe`` (the executable itself, the default when
+    frozen) selects the portable unit, which runs that file as the folder's owner with its state beside it."""
+    exe = exe or (os.path.realpath(sys.executable) if getattr(sys, "frozen", False) else None)
+    if exe and not python:
+        folder = os.path.dirname(exe)
+        with open(_PORTABLE_TEMPLATE, encoding="utf-8") as f:
+            text = f.read()
+        for key, value in (("@EXE@", exe), ("@DIR@", folder), ("@USER@", _owner(folder))):
+            text = text.replace(key, value)
+        return text
     with open(_TEMPLATE, encoding="utf-8") as f:
         return f.read().replace("@PYTHON@", python or sys.executable)
 

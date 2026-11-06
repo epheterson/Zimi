@@ -55,7 +55,7 @@ def test_a_bundled_feature_that_is_missing_is_a_problem(monkeypatch):
 @pytest.mark.parametrize(
     "declared,kind",
     [("docker", "docker"), ("snap", "desktop"), ("appimage", "desktop"),
-     ("desktop-mac", "desktop"), ("homebrew", "pip"), ("pip", "pip")],
+     ("desktop-mac", "desktop"), ("portable", "portable"), ("homebrew", "pip"), ("pip", "pip")],
 )
 def test_install_kind(monkeypatch, declared, kind):
     monkeypatch.setenv("ZIMI_INSTALL_TYPE", declared)

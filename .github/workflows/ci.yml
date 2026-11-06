@@ -215,6 +215,25 @@ jobs:
           echo "quick: ${{ needs.test-quick.result }}, browser: ${{ needs.test-browser.result }}"
           [ "${{ needs.test-quick.result }}" = success ] && [ "${{ needs.test-browser.result }}" = success ]
 
+  # The portable headless Linux build (#137), built and run from a copied folder on both architectures: the
+  # same script the release runs, so the tag never meets it for the first time. 22.04 for the glibc floor.
+  portable:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - run: ci/build_portable.sh
+
   # The environment the DESKTOP release builds in, on every pull request, on
   # every runner it builds on.
   #
