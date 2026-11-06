@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+### Highlights
 
-- A portable headless Linux build for x64 and arm64 (Raspberry Pi included), `zimi-<version>-linux-<arch>.tar.gz`: no Python needed, runs off a USB disk, and keeps its settings in a `zimi-data` folder beside it (#137).
+- **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
+- **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
 
 ## [1.15.3]
 

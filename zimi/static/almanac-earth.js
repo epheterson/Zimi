@@ -2223,11 +2223,18 @@ function _aeBuildPlanets(S) {
 }
 // A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
 function _aeWideView() { return _ae.preset === 'planets' || _ae.target === 'sun'; }
-// Orbits, a setting in the gear (remembered on this device): While flying (the default) shows the orbits of the
+// Orbits, a setting in the gear (kept with the person): While flying (the default) shows the orbits of the
 // bodies a flight involves (where it left, where it goes, and their systems) during it, fading out shortly after it
 // lands; Always keeps those of the body in view and its system; Off shows none. The Planets view always shows the
 // planets' orbits.
-var AE_ORBITS_KEY = 'zimi_ae_orbits', AE_ORBITS_MODES = ['flying', 'always', 'off'], AE_ORBITS_FADE_MS = 1500;
+var AE_ORBITS_KEY = SK.ALM_ORBITS, AE_ORBITS_MODES = ['flying', 'always', 'off'], AE_ORBITS_FADE_MS = 1500;
+// The orbit lines, the landmarks layer or the settings panel changed underneath the view (almanac.js
+// _almPrefsApplied): drawn again from storage.
+function _aePrefsApplied(keys) {
+  if (keys.indexOf(AE_ORBITS_KEY) < 0 && keys.indexOf(AE_LM_LAYER_KEY) < 0) return;
+  if (keys.indexOf(AE_LM_LAYER_KEY) >= 0 && _aeLmLayerOn()) _aeLmLoad();
+  if (_ae) { _ae.dirty = true; _aeKick(); if (_ae.setOpen) _aeRenderSettings(); }
+}
 function _aeOrbitsMode() {
   try { var m = localStorage.getItem(AE_ORBITS_KEY); return AE_ORBITS_MODES.indexOf(m) >= 0 ? m : 'flying'; } catch (e) { return 'flying'; }
 }
@@ -2859,12 +2866,12 @@ var AE_LM_KINDS = { landing: 'landing', crater: 'crater', mare: 'mare', mons: 'm
 var AE_LM_MORNING_SUN_DEG = 8;
 var AE_LM_DAWN_STEP_MS = 3 * 3600 * 1000, AE_LM_DAWN_LOOK_MS = 31 * MS_PER_DAY, AE_LM_DAWN_TOL_MS = 10 * 60 * 1000;
 var _aeLm = null, _aeLmLoading = null;
-// Off until this viewer turns them on in the gear (remembered on this device); a landmark flown to by choice (its card,
+// Off until this viewer turns them on in the gear (kept with the person); a landmark flown to by choice (its card,
 // a landing site) still shows, alone.
-var AE_LM_LAYER_KEY = 'zimi_alm_landmarks';
+var AE_LM_LAYER_KEY = SK.ALM_LANDMARKS;
 function _aeLmLayerOn() { try { return localStorage.getItem(AE_LM_LAYER_KEY) === '1'; } catch (e) { return false; } }
 function _aeLmSetLayer(on) {
-  try { if (on) localStorage.setItem(AE_LM_LAYER_KEY, '1'); else localStorage.removeItem(AE_LM_LAYER_KEY); } catch (e) {}
+  _prefWrite(AE_LM_LAYER_KEY, on ? '1' : null);
   if (on) _aeLmLoad();
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
@@ -3025,11 +3032,11 @@ function _aeLmFly(body, row) {
 }
 
 // The offer, in the data note's quiet line: shown to someone who may download (can_change) while the setting is Ask
-// first and they have not said Not now on this device; under Automatically the server's first answer already started it.
+// first and they have not said Not now for this person; under Automatically the server's first answer already started it.
 // It comes with the view's satellite data (_aeTakeSats); while the download runs, /almanac-hd is asked how far it got,
 // and once it is in the library the view draws from it without a reload.
 var AE_HD_URL = '/almanac-hd', AE_HD_SET_URL = '/manage/almanac-hd';
-var AE_HD_LATER_KEY = 'zimi_alm_hd_later';
+var AE_HD_LATER_KEY = SK.ALM_HD_LATER;
 var AE_HD_POLL_MS = 3000;
 function _aeHdLater() { try { return localStorage.getItem(AE_HD_LATER_KEY) === '1'; } catch (e) { return false; } }
 function _aeHdPollNow() {
@@ -3084,7 +3091,7 @@ function _aeHdGet() {
   }).catch(function () { _aeHdShow(null); }).then(function () { _aeById('ae-hd-get').disabled = false; });
 }
 function _aeHdNotNow() {
-  try { localStorage.setItem(AE_HD_LATER_KEY, '1'); } catch (e) {}
+  _prefWrite(AE_HD_LATER_KEY, '1');
   _aeHdShow(null);
 }
 
@@ -3926,7 +3933,7 @@ function _aeSetHint(key) {
   return _almEsc(_aeT(key, { src: mark })).replace(mark,
     '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
 }
-// Orbits: one line, three choices (this viewer's own, remembered on this device).
+// Orbits: one line, three choices (this viewer's own, kept with the person).
 function _aeOrbitsRowHtml() {
   var mode = _aeOrbitsMode();
   return '<div class="ae-set-orbits" role="radiogroup" aria-labelledby="ae-orbits-title"><b id="ae-orbits-title">' + _almEsc(_aeT('alm_orbits')) + '</b>' +
@@ -3936,7 +3943,7 @@ function _aeOrbitsRowHtml() {
     }).join('') + '</div>';
 }
 function _aeSetOrbits(m) {
-  try { if (m === 'flying') localStorage.removeItem(AE_ORBITS_KEY); else localStorage.setItem(AE_ORBITS_KEY, m); } catch (e) {}
+  _prefWrite(AE_ORBITS_KEY, m === 'flying' ? null : m);
   // Chosen while standing still, While flying hides the lines at once: no flight is on, so none of them belongs.
   if (_ae && m === 'flying' && !_ae.fly) _ae.orbitFly = null;
   if (_ae) { _ae.dirty = true; _aeKick(); }
@@ -3947,7 +3954,7 @@ function _aeRenderSettings() {
   var m = _ae.satMeta || {};
   var editable = !!m.canChange && !m.locked && !_ae.setBusy;
   var html = (typeof _almDismissX === 'function' ? _almDismissX() : '') +
-    // This viewer's own: names of places on the bodies (off until turned on, remembered on this device).
+    // This viewer's own: names of places on the bodies (off until turned on, kept with the person).
     '<label class="ae-set-choice"><input type="checkbox" name="ae-lm-layer"' + (_aeLmLayerOn() ? ' checked' : '') + '>' +
       '<span><b>' + _almEsc(_aeT('alm_lm_layer')) + '</b><small>' + _almEsc(_aeT('alm_lm_layer_hint')) + '</small></span></label>' +
     _aeOrbitsRowHtml() +

@@ -473,9 +473,9 @@ function _orreryOpenEarthView(target) {
 // ── Saying what the orrery does, until it has been done ──
 // A phone has no hover, and nothing said that a planet flies or that Earth
 // opens in 3D (Eric, 2026-09-29, found neither). Until each has been done
-// once on this device, a line under the orrery says it (on touch). Done,
+// once for this person, a line under the orrery says it (on touch). Done,
 // each goes quiet for good.
-var _ORRERY_TRIED_KEY = 'zimi_orrery_tried';
+var _ORRERY_TRIED_KEY = SK.ALM_ORRERY_TRIED;
 var _orreryTriedCache = null;          // read once: the draw loop asks every frame
 function _orreryTried() {
   if (!_orreryTriedCache) {
@@ -488,7 +488,7 @@ function _orreryMarkTried(what) {
   var tried = _orreryTried();
   if (tried[what]) return;
   tried[what] = 1;
-  try { localStorage.setItem(_ORRERY_TRIED_KEY, JSON.stringify(tried)); } catch (e) { /* this visit only */ }
+  _prefWrite(_ORRERY_TRIED_KEY, JSON.stringify(tried));
   _orreryRenderHint();
 }
 function _orreryRenderHint() {

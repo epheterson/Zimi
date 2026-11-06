@@ -409,14 +409,14 @@ function _atEl(id) { return document.getElementById(id); }
 function _atLang() { return (typeof _currentLang !== 'undefined' && _currentLang) || 'en'; }
 
 // Feet and miles where people measure in them, metres elsewhere; the toggle
-// is remembered on this device only.
+// is remembered with the person (SK.ALM_UNITS).
 function _atUnits() {
   try { var v = localStorage.getItem(AT_UNITS_KEY); if (v === 'ft' || v === 'm') return v; } catch (e) {}
   var nav = (typeof navigator !== 'undefined' && navigator.language) || '';
   return /-(US|LR|MM)$/i.test(nav) || (/^en$/i.test(nav) && _atLang() === 'en') ? 'ft' : 'm';
 }
 function _atSetUnits(u) {
-  try { localStorage.setItem(AT_UNITS_KEY, u); } catch (e) {}
+  _prefWrite(AT_UNITS_KEY, u);
   _atRender();
 }
 

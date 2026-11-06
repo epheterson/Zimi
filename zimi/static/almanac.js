@@ -12,7 +12,7 @@ function _dateToJD(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
 function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 
 // The place chosen for the Almanac (a map pick, a city, a station, the 3D
-// view's crosshair) stays chosen on this device: tides, the sky and the
+// view's crosshair) stays chosen for the person (and follows them when signed in): tides, the sky and the
 // times follow it on every visit. It lives under its own key; the key the
 // session-only builds used is read once, as a fallback, and carried over.
 // Under that old key localStorage may still hold the corrupted longitude the
@@ -21,8 +21,8 @@ function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 var ALM_GEAR_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 // A phone tilted up, with a star over it: hold your phone up to the sky. The gear's weight and size.
 var ALM_LOOK_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(-20 11.5 15)"><rect x="7" y="8.5" width="9" height="13" rx="2"/><path d="M10.5 18.5h2"/></g><path d="M18.5 2.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke-width="1.2"/></svg>';
-var _ALM_PLACE_KEY = 'zimi_almanac_place';     // app.js SK.ALMANAC_PLACE
-var _ALM_LOC_KEY = 'zimi_almanac_location';   // app.js SK.ALMANAC_LOC
+var _ALM_PLACE_KEY = SK.ALMANAC_PLACE;
+var _ALM_LOC_KEY = SK.ALMANAC_LOC;
 try { localStorage.removeItem(_ALM_LOC_KEY); } catch (e) {}
 
 // A finite lat/lon inside its real range. A click-math slip or a legacy
@@ -37,7 +37,7 @@ function _getLocation() {
   try { stored = localStorage.getItem(_ALM_PLACE_KEY); } catch (e) {}
   if (!stored) {
     try { stored = sessionStorage.getItem(_ALM_LOC_KEY); } catch (e) {}
-    if (stored) { try { localStorage.setItem(_ALM_PLACE_KEY, stored); } catch (e) {} }
+    if (stored) _prefWrite(_ALM_PLACE_KEY, stored);
   }
   if (stored) {
     try {
@@ -90,13 +90,26 @@ function _saveLocation(lat, lon, name) {
   if (!_almValidLatLon(lat, lon)) return; // reject a bad click/geolocate outright
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
-  // Kept on this device (see _ALM_PLACE_KEY); the session copy goes, so an
+  // Kept with the person (see _ALM_PLACE_KEY); the session copy goes, so an
   // older value can never come back through the fallback.
-  try { localStorage.setItem(_ALM_PLACE_KEY, JSON.stringify(data)); } catch (e) {}
+  _prefWrite(_ALM_PLACE_KEY, JSON.stringify(data));
   try { sessionStorage.removeItem(_ALM_LOC_KEY); } catch (e) {}
   // Keep the timezone city list in sync with the new location — otherwise a
   // map click changes the sun/moon math while a stale city stays highlighted.
   _almSelectedTz = _almTzForLocation(lat, lon);
+}
+
+// A choice of the person's changed underneath the page (their account's, from another browser, or another tab):
+// what shows it is drawn again, from storage, where the values already are. app.js calls this when it takes the
+// account's settings; the ZIM's page calls it on the storage event (it has no app.js around it).
+var _ALM_PREF_PAGE = [SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY];
+function _almPrefsApplied(keys) {
+  var has = function (k) { return keys.indexOf(k) >= 0; };
+  if (has(SK.ALM_SKY)) _skySettings = null;
+  if (has(SK.ALM_ORRERY_TRIED)) _orreryTriedCache = null;
+  if (has(SK.ALMANAC_PLACE)) _almSelectedTz = null;
+  if (_almanacOpen && keys.some(function (k) { return _ALM_PREF_PAGE.indexOf(k) >= 0; })) _renderAlmanacContent();
+  if (typeof _aePrefsApplied === 'function') _aePrefsApplied(keys);
 }
 
 // Holiday scope — 'region' (default: the one national pack for the chosen or
@@ -4391,11 +4404,11 @@ function _initTzClock(now) {
   _drawTzClock(now);
 }
 
-// The reader's saved clocks, kept on this device: zone names, in the order
+// The reader's saved clocks, kept with the person: zone names, in the order
 // saved. (The key is the one added clocks have always used, so they are saved
 // ones now.) Which of the two views is showing is kept beside them.
-var _ALM_CLOCKS_KEY = 'zimi_almanac_clocks';
-var _ALM_CLOCKS_VIEW_KEY = 'zimi_almanac_clocks_view';
+var _ALM_CLOCKS_KEY = SK.ALM_CLOCKS;
+var _ALM_CLOCKS_VIEW_KEY = SK.ALM_CLOCKS_VIEW;
 var ALM_CLOCKS_VIEWS = ['all', 'saved'];
 var ALM_TZ_NAME_RE = /^[A-Za-z0-9_+\/-]+$/;   // an IANA zone name, and nothing that could leave an attribute
 function _almClocks() {
@@ -4403,7 +4416,7 @@ function _almClocks() {
   catch (e) { return []; }
 }
 function _almSetClocks(list) {
-  try { localStorage.setItem(_ALM_CLOCKS_KEY, JSON.stringify(list)); } catch (e) {}
+  _prefWrite(_ALM_CLOCKS_KEY, JSON.stringify(list));
   _initTzClock(new Date());
 }
 function _almClockAdd(tz) {
@@ -4425,7 +4438,7 @@ function _almClockView() {
 }
 function _almClockSetView(view) {
   if (ALM_CLOCKS_VIEWS.indexOf(view) < 0) return;
-  try { localStorage.setItem(_ALM_CLOCKS_VIEW_KEY, view); } catch (e) {}
+  _prefWrite(_ALM_CLOCKS_VIEW_KEY, view);
   // The big clock never shows a zone the list under it does not: back to the place's own.
   if (view === 'saved' && _almSelectedTz && _almClocks().indexOf(_almSelectedTz) < 0) _almSelectedTz = null;
   // The switch is above the cards that change in number, so it stays where it is; a page that was moved by what the

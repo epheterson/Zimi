@@ -592,7 +592,7 @@ function _skyGLView(s) {
 // dark site); the true horizon is a choice, and so is whatever else was
 // chosen: only what the viewer set is saved, so a default that changes later
 // reaches everyone who never chose.
-var SKY_SETTINGS_KEY = 'zimi_sky_settings';
+var SKY_SETTINGS_KEY = SK.ALM_SKY;
 var SKY_SETTING_DEFAULTS = { skin: 'beach', lines: 'off', size: 'auto', dial: 0 };   // a real sky has no lines: a figure shows when its star is tapped
 var SKY_SETTING_VALUES = { skin: ['horizon', 'beach'], lines: ['off', 'lines', 'names'], size: ['auto', 'true', 'large'] };
 var _skySettings = null, _skyChosen = {};
@@ -610,7 +610,7 @@ function _skySetting(k) { if (!_skySettings) _skySettings = _skyLoadSettings(); 
 function _skySet(k, v) {
   if (_skySetting(k) === v) return;
   _skySettings[k] = _skyChosen[k] = v;
-  try { localStorage.setItem(SKY_SETTINGS_KEY, JSON.stringify(_skyChosen)); } catch (e) {}
+  _prefWrite(SKY_SETTINGS_KEY, JSON.stringify(_skyChosen));
   var s = _skyState;
   if (s) { if (k === 'dial' && s.eph) _skyBrightness(s); s.baseDirty = true; if (k === 'skin') _skyArm(); _skyKick(); }
 }

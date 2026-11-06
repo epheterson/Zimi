@@ -126,6 +126,15 @@ if (HOSTED_IN_ZIMI) {
   };
 })();
 
+// A choice the person made (the Almanac's units, orbits, clocks...): inside Zimi it goes through the shell's door, so
+// the account keeps it and their other windows follow; anywhere else (Kiwix, a file) it is this browser's, as before.
+// The shell's writes to the same keys reach this page as storage events, and the Almanac draws them again.
+function _prefWrite(k, v) {
+  if (HOSTED_IN_ZIMI && typeof window.parent._prefWrite === 'function') { window.parent._prefWrite(k, v); return; }
+  try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); } catch (e) {}
+}
+window.addEventListener('storage', function(e) { if (e.key && typeof _almPrefsApplied === 'function') _almPrefsApplied([e.key]); });
+
 // The page's own files, in the order the Almanac needs them (they share one global scope).
 var ALMANAC_SCRIPTS = [
   'almanac-links.js', 'almanac-orrery.js', 'almanac-sky.js', 'almanac-skygl.js',

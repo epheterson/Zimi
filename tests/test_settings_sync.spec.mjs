@@ -147,6 +147,32 @@ test('the interface language and the reading speed follow, into the page that is
   await a.context.close(); await b.context.close();
 });
 
+test('the theme and the Almanac\'s choices reach the other open window with no reload', async ({ browser }) => {
+  test.setTimeout(120000);
+  const a = await signedIn(browser, USER, 0);
+  const b = await signedIn(browser, USER, 1);
+  for (const x of [a, b]) {
+    await x.page.waitForFunction(() => _liveSource && _liveSource.readyState === 1 && _liveSince && _savedPulledAt > 0);
+    await x.page.evaluate(() => openAlmanac());
+    await x.page.waitForFunction(() => typeof window.openAlmanacEarth === 'function');
+    await x.page.evaluate(() => window.openAlmanacEarth());
+    await x.page.waitForFunction(() => typeof _aeSetOrbits === 'function', null, { timeout: 40000 });
+  }
+  const navigations = [];
+  b.page.on('framenavigated', (f) => { if (f === b.page.mainFrame()) navigations.push(f.url()); });
+  // Orbits (the Earth view's gear), the units, the place and the theme, set in A.
+  await a.page.evaluate(() => { _aeSetOrbits('always'); _prefWrite('zimi_almanac_units', 'ft'); _saveLocation(48.85, 2.35, 'Paris'); _setAppTheme('light'); });
+  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsMode(), localStorage.getItem('zimi_almanac_units'), _getLocation().name, _appTheme()]), { timeout: 20000 })
+    .toEqual(['always', 'ft', 'Paris', 'light']);
+  expect(await value(a.page, 'zimi_ae_orbits')).toBe('always');
+  expect(await value(a.page, 'zimi_almanac_units')).toBe('ft');
+  expect(JSON.parse(await value(a.page, 'zimi_almanac_place')).name).toBe('Paris');
+  expect(navigations, 'the other window was not reloaded').toEqual([]);
+  await a.page.evaluate(() => { _aeSetOrbits('flying'); _prefWrite('zimi_almanac_units', null); _setAppTheme('auto'); });
+  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsMode(), _appTheme()]), { timeout: 20000 }).toEqual(['flying', 'auto']);
+  await a.context.close(); await b.context.close();
+});
+
 test('a browser that changed nothing sends nothing, and boot waits on none of it', async ({ browser }) => {
   const context = await browser.newContext({ storageState: states[FRESH][0] });
   const page = await context.newPage();

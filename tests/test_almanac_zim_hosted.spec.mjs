@@ -38,3 +38,47 @@ test('satellites and tide stations answer from the ZIM', async ({ page }) => {
   const tides = await frame.evaluate(() => fetch('/almanac-place?lat=37.8&lon=-122.4').then((r) => r.json()));
   expect(tides.tides.stations[0].n).toContain('San Francisco');
 });
+
+// A choice made in the Almanac's ZIM is the person's: inside Zimi it goes through the shell's door (kept with the
+// account, followed by their other windows), a change the shell takes from the account shows in the open page
+// without a reload, and in Kiwix (no Zimi around) it is this browser's own, with no error.
+test('inside Zimi a choice goes through the shell, and a change from the shell is drawn without a reload', async ({ page }) => {
+  const frame = await openAlmanacZim(page);
+  await frame.evaluate(() => _aeSetOrbits('off'));
+  expect(await page.evaluate(() => localStorage.getItem('zimi_ae_orbits'))).toBe('off');
+  // The shell takes a change from the account (another browser) into storage: the frame hears the storage event.
+  await frame.evaluate(() => {
+    window.__drawn = 0;
+    const real = window._renderAlmanacContent;
+    window._renderAlmanacContent = function () { window.__drawn++; return real.apply(this, arguments); };
+    window._almanacOpen = true;
+  });
+  await page.evaluate(() => { localStorage.setItem('zimi_ae_orbits', 'always'); localStorage.setItem('zimi_almanac_units', 'ft'); });
+  await expect.poll(() => frame.evaluate(() => [_aeOrbitsMode(), window.__drawn > 0])).toEqual(['always', true]);
+  await page.evaluate(() => { localStorage.removeItem('zimi_ae_orbits'); localStorage.removeItem('zimi_almanac_units'); });
+});
+
+// A puzzle's own preferences, which the puzzle keeps under its address, are kept under a name the account takes.
+test('a puzzle keeps its preferences under a key that follows the account', async ({ page }) => {
+  await page.goto(BASE + '/w/zimi_games/puzzles/net.html?raw=1');
+  await expect.poll(() => page.evaluate(() => typeof window.ZimiShell), { timeout: 60000 }).toBe('object');
+  const got = await page.evaluate(() => {
+    const own = location.pathname + ' preferences';
+    localStorage.setItem(own, 'Show grid\n1');
+    return [localStorage.getItem('zimi.games.puzzleprefs.net'), localStorage.getItem(own), Object.keys(localStorage).filter((k) => /preferences/.test(k))];
+  });
+  expect(got).toEqual(['Show grid\n1', 'Show grid\n1', []]);
+});
+
+test('in Kiwix (no Zimi around the page) a choice is kept in this browser, with no error', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE + '/w/zimi_almanac/index.html?raw=1');
+  await expect.poll(() => page.evaluate(() => typeof window.openAlmanacEarth), { timeout: 60000 }).toBe('function');
+  expect(await page.evaluate(() => HOSTED_IN_ZIMI)).toBe(false);
+  await page.evaluate(() => { _aeSetOrbits('always'); _prefWrite('zimi_almanac_units', 'ft'); });
+  expect(await page.evaluate(() => [localStorage.getItem('zimi_almanac_units'), localStorage.getItem('zimi_ae_orbits')])).toEqual(['ft', 'always']);
+  await page.evaluate(() => { _prefWrite('zimi_almanac_units', null); _prefWrite('zimi_ae_orbits', null); });
+  expect(await page.evaluate(() => [localStorage.getItem('zimi_almanac_units'), localStorage.getItem('zimi_ae_orbits')])).toEqual([null, null]);
+  expect(errors).toEqual([]);
+});
