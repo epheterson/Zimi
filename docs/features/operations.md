@@ -78,6 +78,19 @@ What reaches nothing:
 | `ZIMI_TRUSTED_PROXIES` | env | — | CIDR allowlist for forwarded-client-IP trust |
 | `ZIMI_INDEX_THROTTLE` | env / config | `1` | Throttle background index building |
 
+## Portable Linux build
+
+`zimi-<version>-linux-x64.tar.gz` and `-arm64.tar.gz` (Raspberry Pi 64-bit included) unpack to one folder with a `zimi` executable. No Python, no window; it needs glibc 2.35 or newer. Make a `zimi-data` folder beside the executable and it keeps everything there: settings, users, caches, `zimi.pid` and `zimi.log`. Put ZIMs in a `zims` folder beside it and they are served with no flags. Copy the folder to a USB disk and it works wherever the disk is plugged in.
+
+```bash
+mkdir zimi-data zims            # once
+./zimi serve -d --zim-dir ./zims   # in the background, like kiwix-serve -d
+kill $(cat zimi-data/zimi.pid)     # stop it
+sudo ./zimi service install        # systemd unit that runs this executable (as the folder's owner)
+```
+
+One rule picks the paths: a flag, then an environment variable, then the config file, then this folder (`zimi-data` and `zims`, used when `zimi-data` exists or `--portable` / `ZIMI_PORTABLE=1` is given), then the normal defaults. `zimi config` shows which one won. A `zimi-data` that cannot be written is an error, never a quiet move to `~/.cache`. The build leaves out voices, BitTorrent, MCP and the Create engines that need a browser or a Python; `./zimi doctor` lists what is and is not there.
+
 ## Troubleshoot
 
 - **A feature is missing on this install.** `zimi doctor` lists every optional feature (BitTorrent, voices, PDF, MCP, each Create engine), whether it is ready here, and how this kind of install (Docker, desktop app, pip) gets it.

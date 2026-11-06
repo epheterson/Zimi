@@ -336,6 +336,9 @@ _BUILDS = [
     # Named when built: the .zsync records the AppImage's own name.
     ("Zimi-Linux-amd64", "Zimi-1.2.3-x86_64.AppImage"),
     ("Zimi-Linux-amd64", "Zimi-1.2.3-x86_64.AppImage.zsync"),
+    # The portable headless build, named when built: zimi-<version>-linux-<arch>.tar.gz.
+    ("Zimi-portable-linux-x64", "zimi-1.2.3-linux-x64.tar.gz"),
+    ("Zimi-portable-linux-arm64", "zimi-1.2.3-linux-arm64.tar.gz"),
 ]
 
 
@@ -373,6 +376,8 @@ def test_release_files_are_named_version_platform_chip(tmp_path):
         "Zimi-1.2.3-windows-x64.zip",
         "Zimi-1.2.3-x86_64.AppImage",
         "Zimi-1.2.3-x86_64.AppImage.zsync",
+        "zimi-1.2.3-linux-arm64.tar.gz",
+        "zimi-1.2.3-linux-x64.tar.gz",
     ] + _OWN_ZIMS
     text = _commands("desktop-release.yml")
     # The release gets every renamed file (beside the SBOM, when one was made).
@@ -424,7 +429,7 @@ def test_the_appimage_carries_update_information_and_its_zsync():
 def test_a_release_without_its_snap_still_ships_the_rest(tmp_path):
     done = _run_release_naming(tmp_path, _BUILDS)
     assert done.returncode == 0, done.stderr
-    assert len(list((tmp_path / "release").iterdir())) == 6 + len(_OWN_ZIMS)
+    assert len(list((tmp_path / "release").iterdir())) == len(_BUILDS) + len(_OWN_ZIMS)
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
