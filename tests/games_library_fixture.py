@@ -898,6 +898,9 @@ def _build_all(base):
     return out
 
 
+GAMES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "builtin", "games")
+
+
 def _inputs_key():
     """What the built ZIMs are made from: this file, the fixture helpers and the games folder it reads (size and mtime of each,
     so a changed file is a different key and a checkout elsewhere only costs a rebuild)."""
@@ -917,27 +920,55 @@ def _inputs_key():
     return h.hexdigest()[:16]
 
 
-def build(base):
-    """zims/ and zims2/ under `base`. Built once per machine for a given set of inputs (about twenty seconds, and six test
-    modules ask for them), then copied: a test gets its own files to change, and a worker never rebuilds what another has."""
+def _cached(name, make):
+    """The folder `make(stage)` builds into, kept per machine under the temp dir for these inputs and built once (a worker that
+    got there first wins; the files are the same). Callers copy out of it, never write into it."""
     import tempfile
 
-    base = os.path.abspath(base)
-    cache = os.path.join(tempfile.gettempdir(), "zimi-games-fixture-%s" % os.getuid(), _inputs_key())
-    if not os.path.isdir(os.path.join(cache, "zims2")):
+    cache = os.path.join(tempfile.gettempdir(), "zimi-games-fixture-%s" % os.getuid(), "%s-%s" % (name, _inputs_key()))
+    if not os.path.isdir(cache):
         stage = "%s.%d.tmp" % (cache, os.getpid())
-        os.makedirs(os.path.dirname(cache), exist_ok=True)
         shutil.rmtree(stage, ignore_errors=True)
         os.makedirs(stage)
-        _build_all(stage)
+        make(stage)
         try:
-            os.rename(stage, cache)   # a worker that got there first wins; the files are the same
+            os.rename(stage, cache)
         except OSError:
             shutil.rmtree(stage, ignore_errors=True)
+    return cache
+
+
+def build(base):
+    """zims/ and zims2/ under `base`. Built once per machine for a given set of inputs (about twenty seconds, and six test
+    modules ask for them), then copied: a test gets its own files to change."""
+    base = os.path.abspath(base)
+    cache = _cached("library", _build_all)
     for name in ("zims", "zims2"):
         shutil.rmtree(os.path.join(base, name), ignore_errors=True)
         shutil.copytree(os.path.join(cache, name), os.path.join(base, name))
     return os.path.join(base, "zims")
+
+
+def games_zim(dest):
+    """The ZimiGames ZIM built from the working tree's source as it is now, copied into the folder `dest`; returns its path.
+    Built once per machine for these inputs, from a snapshot (the build must not read files that are being edited)."""
+    from zimi import ownzims
+
+    def make(stage):
+        src, built = os.path.join(stage, "src"), os.path.join(stage, "built")
+        shutil.copytree(GAMES, os.path.join(src, "games"))
+        os.makedirs(built)
+        was = (ownzims.OUT_DIR, ownzims.SOURCE_ROOT)
+        ownzims.OUT_DIR, ownzims.SOURCE_ROOT = built, src
+        try:
+            ownzims.build(ownzims.OWN[0])
+        finally:
+            ownzims.OUT_DIR, ownzims.SOURCE_ROOT = was
+
+    built = os.path.join(_cached("gameszim", make), "built")
+    name = next(n for n in os.listdir(built) if n.endswith(".zim"))
+    os.makedirs(dest, exist_ok=True)
+    return shutil.copy(os.path.join(built, name), dest)
 
 
 if __name__ == "__main__":

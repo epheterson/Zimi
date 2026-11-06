@@ -41,21 +41,12 @@ def free_port():
 @pytest.fixture(scope="module")
 def zimi(tmp_path_factory):
     import games_library_fixture as fx
-    from zimi import ownzims
-
     base = tmp_path_factory.mktemp("city")
-    zdir, built, data = base / "lib", base / "built", base / "data"
-    for d in (zdir, built, data):
+    zdir, data = base / "lib", base / "data"
+    for d in (zdir, data):
         d.mkdir()
     fx._wiki(str(zdir / "wikipedia_en_city_2026-01.zim"), "wikipedia_en_city", "Wikipedia", "en", "eng", ARTICLES)
-    shutil.copytree(GAMES, base / "src" / "games")
-    was = (ownzims.OUT_DIR, ownzims.SOURCE_ROOT)
-    ownzims.OUT_DIR, ownzims.SOURCE_ROOT = str(built), str(base / "src")
-    try:
-        made = ownzims.build(ownzims.OWN[0])
-    finally:
-        ownzims.OUT_DIR, ownzims.SOURCE_ROOT = was
-    shutil.copy(made, zdir / os.path.basename(made))
+    fx.games_zim(zdir)
     port = free_port()
     env = dict(os.environ, ZIMI_TORRENT="0", ZIMI_OFFLINE="1", ZIMI_BUILTIN_ZIMS="0", ZIMI_APPS="1", ZIMI_MANAGE_OPEN="1", ZIM_DIR=str(zdir), ZIMI_DATA_DIR=str(data))
     proc = subprocess.Popen([sys.executable, "-m", "zimi", "serve", "--port", str(port)], cwd=ROOT, env=env,

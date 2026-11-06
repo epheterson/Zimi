@@ -48,20 +48,13 @@ def _rows():
 
 @pytest.fixture(scope="module")
 def zimi(tmp_path_factory):
-    from zimi import ownzims
+    import games_library_fixture as fx
 
     base = tmp_path_factory.mktemp("final")
-    lib, built, data = base / "lib", base / "built", base / "data"
-    for d in (lib, built, data):
+    lib, data = base / "lib", base / "data"
+    for d in (lib, data):
         d.mkdir()
-    was = ownzims.OUT_DIR
-    ownzims.OUT_DIR = str(built)
-    try:
-        made = ownzims.build(ownzims.OWN[0])
-    finally:
-        ownzims.OUT_DIR = was
-    zim = lib / os.path.basename(made)
-    os.replace(made, zim)
+    zim = fx.games_zim(lib)
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
