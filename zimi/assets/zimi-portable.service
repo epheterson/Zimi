@@ -1,0 +1,32 @@
+# Zimi from a folder (the portable build): the executable, its zimi-data and its zims stay where they are,
+# on a USB disk or any other path. `./zimi service install` wrote this with the real paths in it.
+#
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zimi
+#
+# Then open http://<this machine>:8899 and set the password at once. Until you do, a device on the local
+# network can claim it during the first hour.
+#
+# Logs: journalctl -u zimi -f    Stop: sudo systemctl stop zimi
+# The disk must be mounted before this starts; for a stick that is not always there, leave the
+# `enable` out and start it by hand (or run ./zimi serve -d).
+
+[Unit]
+Description=Zimi offline knowledge server (portable)
+After=network-online.target local-fs.target
+Wants=network-online.target
+RequiresMountsFor=@DIR@
+
+[Service]
+User=@USER@
+WorkingDirectory=@DIR@
+# The folder's own zimi-data and zims, wherever it is mounted.
+Environment=ZIMI_PORTABLE=1
+ExecStart=@EXE@ serve --port 8899
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
