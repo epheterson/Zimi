@@ -2435,9 +2435,9 @@ var AE_SPIN_ELEV_DEG = 20;               // the camera stands this far above eve
 var AE_SPIN_CAM_DIST = 20000;            // px: far enough that the perspective camera is, for a sphere, an orthographic one
 var AE_SPIN_SUN = [-0.35, 0.3, 0.89];    // the light, one for all, from the camera's side so the art shows whole
 var AE_SPIN_NORMAL_DAYS = 2;             // an orbit's normal is the cross product of the planet's places this far either side
-var AE_SPIN_AXIS_R = 1.45, AE_SPIN_PLANE_R = 1.65;   // the axis line's and the orbital-plane ring's reach, in planet radii
-var AE_SPIN_RING_PAD = 1.08, AE_SPIN_RING_TILT = 0.75;   // the plane ring outside Saturn's rings; their share of a cell's height
-var AE_SPIN_BARB = 0.14, AE_SPIN_BARB_DEG = 25, AE_SPIN_ORBIT_PTS = 96;
+var AE_SPIN_AXIS_R = 1.45, AE_SPIN_PLANE_R = 1.3;   // the axis line's and the orbital-plane line's reach, in planet radii
+var AE_SPIN_RING_PAD = 1.08, AE_SPIN_RING_TILT = 0.75;   // the plane line beyond Saturn's rings; their share of a cell's height
+var AE_SPIN_BARB = 0.14, AE_SPIN_BARB_DEG = 25;
 var AE_SPIN_AXIS_COLOR = 0xffb347, AE_SPIN_AXIS_ALPHA = 0.95, AE_SPIN_AXIS_S_ALPHA = 0.6, AE_SPIN_PLANE_ALPHA = 0.55;
 var AE_SPIN_LABEL_W = 84, AE_SPIN_LABEL_H = 88, AE_SPIN_GAP = 8;   // px: a cell's least width, the names' height under it, between cells
 var AE_SPIN_MAX_ROWS = 4, AE_SPIN_NARROW_PX = 600, AE_SPIN_TOP_MIN_PX = 48;
@@ -2507,7 +2507,7 @@ function _aeSpinMarkSame() {
   if (btn) btn.setAttribute('aria-pressed', String(_aeSpinSame()));
 }
 // What a planet occupies, in the layout's unit (km, or radii when all are the same size): its radius, its rings, and the
-// half width and height of the picture round it (the plane ring, the axis line, the rings).
+// half width and height of the picture round it (the plane line, the axis line, the rings).
 function _aeSpinSize(b, same) {
   var rad = same ? 1 : b.km, ring = b.rings ? b.rings[1] / b.km * rad : 0;
   return { rad: rad, ring: ring, plane: Math.max(AE_SPIN_PLANE_R * rad, ring * AE_SPIN_RING_PAD),
@@ -2594,14 +2594,12 @@ function _aeSpinBuild(S) {
       cell.ring.matrixAutoUpdate = false;
       G.add(cell.ring);
     }
-    // The orbital plane: a ring in the xz plane (y is the orbit's normal), in planet radii.
-    cell.orbit = _aeLine(THREE, THREE.LineLoop, AE_SPIN_ORBIT_PTS, AE_PLANET_ORBIT_COLOR, AE_SPIN_PLANE_ALPHA);
+    // The orbital plane, edge on: one line through the planet in it (y is the orbit's normal), hidden where the planet
+    // stands in front. A ring here read as rings on Jupiter, Uranus and Neptune (Eric, 2026-11-06).
+    cell.orbit = _aeLine(THREE, THREE.Line, 2, AE_PLANET_ORBIT_COLOR, AE_SPIN_PLANE_ALPHA);
     var pts = cell.orbit.geometry.attributes.position.array;
-    for (var k = 0; k < AE_SPIN_ORBIT_PTS; k++) {
-      var a = 2 * Math.PI * k / AE_SPIN_ORBIT_PTS;
-      pts[k * 3] = cell.plane * Math.cos(a); pts[k * 3 + 2] = cell.plane * Math.sin(a);
-    }
-    cell.orbit.geometry.setDrawRange(0, AE_SPIN_ORBIT_PTS);
+    pts[0] = -cell.plane; pts[3] = cell.plane;
+    cell.orbit.geometry.setDrawRange(0, 2);
     cell.south = _aeLine(THREE, THREE.Line, 2, AE_PLANET_ORBIT_COLOR, AE_SPIN_AXIS_S_ALPHA);
     cell.north = _aeLine(THREE, THREE.LineSegments, 6, AE_SPIN_AXIS_COLOR, AE_SPIN_AXIS_ALPHA);
     cell.south.geometry.setDrawRange(0, 2);
@@ -3388,8 +3386,7 @@ function _aeHdShow(st) {
     text = _aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) });
     if (_aeIsOpen) _ae.hdPoll = setTimeout(_aeHdPollNow, AE_HD_POLL_MS);
   } else if (st && st.offer && st.can_change && st.mode === 'ask' && !_aeHdLater()) {
-    var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
-    if (st.offer.approx) size = '~' + size;   // the offline estimate, before the release's own figure is known
+    var size = _aeHdOfferSize(st.offer);
     text = _aeT('alm_hd_offer') + ': ' + _aeT('alm_hd_offer_sub', { size: size });
     offer = true;
   }
@@ -3398,6 +3395,12 @@ function _aeHdShow(st) {
   var act = _aeById('ae-hd-act');
   if (act) act.hidden = !offer;
   _aeRenderSettings();
+}
+// The offer's size: the release's own figure, or "~210 MB" for the offline estimate made before it is known
+// (a whole number: "~210.0 MB" claimed a precision the estimate does not have).
+function _aeHdOfferSize(offer) {
+  if (offer.approx || typeof fmtBytes !== 'function') return (offer.approx ? '~' : '') + Math.round(offer.size / 1e6) + ' MB';
+  return fmtBytes(offer.size);
 }
 // Almanac HD in the gear, whatever the line under the controls says: after Not now this is where it is found again.
 // Installed; downloading and how far; a Download with its size for someone who may; for anyone else, who can.
@@ -3409,8 +3412,7 @@ function _aeHdRowHtml() {
   if (st.installed || _ae.hdInstalled) tail = _almEsc(_aeT('alm_hd_installed'));
   else if (st.downloading) tail = _almEsc(_aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) }));
   else {
-    var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
-    if (st.offer.approx) size = '~' + size;   // the offline estimate, before the release's own figure is known
+    var size = _aeHdOfferSize(st.offer);
     tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
       : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
   }
