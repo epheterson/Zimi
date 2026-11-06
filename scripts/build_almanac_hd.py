@@ -6,8 +6,11 @@ The Almanac draws the Earth and the Moon from one small map each, fetched with
 the page. Almanac HD is the sharp version: each body's map cut into 512 px
 tiles, level by level, so the 3D view (almanac-earth.js) asks only for the
 tiles in view at the detail the screen can show. It is a ZIM of its own, built
-here and attached to a release (never committed: hundreds of MB), and Zimi
-downloads it once, when someone opening the Almanac says yes.
+here and attached to a release (never committed: hundreds of MB). It is the
+tile source: every release's HD flavour of the Almanac (scripts/build_almanac_maxi.py,
+the file Zimi downloads when someone opening the Almanac says yes) is built from it,
+pinned in zimi/assets/almanac-tiles.json. Run this only for a new one (NASA
+reissues, a new body); .github/workflows/almanac-hd.yml does it and prints the pin.
 
 Tiling: plate carree, the same as the maps already shipped. Level z holds
 2^(z+1) columns by 2^z rows of square tiles, 180 / 2^z degrees on a side;
@@ -550,7 +553,7 @@ def main(argv=None):
     ap.add_argument("--keep-stage", action="store_true", help="add to the staged folder instead of starting it over")
     ap.add_argument("--inserts", action="store_true", default=True, help="the Apollo sites' NAC inserts (on unless --no-inserts)")
     ap.add_argument("--no-inserts", dest="inserts", action="store_false")
-    ap.add_argument("--tag", help="the release the file is attached to: writes zimi/assets/almanac-hd.json for it")
+    ap.add_argument("--tag", help="the release the file is attached to: writes zimi/assets/almanac-tiles.json for it")
     a = ap.parse_args(argv)
     stage = os.path.join(a.cache, "stage")
     if os.path.isdir(stage) and not a.keep_stage:
@@ -590,12 +593,12 @@ def main(argv=None):
     pack_zim(stage, path)
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     if a.tag:
-        # What almanachd.py offers and fetches: committed with the release that carries the file.
+        # The tile source's pin (scripts/build_almanac_maxi.py reads it): committed with the release that carries the file.
         asset = {"file": os.path.basename(path), "size": os.path.getsize(path), "sha256": _sha_files([path]), "tag": a.tag}
-        with open(os.path.join(ROOT, "zimi", "assets", "almanac-hd.json"), "w") as f:
+        with open(os.path.join(ROOT, "zimi", "assets", "almanac-tiles.json"), "w") as f:
             json.dump(asset, f, indent=2)
             f.write("\n")
-        print("wrote zimi/assets/almanac-hd.json for", a.tag)
+        print("wrote zimi/assets/almanac-tiles.json for", a.tag)
     return 0
 
 

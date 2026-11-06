@@ -1237,6 +1237,8 @@ def _create_folder_zim(
     only=None,
     progress=None,
     exclude=(),
+    flavour=None,
+    extra_items=None,
 ):
     """Package a folder of files into one ZIM. Returns a summary dict:
     ``{"path", "pages", "assets", "main", "registered", "language",
@@ -1249,7 +1251,11 @@ def _create_folder_zim(
     sidecar (zimi.folderfiles) fill in what the arguments leave unsaid:
     an explicit title, description, language, creator, publisher or tag list
     wins, then the sidecar, then the stored default. ``exclude``
-    is folders never read (the web passes Zimi's own data folder)."""
+    is folders never read (the web passes Zimi's own data folder).
+
+    ``flavour`` is the openZIM Flavour (``maxi``): another build of the same
+    Name. ``extra_items(creator)`` adds entries the folder does not hold, for
+    a build that streams them from somewhere else (Almanac HD's tiles)."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise CreateError(
@@ -1435,6 +1441,8 @@ def _create_folder_zim(
                 )
             )
         creator.set_mainpath(main_path)
+        if extra_items:
+            extra_items(creator)
         # A folder of videos or audio plays in ZimiTube, from this list.
         videos = _folder_videos_json(assets, sidecars)
         if videos:
@@ -1462,6 +1470,7 @@ def _create_folder_zim(
             # Repackaging the same folder next month is a new EDITION of this
             # ZIM, so the Name comes from the folder, never from the date.
             name=zim_name(base_name, language),
+            flavour=flavour,
             tags=_folder_tag_list(mimetypes, meta.get("tags"), tags),
             illustration=_folder_icon(folder, meta),
             history=history_record(
