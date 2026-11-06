@@ -276,6 +276,25 @@ def _fieldguide_switch(request, monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _quick_tier_sees_no_browser(request, monkeypatch):
+    """A test that is not in the browser tier sees what CI's quick job sees: no browser. A page capture (`zimi create`) takes two
+    pictures when a Chromium is installed, which is a Playwright start, a launch and a close per capture, about 8 seconds each
+    and a minute under load: the capture tests that are not about pictures spent most of their time there, on machines that
+    have a browser, while CI's quick job (none installed) never paid it. A module that asks whether a browser is here
+    (`browser_available(`, `_needs_chromium`, ...) is a `browser` test and gets the real answer."""
+    if request.node.get_closest_marker("browser"):
+        yield
+        return
+    try:
+        from zimi import renderer
+    except Exception:
+        yield
+        return
+    monkeypatch.setattr(renderer, "browser_status", lambda refresh=False: (False, "no-chromium"))
+    yield
+
+
 _UPNP_TEST_MODULES = ("test_p2p_nat", "test_offline_switch")
 
 
