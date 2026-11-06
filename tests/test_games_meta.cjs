@@ -18,7 +18,7 @@ const check = (ok, label) => {
 const ids = list => list.map(g => g.items.map(i => i.path).join(',')).join(' | ');
 
 // Every game page has exactly one row that carries the facts.
-const KINDS = ['cards', 'board', 'tiles', 'dice', 'puzzle', 'word', 'arcade', 'kids', 'library'];
+const KINDS = ['cards', 'board', 'tiles', 'dice', 'puzzle', 'word', 'arcade', 'kids', 'library', 'sim'];
 const pages = [...new Set(rows.map(r => r.path))];
 pages.forEach(p => {
   const withMeta = rows.filter(r => r.path === p && r.origin);
@@ -145,6 +145,12 @@ famBlocks.forEach(m => {
 });
 const allTiles = [...index.matchAll(/<a class="ar-game" href="((?:puzzles\/)?[a-z0-9]+\.html)">/g)].length;
 check(allTiles === tiles.length, 'every tile is still a plain link in the page (' + allTiles + ')');
+
+// An arcade game's origin is the machine it comes from, not the pastime it
+// imitates: Circuit's chip read "1890s · Europe" (motor racing) beside its own
+// line about Atari's 1974 arcade racer. Arcade machines are from the 1940s on.
+rows.filter(r => r.kind === 'arcade').forEach(r =>
+  check(r.origin && r.origin.year >= 1940, r.path + ': an arcade game\'s origin is its machine (' + (r.origin && r.origin.year) + ')'));
 
 if (failures) { console.log(failures + ' failed'); process.exit(1); }
 console.log('ok test_games_meta');

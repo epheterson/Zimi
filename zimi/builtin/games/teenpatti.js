@@ -395,7 +395,7 @@
     // A fresh deal: nobody has seen it, so a table of people starts at a handoff.
     function deal() { seats.begin(function () { repaint(); drive(); }, actor(session.state)); }
     t = T.create({
-      id: 'teenpatti', name: 'Teen Patti', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: function () { return false; }, cols: 6, heightShare: 0.13,
+      id: 'teenpatti', name: 'Teen Patti', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: function () { return false; }, heightShare: 0.13,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },

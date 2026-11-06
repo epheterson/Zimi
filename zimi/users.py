@@ -294,12 +294,15 @@ def get_user(name):
 def list_users():
     """Public listing (NO password hashes) sorted by display name."""
     users = _load_users()
+    shown = _load_displays()
     out = []
     for rec in users.values():
         allowlist = rec.get("allowlist")
         out.append(
             {
                 "name": rec.get("name", ""),
+                # What they go by in games and on the boards (their own name until they choose).
+                "display": shown.get(_key(rec.get("name"))) or rec.get("name", ""),
                 "role": _effective_role(rec),
                 # How the account authenticates. Absent on every 1.8 record, so
                 # a local password account keeps reporting "local" untouched.
@@ -334,6 +337,10 @@ def create_user(name, password, allowlist=None, role=None):
         users = _load_users()
         if _key(name) in users:
             return False, "user already exists"
+        # Someone may already go by this name in the games (a display name): a
+        # new account under it would put two of them on the boards.
+        if any(_key(v) == _key(name) for k, v in _load_displays().items() if k != _key(name)):
+            return False, "name taken"
         users[_key(name)] = {
             "name": name.strip(),
             "role": role,
@@ -359,7 +366,12 @@ def delete_user(name):
         _save_users(users)
         _drop_user_sessions_locked(_key(name))
     delete_user_data(name)  # their server-side bookmarks/history go with them
-    delete_settings(name)
+    for store in _PER_PERSON_STORES:
+        store.delete(name)
+    with _lock:
+        shown = _load_displays()
+        if shown.pop(_key(name), None) is not None:
+            _srv._atomic_write_json(_display_path(), shown, indent=2)
     log.info("User deleted: %s", loggable(name))
     return True, None
 
@@ -1108,121 +1120,152 @@ def _userdata_dir():
     return os.path.join(_srv.ZIMI_DATA_DIR, "userdata")
 
 
-# ── Settings: the account's copy (app.js's _PREF_KEYS; see the docstring) ──
+# ── Per-key stores an account keeps: its settings, its games ──
 # {"rev": n, "settings": {key: {"v": raw value or None for its default,
-# "r": the rev it last changed at}}}. rev 0: the account never held one.
+# "r": the rev it last changed at}}}. rev 0: the account never held one. The
+# server orders the changes; a browser's change is pending until the account
+# has taken it (app.js). One shape, two stores that differ in their folder,
+# which keys they take and how much.
+class _RevStore:
+    def __init__(self, folder, key_re, max_keys, value_max, topic, total_max=None):
+        self.folder, self.key_re, self.max_keys = folder, key_re, max_keys
+        self.value_max, self.topic, self.total_max = value_max, topic, total_max
+
+    def path(self, name):
+        return _contained(os.path.join(_srv.ZIMI_DATA_DIR, self.folder), _safe_userdata_key(name))
+
+    def _value_ok(self, v):
+        return v is None or (isinstance(v, str) and len(v) <= self.value_max)
+
+    def doc(self, raw):
+        """``raw`` as kept: a whole rev, and only well-formed keys."""
+        raw = raw if isinstance(raw, dict) else {}
+        rev = raw.get("rev")
+        rev = rev if isinstance(rev, int) and not isinstance(rev, bool) and rev > 0 else 0
+        out = {}
+        got = raw.get("settings")
+        for k, ent in (got.items() if isinstance(got, dict) else ()):
+            if len(out) >= self.max_keys:
+                break
+            if not isinstance(k, str) or not self.key_re.match(k) or not isinstance(ent, dict):
+                continue
+            v, r = ent.get("v"), ent.get("r")
+            if not self._value_ok(v):
+                continue
+            if not isinstance(r, int) or isinstance(r, bool) or r < 1 or r > rev:
+                continue
+            out[k] = {"v": v, "r": r}
+        return {"rev": rev, "settings": out}
+
+    def load(self, name):
+        """An account's copy; empty (rev 0) when it has none or it cannot be read."""
+        import json
+
+        if _safe_userdata_key(name) is None:
+            return self.doc(None)
+        try:
+            with open(self.path(name), encoding="utf-8") as f:
+                return self.doc(json.load(f))
+        except FileNotFoundError:
+            return self.doc(None)
+        except (ValueError, OSError) as e:
+            log.warning("Could not read %s for %s: %s", self.folder, loggable(repr(name)), loggable(e))
+            return self.doc(None)
+
+    def write(self, name, doc):
+        with _lock:
+            os.makedirs(os.path.dirname(self.path(name)), exist_ok=True)
+            return bool(_srv._atomic_write_json(self.path(name), doc))
+
+    def change(self, name, changes, fill_only=False, by=None):
+        """Each change ({key: {"v": value}}) is taken and given the account's
+        next rev; the same value again is no change. ``fill_only`` (a browser's
+        first sync into an account that never held one): only keys the account
+        lacks. A store with a total cap refuses what would take it past that.
+        Written only when something changed, and then announced to the
+        account's open windows (``by``: the window that sent it). Returns (ok,
+        error, doc); the doc's ``refused`` lists each well-formed key it would
+        not keep (too large, too many keys, over the total), so the sender
+        keeps it rather than taking it as kept."""
+        if _safe_userdata_key(name) is None:
+            return False, "invalid user", None
+        if not isinstance(changes, dict):
+            return False, "invalid data", None
+        with _lock:
+            doc = self.load(name)
+            if fill_only and doc["rev"]:
+                return True, None, doc
+            kept, rev, moved, refused = doc["settings"], doc["rev"], False, []
+            size = sum(len(e["v"] or "") for e in kept.values())
+            for k, ent in changes.items():
+                if not isinstance(k, str) or not self.key_re.match(k) or not isinstance(ent, dict):
+                    continue
+                v = ent.get("v")
+                if not self._value_ok(v):
+                    refused.append(k)
+                    continue
+                cur = kept.get(k)
+                if cur is not None and cur["v"] == v:
+                    continue
+                if cur is None and len(kept) >= self.max_keys:
+                    refused.append(k)
+                    continue
+                grown = size - len((cur or {}).get("v") or "") + len(v or "")
+                if self.total_max is not None and grown > self.total_max and grown > size:
+                    refused.append(k)
+                    continue
+                size = grown
+                rev += 1
+                kept[k] = {"v": v, "r": rev}
+                moved = True
+            doc = {"rev": rev, "settings": kept}
+            if moved and not self.write(name, doc):
+                return False, "write failed", None
+        if moved:
+            _changes.announce(self.topic, name, by)
+        if refused:
+            doc = {**doc, "refused": refused}
+        return True, None, doc
+
+    def delete(self, name):
+        if _safe_userdata_key(name) is None:
+            return
+        try:
+            os.remove(self.path(name))
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            log.warning("Could not delete %s for %s: %s", self.folder, loggable(repr(name)), loggable(e))
+
+
+# Settings: app.js's _PREF_KEYS.
 _SETTINGS_KEY_RE = re.compile(r"^zimi_[a-z0-9_]{1,59}$")
 _SETTINGS_MAX_KEYS = 64
 _SETTINGS_VALUE_MAX = 16 * 1024
+SETTINGS = _RevStore("usersettings", _SETTINGS_KEY_RE, _SETTINGS_MAX_KEYS, _SETTINGS_VALUE_MAX, "settings")
+# ZimiGames: what a person plays (saves, stats, dailies, best scores, the games'
+# own settings, ZimCity's kept cities), as the games keep it in the browser
+# under these prefixes. A kept city is the biggest value (a few hundred KB).
+_GAMES_KEY_RE = re.compile(r"^zimi\.(games|zimcity)\.[A-Za-z0-9_.@:\-/]{1,160}$")
+_GAMES_MAX_KEYS = 2000
+_GAMES_VALUE_MAX = 1024 * 1024
+_GAMES_TOTAL_MAX = 4 * 1024 * 1024
+GAMES = _RevStore("usergames", _GAMES_KEY_RE, _GAMES_MAX_KEYS, _GAMES_VALUE_MAX, "games", total_max=_GAMES_TOTAL_MAX)
+# Every per-person store, so a person deleted or a backup restored over the top takes all of them.
+_PER_PERSON_STORES = (SETTINGS, GAMES)
 
 
 def _settings_path(name):
-    return _contained(
-        os.path.join(_srv.ZIMI_DATA_DIR, "usersettings"), _safe_userdata_key(name)
-    )
-
-
-def _settings_doc(raw):
-    """``raw`` as kept: a whole rev, and only well-formed keys."""
-    raw = raw if isinstance(raw, dict) else {}
-    rev = raw.get("rev")
-    rev = rev if isinstance(rev, int) and not isinstance(rev, bool) and rev > 0 else 0
-    out = {}
-    got = raw.get("settings")
-    for k, ent in (got.items() if isinstance(got, dict) else ()):
-        if len(out) >= _SETTINGS_MAX_KEYS:
-            break
-        if (
-            not isinstance(k, str)
-            or not _SETTINGS_KEY_RE.match(k)
-            or not isinstance(ent, dict)
-        ):
-            continue
-        v, r = ent.get("v"), ent.get("r")
-        if v is not None and (not isinstance(v, str) or len(v) > _SETTINGS_VALUE_MAX):
-            continue
-        if not isinstance(r, int) or isinstance(r, bool) or r < 1 or r > rev:
-            continue
-        out[k] = {"v": v, "r": r}
-    return {"rev": rev, "settings": out}
+    return SETTINGS.path(name)
 
 
 def load_settings(name):
-    """An account's settings; empty (rev 0) when it has none or they cannot
-    be read."""
-    import json
-
-    if _safe_userdata_key(name) is None:
-        return _settings_doc(None)
-    try:
-        with open(_settings_path(name), encoding="utf-8") as f:
-            return _settings_doc(json.load(f))
-    except FileNotFoundError:
-        return _settings_doc(None)
-    except (ValueError, OSError) as e:
-        log.warning("Could not read settings for %s: %s", loggable(repr(name)), loggable(e))
-        return _settings_doc(None)
-
-
-def _write_settings(name, doc):
-    with _lock:
-        os.makedirs(os.path.dirname(_settings_path(name)), exist_ok=True)
-        return bool(_srv._atomic_write_json(_settings_path(name), doc))
+    return SETTINGS.load(name)
 
 
 def change_settings(name, changes, fill_only=False, by=None):
-    """What POST /userdata/settings does: each change ({key: {"v": value}})
-    is taken and given the account's next rev; the same value again is no
-    change. ``fill_only`` (a browser's first sync into an account that never
-    held a setting): only keys the account lacks. Written only when something
-    changed, and then announced to the account's open windows (``by``: the
-    window that sent it). Returns (ok, error, doc)."""
-    if _safe_userdata_key(name) is None:
-        return False, "invalid user", None
-    if not isinstance(changes, dict):
-        return False, "invalid data", None
-    with _lock:
-        doc = load_settings(name)
-        if fill_only and doc["rev"]:
-            return True, None, doc
-        kept, rev, moved = doc["settings"], doc["rev"], False
-        for k, ent in changes.items():
-            if (
-                not isinstance(k, str)
-                or not _SETTINGS_KEY_RE.match(k)
-                or not isinstance(ent, dict)
-            ):
-                continue
-            v = ent.get("v")
-            if v is not None and (
-                not isinstance(v, str) or len(v) > _SETTINGS_VALUE_MAX
-            ):
-                continue
-            cur = kept.get(k)
-            if cur is not None and cur["v"] == v:
-                continue
-            if cur is None and len(kept) >= _SETTINGS_MAX_KEYS:
-                continue
-            rev += 1
-            kept[k] = {"v": v, "r": rev}
-            moved = True
-        doc = {"rev": rev, "settings": kept}
-        if moved and not _write_settings(name, doc):
-            return False, "write failed", None
-    if moved:
-        _changes.announce("settings", name, by)
-    return True, None, doc
-
-
-def delete_settings(name):
-    if _safe_userdata_key(name) is None:
-        return
-    try:
-        os.remove(_settings_path(name))
-    except FileNotFoundError:
-        pass
-    except OSError as e:
-        log.warning("Could not delete settings for %s: %s", loggable(repr(name)), loggable(e))
+    """What POST /userdata/settings does (_RevStore.change)."""
+    return SETTINGS.change(name, changes, fill_only=fill_only, by=by)
 
 
 def _safe_userdata_key(name):
@@ -1408,12 +1451,10 @@ def all_user_data():
 
     out = {}
     d = _userdata_dir()
-    if not os.path.isdir(d):
-        return out
     try:
-        names = os.listdir(d)
+        names = os.listdir(d) if os.path.isdir(d) else []
     except OSError:
-        return out
+        names = []
     for fn in names:
         if not fn.endswith(".json"):
             continue
@@ -1424,18 +1465,19 @@ def all_user_data():
                 out[fn[: -len(".json")]] = data
         except (ValueError, OSError):
             pass
-    # Each account's settings ride in its blob (kept apart on disk).
-    sd = os.path.join(_srv.ZIMI_DATA_DIR, "usersettings")
-    try:
-        setting_names = os.listdir(sd) if os.path.isdir(sd) else []
-    except OSError:
-        setting_names = []
-    for fn in setting_names:
-        if fn.endswith(".json"):
-            key = fn[: -len(".json")]
-            doc = load_settings(key)
-            if doc["rev"]:
-                out.setdefault(key, {})["settings"] = doc
+    # Each account's settings and games ride in its blob (kept apart on disk).
+    for field, store in (("settings", SETTINGS), ("games", GAMES)):
+        sd = os.path.join(_srv.ZIMI_DATA_DIR, store.folder)
+        try:
+            names = os.listdir(sd) if os.path.isdir(sd) else []
+        except OSError:
+            names = []
+        for fn in names:
+            if fn.endswith(".json"):
+                key = fn[: -len(".json")]
+                doc = store.load(key)
+                if doc["rev"]:
+                    out.setdefault(key, {})[field] = doc
     return out
 
 
@@ -1452,15 +1494,17 @@ def restore_user_data(blobs, overwrite=False):
     if overwrite:
         for key in list(all_user_data().keys()):
             delete_user_data(key)
-            delete_settings(key)
+            for store in _PER_PERSON_STORES:
+                store.delete(key)
     written = 0
     for key, blob in blobs.items():
         # key is already casefold; _key is idempotent
         # Settings as backed up, unless (merging) the account has its own since.
-        got = blob.get("settings") if isinstance(blob, dict) else None
-        if isinstance(got, dict) and _safe_userdata_key(key) is not None:
-            if overwrite or not load_settings(key)["rev"]:
-                _write_settings(key, _settings_doc(got))
+        for field, store in (("settings", SETTINGS), ("games", GAMES)):
+            got = blob.get(field) if isinstance(blob, dict) else None
+            if isinstance(got, dict) and _safe_userdata_key(key) is not None:
+                if overwrite or not store.load(key)["rev"]:
+                    store.write(key, store.doc(got))
         if overwrite:
             ok, err = save_user_data(key, blob)
         else:
@@ -1853,6 +1897,253 @@ def request_data_owner(handler):
         )
     except Exception:
         return None
+
+
+def games_data_owner(handler):
+    """Whose games (/userdata/games) a request reads and writes, or None: a
+    person who signed in. Unlike the rest of /userdata, a server with the
+    password switched off keeps each browser's games its own: every browser
+    there is the admin's, and a household's players are not one person (Eric,
+    2026-11-04: "at least each person should have their own view")."""
+    name = resolve_request_user(handler)
+    if name:
+        return name
+    try:
+        from zimi import manage as _manage
+
+        if _srv.ZIMI_MANAGE and _manage.manage_open():
+            return None
+        if not _manage._get_manage_password_hash():
+            return None
+        return PRIMARY_ADMIN_DATA if _manage._primary_admin_authorized(handler) else None
+    except Exception:
+        return None
+
+
+# ── Display names: what a person is called on this server's games and boards ──
+# Their own to set (POST /account/display); an account's name until they do.
+# Kept apart from users.json: the name stays the sign-in key, never changed by
+# this. {casefold account key: display}.
+_DISPLAY_FILE = "display-names.json"
+DISPLAY_MAX = 32
+
+
+def _display_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, _DISPLAY_FILE)
+
+
+def _load_displays():
+    import json
+
+    try:
+        with open(_display_path(), encoding="utf-8") as f:
+            got = json.load(f)
+        return {k: v for k, v in got.items() if isinstance(k, str) and isinstance(v, str)} if isinstance(got, dict) else {}
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+
+
+def _default_display(owner):
+    """An account's own name; the primary admin's configured username, unless
+    it is still the default (a person is not called "admin")."""
+    if owner == PRIMARY_ADMIN_DATA:
+        try:
+            from zimi import manage as _manage
+
+            u = (_manage._get_manage_user() or "").strip()
+        except Exception:
+            u = ""
+        return u if u and u.casefold() != PRIMARY_ADMIN_DATA else None
+    rec = get_user(owner)
+    return (rec.get("name") if rec else None) or None
+
+
+def display_name(owner):
+    """What ``owner`` (a data owner: users.games_data_owner) is called, or None."""
+    if not owner:
+        return None
+    return _load_displays().get(_key(owner)) or _default_display(owner)
+
+
+def set_display_name(owner, text):
+    """``owner`` takes ``text`` as their display name (empty: back to their
+    account's name). One per person on the server: no one else is called the
+    same, ignoring case. Returns (ok, error, display)."""
+    if not owner or _safe_userdata_key(owner) is None:
+        return False, "invalid user", None
+    text = text.strip() if isinstance(text, str) else None
+    if text is None:
+        return False, "invalid name", None
+    if text and (len(text) > DISPLAY_MAX or not _NAME_RE.match(text)):
+        return False, "invalid name", None
+    with _lock:
+        shown = _load_displays()
+        mine = _key(owner)
+        if text:
+            others = [v for k, v in shown.items() if k != mine]
+            others += [u.get("name", "") for u in list_users() if _key(u.get("name")) != mine]
+            if mine != PRIMARY_ADMIN_DATA:
+                others.append(_default_display(PRIMARY_ADMIN_DATA) or "")
+            if any(o and o.casefold() == text.casefold() for o in others):
+                return False, "name taken", None
+            shown[mine] = text
+        else:
+            shown.pop(mine, None)
+        if not _srv._atomic_write_json(_display_path(), shown, indent=2):
+            return False, "write failed", None
+    return True, None, display_name(owner)
+
+
+# ── Leaderboards: each person's results, as their games keep them ──
+# Read from the games each account keeps (GAMES): a daily's run that day
+# (zimi.games.day.<day>: {page: {"r": result, "ms": time}}) and a game's best
+# (zimi.games.best.<page>: {"score", "better": "high"|"low", "at"}), for every
+# person who has not turned "Show me on this server's leaderboards" off
+# (zimi.games.board = "off"), under the name they go by. A person with no name
+# yet (the primary admin before choosing one) is not on a board.
+BOARD_ROWS = 10
+_BOARD_PAGE_RE = re.compile(r"^(puzzles/)?[a-z0-9_-]{1,40}\.html$")
+_BOARD_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DAILY_RANK = {"win": 0, "draw": 1, "over": 2, "lose": 3}
+# A person's "Show me on this server's leaderboards" switch, kept with their games.
+BOARD_OPT_KEY = "zimi.games.board"
+# The longest a daily run can count for (a week): beyond it a time is not a run.
+_BOARD_MS_MAX = 7 * 24 * 3600 * 1000
+# What the boards read of a person's games: their dailies, their bests and the switch.
+_BOARD_KEY_PREFIXES = ("zimi.games.day.", "zimi.games.best.", BOARD_OPT_KEY)
+# Each account's board facts, read once per change of its games file: {path: (mtime, size, facts)}.
+_board_seen = {}
+
+
+def on_boards(kept):
+    """Whether a person (their kept games) shows on this server's leaderboards."""
+    return (kept.get(BOARD_OPT_KEY) or {}).get("v") != "off"
+
+
+def _number(v):
+    """``v`` when it is a real, finite number (a person's own synced data can
+    hold anything JSON reads, Infinity and NaN included), else None."""
+    import math
+
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return v
+
+
+def _board_facts(key):
+    """The board keys of one account's games, parsed only when its file changed."""
+    path = GAMES.path(key)
+    try:
+        st = os.stat(path)
+    except OSError:
+        _board_seen.pop(path, None)
+        return {}
+    seen = _board_seen.get(path)
+    if seen and seen[0] == st.st_mtime_ns and seen[1] == st.st_size:
+        return seen[2]
+    kept = GAMES.load(key)["settings"]
+    facts = {k: v for k, v in kept.items() if k.startswith(_BOARD_KEY_PREFIXES)}
+    _board_seen[path] = (st.st_mtime_ns, st.st_size, facts)
+    return facts
+
+
+def _board_people():
+    """[(owner key, display, board facts)] for everyone on the boards. Display
+    names and accounts are read once for the whole board, not per person."""
+    folder = os.path.join(_srv.ZIMI_DATA_DIR, GAMES.folder)
+    try:
+        names = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+    except OSError:
+        names = []
+    shown_by = _load_displays()
+    accounts = {_key(u.get("name")): u.get("name") for u in list_users() if u.get("name")}
+    out = []
+    for fn in names[:1000]:
+        if not fn.endswith(".json"):
+            continue
+        key = fn[: -len(".json")]
+        facts = _board_facts(key)
+        if not on_boards(facts):
+            continue
+        if key == PRIMARY_ADMIN_DATA:
+            shown = shown_by.get(key) or _default_display(key)
+        else:
+            shown = shown_by.get(key) or accounts.get(key)
+        if shown:
+            out.append((key, shown, facts))
+    return out
+
+
+def _board_json(kept, key):
+    import json
+
+    try:
+        v = json.loads((kept.get(key) or {}).get("v") or "null")
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None
+
+
+def _board_run(run, shown, key, me):
+    """A daily's run as a board row, or None when it is not one (a result the
+    boards do not rank, or a time that is not a real time)."""
+    if not isinstance(run, dict) or run.get("r") not in _DAILY_RANK:
+        return None
+    ms = _number(run.get("ms"))
+    if ms is None or ms < 0 or ms > _BOARD_MS_MAX:
+        return None
+    return {"name": shown, "r": run["r"], "ms": int(ms), "you": key == me}
+
+
+def _run_rank(row):
+    return (_DAILY_RANK[row["r"]], row["ms"])
+
+
+def leaderboard(page, day, viewer):
+    """A game's boards: today's daily runs (fastest win first) and its best
+    scores, ``viewer`` (a games owner) marked. None for a page or day that
+    cannot be one."""
+    if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page):
+        return None
+    if day is not None and (not isinstance(day, str) or not _BOARD_DAY_RE.match(day)):
+        return None
+    me = _key(viewer) if viewer else None
+    runs, bests, better = [], [], None
+    for key, shown, kept in _board_people():
+        if day:
+            row = _board_run((_board_json(kept, "zimi.games.day." + day) or {}).get(page), shown, key, me)
+            if row:
+                runs.append(row)
+        best = _board_json(kept, "zimi.games.best." + page)
+        score = _number((best or {}).get("score"))
+        if score is not None and best.get("better") in ("high", "low"):
+            better = better or best["better"]
+            if best["better"] == better:
+                bests.append({"name": shown, "score": score, "at": _number(best.get("at")) or 0, "you": key == me})
+    runs.sort(key=_run_rank)
+    bests.sort(key=lambda x: (-x["score"] if better == "high" else x["score"], x["at"]))
+    return {"page": page, "day": day, "runs": runs[:BOARD_ROWS], "best": bests[:BOARD_ROWS], "better": better}
+
+
+def leaderboards_today(day, viewer):
+    """The server's dailies on ``day``: for each game played, how many played
+    and who leads (the board's first row)."""
+    if not isinstance(day, str) or not _BOARD_DAY_RE.match(day):
+        return None
+    me = _key(viewer) if viewer else None
+    games = {}
+    for key, shown, kept in _board_people():
+        for page, run in (_board_json(kept, "zimi.games.day." + day) or {}).items():
+            if not isinstance(page, str) or not _BOARD_PAGE_RE.match(page):
+                continue
+            row = _board_run(run, shown, key, me)
+            if not row:
+                continue
+            g = games.setdefault(page, {"n": 0, "lead": None})
+            g["n"] += 1
+            if g["lead"] is None or _run_rank(row) < _run_rank(g["lead"]):
+                g["lead"] = row
+    return {"day": day, "games": games}
 
 
 def _request_is_admin(handler):

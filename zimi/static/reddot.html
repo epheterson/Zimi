@@ -181,11 +181,13 @@ function renderList(title, rows, append, mixed) {
   var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
 }
 function loadHome() {
-  fetch('/reddot/home').then(function(r) { return r.json(); }).then(function(d) {
+  var wait = appWait('home');
+  fetch('/reddot/home').then(function(r) { if (!r.ok) throw r; return r.json(); }).then(function(d) {
     renderHome(d);
+    wait.done();
     if (_follow.length && !STR.p) renderHomeFeed();
     if (STR.p) { var want = STR.p; STR.p = ''; var i = want.indexOf('/'); if (i > 0) openP(want.slice(0, i), want.slice(i + 1)); }
-  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; });
+  }).catch(function() { wait.fail(loadHome); });
 }
 function loadList(append) {
   if (_busy) return; _busy = true;

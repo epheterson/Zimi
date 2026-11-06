@@ -11,6 +11,7 @@ const dir = path.join(__dirname, '..', 'zimi', 'builtin', 'games');
 function load(files, extra) {
   const sandbox = Object.assign({ console, Math, URL, Set, Date, Intl, AbortController, setTimeout, clearTimeout, Promise }, extra || {});
   vm.createContext(sandbox);
+  sandbox.ZimiShell = Object.assign({}, require(path.join(dir, 'shell.js')), sandbox.ZimiShell);   // the one hash (Node gets it alone)
   ['util.js'].concat(files).forEach(f => vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), sandbox, { filename: f }));
   return sandbox;
 }

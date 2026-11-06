@@ -1361,7 +1361,7 @@ def _build_all_title_indexes():
 
 def _build_all_title_indexes_inner():
     os.makedirs(_title_index_dir(), exist_ok=True)
-    zims = _srv.get_zim_files()
+    zims = _srv.content_zims()
 
     # Count how many are already current
     need_build = []
@@ -1795,6 +1795,36 @@ def _clean_query(q):
     return " ".join(w.rstrip("?") for w in words) or q
 
 
+def _index_query(q, cleaned):
+    """What the full-text index is asked for ``q``: its cleaned words, and for
+    a question each word's family. A question is written in whatever form of
+    a word the sentence needs ("how to purify water"), and the index keeps
+    "purify" and "purification" apart, so the one article about it did not
+    match at all."""
+    if not _is_question(q.split()):
+        return cleaned
+    return " ".join(_word_family(w) for w in cleaned.split())
+
+
+# Endings a question's words carry that the article's title may not. Longest
+# first; a root shorter than _FAMILY_MIN_ROOT, or a word ending in "ss", stays
+# whole ("cats", "glass").
+_FAMILY_ENDINGS = ("ying", "ies", "ied", "ing", "ed", "es", "s", "y")
+_FAMILY_MIN_ROOT = 4
+
+
+def _word_family(word):
+    """``word`` as the index's wildcard for its family ("purify" is
+    "purif*", "boiling" is "boil*"), or as it is when no ending comes off."""
+    low = word.lower()
+    if not low.isalpha() or low.endswith("ss"):
+        return word
+    for end in _FAMILY_ENDINGS:
+        if low.endswith(end) and len(low) - len(end) >= _FAMILY_MIN_ROOT:
+            return word[: len(word) - len(end)] + "*"
+    return word
+
+
 # ZIM-name → SearXNG category. Heuristic prefix match, lowercase.
 # First match wins; falls through to "general" if nothing matches.
 _CATEGORY_RULES = (
@@ -1828,7 +1858,9 @@ _EXACT_TITLE_SCORE = 125
 def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
-    hits = sum(1 for w in query_words if w in tl)
+    # A word counts where its family's root stands: "purify" asked, "Water
+    # purification" titled.
+    hits = sum(1 for w in query_words if w in tl or _word_family(w).rstrip("*") in tl)
     if hits == len(query_words):
         title_score = 80
     elif hits > 0:
@@ -1851,6 +1883,24 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
     # Language match: boost results from ZIMs matching detected query language
     lang_score = 10 if lang_match else 0
     return title_score + rank_score + auth_score + lang_score
+
+
+def _shelf_games_only(name, results):
+    """``results`` from ``name``, where the games ZIM answers with its games only: a page on the shelf, under the
+    game's own name and its blurb ("Chess", not "Chess - ZimiGames" over its button labels "Hint Flip"), never the
+    ZIM's other files (a data README, an engine's notes, a stylesheet). zimi-mcp has no games and no gamelinks."""
+    if not _srv.bundled("gamelinks"):
+        return results
+    from zimi import gamelinks
+
+    if name != gamelinks._GAMES_ZIM:
+        return results
+    shelf = {g["path"]: g for g in gamelinks.rows() if g.get("path")}
+    return [
+        dict(r, title=shelf[r["path"]].get("title") or r.get("title", ""), snippet=shelf[r["path"]].get("blurb") or "")
+        for r in results
+        if r.get("path") in shelf
+    ]
 
 
 def _dedup_results_by_title(results):
@@ -2647,7 +2697,9 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     def _pick(cands):
         if not cands:
             return None
-        best = max(cands, key=lambda w: vocab[w])
+        # A letter put back before a letter taken away: a dropped letter is the
+        # usual slip, so "watr" is "water" even where "war" is commoner.
+        best = max(cands, key=lambda w: (len(w) >= len(word), vocab[w]))
         if own_count is None or vocab[best] >= freq_ratio * own_count:
             return best
         return None
@@ -2656,6 +2708,11 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     picked = _pick(cands)
     if picked:
         return picked
+    # A word the library knows is mended by one slip at most (a swapped or
+    # wrong letter, "einstien"), never two: two edits from a real word is
+    # another real word ("water" and "war"), not a typo of it.
+    if own_count is not None:
+        return None
     if deadline is None or time.monotonic() <= deadline:
         if len(word) <= _DIST2_MAX_LEN:
             cands2 = set()
@@ -2866,16 +2923,22 @@ def _kiwix_places(archive, query_str, limit):
     return found
 
 
-def find_places(query_str, limit=_PLACES_PER_MAP):
+def find_places(query_str, limit=_PLACES_PER_MAP, near_at=None):
     """Places matching ``query_str`` on every installed map: the one box of
     Zimi Maps. One group per map that answered, StreetZim's from their place
     index, Kiwix's from their place pages. Same shape as ``search_all``'s
     ``places``."""
+    from zimi import mapplaces as _mapplaces
     from zimi import mapsearch
 
     q = (query_str or "").strip()
     if not q:
         return []
+    parsed = _query.parse_query(q)
+    if not parsed["plain"]:
+        near = near_places(parsed, near_at)
+        if near is not None:
+            return near["places"]
     groups = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
@@ -2890,6 +2953,8 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
                     found = mapsearch.search_places(archive, q, limit=limit)
                 else:
                     found = _kiwix_places(archive, q, limit)
+            if not z.get("map_search"):
+                found = _with_towns(found, _mapplaces.search(name, q, limit), limit)
         except Exception as e:
             log.debug("place search failed on %s: %s", name, e)
             continue
@@ -2905,26 +2970,58 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
     return groups
 
 
+def _with_towns(pages, towns, limit):
+    """A Kiwix map's place pages, then the towns read from its tiles that are
+    not one of those pages: a page and a town of one name within about ten
+    kilometres are the same place."""
+    out = list(pages)
+    for t in towns:
+        if any(p["name"].lower() == t["name"].lower() and _same_place(p, t) for p in out):
+            continue
+        out.append(t)
+    return out[:limit]
+
+
+def _same_place(a, b):
+    """Two places close enough to be one (``_SAME_PLACE_DEGREES`` apart or less, each way)."""
+    return abs(a["lat"] - b["lat"]) < _SAME_PLACE_DEGREES and abs(a["lng"] - b["lng"]) < _SAME_PLACE_DEGREES
+
+
+# How close a place page and a town of the same name must be to be one place.
+_SAME_PLACE_DEGREES = 0.1
+
+
 def _search_places(queries, target_names, parsed=None):
-    """One group per searched map with a place index, best places first:
-    each of ``queries`` (an operator query's alternatives, or the one query)
-    asked, their places merged, each once, and none an exclusion in
-    ``parsed`` names."""
+    """One group per searched map with places to ask, best places first:
+    a StreetZim's place index, or the towns read from a Kiwix map's tiles
+    (zimi.mapplaces). Each of ``queries`` (an operator query's alternatives,
+    or the one query) asked, their places merged, each once, and none an
+    exclusion in ``parsed`` names."""
+    from zimi import mapplaces as _mapplaces
     from zimi import mapsearch
 
     groups = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
-        if not z.get("map_search") or name not in target_names:
+        # map_search is only ever set on a map.
+        if not (z.get("map_search") or z.get("kind") == "map") or name not in target_names:
             continue
         try:
-            archive, lock = _get_fts_archive(name)
-            if archive is None or lock is None:
+            if z.get("map_search"):
+                archive, lock = _get_fts_archive(name)
+                if archive is None or lock is None:
+                    continue
+            elif not _mapplaces.ready(name):
                 continue
             found, seen = [], set()
             for q in queries:
-                with lock:
-                    got = mapsearch.search_places(archive, q, limit=_PLACES_PER_MAP)
+                if z.get("map_search"):
+                    with lock:
+                        got = mapsearch.search_places(
+                            archive, q, limit=_PLACES_PER_MAP
+                        )
+                else:
+                    got = _mapplaces.search(name, q, limit=_PLACES_PER_MAP)
                 for p in got:
                     key = (p.get("name"), p.get("lat"), p.get("lng"))
                     if key in seen or (parsed and _query.excluded(parsed, p.get("name"))):
@@ -3025,7 +3122,95 @@ def _best_score(title, word_sets, rank, entry_count, lang_match):
     )
 
 
-def search_all(query_str, limit=5, filter_zim=None, fast=False):
+# near:<lat>,<lng>: a position typed, or the browser's (near:here, sent so).
+_LATLNG_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+
+
+def parse_latlng(text):
+    """``(lat, lng)`` from "lat,lng", or None when it is not a position."""
+    m = _LATLNG_RE.match(text or "")
+    if not m:
+        return None
+    lat, lng = float(m.group(1)), float(m.group(2))
+    return (lat, lng) if -90 <= lat <= 90 and -180 <= lng <= 180 else None
+
+
+def near_places(parsed, at=None):
+    """A near: search (Eric, 2026-11-03: "should we also include like radius
+    near a location?"): None when the query has no near:, else
+
+        {"places": [groups as _search_places gives them, each place with km],
+         "near": {"place", "sub", "lat", "lng", "others", "radius_km", "unit"}
+                 or {"place": <as typed>, "found": False}}
+
+    The place is a position (near:37.8,-122), or a name read from the Kiwix
+    maps' towns (zimi.mapplaces). Several places of the name: the nearest to
+    ``at`` (the person's own place) when given, else the largest, and
+    ``others`` says how many were passed over. The other words of the query
+    must all be in a place's name. A query without near: never comes here."""
+    from zimi import mapplaces as _mapplaces
+    from zimi import mapsearch
+
+    f = _query.near_filter(parsed)
+    if not f:
+        return None
+    maps = [
+        z
+        for z in _srv._zim_list_cache or []
+        if _mapplaces.is_kiwix_map(z)
+        and z.get("name")
+        and _srv.zim_allowed(z["name"])
+    ]
+    here = parse_latlng(f["value"])
+    others = 0
+    if here:
+        anchor = {"name": f["value"], "sub": "", "lat": here[0], "lng": here[1]}
+    else:
+        seen = []
+        for z in maps:
+            for p in _mapplaces.named(z["name"], f["value"]):
+                if not any(_same_place(p, q) for q in seen):
+                    seen.append(p)
+        anchor = _mapplaces.pick(seen, at)
+        others = max(len(seen) - 1, 0)
+    if not anchor:
+        return {"places": [], "near": {"place": f["value"], "found": False}}
+    words = [
+        mapsearch.normalize_text(t["text"]) for g in parsed["groups"] for t in g[:1]
+    ]
+    groups = []
+    for z in maps:
+        found = _mapplaces.near(
+            z["name"], anchor["lat"], anchor["lng"], f["radius_km"], words
+        )
+        if found:
+            groups.append(
+                {
+                    "zim": z["name"],
+                    "title": z.get("title") or z["name"],
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                    "unit": f["unit"],
+                }
+            )
+    return {
+        "places": groups,
+        "near": {
+            "place": anchor["name"],
+            "sub": anchor["sub"],
+            "lat": round(anchor["lat"], 4),
+            "lng": round(anchor["lng"], 4),
+            "others": others,
+            # How one of several was picked: nearest the person, or largest.
+            "by": "nearest" if at else "largest",
+            "radius_km": f["radius_km"],
+            "unit": f["unit"],
+            "found": True,
+        },
+    }
+
+
+def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     """Search across all ZIM files, a specific one, or a list.
 
     filter_zim can be None (all), a string (single ZIM), or a list of strings.
@@ -3044,7 +3229,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     searched fully. Use fast=True for instant title matches, then full FTS for
     complete results (progressive two-phase pattern).
     """
-    zims = _srv.get_zim_files()
+    zims = _srv.content_zims()
     cache_meta = {
         z["name"]: (z.get("entries") if isinstance(z.get("entries"), int) else 0)
         for z in (_srv._zim_list_cache or [])
@@ -3058,6 +3243,22 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
 
     # The grammar (#94). A plain query takes the path it always took.
     parsed = _query.parse_query(query_str)
+    # near: asks for places, not articles: answered from the towns' index.
+    if not parsed["plain"]:
+        near = near_places(parsed, near_at)
+        if near is not None:
+            out = {
+                "results": [],
+                "by_source": {},
+                "by_language": {},
+                "total": 0,
+                "elapsed": 0,
+                "partial": fast,
+                "near": near["near"],
+            }
+            if near["places"]:
+                out["places"] = near["places"]
+            return out
     plan = None if parsed["plain"] else _query.alternatives(parsed)
     # Detect query language for scoring boost
     detected_lang = _srv._detect_query_language(
@@ -3111,6 +3312,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # (A search scoped to one ZIM used to send the raw words, so a question
     # found nothing there while the same question across the library did.)
     cleaned = _clean_query(query_str)
+    index_query = _index_query(query_str, cleaned)
     if plan:
         word_sets = [_words(w, _clean_query(w)) for w in map(_query.term_words, plan)]
     else:
@@ -3172,7 +3374,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 t.join()
 
         for name, results in thread_results.items():
-            valid = [r for r in results if not _junk_re.search(r.get("path", ""))]
+            valid = _shelf_games_only(name, [r for r in results if not _junk_re.search(r.get("path", ""))])
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
@@ -3238,7 +3440,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                         limit,
                     )
                 else:
-                    results = _full(name, cleaned, limit, query_str)
+                    results = _full(name, index_query, limit, query_str)
                     if results is None:
                         return
                     # One source asked for by name, and the cleaned words found
@@ -3265,11 +3467,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         for name, (results, dt) in fts_results.items():
             if dt > 0.3:
                 timings.append(f"{name}={dt:.1f}s")
-            valid = [
-                r
-                for r in results
-                if "error" not in r and not _junk_re.search(r.get("path", ""))
-            ]
+            valid = _shelf_games_only(
+                name,
+                [r for r in results if "error" not in r and not _junk_re.search(r.get("path", ""))],
+            )
             if valid:
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
@@ -4379,6 +4580,18 @@ def _scan_vocab_child_main(index_dir, out):
     _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
 
 
+# A background index build is never what anyone is waiting on: its child runs at the lowest CPU
+# priority, so a big map or Wikipedia being read never slows a page someone opened.
+_CHILD_NICE = 19
+
+
+def _yield_to_the_server():
+    try:
+        os.nice(_CHILD_NICE)
+    except (AttributeError, OSError):
+        pass  # Windows has no nice; the build still runs, at normal priority
+
+
 def _build_index_child_main(kind, data_dir, zim_name, zim_path):
     """`python -m zimi.search --build-index <kind> <data dir> <name> <path>`:
     the build _build_index_isolated starts. It writes the index into the data
@@ -4387,6 +4600,7 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
     )
     _srv.ZIMI_DATA_DIR = data_dir
+    _yield_to_the_server()
     if kind == "titles":
         _build_title_index(zim_name, zim_path)
     elif kind == "qids":
@@ -4405,6 +4619,10 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         from zimi import books
 
         books.build_sources(zim_name, zim_path)
+    elif kind == "mapplaces":
+        from zimi import mapplaces
+
+        mapplaces.build_places(zim_name, zim_path)
     else:
         raise SystemExit(f"unknown index kind {kind!r}")
 

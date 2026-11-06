@@ -621,11 +621,11 @@ function _almHeadHtml(focus) {
   var _nfm = _nextFullMoon(focus);
 
   html += '<div class="alm-cards">';
-  html += _almHeadCard(t('alm_illuminated'), m.illumination + '%', 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
+  html += _almHeadCard(t('alm_illuminated'), _moonLitPct(m.illumination), 'alm-hc-illum', { cardId: 'alm-hc-illum-card' });
   html += _almHeadCard(t('alm_next_full'), _almNextFullHtml(_nfm, lang, focus), 'alm-hc-nextfull',
     { cardId: 'alm-hc-nextfull-card', hidden: !_nfm, valClass: _nfm && _nfm.isSuper ? 'alm-card-super' : '' });
   // The sky's Moon card and its three Sun cards (almanac-skyfacts.js) live in this same grid, ordered among these by almanac.css.
-  html += '<div id="almanac-sky-facts" class="alm-sky-facts"></div>';
+  html += '<div id="almanac-sky-facts" class="alm-sky-facts">' + (typeof _skyFactsPrimeHtml === 'function' ? _skyFactsPrimeHtml(focus, loc, m) : '') + '</div>';
   html += '</div>';
   return html;
 }
@@ -1042,7 +1042,7 @@ function _almLiveHeadCards(focus) {
   var show = function (id, on) { var e = document.getElementById(id); if (e) e.hidden = !on; };
   var m;
   try { m = _moonPhase(focus); } catch (e) { return; }
-  set('alm-hc-illum', m.illumination + '%');
+  set('alm-hc-illum', _moonLitPct(m.illumination));
   set('alm-hc-phase', _localMoonName(m.name));
   _almLiveNextFull(focus);
 }
@@ -1721,7 +1721,7 @@ function _almTmInit() {
 // where the answer is a limit worth knowing. The methods are each table's
 // "How this is made" ("is about this data really needed maybe so but reread
 // and think", Eric, 2026-10-03); the sources' ages are the sheet one tap in.
-var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'islamic', 'chinese',
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'tides', 'planets', 'islamic', 'chinese',
   'deeptime', 'timezones'];
 // The data's sources and ages, folded away at the page's end, with what stops
 // being true without updates (a reference sheet) one tap inside it.
@@ -1762,8 +1762,13 @@ var ALM_SECBAR_HERO = 'today';
 var ALM_SECBAR_LOCK_MS = 3000;               // the longest a tap's scroll holds the bar
 // [key, the selectors of its parts (the first is where a tap lands), heading string]
 // A part inside a titled section stands for the whole section.
+// On a phone the Moon's block and the live sky are each a screen of their own, so the sky is a section of its own
+// there and the bar names it (Eric, 2026-11-05: "On a mobile phone, it's easy to have those be separate sections");
+// a wider page shows them together, as one (the hero).
+var ALM_SECBAR_SPLIT_MQ = '(max-width: 600px)';
 var ALM_SECTIONS = [
   [ALM_SECBAR_HERO, ['#almanac-head', '.almanac-sky-wrap', '#almanac-sky-invite'], 'alm_today'],
+  ['sky', ['.alm-sky-info', '.almanac-sky-wrap'], 'alm_subj_sky', ALM_SECBAR_SPLIT_MQ],
   ['calendar', ['#almanac-calendar'], 'alm_subj_calendars'],
   ['place', ['#almanac-sunmap'], 'alm_nav_place'],
   ['tides', ['#almanac-place .almanac-section'], 'alm_tide_title'],
@@ -1789,14 +1794,18 @@ function _almSecBarTeardown() {
   if (_almSecBar.io) _almSecBar.io.disconnect();
   if (_almSecBar.ro) _almSecBar.ro.disconnect();
   if (_almSecBar.roFrame) clearTimeout(_almSecBar.roFrame);
+  if (_almSecBar.root) _almSecBar.root.removeEventListener('scroll', _almSecBarSync);
   _almSecBar = null;
 }
 // The sections that are on the page now (a late or empty one is left out).
 function _almSecBarFind() {
-  var out = [];
+  var out = [], split = !!(window.matchMedia && window.matchMedia(ALM_SECBAR_SPLIT_MQ).matches);
   ALM_SECTIONS.forEach(function (d) {
+    if (d[3] && !split) return;   // the phone's own section
+    // Split, the hero is the Moon's block alone: the sky's parts are the next section's.
+    var sels = split && d[0] === ALM_SECBAR_HERO ? ['#almanac-head'] : d[1];
     var els = [];
-    d[1].forEach(function (sel) {
+    sels.forEach(function (sel) {
       var el = document.querySelector('#almanac-content ' + sel);
       if (!el) return;
       els.push(el.closest('.almanac-section, .alm-group') || el);
@@ -1833,6 +1842,11 @@ function _almSecBarInit() {
   var line = ALM_SECBAR_LINE, rest = Math.max(0, root.clientHeight - line - 1);
   st.io = new IntersectionObserver(_almSecBarSync, { root: root, rootMargin: '-' + line + 'px 0px -' + rest + 'px 0px', threshold: 0 });
   sections.forEach(function (s) { s.els.forEach(function (e) { st.io.observe(e); }); });
+  // The line only reports a section crossing it: a jump from one gap between sections to another crosses none (the
+  // page's top can itself sit in a gap), so a scroll asks too (the browser sends it at most once a frame, and only
+  // while the page moves: a still page asks nothing).
+  st.root = root;
+  root.addEventListener('scroll', _almSecBarSync, { passive: true });
   // A late section (the tide) or an empty one filling in changes the set. The
   // observer already runs once per laid-out frame, so it asks for none: a
   // parked page stays without frames.
@@ -1862,7 +1876,8 @@ function _almSecBarSync() {
   // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
   var line = root.getBoundingClientRect().top + ALM_SECBAR_LINE, cur = ALM_SECBAR_HERO;
   st.sections.forEach(function (s) {
-    if (s.els.some(function (e) { return e.getBoundingClientRect().top <= line; })) cur = s.key;
+    // A part not laid out (hidden while the time machine is up, or not drawn yet) reads as top 0: it has not begun.
+    if (s.els.some(function (e) { var r = e.getBoundingClientRect(); return r.height > 0 && r.top <= line; })) cur = s.key;
   });
   if (cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
@@ -2241,7 +2256,8 @@ function _almPlaceHeights() {
 function _almPlaceReserve(host) {
   var known = _almPlaceHeights()[_almPlaceHKey(host)];
   var guess = _getLocation().stored ? _ALM_PLACE_GUESS_PX.tide : _ALM_PLACE_GUESS_PX.empty;
-  host.style.minHeight = (known || guess) + 'px';
+  // Nothing drawn here last time (no station near the place) is remembered as 0, so the next visit keeps no space.
+  host.style.minHeight = (known != null ? known : guess) + 'px';
 }
 // Called by almanac-tides.js each time it has drawn its answer: remember the
 // height for next time, and let the section be its own height from now on.
@@ -2250,7 +2266,8 @@ function _almPlaceDrawn() {
   if (!host) return;
   host.style.minHeight = '';
   var h = host.offsetHeight;
-  if (h) {
+  // Zero is an answer too (no tide here), but only from a host that is laid out: a hidden Almanac measures nothing.
+  if (host.getClientRects().length) {
     var all = _almPlaceHeights(), k = _almPlaceHKey(host);
     delete all[k];
     all[k] = h;
@@ -2271,8 +2288,10 @@ function _almPlaceWatch() {
   if (!host) return;
   _almKeepStill(document.getElementById('almanac-rosetta'));
   if (typeof _atRender === 'function') { _almKeepStill(host); _atRender(); return; }
-  _almPlaceReserve(host);
+  // Watched before the space is kept: a reader already below (a slow phone, the module still on its way) keeps their
+  // place while the space opens above them, and again when the tide (or nothing, #140) replaces it.
   _almKeepStill(host);
+  _almPlaceReserve(host);
   if (_almPlaceLoaded) return;   // on its way: it draws when it lands
   var load = function() {
     if (_almPlaceLoaded || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
@@ -2293,6 +2312,12 @@ function _almPlaceWatch() {
   whenQuiet(load, { key: 'alm-place', priority: QUIET_PRI_LOAD, maxWaitMs: _ALM_PLACE_IDLE_TIMEOUT_MS });
 }
 
+// The sky's colour for the focused hour, on the canvas before the sky module has drawn a pixel (almanac-sky.js).
+function _almSkyPreStyle(loc) {
+  if (typeof _skyPreBackground !== 'function' || !loc) return '';
+  var alt = _sunPosition(typeof _almFocusInstant === 'function' ? _almFocusInstant() : new Date(), loc.lat, loc.lon).altitude;
+  return ' style="--sky-pre:' + _skyPreBackground(alt).replace(/"/g, '&quot;') + '"';
+}
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -2313,12 +2338,11 @@ function _renderAlmanacContent() {
   // (the facts a person acts on, in the Moon's own grid; the ask for a place; its caption) belongs to the
   // Moon's block above it, the caption last, directly over the picture it describes (Eric, 2026-10-18). Its clock is the page's (the time machine); almanac-sky.js.
   html += '<div class="alm-sky-info">' +
-    '<div id="almanac-sky-guess"></div>' +
-    '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>' +
+    '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almSkyInviteHtml()) + '</div>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
-    '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
+    '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"' + _almSkyPreStyle(_getLocation()) + '></canvas>' +
     '<button type="button" class="alm-sky-look" onclick="openAlmanacLook()" aria-label="' + escAttr(t('look_title')) + '" title="' + escAttr(t('look_title')) + '">' + ALM_LOOK_SVG + '</button>' +
     '<button type="button" class="alm-sky-gear" id="almanac-sky-gear" onclick="_skyToggleSettings()" aria-expanded="false" aria-controls="almanac-sky-set" aria-label="' + escAttr(t('alm_sky_set')) + '" title="' + escAttr(t('alm_sky_set')) + '">' + ALM_GEAR_SVG + '</button>' +
     '<div id="almanac-sky-set" class="alm-sky-set" role="group" aria-label="' + escAttr(t('alm_sky_set')) + '" hidden></div>' +
@@ -3076,6 +3100,14 @@ var _AU_VIS_C = (function() {
   return segs;
 })();
 
+// The solar system's one squeeze: the orrery's radii (above), and past Neptune a gentle continuation, so the 3D
+// view's planets, belt and probes and the orrery stand at the same shares of the way out (almanac-earth.js scales it
+// so the Earth is where it is).
+var _SQUEEZE_TAIL_POW = 0.2;
+function _solarSqueeze(au) {
+  var last = _AU_VIS_X.length - 1;
+  return au <= _AU_VIS_X[last] ? _auToVis(au) : _AU_VIS_Y[last] * Math.pow(au / _AU_VIS_X[last], _SQUEEZE_TAIL_POW);
+}
 function _auToVis(au) {
   if (au <= 0) return 0;
   var segs = _AU_VIS_C;
@@ -5170,11 +5202,14 @@ function _almHereBtnHtml(cls) {
 // No place chosen yet: one line asking for it, with the two ways to give it
 // (where I am, or a search on the map). The sky and the tides both say it;
 // nothing pretends to stand somewhere.
-function _almPlaceInviteHtml() {
-  return '<p class="alm-place-invite"><span>' + _almEsc(t('alm_place_invite')) + '</span> ' +
+function _almPlaceInviteHtml(text) {
+  return '<p class="alm-place-invite"><span>' + _almEsc(text || t('alm_place_invite')) + '</span> ' +
     _almHereBtnHtml('') + ' ' +
     '<button type="button" class="alm-invite-btn" onclick="_almPlaceFind()">' + _almEsc(t('alm_place_find')) + '</button></p>';
 }
+// Under the sky the ask says what is being shown meanwhile (the place guessed from the time zone), once: one line and
+// its two buttons, not a guess line and then an ask under it.
+function _almSkyInviteHtml() { return _almPlaceInviteHtml(typeof _skyGuessText === 'function' ? _skyGuessText() : ''); }
 // The search on the map, brought into view.
 function _almPlaceFind() {
   var map = document.getElementById('almanac-sunmap');

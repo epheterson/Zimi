@@ -421,18 +421,110 @@ def test_a_chosen_place_is_kept_across_visits(browser, served):
         ctx.close()
 
 
-def test_far_from_any_station_the_nearest_is_still_shown(browser, served):
-    ctx = _context(browser, PARIS)
+# The middle of England, where #140's reporter lives: the nearest station in the snapshot is thousands of km away.
+LEICESTER = {"lat": 52.6369, "lon": -1.1398, "name": "Leicester"}
+ANSWERED = "() => typeof _at !== 'undefined' && !!_at.data && !_at.loading"
+
+
+def _place(pg, place):
+    # What the map and the city search do (almanac.js): save the place, then repaint what depends on it in place.
+    pg.evaluate("(p) => { _saveLocation(p.lat, p.lon, p.name); _almRepaintFocus(); }", place)
+
+
+def _bar_keys(pg):
+    pg.wait_for_timeout(300)   # the section bar is rebuilt on a timer after the resize that changed its set
+    return pg.evaluate("() => _almSecBar.sections.map((s) => s.key)")
+
+
+def test_far_from_any_station_there_is_no_tide_section(browser, served):
+    """#140: a station 4,881 km away is some other water. With no station near the place there is no tide section, no
+    pill for it in the section bar, and nothing is kept for it on the next visit."""
+    ctx = _context(browser, LEICESTER)
     try:
         pg, errors = _open(ctx, served)
-        pg.wait_for_function(
-            "() => !!document.querySelector('#almanac-place .at-tides #at-curve')",
-            polling=POLL_MS,
-            timeout=60000,
+        pg.wait_for_function(ANSWERED, polling=POLL_MS, timeout=60000)
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("() => _at.data.tides.stations[0].km") > pg.evaluate("AT_TIDE_NEAR_KM")
+        assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
+        assert pg.evaluate("() => document.getElementById('almanac-place').offsetHeight") == 0
+        assert "tides" not in _bar_keys(pg)
+        # Time travel keeps it absent: a tide is a prediction for any date, but not of water that is not here.
+        pg.evaluate("() => _almScrubSettle(new Date('2031-06-21T12:00:00Z'))")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
+        # The next visit keeps no space for it.
+        pg.close()
+        pg, errors2 = _open(ctx, served)
+        assert pg.evaluate("() => parseFloat(document.getElementById('almanac-place').style.minHeight || '0')") == 0
+        assert not errors and not errors2, errors + errors2
+    finally:
+        ctx.close()
+
+
+def _settled_top(pg, sel):
+    # Read once the page has held still (late sections, the bar's slide, fonts): five equal samples in a row.
+    pg.wait_for_function(
+        """(s) => { const c = document.getElementById('almanac-content');
+          const y = document.querySelector(s).getBoundingClientRect().top - c.getBoundingClientRect().top;
+          const k = y + '|' + c.clientHeight + '|' + c.scrollTop;
+          const w = window.__still || (window.__still = { k: null, n: 0 });
+          w.n = k === w.k ? w.n + 1 : 0; w.k = k; return w.n >= 5; }""",
+        arg=sel,
+        polling=150,
+        timeout=60000,
+    )
+    pg.evaluate("() => { window.__still = null; }")
+    return _top(pg, sel)
+
+
+def test_a_tide_section_comes_and_goes_with_the_place_without_moving_the_reader(browser, served):
+    """Moving the place to a coast with a station brings the section (and its pill) back; moving it inland takes it
+    away. Read from below it, the page under the reader's eye stays put either way."""
+    ctx = _context(browser, LEICESTER)
+    try:
+        pg, errors = _open(ctx, served)
+        pg.wait_for_function(ANSWERED, polling=POLL_MS, timeout=60000)
+        # The page is whole and the place has arrived (fonts, a frame): from here a change above the view is made up.
+        pg.wait_for_function("() => _almPanelsReady && !document.getElementById('almanac-place')._almArriving", polling=POLL_MS, timeout=60000)
+        pg.evaluate("() => document.getElementById('almanac-orrery').scrollIntoView({ block: 'start' })")
+        before = _settled_top(pg, "#almanac-orrery")
+        pg.evaluate(
+            """() => { const c = document.getElementById('almanac-content'), t0 = performance.now(), log = window.__trace = [];
+              c.addEventListener('scroll', () => log.push(['s', Math.round(performance.now() - t0), Math.round(c.scrollTop)]), { passive: true });
+              new ResizeObserver((es) => es.forEach((e) => log.push(['h', Math.round(performance.now() - t0), e.target.offsetHeight,
+                Math.round(c.scrollTop), 'top=' + (c._almTop && Math.round(c._almTop.v)) + ' glide=' + !!c._almGlide + ' restore=' + c._almRestoreTo +
+                ' arriving=' + !!e.target._almArriving + ' still=' + !!e.target._almStill].join(' ')))).observe(document.getElementById('almanac-place')); }"""
         )
-        far = pg.inner_text("#almanac-place .at-far")
-        assert far.startswith("No tide station near here. Shown: the nearest,"), far
-        assert " away." in far and ("km" in far or "mi" in far), far
+        _place(pg, SF)
+        pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
+        after = _settled_top(pg, "#almanac-orrery")
+        assert pg.evaluate("() => document.getElementById('almanac-place').offsetHeight") > 200
+        assert abs(after - before) <= STILL_PX, json.dumps([before, after, pg.evaluate("window.__trace")])
+        assert "tides" in _bar_keys(pg)
+        _place(pg, LEICESTER)
+        pg.wait_for_function(ANSWERED, polling=POLL_MS, timeout=60000)
+        after = _settled_top(pg, "#almanac-orrery")
+        assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
+        assert abs(after - before) <= STILL_PX, (before, after)
+        assert "tides" not in _bar_keys(pg)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+DOVER = {"lat": 51.1279, "lon": 1.3134, "name": "Dover"}
+
+
+def test_a_world_gauge_gives_britain_its_tide_and_says_whose(browser, served):
+    """Dover has a tide of its own from TICON-3's gauge, credited as such, with heights above its lowest tide."""
+    ctx = _context(browser, DOVER)
+    try:
+        pg, errors = _open(ctx, served)
+        pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
+        assert "Dover" in pg.inner_text("#almanac-place .at-station-name")
+        note = pg.evaluate("() => [...document.querySelectorAll('#at-why-panel .at-why-n')].pop().textContent")
+        assert "TICON-3" in note and "CC BY 4.0" in note, note
+        assert "tides" in _bar_keys(pg)
         assert not errors, errors
     finally:
         ctx.close()
@@ -445,7 +537,7 @@ def test_without_a_place_one_line_invites_one(browser, served):
         assert pg.evaluate("_getLocation().stored") is False
         invite = pg.locator("#almanac-sky-invite .alm-place-invite")
         assert invite.is_visible()
-        assert "Choose your place" in invite.inner_text()
+        assert "Choose yours" in invite.inner_text()   # the guess and the ask, one line (#almanac-sky-guess is gone)
         # The sky says nothing of a place it was not given.
         pg.wait_for_function("() => _skyState && _skyState.eph", polling=POLL_MS)
         cap = pg.inner_text("#almanac-sky-cap")

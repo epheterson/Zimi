@@ -1,0 +1,18 @@
+{
+ "1.15.2": {
+  "zimi_games": [
+   "Games feel like one app: the same New game sheet, controls and touch sizes everywhere, an accessible grid on every board, and games in Zimi's search.",
+   "Polished games: Canasta, Janggi, Mahjong, Loopy, Five Letters, Mancala and the solitaires play by the right rules and read better on a phone."
+  ]
+ },
+ "1.15.3": {
+  "zimi_almanac": [
+   "Tides: shown only where a gauge is near, now about 1,500 places worldwide (#140)."
+  ],
+  "zimi_games": [
+   "ZimCity: a city builder made for the phone, with the classic scenarios, an AI data center, solar and wind, a toy climate and citizens with opinions.",
+   "Daily games and leaderboards: today's edition of 63 games, the same for everyone on a Zimi server, with streaks, a spoiler-free share line and a board for the people on your server.",
+   "Games follow you: signed in, your games, stats and ZimCity cities follow you to every browser; rooms on the shelf, one card size across card games, and Hint in Xiangqi and Shogi."
+  ]
+ }
+}

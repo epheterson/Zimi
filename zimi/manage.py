@@ -6093,7 +6093,7 @@ def _handle_public_access_post(handler, data):
 
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
-    set-password, set-allowlist, set-role, set-can-create}. Errors are
+    set-password, set-allowlist, set-role, set-can-create, set-display}. Errors are
     returned generically; on success the fresh roster (no hashes) is echoed so
     the UI re-renders in one
     round trip. Reaching here means the admin-auth challenge already passed.
@@ -6139,6 +6139,13 @@ def _handle_users_post(handler, data):
         ok, err = _users.set_allowlist(name, data.get("allowlist"))
     elif action == "set-role":
         ok, err = _users.set_role(name, role, data.get("allowlist"))
+    elif action == "set-display":
+        # What a person goes by in games and on the boards (users.set_display_name's rules).
+        if not _users.get_user(name):
+            return handler._json(400, {"error": "user not found"})
+        ok, err, _shown = _users.set_display_name(name, data.get("display"))
+        if not ok and err == "name taken":
+            return handler._json(409, {"error": err})
     elif action == "set-can-create":
         # Grant/revoke the per-user create permission (see users.set_can_create).
         # The hierarchy gate above already bars a secondary admin from touching
@@ -7319,6 +7326,32 @@ def handle_manage_post(handler, parsed, data):
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _sats.setting())
+
+    elif parsed.path == "/manage/almanac-hd":
+        # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
+        # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
+        # true} queues the download, the Almanac's offer said yes.
+        from zimi import almanachd as _hd
+
+        if data.get("start"):
+            dl_id, err = _hd.start(activity_actor(handler))
+            if err == "never":
+                return handler._json(409, {"error": "Almanac HD is set to never be fetched"})
+            if err == "unavailable":
+                return handler._json(404, {"error": "No Almanac HD for this version"})
+            if err and err != "installed":
+                return handler._json(500, {"error": "Could not start the download"})
+            return handler._json(200, dict(_hd.status(), id=dl_id))
+        _mode, err = _hd.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Almanac HD is controlled by the %s env var" % _hd.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _hd.status())
 
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,

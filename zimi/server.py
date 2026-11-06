@@ -130,7 +130,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.15.2"
+ZIMI_VERSION = "1.15.3"
 
 
 def bundled(module):
@@ -1773,6 +1773,17 @@ def _replace_with_retry(tmp, path):
             time.sleep(_REPLACE_RETRY_SLEEP_S)
 
 
+def _read_umask():
+    """The process umask, read once at import (before any thread starts: reading
+    it means setting it for a moment)."""
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return mask
+
+
+_PROCESS_UMASK = _read_umask()
+
+
 def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
@@ -1790,10 +1801,11 @@ def _atomic_write_json(path, data, indent=None):
         # mkstemp creates 0600 and os.replace carries that mode onto the
         # target — which would silently strip group/world read from state
         # files (e.g. .zimi_cache.json inspected host-side over SSH).
-        # Restore the umask-style default the old open()-based writer had.
+        # Give it what an ordinary open() would: 0666 less the umask (0644
+        # by default, 0640 under the systemd unit's UMask=0027).
         # POSIX-only: Windows has no fchmod and no meaningful mode bits.
         if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o644)
+            os.fchmod(fd, 0o666 & ~_PROCESS_UMASK)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", loggable(path), loggable(e))
         return False
@@ -3206,6 +3218,16 @@ def get_zim_files():
     return {k: v for k, v in _zim_files_cache.items() if k in allow}
 
 
+#: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
+#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles).
+DATA_PACKS = frozenset(("zimi_almanac_hd",))
+
+
+def content_zims():
+    """get_zim_files() less the data packs: what search and the indexes walk."""
+    return {k: v for k, v in get_zim_files().items() if k not in DATA_PACKS}
+
+
 def server_zim_count():
     """How many ZIMs this SERVER has, ignoring who is asking.
 
@@ -3578,6 +3600,70 @@ def _extract_zim_metadata(name, path):
     return info, archive
 
 
+def _is_own_zim_path(path):
+    """Whether ``path`` is one of Zimi's own ZIMs (zimi/ownzims.py)."""
+    from zimi import ownzims
+
+    return ownzims.is_own_path(path)
+
+
+def _own_zim_update(path, prior):
+    """(updated_at, own) for one of Zimi's own ZIMs, where ``own`` = {"v": Zimi version, "src": the hash of
+    the source it was built from (its .source file)}. Updated only when this Zimi is a different version
+    than the one that last served it AND the content differs: a redeploy or rebuild of the same release,
+    or a new release whose games did not change, is nothing new to look at."""
+    try:
+        with open(path + ".source", encoding="utf-8") as f:
+            src = f.read().strip()
+    except OSError:
+        src = ""
+    prior = prior or {}
+    was = prior.get("own") or {}
+    # The releases that changed it, newest first: what its Updated dot and About say.
+    own = {"v": ZIMI_VERSION, "src": src, "h": list(was.get("h") or [])[:_OWN_HISTORY_MAX]}
+    if src and was.get("src") and was.get("v") != ZIMI_VERSION and was.get("src") != src:
+        now = time.time()
+        own["h"] = ([{"v": ZIMI_VERSION, "ts": now}] + own["h"])[:_OWN_HISTORY_MAX]
+        return now, own
+    return prior.get("updated_at"), own
+
+
+_OWN_HISTORY_MAX = 10
+_ZIM_UPDATES_MAX = 10
+_whatsnew = None
+
+
+def _whatsnew_lines(version, own_name):
+    """The release's highlight lines about one of Zimi's own ZIMs (assets/whatsnew.json, from the CHANGELOG)."""
+    global _whatsnew
+    if _whatsnew is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "whatsnew.json"), encoding="utf-8") as f:
+                _whatsnew = json.load(f)
+        except (OSError, ValueError):
+            _whatsnew = {}
+    return list((_whatsnew.get(version) or {}).get(own_name) or [])
+
+
+def zim_updates(name, history=None):
+    """How ``name`` came to be what it is, newest first: each arrival and update of a library ZIM from
+    the event history (its file, so its edition, and its size), or for one of Zimi's own ZIMs, each Zimi
+    release that changed it with that release's highlights. For a dot that explains itself and About.
+    ``history``: the event history when the caller already read it (several ZIMs in one request)."""
+    out = []
+    for z in _zim_list_cache or []:
+        if z.get("name") == name and z.get("own_h"):
+            for h in z["own_h"]:
+                out.append({"event": "release", "ts": h.get("ts"), "version": h.get("v"), "notes": _whatsnew_lines(h.get("v"), name)})
+            return out
+    for ev in _load_history() if history is None else history:
+        if ev.get("name") == name and ev.get("event") in ("download", "updated"):
+            out.append({"event": ev["event"], "ts": ev.get("ts"), "file": ev.get("filename", ""), "size_bytes": ev.get("size_bytes") or 0})
+            if len(out) >= _ZIM_UPDATES_MAX:
+                break
+    return out
+
+
 def _self_heal_mass_first_seen(info, file_cache, zims):
     """Repair a library-wide first_seen stamp left by a full cache rebuild.
 
@@ -3834,6 +3920,11 @@ def load_cache(force=False):
             updated_at = cached.get("updated_at")
         else:
             updated_at = time.time()
+        own = None
+        if _is_own_zim_path(path):
+            # Zimi's own ZIMs are rebuilt with Zimi itself, a new dated file every deploy. They are
+            # Updated only when a new Zimi version brings different content (_own_zim_update).
+            updated_at, own = _own_zim_update(path, cached or prior_by_name.get(name))
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
             if (
@@ -3956,12 +4047,16 @@ def load_cache(force=False):
             # what lets a picture request be answered from the client's copy
             # without opening the archive to find out — see _picture_etag.
             entry["mtime"] = mtime
+            if own and own.get("h"):
+                entry["own_h"] = own["h"]
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:
                 cached_out["first_seen"] = first_seen
             if updated_at is not None:
                 cached_out["updated_at"] = updated_at
+            if own:
+                cached_out["own"] = own
             file_cache[filename] = cached_out
         else:
             # Cache miss — scan this ZIM
@@ -3972,6 +4067,8 @@ def load_cache(force=False):
                 entry["first_seen"] = first_seen
             entry["updated_at"] = updated_at
             entry["mtime"] = mtime
+            if own and own.get("h"):
+                entry["own_h"] = own["h"]
             info.append(entry)
             scanned += 1
             new_cached = {
@@ -4018,6 +4115,8 @@ def load_cache(force=False):
                 new_cached["first_seen"] = first_seen
             if updated_at is not None:
                 new_cached["updated_at"] = updated_at
+            if own:
+                new_cached["own"] = own
             file_cache[filename] = new_cached
 
     # Self-heal a library that a pre-fix rebuild already mass-stamped. The code
@@ -4975,6 +5074,12 @@ def main():
         action="store_true",
         help="Open in a native desktop window (requires pywebview)",
     )
+    p_serve.add_argument(
+        "-d",
+        "--daemon",
+        action="store_true",
+        help="Run in the background, with zimi.pid and zimi.log in the data directory",
+    )
 
     p_config = sub.add_parser(
         "config", help="Print the resolved configuration and where each value came from"
@@ -5343,7 +5448,16 @@ def main():
     p_doctor.add_argument("--kind", choices=("docker", "desktop", "pip"), help=argparse.SUPPRESS)
     add_boot_flags(p_doctor)
 
+    p_service = sub.add_parser("service", help="The systemd unit that runs Zimi at boot (Linux)")
+    p_service.add_argument("action", choices=("print", "install"), help="print the unit, or install it for systemd")
+    p_service.add_argument("--to", help="where install writes it (default /etc/systemd/system/zimi.service)")
+
     args = parser.parse_args()
+
+    if args.command == "service":
+        from zimi import service as _service
+
+        return _service.cli_service(args)
 
     settings, config_path, data_dir_problem = _resolve_boot(args)
     host = settings["host"][0]
@@ -5434,6 +5548,10 @@ def main():
         desktop_main()
 
     elif args.command == "serve":
+        if getattr(args, "daemon", False):
+            from zimi import service as _service
+
+            _service.daemonize(ZIMI_DATA_DIR, host, port)
         print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
         # Asked before the first scan writes one: whether this install ran
@@ -5730,6 +5848,15 @@ def warm_indexes():
         except Exception as e:
             log.warning("Bookshelf details phase failed: %s", e)
 
+        # Phase 1d: the towns on each Kiwix map, read from its tiles, so a
+        # town its search pages leave out is found by name.
+        try:
+            from zimi import mapplaces as _mapplaces
+
+            _mapplaces.build_all()
+        except Exception as e:
+            log.warning("Map places phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()
@@ -5746,6 +5873,7 @@ def warm_indexes():
                 targets = {n: zim_files[n] for n in names_to_warm if n in zim_files}
                 warmed = 0
                 for name, path in targets.items():
+                    _wait_until_idle()  # a person opening something goes first
                     try:
                         _get_suggest_archive(name)
                         archive = open_archive(path)
@@ -5766,6 +5894,7 @@ def warm_indexes():
         if hot:
             try:
                 for name in names_to_warm:
+                    _wait_until_idle()
                     try:
                         _get_fts_archive(name)
                     except Exception as e:
@@ -5874,6 +6003,7 @@ from zimi.search import (  # noqa: E402, F401
     _random_map_place,
     _map_home_view,
     find_places,
+    parse_latlng,
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,
     SEARCH_CACHE_MAX,

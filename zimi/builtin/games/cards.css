@@ -148,7 +148,7 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 
 /* FreeCell's hint: an icon button in the bar, and a note over the table that goes by itself. */
 .zc-hintbtn { display: inline-grid; place-items: center; width: 38px; padding: 0; }
-.zc-toast { pointer-events: none; position: fixed; left: 50%; bottom: max(56px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30; width: max-content; max-width: min(92vw, 420px); padding: 9px 14px; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); font-size: var(--fs-small); text-align: center; }
+.zc-toast { pointer-events: none; position: fixed; left: 50%; bottom: max(56px, var(--safe-b)); transform: translateX(-50%); z-index: 30; width: max-content; max-width: min(92vw, 420px); padding: 9px 14px; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); font-size: var(--fs-small); text-align: center; }
 .zc-toast[hidden] { display: none; }
 
 /* The fact line over the top of the table (Draw 1, Deal #, Streak): nothing shows when there is nothing to say. */

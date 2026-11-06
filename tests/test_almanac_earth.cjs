@@ -179,12 +179,6 @@ const utc = (iso) => Date.parse(iso);
   const ls = S._aeEclipseNow(lsc);
   check(ls && !ls.solar && ls.total, 'the status line reads a total lunar eclipse');
 
-  const n1 = S._aeNextEclipse(utc('2024-04-01T12:00:00Z'));
-  check(n1 && n1.solar && Math.abs(n1.ms - solarAt) < 2000, 'Next eclipse from 2024-04-01 is 2024-04-08, solar');
-  const n2 = S._aeNextEclipse(utc('2025-03-10T12:00:00Z'));
-  check(n2 && !n2.solar && Math.abs(n2.ms - lunarAt) < 2000, 'Next eclipse from 2025-03-10 is 2025-03-14, lunar');
-  const n3 = S._aeNextEclipse(solarAt);
-  check(n3 && n3.ms > solarAt + 86400000, 'Next eclipse from an eclipse moves on to the one after');
 }
 
 // ── 4. Satellites ──────────────────────────────────────────────────────────
@@ -227,6 +221,8 @@ const utc = (iso) => Date.parse(iso);
   check(S._aeSatStanding(14, true) === 'approximate', 'two weeks on, the ISS still has its (approximate) dot');
   check(S._aeSatStanding(20, true) === 'orbit' && S._aeSatStanding(-20, true) === 'orbit' && S._aeSatStanding(179, true) === 'orbit',
     'past two weeks only the ISS\'s orbit is drawn, not a dot at an arbitrary place');
+  check(S._aeSatStanding(20, true, true) === 'approximate' && S._aeSatStanding(179, true, true) === 'approximate',
+    'with time running fast or the view on it, the ISS keeps its approximate dot');
   check(S._aeSatStanding(20, false) === 'exact' && S._aeSatStanding(90, false) === 'exact', 'GPS holds for months at this scale');
   check(S._aeSatStanding(181, false) === 'none' && S._aeSatStanding(-400, true) === 'none', 'far from its data, nothing is drawn');
 }

@@ -182,3 +182,26 @@ def test_a_manage_link_never_opens_while_the_password_answer_is_being_read(serve
         pg.wait_for_timeout(800)
         assert pg.evaluate(BEHIND)["manage"] is False, pg.evaluate(BEHIND)
         br.close()
+
+
+def test_the_password_sheet_ends_in_one_row_of_equal_buttons(served):
+    """Eric (2026-11-02): "Login form layout is ugly." The sheet asked over the
+    app ended in a small Cancel and a small OK pushed to the right, with 8 px
+    fields, beside a sign-in screen of 12 px fields and a full-width button.
+    Now both end the way every sheet in the app ends: Cancel and the way in side
+    by side, the same size, filling the row."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _open_home(pw, served)
+        pg.evaluate("() => openPwModal()")
+        pg.wait_for_function(MODAL)
+        box = lambda sel: pg.locator(sel).bounding_box()  # noqa: E731
+        cancel, ok = box("#pw-cancel"), box(".pw-box button.pw-primary")
+        row, field = box(".pw-box .pw-actions"), box("#pw-input")
+        assert abs(cancel["width"] - ok["width"]) < 1, (cancel, ok)
+        assert abs(cancel["height"] - ok["height"]) < 1
+        assert cancel["height"] >= 44, cancel
+        assert abs((ok["x"] + ok["width"]) - (row["x"] + row["width"])) < 1
+        assert abs(cancel["x"] - field["x"]) < 1, "the row spans the fields' width"
+        br.close()

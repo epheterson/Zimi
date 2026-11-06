@@ -125,6 +125,16 @@ function _skyFactCards(rows) {
   }
   return html + '</div>';
 }
+// The tiles worked out from the clock and the place alone, for the hero's first paint: the sky's own state (which
+// _skyFacts reads) comes a frame or more later, and a grid drawn with an empty slot grew by a row when it came,
+// pushing the sky down under the reader (Eric, 2026-11-04: "the tiles go away and the sky jumps"). Sums only, no
+// sky: the same rows the sky writes a moment later, so its write changes nothing on the screen.
+function _skyFactsPrimeHtml(focus, loc, moon) {
+  try {
+    var s = { nowTime: focus.getTime(), lat: loc.lat, lon: loc.lon, stored: loc.stored, moonData: { phase: moon || _moonPhase(focus) } };
+    return _skyFactCards(_skyFactRows(s, _skyFactsAt(s.nowTime, s.lat, s.lon)));
+  } catch (e) { return ''; }
+}
 var SKY_FACTS_MS = 30000;      // the rows are rewritten at most this often
 function _skyFacts(s) {
   var el = document.getElementById('almanac-sky-facts');
@@ -132,11 +142,13 @@ function _skyFacts(s) {
   var key = s.lat + ',' + s.lon, due = !s.factsAt || Math.abs(s.nowTime - s.factsAt) >= SKY_FACTS_MS || s.factsKey !== key;
   if (due) { s.facts = _skyFactsAt(s.nowTime, s.lat, s.lon); s.factsAt = s.nowTime; s.factsKey = key; }
   var html = _skyFactCards(_skyFactRows(s, s.facts));
-  if (el._html !== html) { el.innerHTML = html; el._html = html; }
-  // Under the tiles, the word that the place is a guess.
-  var g = document.getElementById('almanac-sky-guess'), city = !s.stored && _skyZoneCity();
-  var gh = s.stored ? '' : '<p class="alm-sky-guess">' + _almEsc(city ? t('alm_sky_f_guess', { city: city }) : t('alm_sky_f_guess_nocity')) + '</p>';
-  if (g && g._html !== gh) { g.innerHTML = gh; g._html = gh; }
+  if (el._html !== html && el.innerHTML !== html) el.innerHTML = html;
+  el._html = html;
+}
+// The word that the place is a guess, said in the ask for a place under the tiles (_almSkyInviteHtml).
+function _skyGuessText() {
+  var city = _skyZoneCity();
+  return city ? t('alm_sky_f_guess', { city: city }) : t('alm_sky_f_guess_nocity');
 }
 
 // ══ The settings ════════════════════════════════════════════════════════

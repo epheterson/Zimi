@@ -69,3 +69,127 @@ constellations-v1.json
 Moon and Earth: the Earth view's maps above (moon-v1.webp, earth-day-v1.webp,
 earth-night-v1.webp). Saturn's rings are drawn from their measured radial
 structure (Cassini Division 117,500-122,200 km, Encke Gap near 133,500 km).
+
+landmarks-v1.json
+  Named places on the Moon for the 3D view's labels, cards and Fly there, built
+  by scripts/build_landmarks.py: every IAU-adopted lunar feature worth a label
+  (maria, sinus, lacus, montes, stationes, the Apollo sites' named features, and
+  craters from 20 km), from the IAU Gazetteer of Planetary Nomenclature (USGS
+  Astrogeology Science Center, public domain), each with its Wikidata Q-ID by
+  Gazetteer ID (P2824; Wikidata is CC0); and 25 landings at their published
+  coordinates (NASA NSSDC and the LRO camera team, CNSA, ISRO, JAXA), each
+  with the Q-ID of its English Wikipedia article. 84 KB, fetched the first time
+  the Moon is near.
+  https://planetarynames.wr.usgs.gov/
+
+Almanac HD (zimi_almanac_hd_<month>.zim, not in this folder: a ZIM of its own,
+attached to a release and fetched once on an admin's yes; zimi/almanachd.py)
+  The Earth and the Moon as 512 px tile pyramids, built by
+  scripts/build_almanac_hd.py, all public domain:
+  - Earth by day: NASA Blue Marble: Next Generation (Reto Stockli, NASA Earth
+    Observatory), through NASA GIBS (500 m set), to 610 m a pixel.
+  - Earth by night: NASA Black Marble 2016 (VIIRS), through NASA GIBS.
+  - Moon: the CGI Moon Kit's LRO colour mosaic at 16k (above), and the
+    Lunar Orbiter Laser Altimeter's elevation at 64 pixels a degree
+    (ldem_64_uint.tif) as surface normals, so the Moon is lit by its relief.
+    https://svs.gsfc.nasa.gov/4720
+
+The planets and big moons of the 3D view (almanac-earth.js AE_PLANETS), 1024x512 WebP:
+
+mercury-v1.webp
+  MESSENGER MDIS global basemap, Johns Hopkins APL / Applied Coherent
+  Technology, via USGS Astrogeology (Wikimedia Commons file "Mercury MESSENGER
+  MDIS Basemap MD3Color Mosaic Global 32ppd.jpg", PD-USGov-USGS). Greyscale.
+  https://astrogeology.usgs.gov/search/map/Mercury/Messenger/Global/Mercury_MESSENGER_MDIS_Basemap_MD3Color_Mosaic_Global_665m
+
+venus-v1.webp
+  Magellan radar cylindrical map, NASA/JPL (Commons "Cylindrical Map of
+  Venus.jpg", PD-USGov-NASA). Sepia radar colouring, rolled to put longitude
+  -180 at the left edge.
+
+mars-v1.webp
+  Viking MDIM 2.1 colour mosaic, NASA/JPL/USGS (Commons "Mars Viking MDIM21
+  ClrMosaic 1km.jpg", PD-USGov). The poles are thin in the source.
+  https://astrogeology.usgs.gov/search/details/Mars/Viking/MDIM21/Mars_Viking_MDIM21_ClrMosaic_global_232m/cub
+
+jupiter-v1.webp
+  Cassini cylindrical map of Jupiter, NASA/JPL/Space Science Institute,
+  PIA07782 (Commons "Jupiter Cylindrical Map - Dec 2000 PIA07782.jpg",
+  PD-USGov-NASA). Its longitude origin is arbitrary.
+  http://photojournal.jpl.nasa.gov/catalog/PIA07782
+
+pluto-v1.webp
+  New Horizons global colour map, NASA/JHUAPL/SwRI (Commons "Pluto color
+  mapmosaic.jpg", PD-USGov-NASA), rolled from 0-360 to -180..180. The unmapped
+  south is black.
+  https://www.nasa.gov/image-feature/pluto-global-color-map
+
+titan-v1.webp
+  Cassini ISS mosaic, NASA, PIA14908 (Commons "Titan map April 2011 full.png",
+  PD-USGov-NASA), rolled from 0-360 to -180..180. Patchwork, grey where there is
+  no data. http://photojournal.jpl.nasa.gov/catalog/PIA14908
+
+io-v1.webp
+  Galileo SSI colour mosaic, USGS Astrogeology (Commons "Io modest scale map Io
+  SSI-only color SIMP0 med.cub.jpg", PD-USGov-NASA). False colour, soft.
+
+europa-v1.webp
+  Voyager and Galileo SSI global mosaic, USGS/PDS (Commons "Europa Voyager
+  GalileoSSI global mosaic.jpg", PD-USGov). Greyscale.
+  https://astrogeology.usgs.gov/search/map/Europa/Voyager-Galileo/Europa_Voyager_GalileoSSI_global_mosaic_500m
+
+ganymede-v1.webp
+  Voyager and Galileo SSI colour mosaic, USGS Astrogeology Science Center
+  (NASA/JPL), Ganymede_Voyager_GalileoSSI_Global_ClrMosaic_1435m. A US
+  Government work, public domain. Equirectangular, east-positive; rolled from
+  0-360 to -180..180 and resized from 11520x5760 to 1024x512. Black no-data
+  strips at the poles and mosaic seams remain.
+  https://astrogeology.usgs.gov/search/map/ganymede_voyager_galileo_ssi_global_mosaic_1435m
+
+callisto-v1.webp
+  Galileo and Voyager simple cylindrical map, USGS Astrogeology (Commons
+  "Callisto USGS global small.jpg", PD-USGS), contrast stretched. Greyscale.
+  https://astrogeology.usgs.gov/search/map/Callisto/Voyager-Galileo/callisto_simp_1km
+
+saturn-v1.webp, uranus-v1.webp, neptune-v1.webp
+  Solar System Scope (INOVE), 2k_saturn.jpg, 2k_uranus.jpg, 2k_neptune.jpg,
+  CC BY 4.0, https://www.solarsystemscope.com/textures/ . Resized to 1024x512,
+  WebP quality 80. Credited on the view while one of them is drawn
+  (alm_earth_credit_sss). Saturn's rings are not from a picture: they are drawn
+  from their measured radial structure (C, B, Cassini Division, A, Encke gap).
+
+space-tracks-v1.json, scripts/build_space_tracks.py, scripts/fit_moon_orbits.py
+  Spacecraft and outer-planet state vectors from JPL Horizons (public), thinned
+  for Hermite interpolation; the big moons' mean circular orbits fitted to it.
+
+asteroids-v1.bin (scripts/build_asteroids.py)
+  The main belt's asteroids brighter than H 14 (17,992), osculating elements
+  from NASA/JPL's Small-Body Database (SBDB Query API), brought to one epoch
+  and quantized to 16 bits, 216 KB. Moved by Kepler's laws in the view.
+
+iss-v1.bin (scripts/build_craft_models.py)
+  The International Space Station: NASA 3D Resources' "International Space
+  Station (ISS) (B)", credit NASA/Michael D. Carbajal; the collection's terms:
+  "These assets are free and without copyright". No textures (no logo).
+  Simplified from 174,000 triangles to 31,000 and quantized, 331 KB.
+
+craft-<model>-v1.bin (scripts/build_craft_models.py)
+  The probes close up, from NASA 3D Resources (github.com/nasa/NASA-3D-Resources;
+  "These assets are free and without copyright"), each page's Source credit:
+  voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
+  pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
+  juno: "Juno (B)" (no individual credit listed)
+  parker: "Parker Solar Probe", NASA/Matthew J. Garcia
+  webb: "James Webb Space Telescope (B)", NASA/Christopher R. Meaney
+  galileo: "Galileo", NASA/JPL/Solar System Simulator
+  cassini: "Cassini-Huygens (B)", NASA/JPL/Solar System Simulator
+  Each material's colour (a texture's mean colour, so no printed logo carries
+  over) as a palette of up to eight, simplified to 10,000-31,000 triangles and
+  quantized; 50-200 KB gzipped each. New Horizons and Europa Clipper have no
+  model there and stay a point.
+
+  - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
+    Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
+    through NASA Moon Trek's tile service, to about 0.65 m a pixel.
+  - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
+    8k maps, CC BY 4.0, credited on the view while drawn.

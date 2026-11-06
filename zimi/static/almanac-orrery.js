@@ -618,6 +618,9 @@ function _orreryInfoFirst(hit) { return hit.type === 'sun' || _orreryIsDestinati
 
 // A body's direct action; returns what it did.
 function _orreryAct(hit) {
+  // A planet opens in the 3D view, where it is (the light-speed ride stays its tip's Fly button); without that view,
+  // the ride, as before.
+  if (_orreryIsDestination(hit) && _orreryEarthViewAvailable()) { _orreryOpenEarthView(hit.data.name.toLowerCase()); return 'earth'; }
   if (_orreryIsDestination(hit)) { _orreryLaunchRocket(hit.data.name); return 'fly'; }
   if (hit.type === 'planet' && _orreryEarthViewAvailable()) { _orreryOpenEarthView(); return 'earth'; }
   if (hit.type === 'sun' && _orreryEarthViewAvailable()) { _orreryOpenEarthView('sun'); return 'earth'; }
@@ -724,7 +727,11 @@ function _initOrrery() {
       var fly = el.getAttribute('data-orr-fly');
       if (key) { e.stopPropagation(); _orreryOpenLink(key); }
       else if (fly) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; _orreryLaunchRocket(fly); }
-      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(el.getAttribute('data-orr-earth') === 'sun' ? 'sun' : null); }
+      else if (el.hasAttribute('data-orr-earth')) {
+        // "1" is the Earth; any other value names the body to open on (the Sun, a planet).
+        var to = el.getAttribute('data-orr-earth');
+        e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(to === '1' ? null : to);
+      }
     });
   }
   var _tipHideTimer = null;
@@ -764,10 +771,16 @@ function _initOrrery() {
   // The tip's button: Fly to a planet (not while the time machine holds the
   // clock, when launches are refused), or step into the Earth view.
   function _tipButtonHtml(hit) {
+    // A planet: up close in the 3D view (the same planet, the same place round the Sun), and the light-speed ride.
+    var close = hit.type === 'planet' && hit.data.name !== 'Earth' && _orreryEarthViewAvailable()
+      ? '<button type="button" class="orrery-tip-btn" data-orr-earth="' + _almEsc(hit.data.name.toLowerCase()) + '">' +
+        _almEsc(t('alm_orr_planet_view', { name: _tp(hit.data.name) })) + '</button>'
+      : '';
     if (_orreryIsDestination(hit) && !_orreryTravelFocus()) {
-      return '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
+      return close + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
         _almEsc(t('alm_orr_fly')) + '</button>';
     }
+    if (close) return close;
     if (hit.type === 'planet' && hit.data.name === 'Earth' && _orreryEarthViewAvailable()) {
       return '<button type="button" class="orrery-tip-btn" data-orr-earth="1">' + _almEsc(t('alm_orr_earth_view')) + '</button>';
     }
@@ -951,6 +964,176 @@ function _ensureOrreryStars(W, dpr) {
   return stars;
 }
 
+// ── The solar system as the orrery draws it, for the orrery and for the 3D view's minimap ──
+// The same picture at any size: orbit rings at the shared squeeze (_ORBIT_VIS, _solarSqueeze), the Sun, the planets
+// where _planetPosition has them. W is the drawing's width in device px, u one CSS px in it.
+function _orreryPaintOrbits(ctx, cx, cy, W, z, u, names, alpha) {
+  for (var i = 0; i < names.length; i++) {
+    var orbitR = _orreryPlanetR(names[i], z) * W;
+    ctx.beginPath();
+    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,' + (alpha || 0.07) + ')';
+    ctx.lineWidth = 0.7 * u;
+    ctx.stroke();
+  }
+}
+// `discR` (optional): the disc's radius when another drawing sizes it (the 3D view's marks and minimap put the Sun on
+// their planets' scale); its haze keeps the orrery's proportion to the disc.
+var _ORR_SUN_R = 0.022, _ORR_SUN_HAZE = 0.14;
+function _orreryPaintSun(ctx, cx, cy, W, discR) {
+  var sunR = discR || W * _ORR_SUN_R, hazeR = sunR * _ORR_SUN_HAZE / _ORR_SUN_R;
+
+  // Wide outer haze
+  var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, hazeR);
+  haze.addColorStop(0, 'rgba(255,210,100,0.10)');
+  haze.addColorStop(0.2, 'rgba(255,180,60,0.04)');
+  haze.addColorStop(0.6, 'rgba(255,150,40,0.01)');
+  haze.addColorStop(1, 'transparent');
+  ctx.fillStyle = haze;
+  ctx.beginPath(); ctx.arc(cx, cy, hazeR, 0, Math.PI * 2); ctx.fill();
+
+  // Inner corona
+  var corona = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR * 4);
+  corona.addColorStop(0, 'rgba(255,240,200,0.25)');
+  corona.addColorStop(0.3, 'rgba(255,200,100,0.10)');
+  corona.addColorStop(0.7, 'rgba(255,160,60,0.03)');
+  corona.addColorStop(1, 'transparent');
+  ctx.fillStyle = corona;
+  ctx.beginPath(); ctx.arc(cx, cy, sunR * 4, 0, Math.PI * 2); ctx.fill();
+
+  // Sun disc
+  var sd = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR);
+  sd.addColorStop(0, '#fffff4');
+  sd.addColorStop(0.4, '#fff0c0');
+  sd.addColorStop(0.8, '#ffc840');
+  sd.addColorStop(1, '#e08820');
+  ctx.fillStyle = sd;
+  ctx.beginPath(); ctx.arc(cx, cy, sunR, 0, Math.PI * 2); ctx.fill();
+
+  return sunR;
+}
+// Returns each planet's place and size, in the drawing's px: [{ name, x, y, r, glowR? }].
+// One planet as the orrery draws it, at (px, py) with radius pr (device px), lit from the Sun at (cx, cy): its halo,
+// Saturn's rings, the shaded body and its few marks. The orrery's drawing and the 3D view's marks both use it.
+function _orreryPaintPlanet(ctx, name, px, py, pr, cx, cy, dpr, u, opts) {
+  var p = _PLANETS[name];
+  // Glow halo
+  var halo = ctx.createRadialGradient(px, py, pr * 0.5, px, py, pr * 2.5);
+  halo.addColorStop(0, _hexToRgba(p.glow, 0.10));
+  halo.addColorStop(1, 'transparent');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(px, py, pr * 2.5, 0, Math.PI * 2); ctx.fill();
+
+  // Saturn's rings — drawn BEHIND planet body on far side, IN FRONT on near side
+  if (p.rings) {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-0.4);
+    // A-ring (outer)
+    var ringGrad = ctx.createLinearGradient(-pr * 3, 0, pr * 3, 0);
+    ringGrad.addColorStop(0, 'rgba(200,180,120,0.10)');
+    ringGrad.addColorStop(0.3, 'rgba(210,190,140,0.35)');
+    ringGrad.addColorStop(0.5, 'rgba(220,200,150,0.40)');
+    ringGrad.addColorStop(0.7, 'rgba(210,190,140,0.35)');
+    ringGrad.addColorStop(1, 'rgba(200,180,120,0.10)');
+    ctx.strokeStyle = ringGrad;
+    ctx.lineWidth = 2.5 * dpr;
+    ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.8, pr * 0.75, 0, 0, Math.PI * 2); ctx.stroke();
+    // B-ring (inner, brighter)
+    ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.2, pr * 0.58, 0, 0, Math.PI * 2); ctx.stroke();
+    // Cassini division (dark gap)
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 0.5 * dpr;
+    ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.5, pr * 0.66, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Planet body — sphere with directional lighting from sun
+  var lightAngle = Math.atan2(py - cy, px - cx);
+  var hlX = px - Math.cos(lightAngle) * pr * 0.3;
+  var hlY = py - Math.sin(lightAngle) * pr * 0.3;
+  var pg = ctx.createRadialGradient(hlX, hlY, 0, px, py, pr);
+  pg.addColorStop(0, _lighten(p.color, 50));
+  pg.addColorStop(0.4, p.color);
+  pg.addColorStop(1, _darken(p.color, 70));
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+
+  // Jupiter bands
+  if (name === 'Jupiter') {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
+    var bands = [-0.55, -0.25, 0.1, 0.4, 0.65];
+    for (var bi = 0; bi < bands.length; bi++) {
+      ctx.fillStyle = bi % 2 === 0 ? 'rgba(140,90,50,0.22)' : 'rgba(190,150,90,0.15)';
+      ctx.fillRect(px - pr, py + bands[bi] * pr - pr * 0.06, pr * 2, pr * 0.12);
+    }
+    // Great Red Spot hint
+    ctx.beginPath();
+    ctx.ellipse(px + pr * 0.25, py + pr * 0.3, pr * 0.15, pr * 0.1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(180,80,50,0.20)';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Earth — blue with green hints and white polar
+  if (name === 'Earth') {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = 'rgba(40,130,60,0.30)';
+    ctx.beginPath(); ctx.ellipse(px - pr * 0.15, py - pr * 0.1, pr * 0.45, pr * 0.35, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px + pr * 0.3, py + pr * 0.25, pr * 0.3, pr * 0.2, -0.2, 0, Math.PI * 2); ctx.fill();
+    // Polar ice
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.ellipse(px, py - pr * 0.85, pr * 0.5, pr * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Mars — rusty with polar cap
+  if (name === 'Mars') {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.20)';
+    ctx.beginPath(); ctx.ellipse(px, py - pr * 0.8, pr * 0.3, pr * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // The Earth glow: a still halo that says the tap leads into the Earth
+  // view, drawn only while that view exists.
+  var glowR = 0;
+  if (name === 'Earth' && !(opts && opts.plain) && _orreryEarthViewAvailable()) {
+    glowR = pr * _EARTH_GLOW_SCALE;
+    var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
+    eg.addColorStop(0, _hexToRgba(p.glow, 0));
+    eg.addColorStop(0.45, _hexToRgba(p.glow, _EARTH_GLOW_ALPHA));
+    eg.addColorStop(1, _hexToRgba(p.glow, 0));
+    ctx.fillStyle = eg;
+    ctx.beginPath(); ctx.arc(px, py, glowR, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, glowR * _EARTH_RING_AT, 0, Math.PI * 2);
+    ctx.strokeStyle = _hexToRgba(p.glow, _EARTH_RING_ALPHA);
+    ctx.lineWidth = 0.8 * u; ctx.stroke();
+  }
+
+  var rec = { name: name, x: px / dpr, y: py / dpr, r: pr / dpr };
+  if (glowR) rec.glowR = glowR / dpr;
+  return rec;
+}
+function _orreryPaintPlanets(ctx, cx, cy, W, T, z, dpr, u, names, opts) {
+  var out = [];
+  for (var i = 0; i < names.length; i++) {
+    var pos = _planetPosition(names[i], T);
+    var angle = Math.atan2(pos.y, pos.x);
+    var visR = _orreryPlanetR(names[i], z) * W;
+    var px = cx + Math.cos(angle) * visR;
+    var py = cy - Math.sin(angle) * visR;
+    var p = _PLANETS[names[i]];
+    var pr = p.vr * W; // planet radius as fraction of canvas
+    out.push(_orreryPaintPlanet(ctx, names[i], px, py, pr, cx, cy, dpr, u, opts));
+  }
+  return out;
+}
+
 function _drawOrrery(canvas, dpr) {
   var ctx = canvas.getContext('2d');
   var W = canvas.width;
@@ -993,14 +1176,7 @@ function _drawOrrery(canvas, dpr) {
   ctx.setTransform(cam.zoom, 0, 0, cam.zoom, W / 2 - cam.x * W * cam.zoom, W / 2 - cam.y * W * cam.zoom);
 
   // Orbit rings — Apple Watch style: visible but understated
-  for (var i = 0; i < names.length; i++) {
-    var orbitR = _orreryPlanetR(names[i], z) * W;
-    ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-    ctx.lineWidth = 0.7 * u;
-    ctx.stroke();
-  }
+  _orreryPaintOrbits(ctx, cx, cy, W, z, u, names);
 
   // Faint labelled band helper (asteroid + Kuiper belts). Records each band's
   // annulus (CSS px) so the tap/hover hit-test can open its article.
@@ -1056,152 +1232,11 @@ function _drawOrrery(canvas, dpr) {
   }
 
   // Sun — large luminous glow, Apple Watch style
-  var sunR = W * 0.022;
+  var sunR = _orreryPaintSun(ctx, cx, cy, W);
   _orrerySunPos = { x: cx / dpr, y: cy / dpr, r: sunR / dpr }; // hover/tap hit zone (CSS px)
 
-  // Wide outer haze
-  var haze = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.14);
-  haze.addColorStop(0, 'rgba(255,210,100,0.10)');
-  haze.addColorStop(0.2, 'rgba(255,180,60,0.04)');
-  haze.addColorStop(0.6, 'rgba(255,150,40,0.01)');
-  haze.addColorStop(1, 'transparent');
-  ctx.fillStyle = haze;
-  ctx.beginPath(); ctx.arc(cx, cy, W * 0.14, 0, Math.PI * 2); ctx.fill();
-
-  // Inner corona
-  var corona = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR * 4);
-  corona.addColorStop(0, 'rgba(255,240,200,0.25)');
-  corona.addColorStop(0.3, 'rgba(255,200,100,0.10)');
-  corona.addColorStop(0.7, 'rgba(255,160,60,0.03)');
-  corona.addColorStop(1, 'transparent');
-  ctx.fillStyle = corona;
-  ctx.beginPath(); ctx.arc(cx, cy, sunR * 4, 0, Math.PI * 2); ctx.fill();
-
-  // Sun disc
-  var sd = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunR);
-  sd.addColorStop(0, '#fffff4');
-  sd.addColorStop(0.4, '#fff0c0');
-  sd.addColorStop(0.8, '#ffc840');
-  sd.addColorStop(1, '#e08820');
-  ctx.fillStyle = sd;
-  ctx.beginPath(); ctx.arc(cx, cy, sunR, 0, Math.PI * 2); ctx.fill();
-
   // Planets — big, no labels, Apple Watch proportions
-  _orreryPlanetPositions = [];
-  for (var i = 0; i < names.length; i++) {
-    var pos = _planetPosition(names[i], T);
-    var angle = Math.atan2(pos.y, pos.x);
-    var visR = _orreryPlanetR(names[i], z) * W;
-    var px = cx + Math.cos(angle) * visR;
-    var py = cy - Math.sin(angle) * visR;
-    var p = _PLANETS[names[i]];
-    var pr = p.vr * W; // planet radius as fraction of canvas
-
-    // Glow halo
-    var halo = ctx.createRadialGradient(px, py, pr * 0.5, px, py, pr * 2.5);
-    halo.addColorStop(0, _hexToRgba(p.glow, 0.10));
-    halo.addColorStop(1, 'transparent');
-    ctx.fillStyle = halo;
-    ctx.beginPath(); ctx.arc(px, py, pr * 2.5, 0, Math.PI * 2); ctx.fill();
-
-    // Saturn's rings — drawn BEHIND planet body on far side, IN FRONT on near side
-    if (p.rings) {
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(-0.4);
-      // A-ring (outer)
-      var ringGrad = ctx.createLinearGradient(-pr * 3, 0, pr * 3, 0);
-      ringGrad.addColorStop(0, 'rgba(200,180,120,0.10)');
-      ringGrad.addColorStop(0.3, 'rgba(210,190,140,0.35)');
-      ringGrad.addColorStop(0.5, 'rgba(220,200,150,0.40)');
-      ringGrad.addColorStop(0.7, 'rgba(210,190,140,0.35)');
-      ringGrad.addColorStop(1, 'rgba(200,180,120,0.10)');
-      ctx.strokeStyle = ringGrad;
-      ctx.lineWidth = 2.5 * dpr;
-      ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.8, pr * 0.75, 0, 0, Math.PI * 2); ctx.stroke();
-      // B-ring (inner, brighter)
-      ctx.lineWidth = 2 * dpr;
-      ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.2, pr * 0.58, 0, 0, Math.PI * 2); ctx.stroke();
-      // Cassini division (dark gap)
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = 0.5 * dpr;
-      ctx.beginPath(); ctx.ellipse(0, 0, pr * 2.5, pr * 0.66, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
-
-    // Planet body — sphere with directional lighting from sun
-    var lightAngle = Math.atan2(py - cy, px - cx);
-    var hlX = px - Math.cos(lightAngle) * pr * 0.3;
-    var hlY = py - Math.sin(lightAngle) * pr * 0.3;
-    var pg = ctx.createRadialGradient(hlX, hlY, 0, px, py, pr);
-    pg.addColorStop(0, _lighten(p.color, 50));
-    pg.addColorStop(0.4, p.color);
-    pg.addColorStop(1, _darken(p.color, 70));
-    ctx.fillStyle = pg;
-    ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
-
-    // Jupiter bands
-    if (names[i] === 'Jupiter') {
-      ctx.save();
-      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
-      var bands = [-0.55, -0.25, 0.1, 0.4, 0.65];
-      for (var bi = 0; bi < bands.length; bi++) {
-        ctx.fillStyle = bi % 2 === 0 ? 'rgba(140,90,50,0.22)' : 'rgba(190,150,90,0.15)';
-        ctx.fillRect(px - pr, py + bands[bi] * pr - pr * 0.06, pr * 2, pr * 0.12);
-      }
-      // Great Red Spot hint
-      ctx.beginPath();
-      ctx.ellipse(px + pr * 0.25, py + pr * 0.3, pr * 0.15, pr * 0.1, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(180,80,50,0.20)';
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // Earth — blue with green hints and white polar
-    if (names[i] === 'Earth') {
-      ctx.save();
-      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
-      ctx.fillStyle = 'rgba(40,130,60,0.30)';
-      ctx.beginPath(); ctx.ellipse(px - pr * 0.15, py - pr * 0.1, pr * 0.45, pr * 0.35, 0.3, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(px + pr * 0.3, py + pr * 0.25, pr * 0.3, pr * 0.2, -0.2, 0, Math.PI * 2); ctx.fill();
-      // Polar ice
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.beginPath(); ctx.ellipse(px, py - pr * 0.85, pr * 0.5, pr * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-
-    // Mars — rusty with polar cap
-    if (names[i] === 'Mars') {
-      ctx.save();
-      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
-      ctx.fillStyle = 'rgba(255,255,255,0.20)';
-      ctx.beginPath(); ctx.ellipse(px, py - pr * 0.8, pr * 0.3, pr * 0.15, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-
-    // The Earth glow: a still halo that says the tap leads into the Earth
-    // view, drawn only while that view exists.
-    var glowR = 0;
-    if (names[i] === 'Earth' && _orreryEarthViewAvailable()) {
-      glowR = pr * _EARTH_GLOW_SCALE;
-      var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
-      eg.addColorStop(0, _hexToRgba(p.glow, 0));
-      eg.addColorStop(0.45, _hexToRgba(p.glow, _EARTH_GLOW_ALPHA));
-      eg.addColorStop(1, _hexToRgba(p.glow, 0));
-      ctx.fillStyle = eg;
-      ctx.beginPath(); ctx.arc(px, py, glowR, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(px, py, glowR * _EARTH_RING_AT, 0, Math.PI * 2);
-      ctx.strokeStyle = _hexToRgba(p.glow, _EARTH_RING_ALPHA);
-      ctx.lineWidth = 0.8 * u; ctx.stroke();
-    }
-
-    // Record position for hover (world CSS px)
-    var rec = { name: names[i], x: px / dpr, y: py / dpr, r: pr / dpr };
-    if (glowR) rec.glowR = glowR / dpr;
-    _orreryPlanetPositions.push(rec);
-
-    // No labels — clean Apple Watch aesthetic, hover tooltip on desktop
-  }
+  _orreryPlanetPositions = _orreryPaintPlanets(ctx, cx, cy, W, T, z, dpr, u, names);
 
   // ── Interstellar probes — amber diamonds out past Neptune, revealed as the
   // view eases into deep space (z) where they have room to visibly crawl. ──

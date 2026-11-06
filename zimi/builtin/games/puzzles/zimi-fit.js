@@ -34,6 +34,12 @@
   // Zimi opens a page with its language in the hash (#lang=fr&dir=ltr). To the puzzle a hash is a game ID, and it would answer with
   // an error box and no saved game could come back; the words are already read (text.js), so the hash goes.
   if (/^#(?:lang|dir)=[^&]*(?:&(?:lang|dir)=[^&]*)*&?$/.test(root.location.hash) && root.history && root.history.replaceState) root.history.replaceState(null, "", root.location.pathname + root.location.search);
+  // The day's puzzle (ZimiShell.daily, ../shell.js): its daily type and the day's seed as a game ID ("10x10t0dn#<seed>"), so the
+  // puzzle makes the same grid for everyone that day. A daily left part-way comes back from its own save instead.
+  var DAILY = root.ZimiShell && root.ZimiShell.daily;
+  if (DAILY && typeof DAILY.kind === "string" && !root.location.hash && !root.ZimiShell.peekSave() && root.history && root.history.replaceState) {
+    root.history.replaceState(null, "", root.location.pathname + root.location.search + "#" + DAILY.kind + "#" + DAILY.seed);
+  }
 
   function el(tag, cls, text) {
     var e = d.createElement(tag);
@@ -459,6 +465,11 @@
         return bound;
       },
       hide: function () { node.hidden = true; },
+      // A field's own choices, in its dialog's words: a custom size can ask what no preset has (Unequal's Recursive).
+      choices: function (index) {
+        var f = fields.filter(function (x) { return x.index === index; })[0];
+        return f && f.options ? f.options.map(function (o) { return o.text; }) : [];
+      },
       // The text the dialog holds now for a field (what the game in play was made with).
       current: function (index) {
         var f = fields.filter(function (x) { return x.index === index; })[0], o = f && f.options && f.options.filter(function (n) { return n.value === f.value; })[0];
@@ -490,10 +501,14 @@
     function options(i) {
       return matching(i).reduce(function (all, r) { if (all.indexOf(r.parts[i]) < 0) all.push(r.parts[i]); return all; }, []);
     }
+    // The field of the custom size's dialog that asks part i, if any.
+    function boundTo(i) { return Object.keys(bound).filter(function (k) { return bound[k] === i; })[0]; }
+    // What row i offers: the presets' values, or while the custom size is the choice, its dialog's own for that part.
+    function rowOptions(i) { var k = boundTo(i); return onCustom && panel && k !== undefined ? panel.choices(+k) : options(i); }
     function pick(i, value) {
       chosen[i] = value;
-      for (var j = i + 1; j < heads.length; j++) { var opts = options(j); if (opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0]; }
       if (onCustom && i !== sizeAt) { render(); return; }   // the shape and the difficulty are the custom size's too: it stays the choice
+      for (var j = 0; j < heads.length; j++) { var opts = options(j); if (j !== i && opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0]; }
       staged = matching(heads.length)[0].value;
       customOn(false);
     }
@@ -518,10 +533,17 @@
     }
     function render() {
       boxes.forEach(function (box, i) {
-        var opts = options(i), keeps = !onCustom || i === sizeAt || Object.keys(bound).some(function (k) { return bound[k] === i; });
+        var opts = rowOptions(i), keeps = !onCustom || i === sizeAt || boundTo(i) !== undefined;
         box.group.hidden = !keeps || (opts.length < 2 && !(custom && i === sizeAt));
         var choices = opts.map(function (v) { return [v, typeLabel(v)]; });
-        if (box.select) { box.select.value = chosen[i]; return; }
+        if (box.select) {
+          if (box.select.options.length !== choices.length || choices.some(function (c, k) { return box.select.options[k].value !== c[0]; })) {
+            box.select.textContent = "";
+            choices.forEach(function (c) { var n = el("option", "", c[1]); n.value = c[0]; box.select.appendChild(n); });
+          }
+          box.select.value = chosen[i];
+          return;
+        }
         if (custom && i === sizeAt) choices.push([CUSTOM_CHOICE, typeLabel("Custom...")]);
         fillChoices(box.chips, choices, function (v) { return v === CUSTOM_CHOICE ? onCustom : (!onCustom || i !== sizeAt) && v === chosen[i]; },
           function (v) { if (v === CUSTOM_CHOICE) customOn(true); else pick(i, v); });
@@ -548,7 +570,7 @@
     if (onCustom && panel) {   // a custom game is in play: its shape and difficulty are what the pane starts on
       bound = panel.show(); customPick = panel;
       heads.forEach(function (h, j) {
-        var k = Object.keys(bound).filter(function (x) { return bound[x] === j; })[0], v = k !== undefined && panel.current(+k), opts = options(j);
+        var k = boundTo(j), v = k !== undefined && panel.current(+k), opts = rowOptions(j);
         if (v && opts.indexOf(v) >= 0) chosen[j] = v; else if (opts.indexOf(chosen[j]) < 0) chosen[j] = opts[0];
       });
     }
@@ -957,11 +979,12 @@
   function canMove(id) { var b = $(id); return !!b && !b.disabled; }
   function persistGame() {
     root.ZimiShell.persist({
-      // A game that was only dealt is kept too, so the puzzle that comes back is the one that was left; a solved one is not.
-      save: function () { return solved ? null : { sav: saveText(), t: elapsed }; },
+      // A game that was only dealt is kept too, so the puzzle that comes back is the one that was left; a solved one is not,
+      // except the day's: a solved daily comes back solved (its own save, gone with the day).
+      save: function () { return solved && !DAILY ? null : { sav: saveText(), t: elapsed }; },
       load: function (data) {
-        // A link to one particular game (#id) is that game, not the one left behind.
-        if (!data || typeof data.sav !== "string" || !encoder || root.location.hash) return false;
+        // A link to one particular game (#id) is that game, not the one left behind; a daily's own save is the day's game.
+        if (!data || typeof data.sav !== "string" || !encoder || (root.location.hash && !DAILY)) return false;
         loadText(data.sav);
         elapsed = +data.t || 0;
         return true;

@@ -36,6 +36,9 @@
     return true;
   }
 
+  // A deal's random source: the day's in a daily (ZimiShell.random, shell.js), else chance.
+  function random() { return root.ZimiShell && root.ZimiShell.random ? root.ZimiShell.random() : Math.random; }
+  function daily() { return !!(root.ZimiShell && root.ZimiShell.daily); }
   function shuffled(rng) {
     var a = [], i, j, t;
     for (i = 0; i < DECK; i++) a.push(i);
@@ -910,17 +913,21 @@
     table.appendChild(countLayer);
     var lastPlace = null, lastState = null, metrics = null, drag = null, sel = null, settleTimer = 0, focusPile = null, slotOrder = [];
 
+    // o.cols: how many card widths the table is wide, or a function (state, W, pad, gap) -> that, for a table whose cards
+    // shrink only when what it holds no longer fits (a hand that grows past one row).
+    function colsFor(state, W, pad, gap) { return typeof o.cols === 'function' ? o.cols(state, W, pad, gap) : o.cols; }
     function measure() {
       d.documentElement.style.setProperty('--zc-px', 1 / dpr() + 'px');
       var W = table.clientWidth, H = table.clientHeight;
       var pad = Math.max(6, Math.min(16, Math.round(W * 0.02))), gap = Math.max(4, Math.round(W * 0.014));
       if (o.tight) { pad = Math.min(pad, TIGHT_PAD); gap = Math.min(gap, TIGHT_GAP); }   // the solitaires' columns take every pixel of the width
-      var cw = Math.floor((W - 2 * pad - (o.cols - 1) * gap) / o.cols);
+      var cols = colsFor(lastState, W, pad, gap);
+      var cw = Math.floor((W - 2 * pad - (cols - 1) * gap) / cols);
       cw = Math.max(MIN_CARD_W, Math.min(cw, MAX_CARD_W, Math.floor(H * (o.heightShare || CARD_H_SHARE))));
       cw = crispWidth(cw);
       // `left` centres the columns when the cards stop growing before the width does.
-      var left = Math.floor((W - (o.cols * cw + (o.cols - 1) * gap)) / 2);
-      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: o.cols };
+      var left = Math.floor((W - (cols * cw + (cols - 1) * gap)) / 2);
+      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: cols };
       stage.style.setProperty('--cw', cw + 'px');
       return metrics;
     }
@@ -988,6 +995,7 @@
     // every transition (resize, first paint); otherwise cards ease to place.
     function render(state, mode) {
       lastState = state;
+      if (metrics && colsFor(state, metrics.W, metrics.pad, metrics.gap) !== metrics.cols) metrics = null;   // the hand outgrew (or no longer needs) its size
       var m = metrics || measure(), p = o.place(state, m), anyMoved = false;
       lastPlace = p;
       // A short layout sits a little above the middle instead of hugging the top bar.
@@ -1093,9 +1101,13 @@
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (d.querySelector('.zc-cascade')) return;
       var cardNode = e.target.closest('.zc-card'), slotNode = e.target.closest('.zc-slot');
-      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')];
+      var pos = cardNode && cardPos[+cardNode.getAttribute('data-id')], slot = slotNode && slotNode.getAttribute('data-pile');
       if (!pos && !slotNode) return;
-      drag = { pos: pos, slot: slotNode && slotNode.getAttribute('data-pile'), sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
+      // A column's place runs down to the table's edge: a tap under its cards (on a phone a column is one card, 35 px
+      // wide in Spider) is a tap on its top card.
+      var under = !pos && byPile[slot];
+      if (under && under.length) pos = cardPos[under[under.length - 1]];
+      drag = { pos: pos, slot: slot, sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
       sel = null; paintSelection(); toast();
       try { table.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     });
@@ -1489,6 +1501,9 @@
     while (down + inc <= max + 1e-9 && heaviest(down + inc) * maxStep <= room - ch) down += inc;
     return down;
   }
+  // A face-up card in a fan shows this much of its height when the table has room: its whole corner index and its whole top
+  // row of pips (PIP_TOP). Less cuts the pips through the middle into triangles beside the index.
+  var FAN_UP_SHARE = 0.34;
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
   }
@@ -1585,11 +1600,11 @@
   root.ZimiCards = {
     SUITS: SUITS, RANK_LABELS: RANK_LABELS, KING: KING, DECK: DECK, BACKS: BACKS,
     rank: rank, suit: suit, isRed: isRed, make: make, cardName: cardName, clone: clone,
-    foundationAccepts: foundationAccepts, stacksOn: stacksOn, isRun: isRun, shuffled: shuffled, msDeal: msDeal,
+    foundationAccepts: foundationAccepts, stacksOn: stacksOn, isRun: isRun, shuffled: shuffled, random: random, daily: daily, msDeal: msDeal,
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }

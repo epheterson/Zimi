@@ -467,6 +467,7 @@
   .game-head[hidden] { display: none; }
   [dir=rtl] #game-act-btn[data-kind=undo] svg { transform: scaleX(-1); }
   .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .game-title.two-lines { white-space: normal; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }
   .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
@@ -508,6 +509,8 @@
   }
   .topbar-search .search-clear:hover { color: var(--amber); background: var(--amber-glow); }
   .topbar-search input:not(:placeholder-shown) ~ .search-clear { display: flex; }
+  /* What is typed stops short of the ×: in the reader's narrow box the words ran under it. */
+  .topbar-search input:not(:placeholder-shown) { padding-inline-end: 36px; }
   .topbar-search input:not(:placeholder-shown) ~ .kbd { opacity: 0; }
 
   /* ── Suggest dropdown ── */
@@ -605,7 +608,7 @@
   .tts-menu-check::after { content: ''; flex: none; width: 32px; height: 18px; border-radius: 9px; transition: background 0.15s;
                            background: radial-gradient(circle at 9px 50%, var(--surface) 6px, transparent 6.5px) var(--text2); }
   .tts-menu-check[aria-checked="true"]::after { background: radial-gradient(circle at 23px 50%, var(--surface) 6px, transparent 6.5px) var(--amber); }
-  @media (prefers-reduced-motion: reduce) { .tts-bar-state.ahead { animation: tts-pulse 1.6s ease-in-out infinite; border-top-color: currentColor; } .tts-bar-state i, .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
+  @media (prefers-reduced-motion: reduce) { .tts-bar-state.ahead, .tts-bar-state:not(.playing):not(.paused):not(.hold):not(.ahead) { animation: tts-pulse 1.6s ease-in-out infinite; border-top-color: currentColor; } .tts-bar-state i { animation: none; } .tts-bar-state.playing i { transform: scaleY(0.7); } }
   .manage-btn { position: relative; }
   .random-btn .dice { display: inline-block; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .random-btn:hover .dice { transform: rotate(20deg) scale(1.15); }
@@ -627,6 +630,8 @@
   .rc-dot { display: inline-flex; align-items: center; gap: 5px; }
   .rc-dot i { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-sizing: border-box; }
   .rc-dot.mark { padding: 0 4px; pointer-events: none; }
+  /* A dot that explains itself (_dotWhy): it takes the pointer, with a target a finger can hit. */
+  .rc-dot.mark.why { pointer-events: auto; cursor: help; min-width: 24px; min-height: 24px; justify-content: center; }
   .app-banner .card-foot { display: none; }
 
   /* ── Pills (categories + search source filters) ── */
@@ -899,6 +904,9 @@
   /* A file left out says why under its name, in full: the line wraps, it is
      never cut, and it lines up with the names (twist 24 + gap 8 + check 18 + gap 8). */
   .create-ftree-row.is-off { flex-wrap: wrap; align-content: center; row-gap: 2px; padding-block: 6px; }
+  /* The name gives way first (its ellipsis), so the name and "left out · size" keep one line and only the reason
+     wraps: a long name used to push the size onto a line of its own, a short one not, and the rows stopped lining up. */
+  .create-ftree-row.is-off > .create-ftree-name { flex-basis: 0; }
   .create-ftree-why { flex: 1 0 100%; padding-inline-start: 58px; font-size: 12px; line-height: 1.35; color: var(--text3); white-space: normal; }
   .create-where { font-size: 12px; color: var(--text2); }
   .create-where[hidden] { display: none; }
@@ -1321,6 +1329,10 @@
   .desktop-card .subtitle:last-child { margin-bottom: 0; }
   .manage-locked-card.setup-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
   .ms-pane .setup-form { margin-bottom: 0; }
+  /* A setting only seeding uses, while BitTorrent is off (and it is too). */
+  #ms-pane.ms-bt-off .needs-bt:not(.is-on) { display: none; }
+  /* The first run is a sign-in screen's sibling: one card, one full-width way on. */
+  #setup-card .setup-form .btn-primary { flex: 1; min-height: 44px; padding: 12px; font-size: 15px; }
   /* Nothing behind a fresh install's setup is usable yet: no half-seen app. */
   .desktop-overlay.setup-overlay { background: var(--bg); }
   .setup-overlay .desktop-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
@@ -2004,6 +2016,9 @@
   }
   a.best-quote.more .bq-src { margin-top: 4px; }
   .did-you-mean { font-size: 14px; color: var(--text2); margin-bottom: 16px; }
+  /* A near: search: what it measured from, over its places (the did-you-mean line's voice). */
+  .near-from { font-size: 14px; color: var(--text2); margin-bottom: 12px; }
+  .near-which { font-size: 13px; color: var(--text3); margin-top: 4px; }
   .empty .did-you-mean { margin-bottom: 12px; }
   .did-you-mean a { color: var(--amber); font-style: italic; text-decoration: none; border-bottom: 1px solid var(--amber-border); }
   .did-you-mean a:hover { border-bottom-color: var(--amber); }
@@ -3367,18 +3382,22 @@
   body.login-gate .pw-box h3 { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   body.login-gate #pw-username-hint { display:none !important; }
   body.login-gate .pw-brand { margin-bottom:24px; }
-  body.login-gate .pw-box input[type="password"], body.login-gate .pw-box input[type="text"] { padding:12px; }
-  body.login-gate .pw-box .pw-actions { margin-top:16px; }
-  body.login-gate .pw-box button.pw-primary { flex:1; padding:12px; font-size:15px; }
   body.login-gate .pw-ok-label { display:none; }
   body.login-gate .pw-gate-label { display:inline; }
   /* 16px minimum — iOS Safari auto-zooms (and stays zoomed) on focus of any
      input smaller than 16px. */
-  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:8px 10px; border-radius:var(--radius); border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
+  .pw-box input[type="password"], .pw-box input[type="text"] { width:100%; padding:12px; border-radius:var(--radius); border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:16px; box-sizing:border-box; }
   .pw-box input[type="password"]:focus, .pw-box input[type="text"]:focus { outline:none; border-color:var(--amber); }
   .pw-box input#pw-username { margin-bottom:8px; }
-  .pw-box .pw-actions { display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
-  .pw-box button { padding:6px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:13px; }
+  .pw-box .pw-hint { display:none; font-size:12px; color:var(--text2); margin:-4px 0 8px; }
+  .pw-box .pw-remember { display:flex; align-items:center; gap:6px; margin-top:12px; font-size:13px; color:var(--text2); cursor:pointer; }
+  .pw-box .pw-remember input { accent-color:var(--amber); flex-shrink:0; margin:0; }
+  /* One row of equal buttons, the way every sheet in the app ends (the games' New game row too):
+     Cancel and the way in side by side, the same size, the way in last. Alone (the sign-in
+     screen hides Cancel) the way in takes the whole row. */
+  .pw-box .pw-actions { display:flex; gap:8px; margin-top:16px; }
+  .pw-box button { flex:1; min-height:44px; padding:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; font-size:15px; }
+  .pw-box button#pw-remove-btn { flex:none; padding:12px 0; margin-right:auto; border:0; background:none; color:var(--text2); font-size:13px; }
   .pw-box button.pw-primary { background:linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border-color:transparent; font-weight:600; }
   .pw-box button.pw-primary:hover { opacity:0.85; }
   .pw-box .pw-error { color:var(--error); font-size:12px; margin-top:8px; display:none; }
@@ -4079,6 +4098,7 @@
   @media (prefers-reduced-motion: reduce) { .dc-say.on { animation: none; } }
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
+  .dc-icon-thumb[hidden] { display: none; }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }
   /* A source with no icon of its own: its letter, as everywhere else it is
      named, not an empty box. */
@@ -4427,3 +4447,23 @@ body.login-gate .gate-help { margin: 0; }
 
 /* A reload into a game: the bar's middle waits for the game's own header (app.js _gameHeadBoot). */
 .game-booting .topbar-search { visibility: hidden; }
+
+/* What lit a dot (_dotWhy), and a ZIM's update history in About: one list. */
+.dot-why { position: absolute; z-index: 400; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; background: var(--surface, var(--bg)); color: var(--text);
+  border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.18); font-size: 13px; line-height: 1.4; }
+.dot-why-h { font-weight: 600; margin-bottom: 6px; }
+.upd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.upd-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.upd-day { color: var(--text2); font-size: 12px; margin-inline-start: auto; }
+.upd-note { color: var(--text2); font-size: 12.5px; margin-top: 2px; }
+
+/* The signed-in person's display name (app.js _displayNameSheet): one field, over everything. */
+.name-sheet-wrap { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+.name-sheet { width: 100%; max-width: 360px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.name-sheet h2 { margin: 0 0 6px; font-size: 17px; }
+.name-sheet-hint { margin: 0 0 12px; color: var(--text2); font-size: 13px; }
+.name-sheet input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+.name-sheet-err { min-height: 18px; margin: 6px 0 0; color: var(--red, #c0392b); font-size: 13px; }
+.name-sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.name-sheet-actions .pill { min-height: 44px; }
+.ms-display-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

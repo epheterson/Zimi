@@ -273,3 +273,50 @@ def test_self_heal_leaves_genuine_batch_download_alone(tmp_path, monkeypatch):
         assert (
             now - z["first_seen"] < 60
         ), f"{z['name']} is a genuine fresh download and must stay 'New'"
+
+
+def _own_rebuild(tmp_path, monkeypatch, version_then, src_then, version_now, src_now):
+    """Zimi's games ZIM served by Zimi `version_then` built from `src_then`, then rebuilt (a new dated file)
+    and served by `version_now` from `src_now`. Returns the games entry after the second scan."""
+    from zimi import ownzims
+
+    zdir = _setup(tmp_path, monkeypatch)
+    old = zdir / "zimi_games_2026-10.zim"
+    build_fixture_zim(str(old))
+    (zdir / "zimi_games_2026-10.zim.source").write_text(src_then, encoding="ascii")
+    monkeypatch.setattr(ownzims, "is_own_path", lambda p: os.path.basename(p).startswith("zimi_games_"))
+    monkeypatch.setattr(server, "ZIMI_VERSION", version_then)
+    server.load_cache(force=True)
+    # A deploy writes a new file while nothing holds the old one; here the first scan pooled the old file's handle
+    # (_archive_pool), and Windows refuses to rename a file that is still open, so it goes first.
+    with server._archive_lock:
+        server._archive_pool.clear()
+    import gc
+
+    gc.collect()
+    os.rename(str(old), str(zdir / "zimi_games_2026-11a.zim"))
+    os.rename(str(zdir / "zimi_games_2026-10.zim.source"), str(zdir / "zimi_games_2026-11a.zim.source"))
+    (zdir / "zimi_games_2026-11a.zim.source").write_text(src_now, encoding="ascii")
+    monkeypatch.setattr(server, "ZIMI_VERSION", version_now)
+    server.load_cache(force=False)
+    return next(z for z in server._zim_list_cache if z["name"] == "zimi_games")
+
+
+def test_a_rebuild_of_the_same_release_is_not_an_update(tmp_path, monkeypatch):
+    """Every deploy rebuilds Zimi's own ZIMs under a new dated name. Within one release that is the
+    app being redeployed, nothing new to look at (Eric, 2026-11-04: "Why so many apps have the updated / new dot?")."""
+    games = _own_rebuild(tmp_path, monkeypatch, "1.15.3", "aaa", "1.15.3", "bbb")
+    assert not games.get("updated_at"), games.get("updated_at")
+    # Anyone else's ZIM is untouched by it.
+    assert not _entry(server._zim_list_cache).get("updated_at")
+
+
+def test_a_new_release_with_new_games_is_an_update(tmp_path, monkeypatch):
+    """Eric, 2026-11-04: "Games and Almanac should get a dot but only if actually new release to release"."""
+    games = _own_rebuild(tmp_path, monkeypatch, "1.15.2", "aaa", "1.15.3", "bbb")
+    assert games.get("updated_at") and time.time() - games["updated_at"] < 60
+
+
+def test_a_new_release_with_the_same_games_is_not_an_update(tmp_path, monkeypatch):
+    games = _own_rebuild(tmp_path, monkeypatch, "1.15.2", "aaa", "1.15.3", "aaa")
+    assert not games.get("updated_at"), games.get("updated_at")

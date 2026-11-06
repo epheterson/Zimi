@@ -138,7 +138,7 @@
     var maze = mazeFor(level), grid = maze.rows.map(function (r) { return r.split(''); }), dots = 0, start = null;
     grid.forEach(function (row, r) { row.forEach(function (ch, c) { if (ch === '.' || ch === 'o') dots++; else if (ch === 'P') { start = { x: c, y: r }; row[c] = ' '; } }); });
     var st = { level: level, mazeName: maze.name, grid: grid, w: grid[0].length, h: grid.length, start: start, dots: dots, dotsEaten: 0, score: carry ? carry.score : 0, lives: carry ? carry.lives : LIVES,
-      nextLife: carry ? carry.nextLife : EXTRA_LIFE, rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), time: 0, phase: 0, phaseT: 0, status: 'ready', statusT: READY_S,
+      nextLife: carry ? carry.nextLife : EXTRA_LIFE, rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), time: 0, phase: 0, phaseT: 0, status: 'ready', statusT: READY_S,
       fruitsShown: 0, events: [], speed: levelSpeed(level), anim: 0 };
     st.home = homeMap(st);
     resetActors(st);

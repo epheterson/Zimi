@@ -1,0 +1,420 @@
+"""Towns on a Kiwix map, findable by name.
+
+Kiwix's maps2zim writes a ``search/<Place>`` page for the places its
+GeoNames list holds, and the world map's list stops well short of every
+town: plenty of towns of tens of thousands are on the map, labelled, and in
+no page. The names are in the map itself, in the
+``place`` layer of its vector tiles, so they are read from there: once per
+build of the ZIM, in the background (a child process for a big map), into
+``<data dir>/mapplaces/<name>.db``, one row per word of each name so a
+search asks an index and never a tile.
+
+Two zooms are read. Zoom 9 carries the cities; zoom 10 is where towns are
+labelled (most towns first appear there). Villages start at 11, four times
+the tiles again, and are left out. Zoom 10 is read only under a zoom 9 tile
+with land in it: the sea's tiles are a few hundred bytes, and skipping them
+leaves under 200,000 of the world map's tiles to read: maps_en_all_2026-06
+gave 116,003 places in 11 minutes on a NAS at the lowest priority, once.
+
+The tile format is Mapbox Vector Tile (protobuf), read here by hand for the
+one layer wanted: no dependency for 60 lines.
+"""
+
+import gzip
+import logging
+import math
+import os
+import sqlite3
+import threading
+
+from zimi import mapsearch
+from zimi import server as _srv
+from zimi.placedata import km_between
+from zimi.details import DetailsBuilder
+
+log = logging.getLogger("zimi")
+
+CITY_ZOOM = 9
+TOWN_ZOOM = 10
+# A zoom 9 tile smaller than this is sea (a water polygon and little else);
+# measured on maps_en_all_2026-06: 218,277 tiles, 50,811 above it.
+LAND_TILE_MIN_BYTES = 2048
+CLASSES = ("city", "town")
+ZOOM_FOR_CLASS = {"city": 12, "town": 13}
+# The rows a query's first word may draw from before they are scored.
+CANDIDATES_MAX = 400
+_DEFAULT_EXTENT = 4096
+_MVT_POINT = 1
+_MVT_MOVE_TO = 1
+
+
+# ── Mapbox Vector Tile, the place layer only ──────────────────────────────
+
+
+def _varint(buf, i):
+    out = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        out |= (b & 0x7F) << shift
+        shift += 7
+        if b < 0x80:
+            return out, i
+
+
+def _fields(buf):
+    """(field number, value) of each protobuf field; a length-delimited
+    value as a memoryview, a varint as an int, fixed ones as None."""
+    i, n = 0, len(buf)
+    while i < n:
+        key, i = _varint(buf, i)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            value, i = _varint(buf, i)
+        elif wire == 2:
+            size, i = _varint(buf, i)
+            value = buf[i : i + size]
+            i += size
+        elif wire == 1:
+            value, i = None, i + 8
+        elif wire == 5:
+            value, i = None, i + 4
+        else:
+            raise ValueError(f"protobuf wire type {wire}")
+        yield field, value
+
+
+def _packed(buf):
+    i, out = 0, []
+    while i < len(buf):
+        v, i = _varint(buf, i)
+        out.append(v)
+    return out
+
+
+def _unzigzag(n):
+    return (n >> 1) ^ -(n & 1)
+
+
+def tile_places(data, z, x, y):
+    """Each labelled point in a tile's ``place`` layer: (tags, lat, lng)."""
+    buf = memoryview(gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data)
+    for field, layer in _fields(buf):
+        if field != 3:
+            continue
+        name, keys, values, features, extent = None, [], [], [], _DEFAULT_EXTENT
+        for f, v in _fields(layer):
+            if f == 1:
+                name = bytes(v).decode("utf-8", "replace")
+                if name != "place":
+                    break
+            elif f == 3:
+                keys.append(bytes(v).decode("utf-8", "replace"))
+            elif f == 4:
+                value = None
+                for vf, vv in _fields(v):
+                    if vf == 1:
+                        value = bytes(vv).decode("utf-8", "replace")
+                values.append(value)
+            elif f == 2:
+                features.append(v)
+            elif f == 5:
+                extent = v
+        if name != "place":
+            continue
+        for feature in features:
+            tags, kind, geom = {}, None, None
+            for f, v in _fields(feature):
+                if f == 2:
+                    pairs = _packed(v)
+                    for k in range(0, len(pairs) - 1, 2):
+                        if pairs[k] < len(keys) and pairs[k + 1] < len(values):
+                            tags[keys[pairs[k]]] = values[pairs[k + 1]]
+                elif f == 3:
+                    kind = v
+                elif f == 4:
+                    geom = _packed(v)
+            if kind != _MVT_POINT or not geom or len(geom) < 3:
+                continue
+            if geom[0] & 0x7 != _MVT_MOVE_TO:
+                continue
+            px, py = _unzigzag(geom[1]), _unzigzag(geom[2])
+            lat, lng = tile_point(z, x, y, px / extent, py / extent)
+            yield tags, lat, lng
+
+
+def tile_point(z, x, y, fx, fy):
+    """Latitude and longitude of a point ``fx``, ``fy`` (0..1) across tile
+    ``z/x/y`` in Web Mercator."""
+    n = 2**z
+    lng = (x + fx) / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + fy) / n))))
+    return lat, lng
+
+
+# ── the build ─────────────────────────────────────────────────────────────
+
+
+def _tile(archive, z, x, y):
+    path = f"tiles/{z}/{x}/{y}.pbf"
+    if not archive.has_entry_by_path(path):
+        return None
+    return bytes(archive.get_entry_by_path(path).get_item().content)
+
+
+def _display_name(tags):
+    return tags.get("name:en") or tags.get("name_en") or tags.get("name") or ""
+
+
+def _tile_range(archive, z):
+    """The columns and rows of zoom ``z`` the map covers: its bounding box
+    (maps2zim's content/config.json, as server._map_bounds reads it), or
+    the whole world. Andorra's map asks for 4 tiles, not 262,144."""
+    side = 2**z
+    box = _srv._map_bounds(archive)
+    if not box or box[0] > box[2]:  # none, or across the antimeridian
+        return range(side), range(side)
+    w, s, e, n = box
+    x0, y1, _fx, _fy = _xy(z, s, w)
+    x1, y0, _fx, _fy = _xy(z, n, e)
+    clamp = lambda v: min(max(v, 0), side - 1)  # noqa: E731
+    return range(clamp(x0), clamp(x1) + 1), range(clamp(y0), clamp(y1) + 1)
+
+
+# Web Mercator's edge: the latitude its square world map stops at.
+MERCATOR_MAX_LAT = 85.0511
+
+
+def _xy(z, lat, lng):
+    n = 2**z
+    lat = max(min(lat, MERCATOR_MAX_LAT), -MERCATOR_MAX_LAT)
+    fx = (lng + 180.0) / 360.0 * n
+    fy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
+    return int(fx), int(fy), fx - int(fx), fy - int(fy)
+
+
+def read_places(archive):
+    """Every city (zoom 9) and town (zoom 10) the map labels, once each:
+    {(name, class): (lat, lng)} keyed so one place cut by tile edges counts
+    once."""
+    found = {}
+
+    def take(data, z, x, y):
+        for tags, lat, lng in tile_places(data, z, x, y):
+            cls = tags.get("class")
+            name = _display_name(tags)
+            if cls in CLASSES and name:
+                found.setdefault((name, cls, round(lat, 2), round(lng, 2)), (lat, lng))
+
+    xs, ys = _tile_range(archive, CITY_ZOOM)
+    for x in xs:
+        for y in ys:
+            data = _tile(archive, CITY_ZOOM, x, y)
+            if data is None:
+                continue
+            take(data, CITY_ZOOM, x, y)
+            if len(data) < LAND_TILE_MIN_BYTES:
+                continue
+            for cx in (2 * x, 2 * x + 1):
+                for cy in (2 * y, 2 * y + 1):
+                    child = _tile(archive, TOWN_ZOOM, cx, cy)
+                    if child is not None:
+                        take(child, TOWN_ZOOM, cx, cy)
+    return found
+
+
+def _rows(found):
+    """One row per word of each name: (word, name, class, lat, lng)."""
+    rows, seen = [], set()
+    for (name, cls, _la, _lo), (lat, lng) in found.items():
+        for word in set(mapsearch.normalize_text(name).split()):
+            key = (word, name, cls, round(lat, 3), round(lng, 3))
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append((word, name, cls, round(lat, 5), round(lng, 5)))
+    return rows
+
+
+def build_places(zim_name, zim_path):
+    """Read a map's towns into its file. Opens an archive of its own; runs
+    in a child process for a big map."""
+    archive = _srv.open_archive(zim_path)
+    return _builder.write(zim_name, zim_path, archive, _rows(read_places(archive)))
+
+
+def is_kiwix_map(z):
+    """A Kiwix map: a map with tiles and no place index of its own."""
+    return z.get("kind") == "map" and not z.get("map_search")
+
+
+_lock = threading.Lock()
+_builder = DetailsBuilder(
+    "mapplaces",
+    zims=is_kiwix_map,
+    label="Maps",
+    what="town names",
+    version="2",
+    table="places",
+    columns=("word TEXT", "name TEXT", "class TEXT", "lat REAL", "lng REAL"),
+    # Looked up when it runs, as the child process looks it up.
+    build=lambda name, path: build_places(name, path),
+    load=None,
+    lock=_lock,
+    on_keep=lambda name, key, details: None,
+    # word for a name; lat for near: (a box of latitudes, then the distance).
+    indexes=("word", "lat"),
+)
+build_all = _builder.build_all
+
+
+# ── the search ────────────────────────────────────────────────────────────
+
+
+def ready(name):
+    """Whether ``name``'s towns are read from the ZIM installed now. Asks for
+    the read when they are not, so the first search on a new map starts it."""
+    path = _srv.get_zim_files().get(name)
+    if not path:
+        return False
+    got = _builder.kept(name, path)
+    if got is not None:
+        # Read: {} when the read failed, kept empty until the next start rather than read again on
+        # every search (a world map takes minutes).
+        return bool(got)
+    _builder.request(name)
+    return False
+
+
+def _query(name, sql, args):
+    try:
+        conn = sqlite3.connect(_builder.path(name), timeout=5)
+        try:
+            return conn.execute(sql, args).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        log.debug("map places %s: %s", name, e)
+        return []
+
+
+def _place_row(n, c, la, lo):
+    """A town as the map answers in (mapsearch.place_dict), zoomed for its class."""
+    place = mapsearch.place_dict({"n": n, "t": "place", "s": c, "a": la, "o": lo})
+    place["zoom"] = ZOOM_FOR_CLASS.get(c, place["zoom"])
+    return place
+
+
+def search(name, query, limit=mapsearch.MAX_RESULTS):
+    """Places on map ``name`` matching ``query``, best first, in the shape
+    mapsearch.search_places answers in. [] until the map has been read."""
+    words = mapsearch.normalize_text(query).split()
+    if not words or not ready(name):
+        return []
+    first = max(words, key=len)
+    rows = _query(
+        name,
+        "SELECT DISTINCT name, class, lat, lng FROM places WHERE word >= ? AND word < ? LIMIT ?",
+        (first, first + "\uffff", CANDIDATES_MAX),
+    )
+    query_norm = " ".join(words)
+    scored = []
+    for place, cls, lat, lng in rows:
+        entry = {"n": place, "t": "place", "s": cls, "a": lat, "o": lng}
+        s = mapsearch.score(entry, query_norm, words)
+        if s is not None:
+            scored.append((s, entry))
+    scored.sort(key=lambda p: -p[0])
+    out = []
+    for s, entry in scored[:limit]:
+        place = _place_row(entry["n"], entry["s"], entry["a"], entry["o"])
+        place["score"] = s
+        out.append(place)
+    return out
+
+
+# ── near: places within a distance of a place ─────────────────────────────
+
+KM_PER_DEGREE_LAT = 111.32
+# The most places a near: answers with, nearest first.
+NEAR_MAX_RESULTS = 30
+# The rank of a place's class when several share its name: the largest first.
+_CLASS_RANK = {"city": 2, "town": 1}
+
+
+def named(name, place):
+    """Every place on map ``name`` called ``place`` (case and accents aside):
+    [{"name", "sub", "lat", "lng"}]. [] until the map has been read."""
+    norm = " ".join(mapsearch.normalize_text(place).split())
+    if not norm or not ready(name):
+        return []
+    rows = _query(
+        name,
+        "SELECT DISTINCT name, class, lat, lng FROM places WHERE word = ?",
+        (max(norm.split(), key=len),),
+    )
+    return [
+        {"name": n, "sub": c, "lat": la, "lng": lo}
+        for n, c, la, lo in rows
+        if " ".join(mapsearch.normalize_text(n).split()) == norm
+    ]
+
+
+def pick(candidates, at=None):
+    """The one of several places of a name a near: means: the nearest to
+    ``at`` (the person's own place) when there is one, else the largest."""
+    if not candidates:
+        return None
+    if at:
+        return min(candidates, key=lambda p: km_between(at[0], at[1], p["lat"], p["lng"]))
+    return max(candidates, key=lambda p: _CLASS_RANK.get(p["sub"], 0))
+
+
+def _lng_ranges(lng, dlng):
+    """The longitude ranges a box of half-width ``dlng`` covers: two where
+    it crosses the antimeridian, the whole circle when it is wider."""
+    if dlng >= 180:
+        return [(-180.0, 180.0)]
+    lo, hi = lng - dlng, lng + dlng
+    if lo < -180:
+        return [(lo + 360, 180.0), (-180.0, hi)]
+    if hi > 180:
+        return [(lo, 180.0), (-180.0, hi - 360)]
+    return [(lo, hi)]
+
+
+def near(name, lat, lng, radius_km, words=(), limit=NEAR_MAX_RESULTS):
+    """Places on map ``name`` within ``radius_km`` of ``lat``, ``lng``,
+    nearest first, each with ``km``; ``words`` (normalized) must all be in
+    a name. The index gives a box of latitudes; the distance decides."""
+    if not ready(name):
+        return []
+    dlat = radius_km / KM_PER_DEGREE_LAT
+    cos = math.cos(math.radians(min(abs(lat) + dlat, 89.9)))
+    dlng = radius_km / (KM_PER_DEGREE_LAT * max(cos, 1e-6))
+    found = {}
+    for lo, hi in _lng_ranges(lng, dlng):
+        rows = _query(
+            name,
+            "SELECT DISTINCT name, class, lat, lng FROM places"
+            " WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+            (lat - dlat, lat + dlat, lo, hi),
+        )
+        for n, c, la, lo2 in rows:
+            km = km_between(lat, lng, la, lo2)
+            if km > radius_km:
+                continue
+            norm = mapsearch.normalize_text(n)
+            if any(w not in norm for w in words):
+                continue
+            found[(n, round(la, 3), round(lo2, 3))] = (km, n, c, la, lo2)
+    out = []
+    for km, n, c, la, lo2 in sorted(found.values())[:limit]:
+        place = _place_row(n, c, la, lo2)
+        place["km"] = round(km, 1)
+        out.append(place)
+    return out
+
+
+def _reset_for_tests():
+    _builder.forget()

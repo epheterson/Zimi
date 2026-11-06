@@ -28,15 +28,8 @@
   var ALIAS = { 'puzzles/mines.html': 'minesweeper.html', 'puzzles/solo.html': 'sudoku.html', 'puzzles/guess.html': 'codebreaker.html' };
   function canon(path) { return ALIAS[path] || path; }
 
-  // FNV-1a over the UTF-8 bytes of a string, as an unsigned 32-bit number.
-  function fnv1a(text) {
-    var bytes = unescape(encodeURIComponent(text)), h = 0x811c9dc5, i;
-    for (i = 0; i < bytes.length; i++) {
-      h ^= bytes.charCodeAt(i);
-      h = Math.imul(h, 0x01000193) >>> 0;
-    }
-    return h >>> 0;
-  }
+  // The shell's hash (ZimiShell.hash): the day's pick, the same everywhere.
+  function fnv1a(text) { return root.ZimiShell.hash(text); }
 
   // One row per game page, in games.json order (a game with two Q-IDs has two rows).
   function uniqueByPath(rows) {
@@ -91,7 +84,7 @@
   // With nothing played yet the table offers these, in this order.
   var CLASSICS = ['chess.html', 'solitaire.html', 'checkers.html'];
 
-  var api = { ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago };
+  var api = { dailyOrder: dailyOrder, ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   root.ZimiRecent = api;
 
@@ -248,16 +241,86 @@
     return s;
   }
 
+  // The Daily row: today's edition of every game that has one (ZimiShell.DAILY in shell.js), each tile opening it with the
+  // server's day in its address, so everyone on this Zimi plays the same one. Those done today carry a tick and move to the end.
+  // Over the row, one line: how many are done, and the streak.
+  // The two everyone looks for first lead the row; the rest keep the shelf's order.
+  // The dailies people know from everywhere lead, in this order; the rest follow, as more to try.
+  var DAILY_FIRST = ['fiveletters.html', 'sudoku.html', 'minicrossword.html', 'chesspuzzles.html', 'spellingbee.html', 'minesweeper.html', 'solitaire.html'];
+  function dailyOrder(games) {
+    var rank = function (g) { var i = DAILY_FIRST.indexOf(g.path); return i < 0 ? DAILY_FIRST.length : i; };
+    return games.map(function (g, i) { return [g, i]; }).sort(function (a, b) { return rank(a[0]) - rank(b[0]) || a[1] - b[1]; }).map(function (x) { return x[0]; });
+  }
+  function isMainDaily(path) { return DAILY_FIRST.indexOf(path) >= 0; }
+  // The day's game is a tile like the others in the Daily row (one "today" on the shelf, not two), marked by a small badge
+  // over its art. When it has a daily of its own the tile is that daily; otherwise it opens the game as usual.
+  function featureTile(g, day, S) {
+    var t = tileFor(g);
+    if (!t) return null;
+    ownIds(t);
+    t.classList.add('ar-feature');
+    if (S.DAILY[g.path]) t.setAttribute('href', g.path + '?daily=' + day);
+    var tag = doc.createElement('small');
+    tag.className = 'ar-feature-tag';
+    tag.textContent = T('shelf.today');
+    t.appendChild(tag);
+    return t;
+  }
+  // The day is the server's, so everyone on this Zimi sees the same day's game (gamelinks.game_of_day, Zimi's own card, too).
+  function dailySection(rows) {
+    var S = root.ZimiShell;
+    if (!S || !S.DAILY || !S.serverDay || !S.stats) return Promise.resolve(null);
+    return S.serverDay().then(function (day) {
+      var all = S.stats.read(), done = all.days[day] || {}, open = [], finished = [], moreOpen = [], moreDone = [];
+      var g = dayPick(rows, day), pick = g ? { path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') } : null;
+      // Game of the day: when it is one of the everyday seven it is that tile, in its place among them; otherwise it leads
+      // the rest, just after the seven.
+      var pickMain = !!(pick && S.DAILY[pick.path] && isMainDaily(pick.path));
+      var feature = pick ? featureTile(pick, day, S) : null;
+      dailyOrder(uniqueByPath(rows).filter(function (r) { return S.DAILY[r.path] && !(pick && r.path === pick.path); }).concat(pickMain ? [pick] : [])).forEach(function (g) {
+        var t = pickMain && g === pick ? feature : tileFor(g);
+        if (!t) return;
+        if (t !== feature) { ownIds(t); t.setAttribute('href', g.path + '?daily=' + day); }
+        var main = isMainDaily(g.path);
+        t.classList.add(main ? 'ar-daily-main' : 'ar-daily-more');
+        if (done[g.path]) { markDone(t); (main ? finished : moreDone).push(t); } else (main ? open : moreOpen).push(t);
+      });
+      if (feature && !pickMain && S.DAILY[pick.path] && done[pick.path]) markDone(feature);
+      // The seven, then the rest in the same row: a little more room between them says where the everyday ones end.
+      var rest = (feature && !pickMain ? [feature] : []).concat(moreOpen, moreDone);
+      var tiles = open.concat(finished, rest);
+      if (!tiles.length) return null;
+      var s = section('ar-daily', T('shelf.daily'), tiles), h = s.querySelector('h2'), streak = S.stats.streak(all, day);
+      var line = doc.createElement('span');
+      line.className = 'ar-daily-line';
+      // How many of the everyday dailies are done (the rest are extra): the shelf calls it again when a room leaves fewer.
+      s.dailyLine = function (n, total) { line.textContent = T('shelf.daily.done', { n: n, total: total }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
+      s.dailyLine(s.querySelectorAll('a.ar-daily-main.ar-done').length, s.querySelectorAll('a.ar-daily-main').length);
+      var stats = doc.createElement('button');
+      stats.type = 'button';
+      stats.className = 'ar-daily-stats';
+      stats.textContent = T('stats.title');
+      stats.addEventListener('click', function () { S.statsSheet(); });
+      h.appendChild(line);
+      h.appendChild(stats);
+      if (S.localizeTiles) S.localizeTiles(s);
+      return s;
+    });
+  }
+  function markDone(t) {
+    t.classList.add('ar-done');
+    var tick = doc.createElement('span');
+    tick.className = 'ar-done-mark';
+    tick.setAttribute('role', 'img');
+    tick.setAttribute('aria-label', T('daily.doneToday'));
+    tick.textContent = '\u2713';
+    t.appendChild(tick);
+  }
+
   function shelf() {
     var first = doc.querySelector('.ar-section');
     if (!first) return;
     liveTiles();
-    var put = function (cls, label, games, feature) {
-      var tiles = games.map(tileFor).filter(Boolean);
-      if (!tiles.length) return;
-      if (feature) tiles[0].classList.add('ar-feature');
-      first.parentNode.insertBefore(section(cls, label, tiles), first);
-    };
     // games.json is the shelf's own data (a file of this ZIM): the day's game
     // and the lines of games that have no tile. Without it (a page opened from
     // a place that cannot fetch) the table is still drawn, and Game of the day is left out.
@@ -271,9 +334,12 @@
       var idle = !played.length;
       var t = table(idle ? CLASSICS.map(function (p) { return { path: p, title: named(p, 'title', (byPath[p] || {}).title) }; }) : played, idle, now);
       if (t) first.parentNode.insertBefore(t, first);
-      var g = dayPick(rows, localDay(new Date()));
-      if (g) put('ar-today', T('shelf.today'), [{ path: g.path, title: named(g.path, 'title', g.title), line: g.why ? named(g.path, 'why', g.why) : named(g.path, 'blurb', g.blurb || '') }], true);
-      // shelf.js lays the two sections out per view; it is told when both are in.
+      // shelf.js lays the sections out per view; it is told when they are in.
+      doc.dispatchEvent(new Event('zimi-shelf-today'));
+      return dailySection(rows);
+    }).then(function (s) {
+      if (!s) return;
+      first.parentNode.insertBefore(s, first);
       doc.dispatchEvent(new Event('zimi-shelf-today'));
     });
   }

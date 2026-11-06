@@ -243,6 +243,38 @@ function strings(defaults) {
   if (defaults.dir === 'rtl') document.documentElement.dir = 'rtl';
   return defaults;
 }
+// Waiting for a page's first answer (appWait): grey cards in the page's own place from the first frame, a plain line
+// if it takes a while (after a restart the server may still be reading the library), and a way to try again if it
+// fails. The cards go in the same moment the content arrives, so the page is never blank and never empty first.
+var APP_WAIT_SLOW_MS = 4000, APP_WAIT_CARDS = 6;
+function appWait(before, shape) {
+  var host = typeof before === 'string' ? document.getElementById(before) : before;
+  var none = { done: function() {}, fail: function() {} };
+  if (!host || !host.parentNode) return none;
+  var old = host.parentNode.querySelector('.app-wait'); if (old) old.remove();
+  var box = document.createElement('div');
+  box.className = 'app-wait'; box.setAttribute('role', 'status'); box.setAttribute('aria-busy', 'true');
+  // Cards for a page of cards; 'lines' for a page of text (a word, an entry).
+  box.innerHTML = (shape === 'lines'
+    ? '<div class="app-wait-lines" aria-hidden="true"><b></b><b></b><b></b></div>'
+    : '<div class="app-wait-cards" aria-hidden="true">' + new Array(APP_WAIT_CARDS + 1).join('<div class="app-wait-card"><i></i><b></b><b></b></div>') + '</div>') +
+    '<p class="app-wait-note" hidden></p>';
+  host.parentNode.insertBefore(box, host);
+  // The page has drawn its own waiting state: the shell's loader can go now rather than at its 6 s limit,
+  // which left a blank page when the answer took longer.
+  if (!window.__zimiReady) { window.__zimiReady = true; tell({ zimi: 'ready' }); }
+  var note = box.querySelector('.app-wait-note');
+  var slow = setTimeout(function() { note.textContent = STR.loading_slow || 'Still getting this ready…'; note.hidden = false; }, APP_WAIT_SLOW_MS);
+  return {
+    done: function() { clearTimeout(slow); box.remove(); },
+    fail: function(retry) {
+      clearTimeout(slow); box.removeAttribute('aria-busy');
+      box.innerHTML = '<p class="app-wait-note">' + esc(STR.loading_failed || 'This did not load.') + '</p>' +
+        (retry ? '<button type="button" class="more app-wait-retry">' + esc(STR.retry || 'Try again') + '</button>' : '');
+      if (retry) box.querySelector('button').onclick = function() { box.remove(); retry(); };
+    }
+  };
+}
 // One or many, in the shell's words: "1 video", "12 videos".
 function count(n, one, many) { return n + ' ' + (Number(n) === 1 ? one : many); }
 // The way onward, pointing the way the text runs (see .chev in apps.css).

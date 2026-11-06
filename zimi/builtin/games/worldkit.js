@@ -130,10 +130,10 @@
     // computer), 'l', 'd', or none (two people: `name` is who won, or nothing for a game with no winner). `line` is
     // what the one status line says when `text` is too long for it (the sheet carries the whole of `text`).
     // The status line says who won as well as why, so it still reads right once the sheet is closed.
-    var RESULT_KEY = { w: 'shell.end.win', l: 'shell.end.lose', d: 'shell.end.draw' };
+    var RESULT_KEY = { w: 'shell.end.win', l: 'shell.end.lose', d: 'shell.end.draw' }, ENDS_SENTENCE = /[.!?\u3002\uff01\uff1f]\s*$/;
     function resultLine(text, outcome, name) {
       var head = RESULT_KEY[outcome] ? T(RESULT_KEY[outcome]) : name ? T('shell.end.wins', { name: name }) : '';
-      var s = head ? head + '. ' + text : text;
+      var s = head ? head + (ENDS_SENTENCE.test(head) ? ' ' : '. ') + text : text;   // "You won! Checkmate.", never "won!."
       return s.length > 60 ? text : s;
     }
     G.finish = function (text, outcome, name, line) {
@@ -254,8 +254,18 @@
   // pts: [{x, y, w, h, label}] in the drawing's units (W by H); arrows move to the nearest
   // place in that direction. Returns the buttons.
   var DIRVEC = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  // A place smaller than this under a finger (Gomoku's 15 by 15 is 24 px on a phone, Go 13 by 13 and Hex about 26) is
+  // aimed, then played: the first touch rings it, a second touch on the same place plays it, a touch elsewhere moves the
+  // ring. Places of 30 px and more (Morris's are 35 on a 360 px phone, Backgammon's 40) take one tap.
+  var AIM_BELOW_PX = 30;
   function overlay(host, W, H, pts, onPick, cls, cols) {
-    var btns = [];
+    var btns = [], touched = false, aimed = null;
+    function aim(b) {
+      if (aimed) aimed.classList.remove('wk-aim');
+      aimed = b;
+      if (b) b.classList.add('wk-aim');
+    }
+    host.addEventListener('pointerdown', function (e) { touched = e.pointerType === 'touch' || e.pointerType === 'pen'; }, true);
     pts.forEach(function (p, i) {
       var b = el('button', 'wk-pt' + (cls ? ' ' + cls : ''));
       b.type = 'button'; b.dataset.i = i;
@@ -263,7 +273,12 @@
       b.style.left = ((p.x - w / 2) / W * 100) + '%'; b.style.top = ((p.y - h / 2) / H * 100) + '%';
       b.style.width = (w / W * 100) + '%'; b.style.height = (h / H * 100) + '%';
       b.tabIndex = i ? -1 : 0;
-      b.addEventListener('click', function () { onPick(i); });
+      b.addEventListener('click', function (e) {
+        var small = touched && e.detail > 0 && b.getBoundingClientRect().width < AIM_BELOW_PX;
+        touched = false;
+        if (small && aimed !== b && b.getAttribute('aria-disabled') !== 'true') { aim(b); return; }
+        aim(null); onPick(i);
+      });
       b.addEventListener('focus', function () { btns.forEach(function (o) { o.tabIndex = o === b ? 0 : -1; }); });
       host.appendChild(b); btns.push(b);
     });

@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
   var E = root.KartEngine, A = root.KartArt, ordinal = function (n) { return root.ArcadePlay ? root.ArcadePlay.ordinal(n) : E.ordinal(n); }, TAU = Math.PI * 2;
-  var CAM_DIST = 66, CAM_H = 21, ZMAX = 700, FOCAL_W = 0.85, FOCAL_H = 1.1, HORIZON = 0.38, PIX = 1.5, MAX_IW = 300, MIN_IW = 120, SPRITE_FAR = 560, SPRITE_NEAR = 18;
+  var CAM_DIST = 66, CAM_H = 21, ZMAX = 700, FOCAL_W = 0.85, FOCAL_H = 1.1, HORIZON = 0.38, PIX = 1.5, MAX_IW = 300, MIN_IW = 120, SPRITE_FAR = 560, SPRITE_NEAR = 18, KART_BEHIND = 4;
   var BACK_VIEW = 0.95, SIDE_VIEW = 2.2, FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   var CHARGE_COLORS = ['#7fd8ff', '#ffb02e', '#ff6fd0'];
 
@@ -100,6 +100,13 @@
 
   function sceneryDraw(c, s, p) { if (!A.DRAW[s.t]) return; var sp = A.sprite(s.t, s.v), k = p.scale * s.z; c.drawImage(sp.cv, p.sx - sp.ox * k, p.sy - sp.oy * k, sp.w * k, sp.h * k); }
 
+  // A kart behind yours sits between the camera and you: at the start a whole grid row of them hid your kart and the road.
+  // Those are left out until they come alongside.
+  function shownKarts(cm, k, karts) {
+    var own = E.project(cm, k.x, k.y), behind = own ? own.z - KART_BEHIND : 0;
+    return karts.filter(function (o) { var p = o !== k && own && E.project(cm, o.x, o.y); return !p || p.z >= behind; });
+  }
+
   // ── the view ─────────────────────────────────────────────────────────────
   // rect: where on the canvas (css px). cam: from follow(). k: whose window. opts: { slot, t, still, ghost: {x,y,a,driver}, small }
   function draw(c, rect, cam, k, race, assets, opts) {
@@ -125,7 +132,7 @@
       list.push({ z: p.z, kind: kind, o: obj, p: { sx: rect.x + p.sx * rr, sy: rect.y + p.sy * rr, scale: p.scale * rr } });
     }
     assets.scenery.forEach(function (s) { add(0, s, s.x, s.y); });
-    race.karts.forEach(function (o) { add(1, o, o.x, o.y); });
+    shownKarts(cm, k, race.karts).forEach(function (o) { add(1, o, o.x, o.y); });
     T.boxes.forEach(function (b, j) { if (race.boxT[j] <= 0) add(2, b, b.x, b.y); });
     race.oils.forEach(function (o) { add(3, o, o.x, o.y); });
     race.orbs.forEach(function (o) { add(4, o, o.x, o.y); });
@@ -195,13 +202,15 @@
     });
     // banners
     var cy = rect.y + rect.h * 0.3, msg = o.banner;
-    if (race.count > 0) { var n = Math.ceil(race.count - 0.2); if (n >= 1) label(c, String(Math.min(3, n)), rect.x + rect.w / 2, cy + 20 * u, 78 * u, 'center', '#ffd27a'); else label(c, tx('kart.go', null, 'GO!'), rect.x + rect.w / 2, cy + 20 * u, 70 * u, 'center', '#7dff9a'); }
-    else if (race.t - E.COUNT_S < 0.9 && !race.trial) label(c, tx('kart.go', null, 'GO!'), rect.x + rect.w / 2, cy + 20 * u, 70 * u, 'center', '#7dff9a');
+    // The countdown stands in the sky, clear of your kart's helmet (on a tall phone window the kart sits near the horizon).
+    var countY = Math.min(cy, rect.y + rect.h * HORIZON * 0.6) + 20 * u;
+    if (race.count > 0) { var n = Math.ceil(race.count - 0.2); if (n >= 1) label(c, String(Math.min(3, n)), rect.x + rect.w / 2, countY, 78 * u, 'center', '#ffd27a'); else label(c, tx('kart.go', null, 'GO!'), rect.x + rect.w / 2, countY, 70 * u, 'center', '#7dff9a'); }
+    else if (race.t - E.COUNT_S < 0.9 && !race.trial) label(c, tx('kart.go', null, 'GO!'), rect.x + rect.w / 2, countY, 70 * u, 'center', '#7dff9a');
     else if (k.finished != null) label(c, race.trial ? tx('kart.finishedTrial', null, 'Finished') : tx('kart.finished', { place: ordinal(k.place) }, 'Finished ' + E.ordinal(k.place)), rect.x + rect.w / 2, cy + 10 * u, 34 * u, 'center', '#ffd27a');
     else if (k.wrong > 1.2) label(c, tx('kart.wrongWay', null, 'Wrong way'), rect.x + rect.w / 2, cy + 10 * u, 30 * u, 'center', '#ff7a6a');
     else if (msg) label(c, msg, rect.x + rect.w / 2, cy + 10 * u, 28 * u, 'center', '#ffd27a');
     if (k.magnet > 0 || k.shield > 0) label(c, (k.shield > 0 ? tx('kart.hudShield', { n: Math.ceil(k.shield) }, 'Shield ' + Math.ceil(k.shield)) : tx('kart.hudMagnet', { n: Math.ceil(k.magnet) }, 'Magnet ' + Math.ceil(k.magnet))), x, y + sz + 18 * u, 12 * u, 'left', '#9ff0e0');
   }
 
-  root.KartView = { prepare: prepare, follow: follow, draw: draw, drawKartPreview: function (c, d, x, y, s, view) { c.save(); c.translate(x, y); c.scale(s, s); A.kartSprite(c, d, view || 'back', { lean: 0 }); c.restore(); }, CAM_DIST: CAM_DIST };
+  root.KartView = { prepare: prepare, follow: follow, draw: draw, shownKarts: shownKarts, drawKartPreview: function (c, d, x, y, s, view) { c.save(); c.translate(x, y); c.scale(s, s); A.kartSprite(c, d, view || 'back', { lean: 0 }); c.restore(); }, CAM_DIST: CAM_DIST };
 })(this);

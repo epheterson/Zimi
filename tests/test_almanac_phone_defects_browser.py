@@ -213,26 +213,37 @@ def test_a_jump_repaints_the_sky_even_when_the_observer_is_stale(browser, served
         ctx.close()
 
 
-def test_the_ground_light_is_read_back_once_per_light_not_per_frame(browser, served):
-    """Reading the ground's colours back from the GPU stops the page until it answers: a still light reads once."""
+def test_the_ground_light_is_never_read_back_by_waiting(browser, served):
+    """Reading the ground's colours back from the GPU with getImageData stopped the page until the GPU answered (a 25 s
+    task on a software GPU, a real stall on a slow phone). The read is asked for once per light, into a buffer on the
+    GPU, and taken on a later task: no repaint reads anything synchronously, and the colours still arrive."""
     ctx, pg, errors = _page(browser, served)
     try:
         pg.wait_for_function(
-            "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph",
-            timeout=60_000,
+            "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof _sgReady === 'function' && _sgReady()",
+            timeout=READY_MS,
+            polling=250,
         )
-        reads = pg.evaluate("""() => {
+        got = pg.evaluate("""() => {
               const s = _skyState;
               if (_skySetting('skin') !== 'beach') _skySet('skin', 'beach');
-              let n = 0;
-              const get = CanvasRenderingContext2D.prototype.getImageData;
-              CanvasRenderingContext2D.prototype.getImageData = function () { n++; return get.apply(this, arguments); };
-              s.ground = null;
+              let sync = 0, asked = 0;
+              const get = CanvasRenderingContext2D.prototype.getImageData, rp = WebGL2RenderingContext.prototype.readPixels;
+              const ask = window._sgReadStripAsync;
+              CanvasRenderingContext2D.prototype.getImageData = function () { sync++; return get.apply(this, arguments); };
+              WebGL2RenderingContext.prototype.readPixels = function () { if (typeof arguments[6] !== 'number') sync++; return rp.apply(this, arguments); };
+              window._sgReadStripAsync = function () { const r = ask.apply(this, arguments); if (r) asked++; return r; };
+              s.ground = null; s.lightKey = null;
               for (let i = 0; i < 6; i++) { s.baseDirty = true; _skyPaintBase(s, performance.now()); }
               CanvasRenderingContext2D.prototype.getImageData = get;
-              return n;
+              WebGL2RenderingContext.prototype.readPixels = rp;
+              window._sgReadStripAsync = ask;
+              return { sync, asked };
             }""")
-        assert reads == 1, reads
+        assert got == {"sync": 0, "asked": 1}, got
+        # The GPU answers when it gets there (a software GPU on a busy machine can be far behind); the page never waits.
+        pg.wait_for_function("() => !!_skyState.ground", timeout=120_000, polling=100)
+        assert not errors, errors
     finally:
         ctx.close()
 
@@ -396,7 +407,10 @@ def test_german_almanac_speaks_german(browser, served):
 def test_the_orrery_is_still_at_now_under_reduced_motion(browser, served):
     ctx, pg, errors = _page(browser, served, reduced=True)
     try:
-        pg.wait_for_timeout(1500)
+        try:   # the orrery is set up after the page's first paint; a slow runner takes longer than a fixed wait
+            pg.wait_for_function("() => typeof _orreryPlaying !== 'undefined' && document.getElementById('orrery-speed-label') && !_orreryPlaying", timeout=15_000)
+        except Exception:
+            pass
         got = pg.evaluate(
             "() => ({ playing: _orreryPlaying, speed: _orrerySpeed, raf: !!_almanacOrreryRAF, offset: _orreryTimeOffset,"
             " label: document.getElementById('orrery-speed-label').textContent })"

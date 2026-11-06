@@ -72,6 +72,9 @@ ok('they follow the results ("black hole" read the map first), leading only when
 
 // Places the server found on a map's own index render as rows that open the
 // map at the place. Real answers, above the Find-on-map offer.
+vm.runInContext('var SEARCH_KM_PER_MILE = 1.609344; var fmtNum = n => String(n);', ctx);
+vm.runInContext(extract(/function _nearDistanceText\(km, unit\) \{[\s\S]*?\n\}/, '_nearDistanceText'), ctx);
+vm.runInContext(extract(/function _placeWhat\(p, unit\) \{[\s\S]*?\n\}/, '_placeWhat'), ctx);
 vm.runInContext(extract(/function _mapPlaceRowsHtml\(groups\) \{[\s\S]*?\n\}/, '_mapPlaceRowsHtml'), ctx);
 const groups = [{ zim: 'osm-hawaii', title: 'OSM - Hawaii', main_path: 'index.html', places: [
   { name: 'Kailua', type: 'place', sub: 'city', lat: 21.402, lng: -157.74, locality: 'Honolulu', zoom: 14 },
@@ -84,7 +87,7 @@ ok('the row says what and where', /city · Honolulu/.test(rows));
 ok('the row names the map', /OSM - Hawaii/.test(rows));
 ok('no groups, no rows', ctx._mapPlaceRowsHtml([]) === '');
 ok('a hostile place name is escaped', !/<img/.test(ctx._mapPlaceRowsHtml([{ zim: 'z', title: 't', main_path: 'i', places: [{ name: '<img src=x onerror=1>', lat: 0, lng: 0 }] }])));
-ok('places render above the Find-on-map offer', /const placesHtml = _mapPlaceRowsHtml\(data\.places \|\| \[\]\);/.test(src) && /placesHtml \+ \(listHtml/.test(src));
+ok('places render above the Find-on-map offer', /const placesHtml = _nearHtml\(data\.near\) \+ _mapPlaceRowsHtml\(data\.places \|\| \[\]\);/.test(src) && /placesHtml \+ \(listHtml/.test(src));
 
 // The search runs in two phases and the second's payload is merged into the
 // first's; the places group must survive the merge.

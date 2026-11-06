@@ -33,7 +33,6 @@ const vm = require('vm');
 const STATIC = path.join(__dirname, '..', 'zimi', 'static');
 const read = (f) => fs.readFileSync(path.join(STATIC, f), 'utf8');
 const almSrc = read('almanac.js');
-const DAY_MS = 86400000;
 
 let failures = 0;
 function check(ok, label) {
@@ -212,16 +211,10 @@ check(run('_aeFmtGain(5.0e-3)') === '5.0 ms', 'after a jump it reads "5.0 ms"');
 run('_aeUpdateCard(' + (T0 - 3600000) + ')');
 check(run('_ae.selected.gainedS') === 0, 'a clock taken back before the tap starts the count again');
 
-// ── 6. A place in a right-to-left sentence; Next eclipse ────────────────
+// ── 6. A place in a right-to-left sentence ───────────────────────────────
 const place = run('_aeFmtLatLon({ lat: -31.3, lon: -48.5 })');
 check(place[0] === '⁦' && place[place.length - 1] === '⁩', 'the place is a left-to-right isolate');
 check(place.slice(1, -1).replace(/ /g, ' ') === '31.3° S, 48.5° W', 'and reads "31.3° S, 48.5° W" inside it');
-const far = Date.UTC(2026, 5, 15) + (40000 - 2026) * 365.2425 * DAY_MS;
-const next = run('_aeNextEclipse(' + far + ')');
-check(next === null || !!run('_aeEclipseNow(_aeSceneAt(' + next.ms + '))'),
-  'Next eclipse, 38 millennia out, lands on an eclipse or says there is none');
-const near2026 = run('_aeNextEclipse(' + Date.UTC(2026, 8, 28) + ')');
-check(near2026 && run('_aeEclipseNow(_aeSceneAt(' + near2026.ms + '))'), 'from today it lands on a real eclipse');
 
 // ── 7. The ride card: one line, the twins behind a link ─────────────────
 run('_orreryRockets = []; _orreryLaunchRocket("Saturn"); rk = _orreryRockets[0]; rk.elapsed = rk.duration; rk.arrived = true;');

@@ -543,6 +543,7 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
+  var AUCTION_W_MAX = 236, AUCTION_AIR = 6;
   function geo(m) { return T.geometry(m, T.rowsFor(m, HAND)); }
   var cardLabel = function (id) { return Z.cardName(id); };
   // The person looking sits at the bottom (view.viewer); the other seats follow clockwise. Their hand is
@@ -621,8 +622,8 @@
       if (st.phase === 'play' && st.contract) { auctionEl.hidden = true; return; }
       if (st.phase !== 'auction' && !st.auction.length) { auctionEl.hidden = true; return; }
       auctionEl.hidden = false;
-      var width = Math.min(236, g.W - 2 * (g.cw * 1.4) - 8);
-      width = Math.max(width, 200);
+      // Between West's and East's cards, never over them (they stand in from the edges on a phone).
+      var width = Math.min(AUCTION_W_MAX, g.eastX - (g.westX + g.cw) - 2 * AUCTION_AIR);
       auctionEl.style.width = width + 'px';
       auctionEl.style.left = Math.round(g.cx - width / 2) + 'px'; auctionEl.style.top = Math.round(g.northY + g.ch + 14) + 'px';
       var order = [1, 2, 3, 0], grid = Z.h('div', { class: 'br-grid' });

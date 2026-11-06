@@ -184,6 +184,13 @@ var SK = {
   // settings are no longer the ones it had before sync}. apps.js marks a
   // page's change pending under this same name.
   PREF_SYNC: 'zimi_pref_sync',
+  // Whose ZimiGames this browser keeps for (owner), what changed here and has
+  // not gone up (pending), and one who left without it going (aside).
+  GAMES_SYNC: 'zimi_games_sync',
+  // The signed-in player's display name, for the games pages to show, and
+  // whether a player is signed in at all (the games' boards are theirs).
+  GAMES_PERSON: 'zimi_games_person',
+  GAMES_SIGNED: 'zimi_games_signed',
 };
 
 // What a person sets for themselves: carried by My data, and while signed in
@@ -201,13 +208,20 @@ var _PREF_KEYS = [
 ];
 function _isPrefKey(k) { return _PREF_KEYS.indexOf(k) >= 0; }
 function _rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function _prefState() {
-  var st = _getStorageJSON(SK.PREF_SYNC, null);
+// An account-synced store's state in this browser (settings, games): whose it
+// follows, what is pending, what the account refused, and ``flags`` of its own
+// ({name: 'bool' | 'object'}).
+function _syncState(key, flags) {
+  var st = _getStorageJSON(key, null);
   if (!st || typeof st !== 'object' || Array.isArray(st)) st = {};
-  return { owner: typeof st.owner === 'string' && st.owner ? st.owner : null,
-    pending: st.pending && typeof st.pending === 'object' ? st.pending : {}, seeded: !!st.seeded };
+  var obj = function (v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; };
+  var out = { owner: typeof st.owner === 'string' && st.owner ? st.owner : null, pending: obj(st.pending), refused: obj(st.refused) };
+  Object.keys(flags || {}).forEach(function (f) { out[f] = flags[f] === 'bool' ? !!st[f] : obj(st[f]); });
+  return out;
 }
-function _prefSaveState(st) { try { localStorage.setItem(SK.PREF_SYNC, JSON.stringify(st)); } catch (e) {} }
+function _syncSaveState(key, st) { try { localStorage.setItem(key, JSON.stringify(st)); } catch (e) {} }
+function _prefState() { return _syncState(SK.PREF_SYNC, { seeded: 'bool' }); }
+function _prefSaveState(st) { _syncSaveState(SK.PREF_SYNC, st); }
 // One of them changed here (``before``: its raw value a moment ago). Signed
 // in, it is the account's to take: pending, and sent soon. Signed out, it is
 // this browser's alone (users.py's convention). The same value is no change.
@@ -2050,6 +2064,13 @@ function t(key, vars) {
 function tH(key, vars) {
   return t(key, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// The string as HTML with each of `vars` already HTML (a <bdi> around a
+// name the person typed, say): the string escaped, the values not.
+function tHtml(key, vars) {
+  let s = tH(key);
+  for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
 // Zimi's language, not the phone's: a German Zimi on an English phone reads
 // 20.10.2026 and 1.234 everywhere, so every number, date and sorted list goes
 // through these. Each Intl object is kept per language and options: building
@@ -2593,6 +2614,8 @@ function _applyUserSession(name, canCreate) {
   _manageToken = ''; _clearManageToken();
   if (manageBtnEl) manageBtnEl.style.display = 'none';
   _accountSet(name);
+  _gamesFollow(name);
+  _accountRecheck();   // the display name this person goes by (/whoami)
   _refreshAfterAuthChange();
 }
 
@@ -2671,6 +2694,7 @@ async function _bootAuthGate() {
   // account's own saved things and settings, from the browser's copy of them
   // (the account's arrives in the background once the page is up: _savedStart).
   _accountSet(j && j.account, true);
+  _gamesWhoami(j, true);
   if (j && j.role === 'user') {
     _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
@@ -3585,7 +3609,7 @@ function _bindConnEvents() {
   window.addEventListener('resize', _syncConnBannerHeight);
   // The box's room changes with the window: the placeholder is fitted again
   // (on the next frame, once however many resizes come before it).
-  window.addEventListener('resize', function() { _fitSearchPlaceholder(); });
+  window.addEventListener('resize', function() { _fitSearchPlaceholder(); var g = document.getElementById('game-title'); if (g && document.body.classList.contains('game-page')) _fitGameTitle(g); });
 }
 
 // Shared honest-empty markup for any surface that would otherwise assert "no
@@ -5455,8 +5479,78 @@ function _freshDotHtml(list) {
   list.forEach(function(z) { var b = _zimBadge(z); if (b) counts[b.label === 'updated' ? 'updated' : 'added']++; });
   if (!counts.added && !counts.updated) return '';
   var label = ['added', 'updated'].filter(function(k) { return counts[k]; }).map(function(k) { return t('recent_' + k + '_dot', { n: counts[k] }); }).join(', ');
-  return '<span class="rc-dot mark" role="img" title="' + escAttr(label) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
+  var names = list.filter(function(z) { return _zimBadge(z); }).map(function(z) { return z.name; });
+  // The dot explains itself: hover it, or tap it on a touch screen (_dotWhy).
+  return '<span class="rc-dot mark why" role="button" tabindex="0" data-why="' + escAttr(names.join(',')) + '" aria-label="' + escAttr(label) + '"><i aria-hidden="true"></i></span>';
 }
+// How a ZIM came to be what it is (zimi.server.zim_updates), newest first: the Zimi release that changed one of
+// Zimi's own ZIMs with what it brought, or a library ZIM's arrival and each update, with its edition and size.
+var _UPD_EDITION = /_(\d{4}-\d{2})[a-z]?\.zim$/;
+function _updateItemHtml(u, title) {
+  var day = u.ts ? fmtDate(new Date(u.ts * 1000), { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  var head, more = '';
+  if (u.event === 'release') {
+    head = t('upd_release', { v: u.version || '' });
+    more = (u.notes || []).map(function(n) { return '<div class="upd-note">' + esc(n) + '</div>'; }).join('');
+  } else {
+    var ed = _UPD_EDITION.exec(u.file || '');
+    head = t(u.event === 'updated' ? 'upd_updated' : 'upd_added') + (ed ? ' \u00b7 ' + t('upd_edition', { date: ed[1] }) : '') +
+      (u.size_bytes ? ' \u00b7 ' + _fmtBytes(u.size_bytes) : '');
+  }
+  return '<li class="upd"><div class="upd-head">' + (title ? '<b>' + esc(title) + '</b> ' : '') + esc(head) +
+    (day ? '<span class="upd-day">' + esc(day) + '</span>' : '') + '</div>' + more + '</li>';
+}
+function _updatesListHtml(updates, title) {
+  return '<ul class="upd-list">' + (updates || []).map(function(u) { return _updateItemHtml(u, title); }).join('') + '</ul>';
+}
+// The dot's popover: what lit it, asked of the server only now (nothing on Home's way to drawing).
+var _DOT_WHY_ID = 'dot-why';
+function _dotWhyClose() { var el = document.getElementById(_DOT_WHY_ID); if (el) el.remove(); }
+function _dotWhy(dot) {
+  var names = (dot.getAttribute('data-why') || '').split(',').filter(Boolean);
+  if (!names.length) return;
+  _dotWhyClose();
+  var pop = document.createElement('div');
+  pop.id = _DOT_WHY_ID; pop.className = 'dot-why'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', t('dot_why'));
+  pop.innerHTML = '<div class="dot-why-h">' + tH('dot_why') + '</div><div class="dot-why-b">' + tH('loading') + '</div>';
+  document.body.appendChild(pop);
+  var r = dot.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 24);
+  pop.style.width = w + 'px';
+  pop.style.left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 12)) + 'px';
+  pop.style.top = (r.bottom + window.scrollY + 8) + 'px';
+  pop._dot = dot;
+  serverFetch('/zim-updates?zims=' + encodeURIComponent(names.join(','))).then(function(res) { return res.json(); }).then(function(d) {
+    var b = pop.querySelector('.dot-why-b'); if (!b || !pop.isConnected) return;
+    var fresh = function(u) { return u.ts && Date.now() / 1000 - u.ts < _ZIM_BADGE_BACKSTOP_DAYS * 86400; };
+    b.innerHTML = names.map(function(n) {
+      var z = _zimInfo(n), list = ((d.updates || {})[n] || []).filter(fresh);
+      // A change the history never recorded (before it kept them, or copied in by hand): the stamps still say when.
+      if (!list.length && z) { var b = _zimBadge(z); if (b) list = [{ event: b.label === 'updated' ? 'updated' : 'download', ts: b.label === 'updated' ? z.updated_at : z.first_seen, file: z.file || '', size_bytes: z.size_bytes || 0 }]; }
+      return list.length ? _updatesListHtml(list.slice(0, 3), (z && (z.title || z.name)) || n) : '';
+    }).join('') || '';
+  }).catch(function() { var b = pop.querySelector('.dot-why-b'); if (b) b.textContent = t('zi_load_failed'); });
+}
+// Hover on a pointer that hovers; a tap on the dot itself on a touch screen (never the tile's tap).
+document.addEventListener('mouseover', function(e) {
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot && matchMedia('(hover: hover)').matches) { var open = document.getElementById(_DOT_WHY_ID); if (!open || open._dot !== dot) _dotWhy(dot); }
+});
+document.addEventListener('mouseout', function(e) {
+  var open = document.getElementById(_DOT_WHY_ID), to = e.relatedTarget;
+  if (open && matchMedia('(hover: hover)').matches && e.target.closest && e.target.closest('.rc-dot.why') && !(to && open.contains(to))) _dotWhyClose();
+});
+document.addEventListener('click', function(e) {
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot) { e.preventDefault(); e.stopPropagation(); _dotWhy(dot); return; }
+  var open = document.getElementById(_DOT_WHY_ID);
+  if (open && !open.contains(e.target)) _dotWhyClose();
+}, true);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') _dotWhyClose();
+  var dot = e.target.closest && e.target.closest('.rc-dot.why');
+  if (dot && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); _dotWhy(dot); }
+});
+window.addEventListener('scroll', _dotWhyClose, { passive: true });
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
@@ -6043,6 +6137,11 @@ function _ziOtherHtml(other) {
 // A catalog ZIM's file name ends in its edition's month: what the auto-updater matches on.
 var _DATED_ZIM_FILE_RE = /_\d{4}-\d{2}\.zim$/;
 
+// When it last changed: its newest update, else when it arrived.
+function _ziLastUpdated(info) {
+  var u = (info.updates || [])[0], ts = (u && u.ts) || info.updated_at || info.first_seen;
+  return ts ? esc(fmtDate(new Date(ts * 1000), { day: 'numeric', month: 'long', year: 'numeric' })) : '';
+}
 function _ziBodyHtml(info) {
   // Same icon rule the cards follow: the ZIM's own illustration when it has
   // one, its initial otherwise. An empty frame would read as a broken image.
@@ -6091,13 +6190,15 @@ function _ziBodyHtml(info) {
     _ziRow('zi_entries', num(info.entries)) +
     _ziRow('zi_size', info.size_bytes ? esc(_fmtBytes(info.size_bytes)) : '') +
     _ziRow('zi_date', esc(info.date)) +
+    _ziRow('zi_last_updated', _ziLastUpdated(info)) +
     _ziRow('zi_creator', esc(info.creator)) +
     _ziRow('zi_publisher', esc(info.publisher)) +
     _ziRow('zi_source', _ziSourceHtml(info.source)) +
     _ziRow('zi_scraper', esc(info.scraper)) +
     _ziRow('zi_flavour', esc(info.flavour)) +
     _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
-    '</div>';
+    '</div>' +
+    ((info.updates || []).length ? '<div class="zi-sec">' + tH('zi_update_history') + '</div>' + _updatesListHtml(info.updates) : '');
   // Incomplete, at the top as well as in the history: the latest record that
   // made or re-made the file is the one that decides what is in it now.
   // A ZIM warc2zim wrote (the alive engine) has no history; its capture
@@ -6339,8 +6440,9 @@ function _keepOwnForget() {
     _swSay({ type: 'forget-own', zim: zim });
   });
 }
-// ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet): all under one prefix.
-var _GAMES_STORE_PREFIX = 'zimi.games.';
+// ZimiGames' own keys in this browser (saved games, stats, settings, snapshots, the pet; ZimCity's cities
+// beside them): under these prefixes, which the account sync (_GAMES_KEY_RE) carries too.
+var _GAMES_STORE_PREFIXES = ['zimi.games.', 'zimi.zimcity.'];
 // What deleting a ZIM asks first: ZimiGames also takes this browser's play with it, and says so.
 function _deleteConfirmText(zim, title) {
   return zim === _GAMES_ZIM ? t('delete_games_confirm') : t('delete_zim_confirm', {name: title || zim});
@@ -6350,7 +6452,7 @@ function _deleteConfirmText(zim, title) {
 function _afterZimDeleted(zim) {
   if (zim !== _GAMES_ZIM) return;
   try {
-    Object.keys(localStorage).filter(function(k) { return k.indexOf(_GAMES_STORE_PREFIX) === 0; })
+    Object.keys(localStorage).filter(function(k) { return _GAMES_STORE_PREFIXES.some(function(p) { return k.indexOf(p) === 0; }); })
       .forEach(function(k) { localStorage.removeItem(k); });
   } catch (e) {}
   _ownForgotten[zim] = true;
@@ -7110,6 +7212,10 @@ function _moonPhase(date) {
   else if (phase < 0.75 + w) name = 'Last Quarter';
   else name = 'Waning Crescent';
   return { phase: phase, name: name, illumination: illum };
+}
+// The Moon's lit share as people read it, a whole percent (the figure itself keeps a tenth).
+function _moonLitPct(illum) {
+  return fmtNum(Math.round(illum)) + '%';
 }
 
 // Moon time-travel animation — shared by the hero disc and the sky-scene moon.
@@ -8752,13 +8858,17 @@ function _renderDiscover(el, items) {
       // Thumbnail — filter out generic site chrome images
       var thumbHtml;
       var hasGoodThumb = it.thumbnail && !/home_on\.png|banner_ext|photo_on\.gif/i.test(it.thumbnail);
+      var iconThumb = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
       if (hasGoodThumb) {
         var thumbClass = 'dc-thumb' + (/gutenberg/i.test(it.zim || '') ? ' dc-book-cover' : '');
-        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'" onload="if(this.naturalWidth<80||this.naturalHeight<60)this.style.display=\'none\'">';
+        // A picture that fails or is too small to show gives way to the source's icon, as a card with no
+        // picture has: hidden alone, it left a card of text stretched to its neighbours' height.
+        thumbHtml = '<img class="' + thumbClass + '" src="' + escAttr(it.thumbnail) + '" loading="lazy" alt="" onerror="_dcThumbGone(this)" onload="if(this.naturalWidth<80||this.naturalHeight<60)_dcThumbGone(this)">' +
+          iconThumb.replace('<div ', '<div hidden ');
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
-        thumbHtml = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
+        thumbHtml = iconThumb;
       }
       // Speaker/author line (TED talks, books)
       var speakerHtml = '';
@@ -8803,6 +8913,12 @@ function _renderDiscover(el, items) {
 // and Chinese blurb normalized to "" and was dropped as a repeat. A blurb
 // that opens with the title and goes on ("Athens is the capital...") says
 // more than the title and is kept.
+// A Discover picture that failed or is too small: the source's icon, kept beside it, takes its place.
+function _dcThumbGone(img) {
+  var icon = img.nextElementSibling;
+  if (icon && icon.classList.contains('dc-icon-thumb')) icon.hidden = false;
+  img.remove();
+}
 function _blurbRepeatsTitle(blurb, title) {
   if (!blurb || !title) return false;
   var norm = function(s) { return s.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').toLowerCase().trim(); };
@@ -9390,7 +9506,7 @@ function _moveZimTo(zim, category) {
     var card = target.closest && target.closest('.stat-card, .catalog-item[data-zim]');
     if (!card) return null;
     var app = card.dataset && card.dataset.app;
-    if (app && !card.classList.contains('app-empty')) return { card: card, zim: _OWN_APP_ZIM[app] || '', app: app };
+    if (app && !card.classList.contains('app-empty')) return _appMenuHasMore(app) ? { card: card, zim: _OWN_APP_ZIM[app] || '', app: app } : null;
     var zim = card.dataset && card.dataset.zim;
     if (!zim) {
       var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
@@ -10087,7 +10203,7 @@ async function doSearch(query, push, perSource) {
     // ── One request, both passes: the server sends the title matches, the
     // snippets of the cards they draw, the full-text results, then theirs,
     // a line of JSON each as it is ready (_searchStream in http.py).
-    const res = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&ui=' + encodeURIComponent(_uiLangPrimary()) + '&stream=1',
+    const res = await serverFetch('/search?' + await _nearParams(query) + '&limit=' + perSource + zimParam + '&ui=' + encodeURIComponent(_uiLangPrimary()) + '&stream=1',
       { signal: searchController.signal });
     _throwIfRateLimited(res);
     _snippetsStreamSeq = searchSeq;
@@ -10275,6 +10391,7 @@ function mergeSearchResults(phase1, phase2) {
     // Places come only from the full phase; the keystroke phase reads no
     // shards. They are a group beside the results, not merged into them.
     places: phase2.places || phase1.places || [],
+    near: phase2.near || phase1.near,
   };
 }
 
@@ -10479,10 +10596,10 @@ function renderSearchResults(data, scope) {
 
   // What the query's operators did, each a tap away from undone.
   const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
-  if (!items.length) {
+  if (!items.length && !(data.places || []).length) {
     // A query of only exclusions and filters ("-ted") asks for nothing, so
     // the library finds nothing: say what it needs, not "try other words".
-    const asksNothing = !!data._query && !parseSearchQuery(data._query).groups.length;
+    const asksNothing = !!data._query && !parseSearchQuery(data._query, SEARCH_BAR_FILTERS).groups.length;
     // Under the Field Guide's answer, "No results found" would be the louder
     // line on a page that has just helped: the answer stands alone.
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
@@ -10495,7 +10612,7 @@ function renderSearchResults(data, scope) {
   // Show matching ZIM sources above results (global search only)
   let zimMatchHtml = '';
   if (!scope && zimsCache && data._query) {
-    const parsed = parseSearchQuery(data._query);
+    const parsed = parseSearchQuery(data._query, SEARCH_BAR_FILTERS);
     const matches = parsed.groups.length ? zimsCache.filter(z => _libraryMatches(parsed, z)) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
@@ -10563,7 +10680,7 @@ function renderSearchResults(data, scope) {
   // the shards had nothing, so the words are most likely not a place: it
   // follows the results ("black hole" read the map first), and leads only
   // when there is nothing else.
-  const placesHtml = _mapPlaceRowsHtml(data.places || []);
+  const placesHtml = _nearHtml(data.near) + _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
   let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results' + (groups ? ' grouped' : '') + '">' +
     placesHtml + (listHtml ? listHtml + mapFindHtml : mapFindHtml) + '</div>';
@@ -10994,7 +11111,7 @@ async function fetchPlaces(query) {
   suggestController = new AbortController();
   const seq = ++_suggestSeq;
   try {
-    const res = await fetch('/places?q=' + encodeURIComponent(query), { signal: suggestController.signal });
+    const res = await fetch('/places?' + await _nearParams(query), { signal: suggestController.signal });
     const data = await res.json();
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     suggestItems = [];
@@ -11004,8 +11121,7 @@ async function fetchPlaces(query) {
     const groups = (data.groups || []).slice().sort((a, b) => (b.zim === onScreen) - (a.zim === onScreen));
     for (const g of groups) {
       for (const p of (g.places || [])) {
-        const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
-          .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
+        const what = _placeWhat(p, g.unit).join(' \u00b7 ');
         suggestItems.push({ _place: true, zim: g.zim, path: g.main_path, title: p.name,
           sub: (what ? what + ' \u00b7 ' : '') + (g.title || g.zim),
           pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng, label: p.name });
@@ -11487,8 +11603,13 @@ const SEARCH_QUOTES = '"“”„';
 // Scripts written without spaces (Thai, Lao, Myanmar, Khmer, kana, CJK): a
 // term there matches anywhere, since a word boundary means nothing.
 const _SEARCH_UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]/;
-// The keys both searches know (query.LIBRARY_FILTERS on the server).
+// The keys both searches know. The search bar also knows near: (places
+// within a distance of a place; query.LIBRARY_FILTERS on the server).
 const SEARCH_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
+const SEARCH_BAR_FILTERS = Object.assign({ near: 'near' }, SEARCH_FILTERS);
+// near:'s distance, the token after it (query.NEAR_RADIUS), and its default.
+const SEARCH_NEAR_RADIUS = /^(\d+(?:\.\d+)?)(km|mi)$/i;
+const SEARCH_NEAR_DEFAULT_KM = 25, SEARCH_NEAR_MAX_KM = 500, SEARCH_KM_PER_MILE = 1.609344;   // query.NEAR_MAX_KM
 
 // Each token is [text, phrase, negated, start, end]: where it sits in what
 // was typed is what lets a chip take one operator back out (searchQueryChips).
@@ -11515,11 +11636,54 @@ function _searchTokens(q) {
       if (start >= n) break;
     }
     let j = start;
-    while (j < n && !isS(q[j])) j++;
+    while (j < n && !isS(q[j])) {
+      // key:"a value": the value's quotes hold its spaces (query._tokens).
+      if (q[j] === ':' && j + 1 < n && isQ(q[j + 1]) && j > start) {
+        for (let k = j + 2; k < n; k++) if (isQ(q[k])) { j = k; break; }
+      }
+      j++;
+    }
     out.push([q.slice(start, j), false, false, start, j]);
     i = j;
   }
   return out;
+}
+
+const _searchUnquote = s => [...s].filter(ch => !SEARCH_QUOTES.includes(ch)).join('').split(/\s+/).filter(Boolean).join(' ');
+// near:'s distance from the token at `at` when it is one (then taken, its
+// place kept in radiusAt), else the default (query._near_radius).
+function _searchNearRadius(tokens, at, skip) {
+  const m = at < tokens.length && !tokens[at][1] ? SEARCH_NEAR_RADIUS.exec(tokens[at][0]) : null;
+  if (!m) return { radius_km: SEARCH_NEAR_DEFAULT_KM, unit: 'km' };
+  skip.add(at);
+  const unit = m[2].toLowerCase(), n = parseFloat(m[1]);
+  return { radius_km: Math.min(unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, SEARCH_NEAR_MAX_KM), unit: unit, radiusAt: at };
+}
+
+// The query as the server is asked it: q=, and for a near: search the place
+// it is from. near:here becomes the browser's position (asked for, so the
+// browser's own prompt decides), else the Almanac's place; and near_at= is
+// the Almanac's place, which picks among places of one name (several
+// Springfields). Nothing is added to a search without near:.
+var _NEAR_HERE_TIMEOUT_MS = 8000;
+function _nearParams(query) {
+  const plain = 'q=' + encodeURIComponent(query);
+  const near = parseSearchQuery(query, SEARCH_BAR_FILTERS).filters.find(f => f.key === 'near' && !f.negate);
+  if (!near) return Promise.resolve(plain);
+  const stored = _almChosenPlace();
+  const at = stored && isFinite(stored.lat) && isFinite(stored.lon != null ? stored.lon : stored.lng)
+    ? stored.lat + ',' + (stored.lon != null ? stored.lon : stored.lng) : '';
+  const withAt = q => 'q=' + encodeURIComponent(q) + (at ? '&near_at=' + encodeURIComponent(at) : '');
+  if (near.value !== 'here') return Promise.resolve(withAt(query));
+  const tok = parseSearchQuery(query, SEARCH_BAR_FILTERS).tokens[near.at];
+  const swap = where => where ? query.slice(0, tok[3]) + (near.negate ? '-' : '') + 'near:' + where + query.slice(tok[4]) : query;
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(withAt(swap(at)));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(withAt(swap(pos.coords.latitude.toFixed(4) + ',' + pos.coords.longitude.toFixed(4)))),
+      () => resolve(withAt(swap(at))),
+      { timeout: _NEAR_HERE_TIMEOUT_MS, maximumAge: 600000 });
+  });
 }
 
 // Beyond what query.py returns, each term and filter carries `at`, its token
@@ -11529,7 +11693,9 @@ function parseSearchQuery(q, filters) {
   const groups = [], joins = [], exclude = [], found = [];
   const tokens = _searchTokens(q || '');
   let joinNext = false, orAt = -1;
+  const skip = new Set();
   for (let at = 0; at < tokens.length; at++) {
+    if (skip.has(at)) continue;
     let [text, phrase, neg] = tokens[at];
     if (!phrase) {
       if (text === 'OR') { joinNext = groups.length > 0; orAt = at; continue; }
@@ -11540,7 +11706,9 @@ function parseSearchQuery(q, filters) {
       const c = text.indexOf(':');
       const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
       if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
-        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg, at: at });
+        const f = { key: filters[key], value: _searchUnquote(text.slice(c + 1)).toLowerCase(), negate: neg, at: at };
+        if (f.key === 'near') Object.assign(f, _searchNearRadius(tokens, at + 1, skip));
+        found.push(f);
         joinNext = false;
         continue;
       }
@@ -11603,7 +11771,7 @@ const SEARCH_STOP_WORDS = new Set(['a','an','and','are','as','at','be','by','for
 // over a word inside it. null when there is nothing to mark.
 function searchHitRe(query) {
   const terms = [];
-  for (const g of parseSearchQuery(query || '').groups) {
+  for (const g of parseSearchQuery(query || '', SEARCH_BAR_FILTERS).groups) {
     for (const t of g) if (t.phrase || !SEARCH_STOP_WORDS.has(t.text)) terms.push(t.text);
   }
   if (!terms.length) return null;
@@ -11641,6 +11809,8 @@ function _libraryFilterText(z) {
 // The catalog's operators on an installed ZIM: source: also reads the file
 // name, the one way to ask for it on purpose ("source:nopic").
 const _LIBRARY_FILTER_TESTS = {
+  // A place says nothing about a source: near: picks places, not ZIMs.
+  near: () => true,
   source: (v, z) => [z.name, z.title, z.category].some(s => (s || '').toLowerCase().includes(v)),
   lang: (v, z) => (z.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
 };
@@ -11678,7 +11848,7 @@ function _searchTokenWords(tok) {
 
 function searchQueryChips(q) {
   q = q || '';
-  const p = parseSearchQuery(q), toks = p.tokens, chips = [];
+  const p = parseSearchQuery(q, SEARCH_BAR_FILTERS), toks = p.tokens, chips = [];
   // An OR just before an exclusion or a filter joined nothing; taken out
   // alone it would join the terms either side, so it goes with it.
   const without = at => _searchRebuild(q, toks, new Set(_isOrToken(toks[at - 1]) ? [at, at - 1] : [at]));
@@ -11686,7 +11856,11 @@ function searchQueryChips(q) {
     chips.push({ kind: 'without', at: t.at, words: [_searchTokenWords(toks[t.at])], query: without(t.at) });
   }
   for (const f of p.filters) {
-    chips.push({ kind: f.key, at: f.at, value: f.value, negate: f.negate, query: without(f.at) });
+    // near:'s distance goes with it.
+    const q2 = f.radiusAt != null ? _searchRebuild(q, toks, new Set([f.at, f.radiusAt])) : without(f.at);
+    // near: shows its place as typed ("San Francisco"), not folded.
+    const value = f.key === 'near' ? _searchUnquote(toks[f.at][0].slice(toks[f.at][0].indexOf(':') + 1)) : f.value;
+    chips.push({ kind: f.key, at: f.at, value: value, negate: f.negate, radius_km: f.radius_km, unit: f.unit, query: q2 });
   }
   p.groups.forEach((g, i) => {
     for (const t of g) {
@@ -11719,12 +11893,7 @@ function _searchSourceTitle(value, pool) {
 // place in a Hebrew label) or as plain text for its button's label.
 function _searchChipLabel(chip, pool, html) {
   const w = html ? (s => '<bdi>' + esc(s) + '</bdi>') : (s => s);
-  const tpl = (key, vars) => {
-    if (!html) return t(key, vars);
-    let s = tH(key);
-    for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
-    return s;
-  };
+  const tpl = (key, vars) => html ? tHtml(key, vars) : t(key, vars);
   if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
   if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
   if (chip.kind === 'or') {
@@ -11737,6 +11906,11 @@ function _searchChipLabel(chip, pool, html) {
     // An OR past the search's budget (query.MAX_SEARCHES): what was not searched is said.
     const left = chip.skipped && chip.skipped.length ? ' ' + tpl('search_chip_not_searched', { words: list(chip.skipped, 'conjunction') }) : '';
     return list(chip.words, 'disjunction') + left;
+  }
+  if (chip.kind === 'near') {
+    const n = chip.unit === 'mi' ? chip.radius_km / SEARCH_KM_PER_MILE : chip.radius_km;
+    return tpl('search_chip_near', { place: w(chip.value.toLowerCase() === 'here' ? t('near_here') : chip.value),
+      distance: fmtNum(Math.round(n * 10) / 10) + ' ' + chip.unit });
   }
   const lang = chip.kind === 'lang';
   const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
@@ -11779,7 +11953,7 @@ function _searchAgain(query) {
 // The "?" beside the box: examples written for each language, one operator
 // each, shown with the chip it makes. The library's are about articles, the
 // catalog's about finding ZIMs.
-const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source'];
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near'];
 const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
 
 // Where the grammar applies: the library's own search and the catalog. Not
@@ -12140,9 +12314,9 @@ function _splitPathFragment(path) {
   if (h === -1) return { base: path, frag: '' };
   return { base: path.slice(0, h), frag: path.slice(h) };
 }
-function _articleUrl(zim, path) {
+function _articleUrl(zim, path, query) {
   var p = _splitPathFragment(path);
-  return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + p.frag;
+  return '/w/' + encodeURIComponent(zim) + '/' + p.base.split('/').map(encodeURIComponent).join('/') + (query || '') + p.frag;
 }
 // decodeURIComponent that keeps what it cannot decode. A saved page's own file
 // names can hold a bare '%' ("50% off.html"), and a path that is already decoded
@@ -13951,7 +14125,7 @@ function _mapPlaceRowsHtml(groups) {
     var mapTitle = g.title || g.zim;
     for (var pi = 0; pi < (g.places || []).length; pi++) {
       var p = g.places[pi];
-      var what = [p.sub || p.type, p.locality].filter(Boolean).map(function(x) { return String(x).replace(/_/g, ' '); });
+      var what = _placeWhat(p, g.unit);
       var pos = 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng;
       h += '<a class="result map-place" href="' + escAttr(_articleDeepLinkPath(g.zim, g.main_path) + '#' + pos) +
         '" data-zim="' + escAttr(g.zim) + '" data-path="' + escAttr(g.main_path) + '" data-title="' + escAttr(p.name) +
@@ -13964,6 +14138,30 @@ function _mapPlaceRowsHtml(groups) {
     }
   }
   return h;
+}
+// A near: search says what it measured from: the place it took (and, when
+// several share the name, which and why), and the distance asked.
+function _nearDistanceText(km, unit) {
+  const n = unit === 'mi' ? km / SEARCH_KM_PER_MILE : km;
+  return fmtNum(n < 10 ? Math.round(n * 10) / 10 : Math.round(n)) + ' ' + unit;
+}
+function _nearHtml(near) {
+  if (!near) return '';
+  if (!near.found) return '<div class="near-from">' + tHtml('near_not_found', { place: '<bdi>' + esc(near.place) + '</bdi>' }) + '</div>';
+  const where = fmtNum(near.lat) + ', ' + fmtNum(near.lng);
+  let h = '<div class="near-from">' + tHtml('near_from', { distance: esc(_nearDistanceText(near.radius_km, near.unit)),
+    place: '<bdi>' + esc(near.place) + '</bdi>' });
+  if (near.others > 0) {
+    h += '<div class="near-which">' + tHtml(near.by === 'nearest' ? 'near_pick_nearest' : 'near_pick_largest',
+      { place: '<bdi>' + esc(near.place) + '</bdi>', where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
+  }
+  return h + '</div>';
+}
+// What a place is, for its row: its kind, where, and how far (a near: search).
+function _placeWhat(p, unit) {
+  const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean).map(x => String(x).replace(/_/g, ' '));
+  if (p.km != null) what.push(_nearDistanceText(p.km, unit || 'km'));
+  return what;
 }
 function _spaMapPlace(e, el) {
   return _spaNav(e, function () {
@@ -14027,6 +14225,7 @@ function _reddotUrl(p) {
 // considerations with all this."
 function _appStrings(app, keys, extra) {
   var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
+    loading_slow: t('app_loading_slow'), loading_failed: t('app_loading_failed'), retry: t('retry'),
     dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app),
     // Your languages (Settings > Languages), for the apps that pick by language.
     yours: _getPrefLanguages().map(_normLang).filter(Boolean) };
@@ -15958,6 +16157,8 @@ window.addEventListener('message', function(e) {
     _gameSkyOpen(d, e.source);
   } else if (d.zimi === 'game-app' && d.app === 'dictionary' && typeof d.w === 'string' && d.w && _gameFrameIs(e.source)) {
     openDictionary(false, d.w.slice(0, 200));
+  } else if (d.zimi === 'games-edit-name' && _gameFrameIs(e.source)) {
+    _displayNameSheet();
   } else if (d.zimi === 'ready') {
     _appReady(e.source);
   } else if (d.zimi === 'top') {
@@ -16399,11 +16600,37 @@ function _appSectionHtml(app, n, grid) {
 
 // A tile's foot: the solid dot a new or updated ZIM wears (when something inside is), and the
 // same ⋯ a card has, which opens the menu a right click or a long press opens.
+// Opening an app is looking at everything it shows: its ZIMs' New and Updated dots clear together.
+function _appSeen(app) {
+  _appZims(app).forEach(function(z) { if (z) _markZimOpened(z.name); });
+  if (_OWN_APP_ZIM[app]) _markZimOpened(_OWN_APP_ZIM[app]);
+}
+// Which app a page the reader opens belongs to: an app's own page, the games' ZIM, or a map. Every way into an
+// app (its tile, search, a link, the address, Back) loads through openReader, so this is the one place it is seen.
+function _appOfReaderUrl(url) {
+  var page = String(url).split('#')[0];
+  var pages = {};
+  pages[_TUBE_PAGE] = 'tube'; pages[_EXCHANGE_PAGE] = 'exchange'; pages[_REDDOT_PAGE] = 'reddot';
+  pages[_WIKI_PAGE] = 'wiki'; pages[_BOOKS_PAGE] = 'books'; pages[_DICT_PAGE] = 'dictionary';
+  if (pages[page]) return pages[page];
+  var m = /^\/w\/([^/]+)\//.exec(page), z = null;
+  try { z = m && _zimInfo(decodeURIComponent(m[1])); } catch (e) {}
+  if (!z) return '';
+  return _OWN_ZIM_APP[z.name] || (z.kind === 'map' ? 'maps' : '');
+}
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
   var dot = _freshDotHtml(zims.filter(Boolean));
-  return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' +
-    '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button></span>';
+  var more = _appMenuHasMore(app)
+    ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
+    : '';
+  return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' + more + '</span>';
+}
+// Whether an app's menu has more than Open (showAppMenu): its own ZIM's About and keep, or Hide for a signed-in
+// person. A ⋯ that opens a menu of one item, the tap the tile already is, is no control at all.
+function _appMenuHasMore(app) {
+  var own = _OWN_APP_ZIM[app];
+  return !!((own && _zimInfo(own)) || _userSession);
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
@@ -16606,6 +16833,15 @@ function _unzoomPage() {
   meta.content = kept + ', maximum-scale=1';
   setTimeout(function () { meta.content = kept; }, 50);
 }
+// A long game name ("Dictionary Bluff") beside the header's buttons on a phone steps down a pixel at a time to
+// _GAME_TITLE_MIN_PX; one still too long ("Snakes and Ladders") takes two lines there before an ellipsis would cut it.
+var _GAME_TITLE_MIN_PX = 13;
+function _fitGameTitle(el) {
+  el.style.fontSize = ''; el.classList.remove('two-lines');
+  var px = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth + 0.5 && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
+  if (el.scrollWidth > el.clientWidth + 0.5) el.classList.add('two-lines');
+}
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
   var on = _isGamePage(), shelf = _isGameShelf();
@@ -16618,7 +16854,8 @@ function _syncGameHead() {
   if (!head) return;
   head.hidden = !on;
   if (!on) return;
-  document.getElementById('game-title').textContent = _gameHead.title;
+  var titleEl = document.getElementById('game-title');
+  titleEl.textContent = _gameHead.title;
   var act = document.getElementById('game-act-btn'), a = _gameHead.act;
   act.hidden = !a;
   if (a) {
@@ -16630,6 +16867,7 @@ function _syncGameHead() {
     act.disabled = a.disabled;
   }
   document.getElementById('game-menu-btn').hidden = !_gameHead.menu;
+  _fitGameTitle(titleEl);
 }
 
 // Where the open map is, as a hash fragment, read from the map itself so it
@@ -17152,6 +17390,10 @@ function _fitWidePictures(d, w, sheet) {
 // the flow. A responsive skin (Vector 2022, Minerva, mwoffliner's own pages)
 // is not matched; nor is any page on a desktop.
 var MW_DESKTOP_SKIN_MAX_W = 720;
+// An infobox floats beside the text from this frame width up: its own 22em
+// plus a 22em line of text and the column's gutters (#136).
+var INFOBOX_W_EM = 22;
+var INFOBOX_FLOAT_MIN_W = 768;
 var MW_DESKTOP_SKIN_CSS = (function () {
   var skin = ':is(body.skin-vector-legacy,body.skin-monobook,body.skin-modern,body.skin-cologneblue):not(.skin--responsive) ';
   var sel = function (list) { return list.split(',').map(function (s) { return skin + s; }).join(','); };
@@ -17201,6 +17443,8 @@ function _whenFrameDocReady(frame, prevDoc, fn) {
 }
 function openReader(url) {
   _chromeReset(); // a new page starts with the header in place
+  var seenApp = _appOfReaderUrl(url);
+  if (seenApp) _appSeen(seenApp);
   _gamePlayHide();
   // Same-document fragment scroll fast-path. When the frame already holds the
   // target document and only the #fragment differs, a location.replace() below
@@ -17480,13 +17724,21 @@ function openReader(url) {
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
           '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
-        // An infobox keeps the column's width the way Wikipedia's phone skin
-        // does: its long words and no-wrap runs break rather than widening it
-        // into a scroll box nobody finds (Roman Empire, #136). A real table
-        // inside it still scrolls on its own.
-        '.infobox{display:table;width:100%}' +
+        // An infobox is a box of its own width (Wikipedia's 22em, or the width
+        // its template sets): its long words and no-wrap runs break rather than
+        // widening it into a scroll box nobody finds (Roman Empire, #136). A real
+        // table inside it still scrolls on its own.
+        '.infobox{display:table}' +
           '.infobox td,.infobox th{overflow-wrap:break-word}' +
-          '.infobox td *,.infobox th *{white-space:normal!important}',
+          '.infobox td *,.infobox th *{white-space:normal!important}' +
+        // Beside the text it floats right, as on Wikipedia, while the column
+        // holds the box and a readable line next to it (22em of box, 22em of
+        // text, the gutters). Narrower, it sits above the text at its own width,
+        // centred; never stretched across the column, and never wider than it.
+        '@media (max-width:' + (INFOBOX_FLOAT_MIN_W - 0.02) + 'px){' +
+          '.infobox{float:none!important;clear:both!important;margin:0 auto 1em!important;max-width:100%!important}' +
+          '.infobox:not([style*="width"]){width:' + INFOBOX_W_EM + 'em!important}' +
+        '}',
         MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
@@ -17592,7 +17844,9 @@ function openReader(url) {
           var aboutQid = linkPath.slice(-_GAMES_ABOUT_PAGE.length) === _GAMES_ABOUT_PAGE &&
                          (fullUrl.match(/[?&]qid=(Q\d+)/) || [])[1];
           if (aboutQid) { _gamesAbout(aboutQid, linkZim, linkPath); return; }
-          openArticle(linkZim, linkPath);
+          // Zimi's own apps read their address (a game's ?daily=, ?deal=): their links keep it.
+          var linkQuery = _OWN_ZIM_APP[linkZim] && (fullUrl.match(/\?[^#]*/) || [''])[0];
+          openArticle(linkZim, linkPath, undefined, linkQuery ? { query: linkQuery } : undefined);
           return;
         }
         // Off this server: into the library when an installed ZIM holds the
@@ -17695,9 +17949,14 @@ function openReader(url) {
     if (!_frameLoc.startsWith('/static/') && !_isMapPage()) try {
       var iTitle = frame.contentDocument && frame.contentDocument.title;
       if (!iTitle) {
-        // Fallback: extract from iframe URL path
-        var seg = _titleFromPath(frame.contentWindow.location.pathname);
-        if (seg && seg !== 'blank') iTitle = seg;
+        // No <title>: the entry's own title, when this is the entry that was opened ("Water purification",
+        // not "Water" made from its path), else the path's last part.
+        var fpath = decodeURIComponent(frame.contentWindow.location.pathname);
+        var seg = _titleFromPath(fpath), fm = fpath.match(/^\/w\/([^\/]+)\/(.+)/);
+        var known = currentArticle && currentArticle.title && fpath.endsWith('/' + currentArticle.path)
+          ? currentArticle.title : fm && _histTitle(fm[1], fm[2]);
+        if (known) iTitle = known;
+        else if (seg && seg !== 'blank') iTitle = seg;
       }
       if (iTitle) {
         var docTitle = iTitle + ' \u2014 Zimi';
@@ -17712,7 +17971,9 @@ function openReader(url) {
       if (_wm) {
         var _navZim = _decodeSafe(_wm[1]);
         var _navPath = _decodeSafe(_wm[2]);
-        currentArticle = { zim: _navZim, path: _navPath };
+        // The same entry keeps the title it was opened with (a second load event read "Water" off the path again).
+        var _keptTitle = currentArticle && currentArticle.zim === _navZim && currentArticle.path === _navPath ? currentArticle.title : '';
+        currentArticle = { zim: _navZim, path: _navPath, title: _keptTitle || '' };
         // The page's own title, now that it is here: a visit recorded before
         // the page loaded (a deep link, a link inside an article) carried
         // only its path, and Recent history read "ce.html", "cover.453".
@@ -17812,6 +18073,15 @@ function _histRetitle(zim, path, title) {
       return;
     }
   }
+}
+// A recent visit's title, when it was told one (a search result's), not guessed from its path; else ''.
+function _histTitle(zim, path) {
+  var h = _histLoad();
+  for (var i = 0; i < Math.min(5, h.length); i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.path === path) return e.title !== _titleFromPath(path) ? e.title : '';
+  }
+  return '';
 }
 // The fourth argument of a history row's openArticle: the place, when the
 // visit was one. Written into an inline handler, so it is source text.
@@ -20026,8 +20296,15 @@ function _accountSet(id, boot) {
   if (id && !boot) _savedPull();
   _liveRestart();
 }
-// /userdata's address, naming the account this browser follows.
-function _accountUrl(path) { return path + '?account=' + encodeURIComponent(_accountId || ''); }
+// /userdata's address, naming the account this browser follows (``account``:
+// another one it follows, the games').
+function _accountUrl(path, account) { return path + '?account=' + encodeURIComponent((arguments.length > 1 ? account : _accountId) || ''); }
+// Refused (401: no account; 409: not this one): whose it is now is asked again,
+// never written into the wrong one. True when it was.
+function _accountRefused(r) {
+  if (r.status === 401 || r.status === 409) { _accountRecheck(); return true; }
+  return false;
+}
 // Refused (401: no account; 409: not this one): whose it is now, from the
 // server, and this tab follows that (or none). One asking at a time.
 var _accountRechecking = false;
@@ -20035,13 +20312,13 @@ function _accountRecheck() {
   if (_accountRechecking) return;
   _accountRechecking = true;
   serverFetch('/whoami', { credentials: 'same-origin', headers: _manageToken ? _authHeaders() : {} })
-    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); })
+    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); _gamesWhoami(j); })
     .catch(function () {}).then(function () { _accountRechecking = false; });
 }
 // After an admin's sign-in: whose account the server says this is.
 function _accountRefresh() {
   serverFetch('/whoami', { credentials: 'same-origin', headers: _manageToken ? _authHeaders() : {} })
-    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); })
+    .then(function (r) { return r.json(); }).then(function (j) { _accountSet(j && j.account); _gamesWhoami(j); })
     .catch(function () {});
 }
 // Signing out: what the account has not had goes up, then its copy leaves this
@@ -20049,8 +20326,8 @@ function _accountRefresh() {
 // one that could not go stays, to go up at the next sign-in). The settings stay
 // as they are on this screen, the browser's own from now on.
 function _accountLeave() {
-  if (!_accountId) return Promise.resolve();
-  return Promise.all([_savedFlush(), _prefPush()]).then(function (got) {
+  if (!_accountId) return _gamesLeave();
+  return Promise.all([_savedFlush(), _prefPush(), _gamesLeave()]).then(function (got) {
     if (got[0] && !_savedDelta()) Saved.forget();
     _prefSaveState({ owner: null, pending: {}, seeded: true });
     _accountId = null;
@@ -20111,7 +20388,7 @@ function _savedPush(leaving) {
     if (r.status === 413) { _savedSetPaused(true); return 'too-large'; }
     // Not this account's any more (signed out, or another tab signed in as
     // someone else): asked again whose, never written into the wrong one.
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return 'not-ours'; }
+    if (_accountRefused(r)) return 'not-ours';
     return r.ok ? r.json() : null;
   }).then(function (d) {
     if (d === 'too-large' || d === 'not-ours') return false;
@@ -20134,7 +20411,7 @@ function _savedPull() {
   _savedPulledAt = Date.now();
   var account = Saved.account();
   fetch(_accountUrl('/userdata'), { credentials: 'same-origin' }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
+    if (_accountRefused(r)) return null;
     return r.ok ? r.json() : null;
   }).then(function (d) {
     if (!d || Saved.account() !== account) return;
@@ -20152,67 +20429,96 @@ function _savedPull() {
 // follows, if it never held a setting, takes this browser's own (its settings
 // from before sync), on the keys it lacks (fill). Separate from the saved
 // store's sync: a change sends a few hundred bytes.
-var _prefPushTimer = null, _prefPushing = null, _prefFilling = false;
-// The server out of reach or failing: tried again after a while, as the saved
-// store's push is (_SAVED_PUSH_OFTEN_MS), not on every change's short wait.
-var _prefRetryTimer = null;
-function _prefRetryLater() {
-  if (_prefRetryTimer) return;
-  _prefRetryTimer = setTimeout(function () { _prefRetryTimer = null; _prefPush(); }, _SAVED_PUSH_OFTEN_MS);
+var _prefFilling = false;
+// One account-synced store's sending and fetching (settings, games): the
+// pending keys go to ``cfg.url`` in one request, the account's copy as kept
+// comes back and is taken (``cfg.take``). A failure (the server out of reach
+// or failing) is tried again after a while (_SAVED_PUSH_OFTEN_MS), never on
+// every change; a refusal (not this account) asks whose it is. A key the
+// account would not keep (over its caps: the answer's ``refused``) leaves the
+// pending list for ``refused``, so it is neither sent again and again nor lost.
+// ``cfg``: {url, account(), state(), save(st), keys(st, fill), take(d), pushMs}.
+function _syncStore(cfg) {
+  var s = { timer: null, pushing: null, retry: null };
+  s.retryLater = function () {
+    if (s.retry) return;
+    s.retry = setTimeout(function () { s.retry = null; s.push(); }, _SAVED_PUSH_OFTEN_MS);
+  };
+  s.pushSoon = function () {
+    if (!cfg.account() || s.retry) return;
+    clearTimeout(s.timer);
+    s.timer = setTimeout(function () { s.push(); }, cfg.pushMs());
+  };
+  // leaving: while the page goes, in a request that outlives it. fill: this
+  // browser's own, into an account that has none (cfg.keys decides which).
+  s.push = function (leaving, fill) {
+    clearTimeout(s.timer); s.timer = null;
+    var st = cfg.state(), account = cfg.account();
+    if (!account || st.owner !== account) return Promise.resolve(true);
+    if (s.pushing && !leaving) return s.pushing.then(function () { return s.push(); });
+    var changes = {}, n = 0;
+    cfg.keys(st, fill).forEach(function (k) { changes[k] = { v: _rawGet(k) }; n++; });
+    if (!n) return Promise.resolve(true);
+    var body = JSON.stringify({ changes: changes, fill: fill ? true : undefined, account: account, client: _liveClient });
+    var sent = fetch(cfg.url, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
+      keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
+    }).then(function (r) {
+      if (_accountRefused(r)) return null;
+      if (!r.ok) { s.retryLater(); return null; }
+      return r.json();
+    }, function () { s.retryLater(); return null; }).then(function (d) {
+      if (!d || account !== cfg.account()) return false;
+      clearTimeout(s.retry); s.retry = null;
+      // Taken: no longer pending, unless it changed again since it was sent.
+      var now = cfg.state(), refused = Array.isArray(d.refused) ? d.refused : [];
+      Object.keys(changes).forEach(function (k) {
+        if (refused.indexOf(k) >= 0) { now.refused[k] = 1; delete now.pending[k]; return; }
+        delete now.refused[k];
+        if (_rawGet(k) === changes[k].v) delete now.pending[k];
+      });
+      cfg.save(now);
+      cfg.take(d);
+      return true;
+    }).catch(function () { return false; });
+    if (leaving) return sent;
+    s.pushing = sent.then(function (ok) {
+      s.pushing = null;
+      // Taken, and more changed meanwhile: that goes next. A failure waits for
+      // its retry, never a push every moment.
+      if (ok && Object.keys(cfg.state().pending).length) s.pushSoon();
+      return ok;
+    });
+    return s.pushing;
+  };
+  s.pull = function () {
+    var account = cfg.account();
+    if (!account) return Promise.resolve(null);
+    return fetch(_accountUrl(cfg.url, account), { credentials: 'same-origin' }).then(function (r) {
+      if (_accountRefused(r) || !r.ok) return null;
+      return r.json();
+    }).then(function (d) {
+      if (!d || account !== cfg.account()) return null;
+      cfg.take(d);
+      return d;
+    }).catch(function () { return null; });
+  };
+  return s;
 }
-function _prefPushSoon() {
-  if (!_accountId || _prefRetryTimer) return;
-  clearTimeout(_prefPushTimer);
-  _prefPushTimer = setTimeout(_prefPush, _SAVED_PUSH_MS);
+// The settings' store, made when first used (a setting can be written before
+// the page has run this far).
+var _prefSync = null;
+function _prefStore() {
+  return _prefSync || (_prefSync = _syncStore({
+    url: '/userdata/settings', account: function () { return _accountId; },
+    state: _prefState, save: _prefSaveState, take: _prefTake,
+    pushMs: function () { return _SAVED_PUSH_MS; },
+    keys: function (st, fill) { return _PREF_KEYS.filter(function (k) { return fill ? _rawGet(k) !== null : st.pending[k]; }); },
+  }));
 }
-// The pending changes, sent. leaving: while the page goes, in a request that
-// outlives it. fill: this browser's settings, into an account that has none.
-function _prefPush(leaving, fill) {
-  clearTimeout(_prefPushTimer); _prefPushTimer = null;
-  var st = _prefState();
-  if (!_accountId || st.owner !== _accountId) return Promise.resolve(true);
-  if (_prefPushing && !leaving) return _prefPushing.then(function () { return _prefPush(); });
-  var changes = {}, n = 0;
-  _PREF_KEYS.forEach(function (k) {
-    if (fill ? _rawGet(k) !== null : st.pending[k]) { changes[k] = { v: _rawGet(k) }; n++; }
-  });
-  if (!n) return Promise.resolve(true);
-  var account = _accountId, body = JSON.stringify({ changes: changes, fill: fill ? true : undefined, account: account, client: _liveClient });
-  var sent = fetch('/userdata/settings', {
-    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
-    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
-  }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
-    if (!r.ok) { _prefRetryLater(); return null; }
-    return r.json();
-  }, function () { _prefRetryLater(); return null; }).then(function (d) {
-    if (!d || account !== _accountId) return false;
-    clearTimeout(_prefRetryTimer); _prefRetryTimer = null;
-    // Taken: no longer pending, unless it changed again since it was sent.
-    var now = _prefState();
-    Object.keys(changes).forEach(function (k) { if (_rawGet(k) === changes[k].v) delete now.pending[k]; });
-    _prefSaveState(now);
-    _prefTake(d);
-    return true;
-  }).catch(function () { return false; });
-  if (leaving) return sent;
-  _prefPushing = sent.then(function (ok) {
-    _prefPushing = null;
-    // Taken, and more changed meanwhile: that goes next. A failure waits for
-    // its retry (_prefRetryLater), never a push every moment.
-    if (ok && Object.keys(_prefState().pending).length) _prefPushSoon();
-    return ok;
-  });
-  return _prefPushing;
-}
-function _prefPull() {
-  if (!_accountId) return;
-  var account = _accountId;
-  fetch(_accountUrl('/userdata/settings'), { credentials: 'same-origin' }).then(function (r) {
-    if (r.status === 401 || r.status === 409) { _accountRecheck(); return null; }
-    return r.ok ? r.json() : null;
-  }).then(function (d) { if (d && account === _accountId) _prefTake(d); }).catch(function () {});
-}
+function _prefPushSoon() { _prefStore().pushSoon(); }
+function _prefPush(leaving, fill) { return _prefStore().push(leaving, fill); }
+function _prefPull() { if (_accountId) _prefStore().pull(); }
 // The account's settings ({rev, settings: {key: {v, r}}}) come in.
 function _prefTake(d) {
   if (!d || typeof d !== 'object' || !d.settings || typeof d.settings !== 'object') return;
@@ -20245,7 +20551,7 @@ function _prefTake(d) {
     }
   }
   // Changed here and not yet taken (the page closed before it went): it goes.
-  if (Object.keys(st.pending).length && !_prefPushing) _prefPushSoon();
+  if (Object.keys(st.pending).length && !_prefStore().pushing) _prefPushSoon();
 }
 // Settings that changed underneath this page (the account's, or another tab's):
 // what shows them is drawn again.
@@ -20289,6 +20595,247 @@ function _prefApplied(keys) {
   var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS];
   if (mode === 'home' && !readerOpen && home.some(has)) { try { renderHome(); } catch (e) {} }
 }
+// ── Games: what a person plays, theirs on every browser they sign in on ──
+// ZimiGames keeps everything in this browser's storage under zimi.games. and
+// zimi.zimcity. (saves, stats, dailies, best scores, kept cities); the games
+// themselves never learn of accounts. Signed in, the shell carries those keys
+// to the person's account (/userdata/games, the settings' shape: the server
+// orders changes, one pending here wins until the account has it) and back.
+// A game page writes from the reader frame, so its changes arrive here as
+// storage events. Two people on one browser each see only their own: signing
+// out takes the games off this screen (sent first; what could not go is set
+// aside for that person's next sign-in). Password off, or not signed in: the
+// browser's own, as before (users.games_data_owner).
+var _GAMES_KEY_RE = new RegExp('^(' + _GAMES_STORE_PREFIXES.map(_reEscape).join('|') + ')');
+// The device's, never the person's: tile pictures, the last start error, this server's clock.
+var _GAMES_LOCAL = ['zimi.games.snaps', 'zimi.games.lastStartError', 'zimi.games.serverOffset'];
+var _GAMES_PUSH_MS = 3000;
+var _GAMES_KEPT_CITIES = 5;   // zimcity.js KEPT_MAX
+var _gamesAccount = null, _gamesPulledAt = 0;
+function _isGamesKey(k) { return typeof k === 'string' && _GAMES_KEY_RE.test(k) && _GAMES_LOCAL.indexOf(k) < 0; }
+function _gamesKeys() {
+  var out = [];
+  try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (_isGamesKey(k)) out.push(k); } } catch (e) {}
+  return out;
+}
+function _gamesState() { return _syncState(SK.GAMES_SYNC, { aside: 'object', adopted: 'bool' }); }
+function _gamesSaveState(st) { _syncSaveState(SK.GAMES_SYNC, st); }
+function _gamesJSON(v) { try { return v == null ? null : JSON.parse(v); } catch (e) { return null; } }
+// Two copies of one key, both changed (this browser offline, another device
+// playing): nothing a person did is lost. Stats take the larger count and every
+// day played; a save the newer one (never two interleaved); else this browser's.
+function _gamesMerge(k, mine, theirs) {
+  if (mine == null) return theirs;
+  if (theirs == null || mine === theirs) return mine;
+  var a = _gamesJSON(mine), b = _gamesJSON(theirs);
+  if (!a || !b) return mine;
+  if (k === 'zimi.games.stats' && a.g && b.g && a.days && b.days) {
+    var g = {}, days = {};
+    [a.g, b.g].forEach(function (src) { Object.keys(src).forEach(function (p) {
+      var x = src[p] || {}, y = g[p] || { n: 0, w: 0 };
+      g[p] = { n: Math.max(y.n, x.n || 0), w: Math.max(y.w, x.w || 0) };
+    }); });
+    [a.days, b.days].forEach(function (src) { Object.keys(src).forEach(function (d) {
+      var x = days[d] || (days[d] = {});
+      Object.keys(src[d] || {}).forEach(function (p) { if (x[p] !== 'win') x[p] = src[d][p]; });
+    }); });
+    return JSON.stringify({ v: 1, g: g, days: days, best: Math.max(a.best || 0, b.best || 0) });
+  }
+  // ZimCity's kept cities: every city either browser kept, each whole as it was kept (never two mixed), newest first.
+  if (k === 'zimi.zimcity.kept' && Array.isArray(a) && Array.isArray(b)) {
+    var seen = {}, all = a.concat(b).filter(function (c) {
+      if (!c || typeof c.at !== 'number' || seen[c.at]) return false;
+      return (seen[c.at] = true);
+    });
+    all.sort(function (x, y) { return y.at - x.at; });
+    return JSON.stringify(all.slice(0, _GAMES_KEPT_CITIES));
+  }
+  if (typeof a.at === 'number' && typeof b.at === 'number') return a.at >= b.at ? mine : theirs;
+  return mine;
+}
+function _gamesWrite(k, v) {
+  try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+}
+// The games shown here changed underneath (the account's copy came in): the
+// games page on screen is told, so a shelf draws its stats again.
+function _gamesTellFrame() {
+  var f = document.getElementById('reader-frame');
+  try { f.contentWindow.postMessage({ zimi: 'games-synced' }, location.origin); } catch (e) {}
+}
+// A games key changed in this browser: the person's to send, if one is followed.
+function _gamesChanged(k) {
+  if (!_isGamesKey(k)) return;
+  var st = _gamesState();
+  if (!_gamesAccount || st.owner !== _gamesAccount) return;
+  st.pending[k] = 1;
+  _gamesSaveState(st);
+  _gamesPushSoon();
+}
+var _gamesSync = null;
+function _gamesStore() {
+  return _gamesSync || (_gamesSync = _syncStore({
+    url: '/userdata/games', account: function () { return _gamesAccount; },
+    state: _gamesState, save: _gamesSaveState, take: _gamesTake,
+    pushMs: function () { return _GAMES_PUSH_MS; },
+    keys: function (st) { return Object.keys(st.pending); },
+  }));
+}
+function _gamesPushSoon() { _gamesStore().pushSoon(); }
+function _gamesPush(leaving) { return _gamesStore().push(leaving); }
+function _gamesPull() {
+  if (!_gamesAccount) return Promise.resolve(null);
+  _gamesPulledAt = Date.now();
+  return _gamesStore().pull();
+}
+// The account's games ({rev, settings: {key: {v, r}}}) come in: every key it
+// holds that is not pending here is the account's; a pending one meets it.
+function _gamesTake(d) {
+  if (!d || typeof d !== 'object' || !d.settings || typeof d.settings !== 'object') return;
+  var st = _gamesState(), moved = false, more = false;
+  if (!_gamesAccount || st.owner !== _gamesAccount) return;
+  Object.keys(d.settings).forEach(function (k) {
+    var acc = d.settings[k];
+    if (!_isGamesKey(k) || !acc || typeof acc !== 'object') return;
+    var v = typeof acc.v === 'string' ? acc.v : null, here = _rawGet(k);
+    if (st.pending[k]) {
+      var m = _gamesMerge(k, here, v);
+      if (m !== here) { _gamesWrite(k, m); moved = true; }
+      if (m === v) delete st.pending[k]; else more = true;
+      return;
+    }
+    if (here !== v) { _gamesWrite(k, v); moved = true; }
+  });
+  _gamesSaveState(st);
+  if (moved) _gamesTellFrame();
+  if (more) _gamesPushSoon();
+}
+// What has not reached a person's account (pending, or refused by it): their values, set aside so it is never lost.
+function _gamesUnsent(st) {
+  var mine = {};
+  Object.keys(st.pending).concat(Object.keys(st.refused)).forEach(function (k) { mine[k] = _rawGet(k); });
+  return mine;
+}
+// The games pages forget whose they were showing (their name, signed in).
+function _gamesForgetPerson() {
+  try { localStorage.removeItem(SK.GAMES_PERSON); localStorage.removeItem(SK.GAMES_SIGNED); } catch (e) {}
+}
+// This browser now follows ``id``'s games (null: its own). A person who left
+// without their games going up finds them waiting (aside); a browser's games
+// from before anyone signed in go into the first account that does, once,
+// merged with what that account already has, said only when there was some.
+function _gamesFollow(id, boot) {
+  id = typeof id === 'string' && id ? id : null;
+  var st = _gamesState();
+  _gamesAccount = id;
+  if (!id) _gamesForgetPerson();
+  if (st.owner === id) { if (id && !boot) _gamesPull(); return; }
+  if (st.owner) {
+    // Someone else's are on this screen (their session ended without a sign-out): set aside, then gone.
+    var mine = _gamesUnsent(st);
+    if (Object.keys(mine).length) st.aside[st.owner] = mine;
+    _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
+    _gamesTellFrame();
+  }
+  var adopt = id && !st.adopted && !st.owner ? _gamesKeys() : [];
+  st.owner = id; st.pending = {}; st.refused = {};
+  if (id && st.aside[id]) {
+    var back = st.aside[id];
+    Object.keys(back).forEach(function (k) { _gamesWrite(k, back[k]); st.pending[k] = 1; });
+    delete st.aside[id];
+  }
+  if (id && adopt.length) adopt.forEach(function (k) { st.pending[k] = 1; });
+  if (id) st.adopted = true;
+  _gamesSaveState(st);
+  if (!id) return;
+  _gamesPull().then(function (d) {
+    var had = d && d.settings && Object.keys(d.settings).some(_isGamesKey);
+    if (adopt.length && had) _showToast(t('games_sync_merged'), 6000);
+    if (Object.keys(_gamesState().pending).length) _gamesPush();
+  });
+}
+// Signing out: what has not gone goes, then this person's games leave the
+// screen; what could not go waits for their next sign-in.
+function _gamesLeave() {
+  if (!_gamesAccount) return Promise.resolve();
+  var who = _gamesAccount;
+  return _gamesPush().then(function () {
+    // Whatever did not reach the account (not sent, or refused by it) waits for their next sign-in here.
+    var st = _gamesState(), mine = _gamesUnsent(st);
+    if (Object.keys(mine).length) st.aside[who] = mine;
+    _gamesKeys().forEach(function (k) { _gamesWrite(k, null); });
+    st.owner = null; st.pending = {}; st.refused = {};
+    _gamesSaveState(st);
+    _gamesAccount = null;
+    _gamesForgetPerson();
+  }, function () {});
+}
+// /whoami's word on whose games this browser keeps, and the name to show.
+// ``boot``: the account's copy comes once the page is up (_savedStart).
+function _gamesWhoami(j, boot) {
+  var id = j && j.games;
+  if (boot) {
+    var st = _gamesState();
+    if (st.owner === (id || null)) _gamesAccount = id || null; else _gamesFollow(id, false);
+  } else _gamesFollow(id);
+  _gamesPerson(j && j.games ? j.display : null);
+}
+// What the signed-in person is called on this server (their games, the boards):
+// one field, opened from their account card in Manage and from the games'
+// Stats page. Empty goes back to the account's own name.
+var _displayName = null;
+// The sheet. ``opts`` (an admin naming someone in Manage > Users): {current,
+// title, save(value) -> Promise of {status, j}}; without it, the signed-in
+// person's own.
+function _displayNameSheet(opts) {
+  if (!opts && !_gamesAccount) return;
+  opts = opts || {
+    current: _displayName,
+    save: function (val) {
+      return fetch('/account/display', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display: val, account: _gamesAccount }) }).then(function (r) {
+        return r.json().then(function (j) { return { status: r.status, j: j }; });
+      }).then(function (res) { if (res.status === 200) _gamesPerson(res.j.display || null); return res; });
+    },
+  };
+  var old = document.getElementById('name-sheet');
+  if (old) old.remove();
+  var el = document.createElement('div');
+  el.id = 'name-sheet';
+  el.className = 'name-sheet-wrap';
+  el.innerHTML = '<form class="name-sheet" role="dialog" aria-modal="true" aria-labelledby="name-sheet-title">' +
+    '<h2 id="name-sheet-title">' + esc(opts.title || t('display_name_title')) + '</h2>' +
+    '<p class="name-sheet-hint">' + tH('display_name_hint') + '</p>' +
+    '<input id="name-sheet-input" type="text" maxlength="32" autocomplete="nickname" value="' + esc(opts.current || '') + '">' +
+    '<p class="name-sheet-err" role="alert"></p>' +
+    '<div class="name-sheet-actions"><button type="button" class="pill" data-name="cancel">' + tH('cancel') + '</button>' +
+    '<button type="submit" class="pill active">' + tH('save') + '</button></div></form>';
+  var close = function () { el.remove(); };
+  el.addEventListener('click', function (e) { if (e.target === el || (e.target.closest && e.target.closest('[data-name="cancel"]'))) close(); });
+  el.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  el.querySelector('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var val = el.querySelector('input').value.trim(), err = el.querySelector('.name-sheet-err');
+    opts.save(val).then(function (res) {
+      if (res.status === 200) { close(); _showToast(t('display_name_saved'), 3000); return; }
+      err.textContent = t(res.status === 409 ? 'display_name_taken' : 'display_name_invalid');
+    }).catch(function () { err.textContent = t('display_name_invalid'); });
+  });
+  document.body.appendChild(el);
+  var input = el.querySelector('input');
+  input.focus(); input.select();
+}
+// The person's display name, for the games pages (Stats, the share line).
+function _gamesPerson(name) {
+  _displayName = name || null;
+  try {
+    if (name && _gamesAccount) localStorage.setItem(SK.GAMES_PERSON, name); else localStorage.removeItem(SK.GAMES_PERSON);
+    if (_gamesAccount) localStorage.setItem(SK.GAMES_SIGNED, '1'); else localStorage.removeItem(SK.GAMES_SIGNED);
+  } catch (e) {}
+}
+window.addEventListener('storage', function (e) {
+  if (e.key && _isGamesKey(e.key)) _gamesChanged(e.key);
+});
+
 // Data that holds a store (the account's copy, a My data file) comes in: the
 // store merged, and bookmarks and folders in the pre-1.12 shape migrated. An
 // account's are migrated once and the store flagged, so a later pull never
@@ -20322,14 +20869,15 @@ function _savedFlush(leaving) {
 // what it has not had is sent on leaving it.
 function _savedStart() {
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { _savedFlush(true); _prefPush(true); _liveClose(); return; }
+    if (document.hidden) { _savedFlush(true); _prefPush(true); _gamesPush(true); _liveClose(); return; }
     // Back on the page: the stream picks up where it left off (since), so a
     // change made meanwhile on another device arrives as it reopens.
     if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
+    if (_gamesAccount && Date.now() - _gamesPulledAt > _SAVED_PULL_EVERY_MS) _gamesPull();
     _liveOpen();
     _buildCheck();
   });
-  window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); });
+  window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); _gamesPush(true); });
   // A setting written in another page of this browser (another tab, an app
   // page in the reader): shown here too. Whoever wrote it marked it pending
   // (_prefChanged, apps.js's prefTouched); one this page did not send yet goes.
@@ -20353,6 +20901,7 @@ function _savedStart() {
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   _liveOpen();
   _buildCheck();
+  if (_gamesAccount) (window.requestIdleCallback || setTimeout)(function () { _gamesFollow(_gamesAccount); });
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
@@ -20383,6 +20932,7 @@ function _liveOpen() {
     if (!c || c.by === _liveClient) return;
     if (c.topic === 'settings') _prefPull();
     else if (c.topic === 'saved') _savedPull();
+    else if (c.topic === 'games') _gamesPull();
     else if (c.topic === 'library') _libraryHeard();
   });
   // Each write says where the stream is (lastEventId): kept for reopening,
@@ -20468,6 +21018,7 @@ var _BUILD = (window.__ZIMI_CONFIG && __ZIMI_CONFIG.build) || '';
 var _buildWaiting = ''; // the newer build heard: the page reloads when it may
 var _BUILD_QUIET_POLL_MS = 3000; // how often a build that is waiting looks for the page to go quiet
 var _BUILD_SW_WAIT_MS = 15000; // a worker that never takes charge does not hold the reload
+var _buildWorkerBy = '';
 var _UPDATE_RESUME_KEY = 'zimi_update_resume'; // sessionStorage: the article's place across the reload
 // sessionStorage: the build this tab last reloaded for. Reloaded and still on
 // the old one (a worker that never took charge served the old page), it does
@@ -20489,20 +21040,37 @@ function _buildCheck() {
   fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); }).catch(function () {});
 }
+// The build the worker in charge is (sw.js answers its CACHE_VERSION, the server's build): the new worker may have
+// claimed this page before the build was asked for, and its change was then fired with no one listening.
+var _BUILD_ASK_MS = 1500; // an older worker does not answer
+function _workerBuild() {
+  return new Promise(function (done) {
+    var ctl = navigator.serviceWorker.controller, ch = new MessageChannel();
+    if (!ctl) { done(''); return; }
+    ch.port1.onmessage = function (e) { done(e.data); };
+    setTimeout(function () { done(''); }, _BUILD_ASK_MS);
+    ctl.postMessage({ type: 'build' }, [ch.port2]);
+  });
+}
 // The new build's worker in charge (its cache is the new page), or a moment's wait for it.
 function _buildWorker() {
   var sw = navigator.serviceWorker;
   if (!sw || !sw.controller) return Promise.resolve();
-  return new Promise(function (done) {
-    sw.addEventListener('controllerchange', done, { once: true });
-    setTimeout(done, _BUILD_SW_WAIT_MS);
-    sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done(); }).catch(done);
+  return new Promise(function (resolve) {
+    // How the wait ended is kept (_buildWorkerBy): a reload that only waited out the timer is the slow path.
+    var done = function (by) { return function () { if (!_buildWorkerBy) { _buildWorkerBy = by; resolve(); } }; };
+    sw.addEventListener('controllerchange', done('change'), { once: true }); // listening before asking: no change slips between
+    setTimeout(done('timeout'), _BUILD_SW_WAIT_MS);
+    _workerBuild().then(function (build) {
+      if (build === _buildWaiting) { done('build')(); return; }
+      return sw.getRegistration().then(function (reg) { if (reg) return reg.update(); done('none')(); });
+    }).catch(done('error'));
   });
 }
 // Now if nothing is lost by it; else the next time the page is hidden.
 function _buildReload() {
   var go = function () {
-    try { sessionStorage.setItem(_UPDATE_TRIED_KEY, _buildWaiting); } catch (e) {}
+    try { sessionStorage.setItem(_UPDATE_TRIED_KEY, _buildWaiting); sessionStorage.setItem('zimi_update_by', _buildWorkerBy); } catch (e) {}
     _updateResumeKeep();
     location.reload();
   };
@@ -21247,7 +21815,7 @@ function openArticle(zim, path, title, opts) {
   if (discScroll && discScroll.scrollLeft > 0) {
     try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
   }
-  var url = _articleUrl(zim, path);
+  var url = _articleUrl(zim, path, opts && opts.query);
   // A Kiwix map restores its own last view from localStorage as it loads,
   // after Zimi has positioned it, so a switch from Hawaii to the world map
   // landed on wherever that map was last (Eric: "It moved from Hawaii to
@@ -21279,8 +21847,11 @@ function openArticle(zim, path, title, opts) {
     return;
   }
   // Track article history: push current article before navigating away
+  // The entry's title as it was found (a search result's, a list's): the page's own <title>, when it has one, wins.
+  // The same entry opened again without one (the address read back as the app starts) keeps the one it had.
+  if (!title && currentArticle && currentArticle.zim === zim && currentArticle.path === path) title = currentArticle.title;
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
-  currentArticle = { zim: zim, path: path };
+  currentArticle = { zim: zim, path: path, title: title || '' };
   // Start interlang prefetch immediately (don't wait for iframe load)
   _prefetchArticleLangs();
   // Persist to browse history (localStorage)

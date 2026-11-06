@@ -3,9 +3,11 @@
 
 Desktop Release calls this: ``release_notes.py 1.14.1 > notes.md``.
 
-A version's section may open with a ``### Highlights`` block of one to three
-short sentences. The release body is then that block, a **Fixed** list of every
-changelog line in the section that cites an issue (#N), and one line linking the
+A version's section may open with a ``### Highlights`` block: one to three
+short sentences, or a list of up to eight one-sentence bullets, one per area
+(Eric, 2026-11-04: "simpler highlights this and future releases"). The release
+body is then that block, a **Fixed** list of every other changelog line in the
+section that cites an issue (#N), and one line linking the
 full entry in the CHANGELOG at the version's tag. A section without the block
 is used whole, as it always was, and a version with no section at all gets a
 bare "Release vX.Y.Z".
@@ -71,7 +73,8 @@ def release_body(changelog, version, repo_url=REPO_URL):
     if not highlights:
         return "\n".join(body).strip() or "Release v%s" % version
     link = "%s/blob/v%s/CHANGELOG.md#%s" % (repo_url, version, heading_anchor(heading))
-    fixed = _issue_lines(body)
+    # An issue the highlights already name is not listed twice.
+    fixed = [l for l in _issue_lines(body) if l not in highlights.splitlines()]
     if fixed:
         highlights += "\n\n**Fixed**\n\n" + "\n".join(fixed)
     return "%s\n\n[Full changelog for v%s](%s)" % (highlights, version, link)

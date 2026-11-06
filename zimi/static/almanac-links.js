@@ -55,7 +55,15 @@
     'planet:uranus':  { q: 'Q324', en: 'Uranus' },
     'planet:neptune': { q: 'Q332', en: 'Neptune' },
     'planet:sun':     { q: 'Q525', en: 'Sun' },
-    'planet:moon':    { q: 'Q405', en: 'Moon' }
+    'planet:moon':    { q: 'Q405', en: 'Moon' },
+    // The 3D view's other destinations (its arrival cards); Q-IDs by exact enwiki title, Wikidata 2026-11-04.
+    'planet:pluto':    { q: 'Q339',  en: 'Pluto' },
+    'planet:ceres':    { q: 'Q596',  en: 'Ceres (dwarf planet)' },
+    'planet:io':       { q: 'Q3123', en: 'Io (moon)' },
+    'planet:europa':   { q: 'Q3143', en: 'Europa (moon)' },
+    'planet:ganymede': { q: 'Q3169', en: 'Ganymede (moon)' },
+    'planet:callisto': { q: 'Q3134', en: 'Callisto (moon)' },
+    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' }
   };
 
   var PROBES = {
@@ -63,7 +71,13 @@
     'probe:voyager2':    { q: 'Q48475', en: 'Voyager 2' },
     'probe:pioneer10':   { q: 'Q59103', en: 'Pioneer 10' },
     'probe:pioneer11':   { q: 'Q59113', en: 'Pioneer 11' },
-    'probe:newhorizons': { q: 'Q48461', en: 'New Horizons' }
+    'probe:newhorizons': { q: 'Q48461', en: 'New Horizons' },
+    'probe:parker':      { q: 'Q899091', en: 'Parker Solar Probe' },
+    'probe:juno':        { q: 'Q48546', en: 'Juno (spacecraft)' },
+    'probe:jwst':        { q: 'Q186447', en: 'James Webb Space Telescope' },
+    'probe:cassini':     { q: 'Q165585', en: 'Cassini–Huygens' },
+    'probe:galileo':     { q: 'Q105425030', en: 'Galileo (spacecraft)' },
+    'probe:europaclipper': { q: 'Q15637513', en: 'Europa Clipper' }
   };
 
   // Constellations — `en` is the disambiguated article title so English
@@ -72,30 +86,94 @@
   // links the sidereal constellation the Sun/sky actually occupies. Verified
   // against Wikidata (wbgetentities by exact enwiki title).
   var CONSTELLATIONS = {
-    'const:pisces':      { q: 'Q8679',  en: 'Pisces (constellation)' },
-    'const:aries':       { q: 'Q10584', en: 'Aries (constellation)' },
-    'const:taurus':      { q: 'Q10570', en: 'Taurus (constellation)' },
-    'const:gemini':      { q: 'Q8923',  en: 'Gemini (constellation)' },
-    'const:cancer':      { q: 'Q8849',  en: 'Cancer (constellation)' },
-    'const:leo':         { q: 'Q8853',  en: 'Leo (constellation)' },
-    'const:virgo':       { q: 'Q8842',  en: 'Virgo (constellation)' },
-    'const:libra':       { q: 'Q10580', en: 'Libra (constellation)' },
-    'const:scorpius':    { q: 'Q8865',  en: 'Scorpius' },
-    'const:sagittarius': { q: 'Q8866',  en: 'Sagittarius (constellation)' },
-    'const:capricornus': { q: 'Q10535', en: 'Capricornus' },
-    'const:aquarius':    { q: 'Q10576', en: 'Aquarius (constellation)' },
-    'const:bootes':      { q: 'Q8667',  en: 'Boötes' },
-    'const:lyra':        { q: 'Q10484', en: 'Lyra' },
-    'const:perseus':     { q: 'Q10511', en: 'Perseus (constellation)' },
-    'const:draco':       { q: 'Q8675',  en: 'Draco (constellation)' },
-    'const:orion':       { q: 'Q8860',  en: 'Orion (constellation)' },
-    'const:ursa_minor':  { q: 'Q10478', en: 'Ursa Minor' },
-    // drawn-only (canvas) — mapped for completeness, not yet DOM-tappable
-    'const:ursa_major':  { q: 'Q8918',  en: 'Ursa Major' },
-    'const:cassiopeia':  { q: 'Q10464', en: 'Cassiopeia (constellation)' },
-    'const:cygnus':      { q: 'Q8921',  en: 'Cygnus (constellation)' },
-    'const:crux':        { q: 'Q10542', en: 'Crux' },
-    'const:canis_major': { q: 'Q10538', en: 'Canis Major' }
+    'const:andromeda':          { q: 'Q9256',  en: 'Andromeda (constellation)' },
+    'const:antlia':             { q: 'Q10481', en: 'Antlia' },
+    'const:apus':               { q: 'Q10506', en: 'Apus' },
+    'const:aquarius':           { q: 'Q10576', en: 'Aquarius (constellation)' },
+    'const:aquila':             { q: 'Q10586', en: 'Aquila (constellation)' },
+    'const:ara':                { q: 'Q9253',  en: 'Ara (constellation)' },
+    'const:aries':              { q: 'Q10584', en: 'Aries (constellation)' },
+    'const:auriga':             { q: 'Q10476', en: 'Auriga' },
+    'const:bootes':             { q: 'Q8667',  en: 'Boötes' },
+    'const:caelum':             { q: 'Q10488', en: 'Caelum' },
+    'const:camelopardalis':     { q: 'Q8832',  en: 'Camelopardalis' },
+    'const:cancer':             { q: 'Q8849',  en: 'Cancer (constellation)' },
+    'const:canes_venatici':     { q: 'Q10452', en: 'Canes Venatici' },
+    'const:canis_major':        { q: 'Q10538', en: 'Canis Major' },
+    'const:canis_minor':        { q: 'Q9305',  en: 'Canis Minor' },
+    'const:capricornus':        { q: 'Q10535', en: 'Capricornus' },
+    'const:carina':             { q: 'Q10470', en: 'Carina (constellation)' },
+    'const:cassiopeia':         { q: 'Q10464', en: 'Cassiopeia (constellation)' },
+    'const:centaurus':          { q: 'Q8844',  en: 'Centaurus' },
+    'const:cepheus':            { q: 'Q10468', en: 'Cepheus (constellation)' },
+    'const:cetus':              { q: 'Q8839',  en: 'Cetus (constellation)' },
+    'const:chamaeleon':         { q: 'Q10457', en: 'Chamaeleon' },
+    'const:circinus':           { q: 'Q10508', en: 'Circinus' },
+    'const:columba':            { q: 'Q10425', en: 'Columba (constellation)' },
+    'const:coma_berenices':     { q: 'Q9285',  en: 'Coma Berenices' },
+    'const:corona_austrina':    { q: 'Q10413', en: 'Corona Australis' },
+    'const:corona_borealis':    { q: 'Q10406', en: 'Corona Borealis' },
+    'const:corvus':             { q: 'Q10517', en: 'Corvus (constellation)' },
+    'const:crater':             { q: 'Q9282',  en: 'Crater (constellation)' },
+    'const:crux':               { q: 'Q10542', en: 'Crux' },
+    'const:cygnus':             { q: 'Q8921',  en: 'Cygnus (constellation)' },
+    'const:delphinus':          { q: 'Q9302',  en: 'Delphinus' },
+    'const:dorado':             { q: 'Q8837',  en: 'Dorado' },
+    'const:draco':              { q: 'Q8675',  en: 'Draco (constellation)' },
+    'const:equuleus':           { q: 'Q10438', en: 'Equuleus' },
+    'const:eridanus':           { q: 'Q10433', en: 'Eridanus' },
+    'const:fornax':             { q: 'Q8913',  en: 'Fornax' },
+    'const:gemini':             { q: 'Q8923',  en: 'Gemini (constellation)' },
+    'const:grus':               { q: 'Q10563', en: 'Grus (constellation)' },
+    'const:hercules':           { q: 'Q10448', en: 'Hercules (constellation)' },
+    'const:horologium':         { q: 'Q10574', en: 'Horologium (constellation)' },
+    'const:hydra':              { q: 'Q10578', en: 'Hydra (constellation)' },
+    'const:hydrus':             { q: 'Q10416', en: 'Hydrus' },
+    'const:indus':              { q: 'Q10450', en: 'Indus (constellation)' },
+    'const:lacerta':            { q: 'Q10430', en: 'Lacerta' },
+    'const:leo':                { q: 'Q8853',  en: 'Leo (constellation)' },
+    'const:leo_minor':          { q: 'Q10403', en: 'Leo Minor' },
+    'const:lepus':              { q: 'Q10446', en: 'Lepus (constellation)' },
+    'const:libra':              { q: 'Q10580', en: 'Libra (constellation)' },
+    'const:lupus':              { q: 'Q10571', en: 'Lupus (constellation)' },
+    'const:lynx':               { q: 'Q10443', en: 'Lynx (constellation)' },
+    'const:lyra':               { q: 'Q10484', en: 'Lyra' },
+    'const:mensa':              { q: 'Q9289',  en: 'Mensa (constellation)' },
+    'const:microscopium':       { q: 'Q10492', en: 'Microscopium' },
+    'const:monoceros':          { q: 'Q10428', en: 'Monoceros' },
+    'const:musca':              { q: 'Q10435', en: 'Musca' },
+    'const:norma':              { q: 'Q10582', en: 'Norma (constellation)' },
+    'const:octans':             { q: 'Q10503', en: 'Octans' },
+    'const:ophiuchus':          { q: 'Q8906',  en: 'Ophiuchus' },
+    'const:orion':              { q: 'Q8860',  en: 'Orion (constellation)' },
+    'const:pavo':               { q: 'Q10515', en: 'Pavo (constellation)' },
+    'const:pegasus':            { q: 'Q8864',  en: 'Pegasus (constellation)' },
+    'const:perseus':            { q: 'Q10511', en: 'Perseus (constellation)' },
+    'const:phoenix':            { q: 'Q10441', en: 'Phoenix (constellation)' },
+    'const:pictor':             { q: 'Q10486', en: 'Pictor' },
+    'const:pisces':             { q: 'Q8679',  en: 'Pisces (constellation)' },
+    'const:piscis_austrinus':   { q: 'Q10409', en: 'Piscis Austrinus' },
+    'const:puppis':             { q: 'Q9251',  en: 'Puppis' },
+    'const:pyxis':              { q: 'Q10473', en: 'Pyxis' },
+    'const:reticulum':          { q: 'Q10498', en: 'Reticulum' },
+    'const:sagitta':            { q: 'Q10513', en: 'Sagitta' },
+    'const:sagittarius':        { q: 'Q8866',  en: 'Sagittarius (constellation)' },
+    'const:scorpius':           { q: 'Q8865',  en: 'Scorpius' },
+    'const:sculptor':           { q: 'Q9286',  en: 'Sculptor (constellation)' },
+    'const:scutum':             { q: 'Q10529', en: 'Scutum (constellation)' },
+    'const:serpens':            { q: 'Q8910',  en: 'Serpens' },
+    'const:sextans':            { q: 'Q10525', en: 'Sextans' },
+    'const:taurus':             { q: 'Q10570', en: 'Taurus (constellation)' },
+    'const:telescopium':        { q: 'Q10546', en: 'Telescopium' },
+    'const:triangulum':         { q: 'Q10565', en: 'Triangulum' },
+    'const:triangulum_australe':{ q: 'Q10422', en: 'Triangulum Australe' },
+    'const:tucana':             { q: 'Q10567', en: 'Tucana' },
+    'const:ursa_major':         { q: 'Q8918',  en: 'Ursa Major' },
+    'const:ursa_minor':         { q: 'Q10478', en: 'Ursa Minor' },
+    'const:vela':               { q: 'Q10521', en: 'Vela (constellation)' },
+    'const:virgo':              { q: 'Q8842',  en: 'Virgo (constellation)' },
+    'const:volans':             { q: 'Q10437', en: 'Volans' },
+    'const:vulpecula':          { q: 'Q10519', en: 'Vulpecula' }
   };
 
   // Meteor showers — key matches _METEOR_SHOWERS[].key. Q-IDs verified against
@@ -1086,14 +1164,15 @@
   // are tappable, so a missing hit is a no-op -- never a dead end, never a
   // toast, never a search.
   function open(key) {
-    if (typeof openArticle !== 'function') return;
     var q = _qidFor(key);
-    var hit = q ? _qidLinks[q] : null;
-    if (!hit) return;
+    openHit(q ? _qidLinks[q] : null);
+  }
+  // Leave the almanac and open a resolved article; the return intent is stamped AFTER openArticle (which clears it
+  // for normal opens), so a Back from the article reopens the almanac where it was.
+  function openHit(hit, opts) {
+    if (!hit || typeof openArticle !== 'function') return;
     var scroll = _leaveAlmanac();
-    openArticle(hit.zim, hit.path, hit.title);
-    // Stamp the return intent AFTER openArticle (which clears it for normal
-    // opens), so a Back from this article reopens the almanac at `scroll`.
+    openArticle(hit.zim, hit.path, hit.title, opts);
     window._almReturnScroll = scroll;
   }
 
@@ -1185,8 +1264,17 @@
     _preload();
   }
 
+  // -- Beyond the curated set -------------------------------------------------
+  // A body's landmarks (almanac-earth.js) carry their own Q-IDs, hundreds of them: each is resolved when its card
+  // opens, against the same library and languages, by the same rule (no search: a Q-ID that maps to no installed
+  // article stays plain text). Resolves to { qid: hit } for those that do.
+  function resolve(qids) {
+    if (!_encZimNames().length || !qids.length) return Promise.resolve({});
+    return _fetchChunk(qids.slice(0, _QID_BATCH_SIZE), _prefLangs(), {}).then(function (links) { return links || {}; });
+  }
+
   window.AlmanacLinks = {
     MAP: MAP, wrap: wrap, wrapHoliday: wrapHoliday, linkifyEvent: linkifyEvent,
-    open: open, bind: bind, reset: reset, linkFor: linkFor
+    open: open, openHit: openHit, bind: bind, reset: reset, linkFor: linkFor, resolve: resolve
   };
 })();

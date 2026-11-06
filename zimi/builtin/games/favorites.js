@@ -85,8 +85,8 @@
     items.forEach(function (it) { nav.appendChild(tile(it)); });
     s.appendChild(h);
     s.appendChild(nav);
-    // Before Game of the day, after the table.
-    top.insertBefore(s, doc.querySelector('.sh-top .ar-today'));
+    // Before the Daily row, after the table.
+    top.insertBefore(s, doc.querySelector('.sh-top .ar-daily'));
   }
 
   // What a tile's long-press menu asks (tilemenu.js): is this game kept, and keep it or let it go, with the row following.

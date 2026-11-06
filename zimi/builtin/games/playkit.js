@@ -332,11 +332,21 @@
     };
   };
 
-  // A button that is "down" while held, by pointer or by key; fn(true|false).
+  // A button that is "down" while held, by pointer or by key; fn(true|false). A finger that slides onto a held button's
+  // neighbour in the same row (Left to Right on a racing pad) lets go of the one and holds the other, as a thumb rolls.
   Play.hold = function (el, fn) {
     var down = false;
     function set(v) { if (v !== down) { down = v; el.setAttribute('aria-pressed', String(v)); fn(v); } }
-    el.addEventListener('pointerdown', function (e) { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch (err) { /* synthetic */ } set(true); });
+    function take(id) { try { el.setPointerCapture(id); } catch (err) { /* synthetic */ } set(true); }
+    el._holdTake = take;
+    el.addEventListener('pointerdown', function (e) { e.preventDefault(); take(e.pointerId); });
+    el.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      var over = document.elementFromPoint(e.clientX, e.clientY), to = over && over.closest && over.closest('button');
+      if (!to || to === el || !to._holdTake || to.parentNode !== el.parentNode) return;
+      try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already gone */ }
+      set(false); to._holdTake(e.pointerId);
+    });
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { el.addEventListener(n, function () { set(false); }); });
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     el.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set(true); } });

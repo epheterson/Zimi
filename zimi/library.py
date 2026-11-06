@@ -1338,6 +1338,9 @@ def _persist_pending_downloads():
                 "size_bytes": dl.get("size_bytes"),
                 "source": dl.get("_source", ""),
                 "peer_name": dl.get("peer_name", ""),
+                # A download that names its file's checksum keeps it across a restart, so the resumed file is
+                # still checked (Almanac HD's release file).
+                "sha256": dl.get("_sha256") or None,
             }
         )
     _srv._atomic_write_json(_pending_downloads_path(), {"pending": items})
@@ -1399,6 +1402,13 @@ def resume_pending_downloads():
                     # restart instead of silently discarding the transfer.
                     kept.append(it)
                     log.info("Peer resume deferred for %s: %s", filename, err)
+                    continue
+            elif it.get("source") == "almanac_hd":
+                # Through its own entry point: the release, its checksum and the outbound setting are asked afresh.
+                from zimi import almanachd
+
+                dl_id, err = almanachd.start(None)
+                if err in ("installed", "never"):
                     continue
             elif _offline_refusal():
                 # Waits for a run that may use the internet, rather than
@@ -3713,6 +3723,26 @@ def _renamed_successor(inst, catalog_index, installed_files):
     return found
 
 
+_SHA_CHUNK = 1 << 20  # read a file this much at a time to hash it
+
+
+def _file_sha256(path):
+    """Hex sha256 of a file, read in chunks (a ZIM can be gigabytes)."""
+    import hashlib as _hl
+
+    h = _hl.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(_SHA_CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _checksum_ok(dl, path):
+    """True unless the download names a checksum (``_sha256``) the file does not have."""
+    want = dl.get("_sha256")
+    return not want or _file_sha256(path) == str(want).lower()
+
+
 def _download_from_url(dl, url, tmp_dest):
     """Attempt to download from a single URL. Returns (success, error_msg).
 
@@ -4179,6 +4209,10 @@ def _download_thread(dl):
                 e,
             )
             raise RuntimeError("downloaded file failed validation") from e
+        # A download that names its checksum (Almanac HD's release file) installs only that file.
+        if not _checksum_ok(dl, tmp_dest):
+            log.error("Downloaded file does not match its checksum: %s", loggable(dl["filename"]))
+            raise RuntimeError("downloaded file does not match its checksum")
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
         dl["done"] = True  # Mark done immediately so UI shows completion

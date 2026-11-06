@@ -951,6 +951,7 @@ function yoursFirst(langs) {
 // interface's; the server settles it (English, else the language with the
 // most wikis, when no wiki is in it).
 function load() {
+  var wait = _wikis.length ? null : appWait('today');
   fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(storedLang() || yourLang() || STR.lang || 'en')).then(function(r) {
     if (!r.ok) throw new Error(r.status);
     return r.json();
@@ -964,7 +965,8 @@ function load() {
     if (d.day === _day) absorb(d);
     renderLangs(); renderPills();
     if (_q) wikiSearch(_q); else renderToday();
-  }).catch(function() { showLoadFailed(); });
+    if (wait) wait.done();
+  }).catch(function() { if (wait) wait.done(); showLoadFailed(); });
 }
 // A page left open past midnight moves to the new day when it is looked at
 // again: the picks are the day's.

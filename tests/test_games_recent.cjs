@@ -6,6 +6,7 @@
 
 const path = require('path');
 globalThis.ZimiText = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'text.js'));
+globalThis.ZimiShell = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'shell.js'));   // the one hash
 const R = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'recent.js'));
 
 const days = process.argv.indexOf('--days');

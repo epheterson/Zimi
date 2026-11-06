@@ -67,7 +67,7 @@
   var status = Play.status(els.msg);
   // The state kept: which set and middle letter, the outer letters as laid out, the words found (those the lists lack too).
   var g = null, typed = '', pendingMode = null, done = false, dict = '', asking = false, known = {};
-  var today = Lib.dayKey(new Date());
+  var today = ZimiShell.day('');   // a daily's date when opened as one (the server's day), else the device's
 
   function entry() { return PUZZLES[g.idx]; }
   function letters() { return entry()[0].split(''); }
@@ -77,7 +77,7 @@
   function fresh(mode) {
     var pick = mode === 'daily' ? dailyPick(PUZZLES, today) : practicePick(PUZZLES, Math.random);
     var rest = PUZZLES[pick.idx][0].split('').filter(function (l) { return l !== pick.center; });
-    return { mode: mode, date: mode === 'daily' ? today : '', idx: pick.idx, center: pick.center, outer: Lib.shuffle(rest, Math.random), found: [], dict: dict };
+    return { mode: mode, date: mode === 'daily' ? today : '', idx: pick.idx, center: pick.center, outer: Lib.shuffle(rest, mode === 'daily' ? ZimiShell.random() : Math.random), found: [], dict: dict };
   }
 
   // ── drawing ──
@@ -183,6 +183,7 @@
     else if (/^[a-zA-Z]$/.test(e.key)) type(e.key.toLowerCase());
   });
   ZimiShell.game({
+    daily: function () { return !!g && g.mode === 'daily'; },
     about: function () { return Lib.note(T, 'words', dict); },
     inProgress: function () { return !!g && !done && g.found.length > 0; },
     menu: function () {

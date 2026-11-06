@@ -41,7 +41,7 @@
       rows: rows, cols: cols, size: size, mines: mines,
       state: new Uint8Array(size), mine: new Uint8Array(size), count: new Uint8Array(size),
       nb: buildNeighbours(rows, cols),
-      rng: mulberry32(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed),
+      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed),
       status: 'ready', placed: false, opened: 0, flags: 0, exploded: []
     };
   }
@@ -193,9 +193,12 @@
   var best = store(BEST_KEY, {});
 
   var params = new URLSearchParams(location.search);
-  var fixedSeed = params.has('seed') ? Number(params.get('seed')) : undefined;
+  var daily = !!(root.ZimiShell && root.ZimiShell.daily);
+  // A daily's board is the day's: a ?seed= in its address (a test's replay) does not replace it.
+  var fixedSeed = !daily && params.has('seed') ? Number(params.get('seed')) : undefined;
   if (params.get('theme') === 'light' || params.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', params.get('theme'));
   if (params.get('level') && LEVEL_IDS.indexOf(params.get('level')) >= 0 && params.get('level') !== 'custom') settings.level = params.get('level');
+  if (daily) settings.level = 'intermediate';   // a daily is intermediate (kept only if the player picks a level)
 
   var game, cells = [], flagMode = false, cursor = -1, press = null, tickTimer = 0, startedAt = 0, finalMs = 0;
   var els = {
@@ -206,7 +209,8 @@
 
   // Our own artwork, all inline SVG.
   var SVG = {
-    flag: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 17h12M10 17V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 3l-6 3.2L10 9.4z" fill="#b3261e"/></svg>',
+    // The pennant is most of the drawing: a small one on a long pole read as the digit 1, on a board full of 1s.
+    flag: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 16.5h9M12 16.5V3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.6 2.6L3 7l9.6 4.4z" fill="#b3261e"/></svg>',
     mine: '<svg viewBox="0 0 20 20" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 2v16M2 10h16M4.3 4.3l11.4 11.4M15.7 4.3L4.3 15.7"/></g><circle cx="10" cy="10" r="5.2" fill="currentColor"/><circle cx="8.2" cy="8.2" r="1.5" fill="#fff" fill-opacity="0.85"/></svg>',
     wrong: '<svg viewBox="0 0 20 20" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 2v16M2 10h16M4.3 4.3l11.4 11.4M15.7 4.3L4.3 15.7"/></g><circle cx="10" cy="10" r="5.2" fill="currentColor"/><path d="M3 3l14 14M17 3L3 17" stroke="#b3261e" stroke-width="2.4" stroke-linecap="round"/></svg>'
   };
@@ -321,7 +325,7 @@
     updateCounter();
   }
   function recordWin(last) {
-    var lv = settings.level, flags = [];
+    var lv = daily ? 'intermediate' : settings.level, flags = [];
     cells.forEach(function (c, i) { if (game.mine[i]) flags.push(i); });
     ripple(flags, last, 'planted');
     if (lv !== 'custom' && LEVEL_IDS.indexOf(lv) >= 0 && (!best[lv] || finalMs < best[lv])) { best[lv] = finalMs; save(BEST_KEY, best); }
@@ -357,7 +361,8 @@
   }
 
   function newGame() {
-    var lv = settings.level === 'custom' ? settings.custom : LEVELS[settings.level];
+    var level = daily ? 'intermediate' : settings.level;   // every board of a daily is the day's intermediate one
+    var lv = level === 'custom' ? settings.custom : LEVELS[level];
     var resize = !game || game.rows !== lv.rows || game.cols !== lv.cols;
     stopClock(); startedAt = 0; finalMs = 0; cursor = -1; press = null;
     game = createGame(lv.rows, lv.cols, lv.mines, fixedSeed);

@@ -87,3 +87,17 @@ The library's order and its list or grid view sit on the **Apps** heading, above
 - **"This video isn't in this ZIM."** — the video's page is there but its file never was: the scraper wrote the page and skipped a download that failed (the CRISPR talk in the 2023 TED technology ZIM). Nothing on your side is wrong; a newer build of the ZIM may carry it.
 - **A place I can see on a Kiwix map is not in the search** — Kiwix's maps carry one place page per name, so "Springfield" finds one Springfield and a town that shares its name with a bigger one has no page of its own. A StreetZim map of the region carries every place and address.
 - **The map picker does not offer a map of here** — the catalog's regions are approximate boxes; the row **All maps in the catalog** lists every one.
+
+## ZimiGames
+
+ZimiGames is one of Zimi's own ZIMs (`zimi_games`): over 100 games that run offline, each a page of the ZIM, shown inside Zimi's reader or in any ZIM reader.
+
+**The shelf.** One line at the top holds the room (All, Kids, Arcade, Game night, Solo), the game types, and one button for view and order. The Daily row leads with the dailies people know (Five Letters, Sudoku, Mini crossword, Chess puzzle, Spelling Bee, Minesweeper, Solitaire), then the rest under More dailies.
+
+**Dailies.** Today's edition of 63 games: the same board for everyone on a Zimi server, because the day is the server's (`GET /games-day`) and the seed is that day and the game. A daily keeps its own save, comes back finished once solved, and its end sheet shares a result line that gives nothing away.
+
+**Your games follow you.** Signed in, a person's saves, stats, dailies, best scores and ZimCity cities live in their account (`/userdata/games`) and follow them to every browser; two people sharing one browser each see only their own. With the password off, or not signed in, they stay in that browser. Deleting the games ZIM clears this browser's games.
+
+**Leaderboards.** Each game's board ranks the people on the server by the name they go by (set on the account card or the games' Stats page; admins can change anyone's): a daily by fastest solve, an arcade game by best score, starting from a house table of three-letter initials that real scores push out. Boards are for signed-in people only, and "Show me on this server's leaderboards" takes a person off them.
+
+**ZimCity.** A city builder made for the phone on Micropolis's simulation (GPL-3; never called SimCity): roads and zones drawn with a finger, buildings dragged into place, undo, an advisor, the eight classic scenarios and 24 cities, an AI data center, solar and wind, a toy climate, citizens with opinions, and a city that keeps living while you're away (Settings: While I'm away). Buildings and disasters link to their articles when the library has them.

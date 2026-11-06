@@ -373,7 +373,7 @@
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
 
     t = T.create({
-      id: 'gin', name: 'Gin Rummy', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, cols: 7, heightShare: 0.11,
+      id: 'gin', name: 'Gin Rummy', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.11,
       canPick: function (st, pile) { return st.phase === 'discard' && st.turn === seats.view() && pile.charAt(0) === 'h'; },
       move: function (pile, idx, to) {
         var st = session.state, id = parseInt(pile.slice(1), 10);

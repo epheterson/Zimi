@@ -159,7 +159,7 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   // Stock, waste and the foundations are one row right under the bar; the columns start under it and fan down through
   // all the height that is left (up to a card's height a step).
-  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = 0.28, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3, WASTE_NUDGE_SHARE = 0.14;   // the waste stands a little off the stock, not against it
+  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = 1, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3, WASTE_NUDGE_SHARE = 0.14;   // the waste stands a little off the stock, not against it
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
@@ -220,7 +220,7 @@
   // ── The page ────────────────────────────────────────────────────────────
   var AUTO_STEP_MS = 120;
   function boot() {
-    var page, session, drawN = Z.store.get(DRAW_KEY, 1) === 3 ? 3 : 1;
+    var page, session, drawN = Z.store.get(DRAW_KEY, 1) === 3 && !Z.daily() ? 3 : 1;   // a daily is draw one
 
     // Watch and learn: the computer plays the hand by explain-solitaire.js's rules, one step at a time.
     var watch = null, watchWaiting = false, watchCtx = null, watchDraw = 0;
@@ -243,7 +243,7 @@
       }, AUTO_STEP_MS);
     }
     function newGame() {
-      session.reset(newState(Z.shuffled(Math.random), drawN));
+      session.reset(newState(Z.shuffled(Z.random()), drawN));
       drawN = session.state.draw === 3 ? 3 : 1;   // a game taken up again keeps the draw it was dealt with
     }
 

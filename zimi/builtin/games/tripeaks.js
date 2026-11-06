@@ -136,7 +136,7 @@
       why: function (st, pile) { return TX(isFree(st, pile) ? 'sol.why.neighbor' : 'tri.why.covered'); },
       refuse: function () { page.note(TX('sol.why.stockEmpty')); },
       rules: api, id: 'tripeaks', fact: true, place: place, cols: FIT_COLS, heightShare: HEIGHT_SHARE, enterTaps: true, stock: drawStock,
-      deal: function () { return newState(Z.shuffled(Math.random)); },
+      deal: function () { return newState(Z.shuffled(Z.random())); },
       score: function (st) { return st.score; },
       stuck: {
         is: isStuck, score: function (st) { return st.score; },

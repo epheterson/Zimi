@@ -172,6 +172,57 @@ def test_apps_paint_in_their_final_shape_with_discover(served, phone):
     assert discover, "Show Discover is not with the apps"
 
 
+def test_apps_stay_put_when_the_server_does_not_answer(served, phone):
+    """Eric (2026-10-29): "I want preloaded steady data." Offline, or while the
+    server restarts, /manage/apps has no answer, and the apps it was drawn
+    with used to vanish from Preferences a moment after it opened, moving
+    everything under them. Only the server saying no takes them away."""
+    pg = phone
+    pg.add_init_script(
+        """(() => { var f = window.fetch; window.fetch = function(u) {
+      if (String(u).indexOf('/manage/apps') >= 0) return Promise.reject(new TypeError('Failed to fetch'));
+      return f.apply(this, arguments); }; })()"""
+    )
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector("#ms-open-in-apps", state="attached", timeout=15000)
+    where = """() => ({ apps: document.querySelectorAll('#ms-apps .app-pick').length,
+      hidden: document.getElementById('ms-apps-wrap').hidden,
+      open: Math.round(document.getElementById('ms-open-in-apps').closest('.set-row').getBoundingClientRect().top) })"""
+    first = pg.evaluate(where)
+    pg.wait_for_timeout(1200)
+    last = pg.evaluate(where)
+    assert first["apps"] >= 5 and not last["hidden"], last
+    assert first == last, (first, last)
+
+
+def test_seeding_settings_hide_while_bittorrent_is_off(served, phone):
+    """Eric (2026-10-20): settings that depend on an off switch hide. With
+    BitTorrent off, Mirror (which seeds) and Restrict uploads to the nightly
+    window (which throttles seeding) were shown greyed or live, for nothing.
+    The server here is made to answer that BitTorrent is off."""
+    import json
+
+    pg = phone
+
+    def bt_off(route):
+        got = route.fetch()
+        body = got.json()
+        body["torrent_enabled"] = False
+        body["enabled"] = False
+        route.fulfill(response=got, body=json.dumps(body))
+
+    pg.route("**/manage/mirror*", bt_off)
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-mirror-status input[onchange*=torrent]", state="attached", timeout=15000)
+    pg.wait_for_selector("#ms-dl-schedule .needs-bt", state="attached", timeout=15000)
+    got = pg.evaluate(
+        """() => ({ off: document.getElementById('ms-pane').classList.contains('ms-bt-off'),
+      mirror: !!(document.querySelector('#ms-mirror-status input[onchange*=mirror]') || {}).offsetParent,
+      upload: !!document.querySelector('#ms-dl-schedule .needs-bt').offsetParent })"""
+    )
+    assert got == {"off": True, "mirror": False, "upload": False}, got
+
+
 def test_every_settings_on_off_is_a_switch(served, phone):
     pg = phone
     for section in ("library", "preferences", "creator", "server", "users"):

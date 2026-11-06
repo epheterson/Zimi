@@ -31,6 +31,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "tests"))
 
 pytest.importorskip("mcp", reason="the MCP server needs the mcp package")
 
@@ -183,3 +184,35 @@ def test_a_tool_call_answers_on_an_empty_library(server):
     text = (result.get("content") or [{}])[0].get("text", "")
     assert text.strip(), result
     assert "no zim" in text.lower()
+
+
+def test_what_libzim_itself_prints_never_reaches_the_protocol(tmp_path):
+    """libzim's C++ writes some notices straight to file descriptor 1, below
+    Python, where no print() discipline can reach: a Hebrew index searched
+    printed "No stemming for language 'he'" between JSON-RPC replies, and a
+    strict client dropped the session. The server keeps descriptor 1 for its
+    replies only; anything native lands on stderr."""
+    from conftest_zim import build_fixture_zim
+
+    zims = tmp_path / "zims"
+    zims.mkdir()
+    build_fixture_zim(str(zims / "he_test.zim"), metadata={"Language": "heb"}, index_lang="heb")
+    env = dict(os.environ, ZIM_DIR=str(zims), ZIMI_OFFLINE="1", ZIMI_DATA_DIR=str(tmp_path / "data"))
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "zimi.mcp_server", "--tools", "lean"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace", env=env, bufsize=1, cwd=ROOT,
+    )
+    try:
+        _initialize(proc)
+        _send(proc, {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                     "params": {"name": "search", "arguments": {"query": "water"}}})
+        reply = _read(proc)
+        assert reply["id"] == 4 and "result" in reply, reply
+        # A second search: the notice comes on every query of that index.
+        _send(proc, {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                     "params": {"name": "search", "arguments": {"query": "fire"}}})
+        assert _read(proc)["id"] == 5
+    finally:
+        proc.kill()
+        proc.wait(timeout=10)

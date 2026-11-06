@@ -6,6 +6,7 @@ and static/ZIM content serving. Manage routes delegate to zimi.manage.
 """
 
 import base64
+import datetime
 import gzip
 import hashlib
 import ipaddress
@@ -324,12 +325,20 @@ def _mend_zimit1_loader(text):
 SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 
 
+def games_day(now=None):
+    """The server's day (YYYY-MM-DD) and its UTC offset in minutes, in its own time zone."""
+    now = now or datetime.datetime.now().astimezone()
+    return {"day": now.date().isoformat(), "utcOffsetMin": int(now.utcoffset().total_seconds() // 60)}
+
+
 # Snippets ride the content bucket: one search fans out to ~10 snippet
 # fetches, which burned the whole API budget in a few searches (#30's
 # cousin). Pinned by tests — moving /snippet back to the API bucket is a
 # regression, not a cleanup.
 _RATE_LIMITED_API_PATHS = (
     "/search",
+    "/games/board",
+    "/zim-updates",
     "/places",
     "/tube",
     "/tube/play",
@@ -348,6 +357,7 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
     "/almanac-satellites",
+    "/almanac-hd",
     "/almanac-ages",
     "/almanac-place",
     "/games-links",
@@ -1449,7 +1459,8 @@ def _random_pick_verdict(
 # these two were 19% of it (9 KB of 47 KB): a copy of the provenance record
 # that /zim-info?kinds=1 already serves on purpose, and an mtime that
 # first_seen and updated_at already answer for.
-_PRIVATE_ZIM_FIELDS = ("zimi_kind", "mtime")
+_PRIVATE_ZIM_FIELDS = ("zimi_kind", "mtime", "own_h")
+_ZIM_UPDATES_ASK_MAX = 50  # an app is a few dozen ZIMs at most
 
 
 def _public_zim_entry(entry):
@@ -2765,18 +2776,33 @@ class ZimHandler(BaseHTTPRequestHandler):
                     else (filter_zim or "all")
                 )
 
+                # A near: search's own place (the Almanac's), which picks among
+                # places of one name; part of the cache key, since it can
+                # change the answer.
+                near_at = _srv.parse_latlng(param("near_at"))
+
                 def run(fast_pass):
                     # Key includes the request's allowlist identity (see
                     # _search_cache_key) so a restricted user never receives
                     # another session's broader results. Neither pass takes
                     # _zim_lock: the quick one reads title indexes and
                     # _suggest_pool, the full one _fts_pool's per-ZIM locks.
-                    key = _srv._search_cache_key(q, zim_scope_str, limit, fast_pass)
+                    key = _srv._search_cache_key(
+                        q + ("\x00%s,%s" % near_at if near_at else ""),
+                        zim_scope_str,
+                        limit,
+                        fast_pass,
+                    )
                     t0 = time.time()
                     result, hit = _srv.search_cached(
                         key,
                         lambda: _srv.search_all(
-                            q, limit=limit, filter_zim=filter_zim, fast=fast_pass
+                            q,
+                            limit=limit,
+                            filter_zim=filter_zim,
+                            fast=fast_pass,
+                            # Only a near: search's request carries it.
+                            **({"near_at": near_at} if near_at else {}),
                         ),
                     )
                     dt = 0 if hit else time.time() - t0
@@ -2935,10 +2961,26 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # every /manage write follows).
                 from zimi import satellites as _sats
 
+                from zimi import almanachd as _hd
+
                 payload = _sats.get()
                 payload["can_change"] = bool(
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
+                # Almanac HD's offer, on the answer the view already asks
+                # for when it opens (the first ask, under Automatically).
+                payload["hd"] = _hd.on_almanac_open()
+                return self._json(200, payload)
+
+            elif parsed.path == "/almanac-hd":
+                # Almanac HD (almanachd.py): installed, or offered with its
+                # size, and the setting. Under Automatically this first ask
+                # queues the download. can_change: may this viewer download
+                # it or change the setting (the admin rule /manage follows).
+                from zimi import almanachd as _hd
+
+                payload = _hd.on_almanac_open()
+                payload["can_change"] = bool(_srv.ZIMI_MANAGE and _users._request_is_admin(self))
                 return self._json(200, payload)
 
             elif parsed.path.startswith("/almanac/pdf/"):
@@ -2962,6 +3004,12 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import gamelinks
 
                 return self._json(200, gamelinks.links())
+            elif parsed.path == "/games-day":
+                # ZimiGames' dailies: the server's day in its own time zone, so
+                # everyone on one Zimi plays the same edition and it turns over
+                # at the server's midnight, whatever a device's clock says. The
+                # offset lets a page work out that day itself until it asks again.
+                return self._send(200, json.dumps(games_day()).encode(), "application/json", cache="no-store")
             elif parsed.path == "/games-search":
                 # The main search's Games row: every game's name in ?lang= and
                 # the words it is found by (zimi/gamelinks.py). Read once, a
@@ -2987,7 +3035,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, _place.near(lat, lon))
 
             elif parsed.path == "/list":
-                result = _srv.list_zims()
+                # A data pack (server.DATA_PACKS) is a part of Zimi, not a book: not on Home, not in the grid.
+                result = [z for z in _srv.list_zims() if z.get("name") not in _srv.DATA_PACKS]
                 # Per-ZIM category overrides win over the _categorize_zim
                 # heuristic (#37). Applied here, not baked into the disk cache,
                 # so clearing an override instantly reverts to the heuristic.
@@ -3028,7 +3077,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                 info = _zim_info(zim)
                 if info is None:
                     return self._json(404, {"error": f"ZIM '{zim}' not found"})
-                return self._json(200, info)
+                # How it came to be what it is: About's Last updated and Update history.
+                return self._json(200, {**info, "updates": _srv.zim_updates(info.get("name") or zim)})
+
+            elif parsed.path == "/zim-updates":
+                # What lit a dot, asked only when someone opens the dot: each ZIM's arrivals and updates
+                # (zimi.server.zim_updates). Only the ZIMs this person may see.
+                names = [n for n in (param("zims") or "").split(",") if n][:_ZIM_UPDATES_ASK_MAX]
+                history = _srv._load_history()  # read once for every name asked
+                return self._json(200, {"updates": {n: _srv.zim_updates(n, history) for n in names if _srv.zim_allowed(n)}})
 
             elif parsed.path == "/whoami":
                 return self._uncached(self._handle_whoami)
@@ -3046,6 +3103,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._uncached(self._handle_userdata_get)
             elif parsed.path == "/userdata/settings":
                 return self._uncached(self._handle_settings_get)
+            elif parsed.path == "/userdata/games":
+                return self._uncached(self._handle_games_get)
+            elif parsed.path == "/games/board":
+                return self._uncached(self._handle_board_get)
             elif parsed.path == "/events":
                 return self._handle_events()
 
@@ -3474,7 +3535,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not q:
                     return self._json(400, {"error": "missing ?q= parameter"})
                 t0 = time.time()
-                groups = _srv.find_places(q)
+                groups = _srv.find_places(q, near_at=_srv.parse_latlng(param("near_at")))
                 _record_metric("/places", time.time() - t0)
                 return self._json(
                     200, {"groups": groups, "elapsed": round(time.time() - t0, 3)}
@@ -3823,7 +3884,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Backup import + per-user data save legitimately run large (a full
             # server bundle carries users/history/every per-user blob); every
             # other endpoint stays under the tight default cap.
-            if parsed.path in ("/manage/backup", "/userdata"):
+            if parsed.path in ("/manage/backup", "/userdata", "/userdata/games"):
                 body_cap = _srv.MAX_BACKUP_BODY
             elif parsed.path == "/almanac/pdf":
                 from zimi import almanacpdf as _apdf
@@ -3911,6 +3972,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._handle_userdata_post(data)
             if parsed.path == "/userdata/settings":
                 return self._handle_settings_post(data)
+            if parsed.path == "/userdata/games":
+                return self._handle_games_post(data)
+            if parsed.path == "/account/display":
+                return self._handle_display_post(data)
 
             if parsed.path == "/resolve":
                 retry_after = _check_rate_limit(
@@ -5804,6 +5869,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         """GET /whoami — the current identity for the client to shape its UI.
         role ∈ {user, admin, anonymous}. Server-side filtering is independent
         of this — it keys off the cookie/token, not the client's belief.
+        ``games``: whose games follow this browser (users.games_data_owner),
+        None to keep them the browser's own (password off, anonymous).
         ``account``: whose /userdata this request has (users.request_data_owner),
         or None; the client follows an account only when this names one (with
         the password switched off, every browser is the admin's)."""
@@ -5826,6 +5893,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "name": name,
                         "secondary": True,
                         "account": name,
+                        "games": name,
+                        "display": _users.display_name(name),
                         "apps": apps,
                     },
                 )
@@ -5841,6 +5910,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Create page consult this (the server gates regardless).
                     "can_create": _users.user_can_create(name),
                     "account": name,
+                    "games": name,
+                    "display": _users.display_name(name),
                     "apps": apps,
                 },
             )
@@ -5854,6 +5925,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 "role": "admin",
                 "name": _manage._get_manage_user() or "admin",
                 "account": _users.request_data_owner(self),
+                "games": _users.games_data_owner(self),
+                "display": _users.display_name(_users.games_data_owner(self)),
                 "apps": apps,
             }
             # Ensure the header-less transports (reader iframe, plain-fetch data
@@ -5871,7 +5944,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous", "account": _users.request_data_owner(self), "apps": apps}
+        resp = {"role": "anonymous", "account": _users.request_data_owner(self), "games": None, "apps": apps}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``
@@ -5967,6 +6040,68 @@ class ZimHandler(BaseHTTPRequestHandler):
         if not ok:
             return self._json(503 if err == "write failed" else 400, {"error": err})
         return self._json(200, doc)
+
+    def _games_owner(self, sent):
+        """Whose games this request reaches (users.games_data_owner): 401 when no
+        one signed in (the browser keeps its own), 409 when not the account the
+        browser follows."""
+        name = _users.games_data_owner(self)
+        if not name:
+            return None, (401, {"error": "sign in required"})
+        if sent is not None and str(sent).casefold() != name.casefold():
+            return None, (409, {"error": "account_changed"})
+        return name, None
+
+    def _handle_games_get(self):
+        """GET /userdata/games — the signed-in person's games (saves, stats,
+        dailies, kept cities), each key with the revision the server gave it."""
+        name, refused = self._games_owner(self._query_account())
+        if refused:
+            return self._json(*refused)
+        return self._json(200, _users.GAMES.load(name))
+
+    def _handle_games_post(self, data):
+        """POST /userdata/games — {changes: {key: {v}}}, as /userdata/settings:
+        each change at the account's next revision. No ``fill``: a browser's
+        games adopted into an account go up as ordinary changes and are merged
+        there (app.js _gamesFollow). The answer's ``refused`` names any key the
+        account would not keep (over its caps), so the browser keeps it."""
+        data = data if isinstance(data, dict) else {}
+        name, refused = self._games_owner(data.get("account"))
+        if refused:
+            return self._json(*refused)
+        ok, err, doc = _users.GAMES.change(name, data.get("changes") or {}, by=data.get("client"))
+        if not ok:
+            return self._json(503 if err == "write failed" else 400, {"error": err})
+        return self._json(200, doc)
+
+    def _handle_board_get(self):
+        """GET /games/board?page=<game page>&day=<YYYY-MM-DD> — that game's
+        boards (users.leaderboard); without ``page``, the day's dailies across
+        the server (users.leaderboards_today). For people signed in only: the
+        boards name the people on this server."""
+        viewer = _users.games_data_owner(self)
+        if not viewer:
+            return self._json(401, {"error": "sign in required"})
+        page, day = self._query_param("page"), self._query_param("day")
+        got = _users.leaderboard(page, day, viewer) if page else _users.leaderboards_today(day, viewer)
+        if got is None:
+            return self._json(400, {"error": "invalid board"})
+        got["you"] = {"name": _users.display_name(viewer), "on": _users.on_boards(_users.GAMES.load(viewer)["settings"])}
+        return self._json(200, got)
+
+    def _handle_display_post(self, data):
+        """POST /account/display — {display}: what the signed-in person is called
+        on this server's games (users.set_display_name; empty: their account's
+        name). 409 when someone else is called that already."""
+        data = data if isinstance(data, dict) else {}
+        name, refused = self._games_owner(data.get("account"))
+        if refused:
+            return self._json(*refused)
+        ok, err, shown = _users.set_display_name(name, data.get("display"))
+        if not ok:
+            return self._json(409 if err == "name taken" else 503 if err == "write failed" else 400, {"error": err})
+        return self._json(200, {"display": shown})
 
     def _handle_events(self):
         """GET /events — what an open window should hear as server-sent

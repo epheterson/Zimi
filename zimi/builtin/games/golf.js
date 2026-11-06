@@ -67,7 +67,7 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var UP_STEP_SHARE = 0.3, MIN_STEP_SHARE = 0.16, HEIGHT_SHARE = 0.19;
+  var UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.16, HEIGHT_SHARE = 0.19;
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
@@ -104,7 +104,7 @@
       why: function (st, pile, idx) { return TX(canPick(st, pile, idx) ? 'sol.why.neighbor' : 'golf.why.buried'); },
       refuse: function () { page.note(TX('sol.why.stockEmpty')); },
       rules: api, id: 'golf', lowScore: true, fact: true, place: place, cols: COLS, heightShare: HEIGHT_SHARE, enterTaps: true, stock: drawStock,
-      deal: function () { return newState(Z.shuffled(Math.random)); },
+      deal: function () { return newState(Z.shuffled(Z.random())); },
       score: function () { return 0; },
       stuck: {
         is: isStuck, score: left,

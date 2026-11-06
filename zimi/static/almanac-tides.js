@@ -381,9 +381,11 @@ var AT_MS_HOUR = 3600000;
 var AT_MS_DAY = 86400000;
 var AT_CURVE_STEP_MS = 10 * 60000;       // one sample every ten minutes
 var AT_NEXT_WINDOW_MS = 26 * AT_MS_HOUR; // the next turn is always within a day
-// Past this, a tide station describes some other water: its tide is shown
-// as the nearest station's, with how far it is. Within it the place is on
-// the coast (the live sky draws the sea, at this tide's level).
+// Within this a station's tide is the place's own and the place is on the coast: the tide section is drawn and the
+// live sky draws the sea at its level. Past it the station describes some other water, so there is no tide section at
+// all (a station 4,881 km away is not the tide in the middle of England, #140). NOAA's own subordinate stations sit
+// within tens of km of the reference whose offsets they borrow; 80 km keeps a bay's mouth and its head together
+// without reaching the next coast.
 var AT_TIDE_NEAR_KM = 80;
 var AT_KM_PER_MI = 1.609344;
 var AT_TIDE_YEARS = 200;   // how far from today a tide prediction is offered
@@ -490,7 +492,10 @@ function _atTideStation() {
   var list = (_at.data && _at.data.tides && _at.data.tides.stations) || [];
   if (_at.tideId) for (var i = 0; i < list.length; i++) if (list[i].id === _at.tideId) return list[i];
   if (_at.tidePicked && _at.tidePicked.id === _at.tideId) return _at.tidePicked;
-  return list[0] || null;
+  // Far from any station (inland, or a coast the stations do not cover) there is no tide here to tell (#140). A
+  // station the reader picked from the list is theirs to keep.
+  var st = list[0] || null;
+  return st && st.km > AT_TIDE_NEAR_KM ? null : st;
 }
 
 var _atPredictorMemo = { id: null, p: null };
@@ -499,6 +504,17 @@ function _atPredictor(st) {
     _atPredictorMemo = { id: st.id, p: TideMath.predictor(st, _at.data.tides.constituents, st.refrec) };
   }
   return _atPredictorMemo.p;
+}
+
+// Whose constants these are, and what the heights stand on: NOAA's stations above mean lower low water, the world's
+// gauges (TICON-3, scripts/build_tide_world.py) above their lowest predicted tide.
+function _atWorld(st) { return st.src === 'ticon3'; }
+function _atNote(st) {
+  if (st.refrec) return t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) });
+  return t(_atWorld(st) ? 'alm_tide_note_world' : 'alm_tide_note');
+}
+function _atSourceLine(st) {
+  return t(_atWorld(st) ? 'alm_tide_sheet_source_world' : 'alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id });
 }
 
 // The tide station's own clock: tide tables are read in the harbour's time.
@@ -519,10 +535,9 @@ function _atRender() {
     return;
   }
   if (_at.data.failed) { _atDraw(host, ''); return; }
-  // Far from any station (inland, or a coast NOAA does not cover) the nearest
-  // station's tide is still shown, saying whose water it is and how far.
+  // No station near the place: no section, and the section bar drops its pill.
   var tide = _atTideStation();
-  _atDraw(host, tide ? _atTideHtml(tide, !_at.tideId && tide.km > AT_TIDE_NEAR_KM) : '');
+  _atDraw(host, tide ? _atTideHtml(tide) : '');
   _atBindCurve();
 }
 
@@ -544,7 +559,7 @@ var _atSeaMemo = { key: null, v: null };
 function _atSkySea(ms) {
   if (!_at.data || _at.data.failed || _atBeyond(ms)) return null;
   var st = _atTideStation();
-  if (!st || st.km > AT_TIDE_NEAR_KM) return null;
+  if (!st || st.km > AT_TIDE_NEAR_KM) return null;   // a station picked from afar is not this place's sea
   var key = st.id + '@' + Math.round(ms / AT_SEA_STEP_MS);
   if (_atSeaMemo.key !== key) _atSeaMemo = { key: key, v: _atSkySeaAt(st, Math.round(ms / AT_SEA_STEP_MS) * AT_SEA_STEP_MS) };
   return _atSeaMemo.v;
@@ -700,9 +715,8 @@ function _atBeyond(focus) {
   return Math.abs(new Date(focus).getUTCFullYear() - new Date().getUTCFullYear()) > AT_TIDE_YEARS;
 }
 
-function _atTideHtml(st, far) {
+function _atTideHtml(st) {
   var focus = _almFocusInstant().getTime();
-  var farHtml = far ? '<p class="at-quiet at-far">' + _almEsc(t('alm_tide_nearest', { name: _atTideName(st), d: _atDistance(st.km) })) + '</p>' : '';
   if (_atBeyond(focus)) {
     return _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_tide_beyond', { n: AT_TIDE_YEARS })) + '</p>', 'at-tides', 'term:tide');
   }
@@ -718,8 +732,8 @@ function _atTideHtml(st, far) {
       (isFinite(nowH) ? '<span class="at-lead-now">' + _almEsc(t('alm_tide_now', { h: _atHeight(nowH) })) + '</span>' : '');
   }
   lead += '</div>';
-  var note = st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note');
-  var body = farHtml + lead +
+  var note = _atNote(st);
+  var body = lead +
     '<div class="at-curve" id="at-curve">' + _atCurveSvg(st, day, focus, next) + '</div>' +
     _atMonthHtml(st, focus) +
     // One answer, then what is behind it, one tap away: the reason and the

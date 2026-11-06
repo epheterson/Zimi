@@ -47,6 +47,7 @@ const decls = [
   'var _langDisplayCache = ', 'var _langDisplayCacheLang = ', 'var _SPECIAL_LANG = ', 'var _LANG3_NAMES = ',
   'function _langDisplayName(', 'const _LANG3TO2 = ',
   'const SEARCH_QUOTES = ', 'const _SEARCH_UNSPACED = ', 'const SEARCH_FILTERS = ',
+  'const SEARCH_BAR_FILTERS = ', 'const SEARCH_NEAR_RADIUS = ', 'const SEARCH_NEAR_DEFAULT_KM = ', 'const _searchUnquote = ', 'function _searchNearRadius(', 'function tHtml(',
   'function _searchTokens(', 'function parseSearchQuery(', 'const _isOrToken = ', 'function _searchRebuild(',
   'function _searchTokenWords(', 'function searchQueryChips(', 'const _reEscape = ', 'function _searchSourceTitle(',
   'function _searchChipLabel(', 'const _CHIP_X_SVG = ', 'function _searchChipHtml(', 'function searchChipsHtml(',
@@ -173,7 +174,7 @@ for (const lang of LANGS) {
 ui('en');
 
 // ── the "?" examples, written per language ───────────────────────────────
-const KIND = { exact: 'exact', without: 'without', or: 'or', lang: 'lang', source: 'source' };
+const KIND = { exact: 'exact', without: 'without', or: 'or', lang: 'lang', source: 'source', near: 'near' };
 for (const lang of LANGS) {
   for (const key of [...S.SEARCH_EXAMPLES, ...S.CATALOG_EXAMPLES]) {
     const ex = i18n[lang][key];

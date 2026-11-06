@@ -511,6 +511,15 @@ function _skyMix(c1, c2, f) { return [_skyLerp(c1[0], c2[0], f), _skyLerp(c1[1],
 function _skyRgb(c, a) { return 'rgba(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ',' + (a == null ? 1 : a.toFixed(3)) + ')'; }
 function _skyTone(alt) { var r = _skyRow(SKY_TONES, alt); return { zen: _skyMix(r.a[1], r.b[1], r.f), hor: _skyMix(r.a[2], r.b[2], r.f) }; }
 // The faintest magnitude that shows under a dark sky by the Sun's geometric altitude: the eye's, from how bright the sky is (almanac-skygl.js).
+// What the canvas shows before its first paint, and whenever it is cleared (a resize, the GPU sky taking over):
+// the hour's own sky, the zenith fading to the horizon over a ground, as a CSS background behind the pixels.
+// Without it a canvas with nothing drawn shows the page through it, black in the dark theme, and the sky
+// flashed dark on opening (Eric, 2026-11-05: "flashes a couple times on initial load, going black").
+function _skyPreBackground(sunAlt) {
+  var t = _skyTone(sunAlt), hor = _skyRgb(t.hor), ground = _skyRgb(_skyMix(t.hor, [0, 0, 0], 0.55));
+  var y = Math.round(SKY_HORIZON_Y * 100);
+  return 'linear-gradient(to bottom,' + _skyRgb(t.zen) + ' 0%,' + hor + ' ' + y + '%,' + ground + ' ' + y + '%,' + ground + ' 100%)';
+}
 function _skyLimitingMag(alt) { return _sgLimitMag(_sgSkyLum(alt, -90, 0, 0)); }
 // How much of the day's light there is, 0 at the end of civil twilight to 1 by day.
 function _skyDaylight(alt) { return _skyClamp((alt - SKY_CIVIL_ALT) / (6 - SKY_CIVIL_ALT), 0, 1); }
@@ -1402,32 +1411,56 @@ function _skyLuma(c) { return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 
 function _skyPxPerDegY(s) { return (s.H * SKY_HORIZON_Y - s.H * SKY_ZENITH_Y) / 90; }
 
 // Keep the sky's strip above the horizon, mirrored, and the colours read from it.
-function _skyCaptureLight(s, src) {
+var SKY_LIGHT_POLL_MS = 32;          // how soon a read on its way is looked for again (about two frames)
+function _skyCaptureLight(s, src, gpu) {
   var yh = Math.round(s.H * SKY_HORIZON_Y), band = s.H - yh, d = SKY_REFLECT_DOWN;
+  // A sky not laid out yet (hidden, or its canvas not sized) has nothing to copy: drawImage throws on a 0-wide canvas.
+  if (!src || !src.width || !src.height || !(band > 0) || !(s.W > 0)) return;
   var cw = Math.max(1, Math.ceil(s.W / d)), ch = Math.max(1, Math.ceil(band / d));
   var c = s.reflect || (s.reflect = document.createElement('canvas'));
   if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
   var g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
   g.setTransform(1, 0, 0, -1, 0, ch);
-  g.drawImage(src, 0, yh - band, s.W, band, 0, 0, cw, ch);
+  g.drawImage(src, 0, yh - band, s.W, band, 0, 0, cw, ch);   // a copy canvas to canvas: nothing comes back to the page
   g.setTransform(1, 0, 0, 1, 0, 0);
-  // The ground's colours are read back from the GPU, which stops everything until it answers: only when the light has
-  // changed (the Sun or Moon's height, the Moon's phase, the dial), not on each frame of the Moon's glide.
+  // The ground's colours are the sky's as drawn, read back only when the light has changed (the Sun or Moon's height,
+  // the Moon's phase, the dial), and never by waiting: the GPU sky shrinks the strip and hands the few bytes over on a
+  // later frame (_sgReadStripAsync). Until then, and under the Canvas 2D sky (painted from the same tones), the
+  // ground takes the horizon's tone (_skyGroundLight), so no frame stops for a read.
   var lightKey = Math.round(s.eph.sunGeoAlt * SKY_LIGHT_KEY_PER_DEG) + ':' + Math.round(s.eph.moon.altitude) + ':' + s.moonData.phase.illumination + ':' + _skySetting('dial');
-  if (s.ground && s.lightKey === lightKey) return;
-  s.lightKey = lightKey;
-  var gw = SKY_LIGHT_GRID[0], gh = SKY_LIGHT_GRID[1];
-  var t = s.lightGrid || (s.lightGrid = document.createElement('canvas'));
-  if (t.width !== gw) { t.width = gw; t.height = gh; }
-  var tg = t.getContext('2d', { willReadFrequently: true });
-  tg.imageSmoothingQuality = 'high';
-  tg.drawImage(c, 0, 0, cw, ch, 0, 0, gw, gh);
-  try {
-    var px = tg.getImageData(0, 0, gw, gh).data, hor = [0, 0, 0], avg = [0, 0, 0];
-    for (var i = 0; i < gw * gh; i++) for (var k = 0; k < 3; k++) { avg[k] += px[4 * i + k] / (gw * gh); if (i < gw) hor[k] += px[4 * i + k] / gw; }
-    s.ground = { hor: hor, avg: avg };
-  } catch (err) { s.ground = null; }
+  if (s.lightKey === lightKey) return;
+  if (!gpu) { s.lightKey = lightKey; s.ground = null; return; }
+  if (_sgReadStripAsync([0, yh - band, s.W, band], SKY_LIGHT_GRID[0], SKY_LIGHT_GRID[1], lightKey)) {
+    s.lightKey = lightKey;
+    _skyLightPollSoon();
+  } else if (_sgReadStripPending()) _skyLightPollSoon();   // asked again once the read on its way has come
+}
+// The read's answer, on a later task: the ground's colours, then one repaint of the picture with them. It is looked for
+// until it comes whatever happened meanwhile (a new sky, a closed Almanac), so the GPU sky is never left holding a read
+// that blocks the next. An answer for an older light is still the nearest there is; the newer light is asked for next.
+var _skyLightPolling = false;
+function _skyLightPollSoon() {
+  if (_skyLightPolling) return;
+  _skyLightPolling = true;
+  setTimeout(function () {
+    _skyLightPolling = false;
+    if (typeof _sgReadStripPoll !== 'function') return;
+    var got = _sgReadStripPoll();
+    if (!got) { if (_sgReadStripPending()) _skyLightPollSoon(); return; }
+    var s = _skyState;
+    if (!s) return;
+    s.ground = _skyGroundColours(got.px, SKY_LIGHT_GRID[0], SKY_LIGHT_GRID[1]);
+    if (s.lightKey !== got.tag) s.lightKey = null;
+    s.baseDirty = true;
+    _skyKick();
+  }, SKY_LIGHT_POLL_MS);
+}
+// The strip's average colour, and its bottom row's (at the horizon), from its pixels (RGBA, row 0 at the horizon).
+function _skyGroundColours(px, gw, gh) {
+  var hor = [0, 0, 0], avg = [0, 0, 0];
+  for (var i = 0; i < gw * gh; i++) for (var k = 0; k < 3; k++) { avg[k] += px[4 * i + k] / (gw * gh); if (i < gw) hor[k] += px[4 * i + k] / gw; }
+  return { hor: hor, avg: avg };
 }
 // The ground's light: the sky's colours, the Sun's own once it is up, the
 // Moon's when it is up in a dark sky; each channel 0 to 1.
@@ -2429,8 +2462,8 @@ function _skyPaintBase(s, ts) {
   _skyApplyView(s);
   s.moonDisc = _skyMoonDisc(s);
   var gl = _skyGLSky(s), M = _sgHorizonMatrix(e.P, e.lst, s.lat), beach = _skySetting('skin') === 'beach' && !s.lens;
-  if (gl) ctx.drawImage(gl, 0, 0); else if (s.lens) _skyPaintSkyLens(ctx, s); else _skyPaintSky(ctx, s);
-  if (beach) _skyCaptureLight(s, ctx.canvas);   // the sea mirrors the sky as drawn, before the stars and bodies go on it
+  if (gl && gl.width && gl.height) ctx.drawImage(gl, 0, 0); else if (s.lens) _skyPaintSkyLens(ctx, s); else _skyPaintSky(ctx, s);
+  if (beach) _skyCaptureLight(s, ctx.canvas, !!gl);   // the sea mirrors the sky as drawn, before the stars and bodies go on it
   _skyPaintAurora(ctx, s);
   if (_skyFiguresWanted(s)) _skyLoadConstellations(_skyKickDirty);
   _skyEnsureStarData(_skyKickDirty);
@@ -2450,6 +2483,7 @@ function _skyPaintBase(s, ts) {
 function _skyPaint(ts) {
   var s = _skyState;
   if (!s || !s.eph || !s.canvas.isConnected) return;
+  if (!(s.W > 0 && s.H > 0)) return;   // not laid out (hidden, or 0 tall): a 0-sized canvas cannot be drawn from
   if (s.baseDirty || !s.base || s.moonAnim) _skyPaintBase(s, ts);
   var ctx = s.canvas.getContext('2d'), beach = _skySetting('skin') === 'beach' && !s.lens;
   ctx.clearRect(0, 0, s.W, s.H);
@@ -2530,6 +2564,7 @@ function _skyHostDraw() {
   if (!h || !h.host.isConnected) return;
   var s = h.s, ms = _skyLive() ? Date.now() : _almFocusInstant().getTime();
   if (!s.eph || Math.abs(ms - s.nowTime) > SKY_HOST_FRESH_MS) _skyHostCompute(s, new Date(ms));
+  if (!(s.W > 0 && s.H > 0)) return;
   s.lens = _skyMakeLens(h.look, s.W);
   _skyPaintBase(s, performance.now());
   var ctx = h.canvas.getContext('2d');
@@ -2971,6 +3006,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   }
   canvas.style.width = w + 'px';
   canvas.style.height = h + 'px';
+  if (typeof _sunPosition === 'function') canvas.style.setProperty('--sky-pre', _skyPreBackground(_sunPosition(now, lat, lon).altitude));
   var ts = performance.now();
   var prev = (_skyState && _skyState.canvas === canvas) ? _skyState : null;
   var priorMoon = (animateMoon && prev) ? _skyMoonAt(prev, ts) : null;
@@ -3040,7 +3076,7 @@ function _skyUpdateDesc(s) {
     : _tLookup('alm_sun', 'Sun') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
   var moonDesc;
   if (moonPos0.altitude > -2) {
-    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + moonM0.illumination + '% ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
+    moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _moonLitPct(moonM0.illumination) + ' ' + _tLookup('alm_a11y_illuminated', 'illuminated') +
       ', ' + _orrNum(moonPos0.altitude, null, 0) + '° ' + _tLookup('alm_a11y_altitude', 'high');
   } else {
     moonDesc = _tLookup('alm_moon', 'Moon') + ' ' + _tLookup('alm_a11y_below_horizon', 'below the horizon');
@@ -3078,16 +3114,15 @@ function _skyCaption(s) {
   // The season, by the Sun, in this place's hemisphere ("Where do we say the
   // season", Eric, 2026-10-03): the sky is where the year shows.
   var season = typeof _almSeasonText === 'function' ? _almSeasonText(s.nowTime, s.lat) : '';
-  // One lead line (the light of the hour), under it what is true of it here
-  // (the Sun, the way the picture faces, the place) and the year, quieter.
-  var where = [_almEsc(sunAlt), _almEsc(facing)];
-  if (s.stored) where.push(_almEsc(s.name || _skyCoords(s.lat, s.lon)));
-  var html = '<span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub">' + where.join(' · ') + '</span>' +
+  // Two lines at most: the light of the hour with what is true of it now (the Sun, the way the picture faces),
+  // and under it the year, quieter. The place is named once, in the Almanac's place line above.
+  var where = _almEsc(sunAlt) + ' · ' + _almEsc(facing);
+  var html = '<span class="alm-sky-row"><span class="alm-sky-lead">' + phase + '</span><span class="alm-sky-sub"> · ' + where + '</span></span>' +
     (season ? '<span class="alm-sky-sub alm-sky-season">' + _almEsc(season) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.
   var inv = document.getElementById('almanac-sky-invite');
-  if (inv && inv._stored !== s.stored) { inv.innerHTML = s.stored ? '' : _almPlaceInviteHtml(); inv._stored = s.stored; }
+  if (inv && inv._stored !== s.stored) { inv.innerHTML = s.stored ? '' : _almSkyInviteHtml(); inv._stored = s.stored; }
 }
 
 // ══ Taps ═════════════════════════════════════════════════════════════════
@@ -3181,15 +3216,28 @@ function _skyBodyLines(b) {
 
 // The tip: the name (its article's link when the library has it), the lines,
 // and for a planet the way to it in the solar system.
+// A figure's key in almanac-links.js: its name in ASCII ("Boötes" is const:bootes); Serpens's two halves are one.
+function _skyConKey(c) {
+  if (c.id === 'Ser') return 'const:serpens';
+  return 'const:' + c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ /g, '_');
+}
+// A name, as its article's link when the library has the article.
+function _skyLinkedName(key, text) {
+  var name = _almEsc(text);
+  return key && window.AlmanacLinks && window.AlmanacLinks.linkFor(key) ? window.AlmanacLinks.wrap(key, name) : name;
+}
 function _skyShowTip(b) {
   var tip = document.getElementById('almanac-sky-tip'), wrap = tip && tip.parentElement;
   if (!tip) return;
-  var key = _skyBodyKey(b), name = _almEsc(_skyBodyName(b));
-  if (key && window.AlmanacLinks && window.AlmanacLinks.linkFor(key)) name = window.AlmanacLinks.wrap(key, name);
+  var name = _skyLinkedName(_skyBodyKey(b), _skyBodyName(b));
   var html = '<span class="alm-sky-tip-name">' + name + '</span>';
   var lines = _skyBodyLines(b);
+  var con = b.type === 'star' && b.con ? _skyConById(b.con) : null, conLine = con ? t('alm_sky_in_con', { c: con.name }) : null;
   for (var i = 0; i < lines.length; i++) {
-    html += '<span class="alm-sky-tip-line">' + _almEsc(lines[i]) + '</span>';
+    var line = _almEsc(lines[i]);
+    // The figure a star belongs to links to the constellation's article, as the star's own name does.
+    if (lines[i] === conLine) line = _almEsc(t('alm_sky_in_con', { c: '\u0001' })).replace('\u0001', _skyLinkedName(_skyConKey(con), con.name));
+    html += '<span class="alm-sky-tip-line">' + line + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
     html += '<button type="button" class="alm-sky-tip-go" data-sky-orrery="' + _almEsc(b.name) + '" aria-label="' + _almEsc(t('alm_sky_find_orrery')) + '">' + _almEsc(t('alm_solar_system')) + '</button>';
@@ -3639,7 +3687,7 @@ function _drawStarChart(now) {
     _starChartBodies.push({
       x: mpp.x, y: mpp.y, key: 'planet:moon',
       label: t('alm_moon') + ' \u00b7 ' + _orrNum(mp.altitude, null, 0) + '\u00b0 ' +
-             _azCompass(mp.azimuth) + ' \u00b7 ' + _moonPhase(now).illumination + '%'
+             _azCompass(mp.azimuth) + ' \u00b7 ' + _moonLitPct(_moonPhase(now).illumination)
     });
   }
 

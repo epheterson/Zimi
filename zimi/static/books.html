@@ -576,7 +576,9 @@ document.addEventListener('click', function(e) {
 
 function load() {
   _stack = [{ v: 'home' }];
+  var wait = appWait('view');
   get('/books/home').then(function(d) {
+    wait.done();
     if (d === FAILED) { _home = null; renderTabs(); $('view').innerHTML = failedHtml(STR.load_failed, 'load()'); return; }
     _home = d;
     remember(_home.popular); remember(_home.recent);

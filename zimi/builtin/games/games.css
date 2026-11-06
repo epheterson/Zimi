@@ -73,6 +73,10 @@ button { font: inherit; color: inherit; }
 .ar-back:hover { color: var(--accent); }
 /* In dark the pebble gets a 1px ring so it never vanishes into the bar: the one allowed change to it. The ground is no lighter than
    the bar, so the ring is the ink at 28 percent. */
+/* The screen's safe edges (the home indicator, a notch in landscape). In a page of its own they are the browser's; inside
+   Zimi's reader the frame hears 0 from WebKit, so the shell measures how far the frame reaches into Zimi's own and sets
+   these on the root (shell.js, hostInsets). Use these, never env(safe-area-inset-*), in a game. */
+:root { --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
 :root { --mark-ring: color-mix(in srgb, var(--ink) 28%, transparent); }
 :root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }
@@ -97,10 +101,10 @@ button { font: inherit; color: inherit; }
 .ar-stat { font: 600 var(--fs-small) var(--font); font-variant-numeric: tabular-nums; color: var(--ink2); white-space: nowrap; }
 
 /* Pages that are not a felt table: the content starts under the bar, in one centred column. Space falls below it. */
-.pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom)); }
+.pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), var(--safe-b)); }
 @media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
 body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
-body.zc-game { padding-bottom: env(safe-area-inset-bottom); }
+body.zc-game { padding-bottom: var(--safe-b); }
 /* Bare grids (2048, Sudoku, Minesweeper, Sokoban) sit in one frame: radius 14, a 1px line, surface2, 12px padding.
    A wood board is its own frame and gets no card around it; felt tables stay full bleed. */
 .gs-frame, .pl-main :is(.tf-board, .su-board, .sk-board), .ms-main .ms-box { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
@@ -118,6 +122,9 @@ body:has(> .ar-bar) .ar-sheet { top: var(--bar-h); }
 /* No pebble on a sheet: the bar above it already carries it, and two on one screen is wallpaper. A sheet on a page with no bar (the shelf's) keeps it, 20px. */
 body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inline-block; width: 20px; height: 20px; margin: -3px 8px 0 0; vertical-align: middle; background: url(mark.svg) center / contain no-repeat; }
 .ar-sheet-card > p { margin: 0 0 var(--sp-3); color: var(--ink2); }
+/* A sheet that only closes: its title and a quiet × share the first row. */
+.ar-sheet-head { margin: calc(-1 * var(--sp-2)) 0 var(--sp-2); }
+.ar-sheet-head h2 { margin: 0; }
 /* One action anatomy on every sheet: a single 44px row across the card. The quiet actions (ghost, a third) sit left and the
    primary (amber, two thirds) last; a row with no primary shares the width equally. */
 .ar-sheet-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
@@ -205,28 +212,38 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-search input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 @media (min-width: 700px) { .sh-search input { font-size: var(--fs-body); } }
 
-/* The view toggle: Zimi's own Home control (list and grid, one pressed). */
-.ar-view-toggle { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
-.ar-view-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 34px; padding: 0; background: none; border: none; color: var(--ink2); cursor: pointer; transition: background 0.15s, color 0.15s; }
-.ar-view-btn + .ar-view-btn { border-left: 1px solid var(--line); }
-.ar-view-btn:hover { color: var(--ink); background: var(--ground); }
-.ar-view-btn[aria-pressed="true"] { color: var(--accent); background: var(--glow); }
-@media (pointer: coarse) { .ar-view-btn { width: 44px; min-width: 44px; height: 44px; } .sh-search input { height: 44px; } }
 /* A control that is drawn smaller than a finger gets a 44px hit area without moving anything. */
-@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -4px 0; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
+@media (pointer: coarse) { .sh-chip, .kk-pill, .pl-peg { position: relative; } .kk-pill::before { content: ""; position: absolute; inset: -8px 0; } .sh-chip::before { content: ""; position: absolute; inset: -9px -1px; } .pl-peg::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } }
 
-/* The chips' row also holds the order and the view switch; hosted, a header left with nothing in it takes no row. */
-.sh-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0 0 0 -16px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
-[dir="rtl"] .sh-bar .sh-nav { margin: 0 -16px 0 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+/* One line under the header: the room (a pill with its list lying over it), the type chips scrolling sideways, then one button
+   for the view and the order. Every control is a 44px target; nothing wraps at 360px. */
+.sh-room-pick { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; box-sizing: border-box; height: 32px; padding: 0 10px 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.sh-room-pick svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sh-room-pick.sh-room-on { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.sh-room-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sh-room-sel { position: absolute; inset: -7px 0; width: 100%; height: auto; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
+.sh-opt { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-inline-end: -8px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--ink2); cursor: pointer; }
+.sh-opt:hover { color: var(--ink); background: var(--ground); }
+.sh-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ar-shelf:not([data-sort="sections"]) .sh-opt { color: var(--accent); }
+.sh-opt-row + .sh-opt-row { margin-top: var(--sp-4); }
+.sh-opt-seg { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.sh-opt-seg .ar-btn { min-height: 44px; }
+.sh-opt-seg .ar-btn[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+@media (max-width: 699px) { .ar-shelf header .sh-search { flex: 1 0 100%; max-width: none; } }
+.sh-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 18px; }
+.sh-bar .sh-nav, [dir] .sh-bar .sh-nav { padding-inline: 2px 24px; }
+.sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+[dir="rtl"] .sh-bar .sh-nav { margin: 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
 .sh-bar .sh-tools { flex: none; }
 @media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
 html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
-@media (max-width: 560px) { .sh-bar .sh-sort-now, .sh-bar .ar-view-btn[aria-pressed="true"] { display: none; } .sh-bar .ar-view-toggle { border: 0; background: none; } }
 /* Section chips (Lobby) and tabs (Index phone); Index desktop turns them into a rail. */
 /* Sideways only: no vertical scroll or bounce (touch-action), and the padding is room for the focus ring and the chip's hit area, which the clip would otherwise cut. */
 .sh-nav { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x; scrollbar-width: none; margin: -2px -16px 16px; padding: 4px 16px; }
 .sh-nav::-webkit-scrollbar { display: none; }
+/* A finger's row: the 28px chips' 44px hit areas need 8px above and below inside the clip. */
+@media (pointer: coarse) { .sh-nav { padding-top: 8px; padding-bottom: 8px; margin-top: -6px; margin-bottom: 12px; } .sh-bar .sh-nav, [dir] .sh-bar .sh-nav { margin-top: -4px; margin-bottom: -4px; } }
 /* The Library Manager's filter pill (app.css .pill): 28px, 12px type, quiet ink, a glow on hover, the chosen one filled with the accent. */
 .sh-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; height: 28px; padding: 0 14px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s; }
 .sh-chip:hover { border-color: var(--accent-line); color: var(--ink); background: var(--accent-glow); }
@@ -234,8 +251,13 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
 .sh-chip-n, .sh-count { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink2); }
 .sh-chip[aria-pressed="true"] .sh-chip-n { color: inherit; }   /* ink2 on the accent fill is under 4.5:1 */
+/* All types is the state where nothing is chosen: it stays quiet when pressed, and only a chosen type fills with the accent. */
+.sh-chip.sh-chip-all[aria-pressed="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.sh-chip.sh-chip-all[aria-pressed="true"] .sh-chip-n { color: var(--ink2); }
 .sh-count { margin-inline-start: 8px; letter-spacing: 0; }
 .sh-rail-head, .sh-chip-recent { display: none; }
+/* The rooms lead the row; a thin line, then the types. */
+.sh-chip-sep { flex: none; align-self: center; width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
 .sh-empty { margin: 32px 0; text-align: center; color: var(--ink2); }
 .sh-empty[hidden] { display: none; }
 
@@ -289,22 +311,34 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-top { display: flex; flex-wrap: wrap; align-items: stretch; gap: 18px; margin-bottom: 26px; }
 .sh-top[hidden] { display: none; }
 .sh-top .ar-section { margin: 0; }
-.ar-today { flex: 1 1 340px; max-width: 460px; display: flex; flex-direction: column; }
-.ar-today[hidden], .ar-continue[hidden] { display: none; }
-.ar-today .ar-games { display: block; flex: 1; }
-.ar-today .ar-game { flex-direction: row; align-items: stretch; height: 100%; }
-.ar-today .ar-game-art { flex: 0 0 44%; width: 44%; height: auto; aspect-ratio: auto; min-height: 112px; }
-.ar-today .ar-game-text { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 14px; }
-.ar-today .ar-game-text strong { font-size: var(--fs-title); }
-.ar-today > h2 { color: var(--accent); }
-.ar-today .ar-game-text span { -webkit-line-clamp: 4; color: var(--ink); font-size: 13px; }
-.ar-today .ar-game-text::after { content: var(--play-label, "Play"); align-self: flex-start; margin-top: 8px; padding: 5px 16px; border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-small); font-weight: 650; }
-@media (max-width: 699px) { .ar-today { max-width: none; } }
+.ar-continue[hidden] { display: none; }
+/* Daily: today's edition of each game, one row you scroll sideways only; the ones done carry a tick and sit at the end. */
+.ar-daily { flex: 1 1 100%; min-width: 0; }
+.ar-daily[hidden] { display: none; }
+.ar-daily > h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.ar-daily-line { color: var(--ink2); font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ar-daily-stats { margin-inline-start: auto; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 2px; min-height: 44px; cursor: pointer; }
+.ar-daily .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin: 0 -16px; padding: 2px 16px 6px; }
+.ar-daily { --daily-w: 132px; }
+.ar-daily .ar-game { flex: 0 0 var(--daily-w); position: relative; scroll-snap-align: start; }
+.ar-daily .ar-game-text span { display: none; }
+.ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
+/* Every Daily tile the same size: the same art crop, a name on one line. The day's game wears a small badge along the foot of its art (the done tick has the top corner). */
+.ar-daily .ar-game-text strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-daily .ar-game-art { aspect-ratio: 16 / 9; height: auto; }
+.ar-feature-tag { position: absolute; top: calc(var(--daily-w) * 9 / 16 - 26px); inset-inline-start: 6px; max-width: calc(100% - 12px); padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Where the everyday seven end and the rest begin: a little more room, no label. */
+.ar-daily .ar-daily-main + .ar-game:not(.ar-daily-main) { margin-inline-start: 14px; }
+.ar-done-mark { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; line-height: 1; }
+[data-view="index"] .ar-daily .ar-games { display: flex; }
+[data-view="index"] .ar-daily .ar-game { flex: 0 0 var(--daily-w); flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+[data-view="index"] .ar-daily .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
+[data-view="index"] .ar-daily .ar-game-text { padding: 8px 10px 10px; }
+.ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game .sh-meta, [data-view="index"] .ar-daily .ar-game-text span, [data-view="index"] .ar-daily .ar-game::after { display: none; }
 
 /* Index: rows, one section at a time. */
 @media (max-width: 899px) {
   [data-view="index"] .sh-tools { display: contents; }
-  [data-view="index"] .ar-view-toggle { margin-left: auto; }
   [data-view="index"] .sh-search { order: 3; flex: 1 0 100%; max-width: none; }
 }
 [data-view="index"] .sh-top { display: block; margin-bottom: 18px; }
@@ -319,12 +353,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 [data-view="index"] .ar-game-text span { display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 [data-view="index"] .ar-game::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 4px 0 2px; border-top: 2px solid var(--ink3); border-right: 2px solid var(--ink3); transform: rotate(45deg); }
 /* The day's game, under the tabs on a phone: one row, on All only. */
-[data-view="index"] .ar-today { max-width: none; margin-bottom: 14px; }
-[data-view="index"] .ar-today .ar-game { height: auto; align-items: center; }
-[data-view="index"] .ar-today .ar-game-art { flex-basis: 96px; width: 96px; min-height: 0; height: 54px; }
-[data-view="index"] .ar-today .ar-game-text { justify-content: center; padding: 0; }
-[data-view="index"] .ar-today .ar-game-text span { display: block; }
-[data-view="index"] .ar-today .ar-game-text::after { display: none; }
 @media (min-width: 900px) {
   [data-view="index"] .sh-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; align-items: start; }
   [data-view="index"] .sh-rail { position: sticky; top: 16px; }
@@ -333,15 +361,9 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
   [data-view="index"] .sh-chip[aria-pressed="true"], [data-view="index"] .sh-chip[aria-pressed="true"]:hover { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
   [data-view="index"] .sh-chip:hover { background: var(--surface); }
   [data-view="index"] .sh-chip-recent:not([hidden]) { display: inline-flex; }
+  [data-view="index"] .sh-chip-sep { width: auto; height: 1px; margin: 10px 12px; }
   [data-view="index"] .sh-rail-head { display: block; margin: 14px 12px 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
   [data-view="index"] .ar-games { grid-template-columns: 1fr 1fr; }
-  [data-view="index"] .ar-today { margin: 0; display: flex !important; }
-  [data-view="index"] .ar-today[hidden] { display: none !important; }
-  [data-view="index"] .ar-today .ar-game { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
-  [data-view="index"] .ar-today .ar-game::after { display: none; }
-  [data-view="index"] .ar-today .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
-  [data-view="index"] .ar-today .ar-game-text { padding: 10px 12px 12px; }
-  [data-view="index"] .ar-today .ar-game-text span { white-space: normal; display: -webkit-box; }
 }
 .ar-foot { margin-top: 32px; color: var(--ink2); font-size: var(--fs-small); }
 /* The credits: closed until asked for, the long list of licences out of the way of the games. */
@@ -354,17 +376,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-foot > p { margin: 0 0 8px; line-height: 1.5; }
 .ar-foot[open] > p { animation: sh-fam-in 0.24s ease-out; }
 
-/* The order control: Zimi's Home sort (a mark, the order it is in; the native select lies over it unseen). */
-.sh-sort-wrap { position: relative; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: var(--r-chip); font-size: var(--fs-small); font-weight: 500; color: var(--ink2); cursor: pointer; white-space: nowrap; }
-.sh-sort-wrap[hidden] { display: none; }
-.sh-sort-wrap:hover, .sh-sort-wrap:focus-within { color: var(--ink); }
-.sh-sort-wrap:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
-.sh-sort { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; }
-.ar-shelf:not([data-sort="sections"]) .sh-sort-wrap { color: var(--accent); }
-@media (pointer: coarse) { .sh-sort-wrap { min-height: 44px; min-width: 44px; justify-content: center; } }
-/* A phone's lobby header has room for the mark only. */
-@media (max-width: 699px) { [data-view="lobby"] header .sh-tools { flex: 1 0 100%; } /* the controls take a row under the title, never over it */ [data-view="lobby"] .sh-sort-now { display: none; } [data-view="lobby"] .sh-sort-wrap { padding: 2px 2px; } [data-view="lobby"] .ar-view-btn { width: 38px; min-width: 44px; } [data-view="lobby"] .sh-search input { padding-right: 6px; } }
-@media (max-width: 899px) { [data-view="index"] .sh-sort-wrap { margin-left: auto; } [data-view="index"] .ar-view-toggle { margin-left: 0; } }
 .sh-wait .sh-list { visibility: hidden; }
 
 /* What and when, on a tile: small chips. Index shows them on every row; any other order shows them in Lobby too. */
@@ -375,7 +386,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-meta .sh-m-age { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 [data-sort="oldest"] .sh-m-age, [data-sort="quick"] .sh-m-length { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 [data-sort="region"] .sh-m-region, [data-sort="players"] .sh-m-players { display: none; }
-.ar-today .sh-meta { display: flex; }
 
 /* Groups of an order: a header with a note, and for Oldest first a spine with a dot per era; for By region the world with the region lit. */
 .sh-group h2 { position: relative; display: flex; align-items: center; gap: 8px; }
@@ -418,8 +428,6 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
 .ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ar-continue h2 { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--ink2); }
-.ar-continue.ar-table-idle h2 { font-weight: 500; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
 @media (max-width: 699px) {
@@ -514,6 +522,16 @@ dl.gs-help { margin: 0; }
 .gs-statlist { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: var(--fs-small); }
 .gs-statlist dt { color: var(--ink2); } .gs-statlist dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 .gs-statlist .gs-stat-alone { grid-column: 1 / -1; }
+.gs-subhead + .gs-stats, .gs-subhead + .gs-earned { margin-top: var(--sp-2); }
+.gs-stats + .gs-subhead { margin-top: var(--sp-5); }
+.gs-earned { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink2); }
+.gs-earned li { display: flex; gap: 10px; align-items: center; }
+.gs-earned li > span:first-child { width: 16px; text-align: center; }
+.gs-earned .gs-got { color: var(--ink); }
+.gs-earned .gs-got > span:first-child { color: var(--accent); font-weight: 700; }
+.gs-share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: 0 0 var(--sp-3); }
+.gs-daily-tag { font-size: var(--fs-small); font-weight: 650; color: var(--accent); }
+.gs-daily-flag { display: none; }   /* shown only inside Zimi, where the bar's name is hidden (shell.js HOST_CSS) */
 .gs-card .zc-row { margin: 6px 0; }
 .gs-card .zs-seats { margin: 6px 0; }
 .gs-seats { display: grid; gap: var(--sp-2); }
@@ -565,7 +583,7 @@ html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gs-tm-item:hover, .gs-tm-item:focus-visible { background: var(--accent-glow); color: var(--accent); outline: none; }
 .gs-tm-danger:hover, .gs-tm-danger:focus-visible { background: rgba(179, 38, 30, 0.1); color: var(--danger, #b3261e); }
 .gs-tm-head { display: none; }
-.gs-tm-sheet { left: 0; right: 0; bottom: 0; min-width: 0; max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: var(--sp-2) 0 calc(12px + env(safe-area-inset-bottom)); animation: gs-tm-up 0.2s cubic-bezier(0.25, 1, 0.5, 1); }
+.gs-tm-sheet { left: 0; right: 0; bottom: 0; min-width: 0; max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; border-width: 1px 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: var(--sp-2) 0 calc(12px + var(--safe-b)); animation: gs-tm-up 0.2s cubic-bezier(0.25, 1, 0.5, 1); }
 .gs-tm-sheet::before { content: ""; display: block; width: 36px; height: 4px; margin: 0 auto 6px; border-radius: 2px; background: var(--line-strong); opacity: 0.5; }
 .gs-tm-sheet .gs-tm-head { display: flex; align-items: center; gap: 12px; padding: 6px 20px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .gs-tm-head img { flex: none; width: 64px; height: 36px; border-radius: var(--r-chip); object-fit: cover; }
@@ -600,7 +618,7 @@ body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 .gs-m-conf4 { background: #fdfcf8; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); }
 @keyframes gs-conf { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--sway), 105vh) rotate(var(--turn)); } }
 /* The result and a big New game stay on a finished board once its sheet is closed (shell.js, showRest): never a dead end. */
-.gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), env(safe-area-inset-bottom)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
+.gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), var(--safe-b)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
 .gs-rest p { margin: 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
 .gs-rest .gs-rest-new { width: 100%; min-height: 56px; font-size: var(--fs-title); font-weight: 650; }
 .gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } }
@@ -647,3 +665,32 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-extras .ar-btn.gs-tile { flex: none; }
 .gs-tile.ar-btn:disabled .gs-icon { color: var(--ink3); }
 .gs-grid > .gs-extras { display: contents; }
+
+/* Who the stats are (signed in to Zimi): the name, and a quiet way to change it. */
+.gs-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; color: var(--ink2); }
+.gs-person-change { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+/* The share line's name: the player's choice, beside Share. */
+.gs-share-name { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--ink2); font-size: var(--fs-small); }
+.gs-share-name input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+/* This server's boards (shell.js boardSheet): rank, name, result. The player's own row in the accent; an arcade
+   game's house table in the cabinet's own type, so it never reads as people. */
+.gs-board { list-style: none; margin: 0 0 var(--sp-3); padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.gs-board-row { display: grid; grid-template-columns: 2em 1fr auto; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; }
+.gs-board-row + .gs-board-row { border-top: 1px solid var(--line); }
+.gs-board-rank { color: var(--ink2); font-variant-numeric: tabular-nums; }
+.gs-board-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-board-val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.gs-board-row.gs-you { color: var(--accent); }
+.gs-you-mark { font-weight: 500; }
+/* A daily left unsolved or unfinished: the quiet row, never as loud as a time. */
+.gs-board-row.gs-board-quiet .gs-board-val { font-weight: 400; color: var(--ink2); }
+.gs-board-row.gs-house { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.08em; color: var(--ink2); }
+.gs-board-note { margin: 0 0 var(--sp-3); color: var(--ink2); font-size: var(--fs-small); }
+.gs-board-open { display: block; margin: 4px auto 0; }
+/* The server's dailies today: a row a game, who leads under its name; a tap opens its board. */
+.gs-board-row-day { display: block; padding: 0; }
+.gs-board-day { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.gs-board-day .gs-board-name { display: flex; flex-direction: column; white-space: normal; }
+.gs-board-day small { color: var(--ink2); font-size: var(--fs-small); }
+.gs-board-day small.gs-you { color: var(--accent); }

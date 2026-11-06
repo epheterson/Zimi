@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZimCity - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="zimcity.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body class="cy-page">
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" aria-label="Back to ZimiGames">&lsaquo;</a>
+  <h1>ZimCity</h1>
+  <button class="ar-btn" id="cy-new" type="button" hidden data-t="shell.menu.new">New game</button>
+  <button class="ar-btn" id="cy-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="cy-pause" type="button" data-t="play.pause">Pause</button>
+  <button class="ar-btn" id="cy-budget" type="button" data-gs-icon="coins" data-t="city.budget">Budget</button>
+  <button class="ar-btn" id="cy-report" type="button" data-gs-icon="city" data-t="city.report">City report</button>
+  <button class="ar-btn" id="cy-layers" type="button" data-gs-icon="layers" data-t="city.layers">Layers</button>
+  <button class="ar-btn" id="cy-follow" type="button" data-gs-icon="person" data-t="city.follow">Follow someone</button>
+  <button class="ar-btn" id="cy-climate" type="button" data-gs-icon="thermo" data-t="city.climate">Climate</button>
+  <button class="ar-btn" id="cy-scenarios" type="button" data-gs-icon="flag" data-t="city.scenarios">Scenarios</button>
+  <button class="ar-btn" id="cy-cities" type="button" data-gs-icon="folder" data-t="city.cities">Cities</button>
+  <button class="ar-btn" id="cy-speed" type="button" data-gs-icon="speed" data-t="city.speed">Speed</button>
+</header>
+
+<main class="cy-main">
+  <div class="cy-strip">
+    <div class="cy-rci" id="cy-rci" role="img" aria-label="Demand">
+      <span class="cy-dem" data-k="residential"><i></i></span><span class="cy-dem" data-k="commercial"><i></i></span><span class="cy-dem" data-k="industrial"><i></i></span>
+    </div>
+    <b class="cy-funds" id="cy-funds"></b>
+    <span class="cy-when" id="cy-when"></span>
+  </div>
+  <p class="pl-msg cy-msg" id="cy-msg"></p>
+  <div class="cy-stage">
+    <aside class="cy-news" id="cy-news" hidden></aside>
+    <aside class="cy-follow-card" id="cy-follow-card" hidden></aside>
+    <canvas id="cy-map" tabindex="0" role="img" aria-label="The city map" data-t-aria="city.board"></canvas>
+  </div>
+  <div class="cy-foot">
+    <p class="cy-held" id="cy-held"></p>
+    <nav class="cy-tray" id="cy-tray" aria-label="Tools" data-t-aria="city.tray"></nav>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="librarykit.js"></script>
+<script type="module" src="zimcity.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q2719130">About ZimCity</a></footer><!-- /zimi-about -->
+</body>
+</html>

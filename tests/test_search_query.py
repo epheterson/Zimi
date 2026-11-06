@@ -49,6 +49,19 @@ class TestParser(unittest.TestCase):
                 )
                 self.assertEqual(got["plain"], case["plain"])
 
+    def test_near_cases(self):
+        # Eric, 2026-11-03: "should we also include like radius near a location?"
+        for case in self.cases["near"]:
+            with self.subTest(q=case["q"]):
+                got = Q.parse_query(case["q"])
+                near = Q.near_filter(got)
+                self.assertEqual(near["value"], case["place"])
+                self.assertAlmostEqual(near["radius_km"], case["radius_km"])
+                self.assertEqual(near["unit"], case["unit"])
+                self.assertEqual(
+                    [[_show(t) for t in g] for g in got["groups"]], case["groups"]
+                )
+
     def test_exclude_cases(self):
         # #94: "-wiki doesn't seem to work". MediaWiki goes; Sabdkosh
         # ("Wiktionary in Fiji Hindi Language") stays, since wik-tionary

@@ -181,15 +181,15 @@
     <input id="pw-username" type="text" name="username" value="admin" autocomplete="username" placeholder="Username" data-i18n-placeholder="username" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pw-input').focus()}">
     <!-- First-login hint: shown only when the default username applies (server
          flag via /whoami). Tells a fresh user the account name is "admin". -->
-    <div id="pw-username-hint" style="display:none;font-size:12px;color:var(--text2);margin:-4px 0 8px"></div>
+    <div id="pw-username-hint" class="pw-hint"></div>
     <label for="pw-input" class="sr-only" data-i18n="password">Password</label>
     <input id="pw-input" type="password" placeholder="Password" data-i18n-placeholder="password" autocomplete="current-password" aria-labelledby="pw-title" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPw()}">
     <div class="pw-error" id="pw-error"></div>
-    <label id="pw-remember-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text2);cursor:pointer">
-      <input type="checkbox" id="pw-remember" checked style="accent-color:var(--amber);flex-shrink:0"> <span data-i18n="remember_me">Remember me</span>
+    <label id="pw-remember-row" class="pw-remember">
+      <input type="checkbox" id="pw-remember" checked> <span data-i18n="remember_me">Remember me</span>
     </label>
     <div class="pw-actions">
-      <button type="button" id="pw-remove-btn" onclick="_confirmRemovePassword(this)" style="display:none;color:var(--text2);font-size:12px;margin-right:auto" data-i18n="remove">Remove</button>
+      <button type="button" id="pw-remove-btn" onclick="_confirmRemovePassword(this)" style="display:none" data-i18n="remove">Remove</button>
       <button type="button" id="pw-cancel" onclick="closePwModal()" data-i18n="cancel">Cancel</button>
       <button type="submit" class="pw-primary"><span class="pw-ok-label" data-i18n="ok">OK</span><span class="pw-gate-label" data-i18n="sign_in">Sign in</span></button>
     </div>

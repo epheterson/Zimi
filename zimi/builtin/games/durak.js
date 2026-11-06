@@ -321,7 +321,7 @@
     function newGameState() { return deal(T.shuffleOf(DECK, Math.random), savedPlayers()); }
 
     t = T.create({
-      id: 'durak', name: 'Durak', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, cols: 7, heightShare: 0.11,
+      id: 'durak', name: 'Durak', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.11,
       canPick: function (st, pile) { return st.turn === seats.view() && pile.charAt(0) === 'h' && (st.phase === 'defend' ? legalDefences(st, st.turn) : legalThrows(st, st.turn)).indexOf(idOf(pile)) >= 0; },
       move: function (pile, idx, to) { return (to === 'table' || to === 'stock') && pile.charAt(0) === 'h' ? play(idOf(pile)) : false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.

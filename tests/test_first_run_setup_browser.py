@@ -326,3 +326,15 @@ def test_on_the_network_alone_flipping_on_and_back_off_saves_nothing(served, bro
     page.locator("#setup-req").evaluate("e => e.click()")
     page.wait_for_timeout(1000)
     _wait_access(page, "access", "lan")
+
+
+def test_continue_is_one_full_width_way_on_like_sign_in(served, browser):
+    """Eric (2026-10-16): "Login form layout is ugly." The first run ended in a
+    small Continue pushed to the right under full-width fields; the sign-in
+    screen it leads to ends in one full-width button. Now both do."""
+    page = _page(browser, served[0], LAN_VIA_PROXY)
+    form = page.locator("#setup-form").bounding_box()
+    go = page.locator("#setup-form .btn-primary").bounding_box()
+    assert abs(go["width"] - form["width"]) < 1, (go, form)
+    assert go["height"] >= 44, go
+    page.close()

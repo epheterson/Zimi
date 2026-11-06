@@ -410,7 +410,7 @@
     // A fresh deal: nobody has seen it, so a table of people starts at a handoff.
     function deal() { seats.begin(function () { repaint(); drive(); }, session.state.turn); }
     t = T.create({
-      id: R.id, name: R.name, seats: seats, view: view, geo: function (m, st) { return geo(m, st, seats.view()); }, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, cols: 7, heightShare: 0.11,
+      id: R.id, name: R.name, seats: seats, view: view, geo: function (m, st) { return geo(m, st, seats.view()); }, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.11,
       canPick: function () { return false; },
       stat: function (sec, st) { return TX('climb.stat', { n: st.scores[seats.view()], target: R.target }); },
       cascadeOrder: function (st) { return st.table.map(function (id) { return { id: id }; }); },

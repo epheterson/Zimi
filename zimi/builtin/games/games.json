@@ -1503,6 +1503,23 @@
   "why": "The Viking board game. The king escapes to a corner or is captured."
  },
  {
+  "qid": "Q2719130",
+  "wiki": "Micropolis (video game)",
+  "path": "zimcity.html",
+  "title": "ZimCity",
+  "blurb": "Zone, power and grow a city that runs itself",
+  "why": "Micropolis, the 1989 city simulator, released as free software in 2008.",
+  "origin": {
+   "year": 1989,
+   "era": "1980s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "30 min+",
+  "kind": "sim",
+  "computer": false
+ },
+ {
   "qid": "Q937315",
   "wiki": "Royal Game of Ur",
   "path": "ur.html",
@@ -1578,10 +1595,10 @@
   "blurb": "Four tracks, rival cars and a ghost of your best lap",
   "why": "Atari's Gran Trak 10 put a wheel and pedals on an arcade machine in 1974.",
   "origin": {
-   "year": 1894,
-   "era": "1890s"
+   "year": 1974,
+   "era": "1970s"
   },
-  "region": "Europe",
+  "region": "Americas",
   "players": "1",
   "length": "5 min",
   "kind": "arcade",

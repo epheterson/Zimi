@@ -5,7 +5,10 @@
     -word           no result containing the word; -"two words" likewise
     a OR b          either one (OR in capitals, between two terms)
     key:value       a filter, when the key is one the caller knows
+    key:"a value"   a filter whose value has spaces
     -key:value      the filter, negated
+    near:place 25km places within 25 km (or 25mi) of a place, or of
+                    near:<lat>,<lng>; 25 km when no distance follows
 
 The web client has the same parser (parseSearchQuery in static/app.js) for the
 catalog, and tests/fixtures/search_query_cases.json holds the cases both must
@@ -36,7 +39,13 @@ MAX_SEARCHES = 8
 
 # The filters the library search understands. A key maps to its canonical
 # name; aliases share one.
-LIBRARY_FILTERS = {"in": "source", "source": "source", "lang": "lang"}
+LIBRARY_FILTERS = {"in": "source", "source": "source", "lang": "lang", "near": "near"}
+# near:'s distance, the token after it: a number and km or mi.
+NEAR_RADIUS = re.compile(r"^(\d+(?:\.\d+)?)(km|mi)$", re.I)
+NEAR_DEFAULT_KM = 25.0
+# The widest near: reaches: past it the box is a continent and every place on a map is read.
+NEAR_MAX_KM = 500.0
+KM_PER_MILE = 1.609344
 
 
 def _tokens(q):
@@ -71,10 +80,19 @@ def _tokens(q):
                 break
         j = start
         while j < n and not q[j].isspace():
+            # key:"a value": the value's quotes hold its spaces.
+            if q[j] == ":" and j + 1 < n and q[j + 1] in _QUOTES and j > start:
+                close = next((k for k in range(j + 2, n) if q[k] in _QUOTES), -1)
+                if close >= 0:
+                    j = close
             j += 1
         out.append((q[start:j], False, False, start, j))
         i = j
     return out
+
+
+def _unquote(text):
+    return " ".join("".join(c for c in text if c not in _QUOTES).split())
 
 
 def _filter_key(text, filters):
@@ -88,11 +106,14 @@ def word_spans(q, filters=LIBRARY_FILTERS):
     phrase, not OR, an exclusion or a filter. What a spelling suggestion may
     correct, leaving every operator as it was typed."""
     out = []
+    after_near = False
     for text, phrase, neg, start, end in _tokens(q or ""):
-        if neg or (
-            not phrase
-            and (text == "OR" or text.startswith("-") or _filter_key(text, filters))
-        ):
+        was_near, after_near = after_near, False
+        if not phrase and was_near and NEAR_RADIUS.match(text):
+            continue  # near:'s distance
+        key = None if phrase else _filter_key(text.lstrip("-"), filters)
+        if neg or (not phrase and (text == "OR" or text.startswith("-") or key)):
+            after_near = key == "near"
             continue
         out.append((start, end))
     return out
@@ -110,7 +131,11 @@ def parse_query(q, filters=LIBRARY_FILTERS):
     """
     groups, exclude, found = [], [], []
     join_next = False
-    for text, phrase, neg, _start, _end in _tokens(q or ""):
+    tokens = _tokens(q or "")
+    skip = set()
+    for at, (text, phrase, neg, _start, _end) in enumerate(tokens):
+        if at in skip:
+            continue
         if not phrase:
             if text == "OR":
                 join_next = bool(groups)
@@ -122,9 +147,10 @@ def parse_query(q, filters=LIBRARY_FILTERS):
                     continue
             key = _filter_key(text, filters)
             if key:
-                found.append(
-                    {"key": key, "value": text.partition(":")[2].lower(), "negate": neg}
-                )
+                f = {"key": key, "value": _unquote(text.partition(":")[2]).lower(), "negate": neg}
+                if key == "near":
+                    f.update(_near_radius(tokens, at + 1, skip))
+                found.append(f)
                 join_next = False
                 continue
             if any(c in _QUOTES for c in text):
@@ -151,6 +177,25 @@ def parse_query(q, filters=LIBRARY_FILTERS):
         and [g[0]["text"] for g in groups] == (q or "").lower().split()
     )
     return {"groups": groups, "exclude": exclude, "filters": found, "plain": plain}
+
+
+def _near_radius(tokens, at, skip):
+    """near:'s distance from the token at ``at`` when it is one (that token
+    then taken), else the default: {"radius_km", "unit"}."""
+    m = NEAR_RADIUS.match(tokens[at][0]) if at < len(tokens) and not tokens[at][1] else None
+    if not m:
+        return {"radius_km": NEAR_DEFAULT_KM, "unit": "km"}
+    skip.add(at)
+    unit = m.group(2).lower()
+    n = float(m.group(1))
+    return {"radius_km": min(n * KM_PER_MILE if unit == "mi" else n, NEAR_MAX_KM), "unit": unit}
+
+
+def near_filter(parsed):
+    """The query's near: filter, or None. Negated, it asks for nothing."""
+    return next(
+        (f for f in parsed["filters"] if f["key"] == "near" and not f["negate"]), None
+    )
 
 
 def alternatives(parsed, cap=MAX_SEARCHES):

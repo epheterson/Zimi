@@ -16,7 +16,7 @@
 
   var COLUMNS = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'];
   var DONE = ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'];
-  var COLS = 10, SETS = 8, DECK_CARDS = 104, DEAL_ROW = COLS, SUITS_KEY = 'spider.suits';
+  var COLS = 10, SETS = 8, DECK_CARDS = 104, DEAL_ROW = COLS, SUITS_KEY = 'spider.suits', DAILY_SUITS = 2;
   var SCORE = { start: 500, move: -1, run: 100 };
   var SUIT_SETS = { 1: [3, 3, 3, 3, 3, 3, 3, 3], 2: [3, 2, 3, 2, 3, 2, 3, 2], 4: [0, 1, 2, 3, 0, 1, 2, 3] };
   var top = function (pile) { return pile[pile.length - 1]; };
@@ -150,7 +150,7 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   // A real deck: a face-down card shows a sliver (DOWN_RATIO of a face-up step, about 15% of the card), a face-up one
   // its rank, suit and a little pip (28%); a fan tightens only when the column would run off the screen.
-  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = DOWN_RATIO, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = 0.28, MIN_STEP_SHARE = 0.2;
+  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = 1, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.2;
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
@@ -203,12 +203,12 @@
   // ── The page ────────────────────────────────────────────────────────────
   function boot() {
     var page, session, board;
-    var suits = Z.store.get(SUITS_KEY, 1);
+    var suits = Z.daily() ? DAILY_SUITS : Z.store.get(SUITS_KEY, 1);   // a daily is two suits
     if (!SUIT_SETS[suits]) suits = 1;
 
     function newGame() {
       session.stats = Z.createStats('spider' + suits);
-      session.reset(newState(shuffledDeck(suits, Math.random), suits));
+      session.reset(newState(shuffledDeck(suits, Z.random()), suits));
       if (session.state.suits !== suits) { suits = session.state.suits; session.stats = Z.createStats('spider' + suits); }   // a game taken up again keeps its suits
     }
 
@@ -233,7 +233,9 @@
       winLines: function (sec, st) { return [TX('spider.win', { score: st.score, suits: TX('spider.suits', { n: st.suits }) }), Z.winTime(sec, st)]; },
       openMenu: function () {
         var pick = Z.segmented([{ label: TX('spider.suits', { n: 1 }), value: 1 }, { label: TX('spider.suits', { n: 2 }), value: 2 }, { label: TX('spider.suits', { n: 4 }), value: 4 }], suits, function (v) {
-          suits = v; Z.store.set(SUITS_KEY, v);
+          Z.store.set(SUITS_KEY, v);
+          if (Z.daily()) return;   // a daily is two suits for everyone: the choice waits for the next ordinary game
+          suits = v;
           if (!session.state.moves) newGame();
         });
         page.menu('Spider', [Z.h('div', { class: 'zc-row' }, [Z.h('label', { text: TX('spider.suitsRow') }), pick]), Z.h('p', { class: 'zc-note', text: TX('spider.nextDeal') })]);

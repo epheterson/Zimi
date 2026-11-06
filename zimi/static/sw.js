@@ -86,8 +86,8 @@ self.addEventListener('install', event => {
     caches.open(CACHE_VERSION)
       .then(cache => cache.addAll(PRECACHE_URLS)
         .then(() => Promise.allSettled(SHELL_URLS.map(u => cache.add(u)))))
-      .then(() => hadAlmanac())
-      .then(had => had && keepAlmanac())
+      // Nothing slower than the shell before taking charge: a new worker held up on the Almanac's megabytes never
+      // arrived on a phone that closed the app first (the Almanac is kept again in activate, below).
       .then(() => self.skipWaiting())
   );
 });
@@ -95,15 +95,21 @@ self.addEventListener('install', event => {
 // Activate: clean old caches, claim clients, version check
 self.addEventListener('activate', event => {
   event.waitUntil(
-    ownKeptBefore().catch(() => [])
-      .then(had => caches.keys()
+    Promise.all([ownKeptBefore().catch(() => []), hadAlmanac().catch(() => false)])
+      .then(([had, almanac]) => caches.keys()
         .then(keys => Promise.all(
           keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
         ))
         .then(() => self.clients.claim())
         .then(() => checkVersion())
-        // A deploy empties the cache; what was kept whole comes again, once the new worker is in charge.
-        .then(() => Promise.all(had.map(keepOwnZim))))
+        // A deploy empties the cache; what was kept whole comes again, once the new worker is in charge. Activation
+        // does not wait for it past a moment: WebKit holds every fetch until the worker has activated, so a window
+        // reloading for the new build sat on the old page for as long as the Almanac took to come. What is not in
+        // by then goes on, and is asked for again whenever the Almanac or the games open.
+        .then(() => Promise.race([
+          Promise.all([almanac && keepAlmanac(), ...had.map(keepOwnZim)]),
+          new Promise(r => setTimeout(r, ACTIVATE_KEEP_WAIT_MS)),
+        ])))
   );
 });
 
@@ -158,8 +164,9 @@ async function checkVersion() {
 // signed-out phone could be shown them. Offline the page reads the guide's own
 // copy instead (/static/fieldguide-offline.json: public text, kept like any
 // static file), so nothing is lost by never keeping these.
-const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/own-offline'];
+const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/games-day', '/own-offline'];
 // /games-links is filtered per account and follows the library: never kept, so no copy outlives a sign-out or an account change.
+// /games-day is the server's date: a kept one would be yesterday's daily.
 
 // The answers the app cannot start without, which say who is asking and what
 // the library holds: /whoami, /list, /search (the last few searches are kept
@@ -308,7 +315,7 @@ self.addEventListener('fetch', event => {
       event.respondWith(
         /(^|[?&])raw(=|&|$)/.test(url.search) || /\.epub$/i.test(url.pathname)
           ? fetchWithin(event.request, DEADLINE_COLD_MS).catch(() => offlineResponse())
-          : caches.match('/').then(r => r || fetchWithin(event.request, DEADLINE_COLD_MS))
+          : caches.match('/').then(r => { if (!r) return fetchWithin(event.request, DEADLINE_COLD_MS); refreshShell(event, new Request('/')); return r; })
               .catch(() => offlineResponse())
       );
       return;
@@ -377,6 +384,18 @@ function asStale(resp) {
   return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: h });
 }
 
+// The kept shell, fetched again for next time, off the path of this start. Every way in does it: an address inside
+// /w/ is answered by the same kept shell, and one that never asked the server again kept the old build for as long
+// as the phone opened the app there.
+function refreshShell(event, request) {
+  event.waitUntil(fetchWithin(request, DEADLINE_COLD_MS).then(async resp => {
+    if (resp.ok && resp.status !== 206 && !_gatewayDown(resp)) {
+      const cache = await caches.open(CACHE_VERSION);
+      await cache.put(request, resp);
+    }
+  }).catch(() => {}));
+}
+
 // A navigation: the shell as the phone last kept it, at once. The page boots
 // from the device and says what is true; waiting on a server first made every
 // start as slow as the worst connection. The copy is the one this worker
@@ -388,13 +407,7 @@ async function shellNavigation(event) {
   const request = event.request;
   const kept = (await caches.match(request)) || (await caches.match('/'));
   if (kept) {
-    // Refresh the kept copy for next time, off the path of this start.
-    event.waitUntil(fetchWithin(request, DEADLINE_COLD_MS).then(async resp => {
-      if (resp.ok && resp.status !== 206 && !_gatewayDown(resp)) {
-        const cache = await caches.open(CACHE_VERSION);
-        await cache.put(request, resp);
-      }
-    }).catch(() => {}));
+    refreshShell(event, request);
     return kept;
   }
   let resp = null;
@@ -677,6 +690,9 @@ async function refreshCachedCatalogs() {
 }
 
 self.addEventListener('message', event => {
+  if (event.origin && event.origin !== self.location.origin) return;   // only Zimi's own pages speak to its worker
+  // The page asks which build is in charge (app.js _workerBuild): a worker that claimed it before it asked has no change to announce.
+  if (event.data && event.data.type === 'build' && event.ports[0]) event.ports[0].postMessage(CACHE_VERSION);
   if (event.data && event.data.type === 'keep-changed') {
     if (self.KeepStore) KeepStore.forgetNames();
     event.waitUntil(refreshCachedCatalogs());
@@ -686,8 +702,8 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'forget-own' && OWN_ZIM_PREFIXES.includes('/w/' + event.data.zim + '/')) event.waitUntil(forgetOwnZim(event.data.zim));
 });
 
-// A device that kept the Almanac keeps each new deploy's too, before activate
-// drops the old cache: a page asking later may be gone, or gone offline.
+// A device that kept the Almanac keeps each new deploy's too, read before activate drops the old cache: a page
+// asking later may be gone, or gone offline.
 async function hadAlmanac() {
   if (!ALMANAC_URLS.length) return false;
   for (const k of await caches.keys()) {
@@ -710,6 +726,7 @@ async function keepAlmanac() {
 const OWN_KEEP_PARALLEL = 4;
 const OWN_KEEP_MARK = '/_kept/own/';   // a small answer saying this cache holds a ZIM's pages whole
 const OWN_KEEP_DELAY_MS = 4000;
+const ACTIVATE_KEEP_WAIT_MS = 2500;   // how long activation lets the deploy's re-keeping run before the worker is in charge
 const OWN_KEEP_MAX_FAILS = 5;   // a network that went away stops the keeping; the next open asks again
 const _ownKeeping = {};
 let _ownKeepAsked = false;   // once per worker life: a page of the games has been asked for

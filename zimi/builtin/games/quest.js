@@ -149,7 +149,7 @@
   function createState(save, seed) {
     var g = save && save.v === 1 && SCREENS[save.screen] ? save : newGame(seed), st = {
       screen: g.screen, x: g.x, y: g.y, hp: g.hp, maxHp: g.maxHp, sword: !!g.sword, keys: g.keys | 0, flags: JSON.parse(JSON.stringify(g.flags || {})), bossDead: !!g.bossDead, won: !!g.won,
-      start: newGame().start, rng: mulberry(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed), face: 'down', swing: 0, cool: 0, inv: 0, knock: null, status: 'playing', statusT: 0,
+      start: newGame().start, rng: mulberry(seed === undefined ? root.ZimiUtil.newSeed() : seed), face: 'down', swing: 0, cool: 0, inv: 0, knock: null, status: 'playing', statusT: 0,
       enemies: [], shots: [], pickups: [], events: [], hit: {}, anim: 0, w: HERO_W, h: HERO_H, moving: false, saved: 0 };
     st.hp = clamp(st.hp, 1, st.maxHp);
     st.enemies = spawnEnemies(st);

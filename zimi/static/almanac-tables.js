@@ -1378,7 +1378,7 @@ var TB_MADE_METHOD = {
   tides: function (x) {
     var m = x.made;
     if (!m) return null;
-    return { line: m.ref ? _tbT('mm_tides_sub', { ref: m.ref, station: m.station }) : _tbT('mm_tides', { station: m.station, n: m.n }) };
+    return { line: m.ref ? _tbT('mm_tides_sub', { ref: m.ref, station: m.station }) : _tbT(m.st && _atWorld(m.st) ? 'mm_tides_world' : 'mm_tides', { station: m.station, n: m.n }) };
   },
   eot: function () { return { line: _tbT('mm_eot') }; },
   calendars: function () { return { line: _tbT('mm_calendars', { list: AR_CAL_SYSTEMS.map(_arCalLabel).join(', ') }) }; },
@@ -2284,8 +2284,7 @@ var TB_RENDER = {
     return { place: _tbT('tide_station', { name: station }) + ' · ' + tz,
       made: { station: station, n: pr.n, ref: st.refrec ? _atTitle(st.refrec.n) : null, tz: tz, units: unit, st: st },
       html: '<p class="tb-lede">' + _tbH('tide_station', { name: station }) + '</p>' + _tbTable(head, rows, 'tb-tides') + _tbCapNote(span) +
-        _tbNote(_almEsc(st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note')) + ' ' +
-          _almEsc(t('alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id }))) };
+        _tbNote(_almEsc(_atNote(st)) + ' ' + _almEsc(_atSourceLine(st))) };
   },
   nav: function (span) { return _tbNav(span); },
   stars: function (span, p) {
