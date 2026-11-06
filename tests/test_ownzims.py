@@ -27,13 +27,16 @@ GAMES = os.path.join(ownzims.SOURCE_ROOT, "games")
 pytestmark = pytest.mark.skipif(not os.path.isdir(GAMES), reason="no ZIM source folders here: not a repo checkout")
 
 
-@pytest.fixture
-def home(tmp_path, monkeypatch):
-    """An empty library, an empty place to build into, and a copy of the
-    ZimiGames' source to change freely."""
+# What the build-logic tests need of the source: a build of all 386 files is 13 seconds (libzim indexing them), of these six
+# under 5. One test builds the whole source (`full_home`); the rest are about when a build happens and what it replaces,
+# which a small source shows the same.
+_SMALL = ("index.html", "zimi.txt", "games.css", "icon.png", "about.html", "games.json")
+
+
+def _home(tmp_path, monkeypatch, ignore):
     zims, data, src = tmp_path / "zims", tmp_path / "data", tmp_path / "src"
     zims.mkdir()
-    shutil.copytree(GAMES, src / "games")
+    shutil.copytree(GAMES, src / "games", ignore=ignore)
     monkeypatch.setattr(server, "ZIM_DIR", str(zims))
     monkeypatch.setattr(ownzims, "SOURCE_ROOT", str(src))
     monkeypatch.setattr(ownzims, "OUT_DIR", str(data))
@@ -41,7 +44,21 @@ def home(tmp_path, monkeypatch):
     return {"zims": zims, "data": data, "src": src / "games", "own": ownzims.OWN[0]}
 
 
-def test_zimigames_is_a_real_zim_any_reader_opens(home):
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    """An empty library, an empty place to build into, and a copy of the ZimiGames' source (six of its files) to
+    change freely."""
+    return _home(tmp_path, monkeypatch, lambda d, names: [n for n in names if d == GAMES and n not in _SMALL])
+
+
+@pytest.fixture
+def full_home(tmp_path, monkeypatch):
+    """The same with the whole source."""
+    return _home(tmp_path, monkeypatch, None)
+
+
+def test_zimigames_is_a_real_zim_any_reader_opens(full_home):
+    home = full_home
     path = ownzims.build(home["own"])
     month = datetime.date.today().strftime("%Y-%m")
     assert path == os.path.join(str(home["data"]), "zimi_games_%s.zim" % month)
