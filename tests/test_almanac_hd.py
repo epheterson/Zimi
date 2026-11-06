@@ -23,7 +23,7 @@ REL = {
 
 @pytest.fixture
 def hd(tmp_path, monkeypatch):
-    monkeypatch.setattr(almanachd, "release", lambda: REL)
+    monkeypatch.setattr(almanachd, "release", lambda read=False: REL)
     monkeypatch.setattr(almanachd, "installed", lambda: False)
     monkeypatch.setattr(almanachd.POLICY, "_offline", lambda: False)
     monkeypatch.delenv(almanachd.ENV, raising=False)
@@ -49,7 +49,7 @@ def hd(tmp_path, monkeypatch):
         return str(len(queued)), None
 
     monkeypatch.setattr(library, "_enqueue_zim_download", enqueue)
-    monkeypatch.setattr(almanachd, "_downloading", lambda rel: None)
+    monkeypatch.setattr(almanachd, "_downloading", lambda: None)
     return queued
 
 
@@ -99,8 +99,8 @@ def test_installed_is_neither_offered_nor_fetched(hd, monkeypatch):
 
 
 def test_a_version_without_a_file_named_offers_nothing(hd, monkeypatch, tmp_path):
-    monkeypatch.setattr(almanachd, "release", lambda: None)
-    assert almanachd.status()["offer"] is None
+    monkeypatch.setattr(almanachd, "release", lambda read=False: None)
+    assert almanachd.status()["offer"].get("approx")  # the offline estimate, until a release says otherwise
     assert almanachd.start() == (None, "unavailable")
 
 
@@ -258,20 +258,38 @@ def manifest(monkeypatch):
 GOOD = json.dumps(dict(REL)).encode()
 
 
-def test_zimi_reads_the_manifest_of_its_own_versions_release(manifest):
+def test_under_ask_first_nothing_is_fetched_before_consent(manifest):
     manifest["body"] = GOOD
-    assert almanachd.release() is None  # the first look starts the read; nobody waits for it
+    for _ in range(3):
+        st = almanachd.on_almanac_open()
+        assert almanachd.status() and almanachd.release() is None
+    assert manifest["asked"] == []  # no manifest read, no download: the person has not said yes
+    # ...yet the offer is there on the very first open, sized from what is known offline.
+    assert st["mode"] == outbound.ASK and st["offer"]["approx"] is True
+    assert st["offer"]["size"] == almanachd.estimate() and st["offer"]["size"] > 100_000_000
+    assert st["offer"]["size"] % almanachd.ESTIMATE_STEP == 0
+
+
+def test_yes_reads_the_manifest_of_its_own_versions_release_then_downloads_and_checks_it(manifest, monkeypatch):
+    queued = []
+    monkeypatch.setattr(almanachd, "_downloading", lambda: None)
+    monkeypatch.setattr(library, "_enqueue_zim_download", lambda *a, **k: queued.append((a, k)) or ("1", None))
+    import zimi.server as srv
+
+    monkeypatch.setattr(srv, "ZIM_DIR", "/nonexistent-dir")
+    manifest["body"] = GOOD
+    assert almanachd.start({"name": "admin"}) == ("1", None)
     assert manifest["asked"] == ["https://github.com/epheterson/Zimi/releases/download/v1.15.4/zimi_almanac_maxi.json"]
-    assert almanachd.release() == REL
+    ((args, kw),) = queued
+    assert args[2] == REL["file"] and kw["extra"]["_sha256"] == REL["sha256"]
+    # The release's own figure now replaces the estimate.
     assert almanachd.status()["offer"] == {"file": REL["file"], "size": REL["size"]}
     assert len(manifest["asked"]) == 1
 
 
-def test_a_dev_build_with_no_release_manifest_offers_nothing_and_asks_rarely(manifest):
-    almanachd.release()
-    assert almanachd.release() is None and almanachd.status()["offer"] is None
+def test_a_dev_build_with_no_release_manifest_fetches_nothing(manifest):
     assert almanachd.start() == (None, "unavailable")
-    assert len(manifest["asked"]) == 1  # a miss is not retried on every ask
+    assert almanachd.status()["offer"]["approx"] is True and len(manifest["asked"]) == 1
 
 
 def test_a_manifest_for_another_version_or_a_strange_file_is_no_offer(manifest):
@@ -297,16 +315,17 @@ def test_never_and_offline_read_no_manifest(manifest, monkeypatch):
     assert manifest["asked"] == []
 
 
-def test_automatically_starts_the_download_as_soon_as_the_manifest_is_in(manifest, monkeypatch):
+def test_automatically_reads_the_manifest_and_starts_the_download_in_the_background(manifest, monkeypatch):
     queued = []
-    monkeypatch.setattr(almanachd, "_downloading", lambda rel: None)
+    monkeypatch.setattr(almanachd, "_downloading", lambda: None)
     monkeypatch.setattr(library, "_enqueue_zim_download", lambda *a, **k: queued.append(a) or ("1", None))
     import zimi.server as srv
 
     monkeypatch.setattr(srv, "ZIM_DIR", "/nonexistent-dir")
     manifest["body"] = GOOD
     almanachd.POLICY.set(outbound.AUTO)
-    almanachd.on_almanac_open()
+    st = almanachd.on_almanac_open()
+    assert st["offer"]["approx"] is True  # answered at once, with the estimate
     assert len(queued) == 1 and queued[0][2] == REL["file"]
 
 

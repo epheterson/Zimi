@@ -3058,6 +3058,7 @@ function _aeHdShow(st) {
     if (_aeIsOpen) _ae.hdPoll = setTimeout(_aeHdPollNow, AE_HD_POLL_MS);
   } else if (st && st.offer && st.can_change && st.mode === 'ask' && !_aeHdLater()) {
     var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
+    if (st.offer.approx) size = '~' + size;   // the offline estimate, before the release's own figure is known
     text = _aeT('alm_hd_offer') + ': ' + _aeT('alm_hd_offer_sub', { size: size });
     offer = true;
   }
@@ -3078,6 +3079,7 @@ function _aeHdRowHtml() {
   else if (st.downloading) tail = _almEsc(_aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) }));
   else {
     var size = typeof fmtBytes === 'function' ? fmtBytes(st.offer.size) : Math.round(st.offer.size / 1e6) + ' MB';
+    if (st.offer.approx) size = '~' + size;   // the offline estimate, before the release's own figure is known
     tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
       : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
   }

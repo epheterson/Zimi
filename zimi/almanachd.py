@@ -9,14 +9,16 @@ fetched the way any ZIM is, through the download queue (library.py), into the li
 Almanac, the package's, with HD present.
 
 Every release builds that file and attaches it with a small manifest, ``zimi_almanac_maxi.json``
-(``{"file", "size", "sha256", "tag"}``). Zimi reads the manifest of its own version's release (``v<version>``) to
-know what to offer, so a build with no release (a dev build) offers nothing. 1.15.3 shipped the tiles alone as
+(``{"file", "size", "sha256", "tag"}``). The offer is sized offline (the pinned tile source plus the Almanac in the
+package: "about N MB"). Only after a yes, or under Automatically, does Zimi read the manifest of its own version's
+release (``v<version>``), then download the file it names and check its sha256; a build with no release (a dev
+build) finds none and fetches nothing. 1.15.3 shipped the tiles alone as
 ``zimi_almanac_hd``; whoever has that file keeps their tiles (``LEGACY_NAME``) and is not asked again.
 
 Eric, 2026-11-03: "HD can download once on first use of almanac or something?" Whether it may is an Ask first /
 Automatically / Never setting like every other fetch (outbound.py), Ask first by default: the Almanac offers it, with
 its size, to someone who may download, and Automatically fetches it the first time the Almanac asks. ZIMI_OFFLINE is
-Never. Reading the manifest is part of that setting: under Never nothing is read.
+Never. Reading the manifest is part of that setting: nothing is read before consent, and under Never nothing is.
 """
 
 import json
@@ -46,6 +48,9 @@ MANIFEST_TIMEOUT_S = 10
 MANIFEST_MAX_BYTES = 4096
 #: A manifest that could not be read (no such release, no network) is looked for again after this long.
 MANIFEST_RETRY_S = 6 * 3600
+#: The pinned tile source (scripts/build_almanac_maxi.py): its size is most of the flavour's, and known without the internet.
+TILES_PIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "almanac-tiles.json")
+ESTIMATE_STEP = 10_000_000
 #: Where the queue says a download came from: also what keeps it out of
 #: NOMAD's library (library._enqueue_zim_download hands only catalog ones over).
 SOURCE = "almanac_hd"
@@ -89,46 +94,50 @@ def parse_manifest(raw, version=None):
 
 
 def _read_manifest():
-    """Read the manifest in the background; a good one is kept, and under Automatically starts the download."""
+    """Read the manifest from this version's release, now. The good one is kept; None when there is none (a dev
+    build, no network). Only ever called once the setting has said yes (``start``): Ask first reaches nothing before."""
     rel = None
     try:
         from zimi import server as _srv
         from zimi.library import USER_AGENT
 
         req = urllib.request.Request(manifest_url(), headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(
-            req, timeout=MANIFEST_TIMEOUT_S, context=_srv.SSL_CTX
-        ) as resp:
+        with urllib.request.urlopen(req, timeout=MANIFEST_TIMEOUT_S, context=_srv.SSL_CTX) as resp:
             raw = resp.read(MANIFEST_MAX_BYTES + 1)
-        rel = (
-            parse_manifest(raw.decode("utf-8", "replace"))
-            if len(raw) <= MANIFEST_MAX_BYTES
-            else None
-        )
-    except Exception as e:  # no release for this version, no network: no offer
+        rel = parse_manifest(raw.decode("utf-8", "replace")) if len(raw) <= MANIFEST_MAX_BYTES else None
+    except Exception as e:  # no release for this version, no network: nothing to fetch
         log.info("Almanac HD: no manifest (%s)", loggable(type(e).__name__))
     with _manifest_lock:
-        _manifest.update(rel=rel, tried=time.time(), busy=False)
-    if rel and POLICY.mode()[0] == outbound.AUTO and not installed():
-        start(None)
+        _manifest.update(rel=rel, tried=time.time())
+    return rel
 
 
-def release():
-    """The file this version of Zimi fetches, or None: no manifest on its release (a dev build), not read yet, or the
-    setting is Never. The first call starts reading the manifest (nobody waits for it); the next sees it.
-    """
+def release(read=False):
+    """The file this version of Zimi fetches, from the manifest already read, or None (not read, no manifest on the
+    release, or the setting is Never). ``read=True`` reads it first, which is a connection to the internet: only after
+    a yes (``start``). Without it nothing is fetched."""
     if POLICY.mode()[0] == outbound.NEVER:
         return None
     with _manifest_lock:
         if _manifest["rel"]:
             return _manifest["rel"]
-        if _manifest["busy"] or time.time() - _manifest["tried"] < MANIFEST_RETRY_S:
-            return None
-        _manifest["busy"] = True
-    threading.Thread(
-        target=_read_manifest, name="almanac-hd-manifest", daemon=True
-    ).start()
-    return None
+    return _read_manifest() if read else None
+
+
+def estimate():
+    """About how big the download is, known offline: the pinned tile source's size plus the Almanac in the package
+    (the flavour is the two together), to the nearest ten MB. None when either is unknown."""
+    from zimi import ownzims
+
+    try:
+        with open(TILES_PIN, encoding="utf-8") as f:
+            tiles = json.load(f).get("size")
+        almanac = os.path.getsize(ownzims.zim_path(next(o for o in ownzims.OWN if o.name == "zimi_almanac")))
+    except (OSError, ValueError, TypeError, StopIteration, AttributeError):
+        return None
+    if not isinstance(tiles, int) or tiles <= 0:
+        return None
+    return round((tiles + almanac) / ESTIMATE_STEP) * ESTIMATE_STEP
 
 
 def url(rel):
@@ -156,22 +165,27 @@ def base():
     return None if name is None else "/w/%s/%s" % (name, "hd/" if name == NAME else "")
 
 
-def _downloading(rel):
-    """The queue's record for the file, active or waiting, or None."""
+def _downloading():
+    """The queue's record for Almanac HD, active or waiting, or None."""
     from zimi import library
 
     with library._download_lock:
         recs = list(library._active_downloads.values()) + list(library._download_queue)
     return next(
-        (d for d in recs if d.get("filename") == rel["file"] and not d.get("error")),
+        (
+            d
+            for d in recs
+            if (d.get("_source") == SOURCE or _FILE_RE.match(str(d.get("filename"))))
+            and not d.get("error")
+        ),
         None,
     )
 
 
 def status():
-    """What the Almanac shows: ``installed`` and ``base`` (where its tiles are read from); ``offer`` (the file this
-    version fetches, and its size) while it is not; the setting; the download under way.
-    """
+    """What the Almanac shows: ``installed`` and ``base`` (where its tiles are read from); ``offer`` while it is not
+    (``size``; ``approx`` when it is the offline estimate, before the release's own figure is known); the setting; the
+    download under way. Reads no network."""
     mode, locked = POLICY.mode()
     have = installed()
     out = {
@@ -182,17 +196,19 @@ def status():
         "offer": None,
         "downloading": None,
     }
-    rel = None if have else release()
-    if not rel:
+    if have or mode == outbound.NEVER:
         return out
-    out["offer"] = {"file": rel["file"], "size": rel["size"]}
-    dl = _downloading(rel)
+    rel = release()
+    size = rel["size"] if rel else estimate()
+    if size:
+        out["offer"] = {"file": rel["file"], "size": size} if rel else {"size": size, "approx": True}
+    dl = _downloading()
     if dl:
         done = dl.get("downloaded_bytes") or 0
         out["downloading"] = {
             "id": dl.get("id"),
             "done": done,
-            "size": dl.get("size_bytes") or rel["size"],
+            "size": dl.get("size_bytes") or size or 0,
         }
     return out
 
@@ -218,7 +234,7 @@ def start(actor=None, saved=None):
         return None, "never"
     if installed():
         return None, "installed"
-    rel = release() or (saved_release(saved) if saved else None)
+    rel = release(read=True) or (saved_release(saved) if saved else None)
     if not rel:
         return None, "unavailable"
     from zimi import server as _srv
@@ -230,7 +246,7 @@ def start(actor=None, saved=None):
             None,
             "installed",
         )  # on disk already (a scan not yet run): never fetched over it
-    dl = _downloading(rel)
+    dl = _downloading()
     if dl:
         return dl.get("id"), None
     from zimi import library
@@ -250,10 +266,22 @@ def start(actor=None, saved=None):
     )
 
 
+def _auto_start():
+    try:
+        start(None)
+    finally:
+        with _manifest_lock:
+            _manifest["busy"] = False
+
+
 def on_almanac_open():
-    """The Almanac asked: under Automatically, the first ask fetches it."""
+    """The Almanac asked. Under Automatically the first ask fetches it, in the background (the manifest is read and
+    the download queued by a thread nobody waits for); under Ask first nothing is fetched until ``start``."""
     st = status()
     if st["mode"] == outbound.AUTO and st["offer"] and not st["downloading"]:
-        start(None)
-        st = status()
+        with _manifest_lock:
+            go = not _manifest["busy"] and time.time() - _manifest["tried"] >= MANIFEST_RETRY_S
+            _manifest["busy"] = go or _manifest["busy"]
+        if go:
+            threading.Thread(target=_auto_start, name="almanac-hd-auto", daemon=True).start()
     return st
