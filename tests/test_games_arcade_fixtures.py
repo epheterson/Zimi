@@ -24,6 +24,8 @@ pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Each recorded game is its own test behind a cheap server and browser: --dist loadgroup deals them over workers (tests/conftest.py).
+XDIST_SPLIT = 3
 GAMES = os.environ.get("ZIMI_GAMES_DIR") or os.path.join(
     os.path.dirname(HERE), "zimi", "builtin", "games"
 )

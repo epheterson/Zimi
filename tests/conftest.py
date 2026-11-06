@@ -117,6 +117,24 @@ def pytest_collection_modifyitems(config, items):
                     pass
         if any(src and _drives_a_browser(src) for src in sources):
             item.add_marker(pytest.mark.browser)
+    _group_for_xdist(items)
+
+
+def _group_for_xdist(items):
+    """`--dist loadgroup`: every module is one group, so a module's tests (and its module-scoped fixtures) stay on one worker,
+    exactly as `--dist loadfile` places them. A module that says `XDIST_SPLIT = n` has parametrized cases that are independent
+    of one another behind cheap fixtures (one recorded game per case): those cases are dealt into n groups, so one long module
+    is not the last worker standing. Its other tests stay together. Without xdist, or under `--dist loadfile`, nothing changes."""
+    dealt = {}
+    for item in items:
+        if item.get_closest_marker("xdist_group"):
+            continue
+        name = item.path.name
+        n = getattr(getattr(item, "module", None), "XDIST_SPLIT", 1)
+        if n > 1 and hasattr(item, "callspec"):
+            k = dealt[name] = dealt.get(name, -1) + 1
+            name = "%s#%d" % (name, k % n)
+        item.add_marker(pytest.mark.xdist_group(name))
 
 
 def pytest_addoption(parser):

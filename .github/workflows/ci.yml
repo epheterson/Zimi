@@ -104,10 +104,11 @@ jobs:
 
       # The tier without a browser. Tests needing a sidecar are
       # `pytest.mark.skipif`, so they skip cleanly here instead of failing.
-      # --dist loadfile keeps a module's tests (and its module-scoped fixtures)
-      # on one worker.
+      # --dist loadgroup keeps a module's tests (and its module-scoped fixtures)
+      # on one worker, except the parametrized cases of a module that sets
+      # XDIST_SPLIT (tests/conftest.py).
       - name: Run the tests that need no browser
-        run: python -m pytest tests/ -m "not browser" -n auto --dist loadfile -q
+        run: python -m pytest tests/ -m "not browser" -n auto --dist loadgroup -q
 
       # Standalone node tests (vm-extracted client logic). They are not
       # collected by pytest, so without this step they only ever run by hand
@@ -203,7 +204,7 @@ jobs:
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
       # add up to the whole.
       - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
-        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadfile -q
+        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q
 
   test:
     if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
@@ -313,7 +314,7 @@ jobs:
       # of the suite with nothing but an exit code, and the only way to know
       # which test was running is to have streamed its name before it ran.
       - name: Run the test suite as the desktop build runs it
-        run: python -m pytest tests/ -v -rf --tb=short -n auto --dist loadfile
+        run: python -m pytest tests/ -v -rf --tb=short -n auto --dist loadgroup
 
       # PyInstaller on the runner the AppImage and snap are actually built on.
       # This catches a bundle that stops building at all, which is the other

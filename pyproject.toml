@@ -136,5 +136,6 @@ testpaths = ["tests"]
 markers = [
     "fieldguide_on: runs with ZIMI_FIELDGUIDE=1 (the Field Guide and Help now are off by default)",
     "browser: drives a real browser (Playwright / Chromium); set from the module's source in tests/conftest.py. Quick tier: -m \"not browser\"",
+    "xdist_group: pytest-xdist's --dist loadgroup unit (tests/conftest.py puts every module in one, so it places tests as loadfile does)",
     "real_engine: opts a test out of the autouse libtorrent guard (may start a live libtorrent session)",
 ]

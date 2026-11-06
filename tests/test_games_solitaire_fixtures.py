@@ -31,6 +31,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures", "games_solitaire")
 STEP_MS = 100  # the fake clock moves this far between two looks at the table
 MAX_STEPS = int(os.environ.get("ZIMI_SOLITAIRE_STEPS", 3000))  # a stretch of play that has not reached its end after this is stuck
+# Each recorded game is its own test behind a cheap server and browser: --dist loadgroup deals them over workers (tests/conftest.py).
+XDIST_SPLIT = 3
 
 # CSS transitions and animations run on real time, not on the fake clock: with them off, where a card is when a drag starts and
 # which class it still carries (animationend never comes) is the same on every run.
