@@ -181,3 +181,12 @@ def test_it_builds_into_a_real_zim_and_rebuilds_when_a_source_changes(
     assert ownzims.build(ALMANAC) is None, "unchanged: nothing is built"
     (host / "index.html").write_text(_read(HOST_HTML) + "\n<!-- changed -->\n", encoding="utf-8")
     assert ownzims.build(ALMANAC) == path, "a changed source builds it again"
+
+
+def test_every_name_of_a_multi_name_declaration_is_seen():
+    # 1.15.3's Almanac ZIM died on QUIET_PRI_PANELS: only the first name of a
+    # `var A = 1, B = 2` line was known, so the rest were never pulled or missed.
+    src = "var A = 1, B = f(2, 3), C = 4;\nfunction g() { return B + C; }\n"
+    assert stage.app_names(src) == {"A", "B", "C", "g"}
+    assert stage.extract(src, "C") == "var A = 1, B = f(2, 3), C = 4;"
+    assert stage.shell_names(src, "", seeds=["g"]) == ["A", "B", "C", "g"]

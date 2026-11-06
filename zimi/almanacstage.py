@@ -147,6 +147,7 @@ _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 _TOP_DECL = re.compile(
     r"^(?:async\s+)?(?:function\s+|var\s+|let\s+|const\s+)([A-Za-z_$][\w$]*)", re.M
 )
+_MORE_DECL = re.compile(r",\s*([A-Za-z_$][\w$]*)\s*=(?!=)")
 _WIRING = re.compile(r"^([A-Za-z_$][\w$]*)\s*(?:\.|\[|=[^=])")
 _IDENT = re.compile(r"(?<![\w$.])[A-Za-z_$][\w$]*")
 _ABS_STATIC = re.compile(r"""(['"(=])/static/""")
@@ -162,9 +163,23 @@ def strip_comments(text):
     return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", text))
 
 
+def _declarations(src):
+    """(name, offset) for every top-level function and variable ``src``
+    declares, each name of a ``var A = 1, B = 2`` line included (the quiet
+    queue's priorities are declared that way, and missing them broke the
+    Almanac ZIM in 1.15.3)."""
+    for m in _TOP_DECL.finditer(src):
+        yield m.group(1), m.start()
+        if not m.group(0).startswith(("var", "let", "const")):
+            continue
+        line = src[m.start() : src.find("\n", m.start()) % (len(src) + 1)]
+        for more in _MORE_DECL.finditer(line, m.end() - m.start()):
+            yield more.group(1), m.start() + more.start()
+
+
 def app_names(src):
     """Every top-level function and variable app.js declares."""
-    return set(_TOP_DECL.findall(src))
+    return {n for n, _ in _declarations(src)}
 
 
 def _statement_end(lines, i):
@@ -204,7 +219,7 @@ def extract(src, name):
     ``name`` when it is not there."""
     lines = src.split("\n")
     fn = re.compile(r"(?:async\s+)?function\s+%s\s*\(" % re.escape(name))
-    var = re.compile(r"(?:var|let|const)\s+%s\b" % re.escape(name))
+    var = re.compile(r"(?:var|let|const)\s+(?:[^;]*,\s*)?%s\s*=(?!=)" % re.escape(name))
     for i, line in enumerate(lines):
         if fn.match(line):
             if line.count("{") == line.count("}") and line.rstrip().endswith("}"):
@@ -249,7 +264,9 @@ def shell_names(app_src, host_html, seeds=None):
             and u not in LOCALS
             and not host_defines(host_html, u)
         )
-    order = {m.group(1): m.start() for m in _TOP_DECL.finditer(app_src)}
+    order = {}
+    for n, at in _declarations(app_src):
+        order.setdefault(n, at)
     return sorted(want, key=order.__getitem__)
 
 
@@ -271,7 +288,10 @@ def shell_source(app_src, host_html):
     """shell.js: the pulled pieces of app.js, each once, then their wiring."""
     names = shell_names(app_src, host_html)
     parts = ["// Pieces of Zimi's app.js the Almanac calls, pulled out by name at build time."]
-    parts.extend(extract(app_src, n) for n in names)
+    for n in names:
+        piece = extract(app_src, n)
+        if piece not in parts:  # two names declared in one statement
+            parts.append(piece)
     parts.extend(wiring(app_src, set(names)))
     return "\n\n".join(parts) + "\n"
 
