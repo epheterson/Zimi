@@ -209,3 +209,22 @@ def test_display_title_drops_the_brand_suffix():
     assert ownzims.display_title("Wikipedia") == "Wikipedia"
     assert _own_display_title("Almanac \u00b7 Zimi", "a;zimi:own") == "Almanac"
     assert _own_display_title("Foo \u00b7 Zimi", "a;b") == "Foo \u00b7 Zimi"
+
+
+def test_articles_line_decides_what_random_and_search_can_land_on():
+    # Kiwix's Random landed on puzzle docs, licences and ZimCity's engine notes:
+    # zimi.txt's Articles line now names the pages that are articles.
+    from zimi.folderfiles import article_rule
+
+    games = article_rule("index.html *.html puzzles/*.html !about.html !puzzles.html")
+    assert games("chess.html") and games("puzzles/loopy.html") and games("index.html")
+    for not_one in ("about.html", "puzzles.html", "puzzles/doc/loopy.html", "OFL-Barlow.txt", "zimcity/ENGINE.md"):
+        assert not games(not_one), not_one
+    assert article_rule(None)("anything/at/all.html")
+
+
+def test_the_built_own_zims_offer_only_real_pages_as_articles():
+    for own in ownzims.OWN:
+        a = Archive(ownzims.zim_path(own))
+        seen = {a.get_random_entry().path for _ in range(600)}
+        assert all(p.endswith(".html") and "/doc/" not in p for p in seen), (own.name, sorted(seen))

@@ -1304,6 +1304,7 @@ def _create_folder_zim(
         posixpath.splitext(main_path)[1].lower() in _folderfiles.PAGE_EXTS
     )
     belongs = plan["belongs"] | set(owned)
+    is_article = _folderfiles.article_rule(meta.get("articles"))
     gallery_images = (
         []
         if is_site
@@ -1369,7 +1370,7 @@ def _create_folder_zim(
                     page_title = named or page_title
                 # A licence is served (a page can link to it) but is not an article: it would turn up in
                 # search and in a random pick.
-                part_of_page = zim_path in owned or _is_notice_file(zim_path)
+                part_of_page = zim_path in owned or _is_notice_file(zim_path) or not is_article(zim_path)
                 creator.add_item(
                     static_cls(
                         zim_path,

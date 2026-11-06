@@ -5,3 +5,4 @@ Creator: Zimi
 Publisher: Zimi
 Tags: _category:games;games;zimi;zimi:own
 Icon: icon.png
+Articles: index.html *.html puzzles/*.html !about.html !puzzles.html
