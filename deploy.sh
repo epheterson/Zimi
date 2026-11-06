@@ -53,6 +53,9 @@ ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 |
 sleep 10
 if ssh nas "/usr/local/bin/docker ps --filter name=^zimi$ --format '{{.Names}}'" | grep -qx zimi; then
   echo "  NAS deployed"
+  # Stock kiwix-serve beside Zimi (docker-compose.kiwix-serve.yml, its own project) reads
+  # our own ZIMs from zimi/builtin at start: restart it so it has the ones just copied.
+  ssh nas "/usr/local/bin/docker ps --filter name=^kiwix$ -q | grep -q . && timeout 60 /usr/local/bin/docker restart kiwix >/dev/null && echo '  kiwix-serve restarted'" || true
 else
   echo "  NAS DEPLOY FAILED — container is not running" >&2
   exit 1
