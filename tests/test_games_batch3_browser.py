@@ -68,3 +68,43 @@ def test_a_language_without_a_text_file_is_english_everywhere(browser, served, l
         assert got[3] == "Turkey", got
     shot(page, "01-flags-%s" % lang)
     c.close()
+
+
+# 2. Same Game: when the last move is gone there is a sheet (the card games' words), with the score and New game.
+SAVE_TEXT = "(() => { const c = Module.cwrap; const p = c('get_save_file', 'number', [])(); const t = UTF8ToString(p); c('free_save_file', 'void', ['number'])(p); return t; })()"
+LOAD_TEXT = """(text) => {
+  const bytes = new TextEncoder().encode(text); let pos = 0;
+  window.savefile_read_callback = (buf, len) => { if (pos + len > bytes.length) return false; writeArrayToMemory(new Int8Array(bytes.buffer, pos, len), buf); pos += len; return true; };
+  try { Module.cwrap('load_game', 'void', [])(); } finally { window.savefile_read_callback = null; }
+}"""
+
+
+def tatham_save(game, params, desc):
+    """The save text the frontend writes (Game > Download save file) for a game of ours: one move to play, no history."""
+    rows = [("SAVEFILE", "Simon Tatham's Portable Puzzle Collection"), ("VERSION", "1"), ("GAME", game), ("PARAMS", params), ("CPARAMS", params),
+            ("SEED", "1"), ("DESC", desc), ("NSTATES", "1"), ("STATEPOS", "1")]
+    return "".join("%-8s:%d:%s\n" % (k, len(v), v) for k, v in rows)
+
+
+# Five by five, three colours: the one group of three (top, second and third columns) is the only move, and once it is gone none is left.
+STUCK_AFTER_ONE = "2,3,3,2,3,3,2,3,1,2,1,3,1,2,3,3,1,2,3,2,2,3,1,2,3"
+
+
+def test_same_game_stuck_has_a_sheet(browser, served):
+    c, page = open_game(browser, served, "puzzles/samegame.html")
+    page.wait_for_function(truthy("document.documentElement.classList.contains('zf-running')"))
+    page.evaluate(LOAD_TEXT, tatham_save("Same Game", "5x5c3s2", STUCK_AFTER_ONE))
+    frames(page, 4)
+    assert page.locator(".ar-sheet-card").count() == 0 or not page.locator(".ar-sheet-card").is_visible()
+    box = page.locator("#puzzlecanvas").bounding_box()
+    for _ in range(2):   # the first tap selects the group, the second removes it
+        page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.1)
+        frames(page, 4)
+    visible(page, ".ar-sheet-card h2", 6000)
+    text = page.locator(".ar-sheet-card").inner_text()
+    assert "No moves left" in text and "Undo a few moves" in text and "New game" in text, text
+    assert re.search(r"Score\s*1", text), text
+    assert "No moves left" in page.locator(".pz-status").inner_text()
+    shot(page, "02-samegame-stuck")
+    assert not page.errors, page.errors
+    c.close()

@@ -718,6 +718,7 @@
   // Each line the frontends write, in the player's language. The number-bearing ones are matched by their English shape.
   var STATUS = [
     [/\bMoves(?: since auto-solve)?: \d+\s*/g, function () { return ""; }],
+    [/\bCannot move!\s*/i, function () { return T("cards.noMoves", "No moves left") + ". "; }],
     [/^COMPLETED!\s*/i, function () { return T("pz.solved", "Solved") + ". "; }],
     [/\bAuto-solve[dr]( used)?\.?/i, function () { return T("pz.solutionShown", "Solution shown") + "."; }],
     [/^\[(\d+:\d\d)\]\s*/, function (m, clock) { return clock + " · "; }],
@@ -809,6 +810,15 @@
       }, true);
     });
   }
+  // A puzzle that can run out of moves (Same Game) says so the way the card games do: a sheet with the score and New game; Undo is
+  // in the bar behind it. One sheet for each time the status turns to "Cannot move!".
+  var stuck = false;
+  function declareStuck(raw) {
+    if (stuck) return;
+    stuck = true;
+    var score = /Score: (\d+)/.exec(raw);
+    if (!freshLoad && root.ZimiShell) root.ZimiShell.endSheet({ result: "over", title: T("cards.noMoves", "No moves left"), text: T("cards.stuck", "Undo a few moves to try another way."), stats: score ? [[T("play.score", "Score"), num(score[1])]] : [], after: 0 });
+  }
   var freshLoad = true;      // the game that is there when the page opens (or comes back from a save) is not a win
   function declareWin() {
     if (solved) return;
@@ -855,6 +865,7 @@
     function sync() {
       var raw = bar.textContent, t = sayStatus(raw);
       if (/^(\[\d+:\d\d\]\s*)?COMPLETED!/i.test(raw)) declareWin(); else if (solved && !/COMPLETED!/i.test(raw)) { solved = false; }
+      if (/Cannot move!/i.test(raw)) declareStuck(raw); else stuck = false;
       if (line.textContent !== t) line.textContent = t;
       line.hidden = !t;
     }
