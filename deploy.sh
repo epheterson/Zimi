@@ -55,13 +55,17 @@ if [ "$own_zims" -gt 0 ]; then
     && step "kiwix-serve restarted for the new own ZIMs" || true
 fi
 
-CF_ZONE=$(yq '.config.cf_zone_id' ~/vault/secrets/services.yml 2>/dev/null || true)
-CF_TOKEN=$(yq '.config.cf_token' ~/vault/secrets/services.yml 2>/dev/null || true)
+# Cloudflare keeps pages of knowledge.zosia.io at its edge: drop only that
+# host's copy (purge_everything would drop every zosia.io host's). The token is
+# a narrow one, Zone > Cache Purge on zosia.io; without it the deploy is still
+# complete and the service worker's content-hashed cache still updates.
+CF_ZONE=$(yq '.config.cf_zone_id_zosia' ~/vault/secrets/services.yml 2>/dev/null || true)
+CF_TOKEN=$(yq '.config.cf_purge_token' ~/vault/secrets/services.yml 2>/dev/null || true)
 if [ -n "$CF_ZONE" ] && [ "$CF_ZONE" != "null" ] && [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
   curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
     -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" \
-    --data '{"purge_everything":true}' \
-    | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Cloudflare cache purged' if r.get('success') else '  Cloudflare purge refused: ' + '; '.join(e.get('message','') for e in r.get('errors',[])))"
+    --data '{"hosts":["knowledge.zosia.io"]}' \
+    | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Cloudflare cache purged for knowledge.zosia.io' if r.get('success') else '  Cloudflare purge refused: ' + '; '.join(e.get('message','') for e in r.get('errors',[])))"
 fi
 $SSH -O exit nas 2>/dev/null || true
 echo "Done in $(( $(date +%s) - t0 ))s"
