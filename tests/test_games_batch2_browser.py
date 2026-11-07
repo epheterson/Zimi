@@ -306,3 +306,22 @@ def test_puzzle_pages_say_their_rules_in_one_line(browser, served):
             assert ink_l + 0.1 < grid_l < 0.6, (grid_l, ink_l)   # softer than ink, still dark enough to read as the counts
             shot(page, "12-tents-light")
         c.close()
+
+
+# 8. German: the games speak to the player as "du" (the shelf's "Sie" in a score pill read as "she/they"), and Hold'em's
+# out and fold words differ.
+THIRD_PERSON_SIE = {"game.goproblems.why", "game.koikoi.why", "help.fourinarow.turn", "help.inertia.turn", "help.liarsdice.tip", "help.scopa.turn",
+                    "history.blast", "history.draughts", "history.golf", "history.pattern", "openings.notThis", "sky.fact.venus", "spider.why.rank"}
+
+
+def test_german_games_text_is_informal():
+    import json
+    import re
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "builtin", "games", "text", "de.json")
+    de = json.load(open(path, encoding="utf-8"))
+    assert de["board.you"] == "Du" and de["cards.you"] == "Du"
+    formal = re.compile(r"\bSie\b|\bIhr(e[mnrs]?)?\b|\bIhnen\b")
+    found = sorted(k for k, v in de.items() if k not in THIRD_PERSON_SIE and formal.search(v if isinstance(v, str) else " ".join(v.values())))
+    found = [k for k in found if k != "history.zimcity"]   # "Ihr Code" is the city simulator's own code
+    assert not found, found
+    assert de["holdem.out"] != de["holdem.last.fold"] and "raus" not in de["holdem.out"]
