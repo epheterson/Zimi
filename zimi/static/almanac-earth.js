@@ -3209,6 +3209,9 @@ var AE_LM_KINDS = {
   wonder: 'wonder', launch: 'launch', landing_feature: 'other'
 };
 var AE_LM_LANDERS = { mars: 1, venus: 1 };      // bodies whose quick row has a Landings chip (the Moon's is its own)
+// A long thin feature (a ridge, a trough) is long, not prominent: its length counts for less when names compete for room;
+// a mountain is the opposite, small for its fame.
+var AE_LM_KIND_WEIGHT = { ridge: 0.15, rupes: 0.15, valley: 0.5, chain: 0.5, mons: 2.5 };
 var AE_LM_POINT_PRI = 1e6;                       // a place with no extent (a peak, a launch site) ranks after a landing, before any feature
 // A place in the lunar night is black: its card says when the Sun comes up there, and offers that morning instead, with
 // the Sun this high (low light: every crater's rim casts its shadow).
@@ -3285,7 +3288,7 @@ function _aeUpdateLandmarks() {
         var toEye = _aeSub(eye, p), dist = _aeLen(toEye);
         if (_aeDot(n, toEye) < AE_LM_FACING * dist) continue;
         var landing = row[3] === 'landing', point = !row[5];   // a point has no extent to measure: it shows with the body
-        var px = row[5] / AE_EARTH_RADIUS_KM / dist * pxPerRad;
+        var px = row[5] / AE_EARTH_RADIUS_KM / dist * pxPerRad * (AE_LM_KIND_WEIGHT[row[3]] || 1);
         if (point ? rPx < AE_LM_LANDING_MIN_R_PX : px < AE_LM_MIN_PX) continue;
         var s = _aeProject(p);
         if (!s || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) continue;
