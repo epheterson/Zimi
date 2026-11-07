@@ -191,3 +191,53 @@ def test_dominoes_round_sheet_sits_at_the_bottom(browser, served):
     assert card["y"] >= chain, (card, chain)
     shot(page, "06-dominoes-round")
     c.close()
+
+
+# 7. Jigsaw: tray pieces stay in view, the finished picture has no seams, and the win sheet does not repeat the caption.
+JIG_LCG = "(() => { let s = %d; Math.random = () => { s = (s * 1664525 + 1013904223) %% 4294967296; return s / 4294967296; }; })();"
+
+
+@pytest.mark.parametrize("count,seed", [(24, 3), (48, 5), (100, 9)])
+def test_jigsaw_tray_pieces_are_never_hidden(browser, served, count, seed):
+    c = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True, reduced_motion="reduce")
+    c.add_init_script("try { localStorage.setItem('zimi.games.jigsaw.prefs', JSON.stringify({ count: %d, today: false })); } catch (e) {}" % count)
+    c.add_init_script(JIG_LCG % seed)
+    page = c.new_page()
+    page.goto("%s/jigsaw.html?debug" % served)
+    game_ready(page, "__jig.puzzle && __jig.puzzle.pieces.length")
+    frames(page, 3)
+    worst = page.evaluate("""() => {
+      let worst = 1;
+      for (const p of __jig.puzzle.pieces) {
+        const r = p.node.getBoundingClientRect(); let seen = 0, total = 0;
+        for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) {
+          const x = r.left + (a + 0.5) * r.width / 5, y = r.top + (b + 0.5) * r.height / 5;
+          total++; if (document.elementFromPoint(x, y) === p.node) seen++;
+        }
+        worst = Math.min(worst, seen / total);
+      }
+      return worst; }""")
+    assert worst >= 0.1, worst
+    shot(page, "07-jigsaw-tray-%d" % count)
+    c.close()
+
+
+def test_jigsaw_finished_picture_is_seamless_and_the_sheet_does_not_repeat_the_caption(browser, served):
+    c, page = open_game(browser, served, "jigsaw")
+    page.wait_for_function("() => window.__jig && __jig.puzzle && __jig.puzzle.pieces.length")
+    page.evaluate("() => __jig.puzzle.pieces.forEach(p => __jig.lock(p))")
+    visible(page, ".ar-sheet-card h2", 6000)
+    geo = page.evaluate("""() => { const P = __jig.puzzle; return { cols: P.cols, rows: P.rows, W: P.W, H: P.H,
+      r: P.pieces.map(p => [p.node.offsetLeft, p.node.offsetTop, p.node.offsetWidth, p.node.offsetHeight, parseFloat(p.node.style.left), parseFloat(p.node.style.width)]) }; }""")
+    for i, (x, y, w, h, sl, sw) in enumerate(geo["r"]):
+        assert sl == x and sw == w and float(sl).is_integer() and float(sw).is_integer(), (i, geo["r"][i])
+        col, row = i % geo["cols"], i // geo["cols"]
+        if col < geo["cols"] - 1:
+            assert x + w == geo["r"][i + 1][0], (i, "gap or overlap to the right")
+        else:
+            assert x + w == geo["W"], (i, "the last column stops short of the board's edge")
+    card = page.locator(".ar-sheet-card").first.inner_text()
+    caption = page.locator(".jg-credit").inner_text()
+    assert caption and caption not in card, (caption, card)
+    shot(page, "07-jigsaw-win")
+    c.close()
