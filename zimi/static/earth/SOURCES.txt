@@ -71,15 +71,22 @@ earth-night-v1.webp). Saturn's rings are drawn from their measured radial
 structure (Cassini Division 117,500-122,200 km, Encke Gap near 133,500 km).
 
 landmarks-v1.json
-  Named places on the Moon for the 3D view's labels, cards and Fly there, built
-  by scripts/build_landmarks.py: every IAU-adopted lunar feature worth a label
-  (maria, sinus, lacus, montes, stationes, the Apollo sites' named features, and
-  craters from 20 km), from the IAU Gazetteer of Planetary Nomenclature (USGS
-  Astrogeology Science Center, public domain), each with its Wikidata Q-ID by
-  Gazetteer ID (P2824; Wikidata is CC0); and 25 landings at their published
-  coordinates (NASA NSSDC and the LRO camera team, CNSA, ISRO, JAXA), each
-  with the Q-ID of its English Wikipedia article. 84 KB, fetched the first time
-  the Moon is near.
+  Named places on every body the 3D view draws, for its labels, cards and Fly
+  there, built by scripts/build_landmarks.py: one list per body (Moon, Mars,
+  Venus, Titan, Mercury, Earth, Io, Europa, Ganymede, Callisto, Pluto, Ceres),
+  each row [name, lat, lon, kind, Wikidata Q-ID, size km, source], the last an
+  index into the file's own "sources" list. Longitudes are east, -180..180, the
+  frame every map in this folder is drawn in. The features are the IAU
+  Gazetteer of Planetary Nomenclature (USGS Astrogeology Science Center, public
+  domain; the largest of each kind, craters by size per body, a few named by
+  hand), each with its Q-ID by Gazetteer ID (P2824; Wikidata is CC0). The
+  landing sites are at the landers' published coordinates: 25 on the Moon (NASA
+  NSSDC and the LRO camera team, CNSA, ISRO, JAXA), 10 on Mars (NASA/JPL, CNSA),
+  8 on Venus (Venera and Vega, NASA NSSDC) and Huygens on Titan (ESA/NASA), each
+  with the Q-ID of its English Wikipedia article. Earth's 31 places (the highest
+  peaks, a few wonders, launch sites) are at their published coordinates, each
+  checked against Wikidata's (CC0). 132 KB, fetched the first time a body with landmarks
+  is near.
   https://planetarynames.wr.usgs.gov/
 
 Almanac HD (zimi_almanac_maxi_<month>.zim, not in this folder: the HD flavour of the
