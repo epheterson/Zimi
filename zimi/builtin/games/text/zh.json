@@ -989,6 +989,9 @@
   "other": "还剩{n}年"
  },
  "city.held": "{tool}：{cost}",
+ "city.how.drag": "拖动：移动",
+ "city.how.pinch": "捏合：缩放",
+ "city.how.press": "长按：查看",
  "city.idle": "选择一个工具。拖动可移动地图。",
  "city.k.delete": "删除",
  "city.k.full": "已保留五座城市。删掉一座才能保留这座。",
@@ -3249,7 +3252,7 @@
  "help.zimcity.goal": "把小村庄建成人们想住的城市。",
  "help.zimcity.keys": "方向键移动光标格，Enter 建造，I 查看，加号和减号缩放。",
  "help.zimcity.tip": "让住宅远离工业，税率一次只提高一点。",
- "help.zimcity.turn": "先修一条路，再拉一条电线过去，然后在旁边划出住宅、商业和工业区。",
+ "help.zimcity.turn": "先修一条路，建一座燃煤电厂，拉上电线，然后在路旁划出住宅、商业和工业区。",
  "hex.board.11": "11 × 11",
  "hex.board.7": "7 × 7",
  "hex.board.9": "9 × 9",

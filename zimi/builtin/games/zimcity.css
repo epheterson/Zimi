@@ -133,3 +133,11 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
 .cy-maps .ar-btn { min-height: var(--target); padding: 0 var(--sp-1); font-size: var(--fs-small); }
 .cy-sc-note { font-size: var(--fs-small); color: var(--ink2); margin-top: var(--sp-3); }
+
+/* How to play: the gestures and the sizes, as pictures with a word or a number each */
+.cy-how { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.cy-how-row { display: flex; align-items: center; gap: 12px; margin: 0; }
+.cy-how-row .cy-icon { flex: none; }
+.cy-how-sizes { gap: 20px; flex-wrap: wrap; }
+.cy-how-size { display: inline-flex; align-items: center; gap: 4px; }
+.cy-how-size b { margin-inline-start: 4px; font-variant-numeric: tabular-nums; }

@@ -1029,6 +1029,9 @@
   "other": "noch {n} Jahre"
  },
  "city.held": "{tool}: {cost}",
+ "city.how.drag": "Ziehen: bewegen",
+ "city.how.pinch": "Zwei Finger: zoomen",
+ "city.how.press": "Halten: ansehen",
  "city.idle": "Wähle ein Werkzeug. Ziehen verschiebt den Plan.",
  "city.k.delete": "Löschen",
  "city.k.full": "Fünf Städte behalten. Lösche eine, um diese zu behalten.",
@@ -3330,7 +3333,7 @@
  "help.zimcity.goal": "Mache aus einem Dorf eine Stadt, in der Menschen gern leben.",
  "help.zimcity.keys": "Pfeiltasten bewegen das Cursorfeld, Enter baut, I zeigt das Feld, Plus und Minus zoomen.",
  "help.zimcity.tip": "Halte Wohngebiete fern von der Industrie und erhöhe Steuern nur schrittweise.",
- "help.zimcity.turn": "Baue eine Straße, führe eine Stromleitung hin und weise daneben Wohnen, Läden und Industrie aus.",
+ "help.zimcity.turn": "Baue eine Straße und ein Kohlekraftwerk, führe eine Stromleitung hin und weise daneben Wohnen, Läden und Industrie aus.",
  "hex.board.11": "11 mal 11",
  "hex.board.7": "7 mal 7",
  "hex.board.9": "9 mal 9",

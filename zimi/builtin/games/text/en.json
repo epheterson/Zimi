@@ -1029,6 +1029,9 @@
   "other": "{n} years left"
  },
  "city.held": "{tool}: {cost}",
+ "city.how.drag": "Drag: move",
+ "city.how.pinch": "Pinch: zoom",
+ "city.how.press": "Hold: inspect",
  "city.idle": "Choose a tool. Drag to move the map.",
  "city.k.delete": "Delete",
  "city.k.full": "Five cities kept. Delete one to keep this one.",
@@ -3330,7 +3333,7 @@
  "help.zimcity.goal": "Grow a town into a city people want to live in.",
  "help.zimcity.keys": "Arrow keys move the cursor tile, Enter builds there, I inspects it, plus and minus zoom.",
  "help.zimcity.tip": "Keep homes away from industry, and raise taxes a step at a time.",
- "help.zimcity.turn": "Lay a road, run a power line to it, then zone homes, shops and industry beside it.",
+ "help.zimcity.turn": "Lay a road, build a coal plant, run a power line, then zone homes, shops and industry beside the road.",
  "hex.board.11": "11 by 11",
  "hex.board.7": "7 by 7",
  "hex.board.9": "9 by 9",

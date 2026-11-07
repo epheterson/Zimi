@@ -19,6 +19,23 @@ function list(rows) {
 }
 function pct(s, n) { return s.T('city.pct', { n: Math.round(n) }); }
 
+// How to play, shown: what the fingers do, and how big the buildings are (the tray's own pictures, then the size in tiles).
+var GESTURES = [['drag', 'city.how.drag'], ['pinch', 'city.how.pinch'], ['press', 'city.how.press']];
+var SIZES = [[['residential', 'commercial', 'industrial'], '3 \u00d7 3'], [['coal'], '4 \u00d7 4']];
+export function howExtra(s) {
+  var box = el('div', 'cy-how');
+  GESTURES.forEach(function (g) { var row = el('p', 'cy-how-row'); row.appendChild(s.iconSvg(g[0])); row.appendChild(el('span', '', s.T(g[1]))); box.appendChild(row); });
+  var sizes = el('p', 'cy-how-row cy-how-sizes');
+  SIZES.forEach(function (z) {
+    var group = el('span', 'cy-how-size');
+    z[0].forEach(function (n) { group.appendChild(s.iconSvg(n)); });
+    group.appendChild(el('b', '', z[1]));
+    sizes.appendChild(group);
+  });
+  box.appendChild(sizes);
+  return [box];
+}
+
 // A number to set with a step down and a step up: a label on the left, − value + on the right, each 44 px.
 function stepper(label, value, min, max, step, words, onChange) {
   var row = el('div', 'gs-row cy-step'), lab = el('label', '', label), box = el('div', 'gs-seg cy-stepper');

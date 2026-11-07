@@ -68,3 +68,22 @@ def test_unwired_zones_are_asked_to_be_connected_in_four_words(browser, site):
     pg.wait_for_timeout(1300)
     assert pg.text_content("#cy-msg") == "Connect the zones to power"
     shot(pg, "zimcity-connect-power")
+
+
+def test_how_to_play_teaches_the_fingers_not_the_keyboard(browser, site):
+    """On a phone: drag, pinch and hold are shown (icons, a few words), the zone sizes are shown, the coal plant is named,
+    and there is no keyboard line."""
+    pg = phone(browser, site)
+    pg.click(".gs-menu-btn")
+    pg.click(".gs-tile >> text='How to play'")
+    card = pg.wait_for_selector("dl.gs-help")
+    text = pg.evaluate("() => document.querySelector('dl.gs-help').parentElement.innerText")
+    assert "Arrow keys" not in text and "Keys" not in text, text
+    assert "coal plant" in text
+    rows = pg.evaluate("() => [...document.querySelectorAll('.cy-how-row')].map(r => [r.querySelectorAll('svg').length, r.textContent.trim()])")
+    assert rows[:3] == [[1, "Drag: move"], [1, "Pinch: zoom"], [1, "Hold: inspect"]], rows
+    assert rows[3] == [4, "3 × 34 × 4"], rows
+    over = pg.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")
+    assert over <= 0, over
+    shot(pg, "zimcity-how-to-play")
+    assert card

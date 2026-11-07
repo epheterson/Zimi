@@ -1069,6 +1069,9 @@
   "other": "quedan {n} años"
  },
  "city.held": "{tool}: {cost}",
+ "city.how.drag": "Arrastra: mover",
+ "city.how.pinch": "Pellizca: zoom",
+ "city.how.press": "Mantén: mirar",
  "city.idle": "Elige una herramienta. Arrastra para mover el plano.",
  "city.k.delete": "Borrar",
  "city.k.full": "Cinco ciudades guardadas. Borra una para guardar esta.",
@@ -3409,7 +3412,7 @@
  "help.zimcity.goal": "Convierte un pueblo en una ciudad donde la gente quiera vivir.",
  "help.zimcity.keys": "Las flechas mueven la casilla del cursor, Intro construye, I inspecciona, más y menos acercan y alejan.",
  "help.zimcity.tip": "Aleja las viviendas de la industria y sube los impuestos de a poco.",
- "help.zimcity.turn": "Traza una calle, llévale una línea eléctrica y zonifica viviendas, tiendas e industria a su lado.",
+ "help.zimcity.turn": "Traza una calle, construye una central de carbón, tiéndele una línea eléctrica y zonifica viviendas, tiendas e industria a su lado.",
  "hex.board.11": "11 por 11",
  "hex.board.7": "7 por 7",
  "hex.board.9": "9 por 9",

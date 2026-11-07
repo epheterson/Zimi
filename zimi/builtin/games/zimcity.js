@@ -21,7 +21,7 @@ import * as Voices from './zimcity-voices.js';
 import * as Follow from './zimcity-follow.js';
 import * as Away from './zimcity-away.js';
 import { isWater } from './zimcity-modern.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows } from './zimcity-sheets.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows, howExtra } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
@@ -774,7 +774,9 @@ Shell.game({
     return [[T('city.st.cities'), root.ZimiText.number(s.cities)], [T('city.st.best'), T('city.people', { n: Math.max(s.best, city ? people() : 0) })],
             [T('city.st.metropolis'), root.ZimiText.number(s.metropolis)]];
   },
-  about: function () { return Words.credit(T); }
+  about: function () { return Words.credit(T); },
+  // How to play: the fingers and the sizes shown, and the keys only when there is a keyboard to press them on.
+  help: function () { return root.matchMedia && root.matchMedia('(pointer: coarse)').matches ? { keys: '', extra: howExtra(sheets) } : { extra: howExtra(sheets) }; }
 });
 
 // ── start ──
