@@ -202,6 +202,18 @@ function seeded(seed, fn) {
   };
   check(judged(bernCity(2, true), false) === 'lose', 'a Bern left alone for ten years is lost');
   check(judged(bernCity(2, true), true) === 'win', 'and won with rail laid on the busiest 150 road tiles');
+  // A footprint that fails part-way (a tree cleared, then a river tile that cannot be) leaves neither its dirt nor its cost
+  // pending, so the footprint that did fit is built alone and charged alone.
+  const pc = city(31), Tw = await mod('zimcity-words.js'), Adv = await mod('zimcity-advisor.js');
+  pc.map.setTile(28, 25, TV.TREEBASE, 0); pc.map.setTile(29, 26, TV.RIVER, 0);   // the second house's first tile is a tree, its last is water
+  const alone = Tools.trial(pc, 'residential', [[25, 25]]).cost, both = Tools.trial(pc, 'residential', [[25, 25], [29, 26]]);
+  check(both.ok && both.cost === alone && both.tiles.every((t) => t[0] < 27), 'a footprint that fails part-way adds no cost and no tiles to the one that fits (' + both.cost + ' vs ' + alone + ')');
+  Tools.drop(pc, 'residential');
+  check(Tw.isRoad(TV.HRAILROAD) && Tw.isRoad(TV.VRAILROAD) && !Tw.isRoad(TV.DIRT), 'a level crossing is a road for the advisor and the inspect sheet');
+  const ac = city(32);
+  ac.map.setTile(30, 25, TV.HOSPITAL, 0x400);   // a hospital's centre (the zone flag) in a city with no homes
+  check(Adv.survey(ac.map).res === 0, 'a hospital or a church is not a home to the advisor');
+
   // Tokyo and Hamburg were won by doing nothing (Tokyo's score of 500 was met from the start; Hamburg's metropolis was one
   // already). Each is lived through its whole time the way the page does (opened and warmed, then one tick at a time):
   // left alone it is lost, and played (Tokyo: taxes of 4; Hamburg: the bombed ground zoned again beside the power) it is won.

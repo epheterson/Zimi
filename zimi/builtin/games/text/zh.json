@@ -996,6 +996,7 @@
  "city.idle": "选择一个工具。拖动可移动地图。",
  "city.k.delete": "删除",
  "city.k.dflt": "城市 {n}",
+ "city.k.failed": "未能保存：空间不足",
  "city.k.full": "已保留五座城市。删掉一座才能保留这座。",
  "city.k.keep": "保留这座城市",
  "city.k.line": "{people}，{money}",

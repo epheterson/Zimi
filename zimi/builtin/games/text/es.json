@@ -1076,6 +1076,7 @@
  "city.idle": "Elige una herramienta. Arrastra para mover el plano.",
  "city.k.delete": "Borrar",
  "city.k.dflt": "Ciudad {n}",
+ "city.k.failed": "No se guardó: sin espacio",
  "city.k.full": "Cinco ciudades guardadas. Borra una para guardar esta.",
  "city.k.keep": "Guardar esta ciudad",
  "city.k.line": "{people}, {money}",

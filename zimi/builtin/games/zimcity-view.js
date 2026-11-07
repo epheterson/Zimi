@@ -125,6 +125,13 @@ View.prototype.centreOn = function (tx, ty) {
   this.cam.y = (ty + 0.5) * TILE - this.h / this.cam.s / 2;
   this.clamp();
 };
+// Pan the least that brings a tile fully into view (the keyboard's cursor must never leave the screen).
+View.prototype.reveal = function (tx, ty) {
+  var c = this.cam, vw = this.w / c.s, vh = this.h / c.s, x0 = tx * TILE, y0 = ty * TILE;
+  if (x0 < c.x) c.x = x0; else if (x0 + TILE > c.x + vw) c.x = x0 + TILE - vw;
+  if (y0 < c.y) c.y = y0; else if (y0 + TILE > c.y + vh) c.y = y0 + TILE - vh;
+  this.clamp();
+};
 View.prototype.panBy = function (dx, dy) { this.cam.x -= dx / this.cam.s; this.cam.y -= dy / this.cam.s; this.clamp(); };
 // Zoom about a point on the screen, so the tile under the fingers stays under them.
 View.prototype.zoomAt = function (sx, sy, s) {

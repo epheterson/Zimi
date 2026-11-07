@@ -1076,6 +1076,7 @@
  "city.idle": "Escolha uma ferramenta. Arraste para mover o mapa.",
  "city.k.delete": "Apagar",
  "city.k.dflt": "Cidade {n}",
+ "city.k.failed": "Não guardada: sem espaço",
  "city.k.full": "Cinco cidades guardadas. Apague uma para guardar esta.",
  "city.k.keep": "Guardar esta cidade",
  "city.k.line": "{people}, {money}",

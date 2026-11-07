@@ -71,7 +71,9 @@ function freshCity(level) {
   var map = seeded(seed, function () { return MapGenerator(MAP_W, MAP_H); });
   return cityOf(map, new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed), level, seed);
 }
+var openSeq = 0;                     // each city installed or asked for takes a number, so a slow file never lands over a newer city
 function install(c, cam) {
+  openSeq++; hideNews();
   // A catch-up still running belongs to the city being left: stop it and its sheet, so it never steps this one.
   if (awayJob) { var job = awayJob; awayJob = null; job.cancel(); if (awayWait) awayWait.close(); }
   awayWait = null; catching = null;
@@ -165,7 +167,8 @@ function news(key) {
   if (city.sim._cityTime < city.bornAt + SETTLE_TICKS) return;   // not in a city's first months
   if (!Library.articleFor(key) || Date.now() - (newsAt[key] || 0) < NEWS_AGAIN_MS || !newsEl.hidden) return;
   newsAt[key] = Date.now();
-  Library.lead(key).then(function (l) { if (l) showNews(l); });
+  var c = city;
+  Library.lead(key).then(function (l) { if (l && city === c) showNews(l); });   // a story found for the city left is not shown over the new one
 }
 function showNews(l) {
   newsEl.textContent = '';
@@ -340,6 +343,8 @@ function ghostOf(r) {
 function aimed(tiles) { return Tools.isDrawn(held) ? tiles : Tools.nudge(city, held, tiles); }
 function onStroke(tile, done) {
   if (!held || !city) return;
+  if (done && !stroke) return;   // the tool was changed (or the stroke cancelled) under the finger: what it began is not built with another
+
   var tiles = aimed(strokeTiles(tile));
   if (!done) {
     var r = Tools.trial(city, held, tiles);
@@ -413,8 +418,9 @@ var reacted = {};
 function react(what) {
   var who = Voices.REACT[what];
   if (!who) return;
-  var id = who[(reacted[what] = ((reacted[what] || 0) + 1)) % who.length], p = Voices.PEOPLE.filter(function (x) { return x.id === id; })[0];
+  var n = reacted[what] || 0, id = who[n % who.length], p = Voices.PEOPLE.filter(function (x) { return x.id === id; })[0];
   say(T('city.v.say', { name: p.name, line: T('city.v.ev.' + what + '.' + id) }));
+  reacted[what] = n + 1;
   lastVoice = id; voiceAt = Date.now();
 }
 // Now and then, while the city runs, the citizen with the strongest feeling says it.
@@ -449,7 +455,9 @@ function scenarioTick() {
 // Open a scenario (`sc`) or a ready-made city (`file` under zimcity/cities) from its file; the city in progress is left
 // for a new one, as New game does.
 function openFile(path, sc, title) {
+  var mine = ++openSeq;
   return fetch(path).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(function (buf) {
+    if (mine !== openSeq) return;   // another city was chosen while this one was coming
     var map = Scen.mapOf(buf);
     if (!map) throw new Error('not a city');
     var level = Simulation.LEVEL_EASY, sim = new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed);
@@ -535,7 +543,7 @@ function walk(sec) {
   if (!following) return;
   var f = following, traffic = city.sim.blockMaps.trafficDensityMap;
   if (f.walk.advance(sec, function (x, y) { return traffic.worldGet(x, y); })) {
-    var r = Follow.route(city.map, f.walk.trip.home, [f.walk.trip.work]), trip = r ? { home: f.walk.trip.home, work: r.to, path: r.path } : tripFor(f.i, f.p.id);
+    var t0 = f.walk.trip, r = Follow.stillThere(city.map, t0.home) && Follow.stillThere(city.map, t0.work) && Follow.route(city.map, t0.home, [t0.work]), trip = r ? { home: t0.home, work: r.to, path: r.path } : tripFor(f.i, f.p.id);
     if (!trip) { say(T('city.fw.lost', { name: f.p.name }), true); unfollow(); return; }
     var phase = f.walk.phase; f.walk = new Follow.Walk(trip); f.walk.phase = phase;
     if (phase === 'toHome') f.walk.at = { x: trip.path[trip.path.length - 1][0], y: trip.path[trip.path.length - 1][1] };
@@ -673,7 +681,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, savedAt: Date.now(), people: people(),
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, budget: { taxFund: city.sim.budget.taxFund, cashFlow: city.sim.budget.cashFlow, waiting: city.sim.budget.awaitingValues }, savedAt: Date.now(), people: people(),
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -685,6 +693,8 @@ function unpack(k) {
   var sc = k.scenario && scenarioOf(k.scenario.id);
   if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm);   // traffic is not kept
   if (typeof k.people === 'number') back.sim.evaluation.cityPop = k.people;   // the count is kept: a city just opened reads its people, not 0 until the year's evaluation
+  var bk = k.budget;   // what the engine does not save: the year's taxes, and a budget still waiting to be set
+  if (bk) { back.sim.budget.taxFund = +bk.taxFund || 0; back.sim.budget.cashFlow = +bk.cashFlow || 0; back.sim.budget.awaitingValues = !!bk.waiting; }
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
   if (sc) c.scenario = k.scenario;
@@ -788,7 +798,7 @@ var cities = {
     var l = kept(), want = l[i];
     if (!want) return;
     if (city.built) l[i] = card(l.filter(function (k, j) { return j !== i; })); else l.splice(i, 1);
-    putKept(l);
+    if (!putKept(l)) { say(T('city.k.failed'), true); return; }   // the city in progress could not be put in the list: it stays
     unpack(want.data);
     Shell.saveNow();
   }
@@ -813,6 +823,7 @@ Shell.game({
 var input = new Input(view, {
   tool: function () { return held; },
   stroke: onStroke,
+  release: function () { hold(''); },
   cancel: function () { stroke = null; view.ghost = null; if (held) Tools.drop(city, held); heldLine(); },
   inspect: function (x, y) { inspectSheet(sheets, x, y); },
   hover: onHover,
@@ -830,7 +841,7 @@ if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
 root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, said: function () { return messages.concat(shownLine); }, get catching() { return catching; }, catchUp: catchUp, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
-Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); return true; } });
+Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); if (!catching && city.sim.budget.awaitingValues) setTimeout(function () { if (!sheetOpen()) openBudget(true); }, 0); return true; } });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }
 demand();
 summary();

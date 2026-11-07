@@ -1076,6 +1076,7 @@
  "city.idle": "בחרו כלי. גררו כדי להזיז את המפה.",
  "city.k.delete": "מחיקה",
  "city.k.dflt": "עיר {n}",
+ "city.k.failed": "לא נשמר: אין מקום",
  "city.k.full": "חמש ערים שמורות. מחקו אחת כדי לשמור את זאת.",
  "city.k.keep": "לשמור את העיר הזאת",
  "city.k.line": "{people}, {money}",

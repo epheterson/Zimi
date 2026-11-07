@@ -1071,6 +1071,7 @@
  "city.idle": "Choose a tool. Drag to move the map.",
  "city.k.delete": "Delete",
  "city.k.dflt": "City {n}",
+ "city.k.failed": "Could not save: no room",
  "city.k.full": "Five cities kept. Delete one to keep this one.",
  "city.k.keep": "Keep this city",
  "city.k.line": "{people}, {money}",

@@ -52,7 +52,7 @@ function wetTile(wet) { return wet >= 3 ? RIVER : REDGE; }
 // happened this tick: a list of 'heatwave', 'sea' and 'fire'.
 export function tick(sim, state, on, disasters) {
   var census = sim._census, t = sim._cityTime, out = [];
-  if (!on) { census.zcHeat = 1; return out; }
+  if (!on) { census.zcHeat = 1; state.heat = false; return out; }   // a heat wave does not wait for the climate to come back on
   // Called right after the month's clear, so it reads the last whole count, not the census just emptied.
   var full = counted(census), m = mix(full), zc = full.zc || { data: 0 };
   state.carbon += full.coalPowerPop + zc.data * m.coal * DATA_COAL_SHARE;

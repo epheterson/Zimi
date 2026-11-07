@@ -940,3 +940,59 @@ def test_the_away_card_starts_from_the_people_the_city_had(browser, site):
     come_back(pg, save, hours_ago=3)
     text = pg.wait_for_selector(AWAY_CARD).text_content()
     assert had > 0 and ("%s to" % format(had, ",")) in text, (had, text)
+
+
+def test_a_stroke_is_built_with_the_tool_it_began_with_and_not_when_let_go_off_the_map(browser, site):
+    """A tool changed under the finger does not build the stroke with the new one; a stroke let go off the map builds nothing."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    left = pg.evaluate("() => document.getElementById('cy-map').getBoundingClientRect().left")
+    y = box["top"] + box["h"] * 0.5
+    before = funds(pg)
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.mouse.move(left + 60, y)
+    pg.mouse.down()
+    pg.mouse.move(left + 140, y, steps=4)
+    pg.evaluate("() => document.querySelector('.cy-tool[data-tool=\"residential\"]').click()")   # the tool changes under the finger
+    pg.mouse.up()
+    pg.wait_for_timeout(100)
+    assert funds(pg) == before, funds(pg)
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.mouse.move(left + 60, y)
+    pg.mouse.down()
+    pg.mouse.move(left + 140, y, steps=4)
+    pg.mouse.move(left + 140, box["top"] - 40, steps=3)   # up past the map's edge
+    pg.mouse.up()
+    pg.wait_for_timeout(100)
+    assert funds(pg) == before, funds(pg)
+
+
+def test_the_keyboard_keeps_its_cursor_in_view_and_escape_puts_the_tool_down(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 3; v.centreOn(60, 50); }")
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.focus("#cy-map")
+    for _ in range(40):
+        pg.keyboard.press("ArrowRight")
+    seen = pg.evaluate("""() => { const v = window.__zimcity.view, c = v.cam, t = v.cursor;
+      return { x: t.x * 16 >= c.x && (t.x + 1) * 16 <= c.x + v.w / c.s + 0.01 }; }""")
+    assert seen["x"], seen
+    pg.keyboard.press("Escape")
+    assert pg.evaluate("() => document.querySelector('.cy-tool[data-tool=\"road\"]').getAttribute('aria-pressed')") == "false"
+
+
+def test_the_budget_a_city_waits_on_and_its_taxes_survive_a_reload(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => { const b = window.__zimcity.city.sim.budget; b.taxFund = 1234; b.awaitingValues = true; }")
+    pg.evaluate("() => window.ZimiShell.saveNow()")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    pg.wait_for_selector(".cy-step")   # the year's budget comes back up, as it was waiting
+    assert pg.evaluate("() => window.__zimcity.city.sim.budget.taxFund") == 1234
+
+
+@pytest.mark.parametrize("width", [320, 360, 375])
+def test_every_tool_in_the_tray_is_a_thumb_wide_on_a_narrow_phone(browser, site, width):
+    pg = phone(browser, site, width)
+    widths = pg.evaluate("() => [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().width)")
+    assert len(widths) == 7 and min(widths) >= 44, widths

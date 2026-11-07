@@ -41,6 +41,9 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-variant-numeric: tabular-nums; }
 .cy-held.cy-bad { color: var(--bad); }
 .cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
+/* Seven tools must each stay a thumb wide (--target): a narrow phone gives the tray the page's edges, and a very narrow one two rows. */
+@media (max-width: 380px) { .cy-foot { padding-inline: var(--sp-2); } .cy-tray { gap: 2px; } }
+@media (max-width: 340px) { .cy-tray { grid-template-columns: repeat(auto-fit, minmax(var(--target), 1fr)); } }
 .cy-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer; touch-action: manipulation; }
 @media (hover: hover) { .cy-tool:hover, .cy-more-tool:hover { border-color: var(--accent); } }
 .cy-tool[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }

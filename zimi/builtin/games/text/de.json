@@ -1036,6 +1036,7 @@
  "city.idle": "Wähle ein Werkzeug. Ziehen verschiebt den Plan.",
  "city.k.delete": "Löschen",
  "city.k.dflt": "Stadt {n}",
+ "city.k.failed": "Nicht gespeichert: kein Platz",
  "city.k.full": "Fünf Städte behalten. Lösche eine, um diese zu behalten.",
  "city.k.keep": "Diese Stadt behalten",
  "city.k.line": "{people}, {money}",

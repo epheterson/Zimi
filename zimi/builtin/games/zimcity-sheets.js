@@ -195,7 +195,7 @@ export function citiesSheet(s) {
   var keep = el('button', 'ar-btn cy-keep', s.T('city.k.keep'));
   keep.type = 'button';
   if (list.length >= c.max) { keep.disabled = true; body.push(el('p', 'gs-text', s.T('city.k.full', { n: c.max }))); }
-  keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } });
+  keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } else keep.textContent = s.T('city.k.failed'); });
   body.unshift(keep);
   if (!list.length) body.push(el('p', 'gs-text', s.T('city.k.none')));
   list.forEach(function (k, i) {

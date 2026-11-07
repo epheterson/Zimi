@@ -1076,6 +1076,7 @@
  "city.idle": "Choisissez un outil. Faites glisser pour déplacer le plan.",
  "city.k.delete": "Supprimer",
  "city.k.dflt": "Ville {n}",
+ "city.k.failed": "Non enregistrée : plus de place",
  "city.k.full": "Cinq villes gardées. Supprimez-en une pour garder celle-ci.",
  "city.k.keep": "Garder cette ville",
  "city.k.line": "{people}, {money}",

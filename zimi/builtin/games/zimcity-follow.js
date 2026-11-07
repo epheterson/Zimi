@@ -21,18 +21,29 @@ var STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 export function passable(v) { return isRoad(v) || LEVEL_CROSSINGS.indexOf(v) >= 0; }
 
+// The home or the work with people or jobs in it whose centre is (x, y): {x, y, kind, n}, or null.
+function zoneAt(map, x, y) {
+  var t = map.getTile(x, y);
+  if (!t.isZone()) return null;
+  var v = t.getValue(), n, kind;
+  if (v >= TV.RESBASE && v < TV.HOSPITALBASE) { n = Residential.getZonePopulation(map, x, y, v); kind = 'home'; }
+  else if (v >= TV.COMBASE && v < TV.INDBASE) { n = Commercial.getZonePopulation(map, x, y, v); kind = 'shops'; }
+  else if (v >= TV.INDBASE && v < TV.PORTBASE) { n = Industrial.getZonePopulation(map, x, y, v); kind = 'industry'; }
+  return kind && n > 0 ? { x: x, y: y, kind: kind, n: n } : null;
+}
 // Every 3 x 3 zone with people (homes) or jobs (work) in it: [{x, y, kind, n}] with x, y its centre.
 export function zones(map) {
   var homes = [], work = [];
   for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) {
-    var t = map.getTile(x, y);
-    if (!t.isZone()) continue;
-    var v = t.getValue(), n;
-    if (v >= TV.RESBASE && v < TV.HOSPITALBASE) { n = Residential.getZonePopulation(map, x, y, v); if (n > 0) homes.push({ x: x, y: y, kind: 'home', n: n }); }
-    else if (v >= TV.COMBASE && v < TV.INDBASE) { n = Commercial.getZonePopulation(map, x, y, v); if (n > 0) work.push({ x: x, y: y, kind: 'shops', n: n }); }
-    else if (v >= TV.INDBASE && v < TV.PORTBASE) { n = Industrial.getZonePopulation(map, x, y, v); if (n > 0) work.push({ x: x, y: y, kind: 'industry', n: n }); }
+    var z = zoneAt(map, x, y);
+    if (z) (z.kind === 'home' ? homes : work).push(z);
   }
   return { homes: homes, work: work };
+}
+// Whether a zone a trip was made for is still there, the same kind and still lived in (the player may have bulldozed it).
+export function stillThere(map, z) {
+  var now = zoneAt(map, z.x, z.y);
+  return !!now && now.kind === z.kind;
 }
 
 // The road tiles touching a 3 x 3 zone's edge.

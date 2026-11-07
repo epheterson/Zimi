@@ -54,7 +54,11 @@ export function trial(city, name, tiles) {
   tool.clear();
   tiles.forEach(function (p) {
     if (!map.testBounds(p[0], p[1])) return;
+    // A footprint that fails part-way (a tree cleared, then a tile that cannot be) must leave nothing pending: its dirt and
+    // its cost would otherwise be built with the footprint that did fit.
+    var pendingWas = Object.assign({}, tool._worldEffects._data), costWas = tool._applicationCost;
     tool.doTool(p[0], p[1], city.sim.blockMaps);
+    if (tool.result !== tool.TOOLRESULT_OK) { tool._worldEffects._data = pendingWas; tool._applicationCost = costWas; }
     last = tool.result;
     parts.push([p[0], p[1], tool.result === tool.TOOLRESULT_OK]);
     if (tool.result === tool.TOOLRESULT_OK) any = true;
