@@ -159,6 +159,39 @@ function seeded(seed, fn) {
   // and the goal strip's time left is years, then months in the last year.
   const fakeSim = { blockMaps: { trafficDensityMap: { worldGet: () => 10 }, landValueMap: { gameMapWidth: 16, gameMapHeight: 16, blockSize: 8, worldGet: () => 1 } } };
   check(Math.abs(Scen.trafficAverage(fakeSim) - 19.2) < 1e-9, 'the traffic average is the engine\'s, with its 2.4 (' + Scen.trafficAverage(fakeSim) + ')');
+
+  // Bern: the file holds no traffic, so the page lives the first half year out of sight (warmUp) and the opening reading is a
+  // measured city's, over the goal; the money and the date come back as they were. Left alone it never gets under the goal;
+  // rail laid along the busiest road tiles does (the player's lever), so the goal is neither won at the start nor out of reach.
+  const bern = Scen.SCENARIOS.find((x) => x.id === 'bern'), bernBuf = fs.readFileSync(path.join(games, 'zimcity/scenarios/' + bern.file));
+  const unpowered = (m) => { let n = 0, all = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const t = m.getTile(x, y); if (t.isZone()) { all++; if (!t.isPowered()) n++; } } return n / all; };
+  const bernCity = (seed, warm) => seeded(seed, () => {
+    const map = Scen.mapOf(bernBuf.buffer.slice(bernBuf.byteOffset, bernBuf.byteOffset + bernBuf.length));
+    const sim = new Simulation(map, Simulation.LEVEL_EASY, Simulation.SPEED_MED);
+    sim._cityTime = (bern.year - 1900) * 48 + 2; sim.budget.setFunds(bern.funds); sim.budget.cityTax = 7; sim._updateTime();
+    sim._simulate(sim._constructSimData());
+    return { map, sim, tools: Tools.makeTools(map), warmed: warm ? (() => { const was = [sim.budget.totalFunds, sim._cityTime, unpowered(map)]; Scen.warmUp(sim, bern.warm); return was; })() : null };
+  });
+  const cold = bernCity(1, false);
+  check(Scen.reading(cold.sim, bern).now < bern.goal[1], 'an unwarmed Bern reads under its goal at the start (' + Scen.reading(cold.sim, bern).now + '): the defect');
+  for (const seed of [1, 2, 3]) {
+    const c = bernCity(seed, true), r = Scen.reading(c.sim, bern);
+    check(r.now > bern.goal[1], 'Bern opens over its goal of ' + bern.goal[1] + ' on seed ' + seed + ' (reads ' + r.now + ')');
+    check(c.sim.budget.totalFunds === c.warmed[0] && c.sim._cityTime === c.warmed[1], 'the warm-up leaves the money and the date as they were');
+    check(c.warmed[2] > 0.9 && unpowered(c.map) < 0.1, 'and the zones that all flashed "no power" are on the grid (' + c.warmed[2].toFixed(2) + ' off before, ' + unpowered(c.map).toFixed(2) + ' after)');
+  }
+  const judged = (c, lever) => {
+    if (lever) {
+      const t = c.sim.blockMaps.trafficDensityMap, cells = [];
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const v = c.map.getTileValue(x, y); if (v >= 64 && v < 208 && !c.map.getTile(x, y).isZone()) cells.push([x, y, t.worldGet(x, y)]); }
+      cells.sort((a, b) => b[2] - a[2]);
+      c.sim.budget.totalFunds = 1e7;
+      cells.slice(0, 150).forEach((p) => { Tools.build(c, 'bulldozer', [[p[0], p[1]]]); Tools.build(c, 'rail', [[p[0], p[1]]]); });
+    }
+    return seeded(5, () => { const run = { left: 0, judgeIn: bern.judge }; let out = null; while (!out) { Scen.runTicks(c.sim, 1); out = Scen.tick(c.sim, bern, run); } return out; });
+  };
+  check(judged(bernCity(2, true), false) === 'lose', 'a Bern left alone for ten years is lost');
+  check(judged(bernCity(2, true), true) === 'win', 'and won with rail laid on the busiest 150 road tiles');
   check(JSON.stringify([Scen.timeLeft(480), Scen.timeLeft(49), Scen.timeLeft(48), Scen.timeLeft(30), Scen.timeLeft(4), Scen.timeLeft(1)]) ===
     JSON.stringify([{ n: 10, unit: 'years' }, { n: 2, unit: 'years' }, { n: 12, unit: 'months' }, { n: 8, unit: 'months' }, { n: 1, unit: 'months' }, { n: 1, unit: 'months' }]), 'the time left is whole years, then months');
   check(runningOut({ funds: 7000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 20000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 100, flow: 500, horizon: 4 }), 'money is running out only when the bank will not last the horizon');

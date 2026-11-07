@@ -13,13 +13,22 @@ import { GameMap } from './zimcity/engine/gameMap.js';
 
 export var W = 120, H = 100, FILE_BYTES = 27120, MAP_AT = 3120;
 
-// id, file, year, funds, disaster [kind, ticks until it], the ticks until the goal is judged, the goal, and the real place
-// (Wikidata ID, latitude, longitude) when there is one.
+// Bern's goal. Micropolis asks for traffic below 80; its roads carry about twice what this engine's do (a do-nothing Bern
+// settles at 46 to 55 here, and a player laying rail along the busiest 150 road tiles gets it under 35), so a goal of 80 was
+// met by a city that had done nothing. The goal sits under what a do-nothing city reaches and over what rail can do.
+export var TRAFFIC_GOAL = 35;
+// A file holds no power flags, census or traffic, so every file city first lives OPEN_TICKS out of sight (the power scan and
+// the census have run; before, every zone flashed "no power" and the size read village), and a scenario whose goal reads
+// traffic lives WARM_TICKS, half a year, so the map the strip reads is a measured city's and opens over the goal.
+export var OPEN_TICKS = 6, WARM_TICKS = 24;
+
+// id, file, year, funds, disaster [kind, ticks until it], the ticks until the goal is judged, the goal, the ticks of
+// warm-up its reading needs (see WARM_TICKS), and the real place (Wikidata ID, latitude, longitude) when there is one.
 export var SCENARIOS = [
   { id: 'dullsville', file: 'snro.111', year: 1900, funds: 5000, disaster: null, judge: 30 * 48, goal: ['class', 4] },
   { id: 'sanfrancisco', file: 'snro.222', year: 1906, funds: 20000, disaster: ['earthquake', 10], judge: 5 * 48, goal: ['class', 4], place: ['Q62', 37.7775, -122.4164] },
   { id: 'hamburg', file: 'snro.333', year: 1944, funds: 20000, disaster: ['fires', 5], judge: 5 * 48, goal: ['class', 4], place: ['Q1055', 53.55, 10] },
-  { id: 'bern', file: 'snro.444', year: 1965, funds: 20000, disaster: null, judge: 10 * 48, goal: ['traffic', 80], place: ['Q70', 46.948, 7.4475] },
+  { id: 'bern', file: 'snro.444', year: 1965, funds: 20000, disaster: null, judge: 10 * 48, goal: ['traffic', TRAFFIC_GOAL], warm: WARM_TICKS, place: ['Q70', 46.948, 7.4475] },
   { id: 'tokyo', file: 'snro.555', year: 1957, funds: 20000, disaster: ['monster', 3], judge: 5 * 48, goal: ['score', 500], place: ['Q1490', 35.6897, 139.6922] },
   { id: 'detroit', file: 'snro.666', year: 1972, funds: 20000, disaster: null, judge: 10 * 48, goal: ['crime', 60], place: ['Q12439', 42.3317, -83.0458] },
   { id: 'boston', file: 'snro.777', year: 2010, funds: 20000, disaster: ['meltdown', 5], judge: 5 * 48, goal: ['score', 500], place: ['Q100', 42.3601, -71.0589] },
@@ -46,6 +55,23 @@ export function mapOf(buffer) {
   var view = new DataView(buffer), map = new GameMap(W, H);
   for (var x = 0; x < W; x++) for (var y = 0; y < H; y++) map.setTileValue(x, y, view.getUint16(MAP_AT + (x * H + y) * 2, false));
   return map;
+}
+
+// One tick of the city's clock is up to 16 of the engine's phases.
+export function runTicks(sim, n) {
+  for (var i = 0; i < n; i++) {
+    var t = sim._cityTime;
+    for (var k = 0; k < 16 && sim._cityTime === t; k++) sim._simulate(sim._constructSimData());
+    sim._updateTime();
+  }
+}
+// Live `ticks` ticks out of sight and put the money and the date back: the city comes to the player measured (power reaches
+// its zones, the census and the traffic map are filled) instead of an unmeasured file, and has grown by nothing the
+// player can see.
+export function warmUp(sim, ticks) {
+  var funds = sim.budget.totalFunds, time = sim._cityTime;
+  runTicks(sim, ticks);
+  sim.budget.setFunds(funds); sim._cityTime = time; sim._updateTime();
 }
 
 // The disaster's moment and the judging, one tick of the city's clock at a time. `run` is {left, judgeIn} (kept with

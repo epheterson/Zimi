@@ -92,7 +92,7 @@ def test_the_goal_says_the_goal_where_the_city_stands_and_the_time_left(browser,
     _play(pg, 3)  # Bern
     got = pg.evaluate(GOAL_BOX)
     assert (
-        got["text"].startswith("Goal: traffic below 80")
+        got["text"].startswith("Goal: traffic below 35")
         and "10 years left" in got["text"]
     ), got
     _play(pg, 1)  # San Francisco: five years, a size to reach
@@ -148,7 +148,7 @@ def test_the_bankrupt_sheet_gives_the_figures_the_strip_shows_and_the_goal(
     sheet = pg.wait_for_selector(OURS + " .ar-sheet-card", timeout=15000)
     text = sheet.inner_text()
     assert "Bankrupt" in text and "$1,410" in text and "due this year" in text, text
-    assert "The goal was traffic below 80" in text, text
+    assert "The goal was traffic below 35" in text, text
 
 
 def test_a_scenario_that_ends_names_the_goal_and_what_the_city_reached(browser, site):

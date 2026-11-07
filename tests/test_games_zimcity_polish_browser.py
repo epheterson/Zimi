@@ -87,3 +87,25 @@ def test_how_to_play_teaches_the_fingers_not_the_keyboard(browser, site):
     assert over <= 0, over
     shot(pg, "zimcity-how-to-play")
     assert card
+
+
+def test_bern_opens_over_its_traffic_goal_and_so_does_a_reloaded_one(browser, site):
+    """The scenario file has no traffic in it: the strip used to read "Now 6" against "below 80", a goal already met. The
+    reading is a measured city's, over the goal, on opening and after a reload."""
+    from test_games_zimcity_goal_browser import GOAL_BOX, _page, _play
+
+    pg = _page(browser, site)
+    _play(pg, 3)  # Bern
+    reading = "() => window.__zimcity.city.scenario && (async () => { const S = await import('./zimcity-scenarios.js'); return S.reading(window.__zimcity.city.sim, S.SCENARIOS.find(s => s.id === 'bern')); })()"
+    at_start = pg.evaluate(reading)
+    assert at_start["target"] == 35 and at_start["now"] > 35, at_start
+    got = pg.evaluate(GOAL_BOX)
+    assert "Goal: traffic below 35" in got["text"] and ("Now %d" % at_start["now"]) in got["text"], got
+    pg.wait_for_timeout(1200)
+    assert "Connect the zones to power" not in pg.evaluate("() => window.__zimcity.said()"), "one zone off the grid in 194 is not the next step"
+    shot(pg, "zimcity-bern-opening")
+    pg.evaluate("() => ZimiShell.saveNow()")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city && window.__zimcity.city.scenario")
+    after = pg.evaluate(reading)
+    assert after["now"] > 35, after

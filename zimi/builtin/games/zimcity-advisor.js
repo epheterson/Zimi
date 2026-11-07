@@ -42,6 +42,9 @@ export function runningOut(money) {
   return !!money && money.flow < 0 && money.funds / -money.flow < money.horizon;
 }
 
+// A few zones off the grid in a big, grown city (a file's own) are not the next step: the share of zones that must be unpowered.
+var POWER_SHARE = 0.05;
+
 // The string id of the next step, or null. `money` is {funds, flow, horizon}, when the page knows it.
 export function advise(map, money) {
   if (runningOut(money)) return 'city.adv.money';
@@ -49,7 +52,7 @@ export function advise(map, money) {
   if (!s.roads) return 'city.adv.road';
   if (!s.plants) return 'city.adv.plant';
   if (!s.res && !s.com && !s.ind) return 'city.adv.zone';
-  if (s.unpowered) return 'city.adv.power';
+  if (s.unpowered && s.unpowered >= (s.res + s.com + s.ind) * POWER_SHARE) return 'city.adv.power';
   if (s.roadless) return 'city.adv.roadless';
   if (!s.res) return 'city.adv.homes';
   if (!s.com && !s.ind) return 'city.adv.jobs';

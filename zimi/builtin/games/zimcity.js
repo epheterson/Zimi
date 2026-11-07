@@ -453,6 +453,7 @@ function openFile(path, sc, title) {
     sim.budget.cityTax = 7;
     sim._updateTime();
     sim._simulate(sim._constructSimData());   // the engine's first step evaluates the city, so its people show at once
+    Scen.warmUp(sim, Math.max(Scen.OPEN_TICKS, sc && sc.warm || 0));   // before anyone listens: it opens powered and measured
     var c = cityOf(map, sim, level, 0);
     // A city that arrives grown: its milestones are not news, and becoming a metropolis is not a win of the player's
     // (a scenario has its own judging). For its first year the "now a city" messages say nothing.
@@ -675,9 +676,11 @@ function unpack(k) {
   var back = Save.unpackSim(k.sim, k.level || 0, speed);
   if (!back) return false;
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
+  var sc = k.scenario && scenarioOf(k.scenario.id);
+  if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm);   // traffic is not kept
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
-  if (k.scenario && scenarioOf(k.scenario.id)) c.scenario = k.scenario;
+  if (sc) c.scenario = k.scenario;
   if (k.climate && typeof k.climate.carbon === 'number') c.climate = Object.assign(Climate.fresh(), k.climate);   // older cities start with none
   climateOn = k.climateOn !== false;
   awayPace = Away.PACES.indexOf(k.away) >= 0 ? k.away : Away.DEFAULT_PACE;
