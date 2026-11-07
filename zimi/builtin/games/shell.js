@@ -917,7 +917,7 @@
     } catch (e) { /* full or blocked: the board goes without it */ }
   }
   function dayStarted() {
-    var day = Shell.daily && Shell.daily.kind !== 'own' ? Shell.daily.day : null;
+    var day = roundDaily();   // an own-daily game's round too, opened from its ordinary page
     if (!day || (Shell.isWatching && Shell.isWatching())) return;
     var runs = dayRuns(day);
     if (runs[PAGE]) return;
