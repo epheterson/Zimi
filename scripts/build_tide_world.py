@@ -36,6 +36,8 @@ water. Each world station says so (``dt: "LAT"``).
 
 Downloads are checked against pinned hashes and stay in the folder given (a
 scratch folder); nothing raw is committed.
+
+Build-time needs numpy (``pip install numpy``); it is not a dependency of Zimi.
 """
 
 import argparse
@@ -48,7 +50,10 @@ import os
 import sys
 import zipfile
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    sys.exit("build_tide_world.py needs numpy: pip install numpy")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SNAPSHOT = os.path.join(ROOT, "zimi", "assets", "tides-snapshot.json.gz")
@@ -123,6 +128,7 @@ NAME_ANY_KM = 25.0  # else the nearest place this close
 DATUM_YEARS = 3  # the synthesis that estimates the datums
 DATUM_STEP_MIN = 20
 EARTH_RADIUS_KM = 6371.0
+KM_PER_DEGREE = math.pi * EARTH_RADIUS_KM / 180
 
 
 def sha256(data):
@@ -156,14 +162,21 @@ class Grid:
 
     def near(self, lat, lon, radius_km):
         out = []
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                key = (math.floor(lat) + dy, (math.floor(lon) + dx + 180) % 360 - 180)
-                for it in self.cells.get(key, ()):
-                    d = km(lat, lon, it[0], it[1])
-                    if d <= radius_km:
-                        out.append((d, it))
+        for key in self._cells_around(lat, lon, radius_km):
+            for it in self.cells.get(key, ()):
+                d = km(lat, lon, it[0], it[1])
+                if d <= radius_km:
+                    out.append((d, it))
         return sorted(out, key=lambda x: x[0])
+
+    @staticmethod
+    def _cells_around(lat, lon, radius_km):
+        """The cells a radius reaches: a degree of longitude is KM_PER_DEGREE * cos(lat) wide, so near the poles
+        the radius spans more cells east and west than a whole degree each side would hold."""
+        edge = min(abs(math.floor(lat)) + 1, 89.9)
+        reach = math.ceil(radius_km / (KM_PER_DEGREE * math.cos(math.radians(edge))))
+        lons = {(math.floor(lon) + dx + 180) % 360 - 180 for dx in range(-min(reach, 180), min(reach, 180) + 1)}
+        return [(math.floor(lat) + dy, lo) for dy in (-1, 0, 1) for lo in lons]
 
 
 def parse_ticon(text, names):

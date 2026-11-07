@@ -72,3 +72,19 @@ def test_every_world_station_is_whole_and_credited():
     src = {x["id"]: x for x in tides["meta"]["sources"]}["ticon3"]
     assert "CC BY 4.0" in src["credit"] and src["url"].endswith("PANGAEA.951610")
     assert not any(math.isnan(v) for s in tides["stations"] for v in s.get("a", []))
+
+
+def test_the_neighbour_grid_reaches_across_the_degrees_that_narrow_near_a_pole():
+    """A degree of longitude is 19 km wide at 80 N, so a 25 km radius spans more than the cells beside it."""
+    np = pytest.importorskip("numpy")  # the build script's own need
+    assert np
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import build_tide_world as b
+
+    far = (80.5, 12.5, "far")  # 2.5 degrees east: about 17 km
+    grid = b.Grid([(80.5, 10.0, "here"), far])
+    assert [it[2] for _d, it in grid.near(80.5, 10.0, 25.0)] == ["here", "far"]
+    assert [it[2] for _d, it in grid.near(80.5, 10.0, 5.0)] == ["here"]
