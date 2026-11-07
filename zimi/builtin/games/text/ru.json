@@ -83,6 +83,9 @@
  "backgammon.tapLit": "Коснитесь подсвеченного пункта",
  "backgammon.toRoll": "Бросает {name}",
  "backgammon.watch.intro": "Первый бросок решает, кто начнёт. Zimi играет за обе стороны.",
+ "backgammon.why.backgammon": "У проигравшего оставалась шашка на баре или в домашней зоне победителя.",
+ "backgammon.why.gammon": "Проигравший не вывел ни одной шашки.",
+ "backgammon.why.single": "Победитель первым вывел все 15 шашек.",
  "backgammon.win.backgammon": {
   "few": "Бэкгаммон: {n} очка.",
   "many": "Бэкгаммон: {n} очков.",

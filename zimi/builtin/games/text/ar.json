@@ -91,6 +91,9 @@
  "backgammon.tapLit": "المس خانة مضاءة للانتقال إليها",
  "backgammon.toRoll": "دور {name} في الرمي",
  "backgammon.watch.intro": "رمية الافتتاح تحدد من يبدأ. Zimi يلعب الجهتين.",
+ "backgammon.why.backgammon": "كانت للخاسر قطعة على الحاجز أو في منطقة الفائز الداخلية.",
+ "backgammon.why.gammon": "لم يُخرج الخاسر أي قطعة.",
+ "backgammon.why.single": "أخرج الفائز قطعه الخمس عشرة كلها أولاً.",
  "backgammon.win.backgammon": {
   "few": "باك غامون: {n} نقاط.",
   "many": "باك غامون: {n} نقطة.",

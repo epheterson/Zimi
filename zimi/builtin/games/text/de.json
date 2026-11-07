@@ -75,6 +75,9 @@
  "backgammon.tapLit": "Leuchtenden Punkt antippen, um dorthin zu ziehen",
  "backgammon.toRoll": "{name} muss würfeln",
  "backgammon.watch.intro": "Der Eröffnungswurf entscheidet, wer beginnt. Zimi spielt beide Seiten.",
+ "backgammon.why.backgammon": "Der Verlierer hatte noch einen Stein auf der Bar oder im Heimfeld des Gewinners.",
+ "backgammon.why.gammon": "Der Verlierer hatte noch keinen Stein abgetragen.",
+ "backgammon.why.single": "Der Gewinner hat zuerst alle 15 Steine abgetragen.",
  "backgammon.win.backgammon": {
   "one": "Backgammon: {n} Punkt.",
   "other": "Backgammon: {n} Punkte."

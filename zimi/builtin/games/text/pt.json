@@ -79,6 +79,9 @@
  "backgammon.tapLit": "Toque numa casa iluminada para ir até lá",
  "backgammon.toRoll": "{name} joga os dados",
  "backgammon.watch.intro": "Os dados de abertura decidem quem começa. Zimi joga pelos dois lados.",
+ "backgammon.why.backgammon": "Ao perdedor ainda restava uma peça na barra ou no campo de casa do vencedor.",
+ "backgammon.why.gammon": "O perdedor não tinha tirado nenhuma peça.",
+ "backgammon.why.single": "O vencedor tirou primeiro as 15 peças.",
  "backgammon.win.backgammon": {
   "many": "Backgammon: {n} de pontos.",
   "one": "Backgammon: {n} ponto.",

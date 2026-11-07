@@ -79,6 +79,9 @@
  "backgammon.tapLit": "הקישו על משולש מואר כדי לעבור אליו",
  "backgammon.toRoll": "{name}: הטלה",
  "backgammon.watch.intro": "הטלת הפתיחה קובעת מי מתחיל. Zimi משחק בשני הצדדים.",
+ "backgammon.why.backgammon": "למפסיד נשאר חייל על הבר או בלוח הבית של המנצח.",
+ "backgammon.why.gammon": "המפסיד לא הוציא אף חייל.",
+ "backgammon.why.single": "המנצח הוציא ראשון את כל 15 החיילים.",
  "backgammon.win.backgammon": {
   "one": "בקגמון: נקודה אחת.",
   "other": "בקגמון: {n} נקודות.",

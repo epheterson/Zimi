@@ -79,6 +79,9 @@
  "backgammon.tapLit": "Touchez une pointe éclairée pour y aller",
  "backgammon.toRoll": "À {name} de lancer",
  "backgammon.watch.intro": "Le premier lancer décide qui commence. Zimi joue les deux camps.",
+ "backgammon.why.backgammon": "Le perdant avait encore un pion sur la barre ou dans le jan intérieur du gagnant.",
+ "backgammon.why.gammon": "Le perdant n'avait sorti aucun pion.",
+ "backgammon.why.single": "Le gagnant a sorti ses 15 pions en premier.",
  "backgammon.win.backgammon": {
   "many": "Backgammon : {n} de points.",
   "one": "Backgammon : {n} point.",

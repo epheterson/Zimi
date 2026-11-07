@@ -71,6 +71,9 @@
  "backgammon.tapLit": "点亮起的点即可走到那里",
  "backgammon.toRoll": "轮到 {name} 掷骰",
  "backgammon.watch.intro": "起手掷骰决定谁先走。Zimi 执双方。",
+ "backgammon.why.backgammon": "输家还有棋子在中间的横条上，或在赢家的内盘里。",
+ "backgammon.why.gammon": "输家一枚棋子都没有移出。",
+ "backgammon.why.single": "赢家最先把 15 枚棋子全部移出棋盘。",
  "backgammon.win.backgammon": {
   "other": "三倍胜：{n} 分。"
  },

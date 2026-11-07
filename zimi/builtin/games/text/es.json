@@ -79,6 +79,9 @@
  "backgammon.tapLit": "Toca un punto iluminado para mover allí",
  "backgammon.toRoll": "Le toca tirar a {name}",
  "backgammon.watch.intro": "La tirada inicial decide quién empieza. Zimi juega ambos bandos.",
+ "backgammon.why.backgammon": "Al perdedor le quedaba una ficha en la barra o en el cuadro de casa del ganador.",
+ "backgammon.why.gammon": "El perdedor no había sacado ninguna ficha.",
+ "backgammon.why.single": "El ganador sacó primero sus 15 fichas.",
  "backgammon.win.backgammon": {
   "many": "Backgammon: {n} de puntos.",
   "one": "Backgammon: {n} punto.",

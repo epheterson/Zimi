@@ -75,6 +75,9 @@
  "backgammon.tapLit": "Tap a lit point to move there",
  "backgammon.toRoll": "{name} to roll",
  "backgammon.watch.intro": "The opening roll decides who starts. Zimi plays both sides.",
+ "backgammon.why.backgammon": "The loser still had a checker on the bar or in the winner's home board.",
+ "backgammon.why.gammon": "The loser had not borne off a single checker.",
+ "backgammon.why.single": "The winner bore off all 15 checkers first.",
  "backgammon.win.backgammon": {
   "one": "Backgammon: {n} point.",
   "other": "Backgammon: {n} points."

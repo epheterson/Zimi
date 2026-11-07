@@ -75,6 +75,9 @@
  "backgammon.tapLit": "वहाँ जाने के लिए चमकता प्वाइंट छुएँ",
  "backgammon.toRoll": "{name} की बारी, पासे फेंकें",
  "backgammon.watch.intro": "शुरुआती दाँव तय करता है कि कौन शुरू करे। Zimi दोनों तरफ़ से खेलता है।",
+ "backgammon.why.backgammon": "हारने वाले की एक गोटी बार पर या विजेता के होम बोर्ड में थी।",
+ "backgammon.why.gammon": "हारने वाले ने एक भी गोटी बाहर नहीं निकाली थी।",
+ "backgammon.why.single": "विजेता ने सबसे पहले सभी 15 गोटियाँ बाहर निकाल लीं।",
  "backgammon.win.backgammon": {
   "one": "बैकगैमन: {n} अंक।",
   "other": "बैकगैमन: {n} अंक।"

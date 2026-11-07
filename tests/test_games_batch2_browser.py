@@ -114,3 +114,26 @@ def test_hearts_game_over_sheet_names_the_winner_and_every_total(browser, served
     assert "pass left" not in behind and "Choose 3" not in behind, behind
     shot(page, "02-hearts-over")
     c.close()
+
+
+# 3. Backgammon: the end sheet says why the game ended (single, gammon, backgammon) with the points; the lit points are stronger.
+@pytest.mark.parametrize("kind,off,bar,why,points", [
+    ("single", [4, 15], 0, "The winner bore off all 15 checkers first.", "2 points"),
+    ("gammon", [0, 15], 0, "The loser had not borne off a single checker.", "Gammon: 2 points"),
+    ("backgammon", [0, 15], 1, "The loser still had a checker on the bar or in the winner's home board.", "Backgammon: 3 points"),
+])
+def test_backgammon_end_sheet_says_why(browser, served, kind, off, bar, why, points):
+    c, page = open_game(browser, served, "backgammon")
+    page.evaluate("([off, bar]) => { const s = __bk.state(); s.pts.fill(0); s.off = off; s.bar = [bar, 0]; __bk.finish(1); }", [off, bar])
+    visible(page, ".ar-sheet-card h2", 4000)
+    text = page.locator(".ar-sheet-card").first.inner_text()
+    assert why in text, text
+    shot(page, "03-backgammon-" + kind)
+    c.close()
+
+
+def test_backgammon_lit_points_are_not_faint(browser, served):
+    c, page = open_game(browser, served, "backgammon", color_scheme="dark")
+    opacity = page.evaluate("() => { const e = document.createElementNS('http://www.w3.org/2000/svg', 'path'); e.setAttribute('class', 'bk-target'); document.querySelector('svg').appendChild(e); return parseFloat(getComputedStyle(e).fillOpacity); }")
+    assert opacity >= 0.55, opacity
+    c.close()
