@@ -4165,9 +4165,6 @@ function _aeFlyTo(target, dist, azel, overview) {
     var ms = overview ? AE_FLY_OVERVIEW_MS : _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
     var hold = !overview && !!_ae.scene && target !== from.target;
     _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, lead: AE_FLY_APPROACH_MS };
-    // A destination on the move (the ISS goes 30 km in a flight's 4 s): the flight is planned to where it was, and
-    // carried along by how far it has gone since, all of it by the end.
-    if (target === 'iss' && _ae.issPos) _ae.fly.trackFrom = _ae.issPos.slice();
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
       _ae.fly.shoulder = sh;
@@ -4212,6 +4209,7 @@ function _aeFlightTurnPeak(f) {
   _ae.fly = saved.fly; _ae.hand = saved.hand; _ae.dist = saved.dist; _ae.az = saved.az; _ae.el_ = saved.el;
   _ae.flightUp = saved.up; _ae.flightOff = saved.off; _ae.roll = saved.roll;
   f.start = saved.start; f.arrive = saved.arrive; f.prog = saved.prog; f.look = saved.look;
+  f.lastNow = null;   // the planning frames' times are not the clock's
   return peak;
 }
 // Stretch a flight that would turn the picture faster than AE_FLY_MAX_TURN_DEG (the camera swinging half way round a
@@ -4424,13 +4422,28 @@ function _aeLerp3(a, b, e) { return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
+  var dt = f.lastNow == null ? 0 : now - f.lastNow;
+  f.lastNow = now;
+  if (f.waitModel) {
+    var wm = f.waitModel, wc = _aeCraft[wm];
+    if (_aeCraftData(wm) || (wc && wc.failed)) _aeRefitCraftFlight(f, _ae.target, wm);
+    else if (now - f.start >= f.lead - AE_FLY_BEND_MS) {
+      // Not here yet at the corner: the clock of the flight stands still, for no longer than AE_CRAFT_WAIT_MS.
+      f.start += dt;
+      f.held = (f.held || 0) + dt;
+      if (f.held > AE_CRAFT_WAIT_MS) f.waitModel = null;
+    }
+  }
   f.arrive = _aeFlyArrival(f, now);
   f.prog = _aeClamp((now - f.start) / (_aeFlyLead(f) + f.ms + (f.hold ? AE_FLY_TAIL_MS : 0)), 0, 1);
   if (f.hold) {
     // The orbit model (a point looked at, a direction and a distance) holds any camera and look-at pair.
     var c = _aeShoulderCam(f, now), v = _aeSub(c.pos, c.look), d = _aeLen(v);
-    if (f.trackFrom && _ae.issPos) c.look = _aeAdd(c.look, _aeScale(_aeSub(_ae.issPos, f.trackFrom), _aeSmoother(f.prog)));
     f.look = c.look;
+    // How much of the camera's place goes with the destination: none on the leg out, all of it on the leg in once the camera
+    // is a small share of the way from the shoulder (its place is the destination's plus an offset that shrinks).
+    f.destAt = _aeTargetPos();
+    f.carry = _smoothstep(f.lead - AE_FLY_BEND_MS, f.lead + f.bend, now - f.start) * (1 - _aeClamp(_aeLen(_aeSub(c.pos, f.destAt)) / f.r0, 0, 1));
     _ae.dist = d; _ae.az = Math.atan2(v[1], v[0]); _ae.el_ = Math.asin(v[2] / d);
   } else {
     var arrive = _aeFlyArrival(f, now);
@@ -4444,7 +4457,12 @@ function _aeStepFly(now) {
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
-  if (f.hold) return f.look || f.from.pos;
+  if (f.hold) {
+    // The look-at was worked out where the destination stood at the step; it has moved since (Voyager 280 m in a
+    // frame, the camera 80 m off it at the end), so the camera is carried along by that (f.carry).
+    var look = f.look || f.from.pos;
+    return f.destAt ? _aeAdd(look, _aeScale(_aeSub(to, f.destAt), f.carry || 0)) : look;
+  }
   var e = _aeFlyEase(performance.now());
   if (f.overview) {
     // Pulling back, the body it left stays in the picture, shrinking: the look-at goes over to the Sun as the distance
@@ -4596,7 +4614,10 @@ function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) 
 
 // A flight to a probe's model: it fills the picture from AE_CRAFT_VIEW_SPANS of its span, lit three-quarter from the
 // Sun's side, and a body it is near (Jupiter for Juno) stands behind it.
-function _aeFlyToCraft(name, pp, span) {
+// How far off a flight to a craft of this span ends: the whole span inside the narrower side of the screen.
+function _aeCraftViewDist(span) { return Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)); }
+// `waitModel`: the span is a guess, the model (loading) will correct it (_aeRefitCraftFlight).
+function _aeFlyToCraft(name, pp, span, waitModel) {
   AE_TARGETS[name].min = span * 0.9;
   AE_TARGETS[name].surface = span / 2;
   var toSun = _ae.scene ? _aeNorm(_aeSub(_aeSunShown(_ae.scene), pp)) : [1, 0, 0];
@@ -4612,8 +4633,26 @@ function _aeFlyToCraft(name, pp, span) {
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
   // Its whole span inside the narrower side of the screen (a phone held upright is narrow across: three spans along
   // the view left Voyager's booms off both edges).
-  _aeFlyTo(name, Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)), _aeAzElOf(_aeNorm(dir)));
+  _aeFlyTo(name, _aeCraftViewDist(span), _aeAzElOf(_aeNorm(dir)));
+  if (waitModel) _aeWaitForModel(waitModel);
   _aeArrive(name);
+}
+// A flight that ends on a model it has not got yet: it holds before its last leg until the model is here.
+function _aeWaitForModel(model) {
+  var c = _aeCraft[model];
+  if (_ae.fly && _ae.fly.hold && !_aeCraftData(model) && !(c && c.failed)) _ae.fly.waitModel = model;
+}
+// The model is here: the flight's last leg is fitted to its real span, before the leg begins (the paces and the
+// corner are made again; the leg out does not depend on where it ends). A model that never came ends as planned.
+function _aeRefitCraftFlight(f, name, model) {
+  f.waitModel = null;
+  var span = _aeCraftSpanRe(model);
+  if (!span) return;
+  if (AE_CRAFT_MODEL[name]) { AE_TARGETS[name].min = span * 0.9; AE_TARGETS[name].surface = span / 2; }
+  f.toDist = _aeClampDist(model === 'iss' ? span * AE_ISS_VIEW_SPANS : _aeCraftViewDist(span));
+  f.ms = _aeFlyMs(f.from, _aeTargetPos(), f.toDist, f.toAz, f.toEl);
+  _aeFlyTables(f);
+  f.bend = _aeBendAfter(f);
 }
 // A flight to one place: its card comes with it, and any other card goes.
 function _aeArrive(name) { _ae.arrived = name; _ae.lm = null; _ae.selected = null; _aeRenderCard(); }
@@ -4641,7 +4680,13 @@ function _aePreset(name) {
   } else if (_aeIsProbe(name)) {
     var pp = _aeBodyPos(name), craft = AE_CRAFT_MODEL[name];
     if (!pp) return;
-    if (craft && !_aeCraftData(craft) && !(_aeCraft[craft] && _aeCraft[craft].failed)) { _aeCraftLoad(craft, function () { _aePreset(name); }); return; }
+    if (craft && !_aeCraftData(craft) && !(_aeCraft[craft] && _aeCraft[craft].failed)) {
+      // Flown while it loads when the flight has an old place to leave and may move (the view comes to the model as it
+      // arrives); with reduced motion, or already there, it waits for the model and then goes.
+      if (_ae.scene && _ae.target !== name && !_aeReduceMotion()) { _aeCraftLoad(craft); _aeFlyToCraft(name, pp, AE_CRAFT_PROVISIONAL_SPAN_RE, craft); }
+      else _aeCraftLoad(craft, function () { _aePreset(name); });
+      return;
+    }
     if (craft && _aeCraftData(craft)) { _aeFlyToCraft(name, pp, _aeCraftSpanRe(craft)); return; }
     // From the side of its path round the Sun, a little above: the probe against the dark, the Sun off to one side.
     var fromSun = _ae.scene ? _aeNorm(_aeSub(pp, _aeSunShown(_ae.scene))) : [1, 0, 0];
@@ -4670,7 +4715,9 @@ function _aePreset(name) {
     // horizontally if the Sun is behind.
     if (_ae.scene && _aeDot(dir, _ae.scene.sun) < 0) dir = _aeAdd(_aeScale(B[0], AE_ISS_VIEW_DIR[0]), _aeAdd(_aeScale(B[1], -AE_ISS_VIEW_DIR[1]), _aeScale(B[2], -AE_ISS_VIEW_DIR[2])));
     _aeCraftLoad('iss');
-    _aeFlyTo('iss', AE_ISS_VIEW_DIST, _aeAzElOf(dir));
+    var issSpan = _aeCraftSpanRe('iss');
+    _aeFlyTo('iss', issSpan ? issSpan * AE_ISS_VIEW_SPANS : AE_ISS_VIEW_DIST, _aeAzElOf(dir));
+    _aeWaitForModel('iss');
     _aeArrive('iss');
   } else if (name === 'sun') {
     // From the Earth's side too: the Sun as it stands in our sky, ahead.
@@ -5026,7 +5073,8 @@ function _aeOrientMoon(sc) {
 // below in daylight, and dark in the Earth's shadow. Under AE_CRAFT_MODEL_PX across it is not drawn: the dot is.
 var AE_ISS_URL = '/static/earth/iss-v1.bin';
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
-var AE_ISS_VIEW_DIST = AE_ISS_SPAN_RE * 2.2;                // a flight to it ends this far off: the whole station in view
+var AE_ISS_VIEW_SPANS = 2.2;                                // a flight to it ends this many of its spans off: the whole station in view
+var AE_ISS_VIEW_DIST = AE_ISS_SPAN_RE * AE_ISS_VIEW_SPANS;  // before the model is here to measure
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
 var AE_ISS_EARTHSHINE = 0.3;                                // the day side below, as a light from the nadir
 // Shading per class (structure, truss, turning array, radiator, fixed array): colour, specular strength, sharpness.
@@ -5055,6 +5103,11 @@ var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun' };
 var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
 var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
 var _aeCraft = {};                                          // model -> { data, loading }
+// A flight to a craft starts at once, the model loading as it goes (its span is not known until it is here): planned for
+// a craft this wide, then fitted to the model's own span, and held at the corner of its approach, the old place still in
+// view, for a model that is late: at most AE_CRAFT_WAIT_MS, after which it arrives as planned.
+var AE_CRAFT_PROVISIONAL_SPAN_RE = 15 / 1000 / AE_EARTH_RADIUS_KM;
+var AE_CRAFT_WAIT_MS = 4000;
 var AE_CRAFT_VERT = [
   'attribute float cls;',
   'varying vec3 vView;',
