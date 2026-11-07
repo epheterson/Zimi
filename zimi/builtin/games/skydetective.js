@@ -2,9 +2,9 @@
    planets that are up and the bright stars, none of them named. Six clues: "What is this?" with a ring round one, and "Find
    Jupiter" by tapping it. It is the real sky for a real place and time, so it is a different game every night, and it needs no ZIM
    (so it plays the same in Zimi, Kiwix and from a folder); with a Wikipedia in the library each answer links to its article.
-   Before the first question the player studies the sky: inside Zimi the Almanac's own sky view opens over the page (names on, drag
-   and pinch; static/almanac-gamesky.js through the {zimi: 'game-sky'} message), anywhere else this page's own dome is drawn with
-   its names. Each answer can then be seen again in that same sky.
+   Before the first question the player studies the sky: this page's own dome is drawn with its names, and inside Zimi "Open the sky"
+   puts the Almanac's own sky view over the page when asked (names on, drag and pinch; static/almanac-gamesky.js through the
+   {zimi: 'game-sky'} message). Each answer can then be seen again in that same sky.
    The rules are pure functions (no DOM, so node can test them), then the page. Our own code, GPL-3.0. */
 (function (root) {
   'use strict';
@@ -155,7 +155,7 @@
     var m = { zimi: 'game-sky', place: { lat: g.place.lat, lon: g.place.lon }, ms: g.ms, title: T('sky.over', { where: placeText(), when: whenText() }), hint: T('sky.study.hint'), close: T('shell.close'), motion: T('sky.study.motion'), motionDenied: T('sky.study.motionDenied') };
     return Lib.tell(Object.assign(m, extra));
   }
-  function study(auto) {
+  function study() {
     els.where.textContent = T('sky.over', { where: placeText(), when: whenText() });
     els.q.textContent = T('sky.study.lead');
     els.choices.innerHTML = ''; els.choices.hidden = true;
@@ -163,7 +163,6 @@
     els.next.hidden = false; els.next.textContent = T('shell.start');
     els.look.hidden = !Lib.hosted(); els.look.textContent = T('sky.study.open');
     draw(false);
-    if (auto) skyAsk({ start: T('shell.start') });
   }
   function begin() {
     if (!g || !g.study) return;
@@ -210,7 +209,7 @@
       Lib.pageHead(wikiZim, [title.replace(/ /g, '_')], 64).then(function (got) { if (got && q() && target() === t) { Lib.articleLink(els.read, wikiZim, got.path); els.read.textContent = T('round.read', { answer: name(t) }); els.read.hidden = false; } });
     }
     els.sky.hidden = !Lib.hosted(); els.sky.textContent = T('sky.study.again');
-    els.next.hidden = false; els.next.textContent = T(g.at + 1 >= g.qs.length ? 'round.seeScore' : 'round.next'); els.next.focus();
+    els.next.hidden = false; els.next.textContent = T(g.at + 1 >= g.qs.length ? 'round.seeScore' : 'round.next'); els.next.focus({ preventScroll: true });
     paintScore(); draw(true);
   }
   function showAnswer() {   // an answer already given, drawn again (after leaving and returning)
@@ -274,7 +273,7 @@
       building = false;
       if (qs.length < 3) { status.say(T('sky.empty')); return; }
       g = { place: place, ms: ms, qs: qs, at: 0, score: 0, ans: null, tap: null, study: true };
-      study(true);
+      study();
     });
   }
 
@@ -322,7 +321,7 @@
       g = kept.g; vis = visibleObjects(g.ms, g.place.lat, g.place.lon); all = everyName(g.ms, g.place.lat, g.place.lon);
       // A round kept before the study existed (no study flag) and not yet answered starts with the study, as a new one does.
       if (!('study' in g) && g.at === 0 && (g.ans === null || g.ans === undefined)) g.study = true;
-      if (g.study) study(false); else ask();
+      if (g.study) study(); else ask();
     } else { if (kept) ZimiShell.forget(); start(); }
   });
   ZimiShell.persist({ save: function () { return g && !done ? { g: g } : null; } });

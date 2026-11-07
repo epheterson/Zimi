@@ -200,3 +200,67 @@ def _slider_tracks(browser, served, Image, io):
     assert far > 90, "the track is not drawn against the dark page (%s)" % far
     shot(page, "04-carrom-sliders")
     c.close()
+# 5. Sky Detective: opens on the game's intro (the Almanac's sky only when asked), and the view holds still from step to step.
+HOST = '<!doctype html><script>window.msgs = []; addEventListener("message", e => msgs.push(e.data));</script><iframe id="reader-frame" src="%s" style="width:390px;height:844px;border:0"></iframe>'
+DOME = "(() => { const r = document.getElementById('sk-dome').getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })()"
+
+
+def test_sky_detective_opens_on_the_intro_not_the_sky(browser, served):
+    c = browser.new_context(
+        viewport=VIEW, has_touch=True, is_mobile=True, reduced_motion="reduce"
+    )
+    page = c.new_page()
+    page.route(
+        served + "/_host.html",
+        lambda r: r.fulfill(body=HOST % "skydetective.html", content_type="text/html"),
+    )
+    page.goto(served + "/_host.html")
+    frame = page.frame_locator("#reader-frame")
+    frame.locator("#sk-next").wait_for(state="visible", timeout=20000)
+    page.wait_for_timeout(500)
+    assert not [
+        m
+        for m in page.evaluate("window.msgs")
+        if isinstance(m, dict) and m.get("zimi") == "game-sky"
+    ], "the sky opened over the intro on its own"
+    assert (
+        "study" in frame.locator("#sk-q").inner_text().lower()
+        or frame.locator("#sk-q").inner_text()
+    )
+    assert frame.locator("#sk-look").is_visible(), "the sky is one tap away"
+    frame.locator("#sk-look").click()
+    page.wait_for_function("window.msgs.some(m => m && m.zimi === 'game-sky')")
+    c.close()
+
+
+def test_sky_detective_dome_holds_still_through_a_round(browser, served):
+    c, page = open_game(browser, served, "skydetective.html")
+    page.wait_for_function("window.__sky && window.__sky.g")
+    shot(page, "05-sky-intro")
+    first = page.evaluate(DOME)
+    page.click("#sk-next")
+    for i in range(6):
+        kind = page.evaluate("window.__sky.g.qs[window.__sky.g.at].kind")
+        assert page.evaluate(DOME) == first, (i, "asked", page.evaluate(DOME), first)
+        if kind == "name":
+            page.click(".rk-choice >> nth=0")
+        else:
+            box = page.locator("#sk-dome").bounding_box()
+            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.wait_for_selector("#sk-next:not([hidden])")
+        assert page.evaluate(DOME) == first, (i, "answered", page.evaluate(DOME), first)
+        scroll, height = page.evaluate(
+            "[window.scrollY, document.documentElement.scrollHeight - innerHeight]"
+        )
+        assert (
+            scroll == 0 and height <= 0
+        ), "the page scrolled to show the answer (%s, %s)" % (scroll, height)
+        nxt = page.locator("#sk-next").bounding_box()
+        assert VIEW["height"] - (nxt["y"] + nxt["height"]) >= 40, (
+            "Next sits against the bottom edge: %s" % nxt
+        )
+        if i == 0:
+            shot(page, "05-sky-answered")
+        if i < 5:
+            page.click("#sk-next")
+    c.close()
