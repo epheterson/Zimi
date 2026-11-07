@@ -71,7 +71,7 @@
     function finish() {
       var best = Play.load(BEST_KEY, {}), key = zim || 'built-in', mine = best[key] || 0;
       if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
-      var line = T('round.verdict.' + Lib.verdict(score, round.length));
+      var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, round.length));
       status.say(line); done = true;
       ZimiShell.endSheet({
         result: 'over', text: line,

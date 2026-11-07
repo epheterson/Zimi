@@ -191,7 +191,7 @@
     var best = Play.load(BEST_KEY, {}), key = String(g.rounds), mine = best[key] || 0, score = total();
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
     reset(); paint();
-    var line = T('round.verdict.' + Lib.verdict(score, GUESSES * g.rounds));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, GUESSES * g.rounds));
     els.card.appendChild(el('p', 'tp-secret', T('tp.together', { n: score, max: GUESSES * g.rounds })));
     els.card.appendChild(el('p', 'tp-blurb', line));
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('tp.togetherLabel'), T('round.of', { n: score, total: GUESSES * g.rounds })], [T('play.best'), Play.num(Math.max(score, mine))]] });

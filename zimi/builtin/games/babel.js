@@ -142,7 +142,7 @@
   function finish() {
     done = true; var best = Play.load(BEST_KEY, {}), key = dict ? 'library' : 'built-in', mine = best[key] || 0, score = total(), max = g.words.length * pointsFor(START_CLUES);
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
-    var line = T('round.verdict.' + Lib.verdict(score, max));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, max));
     status.say(line);
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('play.score'), T('round.of', { n: score, total: max })], [T('play.best'), Play.num(Math.max(score, mine))]] });
   }

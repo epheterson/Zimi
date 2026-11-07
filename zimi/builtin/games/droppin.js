@@ -179,7 +179,7 @@
   function finish() {
     done = true; var best = Play.load(BEST_KEY, {}), key = g.mode, mine = best[key] || 0, max = g.qs.length * MAX_POINTS;
     if (g.total > mine) { best[key] = g.total; Play.save(BEST_KEY, best); }
-    var line = T('round.verdict.' + Lib.verdict(g.total, max));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(g.total, max));
     status.say(line);
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('play.score'), T('round.of', { n: g.total, total: max })], [T('play.best'), Play.num(Math.max(g.total, mine))]] });
   }

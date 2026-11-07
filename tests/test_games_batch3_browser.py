@@ -682,3 +682,31 @@ def test_wiki_race_win_sheet_notes_par(browser, served, kind, par, clicks, key):
     )
     assert got == {"key": key, "n": par}, got
     c.close()
+# 12e. No generic "Keep playing to learn more." on a low score: the lowest band says nothing, the others keep their words.
+def test_low_score_has_no_generic_line(browser, served):
+    c, page = open_game(browser, served, "babel.html")
+    got = page.evaluate(
+        "() => [GamesLib.verdictLine(ZimiText.T, 'round.verdict.', 'keepGoing'), GamesLib.verdictLine(ZimiText.T, 'round.verdict.', 'flawless'), GamesLib.verdict(1, 8)]"
+    )
+    assert got == ["", "Flawless.", "keepGoing"], got
+    assert (
+        "Keep playing to learn more"
+        not in open(os.path.join(GAMES, "text", "en.json"), encoding="utf-8").read()
+    )
+    c.close()
+
+
+def test_babel_ends_at_zero_without_the_generic_line(browser, served):
+    c, page = open_game(browser, served, "babel.html")
+    page.wait_for_function("window.__babel && window.__babel.g")
+    for _ in range(5):  # five words, each given away
+        for _ in range(4):
+            page.fill("#bb-field", "zzzz")
+            page.click("#bb-guess")
+            frames(page, 1)
+        page.wait_for_selector("#bb-next:not([hidden])")
+        page.click("#bb-next")
+    visible(page, ".ar-sheet-card h2", 6000)
+    assert "Keep playing" not in page.inner_text(".ar-sheet-card")
+    shot(page, "12-babel-zero")
+    c.close()

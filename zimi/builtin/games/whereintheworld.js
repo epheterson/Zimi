@@ -177,8 +177,8 @@
     var key = useMaps ? 'maps' : 'places', best = Play.load(BEST_KEY, {}), max = round.length * MAX_POINTS, mine = best[key] || 0;
     if (total > mine) { best[key] = total; Play.save(BEST_KEY, best); }
     finished = true;
-    status.say(T('world.verdict.' + verdict(total, max)));
-    ZimiShell.endSheet({ result: 'over', text: T('world.verdict.' + verdict(total, max)), stats: [[T('world.score'), T('world.of', { n: total, max: max })], [T('play.best'), Play.num(Math.max(total, mine))]] });
+    status.say(Lib.verdictLine(T, 'world.verdict.', verdict(total, max)));
+    ZimiShell.endSheet({ result: 'over', text: Lib.verdictLine(T, 'world.verdict.', verdict(total, max)), stats: [[T('world.score'), T('world.of', { n: total, max: max })], [T('play.best'), Play.num(Math.max(total, mine))]] });
   }
 
   // Ten places drawn from the player's maps, four asked at a time.
