@@ -132,15 +132,23 @@ function _skyFactCards(rows) {
 function _skyFactsPrimeHtml(focus, loc, moon) {
   try {
     var s = { nowTime: focus.getTime(), lat: loc.lat, lon: loc.lon, stored: loc.stored, moonData: { phase: moon || _moonPhase(focus) } };
-    return _skyFactCards(_skyFactRows(s, _skyFactsAt(s.nowTime, s.lat, s.lon)));
+    return _skyFactCards(_skyFactRows(s, _skyFactsNear(s.nowTime, s.lat, s.lon)));
   } catch (e) { return ''; }
 }
 var SKY_FACTS_MS = 30000;      // the rows are rewritten at most this often
+// The facts for a place within the rewrite interval of the last ones: the hero's first paint (_skyFactsPrimeHtml) and the
+// sky's first frame ask for the same crossing search, which is done once.
+var _skyFactsMemo = null;
+function _skyFactsNear(ms, lat, lon) {
+  var m = _skyFactsMemo;
+  if (!m || m.lat !== lat || m.lon !== lon || Math.abs(ms - m.ms) >= SKY_FACTS_MS) m = _skyFactsMemo = { ms: ms, lat: lat, lon: lon, facts: _skyFactsAt(ms, lat, lon) };
+  return m.facts;
+}
 function _skyFacts(s) {
   var el = document.getElementById('almanac-sky-facts');
   if (!el || !s.eph) return;
   var key = s.lat + ',' + s.lon, due = !s.factsAt || Math.abs(s.nowTime - s.factsAt) >= SKY_FACTS_MS || s.factsKey !== key;
-  if (due) { s.facts = _skyFactsAt(s.nowTime, s.lat, s.lon); s.factsAt = s.nowTime; s.factsKey = key; }
+  if (due) { s.facts = _skyFactsNear(s.nowTime, s.lat, s.lon); s.factsAt = s.nowTime; s.factsKey = key; }
   var html = _skyFactCards(_skyFactRows(s, s.facts));
   if (el._html !== html && el.innerHTML !== html) el.innerHTML = html;
   el._html = html;
