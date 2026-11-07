@@ -4008,8 +4008,11 @@ function route(push) {
     var aZim = aSlash === -1 ? aParam : aParam.slice(0, aSlash);
     var aPath = aSlash === -1 ? '' : aParam.slice(aSlash + 1);
     if (aZim && aPath) {
+      // One of Zimi's own apps keeps its round in the address (a game's ?daily=): split off, it reaches the page again.
+      var aQ = _OWN_ZIM_APP[aZim] ? /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(aPath) : null;
+      if (aQ && aQ[2]) aPath = aQ[1] + (aQ[3] || '');
       if (aZim === _GAMES_ZIM) _gameHeadBoot(aPath);
-      _bootDeepLinkArticle(aZim, aPath);
+      _bootDeepLinkArticle(aZim, aPath, aQ && aQ[2]);
       return;
     }
     if (aZim) { enterSource(aZim, push); return; }
@@ -4090,7 +4093,7 @@ function route(push) {
 //     then pushes into articleHistory — lighting up the Back arrow and giving
 //     browser Back a bogus destination.
 //  2. REPLACE the boot entry instead of pushing, so no extra entry is created.
-async function _bootDeepLinkArticle(zim, path) {
+async function _bootDeepLinkArticle(zim, path, query) {
   _popstateNoAutoReader = true;
   try {
     await enterSource(zim, false);
@@ -4101,7 +4104,7 @@ async function _bootDeepLinkArticle(zim, path) {
   // the URL, so the place has to travel through it or it is gone before the
   // map loads and asks for it.
   var pos = parseMapHash(location.hash);
-  openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
+  openArticle(zim, path, null, { replace: true, query: query || undefined, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
 // `undo`: a toast for something just taken away carries its way back, and
@@ -17400,6 +17403,23 @@ function _restoreMapPosition(pos, tries) {
   });
 }
 
+// A path with a query put before its #fragment: how a game's ?daily= rides in a ?a= address.
+function _withQuery(path, query) {
+  var p = _splitPathFragment(path);
+  return p.base + (query || '') + p.frag;
+}
+// The page in the reader frame changed its own address (a daily left for an ordinary game): the bar follows, so a reload
+// opens what is on screen and not the round it replaced.
+function _syncGameAddress(frame) {
+  try {
+    if (!currentArticle || !_OWN_ZIM_APP[currentArticle.zim]) return;
+    var loc = frame.contentWindow.location, m = /^\/w\/([^/]+)\/(.*)$/.exec(loc.pathname);
+    var base = _splitPathFragment(currentArticle.path).base;
+    if (!m || _decodeSafe(m[1]) !== currentArticle.zim || _decodeSafe(m[2]) !== base) return;
+    var want = _articleDeepLinkPath(currentArticle.zim, _withQuery(currentArticle.path, loc.search));
+    if (location.pathname + location.search !== want) history.replaceState(history.state, '', want + location.hash);
+  } catch (e) { /* a frame that is not ours to read */ }
+}
 function _articleDeepLinkPath(zim, path) {
   return '/?a=' + encodeURIComponent(zim + '/' + path);
 }
@@ -17653,6 +17673,7 @@ function openReader(url) {
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
     _watchGameSheets(frame);
+    _syncGameAddress(frame);
     // Links out of the library, marked (or made plain text) before anything
     // is shown or copied: Reader View and the book reader clone the marks.
     _extHide();
@@ -21941,7 +21962,7 @@ function openArticle(zim, path, title, opts) {
   // headerless page on reload. The ?a= form always reboots full SPA chrome (route()),
   // and being a query on '/', not a '.pdf' path, it also sidesteps the PDF
   // raw-binary-on-reload hazard the old ?view=1 kludge guarded against.
-  var canonUrl = _articleDeepLinkPath(zim, path);
+  var canonUrl = _articleDeepLinkPath(zim, _withQuery(path, opts && opts.query));
   // A place on a map travels WITH the article, in the one URL write openArticle
   // already does. Setting the hash separately either loses it (this function
   // rewrites the URL straight after) or races the frame load, depending on
