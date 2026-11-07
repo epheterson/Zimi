@@ -59,6 +59,8 @@ POLICY = outbound.FetchPolicy(ENV, PREFS_KEY, outbound.ASK, "Almanac HD")
 
 _manifest = {"rel": None, "tried": 0.0, "busy": False}
 _manifest_lock = threading.Lock()
+#: Looking for a download under way and queueing one are one step: two Almanacs asking at once fetch it once.
+_start_lock = threading.Lock()
 
 
 def _version():
@@ -246,24 +248,25 @@ def start(actor=None, saved=None):
             None,
             "installed",
         )  # on disk already (a scan not yet run): never fetched over it
-    dl = _downloading()
-    if dl:
-        return dl.get("id"), None
     from zimi import library
 
     link = url(rel)
-    log.info("Almanac HD: fetching %s", loggable(rel["file"]))
-    return library._enqueue_zim_download(
-        link,
-        [link],
-        rel["file"],
-        size_bytes=rel["size"],
-        extra={
-            "_source": SOURCE,
-            "_activity": {"actor": actor},
-            "_sha256": rel.get("sha256") or None,
-        },
-    )
+    with _start_lock:
+        dl = _downloading()
+        if dl:
+            return dl.get("id"), None
+        log.info("Almanac HD: fetching %s", loggable(rel["file"]))
+        return library._enqueue_zim_download(
+            link,
+            [link],
+            rel["file"],
+            size_bytes=rel["size"],
+            extra={
+                "_source": SOURCE,
+                "_activity": {"actor": actor},
+                "_sha256": rel.get("sha256") or None,
+            },
+        )
 
 
 def _auto_start():
