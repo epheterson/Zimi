@@ -1001,6 +1001,38 @@ def test_the_moon_s_landings_on_the_first_tap(served):
             br.close()
 
 
+def test_a_landing_s_card_and_the_go_to_sheet_stay_small(served):
+    """A landing site's card is a name, its kind and a small Fly there on one line (no big button on a line of its own);
+    once flown there the button is gone. The Go to sheet, opened at Landing sites, takes at most half the screen."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('moon');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeLm; }", timeout=60_000, polling=100)
+            pg.click("#ae-views [data-ae-view='landings']")
+            sheet = pg.evaluate("() => document.getElementById('ae-go').getBoundingClientRect().height / innerHeight")
+            assert sheet <= 0.51, sheet
+            pg.click("#ae-go-btn")
+            pg.evaluate("() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0])")
+            box = pg.evaluate("""() => { var c = document.getElementById('ae-card').getBoundingClientRect(), f = document.getElementById('ae-lm-fly').getBoundingClientRect(),
+                l = document.querySelector('#ae-card .ae-lm-line span').getBoundingClientRect();
+                return { card: c.height, fly: f.height, sameLine: Math.abs((f.top + f.bottom) / 2 - (l.top + l.bottom) / 2) < 6 }; }""")
+            assert box["sameLine"] and box["fly"] <= 32 and box["card"] <= 150, box
+            pg.click("#ae-lm-fly")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !document.getElementById('ae-lm-fly'); }", timeout=60_000, polling=100)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
 def test_in_the_planets_view_a_tap_on_jupiter_is_jupiter(served):
     """In the Planets view a moon sits on its planet: not a target. A tap on Jupiter flies to Jupiter."""
     from playwright.sync_api import sync_playwright
@@ -1023,6 +1055,33 @@ def test_in_the_planets_view_a_tap_on_jupiter_is_jupiter(served):
             pg.mouse.click(at["x"], at["y"])
             pg.wait_for_function("() => _ae.target !== 'earth' && _ae.preset !== 'planets'", timeout=10_000, polling=100)
             assert pg.evaluate("_ae.target") == "jupiter"
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_sun_in_the_planets_view_is_on_the_planets_scale(served):
+    """At the planets' scale (log of true size, squeezed to fit) the Sun is drawn by the same law, so it reads as the
+    biggest body without swallowing the inner orbits: wider than Jupiter's disc, under twice its width, a fraction of
+    the Sun's true ratio (nearly ten to one). No planet or probe is named with a count (no "+n")."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && (_ae.marksDrawn || []).some(m => m.body === 'sun'); }", timeout=60_000, polling=100)
+            got = pg.evaluate("""() => { var d = _ae.marksDrawn, r = b => (d.filter(m => m.body === b)[0] || {}).r;
+                var names = Array.from(document.querySelectorAll('#ae-labels .ae-bm:not([hidden]):not(.ae-bm-quiet) b')).map(b => b.textContent);
+                return { sun: r('sun'), jupiter: r('jupiter'), law: _aeMarkDiscR('sun'), names: names }; }""")
+            assert got["sun"] == pytest.approx(got["law"]) and got["jupiter"] < got["sun"] < 2 * got["jupiter"], got
+            assert not any("+" in n for n in got["names"]), got
             assert not errors, errors
             ctx.close()
         finally:
@@ -1062,6 +1121,45 @@ def test_nothing_is_drawn_through_a_nearer_body(served):
                 var p = _aeAdd(s, _aeScale(_aeNorm(_aeSub(s, eye)), 50)), q = _aeAdd(p, [0, 0, 10 * AE_SUN_SHOW_R]);
                 return [_aeBehindAny('mars', p), _aeBehindAny('mars', q)]; }""")
             assert behind == [True, False], behind
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+@pytest.mark.parametrize("view", ["jupiter", "planets"])
+def test_a_small_body_in_front_never_hides_a_bigger_one(served, view):
+    """Io straight in front of Jupiter's middle (the camera on the line through both, beyond Io) hides nothing of
+    Jupiter: its sphere stays drawn (close up), its name stays, and Io is drawn over it. Hiding is by the screen disc
+    that covers a body, never "A is nearer than B"."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate("(v) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset(v); }", view)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=100)
+            got = pg.evaluate("""(v) => {
+                _aeUpdate(_aeDisplayMs()); _aeUpdate(_aeDisplayMs());
+                var io = _aeBodyPos('io'), j = _aeBodyPos('jupiter'), u = _aeNorm(_aeSub(io, j));
+                var far = v === 'planets' ? 4000 : 3 * AE_TARGETS.jupiter.surface;
+                var eye = _aeAdd(io, _aeScale(u, far)), cam = _ae.gl.camera;
+                cam.position.set(eye[0], eye[1], eye[2]); cam.lookAt(j[0], j[1], j[2]); cam.updateMatrixWorld();
+                var behind = _aeBehindAny('jupiter', j, true), ioBehind = _aeBehindAny('io', io, true);
+                _aeUpdatePlanets(_ae.scene); _aeUpdateMarks(_ae.scene);
+                var el = document.getElementById('ae-bm-jupiter');
+                return { behind: behind, ioBehind: ioBehind, mesh: _ae.gl.planets.jupiter.mesh.visible, ioMesh: _ae.gl.planets.io.mesh.visible,
+                         mark: !!el && !el.hidden, sphereTest: _aeBehindSphere(j, io, AE_TARGETS.io.surface) }; }""", view)
+            assert got["sphereTest"] is True, got   # Io's disc does cover Jupiter's middle from here
+            assert got["behind"] is False, got
+            if view == "jupiter":
+                assert got["mesh"] and got["ioMesh"], got
+            assert got["mark"] or view == "jupiter", got
             assert not errors, errors
             ctx.close()
         finally:

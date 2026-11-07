@@ -4952,20 +4952,25 @@ function _aeBehindTarget(body, p) {
 // nearer disc: a planet through the Sun, a moon through its planet; their marks and names follow the same rule.
 // `marks`: for a mark, also behind a nearer body's painted disc (a body too small to see is painted larger than
 // itself, and the Sun in the Planets view on the planets' scale).
+// Geometric, never "A is behind B": a nearer body hides a farther one only where its disc covers it, and a smaller
+// body never hides a bigger one (Io in front of Jupiter's middle hides nothing of Jupiter: its sphere is drawn by the
+// depth buffer and its name stays).
 function _aeBehindAny(body, p, marks) {
   var cam = _ae.gl.camera, c = cam.position, eye = [c.x, c.y, c.z], d = _aeLen(_aeSub(p, eye));
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2), sp = marks ? _aeProject(p) : null;
+  var rFar = (AE_TARGETS[body] ? AE_TARGETS[body].surface : 0) / Math.max(1e-9, d) * pxPerRad;
   for (var i = 0; i < AE_MARKED.length; i++) {
     var k = AE_MARKED[i].body;
     if (k === body || k === 'iss' || _aeIsProbe(k) || !AE_TARGETS[k]) continue;
     var q = _aeBodyPos(k), dq = q ? _aeLen(_aeSub(q, eye)) : Infinity;
     if (dq >= d) continue;
-    if (_aeBehindSphere(p, q, AE_TARGETS[k].surface)) return true;
+    var rq = AE_TARGETS[k].surface / Math.max(1e-9, dq) * pxPerRad;
+    if (rq >= rFar && _aeBehindSphere(p, q, AE_TARGETS[k].surface)) return true;
     if (!sp) continue;
-    var sq = _aeProject(q), rq = AE_TARGETS[k].surface / Math.max(1e-9, dq) * pxPerRad;
+    var sq = _aeProject(q);
     // A painted disc hides only what is painted no bigger: Io's speck never hides Jupiter, the planet wins.
     var painted = k === 'sun' ? (_aeSunAsMark() ? _aeMarkDiscR('sun') : 0) : rq < AE_MARK_GONE_PX / 2 && _aeMarkDiscR(k) >= _aeMarkDiscR(body) ? _aeMarkDiscR(k) : 0;
-    if (sq && Math.hypot(sq.x - sp.x, sq.y - sp.y) < Math.max(rq, painted)) return true;
+    if (sq && Math.hypot(sq.x - sp.x, sq.y - sp.y) < Math.max(rq >= rFar ? rq : 0, painted)) return true;
   }
   return false;
 }
