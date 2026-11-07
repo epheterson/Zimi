@@ -3549,6 +3549,7 @@
   "au_skip_off": "Mettre à jour ce ZIM automatiquement",
   "search_chip_near": "à moins de {distance} de {place}",
   "search_example_near": "near:Lyon 25km",
+  "search_example_near_where": "near:\"Lyon, France\"",
   "near_here": "ici",
   "near_from": "Lieux à moins de {distance} de {place}",
   "near_pick_nearest": "{place} à {where} : sur {n} lieux de ce nom, le plus proche de vous.",

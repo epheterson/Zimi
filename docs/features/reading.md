@@ -25,7 +25,7 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 | `in:wikipedia` or `source:wikipedia` | only sources whose file name, title or category contains it (`source:nopic`); plain words match titles and descriptions only |
 | `lang:fr` | only sources in that language, two or three letters (`lang:fra`) |
 | `-in:ted`, `-lang:en` | a filter, the other way round |
-| `near:Boston`, `near:Boston 10mi`, `near:here` | towns on your installed maps within that distance (25 km if none is given, at most 500), nearest first; `near:here` is the browser's location. Of several places with one name, the one nearest your Almanac place, else the largest, and the page says which |
+| `near:Boston`, `near:Boston 10mi`, `near:here` | towns on your installed maps within that distance (25 km if none is given, at most 500), nearest first; `near:here` is the browser's location. Of several places with one name, the one nearest your Almanac place, else the largest, and the page says which. Typing after `near:` offers the matching places with their region and country, and `near:"Springfield, Illinois"`, `near:Springfield, IL` or `near:Paris Texas` pick the one you mean |
 
 A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word or of a word part, case and accents aside, so `-wiki` leaves out Wikipedia, Wikipédia and MediaWiki, and `-ted` leaves out TED and TEDx but not United States (Wiktionary stays too: it does not contain "wiki"); in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere. The same operators filter the home page and Settings > Library.
 

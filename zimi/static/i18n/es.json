@@ -3549,6 +3549,7 @@
   "au_skip_off": "Actualizar este ZIM automáticamente",
   "search_chip_near": "a menos de {distance} de {place}",
   "search_example_near": "near:Sevilla 25km",
+  "search_example_near_where": "near:\"Valencia, Spain\"",
   "near_here": "aquí",
   "near_from": "Lugares a menos de {distance} de {place}",
   "near_pick_nearest": "{place} en {where}: de {n} lugares con ese nombre, el más cercano a ti.",

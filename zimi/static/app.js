@@ -10054,6 +10054,11 @@ q.addEventListener('input', () => {
     // Tube: the box filters the feed inside the page, every keystroke.
     hideSuggest();
     suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
+  } else if (mode !== 'manage' && _nearTyping(q.value, q.selectionStart)) {
+    // near:Spri, being typed: the places that start so, with where they are.
+    // Not the article search, nor a search of the half-typed place.
+    suggestTimer = setTimeout(fetchNearPlaces, NEAR_PLACES_DELAY_MS);
+    return;
   } else if (val && val.length >= 1 && _isMapPage()) {
     // Zimi Maps: the box finds places, on every installed map, nothing else.
     // Nothing else means returning here: falling through ran the article
@@ -11203,6 +11208,59 @@ async function fetchPlaces(query) {
   }
 }
 
+// ── near: place autocomplete ──
+// Eric, 2026-11-05: "do we have like places autocomplete or whatnot? So if they
+// know part of their city or they want to match the right state or country,
+// that's possible." Typing near:Spri offers the towns that start so, each as
+// "Springfield, Illinois, United States" (biggest first); picking one puts
+// near:"Springfield, Illinois" in the box, a place the search reads back as that
+// one. The server's half is /places/suggest (search.suggest_places).
+const NEAR_PLACES_DELAY_MS = 120;
+// A near: at the end of what is before the caret: the place so far, quoted
+// ("New Haven, Con) or one word, with a comma and the next word (Paris, Fra).
+const NEAR_TYPING = /(^|\s)near:(?:["\u201c]([^"\u201c\u201d]*)|([^\s"\u201c\u201d,]+(?:,\s*[^\s",\u201c\u201d]*)*))$/i;
+// A position or "here" is not a name to complete.
+const NEAR_NOT_A_NAME = /^(-?\d|here$)/i;
+function _nearTyping(value, caret) {
+  const head = value.slice(0, caret == null ? value.length : caret);
+  const m = NEAR_TYPING.exec(head);
+  if (!m) return null;
+  const typed = (m[2] != null ? m[2] : m[3]).replace(/\s+/g, ' ').trim();
+  if (!typed || NEAR_NOT_A_NAME.test(typed)) return null;
+  return { typed: typed, start: m.index + m[1].length, end: head.length };
+}
+
+async function fetchNearPlaces() {
+  const info = _nearTyping(q.value, q.selectionStart);
+  if (!info) return;
+  if (suggestController) suggestController.abort();
+  suggestController = new AbortController();
+  const seq = ++_suggestSeq;
+  try {
+    const res = await fetch('/places/suggest?q=' + encodeURIComponent(info.typed) + '&limit=8', { signal: suggestController.signal });
+    const data = await res.json();
+    if (seq !== _suggestSeq || document.activeElement !== q) return;
+    suggestItems = (data.places || []).map(p => ({ _nearPick: true, title: p.label, token: p.token, at: info,
+      // The name the tiles carry in the place's own language, when it differs.
+      sub: p.local && p.local !== p.name ? p.local : '' }));
+    if (suggestItems.length) showSuggest();
+    else hideSuggest();
+  } catch (e) {
+    if (e.name !== 'AbortError') hideSuggest();
+  }
+}
+
+// A picked place in the box: near:"Springfield, Illinois" where the typed
+// part was, a space after it for the distance, the caret there.
+function _pickNearPlace(s) {
+  const token = /[\s,"]/.test(s.token) ? '"' + s.token + '"' : s.token;
+  const after = q.value.slice(s.at.end);
+  const put = q.value.slice(0, s.at.start) + 'near:' + token + (after.startsWith(' ') ? '' : ' ');
+  q.value = put + after;
+  q.focus();
+  q.setSelectionRange(put.length + (after.startsWith(' ') ? 1 : 0), put.length + (after.startsWith(' ') ? 1 : 0));
+}
+
 // Close suggestions when clicking anywhere outside the search box/dropdown
 document.addEventListener('mousedown', (e) => {
   if (!suggestDropdown.contains(e.target) && e.target !== q) {
@@ -11320,9 +11378,9 @@ function _recentClearSearches() {
 function showSuggest() {
   suggestIndex = -1;
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
-    '<div class="suggest-item' + (s._place ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
-    '<div class="sg-title">' + esc(s.title) + '</div>' +
-    (s._place ? '<div class="sg-source">' + esc(s.sub) + '</div>'
+    '<div class="suggest-item' + (s._place || s._nearPick ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+    '<div class="sg-title"><bdi>' + esc(s.title) + '</bdi></div>' +
+    (s._place || s._nearPick ? (s.sub ? '<div class="sg-source"><bdi>' + esc(s.sub) + '</bdi></div>' : '')
       : (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '')) +
     '</div>'
   ).join('');
@@ -11347,6 +11405,7 @@ function selectSuggest(i) {
   if (!s) return;
   hideSuggest();
   if (s._example) { _searchAgain(s.query); return; }
+  if (s._nearPick) { _pickNearPlace(s); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
     _runRecentSearch(s.query, s.zim);
@@ -12046,7 +12105,7 @@ function _searchAgain(query) {
 // The "?" beside the box: examples written for each language, one operator
 // each, shown with the chip it makes. The library's are about articles, the
 // catalog's about finding ZIMs.
-const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near'];
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near', 'search_example_near_where'];
 const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
 
 // Where the grammar applies: the library's own search and the catalog. Not
@@ -14253,11 +14312,13 @@ function _nearHtml(near) {
   if (!near) return '';
   if (!near.found) return '<div class="near-from">' + tHtml('near_not_found', { place: '<bdi>' + esc(near.place) + '</bdi>' }) + '</div>';
   const where = fmtNum(near.lat) + ', ' + fmtNum(near.lng);
+  // The place with where it is, when the map says: Springfield, Illinois, United States.
+  const place = '<bdi>' + esc(near.place + (near.where ? ', ' + near.where : '')) + '</bdi>';
   let h = '<div class="near-from">' + tHtml('near_from', { distance: esc(_nearDistanceText(near.radius_km, near.unit)),
-    place: '<bdi>' + esc(near.place) + '</bdi>' });
+    place: place });
   if (near.others > 0) {
     h += '<div class="near-which">' + tHtml(near.by === 'nearest' ? 'near_pick_nearest' : 'near_pick_largest',
-      { place: '<bdi>' + esc(near.place) + '</bdi>', where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
+      { place: place, where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
   }
   return h + '</div>';
 }

@@ -3549,6 +3549,7 @@
   "au_skip_off": "Atualizar este ZIM automaticamente",
   "search_chip_near": "a até {distance} de {place}",
   "search_example_near": "near:Porto 25km",
+  "search_example_near_where": "near:\"Porto, Portugal\"",
   "near_here": "aqui",
   "near_from": "Lugares a até {distance} de {place}",
   "near_pick_nearest": "{place} em {where}: de {n} lugares com esse nome, o mais próximo de você.",

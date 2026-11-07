@@ -3549,6 +3549,7 @@
   "au_skip_off": "इस ZIM को अपने आप अपडेट करें",
   "search_chip_near": "{place} से {distance} के भीतर",
   "search_example_near": "near:पुणे 25km",
+  "search_example_near_where": "near:\"पुणे, India\"",
   "near_here": "यहाँ",
   "near_from": "{place} से {distance} के भीतर की जगहें",
   "near_pick_nearest": "{where} पर {place}: इस नाम की {n} जगहों में से आपके सबसे पास वाली।",

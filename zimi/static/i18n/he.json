@@ -3549,6 +3549,7 @@
   "au_skip_off": "לעדכן את ה-ZIM הזה אוטומטית",
   "search_chip_near": "בטווח {distance} מ־{place}",
   "search_example_near": "near:חיפה 25km",
+  "search_example_near_where": "near:\"חיפה, Israel\"",
   "near_here": "כאן",
   "near_from": "מקומות בטווח {distance} מ־{place}",
   "near_pick_nearest": "{place} ב־{where}: מבין {n} מקומות בשם הזה, הקרוב אליך ביותר.",
