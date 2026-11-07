@@ -100,7 +100,8 @@ vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every A
 vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
-  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _currentLang = "en";' +
+  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _almRate = 1; var _currentLang = "en";' +
+  'function _almFocusInstant() { return _almFocus || new Date(); } function _almClockSetRate(r) { _almRate = r; }' +
   'var _voyagerPositions = [];' +
   'function t(k, vars) { var s = EN[k] || k; if (vars) for (var v in vars) s = s.split("{" + v + "}").join(vars[v]); return s; }' +
   'function _tp(n) { return _currentLang === "he" ? (HE_PLANETS[n.toLowerCase()] || n) : n; }' +

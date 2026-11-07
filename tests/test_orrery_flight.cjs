@@ -75,7 +75,8 @@ vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every A
 vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
-  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _currentLang = "en";' +
+  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _almRate = 1; var _currentLang = "en";' +
+  'function _almFocusInstant() { return _almFocus || new Date(); } function _almClockSetRate(r) { _almRate = r; }' +
   'var _voyagerPositions = [];' +
   'function t(k, vars) { var s = k; if (vars) for (var v in vars) s += "|" + v + "=" + vars[v]; return s; }' +
   'function _tp(n) { return n; }' +
@@ -175,8 +176,10 @@ check(run('_orreryShownLag({ earth: 2.237e7, ship: 2.237e7 - 0.0857, lag: 0.0857
 run('_orreryRockets = []; _orreryPlaying = true; _almFocus = null;');
 run('_orreryLaunchRocket("Earth")');
 check(run('_orreryRockets.length') === 0, 'Earth never launches (the rockets leave from it)');
-run('_almFocus = new Date(' + utc(2100, 6, 1) + '); _orreryLaunchRocket("Mars"); _almFocus = null;');
-check(run('_orreryRockets.length') === 0, 'no launch while the time machine holds the clock');
+run('_almFocus = new Date(' + utc(2100, 6, 1) + '); _orreryLaunchRocket("Mars");');
+check(run('_orreryRockets.length') === 1 && run('_orreryRockets[0]._launchRealTime') === utc(2100, 6, 1) && run('_almRate') > 1,
+  'a launch away from now flies from that moment, and sets the clock\'s pace');
+run('_almFocus = null; _almRate = 1; _orreryRockets = [];');
 run('_orreryLaunchRocket("Mars")');
 const rk = run('_orreryRockets[0]');
 check(run('_orreryRockets.length') === 1 && rk.target === 'Mars', 'a Mars transit launches');
