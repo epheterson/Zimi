@@ -35,8 +35,16 @@ export function survey(map) {
   return s;
 }
 
-// The string id of the next step, or null.
-export function advise(map) {
+// Money is running out when the year's costs outrun its taxes and the bank will not last the horizon (years): the
+// engine's cash flow is last year's taxes less the full cost of roads, fire and police.
+export var LOW_RUNWAY_YEARS = 4;
+export function runningOut(money) {
+  return !!money && money.flow < 0 && money.funds / -money.flow < money.horizon;
+}
+
+// The string id of the next step, or null. `money` is {funds, flow, horizon}, when the page knows it.
+export function advise(map, money) {
+  if (runningOut(money)) return 'city.adv.money';
   var s = survey(map);
   if (!s.roads) return 'city.adv.road';
   if (!s.plants) return 'city.adv.plant';

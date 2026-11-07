@@ -787,6 +787,7 @@
   // The figures in the chips count up from nothing; the chip says its final value to a screen reader at once.
   function countUp(chips) {
     chips.forEach(function (c) {
+      if (c.classList.contains('gs-chip-static')) return;
       var b = c.querySelector('b'), to = b ? parseInt(b.textContent, 10) : NaN, text = b && b.textContent;
       if (!b || !/^\d+$/.test(text) || to < 2) return;
       c.setAttribute('aria-label', c.textContent);
@@ -1133,7 +1134,8 @@
     }
     // `title`: the caller's own headline, already in the player's language ("2nd of 5", "Solved"), over the result's.
     var title = opts.title ? String(opts.title) : opts.name ? T(opts.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: opts.name }) : T(END_TITLES[opts.result] || END_TITLES.over);
-    var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
+    // A figure that is a name and not an amount (a year) says [label, value, 'static']: it never counts up from nothing.
+    var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' + (s[2] === 'static' ? ' gs-chip-static' : '') }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
     var newGame = function () { dirty = false; clearRest(); if (Shell.daily) leaveDaily(); else if (opts.onNew) opts.onNew(); else if (newBtn) newBtn.click(); };
     var length = opts.result === 'win' ? BEAT_MS : opts.result === 'lose' ? LOSS_BEAT_MS : 0;
     var after = opts.after === undefined ? (length && !reducedMotion() ? length : SHEET_GUARD_MS) : opts.after;

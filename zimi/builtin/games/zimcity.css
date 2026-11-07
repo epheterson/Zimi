@@ -23,6 +23,12 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-funds { flex: none; font: 650 var(--fs-title)/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .cy-when { flex: 1 1 auto; min-width: 0; text-align: end; font-size: var(--fs-small); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 
+.cy-funds.cy-low { color: var(--bad); }
+/* A scenario's goal: always there, and wrapping onto a second line before it would be cut (the goal first, then where the city stands). */
+.cy-goal { flex: none; margin: 0; padding: 0 var(--gutter) var(--sp-1); display: flex; flex-wrap: wrap; column-gap: var(--sp-2); font-size: var(--fs-small); line-height: 1.35; color: var(--ink2); }
+.cy-goal[hidden] { display: none; }
+.cy-goal b { color: var(--ink); font-weight: 650; }
+.cy-goal span { font-variant-numeric: tabular-nums; }
 .cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* The map: everything left between the strip and the tray. */
@@ -62,10 +68,10 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 
 /* Landscape on a phone: the tray moves beside the map. */
 @media (orientation: landscape) and (max-height: 520px) {
-  .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; }
-  .cy-strip, .cy-msg { grid-column: 1 / -1; }
-  .cy-stage { grid-column: 1; grid-row: 3; }
-  .cy-foot { grid-column: 2; grid-row: 3; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
+  .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto 1fr; }
+  .cy-strip, .cy-goal, .cy-msg { grid-column: 1 / -1; }
+  .cy-stage { grid-column: 1; grid-row: 4; }
+  .cy-foot { grid-column: 2; grid-row: 4; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
   /* Icons only, three across: seven tools in three rows fit the height a phone on its side leaves. */
   .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cy-tool { min-height: var(--target); }

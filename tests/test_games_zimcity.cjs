@@ -112,7 +112,7 @@ function seeded(seed, fn) {
   check(Save.unpackSim({ map: [1, 2] }) === null, 'a save of the wrong size is refused');
 
   // The advisor names the next step as a city is built, and falls quiet once it stands.
-  const { advise } = await mod('zimcity-advisor.js');
+  const { advise, runningOut } = await mod('zimcity-advisor.js');
   const ad = city(15), steps = [];
   steps.push(advise(ad.map));
   Tools.build(ad, 'road', [[20, 24]].concat(Tools.steps([20, 24], [43, 24]))); steps.push(advise(ad.map));
@@ -144,6 +144,15 @@ function seeded(seed, fn) {
   check(quakes.length === 1, 'San Francisco shakes once (' + quakes.length + ')');
   check(ticks === sf.judge && (out === 'win' || out === 'lose'), 'and is judged after five years of ticks (' + ticks + ', ' + out + ')');
   check(Scen.mapOf(new ArrayBuffer(10)) === null, 'a file of the wrong size is refused');
+
+  // The traffic goal reads the figure the engine's evaluation does (floor of the mean over blocks with land value, times 2.4),
+  // and the goal strip's time left is years, then months in the last year.
+  const fakeSim = { blockMaps: { trafficDensityMap: { worldGet: () => 10 }, landValueMap: { gameMapWidth: 16, gameMapHeight: 16, blockSize: 8, worldGet: () => 1 } } };
+  check(Math.abs(Scen.trafficAverage(fakeSim) - 19.2) < 1e-9, 'the traffic average is the engine\'s, with its 2.4 (' + Scen.trafficAverage(fakeSim) + ')');
+  check(JSON.stringify([Scen.timeLeft(480), Scen.timeLeft(49), Scen.timeLeft(48), Scen.timeLeft(30), Scen.timeLeft(4), Scen.timeLeft(1)]) ===
+    JSON.stringify([{ n: 10, unit: 'years' }, { n: 2, unit: 'years' }, { n: 12, unit: 'months' }, { n: 8, unit: 'months' }, { n: 1, unit: 'months' }, { n: 1, unit: 'months' }]), 'the time left is whole years, then months');
+  check(runningOut({ funds: 7000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 20000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 100, flow: 500, horizon: 4 }), 'money is running out only when the bank will not last the horizon');
+  check(advise(ad.map, { funds: 7000, flow: -2400, horizon: 4 }) === 'city.adv.money', 'the advisor says the money is running out before any other step');
 
   if (failures) { console.log(failures + ' failed'); process.exit(1); }
   console.log('zimcity: all passed');

@@ -14,7 +14,7 @@ import * as Tools from './zimcity-tools.js';
 import * as Words from './zimcity-words.js';
 import * as Library from './zimcity-library.js';
 import * as Save from './zimcity-save.js';
-import { advise } from './zimcity-advisor.js';
+import { advise, runningOut, LOW_RUNWAY_YEARS } from './zimcity-advisor.js';
 import * as Scen from './zimcity-scenarios.js';
 import * as Climate from './zimcity-climate.js';
 import * as Voices from './zimcity-voices.js';
@@ -215,7 +215,30 @@ function people() { return city.sim.evaluation.cityPop; }
 function strip() {
   if (!city) return;
   $('cy-funds').textContent = money(city.sim.budget.totalFunds);
+  $('cy-funds').classList.toggle('cy-low', runningOut(outlook()));
   $('cy-when').textContent = T('city.when', { date: dateWords(), people: T('city.people', { n: people() }) });
+  goalStrip();
+}
+// Whether the bank will last: what the last budget left (taxes less the full cost of roads, fire and police) against the
+// years the city has to last, a scenario's to its judging.
+function outlook() {
+  var b = city.sim.budget;
+  return { funds: b.totalFunds, flow: b.cashFlow, horizon: city.scenario ? Math.max(LOW_RUNWAY_YEARS, city.scenario.judgeIn / Scen.TICKS_PER_YEAR) : LOW_RUNWAY_YEARS };
+}
+// A scenario's goal stays on screen under the strip, with where the city stands and the time left; it wraps rather than cuts.
+var goalEl = $('cy-goal');
+function goalPhrase(r) { return T('city.goal.' + r.kind, r.kind === 'class' ? { name: T('city.class.' + r.target) } : { n: r.target }); }
+function goalNow(r) { return r.kind === 'class' ? T('city.class.' + r.now) : root.ZimiText.number(r.now); }
+function goalStrip() {
+  var sc = city.scenario && scenarioOf(city.scenario.id);
+  goalEl.hidden = !sc;
+  if (!sc) { goalEl.textContent = ''; return; }
+  var r = Scen.reading(city.sim, sc), left = Scen.timeLeft(city.scenario.judgeIn);
+  goalEl.textContent = '';
+  var goal = d.createElement('b'), now = d.createElement('span');
+  goal.textContent = T('city.goal.label', { goal: goalPhrase(r) });
+  now.textContent = T('city.goal.status', { now: goalNow(r), left: T('city.goal.' + left.unit, { n: left.n }) });
+  goalEl.appendChild(goal); goalEl.appendChild(d.createTextNode(' ')); goalEl.appendChild(now);
 }
 var DEMAND_MAX = { residential: 2000, commercial: 1500, industrial: 1500 };
 function demand() {
@@ -345,7 +368,7 @@ var advice = null;
 // A step that is no longer the next one is never shown late: it leaves the queue, and if it is on the line now, the new
 // step replaces it at once (the few seconds a message is given are for news, not for stale advice).
 function advisor() {
-  var next = advise(city.map);
+  var next = advise(city.map, outlook());
   if (next === advice) return;
   var old = advice ? T(advice) : null;
   advice = next;
@@ -409,10 +432,11 @@ function scenarioOf(id) { return Scen.SCENARIOS.filter(function (x) { return x.i
 function scenarioTick() {
   var sc = scenarioOf(city.scenario.id), out = Scen.tick(city.sim, sc, city.scenario);
   if (!out) return;
-  var name = T('city.sct.' + sc.id), c = city;
+  var name = T('city.sct.' + sc.id), c = city, r = Scen.reading(c.sim, sc);
   c.scenario = null;   // judged once: the city goes on as a city of its own
+  goalStrip();
   Shell.endSheet({ result: out === 'win' ? 'win' : 'lose', title: T(out === 'win' ? 'city.end.scWin' : 'city.end.scLose'),
-                   text: T(out === 'win' ? 'city.end.scWinText' : 'city.end.scLoseText', { city: name }), stats: endStats() });
+                   text: T(out === 'win' ? 'city.end.scWinText' : 'city.end.scLoseText', { city: name, goal: goalPhrase(r), now: goalNow(r) }), stats: endStats() });
 }
 // Open a scenario (`sc`) or a ready-made city (`file` under zimcity/cities) from its file; the city in progress is left
 // for a new one, as New game does.
@@ -578,12 +602,21 @@ function goneBroke() {
   var c = city;
   c.broke = true; c.ending = true;
   record('broke');
-  Shell.endSheet({ result: 'lose', title: T('city.end.broke'), text: T('city.end.brokeText'), stats: endStats(), onClose: function () { setTimeout(function () { if (city === c && c.ending) { c.ending = false; if (c.sim.budget.awaitingValues) openBudget(true); } }, 0); } });
+  Shell.endSheet({ result: 'lose', title: T('city.end.broke'), text: brokeText(), stats: endStats(), onClose: function () { setTimeout(function () { if (city === c && c.ending) { c.ending = false; if (c.sim.budget.awaitingValues) openBudget(true); } }, 0); } });
+}
+// What went wrong in the bank's own figures, so the sheet and the strip agree: what is there, what the year costs, what taxes bring.
+// A city under a scenario's clock also says the goal it was after and where it stood.
+function brokeText() {
+  var b = city.sim.budget, sc = city.scenario && scenarioOf(city.scenario.id);
+  var text = T('city.end.brokeText', { funds: money(b.totalFunds), costs: money(b.roadMaintenanceBudget + b.fireMaintenanceBudget + b.policeMaintenanceBudget), taxes: money(b.taxFund) });
+  if (!sc) return text;
+  var r = Scen.reading(city.sim, sc);
+  return text + ' ' + T('city.end.brokeGoal', { goal: goalPhrase(r), now: goalNow(r) });
 }
 function metropolis() {
   Shell.endSheet({ result: 'win', title: T('city.end.metropolis'), text: T('city.end.metropolisText'), stats: endStats(), newLabel: T('shell.menu.new') });
 }
-function endStats() { return [[T('city.r.people'), root.ZimiText.number(people())], [T('city.r.year'), String(city.sim.getDate().year)]]; }
+function endStats() { return [[T('city.r.people'), root.ZimiText.number(people())], [T('city.r.year'), String(city.sim.getDate().year), 'static']]; }
 
 // ── stats, kept across cities ──
 function stats() { return Play.load(STATS_KEY, { cities: 0, best: 0, metropolis: 0, broke: 0 }); }

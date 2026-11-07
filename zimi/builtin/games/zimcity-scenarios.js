@@ -74,10 +74,27 @@ export function judge(sim, sc) {
   if (g[0] === 'traffic') return trafficAverage(sim) < g[1];
   return false;
 }
-// The original's TrafficAverage: the traffic map's mean over the blocks that have land value (the engine works it out
-// inside its evaluation without keeping it).
-function trafficAverage(sim) {
-  var t = sim.blockMaps.trafficDensityMap, lv = sim.blockMaps.landValueMap, sum = 0, n = 0;
-  for (var x = 0; x < t.width; x++) for (var y = 0; y < t.height; y++) if (lv.get(x, y)) { sum += t.get(x, y); n++; }
-  return n ? sum / n : 0;
+// Where the city stands against the goal, for the strip and the end sheets: {kind, target, now}. A class goal names the
+// size wanted and the size now; the others are numbers (the score, the crime and traffic averages), rounded.
+export function reading(sim, sc) {
+  var g = sc.goal, e = sim.evaluation, census = sim._census;
+  if (g[0] === 'class') return { kind: 'class', target: CLASSES[g[1]].toLowerCase(), now: String(e.cityClass).toLowerCase() };
+  var now = g[0] === 'score' ? e.cityScore : g[0] === 'crime' ? census.crimeAverage : trafficAverage(sim);
+  return { kind: g[0], target: g[1], now: Math.round(now) };
+}
+// The time left to the judging, as {n, unit}: whole years, and months once less than a year is left.
+export var TICKS_PER_YEAR = 48, TICKS_PER_MONTH = 4;
+export function timeLeft(ticks) {
+  return ticks > TICKS_PER_YEAR ? { n: Math.ceil(ticks / TICKS_PER_YEAR), unit: 'years' } : { n: Math.max(1, Math.ceil(ticks / TICKS_PER_MONTH)), unit: 'months' };
+}
+// The original's TrafficAverage, as the engine's evaluation works it out (evaluation.js getTrafficAverage, which does not keep
+// it): the traffic map's mean over the blocks that have land value, a floor, times 2.4. Without that 2.4 Bern's goal (below 80)
+// was met by a city whose real figure was twice that.
+var TRAFFIC_SCALE = 2.4;
+export function trafficAverage(sim) {
+  var t = sim.blockMaps.trafficDensityMap, lv = sim.blockMaps.landValueMap, sum = 0, n = 1;
+  for (var x = 0; x < lv.gameMapWidth; x += lv.blockSize) {
+    for (var y = 0; y < lv.gameMapHeight; y += lv.blockSize) if (lv.worldGet(x, y) > 0) { sum += t.worldGet(x, y); n++; }
+  }
+  return Math.floor(sum / n) * TRAFFIC_SCALE;
 }
