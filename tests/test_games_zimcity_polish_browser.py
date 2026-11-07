@@ -79,11 +79,19 @@ def test_how_to_play_teaches_the_fingers_not_the_keyboard(browser, site):
     pg.click(".gs-menu-btn")
     pg.click(".gs-tile >> text='How to play'")
     card = pg.wait_for_selector("dl.gs-help")
-    text = pg.evaluate("() => document.querySelector('dl.gs-help').parentElement.innerText")
+    text = pg.evaluate(
+        "() => document.querySelector('dl.gs-help').parentElement.innerText"
+    )
     assert "Arrow keys" not in text and "Keys" not in text, text
     assert "coal plant" in text
-    rows = pg.evaluate("() => [...document.querySelectorAll('.cy-how-row')].map(r => [r.querySelectorAll('svg').length, r.textContent.trim()])")
-    assert rows[:3] == [[1, "Drag: move"], [1, "Pinch: zoom"], [1, "Hold: inspect"]], rows
+    rows = pg.evaluate(
+        "() => [...document.querySelectorAll('.cy-how-row')].map(r => [r.querySelectorAll('svg').length, r.textContent.trim()])"
+    )
+    assert rows[:3] == [
+        [1, "Drag: move"],
+        [1, "Pinch: zoom"],
+        [1, "Hold: inspect"],
+    ], rows
     assert rows[3] == [4, "3 × 34 × 4"], rows
     over = pg.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")
     assert over <= 0, over
@@ -102,18 +110,27 @@ def test_bern_opens_over_its_traffic_goal_and_so_does_a_reloaded_one(browser, si
     at_start = pg.evaluate(reading)
     assert at_start["target"] == 35 and at_start["now"] > 35, at_start
     got = pg.evaluate(GOAL_BOX)
-    assert "Goal: traffic below 35" in got["text"] and ("Now %d" % at_start["now"]) in got["text"], got
+    assert (
+        "Goal: traffic below 35" in got["text"]
+        and ("Now %d" % at_start["now"]) in got["text"]
+    ), got
     pg.wait_for_timeout(1200)
-    assert "Connect the zones to power" not in pg.evaluate("() => window.__zimcity.said()"), "one zone off the grid in 194 is not the next step"
+    assert "Connect the zones to power" not in pg.evaluate(
+        "() => window.__zimcity.said()"
+    ), "one zone off the grid in 194 is not the next step"
     shot(pg, "zimcity-bern-opening")
     pg.evaluate("() => ZimiShell.saveNow()")
     pg.reload()
-    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city && window.__zimcity.city.scenario")
+    pg.wait_for_function(
+        "() => window.__zimcity && window.__zimcity.city && window.__zimcity.city.scenario"
+    )
     after = pg.evaluate(reading)
     assert after["now"] > 35, after
 
 
-def test_the_coal_plants_chimney_frames_are_the_plant_with_smoke_not_the_1989_pixels(browser, site):
+def test_the_coal_plants_chimney_frames_are_the_plant_with_smoke_not_the_1989_pixels(
+    browser, site
+):
     """The four animated chimney tiles used to keep the original art (pixel noise and a yellow outline over the redrawn
     plant). Each of their 16 frames is now the plant's own tile with a puff over it."""
     pg = phone(browser, site)
@@ -129,16 +146,27 @@ def test_the_coal_plants_chimney_frames_are_the_plant_with_smoke_not_the_1989_pi
 
 
 def test_a_refusal_line_goes_away_by_itself(browser, site):
-    """"Short by $2,954" stayed red under the tool for as long as the tool was held."""
+    """ "Short by $2,954" stayed red under the tool for as long as the tool was held."""
     pg = phone(browser, site)
     box = pg.evaluate(CLEAR)
     pg.evaluate("() => { window.__zimcity.city.sim.budget.totalFunds = 50; }")
     hold_more(pg, "Coal plant")
-    stroke(pg, [(box["w"] / 2, box["top"] + box["h"] / 2), (box["w"] / 2 + 1, box["top"] + box["h"] / 2)])
+    stroke(
+        pg,
+        [
+            (box["w"] / 2, box["top"] + box["h"] / 2),
+            (box["w"] / 2 + 1, box["top"] + box["h"] / 2),
+        ],
+    )
     assert "Short by" in pg.text_content("#cy-held")
     shot(pg, "zimcity-refusal")
-    pg.wait_for_function("() => !document.getElementById('cy-held').classList.contains('cy-bad')", timeout=5000)
+    pg.wait_for_function(
+        "() => !document.getElementById('cy-held').classList.contains('cy-bad')",
+        timeout=5000,
+    )
     assert pg.text_content("#cy-held") == "Coal plant: $3,000"
+
+
 def _open(browser, site, width, height, lang="en"):
     ctx = browser.new_context(
         viewport={"width": width, "height": height},
@@ -196,3 +224,41 @@ def test_a_phone_on_its_side_gives_the_map_the_height_and_the_menu_fits(browser,
     )
     assert card[1] <= card[2], card
     shot(pg, "zimcity-landscape-menu")
+
+
+def test_before_the_first_picture_the_map_is_the_lands_colour_not_a_blank_sheet(
+    browser, site
+):
+    """The map was empty for the first seconds on a slow link (the art is fetched and cut first). Its stage is the ground's
+    own colour meanwhile."""
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844},
+        device_scale_factor=2,
+        is_mobile=True,
+        has_touch=True,
+    )
+    pg = ctx.new_page()
+    pg.route(
+        "**/zimcity/tiles.png", lambda route: None
+    )  # never answered: the art does not arrive
+    pg.goto(site + "zimcity.html", wait_until="commit")
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    pg.wait_for_timeout(300)
+    got = pg.evaluate(
+        "() => { const s = getComputedStyle(document.querySelector('.cy-stage')).backgroundColor, c = document.getElementById('cy-map'); return [s, c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data[3]]; }"
+    )
+    assert got == [
+        "rgb(205, 191, 152)",
+        0,
+    ], got  # nothing drawn yet, and the stage under it is the ground
+    if (
+        SHOTS
+    ):  # the page never finishes loading (the art is held), so Playwright's own screenshot would wait for it
+        import base64
+
+        data = ctx.new_cdp_session(pg).send(
+            "Page.captureScreenshot", {"format": "png"}
+        )["data"]
+        with open(os.path.join(SHOTS, "zimcity-before-the-map.png"), "wb") as f:
+            f.write(base64.b64decode(data))
+    ctx.close()

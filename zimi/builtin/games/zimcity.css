@@ -1,9 +1,9 @@
 /* ZimCity: the map owns the screen. The strip above it (demand, money, then the date and people, quieter), the status
    line, the map, then the held tool's line and the tray at the thumb. Zone colours are materials (the original's
    green, blue and yellow, pulled toward neutral); everything else is games.css tokens. */
-:root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; } }
-:root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; }
+:root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; --cy-ground: #cdbf98; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; } }
+:root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; }
 
 body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; padding-left: var(--safe-l); padding-right: var(--safe-r); box-sizing: border-box; }
 .cy-page .gm-about { display: none; }
@@ -32,7 +32,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; line-height: 1.35; }   /* two lines before it is cut: a long translation or a citizen's quote is read whole */
 
 /* The map: everything left between the strip and the tray. */
-.cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--cy-ground); }   /* the land's own colour until the first picture is drawn, so the map is never a blank sheet */
 #cy-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 #cy-map:focus-visible { outline-offset: -3px; }
 
