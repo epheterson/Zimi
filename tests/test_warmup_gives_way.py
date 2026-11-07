@@ -25,3 +25,16 @@ def test_the_qid_sampling_waits_while_someone_is_using_the_server(monkeypatch):
     assert read == [], "nothing read while a request is fresh"
     assert done.wait(3), "and it carries on once the server is quiet"
     assert read == ["/a.zim", "/b.zim"]
+
+
+def test_a_server_that_is_never_quiet_still_gets_its_qid_flags(monkeypatch):
+    read = []
+    monkeypatch.setattr(interlang, "_qid_has_index", lambda name: False)
+    monkeypatch.setattr(interlang, "_check_one_article_for_qid", lambda path: read.append(path) or False)
+    monkeypatch.setattr(interlang, "QID_IDLE_WAIT_MAX_S", 0.2)
+    monkeypatch.setattr(srv, "_SHAPE_IDLE_SECONDS", 3600.0)  # every moment counts as busy
+    monkeypatch.setattr(srv, "_SHAPE_IDLE_POLL_SECONDS", 0.05)
+    monkeypatch.setattr(srv, "LAST_REQUEST_AT", time.time())
+    started = time.time()
+    interlang._detect_qid_flags({"a": "/a.zim", "b": "/b.zim"})
+    assert read == ["/a.zim", "/b.zim"] and time.time() - started < 3

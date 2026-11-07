@@ -394,10 +394,19 @@ _SHAPE_RETRY_SECONDS = 900.0  # look again for ZIMs added since
 LAST_REQUEST_AT = 0.0
 
 
-def _wait_until_idle():
-    """Block until nobody has asked the server for anything recently."""
+def _wait_until_idle(max_wait=None):
+    """Block until nobody has asked the server for anything recently, or for ``max_wait`` seconds when given (a
+    worker with one cheap read to make, which a busy server must not starve). True when it is quiet."""
+    deadline = None if max_wait is None else time.time() + max_wait
     while time.time() - LAST_REQUEST_AT < _SHAPE_IDLE_SECONDS:
-        time.sleep(_SHAPE_IDLE_POLL_SECONDS)
+        if deadline is not None and time.time() >= deadline:
+            return False
+        time.sleep(
+            _SHAPE_IDLE_POLL_SECONDS
+            if deadline is None
+            else min(_SHAPE_IDLE_POLL_SECONDS, max(0.0, deadline - time.time()))
+        )
+    return True
 
 
 class _PoliteGuard:
