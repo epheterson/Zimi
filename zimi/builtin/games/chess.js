@@ -13,7 +13,7 @@
   // 'strong' is shown as Advanced and 'fairy' as Strong (WK.CLASSIC_LEVELS).
   var G = WK.create({
     id: 'chess',
-    options: WK.standardOptions({ base: WK.CLASSIC_LEVELS, levelDef: 'club', first: 'chess.side.white', second: 'board.black' }),
+    options: WK.standardOptions({ base: WK.CLASSIC_LEVELS, levelDef: 'beginner', first: 'chess.side.white', second: 'board.black' }),
     onNew: newGame, onUndo: undo, onHint: hint
   });
   var els = { board: $('cs-board'), moves: $('cs-moves'), opening: $('cs-opening'), flip: $('cs-flip'), capsTop: $('cs-caps-top'), capsBot: $('cs-caps-bot'), capsHtml: {} };
