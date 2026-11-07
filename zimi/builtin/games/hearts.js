@@ -361,8 +361,9 @@
     function gameOver() {
       var st = session.state, lines = handLines(st), low = winners(st.scores), won = !seats.hotseat() && humanWon(st);
       if (watch) { watch.finish(lines.join(' ') + ' ' + TX('hearts.wholeGame')); return; }
-      lines.push(won ? TX('hearts.lowest.you') : TX(seats.hotseat() ? 'hearts.lowest.wins' : 'hearts.lowest', { name: nm(low[0]) }));
-      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: nm(low[0]) } : '', lines, seats.hotseat() ? undefined : st.scores[0]);
+      // The result first, then every player's hand and total: the sheet's text is the first line and the rest sit under it.
+      lines.unshift(won ? TX('hearts.lowest.you') : TX(seats.hotseat() ? 'hearts.lowest.wins' : 'hearts.lowest', { name: nm(low[0]) }));
+      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: nm(low[0]) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     // ── The human's choices ──────────────────────────────────────────────
     function passNow() {

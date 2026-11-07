@@ -89,3 +89,28 @@ def test_no_mark_peeks_from_under_a_sheet(browser, served, game):
     assert f.evaluate(mark) == 0, "the mark is hidden while a sheet is up"
     shot(page, "13-sheet-corner-" + game)
     c.close()
+
+
+# 2. Hearts: the game-over sheet names the winner and every total, and the table stays as it ended behind it.
+def test_hearts_game_over_sheet_names_the_winner_and_every_total(browser, served):
+    c, page = open_game(browser, served, "hearts")
+    page.evaluate("""() => {
+      const Z = window.ZimiCards, st = ZimiHearts.almostWon();
+      st.scores = [90, 30, 20, 40]; st.handNo = 5;
+      // the person's ace of clubs takes the queen of spades: 90 + 13 = 103, the game is over
+      st.hands = [[Z.make(1, 0)], [Z.make(12, 3)], [Z.make(13, 0)], [Z.make(5, 0)]];
+      ZimiHearts.session.reset(st);
+    }""")
+    frames(page, 3)
+    for _ in range(2):
+        page.locator("[data-pile^='h']").first.click()
+        frames(page, 2)
+    visible(page, ".ar-sheet-card h2", 8000)
+    text = page.locator(".ar-sheet-card").inner_text()
+    for needle in ("Rani", "103", "30", "20", "40"):
+        assert needle in text, (needle, text)
+    assert page.evaluate("() => ZimiHearts.session.state.phase") == "over"
+    behind = page.evaluate("() => document.body.innerText")
+    assert "pass left" not in behind and "Choose 3" not in behind, behind
+    shot(page, "02-hearts-over")
+    c.close()

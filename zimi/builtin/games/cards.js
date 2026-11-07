@@ -1388,18 +1388,19 @@
     };
     // `after` is how long to wait for the last animation; a game coming back from being left has none.
     function session_showEnd(e, after) {
-      if (root.ZimiShell && root.ZimiShell.endSheet) root.ZimiShell.endSheet({ result: e.result, name: e.name, team: e.team, text: e.text, stats: e.stats, onNew: cfg.newGame, after: after });
+      if (root.ZimiShell && root.ZimiShell.endSheet) root.ZimiShell.endSheet({ result: e.result, name: e.name, team: e.team, text: e.text, stats: e.stats, onNew: cfg.newGame, after: after,
+        extra: (e.more || []).map(function (t) { return h('p', { class: 'zc-note', text: t }); }) });
     }
     // A finished game that was not won (Hearts lost, Golf stuck): the clock
     // stops, the score is kept if it is a best, and the sheet says how it went.
     // How a game that is not won ends: kind is '' (you lose), 'draw', 'over' (Game over) or { name, team } for the
-    // winner of a table of people ("Sam wins", "You and Ana win").
-    s.lose = function (kind, lines, score) {
+    // winner of a table of people ("Sam wins", "You and Ana win"). The sheet says lines[0]; `listAll` puts the rest of the lines under it.
+    s.lose = function (kind, lines, score, listAll) {
       s.won = true; halt(); resume = false; clearLater();
       if (typeof score === 'number') s.stats.scored(score);
       paint();
       var named = kind && typeof kind === 'object', result = named ? 'lose' : kind === 'draw' || kind === 'over' ? kind : 'lose';
-      if (root.ZimiShell && root.ZimiShell.endSheet) { s.ending = { result: result, name: named ? kind.name : undefined, team: named ? !!kind.team : undefined, text: lines[0], stats: s.stats.rows().slice(0, 2) }; session_showEnd(s.ending); return; }
+      if (root.ZimiShell && root.ZimiShell.endSheet) { s.ending = { result: result, name: named ? kind.name : undefined, team: named ? !!kind.team : undefined, text: lines[0], more: listAll ? lines.slice(1) : [], stats: s.stats.rows().slice(0, 2) }; session_showEnd(s.ending); return; }
       var title = named ? T(kind.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: kind.name }) : T(result === 'draw' ? 'shell.end.draw' : result === 'over' ? 'shell.end.over' : 'shell.end.lose');
       var body = lines.map(function (t) { return h('p', { class: 'zc-note', text: t }); });
       body.push(h('p', { class: 'zc-stats', text: s.stats.line() }));
