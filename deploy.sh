@@ -37,7 +37,7 @@ own_zims=$(printf '%s\n' "$files" | grep -c 'zimi/builtin/.*\.zim$' || true)
 # --no-cache for a source edit (over ten minutes, it re-downloads Chromium).
 # The compose shipped is ours, never whatever sits in the NAS dir (a stale one
 # once started the wrong image); the previous one is kept as .prev.
-$SSH nas "set -e; cd $NAS_DIR
+$SSH nas "set -eo pipefail; cd $NAS_DIR
   [ -f docker-compose.yml ] && cp -p docker-compose.yml docker-compose.yml.prev || true
   cp docker-compose.nas.yml docker-compose.yml
   /usr/local/bin/docker-compose build 2>&1 | tail -2
