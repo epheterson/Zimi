@@ -3311,10 +3311,15 @@ function _aeUpdateLandmarks() {
         if (point ? rPx < AE_LM_LANDING_MIN_R_PX : px < AE_LM_MIN_PX) continue;
         var s = _aeProject(p);
         if (!s || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) continue;
-        cands.push({ b: b.key, row: row, s: s, pri: landing ? Infinity : point ? AE_LM_POINT_PRI : px });
+        cands.push({ b: b.key, row: row, s: s, fame: row[7] || 0, pri: landing ? Infinity : point ? AE_LM_POINT_PRI : px });
       }
     });
-    cands.sort(function (a, c) { return c.pri - a.pri; });
+    // Landing sites first, then the best known (row[7]: how many Wikipedias have an article, the body's top few ahead of
+    // all), then the biggest on screen: a name that must give way to another is the more obscure one.
+    cands.sort(function (a, c) {
+      if (a.pri === Infinity || c.pri === Infinity) return a.pri === c.pri ? c.fame - a.fame : a.pri === Infinity ? -1 : 1;
+      return c.fame - a.fame || c.pri - a.pri;
+    });
     for (var k = 0; k < cands.length && placed.length < AE_LM_MAX; k++) {
       var c = cands[k], bx = c.box = _aeLmBox(c);
       if (placed.some(function (q) { return bx.x0 < q.box.x1 && q.box.x0 < bx.x1 && bx.y0 < q.box.y1 && q.box.y0 < bx.y1; })) continue;

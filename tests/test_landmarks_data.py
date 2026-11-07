@@ -93,7 +93,16 @@ def _lon_gap(a, b):
 
 
 def test_one_small_file_with_every_body_and_its_sources(data):
-    assert data["fields"] == ["name", "lat", "lon", "kind", "qid", "size_km", "src"]
+    assert data["fields"] == [
+        "name",
+        "lat",
+        "lon",
+        "kind",
+        "qid",
+        "size_km",
+        "src",
+        "fame",
+    ]
     assert len(data["sources"]) >= 6 and all(
         isinstance(s, str) and s for s in data["sources"]
     )
@@ -104,10 +113,11 @@ def test_one_small_file_with_every_body_and_its_sources(data):
     for body in BODIES:
         names = set()
         for r in data[body]:
-            assert len(r) == 7, (body, r)
-            name, lat, lon, kind, qid, size, src = r
+            assert len(r) == 8, (body, r)
+            name, lat, lon, kind, qid, size, src, fame = r
             assert name and name not in names, (body, name)
             names.add(name)
+            assert isinstance(fame, int) and fame >= 0, (body, r)
             assert -90 <= lat <= 90 and -180 <= lon <= 180, (body, r)
             assert re.fullmatch(r"Q\d+", qid) or qid == "", (body, r)
             assert size >= 0 and 0 <= src < len(data["sources"]), (body, r)

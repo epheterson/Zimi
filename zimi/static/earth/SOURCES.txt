@@ -85,7 +85,7 @@ landmarks-v1.json
   8 on Venus (Venera and Vega, NASA NSSDC) and Huygens on Titan (ESA/NASA), each
   with the Q-ID of its English Wikipedia article. Earth's 31 places (the highest
   peaks, a few wonders, launch sites) are at their published coordinates, each
-  checked against Wikidata's (CC0). 132 KB, fetched the first time a body with landmarks
+  checked against Wikidata's (CC0). Each row also has a fame (the number of Wikipedia editions with an article on it, from Wikidata, plus a bonus for the body's best-known places) that orders the names. 139 KB, fetched the first time a body with landmarks
   is near.
   https://planetarynames.wr.usgs.gov/
 

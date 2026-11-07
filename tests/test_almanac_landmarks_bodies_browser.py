@@ -281,6 +281,8 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
             ctx.close()
         finally:
             br.close()
+
+
 # Every drawn landmark's whole box on screen (the dot, the name, wherever the name runs), as the page lays it out.
 BOXES = """() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => {
     var r = b.getBoundingClientRect(); return { n: b.textContent, x0: r.left, x1: r.right, y0: r.top, y1: r.bottom }; })"""
@@ -344,6 +346,9 @@ def test_no_two_landmark_labels_overlap(served):
                     pg.evaluate("_ae.dirty = true; _aeKick()")
                     pg.wait_for_timeout(300)
                 boxes = pg.evaluate(BOXES)
+                if "18.6, -133.8" in view:
+                    # Olympus Mons faces us at the middle of the disc: the best known name there is never the one to give way.
+                    assert "Olympus Mons" in [b["n"] for b in boxes], boxes
                 for i, a in enumerate(boxes):
                     for b in boxes[i + 1 :]:
                         meets = (

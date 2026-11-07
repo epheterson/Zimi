@@ -34,7 +34,7 @@ UA = "Zimi-build/1.0 (https://github.com/epheterson/Zimi)"
 GAZETTEER = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/%s_nomenclature_center_pts.zip"
 SPARQL = "https://query.wikidata.org/sparql"
 WD_API = "https://www.wikidata.org/w/api.php"
-FIELDS = ["name", "lat", "lon", "kind", "qid", "size_km", "src"]
+FIELDS = ["name", "lat", "lon", "kind", "qid", "size_km", "src", "fame"]
 
 # Where each row came from: an index into the file's "sources".
 SRC_GAZETTEER, SRC_MOON, SRC_MARS, SRC_VENUS, SRC_TITAN, SRC_EARTH = range(6)
@@ -680,6 +680,51 @@ def sites(cache):
     return rows
 
 
+# How well known a place is: the number of Wikipedia language editions with an article on it (from Wikidata, CC0), so
+# when names compete for room the famous one is placed first. The body's best-known places come before any count.
+TOP_FAME = 10000
+TOP = {
+    "moon": ["Mare Tranquillitatis", "Mare Imbrium", "Tycho", "Copernicus", "Oceanus Procellarum"],
+    "mars": ["Olympus Mons", "Valles Marineris", "Hellas Planitia", "Syrtis Major Planum"],
+    "venus": ["Maxwell Montes", "Ishtar Terra", "Aphrodite Terra"],
+    "mercury": ["Caloris Planitia"],
+    "titan": ["Kraken Mare", "Ligeia Mare"],
+    "pluto": ["Sputnik Planitia", "Tombaugh Regio"],
+    "ceres": ["Occator"],
+    "earth": ["Mount Everest", "Grand Canyon", "Cape Canaveral", "Baikonur"],
+    "io": ["Loki Patera"],
+    "europa": ["Conamara Chaos"],
+    "ganymede": ["Galileo Regio"],
+    "callisto": ["Valhalla"],
+}
+NOT_A_LANGUAGE = {"commonswiki", "specieswiki", "metawiki", "wikidatawiki", "mediawikiwiki"}
+
+
+def sitelink_counts(qids, cache):
+    out = {}
+    qids = sorted(set(q for q in qids if q))
+    for i in range(0, len(qids), 50):
+        part = qids[i : i + 50]
+        url = WD_API + "?" + urllib.parse.urlencode(
+            {"action": "wbgetentities", "ids": "|".join(part), "props": "sitelinks", "format": "json"}
+        )
+        name = "fame-" + hashlib.md5("|".join(part).encode()).hexdigest()[:12] + ".json"
+        for q, ent in json.loads(_get(url, cache, name, "application/json")).get("entities", {}).items():
+            out[q] = sum(1 for k in ent.get("sitelinks", {}) if k.endswith("wiki") and k not in NOT_A_LANGUAGE)
+    return out
+
+
+def add_fame(doc, order, cache):
+    fame = sitelink_counts([r[4] for k in order for r in doc[k]], cache)
+    for k in order:
+        top = TOP.get(k, [])
+        missing = [t for t in top if not any(r[0] == t for r in doc[k])]
+        if missing:
+            raise SystemExit("%s: top names not in the list: %s" % (k, missing))
+        for r in doc[k]:
+            r.append(fame.get(r[4], 0) + (TOP_FAME if r[0] in top else 0))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=os.path.join(ROOT, "build", "landmarks-cache"))
@@ -712,6 +757,7 @@ def main(argv=None):
                 sum(1 for r in doc[key] if r[4]),
             )
         )
+    add_fame(doc, order, a.cache)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
     print("%s: %d bytes" % (OUT, os.path.getsize(OUT)))
