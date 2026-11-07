@@ -11,6 +11,7 @@
 .ur-slot { fill: rgba(0, 0, 0, 0.1); stroke: var(--ur-sq-edge); stroke-width: 1.5; }
 .ur-hl { fill: none; stroke: var(--select-ring); stroke-width: 6; }
 .ur-hl.src { stroke: var(--select-ring); }
+.ur-hl.dst { fill: color-mix(in srgb, var(--select-ring) 38%, transparent); stroke-width: 2; }   /* where it can go: a lit square, not a second outline */
 .ur-hl.last { stroke: var(--select-ring); stroke-width: 4; stroke-dasharray: 10 8; }
 .ur-hl.tip { stroke: var(--select-ring); stroke-dasharray: 4 6; }
 .ur-pc.b { fill: var(--ur-blue); stroke: var(--ur-blue-lo); } .ur-pc.r { fill: var(--ur-red); stroke: var(--ur-red-lo); }

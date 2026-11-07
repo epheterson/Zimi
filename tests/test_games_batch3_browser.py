@@ -537,3 +537,28 @@ def test_ludo_die_label_follows_the_roll(browser, served):
         page.get_attribute("#ld-die", "aria-label") == "Die showing 3"
     ), page.get_attribute("#ld-die", "aria-label")
     c.close()
+# 11. Ur: the pieces that can move (outlined) and the squares they can go to (filled) do not look alike.
+def test_ur_movable_pieces_and_destinations_look_different(browser, served):
+    c, page = open_game(browser, served, "ur.html", "?debug")
+    page.wait_for_function("window.__ur && window.__ur.phase() === 'roll'")
+    for _ in range(12):
+        page.click("#ur-roll")
+        page.wait_for_function(
+            "() => !document.getElementById('ur-roll').disabled || __ur.moves().length > 0",
+            timeout=10000,
+        )
+        if page.evaluate("__ur.moves().length") > 0:
+            break
+        page.wait_for_function(
+            "__ur.phase() === 'roll' && !document.getElementById('ur-roll').disabled",
+            timeout=10000,
+        )
+    assert page.evaluate("__ur.moves().length") > 0
+    look = page.evaluate("""(() => {
+      const f = el => { const c = getComputedStyle(el); return [c.fill, c.strokeWidth, c.strokeDasharray].join('|'); };
+      const src = [...document.querySelectorAll('.ur-hl.src')], dst = [...document.querySelectorAll('.ur-hl:not(.src):not(.last):not(.tip)')];
+      return { src: src.map(f), dst: dst.map(f) }; })()""")
+    assert look["src"] and look["dst"], look
+    assert not set(look["src"]) & set(look["dst"]), look
+    shot(page, "11-ur-moves")
+    c.close()
