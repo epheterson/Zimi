@@ -1110,7 +1110,7 @@ function _almClockPaint(focus) {
   if (!roots.length) return;
   focus = focus || _almFocusInstant();
   var cp = _almClockParts(focus), rate = _almRate, real = _almRateIsReal(rate), away = _almClockAway(), hot = !real || away;
-  var text = rate === 0 ? '' : real ? '' : _almRateText(rate);
+  var text = rate === 0 || real ? '' : _almRateText(rate);
   for (var i = 0; i < roots.length; i++) {
     var root = roots[i], head = root.getAttribute('data-v') === 'head', st = root._ck || (root._ck = {});
     var set = function (sel, html, key) {
@@ -1125,7 +1125,7 @@ function _almClockPaint(focus) {
     set('.alm-ck-z', (cp.tz ? ' &middot; ' + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
-      var rh = rate === 0 ? ALM_CK_PAUSE : _almEsc(text);
+      var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
       if (st.r !== rh) { r.innerHTML = rh; st.r = rh; }
     }
     var nowBtn = root.querySelector('.alm-ck-now');
