@@ -1162,7 +1162,7 @@ function _aeBuildDom() {
         '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
           '<button type="button" class="ae-fresh" id="ae-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button><span aria-hidden="true"> · </span>' +
           '<button type="button" class="ae-fresh" id="ae-hd-later">' + _almEsc(_aeT('alm_hd_later')) + '</button></span><br></span>' +
-        '<span id="ae-note"></span>' +
+        '<span id="ae-note"></span><button type="button" class="ae-fresh" id="ae-note-fresh" hidden></button>' +
       '</div>' +
     '</div>';
   host.appendChild(el);
@@ -6217,7 +6217,7 @@ function _aeFmtGain(sec) {
 // (Ask first), the data's date moves out of the note to stand before the
 // offer: { ask, note }.
 function _aeNoteParts() {
-  var parts = [], dated = '', sats = _ae.sats;
+  var parts = [], dated = '', stale = false, sats = _ae.sats;
   // What the satellites' data is like is said where satellites are drawn: the Earth (and its Satellites view) and the
   // ISS. At Saturn or Voyager it was a line about something not on the screen. The gear keeps the data's date anywhere.
   var aboutSats = _ae.target === 'earth' || _ae.target === 'iss';
@@ -6232,7 +6232,8 @@ function _aeNoteParts() {
     // of date.
     if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
     else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data'));
-    if (aboutSats && anyShown && _ae.satMeta && _ae.satMeta.stale) parts.push(_aeT('alm_earth_data_stale'));
+    stale = aboutSats && anyShown && !!(_ae.satMeta && _ae.satMeta.stale);
+    if (stale) parts.push(_aeT('alm_earth_data_stale'));
     if (aboutSats && issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (aboutSats && sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));
@@ -6244,7 +6245,7 @@ function _aeNoteParts() {
   parts.push(_aeT('alm_earth_credit'));
   var sss = _aePlanetCredit();
   if (sss) parts.push(sss);
-  return { ask: dated, note: parts.join(' · ') };
+  return { ask: dated, note: parts.join(' · '), stale: stale };
 }
 
 // The offer before the note: the data's date, whether the last try failed,
@@ -6261,6 +6262,18 @@ function _aeRenderAsk(dated) {
   if (btn.hidden === asking) btn.hidden = !asking;
   if (sep && sep.hidden === asking) sep.hidden = !asking;
   _aeSetText(btn, _aeT(_ae.freshBusy ? 'alm_earth_getting_fresh' : 'alm_earth_get_fresh'));
+  btn.disabled = !!_ae.freshBusy;
+}
+
+// Under Ask first, the line that says the satellites may be out of date carries the update itself: one tap, no trip
+// into the gear.
+function _aeRenderNoteFresh(stale) {
+  var btn = _aeById('ae-note-fresh');
+  if (!btn) return;
+  var on = !!stale && _aeAsking();
+  if (btn.hidden === on) btn.hidden = !on;
+  if (!on) return;
+  _aeSetText(btn, _aeT(_ae.freshBusy ? 'alm_earth_getting_fresh' : 'update'));
   btn.disabled = !!_ae.freshBusy;
 }
 
@@ -6310,6 +6323,7 @@ function _aeUpdateText(ms) {
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);
   _aeSetText(_aeById('ae-note'), note.note);
+  _aeRenderNoteFresh(note.stale);
   // No orbital data reached this device (offline before it was ever kept):
   // the Satellites view would frame an empty shell, so it is not offered;
   // the note says why.
@@ -6632,6 +6646,7 @@ function _aeBindControls() {
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
+  _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
   _aeById('ae-map').onclick = _aeOpenMapHere;
   _aeById('ae-mini').onclick = function () { _aePreset('planets'); };

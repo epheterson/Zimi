@@ -438,6 +438,9 @@ const run = (code) => vm.runInContext(code, S);
     check(!note().includes('alm_earth_data_from') && !note().includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'),
       'and the line under the controls says only that it may be out of date');
     check(text('ae-fresh') === 'alm_earth_get_fresh', 'the button says Get fresh data');
+    // The stale line under the controls carries the update itself, so it is one tap without the gear.
+    const lineFresh = () => { askText(); return !el('ae-note-fresh').hidden; };
+    check(lineFresh() && text('ae-note-fresh') === 'update', 'the stale line offers Update beside it');
 
     // The button: one POST, and the view redraws from its answer.
     const before = requests.length;
@@ -449,6 +452,18 @@ const run = (code) => vm.runInContext(code, S);
       'Get fresh data is one POST to the admin route');
     check(run('_ae.sats.source') === 'cache' && run('_ae.sats.fetched') === '2026-09-28T18:00:00Z', 'and the fresh elements are drawn');
     check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && !note().includes('alm_earth_data_stale'), 'fresh, the offer goes, the date stays, and no stale warning');
+    check(!lineFresh(), 'and the stale line\'s Update goes with it');
+
+    // The line's Update is the same fetch.
+    fetches.push(stale({}));
+    await reopen();
+    const lineBefore = requests.length;
+    fetches.push(answer({ source: 'cache', fetched: '2026-09-28T18:00:00Z', mode: 'ask', stale: false, can_change: true }));
+    el('ae-note-fresh').onclick();
+    check(text('ae-note-fresh') === 'alm_earth_getting_fresh' && el('ae-note-fresh').disabled === true, 'the line\'s Update says it is getting fresh data, and waits');
+    await flush();
+    check(requests.length === lineBefore + 1 && lastReq().method === 'POST' && lastReq().url === S.AE_SATS_REFRESH_URL && !lineFresh(),
+      'one POST, and fresh, it goes');
 
     fetches.push(stale({}));
     await reopen();
@@ -464,10 +479,10 @@ const run = (code) => vm.runInContext(code, S);
 
     fetches.push(stale({ can_change: false }));
     await reopen();
-    check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
+    check(!offered() && !lineFresh() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'a viewer who may not fetch sees the date, the stale warning and no button');
     fetches.push(stale({ mode: 'never' }));
     await reopen();
-    check(!offered() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
+    check(!offered() && !lineFresh() && (askText() || '').includes('alm_earth_sat_data_from') && note().includes('alm_earth_data_stale'), 'under Never, stale data is dated and says it may be out of date');
     fetches.push(stale({ mode: 'auto', refreshing: true }));
     await reopen();
     check(!offered(), 'under Automatically nothing is offered: the server is fetching already');
