@@ -124,7 +124,7 @@ def test_fly_to_the_apollo_11_site(served):
             # with the row under it, the view keeps most of the screen).
             assert not pg.query_selector("#ae-lm-fly")
             box = pg.evaluate("""() => { var c = document.getElementById('ae-card').getBoundingClientRect(), v = document.getElementById('ae-views').getBoundingClientRect(),
-                t = document.getElementById('ae-time'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
+                t = document.getElementById('ae-clock'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
             assert box["card"] <= 0.25 * VIEW["height"] + 1, box
             assert box["top"] >= 0.6 * VIEW["height"], box
             assert not box["time"], box   # the time row steps aside while a card is open

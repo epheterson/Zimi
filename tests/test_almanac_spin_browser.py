@@ -95,7 +95,7 @@ def open_spin(pg, served):
 def at(pg, ms):
     """Show the clock at ms and draw the view once, so what is read is what is drawn then."""
     pg.evaluate(
-        "(ms) => { _aeSetSpeed(1); _almFocus = new Date(ms); _aeSpinDraw(); }", ms
+        "(ms) => { _almClockSetRate(1); _almFocus = new Date(ms); _aeSpinDraw(); }", ms
     )
 
 
@@ -228,11 +228,11 @@ def test_they_turn_by_the_clock_and_venus_turns_the_other_way(page):
     assert deg["earth"][1] > 0 > deg["venus"][1]
     assert deg["uranus"][1] < 0 < deg["neptune"][1]
     # And it moves with the clock a person runs: whatever the drawn date has run to, each planet has turned by its own rate over it.
-    page.evaluate("_almFocus = null; _aeSetSpeed(1); _aeSpinDraw()")
+    page.evaluate("_almFocus = null; _almClockSetRate(1); _aeSpinDraw()")
     before, jd0 = page.evaluate(COLUMN), page.evaluate("_ae.gl.spin.jd")
-    page.evaluate("_aeSetSpeed(3600)")
+    page.evaluate("_almClockSetRate(3600)")
     page.wait_for_function("(jd0) => _ae.gl.spin.jd - jd0 > 0.01", arg=jd0, timeout=120_000, polling=200)
-    page.evaluate("_aeSetSpeed(1)")
+    page.evaluate("_almClockSetRate(1)")
     page.evaluate("_aeSpinDraw()")
     after, jd1 = page.evaluate(COLUMN), page.evaluate("_ae.gl.spin.jd")
     for k in ("earth", "jupiter", "mars", "venus"):
@@ -320,14 +320,14 @@ def test_orbits_setting_hides_the_planes_and_years(page):
 
 def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     # From the live clock: Side by side runs it at an hour a second, and leaving puts it back where it was.
-    page.evaluate("_aeSetSpeed(1); _aeNow()")
+    page.evaluate("_almClockSetRate(1); _aeNow()")
     page.click("[data-ae-view='planets']")
     page.wait_for_function("() => !_ae.spin && !_ae.fly && _ae.preset === 'planets'", timeout=60_000, polling=200)
     # One tap from the Planets view: its chip stands beside it.
     assert page.is_visible("[data-ae-view='spin']")
     page.click("[data-ae-view='spin']")
     page.wait_for_function("() => !!_ae.spin", timeout=60_000, polling=200)
-    assert page.evaluate("_ae.speed") == 3600 and page.evaluate("_ae.spin.autoRun")
+    assert page.evaluate("_almRate") == 3600 and page.evaluate("_ae.spin.autoRun")
     # The clock runs ahead of the wall (an hour a second).
     page.wait_for_function("() => _aeDisplayMs() - Date.now() > 60000", timeout=60_000, polling=200)
     # The row while they stand side by side: Sun, Earth, Planets, and itself, lit.
@@ -336,7 +336,7 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     page.click("[data-ae-spin='jupiter']")
     page.wait_for_function("() => !_ae.spin && _ae.target === 'jupiter'", timeout=60_000, polling=200)
     assert not page.evaluate("document.getElementById('ae-view').classList.contains('ae-spinning')")
-    assert page.evaluate("_ae.speed") == 1 and abs(page.evaluate("_aeDisplayMs() - Date.now()")) < 10_000
+    assert page.evaluate("_almRate") == 1 and abs(page.evaluate("_aeDisplayMs() - Date.now()")) < 10_000
     # Go to lists it first among the planets.
     page.click("#ae-go-btn")
     assert page.evaluate("document.querySelector('#ae-go [data-ae-go=\"spin\"]').textContent") == "Side by side"

@@ -116,7 +116,7 @@ def open_view(pg, served):
         polling=200,
     )
     pg.evaluate(
-        "(ms) => { _almFocus = new Date(ms); _aeSetSpeed(1); _ae.dirty = true; _aeKick(); }",
+        "(ms) => { _almFocus = new Date(ms); _almClockSetRate(1); _ae.dirty = true; _aeKick(); }",
         WHEN_MS,
     )
     pg.evaluate("_aeTracksLoad()")

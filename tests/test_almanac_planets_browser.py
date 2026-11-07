@@ -1113,7 +1113,7 @@ def test_the_iss_stays_in_view_at_an_hour_a_second(served):
                 polling=200,
             )
             pg.evaluate(
-                "() => { var s = _ae.sats.list.filter(x => x.iss)[0]; _aeGoTo(s.epochMs + 30 * 86400000); _ae.speed = 3600; }"
+                "() => { var s = _ae.sats.list.filter(x => x.iss)[0]; _aeGoTo(s.epochMs + 30 * 86400000); _almClockSetRate(3600); }"
             )
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); var s = _ae.sats.list.filter(x => x.iss)[0]; return s.standing === 'approximate' && !!_ae.issPos; }",
@@ -1177,7 +1177,7 @@ def test_no_far_body_is_named_on_the_moon_close_up(served):
                     var els = Array.from(document.querySelectorAll('#ae-labels .ae-bm')).filter(e => !e.hidden);
                     var named = els.filter(e => { var b = e.querySelector('b'); return b && getComputedStyle(b).display !== 'none' && b.textContent; }).map(e => e.id.replace('ae-bm-', ''));
                     var moons = els.map(e => e.id.replace('ae-bm-', '')).filter(k => { var b = _aePlanetBody(k); return b && b.parent; });
-                    var tops = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'].map(id => document.getElementById(id)).filter(e => e && !e.hidden).map(e => e.getBoundingClientRect());
+                    var tops = ['ae-back', 'ae-gear', 'ae-locate', 'ae-mini'].map(id => document.getElementById(id)).filter(e => e && !e.hidden).map(e => e.getBoundingClientRect());
                     var under = Array.from(document.querySelectorAll('#ae-labels .ae-bm:not([hidden]) b, #ae-labels .ae-bm:not([hidden])')).filter(e => {
                       var r = e.getBoundingClientRect(); if (!r.width) return false;
                       return tops.some(t => r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top); }).map(e => e.textContent || e.id);
@@ -1938,7 +1938,7 @@ def test_the_minimap_is_always_there(served, width):
             pg.evaluate("_aeTracksLoad();")
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             clear = """() => { var m = document.getElementById('ae-mini').getBoundingClientRect();
-                return ['ae-back', 'ae-when-col', 'ae-now'].every(function (id) { var e = document.getElementById(id); if (!e || !e.offsetParent) return true;
+                return ['ae-back'].every(function (id) { var e = document.getElementById(id); if (!e || !e.offsetParent) return true;
                   var r = e.getBoundingClientRect(); return r.right <= m.left || r.left >= m.right || r.bottom <= m.top || r.top >= m.bottom; }); }"""
             shown = "() => { _ae.dirty = true; _aeKick(); return !document.getElementById('ae-mini').hidden; }"
             for k in ("earth", "sats", "moon", "jupiter", "io", "voyager1", "sun"):

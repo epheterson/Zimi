@@ -180,8 +180,12 @@ vm.runInContext(
   // The page's side of the clock: where it settles, recorded.
   'var _almSettled = []; function _almScrubSettle(d) { _almSettled.push(d.getTime()); _almFocus = d; }' +
   'function _almBackToToday() { _almSettled.push(null); _almFocus = null; } function _almHeroLiveStop() {}' +
-  'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S);
-for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_speedToSlider', '_formatSpeed',
+  // And the one clock's rate: recorded where the view asks for it, with the stops the page has.
+  'var _almRate = 1, _almRates = []; function _almClockSetRate(r) { _almRates.push(r); _almRate = r; }' +
+  'function _almClockHtml(v) { return "<div class=\\"alm-clock\\" data-v=\\"" + v + "\\"></div>"; } function _almClockPaint() {}' +
+  'function _almClockHaltRaf() {} function _almEdEnd() {} var _almClockStale = false, _almClockRunning = false;' +
+  'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S)
+for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays',
                   '_almanacTeardown', '_almVeilCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('app.js'), '_smoothstep'), S);
 // The shared angle and Moon-orientation helpers the view borrows from the
@@ -224,45 +228,33 @@ const run = (code) => vm.runInContext(code, S);
   {
     run('_ae = _aeNewState(document.createElement("div"));');
     // One clock: the Almanac's. Live, it is now.
-    check(Math.abs(run('_aeDisplayMs()') - Date.now()) < 5000 && run('_aeIsLive()') === true, 'live, the view shows now');
+    check(Math.abs(run('_aeDisplayMs()') - Date.now()) < 5000 && run('_aeFocusSet()') === false, 'live, the view shows now');
     S._almFocus = new Date(Date.UTC(2031, 4, 21, 12));
-    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the time machine, when set, is the view\'s clock');
-    check(run('_aeIsLive()') === false, 'under the time machine the view is not Live');
-    // The orrery's own clock (a ride to Mars moves it 259 days on) is not a
-    // second clock: the view shows the page's.
-    S._orreryTimeOffset = 259 * DAY;
-    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the orrery\'s ride does not move the view off the page\'s clock');
-    // A speed runs the page's clock: an hour a second for a second.
-    S._almFocus = null; S._orreryTimeOffset = 0; run('_almSettled = []; _ae.speed = 3600;');
-    run('_aeRunClock(3600 * 1000)');
-    check(S._almFocus && Math.abs(S._almFocus.getTime() - (Date.now() + 3600 * 1000)) < 5000 && run('_aeIsLive()') === false,
-      'an hour a second runs the page\'s clock an hour on');
-    const ran = S._almFocus.getTime();
-    run('_aeSetSpeed(1)');
-    check(run('_almSettled.length') === 1 && run('_almSettled[0]') === ran, 'back at real time the page lands on the moment it ran to');
-    run('_aeSetSpeed(1)');
-    check(run('_almSettled.length') === 1, 'and lands once');
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the page\'s moment, when set, is the view\'s clock');
+    check(run('_aeFocusSet()') === true, 'away from now the view knows it');
+    // The orrery's opening spin (or a ride to Mars moving it 259 days on) is not a second clock: the view shows the page's.
+    S._orrerySceneryMs = 259 * DAY;
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the orrery\'s own offset does not move the view off the page\'s clock');
+    S._orrerySceneryMs = 0;
+    // The view carries no speed of its own: it runs when the page's clock runs.
+    check(run('_aeClockRuns()') === false, 'a clock that is not running is not a running view');
+    S._almClockRunning = true;
+    check(run('_aeClockRuns()') === true, 'a running clock is a running view (its satellites stand as they do under a fast clock)');
+    S._almClockRunning = false;
+    // A jump (Go to, Next eclipse) lands the page on the moment and goes back to real pace.
+    run('_almSettled = []; _almRates = []; _ae.ringsAt = 5;');
+    run('_aeGoTo(' + Date.UTC(2032, 0, 1) + ')');
+    check(run('_almSettled[0]') === Date.UTC(2032, 0, 1) && run('_almRates[0]') === 1 && run('_ae.ringsAt') === null,
+      'a jump lands the page on the moment, at real pace, with the cached orbits dropped');
     // Now: the page and the orrery.
-    S._orreryTimeOffset = 259 * DAY;
+    run('_orreryRockets = [{ target: "Mars", elapsed: 5, duration: 10, _launchRealTime: 0 }]; _orreryAutoTransit = true;');
     run('_aeNow()');
-    check(S._almFocus === null && S._orreryTimeOffset === 0 && run('_aeIsLive()') === true, 'Now brings the page and the orrery back to now');
-    // The orrery spins fast from the start as scenery: opening the view from
-    // it leaves the page at now; a moment someone chose there (the slider, a
-    // ride) becomes the page's.
-    S._orreryTimeOffset = 40 * DAY; S._orreryClockChosen = false; run('_almSettled = [];');
-    run('_aeAdoptOrreryClock()');
-    check(S._almFocus === null && run('_aeIsLive()') === true, 'the orrery\'s own spin: the view opens at now, Live');
-    S._orreryClockChosen = true;
-    run('_aeAdoptOrreryClock()');
-    check(S._almFocus && Math.abs(S._almFocus.getTime() - (Date.now() + 40 * DAY)) < 5000 && run('_aeIsLive()') === false,
-      'a moment chosen on the orrery: the page and the view open there');
-    S._orreryClockChosen = false; S._almFocus = new Date(Date.UTC(2031, 4, 21, 12)); run('_almSettled = [];');
-    run('_aeAdoptOrreryClock()');
-    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12) && run('_almSettled.length') === 0, 'the time machine: the view opens at its moment');
-    S._almFocus = null; S._orreryTimeOffset = 0;
-    check(/function _orrerySliderInput\(val\) \{\s*_orreryClockChosen = true;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')) &&
-      /function _orrerySnapToNow\(\) \{[^}]*_orreryClockChosen = false;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
-      'the slider chooses a moment; Now lets it go');
+    check(S._almFocus === null && run('_orreryRockets.length') === 0 && run('_orreryAutoTransit') === false && run('_aeFocusSet()') === false,
+      'Now brings the page and the orrery (its rides) back to now');
+    check(/_almClockHtml\('foot'\)/.test(read('almanac-earth.js')) && !/data-ae-speed|_aeRunClock|_aeAdoptOrreryClock|_aeSetSpeed/.test(read('almanac-earth.js')),
+      'the view\'s foot is the shared clock; its chips, its own speed and its own run of the clock are gone');
+    check(/function _orreryClockTouched\(\) \{\s*_orreryScenery = false;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
+      'the first touch of the clock ends the orrery\'s opening spin');
     // One orrery loop: a second start took over nothing and ran beside the
     // first, and the Earth view's pause stopped only one of them.
     check(/if \(_almanacOrreryRAF\) cancelAnimationFrame\(_almanacOrreryRAF\);\s*_almanacOrreryRAF = requestAnimationFrame\(_orreryAnimate\);/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),

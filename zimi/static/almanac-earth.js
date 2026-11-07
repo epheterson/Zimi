@@ -433,8 +433,6 @@ var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
 var AE_LOCATE_TIMEOUT_MS = 15000;
-var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
-var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
 var AE_SELECTED_COLOR = [1.0, 0.62, 0.04];
@@ -508,7 +506,7 @@ var AE_CSS = [
   // opens (_aeHandApply), and the controls come up at the end.
   '.ae-view.ae-hand{background:transparent}',
   '.ae-top,.ae-bottom,.ae-status,.ae-labels{opacity:var(--ae-ui,1)}',
-  '.ae-view.ae-hand .ae-top>*,.ae-view.ae-hand .ae-row,.ae-view.ae-hand .ae-note{pointer-events:none}',
+  '.ae-view.ae-hand .ae-top>*,.ae-view.ae-hand .ae-row,.ae-view.ae-hand .ae-clock,.ae-view.ae-hand .ae-note{pointer-events:none}',
   '.ae-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;outline:none}',
   '.ae-canvas.ae-dragging{cursor:grabbing}',
   '.ae-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 16px 28px;background:linear-gradient(rgba(0,0,0,.6),transparent);pointer-events:none}',
@@ -523,16 +521,8 @@ var AE_CSS = [
   '.ae-btn[hidden]{display:none}',
   '.ae-back{color:var(--text);flex:0 0 auto}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
-  '.ae-when{text-align:end;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;line-height:1.35;min-width:0}',
-  '.ae-when b{display:block;font-size:13px;color:var(--text);font-weight:600}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
-  '.ae-when-col{display:flex;flex-direction:column;align-items:flex-end;gap:6px;min-width:0}',
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
-  '.ae-view.ae-away .ae-when b{color:var(--amber)}',
-  // Away from now, Now stands under the date: the eclipse line steps below it.
-  '.ae-view.ae-away .ae-status{top:96px}',
-  '.ae-btn.ae-now,.ae-btn.ae-now:focus-visible{color:#000;background:var(--amber);border-color:var(--amber);font-weight:600}',
-  '@media (hover:hover){.ae-btn.ae-now:hover{color:#000;background:var(--amber);filter:brightness(1.1)}}',
   '.ae-round{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
   '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',
   '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
@@ -558,7 +548,6 @@ var AE_CSS = [
   '.ae-set-hd{margin-top:4px;border-top:0;padding-top:0}',
   '.ae-set-hd b{color:var(--text);font-weight:600}',
   '.ae-set-sep{height:1px;margin:6px 4px;background:var(--border)}',
-  '.ae-live{color:#6ec56e}',
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:' + AE_AMBER_HEX + ';pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
@@ -649,7 +638,7 @@ var AE_CSS = [
   '.ae-label-shadow{color:#ffb4a0}',
   // Red night light (the Red theme, app.css): the labels' warm and cool tints are one red, the views' bright
   // overlays go black, and the globe is recoloured by the canvas filter.
-  '.night-red .ae-label,.night-red .ae-label-you,.night-red .ae-label-shadow,.night-red .ae-status,.night-red .ae-live{color:var(--text)}',
+  '.night-red .ae-label,.night-red .ae-label-you,.night-red .ae-label-shadow,.night-red .ae-status{color:var(--text)}',
   '.night-red .ae-btn,.night-red .ae-set,.night-red .ae-card{background:' + AE_PANEL_BG_RED + '}',
   '.night-red .ae-btn[aria-pressed="true"]{background:var(--amber-glow)}',
   '.night-red .ae-set-choice:hover{background:var(--amber-glow)}',
@@ -668,9 +657,10 @@ var AE_CSS = [
   '.ae-card p+p{margin-top:2px}',
   // A third of an upright phone at most: the card is read in a glance, the view stays the picture.
   '.ae-card{max-height:25vh;overflow-y:auto;overscroll-behavior:contain}',
-  // A card open on a phone: the time row steps aside (it comes back with the card's ×), so card and chips leave the view
-  // most of the screen.
-  '@media (max-width:500px){.ae-view.ae-carded #ae-time{display:none}}',
+  // The clock at the foot: the shared one (almanac.js _almClockHtml), on the view's dark. A card open on a phone sends it
+  // away (it comes back with the card's ×), so card and chips leave the view most of the screen.
+  '.ae-clock{width:100%;max-width:560px;pointer-events:auto}',
+  '@media (max-width:500px){.ae-view.ae-carded .ae-clock{display:none}}',
   '.ae-card .ae-card-note{color:var(--amber)}',
   // A body's facts: a sheet up from the foot on a phone, a panel down the right on a wide screen (the gear's panel and
   // the card stand in the same solid colour). Hidden by its transform and visibility, so it can slide.
@@ -913,10 +903,6 @@ function _aeBuildDom() {
   el.setAttribute('aria-label', _tp('Earth'));
   var gearLabel = _aeT('alm_earth_sat_setting');
   var locateLabel = _aeT('alm_earth_where_i_am');
-  var speeds = AE_SPEEDS.map(function (s, i) {
-    return '<button type="button" class="ae-btn" data-ae-speed="' + s + '" aria-pressed="' + (i === 0) + '">' +
-      _almEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
-  }).join('');
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
@@ -933,13 +919,6 @@ function _aeBuildDom() {
     '<div class="ae-top">' +
       '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> <span id="ae-back-text">' + _almEsc(_aeT('alm_solar_system')) + '</span></button>' +
       '<div class="ae-top-end">' +
-        // Now stands under the date it corrects, lit, whenever the view is
-        // away from now (after Next eclipse it sat at the end of a row of
-        // look-alike buttons, easy to miss).
-        '<div class="ae-when-col" id="ae-when-col">' +
-          '<div class="ae-when" id="ae-when"></div>' +
-          '<button type="button" class="ae-btn ae-now" id="ae-now" hidden>' + _almEsc(_aeT('alm_now')) + '</button>' +
-        '</div>' +
         // The round tools stand in a column, so the date keeps its one line.
         '<div class="ae-tools">' +
           '<button type="button" class="ae-btn ae-round ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
@@ -974,8 +953,7 @@ function _aeBuildDom() {
         '<button type="button" class="ae-btn ae-round" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
           _almEsc(_aeT('alm_go_to')) + '" title="' + _almEsc(_aeT('alm_go_to')) + '">' + AE_GO_SVG + '</button>' +
       '</div>' +
-      '<div class="ae-row" role="group" id="ae-time">' + speeds +
-      '</div>' +
+      '<div class="ae-clock" id="ae-clock">' + _almClockHtml('foot') + '</div>' +
       '<div class="ae-note">' +
         '<span id="ae-hd" hidden><span class="ae-ask-text" id="ae-hd-text"></span> <span id="ae-hd-act">' +
           '<button type="button" class="ae-fresh" id="ae-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button><span aria-hidden="true"> · </span>' +
@@ -2493,7 +2471,7 @@ var AE_SPIN_EARTH = {
   key: 'earth', eph: 'Earth', km: AE_EARTH_RADIUS_KM, flat: AE_EARTH_FLATTENING, mapUrl: AE_TEX_DAY,
   color: [0.29, 0.56, 0.85], atmo: [0.35, 0.55, 1], pole: [0, 90, 190.46061837, 360.98564736629]
 };
-var AE_SPIN_SPEED = AE_SPEEDS[AE_SPEEDS.length - 1];   // what the view starts at from real time: an hour a second
+var AE_SPIN_SPEED = 3600;                // what the view starts at from real time: an hour a second
 var AE_SPIN_ELEV_DEG = 20;               // the camera stands this far above every orbital plane
 var AE_SPIN_CAM_DIST = 20000;            // px: far enough that the perspective camera is, for a sphere, an orthographic one
 var AE_SPIN_SUN = [-0.35, 0.3, 0.89];    // the light, one for all, from the camera's side so the art shows whole
@@ -2764,10 +2742,10 @@ function _aeEnterSpin() {
   _ae.spin = { autoRun: false, prevFocus: null };
   // From real time the clock starts at an hour a second, or nothing would seem to turn (not under reduced motion); leaving
   // puts the date back.
-  if (_ae.speed === 1 && !_aeReduceMotion()) {
+  if (_almRate === 1 && !_aeReduceMotion()) {
     _ae.spin.prevFocus = _aeFocusSet() ? new Date(_almFocus) : null;
     _ae.spin.autoRun = true;
-    _aeSetSpeed(AE_SPIN_SPEED);
+    _almClockSetRate(AE_SPIN_SPEED);
   }
   _ae.el.classList.add('ae-spinning');
   _aeById('ae-spinrow').hidden = false;
@@ -2782,7 +2760,7 @@ function _aeLeaveSpin() {
   if (_ae.preset === AE_SPIN_KEY) _ae.preset = null;
   _ae.el.classList.remove('ae-spinning');
   _aeById('ae-spinrow').hidden = true;
-  if (s.autoRun && _ae.speed === AE_SPIN_SPEED) { if (s.prevFocus) _aeGoTo(s.prevFocus.getTime()); else _aeNow(); }
+  if (s.autoRun && _almRate === AE_SPIN_SPEED) { if (s.prevFocus) _aeGoTo(s.prevFocus.getTime()); else _aeNow(); }
   if (_ae.gl) _aeResize();
 }
 // ── Axes ──
@@ -3471,7 +3449,12 @@ function _aeBindInfo() {
 var AE_INFO_SHIFT_TAU_MS = 90, AE_INFO_SHIFT_SNAP_PX = 0.5, AE_INFO_SIDE_PANEL_PX = 760;
 function _aeInfoShiftTarget() {
   var el = _aeById('ae-info');
-  return _ae.info && el && _ae.w < AE_INFO_SIDE_PANEL_PX ? el.offsetHeight / 2 : 0;
+  return (_ae.info && el && _ae.w < AE_INFO_SIDE_PANEL_PX ? el.offsetHeight / 2 : 0) + _aeClockShift();
+}
+// The date and speed slider along the foot cover the picture's lowest part as well: the centre rides up by half their height.
+function _aeClockShift() {
+  var el = _aeById('ae-clock');
+  return el ? el.offsetHeight / 2 : 0;
 }
 // One frame of that glide; true while it still moves.
 function _aeStepInfoShift(dt) {
@@ -4037,7 +4020,6 @@ function _aeHdEvict(S) {
 function _aeNewState(el) {
   return {
     el: el, gl: null, loading: false, failed: false,
-    speed: 1, clockRan: false,            // the speed, and whether it ran the page's clock
     target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
     flightUp: null, flightOff: 0,         // up carried along a flight (_aeFlightUp)
     fly: null,                            // { start, from:{target pos, dist}, to }
@@ -4057,48 +4039,17 @@ function _aeNewState(el) {
 }
 
 // ── The clock ──
-// One clock: the Almanac's (almanac.js _almFocus, null for now). The hero
-// Moon, the header, the time machine and this view all read it; this view's
-// speeds and Next eclipse move it. Closing the view leaves the page at the
-// moment the view was showing, and scrubbing the page moves the view's Sun
-// and Moon in the same frame (_aeFollowClock).
+// One clock: the Almanac's (almanac.js _almFocus and _almRate, null for now). The hero Moon, the header, the pinned strip
+// and this view all read it, and this view's foot carries the same date and speed slider (_almClockHtml): there is no
+// speed of its own. The page's loop advances it (_almClockFrame), and draws this view in the same frame (_aeFollowClock).
 function _aeDisplayMs() {
   return (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
 }
 function _aeFocusSet() { return typeof _almFocus !== 'undefined' && !!_almFocus; }
-// Live: the clock is now, and running at its own pace.
-function _aeIsLive() { return !_aeFocusSet() && !!_ae && _ae.speed === 1; }
-// While a faster speed runs the clock, the page's clock text and cards
-// follow at this cadence (the view covers them; the settle makes them exact).
-var AE_PAGE_TICK_MS = 250;
-function _aeRunClock(dms) {
-  var next = new Date(_aeDisplayMs() + dms);
-  if (typeof _almClampInstant === 'function') next = _almClampInstant(next);
-  _almFocus = next;
-  _ae.clockRan = true;
-  if (typeof _almTravelThrottled !== 'function') return;
-  _almTravelThrottled('ae-page', AE_PAGE_TICK_MS, function () {
-    if (typeof _almScrubClock === 'function') _almScrubClock(next);
-    if (typeof _almLiveHeadCards === 'function') _almLiveHeadCards(next);
-  });
-}
-// The clock stopped running (back to real time, or the view closing): the
-// whole page lands on the moment, once, exactly.
-function _aeLandClock() {
-  if (!_ae || !_ae.clockRan) return;
-  _ae.clockRan = false;
-  _aeSettlePage(new Date(_aeDisplayMs()));
-  if (_aeIsOpen && !_ae.hand) _aePauseAlmanac();
-}
-// The orrery's own clock (its speed slider, a ride) becomes the page's when
-// the view opens on it, so the two never disagree.
-function _aeAdoptOrreryClock() {
-  if (_aeFocusSet() || typeof _orreryClockChosen === 'undefined' || !_orreryClockChosen) return;
-  if (typeof _orreryTimeOffset === 'undefined' || !_orreryTimeOffset) return;
-  _aeSettlePage(new Date(Date.now() + _orreryTimeOffset));
-}
-// The page's clock moved (a scrub step, the lever, a settle): this instant
-// is drawn now, in the same frame as the page, not at the next idle tick.
+// Whether the clock is running faster or slower than a second a second, or backwards: what a still view does not assume.
+function _aeClockRuns() { return typeof _almClockRunning !== 'undefined' && _almClockRunning; }
+// The page's clock moved (a run of it, a settle): this instant is drawn now, in the same frame as the page, not at the next
+// idle tick.
 function _aeFollowClock() {
   if (!_aeIsOpen || !_ae || !_ae.gl || _ae.clockBusy) return;
   _ae.dirty = true;
@@ -4969,7 +4920,7 @@ function _aeUpdateSats(ms, sc) {
   var issShown = false, selShown = false;
   for (var i = 0; i < sats.list.length; i++) {
     var s = sats.list[i];
-    var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _ae.speed > 1 || _ae.target === 'iss');
+    var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _aeClockRuns() || _ae.target === 'iss');
     s.standing = standing;
     if (standing === 'none') continue;
     if (s.iss) {
@@ -5405,6 +5356,7 @@ function _aeResize() {
   var foot = el.querySelector ? el.querySelector('.ae-bottom') : null;
   _ae.footPx = foot ? foot.offsetHeight : 0;
   _aeMeasureTop();
+  if (!_ae.infoShift) _ae.infoShift = _aeInfoShiftTarget();
   S.renderer.setSize(w, h, false);
   S.camera.aspect = w / h;
   S.camera.updateProjectionMatrix();
@@ -5545,7 +5497,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-back', 'ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -6039,22 +5991,11 @@ function _aeRenderAsk(dated) {
 // ── Text: the clock, the eclipse line, the data note ──
 function _aeRefreshText() { if (_aeIsOpen) _aeUpdateText(_aeDisplayMs()); }
 function _aeUpdateText(ms) {
-  var when = _aeById('ae-when');
-  var whenText = _aeFmtWhen(ms);
-  if (when) {
-    var whenHtml = '<b>' + _almEsc(whenText) + '</b>' +
-      (_aeIsLive() ? '<span class="ae-live">● ' + _almEsc(_aeT('alm_earth_live')) + '</span>' : '');
-    if (whenHtml !== _ae.whenHtml) { when.innerHTML = whenHtml; _ae.whenHtml = whenHtml; }
-  }
+  var whenText = _aeFmtWhen(ms);   // the view's aria line says the moment in words
   _aeShowMapHere();
   var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null;
   if (foot) _ae.footPx = foot.offsetHeight;   // the controls' height changes with their notes; marks keep above them
   _aeMeasureTop();
-  var nowBtn = _aeById('ae-now'), live = _aeIsLive();
-  if (nowBtn && nowBtn.hidden !== live) {
-    nowBtn.hidden = live;
-    _ae.el.classList.toggle('ae-away', !live);
-  }
   var sc = _ae.scene;
   var status = _aeById('ae-status');
   if (sc && status) {
@@ -6126,7 +6067,7 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1 || _ae.hand || fading);
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading);
 }
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
@@ -6153,7 +6094,6 @@ function _aeFrame() {
   var now = performance.now();
   var dt = _ae.lastTs ? Math.min(now - _ae.lastTs, 1000) : 0;
   _ae.lastTs = now;
-  if (_ae.speed > 1 && dt) _aeRunClock(dt * _ae.speed);
   var handDone = _aeStepHand(now);
   var shifting = _aeStepInfoShift(dt);
   var busy = _aeStepFly(now) || _aeBusy() || !!handDone || shifting;
@@ -6349,25 +6289,12 @@ function _aeBindKeys() {
   });
 }
 
-// A speed runs the page's clock (_aeRunClock); back at real time the page
-// lands on the moment it ran to.
-function _aeSetSpeed(speed) {
-  _ae.speed = speed;
-  var btns = document.querySelectorAll('#ae-time [data-ae-speed]');
-  for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(+btns[i].getAttribute('data-ae-speed') === speed));
-  if (speed === 1) _aeLandClock();
-  _ae.dirty = true;
-  _aeKick();
-}
-
-// After the clock jumps: this view's own run-up is spent, the cached orbits
-// belong to the old instant, and the Almanac's loops (its repaint restarts
-// them) stay paused under the view.
+// After the clock jumps: the cached orbits belong to the old instant, and the Almanac's loops (its repaint restarts
+// them) stay paused under the view. A jump to a place or an event is a jump at real pace: the clock goes back to it.
 function _aeJumped() {
-  _ae.clockRan = false;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
-  _aeSetSpeed(1);
+  if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
 }
 // The page lands on `date` (null: now). Under the view its hero needs no
 // sweep from the moment before: it is covered, and when the view closes the
@@ -6380,16 +6307,13 @@ function _aeSettlePage(date) {
 // Hand a new instant to the Almanac itself: the header, the calendar, the
 // orrery and this view all read the one clock.
 function _aeGoTo(ms) {
-  _ae.clockRan = false;
   _aeSettlePage(new Date(ms));
   _aeJumped();
 }
-// Now for everything the clock is made of: the time machine and the orrery
-// (its offset, its rides) go back to now with it.
+// Now for everything the clock is made of: the page, the orrery (its rides) and this view go back to now with it.
 function _aeNow() {
-  _ae.clockRan = false;
+  if (typeof _orreryClockReset === 'function') _orreryClockReset();
   _aeSettlePage(null);
-  if (typeof _orrerySnapToNow === 'function') _orrerySnapToNow();
   _aeJumped();
 }
 
@@ -6420,19 +6344,13 @@ function _aeBindControls() {
     _almDismissable('ae-go', function () { _aeShowGo(false); },
       function (target) { return !!target.closest && !!target.closest('#ae-go-btn'); }, 'ae-go-btn');
   }
-  var speeds = document.querySelectorAll('#ae-time [data-ae-speed]');
-  for (var j = 0; j < speeds.length; j++) {
-    speeds[j].onclick = function () {
-      if (_ae.spin) _ae.spin.autoRun = false;   // the person's own speed: leaving the view leaves the date where it ran to
-      _aeSetSpeed(+this.getAttribute('data-ae-speed'));
-    };
-  }
+  // The person's own speed (the foot's slider): leaving the Planets view leaves the date where it ran to.
+  _aeById('ae-clock').addEventListener('pointerdown', function () { if (_ae.spin) _ae.spin.autoRun = false; });
   _aeById('ae-spin-same').onclick = function () { _aeSpinSetSame(!_aeSpinSame()); };
   _aeById('ae-spin').onclick = function (e) {
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-spin]') : null;
     if (b) _aePreset(b.getAttribute('data-ae-spin'));   // a planet tapped: flown to
   };
-  _aeById('ae-now').onclick = _aeNow;
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
@@ -6790,7 +6708,6 @@ function _aeShow(fromHero) {
   _aeStepIn();
   // From the orrery, its chosen moment; from the hero or the sky, the moment
   // they show.
-  if (_aeFrom === 'orrery') _aeAdoptOrreryClock();
   _aeIsOpen = true;
   _ae.fromHero = fromHero;
   _ae.el.classList.add('open');
@@ -6798,8 +6715,7 @@ function _aeShow(fromHero) {
   _aeRenderCard();
   _aeShowSettings(false);
   _ae.freshFailed = false;
-  _ae.clockRan = false;
-  _aeSetSpeed(1);
+  _almClockPaint();
   _aePauseAlmanac();
   // Back goes where the view was opened from: the Almanac's page (the hero,
   // the sky) or its solar system (the orrery).
@@ -6831,7 +6747,6 @@ function _aeShow(fromHero) {
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   _aeLeaveSpin();
-  _aeLandClock();
   var frame = _ae.fromHero && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
   if (frame) _aeHandOut(frame);
@@ -6840,8 +6755,8 @@ function _aeClose() {
 function _aeFinishClose() {
   if (!_aeIsOpen) return;
   _aeLeaveSpin();
-  _aeLandClock();
   _aeIsOpen = false;
+  if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();
   if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
