@@ -281,3 +281,78 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
             ctx.close()
         finally:
             br.close()
+# Every drawn landmark's whole box on screen (the dot, the name, wherever the name runs), as the page lays it out.
+BOXES = """() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => {
+    var r = b.getBoundingClientRect(); return { n: b.textContent, x0: r.left, x1: r.right, y0: r.top, y1: r.bottom }; })"""
+# Views to try: each body whole, Mars turned to the Tharsis volcanoes (where Tempe Terra met Olympus Mons), the Moon
+# from its near side and low over Apollo 11.
+OVERLAP_VIEWS = [
+    "_aePreset('mars')",
+    "_aePreset('mars'); var b = _aeLmBodies().filter(x => x.key === 'mars')[0], a = _aeAzElOf(_aeLmDir(b, 18.6, -133.8)); _ae.az = a.az; _ae.el_ = a.el",
+    "_aePreset('moon')",
+    "_aePreset('earth')",
+    "_aePreset('venus')",
+    "_aeLmFly('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0])",
+]
+
+
+def test_no_two_landmark_labels_overlap(served):
+    """Mars, the Moon and the Earth at a phone's size: with Landmarks on, no drawn label's box meets another's."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(
+                viewport=VIEW,
+                device_scale_factor=2,
+                has_touch=True,
+                is_mobile=True,
+                service_workers="block",
+            )
+            ctx.add_init_script(
+                "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+                % (PLACE, PLACE)
+            )
+            pg = ctx.new_page()
+            pg.goto(served + "/#almanac", wait_until="load")
+            pg.wait_for_function(
+                "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+                timeout=120_000,
+            )
+            pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+            pg.wait_for_function(
+                "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly",
+                timeout=READY_MS,
+                polling=200,
+            )
+            pg.evaluate(
+                "window._almReduceMotion = function () { return true; }; _aeLmLoad()"
+            )
+            pg.wait_for_function("() => !!_aeLm", timeout=60_000, polling=200)
+            pg.evaluate("_aeLmSetLayer(true)")
+            for view in OVERLAP_VIEWS:
+                pg.evaluate("() => { " + view + "; _ae.dirty = true; _aeKick(); }")
+                pg.wait_for_function(
+                    "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && ("
+                    + LABELS
+                    + ")().length > 1; }",
+                    timeout=60_000,
+                    polling=250,
+                )
+                for _ in range(4):
+                    pg.evaluate("_ae.dirty = true; _aeKick()")
+                    pg.wait_for_timeout(300)
+                boxes = pg.evaluate(BOXES)
+                for i, a in enumerate(boxes):
+                    for b in boxes[i + 1 :]:
+                        meets = (
+                            a["x0"] < b["x1"]
+                            and b["x0"] < a["x1"]
+                            and a["y0"] < b["y1"]
+                            and b["y0"] < a["y1"]
+                        )
+                        assert not meets, (view, a, b)
+            ctx.close()
+        finally:
+            br.close()

@@ -3197,7 +3197,8 @@ var AE_LM_URL = '/static/earth/landmarks-v1.json';
 var AE_LM_MAX = 18;
 var AE_LM_MIN_PX = 28;
 var AE_LM_LANDING_MIN_R_PX = 80;
-var AE_LM_APART_X = 96, AE_LM_APART_Y = 22;   // labels nearer than this to a placed one wait for a closer view
+var AE_LM_BOX_H = 26;                        // a label's box is this tall (its padding and line), centred on its dot
+var AE_LM_PAD_X = 26, AE_LM_FONT_PX = 11;   // its padding either side of the name (.ae-lm), and the name's size
 var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
 var AE_LM_EDGE_PX = 8;                       // a name keeps this clear of the screen's right edge
 var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
@@ -3269,6 +3270,24 @@ function _aeLmQuietRows(body, chosen) {
   if (chosen && chosen.body === body && rows.indexOf(chosen.row) < 0) rows.push(chosen.row);
   return rows.length ? rows : null;
 }
+// A label's box on screen: the dot and the name's whole width, which runs to the right of the dot or, when it would run off
+// the right edge, to the left. A label whose box meets a placed label's box waits for a closer view.
+var _aeLmCtx = null, _aeLmWidths = {};
+function _aeLmTextW(text) {
+  if (_aeLmWidths[text] === undefined) {
+    if (!_aeLmCtx) {
+      _aeLmCtx = document.createElement('canvas').getContext('2d');
+      _aeLmCtx.font = AE_LM_FONT_PX + 'px ' + getComputedStyle(_aeById('ae-lms')).fontFamily;
+    }
+    _aeLmWidths[text] = _aeLmCtx.measureText(text).width;
+  }
+  return _aeLmWidths[text];
+}
+function _aeLmBox(c) {
+  var w = AE_LM_PAD_X + _aeLmTextW(c.row[0]), left = c.s.x - AE_LM_DOT_X + w > _ae.w - AE_LM_EDGE_PX;
+  var x0 = left ? c.s.x + AE_LM_DOT_X - w : c.s.x - AE_LM_DOT_X;
+  return { x0: x0, x1: x0 + w, y0: c.s.y - AE_LM_BOX_H / 2, y1: c.s.y + AE_LM_BOX_H / 2, left: left };
+}
 function _aeUpdateLandmarks() {
   var host = _aeById('ae-lms');
   if (!host) return;
@@ -3297,8 +3316,8 @@ function _aeUpdateLandmarks() {
     });
     cands.sort(function (a, c) { return c.pri - a.pri; });
     for (var k = 0; k < cands.length && placed.length < AE_LM_MAX; k++) {
-      var c = cands[k];
-      if (placed.some(function (q) { return Math.abs(q.s.x - c.s.x) < AE_LM_APART_X && Math.abs(q.s.y - c.s.y) < AE_LM_APART_Y; })) continue;
+      var c = cands[k], bx = c.box = _aeLmBox(c);
+      if (placed.some(function (q) { return bx.x0 < q.box.x1 && q.box.x0 < bx.x1 && bx.y0 < q.box.y1 && q.box.y0 < bx.y1; })) continue;
       placed.push(c);
     }
   } else if (_ae.target === 'moon' || (_aeLmLayerOn() && (_ae.target === 'earth' || _aeIsPlanet(_ae.target)))) _aeLmLoad();   // at the Moon its names come with it (the Landings chip works first time); with Landmarks on, at any body
@@ -3317,7 +3336,7 @@ function _aeUpdateLandmarks() {
     _aeSetText(el, c2.row[0]);
     el.classList.toggle('ae-lm-landing', c2.row[3] === 'landing');
     // A name that would run off the right edge reads to the left of its dot.
-    var left = c2.s.x - AE_LM_DOT_X + el.offsetWidth > _ae.w - AE_LM_EDGE_PX;
+    var left = c2.box.left;
     el.classList.toggle('ae-lm-left', left);
     el.style.transform = left ? 'translate(' + Math.round(c2.s.x + AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translate(-100%,-50%)' :
       'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
