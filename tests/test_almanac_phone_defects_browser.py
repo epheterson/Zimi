@@ -253,6 +253,8 @@ def test_the_hero_is_the_picture_of_the_moon_and_nothing_stands_in_for_it(browse
     (it once showed only a shadow), and there is no pull-back through the solar system."""
     ctx, pg, errors = _page(browser, served, query="?rest=system")
     try:
+        # The 3D view is made ready when the Moon is touched, not behind the page.
+        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=READY_MS,
@@ -693,6 +695,8 @@ def test_opening_look_makes_no_second_three_and_no_texture_error(browser, served
     msgs = []
     pg.on("console", lambda m: msgs.append(m.text))
     try:
+        # The 3D view is made ready when the Moon is touched, not behind the page.
+        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=READY_MS,

@@ -109,6 +109,8 @@ def _almanac(browser, served, reduced=False, init=None):
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
+    # The 3D view is made ready when the Moon is touched, not behind the page.
+    pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
     pg.wait_for_function(
         "() => typeof _aeReady === 'function' && _aeReady()",
         timeout=60000,
@@ -331,6 +333,8 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
+        # The 3D view is made ready when the Moon is touched, not behind the page.
+        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=60000,

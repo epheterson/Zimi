@@ -178,9 +178,10 @@ vm.runInContext(
   'function _tp(n) { return n; } function _cancelAllRAF() {} function _setWindowTitle() {}' +
   // The page's side of the clock: where it settles, recorded.
   'var _almSettled = []; function _almScrubSettle(d) { _almSettled.push(d.getTime()); _almFocus = d; }' +
-  'function _almBackToToday() { _almSettled.push(null); _almFocus = null; } function _almHeroLiveStop() {}', S);
+  'function _almBackToToday() { _almSettled.push(null); _almFocus = null; } function _almHeroLiveStop() {}' +
+  'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S);
 for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_speedToSlider', '_formatSpeed',
-                  '_almanacTeardown', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
+                  '_almanacTeardown', '_almVeilCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('app.js'), '_smoothstep'), S);
 // The shared angle and Moon-orientation helpers the view borrows from the
 // Almanac's other files (one global scope in the browser).
