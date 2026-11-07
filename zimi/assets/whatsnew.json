@@ -1,4 +1,9 @@
 {
+ "1.15.0": {
+  "zimi_games": [
+   "ZimiGames: over 100 offline games and 38 of Simon Tatham's puzzles, with learn-more links into your library."
+  ]
+ },
  "1.15.2": {
   "zimi_games": [
    "Games feel like one app: the same New game sheet, controls and touch sizes everywhere, an accessible grid on every board, and games in Zimi's search.",

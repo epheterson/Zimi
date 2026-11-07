@@ -73,8 +73,9 @@ def release_body(changelog, version, repo_url=REPO_URL):
     if not highlights:
         return "\n".join(body).strip() or "Release v%s" % version
     link = "%s/blob/v%s/CHANGELOG.md#%s" % (repo_url, version, heading_anchor(heading))
-    # An issue the highlights already name is not listed twice.
-    fixed = [l for l in _issue_lines(body) if l not in highlights.splitlines()]
+    # An issue the highlights already name is not listed twice, however the changelog words its line.
+    named = set(ISSUE_REF.findall(highlights))
+    fixed = [l for l in _issue_lines(body) if not set(ISSUE_REF.findall(l)) <= named]
     if fixed:
         highlights += "\n\n**Fixed**\n\n" + "\n".join(fixed)
     return "%s\n\n[Full changelog for v%s](%s)" % (highlights, version, link)

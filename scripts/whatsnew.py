@@ -15,13 +15,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 OUT = os.path.join(ROOT, "zimi", "assets", "whatsnew.json")
 
-# Which own ZIM a highlight's label is about.
+# Which own ZIM a highlight's label is about. A label is about the first one it fits, so Sky Detective (a game that
+# studies the Almanac's sky) is not the Almanac's.
 OWN_LABELS = {
-    "zimi_games": ("games", "zimcity", "daily games"),
+    "zimi_games": ("games", "zimcity", "daily games", "sky detective"),
     "zimi_almanac": ("almanac", "tides", "sky"),
 }
 _RELEASE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]")
-_HIGHLIGHT = re.compile(r"^- \*\*([^*]+?):\*\*\s*(.+)$")
+# "- **Label:** text", or the plain "- Label: text" the 1.15.0 highlights are written in.
+_HIGHLIGHT = re.compile(r"^- (?:\*\*([^*]+?):\*\*|([^*:]{1,40}):)\s*(.+)$")
 
 
 def build(text):
@@ -37,10 +39,17 @@ def build(text):
         h = _HIGHLIGHT.match(line) if version and in_highlights else None
         if not h:
             continue
-        label, rest = h.group(1).strip(), h.group(2).strip()
-        for own, words in OWN_LABELS.items():
-            if any(w in label.lower() for w in words):
-                out.setdefault(version, {}).setdefault(own, []).append(label + ": " + rest)
+        label, rest = (h.group(1) or h.group(2)).strip(), h.group(3).strip()
+        own = next(
+            (
+                o
+                for o, words in OWN_LABELS.items()
+                if any(w in label.lower() for w in words)
+            ),
+            None,
+        )
+        if own:
+            out.setdefault(version, {}).setdefault(own, []).append(label + ": " + rest)
     return out
 
 
