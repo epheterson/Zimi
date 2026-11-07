@@ -174,6 +174,28 @@ def build_openapi():
                                         "largest: how one was picked). Optional."
                                     ),
                                 },
+                                "places": {
+                                    "type": "array",
+                                    "description": (
+                                        "Places on the installed maps, one group per "
+                                        "map (a near: search lists the towns around "
+                                        "the starting place, nearest first within "
+                                        "each map). Optional."
+                                    ),
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "zim": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "main_path": {"type": "string"},
+                                            "unit": {"type": "string"},
+                                            "places": {
+                                                "type": "array",
+                                                "items": {"type": "object"},
+                                            },
+                                        },
+                                    },
+                                },
                                 "unsearched": {
                                     "type": "array",
                                     "items": {"type": "string"},

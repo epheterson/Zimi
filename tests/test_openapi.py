@@ -82,6 +82,11 @@ class TestOpenAPISpec(unittest.TestCase):
         self.assertEqual(props["did_you_mean"]["type"], "string")
         self.assertIn("detected_language", props)
         self.assertEqual(props["detected_language"]["type"], "string")
+        # A near: search answers with map groups under "places".
+        self.assertEqual(props["places"]["type"], "array")
+        self.assertEqual(
+            props["places"]["items"]["properties"]["places"]["type"], "array"
+        )
 
     def test_list_documents_recency_fields(self):
         # The /list 200 body advertises the additive first_seen/updated_at
