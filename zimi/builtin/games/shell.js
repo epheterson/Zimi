@@ -703,7 +703,7 @@
       });
       card.appendChild(row);
     }
-    el = api.el = h('div', { class: 'ar-sheet' }, [card]);
+    el = api.el = h('div', { class: 'ar-sheet' + (opts.end ? ' gs-end' : '') }, [card]);
     el.addEventListener('pointerdown', function (e) { if (e.target === el) api.close(); });
     sheetKeys(el, card, api.close, !!opts.guard);
     d.body.appendChild(el);
@@ -768,6 +768,19 @@
   // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
   var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
   function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }
+  // Where the stamp lands: in the free space under what the page shows, never on it; with no such space, in the bar's height.
+  var STAMP_PX = 84, STAMP_ROOM_PX = 132;
+  function stampSpot(overlay) {
+    var at = overlay.querySelector('.gs-m-at'), H = root.innerHeight || 0, base = overlay.getBoundingClientRect().top, bottom = 0, y;
+    Array.prototype.forEach.call(d.body.querySelectorAll('*'), function (e) {
+      if (e.children.length || e.closest('.gs-moment, .ar-sheet, .gs-rest, .ar-bar, script, style')) return;
+      var r = e.getBoundingClientRect(), cs = root.getComputedStyle(e);
+      if (!r.width || !r.height || cs.position === 'fixed' || cs.visibility === 'hidden') return;
+      if (r.bottom <= H - STAMP_PX / 2) bottom = Math.max(bottom, r.bottom);
+    });
+    y = H - bottom >= STAMP_ROOM_PX ? bottom + (H - bottom) / 2 : base / 2;
+    if (at) at.style.top = Math.round(y - base) + 'px';
+  }
   function momentNode() {
     var kids = [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })], i, a, r;
     for (i = 0; i < SCATTER; i++) {
@@ -1058,8 +1071,22 @@
     var nav = root.navigator || {}, label = btn ? btn.textContent : '';
     var told = function (key) { if (!btn) return; btn.textContent = T(key); root.setTimeout(function () { btn.textContent = label; }, COPIED_MS); };
     var coarse = root.matchMedia && root.matchMedia('(pointer: coarse)').matches;
-    if (coarse && nav.share) return nav.share({ text: text }).catch(function () { /* the person closed the share sheet */ });
-    try { nav.clipboard.writeText(text).then(function () { told('shell.copied'); }, function () { told('shell.copyFail'); }); } catch (e) { told('shell.copyFail'); }
+    // The clipboard first, then a hidden field and the old copy command (a frame without the clipboard permission has no other way).
+    var copy = function () {
+      var fall = function () {
+        var ok = false, box = d && d.createElement && d.createElement('textarea');
+        try {
+          if (box && d.body) { box.value = text; box.setAttribute('readonly', ''); box.style.cssText = 'position:fixed;opacity:0;top:0'; d.body.appendChild(box); box.select(); ok = !!d.execCommand('copy'); box.remove(); }
+        } catch (e) { ok = false; }
+        told(ok ? 'shell.copied' : 'shell.copyFail');
+      };
+      try { nav.clipboard.writeText(text).then(function () { told('shell.copied'); }, fall); } catch (e) { fall(); }
+    };
+    // A page in a frame may not be allowed the system's share sheet: then it copies, and the button says so (silence was the failure).
+    if (coarse && nav.share) {
+      try { return nav.share({ text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); /* the person closing the share sheet is not a failure */ }); } catch (e) { return copy(); }
+    }
+    copy();
   };
   // The daily's line to paste: the game and the date, the result as a square (or the game's own squares) with its chips, the streak.
   // Nothing in it gives the day's answer away.
@@ -1076,6 +1103,11 @@
     var n = streakOf(readStats(), day, PAGE);
     if (n > 1) lines.push(T('daily.streak', { n: n }));
     return lines.join('\n');
+  }
+  // The daily's streak, in the end sheet of every daily the same way (a game that keeps its own streak chip says `ownStreak`).
+  function streakLine(day) {
+    var n = streakOf(readStats(), day);
+    return n ? h('p', { class: 'gs-daily-streak', text: T('daily.streakLabel') + ': ' + T('daily.streakDays', { n: n }) }) : null;
   }
   function shareRow(day, result, chips) {
     var btn = h('button', { class: 'ar-btn gs-share', type: 'button', text: T('daily.shareIt') });
@@ -1125,7 +1157,7 @@
   Shell.endSheet = function (opts) {
     countResult(opts.result || 'over');
     var daily = roundDaily();
-    if (daily) opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([shareRow(daily, opts.result, opts.stats || [])]) });
+    if (daily) opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([opts.ownStreak ? null : streakLine(daily), shareRow(daily, opts.result, opts.stats || [])]).filter(Boolean) });
     syncBest(PAGE);   // the game has kept its own best by the time it ends; the board's shape follows it
     if (Shell.hasBoard() && signedIn()) {
       var boardBtn = h('button', { class: 'gs-person-change gs-board-open', type: 'button', text: T('board.open') });
@@ -1147,7 +1179,7 @@
       if (shown) return;
       shown = true; release(); clearRest();
       var started = false, api = Shell.sheet({
-        title: title, text: opts.text, guard: true,
+        title: title, text: opts.text, guard: true, end: true,
         onClose: function () { if (!started) showRest(title, label, newGame); if (opts.onClose) opts.onClose(); },
         body: (chips.length ? [h('div', { class: 'gs-chips' }, chips)] : []).concat(opts.extra || []),
         actions: [{ label: T('shell.close') }, { label: label, primary: true, keep: true, onclick: function () { started = true; api.close(); newGame(); } }]
@@ -1161,7 +1193,7 @@
     haptic(opts.result);
     if (beat) {
       // The moment lands in the last stretch before the sheet; a game that took longer on its own flourish has finished by then.
-      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
+      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); stampSpot(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
     }
     // A tap or key anywhere skips the beat (the sheet is up at once); a tap on the bar (Menu, Back) is the player doing something else.
     var armedAt = Date.now();
