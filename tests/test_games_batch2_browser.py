@@ -173,3 +173,21 @@ def test_mahjong_uses_the_phone_screen(browser, served):
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1")
     shot(page, "05-mahjong-390")
     c.close()
+
+
+# 6. Dominoes: the round-end sheet is bottom-anchored like the other end sheets and never covers the chain.
+def test_dominoes_round_sheet_sits_at_the_bottom(browser, served):
+    c, page = open_game(browser, served, "dominoes")
+    page.wait_for_selector(".dm-tile, .dm-card", state="attached")
+    if page.locator(".ar-sheet .gs-primary").count():
+        page.locator(".ar-sheet .gs-primary").first.click()   # the setup sheet's Play
+        page.wait_for_function("() => !document.querySelector('.ar-sheet')")
+    page.evaluate("() => { const st = __dm.state(); st.hands[1] = []; __dm.endRound(); }")
+    visible(page, ".ar-sheet-card", 4000)
+    card = page.locator(".ar-sheet-card").first.bounding_box()
+    assert page.locator(".ar-sheet.gs-end").count() == 1
+    assert card["y"] + card["height"] >= VIEW["height"] - 40, card
+    chain = page.evaluate("() => Math.max(0, ...[...document.querySelectorAll('.dm-chain .dm-tile, #dm-chain .dm-tile')].map(t => t.getBoundingClientRect().bottom))")
+    assert card["y"] >= chain, (card, chain)
+    shot(page, "06-dominoes-round")
+    c.close()
