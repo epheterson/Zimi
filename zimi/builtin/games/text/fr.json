@@ -6131,5 +6131,7 @@
  "shogi.hint.move": "Déplacez {piece} de {from} à {to}",
  "shogi.hint.take": "Déplacez {piece} de {from} à {to} et prenez",
  "shogi.hint.promote": "{move} et promouvez",
- "ludo.rollsAgain": "{name} rejoue."
+ "ludo.rollsAgain": "{name} rejoue.",
+ "hex.rules.you": "Reliez les deux bords {color}s avant que Zimi relie les {other}s.",
+ "hex.rules.two": "Chacun relie ses deux bords, rouge et bleu. La première chaîne l’emporte."
 }

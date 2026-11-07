@@ -212,8 +212,14 @@
     btns.forEach(function (bt, j) { bt.setAttribute('aria-label', T('go.pt', { pt: coord(j), what: T(b[j] === 1 ? 'hex.cell.red' : b[j] === 2 ? 'hex.cell.blue' : 'go.pt.empty') })); bt.setAttribute('aria-disabled', (!open || b[j]) ? 'true' : 'false'); });
     var names = [nameOf(0), nameOf(1)];
     score(names, null, G.over ? -1 : state.turn);
+    paintRules();
     swapBtn.hidden = !(swapAsk() && isHuman(state.turn) && !G.over);
     G.setUndo(history.size() > 0); G.setHint(open);
+  }
+  // One line of the rules, in terms of the coloured edges drawn round the board: which two are yours.
+  function paintRules() {
+    var mine = isHuman(0) ? 0 : 1, color = function (c) { return T(c === 0 ? 'hex.cell.red' : 'hex.cell.blue'); };
+    document.getElementById('hx-rules').textContent = G.vsComputer() ? T('hex.rules.you', { color: color(mine), other: color(1 - mine) }) : T('hex.rules.two');
   }
   // The second player may still take over the first move.
   function swapAsk() { return G.settings.swap && moves === 1 && !swapDone && !G.over; }

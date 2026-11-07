@@ -23,15 +23,38 @@ from games_wait import (
     truthy,
     visible,
 )  # noqa: E402,F401
-from test_games_persist_browser import (
-    GAMES as SHIPPED_GAMES,
-    VIEW,
-    browser,
-)  # noqa: E402,F401
+from playwright.sync_api import sync_playwright  # noqa: E402
+from test_games_persist_browser import GAMES as SHIPPED_GAMES, VIEW  # noqa: E402
 
 GAMES = (
     os.environ.get("GAMES_ROOT") or SHIPPED_GAMES
 )  # GAMES_ROOT: the games folder of another commit, to see a test fail there
+
+
+@pytest.fixture(scope="module")
+def _playwright():
+    with sync_playwright() as p:
+        yield p
+
+
+@pytest.fixture(scope="module")
+def browser(_playwright):
+    try:
+        b = _playwright.chromium.launch()
+    except Exception as e:
+        pytest.skip("Chromium is not installed: %s" % e)
+    yield b
+    b.close()
+
+
+@pytest.fixture(scope="module")
+def webkit_browser(_playwright):
+    try:
+        b = _playwright.webkit.launch()
+    except Exception as e:
+        pytest.skip("WebKit is not installed: %s" % e)
+    yield b
+    b.close()
 
 
 @pytest.fixture(scope="module")
@@ -218,19 +241,12 @@ def test_carrom_you_swatch_is_your_coins(browser, served, side, coin):
     c.close()
 
 
-def test_carrom_slider_tracks_show_in_dark(served):
+def test_carrom_slider_tracks_show_in_dark(served, webkit_browser):
     """In WebKit (the phone's engine) the browser's own track is the page's colour on a dark page."""
     import io
 
     Image = pytest.importorskip("PIL.Image")
-    sync_api = pytest.importorskip("playwright.sync_api")
-    with sync_api.sync_playwright() as p:
-        try:
-            wk = p.webkit.launch()
-        except Exception as e:
-            pytest.skip("WebKit is not installed: %s" % e)
-        _slider_tracks(wk, served, Image, io)
-        wk.close()
+    _slider_tracks(webkit_browser, served, Image, io)
 
 
 def _slider_tracks(browser, served, Image, io):
@@ -537,6 +553,8 @@ def test_ludo_die_label_follows_the_roll(browser, served):
         page.get_attribute("#ld-die", "aria-label") == "Die showing 3"
     ), page.get_attribute("#ld-die", "aria-label")
     c.close()
+
+
 # 11. Ur: the pieces that can move (outlined) and the squares they can go to (filled) do not look alike.
 def test_ur_movable_pieces_and_destinations_look_different(browser, served):
     c, page = open_game(browser, served, "ur.html", "?debug")
@@ -562,12 +580,10 @@ def test_ur_movable_pieces_and_destinations_look_different(browser, served):
     assert not set(look["src"]) & set(look["dst"]), look
     shot(page, "11-ur-moves")
     c.close()
+
+
 # 12a. Inside Zimi the header holds Hnefatafl's whole name (it was cut to "Hnefat..." once the other buttons arrived).
-from test_games_final_fixes import (
-    _open as _zimi_open,
-    browser as webkit_browser,
-    zimi,
-)  # noqa: E402,F401
+from test_games_final_fixes import _open as _zimi_open, zimi  # noqa: E402,F401
 
 TITLE_FITS = """() => { const e = document.getElementById('game-title'), r = document.createRange(); r.selectNodeContents(e);
   const cs = getComputedStyle(e), pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
@@ -583,9 +599,16 @@ def test_hnefatafl_title_fits_in_zimis_header(zimi, webkit_browser):  # noqa: F8
     )
     page.wait_for_timeout(1500)  # the header's other buttons arrive after the first fit
     name, scroll, client, size = page.evaluate(TITLE_FITS)
-    assert scroll <= client + 0.02, (name, scroll, client, size)   # the text against the room inside the padding
+    assert scroll <= client + 0.02, (
+        name,
+        scroll,
+        client,
+        size,
+    )  # the text against the room inside the padding
     shot(page, "12-hnefatafl-header")
     ctx.close()
+
+
 # 12b. A drawn game says "Draw" once: the reason that follows does not start with "A draw:" again.
 @pytest.mark.parametrize(
     "name,hook,result",
@@ -607,3 +630,35 @@ def test_draw_is_said_once(browser, served, name, hook, result):
     assert status.lower().count("draw") == 1, status
     shot(page, "12-draw-" + name)
     c.close()
+
+
+# 12c. Hex says which edges are yours, and Zimi's header keeps the undo arrow the right way round in a right-to-left language.
+def test_hex_has_a_rules_line_about_your_edges(browser, served):
+    c, page = open_game(browser, served, "hex.html")
+    page.wait_for_selector("#hx-rules:not(:empty)")
+    assert (
+        page.inner_text("#hx-rules")
+        == "Link the two red edges before Zimi links the blue ones."
+    )
+    shot(page, "12-hex-rules")
+    c.close()
+
+
+def test_undo_arrow_is_not_mirrored_in_arabic(zimi, webkit_browser):  # noqa: F811
+    ctx = webkit_browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True)
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_ui_lang', 'ar'); } catch (e) {}"
+    )
+    page = ctx.new_page()
+    page.goto(zimi["url"] + "/?a=zimi_games%2Fhex.html")
+    page.wait_for_function(
+        "() => document.documentElement.dir === 'rtl' && document.body.classList.contains('game-page')",
+        timeout=60000,
+    )
+    page.wait_for_selector("#game-act-btn:not([hidden])", timeout=30000)
+    transform = page.evaluate(
+        "getComputedStyle(document.querySelector('#game-act-btn svg')).transform"
+    )
+    assert transform in ("none", "matrix(1, 0, 0, 1, 0, 0)"), transform
+    shot(page, "12-undo-arabic")
+    ctx.close()

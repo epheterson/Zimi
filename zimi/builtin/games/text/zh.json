@@ -5873,5 +5873,7 @@
  "shogi.hint.move": "把{piece}从 {from} 走到 {to}",
  "shogi.hint.take": "把{piece}从 {from} 走到 {to}，吃子",
  "shogi.hint.promote": "{move}，并成",
- "ludo.rollsAgain": "{name}再掷一次。"
+ "ludo.rollsAgain": "{name}再掷一次。",
+ "hex.rules.you": "赶在 Zimi 连通{other}边之前，连通两条{color}边。",
+ "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。"
 }

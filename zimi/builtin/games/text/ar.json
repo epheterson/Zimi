@@ -6519,5 +6519,7 @@
  "shogi.hint.move": "حرّك {piece} من {from} إلى {to}",
  "shogi.hint.take": "حرّك {piece} من {from} إلى {to} مع الأسر",
  "shogi.hint.promote": "{move} مع الترقية",
- "ludo.rollsAgain": "{name} يرمي مرة أخرى."
+ "ludo.rollsAgain": "{name} يرمي مرة أخرى.",
+ "hex.rules.you": "صِل الحافتين بلون {color} قبل أن يصل Zimi الحافتين بلون {other}.",
+ "hex.rules.two": "يصل كل لاعب حافتيه، الحمراء والزرقاء. تفوز أول سلسلة."
 }

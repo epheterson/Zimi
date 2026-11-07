@@ -465,7 +465,7 @@
      Plain text, not a box: nothing here can be typed into. */
   .game-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; margin-inline-start: 4px; }
   .game-head[hidden] { display: none; }
-  [dir=rtl] #game-act-btn[data-kind=undo] svg { transform: scaleX(-1); }
+  /* The undo arrow is not mirrored in a right-to-left language: turned round it is the redo arrow. */
   .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }

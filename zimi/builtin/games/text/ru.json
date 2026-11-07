@@ -6263,5 +6263,7 @@
  "shogi.hint.move": "Передвиньте {piece} с {from} на {to}",
  "shogi.hint.take": "Передвиньте {piece} с {from} на {to} со взятием",
  "shogi.hint.promote": "{move} с превращением",
- "ludo.rollsAgain": "{name} бросает снова."
+ "ludo.rollsAgain": "{name} бросает снова.",
+ "hex.rules.you": "Соедините два своих края ({color}) раньше, чем Zimi соединит свои ({other}).",
+ "hex.rules.two": "Каждый соединяет свои два края, красный и синий. Побеждает первая цепочка."
 }

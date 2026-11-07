@@ -6003,5 +6003,7 @@
  "shogi.hint.move": "Move a {piece} from {from} to {to}",
  "shogi.hint.take": "Move a {piece} from {from} to {to} and take",
  "shogi.hint.promote": "{move} and promote",
- "ludo.rollsAgain": "{name} rolls again."
+ "ludo.rollsAgain": "{name} rolls again.",
+ "hex.rules.you": "Link the two {color} edges before Zimi links the {other} ones.",
+ "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins."
 }

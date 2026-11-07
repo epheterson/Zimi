@@ -3375,6 +3375,8 @@
  "hex.cell.red": "red",
  "hex.chain": "The chain links both sides.",
  "hex.hint": "Hint: try the outlined cell.",
+ "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins.",
+ "hex.rules.you": "Link the two {color} edges before Zimi links the {other} ones.",
  "hex.side.blue": "Blue (second)",
  "hex.side.red": "Red (first)",
  "hex.swap": "Swap rule: the second player may take over the first move",

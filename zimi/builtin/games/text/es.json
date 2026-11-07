@@ -6131,5 +6131,7 @@
  "shogi.hint.move": "Mueve {piece} de {from} a {to}",
  "shogi.hint.take": "Mueve {piece} de {from} a {to} y captura",
  "shogi.hint.promote": "{move} y promociona",
- "ludo.rollsAgain": "{name} tira otra vez."
+ "ludo.rollsAgain": "{name} tira otra vez.",
+ "hex.rules.you": "Une los dos bordes de color {color} antes de que Zimi una los de color {other}.",
+ "hex.rules.two": "Cada jugador une sus dos bordes, rojo y azul. Gana la primera cadena."
 }

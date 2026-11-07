@@ -6133,5 +6133,7 @@
  "shogi.hint.move": "הזיזו {piece} מ־{from} אל {to}",
  "shogi.hint.take": "הזיזו {piece} מ־{from} אל {to} ואכלו",
  "shogi.hint.promote": "{move} וקדמו",
- "ludo.rollsAgain": "{name} זורק שוב."
+ "ludo.rollsAgain": "{name} זורק שוב.",
+ "hex.rules.you": "חברו את שני הצדדים בצבע {color} לפני ש־Zimi יחבר את אלה בצבע {other}.",
+ "hex.rules.two": "כל שחקן מחבר את שני הצדדים שלו, אדום וכחול. השרשרת הראשונה מנצחת."
 }

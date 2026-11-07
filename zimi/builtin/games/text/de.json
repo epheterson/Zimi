@@ -6003,5 +6003,7 @@
  "shogi.hint.move": "Ziehe {piece} von {from} nach {to}",
  "shogi.hint.take": "Ziehe {piece} von {from} nach {to} und schlage",
  "shogi.hint.promote": "{move} und befördere",
- "ludo.rollsAgain": "{name} würfelt noch einmal."
+ "ludo.rollsAgain": "{name} würfelt noch einmal.",
+ "hex.rules.you": "Verbinde deine beiden Ränder ({color}), bevor Zimi seine ({other}) verbindet.",
+ "hex.rules.two": "Jeder verbindet seine zwei Ränder, rot und blau. Wer zuerst eine Kette schafft, gewinnt."
 }

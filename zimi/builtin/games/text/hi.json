@@ -6003,5 +6003,7 @@
  "shogi.hint.move": "{piece} को {from} से {to} पर चलाएँ",
  "shogi.hint.take": "{piece} को {from} से {to} पर चलाएँ और पकड़ें",
  "shogi.hint.promote": "{move} और पदोन्नत करें",
- "ludo.rollsAgain": "{name} फिर से पासा फेंकता है।"
+ "ludo.rollsAgain": "{name} फिर से पासा फेंकता है।",
+ "hex.rules.you": "Zimi के {other} किनारे जोड़ने से पहले आप दोनों {color} किनारे जोड़ें।",
+ "hex.rules.two": "हर खिलाड़ी अपने दो किनारे जोड़ता है, लाल और नीला। पहली श्रृंखला जीतती है।"
 }
