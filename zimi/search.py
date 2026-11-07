@@ -270,7 +270,7 @@ def _snippet_thumbnail(archive, zim, path, text):
 def result_snippet(zim, path):
     """{"snippet", "thumbnail"?} for a result card, or None when the ZIM is not
     there (or not this user's). Read once, then kept."""
-    from zimi.previews import lead_text
+    from zimi.previews import article_position, lead_text
 
     _ensure_server_refs()
     key = (zim, path)
@@ -294,6 +294,9 @@ def result_snippet(zim, path):
                 thumb = _snippet_thumbnail(archive, zim, path, text)
                 if thumb:
                     out["thumbnail"] = thumb
+                at = article_position(text)
+                if at:
+                    out["position"] = {"lat": at[0], "lng": at[1]}
         except Exception:
             pass
     with _snippet_cache_lock:
