@@ -861,12 +861,13 @@ def test_a_complaint_is_said_only_when_the_census_supports_it(browser, site):
 
 
 def test_a_plant_over_a_road_says_the_road_is_in_the_way(browser, site):
-    """A 4 x 4 footprint centred on a finger just below a road overlaps it: the line names the road, not "Bulldoze"."""
+    """A 4 x 4 footprint with roads all round it, too many to move aside, overlaps one: the line names the road, not "Bulldoze"."""
     pg = phone(browser, site)
     box = pg.evaluate(CLEAR)
     y = box["top"] + box["h"] * 0.55
     pg.evaluate("""(y) => import('./zimcity-tools.js').then((T) => { const z = window.__zimcity, v = z.view, r = v.canvas.getBoundingClientRect(), t = v.tileAt(v.w / 2, y - r.top);
-      T.build(z.city, 'road', [[t.x - 4, t.y - 1]].concat(T.steps([t.x - 4, t.y - 1], [t.x + 4, t.y - 1]))); })""", y)
+      z.city.sim.budget.totalFunds = 100000;
+      for (let dy = -6; dy <= 6; dy++) T.build(z.city, 'road', [[t.x - 6, t.y + dy]].concat(T.steps([t.x - 6, t.y + dy], [t.x + 6, t.y + dy]))); })""", y)
     hold_more(pg, "Coal plant")
     touch(pg, "touchStart", [(box["w"] / 2, y)])
     assert pg.text_content("#cy-held") == "In the way: Road"

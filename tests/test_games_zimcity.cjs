@@ -74,6 +74,16 @@ function seeded(seed, fn) {
   const onRoad = Tools.trial(cy, 'residential', [[25, 24]]);
   Tools.drop(cy, 'residential');
   check(!onRoad.ok && onRoad.why === 'clear', 'a zone over the road is "bulldoze it first" (' + onRoad.why + ')');
+  // Aimed with a fingertip beside the road, a footprint that lands on the road moves to the nearest place it fits, flush
+  // against the road; one that fits where it was aimed, and one with nowhere to go, stay put.
+  const flush = Tools.nudge(cy, 'residential', [[25, 25]]);
+  check(flush.length === 1 && flush[0].join() === '25,26', 'a home aimed one tile under the road lands flush under it (' + flush.join('|') + ')');
+  check(Tools.nudge(cy, 'residential', [[25, 30]])[0].join() === '25,30', 'a home that fits where it was aimed does not move');
+  check(Tools.nudge(cy, 'residential', [[25, 25], [28, 25]]).map((p) => p.join()).join('|') === '25,26|28,26', 'a row moves together');
+  const plantAt = Tools.nudge(cy, 'coal', [[26, 26]]);
+  check(Tools.trial(cy, 'coal', plantAt).ok && plantAt[0][1] >= 26, 'a plant aimed over the road lands where it fits (' + plantAt.join('|') + ')');
+  Tools.drop(cy, 'coal');
+  check(Tools.nudge(cy, 'road', [[25, 25]])[0].join() === '25,25', 'a drawn tool is never moved');
   cy.sim.budget.totalFunds = 2000;
   const plant = Tools.build(cy, 'coal', [[22, 30]]);
   check(!plant.ok && plant.why === 'money' && plant.short === 1000 && cy.sim.budget.totalFunds === 2000, 'a $3,000 plant with $2,000 is short by $1,000 and not built');

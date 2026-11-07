@@ -330,9 +330,11 @@ function ghostOf(r) {
   }
   return g;
 }
+// A building lands where it fits nearest the finger (see Tools.nudge); a drawn stroke goes exactly where it was drawn.
+function aimed(tiles) { return Tools.isDrawn(held) ? tiles : Tools.nudge(city, held, tiles); }
 function onStroke(tile, done) {
   if (!held || !city) return;
-  var tiles = strokeTiles(tile);
+  var tiles = aimed(strokeTiles(tile));
   if (!done) {
     var r = Tools.trial(city, held, tiles);
     Tools.drop(city, held);
@@ -358,7 +360,7 @@ function onStroke(tile, done) {
 }
 function onHover(tile) {
   if (!held || Tools.isDrawn(held) || !tile) { if (!stroke) view.ghost = null; return; }
-  var r = Tools.trial(city, held, [[tile.x, tile.y]]);
+  var r = Tools.trial(city, held, aimed([[tile.x, tile.y]]));
   Tools.drop(city, held);
   view.ghost = ghostOf(r);
 }
