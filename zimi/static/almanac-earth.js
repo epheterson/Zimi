@@ -3235,7 +3235,9 @@ function _aeRenderArrivalCard(card) {
 // the library. Nothing is repeated that the view already knows: radii, poles, turning rates, orbits and the year are the
 // view's own constants, where it is now comes from the ephemeris for the shown date, and what only a table can say
 // (mass, gravity, escape velocity, temperatures, counts) is AE_BODY_FACTS: NASA's NSSDC Planetary, Sun, Moon, Pluto and
-// Satellite Fact Sheets and Solar System Exploration's moon counts (2025), public domain. Every number the sheet shows is
+// Satellite Fact Sheets (read 2026-11-06: planetary sheet updated 2025-03-18, Galilean sheet 2016-04-18, Moon 2024-01-11) and
+// NASA Science's moon pages for Jupiter 115, Saturn 293 and Uranus 29 (as of August to September 2026; the planetary sheet's
+// own 95, 274 and 28 are older), Neptune 16, Pluto 5, Mars 2. Public domain. Every number the sheet shows is
 // listed, with its source, in the Almanac's Constants (the Bodies and Axes pages: almanac-tables.js), and
 // tests/test_almanac_bodyinfo_browser.py fails when the sheet shows one the pages do not.
 // Fields: mass kg, gravity m/s2, escape km/s, solarDayH hours noon to noon, periKm/apoKm closest and farthest from the
@@ -3246,18 +3248,18 @@ var AE_BODY_FACTS = {
   mercury: { moons: 0, mass: 3.301e23, gravity: 3.7, escape: 4.3, solarDayH: 4222.6, periKm: 46000000, apoKm: 69800000, tempC: 167, atmo: 'exo' },
   venus: { moons: 0, mass: 4.867e24, gravity: 8.9, escape: 10.4, solarDayH: 2802, periKm: 107500000, apoKm: 108900000, tempC: 464, atmo: 'thick_co2' },
   earth: { mass: 5.972e24, gravity: 9.8, escape: 11.2, solarDayH: 24, periKm: 147100000, apoKm: 152100000, tempC: 15, moons: 1, atmo: 'air' },
-  moon: { mass: 7.346e22, gravity: 1.62, escape: 2.38, solarDayH: 708.7, periKm: 363300, apoKm: 405500, tilt: 6.68, atmo: 'exo' },
+  moon: { mass: 7.346e22, gravity: 1.62, escape: 2.38, solarDayH: 708.7, periKm: 363300, apoKm: 405500, tilt: 6.68, tempC: -20, atmo: 'exo' },
   mars: { mass: 6.417e23, gravity: 3.7, escape: 5, solarDayH: 24.7, periKm: 206700000, apoKm: 249300000, tempC: -65, moons: 2, atmo: 'thin_co2' },
-  jupiter: { mass: 1.898e27, gravity: 23.1, escape: 59.5, periKm: 740600000, apoKm: 816400000, tempC: -110, moons: 95, atmo: 'h2he' },
-  saturn: { mass: 5.683e26, gravity: 9, escape: 35.5, periKm: 1357600000, apoKm: 1506500000, tempC: -140, moons: 274, atmo: 'h2he' },
+  jupiter: { mass: 1.898e27, gravity: 23.1, escape: 59.5, periKm: 740600000, apoKm: 816400000, tempC: -110, moons: 115, atmo: 'h2he' },
+  saturn: { mass: 5.683e26, gravity: 9, escape: 35.5, periKm: 1357600000, apoKm: 1506500000, tempC: -140, moons: 293, atmo: 'h2he' },
   uranus: { mass: 8.681e25, gravity: 8.7, escape: 21.3, periKm: 2732700000, apoKm: 3001400000, tempC: -195, moons: 29, atmo: 'h2he_ch4', found: { by: 'William Herschel', year: 1781 } },
   neptune: { mass: 1.024e26, gravity: 11, escape: 23.5, periKm: 4471100000, apoKm: 4558900000, tempC: -200, moons: 16, atmo: 'h2he_ch4', found: { by: 'Le Verrier, Galle', year: 1846 } },
   pluto: { mass: 1.303e22, gravity: 0.7, escape: 1.3, periKm: 4435800000, apoKm: 7304300000, tempC: -225, moons: 5, tilt: 122.5, yearDays: 90560, atmo: 'thin_n2', found: { by: 'Clyde Tombaugh', year: 1930 } },
   ceres: { mass: 9.38e20, gravity: 0.27, escape: 0.51, periKm: 381400000, apoKm: 445800000, tempC: -105, tilt: 4, yearDays: 1680.5, atmo: 'exo', found: { by: 'Giuseppe Piazzi', year: 1801 } },
-  io: { mass: 8.932e22, gravity: 1.8, escape: 2.56, atmo: 'thin_so2', found: { by: 'Galileo Galilei', year: 1610 } },
-  europa: { mass: 4.8e22, gravity: 1.31, escape: 2.02, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
-  ganymede: { mass: 1.482e23, gravity: 1.43, escape: 2.74, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
-  callisto: { mass: 1.076e23, gravity: 1.24, escape: 2.44, atmo: 'thin_co2', found: { by: 'Galileo Galilei', year: 1610 } },
+  io: { mass: 8.932e22, gravity: 1.8, escape: 2.56, tempC: -155, atmo: 'thin_so2', found: { by: 'Galileo Galilei', year: 1610 } },
+  europa: { mass: 4.8e22, gravity: 1.31, escape: 2.02, tempC: -170, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
+  ganymede: { mass: 1.482e23, gravity: 1.43, escape: 2.74, tempC: -160, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
+  callisto: { mass: 1.076e23, gravity: 1.24, escape: 2.44, tempC: -155, atmo: 'thin_co2', found: { by: 'Galileo Galilei', year: 1610 } },
   titan: { mass: 1.345e23, gravity: 1.35, escape: 2.64, tempC: -179, atmo: 'thick_n2', found: { by: 'Christiaan Huygens', year: 1655 } }
 };
 var AE_KM_PER_MILE = 1.609344, AE_G0 = 9.80665, AE_EARTH_MASS_KG = 5.9722e24;
@@ -3464,6 +3466,22 @@ function _aeBindInfo() {
     _aeCloseInfo(false);
   }, true);
 }
+// The sheet on a phone covers the foot of the picture: while it is up the view's centre rides up by half its height
+// (smoothly, and back when it goes), at any zoom. A side panel on a wide screen covers no centre, so nothing moves.
+var AE_INFO_SHIFT_TAU_MS = 90, AE_INFO_SHIFT_SNAP_PX = 0.5, AE_INFO_SIDE_PANEL_PX = 760;
+function _aeInfoShiftTarget() {
+  var el = _aeById('ae-info');
+  return _ae.info && el && _ae.w < AE_INFO_SIDE_PANEL_PX ? el.offsetHeight / 2 : 0;
+}
+// One frame of that glide; true while it still moves.
+function _aeStepInfoShift(dt) {
+  var to = _aeInfoShiftTarget(), from = _ae.infoShift || 0;
+  if (from === to) return false;
+  var next = Math.abs(to - from) < AE_INFO_SHIFT_SNAP_PX || _aeReduceMotion() ? to : from + (to - from) * Math.min(1, dt / AE_INFO_SHIFT_TAU_MS);
+  _ae.infoShift = next;
+  _ae.dirty = true;
+  return next !== to;
+}
 function _aeOpenInfo(k) {
   if (!_aeHasFacts(k)) return;
   var el = _aeById('ae-info');
@@ -3473,6 +3491,8 @@ function _aeOpenInfo(k) {
   if (_ae.setOpen) _aeShowSettings(false);
   _aeRenderInfo();
   el.classList.add('in');
+  _ae.dirty = true;
+  _aeKick();
   var x = _aeById('ae-info-x');
   if (x) x.focus({ preventScroll: true });
 }
@@ -3481,6 +3501,8 @@ function _aeCloseInfo(refocus) {
   if (!_ae || !_ae.info) return;
   _ae.info = null;
   if (el) el.classList.remove('in');
+  _ae.dirty = true;
+  _aeKick();
   var back = _ae.infoFrom;
   _ae.infoFrom = null;
   if (refocus && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
@@ -3500,7 +3522,7 @@ function _aeSyncInfo() {
 // a need the pages do not list.
 var AE_REF_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres',
   'io', 'europa', 'ganymede', 'callisto', 'titan'];
-var AE_REF_SRC_FACTS = 'NASA fact sheet', AE_REF_SRC_POLE = 'IAU WGCCRE 2015';
+var AE_REF_SRC_FACTS = 'NASA fact sheet', AE_REF_SRC_MOONCOUNT = 'NASA Science, read 2026-11-06', AE_REF_SRC_POLE = 'IAU WGCCRE 2015';
 var AE_REF_SRC_ELEMENTS = 'JPL (Standish) mean motion', AE_REF_SRC_MOONS = 'JPL Horizons fit';
 function _aeRefMass(kg) { var e = Math.floor(Math.log10(kg)); return (kg / Math.pow(10, e)).toFixed(3) + ' × 10^' + e; }
 function _aeRefName(k, nameKey) { return _aeInfoName(k) + ' · ' + _aeT(nameKey); }
@@ -3549,7 +3571,7 @@ function _aeRefBodiesRows() {
     else if (b.eph && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) add(k, 'orbit_period', 'tb_kn_orbit_period', _aeYearDays(b.eph), 'd', AE_REF_SRC_ELEMENTS);
     else if (f.yearDays) add(k, 'orbit_period', 'tb_kn_orbit_period', f.yearDays, 'd', AE_REF_SRC_FACTS);
     if (typeof f.tempC === 'number') add(k, 'temp', 'alm_bi_temp', f.tempC, '°C', AE_REF_SRC_FACTS);
-    if (typeof f.moons === 'number') add(k, 'moons', 'alm_bi_moons', f.moons, '', AE_REF_SRC_FACTS);
+    if (typeof f.moons === 'number') add(k, 'moons', 'alm_bi_moons', f.moons, '', k === 'earth' || k === 'mars' ? AE_REF_SRC_FACTS : AE_REF_SRC_MOONCOUNT);
     if (f.atmo) add(k, 'atmo', 'alm_bi_atmo', _aeT('alm_bi_atmo_' + f.atmo), '', AE_REF_SRC_FACTS);
     if (f.found) add(k, 'found', 'alm_bi_found', _aeT('alm_bi_found_by', { by: f.found.by, year: f.found.year }), '', 'IAU Minor Planet Center');
   });
@@ -4524,7 +4546,9 @@ function _aePlaceCamera() {
     cam.setViewOffset(f.w, f.h, -f.x, -f.y, _ae.w, _ae.h);
   } else {
     cam.aspect = _ae.w && _ae.h ? _ae.w / _ae.h : cam.aspect;
-    if (cam.view) cam.clearViewOffset();
+    // A bottom sheet over the picture: the view's centre moves up by half of it, so the body stands in what is left above.
+    if (_ae.infoShift && _ae.w && _ae.h) cam.setViewOffset(_ae.w, _ae.h, 0, _ae.infoShift, _ae.w, _ae.h);
+    else if (cam.view) cam.clearViewOffset();
   }
   // Near plane from the nearest surface, so the Earth's limb never clips
   // and depth precision stays where the eye is.
@@ -6131,7 +6155,8 @@ function _aeFrame() {
   _ae.lastTs = now;
   if (_ae.speed > 1 && dt) _aeRunClock(dt * _ae.speed);
   var handDone = _aeStepHand(now);
-  var busy = _aeStepFly(now) || _aeBusy() || !!handDone;
+  var shifting = _aeStepInfoShift(dt);
+  var busy = _aeStepFly(now) || _aeBusy() || !!handDone || shifting;
   _aeDraw(now, busy);
   if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
   // The last frame of a swap is drawn; what follows it (the page covered,

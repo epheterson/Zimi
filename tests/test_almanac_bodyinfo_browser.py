@@ -446,3 +446,19 @@ def test_the_iss_label_is_only_its_name(page):
     rows = sheet(page, "iss")
     if rows:   # the shipped orbital snapshot has put the station in view
         assert "data" in rows and "Orbital" not in rows["data"] and re.search(r"\d{4}", rows["data"]), rows
+
+
+def test_the_body_is_framed_above_the_sheet(page):
+    """On a phone the view's centre rides up by half the sheet, so the body is not under it; it comes back on close."""
+    page.evaluate("_aeCloseInfo(false); localStorage.setItem('zimi_ae_orbits', 'always'); _aePreset('jupiter')")
+    page.wait_for_function("() => !_ae.fly && !!document.querySelector('#ae-card-facts') && _ae.infoShift === 0", timeout=60_000, polling=100)
+    centre = "() => { _aeUpdate(_aeDisplayMs()); return _aeProject(_aeBodyPos('jupiter')).y; }"
+    before = page.evaluate(centre)
+    page.click("#ae-card-facts")
+    page.wait_for_function("() => _ae.infoShift > 0 && Math.abs(_ae.infoShift - _aeInfoShiftTarget()) < 0.6", timeout=20_000, polling=100)
+    top = page.evaluate("document.querySelector('#ae-info').getBoundingClientRect().top")
+    after = page.evaluate(centre)
+    assert after < before - 100 and after < top, (before, after, top)
+    page.evaluate("_aeCloseInfo(false)")
+    page.wait_for_function("() => _ae.infoShift === 0", timeout=20_000, polling=100)
+    assert page.evaluate(centre) == pytest.approx(before, abs=1)
