@@ -268,3 +268,18 @@ def test_bricks_launches_on_the_first_tap_and_the_paddle_clears_the_thumb(browse
     assert page.evaluate("() => __bricks.g.ball.stuck") is False
     shot(page, "10-bricks-launched")
     c.close()
+
+
+# 11. Memory: a touch leaves no amber ring on the face-down card it last tapped (the sticky :hover of a touch screen).
+def test_memory_touch_leaves_no_ring_on_a_face_down_card(browser, served):
+    c, page = open_game(browser, served, "memory", lang="es")
+    ids = page.evaluate("() => __memory.g.cards.map(c => c.id)")
+    other = next(i for i in range(1, len(ids)) if ids[i] != ids[0])
+    cards = page.locator(".mm-card")
+    cards.nth(0).tap()
+    cards.nth(other).tap()
+    page.wait_for_function("() => [...document.querySelectorAll('.mm-card')].every(b => b.dataset.up === 'false')", timeout=5000)
+    colors = page.evaluate("() => [...document.querySelectorAll('.mm-card')].map(b => getComputedStyle(b.querySelector('.mm-back')).borderTopColor)")
+    assert len(set(colors)) == 1, colors
+    shot(page, "11-memory-after-miss")
+    c.close()
