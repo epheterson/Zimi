@@ -67,3 +67,25 @@ def test_checkers_names_the_side_with_no_move(browser, served, turn, man, expect
     assert ("You won" in text) == (turn == 2), text
     shot(page, "01-checkers-" + ("won" if turn == 2 else "lost"))
     c.close()
+
+
+# 13. Inside Zimi the maker's mark lies 12px in from the bottom-right corner; a sheet's rounded corner let it peek out.
+HOST_PAGE = '<!doctype html><style>body{margin:0}</style><iframe id="reader-frame" src="%s" style="width:390px;height:844px;border:0"></iframe>'
+
+
+@pytest.mark.parametrize("game", ["reversi", "hearts"])
+def test_no_mark_peeks_from_under_a_sheet(browser, served, game):
+    c = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True, device_scale_factor=2, reduced_motion="reduce")
+    page = c.new_page()
+    page.route(served + "/_host.html", lambda r: r.fulfill(body=HOST_PAGE % ("%s.html" % game), content_type="text/html"))
+    page.goto(served + "/_host.html")
+    frame = page.frame_locator("#reader-frame")
+    frame.locator("html.gs-hosted.gs-ready").wait_for(state="attached", timeout=30000)
+    mark = "(() => { const t = document.querySelector('.zc-table'); return parseFloat(getComputedStyle(t || document.body, '::before').opacity); })()"
+    f = [x for x in page.frames if x != page.main_frame][0]
+    assert f.evaluate(mark) == 1, "the mark is on the table before the sheet"
+    f.evaluate("ZimiShell.endSheet({ result: 'lose', text: 'x' })")
+    f.wait_for_selector(".ar-sheet-card", timeout=5000)
+    assert f.evaluate(mark) == 0, "the mark is hidden while a sheet is up"
+    shot(page, "13-sheet-corner-" + game)
+    c.close()
