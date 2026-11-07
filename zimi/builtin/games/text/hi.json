@@ -5525,9 +5525,17 @@
  "stats.kinds": "अलग-अलग खेल",
  "stats.most": "सबसे ज़्यादा खेले",
  "stats.notYet": "{name}, अभी नहीं",
- "stats.playedWon": "{n} खेले · {w} जीते",
+ "stats.played": {
+  "one": "{n} खेला",
+  "other": "{n} खेले"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "आँकड़े",
  "stats.wins": "जीत",
+ "stats.wonCount": {
+  "one": "{n} जीता",
+  "other": "{n} जीते"
+ },
  "sudoku.bestRow": "सबसे अच्छा समय, {level}",
  "sudoku.board": "सुडोकू बोर्ड",
  "sudoku.cell": "पंक्ति {row}, स्तंभ {col}, {what}",

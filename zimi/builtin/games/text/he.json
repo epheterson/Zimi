@@ -5627,9 +5627,19 @@
  "stats.kinds": "משחקים שונים",
  "stats.most": "שוחקו הכי הרבה",
  "stats.notYet": "{name}, עדיין לא",
- "stats.playedWon": "{n} שוחקו · {w} נוצחו",
+ "stats.played": {
+  "one": "שוחק {n}",
+  "two": "{n} שוחקו",
+  "other": "{n} שוחקו"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "סטטיסטיקה",
  "stats.wins": "ניצחונות",
+ "stats.wonCount": {
+  "one": "נוצח {n}",
+  "two": "{n} נוצחו",
+  "other": "{n} נוצחו"
+ },
  "sudoku.bestRow": "הזמן הטוב ביותר, {level}",
  "sudoku.board": "לוח סודוקו",
  "sudoku.cell": "שורה {row}, עמודה {col}, {what}",

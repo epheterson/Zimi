@@ -5423,9 +5423,15 @@
  "stats.kinds": "不同的游戏",
  "stats.most": "最常玩",
  "stats.notYet": "{name}，尚未达成",
- "stats.playedWon": "玩了 {n} 局 · 赢了 {w} 局",
+ "stats.played": {
+  "other": "玩了 {n} 局"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "统计",
  "stats.wins": "胜局",
+ "stats.wonCount": {
+  "other": "赢了 {n} 局"
+ },
  "sudoku.bestRow": "最佳用时，{level}",
  "sudoku.board": "数独盘面",
  "sudoku.cell": "第 {row} 行，第 {col} 列，{what}",

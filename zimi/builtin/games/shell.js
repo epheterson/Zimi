@@ -1138,7 +1138,7 @@
     var lines = [[T('daily.streakLabel'), T('daily.streakDays', { n: t.streak })], [T('stats.best'), T('daily.streakDays', { n: t.best })],
       [T('stats.dailies'), F(t.dailies)], [T('stats.finished'), F(t.finished)], [T('stats.wins'), F(t.wins)], [T('stats.kinds'), F(t.kinds)]];
     var most = Object.keys(all.g).sort(function (a, b) { return all.g[b].n - all.g[a].n; }).slice(0, STATS_TOP_GAMES)
-      .map(function (p) { return [pageName(p), T('stats.playedWon', { n: F(all.g[p].n), w: F(all.g[p].w) })]; });
+      .map(function (p) { return [pageName(p), T('stats.playedWon', { played: T('stats.played', { n: all.g[p].n }), won: T('stats.wonCount', { n: all.g[p].w }) })]; });   // numbers, not text: each count picks its own plural form
     var earned = h('ul', { class: 'gs-earned' }, ACHIEVEMENTS.map(function (a) {
       var got = t.earned.indexOf(a[0]) >= 0, name = T('stats.a.' + a[0]);
       return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '–' }), h('span', { 'aria-hidden': 'true', text: name })]);

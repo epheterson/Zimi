@@ -5729,9 +5729,21 @@
  "stats.kinds": "Разных игр",
  "stats.most": "Чаще всего",
  "stats.notYet": "{name}, пока нет",
- "stats.playedWon": "сыграно {n} · побед {w}",
+ "stats.played": {
+  "one": "сыграно {n}",
+  "few": "сыграно {n}",
+  "many": "сыграно {n}",
+  "other": "сыграно {n}"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "Статистика",
  "stats.wins": "Победы",
+ "stats.wonCount": {
+  "one": "побед {n}",
+  "few": "побед {n}",
+  "many": "побед {n}",
+  "other": "побед {n}"
+ },
  "sudoku.bestRow": "Лучшее время, {level}",
  "sudoku.board": "Поле судоку",
  "sudoku.cell": "Строка {row}, столбец {col}, {what}",

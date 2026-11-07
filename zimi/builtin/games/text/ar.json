@@ -5931,9 +5931,23 @@
  "stats.kinds": "ألعاب مختلفة",
  "stats.most": "الأكثر لعبًا",
  "stats.notYet": "{name}، ليس بعد",
- "stats.playedWon": "لُعبت {n} · فاز {w}",
+ "stats.played": {
+  "one": "لُعبت مرة واحدة",
+  "two": "لُعبت مرتين",
+  "few": "لُعبت {n} مرات",
+  "many": "لُعبت {n} مرة",
+  "other": "لُعبت {n} مرة"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "الإحصاءات",
  "stats.wins": "الانتصارات",
+ "stats.wonCount": {
+  "one": "فاز مرة واحدة",
+  "two": "فاز مرتين",
+  "few": "فاز {n} مرات",
+  "many": "فاز {n} مرة",
+  "other": "فاز {n} مرة"
+ },
  "sudoku.bestRow": "أفضل وقت، {level}",
  "sudoku.board": "لوحة سودوكو",
  "sudoku.cell": "الصف {row}، العمود {col}، {what}",

@@ -429,7 +429,8 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-box-lid .ar-game-icon { padding: 4px; }
 .ar-box-label { display: block; padding: 6px 2px 2px; }
 .ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
-.ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A name wraps onto more lines before it is cut ("Crucigrama mini", "Cinco letras"), and only after three (a narrow box under another) does it end in dots. */
+.ar-box-label strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 13px; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */

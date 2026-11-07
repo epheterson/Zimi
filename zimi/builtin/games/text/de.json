@@ -5525,9 +5525,17 @@
  "stats.kinds": "Verschiedene Spiele",
  "stats.most": "Am meisten gespielt",
  "stats.notYet": "{name}, noch nicht",
- "stats.playedWon": "{n} gespielt · {w} gewonnen",
+ "stats.played": {
+  "one": "{n} gespielt",
+  "other": "{n} gespielt"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "Statistik",
  "stats.wins": "Siege",
+ "stats.wonCount": {
+  "one": "{n} gewonnen",
+  "other": "{n} gewonnen"
+ },
  "sudoku.bestRow": "Bestzeit, {level}",
  "sudoku.board": "Sudoku-Brett",
  "sudoku.cell": "Zeile {row}, Spalte {col}, {what}",

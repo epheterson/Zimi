@@ -5625,9 +5625,19 @@
  "stats.kinds": "Juegos distintos",
  "stats.most": "Los más jugados",
  "stats.notYet": "{name}, todavía no",
- "stats.playedWon": "{n} jugadas · {w} ganadas",
+ "stats.played": {
+  "one": "{n} jugada",
+  "many": "{n} de jugadas",
+  "other": "{n} jugadas"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "Estadísticas",
  "stats.wins": "Victorias",
+ "stats.wonCount": {
+  "one": "{n} ganada",
+  "many": "{n} de ganadas",
+  "other": "{n} ganadas"
+ },
  "sudoku.bestRow": "Mejor tiempo, {level}",
  "sudoku.board": "Tablero de sudoku",
  "sudoku.cell": "Fila {row}, columna {col}, {what}",

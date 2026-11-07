@@ -5561,11 +5561,19 @@
  "stats.most": "Most played",
  "stats.noName": "Your name on the boards:",
  "stats.notYet": "{name}, not yet",
- "stats.playedWon": "{n} played · {w} won",
+ "stats.played": {
+  "one": "{n} played",
+  "other": "{n} played"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.playingAs": "Playing as {name}",
  "stats.setName": "Set",
  "stats.title": "Stats",
  "stats.wins": "Wins",
+ "stats.wonCount": {
+  "one": "{n} won",
+  "other": "{n} won"
+ },
  "sudoku.bestRow": "Best time, {level}",
  "sudoku.board": "Sudoku board",
  "sudoku.cell": "Row {row}, column {col}, {what}",
