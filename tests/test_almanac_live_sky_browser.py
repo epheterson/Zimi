@@ -263,7 +263,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         pg.evaluate(
-            "_orrerySnapToNow(); document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
+            "_orreryClockReset(); document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
         )
         # The bar above the Almanac slides away after a scroll down; tap once
         # the orrery has stopped moving with it.
@@ -670,7 +670,7 @@ def test_the_light_clock_on_a_ride(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         pg.evaluate(
-            "_orrerySnapToNow(); _orreryLaunchRocket('Mars'); _orreryTwinInput(1)"
+            "_orreryClockReset(); _orreryLaunchRocket('Mars'); _orreryTwinInput(1)"
         )
         # The twins and the light clock open from "What if it flew to the stars?" and
         # are not drawn while closed.

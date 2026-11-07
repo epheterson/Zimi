@@ -109,7 +109,7 @@ test.describe('Almanac month glide (#75)', () => {
     expect(await gridClass(page)).toContain('alm-glide-next');
   });
 
-  test('travel path stays inert: no glide while frozen or in motion', async ({ page }) => {
+  test('travel path stays inert: no glide while the page is pinned for a run of the clock', async ({ page }) => {
     await openCalendar(page);
     const cls = await page.evaluate(() => {
       const out = {};
@@ -118,14 +118,8 @@ test.describe('Almanac month glide (#75)', () => {
       _drawAlmanacGrid();
       out.frozen = document.querySelector('#almanac-calendar .alm-grid').className;
       _almTravelUnfreeze();
-      _almTmMode('motion');
-      _almMonth = (_almMonth % 12) + 1;
-      _drawAlmanacGrid();
-      out.motion = document.querySelector('#almanac-calendar .alm-grid').className;
-      _almTmMode('rest');
       return out;
     });
     expect(cls.frozen).not.toContain('alm-glide');
-    expect(cls.motion).not.toContain('alm-glide');
   });
 });

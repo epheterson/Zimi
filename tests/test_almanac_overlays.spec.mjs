@@ -39,7 +39,7 @@ async function openAlmanac(page) {
   }, SAN_FRANCISCO);
   await page.goto(`${BASE}/#almanac`);
   await page.waitForFunction(() => typeof window.openAlmanacEarth === 'function' && document.getElementById('almanac-orrery'));
-  await page.evaluate(() => _orrerySnapToNow());
+  await page.evaluate(() => _orreryClockReset());
 }
 
 // Scroll the page so the orrery's top edge stands `top` px from the window's.

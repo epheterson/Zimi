@@ -110,7 +110,9 @@ def _almanac(browser, served, reduced=False, init=None):
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     # The 3D view is made ready when the Moon is touched, not behind the page.
-    pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
+    pg.evaluate(
+        "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
+    )
     pg.wait_for_function(
         "() => typeof _aeReady === 'function' && _aeReady()",
         timeout=60000,
@@ -212,7 +214,7 @@ def test_one_clock_moves_both_views(browser, served):
         steps = pg.evaluate("""() => {
           var out = [];
           for (var i = 0; i < 12; i++) {
-            if (i % 2) _almScrubStep(i * 3600000);
+            if (i % 2) _almClockNudge(new Date(_almFocusInstant().getTime() + i * 3600000));
             else { _almFocus = new Date(_almFocusInstant().getTime() - i * 86400000); _almTravelLive(_almFocus); }
             var f = _almFocusInstant().getTime();
             var v = _heroMoonView(new Date(f), _getLocation());
@@ -228,7 +230,7 @@ def test_one_clock_moves_both_views(browser, served):
         assert pg.evaluate("() => _ae.scene.ms === _almFocusInstant().getTime()")
         # A speed in the view runs the page's clock; the header follows.
         before = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.click("#ae-time [data-ae-speed='3600']")
+        pg.click("#ae-clock .alm-spd-mark[data-stop='6']")
         pg.wait_for_function(
             "(t) => _almFocusInstant().getTime() - t > 2 * 3600000",
             arg=before,
@@ -244,12 +246,12 @@ def test_one_clock_moves_both_views(browser, served):
             state["page"] - before > 2 * 3600 * 1000 and state["scene"] == state["page"]
         ), state
         assert state["head"] == state["want"], state
-        pg.click("#ae-time [data-ae-speed='1']")
+        pg.click("#ae-clock .alm-spd-play")
         landed = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(300)
         assert (
             pg.evaluate("() => _almFocusInstant().getTime()") == landed
-        ), "at real time a set clock holds"
+        ), "a paused clock holds"
         assert pg.evaluate("() => _ae.scene.ms") == landed
         assert not errors, errors
     finally:
@@ -257,15 +259,15 @@ def test_one_clock_moves_both_views(browser, served):
 
 
 # The Almanac as it stands: everything but its clocks of now (the world
-# clock's seconds and cities, the time machine's ACTUAL row and its offset
-# lamp), which tick whatever else happens.
+# clock's seconds and cities), which tick whatever else happens.
 SNAPSHOT = """() => {
   var c = document.getElementById('almanac-content');
   var copy = c.cloneNode(true);
-  copy.querySelectorAll('[id^="alm-clock"], #almanac-tz-pills, [id^="alm-tm-now"], #alm-tm-delta').forEach(function (n) { n.remove(); });
+  copy.querySelectorAll('[id^="alm-clock"], #almanac-tz-pills').forEach(function (n) { n.remove(); });
+  var slot = copy.querySelector('#alm-secbar-slot'); if (slot) slot.innerHTML = '';   // the section bar is drawn late, once the panels are
   return { scroll: c.scrollTop, focus: _almFocus ? _almFocus.getTime() : null, html: copy.outerHTML,
            view: document.getElementById('almanac-view').className,
-           tm: document.getElementById('alm-tm').className, active: document.activeElement && document.activeElement.className };
+           active: document.activeElement && document.activeElement.className };
 }"""
 
 
@@ -275,9 +277,15 @@ def test_leaving_restores_the_page(browser, served, reduced):
     try:
         _settle(pg, "2026-10-14T03:00:00Z")
         pg.evaluate(
-            "() => { _almTmShow(); document.getElementById('almanac-content').scrollTop = 60; }"
+            "() => { document.getElementById('almanac-content').scrollTop = 60; }"
         )
-        pg.wait_for_timeout(600)
+        # The page's late panels (the tide, the section bar) are drawn: what is compared is the page, not its loading.
+        pg.wait_for_function(
+            "() => _almPanelsReady === true && !!_almSecBar",
+            timeout=60_000,
+            polling=POLL_MS,
+        )
+        pg.wait_for_timeout(2500)
         before = pg.evaluate(SNAPSHOT)
         r = _rect(pg)
         cx, cy = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
@@ -301,9 +309,18 @@ def test_leaving_restores_the_page(browser, served, reduced):
             polling=POLL_MS,
         )
         after = pg.evaluate(SNAPSHOT)
-        for k in ("scroll", "focus", "view", "tm"):
+        for k in ("scroll", "focus", "view"):
             assert after[k] == before[k], (k, before[k], after[k])
-        assert after["html"] == before["html"]
+        a, b = after["html"], before["html"]
+        at = next(
+            (i for i in range(min(len(a), len(b))) if a[i] != b[i]), min(len(a), len(b))
+        )
+        assert a == b, (
+            "the page differs at",
+            at,
+            b[max(0, at - 120) : at + 160],
+            a[max(0, at - 120) : at + 160],
+        )
         assert "almanac-moon-open" in (after["active"] or "")
         assert not errors, errors
     finally:
@@ -334,7 +351,9 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
         # The 3D view is made ready when the Moon is touched, not behind the page.
-        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
+        pg.evaluate(
+            "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
+        )
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=60000,
