@@ -79,3 +79,15 @@ def test_a_new_elevation_map_does_not_meet_the_last_ones_normals():
         'albedo = manifest["layers"].get("moon/albedo")' in src
         and "if a.inserts and albedo" in src
     )
+
+
+def test_a_landmarks_query_is_cached_under_what_it_asks(monkeypatch, tmp_path):
+    import build_landmarks as lm
+
+    asked = []
+    monkeypatch.setattr(lm, "_sparql", lambda q, cache, name: asked.append(name) or [])
+    lm.qids_by_gazetteer_id(str(tmp_path), "moon", {"wd": "Q405"}, {"1", "2"})
+    lm.qids_by_gazetteer_id(str(tmp_path), "moon", {"wd": "Q405"}, {"1", "3"})
+    more = [n for n in asked if "qids-more" in n]
+    assert len(more) == 2 and more[0] != more[1], asked  # other ids, another file: not the first run's answer
+    assert "--refresh" in lm.__doc__

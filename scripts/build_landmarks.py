@@ -1,6 +1,10 @@
 """Build zimi/static/earth/landmarks-v1.json: named places on each body, at their true coordinates.
 
-    python scripts/build_landmarks.py [--cache DIR]
+    python scripts/build_landmarks.py [--cache DIR] [--refresh]
+
+The cache holds what was downloaded and never expires on its own: the IAU Gazetteer and Wikidata's answers are read
+from it on every run. ``--refresh`` empties it first, for when the sources have changed. (Requests that depend on the
+lists in this file are named after what they ask, so editing the lists asks again by itself.)
 
 One list per body, each row ``[name, lat, lon, kind, qid, size_km, src]`` (planetocentric latitude, longitude east,
 -180..180, in the frame the body's map is drawn in; ``qid`` "" when Wikidata has none; ``size_km`` 0 for a point;
@@ -22,6 +26,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import struct
 import sys
 import urllib.parse
@@ -545,11 +550,13 @@ def qids_by_gazetteer_id(cache, key, spec, wanted):
     }
     missing = sorted(i for i in wanted if i not in qid)
     for at in range(0, len(missing), 150):
+        batch = missing[at : at + 150]
         q = (
             "SELECT ?item ?id WHERE { VALUES ?id { %s } ?item wdt:P2824 ?id . }"
-            % " ".join('"%s"' % i for i in missing[at : at + 150])
+            % " ".join('"%s"' % i for i in batch)
         )
-        for r in _sparql(q, cache, "%s-qids-more-%d.csv" % (key, at)):
+        name = "%s-qids-more-%s.csv" % (key, hashlib.md5("|".join(batch).encode()).hexdigest()[:12])
+        for r in _sparql(q, cache, name):
             qid.setdefault(r["id"], r["item"].rsplit("/", 1)[-1])
     return qid
 
@@ -728,7 +735,10 @@ def add_fame(doc, order, cache):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=os.path.join(ROOT, "build", "landmarks-cache"))
+    ap.add_argument("--refresh", action="store_true", help="empty the cache first: download everything again")
     a = ap.parse_args(argv)
+    if a.refresh:
+        shutil.rmtree(a.cache, ignore_errors=True)
     placed = sites(a.cache)
     order = [
         "moon",
