@@ -228,6 +228,87 @@ document.addEventListener('visibilitychange', function() {
 // null means "the open reader did not originate in the almanac".
 var _almReturnScroll = null;
 
+// ── First sight ──
+// A page that is built in front of the person is seen being built: a gradient where the sky will be, the Moon plain and
+// then not, cards arriving. So the first open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning
+// crescent, up from the tap) and shown in one piece, once the first screen is genuinely on the canvases: the Moon, the
+// cards, the month and the sky's first real frame (almanac-sky.js settles it). Nothing else waits for it. A page that
+// is slow to settle is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays.
+var ALM_REVEAL_MAX_MS = 12000;
+var ALM_PANELS_SETTLE_MS = 3200;      // after the page is shown, the panels under the calendar wait this long (or for a hand on the page)
+var ALM_EARTH_IDLE_MS = 6000;         // and the 3D view's files this long, then for a quiet moment
+var _almRevealing = false, _almRevealTimer = 0, _almShownAt = 0;   // _almShownAt: when the page was shown (0: not yet)
+var _almShownJobs = [];               // run when the page is shown: [fn]
+function _almVeilBegin() {
+  _almVeilUp();
+  _almRevealing = true;
+  _almShownAt = 0;
+  clearTimeout(_almRevealTimer);
+  _almRevealTimer = setTimeout(_almReveal, ALM_REVEAL_MAX_MS);
+}
+// The sky (almanac-sky.js) has its first picture on the canvas: the next frame shows it, with the rest of the page.
+var ALM_MOON_WAIT_MS = 3000;   // the page is drawn without the Moon's map when it has not come by then (the disc is drawn again when it does)
+var ALM_FONT_WAIT_MS = 1500;   // the fonts the page asked for (the time machine's digits) are waited for this long
+function _almSkySettled() {
+  if (!_almRevealing) return;
+  var show = function () { requestAnimationFrame(_almReveal); };   // the frame after the one that drew the sky
+  if (!(document.fonts && document.fonts.ready)) { show(); return; }
+  var late = setTimeout(show, ALM_FONT_WAIT_MS);
+  document.fonts.ready.then(function () { clearTimeout(late); show(); }, show);
+}
+function _almReveal() {
+  clearTimeout(_almRevealTimer);
+  if (!_almRevealing) return;
+  _almRevealing = false;
+  _almSeaPending = false;
+  _almShownAt = performance.now();
+  _almVeilDown();
+  if (typeof _skyKickDirty === 'function' && typeof _skyState !== 'undefined' && _skyState && !_skyState.settled) _skyKickDirty();   // shown at the cap with no picture yet: painted as it can be, now
+  var jobs = _almShownJobs;
+  _almShownJobs = [];
+  jobs.forEach(function (fn) { if (_almanacOpen) fn(); });
+}
+// fn once the page is shown (at once when it is, or was never veiled).
+function _almWhenShown(fn) {
+  if (_almRevealing) _almShownJobs.push(fn); else fn();
+}
+function _almVeilCancel() {
+  clearTimeout(_almRevealTimer);
+  _almRevealing = false;
+  _almShownJobs = [];
+  if (typeof _almVeilDown === 'function') _almVeilDown(true);
+}
+
+// ── The 3D view's files ──
+// The ephemeris and the Earth view are not on the page's way in: they load once the page is shown and the person has
+// been quiet a while, or at the first thing that needs them (a touch on the Moon, a lift, the way in from the sky or the
+// orrery). three.js, its maps and the space tracks come later still, with the view (almanac-earth.js _aePrepare).
+var _almEarthLoading = null;
+function _almLoadEarth() {
+  if (typeof window.openAlmanacEarth === 'function') return Promise.resolve();
+  if (_almEarthLoading) return _almEarthLoading;
+  var srcs = typeof _ALM_EARTH_SRCS !== 'undefined' ? _ALM_EARTH_SRCS : [];
+  _almEarthLoading = new Promise(function (resolve, reject) {
+    srcs.forEach(function (src, i) {
+      var el = document.createElement('script');
+      el.src = src;
+      el.async = false;   // in order, as one scope
+      el.onerror = function () { _almEarthLoading = null; reject(new Error(src)); };
+      if (i === srcs.length - 1) el.onload = resolve;
+      document.head.appendChild(el);
+    });
+  });
+  _almEarthLoading.catch(function () {});
+  return _almEarthLoading;
+}
+function _almEarthLater() {
+  _almWhenShown(function () {
+    setTimeout(function () {
+      if (_almanacOpen) whenQuiet(function () { if (_almanacOpen) _almLoadEarth(); }, { key: 'alm-earth', priority: QUIET_PRI_PREPARE, maxWaitMs: ALM_PANELS_SETTLE_MS * 4 });
+    }, ALM_EARTH_IDLE_MS);
+  });
+}
+
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
   _almanacLoopsHeld = false; // the last close (_cancelAllRAF) held them
@@ -254,8 +335,23 @@ function _openAlmanacInner(replaceState) {
   // draw, so a fresh open is not taken for a redraw in place, which draws every panel before the first paint.
   var scroller = document.getElementById('almanac-content');
   if (scroller && !_almReturning) scroller.scrollTop = 0;
-  _renderAlmanacContent();
-  if (scroller) scroller.scrollTop = 0;
+  // A page opened afresh is veiled until it is drawn; one come back to (an article read and left) is drawn in place.
+  var veiled = !_almReturning;
+  if (veiled) _almVeilBegin();
+  if (veiled && typeof _sgInit === 'function') {
+    // The GPU sky starts compiling, and its data coming, now: they run beside the page being built, not after it.
+    _sgInit();
+    if (typeof _sgPrefetch === 'function') { var loc0 = _getLocation(); _sgPrefetch(_sgWantsMilkyWay(_sunPosition(_almFocusInstant(), loc0.lat, loc0.lon).altitude)); }
+  }
+  // Drawn with the Moon's map in hand (app.js): a disc drawn grey and then again with its maria is seen changing.
+  var draw = function () {
+    if (!_almanacOpen) return;
+    _renderAlmanacContent();
+    var sc = document.getElementById('almanac-content');
+    if (sc) sc.scrollTop = 0;
+  };
+  var drawn = false, drawOnce = function () { if (!drawn) { drawn = true; draw(); } };
+  if (typeof _moonTexThen === 'function') { _moonTexThen(drawOnce); setTimeout(drawOnce, ALM_MOON_WAIT_MS); } else drawOnce();
   // Zimi's header is in place under the Almanac: nothing in it slides the
   // header, so one left away by the page before (an article scrolled on a
   // phone) would keep the Almanac's own header, its date, behind the bar.
@@ -268,6 +364,7 @@ function _openAlmanacInner(replaceState) {
 // close) or preserve it (a deep-link suspend that Back should return to).
 function _almanacTeardown() {
   _almanacOpen = false;
+  _almVeilCancel();
   if (typeof _chromeReset === 'function') _chromeReset();
   // Pointing the phone (almanac-look.js) lives on the Almanac and goes with it.
   if (typeof closeAlmanacLook === 'function') closeAlmanacLook(true);
@@ -2129,11 +2226,12 @@ function _almBook(action) {
 // The tables' files, loaded on first use, then fn.
 function _almRefReady(fn) {
   // The sheets also need the Earth view's Sun and Moon (almanac-earth.js),
-  // which loads just after the Almanac opens.
+  // which loads once the page is shown and quiet, or here, at the first need.
   function ready() { return _almRefCss && window.AlmanacRef && typeof _aeSun === 'function'; }
   if (ready()) return fn();
   if (_almRefLoading) return;
   _almRefLoading = true;
+  _almLoadEarth();
   var failed = false;
   if (!window.AlmanacRef) {
     (typeof _ALMANAC_REF_ASSETS !== 'undefined' ? _ALMANAC_REF_ASSETS : []).forEach(function (src) {
@@ -2287,8 +2385,10 @@ function _almPlaceDrawn() {
     var keys = Object.keys(all);
     while (keys.length > _ALM_PLACE_H_MAX) delete all[keys.shift()];
     try { localStorage.setItem(_ALM_PLACE_H_KEY, JSON.stringify(all)); } catch (e) {}
+    _almCoastRemember(_getLocation(), h > 0);
   }
   _almArrived(host);
+  _almSeaGiveUp();
 }
 
 // The module loads once the Almanac has painted, in idle time, so it is in
@@ -2296,33 +2396,64 @@ function _almPlaceDrawn() {
 // URLs are app.js's, so they carry the server's content version.
 var _almPlaceLoaded = false;
 var _ALM_PLACE_IDLE_TIMEOUT_MS = 1500;
+// A place the page has been to, and drew a tide section for, is a coast: the sky's sea is in its first picture, so its
+// tides load with the page, not after it, and the first picture waits for them (the veil: _almSeaWaiting). A place with
+// no station remembered as none, or not been to, loads them later as before; then the sea may come in after the page.
+var _almSeaPending = false;
+function _almSeaWaiting() { return _almSeaPending && _almRevealing; }
+var _ALM_COAST_KEY = 'zimi_almanac_coast', _ALM_COAST_MAX = 24;   // places, and whether a tide station was near each
+function _almCoastKey(loc) { return loc.lat.toFixed(2) + ',' + loc.lon.toFixed(2); }
+function _almCoasts() {
+  try { return JSON.parse(localStorage.getItem(_ALM_COAST_KEY)) || {}; } catch (e) { return {}; }
+}
+function _almCoastRemember(loc, coast) {
+  if (!loc.stored) return;
+  var all = _almCoasts(), k = _almCoastKey(loc);
+  delete all[k];
+  all[k] = coast ? 1 : 0;
+  var keys = Object.keys(all);
+  while (keys.length > _ALM_COAST_MAX) delete all[keys.shift()];
+  try { localStorage.setItem(_ALM_COAST_KEY, JSON.stringify(all)); } catch (e) {}
+}
+function _almPlaceKnownCoast() {
+  var loc = _getLocation();
+  return loc.stored && _almCoasts()[_almCoastKey(loc)] === 1;
+}
+function _almPlaceStartLoad(host) {
+  if (_almPlaceLoaded || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
+  _almPlaceLoaded = true;
+  var pending = 2;
+  var done = function() { if (--pending === 0 && typeof _atRender === 'function') _atRender(); };
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = _ALM_TIDES_CSS;
+  css.onload = css.onerror = done;
+  document.head.appendChild(css);
+  var js = document.createElement('script');
+  js.src = _ALM_TIDES_JS;
+  js.onload = done;
+  js.onerror = function() { _almPlaceLoaded = false; host.style.minHeight = ''; _almSeaGiveUp(); };
+  document.head.appendChild(js);
+}
+// The sea will not be waited for any more (its answer came, or cannot): the first picture may be shown.
+function _almSeaGiveUp() {
+  if (!_almSeaPending) return;
+  _almSeaPending = false;
+  if (typeof _skyMaybeSettle === 'function') _skyMaybeSettle();
+}
+var _almPlaceEarly = false;   // this draw's place was set going with the page (_almPlaceWatch has nothing to start)
 function _almPlaceWatch() {
   var host = document.getElementById('almanac-place');
   if (!host) return;
   _almKeepStill(document.getElementById('almanac-rosetta'));
+  if (_almPlaceEarly) { _almPlaceEarly = false; return; }
   if (typeof _atRender === 'function') { _almKeepStill(host); _atRender(); return; }
   // Watched before the space is kept: a reader already below (a slow phone, the module still on its way) keeps their
   // place while the space opens above them, and again when the tide (or nothing, #140) replaces it.
   _almKeepStill(host);
   _almPlaceReserve(host);
   if (_almPlaceLoaded) return;   // on its way: it draws when it lands
-  var load = function() {
-    if (_almPlaceLoaded || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
-    _almPlaceLoaded = true;
-    var pending = 2;
-    var done = function() { if (--pending === 0 && typeof _atRender === 'function') _atRender(); };
-    var css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = _ALM_TIDES_CSS;
-    css.onload = css.onerror = done;
-    document.head.appendChild(css);
-    var js = document.createElement('script');
-    js.src = _ALM_TIDES_JS;
-    js.onload = done;
-    js.onerror = function() { _almPlaceLoaded = false; host.style.minHeight = ''; };
-    document.head.appendChild(js);
-  };
-  whenQuiet(load, { key: 'alm-place', priority: QUIET_PRI_LOAD, maxWaitMs: _ALM_PLACE_IDLE_TIMEOUT_MS });
+  whenQuiet(function() { _almPlaceStartLoad(host); }, { key: 'alm-place', priority: QUIET_PRI_LOAD, maxWaitMs: _ALM_PLACE_IDLE_TIMEOUT_MS });
 }
 
 // The sky's colour for the focused hour, on the canvas before the sky module has drawn a pixel (almanac-sky.js).
@@ -2340,9 +2471,11 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
   _almPrevFocusTime = now.getTime();   // seed the hero-moon sweep's start
   _almHeroLiveStart();
-  // The 3D view gets ready behind the page once it has painted (on the first
-  // open its file, loading after this paint, sees to that itself).
-  if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
+  // The 3D view's files come once the page is shown and the person is quiet (_almLoadEarth); the view itself is made
+  // ready only when the Moon is touched or the view opened.
+  _almEarthLater();
+  // The Milky Way's picture, for a night the clock is moved to (it is only fetched and decoded; the GPU gets it when a sky needs it).
+  _almWhenSettled(function () { if (typeof _sgPrefetch === 'function') _sgPrefetch(true); });
 
   // The order 1.12 had, and Eric's way of reading it (2026-10-02): the Moon with its numbers, then the
   // live sky directly above the month like a wall calendar flipped open (Eric, 2026-10-18: nothing between
@@ -2516,12 +2649,6 @@ function _renderAlmanacContent() {
   html += '</div>';
   var anchor = _almRedrawAnchor();
   document.getElementById('almanac-content').innerHTML = html;
-  // The sky's cards (in the Moon's grid) and its caption fill in when the page sky starts, a quiet slice later: a
-  // reader already scrolled past them stays where they are. Here from the first frame, so one looking at them is not moved.
-  [document.getElementById('almanac-head'), document.querySelector('#almanac-content .alm-sky-info')].forEach(function (el) {
-    _almKeepStill(el);
-    if (el) el._almArriving = false;
-  });
 
   _renderAlmanacCalendar(now);
   // The time machine's dock is on screen from the first frame, so it answers a finger from then too.
@@ -2530,6 +2657,24 @@ function _renderAlmanacContent() {
   // under it may move when it lands.
   var placeHost = document.getElementById('almanac-place');
   if (placeHost) _almPlaceReserve(placeHost);
+  _almPlaceEarly = false;
+  _almSeaPending = false;
+  if (placeHost && _almRevealing && !anchor && _almPlaceKnownCoast()) {
+    _almSeaPending = _almPlaceEarly = true;
+    _almKeepStill(placeHost);
+    if (typeof _atRender === 'function') _atRender(); else _almPlaceStartLoad(placeHost);
+  }
+  // The sky's cards (in the Moon's grid) and its caption fill in when the page sky starts, a quiet slice later: a
+  // reader already scrolled past them stays where they are. Here from the first frame, so one looking at them is not moved.
+  // After every write above: the first height read lays the whole page out, and it does so once, not once per write.
+  [document.getElementById('almanac-head'), document.querySelector('#almanac-content .alm-sky-info')].forEach(function (el) {
+    _almKeepStill(el);
+    if (el) el._almArriving = false;
+  });
+  // The live sky is the second thing on the page, after the Moon: it starts now, with the first frame, not after the
+  // panels below it (it was the ninth of ten, and the gradient it left stood in its place for seconds). Its sums and
+  // first paint come in the next frame (_initSkyScene).
+  _almSafePanel(function () { _loadSunData(_almFocus || now); }, null);
   // Everything under the calendar is drawn after the Moon, the sky and the month have been painted: the first
   // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
   // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
@@ -2551,8 +2696,9 @@ function _renderAlmanacContent() {
       // The orrery opens at 100K× so planets visibly orbit on load (still at now, where motion is reduced)
       _orreryLastFrame = performance.now();
       _orreryAnimate();
+      _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
     },
-    function () { _loadSunData(at()); _startTzClock(); _cacheAlmanacHighlights(now, m); },
+    function () { _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
   ];
   _almPanelsReady = false;
@@ -2567,12 +2713,36 @@ function _renderAlmanacContent() {
 var ALM_PANEL_MAX_WAIT_MS = 900;
 var _almPanelsReady = false;   // every panel under the calendar is drawn (the last slice has run)
 var _almAfterPaintToken = 0;
+// fn once the page is shown AND has had ALM_PANELS_SETTLE_MS to itself (the first seconds are the person's: the Moon,
+// the sky and the month answer a touch at once), or sooner when a hand has taken the page (scrolled it). cancelled():
+// true drops it (the Almanac was closed or drawn again meanwhile).
+function _almWhenSettled(fn, cancelled) {
+  var sc = document.getElementById('almanac-content'), started = false, timer = 0;
+  var go = function () {
+    if (started) return;
+    started = true;
+    clearTimeout(timer);
+    if (sc) sc.removeEventListener('scroll', go);
+    if (!_almanacOpen || (cancelled && cancelled())) return;
+    fn();
+  };
+  _almWhenShown(function () {
+    // A page drawn long after it was shown (a language changed) has no window left to keep.
+    var wait = _almShownAt ? Math.max(0, ALM_PANELS_SETTLE_MS - (performance.now() - _almShownAt)) : 0;
+    if (!wait) { go(); return; }
+    if (sc) sc.addEventListener('scroll', go, { passive: true });
+    timer = setTimeout(go, wait);
+  });
+}
+// The panels start when the page has settled (_almWhenSettled).
 function _almAfterPaint(steps) {
   var token = ++_almAfterPaintToken;
-  steps.forEach(function (fn, i) {
-    whenQuiet(function () { if (token === _almAfterPaintToken && _almanacOpen) fn(); },
-      { key: 'alm-panel:' + i, priority: QUIET_PRI_PANELS, maxWaitMs: ALM_PANEL_MAX_WAIT_MS });
-  });
+  _almWhenSettled(function () {
+    steps.forEach(function (fn, i) {
+      whenQuiet(function () { if (token === _almAfterPaintToken && _almanacOpen) fn(); },
+        { key: 'alm-panel:' + i, priority: QUIET_PRI_PANELS, maxWaitMs: ALM_PANEL_MAX_WAIT_MS });
+    });
+  }, function () { return token !== _almAfterPaintToken; });
 }
 
 // The page drawn again over itself (its deep-links arriving, a new language)
@@ -2825,13 +2995,17 @@ var _almMoonPress = null;   // { id, x, y, lx, ly, lifted }
 function _almMoonTarget(e) {
   return e.target && e.target.closest ? e.target.closest('#almanac-head .almanac-moon-open') : null;
 }
-function _almMoonPrepare() { if (typeof _aePrepare === 'function') _aePrepare(true); }
-// The 3D view's file loads right after the page opens (app.js openAlmanac): a lift asked for before it is in is
-// kept, not dropped, and made the moment it is (a drag on a Moon just painted did nothing at all).
+function _almMoonPrepare() {
+  if (typeof _aePrepare === 'function') _aePrepare(true);
+  else _almLoadEarth().then(function () { if (_almanacOpen && typeof _aePrepare === 'function') _aePrepare(true); }, function () {});
+}
+// The 3D view's file loads once the page is shown and quiet, or at a touch on the Moon (_almLoadEarth): a lift asked
+// for before it is in is kept, not dropped, and made the moment it is (a drag on a Moon just painted did nothing at all).
 var ALM_LIFT_WAIT_MS = 100, ALM_LIFT_WAIT_TRIES = 100;
 function _almMoonLift() {
   var lift = function () { window.openAlmanacEarth({ target: 'moon', fromHero: true }); };
   if (typeof window.openAlmanacEarth === 'function') { lift(); return; }
+  _almLoadEarth();
   var tries = 0, timer = setInterval(function () {
     if (typeof window.openAlmanacEarth === 'function') { clearInterval(timer); if (_almanacOpen) lift(); }
     else if (++tries >= ALM_LIFT_WAIT_TRIES || !_almanacOpen) clearInterval(timer);

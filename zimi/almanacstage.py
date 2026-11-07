@@ -86,6 +86,9 @@ SHELL_SEEDS = (
     "_MOON_ROUGH_MU",
     "_MOON_TINT_B",
     "_MOON_TINT_R",
+    "_almVeilDown",
+    "_almVeilIsUp",
+    "_almVeilUp",
     "_localMoonName",
     "_moonAnimDurMs",
     "_moonAnimPhaseAt",
@@ -100,6 +103,7 @@ SHELL_SEEDS = (
     "_moonSpriteCanvas",
     "_moonSpriteKey",
     "_moonTexReady",
+    "_moonTexThen",
     "_moonView",
     "_renderMoonHTML",
     "_repaintMoons",
@@ -137,7 +141,7 @@ GUARDED = frozenset(
     )
 )
 #: Classes the Almanac's markup uses that only app.css styles.
-SHELL_CLASSES = ("pill", "pills-row")
+SHELL_CLASSES = ("pill", "pills-row", "alm-veil", "alm-veil-moon")
 #: Names the Almanac's code uses as locals or object keys that app.js also
 #: happens to declare at top level.
 LOCALS = frozenset(("init", "mode", "q"))

@@ -5841,13 +5841,11 @@ function _aeMessage(text) {
   if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 
-// ── Ready, before anyone asks ──
-// three.js, the scene and its maps are made ready behind the page once it
-// has painted (and gone idle), or as soon as someone points at or touches
-// the hero, so a tap on the Moon swaps it for this one in the same frame.
-// Never on the page's first paint: this file itself loads after it. Ready
-// means a context with its shaders compiled and its maps uploaded, drawing
-// to a single pixel until the view opens.
+// ── Ready, when the Moon is touched ──
+// three.js, the scene and its maps are made ready as soon as someone points at or touches the hero (or opens the
+// view), so a tap on the Moon swaps it for this one in the same frame. Not behind the page: a page that is only looked
+// at never loads them (almanac.js _almMoonPrepare). Ready means a context with its shaders compiled and its maps
+// uploaded, drawing to a single pixel until the view opens.
 var _aePreparing = null;
 function _aeEnsure() {
   if (_ae) return true;
@@ -5937,15 +5935,6 @@ function _aeWarmSliced(S, first) {
     return true;
   });
 }
-var AE_IDLE_PREPARE_MAX_WAIT_MS = 6000;
-// Behind the page, once it has painted and the person has stopped touching it (app.js whenQuiet).
-function _aePrepareWhenIdle() {
-  whenQuiet(function () {
-    if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) return false;
-    return _aePrepare();
-  }, { key: 'ae-prepare', priority: QUIET_PRI_PREPARE, maxWaitMs: AE_IDLE_PREPARE_MAX_WAIT_MS });
-}
-
 // ── Open and close ──
 // The swap's frames: e is how far the camera has come from the hero's (0)
 // to the view's (1). The page dims behind the Moon by it, what is not the
@@ -6314,5 +6303,5 @@ function _aeRelease() {
 window.openAlmanacEarth = openAlmanacEarth;
 // The orrery, drawn before this file ran, can now say Earth opens in 3D.
 if (typeof _orreryRenderHint === 'function') _orreryRenderHint();
-// This file loads after the Almanac has painted; the view gets ready behind it.
-if (typeof requestAnimationFrame === 'function' && (typeof _almanacOpen === 'undefined' || _almanacOpen)) _aePrepareWhenIdle();
+// This file loads once the Almanac is shown and quiet (almanac.js _almLoadEarth); the view itself (three.js, its maps and
+// shaders) is made ready only when the Moon is touched or the view opened, never behind the page.

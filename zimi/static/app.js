@@ -3929,7 +3929,7 @@ function route(push) {
     // past the loader's onerror), drop the boot gate so the library isn't left
     // permanently hidden behind an empty shell.
     setTimeout(function () {
-      if (!_almanacOpen) document.documentElement.classList.remove('almanac-boot');
+      if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almVeilDown(true); }
     }, 8000);
     return;
   }
@@ -7325,6 +7325,14 @@ _MOON_TEX.onload = function() {
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
 _MOON_TEX.src = _MOON_MAP_URL;
+// Run fn once the 1024 map is in (or has failed: a plain disc then), so a disc drawn for the first time already has its
+// maria and is not drawn a second time when the map lands. Now, when it is in.
+function _moonTexThen(fn) {
+  if (_moonTexReady || (_MOON_TEX.complete && !_MOON_TEX.naturalWidth)) { fn(); return; }
+  var once = function () { _MOON_TEX.removeEventListener('load', once); _MOON_TEX.removeEventListener('error', once); fn(); };
+  _MOON_TEX.addEventListener('load', once);
+  _MOON_TEX.addEventListener('error', once);
+}
 
 // The map is LRO albedo, harsher than the eye sees the Moon (its darkest
 // maria sit near a third of its brightest highlands); this lift and gain put
@@ -8236,6 +8244,32 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
+// The veil: what stands over the Almanac while its first screen is drawn behind it (almanac.js _almVeilBegin), so the
+// person sees one thing, the finished page, and never the page being built. It is up from the tap, before the files
+// arrive, and comes down in one fade when the first screen is on the canvas.
+var ALM_VEIL_FADE_MS = 240;
+function _almVeilUp() {
+  var v = document.getElementById('alm-veil');
+  if (!v) return null;
+  clearTimeout(v._gone);
+  v.classList.remove('alm-veil-out');
+  v.hidden = false;
+  v.setAttribute('aria-label', t('loading'));
+  return v;
+}
+function _almVeilIsUp() {
+  var v = document.getElementById('alm-veil');
+  return !!v && !v.hidden && !v.classList.contains('alm-veil-out');
+}
+// Down: faded out, then hidden; at once (now) when the Almanac is closed or the fade would be seen by no one.
+function _almVeilDown(now) {
+  var v = document.getElementById('alm-veil');
+  if (!v) return;
+  clearTimeout(v._gone);
+  if (now) { v.classList.remove('alm-veil-out'); v.hidden = true; return; }
+  v.classList.add('alm-veil-out');
+  v._gone = setTimeout(function () { v.hidden = true; v.classList.remove('alm-veil-out'); }, ALM_VEIL_FADE_MS + 60);
+}
 // The Almanac's tide section, loaded by almanac.js when it scrolls
 // near; written here so the server stamps their content version on them.
 var _ALM_TIDES_JS = '/static/almanac-tides.js?v=1';
@@ -8249,6 +8283,10 @@ var _ALMANAC_REF_ASSETS = [
   '/static/almanac-reference.js?v=1',
   '/static/almanac-tables.js?v=1'
 ];
+
+// The 3D Earth's files, after the page: the ephemeris (the Sun, the Moon, the planets: no GL), then the view; loaded in
+// that order by almanac.js _almLoadEarth, when the first screen is up and the person is quiet, or at the first need.
+var _ALM_EARTH_SRCS = ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'];
 
 // The Almanac's modules. They share a global scope, so they must run in
 // order, and the Almanac opens (or the Field Guide's sky strip reads them)
@@ -8335,6 +8373,7 @@ function openAlmanac(replaceState) {
   var root = document.documentElement;
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
+  if (!_almanacOpen) _almVeilUp();
   if (_almanacLoaded && !answered) {
     _almanacOpenPending = true;
     requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
@@ -8347,15 +8386,8 @@ function openAlmanac(replaceState) {
       _almanacLoaded = true;
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
-      // The 3D Earth's module follows the open instead of delaying it; the
-      // orrery draws the Earth's glow (the way in) once it has landed.
-      // The ephemeris first (the Sun, the Moon, the planets: no GL), then the Earth view; in order.
-      ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'].forEach(function(src) {
-        var el = document.createElement('script');
-        el.src = src;
-        el.async = false;
-        document.head.appendChild(el);
-      });
+      // The 3D Earth's files do not follow the open: almanac.js (_almLoadEarth) brings them once the first screen is
+      // up and the person is quiet, or at the first thing that needs them.
     }, function() {
       // A console line and a button that appears to do nothing is the same
       // "silent absence" the connection banner exists to eliminate. Drop the
@@ -8363,6 +8395,7 @@ function openAlmanac(replaceState) {
       // instead of an empty dark shell.
       _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
+      _almVeilDown(true);
       _showToast(t('almanac_unavailable_offline'));
     });
     return;
@@ -22119,6 +22152,7 @@ function _openAlmanacFor(key) {
   var wait = setInterval(function() {
     if (_almanacOpen && typeof window.openAlmanacEarth === 'function') { clearInterval(wait); window.openAlmanacEarth({ target: target }); }
     else if (Date.now() > until) clearInterval(wait);
+    else if (_almanacOpen && typeof _almLoadEarth === 'function') _almLoadEarth();
   }, 100);
 }
 function _appViewFor(data, qid) {
