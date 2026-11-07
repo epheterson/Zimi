@@ -128,7 +128,7 @@ ok('the language dropdown and this one hang from the same helper', (src.match(/_
 
 // A shared link: the place in the hash survives the boot rewrite of the URL.
 ok('a cold deep link carries its map position into the open',
-  /var pos = parseMapHash\(location\.hash\);\r?\n  openArticle\(zim, path, null, \{ replace: true, pos: pos \? mapPositionHash/.test(src));
+  /var pos = parseMapHash\(location\.hash\);\r?\n  openArticle\(zim, path, null, \{ replace: true, query: query \|\| undefined, pos: pos \? mapPositionHash/.test(src));
 
 // ── Get a map of here: the catalog's maps that cover the spot ────────────
 ctx.t = k => ({ download: 'Download' })[k] || k;
