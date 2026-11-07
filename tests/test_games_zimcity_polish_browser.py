@@ -7,6 +7,8 @@ Run: pytest tests/test_games_zimcity_polish_browser.py -v
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from test_games_zimcity_browser import (  # noqa: E402,F401
@@ -137,3 +139,60 @@ def test_a_refusal_line_goes_away_by_itself(browser, site):
     shot(pg, "zimcity-refusal")
     pg.wait_for_function("() => !document.getElementById('cy-held').classList.contains('cy-bad')", timeout=5000)
     assert pg.text_content("#cy-held") == "Coal plant: $3,000"
+def _open(browser, site, width, height, lang="en"):
+    ctx = browser.new_context(
+        viewport={"width": width, "height": height},
+        device_scale_factor=2,
+        is_mobile=True,
+        has_touch=True,
+        locale=lang,
+    )
+    pg = ctx.new_page()
+    pg.goto(site + "zimcity.html#lang=" + lang)
+    pg.wait_for_function(
+        "() => window.__zimcity && window.__zimcity.city && document.getElementById('cy-funds').textContent"
+    )
+    pg.wait_for_timeout(300)
+    return pg
+
+
+@pytest.mark.parametrize(
+    "lang", ["en", "es", "de", "ru", "fr", "pt", "ar", "he", "hi", "zh"]
+)
+def test_the_title_is_whole_beside_the_bars_buttons_in_every_language(
+    browser, site, lang
+):
+    """Spanish clipped the title to "Zi..." and German and Russian squeezed it out: Undo and Pause are pictures now."""
+    pg = _open(browser, site, 390, 844, lang)
+    got = pg.evaluate(
+        "() => { const h = document.querySelector('.ar-bar h1'); return [h.scrollWidth, h.clientWidth, document.documentElement.scrollWidth - innerWidth]; }"
+    )
+    assert got[0] <= got[1] and got[2] <= 0, got
+    if lang in ("es", "ru"):
+        shot(pg, "zimcity-title-" + lang)
+
+
+def test_a_phone_on_its_side_gives_the_map_the_height_and_the_menu_fits(browser, site):
+    """Landscape (844 x 390): the map was 270 px tall under a bar, a strip and a line, the tools 43 px wide, and the Menu's card ran
+    past the screen's foot. The strip, the line and the tools stand in a column; the map is the rest.
+    """
+    pg = _open(browser, site, 844, 390)
+    got = pg.evaluate(
+        """() => { const r = (s) => document.querySelector(s).getBoundingClientRect();
+      return { map: r('#cy-map').height, tool: r('.cy-tool').width, toolH: r('.cy-tool').height, over: document.documentElement.scrollWidth - innerWidth, foot: r('.cy-foot').bottom }; }"""
+    )
+    assert (
+        got["map"] >= 320
+        and got["tool"] >= 44
+        and got["toolH"] >= 44
+        and got["over"] <= 0
+        and got["foot"] <= 390
+    ), got
+    shot(pg, "zimcity-landscape")
+    pg.click(".gs-menu-btn")
+    pg.wait_for_timeout(300)
+    card = pg.evaluate(
+        "() => { const b = document.querySelector('.ar-sheet-card').getBoundingClientRect(); return [b.top, b.bottom, innerHeight]; }"
+    )
+    assert card[1] <= card[2], card
+    shot(pg, "zimcity-landscape-menu")

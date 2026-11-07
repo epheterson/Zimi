@@ -29,7 +29,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-goal[hidden] { display: none; }
 .cy-goal b { color: var(--ink); font-weight: 650; }
 .cy-goal span { font-variant-numeric: tabular-nums; }
-.cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; line-height: 1.35; }   /* two lines before it is cut: a long translation or a citizen's quote is read whole */
 
 /* The map: everything left between the strip and the tray. */
 .cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -66,12 +66,17 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-sub { margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-body); font-weight: 650; }
 .cy-credit p { margin: 0 0 var(--sp-2); }
 
-/* Landscape on a phone: the tray moves beside the map. */
+/* Landscape on a phone: the map takes the whole height under the bar, and what the strip, the message and the tray say
+   stands in a column beside it (a bar, a strip and a line above the map left it 270 px of 390). */
 @media (orientation: landscape) and (max-height: 520px) {
-  .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto 1fr; }
-  .cy-strip, .cy-goal, .cy-msg { grid-column: 1 / -1; }
-  .cy-stage { grid-column: 1; grid-row: 4; }
-  .cy-foot { grid-column: 2; grid-row: 4; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
+  .cy-main { display: grid; grid-template-columns: 1fr 184px; grid-template-rows: auto auto auto 1fr; }
+  .cy-stage { grid-column: 1; grid-row: 1 / -1; }
+  .cy-strip, .cy-goal, .cy-msg, .cy-foot { grid-column: 2; }
+  .cy-strip { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); padding-inline: 10px; }
+  .cy-when { flex: 1 0 100%; text-align: start; }
+  .cy-goal { padding-inline: 10px; }
+  .cy-msg { padding-inline: 10px; text-align: start; font-size: var(--fs-small); -webkit-line-clamp: 4; line-clamp: 4; }
+  .cy-foot { grid-row: 4; min-height: 0; overflow-y: auto; justify-content: flex-end; padding-inline: 10px; }
   /* Icons only, three across: seven tools in three rows fit the height a phone on its side leaves. */
   .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cy-tool { min-height: var(--target); }
@@ -141,3 +146,11 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-how-sizes { gap: 20px; flex-wrap: wrap; }
 .cy-how-size { display: inline-flex; align-items: center; gap: 4px; }
 .cy-how-size b { margin-inline-start: 4px; font-variant-numeric: tabular-nums; }
+
+/* The bar's Undo and Pause are pictures (their words stay for a screen reader): a translated word beside Menu squeezed the
+   title to "Zi..." in Spanish and out of sight in German and Russian. */
+.cy-page #cy-undo, .cy-page #cy-pause { position: relative; width: 44px; padding: 0; font-size: 0; }
+.cy-page #cy-undo::before, .cy-page #cy-pause::before { content: ""; position: absolute; inset: 0; margin: auto; width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--cy-glyph) center / contain no-repeat; mask: var(--cy-glyph) center / contain no-repeat; }
+.cy-page #cy-undo { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11'/%3E%3C/svg%3E"); }
+.cy-page #cy-pause { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M8 5v14M16 5v14'/%3E%3C/svg%3E"); }
+.cy-page #cy-pause[data-t="play.resume"] { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4l13 8-13 8z' fill='black'/%3E%3C/svg%3E"); }
