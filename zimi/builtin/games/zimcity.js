@@ -684,6 +684,7 @@ function unpack(k) {
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
   var sc = k.scenario && scenarioOf(k.scenario.id);
   if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm);   // traffic is not kept
+  if (typeof k.people === 'number') back.sim.evaluation.cityPop = k.people;   // the count is kept: a city just opened reads its people, not 0 until the year's evaluation
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
   if (sc) c.scenario = k.scenario;

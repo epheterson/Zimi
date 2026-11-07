@@ -5,6 +5,7 @@ Run: pytest tests/test_games_zimcity_polish_browser.py -v
 """
 
 import os
+import re
 import sys
 
 import pytest
@@ -274,3 +275,27 @@ def test_the_road_says_before_the_stroke_what_a_bridge_costs(browser, site, lang
     got = pg.evaluate("() => { const h = document.getElementById('cy-held'); return [h.scrollHeight, h.clientHeight, document.documentElement.scrollWidth - innerWidth]; }")
     assert got[0] <= got[1] + 1 and got[2] <= 0, got
     shot(pg, "zimcity-road-held-" + lang)
+
+
+def test_a_kept_city_opens_with_its_people_not_zero(browser, site):
+    """Opening a kept city from Cities showed "0 people" until the year's evaluation."""
+    from test_games_zimcity_browser import COMMUTERS, OURS
+
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    pg.evaluate(COMMUTERS)
+    had = pg.evaluate("() => window.__zimcity.city.sim.evaluation.cityPop")
+    assert had > 0
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    pg.keyboard.press("Escape")
+    pg.evaluate("() => document.getElementById('cy-new').click()")   # a new city takes the place of this one
+    pg.wait_for_timeout(200)
+    pg.keyboard.press("Escape")
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-kept .ar-btn >> nth=0")
+    pg.wait_for_timeout(100)
+    text = pg.text_content("#cy-when")
+    assert format(had, ",") in text, (had, text)
