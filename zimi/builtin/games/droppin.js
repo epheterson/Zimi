@@ -90,10 +90,11 @@
   function fitHeight() { view.h = view.w * ratio(); }
   // The widest view there is: the whole width, or less when the box is taller than the map is wide (so no empty sea shows above and below).
   function maxWidth() { return Math.min(MAP_W, MAP_H / ratio()); }
-  // The view that holds the answer and the pin with room round them (neither is ever at an edge), as tight as the zoom allows.
+  // The view that holds the answer and the pin with room round them (neither is ever at an edge), as tight as the zoom allows; for
+  // two pins far apart it is the whole map, with some sea above and below.
   function fitAnswer() {
     var t = project(q().lat, q().lon), a = project(g.ans.lat, g.ans.lon), r = ratio();
-    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(maxWidth(), Math.max(Math.abs(t.x - a.x) * FIT_PAD, Math.abs(t.y - a.y) * FIT_PAD / r)));
+    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(MAP_W, Math.max(Math.abs(t.x - a.x) * FIT_PAD, Math.abs(t.y - a.y) * FIT_PAD / r)));
     var h = w * r, cx = (t.x + a.x) / 2, cy = (t.y + a.y) / 2;
     var m = w * FIT_MARGIN;   // a pin on the very edge of the map still has its whole disc in view
     view.w = w; view.h = h; view.x = Math.max(-m, Math.min(MAP_W - w + m, cx - w / 2)); view.y = Math.max(Math.min(0, MAP_H - h) - m, Math.min(Math.max(0, MAP_H - h) + m, cy - h / 2)); applyView();
