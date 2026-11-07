@@ -254,3 +254,17 @@ def test_snake_has_room_and_the_stat_has_a_label(browser, served):
     assert page.locator("#sn-stat").inner_text().startswith("Apples"), page.locator("#sn-stat").inner_text()
     shot(page, "09-snake-start")
     c.close()
+
+
+# 10. Bricks: the tap that starts the game also launches the ball, and the paddle sits well above the bottom edge (the thumb zone).
+def test_bricks_launches_on_the_first_tap_and_the_paddle_clears_the_thumb(browser, served):
+    c, page = open_game(browser, served, "bricks")
+    page.wait_for_function("() => window.__bricks && __bricks.g")
+    gap = page.evaluate("() => (BricksEngine.H - BricksEngine.PADDLE_Y) / BricksEngine.H")
+    assert gap >= 0.17, gap
+    page.locator(".gs-splash .gs-primary, .gs-splash button").first.click()   # the splash's Play
+    page.wait_for_function("() => __bricks.mode === 'playing'")
+    frames(page, 2)
+    assert page.evaluate("() => __bricks.g.ball.stuck") is False
+    shot(page, "10-bricks-launched")
+    c.close()
