@@ -52,6 +52,7 @@ function extractFn(src, name) {
 
 const S = { Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, window: {}, document: { getElementById: () => null } };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180; var _MOON_EQUATOR_TILT_DEG = 1.54242;' +

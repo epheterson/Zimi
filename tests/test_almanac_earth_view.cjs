@@ -171,6 +171,7 @@ const S = {
   navigator: { onLine: true },
 };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
   'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = true; var _almFocus = null; var _currentLang = "en";' +

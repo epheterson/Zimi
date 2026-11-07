@@ -31,6 +31,7 @@ function check(ok, label) {
 const S = { Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, Float32Array, Uint8Array, Uint16Array, Int8Array, ArrayBuffer,
   window: {}, document: { getElementById: () => null } };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180; function t(k) { return k; }', S);
 const almSrc = read('almanac.js');

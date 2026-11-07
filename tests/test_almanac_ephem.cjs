@@ -41,6 +41,7 @@ function extractFn(src, name) {
 // No document, no window: the file must run in a bare global scope.
 const S = { Math, Date, Object, JSON, console, String, Number, Array, isNaN };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180;', S);

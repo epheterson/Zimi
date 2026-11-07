@@ -67,6 +67,8 @@ const S = {
   cancelAnimationFrame: () => {},
 };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
+vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
   'var _MOON_EQUATOR_TILT_DEG = 1.54242; var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180; var _currentLang = "en";' +
