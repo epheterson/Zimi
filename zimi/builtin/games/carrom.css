@@ -8,5 +8,10 @@
 .cr-canvas:focus-visible { outline: 3px solid var(--select-ring); outline-offset: 3px; }
 .cr-sliders { width: min(100vw - 24px, 420px); font-size: var(--fs-body); }
 .cr-sliders label { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
-.cr-sliders input[type="range"] { width: 100%; min-height: 28px; accent-color: var(--accent); }
+.cr-sliders input[type="range"] { width: 100%; min-height: 28px; accent-color: var(--accent); -webkit-appearance: none; appearance: none; background: transparent; }
+/* The track is a line of the page's own, so it shows on a dark page too (the browser's is the colour of the page there). */
+.cr-sliders input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--ink3); }
+.cr-sliders input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--ink3); }
+.cr-sliders input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink3); }
+.cr-sliders input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink3); }
 .cr-sliders .ar-btn { margin-top: 6px; }

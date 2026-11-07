@@ -149,3 +149,54 @@ def test_mosaic_clues_read_on_the_undecided_squares(browser, served, scheme):
     assert (b + 0.05) / (a + 0.05) >= 4.5, (square, clue)
     shot(page, "03-mosaic-" + scheme)
     c.close()
+# 4. Carrom: the pills' swatches are the coins (the person's side, whichever it is), and the slider tracks show on a dark page.
+def _rgb(css):
+    return tuple(int(v) for v in re.findall(r"\d+", css)[:3])
+
+
+@pytest.mark.parametrize("side,coin", [("first", "#f6f0dd"), ("second", "#3a332b")])
+def test_carrom_you_swatch_is_your_coins(browser, served, side, coin):
+    c, page = open_game(browser, served, "carrom.html", color_scheme="dark")
+    page.evaluate(
+        "() => localStorage.setItem('zimi.games.carrom.settings', JSON.stringify({ side: '%s' }))"
+        % side
+    )
+    page.reload()
+    shell_ready(page)
+    pips = page.evaluate(
+        "() => [...document.querySelectorAll('.bg-score .wk-who')].map(w => [w.textContent, getComputedStyle(w.querySelector('.wk-pip')).backgroundColor])"
+    )
+    you = [p for p in pips if p[0].startswith("You")]
+    assert len(you) == 1 and _rgb(you[0][1]) == tuple(
+        int(coin[i : i + 2], 16) for i in (1, 3, 5)
+    ), pips
+    shot(page, "04-carrom-%s" % side)
+    c.close()
+
+
+def test_carrom_slider_tracks_show_in_dark(served):
+    """In WebKit (the phone's engine) the browser's own track is the page's colour on a dark page."""
+    import io
+
+    Image = pytest.importorskip("PIL.Image")
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as p:
+        try:
+            wk = p.webkit.launch()
+        except Exception as e:
+            pytest.skip("WebKit is not installed: %s" % e)
+        _slider_tracks(wk, served, Image, io)
+        wk.close()
+
+
+def _slider_tracks(browser, served, Image, io):
+    c, page = open_game(browser, served, "carrom.html", color_scheme="dark")
+    page.click("#cr-slide")
+    box = page.locator(".cr-sliders input").first.bounding_box()
+    right = {"x": box["x"] + box["width"] * 0.8, "y": box["y"], "width": box["width"] * 0.18, "height": box["height"]}   # past the thumb: only the track is there
+    img = Image.open(io.BytesIO(page.screenshot(clip=right))).convert("RGB")
+    ground = img.getpixel((0, 0))
+    far = max(sum(abs(a - b) for a, b in zip(px, ground)) for px in img.getdata())
+    assert far > 90, "the track is not drawn against the dark page (%s)" % far
+    shot(page, "04-carrom-sliders")
+    c.close()

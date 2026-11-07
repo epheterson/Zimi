@@ -9,6 +9,7 @@
   var B = E.B, MARGIN = 34, VIEW = B + 2 * MARGIN;
   var PULL_MAX = 190, MIN_POWER = 0.07, FLICK_MIN_SPEED = 260, FLICK_MIN_DIST = 16, FLICK_WINDOW_MS = 110, FLICK_GAIN = 1.0;
   var TOUCH_GRAB = 3.4, MOUSE_GRAB = 2.4, STRIP = 54, KEY_STEP = 10, KEY_ANGLE = Math.PI / 90, KEY_POWER = 0.05, DROP_MS = 320, AIM_SHOW_MS = 650, COMPUTER_DELAY_MS = 500, MAX_FRAME_MS = 50;
+  var RINGS = { w: ['#f6f0dd', '#d9cfae', '#b9ae8a'], b: ['#3a332b', '#241f1a', '#5b5247'], q: ['#d65a46', '#b5402f', '#f0b2a4'], s: ['#ffe9a3', '#e0a93a', '#8a5d12'] };
   function sideName(p) { return UI.side(p === 0 ? 'white' : 'black'); }
   function isYou(p) { return vsCpu() && !G.watching && G.human(p); }
 
@@ -17,7 +18,7 @@
     options: WK.standardOptions({ first: 'chess.side.white', second: 'board.black' }),
     onNew: newGame
   });
-  var score = WK.scoreBar($('wk-score'), [{ color: 'var(--disc-w)' }, { color: 'var(--disc-b)' }]);
+  var score = WK.scoreBar($('wk-score'), [{ color: RINGS.w[0], border: RINGS.w[2] }, { color: RINGS.b[0], border: RINGS.b[2] }]);   // the pills' swatches are the coins
   var canvas = $('cr-canvas'), ctx = canvas.getContext('2d'), wrap = $('cr-wrap');
   var game, phase = 'idle', aim = { angle: 0, power: 0.55, show: false }, drag = null, falling = [], notesLine = '', raf = 0, lastTs = 0, acc = 0, dropped = [], px = 1;
 
@@ -77,7 +78,6 @@
       circle(pk[0], pk[1], 31, pocket, 'rgba(0,0,0,0.5)', 2);
     });
   }
-  var RINGS = { w: ['#f6f0dd', '#d9cfae', '#b9ae8a'], b: ['#3a332b', '#241f1a', '#5b5247'], q: ['#d65a46', '#b5402f', '#f0b2a4'], s: ['#ffe9a3', '#e0a93a', '#8a5d12'] };
   function drawCoin(b, scale, alpha) {
     var c = P(b.x, b.y), r = b.r * px * (scale || 1), p = RINGS[b.kind];
     ctx.globalAlpha = alpha == null ? 1 : alpha;
