@@ -180,8 +180,9 @@ function closest(fromMs, toMs, target) {
     'only the 3D view\'s map loader calls its loader');
   check(/_sgLoadStars\(\)/.test(src) && !/_aeDecodeStars|AE_STARS_/.test(src), 'which asks the sky\'s loader and keeps no decoder of its own');
   const sky = read('almanac-sky.js'), asks = sky.split('\n').filter((l) => /_sgLoadData\(/.test(l));
-  check(asks.length === 1 && /function _skyGLSky[\s\S]*?_sgLoadData\(_skyKickDirty\)/.test(sky),
-    'and the live sky asks only from the GPU sky, never in the 2D fallback');
+  check(asks.length === 2 && /function _skyGLSky[\s\S]*?_sgLoadData\(_skyKickDirty, [^)]*\)/.test(sky) &&
+    /function _skyAwaitingGPU[\s\S]*?if \(_sgReady\(\)\) \{[^}]*_sgLoadData\(_skyKickDirty, /.test(sky),
+    'and the live sky asks only from the GPU sky (and from the held first sight, which paints nothing to ask with), never in the 2D fallback');
   check(!/stars-v1/.test(read('sw.js')), 'and the service worker does not precache it');
 }
 

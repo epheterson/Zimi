@@ -600,6 +600,7 @@ function _sgInit() {
     sg.pView = _sgProgram(gl, SG_VS_QUAD, SG_FS_SKYVIEW);
     sg.pSky = _sgProgram(gl, SG_VS_QUAD, SG_FS_SKY);
     sg.progs = [sg.pTrans, sg.pMulti, sg.pView, sg.pSky];
+    sg.pStars = _sgProgram(gl, SG_VS_STARS, SG_FS_STARS);   // compiled with the others: the catalogue's upload then waits on no compile
     sg.vao = gl.createVertexArray();
     sg.trans = _sgTarget(gl, SG_TRANS_W, SG_TRANS_H);
     sg.multi = _sgTarget(gl, SG_MS_N, SG_MS_N);
@@ -608,6 +609,7 @@ function _sgInit() {
     sg.mwTex = _sgTexture(gl, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
     _sg = sg;
     _sgPoll(sg);
+    if (!_sgFailed.stars) _sgLoadStars().catch(function () {});   // fetched and decoded beside the compile
     return true;
   } catch (e) {
     if (sg) _sgDispose(sg);
@@ -618,9 +620,9 @@ function _sgInit() {
 // context, four programs and their tables were a task of their own, right after the Almanac opened. The Canvas 2D
 // sky draws until then (the same contract as while the programs compile). False until started.
 var SG_START_MAX_WAIT_MS = 1500;
-function _sgInitSoon() {
+function _sgInitSoon(urgent) {
   if (_sg !== null) return !!_sg;
-  if (typeof whenQuiet !== 'function') return _sgInit();
+  if (urgent || typeof whenQuiet !== 'function') return _sgInit();   // urgent: the page is held back for this sky (the Almanac's veil)
   whenQuiet(function () { if (_sg === null) _sgInit(); }, { key: 'sky-gl', priority: QUIET_PRI_PANELS, maxWaitMs: SG_START_MAX_WAIT_MS });
   return false;
 }
@@ -629,10 +631,13 @@ function _sgPoll(sg) {
   if (_sg !== sg) return;
   var gl = sg.gl, i;
   if (sg.parallel) {
-    for (i = 0; i < sg.progs.length; i++) {
-      if (!gl.getProgramParameter(sg.progs[i], sg.parallel.COMPLETION_STATUS_KHR)) { sg.pollTimer = setTimeout(function () { _sgPoll(sg); }, SG_POLL_MS); return; }
+    var all = sg.progs.concat([sg.pStars]);
+    for (i = 0; i < all.length; i++) {
+      if (!gl.getProgramParameter(all[i], sg.parallel.COMPLETION_STATUS_KHR)) { sg.pollTimer = setTimeout(function () { _sgPoll(sg); }, SG_POLL_MS); return; }
     }
   }
+  // The stars' program failing costs the stars, not the sky: the catalogue is given up (the page paints without it).
+  try { _sgFinishProgram(gl, sg.pStars); } catch (e) { sg.pStars = null; _sgFailed.stars = true; }
   try {
     for (i = 0; i < sg.progs.length; i++) _sgFinishProgram(gl, sg.progs[i]);
     gl.bindVertexArray(sg.vao);
@@ -683,7 +688,10 @@ function _sgDispose(sg) {
   if (_sg === sg) _sg = null;
 }
 // The GPU sky is given up for this page load.
-function _sgDisable() { _sgDispose(); _sg = false; _sgAnnounce(false); }
+function _sgDisable() {
+  _sgDispose(); _sg = false; _sgAnnounce(false);
+  if (typeof _skyKickDirty === 'function') _skyKickDirty();   // the Canvas 2D sky takes over, now
+}
 function _sgLost(sg) {
   if (_sg !== sg) return;
   _sgDispose(sg);
@@ -726,9 +734,35 @@ function _sgStarList(stars) {
   return { count: stars.n, at: function (i, out) { out.ra = stars.ra[i]; out.dec = stars.dec[i]; out.mag = stars.mag[i]; out.ci = stars.bv[i]; } };
 }
 
-// The stars and the Milky Way's picture, fetched once the GPU sky is ready
-// (after the first paint); onReady asks for another paint when each lands.
-function _sgLoadData(onReady) {
+// The Milky Way's picture, decoded off the main thread: one request, whoever asks first. A failure is remembered until
+// _sgRetryLoads like the stars'.
+var _sgMwPromise = null;
+function _sgLoadMilkyWay() {
+  if (_sgMwPromise) return _sgMwPromise;
+  if (_sgFailed.mw) return Promise.reject(new Error('mw'));
+  _sgMwPromise = new Promise(function (resolve, reject) {
+    var img = new Image();
+    img.src = SG_MILKYWAY_URL;
+    if (img.decode) img.decode().then(function () { resolve(img); }, reject);
+    else { img.onload = function () { resolve(img); }; img.onerror = reject; }
+  });
+  _sgMwPromise.catch(function () { _sgFailed.mw = true; _sgMwPromise = null; });
+  return _sgMwPromise;
+}
+// Ask for the data a sky will want before the GPU has finished compiling: the requests and the decoding then run beside
+// the compile, not after it. wantMw: the Milky Way too (a sky that is dark enough to show it).
+function _sgPrefetch(wantMw) {
+  if (!_sgFailed.stars) _sgLoadStars().catch(function () {});
+  if (wantMw && !_sgFailed.mw) _sgLoadMilkyWay().catch(function () {});
+}
+// How far below the horizon the Sun must be for the Milky Way to be in the sky at all (astronomical twilight is -18;
+// by -9 the sky is still far brighter than it): above that its picture (an 8 MB upload) is not sent to the GPU.
+var SG_MW_SUN_ALT_DEG = -9;
+function _sgWantsMilkyWay(sunAltGeoDeg) { return sunAltGeoDeg < SG_MW_SUN_ALT_DEG; }
+
+// The stars and the Milky Way's picture, put on the GPU once it is ready (after the first paint); onReady asks for
+// another paint when each lands. wantMw false: the Milky Way's picture is left where it is.
+function _sgLoadData(onReady, wantMw) {
   var sg = _sg;
   if (!sg || !sg.ready) return;
   if (!sg.starCount && !sg.starsLoading && !_sgFailed.stars) {
@@ -740,10 +774,9 @@ function _sgLoadData(onReady) {
     }).catch(function () { _sgFailed.stars = true; }) // until _sgRetryLoads, not every paint
       .then(function () { sg.starsLoading = false; });
   }
-  if (!sg.mwReady && !sg.mwLoading && !_sgFailed.mw) {
+  if (wantMw !== false && !sg.mwReady && !sg.mwLoading && !_sgFailed.mw) {
     sg.mwLoading = true;
-    var img = new Image();
-    var upload = function () {
+    _sgLoadMilkyWay().then(function (img) {
       sg.mwLoading = false;
       if (_sg !== sg) return;
       var gl = sg.gl;
@@ -753,12 +786,7 @@ function _sgLoadData(onReady) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
       sg.mwReady = true;
       onReady();
-    };
-    var failed = function () { sg.mwLoading = false; _sgFailed.mw = true; };
-    img.src = SG_MILKYWAY_URL;
-    // Decoded off the main thread first: the upload then copies pixels instead of decoding a webp in the task.
-    if (img.decode) img.decode().then(upload, failed);
-    else { img.onload = upload; img.onerror = failed; }
+    }, function () { sg.mwLoading = false; });
   }
 }
 
@@ -771,8 +799,6 @@ function _sgUploadStars(sg, stars) {
     var c = _sgBvToRGB(stars.bv[i]);
     col[3 * i] = c[0]; col[3 * i + 1] = c[1]; col[3 * i + 2] = c[2];
   }
-  sg.pStars = _sgProgram(gl, SG_VS_STARS, SG_FS_STARS);
-  _sgFinishProgram(gl, sg.pStars);
   sg.vaoStars = gl.createVertexArray();
   gl.bindVertexArray(sg.vaoStars);
   sg.buffers = [];
@@ -935,3 +961,7 @@ function _sgViewUniforms(gl, prog, p) {
   gl.uniform3fv(u.uFwd, v.fwd); gl.uniform3fv(u.uRight, v.right); gl.uniform3fv(u.uUp, v.up);
   gl.uniform1f(u.uLensK, v.lensK);
 }
+
+// An Almanac being opened (its veil is up) gets its GPU compiling the moment this file has run, beside the rest of the
+// page's files and its drawing, not after them.
+if (typeof _almVeilIsUp === 'function' && _almVeilIsUp()) _sgInit();
