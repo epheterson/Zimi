@@ -84,7 +84,7 @@ def test_the_neighbour_grid_reaches_across_the_degrees_that_narrow_near_a_pole()
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
     import build_tide_world as b
 
-    far = (80.5, 12.5, "far")  # 2.5 degrees east: about 17 km
-    grid = b.Grid([(80.5, 10.0, "here"), far])
-    assert [it[2] for _d, it in grid.near(80.5, 10.0, 25.0)] == ["here", "far"]
-    assert [it[2] for _d, it in grid.near(80.5, 10.0, 5.0)] == ["here"]
+    far = (80.5, 12.2, "far")  # 1.3 degrees east, two cells over: about 24 km
+    grid = b.Grid([(80.5, 10.9, "here"), far])
+    assert [it[2] for _d, it in grid.near(80.5, 10.9, 25.0)] == ["here", "far"]
+    assert [it[2] for _d, it in grid.near(80.5, 10.9, 5.0)] == ["here"]
