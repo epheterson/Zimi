@@ -109,3 +109,18 @@ def test_bern_opens_over_its_traffic_goal_and_so_does_a_reloaded_one(browser, si
     pg.wait_for_function("() => window.__zimcity && window.__zimcity.city && window.__zimcity.city.scenario")
     after = pg.evaluate(reading)
     assert after["now"] > 35, after
+
+
+def test_the_coal_plants_chimney_frames_are_the_plant_with_smoke_not_the_1989_pixels(browser, site):
+    """The four animated chimney tiles used to keep the original art (pixel noise and a yellow outline over the redrawn
+    plant). Each of their 16 frames is now the plant's own tile with a puff over it."""
+    pg = phone(browser, site)
+    same = pg.evaluate("""() => {
+      const a = window.__zimcity.view.tileArt(), ctx = a.getContext('2d'), per = a.width / 32, out = [];
+      const px = (t) => ctx.getImageData((t % per) * 32, Math.floor(t / per) * 32, 32, 32).data;
+      [2, 3, 6, 7].forEach((tile, i) => { for (let f = 0; f < 4; f++) {
+        const base = px(750 - 5 + tile), frame = px(916 + i * 4 + f);   // the plant's centre is 750; its first tile is 5 before
+        let n = 0; for (let k = 0; k < base.length; k += 4) if (base[k] === frame[k] && base[k + 1] === frame[k + 1] && base[k + 2] === frame[k + 2]) n++;
+        out.push(n / 1024); } });
+      return out; }""")
+    assert len(same) == 16 and min(same) > 0.75, same
