@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
 - **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
 - **Landmarks on every world:** with Landmarks on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card and Fly there, and Go to lists every landing site.
+- **Facts for every body:** a card's All facts opens a sheet with size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.
 
 ## [1.15.3]
 
