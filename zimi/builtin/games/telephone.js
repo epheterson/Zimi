@@ -164,8 +164,8 @@
     if (isRight(hit, g.secret)) { g.points[g.round] = pointsFor(g.tries.length + 1); g.found = true; return reveal(); }
     g.tries.push(hit.title);
     if (g.tries.length >= GUESSES) { g.points[g.round] = 0; g.found = false; return reveal(); }
-    status.reason(T('tp.notThat', { title: hit.title }));
     renderGuess();
+    status.reason(T('tp.notThat', { title: hit.title }));   // after the redraw, which clears the line
   }
 
   function reveal() {
