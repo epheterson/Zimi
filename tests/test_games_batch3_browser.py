@@ -287,3 +287,81 @@ def test_babel_after_giving_up_the_form_is_off_and_says_missed(browser, served):
     assert page.is_enabled("#bb-field") and page.is_enabled("#bb-guess")
     assert "Name this word" in page.inner_text("#bb-how")
     c.close()
+# 7. Drop Pin: the world map fills its box (no empty sea), zooming in goes to the pin, and the answer view holds both pins whole.
+def _world_game(browser, served):
+    c, page = open_game(browser, served, "droppin.html")
+    page.wait_for_function(
+        "window.__drop && window.__drop.g && window.__drop.g.mode === 'world'"
+    )
+    page.wait_for_function(
+        "document.getElementById('dp-world') && !document.getElementById('dp-world').hasAttribute('hidden')"
+    )
+    return c, page
+
+
+def test_drop_pin_world_fills_its_box(browser, served):
+    c, page = _world_game(browser, served)
+    vb = page.evaluate(
+        "document.getElementById('dp-world').getAttribute('viewBox').split(' ').map(Number)"
+    )
+    assert (
+        vb[1] >= 0
+        and vb[1] + vb[3] <= 400.01
+        and vb[0] >= 0
+        and vb[0] + vb[2] <= 800.01
+    ), vb  # only map is in view, no sea beyond it
+    box = page.evaluate(
+        "(() => { const r = document.getElementById('dp-world').getBoundingClientRect(); return [r.width, r.height]; })()"
+    )
+    assert abs(vb[2] / vb[3] - box[0] / box[1]) < 0.01
+    # zooming out never shows more than the map
+    for _ in range(4):
+        page.click("#dp-zout")
+    vb2 = page.evaluate(
+        "document.getElementById('dp-world').getAttribute('viewBox').split(' ').map(Number)"
+    )
+    assert vb2[1] >= 0 and vb2[1] + vb2[3] <= 400.01, vb2
+    shot(page, "07-droppin-world")
+    c.close()
+
+
+def _tap(page, fx, fy):
+    box = page.locator("#dp-world").bounding_box()
+    page.touchscreen.tap(box["x"] + box["width"] * fx, box["y"] + box["height"] * fy)
+    frames(page, 2)
+
+
+def test_drop_pin_zoom_goes_to_the_tap(browser, served):
+    c, page = _world_game(browser, served)
+    _tap(page, 0.8, 0.25)
+    page.click("#dp-zin")
+    frames(page, 2)
+    at = page.evaluate(
+        "(() => { const s = document.getElementById('dp-world').getBoundingClientRect(), p = document.querySelector('#dp-world circle.pin').getBoundingClientRect(); return [(p.x + p.width / 2 - s.x) / s.width, (p.y + p.height / 2 - s.y) / s.height]; })()"
+    )
+    assert abs(at[0] - 0.5) < 0.05 and abs(at[1] - 0.5) < 0.08, at
+    c.close()
+
+
+@pytest.mark.parametrize("fx,fy", [(0.5, 0.5), (0.02, 0.05), (0.98, 0.95)])
+def test_drop_pin_answer_pin_is_never_clipped(browser, served, fx, fy):
+    c, page = _world_game(browser, served)
+    _tap(page, fx, fy)
+    for _ in range(3):   # zoomed in on the pin, the place is out of view until the answer view brings it back
+        page.click("#dp-zin")
+    page.evaluate("document.getElementById('dp-drop').click()")
+    page.wait_for_selector("#dp-world circle.truth")
+    frames(page, 2)
+    rects = page.evaluate(
+        """(() => { const s = document.getElementById('dp-world').getBoundingClientRect();
+      return ['truth', 'pin'].map(k => { const r = document.querySelector('#dp-world circle.' + k).getBoundingClientRect();
+        return [r.left - s.left, r.top - s.top, s.right - r.right, s.bottom - r.bottom]; }); })()"""
+    )
+    for r in rects:
+        assert min(r) >= 0, rects
+    shot(
+        page,
+        "07-droppin-answer-%s"
+        % ("c" if fx == 0.5 else "edge" if fx < 0.5 else "edge2"),
+    )
+    c.close()
