@@ -249,7 +249,7 @@
 
     page = Z.solitairePage({
       rules: api, id: 'freecell', place: placeWithHint, cols: COLS, newGame: randomDeal, after: autoRun, why: why,
-      stuck: { is: function (st) { return !isWon(st) && !hasMove(st); }, score: function () { return undefined; }, title: function () { return TX('cards.noMoves'); }, note: function () { return TX('fc.stuck'); } },
+      stuck: Z.stuckWhen(api, hasMove),
       statText: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.moves; },
       cascadeOrder: function (st) {
         var order = [], r;

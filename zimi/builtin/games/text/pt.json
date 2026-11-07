@@ -1933,7 +1933,7 @@
  "fc.play": "Jogar",
  "fc.random": "Jogo aleatório",
  "fc.restart": "Reiniciar jogo",
- "fc.stuck": "Desfaça algumas jogadas para tentar outro caminho.",
+ "cards.stuck": "Desfaça algumas jogadas para tentar outro caminho.",
  "fc.why.cell": "Uma célula livre guarda uma carta.",
  "fc.why.cells": "As células livres estão cheias.",
  "fc.why.limit": "Agora você só pode mover {cards}.",

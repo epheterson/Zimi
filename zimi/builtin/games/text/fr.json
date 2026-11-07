@@ -1933,7 +1933,7 @@
  "fc.play": "Jouer",
  "fc.random": "Donne aléatoire",
  "fc.restart": "Recommencer la donne",
- "fc.stuck": "Annulez quelques coups pour essayer autrement.",
+ "cards.stuck": "Annulez quelques coups pour essayer autrement.",
  "fc.why.cell": "Une cellule libre ne prend qu’une carte.",
  "fc.why.cells": "Les cellules libres sont pleines.",
  "fc.why.limit": "Vous ne pouvez déplacer que {cards} pour l’instant.",

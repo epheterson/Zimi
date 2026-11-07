@@ -1870,7 +1870,7 @@
  "fc.play": "Play",
  "fc.random": "Random deal",
  "fc.restart": "Restart deal",
- "fc.stuck": "Undo a few moves to try another way.",
+ "cards.stuck": "Undo a few moves to try another way.",
  "fc.why.cell": "A free cell holds one card.",
  "fc.why.cells": "The free cells are full.",
  "fc.why.limit": "You can move only {cards} right now.",

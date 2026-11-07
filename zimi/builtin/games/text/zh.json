@@ -1805,7 +1805,7 @@
  "fc.play": "开始",
  "fc.random": "随机牌局",
  "fc.restart": "重玩此局",
- "fc.stuck": "撤销几步，换个走法试试。",
+ "cards.stuck": "撤销几步，换个走法试试。",
  "fc.why.cell": "一个空位只能放一张牌。",
  "fc.why.cells": "空位都占满了。",
  "fc.why.limit": "现在只能移动 {cards}。",

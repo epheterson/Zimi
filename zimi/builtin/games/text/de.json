@@ -1870,7 +1870,7 @@
  "fc.play": "Spielen",
  "fc.random": "Zufälliges Spiel",
  "fc.restart": "Neu starten",
- "fc.stuck": "Machen Sie ein paar Züge rückgängig und probieren Sie es anders.",
+ "cards.stuck": "Machen Sie ein paar Züge rückgängig und probieren Sie es anders.",
  "fc.why.cell": "Eine Freizelle nimmt nur eine Karte.",
  "fc.why.cells": "Alle Freizellen sind belegt.",
  "fc.why.limit": "Im Moment können Sie nur {cards} bewegen.",

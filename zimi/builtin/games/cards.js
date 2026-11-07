@@ -1522,11 +1522,20 @@
   //   o.refuse     the stock said no; o.afterStock: false when a turn of the stock ends nothing (no win or auto-move check)
   //   o.blocked    true while something else is playing (Watch and learn): no move, no draw
   //   o.settle     first thing after a move; o.score  state -> what a win is told; o.after  a move that ended nothing
-  //   o.stuck      { is, title, note, score } (functions of the state) for a game that can run out of moves: the sheet with Undo and New game
+  //   o.stuck      { is, title, note, score } (functions of the state) for a game that can run out of moves: the sheet with Undo and New game;
+  //                Z.stuckWhen(rules, hasMove) is the one a game with a plain "any move left" asks for (FreeCell, Klondike, Spider)
   //   o.deal       a new state (page.newGame deals it), or o.newGame; o.tap, o.slotTap replace the defaults
   //   o.statText, o.cascadeOrder, o.winLines, o.openMenu     the session's
   // Returns page: { el, session, board, commit, move, draw, afterMove, newGame, menu, start }.
   function winTime(sec, st) { return T('sol.winTime', { time: fmtTime(sec), moves: plural(st.moves, 'move') }); }
+  // A game that can run out of moves says so the same way each time: the sheet with Undo and New game. `hasMove(state)` is the
+  // game's own question, whether any move is left; FreeCell, Klondike and Spider each ask it and share this.
+  function stuckWhen(rules, hasMove) {
+    return {
+      is: function (st) { return !rules.isWon(st) && !hasMove(st); }, score: function () { return undefined; },
+      title: function () { return T('cards.noMoves'); }, note: function () { return T('cards.stuck'); }
+    };
+  }
   function solitairePage(o) {
     var R = o.rules, page = { el: pageEls() }, session, board;
     ensureSprite();
@@ -1604,7 +1613,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
