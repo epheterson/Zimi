@@ -6014,6 +6014,8 @@
 }/* en:end */;
   var RTL = /^(ar|fa|he|iw|ur|ps|sd|yi|dv|ug|ckb)(-|$)/;
   var tables = { en: EN }, listeners = [];
+  // The languages with a text/<lang>.json beside this file (tests/test_games_batch3_browser.py keeps the list true).
+  var SHIPPED = ['ar', 'de', 'en', 'es', 'fr', 'he', 'hi', 'pt', 'ru', 'zh'];
 
   // The hash as { key: value }: "#lang=fr&dir=ltr".
   function hashParams() {
@@ -6033,7 +6035,8 @@
   function detect() {
     var p = hashParams(), l = p.lang ? remembered(p.lang) : remembered() || (root.navigator && (root.navigator.language || '')) || 'en';
     l = String(l).toLowerCase().replace('_', '-');
-    return /^[a-z]{2,3}(-[a-z0-9]+)*$/.test(l) ? l : 'en';
+    // A language with no text file speaks English throughout: strings, country names and the library picked all agree.
+    return /^[a-z]{2,3}(-[a-z0-9]+)*$/.test(l) && SHIPPED.indexOf(l.split('-')[0]) >= 0 ? l : 'en';
   }
   var Text = { lang: detect(), dir: 'ltr', table: tables };
   var hashDir = hashParams().dir;
