@@ -108,7 +108,10 @@
     });
   }
   function resolveNow() { if (resolve(g) && multi()) { turn = (turn + 1) % scores.length; if (!g.over) status.say(T('memory.turn', { name: seats.name(turn) })); } }
-  function bestKey() { return settings.set + '.' + settings.size; }
+  // A daily is sixteen cards whatever size the player keeps for their own games, so its table, best and save all say medium.
+  function isDaily() { return !!(root.ZimiShell && root.ZimiShell.daily); }
+  function sizeNow() { return isDaily() ? 'medium' : settings.size; }
+  function bestKey() { return settings.set + '.' + sizeNow(); }
 
   function cols(n) { return n <= 12 ? 3 : 4; }
 
@@ -206,7 +209,7 @@
   }
   function begin() {
     if (timer) { timer.cancel(); timer = null; }
-    g = createGame(SIZES[root.ZimiShell && root.ZimiShell.daily ? 'medium' : settings.size]); newSeats(); build();   // a daily is sixteen cards
+    g = createGame(SIZES[sizeNow()]); newSeats(); build();
     status.say(multi() ? T('memory.turn', { name: seats.name(turn) }) : T('memory.start'));
   }
   els.nu.addEventListener('click', begin);
@@ -223,13 +226,13 @@
   // Leaving and coming back keeps the table: the deal, what is up, the turn and the scores (a mismatched pair is turned back first).
   function kept() {
     if (!g || (g.moves === 0 && g.first < 0)) return null;
-    return { set: settings.set, size: settings.size, people: people(), cards: g.cards.map(function (c) { return [c.id, c.up && !(g.pending && g.pending.indexOf(g.cards.indexOf(c)) >= 0) ? 1 : 0, c.done ? 1 : 0]; }),
+    return { set: settings.set, size: sizeNow(), people: people(), cards: g.cards.map(function (c) { return [c.id, c.up && !(g.pending && g.pending.indexOf(g.cards.indexOf(c)) >= 0) ? 1 : 0, c.done ? 1 : 0]; }),
       first: g.first, moves: g.moves, found: g.found, over: g.over,
       turn: g.pending && multi() ? (turn + 1) % scores.length : turn, scores: scores };   // a miss waiting to turn back has already passed the turn
   }
   function takeUp(d) {
     if (!d || !SETS[d.set] || !SIZES[d.size] || !Array.isArray(d.cards) || d.cards.length !== SIZES[d.size] * 2) return false;
-    settings.set = d.set; settings.size = d.size; settings.people = d.people; save();
+    settings.set = d.set; if (!isDaily()) settings.size = d.size; settings.people = d.people; save();
     g = createGame(SIZES[d.size]); newSeats();
     g.cards = d.cards.map(function (c) { return { id: c[0], up: !!c[1], done: !!c[2] }; });
     g.first = d.first; g.moves = d.moves; g.found = d.found; g.over = !!d.over; turn = d.turn || 0; scores = d.scores || scores;

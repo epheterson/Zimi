@@ -197,7 +197,7 @@
 
   // ── Layout ──────────────────────────────────────────────────────────────
   // The table is the shared one (cardtable.js): its geometry, your hand in rows, the opponents' fans and their count chips.
-  var CT = root.ZimiTable, STATUS_H = CT ? CT.STATUS_H : 46, HEIGHT_SHARE = 0.11, HAND_COLS = CT ? CT.HAND13_COLS : 5;   // the hand is one fanned row of 13, not a grid
+  var CT = root.ZimiTable, STATUS_H = CT ? CT.STATUS_H : 46, HEIGHT_SHARE = 0.11, HAND_COLS = CT ? CT.stateCols : 5;   // the hand is one fanned row of 13, not a grid (narrower cards only where 13 would not fit a row)
 
   // Where everything sits on a table of this size (the hand takes two rows from ten cards).
   function geometry(m) { return CT.geometry(m, CT.rowsFor(m, HAND)); }

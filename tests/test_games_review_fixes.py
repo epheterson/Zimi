@@ -255,3 +255,109 @@ def test_black_promotion_buttons_draw_black_pieces(open_game):
       return out;
     })()""")
     assert svgs["true"] != svgs["false"], "the promotion pieces are white for both sides"
+# ── queued from the bots' review of 1.15.3 ──
+
+DAY = "2026-11-04"
+PAUSE = "(() => { const b = document.querySelector('.ar-bar [id$=\"pause\"]'); if (b && /^pause/i.test(b.textContent)) b.click(); return 1; })()"
+PUZZLE_SAVE = "(() => { const c = Module.cwrap; const p = c('get_save_file', 'number', [])(); const t = UTF8ToString(p); c('free_save_file', 'void', ['number'])(p); return t; })()"
+PUZZLE_UP = "typeof Module !== 'undefined' && document.documentElement.classList.contains('zf-running')"
+
+
+def test_a_daily_memory_game_comes_back_whatever_size_the_player_keeps(open_game):
+    """A daily is sixteen cards; its save said the player's own size (20 cards), so takeUp refused it and the day's progress was lost."""
+    page = open_game("memory", "?daily=" + DAY)
+    game_ready(page, "window.__memory && __memory.g")
+    page.evaluate(
+        "localStorage.setItem('zimi.games.memory.settings', JSON.stringify({ set: 'animals', size: 'large', people: 1 })); 0"
+    )
+    page.reload()
+    game_ready(page, "window.__memory && __memory.g")
+    assert page.evaluate("__memory.g.cards.length") == 16
+    page.locator(".mm-card").first.click()
+    assert page.evaluate("__memory.g.first") >= 0
+    page.evaluate("window.dispatchEvent(new Event('pagehide')); 0")
+    page.reload()
+    game_ready(page, "window.__memory && __memory.g")
+    assert (
+        page.evaluate("__memory.g.first") >= 0
+    ), "the day's game was dealt again instead of coming back"
+    assert (
+        page.evaluate(
+            "JSON.parse(localStorage.getItem('zimi.games.memory.settings')).size"
+        )
+        == "large"
+    ), "a daily changed the size the player keeps"
+    assert not page.errors, page.errors
+
+
+def test_a_shogi_drop_selection_clears_the_hint(open_game):
+    page = open_game("shogi", "?debug")
+    game_ready(page, "window.__sg")
+    page.evaluate(
+        "(() => { const p = __sg.pos(); p.hand[0][1] = 1; p.hand[0][2] = 1; })()"
+    )
+    page.wait_for_function(
+        "() => { const b = document.getElementById('wk-hint'); return b && !b.disabled; }"
+    )
+    page.locator("#wk-hint").click()
+    page.wait_for_function(
+        "() => /^Hint: /.test(document.getElementById('wk-status').textContent)",
+        timeout=60000,
+    )
+    assert page.locator("#sg-board .sel").count() >= 1
+    page.locator(".sg-h:not(.empty):not([disabled])").first.click()
+    assert (
+        page.locator("#sg-board .sel").count() == 0
+    ), "the board still shows the old hint beside the new selection"
+    assert not page.errors, page.errors
+
+
+def test_a_resumed_daily_stacker_deals_on_from_the_days_seed(open_game):
+    """The saved game kept its queue but dealt the next bags from chance, so a resumed daily stopped being the day's."""
+    page = open_game("stacker", "?daily=" + DAY)
+    game_ready(page, "window.__stacker && __stacker.g")
+    page.click(".gs-sp-play")   # the first tap, on the start splash, starts the game
+    page.wait_for_function(truthy("__stacker.mode === 'playing'"))
+    page.evaluate(PAUSE)
+    page.evaluate("window.dispatchEvent(new Event('pagehide')); 0")
+    before = page.evaluate(
+        "[__stacker.g.rng.seed, __stacker.g.rng.draws, ZimiShell.seed()]"
+    )
+    assert before[0] == before[2]
+    page.reload()
+    game_ready(page, "window.__stacker && __stacker.mode === 'paused'")
+    assert (
+        page.evaluate("[__stacker.g.rng.seed, __stacker.g.rng.draws, ZimiShell.seed()]")
+        == before
+    )
+    assert not page.errors, page.errors
+
+
+def test_hearts_sizes_its_cards_like_the_other_card_games_on_a_narrow_phone(
+    served, browser
+):
+    """At 320 px thirteen cards do not fit one row at five columns; every other card game goes to seven and Hearts stayed at five."""
+    ctx = browser.new_context(viewport={"width": 320, "height": 640})
+    page = ctx.new_page()
+    page.goto(served + "/hearts.html")
+    game_ready(page, "document.querySelector('.zc-card')")
+    wide = page.evaluate(
+        "Math.max(...[...document.querySelectorAll('.zc-card')].map(c => c.getBoundingClientRect().width))"
+    )
+    pad, gap = 6, 4  # the table's own (cards.js measure) at this width
+    assert wide <= (320 - 2 * pad - 6 * gap) / 7 + 1, wide
+    ctx.close()
+
+
+def test_a_daily_puzzle_with_its_own_game_id_is_that_game_not_the_saved_day(open_game):
+    page = open_game("puzzles/fifteen", "?daily=" + DAY)
+    game_ready(page, PUZZLE_UP)
+    page.evaluate("window.dispatchEvent(new Event('pagehide')); 0")
+    assert "4x4" in page.evaluate(PUZZLE_SAVE)
+    page.goto(page.url_of + "#3x3#77")
+    page.reload()
+    game_ready(page, PUZZLE_UP)
+    assert "3x3" in page.evaluate(
+        PUZZLE_SAVE
+    ), "the saved daily overwrote the game ID in the address"
+    assert not page.errors, page.errors

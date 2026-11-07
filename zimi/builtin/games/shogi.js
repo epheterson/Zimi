@@ -231,8 +231,8 @@
   function onHand(e) {
     if (G.over || G.thinking || !G.human(turnIdx())) return;
     var t = +e.currentTarget.dataset.piece;
-    sel = -1;
-    if (selDrop === t) { selDrop = 0; targets = {}; tip = null; } else {
+    sel = -1; tip = null;
+    if (selDrop === t) { selDrop = 0; targets = {}; } else {
       selDrop = t; targets = targetsFor(function (m) { return E.isDrop(m) && E.from(m) === t; });
       if (!Object.keys(targets).length) { selDrop = 0; G.refuse(e.currentTarget, T('shogi.cantDrop')); }
       else G.say(T('shogi.chooseDrop'));
