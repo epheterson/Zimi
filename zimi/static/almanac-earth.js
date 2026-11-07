@@ -683,7 +683,7 @@ var AE_CSS = [
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
   '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
-  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
+  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.86);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
   '@media (prefers-reduced-motion: reduce){.ae-hint{transition:none}}',
   '@media (max-width:420px){.ae-btn{font-size:12px;padding:7px 10px;min-height:32px}.ae-status{top:60px;font-size:12px}}'
@@ -1105,6 +1105,7 @@ var AE_RED_EARTH_LIGHT = 0.1;
 // Red is on: the page's class, which is what the CSS reads too (a page without a root, as in the tests, is not Red).
 function _aeRedOn() { var r = document.documentElement; return !!r && r.classList.contains('night-red'); }
 
+var AE_GLSL_LIGHT_OUT ='  gl_FragColor = vec4(light, clamp(max(light.r, max(light.g, light.b)), 0.0, 1.0));';   // added light: its brightest channel is its alpha
 // The atmosphere's glow past the limb, on the sunlit side.
 var AE_ATMO_FRAG = [
   'precision highp float;',
@@ -1115,7 +1116,8 @@ var AE_ATMO_FRAG = [
   '  vec3 V = normalize(cameraPosition - vWorld);',
   '  float edge = pow(clamp(1.0 + dot(N, V) * 1.6, 0.0, 1.0), 2.2);',
   '  float lit = smoothstep(-0.3, 0.5, dot(N, normalize(sunPos - vWorld)));',
-  '  gl_FragColor = vec4(vec3(0.32, 0.58, 1.0) * edge * lit * 0.8, 0.0);',
+  '  vec3 light = vec3(0.32, 0.58, 1.0) * edge * lit * 0.8;',
+  AE_GLSL_LIGHT_OUT,
   '}'
 ].join('\n');
 
@@ -1462,9 +1464,10 @@ var AE_SUN_GLOW_FRAG = [
   '  float streak = aeNoise2(dir * 2.2 + 7.0) * 0.65 + aeNoise2(dir * 6.0 + 3.0) * 0.35;',
   '  float corona = step(1.0, r) * 0.45 * pow(r, -7.0) + 0.3 * pow(r, -2.5) * mix(0.25, 1.0, streak) * mix(1.0, 0.4, dir.y * dir.y);',
   '  float h = aeNoise2(dir * 9.0 + vec2(floor(uT * 0.05), 1.3));',
-  '  float prom = smoothstep(0.78, 0.92, h) * (1.0 - smoothstep(1.0, 1.0 + 0.05 * h, r)) * smoothstep(1.0, 1.006, r);',
+  '  float prom = smoothstep(0.78, 0.92, h) * (1.0 - smoothstep(1.0, 1.0 + 0.05 * h + 1e-4, r)) * smoothstep(1.0, 1.006, r);',
   '  vec3 col = vec3(1.0, 0.72, 0.42) * bloom + vec3(1.0, 0.95, 0.9) * corona + vec3(1.0, 0.38, 0.45) * prom * 0.6;',
-  '  gl_FragColor = vec4(col * fall * fade, 0.0);',
+  '  vec3 light = col * fall * fade;',
+  AE_GLSL_LIGHT_OUT,
   '}'
 ].join('\n');
 
@@ -1592,7 +1595,10 @@ function _aeLoadStars(S) {
 function _aeAddLight(m) {
   m.blending = AE_THREE_CUSTOM_BLENDING;
   m.blendSrc = m.blendDst = AE_THREE_ONE_FACTOR;
-  m.blendSrcAlpha = AE_THREE_ZERO_FACTOR; m.blendDstAlpha = AE_THREE_ONE_FACTOR;
+  // The canvas is see-through: the light carries its own brightness as alpha (see AE_GLSL_LIGHT_OUT), so over empty
+  // sky the premultiplied pixel is valid (colour never above alpha). Safari and WebKit drop colour where alpha is
+  // zero, which showed the Sun's corona and the Earth's rim only where something else had been drawn.
+  m.blendSrcAlpha = AE_THREE_ONE_FACTOR; m.blendDstAlpha = AE_THREE_ONE_FACTOR;
   return m;
 }
 
@@ -5055,14 +5061,14 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini'], AE_TOP_CLEAR_PX = 10;
+var AE_TOP_CONTROLS = ['ae-back', 'ae-when-col', 'ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
   var o = el.getBoundingClientRect();
   _ae.topBoxes = AE_TOP_CONTROLS.map(function (id) {
     var c = _aeById(id);
-    if (!c || c.hidden || !c.getBoundingClientRect) return null;
+    if (!c || c.hidden || !c.getBoundingClientRect || (id === 'ae-hint' && !c.classList.contains('ae-show'))) return null;
     var r = c.getBoundingClientRect();
     return r.width ? [r.left - o.left - AE_TOP_CLEAR_PX, r.top - o.top - AE_TOP_CLEAR_PX, r.right - o.left + AE_TOP_CLEAR_PX, r.bottom - o.top + AE_TOP_CLEAR_PX] : null;
   }).filter(Boolean);
@@ -5226,20 +5232,35 @@ function _aeNameBox(m, side, w) {
   return left ? [m.x - r - AE_NAME_GAP - w, m.y - h / 2, m.x - r - AE_NAME_GAP, m.y + h / 2] : [m.x + r + AE_NAME_GAP, m.y - h / 2, m.x + r + AE_NAME_GAP + w, m.y + h / 2];
 }
 function _aeBoxesMeet(a, b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
+// A name belongs to its own body: no other body's centre is as near to it as its own (a name beside Venus's dot read as
+// Mercury's). Where nothing near enough is free, it goes unnamed rather than land beside another body.
+var AE_NAME_TIE_PX = 3;
+function _aeBoxDist(box, x, y) { return Math.hypot(Math.max(box[0] - x, 0, x - box[2]), Math.max(box[1] - y, 0, y - box[3])); }
+function _aeNameIsItsOwn(box, m, rings) {
+  var own = _aeBoxDist(box, m.x, m.y);
+  return rings.every(function (rb) { return rb.x === m.x && rb.y === m.y || _aeBoxDist(box, rb.x, rb.y) > own + AE_NAME_TIE_PX; });
+}
+// The order names are placed in: the body in view or in flight first, then the bigger discs (Venus before Mercury), so
+// the crowded inner planets lose the smaller name, not the brighter.
+function _aeNameOrder(shown) {
+  var prio = function (m) { return m.ringed ? 1e6 : m.body === _ae.target ? 1e3 : _aeMarkDiscR(m.body); };
+  return shown.map(function (m, i) { return i; }).sort(function (a, b) { return prio(shown[b]) - prio(shown[a]) || a - b; });
+}
 function _aePlaceMarkNames(shown) {
   // What a name may not cover: every body drawn (a crowd's every member too), but its own.
   var rings = [];
   shown.forEach(function (m, i) {
     (m.pts || [m]).forEach(function (q) {
       var r = q === m ? m.r : _aeMarkDiscR(q.body) + AE_MARK_NAME_PAD;
-      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r] });
+      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r], x: q.x, y: q.y });
     });
   });
   // In the Planets view the Sun's disc is drawn on the planets' scale: no name on it either.
   var sunAt = _aeSunAsMark() && _ae.scene ? _aeProject(_aeSunShown(_ae.scene)) : null;
-  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr] }); }
+  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr], x: sunAt.x, y: sunAt.y }); }
   var names = [];
-  shown.forEach(function (m, i) {
+  _aeNameOrder(shown).forEach(function (i) {
+    var m = shown[i];
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
     if (el.classList && el.classList.contains('ae-bm-quiet')) return;   // a point, no name (the Planets view's probes)
     // Measured once it has been laid out (a hidden name has no width: until then, a generous guess by its letters).
@@ -5256,7 +5277,8 @@ function _aePlaceMarkNames(shown) {
       // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
       if (box[0] < AE_NAME_EDGE || box[2] > _ae.w - AE_NAME_EDGE || box[1] < 0 || box[3] > _ae.h) continue;
       var hit = names.some(function (n) { return _aeBoxesMeet(n, box); }) ||
-        rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); });
+        rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); }) ||
+        (!m.ringed && !_aeNameIsItsOwn(box, m, rings));
       if (!hit || m.ringed) chosen = { side: sides[k], box: box };
     }
     if (chosen) names.push(chosen.box);
@@ -6130,6 +6152,7 @@ function _aeHideHint() {
   var hint = _aeById('ae-hint');
   if (hint) hint.classList.remove('ae-show');
   clearTimeout(_ae.hintTimer);
+  _aeMeasureTop();
 }
 // The hint over the controls, for a moment: the first open's, or `text`.
 function _aeShowHint(text) {
@@ -6137,8 +6160,9 @@ function _aeShowHint(text) {
   if (!hint) return;
   if (text) hint.textContent = text;
   hint.classList.add('ae-show');
+  _aeMeasureTop();
   clearTimeout(_ae.hintTimer);
-  _ae.hintTimer = setTimeout(function () { hint.classList.remove('ae-show'); }, AE_HINT_MS);
+  _ae.hintTimer = setTimeout(_aeHideHint, AE_HINT_MS);
 }
 
 // Show where I am. The position is asked for only here, when the person

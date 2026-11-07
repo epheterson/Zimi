@@ -2239,7 +2239,7 @@
   "bg_starting": "Vérification des index…",
   "create_again_no_limit": "Recapturer sans aucune limite",
   "create_again_whole_site": "Capturer tout le site",
-  "alm_earth_hint": "Faites glisser pour tourner, pincez ou faites défiler pour zoomer, touchez la Terre, la Lune ou le Soleil pour y aller",
+  "alm_earth_hint": "Faites glisser pour tourner, pincez ou faites défiler pour zoomer, touchez une planète, une lune ou une sonde pour y aller",
   "alm_earth_view_sats": "Satellites",
   "alm_earth_view_planets": "Planètes",
   "alm_go_to": "Aller à",
