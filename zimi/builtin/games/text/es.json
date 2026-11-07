@@ -6124,5 +6124,7 @@
  "stats.noName": "Tu nombre en las clasificaciones:",
  "board.youMark": "(tú)",
  "city.cl.kept": "La energía de hoy no añade calor; el calentamiento que ya hay se queda.",
- "game.minicrossword.short": "Crucigrama"
+ "game.minicrossword.short": "Crucigrama",
+ "babel.missed": "Fallaste: sin puntos por esta palabra.",
+ "babel.gotIt": "Lo lograste."
 }

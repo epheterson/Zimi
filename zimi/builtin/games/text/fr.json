@@ -6124,5 +6124,7 @@
  "stats.noName": "Votre nom dans les classements :",
  "board.youMark": "(vous)",
  "city.cl.kept": "L’énergie d’aujourd’hui n’ajoute aucune chaleur ; le réchauffement déjà là reste.",
- "game.minicrossword.short": "Mots croisés"
+ "game.minicrossword.short": "Mots croisés",
+ "babel.missed": "Raté : aucun point pour ce mot.",
+ "babel.gotIt": "Vous l’avez trouvé."
 }

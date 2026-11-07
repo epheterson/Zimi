@@ -5996,5 +5996,7 @@
  "stats.noName": "लीडरबोर्ड पर आपका नाम:",
  "board.youMark": "(आप)",
  "city.cl.kept": "आज की बिजली कोई गर्मी नहीं जोड़ती; अब तक की गर्मी बनी रहती है।",
- "game.minicrossword.short": "क्रॉसवर्ड"
+ "game.minicrossword.short": "क्रॉसवर्ड",
+ "babel.missed": "चूक गए: इस शब्द के अंक नहीं।",
+ "babel.gotIt": "आपने सही बताया।"
 }

@@ -5996,5 +5996,7 @@
  "stats.noName": "Your name on the boards:",
  "board.youMark": "(you)",
  "city.cl.kept": "Today’s power adds no warmth; the warming so far stays.",
- "game.minicrossword.short": "Crossword"
+ "game.minicrossword.short": "Crossword",
+ "babel.missed": "Missed: no points for this word.",
+ "babel.gotIt": "You got it."
 }

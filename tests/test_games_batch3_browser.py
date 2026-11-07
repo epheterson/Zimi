@@ -264,3 +264,26 @@ def test_sky_detective_dome_holds_still_through_a_round(browser, served):
         if i < 5:
             page.click("#sk-next")
     c.close()
+# 6. Babel: once a word is given away the guess field and button are disabled, a "missed" note stands where the instruction was, nothing moves.
+def test_babel_after_giving_up_the_form_is_off_and_says_missed(browser, served):
+    c, page = open_game(browser, served, "babel.html")
+    page.wait_for_function("window.__babel && window.__babel.g")
+    top = page.evaluate("document.getElementById('bb-clues').getBoundingClientRect().y")
+    for _ in range(
+        4
+    ):  # two clues showing, three more to show, then the miss that gives it away
+        page.fill("#bb-field", "zzzz")
+        page.click("#bb-guess")
+        frames(page, 2)
+    page.wait_for_selector("#bb-next:not([hidden])")
+    assert page.is_disabled("#bb-field") and page.is_disabled("#bb-guess")
+    assert page.inner_text("#bb-how") == "Missed: no points for this word."
+    assert (
+        page.evaluate("document.getElementById('bb-clues').getBoundingClientRect().y")
+        == top
+    ), "the clues moved"
+    shot(page, "06-babel-missed")
+    page.click("#bb-next")
+    assert page.is_enabled("#bb-field") and page.is_enabled("#bb-guess")
+    assert "Name this word" in page.inner_text("#bb-how")
+    c.close()

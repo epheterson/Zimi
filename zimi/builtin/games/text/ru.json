@@ -6256,5 +6256,7 @@
  "stats.noName": "Ваше имя в таблицах лидеров:",
  "board.youMark": "(вы)",
  "city.cl.kept": "Сегодняшняя энергия не добавляет тепла; накопленное потепление остаётся.",
- "game.minicrossword.short": "Кроссворд"
+ "game.minicrossword.short": "Кроссворд",
+ "babel.missed": "Не угадано: за это слово очков нет.",
+ "babel.gotIt": "Вы угадали."
 }

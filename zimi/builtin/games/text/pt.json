@@ -6124,5 +6124,7 @@
  "stats.noName": "Seu nome nos placares:",
  "board.youMark": "(você)",
  "city.cl.kept": "A energia de hoje não aquece mais; o aquecimento que já houve fica.",
- "game.minicrossword.short": "Palavras cruzadas"
+ "game.minicrossword.short": "Palavras cruzadas",
+ "babel.missed": "Errou: sem pontos por esta palavra.",
+ "babel.gotIt": "Você acertou."
 }

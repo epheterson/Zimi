@@ -108,9 +108,10 @@
   function show(fresh) {
     paint();
     var w = g.words[g.round], playing = g.phase === 'play';
-    els.how.textContent = playing ? T('babel.how') : '';
+    els.how.textContent = playing ? T('babel.how') : T(g.won ? 'babel.gotIt' : 'babel.missed');   // the line is always there, so the clues never move
     drawClues(fresh);
-    els.form.hidden = !playing; els.more.hidden = !playing || g.shown >= w.clues.length;
+    els.field.disabled = els.guess.disabled = !playing;   // the form stays (and is dimmed) once the word is settled
+    els.more.hidden = !playing || g.shown >= w.clues.length;
     els.next.hidden = playing; els.read.hidden = playing || !dict || !w.path;
     if (!playing) {
       els.next.textContent = T(g.round + 1 >= g.words.length ? 'round.seeScore' : 'round.next');
@@ -156,7 +157,7 @@
   }
   function newGame() {
     if (building) return; building = true; done = false;
-    status.say(T('babel.choosing')); els.how.textContent = ''; els.clues.innerHTML = ''; els.form.hidden = els.more.hidden = els.next.hidden = els.read.hidden = true;
+    status.say(T('babel.choosing')); els.how.textContent = ''; els.clues.innerHTML = ''; els.more.hidden = els.next.hidden = els.read.hidden = true;
     var rows = Lib.sample(root.BABEL_WORDS, ROUNDS, Math.random);
     var work = dict ? Promise.all(rows.map(libraryWord)) : Promise.resolve([]);
     work.then(function (found) {

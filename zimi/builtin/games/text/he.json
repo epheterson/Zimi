@@ -6126,5 +6126,7 @@
  "stats.noName": "השם שלך בטבלאות המובילים:",
  "board.youMark": "(את/ה)",
  "city.cl.kept": "החשמל של היום לא מוסיף חום; ההתחממות שכבר קרתה נשארת.",
- "game.minicrossword.short": "תשבץ"
+ "game.minicrossword.short": "תשבץ",
+ "babel.missed": "החמצתם: אין נקודות על המילה הזו.",
+ "babel.gotIt": "צדקתם."
 }
