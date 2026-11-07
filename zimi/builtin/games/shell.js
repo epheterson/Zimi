@@ -1347,7 +1347,14 @@
       var box = h('div', { class: 'gs-extras' });
       extras.forEach(function (b) {
         b.classList.add('gs-moved', 'gs-tile');
-        if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        // A button that draws its own icon (FreeCell's Hint) keeps it as the tile's, and an icon-only one says its name under it.
+        var own = b.querySelector('svg'), name = b.getAttribute('aria-label'), said = b.querySelector('.gs-item-l');
+        if (own && !own.classList.contains('gs-icon')) { own.classList.add('gs-icon'); own.setAttribute('width', ICON_PX); own.setAttribute('height', ICON_PX); }
+        else if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        if (name && !b.textContent.replace(said ? said.textContent : '', '').trim()) {
+          if (!said) b.appendChild(said = h('span', { class: 'gs-item-l' }));
+          said.textContent = name;
+        }
         box.appendChild(b);
       });
       if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }

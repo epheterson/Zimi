@@ -280,6 +280,9 @@
     });
     session = page.session; board = page.board;
 
+    var nameHint = function () { hintEl.setAttribute('aria-label', TX('cards.hint')); };   // the Menu names this tile by it
+    nameHint();
+    if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(nameHint);
     hintEl.addEventListener('click', showHint);
     api.showHint = showHint;
     page.start(function () { startDeal(dealNo); });
