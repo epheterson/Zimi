@@ -5868,5 +5868,9 @@
  "city.cl.kept": "如今的电力不再增加热量；已经造成的变暖还在。",
  "game.minicrossword.short": "填字",
  "babel.missed": "未猜中：这个单词没有得分。",
- "babel.gotIt": "猜对了。"
+ "babel.gotIt": "猜对了。",
+ "shogi.hint.drop": "在 {to} 打入{piece}",
+ "shogi.hint.move": "把{piece}从 {from} 走到 {to}",
+ "shogi.hint.take": "把{piece}从 {from} 走到 {to}，吃子",
+ "shogi.hint.promote": "{move}，并成"
 }

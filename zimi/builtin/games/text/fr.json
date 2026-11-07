@@ -6126,5 +6126,9 @@
  "city.cl.kept": "L’énergie d’aujourd’hui n’ajoute aucune chaleur ; le réchauffement déjà là reste.",
  "game.minicrossword.short": "Mots croisés",
  "babel.missed": "Raté : aucun point pour ce mot.",
- "babel.gotIt": "Vous l’avez trouvé."
+ "babel.gotIt": "Vous l’avez trouvé.",
+ "shogi.hint.drop": "Parachutez {piece} en {to}",
+ "shogi.hint.move": "Déplacez {piece} de {from} à {to}",
+ "shogi.hint.take": "Déplacez {piece} de {from} à {to} et prenez",
+ "shogi.hint.promote": "{move} et promouvez"
 }

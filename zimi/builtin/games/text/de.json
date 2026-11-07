@@ -5998,5 +5998,9 @@
  "city.cl.kept": "Der heutige Strom wärmt nicht weiter; die Erwärmung bisher bleibt.",
  "game.minicrossword.short": "Kreuzworträtsel",
  "babel.missed": "Verpasst: keine Punkte für dieses Wort.",
- "babel.gotIt": "Du hast es erraten."
+ "babel.gotIt": "Du hast es erraten.",
+ "shogi.hint.drop": "Setze {piece} auf {to}",
+ "shogi.hint.move": "Ziehe {piece} von {from} nach {to}",
+ "shogi.hint.take": "Ziehe {piece} von {from} nach {to} und schlage",
+ "shogi.hint.promote": "{move} und befördere"
 }

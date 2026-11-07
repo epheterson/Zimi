@@ -6128,5 +6128,9 @@
  "city.cl.kept": "החשמל של היום לא מוסיף חום; ההתחממות שכבר קרתה נשארת.",
  "game.minicrossword.short": "תשבץ",
  "babel.missed": "החמצתם: אין נקודות על המילה הזו.",
- "babel.gotIt": "צדקתם."
+ "babel.gotIt": "צדקתם.",
+ "shogi.hint.drop": "הניחו {piece} על {to}",
+ "shogi.hint.move": "הזיזו {piece} מ־{from} אל {to}",
+ "shogi.hint.take": "הזיזו {piece} מ־{from} אל {to} ואכלו",
+ "shogi.hint.promote": "{move} וקדמו"
 }

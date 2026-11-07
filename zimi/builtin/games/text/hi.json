@@ -5998,5 +5998,9 @@
  "city.cl.kept": "आज की बिजली कोई गर्मी नहीं जोड़ती; अब तक की गर्मी बनी रहती है।",
  "game.minicrossword.short": "क्रॉसवर्ड",
  "babel.missed": "चूक गए: इस शब्द के अंक नहीं।",
- "babel.gotIt": "आपने सही बताया।"
+ "babel.gotIt": "आपने सही बताया।",
+ "shogi.hint.drop": "{to} पर {piece} रखें",
+ "shogi.hint.move": "{piece} को {from} से {to} पर चलाएँ",
+ "shogi.hint.take": "{piece} को {from} से {to} पर चलाएँ और पकड़ें",
+ "shogi.hint.promote": "{move} और पदोन्नत करें"
 }

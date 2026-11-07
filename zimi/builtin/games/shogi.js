@@ -187,12 +187,19 @@
 
   // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board;
   // a drop shows the square it lands on.
+  // A move in plain words (the piece's name and the squares), not the engine's notation: "Drop a knight on 3d".
+  function plainMove(m) {
+    var to = E.squareName(E.to(m)), text;
+    if (E.isDrop(m)) text = T('shogi.hint.drop', { piece: T('shogi.piece.' + E.from(m)), to: to });
+    else text = T(pos.sq[E.to(m)] ? 'shogi.hint.take' : 'shogi.hint.move', { piece: T('shogi.piece.' + Math.abs(pos.sq[E.from(m)])), from: E.squareName(E.from(m)), to: to });
+    return E.isPromo(m) ? T('shogi.hint.promote', { move: text }) : text;
+  }
   function hint() {
     var token = G.begin(); paint(); G.say(T('board.thinkingHint'), true);
     brain.ask({ sfen: E.toSfen(pos), level: 'strong', seen: seenCounts() }, function (r) {
       if (!G.done(token)) return;
       tip = r && r.move ? [E.isDrop(r.move) ? -1 : E.from(r.move), E.to(r.move)] : null; paint();
-      G.say(tip ? T('makruk.hint', { move: E.san(pos, r.move) }) : T('board.noHint'));
+      G.say(tip ? T('makruk.hint', { move: plainMove(r.move) }) : T('board.noHint'));
     }, E.LEVELS.strong.ms);
   }
 

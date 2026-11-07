@@ -365,3 +365,57 @@ def test_drop_pin_answer_pin_is_never_clipped(browser, served, fx, fy):
         % ("c" if fx == 0.5 else "edge" if fx < 0.5 else "edge2"),
     )
     c.close()
+# 8. Shogi: the hint is in plain words, move lists break between moves (never inside one), the in-hand count badge is whole.
+def test_shogi_hint_is_in_plain_words(browser, served):
+    c, page = open_game(browser, served, "shogi.html", "?debug")
+    page.wait_for_function("window.__sg && window.__sg.pos()")
+    page.wait_for_selector("#wk-hint:not([disabled])")
+    page.click("#wk-hint")
+    page.wait_for_function("() => /Hint:/.test(document.body.innerText)", timeout=60000)
+    text = re.search(r"Hint: [^\n]*", page.inner_text("body")).group(0)
+    assert re.match(
+        r"Hint: (Move a [a-z ]+ from \d[a-i] to \d[a-i]( and take)?|Drop a [a-z ]+ on \d[a-i])( and promote)?\.$",
+        text,
+    ), text
+    shot(page, "08-shogi-hint")
+    c.close()
+
+
+MOVES_FILL = """(sel) => { const box = document.querySelector(sel), cls = box.id.slice(0, 2);
+  let html = ''; for (let i = 0; i < 40; i++) { if (i % 2 === 0) html += '<span class="' + cls + '-n">' + (i / 2 + 1) + '.</span>'; html += '<span class="' + cls + '-m">' + ['P 8d-8e', 'N 7gx8e', 'R 8bx8e+', 'K 5a-5b'][i % 4] + '</span>'; }
+  box.innerHTML = html; box.style.maxHeight = 'none'; }"""
+
+
+@pytest.mark.parametrize("name,box", [("shogi", "#sg-moves"), ("xiangqi", "#xq-moves")])
+def test_move_lists_break_between_moves_not_inside_one(browser, served, name, box):
+    c, page = open_game(browser, served, name + ".html")
+    page.evaluate(MOVES_FILL, box)
+    split = page.evaluate(
+        "(sel) => [...document.querySelectorAll(sel + ' > span')].filter(s => s.getClientRects().length > 1).map(s => s.textContent)",
+        box,
+    )
+    assert not split, split
+    shot(page, "08-%s-moves" % name)
+    c.close()
+
+
+def test_shogi_in_hand_count_badge_is_whole(browser, served):
+    c, page = open_game(browser, served, "shogi.html", "?debug")
+    page.wait_for_function("window.__sg && window.__sg.pos()")
+    page.evaluate(
+        "(() => { const p = __sg.pos(); p.hand[0][1] = 2; p.hand[0][3] = 1; p.hand[1][1] = 1; })()"
+    )
+    page.click("#sg-flip")
+    page.click("#sg-flip")
+    frames(page, 2)
+    import io
+
+    Image = pytest.importorskip("PIL.Image")
+    badges = page.evaluate("[...document.querySelectorAll('.sg-h:not(.empty) b')].map(b => { const r = b.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })")
+    assert len(badges) >= 3, badges
+    for x, y, w, h in badges:   # the count's dark disc is whole: both ends of its middle line are the badge's colour, not the piece's
+        img = Image.open(io.BytesIO(page.screenshot(clip={"x": x, "y": y, "width": w, "height": h}))).convert("L")
+        row = [img.getpixel((i, img.height // 2)) for i in (int(img.width * 0.12), int(img.width * 0.88))]
+        assert max(row) < 110, ("the count badge is covered", row)
+    shot(page, "08-shogi-hand")
+    c.close()

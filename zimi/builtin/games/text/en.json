@@ -5998,5 +5998,9 @@
  "city.cl.kept": "Today’s power adds no warmth; the warming so far stays.",
  "game.minicrossword.short": "Crossword",
  "babel.missed": "Missed: no points for this word.",
- "babel.gotIt": "You got it."
+ "babel.gotIt": "You got it.",
+ "shogi.hint.drop": "Drop a {piece} on {to}",
+ "shogi.hint.move": "Move a {piece} from {from} to {to}",
+ "shogi.hint.take": "Move a {piece} from {from} to {to} and take",
+ "shogi.hint.promote": "{move} and promote"
 }

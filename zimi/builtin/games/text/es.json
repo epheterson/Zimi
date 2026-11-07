@@ -6126,5 +6126,9 @@
  "city.cl.kept": "La energía de hoy no añade calor; el calentamiento que ya hay se queda.",
  "game.minicrossword.short": "Crucigrama",
  "babel.missed": "Fallaste: sin puntos por esta palabra.",
- "babel.gotIt": "Lo lograste."
+ "babel.gotIt": "Lo lograste.",
+ "shogi.hint.drop": "Coloca {piece} en {to}",
+ "shogi.hint.move": "Mueve {piece} de {from} a {to}",
+ "shogi.hint.take": "Mueve {piece} de {from} a {to} y captura",
+ "shogi.hint.promote": "{move} y promociona"
 }

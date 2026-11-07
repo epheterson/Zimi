@@ -36,11 +36,12 @@
 .sg-h.empty { opacity: 0.28; }   /* an empty slot fades; a held piece that cannot be used now keeps its count, since the opponent's hand matters */
 .sg-h.sel { background: var(--sel); border-color: var(--select-ring); }
 .sg-h .sg-pc { width: 34px; height: 38px; }
-.sg-h b { position: absolute; right: 0; bottom: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--ink); color: var(--surface); font: 700 var(--fs-caption)/17px var(--mono); text-align: center; }
+.sg-h b { z-index: 2; position: absolute; right: 0; bottom: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--ink); color: var(--surface); font: 700 var(--fs-caption)/17px var(--mono); text-align: center; }
 .sg-h.empty b { visibility: hidden; }
 
 .sg-moves { max-height: 66px; overflow: auto; line-height: 1.7; }
 .sg-n { color: var(--ink3); margin-right: 3px; }
+.sg-m, .sg-n { white-space: nowrap; }   /* a line breaks between moves, never inside one */
 .sg-m { margin-right: 9px; font-variant-numeric: tabular-nums; }
 .sg-m.now { font-weight: 700; color: var(--ink); }
 .sg-promo-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
