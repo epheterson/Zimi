@@ -73,7 +73,7 @@
   }
   function button(label, primary, fn, disabled) {
     var b = el('button', 'ar-btn' + (primary ? ' gm-play' : ''), label); b.type = 'button';
-    if (disabled) b.setAttribute('aria-disabled', 'true'); else b.addEventListener('click', fn);
+    if (disabled) { b.setAttribute('aria-disabled', 'true'); b.addEventListener('click', function () { ZimiShell.shake(b); }); } else b.addEventListener('click', fn);   // a tap on a used-up button still answers
     els.actions.appendChild(b); return b;
   }
   function reset() { els.card.innerHTML = ''; els.actions.innerHTML = ''; status.say(''); clearTimeout(timer); }
