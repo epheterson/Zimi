@@ -5690,9 +5690,9 @@
  "stats.title": "סטטיסטיקה",
  "stats.wins": "ניצחונות",
  "stats.wonCount": {
-  "one": "נוצח {n}",
-  "two": "{n} נוצחו",
-  "other": "{n} נוצחו"
+  "one": "ניצחון אחד",
+  "two": "{n} ניצחונות",
+  "other": "{n} ניצחונות"
  },
  "sudoku.bestRow": "הזמן הטוב ביותר, {level}",
  "sudoku.board": "לוח סודוקו",
