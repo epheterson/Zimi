@@ -11728,6 +11728,23 @@ function _searchNearRadius(tokens, at, skip) {
   return { radius_km: Math.min(unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, SEARCH_NEAR_MAX_KM), unit: unit, radiusAt: at };
 }
 
+// The last token near:'s place uses (query._near_extent): a place whose token
+// ends in a comma has the next one too ("near:Paris, France"), and so on while
+// a comma ends them.
+function _searchNearExtent(tokens, at, filters) {
+  let last = at;
+  while (last + 1 < tokens.length && !tokens[last][1] && tokens[last][0].endsWith(',')) {
+    const [nxt, phrase] = tokens[last + 1];
+    if (!phrase && (nxt === 'OR' || nxt.startsWith('-') || SEARCH_NEAR_RADIUS.test(nxt) || _searchFilterKey(nxt, filters))) break;
+    last++;
+  }
+  return last;
+}
+function _searchFilterKey(text, filters) {
+  const c = text.indexOf(':'), key = c > 0 ? text.slice(0, c).toLowerCase() : '';
+  return c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key) ? filters[key] : null;
+}
+
 // The query as the server is asked it: q=, and for a near: search the place
 // it is from. near:here becomes the browser's position (asked for, so the
 // browser's own prompt decides), else the Almanac's place; and near_at= is
@@ -11771,11 +11788,15 @@ function parseSearchQuery(q, filters) {
         text = text.replace(/^-+/, ''); neg = true;
         if (!text) { joinNext = false; continue; }
       }
-      const c = text.indexOf(':');
-      const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
-      if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
-        const f = { key: filters[key], value: _searchUnquote(text.slice(c + 1)).toLowerCase(), negate: neg, at: at };
-        if (f.key === 'near') Object.assign(f, _searchNearRadius(tokens, at + 1, skip));
+      const fkey = _searchFilterKey(text, filters);
+      if (fkey) {
+        let shown = _searchUnquote(text.slice(text.indexOf(':') + 1)), last = at;
+        if (fkey === 'near') {
+          last = _searchNearExtent(tokens, at, filters);
+          for (let k = at + 1; k <= last; k++) { skip.add(k); shown += ' ' + _searchUnquote(tokens[k][0]); }
+        }
+        const f = { key: fkey, value: shown.toLowerCase(), negate: neg, at: at };
+        if (fkey === 'near') { f.shown = shown; f.lastAt = last; Object.assign(f, _searchNearRadius(tokens, last + 1, skip)); }
         found.push(f);
         joinNext = false;
         continue;
@@ -11925,9 +11946,13 @@ function searchQueryChips(q) {
   }
   for (const f of p.filters) {
     // near:'s distance goes with it.
-    const q2 = f.radiusAt != null ? _searchRebuild(q, toks, new Set([f.at, f.radiusAt])) : without(f.at);
+    // and the words after its comma that say where the place is.
+    const gone = new Set([f.at]);
+    for (let k = f.at + 1; k <= (f.lastAt || f.at); k++) gone.add(k);
+    if (f.radiusAt != null) gone.add(f.radiusAt);
+    const q2 = f.key === 'near' && gone.size > 1 ? _searchRebuild(q, toks, gone) : without(f.at);
     // near: shows its place as typed ("San Francisco"), not folded.
-    const value = f.key === 'near' ? _searchUnquote(toks[f.at][0].slice(toks[f.at][0].indexOf(':') + 1)) : f.value;
+    const value = f.key === 'near' ? f.shown : f.value;
     chips.push({ kind: f.key, at: f.at, value: value, negate: f.negate, radius_km: f.radius_km, unit: f.unit, query: q2 });
   }
   p.groups.forEach((g, i) => {
