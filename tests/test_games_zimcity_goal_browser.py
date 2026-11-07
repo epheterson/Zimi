@@ -53,7 +53,7 @@ def _play(pg, i):
     pg.click(".gs-menu-btn")
     pg.click("#cy-scenarios")
     pg.click(OURS + " .cy-sc >> nth=%d >> .cy-sc-go" % i)
-    pg.wait_for_function("() => window.__zimcity.city.scenario")
+    pg.wait_for_function("(id) => window.__zimcity.city.scenario && window.__zimcity.city.scenario.id === id", arg=SCENARIO_IDS[i])   # the one asked for, not one already open
 
 
 GOAL_BOX = """() => {
