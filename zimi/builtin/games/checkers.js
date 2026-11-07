@@ -272,7 +272,7 @@
     if (!legal.length) {
       var winner = other(p), two = !G.vsComputer();
       paint();
-      finish(T(two ? 'checkers.noMove' : G.human(idxOf(winner)) ? 'checkers.noMove.you' : 'checkers.noMove.computer', { name: sideName(p) }), two ? null : G.human(idxOf(winner)) ? 'win' : 'loss', sideName(winner));
+      finish(T(two ? 'checkers.noMove' : G.human(idxOf(p)) ? 'checkers.noMove.you' : 'checkers.noMove.computer', { name: sideName(p) }), two ? null : G.human(idxOf(winner)) ? 'win' : 'loss', sideName(winner));
       return;
     }
     if (seen[k] >= 3) { paint(); finish(T('xiangqi.why.repetition'), 'draw'); return; }
@@ -401,6 +401,6 @@
   });
 
   if (new URLSearchParams(location.search).has('debug')) {
-    root.__ck = { G: G, game: function () { return game; }, engine: Engine, settings: G.settings };
+    root.__ck = { G: G, game: function () { return game; }, set: function (b, t) { game = { board: b, turn: t, quiet: 0 }; nextPly(); }, engine: Engine, settings: G.settings };
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
