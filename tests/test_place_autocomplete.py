@@ -50,7 +50,7 @@ PLACES = [
     ("town", {"name": "Springfield"}, (42.10, -72.59)),  # Massachusetts
     ("town", {"name": "Springfield"}, (44.05, -123.02)),  # Oregon
     ("town", {"name": "Springdale"}, (36.19, -94.13)),  # Arkansas
-    ("city", {"name": "Paris", "rank": 1, "capital": "2"}, (48.857, 2.352)),
+    ("city", {"name": "Paris", "rank": 1, "capital": 2}, (48.857, 2.352)),
     ("town", {"name": "Paris"}, (33.66, -95.56)),  # Texas
     ("city", {"name": "Köln", "name:en": "Cologne", "rank": 5}, (50.94, 6.96)),
     ("city", {"name": "Boston", "rank": 4}, (42.36, -71.06)),
@@ -66,8 +66,8 @@ def _place_layer(z, places):
         for k, v in (("class", cls), *tags.items()):
             if k not in keys:
                 keys.append(k)
-            if isinstance(v, int):  # a uint_value, as the real tiles' rank is
-                values.append(_uint_field(5, v))
+            if isinstance(v, int):  # a sint_value, as the real tiles' rank is
+                values.append(_uint_field(6, _zigzag(v)))
             else:
                 values.append(_field(1, v.encode()))
             pairs += [keys.index(k), len(values) - 1]
@@ -158,12 +158,6 @@ def test_each_place_has_its_region_and_country_from_the_outlines(library):
     # Outside the countries that write two letters, no postal code.
     assert where[("Paris", 49)] == ("Paris", "", "France")
     assert where[("Cologne", 51)][2] == "Germany"
-
-
-def test_the_tiles_own_tags_win_over_the_outlines(tmp_path):
-    extra = {"state": "Elsewhere", "country": "Nowhere"}
-    assert mapplaces._where(extra, 39.8, -89.64)[0::2] == ("Elsewhere", "Nowhere")
-    assert mapplaces._where({}, 39.8, -89.64)[0] == "Illinois"
 
 
 def test_a_name_in_another_language_is_kept_and_found(library):

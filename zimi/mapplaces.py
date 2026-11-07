@@ -45,21 +45,22 @@ CLASSES = ("city", "town")
 ZOOM_FOR_CLASS = {"city": 12, "town": 13}
 # The rows a query's first word may draw from before they are scored.
 CANDIDATES_MAX = 400
-# The tags of a place a row keeps: how big it is, and where it is when the
-# tiles say (zimi.regions answers when they do not).
-EXTRA_TAGS = (
-    "name", "rank", "capital", "state", "is_in:state", "addr:state",
-    "country", "is_in:country", "addr:country",
-)  # fmt: skip
-REGION_TAGS = ("state", "is_in:state", "addr:state")
-COUNTRY_TAGS = ("country", "is_in:country", "addr:country")
+# The tags of a place a row keeps. What Kiwix's world map (maps_en_all_2026-06)
+# puts on a city or town: name (the local one), name:en or name_en, name_int,
+# name:latin, name_de and name:<language> for dozens; class; rank, 1 (the
+# biggest) to 22; capital, the admin level of the region it seats (2 a nation, 4
+# a state, 5 and 6 a county). Not population, not region, not country: where a
+# place is comes from zimi.regions' outlines. Only a country's own point
+# (class=country) carries iso_a2.
+EXTRA_TAGS = ("name", "rank", "capital")
 # Countries whose regions people write as two letters after the town (IL, NSW).
 POSTAL_COUNTRIES = ("US", "CA", "AU")
-# How big a place is, for ranking: a city over a town, then the tiles' own
-# rank (1 is the biggest), then a capital.
-CLASS_WEIGHT = {"city": 2000, "town": 1000}
-RANK_MAX, RANK_STEP = 99, 5
-CAPITAL_BONUS = {"2": 400, "yes": 400, "4": 150, "3": 150}
+# How big a place is, for ranking: the tiles' rank (22 smallest, 1 biggest)
+# first, then a city over a town of the same rank, then a seat of government.
+# A place with no rank counts as the smallest.
+RANK_NONE, RANK_STEP = 23, 100
+CLASS_BONUS = {"city": 50, "town": 0}
+CAPITAL_BONUS = {"2": 600, "4": 150}
 # Autocomplete: a prefix more than SCAN_MAX rows begin with (up to PREFIX_MAX
 # letters) has its best PREFIX_KEEP places kept in a table of its own, so "s" or
 # "sant" asks a short table, not every town beginning so. A prefix not in it
@@ -263,32 +264,27 @@ def read_places(archive):
 
 def _tag_rank(tags):
     """A place's size order from its tags, the larger the better."""
-    weight = CLASS_WEIGHT.get(tags.get("class"), 0)
     try:
-        weight -= min(int(tags.get("rank", 0)), RANK_MAX) * RANK_STEP
+        rank = min(max(int(tags.get("rank", RANK_NONE)), 1), RANK_NONE)
     except ValueError:
-        pass
-    weight += CAPITAL_BONUS.get(tags.get("capital"), 0)
-    return weight
+        rank = RANK_NONE
+    return (
+        (RANK_NONE - rank) * RANK_STEP
+        + CLASS_BONUS.get(tags.get("class"), 0)
+        + CAPITAL_BONUS.get(tags.get("capital"), 0)
+    )
 
 
-def _where(extra, lat, lng):
-    """(region, postal, country, iso) of a place: its tiles' own tags where
-    they carry them, else the point's place in zimi.regions' outlines."""
-    region = next((extra[k] for k in REGION_TAGS if extra.get(k)), "")
-    country = next((extra[k] for k in COUNTRY_TAGS if extra.get(k)), "")
-    postal = iso = ""
-    if not (region and country):
-        from zimi import regions
+def _where(lat, lng):
+    """(region, postal, country, iso) of a point from zimi.regions' outlines
+    (the tiles do not say), "" for each where it is in none."""
+    from zimi import regions
 
-        at = regions.locate(lat, lng)
-        if at:
-            region = region or at["region"]
-            country = country or at["country"]
-            postal, iso = at["postal"], at["iso"]
-    if iso not in POSTAL_COUNTRIES:
-        postal = ""
-    return region, postal, country, iso
+    at = regions.locate(lat, lng)
+    if not at:
+        return "", "", "", ""
+    postal = at["postal"] if at["iso"] in POSTAL_COUNTRIES else ""
+    return at["region"], postal, at["country"], at["iso"]
 
 
 def _rows(found):
@@ -299,7 +295,7 @@ def _rows(found):
     """
     rows, seen = [], set()
     for (name, cls, _la, _lo), (lat, lng, extra) in found.items():
-        region, postal, country, iso = _where(extra, lat, lng)
+        region, postal, country, iso = _where(lat, lng)
         local = extra.get("name", "")
         if local == name:
             local = ""

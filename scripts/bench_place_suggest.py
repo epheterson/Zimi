@@ -60,7 +60,7 @@ def build(path, count, rng):
         if rng.random() < 0.25:  # "Santa Maria", "Mount Kirkford"
             name = rng.choice(COMMON_STARTS) + name
         cls = "city" if rng.random() < 0.05 else "town"
-        weight = mapplaces.CLASS_WEIGHT[cls] - rng.randint(1, 99) * mapplaces.RANK_STEP
+        weight = mapplaces._tag_rank({"class": cls, "rank": str(rng.randint(7, 22))})
         region, postal, country, iso = rng.choice(REGIONS)
         lat, lng = rng.uniform(-60, 70), rng.uniform(-180, 180)
         for word in set(mapsearch.normalize_text(name).split()):
