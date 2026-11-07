@@ -10,6 +10,8 @@
    (48 a year). */
 
 import { GameMap } from './zimcity/engine/gameMap.js';
+import { TileUtils } from './zimcity/engine/tileUtils.js';
+import * as TV from './zimcity/engine/tileValues.js';
 
 export var W = 120, H = 100, FILE_BYTES = 27120, MAP_AT = 3120;
 
@@ -22,14 +24,25 @@ export var TRAFFIC_GOAL = 35;
 // traffic lives WARM_TICKS, half a year, so the map the strip reads is a measured city's and opens over the goal.
 export var OPEN_TICKS = 6, WARM_TICKS = 24;
 
+// Hamburg's bombing takes this share of the city's buildings. Micropolis asks a metropolis of Hamburg, but its city is a
+// metropolis already (118,000 people) and its fires only touch a few trees, so a Hamburg left alone was won at the start.
+// With a fifth of the buildings gone, a Hamburg left alone ends at 60,000 to 76,000 people; zoning the rubble again (the
+// roads, power lines and plants stand) takes it past the 100,000 of a metropolis within the five years.
+export var BOMBED_SHARE = 0.2;
+
+// Tokyo's goal. Micropolis asks for a score above 500; a Tokyo left alone opens at 602 and ends the five years at 472 to
+// 590, so 500 was met by a city that had done nothing. A city that cuts its taxes to 4 reaches 620 to 650, so the goal sits
+// above what a do-nothing city reaches and below what taxes alone can do.
+export var TOKYO_GOAL = 610;
+
 // id, file, year, funds, disaster [kind, ticks until it], the ticks until the goal is judged, the goal, the ticks of
 // warm-up its reading needs (see WARM_TICKS), and the real place (Wikidata ID, latitude, longitude) when there is one.
 export var SCENARIOS = [
   { id: 'dullsville', file: 'snro.111', year: 1900, funds: 5000, disaster: null, judge: 30 * 48, goal: ['class', 4] },
   { id: 'sanfrancisco', file: 'snro.222', year: 1906, funds: 20000, disaster: ['earthquake', 10], judge: 5 * 48, goal: ['class', 4], place: ['Q62', 37.7775, -122.4164] },
-  { id: 'hamburg', file: 'snro.333', year: 1944, funds: 20000, disaster: ['fires', 5], judge: 5 * 48, goal: ['class', 4], place: ['Q1055', 53.55, 10] },
+  { id: 'hamburg', file: 'snro.333', year: 1944, funds: 20000, disaster: ['bombing', 5, BOMBED_SHARE], judge: 5 * 48, goal: ['class', 4], place: ['Q1055', 53.55, 10] },
   { id: 'bern', file: 'snro.444', year: 1965, funds: 20000, disaster: null, judge: 10 * 48, goal: ['traffic', TRAFFIC_GOAL], warm: WARM_TICKS, place: ['Q70', 46.948, 7.4475] },
-  { id: 'tokyo', file: 'snro.555', year: 1957, funds: 20000, disaster: ['monster', 3], judge: 5 * 48, goal: ['score', 500], place: ['Q1490', 35.6897, 139.6922] },
+  { id: 'tokyo', file: 'snro.555', year: 1957, funds: 20000, disaster: ['monster', 3], judge: 5 * 48, goal: ['score', TOKYO_GOAL], place: ['Q1490', 35.6897, 139.6922] },
   { id: 'detroit', file: 'snro.666', year: 1972, funds: 20000, disaster: null, judge: 10 * 48, goal: ['crime', 60], place: ['Q12439', 42.3317, -83.0458] },
   { id: 'boston', file: 'snro.777', year: 2010, funds: 20000, disaster: ['meltdown', 5], judge: 5 * 48, goal: ['score', 500], place: ['Q100', 42.3601, -71.0589] },
   { id: 'rio', file: 'snro.888', year: 2047, funds: 20000, disaster: ['floods', 2 * 48], judge: 10 * 48, goal: ['score', 500], place: ['Q8678', -22.9111, -43.2056] }
@@ -74,15 +87,26 @@ export function warmUp(sim, ticks) {
   sim.budget.setFunds(funds); sim._cityTime = time; sim._updateTime();
 }
 
+// Hamburg's firebombing: this share of the city's buildings (houses, shops, factories, hospitals and churches) go to
+// rubble. Roads, power lines and plants stand, so the city can be rebuilt by zoning the ground again.
+export function bomb(sim, share) {
+  var map = sim._map;
+  for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) {
+    var v = map.getTileValue(x, y);
+    if (!map.getTile(x, y).isZone() || v < TV.RESBASE || v >= TV.PORTBASE || Math.random() >= share) continue;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) if (map.testBounds(x + dx, y + dy)) map.setTo(x + dx, y + dy, TileUtils.randomRubble());
+  }
+}
+
 // The disaster's moment and the judging, one tick of the city's clock at a time. `run` is {left, judgeIn} (kept with
 // the city); returns 'win', 'lose' or null.
 export function tick(sim, sc, run) {
   if (sc.disaster && run.left > 0) {
     var kind = sc.disaster[0], d = sim.disasterManager;
-    if (kind === 'fires') d.makeFire();                         // Hamburg: fires all through its wait
-    else if (kind === 'floods' && run.left % 24 === 0) d.makeFlood();
+    if (kind === 'floods' && run.left % 24 === 0) d.makeFlood();
     else if (run.left === 1) {
       if (kind === 'earthquake') d.makeEarthquake();
+      if (kind === 'bombing') bomb(sim, sc.disaster[2]);
       if (kind === 'monster') sim.spriteManager.makeMonster();
       if (kind === 'meltdown') d.makeMeltdown();
     }

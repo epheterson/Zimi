@@ -202,6 +202,38 @@ function seeded(seed, fn) {
   };
   check(judged(bernCity(2, true), false) === 'lose', 'a Bern left alone for ten years is lost');
   check(judged(bernCity(2, true), true) === 'win', 'and won with rail laid on the busiest 150 road tiles');
+  // Tokyo and Hamburg were won by doing nothing (Tokyo's score of 500 was met from the start; Hamburg's metropolis was one
+  // already). Each is lived through its whole time the way the page does (opened and warmed, then one tick at a time):
+  // left alone it is lost, and played (Tokyo: taxes of 4; Hamburg: the bombed ground zoned again beside the power) it is won.
+  const scenCity = (id, seed) => {
+    const sc = Scen.SCENARIOS.find((x) => x.id === id), buf = fs.readFileSync(path.join(games, 'zimcity/scenarios/' + sc.file));
+    const map = Scen.mapOf(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length));
+    const sim = new Simulation(map, Simulation.LEVEL_EASY, Simulation.SPEED_MED);
+    sim._cityTime = (sc.year - 1900) * 48 + 2; sim.budget.setFunds(sc.funds); sim.budget.cityTax = 7; sim._updateTime();
+    sim._simulate(sim._constructSimData());
+    Scen.warmUp(sim, Math.max(Scen.OPEN_TICKS, sc.warm || 0));
+    return { sc, map, sim, seed, tools: Tools.makeTools(map) };
+  };
+  const free3 = (m, x, y) => { for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const v = m.getTileValue(x + i, y + j); if (!(v === 0 || (v >= 21 && v <= 47))) return false; } return true; };
+  const besidePower = (m, x, y) => { for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) { const t = m.testBounds(x + i, y + j) && m.getTile(x + i, y + j); if (t && t.isConductive() && t.isPowered() && (Math.abs(i) > 1 || Math.abs(j) > 1)) return true; } return false; };
+  const rezone = (c) => { let k = 0; const want = ['residential', 'residential', 'commercial', 'industrial'], n = { residential: 0, commercial: 0, industrial: 0 };
+    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) { const name = want[k % 4]; if (n[name] >= 60) { k++; continue; } if (free3(c.map, x, y) && besidePower(c.map, x, y) && Tools.build(c, name, [[x, y]]).ok) { n[name]++; k++; } } };
+  const lived = (id, seed, play) => seeded(seed, () => {
+    const c = scenCity(id, seed);
+    const run = { left: c.sc.disaster ? c.sc.disaster[1] : 0, judgeIn: c.sc.judge }; let out = null, t = 0;
+    while (!out) { Scen.runTicks(c.sim, 1); t++; if (play) play(c, t); out = Scen.tick(c.sim, c.sc, run); }
+    return out;
+  });
+  const idleOf = (id, seeds) => seeds.map((s) => lived(id, s, null));
+  check(idleOf('tokyo', [1, 2, 3]).every((o) => o === 'lose'), 'a Tokyo left alone for five years is lost');
+  check(Scen.reading(seeded(3, () => scenCity('tokyo', 3)).sim, Scen.SCENARIOS.find((x) => x.id === 'tokyo')).now < Scen.TOKYO_GOAL, 'and opens under its goal, so the city has something to do');
+  check(lived('tokyo', 3, (c) => { c.sim.budget.cityTax = 4; }) === 'win', 'and Tokyo is won by a city that cuts its taxes to 4 (seed 3)');
+  check(idleOf('hamburg', [1, 2]).every((o) => o === 'lose'), 'a Hamburg left alone after its bombing is lost');
+  check(lived('hamburg', 1, (c, t) => { if (t > 12 && t % 12 === 0) rezone(c); }) === 'win', 'and Hamburg is won by zoning the bombed ground again (seed 1)');
+  const bombed = seeded(1, () => scenCity('hamburg', 1)), zonesOf = (m) => { let z = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (m.getTile(x, y).isZone()) z++; return z; };
+  const zonesBefore = zonesOf(bombed.map); seeded(1, () => Scen.bomb(bombed.sim, 0.2));
+  const lost = 1 - zonesOf(bombed.map) / zonesBefore;
+  check(lost > 0.12 && lost < 0.3, 'the bombing takes about a fifth of the buildings (' + lost.toFixed(2) + ')');
   check(JSON.stringify([Scen.timeLeft(480), Scen.timeLeft(49), Scen.timeLeft(48), Scen.timeLeft(30), Scen.timeLeft(4), Scen.timeLeft(1)]) ===
     JSON.stringify([{ n: 10, unit: 'years' }, { n: 2, unit: 'years' }, { n: 12, unit: 'months' }, { n: 8, unit: 'months' }, { n: 1, unit: 'months' }, { n: 1, unit: 'months' }]), 'the time left is whole years, then months');
   check(runningOut({ funds: 7000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 20000, flow: -2400, horizon: 4 }) && !runningOut({ funds: 100, flow: 500, horizon: 4 }), 'money is running out only when the bank will not last the horizon');
