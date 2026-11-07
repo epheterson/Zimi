@@ -299,7 +299,11 @@ function hold(name) {
   paintTray();
 }
 var heldEl = $('cy-held');
-function heldLine(r) {
+// A refusal after the finger lifts stays up a few seconds, then the line goes back to the tool's own (it is not news that lasts).
+var REFUSAL_MS = 3000, refusalTimer = 0;
+function heldLine(r, refused) {
+  clearTimeout(refusalTimer);
+  if (refused) refusalTimer = setTimeout(function () { heldLine(); }, REFUSAL_MS);
   heldEl.classList.toggle('cy-bad', !!(r && !r.ok));
   // With no tool held the advisor is the one voice: the tray's own hint shows only while it has nothing to say.
   if (!held) { heldEl.textContent = advice ? '' : T('city.idle'); return; }
@@ -354,7 +358,7 @@ function onStroke(tile, done) {
     heldLine();
     Shell.saveNow();
   } else {
-    heldLine(built);
+    heldLine(built, true);
     Shell.shake(heldEl);
   }
 }

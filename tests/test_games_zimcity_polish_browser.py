@@ -124,3 +124,16 @@ def test_the_coal_plants_chimney_frames_are_the_plant_with_smoke_not_the_1989_pi
         out.push(n / 1024); } });
       return out; }""")
     assert len(same) == 16 and min(same) > 0.75, same
+
+
+def test_a_refusal_line_goes_away_by_itself(browser, site):
+    """"Short by $2,954" stayed red under the tool for as long as the tool was held."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.evaluate("() => { window.__zimcity.city.sim.budget.totalFunds = 50; }")
+    hold_more(pg, "Coal plant")
+    stroke(pg, [(box["w"] / 2, box["top"] + box["h"] / 2), (box["w"] / 2 + 1, box["top"] + box["h"] / 2)])
+    assert "Short by" in pg.text_content("#cy-held")
+    shot(pg, "zimcity-refusal")
+    pg.wait_for_function("() => !document.getElementById('cy-held').classList.contains('cy-bad')", timeout=5000)
+    assert pg.text_content("#cy-held") == "Coal plant: $3,000"
