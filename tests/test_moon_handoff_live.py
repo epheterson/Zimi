@@ -448,7 +448,11 @@ def test_the_cost(browser, served):
             and timing["three"][0] > timing["fcp"]
         ), timing
         # Live and idle: the hero asks for no frames; the view, ready behind
-        # the page, asks for none either.
+        # the page, asks for none either. Idle starts once the page is shown
+        # and its panels are drawn (a slow headless GPU shows it seconds in).
+        pg.wait_for_function(
+            "() => _almShownAt > 0 && _almPanelsReady", timeout=30_000, polling=200
+        )
         pg.wait_for_timeout(1500)
         pg.evaluate("() => { window.__rafBy = {}; }")
         pg.wait_for_timeout(4000)

@@ -2293,8 +2293,8 @@ function _almArrived(el) {
   if (!el) return;
   // Arrived once it has been laid out and the fonts its text asked for have
   // come (scripts like Devanagari or Hebrew load on first use and reflow it).
-  var done = function () { requestAnimationFrame(function () { el._almArriving = false; }); };
-  requestAnimationFrame(function () {
+  var done = function () { requestAnimationFrame(function _almArrivedLanded() { el._almArriving = false; }); };
+  requestAnimationFrame(function _almArrivedLaidOut() {
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(done, done);
     else done();
   });
