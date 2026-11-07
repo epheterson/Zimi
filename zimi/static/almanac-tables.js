@@ -1887,6 +1887,9 @@ var TB_CONST_ROWS = {
       ['saros', TB_SAROS_SYNODIC * _CN_SYN, 3, 'd', TB_SAROS_SYNODIC + ' × ' + _tbT('mc_synodic')]
     ];
   },
+  // Every number a body's sheet in the 3D view shows, and what the axes stand on (almanac-earth.js, which holds them).
+  k_bodies: _aeRefBodiesRows,
+  k_poles: _aeRefAxesRows,
   k_time: function () {
     var now = Date.now();
     return [

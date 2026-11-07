@@ -672,6 +672,26 @@ var AE_CSS = [
   // most of the screen.
   '@media (max-width:500px){.ae-view.ae-carded #ae-time{display:none}}',
   '.ae-card .ae-card-note{color:var(--amber)}',
+  // A body's facts: a sheet up from the foot on a phone, a panel down the right on a wide screen (the gear's panel and
+  // the card stand in the same solid colour). Hidden by its transform and visibility, so it can slide.
+  '.ae-info{position:absolute;z-index:4;inset-inline:0;bottom:0;max-height:min(62%,520px);box-sizing:border-box;display:flex;flex-direction:column;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-bottom:0;border-radius:16px 16px 0 0;color:var(--text2);font-size:13px;line-height:1.45;transform:translateY(105%);visibility:hidden;transition:transform .25s ease,visibility 0s .25s;touch-action:pan-y;-webkit-user-select:text;user-select:text}',
+  '.ae-info.in{transform:none;visibility:visible;transition:transform .25s ease}',
+  '@media (prefers-reduced-motion:reduce){.ae-info,.ae-info.in{transition:none}}',
+  '.ae-info-grab{flex:none;width:36px;height:4px;margin:8px auto 0;border-radius:2px;background:var(--border)}',
+  '@media (min-width:760px){.ae-info-grab{display:none}}',
+  '.ae-info-body{overflow-y:auto;overscroll-behavior:contain;padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px))}',
+  '.ae-info h2{margin:0 36px 10px 0;font-size:17px;font-weight:600;color:var(--text)}',
+  '[dir="rtl"] .ae-info h2{margin:0 0 10px 36px}',
+  '.ae-info-dl{margin:0;display:block}',
+  '.ae-info-row{display:grid;grid-template-columns:minmax(96px,36%) 1fr;gap:4px 14px;padding:7px 0;border-top:1px solid var(--border)}',
+  '.ae-info-row dt{color:var(--text3);font-size:12px;padding-top:1px}',
+  '.ae-info-row dd{margin:0;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}',
+  '.ae-info-row dd span{display:block;color:var(--text2);font-size:12px}',
+  '.ae-info-read{margin:12px 0 0;font-size:13px}',
+  '.ae-info .alm-link{color:var(--amber);text-decoration:none;cursor:pointer}',
+  '.ae-info .alm-link:hover,.ae-info .alm-link:focus-visible{text-decoration:underline}',
+  '@media (min-width:760px){.ae-info{inset-inline:auto 0;top:140px;bottom:0;width:380px;max-height:none;border-radius:12px 0 0 0;border-inline-end:0;transform:translateX(105%)}[dir="rtl"] .ae-info{transform:translateX(-105%);border-radius:0 12px 0 0}.ae-info.in,[dir="rtl"] .ae-info.in{transform:none}}',
+  '.night-red .ae-info{background:' + AE_PANEL_BG_RED + '}',
   '.ae-card .ae-card-more,.ae-card .ae-lm-dark{margin-top:6px;font-size:12px}',
   '.ae-card .ae-lm-dark a,.ae-card .ae-card-more a{color:var(--amber);text-decoration:none}',
   '.ae-card .ae-lm-dark a:hover,.ae-card .ae-lm-dark a:focus-visible{text-decoration:underline}',
@@ -935,6 +955,7 @@ function _aeBuildDom() {
     '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden><div id="ae-set-body"></div>' +
       '<p class="ae-set-data" id="ae-ask" hidden><span id="ae-ask-text"></span><span id="ae-fresh-sep" aria-hidden="true"> · </span>' +
       '<button type="button" class="ae-fresh" id="ae-fresh"></button></p></div>' +
+    '<div class="ae-info" id="ae-info" role="dialog" aria-labelledby="ae-info-title"></div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
     '<div class="ae-bottom">' +
       '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
@@ -2764,6 +2785,82 @@ function _aeLeaveSpin() {
   if (s.autoRun && _ae.speed === AE_SPIN_SPEED) { if (s.prevFocus) _aeGoTo(s.prevFocus.getTime()); else _aeNow(); }
   if (_ae.gl) _aeResize();
 }
+// ── Axes ──
+// Each body's rotation axis in the main view, as Side by side draws it: a thin line through the poles, the north end in
+// amber with an arrowhead, the south end a quiet blue-grey. North is the IAU pole the maps are placed by (the top of the
+// map), so for Venus and Uranus, which turn backwards about it, the arrowhead stands at the top of the picture and not
+// at the end the right-hand rule gives (Side by side marks that one). They are light lines "not in the real system", so
+// they are shown exactly when the body's orbit is (the Orbits setting in the gear: While flying, Always, Off, and the
+// Planets view's rule), once its disc is AE_AXIS_MIN_PX across. The Sun's pole is the IAU's (7.25 degrees from the ecliptic's).
+var AE_AXIS_MIN_PX = 14;                     // a body this many pixels in radius shows its axis
+var AE_SUN_POLE = [286.13, 63.87, 84.176, 14.1844];   // IAU WGCCRE 2015: RA, Dec of the pole, W0, degrees a day
+// A body's north pole as a unit vector in the scene (the equator of date), or null where it has none. `sc`: _aeSceneAt.
+function _aeAxisDir(key, sc) {
+  var S = _ae.gl;
+  if (key === 'earth') return [0, 0, 1];
+  if (key === 'moon') return _aeNorm([S.vz.x, S.vz.y, S.vz.z]);
+  if (key === 'sun') return _aeNorm(_ephEclJ2000ToEqOfDate(_aePlanetFrameEcl({ pole: AE_SUN_POLE }, sc.jd).z, sc.jde));
+  var p = S.planets && S.planets[key];
+  if (!p) return null;
+  var e = p.mesh.matrix.elements;   // the mesh's z column is its pole (squashed by the flattening, so not unit)
+  return _aeNorm([e[8], e[9], e[10]]);
+}
+// Which bodies show an axis this frame: { key, pos, r, dir } for each.
+function _aeAxisBodies(S, sc) {
+  var out = [];
+  if (_ae.spin) return out;
+  var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z], pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  // `orbit`: whose orbit line the axis keeps company with (the Earth's own and the Moon's are one set: 'moon').
+  var add = function (key, orbit, pos, r) {
+    var show = pos ? _aeOrbitShow(orbit) : 0;
+    if (show <= 0 || r / Math.max(1e-9, _aeLen(_aeSub(pos, eye))) * pxPerRad < AE_AXIS_MIN_PX) return;
+    var dir = _aeAxisDir(key, sc);
+    if (dir) out.push({ key: key, pos: pos, r: r, dir: dir, show: show });
+  };
+  add('earth', 'moon', [0, 0, 0], 1);
+  add('moon', 'moon', sc.moon, AE_MOON_RADIUS_KM / AE_EARTH_RADIUS_KM);
+  add('sun', 'sun', _aeSunShown(sc), AE_SUN_SHOW_R);
+  AE_PLANETS.forEach(function (b) {
+    var p = S.planets[b.key];
+    if (p && p.pos && p.mesh.visible) add(b.key, b.key, p.pos, b.r);
+  });
+  return out;
+}
+// The north line with its arrowhead (the barbs turned to face the camera) and the south line, for one body.
+function _aeSetAxisLines(o, a, eye) {
+  var R = AE_SPIN_AXIS_R * a.r, tip = _aeAdd(a.pos, _aeScale(a.dir, R)), ang = _aeRad(AE_SPIN_BARB_DEG);
+  var side = _aeCross(a.dir, _aeSub(eye, tip));
+  side = _aeLen(side) > 1e-12 ? _aeNorm(side) : _aeNorm(_aeCross(a.dir, Math.abs(a.dir[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+  var barb = function (sign) {
+    return _aeAdd(tip, _aeScale(_aeAdd(_aeScale(a.dir, -Math.cos(ang)), _aeScale(side, sign * Math.sin(ang))), AE_SPIN_BARB * a.r));
+  };
+  var n = o.north.geometry.attributes.position, s = o.south.geometry.attributes.position;
+  n.array.set([].concat(a.pos, tip, tip, barb(1), tip, barb(-1)));
+  s.array.set([].concat(a.pos, _aeSub(a.pos, _aeScale(a.dir, R))));
+  n.needsUpdate = true; s.needsUpdate = true;
+  o.north.material.opacity = AE_SPIN_AXIS_ALPHA * a.show * _aeFadeU.value;
+  o.south.material.opacity = AE_SPIN_AXIS_S_ALPHA * a.show * _aeFadeU.value;
+}
+function _aeDrawAxes(S, sc) {
+  var shown = _aeAxisBodies(S, sc), cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z], on = {};
+  S.axes = S.axes || {};
+  shown.forEach(function (a) {
+    var o = S.axes[a.key];
+    if (!o) {   // made the first time a body shows one
+      o = S.axes[a.key] = {
+        north: _aeLine(S.THREE, S.THREE.LineSegments, 6, AE_SPIN_AXIS_COLOR, AE_SPIN_AXIS_ALPHA),
+        south: _aeLine(S.THREE, S.THREE.Line, 2, AE_PLANET_ORBIT_COLOR, AE_SPIN_AXIS_S_ALPHA)
+      };
+      o.north.geometry.setDrawRange(0, 6); o.south.geometry.setDrawRange(0, 2);
+      S.scene.add(o.north); S.scene.add(o.south);
+    }
+    on[a.key] = true;
+    o.north.visible = o.south.visible = true;
+    o.dir = a.dir; o.pos = a.pos;   // where the test (and the next frame) can read them
+    _aeSetAxisLines(o, a, eye);
+  });
+  Object.keys(S.axes).forEach(function (k) { if (!on[k]) S.axes[k].north.visible = S.axes[k].south.visible = false; });
+}
 // ── The asteroid belt ──
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
 // than H 14, as orbital elements, each moved along its ellipse to the shown date and placed as the planets are. Fetched the first time the view stands out among the planets
@@ -3017,7 +3114,7 @@ function _aeIsProbe(key) { return !!(_aeTracks && _aeTracks.tracks[key] && key !
 var AE_GM_EARTH_KM3_S2 = 398600.4418;   // the Earth's GM, km^3/s^2: the ISS's period from its height
 var AE_MOON_SIDEREAL_DAYS = 27.321661;  // the Moon round the Earth, against the stars
 var AE_ISS_SUN_STEP_MS = 30000, AE_ISS_SUN_LOOK_MS = 2 * 3600000;   // how finely, and how far ahead, the ISS's next sunlight is looked for
-function _aeKmText(km) { return _orrNum(km, 'kilometer', 0); }
+function _aeKmText(km) { return _aeLenText(km); }
 function _aeAuText(au) { return _orrNum(au, null, au < 10 ? 2 : 1) + ' AU'; }
 // The ISS is in the Earth's shadow when it is behind the Earth from the Sun and within its cylinder (Earth radii).
 function _aeInShadow(pos, sun) {
@@ -3069,6 +3166,12 @@ function _aeArrival(k, ms) {
     }
     return out;
   }
+  if (k === 'earth') {
+    out.fact = _aeT('alm_card_across', { d: _aeKmText(2 * AE_EARTH_RADIUS_KM) }) + ' · ' +
+      _aeT('alm_card_round_sun', { t: _orrFmtSpan(_aeYearDays('Earth') * SECONDS_PER_DAY) });
+    if (earthAU) out.where = _aeT('alm_probe_from_sun', { au: _aeAuText(_aeLen(earthAU)) });
+    return out;
+  }
   if (k === 'sun') {
     out.fact = _aeT('alm_card_across', { d: _aeKmText(2 * AE_SUN_RADIUS_KM) });
     if (earthAU) out.where = far(_aeLen(earthAU));
@@ -3110,14 +3213,370 @@ function _aeRenderArrivalCard(card) {
     }
     return _aeLinked(l.key) ? '<p class="ae-card-more">' + _aeLink(l.key, _almEsc(_aeT(l.label))) + '</p>' : '';
   }).join('');
+  // Where it is, and the way into everything else about it.
+  var facts = _aeHasFacts(k) ? '<button type="button" class="ae-btn ae-lm-fly" id="ae-card-facts" aria-haspopup="dialog">' + _almEsc(_aeT('alm_bi_more')) + '</button>' : '';
+  var whereLine = a.where || facts ? '<p class="ae-card-where ae-lm-line"><span>' + _almEsc(a.where) + '</span>' + facts + '</p>' : '';
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
-    '<h3>' + _aeArrivalName(k) + '</h3>' + p('ae-card-fact', a.fact) + p('ae-card-where', a.where) + p('ae-card-note', a.note) + extra;
+    '<h3>' + _aeArrivalName(k) + '</h3>' + p('ae-card-fact', a.fact) + whereLine + p('ae-card-note', a.note) + extra;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.arrived = null; _aeRenderCard(); };
+  var more = _aeById('ae-card-facts');
+  if (more) more.onclick = function () { if (_ae.info) _aeCloseInfo(false); else _aeOpenInfo(k); };
+  if (more) more.setAttribute('aria-expanded', String(!!_ae.info));
   Array.prototype.forEach.call(card.querySelectorAll ? card.querySelectorAll('[data-ae-open]') : [], function (el) {
     var l = a.links[+el.getAttribute('data-ae-open')];
     el.onclick = function (e) { e.preventDefault(); _aeClose(); window[l.open](); };
   });
+}
+
+// ── A body's facts ──
+// "All facts" on a place's card opens its sheet (a bottom sheet on a phone, a side panel on a wide screen): size, mass,
+// gravity, escape velocity, day, year, tilt, where it is now, moons, temperature, air, who found it, and its article in
+// the library. Nothing is repeated that the view already knows: radii, poles, turning rates, orbits and the year are the
+// view's own constants, where it is now comes from the ephemeris for the shown date, and what only a table can say
+// (mass, gravity, escape velocity, temperatures, counts) is AE_BODY_FACTS: NASA's NSSDC Planetary, Sun, Moon, Pluto and
+// Satellite Fact Sheets and Solar System Exploration's moon counts (2025), public domain. Every number the sheet shows is
+// listed, with its source, in the Almanac's Constants (the Bodies and Axes pages: almanac-tables.js), and
+// tests/test_almanac_bodyinfo_browser.py fails when the sheet shows one the pages do not.
+// Fields: mass kg, gravity m/s2, escape km/s, solarDayH hours noon to noon, periKm/apoKm closest and farthest from the
+// Sun (the Moon: from the Earth), tilt degrees where the view does not work it out, tempC mean, yearDays where the
+// orrery has no elements, moons known, atmo a phrase's key, found who and when.
+var AE_BODY_FACTS = {
+  sun: { mass: 1.9885e30, gravity: 274, escape: 617.6, solarDayH: 654.6, tilt: 7.25, tempC: 5499, atmo: 'plasma' },
+  mercury: { moons: 0, mass: 3.301e23, gravity: 3.7, escape: 4.3, solarDayH: 4222.6, periKm: 46000000, apoKm: 69800000, tempC: 167, atmo: 'exo' },
+  venus: { moons: 0, mass: 4.867e24, gravity: 8.9, escape: 10.4, solarDayH: 2802, periKm: 107500000, apoKm: 108900000, tempC: 464, atmo: 'thick_co2' },
+  earth: { mass: 5.972e24, gravity: 9.8, escape: 11.2, solarDayH: 24, periKm: 147100000, apoKm: 152100000, tempC: 15, moons: 1, atmo: 'air' },
+  moon: { mass: 7.346e22, gravity: 1.62, escape: 2.38, solarDayH: 708.7, periKm: 363300, apoKm: 405500, tilt: 6.68, atmo: 'exo' },
+  mars: { mass: 6.417e23, gravity: 3.7, escape: 5, solarDayH: 24.7, periKm: 206700000, apoKm: 249300000, tempC: -65, moons: 2, atmo: 'thin_co2' },
+  jupiter: { mass: 1.898e27, gravity: 23.1, escape: 59.5, periKm: 740600000, apoKm: 816400000, tempC: -110, moons: 95, atmo: 'h2he' },
+  saturn: { mass: 5.683e26, gravity: 9, escape: 35.5, periKm: 1357600000, apoKm: 1506500000, tempC: -140, moons: 274, atmo: 'h2he' },
+  uranus: { mass: 8.681e25, gravity: 8.7, escape: 21.3, periKm: 2732700000, apoKm: 3001400000, tempC: -195, moons: 29, atmo: 'h2he_ch4', found: { by: 'William Herschel', year: 1781 } },
+  neptune: { mass: 1.024e26, gravity: 11, escape: 23.5, periKm: 4471100000, apoKm: 4558900000, tempC: -200, moons: 16, atmo: 'h2he_ch4', found: { by: 'Le Verrier, Galle', year: 1846 } },
+  pluto: { mass: 1.303e22, gravity: 0.7, escape: 1.3, periKm: 4435800000, apoKm: 7304300000, tempC: -225, moons: 5, tilt: 122.5, yearDays: 90560, atmo: 'thin_n2', found: { by: 'Clyde Tombaugh', year: 1930 } },
+  ceres: { mass: 9.38e20, gravity: 0.27, escape: 0.51, periKm: 381400000, apoKm: 445800000, tempC: -105, tilt: 4, yearDays: 1680.5, atmo: 'exo', found: { by: 'Giuseppe Piazzi', year: 1801 } },
+  io: { mass: 8.932e22, gravity: 1.8, escape: 2.56, atmo: 'thin_so2', found: { by: 'Galileo Galilei', year: 1610 } },
+  europa: { mass: 4.8e22, gravity: 1.31, escape: 2.02, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
+  ganymede: { mass: 1.482e23, gravity: 1.43, escape: 2.74, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
+  callisto: { mass: 1.076e23, gravity: 1.24, escape: 2.44, atmo: 'thin_co2', found: { by: 'Galileo Galilei', year: 1610 } },
+  titan: { mass: 1.345e23, gravity: 1.35, escape: 2.64, tempC: -179, atmo: 'thick_n2', found: { by: 'Christiaan Huygens', year: 1655 } }
+};
+var AE_KM_PER_MILE = 1.609344, AE_G0 = 9.80665, AE_EARTH_MASS_KG = 5.9722e24;
+var AE_ISS_LAUNCH_MS = Date.UTC(1998, 10, 20, 12);   // Zarya, the first module (a day is told at its noon, so it reads the same in every zone)
+// Miles where the Almanac's units are feet (the tides' setting, SK.ALM_UNITS, or its guess), kilometres elsewhere.
+function _aeImperial() {
+  try { var v = localStorage.getItem(SK.ALM_UNITS); if (v === 'ft' || v === 'm') return v === 'ft'; } catch (e) {}
+  if (typeof _atUnits === 'function') return _atUnits() === 'ft';
+  return /-(US|LR|MM)$/i.test((typeof navigator !== 'undefined' && navigator.language) || '');
+}
+function _aeLenText(km, frac) {
+  var mi = _aeImperial();
+  return _orrNum(mi ? km / AE_KM_PER_MILE : km, mi ? 'mile' : 'kilometer', frac || 0);
+}
+// A long distance short: "809M km" (kilometre or mile, compact in the reader's language).
+function _aeFarText(km) {
+  var mi = _aeImperial();
+  return _orrFormatter('far|' + (mi ? 'mi' : 'km'), function (lang) {
+    var opts = { style: 'unit', unit: mi ? 'mile' : 'kilometer', unitDisplay: 'short', notation: 'compact', maximumFractionDigits: 1 };
+    try { return new Intl.NumberFormat(lang, opts); }
+    catch (e) { return { format: function (x) { return _orrNum(x, null, 0) + (mi ? ' mi' : ' km'); } }; }
+  }).format(mi ? km / AE_KM_PER_MILE : km);
+}
+// A day's length: hours and minutes below ten days, then days with a decimal (the Moon's 29.5, Mercury's 58.6).
+function _aeDayText(sec) { return sec < 10 * SECONDS_PER_DAY ? _orrFmtSpan(sec) : _orrNum(sec / SECONDS_PER_DAY, 'day', 1); }
+function _aeSigText(n, digits) {
+  return _orrFormatter('sig|' + digits, function (lang) {
+    try { return new Intl.NumberFormat(lang, { maximumSignificantDigits: digits }); }
+    catch (e) { return { format: function (x) { return String(+x.toPrecision(digits)); } }; }
+  }).format(n);
+}
+// A speed (km/s as the sheets give it), in the person's units.
+function _aeSpeedText(kms, frac) {
+  var mi = _aeImperial();
+  return _orrNum(mi ? kms / AE_KM_PER_MILE : kms, mi ? 'mile-per-second' : 'kilometer-per-second', frac);
+}
+function _aeTempText(c) {
+  var f = _aeImperial();
+  return _orrNum(f ? c * 9 / 5 + 32 : c, f ? 'fahrenheit' : 'celsius', 0);
+}
+// A mass: 5.97 x 10^24 kg (the exponent raised), and in Earths.
+function _aeMassHtml(kg) {
+  var e = Math.floor(Math.log10(kg)), m = kg / Math.pow(10, e);
+  var earths = kg / AE_EARTH_MASS_KG;
+  var txt = _orrFormatter('mass', function (lang) {
+    try { return new Intl.NumberFormat(lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (x) { return { format: function (v) { return v.toFixed(2); } }; }
+  }).format(m) + ' × 10<sup>' + e + '</sup> kg';
+  return txt + (Math.abs(earths - 1) < 0.005 ? '' : '<span>' + _almEsc(_aeT('alm_bi_earths', { n: _aeSigText(earths, earths < 10 ? 3 : earths < 1000 ? 4 : 3) })) + '</span>');
+}
+// What a key's facts stand on: a radius and, for those that turn, the IAU pole and rate (the view's own).
+function _aeFactBase(k) {
+  if (k === 'sun') return { km: AE_SUN_RADIUS_KM, pole: AE_SUN_POLE };
+  if (k === 'earth') return AE_SPIN_EARTH;
+  if (k === 'moon') return { km: AE_MOON_RADIUS_KM, siderealDays: AE_MOON_SIDEREAL_DAYS };
+  return _aePlanetBody(k);
+}
+// Whether a key has a sheet: the Sun, the Earth and Moon, the planets, moons and dwarfs, the probes, the station.
+function _aeHasFacts(k) { return !!k && (k === 'iss' || _aeIsProbe(k) || !!_aeFactBase(k)); }
+function _aeInfoName(k) {
+  if (k === 'iss') return _aeT('alm_earth_iss_name');
+  if (_aeIsProbe(k)) return _aeTracks.tracks[k].name;
+  if (k === 'sun') return _aeT('alm_sun');
+  if (k === 'moon') return _aeT('alm_moon');
+  if (k === 'earth') return _tp('Earth');
+  var b = _aePlanetBody(k);
+  return b ? _aeBodyName(b) : k;
+}
+// The rows of a body's sheet at ms: [{ id, label, html, live }] (html is built here, escaped; live: it changes with the date).
+function _aeInfoRows(k, ms) {
+  var rows = [], jd = ms / MS_PER_DAY + JD_UNIX_EPOCH;
+  var add = function (id, label, html, live) { if (html) rows.push({ id: id, label: label, html: html, live: !!live }); };
+  var esc = _almEsc, line = function (t) { return '<span>' + esc(t) + '</span>'; };
+  var far = function (km) { return esc(_aeFarText(km)); };
+  // How far it is from the Earth now, and what that is in light.
+  var fromEarth = function (au) {
+    return esc(_aeAuText(au)) + ' · ' + far(au * AU_KM) + line(_aeT('alm_card_light', { t: _orrFmtSpan(_lightDelaySeconds(au)) }));
+  };
+  var earthH = typeof _ephBodyJ2000 === 'function' ? _ephBodyJ2000('Earth', jd) : null;
+  if (k === 'iss' || _aeIsProbe(k)) { _aeProbeRows(k, jd, earthH, add, esc, line, far, fromEarth); return rows; }
+  var b = _aeFactBase(k), parent = b.parent ? _aePlanetBody(b.parent) : null, f = AE_BODY_FACTS[k] || {};
+  add('diameter', _aeT('alm_bi_diameter'), esc(_aeLenText(2 * b.km)));
+  if (f.mass) add('mass', _aeT('alm_bi_mass'), _aeMassHtml(f.mass));
+  if (f.gravity) add('gravity', _aeT('alm_bi_gravity'), esc(_aeSigText(f.gravity, 3) + ' m/s²') + line(_aeSigText(f.gravity / AE_G0, 3) + ' g'));
+  if (f.escape) add('escape', _aeT('alm_bi_escape'), esc(_aeSpeedText(f.escape, 1)));
+  // The day: the turn against the stars (a moon keeps one face to its planet: its orbit), and noon to noon where it differs.
+  var dayS = b.pole ? 360 / Math.abs(b.pole[3]) * SECONDS_PER_DAY : b.siderealDays ? b.siderealDays * SECONDS_PER_DAY : b.orbit ? 360 / b.orbit[2] * SECONDS_PER_DAY : 0;
+  if (dayS) {
+    var back = b.pole && b.pole[3] < 0;
+    add('day', _aeT('alm_bi_day'), esc(_aeT('alm_bi_day_sidereal', { t: _aeDayText(dayS) })) +
+      (f.solarDayH ? line(_aeT('alm_bi_day_solar', { t: _aeDayText(f.solarDayH * SECONDS_PER_HOUR) })) : '') + (back ? line(_aeT('alm_spin_retro')) : ''));
+  }
+  // The year, or for a moon its orbit: from the orrery's own elements, the table for the dwarfs.
+  if (parent) add('year', _aeT('alm_bi_orbit_of', { body: _aeBodyName(parent) }), esc(_orrFmtSpan(360 / b.orbit[2] * SECONDS_PER_DAY)));
+  else if (k === 'moon') add('year', _aeT('alm_bi_orbit_of', { body: _tp('Earth') }), esc(_orrFmtSpan(AE_MOON_SIDEREAL_DAYS * SECONDS_PER_DAY)));
+  else if (b.eph && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) add('year', _aeT('alm_bi_year'), esc(_orrFmtSpan(_aeYearDays(b.eph) * SECONDS_PER_DAY)));
+  else if (f.yearDays) add('year', _aeT('alm_bi_year'), esc(_orrFmtSpan(f.yearDays * SECONDS_PER_DAY)));
+  // The tilt of the spin from the orbit's normal: worked out for the eight (the view's own, as Side by side), else the table's.
+  var tilt = f.tilt;
+  if (AE_SPIN_ORDER.indexOf(k) >= 0) { try { tilt = _aeSpinFacts(_aeSpinBody(k), jd).tiltDeg; } catch (e) {} }
+  if (typeof tilt === 'number') add('tilt', _aeT('alm_bi_tilt'), esc(_orrNum(tilt, null, tilt < 1 ? 2 : 1) + '°'));
+  // Where it is now. A moon is its planet's distance from the Sun and Earth, as its card says; its own is from the planet.
+  var host = parent || b, hh = k === 'moon' || k === 'earth' ? earthH : k === 'sun' ? [0, 0, 0] : _aeHelioOf(host)(jd);
+  if (parent) add('from_parent', _aeT('alm_bi_from_parent', { body: _aeBodyName(parent) }), esc(_aeLenText(b.orbit[0])));
+  if (k === 'moon' && _ae.scene) {
+    add('from_earth', _aeT('alm_bi_from_earth'), esc(_aeLenText(_aeLen(_ae.scene.moon) * AE_EARTH_RADIUS_KM)), true);
+    if (f.periKm) add('range', _aeT('alm_bi_range_earth'), esc(_aeLenText(f.periKm) + ' – ' + _aeLenText(f.apoKm)));
+  } else if (k === 'sun' && earthH) {
+    add('from_earth', _aeT('alm_bi_from_earth'), fromEarth(_aeLen(earthH)), true);
+  } else if (hh && k !== 'sun') {
+    add('from_sun', _aeT('alm_bi_from_sun'), esc(_aeAuText(_aeLen(hh))) + ' · ' + far(_aeLen(hh) * AU_KM), true);
+    if (f.periKm) add('range', _aeT('alm_bi_range_sun'), esc(_aeFarText(f.periKm) + ' – ' + _aeFarText(f.apoKm)));
+    if (k !== 'earth' && earthH) add('from_earth', _aeT('alm_bi_from_earth'), fromEarth(_aeLen(_aeSub(hh, earthH))), true);
+  }
+  if (typeof f.moons === 'number') add('moons', _aeT('alm_bi_moons'), esc(_orrNum(f.moons, null, 0)));
+  if (typeof f.tempC === 'number') add('temp', _aeT('alm_bi_temp'), esc(_aeTempText(f.tempC)));
+  if (f.atmo) add('atmo', _aeT('alm_bi_atmo'), esc(_aeT('alm_bi_atmo_' + f.atmo)));
+  if (f.found) add('found', _aeT('alm_bi_found'), esc(_aeT('alm_bi_found_by', { by: f.found.by, year: f.found.year })));
+  return rows;
+}
+// A probe's or the station's rows: launch, mission, where it is and how fast it goes now.
+function _aeProbeRows(k, jd, earthH, add, esc, line, far, fromEarth) {
+  if (k === 'iss') {
+    if (_ae.issPos) {
+      var r = _aeLen(_ae.issPos) * AE_EARTH_RADIUS_KM, speed = Math.sqrt(AE_GM_EARTH_KM3_S2 / r);
+      add('mission', _aeT('alm_bi_mission'), esc(_aeT('alm_bi_mission_iss')));
+      add('launched', _aeT('alm_bi_launched'), esc(_aeFmtDate(AE_ISS_LAUNCH_MS)));
+      add('height', _aeT('alm_bi_height'), esc(_aeLenText(r - AE_EARTH_RADIUS_KM)), true);
+      add('speed', _aeT('alm_bi_speed'), esc(_aeSpeedText(speed, 2)), true);
+      add('orbit', _aeT('alm_bi_orbit_of', { body: _tp('Earth') }), esc(_orrFmtSpan(2 * Math.PI * Math.sqrt(r * r * r / AE_GM_EARTH_KM3_S2))), true);
+      var sat = _ae.sats && _ae.sats.list.filter(function (x) { return x.iss; })[0];
+      if (sat) add('data', _aeT('alm_bi_iss_data'), esc(_aeT(sat.standing === 'approximate' ? 'alm_earth_approx' : 'alm_earth_data_from', { date: _aeFmtDate(sat.epochMs) })));
+    }
+    return;
+  }
+  var t = _aeTracks.tracks[k], ev = (t.events || []).filter(function (e) { return e[1] === 'launch'; })[0];
+  add('mission', _aeT('alm_bi_mission'), esc(_aeT('alm_bi_mission_' + k)));
+  if (ev) add('launched', _aeT('alm_bi_launched'), esc(_aeFmtDate((ev[0] + 0.5 - JD_UNIX_EPOCH) * MS_PER_DAY)));
+  var h = _aeTrackAt(t, jd);
+  if (h) {
+    add('from_sun', _aeT('alm_bi_from_sun'), esc(_aeAuText(_aeLen(h))) + ' · ' + far(_aeLen(h) * AU_KM), true);
+    if (earthH) add('from_earth', _aeT('alm_bi_from_earth'), fromEarth(_aeLen(_aeSub(h, earthH))), true);
+    var st = _aeStateOf(function (x) { return _aeTrackAt(t, x); }, jd);
+    if (st) add('speed', _aeT('alm_bi_speed'), esc(_aeSpeedText(_aeLen(st.v) * AU_KM / SECONDS_PER_DAY, 1)) + line(_aeT('alm_bi_speed_sun')), true);
+  }
+}
+
+// The sheet itself. It follows the place whose card is up (another body tapped or flown to takes it there; the card's × or
+// leaving for the satellites takes it away) and keeps its "now" rows up with the clock.
+function _aeInfoHtml(k, rows) {
+  var name = _almEsc(_aeInfoName(k));
+  return '<button type="button" class="ae-card-x" id="ae-info-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
+    '<div class="ae-info-grab" aria-hidden="true"></div><div class="ae-info-body"><h2 id="ae-info-title">' + _aeLink(_aeArrivalKey(k), name) + '</h2><dl class="ae-info-dl">' +
+    rows.map(function (r) {
+      return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
+    }).join('') + '</dl>' +
+    (_aeLinked(_aeArrivalKey(k)) ? '<p class="ae-info-read">' + _aeLink(_aeArrivalKey(k), _almEsc(_aeT('alm_bi_read', { body: _aeInfoName(k) }))) + '</p>' : '') +
+    '</div>';
+}
+function _aeRenderInfo() {
+  var el = _aeById('ae-info'), k = _ae && _ae.info;
+  if (!el || !k) return;
+  if (k !== 'iss' && _aeIsProbe(k) && !_aeTracks) return;
+  var ms = _aeDisplayMs(), body = el.querySelector('.ae-info-body'), scroll = body ? body.scrollTop : 0;
+  el.innerHTML = _aeInfoHtml(k, _aeInfoRows(k, ms));
+  if (el.querySelector('.ae-info-body')) el.querySelector('.ae-info-body').scrollTop = scroll;
+  _ae.infoAt = ms;
+  _aeById('ae-info-x').onclick = function () { _aeCloseInfo(true); };
+}
+// The "now" rows redrawn in place (the focus and the scroll stay where they are).
+function _aeUpdateInfoLive(ms) {
+  var el = _aeById('ae-info');
+  if (!el || !_ae.info || Math.abs(ms - (_ae.infoAt || 0)) < AE_ARRIVAL_REFRESH_MS) return;
+  _ae.infoAt = ms;
+  _aeInfoRows(_ae.info, ms).forEach(function (r) {
+    if (!r.live) return;
+    var dd = el.querySelector('[data-bi="' + r.id + '"] dd');
+    if (dd && dd.innerHTML !== r.html) dd.innerHTML = r.html;
+  });
+}
+// A swipe down on the sheet (from its top, or with its list at the top) shuts it, the sheet following the finger; a tap
+// anywhere in the view outside it and its button shuts it too.
+var AE_INFO_SWIPE_PX = 70;
+function _aeBindInfo() {
+  var el = _aeById('ae-info'), y0 = null, dy = 0;
+  el.addEventListener('touchstart', function (e) {
+    var body = el.querySelector('.ae-info-body');
+    y0 = body && body.scrollTop > 0 ? null : e.touches[0].clientY;
+    dy = 0;
+  }, { passive: true });
+  el.addEventListener('touchmove', function (e) {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    if (dy > 0) { el.style.transition = 'none'; el.style.transform = 'translateY(' + dy + 'px)'; }
+  }, { passive: true });
+  el.addEventListener('touchend', function () {
+    if (y0 == null) return;
+    var shut = dy > AE_INFO_SWIPE_PX;
+    y0 = null;
+    el.style.transition = el.style.transform = '';
+    if (shut) _aeCloseInfo(false);
+  });
+  _ae.el.addEventListener('pointerdown', function (e) {
+    if (!_ae.info || el.contains(e.target) || (e.target.closest && e.target.closest('#ae-card-facts'))) return;
+    _aeCloseInfo(false);
+  }, true);
+}
+function _aeOpenInfo(k) {
+  if (!_aeHasFacts(k)) return;
+  var el = _aeById('ae-info');
+  if (!el) return;
+  _ae.info = k;
+  _ae.infoFrom = document.activeElement;
+  if (_ae.setOpen) _aeShowSettings(false);
+  _aeRenderInfo();
+  el.classList.add('in');
+  var x = _aeById('ae-info-x');
+  if (x) x.focus({ preventScroll: true });
+}
+function _aeCloseInfo(refocus) {
+  var el = _aeById('ae-info');
+  if (!_ae || !_ae.info) return;
+  _ae.info = null;
+  if (el) el.classList.remove('in');
+  var back = _ae.infoFrom;
+  _ae.infoFrom = null;
+  if (refocus && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
+}
+// The card changed under the sheet: it goes with its place.
+function _aeSyncInfo() {
+  if (!_ae || !_ae.info) return;
+  var k = _ae.arrived;
+  if (k && k !== _ae.info && _aeHasFacts(k)) { _ae.info = k; _aeRenderInfo(); return; }
+  if (!k) setTimeout(function () { if (_ae && _ae.info && !_ae.arrived) _aeCloseInfo(false); }, 0);   // a flight clears the card, then arrives
+}
+
+// ── The sheet's numbers, listed ──
+// The Almanac's Constants pages "Bodies" and "Axes and orbits" (almanac-tables.js) list every number a sheet shows and
+// every constant the axes are drawn from, each with its source: rows [name key, value, digits, unit, source, name, id].
+// _aeInfoRefNeeds says, for each row of a sheet, which listed rows it stands on; the test fails on a row it cannot place or
+// a need the pages do not list.
+var AE_REF_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres',
+  'io', 'europa', 'ganymede', 'callisto', 'titan'];
+var AE_REF_SRC_FACTS = 'NASA fact sheet', AE_REF_SRC_POLE = 'IAU WGCCRE 2015';
+var AE_REF_SRC_ELEMENTS = 'JPL (Standish) mean motion', AE_REF_SRC_MOONS = 'JPL Horizons fit';
+function _aeRefMass(kg) { var e = Math.floor(Math.log10(kg)); return (kg / Math.pow(10, e)).toFixed(3) + ' × 10^' + e; }
+function _aeRefName(k, nameKey) { return _aeInfoName(k) + ' · ' + _aeT(nameKey); }
+// What a sheet row stands on: the listed rows' ids, or null for a row nothing is known of.
+function _aeInfoRefNeeds(k, rowId) {
+  var b = _aeFactBase(k), f = AE_BODY_FACTS[k] || {}, probe = k === 'iss' || _aeIsProbe(k);
+  var own = function (s) { return [k + '.' + s]; };
+  var live = k === 'moon' ? 'live.moon' : b && b.track ? 'live.tracks' : 'live.planets';
+  switch (rowId) {
+    case 'diameter': return own('radius');
+    case 'mass': case 'gravity': case 'escape': case 'tilt': case 'moons': case 'temp': case 'atmo': case 'found': return own(rowId);
+    case 'day': return (b.pole ? own('rotation_rate') : k === 'moon' ? own('orbit_period') : own('orbit_rate')).concat(f.solarDayH ? own('solar_day') : []);
+    case 'year': return own('orbit_period');
+    case 'from_parent': return own('orbit_radius');
+    case 'range': return own('peri').concat(own('apo'));
+    case 'from_sun': case 'from_earth': return [probe ? 'live.tracks' : live];
+    case 'launched': return [k === 'iss' ? 'iss.launch' : 'probes.launch'];
+    case 'speed': return [k === 'iss' ? 'live.iss' : 'live.tracks'];
+    case 'height': case 'orbit': case 'data': return ['live.iss'];
+    case 'mission': return [];   // prose, not a quantity
+  }
+  return null;
+}
+// "Bodies": the fact sheet's numbers, and the radius, orbit and day they stand beside.
+function _aeRefBodiesRows() {
+  var rows = [], jd = Date.now() / MS_PER_DAY + JD_UNIX_EPOCH;
+  var add = function (k, id, nameKey, value, unit, src) { rows.push([null, value, null, unit, src, _aeRefName(k, nameKey), k + '.' + id]); };
+  AE_REF_ORDER.forEach(function (k) {
+    var b = _aeFactBase(k), f = AE_BODY_FACTS[k] || {}, parent = b.parent;
+    add(k, 'radius', 'tb_kn_eq_radius', b.km, 'km', k === 'sun' ? 'IAU 2015' : 'IAU');
+    if (f.mass) add(k, 'mass', 'alm_bi_mass', _aeRefMass(f.mass), 'kg', AE_REF_SRC_FACTS);
+    if (f.gravity) add(k, 'gravity', 'alm_bi_gravity', f.gravity, 'm/s²', AE_REF_SRC_FACTS);
+    if (f.escape) add(k, 'escape', 'alm_bi_escape', f.escape, 'km/s', AE_REF_SRC_FACTS);
+    if (f.solarDayH) add(k, 'solar_day', 'tb_kn_solar_day', f.solarDayH, 'h', AE_REF_SRC_FACTS);
+    if (f.periKm) add(k, 'peri', 'tb_kn_peri', f.periKm, 'km', AE_REF_SRC_FACTS);
+    if (f.apoKm) add(k, 'apo', 'tb_kn_apo', f.apoKm, 'km', AE_REF_SRC_FACTS);
+    if (AE_SPIN_ORDER.indexOf(k) >= 0) {
+      var g = _aeSpinFacts(_aeSpinBody(k), jd);
+      add(k, 'tilt', 'alm_bi_tilt', g.tiltDeg, '°', 'IAU pole, orbit plane (worked out)');
+    } else if (typeof f.tilt === 'number') add(k, 'tilt', 'alm_bi_tilt', f.tilt, '°', AE_REF_SRC_FACTS);
+    if (parent) {
+      add(k, 'orbit_radius', 'tb_kn_orbit_radius', b.orbit[0], 'km', AE_REF_SRC_MOONS);
+      add(k, 'orbit_rate', 'tb_kn_orbit_rate', b.orbit[2], '°/d', AE_REF_SRC_MOONS);
+      add(k, 'orbit_period', 'tb_kn_orbit_period', 360 / b.orbit[2], 'd', AE_REF_SRC_MOONS);
+    } else if (k === 'moon') add(k, 'orbit_period', 'tb_kn_orbit_period', AE_MOON_SIDEREAL_DAYS, 'd', 'Meeus 47');
+    else if (b.eph && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) add(k, 'orbit_period', 'tb_kn_orbit_period', _aeYearDays(b.eph), 'd', AE_REF_SRC_ELEMENTS);
+    else if (f.yearDays) add(k, 'orbit_period', 'tb_kn_orbit_period', f.yearDays, 'd', AE_REF_SRC_FACTS);
+    if (typeof f.tempC === 'number') add(k, 'temp', 'alm_bi_temp', f.tempC, '°C', AE_REF_SRC_FACTS);
+    if (typeof f.moons === 'number') add(k, 'moons', 'alm_bi_moons', f.moons, '', AE_REF_SRC_FACTS);
+    if (f.atmo) add(k, 'atmo', 'alm_bi_atmo', _aeT('alm_bi_atmo_' + f.atmo), '', AE_REF_SRC_FACTS);
+    if (f.found) add(k, 'found', 'alm_bi_found', _aeT('alm_bi_found_by', { by: f.found.by, year: f.found.year }), '', 'IAU Minor Planet Center');
+  });
+  return rows;
+}
+// "Axes and orbits": the IAU poles and turning rates the maps and axes stand on, what draws them, and where positions come from.
+function _aeRefAxesRows() {
+  var rows = [];
+  var add = function (id, name, value, unit, src) { rows.push([null, value, null, unit, src, name, id]); };
+  AE_REF_ORDER.forEach(function (k) {
+    var b = _aeFactBase(k);
+    if (!b.pole) return;
+    add(k + '.pole_ra', _aeRefName(k, 'tb_kn_pole_ra'), b.pole[0], '°', k === 'earth' ? 'IAU, Meeus 12.4' : AE_REF_SRC_POLE);
+    add(k + '.pole_dec', _aeRefName(k, 'tb_kn_pole_dec'), b.pole[1], '°', k === 'earth' ? 'IAU, Meeus 12.4' : AE_REF_SRC_POLE);
+    add(k + '.pole_w0', _aeRefName(k, 'tb_kn_pole_w0'), b.pole[2], '°', k === 'earth' ? 'IAU, Meeus 12.4' : AE_REF_SRC_POLE);
+    add(k + '.rotation_rate', _aeRefName(k, 'tb_kn_rotation'), b.pole[3], '°/d', k === 'earth' ? 'Meeus 12.4' : AE_REF_SRC_POLE);
+  });
+  add('moon.pole_tilt', _aeRefName('moon', 'tb_kn_pole_tilt'), _MOON_EQUATOR_TILT_DEG, '°', 'IAU (Cassini)');
+  add('live.planets', _aeT('tb_kn_live_planets'), 'VSOP87D · Keplerian elements', '', 'Bretagnon & Francou; JPL (Standish)');
+  add('live.moon', _aeT('tb_kn_live_moon'), 'ELP / Meeus 47', '', 'Meeus 47');
+  add('live.tracks', _aeT('tb_kn_live_tracks'), 'JPL Horizons tables', '', 'JPL Horizons');
+  add('live.iss', _aeT('tb_kn_live_iss'), 'SGP4', '', 'CelesTrak');
+  add('probes.launch', _aeT('tb_kn_probe_launch'), 'JPL Horizons tables', '', 'JPL Horizons');
+  add('iss.launch', _aeT('tb_kn_iss_launch'), _aeFmtDate(AE_ISS_LAUNCH_MS), '', 'NASA');
+  add('axis.reach', _aeT('tb_kn_axis_reach'), AE_SPIN_AXIS_R, '×', 'Zimi');
+  add('axis.min_px', _aeT('tb_kn_axis_min'), AE_AXIS_MIN_PX, 'px', 'Zimi');
+  return rows;
 }
 
 // A body's place now: the Earth at the middle, the Moon, the Sun as shown, a planet or moon as shown.
@@ -4908,6 +5367,7 @@ function _aeUpdate(ms) {
   _aeUpdatePlanets(sc);
   _aePlaceCamera();
   _aePlaceCrafts();
+  _aeDrawAxes(S, sc);
 }
 
 function _aeResize() {
@@ -5034,8 +5494,7 @@ function _aeUpdateLabels() {
   var issEl = _aeById('ae-lbl-iss');
   if (iss) {
     var approx = iss.s.standing === 'approximate';
-    var html = _almEsc(_aeT('alm_earth_iss_short')) +
-      (approx ? '<span class="ae-label-sub">' + _almEsc(_aeT('alm_earth_approx', { date: _aeFmtDate(iss.s.epochMs) })) + '</span>' : '');
+    var html = _almEsc(_aeT('alm_earth_iss_short'));   // just its name: how old its data is lives in the status line and its sheet
     if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
     issEl.classList.toggle('ae-faded', approx);
   }
@@ -5377,7 +5836,7 @@ function _aeTap(x, y) {
   if (body && body !== _ae.target) { _aePreset(body); return; }
   if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); return; }
   // The one in view, its model or its disc, tapped: its card (put away with ×, or by flying elsewhere).
-  if (body && body !== 'earth' && _ae.arrived !== body) _aeArrive(body);
+  if (body && _ae.arrived !== body) _aeArrive(body);
 }
 // On a mouse, something to tap shows a hand: the craft's model as much as its little circle.
 function _aeHover(e) {
@@ -5425,6 +5884,7 @@ function _aeRenderCard() {
   _aeRenderCardBody();
   var card = _aeById('ae-card'), view = _aeById('ae-view');
   if (card && view && view.classList) view.classList.toggle('ae-carded', !card.hidden);
+  _aeSyncInfo();
 }
 function _aeRenderCardBody() {
   var card = _aeById('ae-card');
@@ -5627,6 +6087,7 @@ function _aeUpdateText(ms) {
     var card = _aeById('ae-card');
     if (card && !card.hidden) _aeRenderArrivalCard(card);
   }
+  _aeUpdateInfoLive(ms);
 }
 var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the arrival card's numbers
 
@@ -5846,6 +6307,7 @@ function _aeBindKeys() {
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
+      if (_ae.info) { _aeCloseInfo(true); return; }
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
       _ae.closedByKey = true;
       _aeClose();
@@ -6016,6 +6478,7 @@ function _aeEnsure() {
   _ae = _aeNewState(el);
   _aeBindControls();
   _aeBindKeys();
+  _aeBindInfo();
   _aeBindCanvas(_aeById('ae-canvas'));
   return true;
 }
@@ -6359,6 +6822,7 @@ function _aeFinishClose() {
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
   _ae.hand = null;
   _aeHandReset();
+  _aeCloseInfo(false);
   _ae.el.classList.remove('open');
   _ae.pointers = {}; _ae.drag = _ae.pinch = null;
   // The drawing buffer is the most the view holds (a screen of pixels, tens
