@@ -344,8 +344,10 @@
     step();
   }
   var last = null;
-  function list(names) { return root.Intl && Intl.ListFormat ? new Intl.ListFormat(root.ZimiText && root.ZimiText.lang ? root.ZimiText.lang() : undefined, { type: 'conjunction' }).format(names) : names.join(', '); }
+  function list(names) { return root.Intl && Intl.ListFormat ? new Intl.ListFormat(root.ZimiText && root.ZimiText.lang || undefined, { type: 'conjunction' }).format(names) : names.join(', '); }
 
+  // The sheet's title already says "You won!": its line only adds something when someone else won.
+  function endSheet(end) { return end.result === 'win' && !end.name ? { result: 'win' } : end; }
   var lastEnd = null;   // how the game ended, kept so a finished game comes back to its end sheet
   function finish(winner) {
     over = true; clearTimeout(timer); phase = 'roll';
@@ -358,7 +360,7 @@
     }
     render(); say(text); showStats();
     lastEnd = { result: one ? (isHuman(winner) ? 'win' : 'lose') : 'win', name: one ? undefined : seatName(winner), text: text };
-    UI.end(lastEnd);
+    UI.end(endSheet(lastEnd));
   }
   function recordLine() {
     var s = stats[settings.count + '.' + settings.level];
@@ -424,7 +426,7 @@
       state = d.state; over = !!d.end; lastEnd = d.end; anim = null; legal = []; phase = 'roll'; die = 0; last = last || { seat: 0, mv: null };
       forcedDie = d.die; if (forcedDie === EXIT_ROLL) state.sixes = Math.max(0, (state.sixes || 1) - 1);
       paintDie(0); render(); showStats();
-      if (over) { say(d.end.text); UI.end(d.end); }
+      if (over) { say(d.end.text); UI.end(endSheet(d.end)); }
     },
     resume: function () { if (!over) startTurn(); }
   });
