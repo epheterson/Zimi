@@ -34,9 +34,8 @@ def test_a_path_with_a_space_is_one_execstart_word():
 @posix
 def test_a_pid_file_nobody_holds_is_stale_even_when_the_pid_is_alive(tmp_path):
     pid_path = tmp_path / "zimi.pid"
-    pid_path.write_text(
-        str(os.getpid())
-    )  # a reused pid: alive, but not a Zimi holding the file
+    # a reused pid: alive, but not a Zimi holding the file
+    pid_path.write_text(str(os.getpid()), encoding="utf-8")
     assert service._running(str(pid_path)) is None
 
 
@@ -45,7 +44,7 @@ def test_a_held_pid_file_is_a_running_server(tmp_path):
     import fcntl
 
     pid_path = tmp_path / "zimi.pid"
-    pid_path.write_text("4242")
+    pid_path.write_text("4242", encoding="utf-8")
     with open(pid_path) as holder:
         fcntl.flock(holder, fcntl.LOCK_EX)
         assert service._running(str(pid_path)) == 4242
@@ -83,7 +82,7 @@ def test_background_start_reports_ready_refuses_a_second_and_a_failed_start_says
 ):
     port = _free_port()
     out = _start(tmp_path, port)
-    pid = int((tmp_path / "zimi.pid").read_text())
+    pid = int((tmp_path / "zimi.pid").read_text(encoding="utf-8"))
     try:
         assert out.returncode == 0 and "is running in the background" in out.stdout, (
             out.stdout,
