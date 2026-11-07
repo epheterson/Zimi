@@ -126,3 +126,10 @@ def test_the_dictionary_waits_in_the_same_way(served):
             pg.wait_for_function("() => !document.getElementById('reader-frame').contentDocument.querySelector('.app-wait')", timeout=8000)
         finally:
             br.close()
+
+
+def test_a_question_opened_by_a_link_waits_in_the_same_way():
+    """A deep link to a question hides the home page and had nothing to show while the question loaded."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "static", "exchange.html"), encoding="utf-8").read()
+    body = src[src.index("function openQ("):src.index("function closeQ(")]
+    assert "appWait(" in body and "wait.done()" in body and "wait.fail(" in body
