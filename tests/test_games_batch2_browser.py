@@ -283,3 +283,26 @@ def test_memory_touch_leaves_no_ring_on_a_face_down_card(browser, served):
     assert len(set(colors)) == 1, colors
     shot(page, "11-memory-after-miss")
     c.close()
+
+
+# 12. Logic puzzles: one line of rules above the board, and Tents' light colours are the page's (no neon lime, no black grid).
+def test_puzzle_pages_say_their_rules_in_one_line(browser, served):
+    for name in ("loopy", "tents", "lightup", "net"):
+        c = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True, device_scale_factor=2, color_scheme="light")
+        page = c.new_page()
+        page.goto("%s/puzzles/%s.html" % (served, name))
+        page.wait_for_selector(".pz-rules", state="attached", timeout=30000)
+        text = page.locator(".pz-rules").inner_text()
+        assert len(text) > 20 and text.endswith("."), (name, text)
+        assert page.evaluate("() => document.querySelector('.pz-rules').nextElementSibling.classList.contains('pz-frame')"), name
+        if name == "tents":
+            page.wait_for_function("() => window.colours && colours[2]")
+            frames(page, 3)
+            sat, grid_l, ink_l = page.evaluate("""() => {
+              const hsl = hex => { const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+                return [mx === mn ? 0 : (l > .5 ? (mx - mn) / (2 - mx - mn) : (mx - mn) / (mx + mn)), l]; };
+              return [hsl(colours[2])[0], hsl(colours[1])[1], hsl('#26241f')[1]]; }""")
+            assert sat < 0.45, sat       # the lime was 0.77
+            assert ink_l + 0.1 < grid_l < 0.6, (grid_l, ink_l)   # softer than ink, still dark enough to read as the counts
+            shot(page, "12-tents-light")
+        c.close()

@@ -102,7 +102,8 @@
     net: { 5: "amber" },                                    // the wires that are lit
     mines: { 1: "sunk", 20: "surface2", 21: "edge" },       // an opened square sinks into the page; a closed one is raised, with an ink edge
     loopy: { 2: "unknown" },                                // an edge not yet drawn is a faint guide under the lines that are
-    pattern: { 4: "unknown" }                               // a square not yet decided sits just above the panel
+    pattern: { 4: "unknown" },                              // a square not yet decided sits just above the panel
+    tents: { 1: "line", 2: "grass" }                        // the grid is a quiet line, and grass is the table's green, not neon lime
   };
   var raw = [], mapped = [];
   function isDark() {
@@ -144,6 +145,8 @@
     if (role === "surface2") return toHex(ground);
     if (role === "edge") return toHex(mix(ink, ground, 0.3));
     if (role === "unknown") return toHex(mix(ground, ink, 0.16));
+    if (role === "line") return toHex(mix(ground, ink, 0.72));      // the grid and the counts at the edges: softer than ink, still readable
+    if (role === "grass") return toHex(mix(ground, parse(token("--felt", "#285c43")), dark ? 0.55 : 0.22));
     if (!KEEP_BLUE[NAME] && s > 0.8 && h >= 225 && h <= 250 && l >= 0.4 && l <= 0.5) { var sl = SLATE[dark ? "dark" : "light"]; return toHex(fromHsl(sl[0], sl[1], sl[2])); }
     if (s < 0.12) return toHex(mix(ink, ground, (rgb[0] + rgb[1] + rgb[2]) / 765));      // grey: black is ink, white is surface2
     var plain = !CATEGORICAL[NAME];
@@ -1030,6 +1033,8 @@
     if (!canvas) return;
     buildBar();
     var frame = fitBox();
+    // The puzzle's goal in one line (the first line of How to play), above the board.
+    frame.parentNode.insertBefore(word(el("p", "pz-rules"), "help." + NAME + ".goal", ""), frame);
     watchStatus(frame);
     touchIsMouse(canvas);
     touchRow(canvas, NAME, frame.parentNode);
