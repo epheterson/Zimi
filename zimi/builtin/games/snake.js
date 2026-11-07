@@ -21,15 +21,17 @@
     g.food = free[Math.floor(g.rng() * free.length)];
   }
 
-  // The snake starts in the middle heading right, head first in the list.
+  // The snake starts in the middle, head first in the list, heading along the longer way of the board (right on a square or
+  // wide one, up on a tall one: a phone's board is 20 across and up to twice that tall), so the first turn is half a board away.
   function createGame(cols, rows, wrap, seed) {
     var g = {
       cols: cols || COLS, rows: rows || ROWS, wrap: !!wrap, snake: [], dir: 'right', queue: [],
       score: 0, status: 'ready', food: null,
       rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed)
     };
-    var y = Math.floor(g.rows / 2), x = Math.floor(g.cols / 2);
-    for (var i = 0; i < START_LENGTH; i++) g.snake.push([x - i, y]);
+    var y = Math.floor(g.rows / 2), x = Math.floor(g.cols / 2), tall = g.rows > g.cols;
+    if (tall) g.dir = 'up';
+    for (var i = 0; i < START_LENGTH; i++) g.snake.push(tall ? [x, y + i] : [x - i, y]);
     placeFood(g);
     return g;
   }
@@ -156,8 +158,8 @@
     });
   }
 
-  // The bar's one stat: the apples this game and the best, "3 · Best 12".
-  function hud() { els.stat.textContent = Play.num(g.score) + ' \u00b7 ' + T('play.best') + ' ' + Play.num(Math.max(best[modeKey()] || 0, g.score)); }
+  // The bar's one stat: the apples this game and the best, "Apples 3 · Best 12".
+  function hud() { els.stat.textContent = T('snake.apples') + ' ' + Play.num(g.score) + ' \u00b7 ' + T('play.best') + ' ' + Play.num(Math.max(best[modeKey()] || 0, g.score)); }
 
   function frame(t) {
     if (mode !== 'playing') return;

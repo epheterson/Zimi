@@ -241,3 +241,16 @@ def test_jigsaw_finished_picture_is_seamless_and_the_sheet_does_not_repeat_the_c
     assert caption and caption not in card, (caption, card)
     shot(page, "07-jigsaw-win")
     c.close()
+
+
+# 9. Snake: on a tall phone board the snake heads up the long way (room to turn), and the bar's stat says what the number is.
+def test_snake_has_room_and_the_stat_has_a_label(browser, served):
+    c, page = open_game(browser, served, "snake")
+    page.wait_for_function("() => window.__snake && __snake.g")
+    g = page.evaluate("() => ({ rows: __snake.g.rows, cols: __snake.g.cols, dir: __snake.g.dir, head: __snake.g.snake[0] })")
+    assert g["rows"] > g["cols"], g
+    ahead = g["head"][1] + 1 if g["dir"] == "up" else g["cols"] - g["head"][0]
+    assert g["dir"] == "up" and ahead >= g["rows"] // 2 - 1, g
+    assert page.locator("#sn-stat").inner_text().startswith("Apples"), page.locator("#sn-stat").inner_text()
+    shot(page, "09-snake-start")
+    c.close()
