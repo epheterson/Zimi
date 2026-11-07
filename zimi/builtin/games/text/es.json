@@ -3346,7 +3346,7 @@
  "help.timeline.tip": "Empieza por el que tengas más claro.",
  "help.timeline.turn": "Toca los sucesos del más antiguo al más reciente y luego toca Comprobar.",
  "help.towers.end": "Ganas cuando la cuadrícula está llena y cada pista coincide.",
- "help.towers.goal": "Construye una torre en cada casilla, con alturas del 1 al tamaño de la cuadrícula y sin repetir altura en una fila o columna.",
+ "help.towers.goal": "Construye una torre en cada casilla, con alturas del 1 al tamaño de la cuadrícula y sin repetir altura en una fila o columna. Los números del borde indican cuántas torres ves desde ese lado. Las torres más altas ocultan a las más bajas.",
  "help.towers.tip": "Una pista de 1 significa que la torre más alta está justo al lado. Una pista igual al tamaño de la cuadrícula significa que las alturas suben en orden.",
  "help.towers.turn": "Toca una casilla y luego una altura. Los números del borde indican cuántas torres ves desde ese lado. Las torres más altas ocultan a las más bajas.",
  "help.tracks.end": "Ganas cuando la vía va sin cortes de A a B y todos los totales coinciden.",

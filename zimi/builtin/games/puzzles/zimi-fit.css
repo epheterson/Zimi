@@ -28,6 +28,7 @@ html body .pz-status[hidden] { display: none; }
 /* Digits, for the puzzles that take them. Shown on touch, where there is no keyboard. */
 .zf-keys { display: none; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; max-width: 460px; margin: var(--sp-3) auto 0; }
 .zf-touch .zf-keys { display: flex; }
+.zf-pad { display: contents; }
 .zf-keys .ar-btn { min-height: var(--target); min-width: var(--target); padding: 0 var(--sp-3); font-weight: 600; }
 
 /* Menu > New game: the Type and the Game rows. */

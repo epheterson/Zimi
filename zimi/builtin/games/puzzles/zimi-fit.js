@@ -15,7 +15,15 @@
   "use strict";
   var d = document, root = window;
   var SHELF = "../index.html";
-  var KEYPAD = { solo: 9, keen: 9, towers: 9, unequal: 9, filling: 9, group: "abcdefgh" };
+  // The keys under the board: how many digits (or letters) this game of the puzzle takes, from its parameters (a 5 by 5 Towers
+  // takes 1 to 5). `lead`: the number the parameters begin with; solo's are columns by rows of a block.
+  var KEYPAD_ALPHABET = "123456789abcdefghijklmnopqrstuvwxyz", KEYPAD_FALLBACK = 9;
+  function lead(p) { var m = /^(\d+)/.exec(p); return m ? +m[1] : 0; }
+  var KEYPAD_SIZE = {
+    solo: function (p) { var m = /^(\d+)x(\d+)/.exec(p) || /^(\d+)j/.exec(p); return m ? (m[2] ? m[1] * m[2] : +m[1]) : 0; },
+    keen: lead, towers: lead, unequal: lead, group: lead, filling: function () { return KEYPAD_FALLBACK; }
+  };
+  var KEYPAD_LETTERS = { group: 1 };
   var KEY_CODES = { Backspace: 8, Enter: 13 };
   var LONG_PRESS_MS = 450;     // a touch held this long, without moving, is a right press
   var LONG_PRESS_SLOP = 10;    // px a finger may drift and still be holding still
@@ -103,6 +111,7 @@
     mines: { 1: "sunk", 20: "surface2", 21: "edge" },       // an opened square sinks into the page; a closed one is raised, with an ink edge
     loopy: { 2: "unknown" },                                // an edge not yet drawn is a faint guide under the lines that are
     pattern: { 4: "unknown" },                              // a square not yet decided sits just above the panel
+    mosaic: { 1: "unknown", 5: "ink" },                    // a square not yet decided is a quiet panel, and its clue reads as ink on it
     tents: { 1: "line", 2: "grass" }                        // the grid is a quiet line, and grass is the table's green, not neon lime
   };
   var raw = [], mapped = [];
@@ -145,6 +154,7 @@
     if (role === "surface2") return toHex(ground);
     if (role === "edge") return toHex(mix(ink, ground, 0.3));
     if (role === "unknown") return toHex(mix(ground, ink, 0.16));
+    if (role === "ink") return toHex(ink);
     if (role === "line") return toHex(mix(ground, ink, 0.72));      // the grid and the counts at the edges: softer than ink, still readable
     if (role === "grass") return toHex(mix(ground, parse(token("--felt", "#285c43")), dark ? 0.55 : 0.22));
     if (!KEEP_BLUE[NAME] && s > 0.8 && h >= 225 && h <= 250 && l >= 0.4 && l <= 0.5) { var sl = SLATE[dark ? "dark" : "light"]; return toHex(fromHsl(sl[0], sl[1], sl[2])); }
@@ -833,6 +843,7 @@
     if (under && !solved && !held && d.visibilityState !== "hidden") elapsed += Math.min(now - ticked, 2 * CLOCK_TICK_MS);
     if (!under) { if (solved) newGameStarted(); elapsed = 0; }
     ticked = now;
+    syncKeypad();
   }
   function newGameStarted() { solved = false; elapsed = 0; }
   // The frontend calls timer_callback each frame with the seconds since the last one; a burst of calls is one animation or flash.
@@ -955,19 +966,44 @@
   }
   // The row under the board on touch: the digits for the puzzles that take them, and Mark (Pencil, where there are digits), which
   // makes the taps that follow right presses until it is pressed again. Neither is shown with a keyboard and a mouse.
-  function touchRow(canvas, name, into) {
-    var spec = KEYPAD[name], labels = spec ? (typeof spec === "number" ? "123456789".slice(0, spec).split("") : spec.split("")) : [];
-    var keys = el("div", "zf-keys");
-    keys.setAttribute("role", "group");
-    word(keys, "pz.keypad", "Keypad", "aria-label");
-    labels.concat(spec ? ["Backspace"] : []).forEach(function (k) {
+  // The keys this puzzle's current game takes: ["1", ... "5"], or letters for Group; [] for a puzzle with no keypad.
+  function keypadLabels(name) {
+    var size = KEYPAD_SIZE[name];
+    if (!size) return [];
+    var par = /^PARAMS\s*:\d+:(.*)$/m.exec(saveText() || "");
+    if (!par) return [];   // no game to ask yet: the keys stay as they are
+    var n = Math.min(size(par[1]) || KEYPAD_FALLBACK, KEYPAD_ALPHABET.length);
+    return (KEYPAD_LETTERS[name] ? KEYPAD_ALPHABET.slice(KEYPAD_FALLBACK) : KEYPAD_ALPHABET).slice(0, n).split("");
+  }
+  var keypad = null;   // { name, canvas, row, labels }: the keys on the page now
+  function fillKeys(labels) {
+    keypad.row.textContent = "";
+    labels.concat(["Backspace"]).forEach(function (k) {
       var b = el("button", "ar-btn", k === "Backspace" ? String.fromCharCode(0x232b) : k);
       b.type = "button";
       if (k === "Backspace") word(b, "pz.clear", "Clear", "aria-label"); else b.setAttribute("aria-label", k);
       b.onpointerdown = function (e) { e.preventDefault(); };
-      b.onclick = function () { sendKey(canvas, k); };
-      keys.appendChild(b);
+      b.onclick = function () { sendKey(keypad.canvas, k); };
+      keypad.row.appendChild(b);
     });
+    keypad.labels = labels.join("");
+  }
+  // A new game of another size has other keys: checked with the clock's tick, which is off the touch path.
+  function syncKeypad() {
+    if (!keypad) return;
+    var labels = keypadLabels(keypad.name);
+    if (labels.length && labels.join("") !== keypad.labels) fillKeys(labels);
+  }
+  function touchRow(canvas, name, into) {
+    var spec = KEYPAD_SIZE[name], keys = el("div", "zf-keys");
+    keys.setAttribute("role", "group");
+    word(keys, "pz.keypad", "Keypad", "aria-label");
+    if (spec) {
+      var pad = el("span", "zf-pad");   // the keys and Clear, apart from Mark
+      keypad = { name: name, canvas: canvas, row: pad, labels: "" };
+      keys.appendChild(pad);
+      fillKeys(KEYPAD_LETTERS[name] ? "abcdefgh".split("") : "123456789".split(""));
+    }
     if (!LEFT_ONLY[name]) {
       var mark = word(el("button", "ar-btn zf-mark"), spec ? "pz.pencil" : "pz.mark", spec ? "Pencil" : "Mark");
       mark.type = "button";
@@ -1061,7 +1097,7 @@
         menu: newGameOptions, settings: prefsSettings, stats: puzzleStats
       });
       if (root.ZimiShell.onHold) root.ZimiShell.onHold(function (on) { held = on; });
-      whenRunning(function () { watchFlash(); persistGame(); d.documentElement.classList.add("zf-running"); });   // zf-running: the saved game, if any, is back
+      whenRunning(function () { watchFlash(); persistGame(); syncKeypad(); d.documentElement.classList.add("zf-running"); });   // zf-running: the saved game, if any, is back
     }
   }
   start();

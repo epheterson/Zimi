@@ -3267,7 +3267,7 @@
  "help.timeline.tip": "Beginne mit dem, dessen du dir am sichersten bist.",
  "help.timeline.turn": "Tippe die Ereignisse vom frühesten bis zum spätesten an, dann auf Prüfen.",
  "help.towers.end": "Du gewinnst, wenn das Raster voll ist und jeder Hinweis stimmt.",
- "help.towers.goal": "Baue auf jedes Feld einen Turm, mit Höhen von 1 bis zur Rastergröße und ohne wiederholte Höhe in einer Zeile oder Spalte.",
+ "help.towers.goal": "Baue auf jedes Feld einen Turm, mit Höhen von 1 bis zur Rastergröße und ohne wiederholte Höhe in einer Zeile oder Spalte. Zahlen am Rand zeigen, wie viele Türme du von dieser Seite siehst. Höhere Türme verdecken niedrigere.",
  "help.towers.tip": "Ein Hinweis 1 bedeutet: Der höchste Turm steht direkt daneben. Ein Hinweis in Rastergröße bedeutet: Die Höhen steigen der Reihe nach.",
  "help.towers.turn": "Tippe auf ein Feld, dann auf eine Höhe. Zahlen am Rand zeigen, wie viele Türme du von dieser Seite siehst. Höhere Türme verdecken niedrigere.",
  "help.tracks.end": "Du gewinnst, wenn das Gleis lückenlos von A nach B führt und alle Zahlen stimmen.",

@@ -108,3 +108,44 @@ def test_same_game_stuck_has_a_sheet(browser, served):
     shot(page, "02-samegame-stuck")
     assert not page.errors, page.errors
     c.close()
+# 3. The keypad takes the game's size (a 5 x 5 Towers takes 1 to 5), Towers says what the edge numbers are, and Mosaic's clues read in dark.
+RUNNING = "document.documentElement.classList.contains('zf-running')"
+DEFAULT_KEYS = {
+    "towers": "12345",
+    "keen": "123456",
+    "unequal": "1234",
+    "solo": "123456789",
+    "group": "abcdef",
+    "filling": "123456789",
+}
+KEY_LABELS = "[...document.querySelectorAll('.zf-keys .ar-btn')].map(b => b.getAttribute('aria-label') || '').filter(l => l.length === 1).join('')"
+
+
+@pytest.mark.parametrize("name", sorted(DEFAULT_KEYS))
+def test_the_keypad_offers_only_what_the_game_takes(browser, served, name):
+    c, page = open_game(browser, served, "puzzles/%s.html" % name)
+    page.wait_for_function(truthy(RUNNING))
+    page.wait_for_function(
+        "k => %s === k" % KEY_LABELS, arg=DEFAULT_KEYS[name], timeout=5000
+    )
+    if name == "towers":
+        assert "Edge numbers" in page.locator(".pz-rules").inner_text()
+        shot(page, "03-towers")
+    c.close()
+
+
+def _luminance(hex_):
+    ch = [int(hex_[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    ch = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in ch]
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_mosaic_clues_read_on_the_undecided_squares(browser, served, scheme):
+    c, page = open_game(browser, served, "puzzles/mosaic.html", color_scheme=scheme)
+    page.wait_for_function(truthy(RUNNING))
+    square, clue = page.evaluate("() => [colours[1], colours[5]]")
+    a, b = sorted([_luminance(square), _luminance(clue)])
+    assert (b + 0.05) / (a + 0.05) >= 4.5, (square, clue)
+    shot(page, "03-mosaic-" + scheme)
+    c.close()

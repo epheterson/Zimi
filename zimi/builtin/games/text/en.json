@@ -3267,7 +3267,7 @@
  "help.timeline.tip": "Start with the one you are surest of.",
  "help.timeline.turn": "Tap the events from the earliest to the latest, then tap Check.",
  "help.towers.end": "You win when the grid is full and every clue matches.",
- "help.towers.goal": "Build a tower on every square, with heights from 1 to the grid size and no height repeated in a row or column.",
+ "help.towers.goal": "Build a tower on every square, with heights from 1 to the grid size and no height repeated in a row or column. Edge numbers show how many towers you can see from that side. Taller towers hide shorter ones.",
  "help.towers.tip": "A clue of 1 means the tallest tower is right beside it. A clue equal to the grid size means the heights rise in order.",
  "help.towers.turn": "Tap a square, then tap a height. Edge numbers show how many towers you can see from that side. Taller towers hide shorter ones.",
  "help.tracks.end": "You win when the track runs unbroken from A to B and every count matches.",

@@ -3346,7 +3346,7 @@
  "help.timeline.tip": "Comece pelo que você tem mais certeza.",
  "help.timeline.turn": "Toque nos eventos do mais antigo ao mais recente e depois em Conferir.",
  "help.towers.end": "Você vence quando a grade estiver cheia e toda dica combinar.",
- "help.towers.goal": "Construa uma torre em cada casa, com alturas de 1 ao tamanho da grade e sem repetir altura em linha ou coluna.",
+ "help.towers.goal": "Construa uma torre em cada casa, com alturas de 1 ao tamanho da grade e sem repetir altura em linha ou coluna. Os números das bordas mostram quantas torres você vê daquele lado. Torres altas escondem as baixas.",
  "help.towers.tip": "Uma dica 1 significa que a torre mais alta está logo ao lado. Uma dica igual ao tamanho da grade significa que as alturas sobem em ordem.",
  "help.towers.turn": "Toque numa casa e depois numa altura. Os números das bordas mostram quantas torres você vê daquele lado. Torres altas escondem as baixas.",
  "help.tracks.end": "Você vence quando a linha correr sem interrupção de A a B e toda contagem combinar.",

@@ -3346,7 +3346,7 @@
  "help.timeline.tip": "Commencez par celui dont vous êtes le plus sûr.",
  "help.timeline.turn": "Touchez les événements du plus ancien au plus récent, puis touchez Vérifier.",
  "help.towers.end": "Vous gagnez quand la grille est pleine et que chaque indice est respecté.",
- "help.towers.goal": "Bâtissez une tour sur chaque case, avec des hauteurs de 1 à la taille de la grille, sans hauteur répétée dans une ligne ou une colonne.",
+ "help.towers.goal": "Bâtissez une tour sur chaque case, avec des hauteurs de 1 à la taille de la grille, sans hauteur répétée dans une ligne ou une colonne. Les nombres au bord indiquent combien de tours vous voyez de ce côté. Les tours hautes cachent les plus basses.",
  "help.towers.tip": "Un indice de 1 signifie que la plus haute tour est juste à côté. Un indice égal à la taille de la grille signifie que les hauteurs montent dans l’ordre.",
  "help.towers.turn": "Touchez une case, puis une hauteur. Les nombres au bord indiquent combien de tours vous voyez de ce côté. Les tours hautes cachent les plus basses.",
  "help.tracks.end": "Vous gagnez quand la voie va sans interruption de A à B et que chaque total correspond.",
