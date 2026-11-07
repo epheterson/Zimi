@@ -162,7 +162,11 @@
  "bigtwo.rules": "Quatre joueurs, 13 cartes chacun. Celui qui a le 3 de carreau ouvre avec une combinaison qui le contient. Chacun doit jouer le même type de combinaison, plus forte, ou passer ; quand tous les autres passent, le dernier à avoir joué rouvre avec ce qu’il veut. Combinaisons : carte seule, paire, brelan et, à cinq cartes, suite, couleur, full, carré plus une carte, quinte flush (dans cet ordre ; les suites vont de 3 jusqu’à 10 V D R A). Les 2 sont les plus forts, puis les as ; les couleurs se classent carreau, trèfle, cœur, pique. Le premier sorti gagne la donne et reçoit un point par carte de chacun des autres joueurs (double à 10 cartes ou plus, triple à 13). Le premier à 30 gagne. Touchez des cartes pour les choisir, puis Jouer. P joue, S passe, H donne un indice.",
  "bj.basic": "Stratégie de base : {action}.",
  "bj.bet": "Mise {n}",
- "bj.chips": "{n} jetons",
+ "bj.chips": {
+  "one": "{n} jeton",
+  "many": "{n} de jetons",
+  "other": "{n} jetons"
+ },
  "bj.dealBet": "Distribuer {n}",
  "bj.dealer": "Croupier",
  "bj.dealerBust": "{n} dépassé",
@@ -172,8 +176,16 @@
  "bj.decksNote": "Un nouveau sabot utilise le nombre de jeux choisi ici.",
  "bj.double": "Doubler",
  "bj.empty": "Vide",
- "bj.fact": "{n} jetons",
- "bj.fact.name": "{name} {n} jetons",
+ "bj.fact": {
+  "one": "{n} jeton",
+  "many": "{n} de jetons",
+  "other": "{n} jetons"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} jeton",
+  "many": "{name} {n} de jetons",
+  "other": "{name} {n} jetons"
+ },
  "bj.finish": "Terminer",
  "bj.handN": "Main {n}",
  "bj.hard": "{total} ({bet})",
@@ -1617,7 +1629,11 @@
  "durak.beatIt": "Battez-la avec une carte plus forte de la couleur, ou un atout",
  "durak.beatOrTake": "Battez {card} ou prenez",
  "durak.beaten": "Battu. Les cartes sortent du jeu",
- "durak.cap": "Pas plus de {n} cartes pour cet assaut",
+ "durak.cap": {
+  "one": "Pas plus de {n} carte pour cet assaut",
+  "many": "Pas plus de {n} de cartes pour cet assaut",
+  "other": "Pas plus de {n} cartes pour cet assaut"
+ },
  "durak.def": "défend",
  "durak.done": "Terminé",
  "durak.fact": {
@@ -2586,10 +2602,26 @@
  "gin.aria.chosen": ", choisie pour être défaussée",
  "gin.bonus": "Prime de partie : 100 pour {name}.",
  "gin.bonus.you": "Prime de partie : 100.",
- "gin.deadwood": "{name} : {n} points morts.",
- "gin.deadwood.you": "{name} : {n} points morts.",
- "gin.deadwoodLaid": "{name} : {before} points morts, {after} après avoir casé {cards}.",
- "gin.deadwoodLaid.you": "{name} : {before} points morts, {after} après avoir casé {cards}.",
+ "gin.deadwood": {
+  "one": "{name} : {n} point mort.",
+  "many": "{name} : {n} de points morts.",
+  "other": "{name} : {n} points morts."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} : {n} point mort.",
+  "many": "{name} : {n} de points morts.",
+  "other": "{name} : {n} points morts."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} : {n} point mort, {after} après avoir casé {cards}.",
+  "many": "{name} : {n} de points morts, {after} après avoir casé {cards}.",
+  "other": "{name} : {n} points morts, {after} après avoir casé {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} : {n} point mort, {after} après avoir casé {cards}.",
+  "many": "{name} : {n} de points morts, {after} après avoir casé {cards}.",
+  "other": "{name} : {n} points morts, {after} après avoir casé {cards}."
+ },
  "gin.discard": "Défausser {card}",
  "gin.discardEmpty": "Défausse, vide",
  "gin.discardFirst": "Défaussez d’abord une carte",
@@ -2606,8 +2638,16 @@
  "gin.handsWon": "Donnes gagnées : {a} {pa}, {b} {pb} (25 chacune).",
  "gin.justTook": "Vous ne pouvez pas défausser la carte que vous venez de prendre",
  "gin.knock": "Frapper ({n})",
- "gin.knockWith": "{name} frappe avec {dw} points morts.",
- "gin.knockWith.you": "{name} frappez avec {dw} points morts.",
+ "gin.knockWith": {
+  "one": "{name} frappe avec {n} point mort.",
+  "many": "{name} frappe avec {n} de points morts.",
+  "other": "{name} frappe avec {n} points morts."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} frappez avec {n} point mort.",
+  "many": "{name} frappez avec {n} de points morts.",
+  "other": "{name} frappez avec {n} points morts."
+ },
  "gin.note.discarded": "{name} : défausse {card}.",
  "gin.note.drew": "{name} : pioche.",
  "gin.note.gin": "{name} : gin.",
@@ -3581,7 +3621,11 @@
  "holdem.check": "Check",
  "holdem.computers": "Joueurs ordinateur : {list}.",
  "holdem.deal": "Distribuer",
- "holdem.fact": "Jetons : {chips}",
+ "holdem.fact": {
+  "one": "Jetons : {n}",
+  "many": "Jetons : {n}",
+  "other": "Jetons : {n}"
+ },
  "holdem.fold": "Se coucher",
  "holdem.handsPlayed": "{hands} jouées. {text}.",
  "holdem.hasAll": "{name} a tous les jetons",
@@ -5567,7 +5611,11 @@
  "sol.winTime": "Temps {time}, {moves}",
  "spades.bidNil": "Annoncer Nil",
  "spades.chip.bid": "annonce {bid}",
- "spades.estimate": "Plis estimés pour votre main : environ {n}.",
+ "spades.estimate": {
+  "one": "Plis estimés pour votre main : environ {n}.",
+  "many": "Plis estimés pour votre main : environ {n}.",
+  "other": "Plis estimés pour votre main : environ {n}."
+ },
  "spades.line.bid": "{team} : annonce {bid}, a fait {tricks}",
  "spades.line.none": "{team} : aucun contrat",
  "spades.nil": "Nil",
@@ -5754,9 +5802,17 @@
  "tp.clue.short": "Dites-en un peu plus",
  "tp.clueLabel": "Votre indice",
  "tp.cluePlaceholder": "Décrivez-le sans dire son nom",
- "tp.costAria": "{label}, jetons : {n}",
+ "tp.costAria": {
+  "one": "{label}, jetons : {n}",
+  "many": "{label}, jetons : {n}",
+  "other": "{label}, jetons : {n}"
+ },
  "tp.counter": "{n} sur {max}",
- "tp.fact": "Jetons : {chips}",
+ "tp.fact": {
+  "one": "Jetons : {n}",
+  "many": "Jetons : {n}",
+  "other": "Jetons : {n}"
+ },
  "tp.found": "Trouvé à l’essai {n} : +{points}",
  "tp.giveFor": "{name} : écrivez un indice pour cet article",
  "tp.guessesLeft": {

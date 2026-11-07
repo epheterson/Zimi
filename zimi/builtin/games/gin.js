@@ -283,8 +283,8 @@
       var r = st.result, lines = [];
       if (r.draw) return [{ text: TX('gin.draw') }];
       var ko = 1 - r.knocker;
-      lines.push({ text: r.gin ? said(r.knocker, 'gin.goGin') : said(r.knocker, 'gin.knockWith', { dw: r.kDw }) });
-      if (!r.gin) lines.push({ text: r.laid.length ? said(ko, 'gin.deadwoodLaid', { before: r.oDwBefore, after: r.oDw, cards: T.shortList(r.laid) }) : said(ko, 'gin.deadwood', { n: r.oDwBefore }) });
+      lines.push({ text: r.gin ? said(r.knocker, 'gin.goGin') : said(r.knocker, 'gin.knockWith', { n: r.kDw }) });
+      if (!r.gin) lines.push({ text: r.laid.length ? said(ko, 'gin.deadwoodLaid', { n: r.oDwBefore, after: r.oDw, cards: T.shortList(r.laid) }) : said(ko, 'gin.deadwood', { n: r.oDwBefore }) });
       else lines.push({ text: said(ko, 'gin.deadwood', { n: r.oDw }) });
       lines.push({ cls: 'ct-total', text: (r.undercut ? TX('gin.undercut') + ' ' : '') + said(r.scorer, r.gin ? 'gin.scoreGin' : r.undercut ? 'gin.scoreUndercut' : 'gin.score', { points: r.points }) });
       return lines;

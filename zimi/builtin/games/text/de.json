@@ -153,7 +153,10 @@
  "bigtwo.rules": "Vier Spieler, je 13 Karten. Wer die Karo 3 hält, spielt eine Kombination aus, die sie enthält. Jeder spielt dieselbe Art Kombination, höher, oder passt; passen alle anderen, spielt der Letzte beliebig aus. Kombinationen: Einzelkarte, Paar, Drilling und fünf Karten: Straße, Flush, Full House, Vierling plus eine Karte, Straight Flush (in dieser Reihenfolge; Straßen laufen von 3 bis 10 B D K A). Zweien sind am höchsten, dann Asse; die Farben ranken Karo, Kreuz, Herz, Pik. Wer zuerst fertig ist, gewinnt das Spiel und bekommt von jedem anderen einen Punkt pro Karte (doppelt ab 10, dreifach bei 13). Wer zuerst 30 erreicht, gewinnt. Tippen Sie Karten an, um sie zu wählen, dann Spielen. P spielt, S passt, H gibt einen Tipp.",
  "bj.basic": "Basisstrategie: {action}.",
  "bj.bet": "Einsatz {n}",
- "bj.chips": "{n} Chips",
+ "bj.chips": {
+  "one": "{n} Chips",
+  "other": "{n} Chips"
+ },
  "bj.dealBet": "Geben {n}",
  "bj.dealer": "Geber",
  "bj.dealerBust": "{n} überkauft",
@@ -163,8 +166,14 @@
  "bj.decksNote": "Ein neuer Kartenschlitten nutzt die hier gewählte Zahl an Decks.",
  "bj.double": "Verdoppeln",
  "bj.empty": "Leer",
- "bj.fact": "{n} Chips",
- "bj.fact.name": "{name} {n} Chips",
+ "bj.fact": {
+  "one": "{n} Chips",
+  "other": "{n} Chips"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} Chips",
+  "other": "{name} {n} Chips"
+ },
  "bj.finish": "Fertig",
  "bj.handN": "Hand {n}",
  "bj.hard": "{total} ({bet})",
@@ -1569,7 +1578,10 @@
  "durak.beatIt": "Schlagen Sie mit einer höheren Karte der Farbe oder einem Trumpf",
  "durak.beatOrTake": "{card} schlagen oder aufnehmen",
  "durak.beaten": "Geschlagen. Die Karten sind aus dem Spiel",
- "durak.cap": "Höchstens {n} Karten in diesem Gang",
+ "durak.cap": {
+  "one": "Höchstens {n} Karte in diesem Gang",
+  "other": "Höchstens {n} Karten in diesem Gang"
+ },
  "durak.def": "verteidigt",
  "durak.done": "Fertig",
  "durak.fact": {
@@ -2519,10 +2531,22 @@
  "gin.aria.chosen": ", zum Ablegen gewählt",
  "gin.bonus": "Spielbonus 100 für {name}.",
  "gin.bonus.you": "Spielbonus 100.",
- "gin.deadwood": "{name} hat {n} Restpunkte.",
- "gin.deadwood.you": "{name} haben {n} Restpunkte.",
- "gin.deadwoodLaid": "{name} hat {before} Restpunkte, {after} nach dem Anlegen von {cards}.",
- "gin.deadwoodLaid.you": "{name} haben {before} Restpunkte, {after} nach dem Anlegen von {cards}.",
+ "gin.deadwood": {
+  "one": "{name} hat {n} Restpunkt.",
+  "other": "{name} hat {n} Restpunkte."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} haben {n} Restpunkt.",
+  "other": "{name} haben {n} Restpunkte."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} hat {n} Restpunkt, {after} nach dem Anlegen von {cards}.",
+  "other": "{name} hat {n} Restpunkte, {after} nach dem Anlegen von {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} haben {n} Restpunkt, {after} nach dem Anlegen von {cards}.",
+  "other": "{name} haben {n} Restpunkte, {after} nach dem Anlegen von {cards}."
+ },
  "gin.discard": "{card} ablegen",
  "gin.discardEmpty": "Ablagestapel, leer",
  "gin.discardFirst": "Legen Sie zuerst eine Karte ab",
@@ -2539,8 +2563,14 @@
  "gin.handsWon": "Gewonnene Runden: {a} {pa}, {b} {pb} (je 25).",
  "gin.justTook": "Die gerade genommene Karte darf nicht abgelegt werden",
  "gin.knock": "Klopfen ({n})",
- "gin.knockWith": "{name} klopft mit {dw} Restpunkten.",
- "gin.knockWith.you": "{name} klopfen mit {dw} Restpunkten.",
+ "gin.knockWith": {
+  "one": "{name} klopft mit {n} Restpunkt.",
+  "other": "{name} klopft mit {n} Restpunkten."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} klopfen mit {n} Restpunkt.",
+  "other": "{name} klopfen mit {n} Restpunkten."
+ },
  "gin.note.discarded": "{name}: {card} abgelegt.",
  "gin.note.drew": "{name}: vom Talon gezogen.",
  "gin.note.gin": "{name}: Gin.",
@@ -3511,7 +3541,10 @@
  "holdem.check": "Schieben",
  "holdem.computers": "Computerspieler: {list}.",
  "holdem.deal": "Geben",
- "holdem.fact": "{chips} Chips",
+ "holdem.fact": {
+  "one": "{n} Chips",
+  "other": "{n} Chips"
+ },
  "holdem.fold": "Passen",
  "holdem.handsPlayed": "{hands} gespielt. {text}.",
  "holdem.hasAll": "Alle Chips bei {name}",
@@ -5469,7 +5502,10 @@
  "sol.winTime": "Zeit {time}, {moves}",
  "spades.bidNil": "Nil ansagen",
  "spades.chip.bid": "angesagt {bid}",
- "spades.estimate": "Ihre Hand sieht nach etwa {n} Stichen aus.",
+ "spades.estimate": {
+  "one": "Ihre Hand sieht nach etwa {n} Stich aus.",
+  "other": "Ihre Hand sieht nach etwa {n} Stichen aus."
+ },
  "spades.line.bid": "{team}: angesagt {bid}, gemacht {tricks}",
  "spades.line.none": "{team}: kein Kontrakt",
  "spades.nil": "Nil",
@@ -5646,9 +5682,15 @@
  "tp.clue.short": "Sagen Sie etwas mehr",
  "tp.clueLabel": "Ihr Hinweis",
  "tp.cluePlaceholder": "Beschreiben Sie es, ohne den Namen zu nennen",
- "tp.costAria": "{label}, {n} Chips",
+ "tp.costAria": {
+  "one": "{label}, {n} Chips",
+  "other": "{label}, {n} Chips"
+ },
  "tp.counter": "{n} von {max}",
- "tp.fact": "{chips} Chips",
+ "tp.fact": {
+  "one": "{n} Chips",
+  "other": "{n} Chips"
+ },
  "tp.found": "Beim {n}. Versuch gefunden: +{points}",
  "tp.giveFor": "{name}: Schreiben Sie einen Hinweis zu diesem Artikel",
  "tp.guessesLeft": {

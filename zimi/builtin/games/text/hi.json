@@ -153,7 +153,10 @@
  "bigtwo.rules": "चार खिलाड़ी, हर एक को 13 पत्ते। जिसके पास ईंट की तिग्गी है वह उसे शामिल करके पहला हाथ चलता है। हर खिलाड़ी वही तरह का हाथ बड़ा चले, या पास करे; बाकी सब पास करें तो आखिरी चलने वाला कुछ भी चलता है। हाथ: एक पत्ता, जोड़ी, तीन एक जैसे, और पाँच पत्ते: सीक्वेंस, फ्लश, फुल हाउस, चार एक जैसे के साथ एक पत्ता, स्ट्रेट फ्लश (इसी क्रम में; सीक्वेंस 3 से 10 J Q K A तक)। दुग्गी सबसे बड़ी, फिर इक्का; रंगों का क्रम ईंट, चिड़ी, पान, हुकुम। पहले खत्म करने वाला हाथ जीतता है और हर दूसरे खिलाड़ी से हर पत्ते का एक अंक पाता है (10 या अधिक पर दोगुना, 13 पर तिगुना)। 30 तक पहले पहुँचने वाला जीतता है। पत्ते चुनने के लिए छुएँ, फिर चलें। P चलता है, S पास, H संकेत।",
  "bj.basic": "बुनियादी रणनीति: {action}।",
  "bj.bet": "दाँव {n}",
- "bj.chips": "{n} चिप",
+ "bj.chips": {
+  "one": "{n} चिप",
+  "other": "{n} चिप"
+ },
  "bj.dealBet": "बाँटें {n}",
  "bj.dealer": "डीलर",
  "bj.dealerBust": "{n} बस्ट",
@@ -163,8 +166,14 @@
  "bj.decksNote": "नई शू यहाँ चुनी गई गड्डियों की संख्या से बनेगी।",
  "bj.double": "दोगुना",
  "bj.empty": "खाली",
- "bj.fact": "{n} चिप",
- "bj.fact.name": "{name} {n} चिप",
+ "bj.fact": {
+  "one": "{n} चिप",
+  "other": "{n} चिप"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} चिप",
+  "other": "{name} {n} चिप"
+ },
  "bj.finish": "समाप्त",
  "bj.handN": "हाथ {n}",
  "bj.hard": "{total} ({bet})",
@@ -1569,7 +1578,10 @@
  "durak.beatIt": "उसी रंग के बड़े पत्ते या तुरुप से काटें",
  "durak.beatOrTake": "{card} काटें या उठाएँ",
  "durak.beaten": "कट गया। पत्ते खेल से बाहर",
- "durak.cap": "इस दौर में {n} से ज़्यादा पत्ते नहीं",
+ "durak.cap": {
+  "one": "इस दौर में {n} से ज़्यादा पत्ते नहीं",
+  "other": "इस दौर में {n} से ज़्यादा पत्ते नहीं"
+ },
  "durak.def": "बचाव",
  "durak.done": "हो गया",
  "durak.fact": {
@@ -2519,10 +2531,22 @@
  "gin.aria.chosen": ", फेंकने के लिए चुना",
  "gin.bonus": "{name} को खेल का बोनस 100।",
  "gin.bonus.you": "खेल का बोनस 100।",
- "gin.deadwood": "{name} के डेडवुड: {n}।",
- "gin.deadwood.you": "{name}, डेडवुड: {n}।",
- "gin.deadwoodLaid": "{name} के डेडवुड {before}, {cards} जोड़ने के बाद {after}।",
- "gin.deadwoodLaid.you": "{name}, डेडवुड {before}, {cards} जोड़ने के बाद {after}।",
+ "gin.deadwood": {
+  "one": "{name} के डेडवुड: {n}।",
+  "other": "{name} के डेडवुड: {n}।"
+ },
+ "gin.deadwood.you": {
+  "one": "{name}, डेडवुड: {n}।",
+  "other": "{name}, डेडवुड: {n}।"
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} के डेडवुड {n}, {cards} जोड़ने के बाद {after}।",
+  "other": "{name} के डेडवुड {n}, {cards} जोड़ने के बाद {after}।"
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name}, डेडवुड {n}, {cards} जोड़ने के बाद {after}।",
+  "other": "{name}, डेडवुड {n}, {cards} जोड़ने के बाद {after}।"
+ },
  "gin.discard": "{card} फेंकें",
  "gin.discardEmpty": "फेंके पत्तों का ढेर, खाली",
  "gin.discardFirst": "पहले एक पत्ता फेंकें",
@@ -2539,8 +2563,14 @@
  "gin.handsWon": "जीते हाथ: {a} {pa}, {b} {pb} (25 प्रत्येक)।",
  "gin.justTook": "जो पत्ता अभी लिया उसे नहीं फेंक सकते",
  "gin.knock": "नॉक ({n})",
- "gin.knockWith": "{name} {dw} डेडवुड के साथ नॉक करता है।",
- "gin.knockWith.you": "{name} {dw} डेडवुड के साथ नॉक करते हैं।",
+ "gin.knockWith": {
+  "one": "{name} {n} डेडवुड के साथ नॉक करता है।",
+  "other": "{name} {n} डेडवुड के साथ नॉक करता है।"
+ },
+ "gin.knockWith.you": {
+  "one": "{name} {n} डेडवुड के साथ नॉक करते हैं।",
+  "other": "{name} {n} डेडवुड के साथ नॉक करते हैं।"
+ },
  "gin.note.discarded": "{name} ने {card} फेंका।",
  "gin.note.drew": "{name} ने स्टॉक से उठाया।",
  "gin.note.gin": "{name} जिन करता है।",
@@ -3511,7 +3541,10 @@
  "holdem.check": "चेक",
  "holdem.computers": "कंप्यूटर खिलाड़ी: {list}।",
  "holdem.deal": "बाँटें",
- "holdem.fact": "{chips} चिप",
+ "holdem.fact": {
+  "one": "{n} चिप",
+  "other": "{n} चिप"
+ },
  "holdem.fold": "फ़ोल्ड",
  "holdem.handsPlayed": "{hands} खेले। {text}।",
  "holdem.hasAll": "{name} के पास सारे चिप हैं",
@@ -5469,7 +5502,10 @@
  "sol.winTime": "समय {time}, {moves}",
  "spades.bidNil": "नील बोलें",
  "spades.chip.bid": "बोली {bid}",
- "spades.estimate": "आपके हाथ में लगभग {n} दाँव दिखते हैं।",
+ "spades.estimate": {
+  "one": "आपके हाथ में लगभग {n} दाँव दिखते हैं।",
+  "other": "आपके हाथ में लगभग {n} दाँव दिखते हैं।"
+ },
  "spades.line.bid": "{team}: बोली {bid}, लिए {tricks}",
  "spades.line.none": "{team}: कोई कॉन्ट्रैक्ट नहीं",
  "spades.nil": "नील",
@@ -5646,9 +5682,15 @@
  "tp.clue.short": "थोड़ा और बताएँ",
  "tp.clueLabel": "आपका संकेत",
  "tp.cluePlaceholder": "नाम बोले बिना इसका वर्णन करें",
- "tp.costAria": "{label}, {n} चिप",
+ "tp.costAria": {
+  "one": "{label}, {n} चिप",
+  "other": "{label}, {n} चिप"
+ },
  "tp.counter": "{max} में से {n}",
- "tp.fact": "{chips} चिप",
+ "tp.fact": {
+  "one": "{n} चिप",
+  "other": "{n} चिप"
+ },
  "tp.found": "अनुमान {n} पर मिला: +{points}",
  "tp.giveFor": "{name}: इस लेख के लिए संकेत लिखें",
  "tp.guessesLeft": {

@@ -167,7 +167,10 @@
  "bigtwo.rules": "Four players, 13 cards each. Whoever holds the 3 of diamonds leads a hand that includes it. Each player must play the same kind of hand, higher, or pass; when all others pass the last player leads anything. Hands: single, pair, three of a kind, and five cards: straight, flush, full house, four of a kind plus a card, straight flush (in that order; straights run 3 up to 10 J Q K A). Twos are highest, then aces; suits rank diamonds, clubs, hearts, spades. First out wins the hand and is paid one point a card from each other player (double at 10 or more, triple at 13). First to 30 wins. Tap cards to pick them, then Play. P plays, S passes, H hints.",
  "bj.basic": "Basic strategy: {action}.",
  "bj.bet": "Bet {n}",
- "bj.chips": "{n} chips",
+ "bj.chips": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "bj.dealBet": "Deal {n}",
  "bj.dealer": "Dealer",
  "bj.dealerBust": "{n} bust",
@@ -177,8 +180,14 @@
  "bj.decksNote": "A new shoe uses the number of decks chosen here.",
  "bj.double": "Double",
  "bj.empty": "Empty",
- "bj.fact": "{n} chips",
- "bj.fact.name": "{name} {n} chips",
+ "bj.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} chip",
+  "other": "{name} {n} chips"
+ },
  "bj.finish": "Finish",
  "bj.handN": "Hand {n}",
  "bj.hard": "{total} ({bet})",
@@ -1603,7 +1612,10 @@
  "durak.beatIt": "Beat it with a higher card of the suit, or a trump",
  "durak.beatOrTake": "Beat the {card} or take",
  "durak.beaten": "Beaten. The cards are out of play",
- "durak.cap": "No more than {n} cards this bout",
+ "durak.cap": {
+  "one": "No more than {n} card this bout",
+  "other": "No more than {n} cards this bout"
+ },
  "durak.def": "defends",
  "durak.done": "Done",
  "durak.fact": {
@@ -2553,10 +2565,22 @@
  "gin.aria.chosen": ", chosen to discard",
  "gin.bonus": "Game bonus 100 to {name}.",
  "gin.bonus.you": "Game bonus 100.",
- "gin.deadwood": "{name} has {n} deadwood.",
- "gin.deadwood.you": "{name} have {n} deadwood.",
- "gin.deadwoodLaid": "{name} has {before} deadwood, {after} after laying off {cards}.",
- "gin.deadwoodLaid.you": "{name} have {before} deadwood, {after} after laying off {cards}.",
+ "gin.deadwood": {
+  "one": "{name} has {n} deadwood.",
+  "other": "{name} has {n} deadwood."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} have {n} deadwood.",
+  "other": "{name} have {n} deadwood."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} has {n} deadwood, {after} after laying off {cards}.",
+  "other": "{name} has {n} deadwood, {after} after laying off {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} have {n} deadwood, {after} after laying off {cards}.",
+  "other": "{name} have {n} deadwood, {after} after laying off {cards}."
+ },
  "gin.discard": "Discard {card}",
  "gin.discardEmpty": "Discard pile, empty",
  "gin.discardFirst": "Discard a card first",
@@ -2573,8 +2597,14 @@
  "gin.handsWon": "Hands won: {a} {pa}, {b} {pb} (25 each).",
  "gin.justTook": "You cannot discard the card you just took",
  "gin.knock": "Knock ({n})",
- "gin.knockWith": "{name} knocks with {dw} deadwood.",
- "gin.knockWith.you": "{name} knock with {dw} deadwood.",
+ "gin.knockWith": {
+  "one": "{name} knocks with {n} deadwood.",
+  "other": "{name} knocks with {n} deadwood."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} knock with {n} deadwood.",
+  "other": "{name} knock with {n} deadwood."
+ },
  "gin.note.discarded": "{name} discarded the {card}.",
  "gin.note.drew": "{name} drew from the stock.",
  "gin.note.gin": "{name} goes gin.",
@@ -3545,7 +3575,10 @@
  "holdem.check": "Check",
  "holdem.computers": "Computer players: {list}.",
  "holdem.deal": "Deal",
- "holdem.fact": "{chips} chips",
+ "holdem.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "holdem.fold": "Fold",
  "holdem.handsPlayed": "{hands} played. {text}.",
  "holdem.hasAll": "{name} has all the chips",
@@ -5503,7 +5536,10 @@
  "sol.winTime": "Time {time}, {moves}",
  "spades.bidNil": "Bid nil",
  "spades.chip.bid": "bid {bid}",
- "spades.estimate": "Your hand looks like about {n} tricks.",
+ "spades.estimate": {
+  "one": "Your hand looks like about {n} trick.",
+  "other": "Your hand looks like about {n} tricks."
+ },
  "spades.line.bid": "{team}: bid {bid}, took {tricks}",
  "spades.line.none": "{team}: no contract",
  "spades.nil": "Nil",
@@ -5684,9 +5720,15 @@
  "tp.clue.short": "Say a little more",
  "tp.clueLabel": "Your clue",
  "tp.cluePlaceholder": "Describe it without saying its name",
- "tp.costAria": "{label}, {n} chips",
+ "tp.costAria": {
+  "one": "{label}, {n} chip",
+  "other": "{label}, {n} chips"
+ },
  "tp.counter": "{n} of {max}",
- "tp.fact": "{chips} chips",
+ "tp.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "tp.found": "Found at guess {n}: +{points}",
  "tp.giveFor": "{name}: write a clue for this article",
  "tp.guessesLeft": {

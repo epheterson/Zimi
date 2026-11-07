@@ -137,3 +137,26 @@ def test_backgammon_lit_points_are_not_faint(browser, served):
     opacity = page.evaluate("() => { const e = document.createElementNS('http://www.w3.org/2000/svg', 'path'); e.setAttribute('class', 'bk-target'); document.querySelector('svg').appendChild(e); return parseFloat(getComputedStyle(e).fillOpacity); }")
     assert opacity >= 0.55, opacity
     c.close()
+
+
+# 4. Count strings in the card games take their plural form from ZimiText ("1 punto suelto", "1 jeton", "1 Stich").
+@pytest.mark.parametrize("lang,key,one,wrong", [
+    ("es", "gin.knockWith", "cierra con 1 punto suelto.", "1 puntos"),
+    ("es", "gin.deadwood", "tiene 1 punto suelto.", "1 puntos"),
+    ("fr", "gin.knockWith", "frappe avec 1 point mort.", "1 points"),
+    ("de", "gin.knockWith", "klopft mit 1 Restpunkt.", "1 Restpunkten"),
+    ("es", "durak.cap", "1 carta en este ataque", "1 cartas"),
+    ("fr", "bj.fact", "1 jeton", "1 jetons"),
+    ("pt", "bj.fact", "1 ficha", "1 fichas"),
+    ("de", "spades.estimate", "etwa 1 Stich aus", "1 Stichen"),
+    ("en", "tp.fact", "1 chip", "1 chips"),
+    ("en", "durak.cap", "1 card this bout", "1 cards"),
+])
+def test_card_game_counts_take_their_plural(browser, served, lang, key, one, wrong):
+    c, page = open_game(browser, served, "gin", lang=lang)
+    page.wait_for_function("l => ZimiText.lang === l && ZimiText.has('gin.knockWith')", arg=lang)
+    page.wait_for_function("([k]) => ZimiText.T(k, { name: 'Zimi', n: 7, label: 'x' }) !== k", arg=[key])
+    page.wait_for_timeout(300)
+    got = page.evaluate("([k]) => ZimiText.T(k, { name: 'Zimi', n: 1, label: 'x' })", [key])
+    assert one in got and wrong not in got, got
+    c.close()

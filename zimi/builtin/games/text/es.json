@@ -162,7 +162,11 @@
  "bigtwo.rules": "Cuatro jugadores, 13 cartas cada uno. Quien tenga el 3 de diamantes sale con una jugada que lo incluya. Cada jugador debe poner el mismo tipo de jugada, más alta, o pasar; cuando todos los demás pasan, el último en jugar sale con lo que quiera. Jugadas: carta suelta, pareja, trío y las de cinco cartas: escalera, color, full, póker más una carta, escalera de color (en ese orden; las escaleras van del 3 al 10 J Q K A). Los doses son lo más alto, luego los ases; los palos ordenan diamantes, tréboles, corazones, picas. El primero en quedarse sin cartas gana la mano y cobra un punto por carta a cada otro jugador (doble con 10 o más, triple con 13). Gana el primero en llegar a 30. Toca cartas para elegirlas y luego Jugar. P juega, S pasa, H da una pista.",
  "bj.basic": "Estrategia básica: {action}.",
  "bj.bet": "Apostar {n}",
- "bj.chips": "{n} fichas",
+ "bj.chips": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "bj.dealBet": "Repartir {n}",
  "bj.dealer": "Crupier",
  "bj.dealerBust": "{n}: se pasa",
@@ -172,8 +176,16 @@
  "bj.decksNote": "Un zapato nuevo usa el número de barajas elegido aquí.",
  "bj.double": "Doblar",
  "bj.empty": "Vacío",
- "bj.fact": "{n} fichas",
- "bj.fact.name": "{name} {n} fichas",
+ "bj.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} ficha",
+  "many": "{name} {n} de fichas",
+  "other": "{name} {n} fichas"
+ },
  "bj.finish": "Terminar",
  "bj.handN": "Mano {n}",
  "bj.hard": "{total} ({bet})",
@@ -1617,7 +1629,11 @@
  "durak.beatIt": "Cúbrela con una carta más alta del palo o con un triunfo",
  "durak.beatOrTake": "Cubre {card} o recoge",
  "durak.beaten": "Cubierto. Las cartas salen del juego",
- "durak.cap": "No más de {n} cartas en este ataque",
+ "durak.cap": {
+  "one": "No más de {n} carta en este ataque",
+  "many": "No más de {n} de cartas en este ataque",
+  "other": "No más de {n} cartas en este ataque"
+ },
  "durak.def": "defiende",
  "durak.done": "Listo",
  "durak.fact": {
@@ -2586,10 +2602,26 @@
  "gin.aria.chosen": ", elegida para descartar",
  "gin.bonus": "Bonificación de partida de 100 para {name}.",
  "gin.bonus.you": "Bonificación de partida de 100.",
- "gin.deadwood": "{name} tiene {n} puntos sueltos.",
- "gin.deadwood.you": "{name} tienes {n} puntos sueltos.",
- "gin.deadwoodLaid": "{name} tiene {before} puntos sueltos, {after} tras añadir {cards}.",
- "gin.deadwoodLaid.you": "{name} tienes {before} puntos sueltos, {after} tras añadir {cards}.",
+ "gin.deadwood": {
+  "one": "{name} tiene {n} punto suelto.",
+  "many": "{name} tiene {n} de puntos sueltos.",
+  "other": "{name} tiene {n} puntos sueltos."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} tienes {n} punto suelto.",
+  "many": "{name} tienes {n} de puntos sueltos.",
+  "other": "{name} tienes {n} puntos sueltos."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} tiene {n} punto suelto, {after} tras añadir {cards}.",
+  "many": "{name} tiene {n} de puntos sueltos, {after} tras añadir {cards}.",
+  "other": "{name} tiene {n} puntos sueltos, {after} tras añadir {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} tienes {n} punto suelto, {after} tras añadir {cards}.",
+  "many": "{name} tienes {n} de puntos sueltos, {after} tras añadir {cards}.",
+  "other": "{name} tienes {n} puntos sueltos, {after} tras añadir {cards}."
+ },
  "gin.discard": "Descartar {card}",
  "gin.discardEmpty": "Pila de descartes, vacía",
  "gin.discardFirst": "Descarta una carta primero",
@@ -2606,8 +2638,16 @@
  "gin.handsWon": "Manos ganadas: {a} {pa}, {b} {pb} (25 cada una).",
  "gin.justTook": "No puedes descartar la carta que acabas de coger",
  "gin.knock": "Cerrar ({n})",
- "gin.knockWith": "{name} cierra con {dw} puntos sueltos.",
- "gin.knockWith.you": "{name} cierras con {dw} puntos sueltos.",
+ "gin.knockWith": {
+  "one": "{name} cierra con {n} punto suelto.",
+  "many": "{name} cierra con {n} de puntos sueltos.",
+  "other": "{name} cierra con {n} puntos sueltos."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} cierras con {n} punto suelto.",
+  "many": "{name} cierras con {n} de puntos sueltos.",
+  "other": "{name} cierras con {n} puntos sueltos."
+ },
  "gin.note.discarded": "{name} descartó {card}.",
  "gin.note.drew": "{name} robó del mazo.",
  "gin.note.gin": "{name} hace gin.",
@@ -3581,7 +3621,11 @@
  "holdem.check": "Pasar",
  "holdem.computers": "Jugadores del ordenador: {list}.",
  "holdem.deal": "Repartir",
- "holdem.fact": "{chips} fichas",
+ "holdem.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "holdem.fold": "Retirarse",
  "holdem.handsPlayed": "{hands} jugadas. {text}.",
  "holdem.hasAll": "{name} tiene todas las fichas",
@@ -5567,7 +5611,11 @@
  "sol.winTime": "Tiempo {time}, {moves}",
  "spades.bidNil": "Apostar Nil",
  "spades.chip.bid": "apuesta {bid}",
- "spades.estimate": "Bazas estimadas en tu mano: {n}.",
+ "spades.estimate": {
+  "one": "Bazas estimadas en tu mano: {n}.",
+  "many": "Bazas estimadas en tu mano: {n}.",
+  "other": "Bazas estimadas en tu mano: {n}."
+ },
  "spades.line.bid": "{team}: apuesta {bid}, ganó {tricks}",
  "spades.line.none": "{team}: sin contrato",
  "spades.nil": "Nil",
@@ -5754,9 +5802,17 @@
  "tp.clue.short": "Di algo más",
  "tp.clueLabel": "Tu pista",
  "tp.cluePlaceholder": "Descríbelo sin decir su nombre",
- "tp.costAria": "{label}, fichas: {n}",
+ "tp.costAria": {
+  "one": "{label}, fichas: {n}",
+  "many": "{label}, fichas: {n}",
+  "other": "{label}, fichas: {n}"
+ },
  "tp.counter": "{n} de {max}",
- "tp.fact": "{chips} fichas",
+ "tp.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "tp.found": "Acertado en el intento {n}: +{points}",
  "tp.giveFor": "{name}: escribe una pista para este artículo",
  "tp.guessesLeft": {

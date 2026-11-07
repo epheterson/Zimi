@@ -162,7 +162,11 @@
  "bigtwo.rules": "Quatro jogadores, 13 cartas cada. Quem tem o 3 de ouros abre com uma combinação que o inclua. Cada jogador deve jogar o mesmo tipo de combinação, mais alta, ou passar; quando todos os outros passam, o último a jogar abre com o que quiser. Combinações: carta avulsa, par, trinca e, com cinco cartas: sequência, flush, full house, quadra mais uma carta, straight flush (nessa ordem; as sequências vão de 3 a 10 J Q K A). Os 2 são os mais altos, depois os ases; os naipes valem ouros, paus, copas, espadas. Quem sai primeiro vence a mão e recebe um ponto por carta de cada outro jogador (dobro com 10 ou mais, triplo com 13). Vence quem chegar a 30. Toque nas cartas para escolhê-las e depois em Jogar. P joga, S passa, H dá dica.",
  "bj.basic": "Estratégia básica: {action}.",
  "bj.bet": "Apostar {n}",
- "bj.chips": "{n} fichas",
+ "bj.chips": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "bj.dealBet": "Dar cartas {n}",
  "bj.dealer": "Crupiê",
  "bj.dealerBust": "{n}: estourou",
@@ -172,8 +176,16 @@
  "bj.decksNote": "O novo sapato usa o número de baralhos escolhido aqui.",
  "bj.double": "Dobrar",
  "bj.empty": "Vazio",
- "bj.fact": "{n} fichas",
- "bj.fact.name": "{name} {n} fichas",
+ "bj.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} ficha",
+  "many": "{name} {n} de fichas",
+  "other": "{name} {n} fichas"
+ },
  "bj.finish": "Concluir",
  "bj.handN": "Mão {n}",
  "bj.hard": "{total} ({bet})",
@@ -1617,7 +1629,11 @@
  "durak.beatIt": "Cubra com uma carta maior do naipe ou com um trunfo",
  "durak.beatOrTake": "Cubra {card} ou pegue",
  "durak.beaten": "Cobertas. As cartas saem de jogo",
- "durak.cap": "No máximo {n} cartas nesta rodada",
+ "durak.cap": {
+  "one": "No máximo {n} carta nesta rodada",
+  "many": "No máximo {n} de cartas nesta rodada",
+  "other": "No máximo {n} cartas nesta rodada"
+ },
  "durak.def": "defende",
  "durak.done": "Pronto",
  "durak.fact": {
@@ -2586,10 +2602,26 @@
  "gin.aria.chosen": ", escolhida para descarte",
  "gin.bonus": "Bônus de jogo de 100 para {name}.",
  "gin.bonus.you": "Bônus de jogo de 100.",
- "gin.deadwood": "{name} tem {n} de sobra.",
- "gin.deadwood.you": "{name} tem {n} de sobra.",
- "gin.deadwoodLaid": "{name} tem {before} de sobra, {after} depois de encaixar {cards}.",
- "gin.deadwoodLaid.you": "{name} tem {before} de sobra, {after} depois de encaixar {cards}.",
+ "gin.deadwood": {
+  "one": "{name} tem {n} de sobra.",
+  "many": "{name} tem {n} de sobra.",
+  "other": "{name} tem {n} de sobra."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} tem {n} de sobra.",
+  "many": "{name} tem {n} de sobra.",
+  "other": "{name} tem {n} de sobra."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} tem {n} de sobra, {after} depois de encaixar {cards}.",
+  "many": "{name} tem {n} de sobra, {after} depois de encaixar {cards}.",
+  "other": "{name} tem {n} de sobra, {after} depois de encaixar {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} tem {n} de sobra, {after} depois de encaixar {cards}.",
+  "many": "{name} tem {n} de sobra, {after} depois de encaixar {cards}.",
+  "other": "{name} tem {n} de sobra, {after} depois de encaixar {cards}."
+ },
  "gin.discard": "Descartar {card}",
  "gin.discardEmpty": "Monte de descarte, vazio",
  "gin.discardFirst": "Descarte uma carta primeiro",
@@ -2606,8 +2638,16 @@
  "gin.handsWon": "Mãos vencidas: {a} {pa}, {b} {pb} (25 cada).",
  "gin.justTook": "Você não pode descartar a carta que acabou de pegar",
  "gin.knock": "Bater ({n})",
- "gin.knockWith": "{name} bate com {dw} de sobra.",
- "gin.knockWith.you": "{name} bate com {dw} de sobra.",
+ "gin.knockWith": {
+  "one": "{name} bate com {n} de sobra.",
+  "many": "{name} bate com {n} de sobra.",
+  "other": "{name} bate com {n} de sobra."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} bate com {n} de sobra.",
+  "many": "{name} bate com {n} de sobra.",
+  "other": "{name} bate com {n} de sobra."
+ },
  "gin.note.discarded": "{name} descartou {card}.",
  "gin.note.drew": "{name} comprou do monte.",
  "gin.note.gin": "{name} faz gin.",
@@ -3581,7 +3621,11 @@
  "holdem.check": "Checar",
  "holdem.computers": "Jogadores do computador: {list}.",
  "holdem.deal": "Dar cartas",
- "holdem.fact": "{chips} fichas",
+ "holdem.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "holdem.fold": "Desistir",
  "holdem.handsPlayed": "{hands} jogadas. {text}.",
  "holdem.hasAll": "{name} tem todas as fichas",
@@ -5567,7 +5611,11 @@
  "sol.winTime": "Tempo {time}, {moves}",
  "spades.bidNil": "Apostar Nil",
  "spades.chip.bid": "aposta {bid}",
- "spades.estimate": "Sua mão parece valer cerca de {n} vazas.",
+ "spades.estimate": {
+  "one": "Sua mão parece valer cerca de {n} vaza.",
+  "many": "Sua mão parece valer cerca de {n} de vazas.",
+  "other": "Sua mão parece valer cerca de {n} vazas."
+ },
  "spades.line.bid": "{team}: apostou {bid}, fez {tricks}",
  "spades.line.none": "{team}: sem contrato",
  "spades.nil": "Nil",
@@ -5754,9 +5802,17 @@
  "tp.clue.short": "Diga um pouco mais",
  "tp.clueLabel": "Sua pista",
  "tp.cluePlaceholder": "Descreva sem dizer o nome",
- "tp.costAria": "{label}, {n} fichas",
+ "tp.costAria": {
+  "one": "{label}, {n} ficha",
+  "many": "{label}, {n} de fichas",
+  "other": "{label}, {n} fichas"
+ },
  "tp.counter": "{n} de {max}",
- "tp.fact": "{chips} fichas",
+ "tp.fact": {
+  "one": "{n} ficha",
+  "many": "{n} de fichas",
+  "other": "{n} fichas"
+ },
  "tp.found": "Achou no palpite {n}: +{points}",
  "tp.giveFor": "{name}: escreva uma pista para este artigo",
  "tp.guessesLeft": {

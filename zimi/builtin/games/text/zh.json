@@ -144,7 +144,9 @@
  "bigtwo.rules": "四人各 13 张牌。持有方块 3 的人先出，所出牌型必须含方块 3。之后每人须出同样牌型且更大，或过牌；其他人都过牌后，最后出牌者可任意领出。牌型：单张、对子、三条，以及五张牌的顺子、同花、葫芦、四带一、同花顺（按此顺序由小到大；顺子从 3 起，最高到 10 J Q K A）。2 最大，其次是 A；花色大小为方块、梅花、红心、黑桃。最先出完者赢下本手，向其他每位玩家收取每张剩牌 1 分（剩 10 张及以上翻倍，13 张三倍）。先到 30 分者获胜。点牌选中，再点“出牌”。按 P 出牌，S 过牌，H 提示。",
  "bj.basic": "基本策略：{action}。",
  "bj.bet": "下注 {n}",
- "bj.chips": "{n} 筹码",
+ "bj.chips": {
+  "other": "{n} 筹码"
+ },
  "bj.dealBet": "发牌 {n}",
  "bj.dealer": "庄家",
  "bj.dealerBust": "{n} 爆牌",
@@ -154,8 +156,12 @@
  "bj.decksNote": "新牌靴使用此处选择的牌副数。",
  "bj.double": "加倍",
  "bj.empty": "空",
- "bj.fact": "{n} 筹码",
- "bj.fact.name": "{name} {n} 筹码",
+ "bj.fact": {
+  "other": "{n} 筹码"
+ },
+ "bj.fact.name": {
+  "other": "{name} {n} 筹码"
+ },
  "bj.finish": "结束",
  "bj.handN": "第 {n} 手",
  "bj.hard": "{total}（{bet}）",
@@ -1519,7 +1525,9 @@
  "durak.beatIt": "用同花色更大的牌或将牌压过它",
  "durak.beatOrTake": "压过 {card}，或收牌",
  "durak.beaten": "已压过。这些牌出局",
- "durak.cap": "本回合最多 {n} 张牌",
+ "durak.cap": {
+  "other": "本回合最多 {n} 张牌"
+ },
  "durak.def": "防守",
  "durak.done": "完成",
  "durak.fact": {
@@ -2450,10 +2458,18 @@
  "gin.aria.chosen": "，已选为弃牌",
  "gin.bonus": "{name} 获得局奖励 100 分。",
  "gin.bonus.you": "局奖励 100 分。",
- "gin.deadwood": "{name} 有 {n} 点散牌。",
- "gin.deadwood.you": "{name} 有 {n} 点散牌。",
- "gin.deadwoodLaid": "{name} 有 {before} 点散牌，补牌 {cards} 后为 {after} 点。",
- "gin.deadwoodLaid.you": "{name} 有 {before} 点散牌，补牌 {cards} 后为 {after} 点。",
+ "gin.deadwood": {
+  "other": "{name} 有 {n} 点散牌。"
+ },
+ "gin.deadwood.you": {
+  "other": "{name} 有 {n} 点散牌。"
+ },
+ "gin.deadwoodLaid": {
+  "other": "{name} 有 {n} 点散牌，补牌 {cards} 后为 {after} 点。"
+ },
+ "gin.deadwoodLaid.you": {
+  "other": "{name} 有 {n} 点散牌，补牌 {cards} 后为 {after} 点。"
+ },
  "gin.discard": "弃 {card}",
  "gin.discardEmpty": "弃牌堆，空",
  "gin.discardFirst": "先弃一张牌",
@@ -2470,8 +2486,12 @@
  "gin.handsWon": "赢的手数：{a} {pa}，{b} {pb}（各 25 分）。",
  "gin.justTook": "不能弃掉刚拿的那张牌",
  "gin.knock": "敲牌（{n}）",
- "gin.knockWith": "{name} 以 {dw} 点散牌敲牌。",
- "gin.knockWith.you": "{name} 以 {dw} 点散牌敲牌。",
+ "gin.knockWith": {
+  "other": "{name} 以 {n} 点散牌敲牌。"
+ },
+ "gin.knockWith.you": {
+  "other": "{name} 以 {n} 点散牌敲牌。"
+ },
  "gin.note.discarded": "{name} 弃了 {card}。",
  "gin.note.drew": "{name} 从摸牌堆摸了牌。",
  "gin.note.gin": "{name} 打出 Gin。",
@@ -3439,7 +3459,9 @@
  "holdem.check": "过牌",
  "holdem.computers": "电脑玩家：{list}。",
  "holdem.deal": "发牌",
- "holdem.fact": "{chips} 筹码",
+ "holdem.fact": {
+  "other": "{n} 筹码"
+ },
  "holdem.fold": "弃牌",
  "holdem.handsPlayed": "已打 {hands}。{text}。",
  "holdem.hasAll": "{name} 拥有全部筹码",
@@ -5369,7 +5391,9 @@
  "sol.winTime": "用时 {time}，{moves}",
  "spades.bidNil": "叫零墩",
  "spades.chip.bid": "叫 {bid}",
- "spades.estimate": "你的牌大约能拿 {n} 墩。",
+ "spades.estimate": {
+  "other": "你的牌大约能拿 {n} 墩。"
+ },
  "spades.line.bid": "{team}：叫 {bid}，拿 {tricks}",
  "spades.line.none": "{team}：无定约",
  "spades.nil": "零墩",
@@ -5536,9 +5560,13 @@
  "tp.clue.short": "多说一点",
  "tp.clueLabel": "你的提示",
  "tp.cluePlaceholder": "描述它，但别说出它的名字",
- "tp.costAria": "{label}，{n} 筹码",
+ "tp.costAria": {
+  "other": "{label}，{n} 筹码"
+ },
  "tp.counter": "{n} / {max}",
- "tp.fact": "{chips} 筹码",
+ "tp.fact": {
+  "other": "{n} 筹码"
+ },
  "tp.found": "第 {n} 次猜中：+{points}",
  "tp.giveFor": "{name}：为这篇文章写一条提示",
  "tp.guessesLeft": {

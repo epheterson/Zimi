@@ -162,7 +162,11 @@
  "bigtwo.rules": "ארבעה שחקנים, 13 קלפים לכל אחד. מי שמחזיק ב־3 יהלום פותח ביד שכוללת אותו. כל שחקן חייב לשחק יד מאותו סוג וגבוהה יותר, או לדלג; כשכל האחרים דילגו, האחרון פותח בכל יד. ידיים: בודד, זוג, שלישייה, וחמישה קלפים: רצף, צבע, פול האוס, רביעייה עם קלף נוסף, רצף צבע (לפי הסדר הזה; רצפים הולכים מ־3 עד 10 נסיך מלכה מלך אס). 2 הוא הגבוה ביותר, אחריו האס; סדר הצורות: יהלום, תלתן, לב, עלה. הראשון שמסיים את הקלפים מנצח בחלוקה ומקבל מכל שחקן אחר נקודה על כל קלף שנשאר לו (כפול מ־10 קלפים, משולש מ־13). הראשון שמגיע ל־30 מנצח. הקישו על קלפים כדי לבחור אותם, ואז על ״שחקו״. P לשחק, S לדלג, H לרמז.",
  "bj.basic": "אסטרטגיה בסיסית: {action}.",
  "bj.bet": "הימור {n}",
- "bj.chips": "צ'יפים: {n}",
+ "bj.chips": {
+  "one": "צ'יפים: {n}",
+  "two": "צ'יפים: {n}",
+  "other": "צ'יפים: {n}"
+ },
  "bj.dealBet": "חלוקה {n}",
  "bj.dealer": "המחלק",
  "bj.dealerBust": "{n}: חריגה",
@@ -172,8 +176,16 @@
  "bj.decksNote": "ערימת חלוקה חדשה תשתמש במספר החפיסות שנבחר כאן.",
  "bj.double": "הכפלה",
  "bj.empty": "ריק",
- "bj.fact": "צ'יפים: {n}",
- "bj.fact.name": "{name}, צ'יפים: {n}",
+ "bj.fact": {
+  "one": "צ'יפים: {n}",
+  "two": "צ'יפים: {n}",
+  "other": "צ'יפים: {n}"
+ },
+ "bj.fact.name": {
+  "one": "{name}, צ'יפים: {n}",
+  "two": "{name}, צ'יפים: {n}",
+  "other": "{name}, צ'יפים: {n}"
+ },
  "bj.finish": "סיום",
  "bj.handN": "יד {n}",
  "bj.hard": "{total} ({bet})",
@@ -1619,7 +1631,11 @@
  "durak.beatIt": "גברו עליו בקלף גבוה יותר מאותה צורה, או בשליט",
  "durak.beatOrTake": "גברו על {card} או קחו",
  "durak.beaten": "נוצח. הקלפים יצאו מהמשחק",
- "durak.cap": "לא יותר מ־{n} קלפים בסיבוב הזה",
+ "durak.cap": {
+  "one": "לא יותר מקלף אחד בסיבוב הזה",
+  "two": "לא יותר מ־{n} קלפים בסיבוב הזה",
+  "other": "לא יותר מ־{n} קלפים בסיבוב הזה"
+ },
  "durak.def": "מגן",
  "durak.done": "סיום",
  "durak.fact": {
@@ -2588,10 +2604,26 @@
  "gin.aria.chosen": ", נבחר להשלכה",
  "gin.bonus": "בונוס משחק 100 ל{name}.",
  "gin.bonus.you": "בונוס משחק 100.",
- "gin.deadwood": "{name}: עודף {n}.",
- "gin.deadwood.you": "{name}: עודף {n}.",
- "gin.deadwoodLaid": "{name}: עודף {before}, {after} אחרי הצמדת {cards}.",
- "gin.deadwoodLaid.you": "{name}: עודף {before}, {after} אחרי הצמדת {cards}.",
+ "gin.deadwood": {
+  "one": "{name}: עודף {n}.",
+  "two": "{name}: עודף {n}.",
+  "other": "{name}: עודף {n}."
+ },
+ "gin.deadwood.you": {
+  "one": "{name}: עודף {n}.",
+  "two": "{name}: עודף {n}.",
+  "other": "{name}: עודף {n}."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
+ },
  "gin.discard": "השלכת {card}",
  "gin.discardEmpty": "ערימת השלכה, ריקה",
  "gin.discardFirst": "השליכו קלף קודם",
@@ -2608,8 +2640,16 @@
  "gin.handsWon": "חלוקות שנוצחו: {a} {pa}, {b} {pb} (25 כל אחת).",
  "gin.justTook": "אי אפשר להשליך את הקלף שלקחתם עכשיו",
  "gin.knock": "דפיקה ({n})",
- "gin.knockWith": "{name}: דפיקה עם עודף {dw}.",
- "gin.knockWith.you": "{name}: דפיקה עם עודף {dw}.",
+ "gin.knockWith": {
+  "one": "{name}: דפיקה עם עודף {n}.",
+  "two": "{name}: דפיקה עם עודף {n}.",
+  "other": "{name}: דפיקה עם עודף {n}."
+ },
+ "gin.knockWith.you": {
+  "one": "{name}: דפיקה עם עודף {n}.",
+  "two": "{name}: דפיקה עם עודף {n}.",
+  "other": "{name}: דפיקה עם עודף {n}."
+ },
  "gin.note.discarded": "{name}: השלכת {card}.",
  "gin.note.drew": "{name}: שליפה מהקופה.",
  "gin.note.gin": "{name}: ג'ין.",
@@ -3583,7 +3623,11 @@
  "holdem.check": "צ'ק",
  "holdem.computers": "שחקני מחשב: {list}.",
  "holdem.deal": "חלוקה",
- "holdem.fact": "{chips} צ'יפים",
+ "holdem.fact": {
+  "one": "{n} צ'יפ אחד",
+  "two": "{n} צ'יפים",
+  "other": "{n} צ'יפים"
+ },
  "holdem.fold": "קיפול",
  "holdem.handsPlayed": "שוחקו: {hands}. {text}.",
  "holdem.hasAll": "{name}: כל הצ'יפים",
@@ -5569,7 +5613,11 @@
  "sol.winTime": "זמן {time}, {moves}",
  "spades.bidNil": "הכרזת ניל",
  "spades.chip.bid": "הכרזה {bid}",
- "spades.estimate": "היד שלכם נראית כמו כ־{n} לקיחות.",
+ "spades.estimate": {
+  "one": "היד שלכם נראית כמו לקיחה אחת בערך.",
+  "two": "היד שלכם נראית כמו כ־{n} לקיחות.",
+  "other": "היד שלכם נראית כמו כ־{n} לקיחות."
+ },
  "spades.line.bid": "{team}: הכרזה {bid}, נלקחו {tricks}",
  "spades.line.none": "{team}: אין חוזה",
  "spades.nil": "ניל",
@@ -5756,9 +5804,17 @@
  "tp.clue.short": "אמרו קצת יותר",
  "tp.clueLabel": "הרמז שלכם",
  "tp.cluePlaceholder": "תארו אותו בלי לומר את שמו",
- "tp.costAria": "{label}, צ'יפים: {n}",
+ "tp.costAria": {
+  "one": "{label}, צ'יפים: {n}",
+  "two": "{label}, צ'יפים: {n}",
+  "other": "{label}, צ'יפים: {n}"
+ },
  "tp.counter": "{n} מתוך {max}",
- "tp.fact": "{chips} צ'יפים",
+ "tp.fact": {
+  "one": "{n} צ'יפ אחד",
+  "two": "{n} צ'יפים",
+  "other": "{n} צ'יפים"
+ },
  "tp.found": "נמצא בניחוש {n}: ‎+{points}",
  "tp.giveFor": "{name}: כתבו רמז לערך הזה",
  "tp.guessesLeft": {
