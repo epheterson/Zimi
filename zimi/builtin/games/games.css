@@ -645,6 +645,8 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-sp-card .gs-chips { justify-content: center; margin: 0; }
 .gs-sp-play { width: 100%; min-height: 56px; margin-top: var(--sp-2); font-size: var(--fs-title); font-weight: 650; }
 .gs-sp-hint { margin: 0; font-size: var(--fs-small); color: var(--ink2); }
+/* The hint is the splash's own; the page's status line under it says the same and would show through as a second copy. */
+body:has(> .gs-splash) .pl-msg { visibility: hidden; }
 :root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @media (max-height: 520px) { .gs-sp-art { display: none; } }
 
