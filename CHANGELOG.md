@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
 - **Landmarks on every world:** with Landmarks on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card and Fly there, and Go to lists every landing site.
 - **Facts for every body:** a card's All facts opens a sheet with size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.
+- **Go to by name:** the 3D view's Go to searches the towns on your maps and the Earth's landmarks, flies down over the one you pick and previews its article from your library.
+- **Flights to spacecraft:** the model loads as the flight starts and the camera ends on it, so Voyager and the station no longer pop in on arrival.
 
 ## [1.15.3]
 

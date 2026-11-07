@@ -562,6 +562,12 @@ var AE_CSS = [
   '.ae-chips .ae-btn{flex:none}',
   '@media (max-width:400px){#ae-views,.ae-chips{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px}}',
+  '.ae-go-find{position:sticky;top:-6px;z-index:1;display:flex;align-items:center;gap:8px;margin:-6px -6px 4px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-bottom:1px solid var(--border);color:var(--text3)}',
+  '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
+  '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
+  '.ae-go-find:focus-within{color:var(--amber)}',
+  '.ae-go-found .ae-go-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.ae-go-town{background:var(--text3);color:var(--text3)}',
   '.ae-go-wait{grid-column:1/-1;padding:10px 12px;font-size:13px;color:var(--text3)}',
   '.ae-go h4{margin:10px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3)}',
   '.ae-go-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}',
@@ -569,9 +575,11 @@ var AE_CSS = [
   '.ae-go-row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
   '@media (hover:hover){.ae-go-row:hover{background:rgba(255,255,255,.06)}}',
   '.ae-go-row[aria-current="true"]{color:var(--amber)}',
+  '.ae-go-list.ae-go-found{grid-template-columns:minmax(0,1fr)}',
+  '.ae-go-list.ae-go-found[hidden]{display:none}',
   '.ae-go-dot{flex:0 0 auto;width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08)}',
   '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
-  '.night-red .ae-go{background:' + AE_PANEL_BG_RED + '}',
+  '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 64px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
@@ -686,6 +694,12 @@ var AE_CSS = [
   '.ae-card .ae-lm-dark a,.ae-card .ae-card-more a{color:var(--amber);text-decoration:none}',
   '.ae-card .ae-lm-dark a:hover,.ae-card .ae-lm-dark a:focus-visible{text-decoration:underline}',
   '@media (max-width:420px){.ae-card{padding:9px 36px 9px 12px;font-size:12.5px;line-height:1.4}.ae-card h3{font-size:13.5px;margin-bottom:2px}}',
+  '.ae-place-preview{display:flex;gap:10px;align-items:flex-start;margin-top:6px;color:inherit;text-decoration:none}',
+  '.ae-card h3 .ae-place-open{color:var(--amber);text-decoration:none}',
+  '.ae-card .ae-place-open:hover,.ae-card .ae-place-open:focus-visible{text-decoration:underline}',
+  '.ae-place-preview img{flex:0 0 auto;width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--surface2)}',
+  '.ae-place-preview b{display:block;color:var(--text);font-weight:600}',
+  '.ae-place-snip{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
   '.ae-counter{color:var(--amber);font-variant-numeric:tabular-nums}',
   '.ae-card-x{position:absolute;top:4px;right:4px;width:36px;height:36px;border:0;background:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;border-radius:8px}',
   '.ae-card-x:hover,.ae-card-x:focus-visible{color:var(--amber);outline:none}',
@@ -767,9 +781,9 @@ function _aeGoName(key) {
   return b ? _aeBodyName(b) : key;
 }
 function _aeGoRender() {
-  var sheet = _aeById('ae-go');
-  if (!sheet || sheet.hidden) return;
-  sheet.innerHTML = _aeGoGroups().map(function (g) {
+  var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
+  if (!sheet || sheet.hidden || !host) return;
+  host.innerHTML = _aeGoGroups().map(function (g) {
     return '<h4 data-g="' + g[0] + '">' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(function (k) {
       if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
       return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoDot(k) +
@@ -778,7 +792,7 @@ function _aeGoRender() {
   }).join('');
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
-  if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
+  if (h) { sheet.scrollTop = h.offsetTop - _aeById('ae-go-q').parentNode.offsetHeight; _ae.goGroup = null; }
 }
 // `group`: open scrolled to that group's heading (the Moon's Landings chip), now or as soon as it is there.
 function _aeShowGo(on, group) {
@@ -788,7 +802,196 @@ function _aeShowGo(on, group) {
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
   _ae.goGroup = on ? group || null : null;
   if (group === 'alm_go_landings' && on) _ae.allLandings = true;   // every landing site named on the Moon, not only Apollo's
-  if (on) { _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
+  if (on) { _aeGoShell(sheet); _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
+}
+var AE_SEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/></svg>';
+// ── Go to, by name: any town or landmark on the Earth ──
+// A search field heads the sheet. What is typed asks the installed maps' towns (/places/suggest: "Springfield, Illinois,
+// United States" with where it is) and the Earth's landmarks (landmarks-v1.json), merged best match first (a landmark
+// before a town of the same match: it is the one asked for by name). A pick flies down over the place and marks it;
+// its card shows its article from the library, when there is one (_aePlaceArticle).
+var AE_PLACE_SUGGEST_URL = '/places/suggest', AE_PLACE_SEARCH_URL = '/search', AE_PLACE_SNIPPET_URL = '/snippet';
+var AE_PLACE_DELAY_MS = 150;       // after the last key, before the towns are asked
+var AE_PLACE_MAX = 8;              // rows offered
+var AE_PLACE_DIST = 1.5;           // a flight to a place ends this far from the Earth's centre (Earth radii, ~3,200 km up): the place and its country round it; the Earth's map is no finer
+var AE_PLACE_ARTICLE_KM = 60;      // an article that says it stands this near the place is about it (not Paris, Texas)
+var AE_PLACE_CANDIDATES = 4;       // articles of the place's name looked into
+var AE_PLACE_MATCH = { exact: 0, prefix: 1, word: 2, inside: 3 };   // how a name meets what was typed, best first
+var AE_PLACE_ACCENTS = /[̀-ͯ]/g;
+function _aePlaceNorm(s) { return String(s || '').normalize('NFD').replace(AE_PLACE_ACCENTS, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+// How `name` meets what was typed (both folded: no accents, no case), or -1.
+function _aePlaceMatch(typed, name) {
+  var q = _aePlaceNorm(typed), n = _aePlaceNorm(name);
+  if (!q || !n) return -1;
+  if (n === q) return AE_PLACE_MATCH.exact;
+  if (n.indexOf(q) === 0) return AE_PLACE_MATCH.prefix;
+  if (n.indexOf(' ' + q) >= 0) return AE_PLACE_MATCH.word;
+  return n.indexOf(q) >= 0 ? AE_PLACE_MATCH.inside : -1;
+}
+// The Earth's landmarks that answer `typed`, as places: { name, label, lat, lon, kind: 'landmark', qid, match }.
+function _aePlaceLandmarks(typed) {
+  var out = [];
+  ((_aeLm && _aeLm.earth) || []).forEach(function (r, i) {
+    var m = _aePlaceMatch(typed, r[0]);
+    if (m >= 0) out.push({ name: r[0], label: r[0], lat: r[1], lon: r[2], kind: 'landmark', qid: r[4], match: m, at: i });
+  });
+  return out;
+}
+// A town the server offered, as a place. A name the typed words reach through where it is ("Springfield, IL") has no
+// match of its own: the server's answer stands for it as a prefix.
+function _aePlaceTown(typed, p, i) {
+  var m = _aePlaceMatch(typed, p.name);
+  return { name: p.name, label: p.label, lat: p.lat, lon: p.lng, kind: 'town', match: m < 0 ? AE_PLACE_MATCH.prefix : m, at: i };
+}
+// Landmarks and towns together: best match first; at an equal match a landmark first; then each list's own order (the
+// towns largest first, as the server gives them). Two of one name and spot are one.
+function _aePlaceMerge(typed, landmarks, towns) {
+  var all = landmarks.concat(towns.map(function (p, i) { return _aePlaceTown(typed, p, i); }));
+  all.sort(function (a, b) {
+    return a.match - b.match || (a.kind === b.kind ? 0 : a.kind === 'landmark' ? -1 : 1) || a.at - b.at;
+  });
+  var out = [];
+  all.forEach(function (p) {
+    if (!out.some(function (q) { return _aePlaceNorm(q.name) === _aePlaceNorm(p.name) && _aePlaceKm(q, p) < AE_PLACE_ARTICLE_KM; })) out.push(p);
+  });
+  return out.slice(0, AE_PLACE_MAX);
+}
+// Kilometres between two places (haversine, on the mean sphere).
+function _aePlaceKm(a, b) {
+  var la = _aeRad(a.lat), lb = _aeRad(b.lat), dl = _aeRad(b.lon - a.lon);
+  var h = Math.pow(Math.sin((lb - la) / 2), 2) + Math.cos(la) * Math.cos(lb) * Math.pow(Math.sin(dl / 2), 2);
+  return 2 * AE_EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+// What is typed: the landmarks at once, the towns when the server has answered (none: no map, offline, or none by that name).
+function _aePlaceSearch(typed) {
+  var seq = _ae.placeSeq = (_ae.placeSeq || 0) + 1;
+  if (_ae.placeAbort) _ae.placeAbort.abort();
+  typed = typed.replace(/\s+/g, ' ').trim();
+  if (!typed) { _aePlaceShow([]); return; }
+  _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+  _ae.placeAbort = typeof AbortController === 'function' ? new AbortController() : null;
+  _aeFetch(AE_PLACE_SUGGEST_URL + '?q=' + encodeURIComponent(typed) + '&limit=' + AE_PLACE_MAX, _ae.placeAbort ? { signal: _ae.placeAbort.signal } : undefined)
+    .then(_aeJson).then(function (d) {
+      if (seq !== _ae.placeSeq) return;
+      _ae.placeTowns = (d.places || []).filter(function (p) { return _almValidLatLon(p.lat, p.lng); });
+      _aePlaceRefresh();
+    }).catch(function () {});
+}
+// What is found for what is in the field now, from the landmarks and the towns last offered (the landmarks' file may
+// arrive after the first keys).
+function _aePlaceRefresh() {
+  var q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '';
+  if (typed) _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), _ae.placeTowns || []));
+}
+function _aePlaceShow(list) {
+  _ae.placeFound = list;
+  var box = _aeById('ae-go-found'), groups = _aeById('ae-go-groups'), q = _aeById('ae-go-q');
+  if (!box) return;
+  box.hidden = !list.length;
+  box.innerHTML = list.map(function (p, i) {
+    var dot = '<i class="ae-go-dot ae-go-probe' + (p.kind === 'landmark' ? '' : ' ae-go-town') + '"></i>';
+    return '<button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>';
+  }).join('');
+  // The groups give way while something is typed.
+  if (groups) groups.hidden = !!list.length || !!(q && q.value.trim());
+}
+// The sheet's search field and the two places under it (what was found; the groups): made once, the groups drawn
+// afresh by _aeGoRender without taking the field's focus.
+function _aeGoShell(sheet) {
+  if (_aeById('ae-go-q')) return;
+  sheet.innerHTML = '<div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
+    'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"></div>' +
+    '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div><div id="ae-go-groups"></div>';
+  var q = _aeById('ae-go-q'), timer = 0;
+  q.oninput = function () {
+    clearTimeout(timer);
+    var typed = q.value.trim();
+    // The landmarks show with the keystroke; the towns after a short pause.
+    _ae.placeTowns = null;
+    _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+    timer = setTimeout(function () { _aePlaceSearch(typed); }, AE_PLACE_DELAY_MS);
+  };
+  q.onkeydown = function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (_ae.placeFound && _ae.placeFound.length) _aePlacePick(_ae.placeFound[0]);
+  };
+  // A phone's keyboard covers the foot of the screen: while the field has the focus, the foot stands above it.
+  q.onfocus = function () {
+    var foot = _ae.el.querySelector('.ae-bottom');
+    if (foot && typeof _sheetAboveKeyboard === 'function' && !_ae.placeUnfit) _ae.placeUnfit = _sheetAboveKeyboard(foot);
+  };
+  q.onblur = function () {
+    var foot = _ae.el.querySelector('.ae-bottom');
+    if (_ae.placeUnfit) { _ae.placeUnfit(); _ae.placeUnfit = null; }
+    if (foot) { foot.style.bottom = ''; foot.style.maxHeight = ''; }
+  };
+}
+// A place picked: down over it, marked, its card up.
+function _aePlacePick(p) {
+  _aeShowGo(false);
+  var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
+  _ae.place = { name: p.name, label: p.label, lat: p.lat, lon: p.lon, kind: p.kind, qid: p.qid || null, article: null };
+  _ae.lm = null; _ae.selected = null; _ae.arrived = null;
+  if (_ae.spin) _aeLeaveSpin();
+  _ae.preset = 'earth';
+  _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(p.lat, p.lon), sc.gast)));
+  _aeMarkViews();
+  _aeRenderCard();
+  _aePlaceArticle(_ae.place);
+}
+// The place's article in the library: a landmark's by its Q-ID (the Almanac's own links), a town's by its name among the
+// search's first answers, the one whose page says it stands near the place. { zim, path, title, snippet, thumbnail }
+// into place.article, the card drawn again. None (no library, no such page, one about another place) is no preview.
+function _aePlaceArticle(place) {
+  var done = function (a) { if (_ae.place === place) { place.article = a || false; _aeRenderCard(); } };
+  var snippet = function (hit) {
+    return _aeFetch(AE_PLACE_SNIPPET_URL + '?zim=' + encodeURIComponent(hit.zim) + '&path=' + encodeURIComponent(hit.path)).then(_aeJson).then(function (s) {
+      return { zim: hit.zim, path: hit.path, title: hit.title, snippet: s.snippet || '', thumbnail: s.thumbnail || '', position: s.position || null };
+    });
+  };
+  var found;
+  if (place.qid && window.AlmanacLinks && AlmanacLinks.resolve) {
+    found = AlmanacLinks.resolve([place.qid]).then(function (links) { return links[place.qid] ? snippet(links[place.qid]) : null; });
+  } else {
+    found = _aeFetch(AE_PLACE_SEARCH_URL + '?q=' + encodeURIComponent(place.name) + '&limit=' + AE_PLACE_CANDIDATES * 2).then(_aeJson).then(function (d) {
+      var want = _aePlaceNorm(place.name);
+      // Pages named for the place (the name alone, or with what tells it from others: "Paris (Texas)"), each looked into.
+      var named = (d.results || []).filter(function (r) { var n = _aePlaceNorm(r.title); return n === want || n.indexOf(want + ' (') === 0 || n.indexOf(want + ',') === 0; })
+        .slice(0, AE_PLACE_CANDIDATES);
+      return Promise.all(named.map(function (r) { return snippet(r).catch(function () { return null; }); })).then(function (list) {
+        return _aePlaceBest(place, list.filter(Boolean));
+      });
+    });
+  }
+  found.then(done).catch(function () { done(null); });
+}
+// Of the candidate articles, the one that stands nearest the place within AE_PLACE_ARTICLE_KM; if none says where it
+// stands, the first, unless another says it is elsewhere.
+function _aePlaceBest(place, list) {
+  var best = null, bestKm = Infinity, unplaced = null;
+  list.forEach(function (a) {
+    if (!a.position) { unplaced = unplaced || a; return; }
+    var km = _aePlaceKm(place, { lat: a.position.lat, lon: a.position.lng });
+    if (km < AE_PLACE_ARTICLE_KM && km < bestKm) { best = a; bestKm = km; }
+  });
+  return best || (list.every(function (a) { return !a.position; }) ? unplaced : null);
+}
+function _aeRenderPlaceCard(card) {
+  var p = _ae.place, a = p.article;
+  // A town's label is its name and where it is: the name is the heading, where it is the line under it.
+  var where = p.kind === 'landmark' ? '' : p.label.slice(p.name.length).replace(/^,\s*/, '');
+  var head = '<h3>' + (a ? '<a href="#" class="ae-place-open" data-ae-place-open>' + _almEsc(p.name) + '</a>' : _almEsc(p.name)) + '</h3>' + (where ? '<p class="ae-lm-line"><span>' + _almEsc(where) + '</span></p>' : '');
+  // The preview: its picture and the start of the article (its title too, when it is not the place's own name).
+  var named = a && _aePlaceNorm(a.title) !== _aePlaceNorm(p.name);
+  var body = a && (a.thumbnail || a.snippet) ? '<a href="#" class="ae-place-open ae-place-preview" data-ae-place-open>' + (a.thumbnail ? '<img src="' + _almEsc(a.thumbnail) + '" alt="" loading="lazy">' : '') +
+    '<span>' + (named ? '<b>' + _almEsc(a.title) + '</b>' : '') + (a.snippet ? '<span class="ae-place-snip">' + _almEsc(a.snippet) + '</span>' : '') + '</span></a>' : '';
+  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' + head + body;
+  card.hidden = false;
+  _aeById('ae-card-x').onclick = function () { _ae.place = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); };
+  Array.prototype.forEach.call(card.querySelectorAll('[data-ae-place-open]'), function (open) {
+    open.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(a); };
+  });
 }
 // THE QUICK ROW: one rule, the same for every selection (Eric 2026-11-06). Left to right:
 //   Sun  ·  the way down from the Sun to the body in view, ending on it  ·  its own satellites  ·  recents  ·
@@ -910,6 +1113,7 @@ function _aeBuildDom() {
       AE_MARKED.map(_aeMarkHtml).join('') +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
       '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
+      '<span class="ae-label ae-label-you ae-label-place" id="ae-lbl-place" hidden><i class="ae-mark" aria-hidden="true"></i><span id="ae-lbl-place-text"></span></span>' +
       '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
     '</div>' +
     '<div class="ae-lms" id="ae-lms"></div>' +
@@ -3581,6 +3785,12 @@ function _aeRefAxesRows() {
   add('iss.launch', _aeT('tb_kn_iss_launch'), _aeFmtDate(AE_ISS_LAUNCH_MS), '', 'NASA');
   add('axis.reach', _aeT('tb_kn_axis_reach'), AE_SPIN_AXIS_R, '×', 'Zimi');
   add('axis.min_px', _aeT('tb_kn_axis_min'), AE_AXIS_MIN_PX, 'px', 'Zimi');
+  // Go to by name, and the flights to a spacecraft's model.
+  add('place.towns', _aeT('tb_kn_place_towns'), 'Kiwix maps · OpenMapTiles', '', 'OpenStreetMap contributors');
+  add('place.landmarks', _aeT('tb_kn_place_landmarks'), 'landmarks-v1.json', '', 'Wikidata (CC0)');
+  add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
+  add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
+  add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
   return rows;
 }
 
@@ -3730,6 +3940,7 @@ function _aeLmLoad() {
     _aeLm = d;
     if (_ae) { _ae.dirty = true; _aeKick(); }
     _aeGoRender();
+    _aePlaceRefresh();
   }).catch(function () { _aeLmLoading = null; _aeGoRender(); });
 }
 // The bodies the landmarks file lists, in its order (the Moon first).
@@ -4614,7 +4825,7 @@ function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) 
 
 // A flight to a probe's model: it fills the picture from AE_CRAFT_VIEW_SPANS of its span, lit three-quarter from the
 // Sun's side, and a body it is near (Jupiter for Juno) stands behind it.
-// How far off a flight to a craft of this span ends: the whole span inside the narrower side of the screen.
+// How far off a flight to a craft of this span ends (the station too): the whole span inside the narrower side of the screen.
 function _aeCraftViewDist(span) { return Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)); }
 // `waitModel`: the span is a guess, the model (loading) will correct it (_aeRefitCraftFlight).
 function _aeFlyToCraft(name, pp, span, waitModel) {
@@ -4649,7 +4860,7 @@ function _aeRefitCraftFlight(f, name, model) {
   var span = _aeCraftSpanRe(model);
   if (!span) return;
   if (AE_CRAFT_MODEL[name]) { AE_TARGETS[name].min = span * 0.9; AE_TARGETS[name].surface = span / 2; }
-  f.toDist = _aeClampDist(model === 'iss' ? span * AE_ISS_VIEW_SPANS : _aeCraftViewDist(span));
+  f.toDist = _aeClampDist(_aeCraftViewDist(span));
   f.ms = _aeFlyMs(f.from, _aeTargetPos(), f.toDist, f.toAz, f.toEl);
   _aeFlyTables(f);
   f.bend = _aeBendAfter(f);
@@ -4661,6 +4872,7 @@ function _aePreset(name) {
   if (_ae.spin && name !== AE_SPIN_KEY) _aeLeaveSpin();
   if (_ae.arrived && name !== _ae.arrived) { _ae.arrived = null; _aeRenderCard(); }
   if (_ae.lm && name !== _ae.lm.body) { _ae.lm = null; _aeRenderCard(); }   // a site's card stays at its body
+  if (_ae.place) { _ae.place = null; _aeRenderCard(); }   // a place picked in Go to is left behind by any other place
   // The row says where the view is going at once, also for a destination that flies from a callback (a probe's model
   // loading first): the last chip pressed no longer stays lit over Voyager.
   _ae.preset = name;
@@ -4715,8 +4927,7 @@ function _aePreset(name) {
     // horizontally if the Sun is behind.
     if (_ae.scene && _aeDot(dir, _ae.scene.sun) < 0) dir = _aeAdd(_aeScale(B[0], AE_ISS_VIEW_DIR[0]), _aeAdd(_aeScale(B[1], -AE_ISS_VIEW_DIR[1]), _aeScale(B[2], -AE_ISS_VIEW_DIR[2])));
     _aeCraftLoad('iss');
-    var issSpan = _aeCraftSpanRe('iss');
-    _aeFlyTo('iss', issSpan ? issSpan * AE_ISS_VIEW_SPANS : AE_ISS_VIEW_DIST, _aeAzElOf(dir));
+    _aeFlyTo('iss', _aeCraftViewDist(_aeCraftSpanRe('iss') || AE_ISS_SPAN_RE), _aeAzElOf(dir));
     _aeWaitForModel('iss');
     _aeArrive('iss');
   } else if (name === 'sun') {
@@ -5073,8 +5284,6 @@ function _aeOrientMoon(sc) {
 // below in daylight, and dark in the Earth's shadow. Under AE_CRAFT_MODEL_PX across it is not drawn: the dot is.
 var AE_ISS_URL = '/static/earth/iss-v1.bin';
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
-var AE_ISS_VIEW_SPANS = 2.2;                                // a flight to it ends this many of its spans off: the whole station in view
-var AE_ISS_VIEW_DIST = AE_ISS_SPAN_RE * AE_ISS_VIEW_SPANS;  // before the model is here to measure
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
 var AE_ISS_EARTHSHINE = 0.3;                                // the day side below, as a light from the nadir
 // Shading per class (structure, truss, turning array, radiator, fixed array): colour, specular strength, sharpness.
@@ -5536,6 +5745,10 @@ function _aeUpdateLabels() {
   // Almanac, drew "You" far from anyone (Eric).
   var you = _ae.you ? _aeFixedToScene(_aeGeodeticToFixed(_ae.you.lat, _ae.you.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-you', you, !!you && _aeFacing(you) && _ae.target === 'earth');
+  // The place picked in Go to: its name at its spot.
+  var pl = _ae.place ? _aeFixedToScene(_aeGeodeticToFixed(_ae.place.lat, _ae.place.lon), sc.gast) : null;
+  if (pl) _aeSetText(_aeById('ae-lbl-place-text'), _ae.place.name);
+  _aePlaceLabel('ae-lbl-place', pl, !!pl && _aeFacing(pl) && _ae.target === 'earth');
   var ecl = _ae.eclipse;
   var sh = ecl && ecl.solar && ecl.hit ? _aeFixedToScene(_aeGeodeticToFixed(ecl.hit.lat, ecl.hit.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-shadow', sh, !!sh && _aeFacing(sh) && _ae.target === 'earth');
@@ -5919,6 +6132,7 @@ function _aeRenderCardBody() {
   var card = _aeById('ae-card');
   if (!card) return;
   var s = _aeSelectedSat();
+  if (!s && _ae.place) { _aeRenderPlaceCard(card); return; }
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
   if (!s && _ae.arrived && (!_aeIsProbe(_ae.arrived) || _aeTracks)) { _aeRenderArrivalCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
@@ -6386,6 +6600,8 @@ function _aeBindControls() {
   };
   _aeById('ae-go-btn').onclick = function () { _aeShowGo(_aeById('ae-go').hidden); };
   _aeById('ae-go').onclick = function (e) {
+    var pl = e.target && e.target.closest ? e.target.closest('[data-ae-place]') : null;
+    if (pl) { _aePlacePick(_ae.placeFound[+pl.getAttribute('data-ae-place')]); return; }
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-go]') : null;
     if (!b) return;
     _aeShowGo(false);
@@ -6814,6 +7030,7 @@ function _aeFinishClose() {
   if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
   _ae.hand = null;
+  _ae.place = null;
   _aeHandReset();
   _aeCloseInfo(false);
   _ae.el.classList.remove('open');
@@ -6877,7 +7094,7 @@ function _aeDisposeGl() {
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
-  ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
+  ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-place', 'ae-lbl-shadow'].forEach(function (id) {
     var label = _aeById(id);
     if (label) label.hidden = true;
   });
