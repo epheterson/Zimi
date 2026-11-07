@@ -10676,7 +10676,9 @@ function renderSearchResults(data, scope) {
     // Under the Field Guide's answer, "No results found" would be the louder
     // line on a page that has just helped: the answer stands alone.
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
-    output.innerHTML = chipsHtml + (guided ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
+    // A near: whose place no installed map names says so (near_not_found), not "No results found".
+    const nearOnly = data.near && !data.near.found;
+    output.innerHTML = chipsHtml + _nearHtml(data.near) + (guided || nearOnly ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
     _gamesRowMount();
     return;
