@@ -63,7 +63,6 @@ DATA = (
     "rosetta",
     "golden-record",
     "temml",
-    os.path.join("fonts", "DSEG14Classic-Bold.woff2"),
 )
 
 #: The app.js pieces the Almanac's code calls directly, pulled into shell.js

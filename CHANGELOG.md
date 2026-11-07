@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
 - **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
+- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, pinned to the top as you scroll and at the foot of the 3D view.
 - **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
 - **Landmarks on every world:** with Landmarks on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card and Fly there, and Go to lists every landing site.
 - **Facts for every body:** a card's All facts opens a sheet with size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.

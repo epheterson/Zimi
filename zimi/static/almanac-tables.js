@@ -1903,7 +1903,10 @@ var TB_CONST_ROWS = {
       ['delta_t', _cnDeltaTdays(_dateToJD(now)) * TB_S_PER_DAY_SI, 1, 's', 'Espenak, Meeus'],
       ['delta_t_measured', AR_MEASURED_DELTA_T.s, 1, 's', 'IERS ' + AR_MEASURED_DELTA_T.year],
       ['tai_utc', AR_TAI_MINUS_UTC, 0, 's', 'IERS'],
-      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS']
+      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS'],
+      // The clock's speed slider (almanac.js): its stops, a minute, an hour, a day and a year a second either way, and how far it travels.
+      ['clock_stops', ALM_RATE_SECS.slice().reverse().join(', '), 0, '×', 'Zimi'],
+      ['clock_span', '±' + _ALM_YEAR_MAX, 0, 'yr', 'Zimi']
     ];
   },
   k_nav: function () {
