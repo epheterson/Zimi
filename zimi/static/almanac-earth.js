@@ -701,8 +701,13 @@ function _aeEnsureStyles() {
 // spacecraft (once their table has come: opening the sheet asks for it). A row is the body's small disc and its name;
 // a tap flies there and puts the sheet away.
 var AE_GO_PROBE_COLOR = AE_PROBE_HEX;
-var AE_GO_LM = 'lm:';   // a landing site's row: lm:<its index in the Moon's landmarks>
-function _aeGoLmRow(key) { return _aeLm && key.indexOf(AE_GO_LM) === 0 ? _aeLm.moon[+key.slice(AE_GO_LM.length)] : null; }
+var AE_GO_LM = 'lm:';   // a landing site's row: lm:<body>:<its index in that body's landmarks>
+// The landing site a Go to row stands for ({ body, row }), once the landmarks are in.
+function _aeGoLmRow(key) {
+  if (!_aeLm || key.indexOf(AE_GO_LM) !== 0) return null;
+  var at = key.split(':'), rows = _aeLm[at[1]], row = rows && rows[+at[2]];
+  return row ? { body: at[1], row: row } : null;
+}
 // A compass: Go to sits in the row as one round button, so the row stays one line on a phone.
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
@@ -726,8 +731,12 @@ function _aeGoGroups() {
   // not begun is not a place to go then.
   var jd = (_ae.scene ? _ae.scene.ms : Date.now()) / MS_PER_DAY + JD_UNIX_EPOCH;
   var craft = (_ae.issPos ? ['iss'] : []).concat(_aeTracks ? _aeTracks.probes.filter(function (k) { return !!_aeTrackAt(_aeTracks.tracks[k], jd); }) : []);
-  // The Moon's landing sites, by name: flown to, each shows its own label and card whether or not Landmarks is on.
-  var landings = _aeLm ? _aeLm.moon.map(function (r, i) { return r[3] === 'landing' ? AE_GO_LM + i : null; }).filter(Boolean) : [];
+  // Every landing site by name (the Moon's first, then Mars's, Venus's and Titan's): flown to, each shows its own label
+  // and card whether or not Landmarks is on.
+  var landings = [];
+  if (_aeLm) _aeLmBodyKeys().forEach(function (k) {
+    _aeLm[k].forEach(function (r, i) { if (r[3] === 'landing') landings.push(AE_GO_LM + k + ':' + i); });
+  });
   // A group whose table is still on its way shows where it will be, quietly, rather than being missing until it lands.
   if (!_aeTracks && _aeTracksLoading) craft.push(AE_GO_LOADING);
   if (!_aeLm && _aeLmLoading) landings.push(AE_GO_LOADING);
@@ -736,7 +745,7 @@ function _aeGoGroups() {
 }
 function _aeGoName(key) {
   var lmRow = _aeGoLmRow(key);
-  if (lmRow) return lmRow[0];
+  if (lmRow) return lmRow.row[0];
   if (key === 'earth') return _tp('Earth');
   if (key === AE_SPIN_KEY) return _aeT('alm_spin_view');
   if (key === 'iss') return _aeT('alm_earth_iss_short');
@@ -797,6 +806,7 @@ function _aeRowPath(c) {
   var b = _aePlanetBody(c);
   if (c === 'earth') return ['earth', 'sats', 'moon'];
   if (c === 'moon') return ['earth', 'moon', AE_ROW_LANDINGS];
+  if (AE_LM_LANDERS[c]) return [c, AE_ROW_LANDINGS];   // Mars and Venus: the sites landers have reached
   if (c === 'sun') return ['earth'];
   if (_aeIsProbe(c)) { var n = _aeRowNear(c); return n ? [c, _aeHostOf(n)] : [c]; }   // near Ganymede is at Jupiter
   var host = b && b.parent ? b.parent : c;
@@ -810,7 +820,7 @@ function _aeRowKeys() {
     if (_ae.rowCurrent && _ae.rowCurrent !== 'sun') _ae.rowRecent = _ae.rowCurrent;
     _ae.rowCurrent = c;
     if (c !== 'moon') _ae.allLandings = false;
-    else _aeLmLoad();   // the Landings chip's table, there before it is tapped
+    if (c === 'moon' || AE_LM_LANDERS[c]) _aeLmLoad();   // the Landings chip's table, there before it is tapped
   }
   var mid = _aeRowPath(c), recent = _ae && _ae.rowRecent;
   if (recent && mid.indexOf(recent) < 0 && recent !== 'sun') mid.push(recent);
@@ -3191,7 +3201,15 @@ var AE_LM_APART_X = 96, AE_LM_APART_Y = 22;   // labels nearer than this to a pl
 var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
 var AE_LM_EDGE_PX = 8;                       // a name keeps this clear of the screen's right edge
 var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
-var AE_LM_KINDS = { landing: 'landing', crater: 'crater', mare: 'mare', mons: 'mons' };
+// A row's kind as its card names it (alm_lm_kind_<name>): the Moon's own kinds fold into the few every body shares.
+var AE_LM_KINDS = {
+  landing: 'landing', statio: 'landing', crater: 'crater', mare: 'mare', lacus: 'mare', sinus: 'mare', palus: 'mare',
+  mons: 'mons', volcano: 'volcano', plain: 'plain', highland: 'highland', promontorium: 'highland', region: 'region',
+  valley: 'valley', vallis: 'valley', ridge: 'ridge', rupes: 'ridge', chain: 'chain', catena: 'chain', sea: 'sea',
+  wonder: 'wonder', launch: 'launch', landing_feature: 'other'
+};
+var AE_LM_LANDERS = { mars: 1, venus: 1 };      // bodies whose quick row has a Landings chip (the Moon's is its own)
+var AE_LM_POINT_PRI = 1e6;                       // a place with no extent (a peak, a launch site) ranks after a landing, before any feature
 // A place in the lunar night is black: its card says when the Sun comes up there, and offers that morning instead, with
 // the Sun this high (low light: every crater's rim casts its shadow).
 var AE_LM_MORNING_SUN_DEG = 8;
@@ -3214,11 +3232,25 @@ function _aeLmLoad() {
     _aeGoRender();
   }).catch(function () { _aeLmLoading = null; _aeGoRender(); });
 }
-// Where each body with landmarks stands: its centre, radius and turn (the rotation part of its matrix, column-major).
+// The bodies the landmarks file lists, in its order (the Moon first).
+function _aeLmBodyKeys() { return Object.keys(_aeLm).filter(function (k) { return Array.isArray(_aeLm[k]) && Array.isArray(_aeLm[k][0]); }); }
+// Where each body with landmarks stands: its centre, radius and turn (the rotation part of its matrix, column-major,
+// squashed along its pole by its flattening where it is drawn so).
 function _aeLmBodies() {
   var S = _ae.gl, sc = _ae.scene;
-  if (!S || !sc) return [];
-  return [{ key: 'moon', center: sc.moon, r: AE_MOON_RADIUS_RE, m: S.moon.matrix.elements }];
+  if (!S || !sc || !_aeLm) return [];
+  var out = [];
+  _aeLmBodyKeys().forEach(function (k) {
+    if (k === 'moon') out.push({ key: k, center: sc.moon, r: AE_MOON_RADIUS_RE, m: S.moon.matrix.elements });
+    else if (k === 'earth') {
+      var c = Math.cos(S.earth.rotation.z), sn = Math.sin(S.earth.rotation.z), f = 1 - AE_EARTH_FLATTENING;
+      out.push({ key: k, center: [0, 0, 0], r: 1, m: [c, sn, 0, 0, -sn, c, 0, 0, 0, 0, f, 0] });
+    } else {
+      var p = S.planets && S.planets[k];
+      if (p && p.pos) out.push({ key: k, center: p.pos, r: p.b.r, m: p.mesh.matrix.elements });
+    }
+  });
+  return out;
 }
 function _aeLmDir(b, lat, lon) {
   var v = _aeLatLonVec(lat, lon), e = b.m;
@@ -3248,16 +3280,16 @@ function _aeUpdateLandmarks() {
       var rPx = b.r / _aeLen(_aeSub(b.center, eye)) * pxPerRad;
       if (rPx < AE_LM_LANDING_MIN_R_PX / 2) { if (rPx > 4 && layer) _aeLmLoad(); return; }
       for (var i = 0; i < rows.length; i++) {
-        var row = rows[i], n = _aeLmDir(b, row[1], row[2]);
-        var p = [b.center[0] + n[0] * b.r, b.center[1] + n[1] * b.r, b.center[2] + n[2] * b.r];
+        var row = rows[i], d = _aeLmDir(b, row[1], row[2]), n = _aeNorm(d);
+        var p = [b.center[0] + d[0] * b.r, b.center[1] + d[1] * b.r, b.center[2] + d[2] * b.r];
         var toEye = _aeSub(eye, p), dist = _aeLen(toEye);
         if (_aeDot(n, toEye) < AE_LM_FACING * dist) continue;
-        var landing = row[3] === 'landing';
+        var landing = row[3] === 'landing', point = !row[5];   // a point has no extent to measure: it shows with the body
         var px = row[5] / AE_EARTH_RADIUS_KM / dist * pxPerRad;
-        if (landing ? rPx < AE_LM_LANDING_MIN_R_PX : px < AE_LM_MIN_PX) continue;
+        if (point ? rPx < AE_LM_LANDING_MIN_R_PX : px < AE_LM_MIN_PX) continue;
         var s = _aeProject(p);
         if (!s || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) continue;
-        cands.push({ b: b.key, row: row, s: s, pri: landing ? Infinity : px });
+        cands.push({ b: b.key, row: row, s: s, pri: landing ? Infinity : point ? AE_LM_POINT_PRI : px });
       }
     });
     cands.sort(function (a, c) { return c.pri - a.pri; });
@@ -3266,7 +3298,7 @@ function _aeUpdateLandmarks() {
       if (placed.some(function (q) { return Math.abs(q.s.x - c.s.x) < AE_LM_APART_X && Math.abs(q.s.y - c.s.y) < AE_LM_APART_Y; })) continue;
       placed.push(c);
     }
-  } else if (_ae.target === 'moon') _aeLmLoad();   // at the Moon its names come with it (the Landings chip works first time)
+  } else if (_ae.target === 'moon' || (_aeLmLayerOn() && (_ae.target === 'earth' || _aeIsPlanet(_ae.target)))) _aeLmLoad();   // at the Moon its names come with it (the Landings chip works first time); with Landmarks on, at any body
   while (host.children.length < placed.length) {
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -5765,7 +5797,7 @@ function _aeBindControls() {
     if (!b) return;
     _aeShowGo(false);
     var key = b.getAttribute('data-ae-go'), lmRow = _aeGoLmRow(key);
-    if (lmRow) { _aeLmOpen('moon', lmRow); _aeLmFly('moon', lmRow); return; }
+    if (lmRow) { _aeLmOpen(lmRow.body, lmRow.row); _aeLmFly(lmRow.body, lmRow.row); return; }
     _aePreset(key);
   };
   if (typeof _almDismissable === 'function') {
