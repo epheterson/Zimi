@@ -6133,5 +6133,8 @@
  "shogi.hint.promote": "{move} y promociona",
  "ludo.rollsAgain": "{name} tira otra vez.",
  "hex.rules.you": "Une los dos bordes de color {color} antes de que Zimi una los de color {other}.",
- "hex.rules.two": "Cada jugador une sus dos bordes, rojo y azul. Gana la primera cadena."
+ "hex.rules.two": "Cada jugador une sus dos bordes, rojo y azul. Gana la primera cadena.",
+ "race.matchedShortest": "Igualaste la ruta más corta: {n}.",
+ "race.matchedRoute": "Igualaste la ruta conocida: {n}.",
+ "race.beatRoute": "Superaste la ruta conocida de {n}."
 }

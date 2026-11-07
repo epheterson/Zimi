@@ -4939,6 +4939,7 @@
  "quizzical.verdict.veryGood": "Very good.",
  "race.another": "Try another race",
  "race.arrived": "You reached {target}",
+ "race.beatRoute": "You beat the known route of {n}.",
  "race.bestClicks": "Fewest clicks in a daily race",
  "race.builtIn": "the built-in articles",
  "race.clicks": {
@@ -4969,6 +4970,8 @@
  "race.hot.same": "Same race: {start} to {end}. Links only.",
  "race.hot.turn": "Player {n}’s turn",
  "race.looking": "Looking for your Wikipedia…",
+ "race.matchedRoute": "You matched the known route: {n}.",
+ "race.matchedShortest": "You matched the shortest route: {n}.",
  "race.missing": "That page is not in your Wikipedia",
  "race.new": "A new race",
  "race.noLinks": "Your Wikipedia needs links between its articles. Try again, or play the built-in articles.",

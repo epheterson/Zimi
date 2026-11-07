@@ -6005,5 +6005,8 @@
  "shogi.hint.promote": "{move} und befördere",
  "ludo.rollsAgain": "{name} würfelt noch einmal.",
  "hex.rules.you": "Verbinde deine beiden Ränder ({color}), bevor Zimi seine ({other}) verbindet.",
- "hex.rules.two": "Jeder verbindet seine zwei Ränder, rot und blau. Wer zuerst eine Kette schafft, gewinnt."
+ "hex.rules.two": "Jeder verbindet seine zwei Ränder, rot und blau. Wer zuerst eine Kette schafft, gewinnt.",
+ "race.matchedShortest": "Du hast die kürzeste Route erreicht: {n}.",
+ "race.matchedRoute": "Du hast die bekannte Route erreicht: {n}.",
+ "race.beatRoute": "Du warst besser als die bekannte Route mit {n}."
 }

@@ -6133,5 +6133,8 @@
  "shogi.hint.promote": "{move} e promova",
  "ludo.rollsAgain": "{name} joga de novo.",
  "hex.rules.you": "Ligue as duas bordas de cor {color} antes de o Zimi ligar as de cor {other}.",
- "hex.rules.two": "Cada jogador liga as suas duas bordas, vermelha e azul. Vence a primeira cadeia."
+ "hex.rules.two": "Cada jogador liga as suas duas bordas, vermelha e azul. Vence a primeira cadeia.",
+ "race.matchedShortest": "Você igualou a rota mais curta: {n}.",
+ "race.matchedRoute": "Você igualou a rota conhecida: {n}.",
+ "race.beatRoute": "Você superou a rota conhecida de {n}."
 }

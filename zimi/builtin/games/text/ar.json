@@ -6521,5 +6521,8 @@
  "shogi.hint.promote": "{move} مع الترقية",
  "ludo.rollsAgain": "{name} يرمي مرة أخرى.",
  "hex.rules.you": "صِل الحافتين بلون {color} قبل أن يصل Zimi الحافتين بلون {other}.",
- "hex.rules.two": "يصل كل لاعب حافتيه، الحمراء والزرقاء. تفوز أول سلسلة."
+ "hex.rules.two": "يصل كل لاعب حافتيه، الحمراء والزرقاء. تفوز أول سلسلة.",
+ "race.matchedShortest": "طابقتَ أقصر طريق: {n}.",
+ "race.matchedRoute": "طابقتَ الطريق المعروف: {n}.",
+ "race.beatRoute": "تفوقتَ على الطريق المعروف البالغ {n}."
 }

@@ -5875,5 +5875,8 @@
  "shogi.hint.promote": "{move}，并成",
  "ludo.rollsAgain": "{name}再掷一次。",
  "hex.rules.you": "赶在 Zimi 连通{other}边之前，连通两条{color}边。",
- "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。"
+ "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。",
+ "race.matchedShortest": "你走出了最短路线：{n}。",
+ "race.matchedRoute": "你走出了已知路线：{n}。",
+ "race.beatRoute": "你胜过了已知的 {n} 步路线。"
 }

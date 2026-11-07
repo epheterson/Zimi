@@ -662,3 +662,23 @@ def test_undo_arrow_is_not_mirrored_in_arabic(zimi, webkit_browser):  # noqa: F8
     assert transform in ("none", "matrix(1, 0, 0, 1, 0, 0)"), transform
     shot(page, "12-undo-arabic")
     ctx.close()
+# 12d. Wiki Race: the win sheet says when you matched par (or beat a route that was only known).
+@pytest.mark.parametrize(
+    "kind,par,clicks,key",
+    [
+        ("shortest", 3, 3, "race.matchedShortest"),
+        ("shortest", 3, 5, "race.parShortest"),
+        ("route", 4, 4, "race.matchedRoute"),
+        ("route", 4, 3, "race.beatRoute"),
+        ("route", 4, 6, "race.parRoute"),
+    ],
+)
+def test_wiki_race_win_sheet_notes_par(browser, served, kind, par, clicks, key):
+    c, page = open_game(browser, served, "wikirace.html", ready=False)
+    page.wait_for_function("!!(window.WikiRaceEngine && WikiRaceEngine.parNote)")
+    got = page.evaluate(
+        "([kind, par, clicks]) => WikiRaceEngine.parNote({ parKind: kind, par: par }, clicks)",
+        [kind, par, clicks],
+    )
+    assert got == {"key": key, "n": par}, got
+    c.close()

@@ -6133,5 +6133,8 @@
  "shogi.hint.promote": "{move} et promouvez",
  "ludo.rollsAgain": "{name} rejoue.",
  "hex.rules.you": "Reliez les deux bords {color}s avant que Zimi relie les {other}s.",
- "hex.rules.two": "Chacun relie ses deux bords, rouge et bleu. La première chaîne l’emporte."
+ "hex.rules.two": "Chacun relie ses deux bords, rouge et bleu. La première chaîne l’emporte.",
+ "race.matchedShortest": "Vous avez égalé la route la plus courte : {n}.",
+ "race.matchedRoute": "Vous avez égalé la route connue : {n}.",
+ "race.beatRoute": "Vous avez fait mieux que la route connue de {n}."
 }

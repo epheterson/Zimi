@@ -6005,5 +6005,8 @@
  "shogi.hint.promote": "{move} and promote",
  "ludo.rollsAgain": "{name} rolls again.",
  "hex.rules.you": "Link the two {color} edges before Zimi links the {other} ones.",
- "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins."
+ "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins.",
+ "race.matchedShortest": "You matched the shortest route: {n}.",
+ "race.matchedRoute": "You matched the known route: {n}.",
+ "race.beatRoute": "You beat the known route of {n}."
 }
