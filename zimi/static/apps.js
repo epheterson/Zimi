@@ -248,8 +248,8 @@ function appWait(before, shape) {
   if (!host || !host.parentNode) return none;
   var old = host.parentNode.querySelector('.app-wait'); if (old) old.remove();
   var box = document.createElement('div');
-  box.className = 'app-wait'; box.setAttribute('role', 'status'); box.setAttribute('aria-busy', 'true');
-  // Cards for a page of cards; 'lines' for a page of text (a word, an entry).
+  box.className = 'app-wait' + (shape ? ' app-wait-' + shape : ''); box.setAttribute('role', 'status'); box.setAttribute('aria-busy', 'true');
+  // Cards for a page of cards; 'covers' for a shelf of book covers; 'lines' for a page of text (a word, an entry).
   box.innerHTML = (shape === 'lines'
     ? '<div class="app-wait-lines" aria-hidden="true"><b></b><b></b><b></b></div>'
     : '<div class="app-wait-cards" aria-hidden="true">' + new Array(APP_WAIT_CARDS + 1).join('<div class="app-wait-card"><i></i><b></b><b></b></div>') + '</div>') +
