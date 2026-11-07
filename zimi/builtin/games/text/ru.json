@@ -6262,5 +6262,6 @@
  "shogi.hint.drop": "Поставьте {piece} на {to}",
  "shogi.hint.move": "Передвиньте {piece} с {from} на {to}",
  "shogi.hint.take": "Передвиньте {piece} с {from} на {to} со взятием",
- "shogi.hint.promote": "{move} с превращением"
+ "shogi.hint.promote": "{move} с превращением",
+ "ludo.rollsAgain": "{name} бросает снова."
 }

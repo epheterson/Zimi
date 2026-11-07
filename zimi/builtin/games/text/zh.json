@@ -5872,5 +5872,6 @@
  "shogi.hint.drop": "在 {to} 打入{piece}",
  "shogi.hint.move": "把{piece}从 {from} 走到 {to}",
  "shogi.hint.take": "把{piece}从 {from} 走到 {to}，吃子",
- "shogi.hint.promote": "{move}，并成"
+ "shogi.hint.promote": "{move}，并成",
+ "ludo.rollsAgain": "{name}再掷一次。"
 }

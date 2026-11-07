@@ -6132,5 +6132,6 @@
  "shogi.hint.drop": "הניחו {piece} על {to}",
  "shogi.hint.move": "הזיזו {piece} מ־{from} אל {to}",
  "shogi.hint.take": "הזיזו {piece} מ־{from} אל {to} ואכלו",
- "shogi.hint.promote": "{move} וקדמו"
+ "shogi.hint.promote": "{move} וקדמו",
+ "ludo.rollsAgain": "{name} זורק שוב."
 }

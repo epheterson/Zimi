@@ -6130,5 +6130,6 @@
  "shogi.hint.drop": "Coloca {piece} en {to}",
  "shogi.hint.move": "Mueve {piece} de {from} a {to}",
  "shogi.hint.take": "Mueve {piece} de {from} a {to} y captura",
- "shogi.hint.promote": "{move} y promociona"
+ "shogi.hint.promote": "{move} y promociona",
+ "ludo.rollsAgain": "{name} tira otra vez."
 }

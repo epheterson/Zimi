@@ -288,7 +288,7 @@
     forcedDie = 0;
     function frame() {
       if (n < ROLL_FRAMES && !reduced) { paintDie(1 + Math.floor(Math.random() * 6)); n++; timer = setTimeout(frame, ROLL_FRAME_MS); return; }
-      die = value; paintDie(die); afterRoll();
+      die = value; paintDie(die); setDieState(); afterRoll();
     }
     frame();
   }
@@ -305,7 +305,7 @@
       var again = die === EXIT_ROLL || (waiting && state.tries < MAX_TRIES - 1);
       if (waiting && die !== EXIT_ROLL) state.tries++;
       var note = about('ludo.cannot', seat, { n: die });
-      say(again ? UI.noted(note, T('ludo.rollAgain')) : note);
+      say(again ? UI.noted(note, isHuman(seat) ? T('ludo.rollAgain') : T('ludo.rollsAgain', { name: seatName(seat) })) : note);   // "Roll again" is for the person whose turn it is
       timer = setTimeout(function () { if (again) startTurn(); else { nextSeat(); startTurn(); } }, PASS_MS); return;
     }
     phase = 'move';

@@ -6518,5 +6518,6 @@
  "shogi.hint.drop": "ضع {piece} على {to}",
  "shogi.hint.move": "حرّك {piece} من {from} إلى {to}",
  "shogi.hint.take": "حرّك {piece} من {from} إلى {to} مع الأسر",
- "shogi.hint.promote": "{move} مع الترقية"
+ "shogi.hint.promote": "{move} مع الترقية",
+ "ludo.rollsAgain": "{name} يرمي مرة أخرى."
 }

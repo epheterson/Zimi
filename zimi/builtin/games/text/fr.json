@@ -6130,5 +6130,6 @@
  "shogi.hint.drop": "Parachutez {piece} en {to}",
  "shogi.hint.move": "Déplacez {piece} de {from} à {to}",
  "shogi.hint.take": "Déplacez {piece} de {from} à {to} et prenez",
- "shogi.hint.promote": "{move} et promouvez"
+ "shogi.hint.promote": "{move} et promouvez",
+ "ludo.rollsAgain": "{name} rejoue."
 }

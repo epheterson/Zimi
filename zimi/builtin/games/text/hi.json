@@ -6002,5 +6002,6 @@
  "shogi.hint.drop": "{to} पर {piece} रखें",
  "shogi.hint.move": "{piece} को {from} से {to} पर चलाएँ",
  "shogi.hint.take": "{piece} को {from} से {to} पर चलाएँ और पकड़ें",
- "shogi.hint.promote": "{move} और पदोन्नत करें"
+ "shogi.hint.promote": "{move} और पदोन्नत करें",
+ "ludo.rollsAgain": "{name} फिर से पासा फेंकता है।"
 }

@@ -6002,5 +6002,6 @@
  "shogi.hint.drop": "Drop a {piece} on {to}",
  "shogi.hint.move": "Move a {piece} from {from} to {to}",
  "shogi.hint.take": "Move a {piece} from {from} to {to} and take",
- "shogi.hint.promote": "{move} and promote"
+ "shogi.hint.promote": "{move} and promote",
+ "ludo.rollsAgain": "{name} rolls again."
 }

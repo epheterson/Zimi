@@ -16,10 +16,22 @@ import threading
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from games_wait import frames, game_ready, shell_ready, truthy, visible  # noqa: E402,F401
-from test_games_persist_browser import GAMES as SHIPPED_GAMES, VIEW, browser  # noqa: E402,F401
+from games_wait import (
+    frames,
+    game_ready,
+    shell_ready,
+    truthy,
+    visible,
+)  # noqa: E402,F401
+from test_games_persist_browser import (
+    GAMES as SHIPPED_GAMES,
+    VIEW,
+    browser,
+)  # noqa: E402,F401
 
-GAMES = os.environ.get("GAMES_ROOT") or SHIPPED_GAMES   # GAMES_ROOT: the games folder of another commit, to see a test fail there
+GAMES = (
+    os.environ.get("GAMES_ROOT") or SHIPPED_GAMES
+)  # GAMES_ROOT: the games folder of another commit, to see a test fail there
 
 
 @pytest.fixture(scope="module")
@@ -31,12 +43,15 @@ def served():
     yield "http://127.0.0.1:%d" % srv.server_address[1]
     srv.shutdown()
 
+
 SHOT_DIR = os.environ.get("GAMES_SHOT_DIR")
 
 
 def open_game(browser, served, path, query="", lang=None, ready=True, **ctx):
     ctx.setdefault("reduced_motion", "reduce")
-    c = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True, device_scale_factor=2, **ctx)
+    c = browser.new_context(
+        viewport=VIEW, has_touch=True, is_mobile=True, device_scale_factor=2, **ctx
+    )
     page = c.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -53,16 +68,25 @@ def shot(page, name):
 
 # 1. A language with no text file speaks English throughout (Flags in Japanese: English strings, Japanese country names).
 def test_shipped_language_list_matches_the_text_files():
-    files = sorted(os.path.basename(f)[:-5] for f in glob.glob(os.path.join(GAMES, "text", "*.json")))
+    files = sorted(
+        os.path.basename(f)[:-5]
+        for f in glob.glob(os.path.join(GAMES, "text", "*.json"))
+    )
     src = open(os.path.join(GAMES, "text.js"), encoding="utf-8").read()
     listed = re.search(r"var SHIPPED = \[([^\]]*)\]", src).group(1)
     assert sorted(re.findall(r"'(\w+)'", listed)) == files
 
 
-@pytest.mark.parametrize("lang,expect", [("ja", "en"), ("ko", "en"), ("fr", "fr"), ("pt-BR", "pt-br")])
-def test_a_language_without_a_text_file_is_english_everywhere(browser, served, lang, expect):
+@pytest.mark.parametrize(
+    "lang,expect", [("ja", "en"), ("ko", "en"), ("fr", "fr"), ("pt-BR", "pt-br")]
+)
+def test_a_language_without_a_text_file_is_english_everywhere(
+    browser, served, lang, expect
+):
     c, page = open_game(browser, served, "flags.html", lang=lang)
-    got = page.evaluate("() => [ZimiText.lang, document.documentElement.lang, GamesLib.uiLang(), GamesLib.countryName('Turkey')]")
+    got = page.evaluate(
+        "() => [ZimiText.lang, document.documentElement.lang, GamesLib.uiLang(), GamesLib.countryName('Turkey')]"
+    )
     assert got[:3] == [expect, expect, expect.split("-")[0]], got
     if expect == "en":
         assert got[3] == "Turkey", got
@@ -81,8 +105,17 @@ LOAD_TEXT = """(text) => {
 
 def tatham_save(game, params, desc):
     """The save text the frontend writes (Game > Download save file) for a game of ours: one move to play, no history."""
-    rows = [("SAVEFILE", "Simon Tatham's Portable Puzzle Collection"), ("VERSION", "1"), ("GAME", game), ("PARAMS", params), ("CPARAMS", params),
-            ("SEED", "1"), ("DESC", desc), ("NSTATES", "1"), ("STATEPOS", "1")]
+    rows = [
+        ("SAVEFILE", "Simon Tatham's Portable Puzzle Collection"),
+        ("VERSION", "1"),
+        ("GAME", game),
+        ("PARAMS", params),
+        ("CPARAMS", params),
+        ("SEED", "1"),
+        ("DESC", desc),
+        ("NSTATES", "1"),
+        ("STATEPOS", "1"),
+    ]
     return "".join("%-8s:%d:%s\n" % (k, len(v), v) for k, v in rows)
 
 
@@ -92,22 +125,31 @@ STUCK_AFTER_ONE = "2,3,3,2,3,3,2,3,1,2,1,3,1,2,3,3,1,2,3,2,2,3,1,2,3"
 
 def test_same_game_stuck_has_a_sheet(browser, served):
     c, page = open_game(browser, served, "puzzles/samegame.html")
-    page.wait_for_function(truthy("document.documentElement.classList.contains('zf-running')"))
+    page.wait_for_function(
+        truthy("document.documentElement.classList.contains('zf-running')")
+    )
     page.evaluate(LOAD_TEXT, tatham_save("Same Game", "5x5c3s2", STUCK_AFTER_ONE))
     frames(page, 4)
-    assert page.locator(".ar-sheet-card").count() == 0 or not page.locator(".ar-sheet-card").is_visible()
+    assert (
+        page.locator(".ar-sheet-card").count() == 0
+        or not page.locator(".ar-sheet-card").is_visible()
+    )
     box = page.locator("#puzzlecanvas").bounding_box()
-    for _ in range(2):   # the first tap selects the group, the second removes it
+    for _ in range(2):  # the first tap selects the group, the second removes it
         page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.1)
         frames(page, 4)
     visible(page, ".ar-sheet-card h2", 6000)
     text = page.locator(".ar-sheet-card").inner_text()
-    assert "No moves left" in text and "Undo a few moves" in text and "New game" in text, text
+    assert (
+        "No moves left" in text and "Undo a few moves" in text and "New game" in text
+    ), text
     assert re.search(r"Score\s*1", text), text
     assert "No moves left" in page.locator(".pz-status").inner_text()
     shot(page, "02-samegame-stuck")
     assert not page.errors, page.errors
     c.close()
+
+
 # 3. The keypad takes the game's size (a 5 x 5 Towers takes 1 to 5), Towers says what the edge numbers are, and Mosaic's clues read in dark.
 RUNNING = "document.documentElement.classList.contains('zf-running')"
 DEFAULT_KEYS = {
@@ -149,6 +191,8 @@ def test_mosaic_clues_read_on_the_undecided_squares(browser, served, scheme):
     assert (b + 0.05) / (a + 0.05) >= 4.5, (square, clue)
     shot(page, "03-mosaic-" + scheme)
     c.close()
+
+
 # 4. Carrom: the pills' swatches are the coins (the person's side, whichever it is), and the slider tracks show on a dark page.
 def _rgb(css):
     return tuple(int(v) for v in re.findall(r"\d+", css)[:3])
@@ -193,13 +237,20 @@ def _slider_tracks(browser, served, Image, io):
     c, page = open_game(browser, served, "carrom.html", color_scheme="dark")
     page.click("#cr-slide")
     box = page.locator(".cr-sliders input").first.bounding_box()
-    right = {"x": box["x"] + box["width"] * 0.8, "y": box["y"], "width": box["width"] * 0.18, "height": box["height"]}   # past the thumb: only the track is there
+    right = {
+        "x": box["x"] + box["width"] * 0.8,
+        "y": box["y"],
+        "width": box["width"] * 0.18,
+        "height": box["height"],
+    }  # past the thumb: only the track is there
     img = Image.open(io.BytesIO(page.screenshot(clip=right))).convert("RGB")
     ground = img.getpixel((0, 0))
     far = max(sum(abs(a - b) for a, b in zip(px, ground)) for px in img.getdata())
     assert far > 90, "the track is not drawn against the dark page (%s)" % far
     shot(page, "04-carrom-sliders")
     c.close()
+
+
 # 5. Sky Detective: opens on the game's intro (the Almanac's sky only when asked), and the view holds still from step to step.
 HOST = '<!doctype html><script>window.msgs = []; addEventListener("message", e => msgs.push(e.data));</script><iframe id="reader-frame" src="%s" style="width:390px;height:844px;border:0"></iframe>'
 DOME = "(() => { const r = document.getElementById('sk-dome').getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })()"
@@ -264,6 +315,8 @@ def test_sky_detective_dome_holds_still_through_a_round(browser, served):
         if i < 5:
             page.click("#sk-next")
     c.close()
+
+
 # 6. Babel: once a word is given away the guess field and button are disabled, a "missed" note stands where the instruction was, nothing moves.
 def test_babel_after_giving_up_the_form_is_off_and_says_missed(browser, served):
     c, page = open_game(browser, served, "babel.html")
@@ -287,6 +340,8 @@ def test_babel_after_giving_up_the_form_is_off_and_says_missed(browser, served):
     assert page.is_enabled("#bb-field") and page.is_enabled("#bb-guess")
     assert "Name this word" in page.inner_text("#bb-how")
     c.close()
+
+
 # 7. Drop Pin: the world map fills its box (no empty sea), zooming in goes to the pin, and the answer view holds both pins whole.
 def _world_game(browser, served):
     c, page = open_game(browser, served, "droppin.html")
@@ -347,7 +402,9 @@ def test_drop_pin_zoom_goes_to_the_tap(browser, served):
 def test_drop_pin_answer_pin_is_never_clipped(browser, served, fx, fy):
     c, page = _world_game(browser, served)
     _tap(page, fx, fy)
-    for _ in range(3):   # zoomed in on the pin, the place is out of view until the answer view brings it back
+    for _ in range(
+        3
+    ):  # zoomed in on the pin, the place is out of view until the answer view brings it back
         page.click("#dp-zin")
     page.evaluate("document.getElementById('dp-drop').click()")
     page.wait_for_selector("#dp-world circle.truth")
@@ -365,6 +422,8 @@ def test_drop_pin_answer_pin_is_never_clipped(browser, served, fx, fy):
         % ("c" if fx == 0.5 else "edge" if fx < 0.5 else "edge2"),
     )
     c.close()
+
+
 # 8. Shogi: the hint is in plain words, move lists break between moves (never inside one), the in-hand count badge is whole.
 def test_shogi_hint_is_in_plain_words(browser, served):
     c, page = open_game(browser, served, "shogi.html", "?debug")
@@ -411,14 +470,30 @@ def test_shogi_in_hand_count_badge_is_whole(browser, served):
     import io
 
     Image = pytest.importorskip("PIL.Image")
-    badges = page.evaluate("[...document.querySelectorAll('.sg-h:not(.empty) b')].map(b => { const r = b.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })")
+    badges = page.evaluate(
+        "[...document.querySelectorAll('.sg-h:not(.empty) b')].map(b => { const r = b.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })"
+    )
     assert len(badges) >= 3, badges
-    for x, y, w, h in badges:   # the count's dark disc is whole: both ends of its middle line are the badge's colour, not the piece's
-        img = Image.open(io.BytesIO(page.screenshot(clip={"x": x, "y": y, "width": w, "height": h}))).convert("L")
-        row = [img.getpixel((i, img.height // 2)) for i in (int(img.width * 0.12), int(img.width * 0.88))]
+    for (
+        x,
+        y,
+        w,
+        h,
+    ) in (
+        badges
+    ):  # the count's dark disc is whole: both ends of its middle line are the badge's colour, not the piece's
+        img = Image.open(
+            io.BytesIO(page.screenshot(clip={"x": x, "y": y, "width": w, "height": h}))
+        ).convert("L")
+        row = [
+            img.getpixel((i, img.height // 2))
+            for i in (int(img.width * 0.12), int(img.width * 0.88))
+        ]
         assert max(row) < 110, ("the count badge is covered", row)
     shot(page, "08-shogi-hand")
     c.close()
+
+
 # 9. Makruk and Janggi: the pills say what their number counts. (The default levels are left as they were: see the report.)
 @pytest.mark.parametrize("name,unit", [("makruk", "pieces"), ("janggi", "points")])
 def test_score_pills_say_what_they_count(browser, served, name, unit):
@@ -429,4 +504,36 @@ def test_score_pills_say_what_they_count(browser, served, name, unit):
     )
     assert len(pills) == 2 and all(unit in p for p in pills), pills
     shot(page, "09-%s-pills" % name)
+    c.close()
+
+
+# 10. Ludo: the status words belong to the player whose turn it is (the computer's re-roll is not told to you), and the die's label follows the roll.
+def test_ludo_computers_reroll_is_not_told_to_the_person(browser, served):
+    c, page = open_game(browser, served, "ludo.html", "?debug")
+    page.wait_for_function("window.__ld && window.__ld.phase() === 'roll'")
+    page.evaluate(
+        "(() => { __ld.state().turn = 1; __ld.force(3); __ld.roll(); })()"
+    )  # the computer rolls a 3 with every piece at home: no move, and it tries again
+    page.wait_for_function(
+        "() => /again|rolls/i.test(document.getElementById('ld-status').innerText)",
+        timeout=10000,
+    )
+    text = page.inner_text("#ld-status")
+    assert text.strip() != "Roll again." and "rolls again" in text, text
+    assert "Green" in text, text  # it names the player whose turn it is
+    shot(page, "10-ludo-status")
+    c.close()
+
+
+def test_ludo_die_label_follows_the_roll(browser, served):
+    c, page = open_game(browser, served, "ludo.html", "?debug")
+    page.wait_for_function("window.__ld && window.__ld.phase() === 'roll'")
+    page.evaluate("(() => { __ld.force(3); __ld.roll(); })()")
+    page.wait_for_function(
+        "() => /cannot|can't|no move/i.test(document.getElementById('ld-status').innerText) || /Pick|Tap/i.test(document.getElementById('ld-status').innerText)",
+        timeout=10000,
+    )
+    assert (
+        page.get_attribute("#ld-die", "aria-label") == "Die showing 3"
+    ), page.get_attribute("#ld-die", "aria-label")
     c.close()

@@ -4008,6 +4008,7 @@
  "ludo.rollDie": "Roll the die",
  "ludo.rollTurn": "{name}, roll the die",
  "ludo.rolling": "{name} is rolling",
+ "ludo.rollsAgain": "{name} rolls again.",
  "ludo.seat": "{color} plays",
  "ludo.sent": "{name} sent {list} home",
  "ludo.sent.you": "You sent {list} home",
