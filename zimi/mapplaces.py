@@ -20,7 +20,9 @@ The tile format is Mapbox Vector Tile (protobuf), read here by hand for the
 one layer wanted: no dependency for 60 lines.
 """
 
+import bisect
 import gzip
+import heapq
 import logging
 import math
 import os
@@ -58,10 +60,11 @@ POSTAL_COUNTRIES = ("US", "CA", "AU")
 CLASS_WEIGHT = {"city": 2000, "town": 1000}
 RANK_MAX, RANK_STEP = 99, 5
 CAPITAL_BONUS = {"2": 400, "yes": 400, "4": 150, "3": 150}
-# Autocomplete: the best KEEP places of every prefix up to MAX letters are
-# kept in a table of their own, so a letter or two asks a short table, not
-# every town beginning with it.
-PREFIX_MAX, PREFIX_KEEP = 4, 40
+# Autocomplete: a prefix more than SCAN_MAX rows begin with (up to PREFIX_MAX
+# letters) has its best PREFIX_KEEP places kept in a table of its own, so "s" or
+# "sant" asks a short table, not every town beginning so. A prefix not in it
+# is begun by few enough rows to be read and ordered on the spot.
+PREFIX_MAX, PREFIX_KEEP, SCAN_MAX = 10, 40, 200
 # A name followed by where it is (a qualifier that matched) ranks above one that was not.
 QUALIFIED_BONUS = 100
 SUGGEST_MAX = 8
@@ -294,7 +297,7 @@ def _rows(found):
     One row per word of each name (and of its local name):
     (word, name, class, lat, lng, region, postal, country, iso, local, weight).
     """
-    rows, seen, tops = [], set(), {}
+    rows, seen = [], set()
     for (name, cls, _la, _lo), (lat, lng, extra) in found.items():
         region, postal, country, iso = _where(extra, lat, lng)
         local = extra.get("name", "")
@@ -313,13 +316,36 @@ def _rows(found):
                 region, postal, country, iso, local, weight,
             )  # fmt: skip
             rows.append(row)
-            for n in range(1, min(len(word), PREFIX_MAX) + 1):
-                tops.setdefault(word[:n], []).append(row)
-    top_rows = []
-    for prefix, group in tops.items():
-        group.sort(key=lambda r: (-r[10], r[1]))
-        top_rows.extend((prefix,) + r[1:] for r in group[:PREFIX_KEEP])
-    return rows, top_rows
+    return rows, top_rows(rows)
+
+
+def top_rows(rows):
+    """The table of the best places of each prefix too many rows begin with
+    (SCAN_MAX): (prefix, name, ...) in the columns of ``rows`` after the word.
+    Found by sorting the words and walking down: only a prefix that is heavy is
+    looked into one letter further, so this reads each row once per heavy
+    prefix it is under, not once per letter."""
+    rows.sort(key=lambda r: r[0])
+    words = [r[0] for r in rows]
+    out = []
+
+    def walk(lo, hi, n):
+        i = lo
+        while i < hi:
+            if len(words[i]) < n:  # the word that is the prefix itself
+                i += 1
+                continue
+            prefix = words[i][:n]
+            j = bisect.bisect_left(words, prefix + "\U0010ffff", i, hi)
+            if j - i > SCAN_MAX:
+                best = heapq.nsmallest(PREFIX_KEEP, rows[i:j], key=lambda r: (-r[10], r[1]))
+                out.extend((prefix,) + r[1:] for r in best)
+                if n < PREFIX_MAX:
+                    walk(i, j, n + 1)
+            i = j
+
+    walk(0, len(rows), 1)
+    return out
 
 
 def build_places(zim_name, zim_path):
@@ -495,22 +521,29 @@ def splits(text):
     return out + [(" ".join(words), "")]
 
 
-def _fetch(name, words, qualified=False):
-    """Candidate rows for typed ``words``, the largest places first: from the
-    table of each short prefix's best when one word is short, else the rows
-    whose word starts with the longest typed word."""
-    first = max(words, key=len)
-    # A qualifier asks for places the best few of a prefix may not include.
-    if len(words) == 1 and len(first) <= PREFIX_MAX and not qualified:
-        sql = f"SELECT {_SELECT} FROM top WHERE prefix = ? ORDER BY weight DESC"
-        args = (first,)
-    else:
-        sql = (
-            f"SELECT {_SELECT} FROM places WHERE word >= ? AND word < ?"
-            " ORDER BY weight DESC LIMIT ?"
+def _fetch(name, words):
+    """Candidate rows for typed ``words``, the largest places first. The
+    longest word that few rows begin with is read from the index and ordered
+    (every name has it, so the rest are filtered); when every word is a common
+    start, the best places of the longest one's prefix, from the table of them."""
+    ordered = sorted(set(words), key=len, reverse=True)
+    for word in ordered:
+        rows = _query(
+            name,
+            f"SELECT {_SELECT} FROM top WHERE prefix = ? ORDER BY weight DESC",
+            (word[:PREFIX_MAX],),
         )
-        args = (first, first + "￿", CANDIDATES_MAX)
-    return [_place(r) for r in _query(name, sql, args)]
+        if not rows:  # not a common start: few places begin so
+            rows = _query(
+                name,
+                f"SELECT {_SELECT} FROM places WHERE word >= ? AND word < ?"
+                " ORDER BY weight DESC LIMIT ?",
+                (word, word + "\uffff", CANDIDATES_MAX),
+            )
+            return [_place(r) for r in rows]
+        if word is ordered[0]:
+            best = rows
+    return [_place(r) for r in best]
 
 
 def _best(name, typed, qualifier):
@@ -520,7 +553,7 @@ def _best(name, typed, qualifier):
     if not words:
         return []
     scored, seen = [], set()
-    for p in _fetch(name, words, bool(qualifier)):
+    for p in _fetch(name, words):
         if not qualifies(p, qualifier, prefix=True):
             continue
         key = (p["name"], round(p["lat"], 3), round(p["lng"], 3))

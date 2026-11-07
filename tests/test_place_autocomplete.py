@@ -100,9 +100,14 @@ def _map_files():
     return files
 
 
-@pytest.fixture(scope="module")
-def library(tmp_path_factory):
+# Every test runs twice: with the prefix table holding every prefix more than
+# two rows begin with (so the table answers), and with the real threshold (so
+# nothing is in it and the index is read).
+@pytest.fixture(scope="module", params=[2, mapplaces.SCAN_MAX], ids=["table", "scan"])
+def library(request, tmp_path_factory, monkeypatch_module):
     from conftest_zim import build_fixture_zim
+
+    monkeypatch_module.setattr(mapplaces, "SCAN_MAX", request.param)
 
     root = tmp_path_factory.mktemp("places")
     zdir = root / "zims"
@@ -119,6 +124,12 @@ def library(tmp_path_factory):
     yield MAP
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
     mapplaces._reset_for_tests()
+
+
+@pytest.fixture(scope="module")
+def monkeypatch_module():
+    with pytest.MonkeyPatch.context() as mp:
+        yield mp
 
 
 def _rows(sql, *args):
@@ -195,18 +206,13 @@ def test_a_prefix_offers_the_biggest_places_first_with_where(library):
     assert abs(got[0]["lat"] - 39.80) < 0.01
 
 
-def test_one_letter_asks_the_short_table_not_every_town(library):
-    got = mapplaces.suggest(library, "p")
-    assert got[0]["label"] == "Paris, France"  # rank 1 and a capital
-    conn = sqlite3.connect(mapplaces._builder.path(library))
-    try:
-        plan = conn.execute(
-            "EXPLAIN QUERY PLAN SELECT name FROM top WHERE prefix = ? ORDER BY weight DESC",
-            ("p",),
-        ).fetchall()
-    finally:
-        conn.close()
-    assert any("USING INDEX top_prefix" in str(r) for r in plan), plan
+def test_a_common_start_asks_the_short_table_not_every_town(library):
+    got = mapplaces.suggest(library, "s")
+    assert [p["label"].split(",")[0] for p in got][:2] == ["Springfield", "Springfield"]
+    # Five rows begin with s: more than the threshold, they are in the table.
+    kept = _rows("SELECT COUNT(*) FROM top WHERE prefix = 's'")[0][0]
+    assert kept == (5 if mapplaces.SCAN_MAX == 2 else 0)
+    assert mapplaces.suggest(library, "p")[0]["label"] == "Paris, France"  # rank 1, a capital
 
 
 def test_a_place_with_no_region_in_its_name_does_not_repeat_it(library):

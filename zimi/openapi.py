@@ -113,7 +113,9 @@ def build_openapi():
                         'near:<place> or near:"two words" or near:<lat>,<lng>, then an optional '
                         "distance (25km, 10mi; 25 km when none): places on the installed Kiwix "
                         "maps within it, nearest first, in places (each with km), and what was "
-                        "measured from in near; the other words must be in a place's name.",
+                        "measured from in near; the other words must be in a place's name. "
+                        'The place may say where: near:"Paris, Texas", near:Springfield, IL, '
+                        "near:Paris France.",
                     ),
                     _param(
                         "near_at",
