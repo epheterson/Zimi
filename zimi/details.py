@@ -98,10 +98,11 @@ class DetailsBuilder:
 
         return _index_is_current(self.path(name), zim_path, self.version)
 
-    def write(self, zim_name, zim_path, archive, rows):
+    def write(self, zim_name, zim_path, archive, rows, extra=None):
         """``rows`` into ``zim_name``'s file with the meta current() reads
         back, whole or not at all: written beside it, then renamed over it.
-        Returns how many rows."""
+        ``extra`` is more tables beside the main one, {name: (columns, rows,
+        indexed columns)}. Returns how many rows."""
         from zimi.search import _write_index_meta
 
         db_path = self.path(zim_name)
@@ -118,9 +119,15 @@ class DetailsBuilder:
                 f"INSERT OR REPLACE INTO {self.table} VALUES ({marks})", rows
             )
             for col in self.indexes:
-                conn.execute(
-                    f"CREATE INDEX {self.table}_{col} ON {self.table} ({col})"
+                conn.execute(f"CREATE INDEX {self.table}_{col} ON {self.table} ({col})")
+            for table, (columns, table_rows, indexed) in (extra or {}).items():
+                conn.execute(f"CREATE TABLE {table} ({', '.join(columns)})")
+                conn.executemany(
+                    f"INSERT INTO {table} VALUES ({', '.join('?' * len(columns))})",
+                    table_rows,
                 )
+                for col in indexed:
+                    conn.execute(f"CREATE INDEX {table}_{col} ON {table} ({col})")
             _write_index_meta(conn, archive, zim_path, self.version, len(rows))
             conn.commit()
         except Exception:
@@ -245,7 +252,9 @@ class DetailsBuilder:
     def build_all(self):
         """Every ZIM of this kind, one after another, on the caller's thread
         (the startup worker's)."""
-        ours = self.zims if callable(self.zims) else lambda z: z.get("kind") == self.zims
+        ours = (
+            self.zims if callable(self.zims) else lambda z: z.get("kind") == self.zims
+        )
         for z in list(_srv._zim_list_cache or []):
             name = z.get("name")
             if ours(z) and name and self._claim(name):

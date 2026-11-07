@@ -170,7 +170,7 @@ def test_the_towns_are_read_from_the_tiles_where_they_are(tmp_path, monkeypatch)
     _library(tmp_path, monkeypatch)
     archive = srv.open_archive(os.path.join(srv.ZIM_DIR, f"{NAME}.zim"))
     found = mapplaces.read_places(archive)
-    by_name = {(name, cls): ll for (name, cls, _a, _o), ll in found.items()}
+    by_name = {(name, cls): ll[:2] for (name, cls, _a, _o), ll in found.items()}
     assert ("Riverton", "city") in by_name
     lat, lng = by_name[("Springfield", "town")]
     assert abs(lat - SPRINGFIELD[0]) < 0.01 and abs(lng - SPRINGFIELD[1]) < 0.01, (lat, lng)
