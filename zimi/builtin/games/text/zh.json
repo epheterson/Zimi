@@ -3915,6 +3915,7 @@
  "mahjong.hint": "这两张可以配对。",
  "mahjong.layout": "牌阵",
  "mahjong.layout.pyramid": "金字塔",
+ "mahjong.layout.tower": "高塔",
  "mahjong.layout.towers": "双塔",
  "mahjong.layout.turtle": "乌龟",
  "mahjong.left": "剩余牌数",

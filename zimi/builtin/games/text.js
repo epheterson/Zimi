@@ -4035,6 +4035,7 @@
  "mahjong.hint": "These two match.",
  "mahjong.layout": "Layout",
  "mahjong.layout.pyramid": "Pyramid",
+ "mahjong.layout.tower": "Tower",
  "mahjong.layout.towers": "Twin towers",
  "mahjong.layout.turtle": "Turtle",
  "mahjong.left": "Tiles left",

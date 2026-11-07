@@ -160,3 +160,16 @@ def test_card_game_counts_take_their_plural(browser, served, lang, key, one, wro
     got = page.evaluate("([k]) => ZimiText.T(k, { name: 'Zimi', n: 1, label: 'x' })", [key])
     assert one in got and wrong not in got, got
     c.close()
+
+
+# 5. Mahjong on an upright phone: the board fits the width and the height, and a tile is wide enough to tap.
+def test_mahjong_uses_the_phone_screen(browser, served):
+    c, page = open_game(browser, served, "mahjong", query="")
+    page.wait_for_selector(".mj-t")
+    frames(page, 3)
+    w, h, stage_h = page.evaluate("() => { const r = document.querySelector('.mj-t').getBoundingClientRect(), s = document.getElementById('mj-stage').getBoundingClientRect(); return [r.width, r.height, s.height]; }")
+    assert w >= 34 and h >= 44, (w, h)
+    assert stage_h >= 0.5 * VIEW["height"], stage_h
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth + 1")
+    shot(page, "05-mahjong-390")
+    c.close()
