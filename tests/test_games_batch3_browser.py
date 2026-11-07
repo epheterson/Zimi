@@ -419,3 +419,14 @@ def test_shogi_in_hand_count_badge_is_whole(browser, served):
         assert max(row) < 110, ("the count badge is covered", row)
     shot(page, "08-shogi-hand")
     c.close()
+# 9. Makruk and Janggi: the pills say what their number counts. (The default levels are left as they were: see the report.)
+@pytest.mark.parametrize("name,unit", [("makruk", "pieces"), ("janggi", "points")])
+def test_score_pills_say_what_they_count(browser, served, name, unit):
+    c, page = open_game(browser, served, name + ".html")
+    page.wait_for_selector(".bg-score .wk-who")
+    pills = page.eval_on_selector_all(
+        ".bg-score .wk-who", "ws => ws.map(w => w.textContent)"
+    )
+    assert len(pills) == 2 and all(unit in p for p in pills), pills
+    shot(page, "09-%s-pills" % name)
+    c.close()
