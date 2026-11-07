@@ -38,6 +38,14 @@ Use as much as you need:
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
+| Almanac | Solar system |
+|---------|--------------|
+| ![Almanac](screenshots/almanac.png) | ![Solar system](screenshots/solar-system.png) |
+
+| Games | ZimCity |
+|-------|---------|
+| ![Games](screenshots/games.png) | ![ZimCity](screenshots/zimcity.png) |
+
 | Zimipedia | Bookshelf |
 |-----------|-----------|
 | ![Zimipedia](screenshots/zimipedia.png) | ![Bookshelf](screenshots/bookshelf.png) |
