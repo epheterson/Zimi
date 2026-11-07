@@ -562,3 +562,48 @@ def test_ur_movable_pieces_and_destinations_look_different(browser, served):
     assert not set(look["src"]) & set(look["dst"]), look
     shot(page, "11-ur-moves")
     c.close()
+# 12a. Inside Zimi the header holds Hnefatafl's whole name (it was cut to "Hnefat..." once the other buttons arrived).
+from test_games_final_fixes import (
+    _open as _zimi_open,
+    browser as webkit_browser,
+    zimi,
+)  # noqa: E402,F401
+
+TITLE_FITS = """() => { const e = document.getElementById('game-title'), r = document.createRange(); r.selectNodeContents(e);
+  const cs = getComputedStyle(e), pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  return [e.textContent, r.getBoundingClientRect().width, e.clientWidth - pad, cs.fontSize]; }"""
+
+
+def test_hnefatafl_title_fits_in_zimis_header(zimi, webkit_browser):  # noqa: F811
+    ctx, page, errors = _zimi_open(
+        webkit_browser, zimi, "hnefatafl.html", scheme="light"
+    )
+    page.wait_for_function(
+        "() => document.body.classList.contains('game-page') && document.getElementById('game-title').textContent.length > 3"
+    )
+    page.wait_for_timeout(1500)  # the header's other buttons arrive after the first fit
+    name, scroll, client, size = page.evaluate(TITLE_FITS)
+    assert scroll <= client + 0.02, (name, scroll, client, size)   # the text against the room inside the padding
+    shot(page, "12-hnefatafl-header")
+    ctx.close()
+# 12b. A drawn game says "Draw" once: the reason that follows does not start with "A draw:" again.
+@pytest.mark.parametrize(
+    "name,hook,result",
+    [
+        ("xiangqi", "__xq", "repetition"),
+        ("xiangqi", "__xq", "sixty"),
+        ("shogi", "__sg", "repetition"),
+    ],
+)
+def test_draw_is_said_once(browser, served, name, hook, result):
+    c, page = open_game(browser, served, name + ".html", "?debug")
+    page.wait_for_function("window.%s" % hook)
+    page.evaluate("(r) => %s.finish({ over: true, result: r })" % hook, result)
+    visible(page, ".ar-sheet-card h2", 6000)
+    title = page.inner_text(".ar-sheet-card h2")
+    body = page.inner_text(".ar-sheet-card")
+    status = page.inner_text(".bg-status")
+    assert title == "Draw" and body.lower().count("draw") == 1, body
+    assert status.lower().count("draw") == 1, status
+    shot(page, "12-draw-" + name)
+    c.close()

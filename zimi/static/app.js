@@ -17004,10 +17004,17 @@ function _unzoomPage() {
 // _GAME_TITLE_MIN_PX, always on one line (the games' own bar does the same, shell.js fitTitle); one still too long ends in
 // the stylesheet's ellipsis, never cut dead and never wrapped.
 var _GAME_TITLE_MIN_PX = 11;
+// Does the text run past the room inside the box's padding? (scrollWidth counts the padding, so a name half a pixel too wide
+// for the room still read as fitting, and the stylesheet's ellipsis cut it: "Hnefat...".)
+function _titleOverflows(el) {
+  var cs = getComputedStyle(el), r = document.createRange();
+  r.selectNodeContents(el);
+  return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.01;
+}
 function _fitGameTitle(el) {
   el.style.fontSize = '';
   var px = parseFloat(getComputedStyle(el).fontSize);
-  while (el.scrollWidth > el.clientWidth + 0.5 && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
+  while (_titleOverflows(el) && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
