@@ -266,6 +266,46 @@ def test_a_drag_with_a_zone_lays_a_row_and_undo_takes_the_last_one_back(browser,
     assert pg.evaluate("() => document.getElementById('cy-undo').disabled")
 
 
+def test_undo_says_what_it_took_back_at_once(browser, site):
+    """Undo is not silent: the status line names the tool and the money returned the moment it is pressed, even right
+    after another line was shown, and the taken-back tiles are flashed on the map."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="residential"]')
+    y = box["top"] + box["h"] * 0.55
+    stroke(pg, [(60, y), (70, y)])
+    pg.evaluate("() => { window.__zimcity.step(2); }")
+    pg.click("#cy-undo")
+    line = pg.evaluate("() => document.getElementById('cy-msg').textContent")
+    assert line.startswith("Undone: Homes, $") and line.endswith(" back"), line
+    assert pg.evaluate("() => !!window.__zimcity.view.pulse")
+
+
+def test_a_kept_city_has_a_name_the_player_can_change(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="road"]')
+    y = box["top"] + box["h"] * 0.5
+    stroke(pg, [(x, y) for x in range(40, 200, 12)])
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    name = OURS + " .cy-kept-name"
+    assert pg.input_value(name) == "City 1"
+    pg.fill(name, "Zosia Falls")
+    pg.keyboard.press("Enter")
+    kept = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))")
+    assert kept[0]["name"] == "Zosia Falls" and kept[0]["data"]["name"] == "Zosia Falls"
+    pg.click(OURS + " .gs-x")
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    assert pg.input_value(name) == "Zosia Falls"   # still there when the list is opened again
+    pg.fill(name, "   ")   # a blank name keeps the old one
+    pg.keyboard.press("Enter")
+    assert pg.input_value(name) == "Zosia Falls"
+
+
 def test_an_unpowered_zone_says_why_it_is_not_growing(browser, site):
     pg = phone(browser, site)
     box = pg.evaluate(CLEAR)

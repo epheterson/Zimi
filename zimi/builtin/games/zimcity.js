@@ -351,7 +351,7 @@ function onStroke(tile, done) {
   var built = Tools.build(city, held, tiles);
   stroke = null; view.ghost = null;
   if (built.ok) {
-    lastBuilt = built.undo; undoBtn.disabled = false;
+    lastBuilt = built.undo; lastBuilt.tool = held; undoBtn.disabled = false;
     if (OPENING[held]) { say(T(OPENING[held])); news(OPENING[held]); react(held); }
     if (!city.built) city.built = true;
     advisor();
@@ -590,7 +590,7 @@ function summary() {
 var lastBuilt = null, undoBtn = $('cy-undo');
 undoBtn.addEventListener('click', function () {
   if (!lastBuilt) return;
-  if (Tools.undo(city, lastBuilt)) { status.say(T('city.undo.done')); shownAt = Date.now(); strip(); advisor(); }
+  if (Tools.undo(city, lastBuilt)) { shownAt = 0; say(T('city.undo.done', { what: T('city.tool.' + lastBuilt.tool), money: money(lastBuilt.cost) }), true); strip(); advisor(); view.flash(lastBuilt.tiles); }
   else say(T('city.undo.grown'), true);
   lastBuilt = null; undoBtn.disabled = true;
   Shell.saveNow();
@@ -758,16 +758,36 @@ function awaySheet(r) {
 var KEPT_KEY = 'zimi.zimcity.kept', KEPT_MAX = 5;
 function kept() { try { var v = JSON.parse(localStorage.getItem(KEPT_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
 function putKept(list) { try { localStorage.setItem(KEPT_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
-function card() { var dt = city.sim.getDate(); return { at: Date.now(), month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() }; }
+var KEPT_NAME_MAX = 24;
+// A kept city has a name: the one it has (a scenario's, a ready-made city's, or one given before), else "City n" with the
+// first n no kept city uses.
+function nameFor(l) {
+  if (city.name) return city.name;
+  var n = l.length + 1, used = l.map(function (k) { return k.name; });
+  while (used.indexOf(T('city.k.dflt', { n: n })) >= 0) n++;
+  return T('city.k.dflt', { n: n });
+}
+function card(l) {
+  var dt = city.sim.getDate(), name = nameFor(l || kept());
+  city.name = name;
+  return { at: Date.now(), name: name, month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() };
+}
 var cities = {
   list: kept, max: KEPT_MAX,
   keep: function () { var l = kept(); if (l.length >= KEPT_MAX) return false; l.unshift(card()); return putKept(l); },
   remove: function (i) { var l = kept(); l.splice(i, 1); putKept(l); },
+  // The player's name for a kept city (an empty one keeps the old); the city it holds carries it when opened.
+  rename: function (i, name) {
+    var l = kept(), k = l[i], n = String(name || '').trim().slice(0, KEPT_NAME_MAX);
+    if (!k || !n) return k ? k.name : '';
+    k.name = k.data.name = n; putKept(l);
+    return n;
+  },
   // Opening a kept city puts the one in progress in its place (when anything has been built), so nothing is lost.
   open: function (i) {
     var l = kept(), want = l[i];
     if (!want) return;
-    if (city.built) l[i] = card(); else l.splice(i, 1);
+    if (city.built) l[i] = card(l.filter(function (k, j) { return j !== i; })); else l.splice(i, 1);
     putKept(l);
     unpack(want.data);
     Shell.saveNow();

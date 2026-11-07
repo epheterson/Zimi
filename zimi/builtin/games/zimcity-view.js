@@ -254,11 +254,22 @@ View.prototype.draw = function (now) {
   this._drawSprites(ctx);
   if (this.follower) this._drawFollower(ctx);
   if (this.ghost) this._drawGhost(ctx);
+  if (this.pulse) this._drawPulse(ctx, now);
   if (this.cursor) {   // the keyboard's tile: the focus ring's amber
     ctx.strokeStyle = getComputedStyle(this.canvas).getPropertyValue('--accent') || '#f59e0b';
     ctx.lineWidth = 2 / c.s;
     ctx.strokeRect(this.cursor.x * TILE, this.cursor.y * TILE, TILE, TILE);
   }
+};
+
+// Where something was just taken back: its tiles wash amber and fade out over PULSE_MS.
+var PULSE_MS = 900;
+View.prototype.flash = function (tiles) { this.pulse = { tiles: tiles, at: performance.now() }; };
+View.prototype._drawPulse = function (ctx, now) {
+  var p = this.pulse, left = 1 - ((now || performance.now()) - p.at) / PULSE_MS;
+  if (left <= 0) { this.pulse = null; return; }
+  ctx.fillStyle = 'rgba(245, 158, 11, ' + (0.55 * left).toFixed(3) + ')';
+  p.tiles.forEach(function (t) { ctx.fillRect(t[0] * TILE, t[1] * TILE, TILE, TILE); });
 };
 
 // The citizen being followed: a figure on the road (a dot with a ring, amber when stuck in traffic) and the name over

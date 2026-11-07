@@ -199,9 +199,12 @@ export function citiesSheet(s) {
   body.unshift(keep);
   if (!list.length) body.push(el('p', 'gs-text', s.T('city.k.none')));
   list.forEach(function (k, i) {
-    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what');
-    what.appendChild(el('b', '', s.dateOf(k.month, k.year)));
-    what.appendChild(el('small', '', s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
+    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what'), name = el('input', 'cy-kept-name');
+    name.type = 'text'; name.maxLength = 24; name.value = k.name || ''; name.setAttribute('aria-label', s.T('city.k.name'));
+    name.addEventListener('change', function () { name.value = c.rename(i, name.value) || name.value; });
+    name.addEventListener('keydown', function (e) { if (e.key === 'Enter') name.blur(); });
+    what.appendChild(name);
+    what.appendChild(el('small', '', s.dateOf(k.month, k.year) + ' \u00b7 ' + s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
     var open = el('button', 'ar-btn', s.T('city.k.open')), del = el('button', 'ar-btn', s.T('city.k.delete'));
     open.type = del.type = 'button';
     open.addEventListener('click', function () { api.close(); c.open(i); });
