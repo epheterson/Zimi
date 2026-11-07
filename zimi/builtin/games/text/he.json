@@ -1021,6 +1021,7 @@
  "city.class.village": "כפר",
  "city.climate": "אקלים",
  "city.cost.tile": "{money} למשבצת",
+ "city.cost.tileWater": "{money} למשבצת, {water} מעל מים",
  "city.date": "{month} {year}",
  "city.demand": "ביקוש: מגורים {homes}, מסחר {shops}, תעשייה {industry}",
  "city.demand.down": "יורד",

@@ -983,6 +983,7 @@
  "city.class.village": "Dorf",
  "city.climate": "Klima",
  "city.cost.tile": "{money} je Feld",
+ "city.cost.tileWater": "{money} je Feld, {water} über Wasser",
  "city.date": "{month} {year}",
  "city.demand": "Nachfrage: Wohnen {homes}, Läden {shops}, Industrie {industry}",
  "city.demand.down": "fallend",

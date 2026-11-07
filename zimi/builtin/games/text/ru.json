@@ -1059,6 +1059,7 @@
  "city.class.village": "Деревня",
  "city.climate": "Климат",
  "city.cost.tile": "{money} за клетку",
+ "city.cost.tileWater": "{money} за клетку, {water} над водой",
  "city.date": "{month} {year}",
  "city.demand": "Спрос: жильё {homes}, магазины {shops}, промышленность {industry}",
  "city.demand.down": "падает",

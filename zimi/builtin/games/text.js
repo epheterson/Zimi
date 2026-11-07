@@ -1018,6 +1018,7 @@
  "city.class.village": "Village",
  "city.climate": "Climate",
  "city.cost.tile": "{money} a tile",
+ "city.cost.tileWater": "{money} a tile, {water} over water",
  "city.date": "{month} {year}",
  "city.demand": "Demand: homes {homes}, shops {shops}, industry {industry}",
  "city.demand.down": "falling",

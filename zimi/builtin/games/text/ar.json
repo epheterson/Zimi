@@ -1135,6 +1135,7 @@
  "city.class.village": "قرية",
  "city.climate": "المناخ",
  "city.cost.tile": "{money} للمربع",
+ "city.cost.tileWater": "{money} للمربع، {water} فوق الماء",
  "city.date": "{month} {year}",
  "city.demand": "الطلب: المساكن {homes}، المتاجر {shops}، الصناعة {industry}",
  "city.demand.down": "ينخفض",

@@ -70,6 +70,16 @@ function seeded(seed, fn) {
   check(built.ok && cy.sim.budget.totalFunds === funds - r.cost, 'building spends what the ghost said');
   check(cy.map.getTileValue(25, 24) !== TV.DIRT, 'and the road is on the map');
 
+  // The label says what a tile costs over water (a bridge), and a stroke over four water tiles costs exactly that much more.
+  const wet = city(21);
+  for (let x = 30; x < 34; x++) wet.map.setTile(x, 24, TV.RIVER, 0);
+  const dry = Tools.trial(wet, 'road', [[20, 24]].concat(Tools.steps([20, 24], [28, 24])));
+  Tools.drop(wet, 'road');
+  const across = Tools.trial(wet, 'road', [[20, 24]].concat(Tools.steps([20, 24], [39, 24])));
+  Tools.drop(wet, 'road');
+  check(Tools.waterCostOf('road') === 50 && Tools.waterCostOf('wire') === 25 && Tools.waterCostOf('rail') === 100 && Tools.waterCostOf('park') === 0, 'the water prices are the engine\'s');
+  check(across.cost === 16 * Tools.costOf('road') + 4 * Tools.waterCostOf('road') && dry.cost === 9 * Tools.costOf('road'), 'a road over four water tiles costs $50 each there and $10 elsewhere (' + across.cost + ')');
+
   // A zone on the road needs bulldozing first; a city short of money is told by how much, and nothing is built.
   const onRoad = Tools.trial(cy, 'residential', [[25, 24]]);
   Tools.drop(cy, 'residential');

@@ -945,6 +945,7 @@
  "city.class.village": "村庄",
  "city.climate": "气候",
  "city.cost.tile": "每格 {money}",
+ "city.cost.tileWater": "每格 {money}，水上 {water}",
  "city.date": "{year} 年 {month}",
  "city.demand": "需求：住宅{homes}，商业{shops}，工业{industry}",
  "city.demand.down": "下降",

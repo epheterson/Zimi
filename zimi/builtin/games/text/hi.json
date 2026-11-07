@@ -983,6 +983,7 @@
  "city.class.village": "गाँव",
  "city.climate": "जलवायु",
  "city.cost.tile": "{money} प्रति खाना",
+ "city.cost.tileWater": "{money} प्रति खाना, पानी पर {water}",
  "city.date": "{month} {year}",
  "city.demand": "माँग: घर {homes}, दुकानें {shops}, उद्योग {industry}",
  "city.demand.down": "घट रही",

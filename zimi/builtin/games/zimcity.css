@@ -38,7 +38,7 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 
 /* The held tool's line and the tray, clear of the home indicator. */
 .cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + var(--safe-b)); display: flex; flex-direction: column; gap: var(--sp-2); }
-.cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-variant-numeric: tabular-nums; }
 .cy-held.cy-bad { color: var(--bad); }
 .cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
 .cy-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer; touch-action: manipulation; }
@@ -81,7 +81,6 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
   .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cy-tool { min-height: var(--target); }
   .cy-tool .cy-tool-l { display: none; }
-  .cy-held { white-space: normal; }
 }
 
 /* The news card: an article's lead over the top of the map when something happens that the library knows about. */

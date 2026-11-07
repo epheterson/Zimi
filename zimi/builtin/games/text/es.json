@@ -1021,6 +1021,7 @@
  "city.class.village": "Aldea",
  "city.climate": "Clima",
  "city.cost.tile": "{money} por casilla",
+ "city.cost.tileWater": "{money} por casilla, {water} sobre agua",
  "city.date": "{month} {year}",
  "city.demand": "Demanda: viviendas {homes}, tiendas {shops}, industria {industry}",
  "city.demand.down": "en baja",

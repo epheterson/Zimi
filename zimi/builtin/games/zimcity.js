@@ -261,7 +261,9 @@ function iconSvg(name) {
   return svg;
 }
 function costWords(name) {
-  return Tools.isDrawn(name) ? T('city.cost.tile', { money: money(Tools.costOf(name)) }) : money(Tools.costOf(name));
+  if (!Tools.isDrawn(name)) return money(Tools.costOf(name));
+  var water = Tools.waterCostOf(name);   // a road over water is a bridge, five times the price: said before the stroke, not found in the total
+  return water ? T('city.cost.tileWater', { money: money(Tools.costOf(name)), water: money(water) }) : T('city.cost.tile', { money: money(Tools.costOf(name)) });
 }
 function trayButton(name, label) {
   var b = d.createElement('button');

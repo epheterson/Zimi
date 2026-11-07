@@ -262,3 +262,15 @@ def test_before_the_first_picture_the_map_is_the_lands_colour_not_a_blank_sheet(
         with open(os.path.join(SHOTS, "zimcity-before-the-map.png"), "wb") as f:
             f.write(base64.b64decode(data))
     ctx.close()
+
+
+@pytest.mark.parametrize("lang", ["en", "ru"])
+def test_the_road_says_before_the_stroke_what_a_bridge_costs(browser, site, lang):
+    """"$10 a tile" was all it said; a road over water is $50 a tile and the total came as a surprise."""
+    pg = _open(browser, site, 390, 844, lang)
+    pg.click('.cy-tool[data-tool="road"]')
+    if lang == "en":
+        assert pg.text_content("#cy-held") == "Road: $10 a tile, $50 over water"
+    got = pg.evaluate("() => { const h = document.getElementById('cy-held'); return [h.scrollHeight, h.clientHeight, document.documentElement.scrollWidth - innerWidth]; }")
+    assert got[0] <= got[1] + 1 and got[2] <= 0, got
+    shot(pg, "zimcity-road-held-" + lang)

@@ -30,6 +30,8 @@ var BUILDINGS = {
   solar: [3500, Modern.SOLAR, 3, false], wind: [2500, Modern.WIND, 3, false], datacenter: [12000, Modern.DATACENTER, 3, false]
 };
 export var PER_TILE = { road: 10, wire: 5, rail: 20, park: 10, bulldozer: 1 };
+// What a tile costs over water (the engine's bridges and lines laid across it), for the tools that have one.
+export var OVER_WATER = { road: 50, wire: 25, rail: 100 };
 
 export function makeTools(map) {
   var t = { road: new RoadTool(map), wire: new WireTool(map), rail: new RailTool(map), park: new ParkTool(map), bulldozer: new BulldozerTool(map) };
@@ -41,6 +43,7 @@ export function isDrawn(name) { return name in PER_TILE; }
 var ZONES = ['residential', 'commercial', 'industrial'];
 export function isSingle(name) { return !!BUILDINGS[name] && ZONES.indexOf(name) < 0; }
 export function sizeOf(name) { return BUILDINGS[name] ? BUILDINGS[name][2] : 1; }
+export function waterCostOf(name) { return OVER_WATER[name] || 0; }
 export function costOf(name) { return BUILDINGS[name] ? BUILDINGS[name][0] : PER_TILE[name]; }
 
 // Try a stroke: the tool along `tiles` ([[x, y]], in order; for a building, the centre of each footprint) on the pending

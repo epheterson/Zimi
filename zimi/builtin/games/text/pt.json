@@ -1021,6 +1021,7 @@
  "city.class.village": "Vilarejo",
  "city.climate": "Clima",
  "city.cost.tile": "{money} por casa",
+ "city.cost.tileWater": "{money} por casa, {water} sobre água",
  "city.date": "{month} {year}",
  "city.demand": "Demanda: moradias {homes}, lojas {shops}, indústria {industry}",
  "city.demand.down": "em baixa",
