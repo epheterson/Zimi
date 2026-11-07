@@ -3063,6 +3063,7 @@
   "tb_kn_place_landmarks": "Wahrzeichen in Gehe zu",
   "tb_kn_place_alt": "Flughöhe über einem Ort",
   "tb_kn_place_match": "Ein Artikel gilt als der des Ortes innerhalb von",
+  "tb_kn_place_map": "Kartenzoom, wenn ein gewählter Ort seine Karte öffnet",
   "tb_kn_craft_view": "Raumfahrzeuge im Bild bei (× ihrer Breite)",
   "tb_k_name": "Name",
   "tb_k_value": "Wert",

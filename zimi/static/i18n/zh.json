@@ -3063,6 +3063,7 @@
   "tb_kn_place_landmarks": "“前往”中的地标",
   "tb_kn_place_alt": "飞到某地上空的高度",
   "tb_kn_place_match": "文章位于该地多远范围内算作该地的文章",
+  "tb_kn_place_map": "所选地点打开地图时的缩放级别",
   "tb_kn_craft_view": "航天器取景距离（× 其宽度）",
   "tb_k_name": "名称",
   "tb_k_value": "数值",

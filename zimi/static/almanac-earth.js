@@ -3790,6 +3790,7 @@ function _aeRefAxesRows() {
   add('place.landmarks', _aeT('tb_kn_place_landmarks'), 'landmarks-v1.json', '', 'Wikidata (CC0)');
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
+  add('place.map', _aeT('tb_kn_place_map'), AE_MAP_PLACE_ZOOM, '', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
   return rows;
 }
@@ -3872,21 +3873,29 @@ function _aeDrawMini() {
 var AE_MAP_HANDOFF_DIST = 1.25;            // Earth radii from the centre: ~1,600 km up, a region on screen
 var AE_MAP_M_PER_PX_Z0 = 156543.034;       // a web map's metres per pixel at zoom 0, at the equator
 var AE_MAP_ZOOM_RANGE = [2, 17];
+var AE_MAP_PLACE_ZOOM = 12;                // a place picked in Go to opens the map here: a town and its streets on screen
 function _aeMapZims() { return typeof _installedMaps === 'function' ? _installedMaps() : []; }
 function _aeShowMapHere() {
   var row = _aeById('ae-maprow');
   if (!row) return;
-  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && _ae.dist <= AE_MAP_HANDOFF_DIST && _aeMapZims().length > 0;
+  // Close enough that the globe is a blur, or a place picked (its flight stops higher, where the Earth's map ends).
+  var near = _ae.dist <= AE_MAP_HANDOFF_DIST || !!_ae.place;
+  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && near && _aeMapZims().length > 0;
   if (row.hidden === on) row.hidden = !on;
 }
 function _aeOpenMapHere() {
   var sc = _ae.scene, maps = _aeMapZims();
   if (!sc || !maps.length || !window.AlmanacLinks || typeof mapPositionHash !== 'function') return;
-  var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
-  var g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, sc.gast));   // the camera looks at the centre: the point below it
-  var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
-  var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
-  var zoom = _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]);
+  var g, zoom;
+  if (_ae.place) {
+    g = { lat: _ae.place.lat, lon: _ae.place.lon }; zoom = AE_MAP_PLACE_ZOOM;
+  } else {
+    var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
+    g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, sc.gast));   // the camera looks at the centre: the point below it
+    var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
+    var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
+    zoom = _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]);
+  }
   var last = typeof _lastMapVisit === 'function' ? _lastMapVisit() : null;
   var z = (last && last.zim) || maps[0];
   AlmanacLinks.openHit({ zim: z.name, path: z.main_path, title: typeof _mapName === 'function' ? _mapName(z) : z.title },

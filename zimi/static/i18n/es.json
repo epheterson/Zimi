@@ -3063,6 +3063,7 @@
   "tb_kn_place_landmarks": "Lugares notables en Ir a",
   "tb_kn_place_alt": "Altitud de vuelo sobre un lugar",
   "tb_kn_place_match": "Un artículo cuenta como el del lugar a menos de",
+  "tb_kn_place_map": "Zoom del mapa al abrir un lugar elegido",
   "tb_kn_craft_view": "Naves encuadradas a (× su anchura)",
   "tb_k_name": "Nombre",
   "tb_k_value": "Valor",
