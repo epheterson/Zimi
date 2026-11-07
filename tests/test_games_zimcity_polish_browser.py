@@ -58,3 +58,13 @@ def test_a_home_tapped_just_under_a_road_lands_flush_against_it(browser, site):
         "([x, y]) => window.__zimcity.city.map.getTile(x, y).isZone()",
         [left + 1, top + 1],
     )
+
+
+def test_unwired_zones_are_asked_to_be_connected_in_four_words(browser, site):
+    from test_games_zimcity_browser import TOWN
+
+    pg = phone(browser, site)
+    pg.evaluate(TOWN)
+    pg.wait_for_timeout(1300)
+    assert pg.text_content("#cy-msg") == "Connect the zones to power"
+    shot(pg, "zimcity-connect-power")

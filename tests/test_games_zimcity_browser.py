@@ -391,7 +391,7 @@ def test_the_advisor_follows_a_city_built_without_a_finger(browser, site):
     pg = phone(browser, site)
     pg.evaluate(TOWN)
     pg.wait_for_timeout(1300)
-    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Run a power line to the zones that flash"
+    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Connect the zones to power"
 
 
 def test_the_city_is_never_painted_whole(browser, site):
@@ -888,7 +888,7 @@ def test_brownouts_with_power_to_spare_ask_for_a_line_not_a_plant(browser, site)
       c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
       c.shortAt = c.sim._cityTime; c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
       return out; }""")
-    assert "Run a power line to the zones that flash" in said[0] and not any(s.startswith("Brownouts") for s in said[0]), said
+    assert "Connect the zones to power" in said[0] and not any(s.startswith("Brownouts") for s in said[0]), said
     assert any(s.startswith("Brownouts") for s in said[1]), said
 
 
