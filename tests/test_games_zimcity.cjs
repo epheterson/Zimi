@@ -237,6 +237,8 @@ function seeded(seed, fn) {
     return out;
   });
   const idleOf = (id, seeds) => seeds.map((s) => lived(id, s, null));
+  // Every scenario asks for play: left alone from the start, each is lost (San Francisco opens a metropolis; its quake ends that).
+  Scen.SCENARIOS.forEach((sc) => check(lived(sc.id, 1, null) === 'lose', sc.id + ' left alone is lost'));
   check(idleOf('tokyo', [1, 2, 3]).every((o) => o === 'lose'), 'a Tokyo left alone for five years is lost');
   check(Scen.reading(seeded(3, () => scenCity('tokyo', 3)).sim, Scen.SCENARIOS.find((x) => x.id === 'tokyo')).now < Scen.TOKYO_GOAL, 'and opens under its goal, so the city has something to do');
   check(lived('tokyo', 3, (c) => { c.sim.budget.cityTax = 4; }) === 'win', 'and Tokyo is won by a city that cuts its taxes to 4 (seed 3)');
