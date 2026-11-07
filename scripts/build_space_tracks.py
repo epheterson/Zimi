@@ -264,10 +264,14 @@ REF_PROBE_DATES = {
     "voyager1": ["1985-06-01", "2012-09-01", "2026-10-13"],
     "voyager2": ["1986-02-01", "2008-03-01", "2026-10-13"],
     "pioneer10": ["1975-01-01", "1990-01-01", "2026-10-13"],
+    "pioneer11": ["1975-01-01", "1990-01-01", "2026-10-13"],
     "newhorizons": ["2010-01-01", "2015-07-14", "2026-10-13"],
     "parker": ["2019-01-01", "2024-12-24", "2026-10-13"],
     "juno": ["2012-01-01", "2016-07-05", "2026-10-13"],
     "jwst": ["2022-03-01", "2024-01-01", "2026-10-13"],
+    "cassini": ["2000-01-01", "2004-07-01", "2012-01-01"],
+    "galileo": ["1992-01-01", "1995-12-07", "2000-01-01"],
+    "europaclipper": ["2025-03-01", "2026-10-13", "2030-01-01"],
 }
 
 
@@ -495,6 +499,11 @@ def _entry(spec, rows, tols, events):
     }
 
 
+def track_names():
+    """Every name ``--only`` may rebuild: the probes, Ceres and the giant planets (lower case)."""
+    return sorted(set(PROBES) | set(BODIES) | {name.lower() for name in PLANETS})
+
+
 def build_tracks(only):
     out = {
         "source": "NASA/JPL Horizons System, https://ssd.jpl.nasa.gov/horizons/ (public domain)",
@@ -568,6 +577,8 @@ def main():
     ap.add_argument("--no-reference", action="store_true")
     ap.add_argument("--reference-only", action="store_true", help="rewrite only the test reference")
     args = ap.parse_args()
+    if args.only and args.only not in track_names():
+        ap.error("--only %r is not a track; one of: %s" % (args.only, ", ".join(track_names())))
     if args.reference_only:
         write_reference()
         return

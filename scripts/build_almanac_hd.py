@@ -296,6 +296,7 @@ MOON_RADIUS_M = 1737400.0
 HALF_METRE = 0.5  # the uint LOLA map's unit (offset 20,000 to stay positive: slopes do not see it)
 
 
+RELIEF_SMOOTH_MODE = ("nearest", "wrap")  # (latitude, longitude)
 RELIEF_SMOOTH_PX = 1.0  # LOLA's gridding leaves faint stripes along the tracks; a pixel's blur takes them, not the craters
 
 
@@ -313,7 +314,8 @@ def normals_map(dem_path, out_path, width):
     dem = src.resize((width, width // 2), Image.BOX) if src.width != width else src
     from scipy.ndimage import gaussian_filter
 
-    z = gaussian_filter(np.asarray(dem, dtype=np.float32) * HALF_METRE, RELIEF_SMOOTH_PX, mode="wrap")
+    # Longitude wraps round the globe; latitude ends at the poles and must not blend one into the other.
+    z = gaussian_filter(np.asarray(dem, dtype=np.float32) * HALF_METRE, RELIEF_SMOOTH_PX, mode=RELIEF_SMOOTH_MODE)
     h, w = z.shape
     step = np.deg2rad(360.0 / w)
     lat = np.deg2rad(90.0 - (np.arange(h) + 0.5) * 180.0 / h)
@@ -342,9 +344,12 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
         path = _fetch(
             spec["file"], os.path.join(cache, "files", os.path.basename(spec["file"]))
         )
-        _check_pin(layer, _sha_files([path]), update)
+        source_sha = _sha_files([path])
+        _check_pin(layer, source_sha, update)
         if spec.get("derive") == "normals":
-            path = normals_map(path, os.path.join(cache, "files", "moon-normals-v2-%d.png" % (TILE * 2 ** (top + 1))), TILE * 2 ** (top + 1))
+            # Keyed by the elevation map's digest too: a new DEM (--update-pins) must not meet the last one's normals.
+            width = TILE * 2 ** (top + 1)
+            path = normals_map(path, os.path.join(cache, "files", "moon-normals-v2-%d-%s.png" % (width, source_sha[:12])), width)
         kind, src = "file", path
     # One process per row of the deepest level; a FileMosaic holds the whole map, so fewer of those at once.
     workers = procs or (os.cpu_count() or 4) if kind == "gibs" else 2
@@ -570,8 +575,8 @@ def main(argv=None):
         manifest["layers"][layer] = {
             "max": build_layer(layer, a.cache, stage, a.update_pins, cap)
         }
-    if a.inserts:
-        albedo = manifest["layers"]["moon/albedo"]
+    albedo = manifest["layers"].get("moon/albedo")
+    if a.inserts and albedo:  # the inserts are cut deeper than the Moon's map: a build without it has none
         albedo["inserts"] = build_inserts(a.cache, stage, albedo["max"])
     with open(os.path.join(stage, "hd.json"), "w") as f:
         json.dump(manifest, f, separators=(",", ":"))
