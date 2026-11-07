@@ -554,9 +554,10 @@ def _row_settles(pg, row, want, timeout_s=5.0):
     assert got == want, got
 
 def test_the_row_follows_where_the_view_is(served):
-    """The quick row is the body's path from the Sun, then its own: Moon is Sun, Earth, Moon, Landings; Io is Sun,
-    Jupiter, then Jupiter's moons; Jupiter the same; a probe is Sun, the probe, the body it is near; the Earth is Sun,
-    Earth, Satellites, Moon. Then the place just left (if not on it already), the Planets, Go to. No Orbits pill.
+    """One rule for every selection: Sun, then the way down from the Sun ending on the body (the Moon is Sun, Earth,
+    Moon, never Moon after Sun), then its satellites (Earth: Satellites, Moon; the Moon, Mars, Venus: Landings; a
+    planet: its moons; a probe: the body it is near), then the places just left (shortcuts, newest first, none
+    repeated), then Planets, Side by side where the planets are in view as a whole, then Go to. No Orbits pill.
     Always one line (it scrolls sideways past its width, Go to at its end inside the screen)."""
     from playwright.sync_api import sync_playwright
 
@@ -578,21 +579,31 @@ def test_the_row_follows_where_the_view_is(served):
             _row_settles(pg, row, ["sun", "earth", "moon", "landings", "planets"])
             go("jupiter")
             jup = ["sun", "jupiter", "io", "europa", "ganymede", "callisto"]
-            _row_settles(pg, row, jup + ["moon", "planets"])
+            _row_settles(pg, row, jup + ["moon", "planets"])   # a long family leaves room for one shortcut
             line = pg.evaluate("""() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.getBoundingClientRect());
                 var go = document.getElementById('ae-go-btn').getBoundingClientRect();
                 return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }""")
             assert line == {"tops": 1, "goIn": True}, line
             go("io")
-            _row_settles(pg, row, jup + ["planets"])   # Jupiter, the place just left, is on it already
+            _row_settles(pg, row, jup + ["moon", "planets"])   # Jupiter, the place just left, is on it already
             go("voyager1")
-            _row_settles(pg, row, ["sun", "voyager1", "io", "planets"])
+            _row_settles(pg, row, ["sun", "voyager1", "io", "jupiter", "planets"])   # two shortcuts: a probe has no family
             go("juno")
             assert pg.evaluate(row)[:3] == ["sun", "juno", "jupiter"], pg.evaluate(row)
             go("earth")
-            _row_settles(pg, row, ["sun", "earth", "sats", "moon", "juno", "planets"])
+            _row_settles(pg, row, ["sun", "earth", "sats", "moon", "juno", "voyager1", "planets"])
             go("sun")
-            _row_settles(pg, row, ["sun", "earth", "planets", "spin"])   # Side by side stands beside the Planets view
+            # Earth is always beside the Sun; then the place just left; Side by side beside the Planets
+            _row_settles(pg, row, ["sun", "earth", "juno", "planets", "spin"])
+            go("mars")
+            _row_settles(pg, row, ["sun", "mars", "landings", "earth", "juno", "planets"])   # Mars's landers, like the Moon's
+            pg.evaluate("_ae.fly = null; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }", timeout=60_000, polling=100)
+            _row_settles(pg, row, ["sun", "earth", "mars", "planets", "spin"])
+            assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"planets\"]').getAttribute('aria-pressed')") == "true"
+            pg.click("#ae-views [data-ae-view='spin']")
+            _row_settles(pg, row, ["sun", "earth", "mars", "planets", "spin"])   # the same row while they stand side by side
+            assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"spin\"]').getAttribute('aria-pressed')") == "true"
             assert not pg.query_selector("#ae-views [data-ae-view='orbits']")
             assert not errors, errors
             ctx.close()

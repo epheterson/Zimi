@@ -563,7 +563,7 @@ var AE_CSS = [
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls, its places in groups, each with its small disc.
-  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(62vh,520px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
+  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(50vh,440px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '#ae-views{flex-wrap:nowrap;align-items:center;max-width:calc(100vw - 24px);margin-inline:auto}',
@@ -620,7 +620,8 @@ var AE_CSS = [
   '.ae-lm[hidden]{display:none}',
   '.ae-lm-landing{color:' + AE_AMBER_HEX + '}',
   '.night-red .ae-lm,.night-red .ae-lm-landing{color:var(--text)}',
-  '.ae-card .ae-lm-fly{margin-top:8px}',
+  '.ae-card .ae-lm-line{display:flex;align-items:center;justify-content:space-between;gap:10px}',
+  '.ae-card .ae-lm-fly{flex:none;min-height:28px;padding:5px 12px;font-size:12px}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
   // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
@@ -778,13 +779,24 @@ function _aeShowGo(on, group) {
   if (group === 'alm_go_landings' && on) _ae.allLandings = true;   // every landing site named on the Moon, not only Apollo's
   if (on) { _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
-// The quick row (Eric 2026-11-04): the body's path from the Sun, then its own children; the recent place if it is not
-// on it already; the Planets; Go to. The Moon: Sun · Earth · Moon · Landings. Io: Sun · Jupiter · Io · Jupiter's other
-// moons. Jupiter: Sun · Jupiter · its moons. A probe: Sun · the probe · the body it is near. The Earth: Sun · Earth ·
-// Satellites · Moon. At the Sun: Sun · Earth. Past its width it scrolls sideways (Go to stays at its end).
+// THE QUICK ROW: one rule, the same for every selection (Eric 2026-11-06). Left to right:
+//   Sun  ·  the way down from the Sun to the body in view, ending on it  ·  its own satellites  ·  recents  ·
+//   Planets  ·  Side by side  ·  Go to
+// - Sun is always first and Earth is always one tap from it: at the Sun (and in the Planets view and Side by side,
+//   which stand at the Sun) the way down is Earth.
+// - The way down names each parent before the body, so the body never follows the Sun straight: the Moon is Sun, Earth,
+//   Moon; Io is Sun, Jupiter, Io. Satellites are what circle the body (the Earth's Satellites chip, a planet's moons,
+//   Io's sister moons) and what has landed on it (the Landings chip: the Moon, Mars, Venus). A probe's "satellite"
+//   is the body it is near.
+// - Recents are the last bodies left (two at most, newest first), kept as shortcuts back; one already on the row is
+//   not repeated. Planets and Side by side are views, not bodies: they never become recents.
+// - Side by side stands beside Planets wherever the planets are in view as a whole (the Sun, the Planets view, itself).
+// - Past its width the row scrolls sideways; Go to stays at its end.
+// Examples: Earth: Sun Earth Satellites Moon Planets. Moon: Sun Earth Moon Landings Planets. Mars (from the Moon): Sun
+// Mars Landings Moon Planets. Io: Sun Jupiter Io Europa Ganymede Callisto Planets. Voyager 1: Sun Voyager1 (the body
+// it is near) Planets. Sun: Sun Earth Planets Side-by-side.
 var AE_ROW_LANDINGS = 'landings';
-var AE_ROW_HOME = ['sun', 'earth', 'sats', 'moon', 'planets'];
-var AE_ROW_SPIN = ['sun', 'earth', 'planets', 'spin'];   // the row while the planets stand side by side (AE_SPIN_KEY)
+var AE_ROW_RECENTS = 2, AE_ROW_LONG = 4;   // places left behind kept as shortcuts; one only in the planets' views or beside a long family
 // Where a target sits on the way out from the Sun ('sun' at the Sun): the ISS and the satellites are the Earth's.
 function _aeRowBody() {
   var t = _ae && _ae.target;
@@ -814,17 +826,19 @@ function _aeRowPath(c) {
   return [host].concat(moons);   // a moon is among its planet's moons, in their order
 }
 function _aeRowKeys() {
-  if (_ae && _ae.spin) return AE_ROW_SPIN;
-  var c = _aeRowBody();
-  if (_ae && c !== _ae.rowCurrent) {
-    if (_ae.rowCurrent && _ae.rowCurrent !== 'sun') _ae.rowRecent = _ae.rowCurrent;
+  var spin = !!(_ae && _ae.spin), c = spin ? 'sun' : _aeRowBody();   // Side by side stands at the Sun
+  if (_ae && !spin && c !== _ae.rowCurrent) {
+    if (_ae.rowCurrent && _ae.rowCurrent !== 'sun') {
+      _ae.rowRecents = [_ae.rowCurrent].concat((_ae.rowRecents || []).filter(function (k) { return k !== _ae.rowCurrent; }));
+    }
     _ae.rowCurrent = c;
     if (c !== 'moon') _ae.allLandings = false;
     if (c === 'moon' || AE_LM_LANDERS[c]) _aeLmLoad();   // the Landings chip's table, there before it is tapped
   }
-  var mid = _aeRowPath(c), recent = _ae && _ae.rowRecent;
-  if (recent && mid.indexOf(recent) < 0 && recent !== 'sun') mid.push(recent);
-  return ['sun'].concat(mid, ['planets'], _ae && _aeWideView() ? [AE_SPIN_KEY] : []);   // beside the Planets view, one tap from it
+  var mid = _aeRowPath(c), on = mid.concat('sun', c), wide = spin || (_ae && _aeWideView());
+  var room = wide || mid.length > AE_ROW_LONG ? 1 : AE_ROW_RECENTS;   // Planets (and Side by side) stay in view on a phone
+  ((_ae && _ae.rowRecents) || []).filter(function (k) { return on.indexOf(k) < 0; }).slice(0, room).forEach(function (k) { mid.push(k); });
+  return ['sun'].concat(mid, ['planets'], wide ? [AE_SPIN_KEY] : []);
 }
 function _aeRowName(k) {
   if (k === 'sats') return _aeT('alm_earth_view_sats');
@@ -3396,8 +3410,8 @@ function _aeRenderLmCard(card) {
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
-    '<p>' + _almEsc(line) + '</p>' +
-    (here ? '' : '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>') + night;
+    '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span>' +
+    (here ? '' : '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>') + '</p>' + night;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.lm = null; _aeRenderCard(); };
   var fly = _aeById('ae-lm-fly');
