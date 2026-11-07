@@ -553,6 +553,25 @@ def _row_settles(pg, row, want, timeout_s=5.0):
         _t.sleep(0.1)
     assert got == want, got
 
+def _wide_row(pg, row, shortcuts):
+    """In the planets' views the row is Sun, Earth, the shortcuts that fit, Planets, Side by side: Planets and Side by side
+    are never scrolled out of sight, so a shortcut that would push them out is dropped (the oldest first)."""
+    import time as _t
+
+    end, got = _t.time() + 5.0, None
+    while _t.time() < end:
+        pg.evaluate("() => { _ae.dirty = true; _aeKick(); }")
+        got = pg.evaluate(row)
+        if got[:2] == ["sun", "earth"] and got[-2:] == ["planets", "spin"]:
+            break
+        _t.sleep(0.1)
+    assert got[:2] == ["sun", "earth"] and got[-2:] == ["planets", "spin"], got
+    mid = got[2:-2]
+    assert mid == shortcuts[2:2 + len(mid)] and len(mid) <= 1, (got, shortcuts)
+    fits = pg.evaluate("() => { var c = document.getElementById('ae-chips'); return c.scrollWidth <= c.clientWidth + 1; }")
+    assert fits, got
+
+
 def test_the_row_follows_where_the_view_is(served):
     """One rule for every selection: Sun, then the way down from the Sun ending on the body (the Moon is Sun, Earth,
     Moon, never Moon after Sun), then its satellites (Earth: Satellites, Moon; the Moon, Mars, Venus: Landings; a
@@ -594,15 +613,15 @@ def test_the_row_follows_where_the_view_is(served):
             _row_settles(pg, row, ["sun", "earth", "sats", "moon", "juno", "voyager1", "planets"])
             go("sun")
             # Earth is always beside the Sun; then the place just left; Side by side beside the Planets
-            _row_settles(pg, row, ["sun", "earth", "juno", "planets", "spin"])
+            _wide_row(pg, row, ["sun", "earth", "juno"])
             go("mars")
             _row_settles(pg, row, ["sun", "mars", "landings", "earth", "juno", "planets"])   # Mars's landers, like the Moon's
             pg.evaluate("_ae.fly = null; _aePreset('planets');")
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }", timeout=60_000, polling=100)
-            _row_settles(pg, row, ["sun", "earth", "mars", "planets", "spin"])
+            _wide_row(pg, row, ["sun", "earth", "mars"])
             assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"planets\"]').getAttribute('aria-pressed')") == "true"
             pg.click("#ae-views [data-ae-view='spin']")
-            _row_settles(pg, row, ["sun", "earth", "mars", "planets", "spin"])   # the same row while they stand side by side
+            _wide_row(pg, row, ["sun", "earth", "mars"])   # the same row while they stand side by side
             assert pg.evaluate("document.querySelector('#ae-views [data-ae-view=\"spin\"]').getAttribute('aria-pressed')") == "true"
             assert not pg.query_selector("#ae-views [data-ae-view='orbits']")
             assert not errors, errors

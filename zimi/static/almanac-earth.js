@@ -837,7 +837,9 @@ function _aeRowKeys() {
   }
   var mid = _aeRowPath(c), on = mid.concat('sun', c), wide = spin || (_ae && _aeWideView());
   var room = wide || mid.length > AE_ROW_LONG ? 1 : AE_ROW_RECENTS;   // Planets (and Side by side) stay in view on a phone
-  ((_ae && _ae.rowRecents) || []).filter(function (k) { return on.indexOf(k) < 0; }).slice(0, room).forEach(function (k) { mid.push(k); });
+  var recents = ((_ae && _ae.rowRecents) || []).filter(function (k) { return on.indexOf(k) < 0; }).slice(0, room);
+  if (_ae) _ae.rowShortcuts = recents;
+  recents.forEach(function (k) { mid.push(k); });
   return ['sun'].concat(mid, ['planets'], wide ? [AE_SPIN_KEY] : []);
 }
 function _aeRowName(k) {
@@ -855,7 +857,16 @@ function _aeRowHtml() {
 }
 function _aeRenderRow() {
   var chips = _aeById('ae-chips');
-  if (chips && _ae.rowKeys !== _aeRowKeys().join(',')) { chips.innerHTML = _aeRowHtml(); chips.scrollLeft = 0; }
+  if (!chips || _ae.rowKeys === _aeRowKeys().join(',')) return;
+  chips.innerHTML = _aeRowHtml();
+  chips.scrollLeft = 0;
+  // Where the planets are in view as a whole, Planets and Side by side must not be scrolled out of sight: the
+  // shortcuts (the oldest first) give way until the row fits.
+  if (!_aeWideView() && !_ae.spin) return;
+  (_ae.rowShortcuts || []).slice().reverse().forEach(function (k) {
+    var b = chips.scrollWidth > chips.clientWidth + 1 ? chips.querySelector('[data-ae-view="' + k + '"]') : null;
+    if (b) b.remove();
+  });
 }
 function _aeChipHtml(key, name, on) {
   return '<button type="button" class="ae-btn" data-ae-view="' + key + '" aria-pressed="' + !!on + '">' + _almEsc(name) + '</button>';
