@@ -637,13 +637,14 @@ var AE_CSS = [
   '.ae-bm-t b{left:0;right:auto;top:calc(var(--ae-r,11px) * -1 - 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),-100%)}',
   '.ae-bm-b b{left:0;right:auto;top:calc(var(--ae-r,11px) + 4px);transform:translate(calc(-50% + var(--ae-nx,0px)),0)}',
   '.ae-bm-n b{display:none}',
+  '.ae-bm-pos b{left:var(--ae-bx);right:auto;top:var(--ae-by);transform:translateY(-50%)}',
   '.ae-bm-tr b{left:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);right:auto;top:calc(var(--ae-r,11px) * -' + AE_NAME_DIAG + ' - 2px);transform:translate(0,-100%)}',
   '.ae-bm-tl b{left:auto;right:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);top:calc(var(--ae-r,11px) * -' + AE_NAME_DIAG + ' - 2px);transform:translate(0,-100%)}',
   '.ae-bm-br b{left:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);right:auto;top:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);transform:none}',
   '.ae-bm-bl b{left:auto;right:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);top:calc(var(--ae-r,11px) * ' + AE_NAME_DIAG + ' + 2px);transform:none}',
   '.night-red .ae-bm{color:var(--text)}',
   '.ae-label.ae-faded{opacity:.62}',
-  '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
+  '.ae-label-sub{display:block;margin-top:3px;font-size:10px;line-height:1.3;color:var(--text2)}',
   '.ae-label-you{color:' + AE_AMBER_HEX + '}',
   '.ae-label-shadow{color:#ffb4a0}',
   // Red night light (the Red theme, app.css): the labels' warm and cool tints are one red, the views' bright
@@ -5112,7 +5113,7 @@ function _aeUpdateMarks(sc) {
     // The name stands off the body's drawn disc (or, in a flight, off the body itself as the view shows it).
     var r = ringed ? Math.max(AE_RING_MIN_R_PX, px / 2 + AE_RING_MARGIN_PX) : _aeMarkDiscR(body) + AE_MARK_NAME_PAD;
     if (r > Math.max(_ae.w, _ae.h)) alpha = 0;
-    var crowded = !!s && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_SAME_PX; });
+    var crowded = !!s && !(wide && _aeNamedPlanet(body)) && shown.some(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) < AE_MARK_SAME_PX; });
     // A ringed body counts while any of its ring is on screen: the old body at the edge of the shot, its night side dark.
     var reach = ringed ? r : 0;
     // Not under the controls at the foot: a mark there could not be tapped and would sit on their words.
@@ -5172,6 +5173,10 @@ function _aePaintMarks(kept) {
   kept.forEach(function (m) {
     m.pts.forEach(function (q) { _ae.marksDrawn.push({ body: q.body, x: q.x, y: q.y, r: _aeMarkDiscR(q.body), lead: m.body, el: m.el.id }); });
     if (m.ringed) return;
+    if (m.leader) {   // a name set off from its dot: a short line back to it
+      g.strokeStyle = 'rgba(223,230,240,0.55)'; g.lineWidth = dpr;
+      g.beginPath(); g.moveTo(m.leader[0] * dpr, m.leader[1] * dpr); g.lineTo(m.leader[2] * dpr, m.leader[3] * dpr); g.stroke();
+    }
     g.globalAlpha = m.el.classList && m.el.classList.contains('ae-bm-quiet') ? Math.min(1, parseFloat(m.el.style.opacity) || 1) : 1;   // faint: away from home
     m.pts.forEach(function (q) {
       var x = q.x * dpr, y = q.y * dpr, r = _aeMarkDiscR(q.body) * dpr, b = _aePlanetBody(q.body);
@@ -5234,12 +5239,42 @@ function _aeNameBox(m, side, w) {
 function _aeBoxesMeet(a, b) { return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]; }
 // A name belongs to its own body: no other body's centre is as near to it as its own (a name beside Venus's dot read as
 // Mercury's). Where nothing near enough is free, it goes unnamed rather than land beside another body.
-var AE_NAME_TIE_PX = 3;
+var AE_NAME_TIE_PX = 3, AE_NAME_TIE_WIDE_PX = 4, AE_NAME_TIE_WIDE_RATIO = 2;   // another body's centre must be this much farther (px, and times the own dot's distance)
 function _aeBoxDist(box, x, y) { return Math.hypot(Math.max(box[0] - x, 0, x - box[2]), Math.max(box[1] - y, 0, y - box[3])); }
-function _aeNameIsItsOwn(box, m, rings) {
+function _aeNameIsItsOwn(box, m, rings, margin, ratio) {
   var own = _aeBoxDist(box, m.x, m.y);
-  return rings.every(function (rb) { return rb.x === m.x && rb.y === m.y || _aeBoxDist(box, rb.x, rb.y) > own + AE_NAME_TIE_PX; });
+  return rings.every(function (rb) { return rb.x === m.x && rb.y === m.y || _aeBoxDist(box, rb.x, rb.y) > own * (ratio || 1) + margin; });
 }
+// The Planets view names the eight planets, always: "it's just the planets labeled". A planet's name tries the slots
+// round its own dot (right, left, above, below, the four diagonals) for the first that covers no name, no disc and not
+// the Sun and where its own dot is the nearest by a clear margin; failing that, the same slots further out with a short
+// leader line back to the dot; failing that, a slot that only keeps clear of other names. It is never dropped. The
+// smaller bodies (dwarfs, probes) carry no names and drop first (their marks are only obstacles).
+var AE_LEADER_STEPS = [14, 26, 40];   // how far past the disc a name on a leader stands (px)
+function _aeNamedPlanet(body) {
+  var b = _aePlanetBody(body);
+  return body === 'earth' || (!!b && !b.parent && !b.track);
+}
+// The slots for a name: {side, box, leader}, nearest first; a leader slot's box stands off the dot by a step.
+function _aeNameSlots(m, w, sides, wideNamed) {
+  var slots = sides.map(function (sd) { return { side: sd, box: _aeNameBox(m, sd, w), leader: false }; });
+  if (wideNamed) AE_LEADER_STEPS.forEach(function (step) {
+    sides.forEach(function (sd) { slots.push({ side: sd, box: _aeNameBox({ x: m.x, y: m.y, r: m.r + step }, sd, w), leader: true }); });
+  });
+  return slots;
+}
+// Whether the leader from a dot to its name passes clear of every other body (a line through Venus read as Venus's).
+var AE_LEADER_CLEAR_PX = 10;
+function _aeLeaderClear(m, box, rings) {
+  var e = _aeLeaderEnd(m, box), dx = e[0] - m.x, dy = e[1] - m.y, len2 = dx * dx + dy * dy || 1;
+  return rings.every(function (rb) {
+    if (rb.x === m.x && rb.y === m.y) return true;
+    var t = Math.min(1, Math.max(0, ((rb.x - m.x) * dx + (rb.y - m.y) * dy) / len2));
+    return Math.hypot(m.x + t * dx - rb.x, m.y + t * dy - rb.y) > AE_LEADER_CLEAR_PX;
+  });
+}
+// The point of a name's box nearest the dot: where its leader ends.
+function _aeLeaderEnd(m, box) { return [Math.min(Math.max(m.x, box[0]), box[2]), Math.min(Math.max(m.y, box[1]), box[3])]; }
 // The order names are placed in: the body in view or in flight first, then the bigger discs (Venus before Mercury), so
 // the crowded inner planets lose the smaller name, not the brighter.
 function _aeNameOrder(shown) {
@@ -5271,21 +5306,36 @@ function _aePlaceMarkNames(shown) {
     }
     var w = el._aeNameW || 0, out = m.x > _ae.w / 2 ? 'l' : 'r', inn = out === 'l' ? 'r' : 'l';
     var sides = m.ringed ? ['t'] : AE_NAME_SIDES.map(function (sd) { return sd.replace('out', out).replace('in', inn); });
-    var chosen = null;
-    for (var k = 0; k < sides.length && !chosen; k++) {
-      var box = _aeNameBox(m, sides[k], w);
-      // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
-      if (box[0] < AE_NAME_EDGE || box[2] > _ae.w - AE_NAME_EDGE || box[1] < 0 || box[3] > _ae.h) continue;
-      var hit = names.some(function (n) { return _aeBoxesMeet(n, box); }) ||
-        rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); }) ||
-        (!m.ringed && !_aeNameIsItsOwn(box, m, rings));
-      if (!hit || m.ringed) chosen = { side: sides[k], box: box };
-    }
+    var wideNamed = !m.ringed && _aeWideView() && _aeNamedPlanet(m.body), chosen = null;
+    var slots = _aeNameSlots(m, w, sides, wideNamed);
+    var onScreen = function (box) { return box[0] >= AE_NAME_EDGE && box[2] <= _ae.w - AE_NAME_EDGE && box[1] >= 0 && box[3] <= _ae.h; };
+    var onName = function (box) { return names.some(function (n) { return _aeBoxesMeet(n, box); }); };
+    var onDisc = function (box) { return rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); }); };
+    var tie = wideNamed ? AE_NAME_TIE_WIDE_PX : AE_NAME_TIE_PX;
+    // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
+    var passes = m.ringed ? [function () { return true; }] : [
+      function (t) { return !t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeNameIsItsOwn(t.box, m, rings, tie, wideNamed ? AE_NAME_TIE_WIDE_RATIO : 1); },
+      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeLeaderClear(m, t.box, rings); },
+      function (t) { return wideNamed && !t.leader && onScreen(t.box) && !onName(t.box); },
+      function (t) { return wideNamed && onScreen(t.box) && !onName(t.box); },
+      function () { return wideNamed; }
+    ];
+    for (var pi = 0; pi < passes.length && !chosen; pi++) chosen = slots.filter(passes[pi])[0] || null;
+    if (m.ringed && !chosen) chosen = slots[0];
     if (chosen) names.push(chosen.box);
-    el.classList.toggle('ae-bm-l', !!chosen && chosen.side === 'l');
-    el.classList.toggle('ae-bm-t', !!chosen && chosen.side === 't');
-    el.classList.toggle('ae-bm-b', !!chosen && chosen.side === 'b');
-    ['tr', 'tl', 'br', 'bl'].forEach(function (c) { el.classList.toggle('ae-bm-' + c, !!chosen && chosen.side === c); });
+    var far = !!chosen && chosen.leader;
+    if (far) {
+      var end = _aeLeaderEnd(m, chosen.box), lx = end[0] - m.x, ly = end[1] - m.y, ll = Math.hypot(lx, ly) || 1;
+      m.leader = [m.x + lx / ll * (m.r - AE_MARK_NAME_PAD), m.y + ly / ll * (m.r - AE_MARK_NAME_PAD), end[0], end[1]];
+      el.style.setProperty('--ae-bx', (chosen.box[0] - m.x).toFixed(1) + 'px');
+      el.style.setProperty('--ae-by', ((chosen.box[1] + chosen.box[3]) / 2 - m.y).toFixed(1) + 'px');
+    }
+    el.classList.toggle('ae-bm-pos', far);
+    var side = far ? null : chosen && chosen.side;
+    el.classList.toggle('ae-bm-l', side === 'l');
+    el.classList.toggle('ae-bm-t', side === 't');
+    el.classList.toggle('ae-bm-b', side === 'b');
+    ['tr', 'tl', 'br', 'bl'].forEach(function (c) { el.classList.toggle('ae-bm-' + c, side === c); });
     el.classList.toggle('ae-bm-n', !chosen);
     el.style.setProperty('--ae-nx', ((chosen && chosen.box.dx) || 0).toFixed(1) + 'px');
   });

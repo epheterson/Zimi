@@ -1621,12 +1621,14 @@ def test_in_the_planets_view_a_tap_on_jupiter_is_jupiter(served):
             br.close()
 
 
-def test_every_planet_name_stands_by_its_own_dot(served):
-    """In the Planets view each name is nearer its own body than any other body's centre (Mercury's name stood beside
-    Venus's dot, and Venus had none); a name that cannot keep that is dropped, and the bigger disc is named before the smaller.
-    """
+@pytest.mark.parametrize("when", ["now", "2026-11-04", "2027-03-15", "2030-07-01", "2034-12-24"])
+def test_all_eight_planets_are_named_in_the_planets_view(served, when):
+    """At Planets scale the eight planets, and only they, are named, whatever the date (today Mercury and Venus are
+    close): no two names overlap, none is across a planet's disc or the Sun, and each name's nearest dot is its own,
+    or it stands on a short leader line back to its own dot, which no other body lies on."""
     from playwright.sync_api import sync_playwright
 
+    eight = {"mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"}
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
         try:
@@ -1635,30 +1637,43 @@ def test_every_planet_name_stands_by_its_own_dot(served):
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
-            pg.evaluate(
-                "(ms) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets'); }",
-                WHEN_MS,
-            )
+            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && (_ae.marksDrawn || []).length > 5; }", timeout=60_000, polling=100)
+            if when != "now":
+                import calendar
+                import datetime
+
+                ms = calendar.timegm(datetime.date.fromisoformat(when).timetuple()) * 1000
+                pg.evaluate("(ms) => _aeGoTo(ms)", ms)
             pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && (_ae.marksDrawn || []).length > 5; }",
-                timeout=60_000,
-                polling=100,
+                "(n) => { _ae.dirty = true; _aeKick(); var d = (_ae.marksDrawn || []).map(m => m.body); return n.every(k => d.indexOf(k) >= 0); }",
+                arg=sorted(eight),
+                timeout=30_000,
+                polling=150,
             )
+            pg.wait_for_timeout(400)
             got = pg.evaluate("""() => {
-                var o = _ae.el.getBoundingClientRect(), pts = _ae.marksDrawn, named = [], wrong = [];
+                var o = _ae.el.getBoundingClientRect(), pts = _ae.marksDrawn, named = [], boxes = [], bad = [];
                 Array.from(document.querySelectorAll('#ae-labels .ae-bm')).forEach(function (el) {
                   var b = el.querySelector('b'), id = el.id.replace('ae-bm-', '');
-                  if (el.hidden || el.classList.contains('ae-bm-quiet') || el.classList.contains('ae-bm-n') || !b) return;
+                  if (el.hidden || el.classList.contains('ae-bm-n') || !b || getComputedStyle(b).display === 'none') return;
                   var r = b.getBoundingClientRect(), box = [r.left - o.left, r.top - o.top, r.right - o.left, r.bottom - o.top];
+                  named.push(id); boxes.push([id, box]);
                   var d = function (p) { return Math.hypot(Math.max(box[0] - p.x, 0, p.x - box[2]), Math.max(box[1] - p.y, 0, p.y - box[3])); };
                   var own = pts.filter(p => p.body === id)[0];
-                  if (!own) return;
-                  named.push(id);
-                  pts.forEach(function (p) { if (p.body !== id && p.body !== 'sun' && d(p) <= d(own)) wrong.push([id, p.body]); });
+                  if (!own) { bad.push([id, 'no dot']); return; }
+                  var nearest = pts.slice().sort((a, c) => d(a) - d(c))[0];
+                  var leader = el.classList.contains('ae-bm-pos');
+                  if (nearest.body !== id && !leader) bad.push([id, 'nearest', nearest.body]);
                 });
-                return { named: named, wrong: wrong }; }""")
-            assert got["wrong"] == [], got
-            assert len(got["named"]) >= 5, got
+                var meet = [];
+                for (var i = 0; i < boxes.length; i++) for (var j = i + 1; j < boxes.length; j++) {
+                  var a = boxes[i][1], c = boxes[j][1];
+                  if (a[0] < c[2] && c[0] < a[2] && a[1] < c[3] && c[1] < a[3]) meet.push([boxes[i][0], boxes[j][0]]);
+                }
+                return { named: named, bad: bad, meet: meet }; }""")
+            assert set(got["named"]) == eight, got
+            assert got["bad"] == [] and got["meet"] == [], got
             assert not errors, errors
             ctx.close()
         finally:
