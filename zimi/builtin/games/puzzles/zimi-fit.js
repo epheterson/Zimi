@@ -29,7 +29,7 @@
   var LONG_PRESS_SLOP = 10;    // px a finger may drift and still be holding still
   var TWO_FINGER_MS = 350;     // two fingers down and up within this, without moving, are the middle button
   var NATIVE_QUIET_MS = 700;   // after a touch, the browser's own mouse events for it are dropped
-  var SOLVED_SHEET_MS = 1000;  // the puzzle's own flash of success plays before the sheet comes
+  var SOLVED_SHEET_MS = 700;   // the puzzle's own flash of success plays before the sheet comes
   var READY_POLL_MS = 50;      // how often to ask whether the puzzle's own script has started the game
   var CLOCK_TICK_MS = 500;     // how often the solving clock counts
   var BEST_KEY = "zimi.games.puzzleBest";
@@ -112,6 +112,8 @@
     loopy: { 2: "unknown" },                                // an edge not yet drawn is a faint guide under the lines that are
     pattern: { 4: "unknown" },                              // a square not yet decided sits just above the panel
     mosaic: { 1: "unknown", 5: "ink" },                    // a square not yet decided is a quiet panel, and its clue reads as ink on it
+    flip: { 2: "lit" },                                     // a lit square is amber, so a solved board is a lit one and not a blank page
+    unruly: { 3: "lit" },                                   // a white square is cream, so it is not a lighter grey of the unfilled ones
     tents: { 1: "line", 2: "grass" }                        // the grid is a quiet line, and grass is the table's green, not neon lime
   };
   var raw = [], mapped = [];
@@ -154,6 +156,7 @@
     if (role === "surface2") return toHex(ground);
     if (role === "edge") return toHex(mix(ink, ground, 0.3));
     if (role === "unknown") return toHex(mix(ground, ink, 0.16));
+    if (role === "lit") return toHex(mix(ground, parse(token("--select-ring", "#f59e0b")), dark ? 0.9 : 0.4));
     if (role === "ink") return toHex(ink);
     if (role === "line") return toHex(mix(ground, ink, 0.72));      // the grid and the counts at the edges: softer than ink, still readable
     if (role === "grass") return toHex(mix(ground, parse(token("--felt", "#285c43")), dark ? 0.55 : 0.22));

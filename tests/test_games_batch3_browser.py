@@ -710,3 +710,27 @@ def test_babel_ends_at_zero_without_the_generic_line(browser, served):
     assert "Keep playing" not in page.inner_text(".ar-sheet-card")
     shot(page, "12-babel-zero")
     c.close()
+# 12f. Flip: a lit square is amber (a solved board is not a blank page); Unruly: a white square is cream, not a lighter grey of the empty ones.
+def _chroma(hex_):
+    ch = [int(hex_[i : i + 2], 16) for i in (1, 3, 5)]
+    return max(ch) - min(ch)
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_flip_lit_square_is_not_the_page(browser, served, scheme):
+    c, page = open_game(browser, served, "puzzles/flip.html", color_scheme=scheme)
+    page.wait_for_function(truthy(RUNNING))
+    lit, ground = page.evaluate("() => [colours[2], colours[0]]")
+    assert lit != ground and _chroma(lit) > 40, (lit, ground)
+    shot(page, "12-flip-" + scheme)
+    c.close()
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_unruly_white_square_is_not_a_grey(browser, served, scheme):
+    c, page = open_game(browser, served, "puzzles/unruly.html", color_scheme=scheme)
+    page.wait_for_function(truthy(RUNNING))
+    white, empty = page.evaluate("() => [colours[3], colours[2]]")
+    assert _chroma(white) > 40 and _chroma(empty) < 20, (white, empty)
+    shot(page, "12-unruly-" + scheme)
+    c.close()
