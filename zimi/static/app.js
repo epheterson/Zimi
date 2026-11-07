@@ -16913,13 +16913,13 @@ function _unzoomPage() {
   setTimeout(function () { meta.content = kept; }, 50);
 }
 // A long game name ("Dictionary Bluff") beside the header's buttons on a phone steps down a pixel at a time to
-// _GAME_TITLE_MIN_PX; one still too long ("Snakes and Ladders") takes two lines there before an ellipsis would cut it.
-var _GAME_TITLE_MIN_PX = 13;
+// _GAME_TITLE_MIN_PX, always on one line (the games' own bar does the same, shell.js fitTitle); one still too long ends in
+// the stylesheet's ellipsis, never cut dead and never wrapped.
+var _GAME_TITLE_MIN_PX = 11;
 function _fitGameTitle(el) {
-  el.style.fontSize = ''; el.classList.remove('two-lines');
+  el.style.fontSize = '';
   var px = parseFloat(getComputedStyle(el).fontSize);
   while (el.scrollWidth > el.clientWidth + 0.5 && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
-  if (el.scrollWidth > el.clientWidth + 0.5) el.classList.add('two-lines');
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {

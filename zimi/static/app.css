@@ -467,7 +467,6 @@
   .game-head[hidden] { display: none; }
   [dir=rtl] #game-act-btn[data-kind=undo] svg { transform: scaleX(-1); }
   .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .game-title.two-lines { white-space: normal; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }
   .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
