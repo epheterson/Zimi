@@ -300,3 +300,30 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             assert st()["page"] == 1
         finally:
             br.close()
+
+
+def test_reading_begins_at_a_whole_word_when_a_page_opens_on_a_hyphenated_one(served):
+    """Eric, 2026-10-21: "I just tried reading and it started on second sentence ...
+    it's weird still". A page that opens on the tail of a hyphenated word ("ing" of
+    "read-ing") began Read aloud on "ng reading reading": the voice spelled out a
+    syllable. Reading begins at the next whole word."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        try:
+            _open(pg, served, "Liber.1")
+            pg.evaluate("() => _ttsLoad()")
+            _tap(pg, 365)  # the title page, then the chapter's first page
+            _tap(pg, 365)
+            got = pg.evaluate(
+                """() => { const d = document.getElementById('reader-frame').contentDocument;
+                const r = d.__zbHere(), at = r.startContainer.data.slice(Math.max(0, r.startOffset - 1), r.startOffset + 1);
+                return { split: /\\w\\w/.test(at), first: _ttsMakePlan(d).chunks[0].text }; }"""
+            )
+            assert got["split"], "the page opens inside a word (the fixture hyphenates)"
+            assert got["first"].startswith("reading"), got
+        finally:
+            br.close()
