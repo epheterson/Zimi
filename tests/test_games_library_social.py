@@ -294,11 +294,28 @@ def test_drop_pin(browser, world, mode, gone):
         )
         target = g["qs"][0]
         box = page.locator("#dp-world").bounding_box()
-        ratio = box["height"] / box["width"]
-        h = 800 * ratio
-        y0 = (400 - h) / 2
-        sx = box["x"] + box["width"] * (target["lon"] + 180) / 360
-        sy = box["y"] + ((90 - target["lat"]) * 400 / 180 - y0) / h * box["height"]
+        # the world fills its box, so the place may be off the screen: drag the map (as a player does) until it is in view
+        def view():
+            return page.evaluate("document.getElementById('dp-world').getAttribute('viewBox').split(' ').map(Number)")
+
+        mx, my = (target["lon"] + 180) * 800 / 360, (90 - target["lat"]) * 400 / 180
+        for _ in range(6):
+            vx, vy, vw, vh = view()
+            if vx + 0.1 * vw <= mx <= vx + 0.9 * vw and vy + 0.1 * vh <= my <= vy + 0.9 * vh:
+                break
+            span = box["width"] * 0.4
+            dx = max(-span, min(span, -(mx - (vx + vw / 2)) / vw * box["width"]))
+            dy = max(-span, min(span, -(my - (vy + vh / 2)) / vh * box["height"]))
+            cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+            page.mouse.move(cx, cy)
+            page.mouse.down()
+            page.mouse.move(cx + dx, cy + dy, steps=6)
+            page.mouse.up()
+            frames(page)
+        vx, vy, vw, vh = view()
+        assert vx <= mx <= vx + vw and vy <= my <= vy + vh, "the place cannot be brought into view"
+        sx = box["x"] + box["width"] * (mx - vx) / vw
+        sy = box["y"] + box["height"] * (my - vy) / vh
         page.mouse.click(sx, sy)
         frames(page)
         page.click("#dp-drop")
