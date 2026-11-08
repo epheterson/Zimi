@@ -364,6 +364,8 @@ jobs:
 
       - name: Package AppImage (Linux)
         if: runner.os == 'Linux'
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           # Build AppDir from PyInstaller output
           APPDIR=dist/Zimi.AppDir
@@ -386,7 +388,7 @@ jobs:
           # "Linux" in it (the AppImage catalog's rule: every AppImage is).
           # The update information embedded with -u sends AppImageUpdate to
           # the newest release's .zsync.
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$RELEASE_TAG"
           V="${TAG#v}"
           APPIMAGE="Zimi-${V//\//-}-x86_64.AppImage"
 
@@ -631,8 +633,10 @@ jobs:
           python-version: '3.12'
 
       - name: Build the tarball and run it from a copied folder
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$RELEASE_TAG"
           ci/build_portable.sh "${TAG#v}"
 
       - name: Upload artifact
@@ -722,9 +726,11 @@ jobs:
       # and the .zsync (and the two portable tarballs) must all be there; the snap may not be (its build is
       # allowed to fail, and one that will not open is never uploaded).
       - name: Name the files for the release
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$RELEASE_TAG"
           V="${TAG#v}"
           mkdir -p release
           cp Zimi-AppleSilicon/Zimi-AppleSilicon.dmg          "release/Zimi-$V-mac-arm64.dmg"

@@ -35,7 +35,7 @@ grep -q "^ExecStart=$STICK/zimi/zimi serve" "$STICK/unit.txt" || { echo "FAIL: E
 echo "zimi serve -d on port $PORT..."
 "$Z" serve -d --host 127.0.0.1 --port "$PORT"
 for _ in $(seq 1 60); do
-  if curl -sf "http://127.0.0.1:$PORT/health" > "$STICK/health.json"; then break; fi
+  if curl -sf --max-time 3 "http://127.0.0.1:$PORT/health" > "$STICK/health.json"; then break; fi
   sleep 1
 done
 cat "$STICK/health.json"; echo

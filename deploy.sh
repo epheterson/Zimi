@@ -13,6 +13,11 @@ t0=$(date +%s)
 step() { echo "  $1 ($(( $(date +%s) - t0 ))s)"; }
 
 echo "=== Deploying to NAS ==="
+# One deploy at a time: two would interleave their extractions and build a mix of revisions.
+# mkdir is atomic; the trap lets go on every exit. A killed deploy leaves the lock: rmdir it by hand.
+LOCK=$NAS_DIR/.deploy.lock
+$SSH nas "mkdir $LOCK" 2>/dev/null || { echo "another deploy holds $LOCK on the NAS (rmdir it if that deploy died)" >&2; exit 1; }
+trap '$SSH nas "rmdir $LOCK" 2>/dev/null || true' EXIT
 # Only what changed since the last deploy crosses the wire (the package is ~100 MB,
 # a deploy usually a few files). The stamp lives in .git, so a fresh clone sends
 # everything once. (Synology refuses rsync unless its rsync service is on, so tar.)
@@ -24,8 +29,18 @@ else
   files=$(find $SRC -type f ! -path '*/__pycache__/*' ! -name '*.pyc')
 fi
 touch "$STAMP.next"
+# A file deleted since the last deploy would stay in the NAS tree (tar only adds) and the image would
+# copy it: remove what the last deploy sent and this checkout no longer has. Nothing is scanned on the NAS.
+find $SRC -type f ! -path '*/__pycache__/*' ! -name '*.pyc' | sort > "$STAMP.list.next"
+deleted=""
+[ -f "$STAMP.list" ] && deleted=$(comm -23 "$STAMP.list" "$STAMP.list.next")
+$SSH nas "mkdir -p $NAS_DIR/zimi-data"
 if [ -n "$files" ]; then
   printf '%s\n' "$files" | tar cf - -T - | $SSH nas "cd $NAS_DIR && tar xf -"
+fi
+if [ -n "$deleted" ]; then
+  printf '%s\n' "$deleted" | tr '\n' '\0' | $SSH nas "cd $NAS_DIR && xargs -0 rm -f --"
+  step "removed $(printf '%s\n' "$deleted" | grep -c .) deleted files"
 fi
 step "sent $(printf '%s' "$files" | grep -c . || true) changed files"
 # kiwix-serve reads our own ZIMs from zimi/builtin only when it starts.
@@ -42,18 +57,24 @@ $SSH nas "set -eo pipefail; cd $NAS_DIR
   cp docker-compose.nas.yml docker-compose.yml
   /usr/local/bin/docker-compose build 2>&1 | tail -2
   /usr/local/bin/docker-compose up -d --remove-orphans 2>&1 | tail -2
-  for i in \$(seq 1 60); do
+  for i in \$(seq 1 240); do
     curl -sf -o /dev/null http://localhost:8899/health && exit 0
     sleep 1
   done
-  echo 'no answer from /health after 60 s' >&2; exit 1"
-mv "$STAMP.next" "$STAMP"
+  echo 'no answer from /health after 240 s' >&2; exit 1"
 step "NAS deployed, /health answers"
 
+# The stamp moves only when kiwix-serve has the new own ZIMs; a failed restart is tried again by the next deploy.
+advance=1
 if [ "$own_zims" -gt 0 ]; then
-  $SSH nas "/usr/local/bin/docker ps --filter name=^kiwix$ -q | grep -q . && timeout 60 /usr/local/bin/docker restart kiwix >/dev/null" \
-    && step "kiwix-serve restarted for the new own ZIMs" || true
+  if $SSH nas "if /usr/local/bin/docker ps --filter name=^kiwix\$ -q | grep -q .; then timeout 60 /usr/local/bin/docker restart kiwix >/dev/null; fi"; then
+    step "kiwix-serve restarted for the new own ZIMs"
+  else
+    advance=0; echo "  kiwix-serve restart failed: the next deploy sends these ZIMs again and retries" >&2
+  fi
 fi
+if [ "$advance" = 1 ]; then mv "$STAMP.next" "$STAMP"; else rm -f "$STAMP.next"; fi
+mv "$STAMP.list.next" "$STAMP.list"
 
 # Cloudflare keeps pages of the public host at its edge: drop only that host's
 # copy (purge_everything would drop every host in the zone). The host, zone and

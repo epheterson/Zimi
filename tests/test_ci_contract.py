@@ -322,10 +322,12 @@ def test_the_mac_app_reports_the_release_version():
 
 def _release_naming_script(tag):
     text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
-    body = text.split("- name: Name the files for the release\n        run: |\n", 1)[1]
-    body = body.split("\n\n", 1)[0]
+    step = text.split("- name: Name the files for the release\n", 1)[1]
+    # The tag reaches the shell through the step's env (never pasted into the script): the test sets it the same way.
+    assert "RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}" in step.split("run: |", 1)[0]
+    body = step.split("run: |\n", 1)[1].split("\n\n", 1)[0]
     script = "\n".join(line[10:] for line in body.splitlines())
-    return script.replace("${{ github.event.inputs.tag || github.ref_name }}", tag)
+    return "RELEASE_TAG=%s\n%s" % (tag, script)
 
 
 _BUILDS = [
