@@ -608,6 +608,8 @@ var AE_CSS = [
   '.ae-sp b{font-size:13px;font-weight:600;color:#f1f4f9;line-height:1.3}',
   '.ae-sp span{font-size:10.5px;line-height:1.25;color:rgba(223,230,240,.72)}',
   '.ae-sp .ae-sp-back{color:' + AE_AMBER_HEX + '}',
+  '.ae-sp i{font-style:normal}',
+  '.ae-sp span{white-space:nowrap;letter-spacing:-.01em}',
   '.ae-sp:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
   '.night-red .ae-sp,.night-red .ae-sp b,.night-red .ae-sp span{color:var(--text)}',
   // Full screen: the planets and their short names, nothing else but the two small tools in the corner. The Fullscreen API
@@ -2723,7 +2725,7 @@ var AE_SPIN_AXIS_R = 1.45, AE_SPIN_PLANE_R = 1.3;   // the axis line's and the o
 var AE_SPIN_RING_PAD = 1.08, AE_SPIN_RING_TILT = 0.75;   // the plane line beyond Saturn's rings; their share of a cell's height
 var AE_SPIN_BARB = 0.14, AE_SPIN_BARB_DEG = 25;
 var AE_SPIN_AXIS_COLOR = 0xffb347, AE_SPIN_AXIS_ALPHA = 0.95, AE_SPIN_AXIS_S_ALPHA = 0.6, AE_SPIN_PLANE_ALPHA = 0.55;
-var AE_SPIN_LABEL_W = 84, AE_SPIN_LABEL_H = 88, AE_SPIN_GAP = 8;   // px: a cell's least width, the names' height under it, between cells
+var AE_SPIN_LABEL_W = 112, AE_SPIN_LABEL_H = 46, AE_SPIN_GAP = 8;   // px: a cell's least width, the name and its line under it, between cells
 var AE_SPIN_MAX_ROWS = 4, AE_SPIN_NARROW_PX = 600, AE_SPIN_TOP_MIN_PX = 48;
 var AE_SPIN_FIT_ITER = 50, AE_SPIN_FIT_MAX = 1e4;
 var AE_SPIN_ROW_TOLERANCE = 0.08;       // a layout this near the biggest is as good: fewer rows, then more even ones, are preferred
@@ -2789,14 +2791,25 @@ function _aeSpinDuration(sec) {
   var y = d / 365.25;
   return _orrNum(y, 'year', y < AE_SPIN_DECIMALS_BELOW ? 1 : 0);
 }
+// The words (for a screen reader) and the one short line under the planet: the turn, the year, the tilt, as
+// "↻ 23.9h · 365d · 23.4°"; a planet that turns backwards turns its arrow (↺, amber) instead of saying so.
+var AE_SPIN_TURN = '↻', AE_SPIN_TURN_BACK = '↺';
+function _aeSpinNarrow(sec) {
+  var h = sec / SECONDS_PER_HOUR, d = sec / SECONDS_PER_DAY, y = d / 365.25;
+  var v = h < AE_SPIN_HOURS_BELOW ? [h, 'hour', 1] : d < AE_SPIN_YEARS_ABOVE_DAYS ? [d, 'day', 0] : [y, 'year', y < AE_SPIN_DECIMALS_BELOW ? 1 : 0];
+  try { return new Intl.NumberFormat(_orrLang(), { style: 'unit', unit: v[1], unitDisplay: 'narrow', maximumFractionDigits: v[2] }).format(v[0]); }
+  catch (e) { return _aeSpinDuration(sec); }
+}
 function _aeSpinLines(b, jd) {
-  var f = _aeSpinFacts(b, jd), d = f.tiltDeg < 1 ? 2 : 1;
-  var tilt = typeof fmtNum === 'function' ? fmtNum(f.tiltDeg, { minimumFractionDigits: d, maximumFractionDigits: d }) : f.tiltDeg.toFixed(d);
-  var lines = [_aeT('alm_spin_day', { v: _aeSpinDuration(Math.abs(f.periodS)) })];
-  if (_aeSpinOrbits()) lines.push(_aeT('alm_spin_year', { v: _aeSpinDuration(f.yearDays * SECONDS_PER_DAY) }));
-  lines.push(_aeT('alm_spin_tilt', { v: tilt + '°' }));
-  if (f.periodS < 0) lines.push(_aeT('alm_spin_retro'));
-  return lines;
+  var f = _aeSpinFacts(b, jd), d = f.tiltDeg < 1 ? 2 : 1, back = f.periodS < 0, orbits = _aeSpinOrbits();
+  var tilt = (typeof fmtNum === 'function' ? fmtNum(f.tiltDeg, { minimumFractionDigits: d, maximumFractionDigits: d }) : f.tiltDeg.toFixed(d)) + '°';
+  var words = [_aeT('alm_spin_day', { v: _aeSpinDuration(Math.abs(f.periodS)) })];
+  if (orbits) words.push(_aeT('alm_spin_year', { v: _aeSpinDuration(f.yearDays * SECONDS_PER_DAY) }));
+  words.push(_aeT('alm_spin_tilt', { v: tilt }));
+  if (back) words.push(_aeT('alm_spin_retro'));
+  var parts = [_almEsc(_aeSpinNarrow(Math.abs(f.periodS)))].concat(orbits ? [_almEsc(_aeSpinNarrow(f.yearDays * SECONDS_PER_DAY))] : [], [_almEsc(tilt)]);
+  var arrow = back ? '<i class="ae-sp-back">' + AE_SPIN_TURN_BACK + '</i>' : '<i>' + AE_SPIN_TURN + '</i>';
+  return { words: words, html: arrow + '\u2009' + parts.join('\u2009·\u2009') };   // thin spaces: one line under a phone's cell
 }
 // The orbits shown by the gear's setting, here as the planets' orbital planes and years (While flying has no flight to
 // show them in, so only Off hides them).
@@ -3086,7 +3099,7 @@ function _aeSpinFit(sp, jd) {
   cam.updateProjectionMatrix();
   var host = _aeById('ae-spin'), html = '';
   sp.cells.forEach(function (c, i) {
-    var l = fit.cells[i], b = c.b, name = _aeBodyName(b), lines = _aeSpinLines(b, jd);
+    var l = fit.cells[i], b = c.b, name = _aeBodyName(b), said = _aeSpinLines(b, jd);
     c.r = l.r;
     c.G.position.set(room.x + l.cx, _ae.h - (room.y + l.cy), 0);
     c.lines.scale.set(l.r, l.r, l.r);
@@ -3095,8 +3108,8 @@ function _aeSpinFit(sp, jd) {
     c.uni.center.value.copy(c.G.position);
     c.uni.ringR.value = b.rings ? [b.rings[0] / b.km * l.r, b.rings[1] / b.km * l.r] : [0, 1];
     html += '<button type="button" class="ae-sp" data-ae-spin="' + b.key + '" style="left:' + Math.round(room.x + l.left) + 'px;top:' + Math.round(room.y + l.top) +
-      'px;width:' + Math.round(l.width) + 'px;height:' + Math.round(l.height) + 'px;padding-top:' + Math.round(l.height - m.labelH) + 'px" aria-label="' + _almEsc([name].concat(lines).join(', ')) + '"><b>' +
-      _almEsc(name) + '</b>' + (full ? [] : lines).map(function (t, k) { return '<span' + (b.pole[3] < 0 && k === lines.length - 1 ? ' class="ae-sp-back"' : '') + '>' + _almEsc(t) + '</span>'; }).join('') + '</button>';
+      'px;width:' + Math.round(l.width) + 'px;height:' + Math.round(l.height) + 'px;padding-top:' + Math.round(l.height - m.labelH) + 'px" aria-label="' + _almEsc([name].concat(said.words).join(', ')) + '"><b>' +
+      _almEsc(name) + '</b>' + (full ? '' : '<span aria-hidden="true">' + said.html + '</span>') + '</button>';
   });
   if (host) host.innerHTML = html;
 }

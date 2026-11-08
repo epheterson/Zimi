@@ -190,18 +190,14 @@ def test_every_planet_is_drawn_and_named(page):
         "Uranus",
         "Neptune",
     ]
-    text = page.inner_text("#ae-spin")
-    assert (
-        "Day 9.9 hr" in text
-        and "Tilt 177.4°" in text.replace("\n", " ")
-        or "Tilt 177" in text
-    )
-    assert (
-        page.evaluate(
-            "document.querySelector('[data-ae-spin=venus] .ae-sp-back').textContent"
-        )
-        == "Spins backwards"
-    )
+    # Under each planet one short line: the turn, the year, the tilt; the words are for a screen reader.
+    jup = page.inner_text("[data-ae-spin=jupiter] span")
+    assert jup.startswith("↻") and "9.9h" in jup and "3.1°" in jup and jup.count("·") >= 1, jup
+    assert "Day 9.9 hr" in page.get_attribute("[data-ae-spin=jupiter]", "aria-label")
+    # Backwards is the arrow turned the other way, in amber; said in words only to a screen reader.
+    assert page.evaluate("document.querySelector('[data-ae-spin=venus] .ae-sp-back').textContent") == "↺"
+    assert "Spins backwards" in page.get_attribute("[data-ae-spin=venus]", "aria-label")
+    assert page.evaluate("document.querySelectorAll('[data-ae-spin=venus] span').length") == 1
     assert "Solar System Scope" in page.evaluate("_aePlanetCredit()")
 
 
@@ -307,12 +303,13 @@ def test_labels_sit_inside_the_view_and_clear_of_the_controls(page):
 
 
 def test_orbits_setting_hides_the_planes_and_years(page):
-    assert "Year" in page.inner_text("#ae-spin")
+    years = "document.querySelector('[data-ae-spin=jupiter] span').textContent.split('·').length === 3"   # turn · year · tilt
+    assert page.evaluate(years)
     page.evaluate(
         "localStorage.setItem(AE_ORBITS_KEY, 'off'); _ae.dirty = true; _aeSpinDraw()"
     )
     assert not page.evaluate("_ae.gl.spin.cells.some(c => c.orbit.visible)")
-    assert "Year" not in page.inner_text("#ae-spin")
+    assert page.evaluate("document.querySelector('[data-ae-spin=jupiter] span').textContent.split('·').length === 2")
     page.evaluate(
         "localStorage.removeItem(AE_ORBITS_KEY); _ae.dirty = true; _aeSpinDraw()"
     )
@@ -384,7 +381,7 @@ def test_full_screen_hides_the_chrome_and_faces_follow_the_person(page):
 def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     # From the live clock: Side by side runs it at an hour a second, and leaving puts it back where it was.
     page.evaluate("_almClockSetRate(1); _aeNow()")
-    page.click("[data-ae-view='planets']")
+    page.click("[data-ae-view='spin']")   # Side by side again: back to the planets (its row is the Sun and itself)
     page.wait_for_function("() => !_ae.spin && !_ae.fly && _ae.preset === 'planets'", timeout=60_000, polling=200)
     # One tap from the Planets view: its chip stands beside it.
     assert page.is_visible("[data-ae-view='spin']")
@@ -393,8 +390,8 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     assert page.evaluate("_almRate") == 3600 and page.evaluate("_ae.spin.autoRun")
     # The clock runs ahead of the wall (an hour a second).
     page.wait_for_function("() => _aeDisplayMs() - Date.now() > 60000", timeout=60_000, polling=200)
-    # The row while they stand side by side: Sun, Earth, Planets, and itself, lit.
-    assert page.evaluate("_aeRowKeys().join(',')") == "sun,earth,planets,spin"
+    # The row while they stand side by side: the Sun and itself, lit (its tools where Earth and Planets were).
+    assert page.evaluate("_aeRowKeys().join(',')") == "sun,spin"
     assert page.get_attribute("[data-ae-view='spin']", "aria-pressed") == "true"
     page.click("[data-ae-spin='jupiter']")
     page.wait_for_function("() => !_ae.spin && _ae.target === 'jupiter'", timeout=60_000, polling=200)
@@ -403,4 +400,4 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     # Go to lists it first among the planets.
     page.click("#ae-go-btn")
     assert page.evaluate("document.querySelector('#ae-go [data-ae-go=\"spin\"]').textContent") == "Side by side"
-    page.click("#ae-go-btn")
+    page.evaluate("_aeShowGo(false)")   # the open sheet covers its button (a tap away or Escape shuts it)
