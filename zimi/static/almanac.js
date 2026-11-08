@@ -872,6 +872,7 @@ var ALM_CLOCK_MAX_DT = 50;             // longest real gap one fast frame advanc
 var ALM_CLOCK_SLOW_MAX_DT = 1000;
 var ALM_CLOCK_NOTE_MS = 5000;          // how long a line like "that time does not exist" stays
 var ALM_CLOCK_TAP_SMALL = 0.05;          // how much a part's width counts against it when two are equally near the finger
+var ALM_CLOCK_FLIP_MS = 900;          // AM/PM: the twelve hours run through, forward or back, in this long
 var ALM_CLOCK_TAP_SLOP = 14;           // px: how far from a date part a tap still means it (the nearest part wins)
 var ALM_CLOCK_MONTH_LEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -1131,6 +1132,7 @@ function _almClockPaint(focus) {
     var nowBtn = root.querySelector('.alm-ck-now');
     if (nowBtn && nowBtn.hidden === hot) nowBtn.hidden = !hot;
     root.classList.toggle('alm-ck-hot', hot);
+    root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
     if (spd) _almSpdPaint(spd, rate, hot);
   }
@@ -1147,8 +1149,9 @@ function _almSpdPaint(spd, rate, hot) {
   rng.setAttribute('aria-valuetext', rate === 0 ? t('pause') : _almRateIsReal(rate) ? '1×' : _almRateText(rate));
   var play = spd.querySelector('.alm-spd-play');
   if (play) {
-    var paused = rate === 0, want = paused ? ALM_CK_PLAY : ALM_CK_PAUSE;
-    if (play._ic !== want) { play.innerHTML = want; play._ic = want; play.setAttribute('aria-label', t(paused ? 'resume' : 'pause')); }
+    // The button shows what the clock is doing (paused, or running), and is a pressed Pause while it stands.
+    var paused = rate === 0, want = paused ? ALM_CK_PAUSE : ALM_CK_PLAY;
+    if (play._ic !== want) { play.innerHTML = want; play._ic = want; play.setAttribute('aria-label', t('pause')); play.setAttribute('aria-pressed', paused ? 'true' : 'false'); }
     play.classList.toggle('alm-spd-on', Math.abs(pos - real) < 0.02);
   }
   spd.querySelectorAll('.alm-spd-mark').forEach(function (b) {
@@ -1276,6 +1279,7 @@ function _almClockNote(text) {
 
 // The part nearest a point, within the slop, among every part of a clock.
 function _almClockNearest(root, x, y) {
+  if (root.classList.contains('alm-ck-run')) return null;
   var best = null, bs = Infinity;
   root.querySelectorAll('.ep, .ef').forEach(function (el) {
     var r = el.getBoundingClientRect();
@@ -1334,14 +1338,39 @@ function _almClockLand(r, P, tz) {
   _almClockNote(note);
 }
 function _almClockFlip(kind) {
+  if (_almRunToRAF) return;   // the hours are still running through
   var focus = _almFocusInstant(), tz = _almClockTz(), P = _almTzParts(focus, tz);
   if (kind === 'ap') P.h = (P.h + 12) % 24; else P.y = 1 - P.y;
   P.y = Math.max(_ALM_YEAR_MIN, Math.min(_ALM_YEAR_MAX, P.y));
   P.d = Math.min(P.d, _almDaysInMonth(P.y, P.mo));
-  _almClockLand(_almInstantFromTz(P.y, P.mo, P.d, P.h, P.mi, tz), P, tz);
+  var r = _almInstantFromTz(P.y, P.mo, P.d, P.h, P.mi, tz);
+  if (kind === 'ap') _almClockRunTo(r.date, function () { _almClockLand(r, P, tz); });
+  else _almClockLand(r, P, tz);
+}
+// Run the page through every moment from here to `to` (forward or back) in ALM_CLOCK_FLIP_MS, eased, then `land`.
+// The sky, the Moon, the orrery and the 3D view pass through the hours between; reduced motion lands at once.
+var _almRunToRAF = 0;
+function _almClockRunTo(to, land) {
+  var from = _almFocusInstant().getTime(), span = to.getTime() - from, t0 = 0;
+  if (_almReduceMotion() || !span) { land(); return; }
+  _almClockHeld = true;
+  _almClockSync();
+  _almTravelFreeze();
+  var step = function (ts) {
+    if (!t0) t0 = ts;
+    var k = Math.min(1, (ts - t0) / ALM_CLOCK_FLIP_MS), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    if (k >= 1) { _almRunToRAF = 0; land(); return; }
+    _almFocus = new Date(from + span * e);
+    _almTravelLive(_almFocus);
+    if (typeof _skySetInstant === 'function') _skySetInstant(_almFocus);
+    _almClockPaint(_almFocus);
+    _almRunToRAF = requestAnimationFrame(step);
+  };
+  _almRunToRAF = requestAnimationFrame(step);
 }
 
 function _almClockEdit(root, part) {
+  if (root.classList.contains('alm-ck-run')) return;
   if (part === 'ap' || part === 'era') { _almEdCommit(); _almClockFlip(part); return; }
   if (_almEd && _almEd.root === root && _almEd.part === part) return;
   if (_almEd) _almEdCommit();

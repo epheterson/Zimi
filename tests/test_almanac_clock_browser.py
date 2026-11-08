@@ -134,14 +134,32 @@ def test_each_part_is_typed_where_it_stands(browser, served):
         assert (
             head["d"] == "Saturday, November 15, 2031" and head["t"] == "9:05 PM"
         ), head
-        # AM/PM flips on a tap.
+        # AM/PM flips on a tap, running back through the twelve hours (PM to AM) rather than jumping.
+        before = pg.evaluate("() => _almFocusInstant().getTime()")
+        pg.evaluate(
+            "() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }"
+        )
         pg.click("#almanac-head-time .ep[data-p=ap]")
         pg.wait_for_function(
-            "() => document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent === 'AM'",
+            "() => !_almRunToRAF && document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent === 'AM'",
             timeout=10_000,
             polling=POLL_MS,
         )
         assert _wall(pg)[3] == 9
+        seen = pg.evaluate("() => window._ckSeen")
+        half = 12 * 3600 * 1000
+        between = [v for v in seen if before - half < v < before]
+        assert between, "the flip jumped instead of running through the hours"
+        assert between == sorted(between, reverse=True), "PM to AM runs backwards"
+        # And AM to PM runs forward.
+        at = pg.evaluate("() => _almFocusInstant().getTime()")
+        pg.evaluate("() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }")
+        pg.click("#almanac-head-time .ep[data-p=ap]")
+        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % (at + half), timeout=10_000, polling=POLL_MS)
+        fwd = [v for v in pg.evaluate("() => window._ckSeen") if at < v < at + half]
+        assert fwd and fwd == sorted(fwd)
+        pg.click("#almanac-head-time .ep[data-p=ap]")
+        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % at, timeout=10_000, polling=POLL_MS)
         # The month is a twelve-cell popover; a pick lands it.
         pg.click("#almanac-head-date .ep[data-p=month]")
         pg.wait_for_selector(".alm-ck-pop", timeout=5000)
@@ -369,8 +387,23 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         assert not pg.evaluate(
             "() => document.querySelector('#almanac-head .alm-ck-now').hidden"
         )
+        # The button shows the state: paused is the pause sign, pressed.
+        assert pg.evaluate(
+            "() => { var b = document.querySelector('#almanac-head .alm-spd-play'); return b.getAttribute('aria-pressed') === 'true' && b._ic === ALM_CK_PAUSE; }"
+        )
         # A faster pace, paused, and resumed to the pace it had.
         pg.evaluate("() => _almClockSetRate(3600)")
+        assert pg.evaluate(
+            "() => { var b = document.querySelector('#almanac-head .alm-spd-play'); return b.getAttribute('aria-pressed') === 'false' && b._ic === ALM_CK_PLAY; }"
+        )
+        # Running fast, the parts are not underlined and a tap on one types nothing.
+        pg.wait_for_function(
+            "() => /rgba\\(0, 0, 0, 0\\)|transparent/.test(getComputedStyle(document.querySelector('#almanac-head-time .ep[data-p=hour]')).textDecorationColor)",
+            timeout=5000,
+            polling=POLL_MS,
+        )
+        pg.click("#almanac-head-time .ep[data-p=hour]", force=True)
+        assert pg.evaluate("() => !_almEd")
         pg.click("#almanac-head .alm-spd-play", force=True)
         assert pg.evaluate("() => _almRate") == 0
         pg.click("#almanac-head .alm-spd-play", force=True)

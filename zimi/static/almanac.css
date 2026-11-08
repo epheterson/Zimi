@@ -688,6 +688,8 @@
 .ep { position: relative; cursor: pointer; border-radius: 4px; text-decoration: underline dotted; text-decoration-color: var(--text3); text-decoration-thickness: 1px; text-underline-offset: 5px; transition: color .15s, text-decoration-color .15s; }
 .ep::before { content: ""; position: absolute; inset: -8px -4px; }
 @media (hover: hover) { .ep:hover { color: var(--amber); text-decoration-color: var(--amber); } }
+.alm-ck-run .ep { cursor: default; text-decoration-color: transparent; color: inherit; }
+.alm-ck-run .ep::before { display: none; }
 .ep:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .ep[data-p="ap"], .ep[data-p="era"] { text-decoration-style: solid; text-decoration-color: var(--amber-border); }
 /* The part being changed: the same text, lifted onto a field with an amber rule, and a soft ring that arrives with it. */
