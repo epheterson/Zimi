@@ -925,7 +925,7 @@ def _cached(name, make):
     got there first wins; the files are the same). Callers copy out of it, never write into it."""
     import tempfile
 
-    cache = os.path.join(tempfile.gettempdir(), "zimi-games-fixture-%s" % os.getuid(), "%s-%s" % (name, _inputs_key()))
+    cache = os.path.join(tempfile.gettempdir(), "zimi-games-fixture-%s" % getattr(os, "getuid", lambda: "user")(), "%s-%s" % (name, _inputs_key()))
     if not os.path.isdir(cache):
         stage = "%s.%d.tmp" % (cache, os.getpid())
         shutil.rmtree(stage, ignore_errors=True)

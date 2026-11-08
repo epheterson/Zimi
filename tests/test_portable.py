@@ -12,6 +12,11 @@ sys.path.insert(0, ROOT)
 from zimi import runtimes, server, service  # noqa: E402
 
 
+_LINUX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32", reason="a systemd unit holds POSIX paths; a Windows path is quoted and escaped for systemd, so the literal comparison means nothing there"
+)
+
+
 @pytest.fixture
 def stick(tmp_path, monkeypatch):
     """A frozen build whose executable sits in tmp_path/stick."""
@@ -76,6 +81,7 @@ def test_portable_state_is_never_rerouted_to_the_cache(stick):
     ), "an unwritable stick must be an error, not a silent fallback"
 
 
+@_LINUX_ONLY
 def test_the_portable_unit_runs_the_executable_from_its_folder(stick):
     exe = str(stick / "zimi")
     text = service.unit_text(exe=exe)
@@ -92,6 +98,7 @@ def test_the_portable_unit_runs_the_executable_from_its_folder(stick):
     ), "the state is beside the executable, not in /var/lib"
 
 
+@_LINUX_ONLY
 def test_a_frozen_build_prints_the_portable_unit_by_default(stick):
     assert f"ExecStart={os.path.realpath(sys.executable)} serve" in service.unit_text()
 
