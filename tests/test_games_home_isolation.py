@@ -99,5 +99,5 @@ def test_the_game_header_gap_and_undo_arrow_follow_the_reading_direction(zimi, b
       return { left: h.marginLeft, right: h.marginRight, flip: getComputedStyle(act.querySelector('svg')).transform };
     }""")
     assert got["right"] == "4px" and got["left"] == "0px", got
-    assert got["flip"] == "matrix(-1, 0, 0, 1, 0, 0)", got
+    assert got["flip"] == "none", got   # not mirrored: turned round, the undo arrow reads as redo (2868d81c)
     page.close()
