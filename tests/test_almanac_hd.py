@@ -415,3 +415,15 @@ def test_a_restart_resumes_from_what_the_download_recorded_before_the_manifest_i
         is None
     )
     assert almanachd.saved_release(dict(saved, filename="other.zim")) is None
+
+
+def test_a_finished_download_is_not_the_one_under_way(monkeypatch):
+    from zimi import library
+
+    done = {"id": "d1", "filename": "zimi_almanac_maxi_2026-11.zim", "done": True}
+    live = {"id": "d2", "filename": "zimi_almanac_maxi_2026-11.zim"}
+    monkeypatch.setattr(library, "_download_queue", [])
+    monkeypatch.setattr(library, "_active_downloads", {"d1": done})
+    assert almanachd._downloading() is None
+    monkeypatch.setattr(library, "_active_downloads", {"d1": done, "d2": live})
+    assert almanachd._downloading() is live

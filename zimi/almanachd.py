@@ -179,6 +179,7 @@ def _downloading():
             for d in recs
             if (d.get("_source") == SOURCE or _FILE_RE.match(str(d.get("filename"))))
             and not d.get("error")
+            and not d.get("done")  # a finished transfer is kept for a while: HD deleted since is to be fetched again
         ),
         None,
     )
