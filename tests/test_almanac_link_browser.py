@@ -192,7 +192,11 @@ def test_side_by_side_full_screen_comes_back(browser, served):
         _view_ready(pg)
         pg.evaluate("() => _aePreset(AE_SPIN_KEY)")
         pg.wait_for_function("() => !!_ae.spin", timeout=60_000)
-        pg.evaluate("() => _aeFullEnter()")
+        # The link is about Zimi's own full-screen state; the browser's Fullscreen API (which a
+        # headless Linux Chromium may answer with an enter and an exit) is left out of it.
+        pg.evaluate(
+            "() => { Object.defineProperty(document, 'fullscreenEnabled', { get: () => false }); _aeFullEnter(); }"
+        )
         h = _hash_after_writes(pg, ["v=spin", "f=1"])
     finally:
         ctx.close()
