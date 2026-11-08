@@ -7219,7 +7219,10 @@ function _aeEnter() {
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
-  _aePreset(_aeOpenTarget);
+  var link = _aeLinkWant;
+  _aeLinkWant = null;
+  _aePreset(link ? link.v : _aeOpenTarget);
+  if (link) _aeLinkApply(link);
 }
 
 function _aeHideHint() {
@@ -7294,6 +7297,43 @@ function openAlmanacEarth(opts) {
     // What the finger did while the view was being made turns the Moon now it is up.
     if (kept && _aeIsOpen && _ae.gl) _aeDragBy(kept.x, kept.y);
   });
+}
+// ── The address ──
+// The view's part of the URL (almanac.js, "The address"): v the view (a preset or a body), c the camera (distance in Earth radii,
+// then azimuth and elevation in degrees), n the slide across the body, f=1 for full screen in Side by side. Read once, when the
+// view is made ready: it opens on the view and snaps to the camera, with no flight.
+var AE_LINK_VIEW_RE = /^[a-z0-9_-]{1,32}$/;
+var _aeLinkWant = null;
+function _aeLinkParts() {
+  if (!_aeIsOpen || !_ae || !_ae.gl) return [];
+  var out = ['v=' + (_ae.preset || _ae.target)];
+  if (_ae.spin) { if (_ae.spin.full) out.push('f=1'); return out; }
+  var turn = function (rad) { return Number((((_aeDeg(rad) + 540) % 360) - 180).toFixed(1)); };
+  out.push('c=' + [Number(_ae.dist.toPrecision(4)), turn(_ae.az), Number(_aeDeg(_ae.el_).toFixed(1))].join(','));
+  var p = _ae.pan;
+  if (p && p.t === _ae.target && !_ae.fly) out.push('n=' + p.v.map(function (x) { return Number(x.toPrecision(3)); }).join(','));
+  return out;
+}
+function _aeLinkOpen(link) {
+  if (_aeIsOpen || !AE_LINK_VIEW_RE.test(link.v)) return;
+  _aeLinkWant = link;
+  openAlmanacEarth({ from: 'sky' });
+}
+function _aeLinkApply(link) {
+  if (link.f && _ae.spin) _aeFullEnter();
+  if (!link.c || _ae.spin || _ae.pendingPreset) return;
+  _ae.fly = null;
+  if (_ae.orbitFly) _ae.orbitFly.endAt = performance.now();
+  var t = AE_TARGETS[_ae.target];
+  if (link.c[0] > 0) _ae.dist = t ? _aeClampDist(link.c[0]) : link.c[0];
+  _ae.az = _aeRad(link.c[1]);
+  _ae.el_ = _aeClamp(_aeRad(link.c[2]), -AE_MAX_ELEVATION, AE_MAX_ELEVATION);
+  if (link.n && t) {
+    var len = _aeLen(link.n), v = len > t.surface ? _aeScale(link.n, t.surface / len) : link.n;
+    _ae.pan = { t: _ae.target, v: v };
+  }
+  _ae.dirty = true;
+  _aeKick();
 }
 // The view is a step in history, as Look's overlay is: the phone's back
 // gesture closes it and the Almanac stays; a second one leaves the Almanac.

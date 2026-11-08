@@ -33,6 +33,7 @@ function _almValidLatLon(lat, lon) {
 }
 
 function _getLocation() {
+  if (_almLinkPlace) return { lat: _almLinkPlace.lat, lon: _almLinkPlace.lon, name: '', stored: true, known: true };
   var stored = null;
   try { stored = localStorage.getItem(_ALM_PLACE_KEY); } catch (e) {}
   if (!stored) {
@@ -88,6 +89,7 @@ function _almSunTimesAt(date, loc) {
 
 function _saveLocation(lat, lon, name) {
   if (!_almValidLatLon(lat, lon)) return; // reject a bad click/geolocate outright
+  _almLinkPlace = null;   // a place chosen here replaces the one a link brought
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
   // Kept with the person (see _ALM_PLACE_KEY); the session copy goes, so an
@@ -107,7 +109,7 @@ function _almPrefsApplied(keys) {
   var has = function (k) { return keys.indexOf(k) >= 0; };
   if (has(SK.ALM_SKY)) _skySettings = null;
   if (has(SK.ALM_ORRERY_TRIED)) _orreryTriedCache = null;
-  if (has(SK.ALMANAC_PLACE)) _almSelectedTz = null;
+  if (has(SK.ALMANAC_PLACE)) { _almSelectedTz = null; _almLinkPlace = null; }
   if (_almanacOpen && keys.some(function (k) { return _ALM_PREF_PAGE.indexOf(k) >= 0; })) _renderAlmanacContent();
   if (typeof _aePrefsApplied === 'function') _aePrefsApplied(keys);
 }
@@ -311,12 +313,16 @@ function _almEarthLater() {
 
 function _openAlmanacInner(replaceState) {
   _almanacOpen = true;
+  // A reload or a shared link: the moment, rate and place are in place before the first draw (the address, below).
+  var link = replaceState && !_almReturning && !_almLinkSeen && _almIsLinkHash(location.hash) ? _almLinkParse(location.hash) : null;
+  _almLinkSeen = true;
+  if (link) _almLinkApplyClock(link);
   _almanacLoopsHeld = false; // the last close (_cancelAllRAF) held them
   document.body.classList.add('almanac-mode');
   // The reload-into-almanac boot gate (stamped by the head bootstrap before
   // first paint) has done its job once the real almanac chrome is up.
   document.documentElement.classList.remove('almanac-boot');
-  var url = location.pathname + location.search + '#almanac';
+  var url = location.pathname + location.search + (_almIsLinkHash(location.hash) ? location.hash : '#almanac');
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
   var el = document.getElementById('almanac-view');
@@ -349,6 +355,7 @@ function _openAlmanacInner(replaceState) {
     _renderAlmanacContent();
     var sc = document.getElementById('almanac-content');
     if (sc) sc.scrollTop = 0;
+    if (link) _almLinkRestoreView(link); else _almLinkStart();
   };
   var drawn = false, drawOnce = function () { if (!drawn) { drawn = true; draw(); } };
   if (typeof _moonTexThen === 'function') { _moonTexThen(drawOnce); setTimeout(drawOnce, ALM_MOON_WAIT_MS); } else drawOnce();
@@ -364,6 +371,7 @@ function _openAlmanacInner(replaceState) {
 // close) or preserve it (a deep-link suspend that Back should return to).
 function _almanacTeardown() {
   _almanacOpen = false;
+  _almLinkStop();
   _almVeilCancel();
   if (typeof _chromeReset === 'function') _chromeReset();
   // Pointing the phone (almanac-look.js) lives on the Almanac and goes with it.
@@ -398,11 +406,99 @@ function closeAlmanac() {
   _almReturnScroll = null; // an explicit close cancels any pending return
   _almanacTeardown();
   // Remove #almanac hash without adding history entry
-  if (location.hash === '#almanac') {
+  if (_almIsLinkHash(location.hash)) {
     history.replaceState(history.state, '', location.pathname + location.search);
   }
   if (typeof _earthAlmanacClosed === 'function') _earthAlmanacClosed();
 }
+
+// -- The address ---------------------------------------------------------------------------------------------------------
+// The URL always says where the person is, so a reload (iOS discards background tabs), a bookmark or a shared link comes back to
+// the same moment: #almanac?t=<epoch seconds>&r=<rate>&p=<lat>,<lon>&s=<scroll px>&v=<3D view>&c=<dist>,<az>,<el>&n=<x>,<y>,<z>&f=1.
+// Only what differs from a fresh open is written: real time at now writes no t or r, so a plain reload shows now. Written with
+// replaceState (one history entry, however far the person goes), read once, at the open that follows a load. The 3D view's part
+// is almanac-earth.js (_aeLinkParts, _aeLinkOpen).
+var ALM_LINK_MS = 500;                  // how often the address is brought up to date
+var ALM_LINK_SCROLL_TRIES = 30, ALM_LINK_SCROLL_MS = 150;   // the page may still be growing when the scroll is put back
+var ALM_LINK_PLACE_SAME = 0.006;        // degrees: a link's place within this of the saved one is the saved one
+var _almLinkPlace = null;               // { lat, lon }: a place that came with a link; never stored, gone when one is chosen
+function _almIsLinkHash(h) { return /^#almanac(\?|$)/.test(h || ''); }
+var _almLinkTimer = 0, _almLinkLast = '', _almLinkSeen = false;
+function _almLinkNums(str, n) {
+  var a = String(str == null ? '' : str).split(',').map(function (x) { return x === '' ? NaN : Number(x); });
+  return a.length === n && a.every(isFinite) ? a : null;
+}
+function _almLinkParse(hash) {
+  var q = hash.indexOf('?'), P = new URLSearchParams(q < 0 ? '' : hash.slice(q + 1));
+  var num = function (k) { var v = P.get(k); return v !== null && v !== '' && isFinite(Number(v)) ? Number(v) : null; };
+  return { t: num('t'), r: num('r'), p: _almLinkNums(P.get('p'), 2), s: Math.max(0, num('s') || 0),
+    v: P.get('v') || '', c: _almLinkNums(P.get('c'), 3), n: _almLinkNums(P.get('n'), 3), f: P.get('f') === '1' };
+}
+function _almLinkApplyClock(link) {
+  if (link.p && _almValidLatLon(link.p[0], link.p[1])) {
+    var own = _getLocation();
+    _almLinkPlace = own.stored && Math.abs(own.lat - link.p[0]) < ALM_LINK_PLACE_SAME && Math.abs(own.lon - link.p[1]) < ALM_LINK_PLACE_SAME ? null : { lat: link.p[0], lon: link.p[1] };
+  }
+  var at = link.t === null ? null : new Date(link.t * 1000);
+  if (at && !isNaN(at.getTime())) _almFocus = _almClampInstant(at);
+  if (link.r !== null) {
+    var top = ALM_RATE_SECS[0], r = Math.max(-top, Math.min(top, link.r));
+    _almRate = _almRateIsReal(r) ? 1 : Math.abs(r) < 0.05 ? 0 : r;
+    if (_almRate === 0 && !_almFocus) _almFocus = new Date();
+  }
+}
+// The part of the address that is the page's own: the scroll put back, and the 3D view opened where it was. The address
+// is not written until both are done, or the first write would replace what is yet to be read.
+function _almLinkRestoreView(link) {
+  var left = 1, done = function () { if (--left === 0 && _almanacOpen) _almLinkStart(); };
+  var sc = document.getElementById('almanac-content');
+  _almClockSync();
+  if (sc && link.s > 0) {
+    left++;
+    var tries = 0, stopped = false, kinds = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    var stop = function () { stopped = true; kinds.forEach(function (k) { sc.removeEventListener(k, stop); }); };
+    kinds.forEach(function (k) { sc.addEventListener(k, stop, { passive: true }); });
+    (function put() {
+      if (stopped || !_almanacOpen) { stop(); done(); return; }
+      sc.scrollTop = link.s;
+      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); done(); return; }
+      setTimeout(put, ALM_LINK_SCROLL_MS);
+    })();
+  }
+  if (link.v) {
+    left++;
+    _almLoadEarth().then(function () {
+      if (_almanacOpen && typeof _aeLinkOpen === 'function') _aeLinkOpen(link);
+    }).catch(function () {}).then(done);
+  }
+  done();
+}
+function _almLinkHash() {
+  var parts = [], sc = document.getElementById('almanac-content');
+  if (_almFocus && (_almRate !== 1 || !_almIsLiveNow(_almFocus))) parts.push('t=' + Math.round(_almFocus.getTime() / 1000));
+  if (_almRate !== 1) parts.push('r=' + Number(_almRate.toPrecision(3)));
+  // The saved place is not written (a link passed on would carry where someone lives); one that came with a link stays in it.
+  if (_almLinkPlace) parts.push('p=' + Number(_almLinkPlace.lat.toFixed(2)) + ',' + Number(_almLinkPlace.lon.toFixed(2)));
+  if (sc && sc.scrollTop >= 1) parts.push('s=' + Math.round(sc.scrollTop));
+  if (typeof _aeLinkParts === 'function') parts = parts.concat(_aeLinkParts());
+  return '#almanac' + (parts.length ? '?' + parts.join('&') : '');
+}
+function _almLinkWrite() {
+  if (!_almanacOpen || !_almIsLinkHash(location.hash)) return;
+  var h = _almLinkHash();
+  if (h === _almLinkLast) return;
+  _almLinkLast = h;
+  try { history.replaceState(history.state, '', location.pathname + location.search + h); } catch (e) {}
+}
+function _almLinkStart() {
+  clearInterval(_almLinkTimer);
+  _almLinkTimer = setInterval(_almLinkWrite, ALM_LINK_MS);
+  _almLinkWrite();
+}
+function _almLinkStop() { clearInterval(_almLinkTimer); _almLinkTimer = 0; _almLinkLast = ''; }
+// A discarded tab keeps the last thing written: the latest is written as the page goes out of sight.
+document.addEventListener('visibilitychange', function () { if (document.hidden && _almLinkTimer) _almLinkWrite(); });
+window.addEventListener('pagehide', function () { if (_almLinkTimer) _almLinkWrite(); });
 
 // Suspend the almanac to open a deep-linked article: tear down the visuals but
 // leave the #almanac history entry intact so a Back returns here. Returns the

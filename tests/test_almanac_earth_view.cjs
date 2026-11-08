@@ -183,7 +183,7 @@ vm.runInContext(
   // And the one clock's rate: recorded where the view asks for it, with the stops the page has.
   'var _almRate = 1, _almRates = []; function _almClockSetRate(r) { _almRates.push(r); _almRate = r; }' +
   'function _almClockHtml(v) { return "<div class=\\"alm-clock\\" data-v=\\"" + v + "\\"></div>"; } function _almClockPaint() {}' +
-  'function _almClockHaltRaf() {} function _almEdEnd() {} var _almClockStale = false, _almClockRunning = false;' +
+  'function _almClockHaltRaf() {} function _almEdEnd() {} function _almLinkStop() {} var _almClockStale = false, _almClockRunning = false;' +
   'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S)
 for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays',
                   '_almanacTeardown', '_almVeilCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);

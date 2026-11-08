@@ -3925,7 +3925,8 @@ function route(push) {
   // Restore Almanac on reload if #almanac hash is present. The head bootstrap
   // already stamped html.almanac-boot, so the home render below stays invisible
   // and the dark almanac shell is what the first paint shows.
-  if (location.hash === '#almanac') {
+  // #almanac, or #almanac?... (the address almanac.js keeps up to date as the person moves; it is read there).
+  if (/^#almanac(\?|$)/.test(location.hash)) {
     enterHome(false);
     openAlmanac(true);
     // Backstop: if the almanac never comes up (a module error mid-parse slips
