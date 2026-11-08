@@ -155,7 +155,7 @@ def test_a_tap_on_the_bar_takes_the_almanac_to_its_top(served):
         try:
             pg.goto(base + "/#almanac")
             pg.wait_for_function(
-                "() => { const c = document.getElementById('almanac-content'); return c && c.scrollHeight > 3000; }",
+                "() => { const c = document.getElementById('almanac-content'); return !_almVeilIsUp() && c && c.scrollHeight > 3000; }",
                 timeout=30000,
             )
             pg.evaluate(
@@ -253,13 +253,13 @@ VIEWS = {
     "dictionary": ("() => openDictionary()", APP, None, False),
     "almanac": (
         "() => openAlmanac()",
-        "() => { const c = document.getElementById('almanac-content'); return c && c.scrollHeight > 3000; }",
+        "() => { const c = document.getElementById('almanac-content'); return !_almVeilIsUp() && c && c.scrollHeight > 3000; }",
         None,
         False,
     ),
     "a-table-over-the-scrolled-almanac": (
         "() => openAlmanac()",
-        "() => document.getElementById('alm-group-tables')",
+        "() => !_almVeilIsUp() && document.getElementById('alm-group-tables')",
         "() => { document.getElementById('almanac-content').scrollTop = 1500; _almRefOpen('sunmoon'); }",
         False,
     ),
