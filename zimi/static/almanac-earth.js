@@ -4492,6 +4492,8 @@ function _aeNewState(el) {
   return {
     el: el, gl: null, loading: false, failed: false,
     target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
+    pan: null,                            // the slide across the target ({ t: its name, v: scene offset }), _aePanBy
+    issRoll: null,                        // the station view's roll as last drawn (_aeRollDeg holds it near the zenith line)
     flightUp: null, flightOff: 0,         // up carried along a flight (_aeFlightUp)
     fly: null,                            // { start, from:{target pos, dist}, to }
     pointers: {}, pinch: null, drag: null,
@@ -4555,18 +4557,25 @@ function _aeObserver() {
   var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
   return loc && loc.stored ? loc : null;
 }
+var AE_ISS_UP_EASE_SIN = Math.sin(_aeRad(25));   // sine of the angle from the zenith line within which the station's up is held, not followed
 // The camera's turn about its line of sight, in degrees from celestial north
 // (positive toward east): on the Moon, the parallactic angle at the observer
 // (app.js _moonLimbAngles, the same answer the hero disc turns by), so the
 // terminator lies as it does in their sky; everywhere else north is up.
 function _aeRollDeg(target, ms) {
-  // By the station, up is away from the Earth (its zenith), so the horizon lies across the picture.
+  if (target !== 'iss') _ae.issRoll = null;
+  // By the station, up is away from the Earth (its zenith), so the horizon lies across the picture. Looking along
+  // the zenith (straight down at the Earth, or up from under the station) that up has no direction, and the picture
+  // would turn a half turn across a degree or two of a drag: near that line the picture stays as it was and takes
+  // up the horizon again as the line leaves it (AE_ISS_UP_EASE_SIN).
   if (target === 'iss' && _ae.issPos) {
     var d = _aeNorm(_aeScale(_aeCameraOffset(_ae.az, _ae.el_, 1), -1)), z = _aeNorm(_ae.issPos);
     var n = _aeSub([0, 0, 1], _aeScale(d, d[2])), u = _aeSub(z, _aeScale(d, _aeDot(z, d)));
-    if (_aeLen(n) < 1e-9 || _aeLen(u) < 1e-9) return 0;
+    if (_aeLen(n) < 1e-9 || _aeLen(u) < 1e-9) return _ae.issRoll || 0;
     n = _aeNorm(n);
-    return _aeDeg(Math.atan2(_aeDot(u, _aeCross(n, d)), _aeDot(u, n)));
+    var raw = _aeDeg(Math.atan2(_aeDot(u, _aeCross(n, d)), _aeDot(u, n))), kept = _ae.issRoll;
+    _ae.issRoll = kept == null ? raw : kept + _angleDelta(kept, raw) * _aeSmoother(_aeLen(u) / AE_ISS_UP_EASE_SIN);
+    return _ae.issRoll;
   }
   var obs = target === 'moon' ? _aeObserver() : null;
   return obs ? _moonLimbAngles(new Date(ms), obs.lat, obs.lon).q : 0;
@@ -4626,6 +4635,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 function _aeFlyTo(target, dist, azel, overview) {
   var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
   _ae.orbitFly = { from: from.target, to: target, endAt: null };   // whose orbits show while it flies
+  _ae.pan = null;
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
   var to = { dist: _aeClampDist(dist) };
@@ -4950,7 +4960,7 @@ function _aeFlyTargetPos() {
 // passing between the hero and the view, a blend of the view's camera and
 // the hero's (_aeHandCam).
 function _aeViewCam() {
-  var tp = _aeFlyTargetPos();
+  var tp = _aePanned(_aeFlyTargetPos());
   var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
   if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeSmoother(_ae.fly.prog || 0);
   return { tp: tp, az: _ae.az, el: _ae.el_, dist: _ae.dist, tanHalf: Math.tan(_aeRad(AE_FOV_DEG) / 2), roll: roll, frame: null };
@@ -6665,6 +6675,34 @@ function _aeZoomBy(factor) {
   _ae.dirty = true;
   _aeKick();
 }
+// Two fingers (or a right or shift drag) slide the view across the body instead of turning it: the point looked at
+// moves in the screen's plane, no further from the body's middle than its radius (a craft's half-span), so it can
+// never be lost; it is let go as the view leaves the body (AE_PAN_NEAR..AE_PAN_FAR radii out) and when it flies on.
+var AE_PAN_NEAR = 3, AE_PAN_FAR = 8;
+function _aePanWeight() {
+  var r = _ae.dist / AE_TARGETS[_ae.target].surface;
+  return 1 - _aeSmoother((r - AE_PAN_NEAR) / (AE_PAN_FAR - AE_PAN_NEAR));
+}
+// `pos`, the target's place, moved by the slide that belongs to it (none while flying to something else).
+function _aePanned(pos) {
+  var p = _ae.pan;
+  if (!p || p.t !== _ae.target || _ae.fly) return pos;
+  var w = _aePanWeight();
+  return [pos[0] + p.v[0] * w, pos[1] + p.v[1] * w, pos[2] + p.v[2] * w];
+}
+// A move of the fingers' midpoint, in screen pixels: the body follows it, so the point looked at goes the other way.
+function _aePanBy(dx, dy) {
+  var focal = _aeFocalPx(), e = _ae.gl && _ae.gl.camera.matrixWorld.elements;
+  if (!(focal > 0) || !e) return;
+  var k = _ae.dist / focal, p = _ae.pan && _ae.pan.t === _ae.target ? _ae.pan.v : [0, 0, 0];
+  var v = [0, 1, 2].map(function (i) { return p[i] + (e[4 + i] * dy - e[i] * dx) * k; });
+  var reach = AE_TARGETS[_ae.target].surface, len = _aeLen(v);
+  if (len > reach) v = _aeScale(v, reach / len);
+  _ae.fly = null;
+  _ae.pan = { t: _ae.target, v: v };
+  _ae.dirty = true;
+  _aeKick();
+}
 function _aeTurnBy(dAz, dEl) {
   _ae.fly = null;
   _ae.az += dAz;
@@ -6759,10 +6797,13 @@ function _aeBindCanvas(canvas) {
     canvas.setPointerCapture(e.pointerId);
     _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(_ae.pointers);
-    if (ids.length === 1) _ae.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false };
-    else if (ids.length === 2) {
+    if (ids.length === 1) {
+      // A right or shift drag with a mouse slides the view as two fingers do (never a tap).
+      var slide = e.pointerType === 'mouse' && (e.button === 2 || e.shiftKey);
+      _ae.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: slide, pan: slide };
+    } else if (ids.length === 2) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
-      _ae.pinch = { span: Math.hypot(a.x - b.x, a.y - b.y) };
+      _ae.pinch = { span: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       _ae.drag = null;
     }
     canvas.classList.add('ae-dragging');
@@ -6777,13 +6818,19 @@ function _aeBindCanvas(canvas) {
       var span = Math.hypot(a.x - b.x, a.y - b.y);
       if (span > 0 && _ae.pinch.span > 0) _aeZoomBy(_ae.pinch.span / span);
       _ae.pinch.span = span;
+      // The midpoint slides the view, whether or not the fingers also spread or close.
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      _aePanBy(mx - _ae.pinch.mx, my - _ae.pinch.my);
+      _ae.pinch.mx = mx; _ae.pinch.my = my;
     } else if (_ae.drag) {
       var dx = e.clientX - _ae.drag.x, dy = e.clientY - _ae.drag.y;
       _ae.drag.x = e.clientX; _ae.drag.y = e.clientY;
       if (Math.hypot(e.clientX - _ae.drag.x0, e.clientY - _ae.drag.y0) > AE_TAP_SLOP_PX) _ae.drag.moved = true;
-      _aeDragBy(dx, dy);
+      if (_ae.drag.pan) _aePanBy(dx, dy);
+      else _aeDragBy(dx, dy);
     }
   });
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   function end(e) {
     if (!_ae.pointers[e.pointerId]) return;
     delete _ae.pointers[e.pointerId];
