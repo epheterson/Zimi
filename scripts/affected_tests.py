@@ -18,7 +18,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAMP = os.path.join(ROOT, ".git", "zimi-last-deploy")
 SOURCES = ("zimi/", "scripts/", "docker/")
-# Names too common to say which tests a change touches.
+# What deploy.sh ships besides those folders, and the tests themselves.
+SHIPPED_FILES = ("requirements.txt", "Dockerfile", "docker-compose.nas.yml")
+TESTS = "tests/"
+# Names too common to say which tests a change touches (app.js is named by a hundred of them: matching it would
+# make every deploy a full run). They are said out loud below, so a change to one is never silently untested.
 VAGUE = {"__init__", "index", "app", "server", "shell", "text", "README", "zimi"}
 
 
@@ -31,18 +35,19 @@ def changed(since):
             text=True,
             check=True,
         ).stdout
-        return [p for p in out.split() if p.startswith(SOURCES)]
+        return [p for p in out.split() if p.startswith(SOURCES + (TESTS,) + SHIPPED_FILES)]
     if not os.path.exists(STAMP):
         sys.exit("No deploy stamp yet: name a git ref, e.g. main")
     stamp = os.path.getmtime(STAMP)
     found = []
-    for top in SOURCES:
+    for top in SOURCES + (TESTS,):
         for d, dirs, files in os.walk(os.path.join(ROOT, top)):
             dirs[:] = [x for x in dirs if x != "__pycache__"]
             for f in files:
                 p = os.path.join(d, f)
                 if os.path.getmtime(p) > stamp and not f.endswith(".pyc"):
                     found.append(os.path.relpath(p, ROOT))
+    found += [f for f in SHIPPED_FILES if os.path.getmtime(os.path.join(ROOT, f)) > stamp]
     return found
 
 
@@ -52,7 +57,8 @@ def stems(paths):
     for p in paths:
         base = os.path.basename(p)
         stem, ext = os.path.splitext(base)
-        if stem in VAGUE or re.match(r"zimi_\w+_\d{4}-\d{2}", stem):
+        if re.match(r"zimi_\w+_\d{4}-\d{2}", stem) or stem in VAGUE:
+            print("  not mapped to tests (too common a name): " + p)
             continue
         out.add(stem if ext == ".py" else base)
     return out
@@ -76,6 +82,11 @@ def main(argv):
     args = [a for a in argv if a != "--list"]
     paths = changed(args[0] if args else None)
     py, node = affected(stems(paths))
+    # A changed test file is run itself, whatever it names.
+    for p in paths:
+        if p.startswith(TESTS + "test_") and p.endswith((".py", ".cjs")):
+            (py if p.endswith(".py") else node).append(p)
+    py, node = sorted(set(py)), sorted(set(node))
     print(
         f"{len(paths)} changed files -> {len(py)} pytest files, {len(node)} node checks"
     )
