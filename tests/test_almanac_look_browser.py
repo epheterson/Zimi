@@ -430,11 +430,15 @@ def test_look_without_sensors_or_permission_turns_by_finger(browser, served):
 def test_a_held_phone_costs_no_frames_and_closing_gives_the_card_back(browser, served):
     ctx, pg, errors = _look(browser, served, "none")
     try:
-        pg.wait_for_timeout(2000)
+        # The Almanac settles first: the veil's cap paints the sky once, and the panels under
+        # the calendar load a few seconds after the page is shown. The world clock's once-a-second tick (the page behind Look) is not Look's cost and is not counted.
+        pg.wait_for_function("() => !_almRevealing", timeout=10000)
         pg.evaluate(
             "() => { window.__raf = 0; const r = window.requestAnimationFrame.bind(window);"
-            " window.requestAnimationFrame = (f) => r((t) => { window.__raf++; f(t); }); }"
+            " window.requestAnimationFrame = (f) => r((t) => { if (!/_tzClockTick/.test(f.toString())) window.__raf++; f(t); }); }"
         )
+        pg.wait_for_function("() => performance.now() > _almShownAt + ALM_PANELS_SETTLE_MS + 4000", timeout=20000)
+        pg.evaluate("() => { window.__raf = 0; }")
         pg.wait_for_timeout(3000)
         assert pg.evaluate("() => window.__raf") == 0
         _tap(pg, "#look-close")
