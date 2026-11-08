@@ -11247,6 +11247,9 @@ async function fetchNearPlaces() {
     const res = await fetch('/places/suggest?q=' + encodeURIComponent(info.typed) + '&limit=8', { signal: suggestController.signal });
     const data = await res.json();
     if (seq !== _suggestSeq || document.activeElement !== q) return;
+    // The box moved on while this was asked (the offsets in `info` are for the text it was asked about).
+    const now = _nearTyping(q.value, q.selectionStart);
+    if (!now || now.start !== info.start || now.end !== info.end || now.typed !== info.typed) return;
     suggestItems = (data.places || []).map(p => ({ _nearPick: true, title: p.label, token: p.token, at: info,
       // The name the tiles carry in the place's own language, when it differs.
       sub: p.local && p.local !== p.name ? p.local : '' }));
@@ -11261,7 +11264,13 @@ async function fetchNearPlaces() {
 // part was, a space after it for the distance, the caret there.
 function _pickNearPlace(s) {
   const token = /[\s,"]/.test(s.token) ? '"' + s.token + '"' : s.token;
-  const after = q.value.slice(s.at.end);
+  // A place typed inside quotes ends at its closing quote: it is replaced with the rest, not left behind it.
+  let end = s.at.end;
+  if (/^["\u201c]/.test(q.value.slice(s.at.start + 'near:'.length))) {
+    const close = q.value.slice(end).search(/["\u201d]/);
+    if (close >= 0) end += close + 1;
+  }
+  const after = q.value.slice(end);
   const put = q.value.slice(0, s.at.start) + 'near:' + token + (after.startsWith(' ') ? '' : ' ');
   q.value = put + after;
   q.focus();

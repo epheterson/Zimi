@@ -66,6 +66,9 @@ q.value = 'near:Spri 5km';
 sandbox._pickNearPlace({ token: 'Springfield, Illinois', at: sandbox._nearTyping(q.value, 9) });
 check(q.value === 'near:"Springfield, Illinois" 5km', 'a distance already after it stays: ' + JSON.stringify(q.value));
 check(q.caret === 'near:"Springfield, Illinois" '.length, 'with the caret before it: ' + q.caret);
+q.value = 'near:"Paris" 5km';
+sandbox._pickNearPlace({ token: 'Paris, Texas', at: sandbox._nearTyping(q.value, 'near:"Par'.length) });
+check(q.value === 'near:"Paris, Texas" 5km', 'a place edited inside its quotes is replaced through the closing quote: ' + JSON.stringify(q.value));
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('all passed');

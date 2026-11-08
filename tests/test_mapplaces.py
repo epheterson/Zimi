@@ -294,3 +294,13 @@ def test_a_search_without_near_never_asks_for_places_near(tmp_path, monkeypatch)
     monkeypatch.setattr(mapplaces, "near", boom)
     search.search_all("springfield", fast=True)
     search.search_all("springfield -texas", fast=True)
+
+
+def test_a_hyphenated_name_is_indexed_by_the_words_the_lookups_use():
+    rows, _top = mapplaces._rows({("Aix-en-Provence", "city", 0, 0): (43.53, 5.45, {})})
+    assert {r[0] for r in rows} == {"aix", "en", "provence"}
+
+
+def test_a_qualifier_alone_names_no_place(monkeypatch):
+    monkeypatch.setattr(mapplaces, "ready", lambda name: True)
+    assert mapplaces.named("any_map", ", OR") == []

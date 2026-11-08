@@ -300,8 +300,8 @@ def _rows(found):
         if local == name:
             local = ""
         weight = _tag_rank({"class": cls, **extra})
-        words = set(mapsearch.normalize_text(name).split())
-        words |= set(mapsearch.normalize_text(local).split())
+        # The words of _norm, as the lookups write them: "Aix-en-Provence" is aix, en, provence.
+        words = set(_norm(name).split()) | set(_norm(local).split())
         for word in words:
             key = (word, name, cls, round(lat, 3), round(lng, 3))
             if key in seen:
@@ -367,7 +367,8 @@ _builder = DetailsBuilder(
     label="Maps",
     what="town names",
     # 3: each town's region, country, local name and size (autocomplete).
-    version="3",
+    # 4: the indexed words are the lookups' (a hyphen divides a name).
+    version="4",
     table="places",
     columns=COLUMNS,
     # Looked up when it runs, as the child process looks it up.
@@ -629,6 +630,8 @@ def named(name, place, qualified_only=False):
         if qualified_only and not qualifier:
             continue
         words = typed.split()
+        if not words:  # a qualifier alone ("near:, OR") names no place
+            continue
         rows = _query(
             name,
             f"SELECT DISTINCT {_SELECT} FROM places WHERE word = ?",
