@@ -212,11 +212,12 @@ def test_the_games_shelf_and_a_game_of_each_kind_start_in_kiwix(browser, kiwix):
     try:
         pg.goto(kiwix["base"] + "/viewer#" + book, wait_until="load")
         fr = _content_frame(pg, book)
-        # Every game on the shelf is a link on the page.
+        # Every game on the shelf is a link on the page. Kiwix's viewer rewrites a book's links to its own
+        # "/viewer#<book>/<path>" (kiwix-tools 3.8), so a link counts by the path after the book's name.
         want = sorted({g["path"] for g in shelf})
         fr.wait_for_function(
-            "(want) => { var have = new Set(Array.from(document.querySelectorAll('a[href]'), a => a.getAttribute('href'))); return want.every(p => have.has(p)); }",
-            arg=want,
+            "([want, book]) => { var cut = '/viewer#' + book + '/'; var have = new Set(Array.from(document.querySelectorAll('a[href]'), a => { var h = a.getAttribute('href'); return h.indexOf(cut) === 0 ? h.slice(cut.length) : h; })); return want.every(p => have.has(p)); }",
+            arg=[want, book],
             timeout=60_000,
         )
         for page in GAME_PAGES:
