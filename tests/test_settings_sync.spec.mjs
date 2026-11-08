@@ -161,15 +161,15 @@ test('the theme and the Almanac\'s choices reach the other open window with no r
   const navigations = [];
   b.page.on('framenavigated', (f) => { if (f === b.page.mainFrame()) navigations.push(f.url()); });
   // Orbits (the Earth view's gear), the units, the place and the theme, set in A.
-  await a.page.evaluate(() => { _aeSetOrbits('always'); _prefWrite('zimi_almanac_units', 'ft'); _saveLocation(48.85, 2.35, 'Paris'); _setAppTheme('light'); });
-  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsMode(), localStorage.getItem('zimi_almanac_units'), _getLocation().name, _appTheme()]), { timeout: 20000 })
-    .toEqual(['always', 'ft', 'Paris', 'light']);
+  await a.page.evaluate(() => { _aeSetOrbits(true); _prefWrite('zimi_almanac_units', 'ft'); _saveLocation(48.85, 2.35, 'Paris'); _setAppTheme('light'); });
+  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsOn(), localStorage.getItem('zimi_almanac_units'), _getLocation().name, _appTheme()]), { timeout: 20000 })
+    .toEqual([true, 'ft', 'Paris', 'light']);
   expect(await value(a.page, 'zimi_ae_orbits')).toBe('always');
   expect(await value(a.page, 'zimi_almanac_units')).toBe('ft');
   expect(JSON.parse(await value(a.page, 'zimi_almanac_place')).name).toBe('Paris');
   expect(navigations, 'the other window was not reloaded').toEqual([]);
-  await a.page.evaluate(() => { _aeSetOrbits('flying'); _prefWrite('zimi_almanac_units', null); _setAppTheme('auto'); });
-  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsMode(), _appTheme()]), { timeout: 20000 }).toEqual(['flying', 'auto']);
+  await a.page.evaluate(() => { _aeSetOrbits(false); _prefWrite('zimi_almanac_units', null); _setAppTheme('auto'); });
+  await expect.poll(() => b.page.evaluate(() => [_aeOrbitsOn(), _appTheme()]), { timeout: 20000 }).toEqual([false, 'auto']);
   await a.context.close(); await b.context.close();
 });
 

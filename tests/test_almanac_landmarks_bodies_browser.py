@@ -179,9 +179,7 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
             assert pg.evaluate(LABELS) == []
             # On, they are Mars's own places (at most 18), the biggest first: the sites of Olympus Mons's size read at
             # the whole disc, the face turned to us.
-            pg.click("#ae-gear")
-            pg.check("#ae-set-body input[name='ae-lm-layer']")
-            pg.click("#ae-gear")
+            pg.click("#ae-lm-btn")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return ("
                 + LABELS

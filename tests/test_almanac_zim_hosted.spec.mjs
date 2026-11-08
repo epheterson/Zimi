@@ -44,8 +44,8 @@ test('satellites and tide stations answer from the ZIM', async ({ page }) => {
 // without a reload, and in Kiwix (no Zimi around) it is this browser's own, with no error.
 test('inside Zimi a choice goes through the shell, and a change from the shell is drawn without a reload', async ({ page }) => {
   const frame = await openAlmanacZim(page);
-  await frame.evaluate(() => _aeSetOrbits('off'));
-  expect(await page.evaluate(() => localStorage.getItem('zimi_ae_orbits'))).toBe('off');
+  await frame.evaluate(() => _aeSetOrbits(true));
+  expect(await page.evaluate(() => localStorage.getItem('zimi_ae_orbits'))).toBe('always');
   // The shell takes a change from the account (another browser) into storage: the frame hears the storage event.
   await frame.evaluate(() => {
     window.__drawn = 0;
@@ -53,8 +53,8 @@ test('inside Zimi a choice goes through the shell, and a change from the shell i
     window._renderAlmanacContent = function () { window.__drawn++; return real.apply(this, arguments); };
     window._almanacOpen = true;
   });
-  await page.evaluate(() => { localStorage.setItem('zimi_ae_orbits', 'always'); localStorage.setItem('zimi_almanac_units', 'ft'); });
-  await expect.poll(() => frame.evaluate(() => [_aeOrbitsMode(), window.__drawn > 0])).toEqual(['always', true]);
+  await page.evaluate(() => { localStorage.removeItem('zimi_ae_orbits'); localStorage.setItem('zimi_almanac_units', 'ft'); });
+  await expect.poll(() => frame.evaluate(() => [_aeOrbitsOn(), window.__drawn > 0])).toEqual([false, true]);
   await page.evaluate(() => { localStorage.removeItem('zimi_ae_orbits'); localStorage.removeItem('zimi_almanac_units'); });
 });
 
@@ -76,7 +76,7 @@ test('in Kiwix (no Zimi around the page) a choice is kept in this browser, with 
   await page.goto(BASE + '/w/zimi_almanac/index.html?raw=1');
   await expect.poll(() => page.evaluate(() => typeof window.openAlmanacEarth), { timeout: 60000 }).toBe('function');
   expect(await page.evaluate(() => HOSTED_IN_ZIMI)).toBe(false);
-  await page.evaluate(() => { _aeSetOrbits('always'); _prefWrite('zimi_almanac_units', 'ft'); });
+  await page.evaluate(() => { _aeSetOrbits(true); _prefWrite('zimi_almanac_units', 'ft'); });
   expect(await page.evaluate(() => [localStorage.getItem('zimi_almanac_units'), localStorage.getItem('zimi_ae_orbits')])).toEqual(['ft', 'always']);
   await page.evaluate(() => { _prefWrite('zimi_almanac_units', null); _prefWrite('zimi_ae_orbits', null); });
   expect(await page.evaluate(() => [localStorage.getItem('zimi_almanac_units'), localStorage.getItem('zimi_ae_orbits')])).toEqual([null, null]);

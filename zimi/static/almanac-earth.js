@@ -433,6 +433,9 @@ var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
 var AE_INFO_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 10.5v7"/><circle cx="12" cy="6.6" r="1.5" fill="currentColor" stroke="none"/></svg>';
+// The view's two switches, as round buttons: a pin for the names of places, a ringed circle for the orbits.
+var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0c0 5.1-6.5 11.3-6.5 11.3z"/><circle cx="12" cy="10.2" r="2.3"/></svg>';
+var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M2.5 16.5 21.5 7.5"/></svg>';
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
@@ -532,10 +535,6 @@ var AE_CSS = [
   '@media (pointer:coarse){.ae-set h3{padding-inline-end:40px}}',
   '.ae-set-choice{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;border-radius:8px;cursor:pointer}',
   '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
-  '.ae-set-orbits{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:7px 4px}',
-  '.ae-set-orbits b{font-weight:500;color:var(--text);margin-right:auto}',
-  '.ae-set-orbits label{display:flex;gap:5px;align-items:center;cursor:pointer;color:var(--text2)}',
-  '.ae-set-orbits input{margin:0;accent-color:var(--amber)}',
   '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
   '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
   '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
@@ -591,6 +590,7 @@ var AE_CSS = [
   '.ae-row[hidden]{display:none}',
   '.ae-orient{font-size:11px;line-height:1;color:var(--text3);letter-spacing:.02em;text-shadow:0 1px 2px #000}',
   '.ae-orient[hidden]{display:none}',
+  '.ae-info-credit{font-size:10.5px;color:var(--text3);margin-top:14px}',
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
   '.ae-ask-text{color:var(--text2)}',
   '.ae-fresh{font:inherit;font-size:11px;line-height:1;padding:6px 10px;min-height:26px;margin:2px 0;margin-inline-start:6px;border-radius:999px;border:1px solid var(--amber-border);background:var(--amber-glow);color:var(--amber);cursor:pointer;vertical-align:middle}',
@@ -822,7 +822,6 @@ function _aeShowGo(on, group) {
   sheet.hidden = !on;
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
   _ae.goGroup = on ? group || null : null;
-  if (group === 'alm_go_landings' && on) _ae.allLandings = true;   // every landing site named on the Moon, not only Apollo's
   if (on) { _aeGoShell(sheet); _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
 var AE_SEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/></svg>';
@@ -1067,7 +1066,6 @@ function _aeRowKeys() {
       _ae.rowRecents = [_ae.rowCurrent].concat((_ae.rowRecents || []).filter(function (k) { return k !== _ae.rowCurrent; }));
     }
     _ae.rowCurrent = c;
-    if (c !== 'moon') _ae.allLandings = false;
     if (c === 'moon' || AE_LM_LANDERS[c]) _aeLmLoad();   // the Landings chip's table, there before it is tapped
   }
   var mid = _aeRowPath(c), on = mid.concat('sun', c), wide = spin || (_ae && _aeWideView());
@@ -1150,6 +1148,7 @@ function _aeBuildDom() {
           '<button type="button" class="ae-btn ae-round ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
             ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
+          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
           // Where the view has flown to, everything about it waits behind this: the picture stays clear.
@@ -2523,37 +2522,33 @@ function _aeBuildPlanets(S) {
 }
 // A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
 function _aeWideView() { return _ae.preset === 'planets' || _ae.target === 'sun'; }
-// Orbits, a setting in the gear (kept with the person): While flying (the default) shows the orbits of the
-// bodies a flight involves (where it left, where it goes, and their systems) during it, fading out shortly after it
-// lands; Always keeps those of the body in view and its system; Off shows none. The Planets view always shows the
-// planets' orbits.
-var AE_ORBITS_KEY = SK.ALM_ORBITS, AE_ORBITS_MODES = ['flying', 'always', 'off'], AE_ORBITS_FADE_MS = 1500;
+// Orbits, a round switch (kept with the person): off (the default), a flight shows the orbits of the bodies it involves
+// (where it left, where it goes, and their systems) while it flies, fading out shortly after it lands; on, those of the
+// body in view and its system stay. The Planets view and Side by side always show the planets' orbits.
+var AE_ORBITS_KEY = SK.ALM_ORBITS, AE_ORBITS_ON = 'always', AE_ORBITS_FADE_MS = 1500;
 // The orbit lines, the landmarks layer or the settings panel changed underneath the view (almanac.js
 // _almPrefsApplied): drawn again from storage.
 function _aePrefsApplied(keys) {
   if (keys.indexOf(AE_SPIN_FACES_KEY) >= 0 && _ae && _ae.spin) _aeSpinMarkFaces();
   if (keys.indexOf(AE_ORBITS_KEY) < 0 && keys.indexOf(AE_LM_LAYER_KEY) < 0) return;
   if (keys.indexOf(AE_LM_LAYER_KEY) >= 0 && _aeLmLayerOn()) _aeLmLoad();
-  if (_ae) { _ae.dirty = true; _aeKick(); if (_ae.setOpen) _aeRenderSettings(); }
+  if (_ae) { _ae.dirty = true; _aeKick(); _aeMarkToggles(); }
 }
-function _aeOrbitsMode() {
-  try { var m = localStorage.getItem(AE_ORBITS_KEY); return AE_ORBITS_MODES.indexOf(m) >= 0 ? m : 'flying'; } catch (e) { return 'flying'; }
-}
+function _aeOrbitsOn() { try { return localStorage.getItem(AE_ORBITS_KEY) === AE_ORBITS_ON; } catch (e) { return false; } }
 function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' || k === 'iss' ? 'earth' : k; }
 // How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
 // a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
 // and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
 function _aeOrbitShow(key) {
-  var b = _aePlanetBody(key), mode = _aeOrbitsMode();
+  var b = _aePlanetBody(key);
   // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
   // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
   if (_aeWideView()) return b && !b.parent ? 1 : 0;
-  if (mode === 'off') return 0;
   var host = _aeHostOf(key);
   var mine = function (k) { return !!k && (k === key || _aeHostOf(k) === host); };
-  if (mode === 'always') return mine(_ae.target) ? 1 : 0;
-  var o = _ae.orbitFly;
-  if (!o || !(mine(o.from) || mine(o.to))) return 0;
+  var o = _ae.orbitFly, flying = !!o && (mine(o.from) || mine(o.to));
+  if (_aeOrbitsOn() && mine(_ae.target)) return 1;
+  if (!flying) return 0;
   // While flying means while a flight is on: one that ended any other way (a drag, a follow, another preset) starts its
   // fade the moment no flight is running, so the lines never stay.
   if (!o.endAt) { if (_ae.fly) return 1; o.endAt = performance.now(); }
@@ -2800,19 +2795,16 @@ function _aeSpinNarrow(sec) {
   catch (e) { return _aeSpinDuration(sec); }
 }
 function _aeSpinLines(b, jd) {
-  var f = _aeSpinFacts(b, jd), d = f.tiltDeg < 1 ? 2 : 1, back = f.periodS < 0, orbits = _aeSpinOrbits();
+  var f = _aeSpinFacts(b, jd), d = f.tiltDeg < 1 ? 2 : 1, back = f.periodS < 0;
   var tilt = (typeof fmtNum === 'function' ? fmtNum(f.tiltDeg, { minimumFractionDigits: d, maximumFractionDigits: d }) : f.tiltDeg.toFixed(d)) + '°';
   var words = [_aeT('alm_spin_day', { v: _aeSpinDuration(Math.abs(f.periodS)) })];
-  if (orbits) words.push(_aeT('alm_spin_year', { v: _aeSpinDuration(f.yearDays * SECONDS_PER_DAY) }));
+  words.push(_aeT('alm_spin_year', { v: _aeSpinDuration(f.yearDays * SECONDS_PER_DAY) }));
   words.push(_aeT('alm_spin_tilt', { v: tilt }));
   if (back) words.push(_aeT('alm_spin_retro'));
-  var parts = [_almEsc(_aeSpinNarrow(Math.abs(f.periodS)))].concat(orbits ? [_almEsc(_aeSpinNarrow(f.yearDays * SECONDS_PER_DAY))] : [], [_almEsc(tilt)]);
+  var parts = [_almEsc(_aeSpinNarrow(Math.abs(f.periodS))), _almEsc(_aeSpinNarrow(f.yearDays * SECONDS_PER_DAY)), _almEsc(tilt)];
   var html = parts.join('\u2009·\u2009') + (back ? '\u2009<i class="ae-sp-back">' + AE_SPIN_TURN_BACK + '</i>' : '');
   return { words: words, html: html };   // thin spaces: one line under a phone's cell
 }
-// The orbits shown by the gear's setting, here as the planets' orbital planes and years (While flying has no flight to
-// show them in, so only Off hides them).
-function _aeSpinOrbits() { return _aeOrbitsMode() !== 'off'; }
 function _aeSpinSame() {
   try { var v = localStorage.getItem(AE_SPIN_SAME_KEY); if (v === '1' || v === '0') return v === '1'; } catch (e) {}
   return _ae.w < AE_SPIN_NARROW_PX || _aeFullOn();   // a phone's width cannot hold the true sizes: the small planets would be specks
@@ -3085,9 +3077,9 @@ function _aeSpinFullRoom() {
 }
 // Lay the planets out again when what decides it has changed (size, setting, language), and write the labels.
 function _aeSpinFit(sp, jd) {
-  var room = _aeSpinRoom(), same = _aeSpinSame(), orbits = _aeSpinOrbits();
+  var room = _aeSpinRoom(), same = _aeSpinSame();
   var full = _aeFullOn(), m = full ? AE_SPIN_FULL_METRICS : AE_SPIN_METRICS;
-  var key = [room.x, room.y, room.w, room.h, same, orbits, full, _orrLang()].join('|');
+  var key = [room.x, room.y, room.w, room.h, same, full, _orrLang()].join('|');
   if (key === sp.key) return;
   sp.key = key;
   var fit = _aeSpinLayout(sp.cells.map(function (c) { return _aeSpinSize(c.b, same); }), room.w, room.h, m);
@@ -3102,7 +3094,7 @@ function _aeSpinFit(sp, jd) {
     c.r = l.r;
     c.G.position.set(room.x + l.cx, _ae.h - (room.y + l.cy), 0);
     c.lines.scale.set(l.r, l.r, l.r);
-    c.orbit.visible = orbits;
+    c.orbit.visible = true;
     c.axisDay = null;
     c.uni.center.value.copy(c.G.position);
     c.uni.ringR.value = b.rings ? [b.rings[0] / b.km * l.r, b.rings[1] / b.km * l.r] : [0, 1];
@@ -3857,7 +3849,7 @@ function _aeInfoHtml(k, rows) {
       return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
     }).join('') + '</dl>' +
     (_aeLinked(_aeArrivalKey(k)) ? '<p class="ae-info-read">' + _aeLink(_aeArrivalKey(k), _almEsc(_aeT('alm_bi_read', { body: _aeInfoName(k) }))) + '</p>' : '') +
-    '</div>';
+    p('ae-info-credit', [_aeT('alm_earth_credit'), _aePlanetCredit()].filter(Boolean).join(' · ')) + '</div>';
 }
 function _aeRenderInfo() {
   var el = _aeById('ae-info'), k = _ae && _ae.info;
@@ -4208,14 +4200,14 @@ var AE_LM_POINT_PRI = 1e6;                       // a place with no extent (a pe
 var AE_LM_MORNING_SUN_DEG = 8;
 var AE_LM_DAWN_STEP_MS = 3 * 3600 * 1000, AE_LM_DAWN_LOOK_MS = 31 * MS_PER_DAY, AE_LM_DAWN_TOL_MS = 10 * 60 * 1000;
 var _aeLm = null, _aeLmLoading = null;
-// Off until this viewer turns them on in the gear (kept with the person); a landmark flown to by choice (its card,
-// a landing site) still shows, alone.
+// Off until this viewer turns them on with the pin (kept with the person); a landmark chosen (its card, a landing site
+// from Go to) still shows, alone.
 var AE_LM_LAYER_KEY = SK.ALM_LANDMARKS;
 function _aeLmLayerOn() { try { return localStorage.getItem(AE_LM_LAYER_KEY) === '1'; } catch (e) { return false; } }
 function _aeLmSetLayer(on) {
   _prefWrite(AE_LM_LAYER_KEY, on ? '1' : null);
   if (on) _aeLmLoad();
-  if (_ae) { _ae.dirty = true; _aeKick(); }
+  if (_ae) { _ae.dirty = true; _aeKick(); _aeMarkToggles(); }
 }
 function _aeLmLoad() {
   if (_aeLm || _aeLmLoading || typeof fetch !== 'function') return;
@@ -4250,16 +4242,8 @@ function _aeLmDir(b, lat, lon) {
   var v = _aeLatLonVec(lat, lon), e = b.m;
   return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
 }
-// With Landmarks off, the Moon still names where people landed, quietly: Apollo's six (all the landings once the
-// Landings group has been opened), and the place chosen. Landmarks on names everything.
-var AE_LM_APOLLO = /^Apollo (11|12|14|15|16|17)$/;
-function _aeLmQuietRows(body, chosen) {
-  var rows = body === 'moon' && _ae.target === 'moon' ? _aeLm[body].filter(function (r) {
-    return r[3] === 'landing' && (_ae.allLandings || AE_LM_APOLLO.test(r[0]));
-  }) : [];
-  if (chosen && chosen.body === body && rows.indexOf(chosen.row) < 0) rows.push(chosen.row);
-  return rows.length ? rows : null;
-}
+// With Landmarks off only the place chosen is named. Landmarks on names everything, landing sites first.
+function _aeLmQuietRows(body, chosen) { return chosen && chosen.body === body ? [chosen.row] : null; }
 // A label's box on screen: the dot and the name's whole width, which runs to the right of the dot or, when it would run off
 // the right edge, to the left. A label whose box meets a placed label's box waits for a closer view.
 var _aeLmCtx = null, _aeLmWidths = {};
@@ -5353,20 +5337,26 @@ function _aeSetHint(key) {
   return _almEsc(_aeT(key, { src: mark })).replace(mark,
     '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
 }
-// Orbits: one line, three choices (this viewer's own, kept with the person).
-function _aeOrbitsRowHtml() {
-  var mode = _aeOrbitsMode();
-  return '<div class="ae-set-orbits" role="radiogroup" aria-labelledby="ae-orbits-title"><b id="ae-orbits-title">' + _almEsc(_aeT('alm_orbits')) + '</b>' +
-    AE_ORBITS_MODES.map(function (m) {
-      return '<label><input type="radio" name="ae-orbits" value="' + m + '"' + (m === mode ? ' checked' : '') + '>' +
-        '<span>' + _almEsc(_aeT('alm_orbits_' + m)) + '</span></label>';
-    }).join('') + '</div>';
+// The two round switches: pressed shows the layer. Neither does anything in the Planets view or Side by side (their
+// orbits always show, and no body is near enough to name its places), so there they stand aside.
+function _aeToggleHtml(id, key, svg) {
+  return '<button type="button" class="ae-btn ae-round" id="' + id + '" aria-pressed="false" aria-label="' + _almEsc(_aeT(key)) +
+    '" title="' + _almEsc(_aeT(key)) + '">' + svg + '</button>';
 }
-function _aeSetOrbits(m) {
-  _prefWrite(AE_ORBITS_KEY, m === 'flying' ? null : m);
-  // Chosen while standing still, While flying hides the lines at once: no flight is on, so none of them belongs.
-  if (_ae && m === 'flying' && !_ae.fly) _ae.orbitFly = null;
-  if (_ae) { _ae.dirty = true; _aeKick(); }
+function _aeMarkToggles() {
+  var wide = _aeWideView() || !!_ae.spin;
+  [['ae-lm-btn', _aeLmLayerOn()], ['ae-orbits-btn', _aeOrbitsOn()]].forEach(function (t) {
+    var b = _aeById(t[0]);
+    if (!b) return;
+    if (b.hidden !== wide) b.hidden = wide;
+    if (b.getAttribute('aria-pressed') !== String(t[1])) b.setAttribute('aria-pressed', String(t[1]));
+  });
+}
+function _aeSetOrbits(on) {
+  _prefWrite(AE_ORBITS_KEY, on ? AE_ORBITS_ON : null);
+  // Turned off standing still, the lines go at once: no flight is on, so none of them belongs.
+  if (_ae && !on && !_ae.fly) _ae.orbitFly = null;
+  if (_ae) { _ae.dirty = true; _aeKick(); _aeMarkToggles(); }
 }
 function _aeRenderSettings() {
   var panel = _aeById('ae-set-body');
@@ -5374,10 +5364,6 @@ function _aeRenderSettings() {
   var m = _ae.satMeta || {};
   var editable = !!m.canChange && !m.locked && !_ae.setBusy;
   var html = (typeof _almDismissX === 'function' ? _almDismissX() : '') +
-    // This viewer's own: names of places on the bodies (off until turned on, kept with the person).
-    '<label class="ae-set-choice"><input type="checkbox" name="ae-lm-layer"' + (_aeLmLayerOn() ? ' checked' : '') + '>' +
-      '<span><b>' + _almEsc(_aeT('alm_lm_layer')) + '</b><small>' + _almEsc(_aeT('alm_lm_layer_hint')) + '</small></span></label>' +
-    _aeOrbitsRowHtml() +
     _aeHdRowHtml() +
     '<div class="ae-set-sep" aria-hidden="true"></div>' +
     '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
@@ -6059,7 +6045,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -6435,6 +6421,7 @@ function _aeMarkInfoBtn() {
   var on = !!k && _aeHasFacts(k) && (!_aeIsProbe(k) || !!_aeTracks);
   if (b.hidden === on) b.hidden = !on;
   b.setAttribute('aria-expanded', String(!!_ae.info));
+  _aeMarkToggles();
 }
 function _aeRenderCardBody() {
   var card = _aeById('ae-card');
@@ -6540,9 +6527,6 @@ function _aeNoteParts() {
   }
   var S = _ae.gl;
   if (S && (S.mapFailed[AE_TEX_NIGHT] || S.mapFailed[AE_TEX_MOON])) parts.push(_aeT('alm_earth_maps_failed'));
-  parts.push(_aeT('alm_earth_credit'));
-  var sss = _aePlanetCredit();
-  if (sss) parts.push(sss);
   return { ask: dated, note: parts.join(' · '), stale: stale };
 }
 
@@ -6582,6 +6566,7 @@ function _aeUpdateText(ms) {
   _aeShowMapHere();
   var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null;
   if (foot) _ae.footPx = foot.offsetHeight;   // the controls' height changes with their notes; marks keep above them
+  _aeMarkToggles();
   _aeMeasureTop();
   var sc = _ae.scene;
   var status = _aeById('ae-status');
@@ -6991,6 +6976,8 @@ function _aeBindControls() {
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-info-btn').onclick = function () { if (_ae.info) _aeCloseInfo(false); else _aeOpenInfo(_ae.arrived); };
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
+  _aeById('ae-lm-btn').onclick = function () { _aeLmSetLayer(!_aeLmLayerOn()); };
+  _aeById('ae-orbits-btn').onclick = function () { _aeSetOrbits(!_aeOrbitsOn()); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
@@ -7001,8 +6988,6 @@ function _aeBindControls() {
   _aeById('ae-set').onchange = function (e) {
     var input = e && e.target;
     if (input && input.name === 'ae-sat-mode') _aeSetMode(input.value);
-    if (input && input.name === 'ae-lm-layer') _aeLmSetLayer(input.checked);
-    if (input && input.name === 'ae-orbits') _aeSetOrbits(input.value);
   };
   // Article links in the card need no binding of their own: the view sits
   // inside #almanac-view, where AlmanacLinks already listens.

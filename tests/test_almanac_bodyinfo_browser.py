@@ -276,8 +276,8 @@ def test_axes_point_at_the_iau_pole_and_follow_the_orbits(page):
                 ra,
             )
     # Uranus' axis lies near its orbit plane: the arrowhead is not where the right-hand rule puts it, it is at the map's north.
-    # The lines are the orbits' companions: Off hides them, While flying (the default) shows them only in flight.
-    assert axis_of(page, "uranus", "off") is None
+    # The lines are the orbits' companions: with the switch off (the default) they show only in flight.
+    assert axis_of(page, "uranus")
     page.evaluate("localStorage.removeItem('zimi_ae_orbits')")
     page.evaluate("() => { _ae.orbitFly = null; _aeUpdate(_aeDisplayMs()); }")
     assert page.evaluate("() => !_ae.gl.axes.uranus.north.visible")

@@ -964,10 +964,10 @@ def test_the_row_follows_where_the_view_is(served):
             br.close()
 
 
-def test_orbits_is_a_setting_shown_while_flying(served):
-    """Orbits live in the gear: While flying (the default) shows the orbits of the bodies a flight involves during it and
-    fades them out after it lands; Always keeps the system in view drawn; Off draws none near a body. The Planets view always has
-    the planets' orbits. The choice is remembered on this device."""
+def test_orbits_is_a_round_switch(served):
+    """Orbits is a round switch, not in the gear: off (the default) a flight shows the orbits of the bodies it involves and
+    fades them out after it lands; on keeps the system in view drawn. The Planets view always has the planets' orbits, and
+    there the switch stands aside. The choice is remembered on this device."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -979,7 +979,8 @@ def test_orbits_is_a_setting_shown_while_flying(served):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
             vis = "(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); return _ae.gl.planets[k].orbit.visible; }"
-            assert pg.evaluate("_aeOrbitsMode()") == "flying"
+            assert not pg.evaluate("_aeOrbitsOn()")
+            assert not pg.evaluate("!!document.querySelector('#ae-set-body input[name=ae-orbits]')")
             pg.evaluate("_aePreset('jupiter')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !!_ae.fly; }",
@@ -999,21 +1000,19 @@ def test_orbits_is_a_setting_shown_while_flying(served):
                 timeout=10_000,
                 polling=100,
             )
-            # Always, from the gear: there, and remembered.
-            pg.click("#ae-gear")
-            pg.click("input[name='ae-orbits'][value='always']")
+            # On: there, pressed, and remembered.
+            pg.click("#ae-orbits-btn")
             assert pg.evaluate("localStorage.getItem('zimi_ae_orbits')") == "always"
+            assert pg.get_attribute("#ae-orbits-btn", "aria-pressed") == "true"
             assert pg.evaluate(vis, "io") and pg.evaluate(vis, "jupiter")
-            # Back to While flying, standing still at Jupiter: the lines go (they stayed, Eric 2026-11-05).
-            pg.click("input[name='ae-orbits'][value='flying']")
+            # Off, standing still at Jupiter: the lines go (they stayed, Eric 2026-11-05).
+            pg.click("#ae-orbits-btn")
+            assert pg.get_attribute("#ae-orbits-btn", "aria-pressed") == "false"
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); return !_ae.gl.planets.io.orbit.visible && !_ae.gl.planets.jupiter.orbit.visible; }",
                 timeout=10_000,
                 polling=100,
             )
-            pg.click("input[name='ae-orbits'][value='always']")
-            pg.click("input[name='ae-orbits'][value='off']")
-            assert not pg.evaluate(vis, "io")
             pg.evaluate(
                 "window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');"
             )
@@ -1022,16 +1021,10 @@ def test_orbits_is_a_setting_shown_while_flying(served):
                 timeout=60_000,
                 polling=100,
             )
-            assert pg.evaluate("_aeOrbitsMode()") == "off"
             assert pg.evaluate(vis, "saturn") and not pg.evaluate(
                 vis, "io"
-            )  # the Planets view is a map of the orbits, whatever the setting
-            if not pg.is_visible("input[name='ae-orbits'][value='flying']"):
-                pg.click("#ae-gear")
-            pg.click("input[name='ae-orbits'][value='flying']")
-            assert pg.evaluate(
-                vis, "saturn"
-            )  # by default the Planets view has the planets' orbits
+            )  # the Planets view is a map of the orbits, whatever the switch
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return document.getElementById('ae-orbits-btn').hidden; }", timeout=10_000, polling=100)
             assert not errors, errors
             ctx.close()
         finally:
@@ -1395,22 +1388,19 @@ LINES = """() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var S
     return out; }"""
 
 
-@pytest.mark.parametrize("mode", ["off", "always", "flying"])
+@pytest.mark.parametrize("mode", ["always", None])
 def test_the_orbits_setting_holds_after_a_reload(served, mode):
-    """The remembered Orbits choice applies from the moment the view opens, for every line the scene draws (planets',
-    moons', a probe's path and ellipse, the Moon's path, the GPS and station rings): Off draws none anywhere, the Planets
-    view too; Always draws those of the place in view; While flying draws them in flight and none once landed (the Planets
-    view keeps the planets')."""
+    """The remembered Orbits switch applies from the moment the view opens, for every line the scene draws (planets',
+    moons', a probe's path and ellipse, the Moon's path, the GPS and station rings): on draws those of the place in view;
+    off draws them in flight and none once landed (the Planets view keeps the planets')."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
         try:
             ctx = _ctx(br)
-            ctx.add_init_script(
-                "try { localStorage.setItem('zimi_ae_orbits', %r); } catch (e) {}"
-                % mode
-            )
+            if mode:
+                ctx.add_init_script("try { localStorage.setItem('zimi_ae_orbits', %r); } catch (e) {}" % mode)
             pg = ctx.new_page()
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -1433,19 +1423,14 @@ def test_the_orbits_setting_holds_after_a_reload(served, mode):
                     )  # out where Juno is a point and its path is drawn
                 pg.wait_for_timeout(1800)  # past While flying's fade
                 seen[k] = pg.evaluate(LINES)
-            if mode == "off":
-                assert all(v == [] for k, v in seen.items() if k != "planets"), seen
-                assert (
-                    "saturn" in seen["planets"] and "io" not in seen["planets"]
-                ), seen  # the map keeps its orbits
-            elif mode == "always":
+            if mode == "always":
                 assert "io" in seen["jupiter"] and "jupiter" in seen["jupiter"], seen
                 assert "juno:trail" in seen["juno"], seen
                 assert "saturn" in seen["planets"], seen
             else:
                 assert all(v == [] for k, v in seen.items() if k != "planets"), seen
                 assert "saturn" in seen["planets"] and "io" not in seen["planets"], seen
-            assert pg.evaluate("_aeOrbitsMode()") == mode
+            assert pg.evaluate("_aeOrbitsOn()") == bool(mode)
             assert not errors, errors
             ctx.close()
         finally:
