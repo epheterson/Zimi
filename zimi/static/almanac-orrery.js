@@ -1540,8 +1540,9 @@ function _orreryClockReset(closing) {
 function _orreryRideTick() {
   if (!_orreryAutoTransit) return;
   var rk = _orreryGetActiveRocket();
-  if (rk && !rk.arrived) {
-    rk.elapsed = _orreryRocketElapsed(rk);
+  if (rk) rk.elapsed = _orreryRocketElapsed(rk);
+  // Out of view the orrery's own loop is parked and never marks the arrival, so the clock's loop ends the ride too.
+  if (rk && rk.elapsed < rk.duration) {
     _almRate = _transitEffectiveSpeed(rk);
   } else {
     _orreryAutoTransit = false;
@@ -1815,7 +1816,7 @@ function _orreryAnimate() {
   if (activeRocket) {
     _orreryUpdateTransitLabel();
   }
-  if (!hasInFlight && _orreryRockets.length > 0) _orreryShowTransit(false);
+  if (_orreryRockets.length > 0) _orreryShowTransit(hasInFlight);   // a rewind past an arrival brings the slider back
   _orreryUpdateMissions();
   _orreryUpdateRide();
 
