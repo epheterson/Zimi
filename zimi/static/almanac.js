@@ -827,6 +827,7 @@ function _almBackToToday() {
   _almTravelUnfreeze();
   _almRate = 1;
   _almFocus = null;
+  _almClockOpen = false;
   _almClockNote('');
   _almSelectedJDN = _almTodayJDN;
   // Snap the browsed month back to the present too — otherwise the grid is
@@ -1139,14 +1140,18 @@ function _almClockPaint(focus) {
     root.classList.toggle('alm-ck-hot', hot);
     root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
-    if (spd) { _almSpdPaint(spd, rate, hot); spd.classList.toggle('alm-spd-rest', rest); }
+    root.classList.toggle('alm-ck-rest', rest);
+    if (spd) _almSpdPaint(spd, rate, hot);
   }
 }
-// At now and 1x the slider rests (its knob only), and comes back while the clock is away and a little after it returns.
-var _almSpdHotAt = 0, _almSpdRestTimer = 0;
+// At now and 1x the clock rests, as the plain date and time it always was: no slider, nothing underlined. A tap on the
+// date or the time opens it (and a tap elsewhere shuts it again); it is open while the clock is away from now and a
+// little after it returns.
+var _almSpdHotAt = 0, _almSpdWasHot = false, _almSpdRestTimer = 0, _almClockOpen = false;
 function _almSpdRests(hot) {
-  var now = Date.now();
-  if (hot) _almSpdHotAt = now;
+  var now = Date.now(), held = hot || _almClockOpen;
+  if (held || _almSpdWasHot) _almSpdHotAt = now;   // the linger runs from the moment it came back, however long ago the last paint was
+  _almSpdWasHot = held;
   var left = _almSpdHotAt + ALM_SPD_LINGER_MS - now;
   if (left > 0 && !_almSpdRestTimer) _almSpdRestTimer = setTimeout(function () { _almSpdRestTimer = 0; _almClockPaint(); }, left);
   return left <= 0;
@@ -1385,8 +1390,15 @@ function _almClockRunTo(to, land, ms) {
   _almRunToRAF = requestAnimationFrame(step);
 }
 
+function _almClockOpenUp(open) {
+  if (_almClockOpen === open) return;
+  _almClockOpen = open;
+  if (!open) { _almSpdHotAt = 0; _almSpdWasHot = false; }   // shut by hand: at once, no linger
+  _almClockPaint();
+}
 function _almClockEdit(root, part) {
   if (root.classList.contains('alm-ck-run')) return;
+  if (root.classList.contains('alm-ck-rest')) { _almClockOpenUp(true); return; }   // the first tap opens it
   if (part === 'ap' || part === 'era') { _almEdCommit(); _almClockFlip(part); return; }
   if (_almEd && _almEd.root === root && _almEd.part === part) return;
   if (_almEd) _almEdCommit();
@@ -1486,6 +1498,7 @@ function _almSpdInput(rng) {
 function _almClockPointerDown(e) {
   var tgt = e.target, root = tgt && tgt.closest ? tgt.closest('.alm-clock') : null;
   _almCkTap = null;
+  if (!root && _almClockOpen && !_almEd && !_almClockAway() && _almRate === 1) _almClockOpenUp(false);   // a tap away shuts an idle clock
   if (_almEd && _almEd.part === 'month' && !(tgt.closest && tgt.closest('.alm-ck-pop')) && !(root && _almClockNearest(root, e.clientX, e.clientY))) _almEdCancel();
   if (!root) return;
   var rng = tgt.closest('.alm-spd-range');

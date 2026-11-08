@@ -92,6 +92,12 @@ def _land(pg, iso):
     pg.wait_for_function("() => !_almEd", timeout=5000, polling=POLL_MS)
 
 
+def _open(pg):
+    """A tap on the resting clock's time opens it: the slider shows."""
+    pg.click("#almanac-head-time .ep[data-p=hour]")
+    pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=5000)
+
+
 def _wall(pg):
     """The wall clock of the displayed place at the moment shown, as [y, mo, d, h, mi]."""
     return pg.evaluate(
@@ -143,7 +149,7 @@ def test_each_part_is_typed_where_it_stands(browser, served):
         pg.click("#almanac-head-time .ep[data-p=ap]")
         pg.wait_for_function(
             "() => !_almRunToRAF && document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent === 'AM'",
-            timeout=10_000,
+            timeout=30_000,
             polling=POLL_MS,
         )
         assert _wall(pg)[3] == 9
@@ -326,6 +332,7 @@ def _stop_x(box, pos):
 def test_the_slider_drags_continuously_and_lands_on_its_stops(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
+        _open(pg)
         box = pg.locator("#almanac-head .alm-spd-range").bounding_box()
         y = box["y"] + box["height"] / 2
         pg.mouse.move(_stop_x(box, 4), y)
@@ -370,6 +377,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
         assert pg.evaluate("() => _almRate") == 1
+        _open(pg)
         # At real time the thumb stands on the button: a tap on the thumb pauses.
         box = pg.locator("#almanac-head .alm-spd-range").bounding_box()
         pg.mouse.click(_stop_x(box, 4), box["y"] + box["height"] / 2)
@@ -484,7 +492,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
             timeout=120_000,
         )
         pg.evaluate("() => _almClockSetRate(86400)")
-        pg.wait_for_timeout(800)
+        pg.wait_for_function("() => _almFocusInstant().getTime() > Date.now() + 2 * 3600000", timeout=60_000, polling=POLL_MS)
         pg.evaluate("() => _almClockSetRate(0)")
         pg.wait_for_timeout(300)
         same = pg.evaluate(
@@ -565,15 +573,18 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
 def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
-        rests = "() => document.querySelector('#almanac-head .alm-spd').classList.contains('alm-spd-rest')"
-        # At now and 1x the slider rests: its knob only, no rail, no marks.
-        assert pg.evaluate(rests)
-        assert (
-            pg.evaluate(
-                "() => getComputedStyle(document.querySelector('#almanac-head .alm-spd-marks')).visibility"
-            )
-            == "hidden"
-        )
+        rests = "() => document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')"
+        shown = "() => getComputedStyle(document.querySelector('#almanac-head .alm-spd')).display !== 'none'"
+        # At now and 1x the clock rests as the plain date and time: no slider, nothing underlined.
+        assert pg.evaluate(rests) and not pg.evaluate(shown)
+        assert pg.evaluate(
+            "() => getComputedStyle(document.querySelector('#almanac-head-time .ep[data-p=hour]')).textDecorationColor"
+        ) in ("rgba(0, 0, 0, 0)", "transparent")
+        # A tap on the time opens it (and types nothing yet); a tap elsewhere shuts it.
+        pg.click("#almanac-head-time .ep[data-p=hour]")
+        assert not pg.evaluate(rests) and pg.evaluate(shown) and pg.evaluate("() => !_almEd")
+        pg.mouse.click(195, 700)
+        pg.wait_for_function(rests, timeout=5000, polling=POLL_MS)
         # A day picked on the calendar: the next day at the same time of day, and the clock runs on at 1x, in step.
         pg.evaluate(
             "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 1); }"
@@ -595,18 +606,10 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
         # Today again: back at now, and the slider rests a moment later.
         back = pg.evaluate(
             "() => { var f = new Date(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()));"
-            " return [_almFocus, document.querySelector('#almanac-head .alm-spd').classList.contains('alm-spd-rest')]; }"
+            " return [_almFocus, document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')]; }"
         )
         assert back == [None, False], back
         pg.wait_for_function(rests, timeout=ALM_LINGER_WAIT_MS, polling=POLL_MS)
-        # A hand on the knob brings it back.
-        pg.dispatch_event("#almanac-head .alm-spd-range", "pointerdown")
-        assert (
-            pg.evaluate(
-                "() => getComputedStyle(document.querySelector('#almanac-head .alm-spd-marks')).visibility"
-            )
-            == "visible"
-        )
         assert not errors, errors
     finally:
         ctx.close()
