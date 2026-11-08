@@ -740,6 +740,7 @@
 .alm-spd-play.alm-spd-on { pointer-events: none; border-color: transparent; background: var(--text2); color: var(--bg); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
 .alm-spd-hot .alm-spd-play.alm-spd-on { background: var(--amber); color: var(--on-amber); }
 .alm-spd-drag .alm-spd-play.alm-spd-on { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 0 7px var(--amber-glow), 0 1px 4px rgba(0, 0, 0, .55); }
+[dir="rtl"] .alm-spd-drag .alm-spd-play.alm-spd-on { transform: translate(50%, -50%) scale(1.2); }
 @media (hover: hover) { .alm-spd-play:not(.alm-spd-on):hover { color: var(--amber); border-color: var(--amber-border); } }
 .alm-spd-marks { position: relative; height: 18px; }
 
@@ -786,7 +787,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .alm-year, .alm-month, .alm-month-cell { transition: none; }
-  .alm-ck-editing .ef, .alm-ck-pop, .alm-pin { animation: none; }
+  .alm-ck-editing .ef, .alm-ck-editing .ep.on, .alm-ck-pop, .alm-pin { animation: none; }
   .alm-spd-range::-webkit-slider-thumb, .alm-spd-play { transition: none; }
   /* Month changes repaint in place — no glide (#75). */
   .alm-grid.alm-glide-next, .alm-grid.alm-glide-prev { animation: none; }

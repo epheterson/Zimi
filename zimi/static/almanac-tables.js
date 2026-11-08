@@ -1905,7 +1905,7 @@ var TB_CONST_ROWS = {
       ['tai_utc', AR_TAI_MINUS_UTC, 0, 's', 'IERS'],
       ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS'],
       // The clock's speed slider (almanac.js): its stops, a minute, an hour, a day and a year a second either way, and how far it travels.
-      ['clock_stops', ALM_RATE_SECS.slice().reverse().join(', '), 0, '×', 'Zimi'],
+      ['clock_stops', ALM_RATE_STOPS.join(', '), 0, '×', 'Zimi'],
       ['clock_span', '±' + _ALM_YEAR_MAX, 0, 'yr', 'Zimi']
     ];
   },
