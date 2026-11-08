@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 WIDTH = "() => Math.round(document.querySelector('.zc-card:not(.zc-off)').getBoundingClientRect().width)"
 
@@ -25,7 +26,8 @@ def test_every_card_game_deals_the_same_size_hand(served, browser):
         page = ctx.new_page()
         page.goto("%s/%s.html" % (served, game))
         page.wait_for_function("() => document.querySelectorAll('.zc-card:not(.zc-off)').length >= 5")
-        page.wait_for_timeout(600)
+        game_ready(page)
+        quiet(page, 600)
         widths[game] = page.evaluate(WIDTH)
         ctx.close()
     assert widths["hearts"] >= 60 and all(w == widths["hearts"] for w in widths.values()), widths

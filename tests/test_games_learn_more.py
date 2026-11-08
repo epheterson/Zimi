@@ -52,24 +52,14 @@ def zimi(tmp_path_factory):
         yield os.environ["LEARN_MORE_URL"]
         return
     import games_library_fixture as fx
-    from zimi import ownzims
-
     base = tmp_path_factory.mktemp("learn")
     fx.build(str(base))
-    zdir, built = base / "lib", base / "built"
+    zdir = base / "lib"
     shutil.copytree(
         base / "zims2", zdir
     )  # the second library: the lists, a Wiktionary, a Gutenberg and a map
-    built.mkdir()
     (base / "data").mkdir()
-    shutil.copytree(GAMES, base / "src" / "games")   # a snapshot: the build must not read files that are being edited
-    was = (ownzims.OUT_DIR, ownzims.SOURCE_ROOT)
-    ownzims.OUT_DIR, ownzims.SOURCE_ROOT = str(built), str(base / "src")
-    try:
-        made = ownzims.build(ownzims.OWN[0])
-    finally:
-        ownzims.OUT_DIR, ownzims.SOURCE_ROOT = was
-    shutil.copy(made, zdir / os.path.basename(made))
+    fx.games_zim(zdir)
     port = free_port()
     # No ZIMI_RATE_LIMIT: set, it also caps this machine at 8 open change streams, and a module of pages holds more than
     # that until their heartbeat; unset, the loopback is unlimited. The delete test lost its stream to that 429.

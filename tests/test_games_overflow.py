@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("playwright")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_trick_fixtures import GAMES, browser, served  # noqa: E402,F401
+from games_wait import quiet  # noqa: E402
 
 WIDTH = 375
 PAGES = ["index.html"] + sorted({g["path"] for g in json.load(open(os.path.join(GAMES, "games.json"), encoding="utf-8")) if g.get("path")})
@@ -38,7 +39,7 @@ def test_the_page_never_scrolls_sideways(browser, served, path):
     page = ctx.new_page()
     page.goto("%s/%s" % (served, path))
     page.wait_for_load_state("load")
-    page.wait_for_timeout(1500)
+    quiet(page, 1500)
 
     def check(when):
         m = page.evaluate(MEASURE)
@@ -46,12 +47,12 @@ def test_the_page_never_scrolls_sideways(browser, served, path):
 
     check("after load")
     page.touchscreen.tap(WIDTH // 2, 420)
-    page.wait_for_timeout(700)
+    quiet(page, 700)
     check("after a tap")
     menu = page.locator("#gs-menu, [data-gs-menu], button[aria-label='Menu']").first
     if menu.count() and menu.is_visible():
         menu.tap()
-        page.wait_for_timeout(500)
+        quiet(page, 500)
         check("with the Menu open")
     ctx.close()
 

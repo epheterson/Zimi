@@ -48,6 +48,11 @@ function seeded(seed, fn) { const real = Math.random; Math.random = Util.mulberr
   const z = Follow.zones(c.map);
   check(z.homes.length > 0 && z.work.length > 0, 'the town has homes with people and work with jobs (' + z.homes.length + ', ' + z.work.length + ')');
 
+  check(Follow.stillThere(c.map, z.homes[0]) && Follow.stillThere(c.map, z.work[0]), 'a zone a trip was made for is still there');
+  const gone = z.homes[0];
+  Tools.build(c, 'bulldozer', [[gone.x, gone.y]]);
+  check(!Follow.stillThere(c.map, gone), 'and is not once the player has bulldozed it, so the next trip is made anew');
+
   const trip = Follow.commute(c.map, 0, 'industry');
   check(!!trip, 'a citizen has a commute');
   if (trip) {

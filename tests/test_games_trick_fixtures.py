@@ -28,6 +28,9 @@ from games_wait import shell_ready  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAMES = os.environ.get("ZIMI_GAMES_DIR") or os.path.join(os.path.dirname(HERE), "zimi", "builtin", "games")  # (a copy with a deliberate change proves the fixtures notice)
+# Each recorded game is its own test behind a cheap server and browser: --dist loadgroup deals them over workers (tests/conftest.py).
+XDIST_SPLIT = 4
+
 FIXTURES = os.path.join(HERE, "fixtures", "games_tricks")
 VIEW = {"width": 390, "height": 844}
 STEP_MS = 100  # the fake clock moves this far between two looks at the table

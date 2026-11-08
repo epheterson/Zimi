@@ -126,3 +126,20 @@ def test_the_dictionary_waits_in_the_same_way(served):
             pg.wait_for_function("() => !document.getElementById('reader-frame').contentDocument.querySelector('.app-wait')", timeout=8000)
         finally:
             br.close()
+
+
+def test_a_question_opened_by_a_link_waits_in_the_same_way():
+    """A deep link to a question hides the home page and had nothing to show while the question loaded."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "static", "exchange.html"), encoding="utf-8").read()
+    body = src[src.index("function openQ("):src.index("function closeQ(")]
+    assert "appWait(" in body and "wait.done()" in body and "wait.fail(" in body
+
+
+def test_the_waiting_cards_keep_the_shape_of_the_page_they_stand_in():
+    """The skeleton's columns are the host grid's, so nothing reflows when the answer lands."""
+    static = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "static")
+    read = lambda n: open(os.path.join(static, n), encoding="utf-8").read()  # noqa: E731
+    css, books, tube = read("apps.css"), read("books.html"), read("tube.html")
+    assert "minmax(232px, 1fr)" in css and "minmax(232px, 1fr)" in tube  # the Tube grid's columns
+    assert ".app-wait-covers" in css and "repeat(3, minmax(0, 1fr))" in css  # the books' three covers across a phone
+    assert "appWait('view', 'covers')" in books and "app-wait-' + shape" in read("apps.js")

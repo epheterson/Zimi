@@ -102,6 +102,12 @@ def _drives_a_browser(path):
     return _browser_sources[path]
 
 
+def _skips_without_a_browser(item):
+    """A test that asks to be skipped when no Chromium is here (`needs_browser`, imported into a module that does not itself
+    name the browser) is a browser test."""
+    return any("hromium" in str(m.kwargs.get("reason", "")) for m in item.iter_markers("skipif"))
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
     """Mark a test `browser` when its module, or the module of any fixture it
@@ -115,8 +121,26 @@ def pytest_collection_modifyitems(config, items):
                     sources.append(inspect.getsourcefile(fixturedef.func))
                 except (TypeError, OSError):
                     pass
-        if any(src and _drives_a_browser(src) for src in sources):
+        if any(src and _drives_a_browser(src) for src in sources) or _skips_without_a_browser(item):
             item.add_marker(pytest.mark.browser)
+    _group_for_xdist(items)
+
+
+def _group_for_xdist(items):
+    """`--dist loadgroup`: every module is one group, so a module's tests (and its module-scoped fixtures) stay on one worker,
+    exactly as `--dist loadfile` places them. A module that says `XDIST_SPLIT = n` has parametrized cases that are independent
+    of one another behind cheap fixtures (one recorded game per case): those cases are dealt into n groups, so one long module
+    is not the last worker standing. Its other tests stay together. Without xdist, or under `--dist loadfile`, nothing changes."""
+    dealt = {}
+    for item in items:
+        if item.get_closest_marker("xdist_group"):
+            continue
+        name = item.path.name
+        n = getattr(getattr(item, "module", None), "XDIST_SPLIT", 1)
+        if n > 1 and hasattr(item, "callspec"):
+            k = dealt[name] = dealt.get(name, -1) + 1
+            name = "%s#%d" % (name, k % n)
+        item.add_marker(pytest.mark.xdist_group(name))
 
 
 def pytest_addoption(parser):
@@ -255,6 +279,31 @@ def _fieldguide_switch(request, monkeypatch):
         monkeypatch.setenv("ZIMI_FIELDGUIDE", "1")
     else:
         monkeypatch.delenv("ZIMI_FIELDGUIDE", raising=False)
+    yield
+
+
+_NO_BROWSERS = os.path.join(os.path.abspath(os.sep), "zimi-tests-no-browsers-here")   # (Playwright's own variable; "0" would mean something)
+
+
+@pytest.fixture(autouse=True)
+def _quick_tier_sees_no_browser(request, monkeypatch):
+    """A test that is not in the browser tier sees what CI's quick job sees: no browser. A page capture (`zimi create`) takes two
+    pictures when a Chromium is installed, which is a Playwright start, a launch and a close per capture, about 8 seconds each
+    and a minute under load: the capture tests that are not about pictures spent most of their time there, on machines that
+    have a browser, while CI's quick job (none installed) never paid it. A module that asks whether a browser is here
+    (`browser_available(`, `_needs_chromium`, ...) is a `browser` test and gets the real answer. In this process the answer is
+    patched (it is cached, and a browser test may have filled it); a child process (`zimi create ...`) is pointed at a folder
+    with no browsers in it."""
+    if request.node.get_closest_marker("browser"):
+        yield
+        return
+    try:
+        from zimi import renderer
+    except Exception:
+        yield
+        return
+    monkeypatch.setattr(renderer, "browser_status", lambda refresh=False: (False, "no-chromium"))
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", _NO_BROWSERS)
     yield
 
 

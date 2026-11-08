@@ -1,5 +1,5 @@
 """Inside Zimi on a phone, a game's whole name shows in the header: "Dictionary Bluff" steps its size down, and
-"Snakes and Ladders" takes two lines, where both were cut to "Dictionary Bl..." and "Snakes and La...".
+"Snakes and Ladders" fits too, where both were cut to "Dictionary Bl..." and "Snakes and La...". A name that cannot fit ends in an ellipsis, on one line (test_games_batch2_zimi_browser.py).
 
 Run: ZIMI_TORRENT=0 ZIMI_OFFLINE=1 pytest tests/test_games_head_title_browser.py -v
 """

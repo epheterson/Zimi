@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 GAP = """() => { const chips = document.querySelector('.ct-scores').getBoundingClientRect();
   const top = Math.min(...[...document.querySelectorAll('.zc-card:not(.zc-off)')].map(c => c.getBoundingClientRect()).filter(r => r.width).map(r => r.top));
@@ -25,6 +26,7 @@ def test_the_north_hand_starts_below_the_chips(served, browser, game):
     page = ctx.new_page()
     page.goto("%s/%s.html" % (served, game))
     page.wait_for_function("() => document.querySelector('.ct-scores .ct-chip') && document.querySelectorAll('.zc-card:not(.zc-off)').length > 4")
-    page.wait_for_timeout(900)   # the deal lands
+    game_ready(page)   # the deal lands
+    quiet(page, 900)
     assert page.evaluate(GAP) >= 2
     ctx.close()

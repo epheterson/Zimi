@@ -569,9 +569,9 @@ const tick = () => new Promise(r => setImmediate(r));
     vm.createContext(ax);
     vm.runInContext(extract(/var _TTS_BLOCK = [^\n]*\n/, '_TTS_BLOCK') + extract(/var _TTS_ABBREVS[\s\S]*?\nfunction _ttsSentenceSpans[\s\S]*?\n}\n/, 'the sentence splitter') +
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
-    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant'), ax);
+    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant') + '\n' + extract(/var _TTS_HEAD_LOOK = [^\n]*/, 'the head look'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
-      '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
+      '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsSentenceHead', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
       '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle', '_ttsIdleBusy', '_ttsIdleArm'].map(fn).join('\n'), ax);
 
     // A DOM of just what the reading looks at: elements with a display, text nodes, document order.
@@ -729,6 +729,25 @@ const tick = () => new Promise(r => setImmediate(r));
     ok('without one it reads the whole article', !allPlan.sel && allPlan.chunks.map(c => c.text).join(' ') === said);
     doc.__zbHere = () => ({ startContainer: textNode(doc.main, 'One'), startOffset: 0 });
     ok('in a book it begins at the page that is open', ax._ttsMakePlan(doc).chunks.map(c => c.text).join(' ') === 'One. Two. A. B. Later page.');
+    // a page that opens inside a word or a sentence begins at the first sentence that starts on it
+    doc.__zbHere = () => ({ startContainer: textNode(doc.main, 'One'), startOffset: 1 });
+    ok('in a book a page opening inside a word begins at the next sentence', ax._ttsMakePlan(doc).chunks.map(c => c.text).join(' ') === 'Two. A. B. Later page.', JSON.stringify(ax._ttsMakePlan(doc).chunks));
+    // a sentence over a page break: one chunk when reading runs on, once; a page opened inside it begins after it
+    const crossing = 'It rained all night long and the page turned here and it stopped.';
+    const turned = mkDoc(['main', {}, ['p', {}, 'Early words. ' + crossing + ' Final one.']]);
+    const turnedNode = textNode(turned.main, 'Early'), breakAt = turnedNode.data.indexOf('page turned');
+    const running = ax._ttsMakePlan(turned);
+    ok('reading on, a sentence over a page break is one chunk', running.chunks.filter(c => c.text.indexOf('rained') >= 0 && c.text.indexOf('stopped') >= 0).length === 1, JSON.stringify(running.chunks));
+    ok('and no sentence is said twice', running.chunks.map(c => c.text).join(' ') === 'Early words. ' + crossing + ' Final one.');
+    turned.__zbHere = () => ({ startContainer: turnedNode, startOffset: breakAt });
+    const opened = ax._ttsMakePlan(turned);
+    ok('a page opened inside a sentence begins at the first whole one on it', opened.chunks.map(c => c.text).join(' ') === 'Final one.', JSON.stringify(opened.chunks));
+    turned.__zbHere = () => ({ startContainer: turnedNode, startOffset: turnedNode.data.indexOf('Final') });
+    ok('a page opened at a sentence start begins there', ax._ttsMakePlan(turned).chunks.map(c => c.text).join(' ') === 'Final one.');
+    const run = mkDoc(['main', {}, ['p', {}, 'Early words. ' + 'and on '.repeat(120) + 'finally ended. Last one.']]);
+    const runNode = textNode(run.main, 'Early');
+    run.__zbHere = () => ({ startContainer: runNode, startOffset: runNode.data.indexOf('finally') });
+    ok('a long run-on opened in its middle: reading begins at the next sentence', ax._ttsMakePlan(run).chunks.map(c => c.text).join(' ') === 'Last one.', JSON.stringify(ax._ttsMakePlan(run).chunks));
     delete doc.__zbHere;
     // what a reading skips is read when it is chosen, or when it is all there is
     const facts = mkDoc(['main', {}, ['table', { cls: ['infobox'] }, ['tr', {}, ['td', {}, 'Born in Antioch.']]], ['p', {}, 'Prose here.']]);

@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("playwright")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_trick_fixtures import browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 GAMES = ["solitaire", "freecell", "spider", "golf", "pyramid", "tripeaks"]
 
@@ -42,7 +43,8 @@ def test_the_table_fits_and_a_double_tap_does_not_zoom(browser, served, name, wi
     page = ctx.new_page()
     page.goto("%s/%s.html" % (served, name))
     page.wait_for_selector(".zc-card:not(.zc-off)")
-    page.wait_for_timeout(1500)
+    game_ready(page)   # the deal lands
+    quiet(page, 1500)
 
     def check(when):
         m = page.evaluate(MEASURE)
@@ -57,13 +59,13 @@ def test_the_table_fits_and_a_double_tap_does_not_zoom(browser, served, name, wi
     page.touchscreen.tap(x, y)
     page.wait_for_timeout(60)
     page.touchscreen.tap(x, y)
-    page.wait_for_timeout(500)
+    quiet(page, 500)
     check("after a double tap")
     box = page.locator(".zc-card:not(.zc-off):not(.zc-down)").first.bounding_box()
     page.mouse.move(box["x"] + 10, box["y"] + 10)
     page.mouse.down()
     page.mouse.move(box["x"] - 60, box["y"] + 80, steps=6)
     page.mouse.up()
-    page.wait_for_timeout(500)
+    quiet(page, 500)
     check("after a drag")
     ctx.close()
