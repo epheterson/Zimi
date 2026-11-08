@@ -3231,7 +3231,7 @@ function _aeProbeOrbit(t, jd, near) {
   // guess.
   var back = at(far - o.period);
   if (!back || _aeLen(_aeSub(back, st.r)) > AE_KEPLER_CLOSE * o.a * (1 + o.e)) return c ? { trail: AE_TRAIL_HELD_DAYS, round: c.key } : null;
-  o.centre = c ? c.h : [0, 0, 0]; o.round = c ? c.key : 'sun'; o.trail = o.period * AE_TRAIL_ORBIT_FRAC;
+  o.round = c ? c.key : 'sun'; o.trail = o.period * AE_TRAIL_ORBIT_FRAC;
   return o;
 }
 function _aeUpdateProbes(jd, place, near) {
@@ -3263,12 +3263,16 @@ function _aeUpdateProbes(jd, place, near) {
     var line = _aeOrbitShow(k), shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5 && line > 0;
     var alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value * line;
     trail.material.opacity = ring.material.opacity = alpha;
-    // Redrawn as it moves: a probe in a tight orbit (Juno's is a month) every fiftieth of it.
+    // Which orbit it is on is worked out as it moves (a probe in a tight orbit, Juno's is a month, every fiftieth of it);
+    // the lines themselves are placed afresh each frame they are shown: they run through the drawn scale's squeeze and
+    // the near-a-planet blend, both of which move with the date, so lines kept from an earlier date drifted off the probe.
     var o = trail.orbit;
     var every = o ? Math.min(AE_TRAIL_REDRAW_DAYS, o.trail / 15) : AE_TRAIL_REDRAW_DAYS;
     if ((trail.at == null || Math.abs(jd - trail.at) >= every) && _aeMayRedraw()) {
       trail.at = jd;
       o = trail.orbit = _aeProbeOrbit(t, jd, near);
+    }
+    if (shown) {
       var arr = trail.geometry.attributes.position.array, col = trail.geometry.attributes.color.array;
       var from = o ? Math.max(t.jd0, jd - o.trail) : t.jd0;
       for (var i = 0; i < AE_TRAIL_POINTS; i++) {
@@ -3281,9 +3285,11 @@ function _aeUpdateProbes(jd, place, near) {
       trail.geometry.attributes.color.needsUpdate = true;
       trail.geometry.setDrawRange(0, AE_TRAIL_POINTS);
       if (o && o.period) {
+        // Round the body it circles as that body stands now.
+        var hub = near.filter(function (c) { return c.key === o.round; })[0], centre = hub ? hub.h : [0, 0, 0];
         var ra = ring.geometry.attributes.position.array;
         for (var j = 0; j < AE_ORBIT_POINTS; j++) {
-          var p = place(_aeAdd(o.centre, _aeKeplerAt(o, 2 * Math.PI * j / AE_ORBIT_POINTS)));
+          var p = place(_aeAdd(centre, _aeKeplerAt(o, 2 * Math.PI * j / AE_ORBIT_POINTS)));
           ra[j * 3] = p[0]; ra[j * 3 + 1] = p[1]; ra[j * 3 + 2] = p[2];
         }
         ring.geometry.attributes.position.needsUpdate = true;

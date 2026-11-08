@@ -2021,3 +2021,48 @@ def test_planets_stay_on_their_orbits_and_the_belt_round_the_sun_as_the_date_run
             ctx.close()
         finally:
             br.close()
+
+
+def test_a_probe_s_path_ends_on_the_probe_as_the_date_runs(served):
+    """A path kept from an earlier date left the probe behind as the date ran (the Sun moves a degree a day under it, and a
+    planet under Juno's): every frame a path is shown it ends on the probe."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.evaluate(
+                "window._almReduceMotion = function () { return true; }; _aeTracksLoad(); localStorage.setItem('zimi_ae_orbits', 'always');"
+            )
+            pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
+            for k, step in (("parker", 1.0), ("juno", 0.3)):
+                pg.evaluate("(k) => _aePreset(k)", k)
+                pg.wait_for_function(
+                    "(k) => { _ae.dirty = true; _aeKick(); return _ae.target === k && !_ae.fly; }",
+                    arg=k,
+                    timeout=60_000,
+                    polling=100,
+                )
+                pg.evaluate("() => { _ae.dist = AE_PROBE_VIEW_DIST; }")
+                for _ in range(4):
+                    pg.evaluate(
+                        "(ms) => { _almFocus = new Date(_aeDisplayMs() + ms); _aeFollowClock(); }",
+                        step * 86400000,
+                    )
+                    got = pg.evaluate(
+                        """(k) => { var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], a = t.geometry.attributes.position.array,
+                        n = a.length / 3 - 1, p = _aeProbePos[k], end = Math.hypot(a[n*3] - p[0], a[n*3+1] - p[1], a[n*3+2] - p[2]);
+                        return { shown: t.visible, ring: r.visible, end: end }; }""",
+                        k,
+                    )
+                    assert got["shown"] and got["ring"], (k, got)
+                    assert got["end"] < 0.01, (k, got)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
