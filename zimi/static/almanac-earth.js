@@ -6223,7 +6223,7 @@ function _aeNameIsItsOwn(box, m, rings, margin, ratio) {
 // the Sun and where its own dot is the nearest by a clear margin; failing that, the same slots further out with a short
 // leader line back to the dot; failing that, a slot that only keeps clear of other names. It is never dropped. The
 // smaller bodies (dwarfs, probes) carry no names and drop first (their marks are only obstacles).
-var AE_LEADER_STEPS = [14, 26, 40];   // how far past the disc a name on a leader stands (px)
+var AE_LEADER_STEPS = [14, 26, 40, 60];   // how far past the disc a name on a leader stands (px)
 function _aeNamedPlanet(body) {
   var b = _aePlanetBody(body);
   return body === 'earth' || (!!b && !b.parent && !b.track);
@@ -6289,6 +6289,9 @@ function _aePlaceMarkNames(shown) {
     var passes = m.ringed ? [function () { return true; }] : [
       function (t) { return !t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeNameIsItsOwn(t.box, m, rings, tie, wideNamed ? AE_NAME_TIE_WIDE_RATIO : 1); },
       function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeLeaderClear(m, t.box, rings); },
+      // Two dots close together (Venus beside the Earth near conjunction): a leader that grazes the other is still drawn
+      // from its own dot, where a name merely beside it would read as the nearer one's.
+      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box); },
       function (t) { return wideNamed && !t.leader && onScreen(t.box) && !onName(t.box); },
       function (t) { return wideNamed && onScreen(t.box) && !onName(t.box); },
       function () { return wideNamed; }
