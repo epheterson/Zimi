@@ -145,11 +145,10 @@ for (const lang of ['', 'he']) {
     await expect(page.locator('#ae-lbl-you')).toBeVisible();
     await page.waitForTimeout(1500);   // the turn to face it
 
-    // The first-open hint stands clear of the You dot at the middle.
-    const hint = await page.locator('#ae-hint').boundingBox();
+    // No hint on opening: the view is clear.
+    await expect(page.locator('#ae-hint')).not.toHaveClass(/ae-show/);
     const you = await page.locator('#ae-lbl-you').boundingBox();
     expect(you, 'the You label is shown').not.toBeNull();
-    expect(hint.y >= you.y + you.height || hint.y + hint.height <= you.y).toBe(true);
 
     // The dot sits on the place, whichever way the label hangs.
     expect(await markOffset(page, 'ae-lbl-you', SAN_FRANCISCO)).toBeLessThan(2);

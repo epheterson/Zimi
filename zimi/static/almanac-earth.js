@@ -432,6 +432,7 @@ var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun,
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
+var AE_INFO_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 10.5v7"/><circle cx="12" cy="6.6" r="1.5" fill="currentColor" stroke="none"/></svg>';
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
@@ -698,6 +699,11 @@ var AE_CSS = [
   '.ae-info-row dd{margin:0;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}',
   '.ae-info-row dd span{display:block;color:var(--text2);font-size:12px}',
   '.ae-info-read{margin:12px 0 0;font-size:13px}',
+  '.ae-info-blurb{margin:-4px 0 10px;font-size:14px;line-height:1.45;color:var(--text2)}',
+  '.ae-info-now{margin:0 0 8px;font-size:13px;color:var(--text3)}',
+  '.ae-info-now+.ae-info-read{margin:0 0 10px}',
+  '.ae-info-read a[data-ae-open]{color:var(--amber);text-decoration:none}',
+  '.ae-same{font-size:18px;font-weight:600;line-height:1}',
   '.ae-info .alm-link{color:var(--amber);text-decoration:none;cursor:pointer}',
   '.ae-info .alm-link:hover,.ae-info .alm-link:focus-visible{text-decoration:underline}',
   '@media (min-width:760px){.ae-info{inset-inline:auto 0;top:140px;bottom:0;width:380px;max-height:none;border-radius:12px 0 0 0;border-inline-end:0;transform:translateX(105%)}[dir="rtl"] .ae-info{transform:translateX(-105%);border-radius:0 12px 0 0}.ae-info.in,[dir="rtl"] .ae-info.in{transform:none}}',
@@ -1143,6 +1149,9 @@ function _aeBuildDom() {
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
+          // Where the view has flown to, everything about it waits behind this: the picture stays clear.
+          '<button type="button" class="ae-btn ae-round" id="ae-info-btn" hidden aria-haspopup="dialog" aria-expanded="false"' +
+            ' aria-label="' + _almEsc(_aeT('alm_bi_more')) + '" title="' + _almEsc(_aeT('alm_bi_more')) + '">' + AE_INFO_SVG + '</button>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1154,7 +1163,7 @@ function _aeBuildDom() {
     '<div class="ae-info" id="ae-info" role="dialog" aria-labelledby="ae-info-title"></div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
     '<div class="ae-bottom">' +
-      '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
+      '<div class="ae-hint" id="ae-hint"></div>' +
       '<div class="ae-card" id="ae-card" hidden></div>' +
       '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
       '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
@@ -1164,7 +1173,7 @@ function _aeBuildDom() {
         _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
       // Outward from home: the Earth, its satellites, the Moon, the Sun, the whole system; everywhere else is Go to.
       '<div class="ae-go" id="ae-go" role="dialog" aria-label="' + _almEsc(_aeT('alm_go_to')) + '" hidden></div>' +
-      '<div class="ae-row" id="ae-spinrow" hidden><button type="button" class="ae-btn" id="ae-spin-same" aria-pressed="false">' + _almEsc(_aeT('alm_spin_same')) + '</button>' + _aeSpinToolsHtml(true) + '</div>' +
+      '<div class="ae-row" id="ae-spinrow" hidden><button type="button" class="ae-btn ae-round ae-same" id="ae-spin-same" aria-pressed="false" aria-label="' + _almEsc(_aeT('alm_spin_same')) + '" title="' + _almEsc(_aeT('alm_spin_same')) + '">=</button>' + _aeSpinToolsHtml(true) + '</div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         '<div class="ae-chips" id="ae-chips">' + _aeRowHtml() + '</div>' +
         '<button type="button" class="ae-btn ae-round" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
@@ -3639,30 +3648,6 @@ function _aeArrivalName(k) {
     k === 'moon' ? _aeT('alm_moon') : b ? _aeBodyName(b) : k;
   return _aeLink(_aeArrivalKey(k), _almEsc(name));
 }
-function _aeRenderArrivalCard(card) {
-  var k = _ae.arrived, a = _aeArrival(k, _aeDisplayMs());
-  var p = function (cls, text) { return text ? '<p class="' + cls + '">' + _almEsc(text) + '</p>' : ''; };
-  var extra = a.links.map(function (l, i) {
-    if (l.open && typeof window[l.open] === 'function') {
-      return '<p class="ae-card-more"><a href="#" data-ae-open="' + i + '">' + _almEsc(_aeT(l.label)) + '</a></p>';
-    }
-    return _aeLinked(l.key) ? '<p class="ae-card-more">' + _aeLink(l.key, _almEsc(_aeT(l.label))) + '</p>' : '';
-  }).join('');
-  // Where it is, and the way into everything else about it.
-  var facts = _aeHasFacts(k) ? '<button type="button" class="ae-btn ae-lm-fly" id="ae-card-facts" aria-haspopup="dialog">' + _almEsc(_aeT('alm_bi_more')) + '</button>' : '';
-  var whereLine = a.where || facts ? '<p class="ae-card-where ae-lm-line"><span>' + _almEsc(a.where) + '</span>' + facts + '</p>' : '';
-  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
-    '<h3>' + _aeArrivalName(k) + '</h3>' + p('ae-card-fact', a.fact) + whereLine + p('ae-card-note', a.note) + extra;
-  card.hidden = false;
-  _aeById('ae-card-x').onclick = function () { _ae.arrived = null; _aeRenderCard(); };
-  var more = _aeById('ae-card-facts');
-  if (more) more.onclick = function () { if (_ae.info) _aeCloseInfo(false); else _aeOpenInfo(k); };
-  if (more) more.setAttribute('aria-expanded', String(!!_ae.info));
-  Array.prototype.forEach.call(card.querySelectorAll ? card.querySelectorAll('[data-ae-open]') : [], function (el) {
-    var l = a.links[+el.getAttribute('data-ae-open')];
-    el.onclick = function (e) { e.preventDefault(); _aeClose(); window[l.open](); };
-  });
-}
 
 // ── A body's facts ──
 // "All facts" on a place's card opens its sheet (a bottom sheet on a phone, a side panel on a wide screen): size, mass,
@@ -3844,9 +3829,15 @@ function _aeProbeRows(k, jd, earthH, add, esc, line, far, fromEarth) {
 // The sheet itself. It follows the place whose card is up (another body tapped or flown to takes it there; the card's × or
 // leaving for the satellites takes it away) and keeps its "now" rows up with the clock.
 function _aeInfoHtml(k, rows) {
-  var name = _almEsc(_aeInfoName(k));
+  var name = _almEsc(_aeInfoName(k)), a = _aeArrival(k, _aeDisplayMs()), blurb = _tLookup('alm_blurb_' + k, '');
+  var p = function (cls, text) { return text ? '<p class="' + cls + '">' + _almEsc(text) + '</p>' : ''; };
+  var links = a.links.map(function (l, i) {
+    if (l.open && typeof window[l.open] === 'function') return '<p class="ae-info-read"><a href="#" data-ae-open="' + i + '">' + _almEsc(_aeT(l.label)) + '</a></p>';
+    return _aeLinked(l.key) ? '<p class="ae-info-read">' + _aeLink(l.key, _almEsc(_aeT(l.label))) + '</p>' : '';
+  }).join('');
   return '<button type="button" class="ae-card-x" id="ae-info-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
-    '<div class="ae-info-grab" aria-hidden="true"></div><div class="ae-info-body"><h2 id="ae-info-title">' + _aeLink(_aeArrivalKey(k), name) + '</h2><dl class="ae-info-dl">' +
+    '<div class="ae-info-grab" aria-hidden="true"></div><div class="ae-info-body"><h2 id="ae-info-title">' + _aeLink(_aeArrivalKey(k), name) + '</h2>' +
+    p('ae-info-blurb', blurb) + (_aeIsProbe(k) ? p('ae-info-now', a.fact) : '') + p('ae-info-now ae-card-note', a.note) + links + '<dl class="ae-info-dl">' +
     rows.map(function (r) {
       return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
     }).join('') + '</dl>' +
@@ -3862,12 +3853,19 @@ function _aeRenderInfo() {
   if (el.querySelector('.ae-info-body')) el.querySelector('.ae-info-body').scrollTop = scroll;
   _ae.infoAt = ms;
   _aeById('ae-info-x').onclick = function () { _aeCloseInfo(true); };
+  var a = _aeArrival(k, ms);
+  Array.prototype.forEach.call(el.querySelectorAll('[data-ae-open]'), function (x) {
+    var l = a.links[+x.getAttribute('data-ae-open')];
+    x.onclick = function (e) { e.preventDefault(); _aeClose(); window[l.open](); };
+  });
 }
 // The "now" rows redrawn in place (the focus and the scroll stay where they are).
 function _aeUpdateInfoLive(ms) {
   var el = _aeById('ae-info');
   if (!el || !_ae.info || Math.abs(ms - (_ae.infoAt || 0)) < AE_ARRIVAL_REFRESH_MS) return;
   _ae.infoAt = ms;
+  var note = el.querySelector('.ae-card-note'), said = _aeArrival(_ae.info, ms).note;
+  if (note ? note.textContent !== said : said) { _aeRenderInfo(); return; }
   _aeInfoRows(_ae.info, ms).forEach(function (r) {
     if (!r.live) return;
     var dd = el.querySelector('[data-bi="' + r.id + '"] dd');
@@ -3897,7 +3895,7 @@ function _aeBindInfo() {
     if (shut) _aeCloseInfo(false);
   });
   _ae.el.addEventListener('pointerdown', function (e) {
-    if (!_ae.info || el.contains(e.target) || (e.target.closest && e.target.closest('#ae-card-facts'))) return;
+    if (!_ae.info || el.contains(e.target) || (e.target.closest && e.target.closest('#ae-info-btn'))) return;
     _aeCloseInfo(false);
   }, true);
 }
@@ -3931,6 +3929,7 @@ function _aeOpenInfo(k) {
   if (_ae.setOpen) _aeShowSettings(false);
   _aeRenderInfo();
   el.classList.add('in');
+  _aeMarkInfoBtn();
   _ae.dirty = true;
   _aeKick();
   var x = _aeById('ae-info-x');
@@ -3941,6 +3940,7 @@ function _aeCloseInfo(refocus) {
   if (!_ae || !_ae.info) return;
   _ae.info = null;
   if (el) el.classList.remove('in');
+  _aeMarkInfoBtn();
   _ae.dirty = true;
   _aeKick();
   var back = _ae.infoFrom;
@@ -5218,7 +5218,8 @@ function _aeMarkViews() {
   _aeRenderRow();
   var btns = document.querySelectorAll('#ae-views [data-ae-view]');
   for (var i = 0; i < btns.length; i++) {
-    var k = btns[i].getAttribute('data-ae-view'), on = k === _ae.preset;
+    // The chip pressed, or else the body the view is at: whatever the way there (a zoom, a site, a tap on the body), one is lit.
+    var k = btns[i].getAttribute('data-ae-view'), on = k === (_ae.preset || _aeRowBody());
     btns[i].setAttribute('aria-pressed', String(on));
   }
 }
@@ -6402,6 +6403,15 @@ function _aeRenderCard() {
   var card = _aeById('ae-card'), view = _aeById('ae-view');
   if (card && view && view.classList) view.classList.toggle('ae-carded', !card.hidden);
   _aeSyncInfo();
+  _aeMarkInfoBtn();
+}
+// The i in the corner: there while the view is at a place that has a sheet, pressed while the sheet is up.
+function _aeMarkInfoBtn() {
+  var b = _aeById('ae-info-btn'), k = _ae && _ae.arrived;
+  if (!b) return;
+  var on = !!k && _aeHasFacts(k) && (!_aeIsProbe(k) || !!_aeTracks);
+  if (b.hidden === on) b.hidden = !on;
+  b.setAttribute('aria-expanded', String(!!_ae.info));
 }
 function _aeRenderCardBody() {
   var card = _aeById('ae-card');
@@ -6409,7 +6419,6 @@ function _aeRenderCardBody() {
   var s = _aeSelectedSat();
   if (!s && _ae.place) { _aeRenderPlaceCard(card); return; }
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
-  if (!s && _ae.arrived && (!_aeIsProbe(_ae.arrived) || _aeTracks)) { _aeRenderArrivalCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
   _ae.lm = null;
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
@@ -6602,15 +6611,9 @@ function _aeUpdateText(ms) {
     if (canvas.getAttribute('aria-label') !== aria) canvas.setAttribute('aria-label', aria);
   }
   _aeUpdateCard(ms);
-  // The arrival card keeps up: the ISS goes in and out of the Earth's shadow, a planet's distance changes as time runs.
-  if (_ae.arrived && !_ae.selected && !_ae.lm && (!_ae.arrivedAt || Math.abs(ms - _ae.arrivedAt) >= AE_ARRIVAL_REFRESH_MS)) {
-    _ae.arrivedAt = ms;
-    var card = _aeById('ae-card');
-    if (card && !card.hidden) _aeRenderArrivalCard(card);
-  }
   _aeUpdateInfoLive(ms);
 }
-var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the arrival card's numbers
+var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the sheet's "now" rows
 
 // ── The loop ──
 // Renders every frame while something moves (a drag, a flight, a faster
@@ -6675,7 +6678,7 @@ function _aeZoomBy(factor) {
     f.from.dist = _aeClampDist(f.from.dist * factor);
   }
   _ae.dist = _aeClampDist(_ae.dist * factor);
-  _ae.preset = null;
+  if (_ae.preset !== 'planets') _ae.preset = null;   // closer or farther from a body is still that body (_aeMarkViews); the planets stay the planets
   _aeMarkViews();
   _ae.dirty = true;
   _aeKick();
@@ -6959,6 +6962,7 @@ function _aeBindControls() {
     else _aeFullExit();
   });
   _aeById('ae-locate').onclick = _aeLocateMe;
+  _aeById('ae-info-btn').onclick = function () { if (_ae.info) _aeCloseInfo(false); else _aeOpenInfo(_ae.arrived); };
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
@@ -7166,7 +7170,6 @@ function _aeHandIn(frame) {
     frame: frame, daz: 0, del: 0, e0: 0, e: 0, xfade: xfade,
     done: function () {
       _aeCoverAlmanac(true);
-      if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
     }
   };
   _ae.el.classList.add('ae-hand');
@@ -7209,7 +7212,6 @@ function _aeEnter() {
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
   _aePreset(_aeOpenTarget);
-  if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
 }
 
 function _aeHideHint() {
@@ -7218,11 +7220,11 @@ function _aeHideHint() {
   clearTimeout(_ae.hintTimer);
   _aeMeasureTop();
 }
-// The hint over the controls, for a moment: the first open's, or `text`.
+// A line over the controls, for a moment (where you are could not be found).
 function _aeShowHint(text) {
   var hint = _aeById('ae-hint');
   if (!hint) return;
-  if (text) hint.textContent = text;
+  hint.textContent = text;
   hint.classList.add('ae-show');
   _aeMeasureTop();
   clearTimeout(_ae.hintTimer);

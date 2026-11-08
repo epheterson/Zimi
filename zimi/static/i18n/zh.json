@@ -2220,7 +2220,6 @@
   "bg_starting": "正在检查索引…",
   "create_again_no_limit": "不设任何上限重新抓取",
   "create_again_whole_site": "抓取整个网站",
-  "alm_earth_hint": "拖动旋转，双指捏合或滚动缩放，轻点行星、卫星或航天器即可飞过去",
   "alm_earth_view_sats": "卫星",
   "alm_earth_view_planets": "行星",
   "alm_go_to": "前往",

@@ -290,19 +290,23 @@ def test_the_sheet_opens_and_shuts(page):
     page.evaluate("localStorage.setItem('zimi_ae_orbits', 'always')")
     page.evaluate("_aePreset('mars')")
     page.wait_for_function(
-        "() => !_ae.fly && !!document.querySelector('#ae-card-facts')",
+        "() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden",
         timeout=60_000,
         polling=100,
     )
     assert page.evaluate(
-        "!document.querySelector('#ae-info').classList.contains('in')"
-    ), "hidden until asked for"
-    page.click("#ae-card-facts")
+        "!document.querySelector('#ae-info').classList.contains('in') && document.querySelector('#ae-card').hidden"
+    ), "a clean view: no card, the sheet hidden until asked for"
+    page.click("#ae-info-btn")
     page.wait_for_function(
         "() => document.querySelector('#ae-info').classList.contains('in')"
     )
     assert (
         page.evaluate("document.querySelector('#ae-info-title').textContent") == "Mars"
+    )
+    # It leads with a line about the place, in the reader's language.
+    assert page.evaluate(
+        "document.querySelector('#ae-info .ae-info-blurb').textContent === t('alm_blurb_mars')"
     )
     page.wait_for_function(  # its slide up, slow under software GL
         "() => ['none', 'matrix(1, 0, 0, 1, 0, 0)'].includes(getComputedStyle(document.querySelector('#ae-info')).transform)",
@@ -333,11 +337,12 @@ def test_the_sheet_opens_and_shuts(page):
     page.wait_for_function(
         "() => !document.querySelector('#ae-info').classList.contains('in')"
     )
-    # Following a tap on another body moves the sheet to it; closing the card takes it away.
+    # Following a tap on another body moves the sheet to it; the i shuts it, and opens it again.
     page.evaluate("_aeOpenInfo('mars'); _aePreset('jupiter')")
     page.wait_for_function("() => !_ae.fly", timeout=60_000, polling=100)
     assert page.evaluate("_ae.info") == "jupiter"
-    page.evaluate("document.querySelector('#ae-card-x').click()")  # under the sheet on a phone
+    assert page.get_attribute("#ae-info-btn", "aria-expanded") == "true"
+    page.click("#ae-info-btn")
     page.wait_for_function("() => !_ae.info")
 
 
@@ -429,7 +434,7 @@ def test_screenshots(served):
                         pg.screenshot(
                             path="%s/%s-%s-card-%s.png" % (SHOTS, name, label, body)
                         )
-                        pg.click("#ae-card-facts")
+                        pg.click("#ae-info-btn")
                         pg.wait_for_timeout(700)
                         pg.screenshot(
                             path="%s/%s-%s-sheet-%s.png" % (SHOTS, name, label, body)
@@ -451,14 +456,16 @@ def test_the_iss_label_is_only_its_name(page):
 def test_the_body_is_framed_above_the_sheet(page):
     """On a phone the view's centre rides up by half the sheet, so the body is not under it; it comes back on close."""
     page.evaluate("_aeCloseInfo(false); localStorage.setItem('zimi_ae_orbits', 'always'); _aePreset('jupiter')")
-    page.wait_for_function("() => !_ae.fly && !!document.querySelector('#ae-card-facts') && _ae.infoShift === 0", timeout=60_000, polling=100)
+    settled = "Math.abs(_ae.infoShift - _aeInfoShiftTarget()) < 0.6"   # the clock along the foot lifts the centre a little too
+    page.wait_for_function("() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden && " + settled, timeout=60_000, polling=100)
+    rest = page.evaluate("() => _ae.infoShift")
     centre = "() => { _aeUpdate(_aeDisplayMs()); return _aeProject(_aeBodyPos('jupiter')).y; }"
     before = page.evaluate(centre)
-    page.click("#ae-card-facts")
-    page.wait_for_function("() => _ae.infoShift > 0 && Math.abs(_ae.infoShift - _aeInfoShiftTarget()) < 0.6", timeout=20_000, polling=100)
+    page.click("#ae-info-btn")
+    page.wait_for_function("(r) => _ae.infoShift > r + 50 && " + settled, arg=rest, timeout=20_000, polling=100)
     top = page.evaluate("document.querySelector('#ae-info').getBoundingClientRect().top")
     after = page.evaluate(centre)
     assert after < before - 100 and after < top, (before, after, top)
     page.evaluate("_aeCloseInfo(false)")
-    page.wait_for_function("() => _ae.infoShift === 0", timeout=20_000, polling=100)
+    page.wait_for_function("(r) => Math.abs(_ae.infoShift - r) < 0.6", arg=rest, timeout=20_000, polling=100)
     assert page.evaluate(centre) == pytest.approx(before, abs=1)
