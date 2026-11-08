@@ -4313,6 +4313,36 @@ def _validate_zim_filename(filename):
     return filename, None
 
 
+def _live_download_id(filename):
+    """Id of an active or queued download of `filename`, else None.
+
+    One download per filename: a second request while the first is still
+    running (a double click, an Update click from two tabs, a client retry)
+    used to start a second worker for the same file. Both raced for the same
+    staging file and destination; the loser found its staged file already
+    moved and fell back to a full HTTP download of the same ZIM. Callers hand
+    back the existing id instead. Takes _download_lock itself; code already
+    holding it calls _live_download_id_locked.
+    """
+    with _download_lock:
+        return _live_download_id_locked(filename)
+
+
+def _live_download_id_locked(filename):
+    for existing in list(_active_downloads.values()) + list(_download_queue):
+        if (
+            existing.get("filename") == filename
+            and not existing.get("done")
+            and not existing.get("cancelled")
+        ):
+            log.info(
+                "Download already in progress, not starting another: %s",
+                loggable(filename),
+            )
+            return existing["id"]
+    return None
+
+
 def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     """Build the download record and enqueue it.
 
@@ -4322,6 +4352,13 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     """
     global _download_counter
     from zimi import nomadapi
+
+    # Before the NOMAD hand-off and the disk-space gate, so a repeat request
+    # gets the running download's id whichever route it took, and a nearly
+    # full disk can't turn a harmless repeat into an error.
+    existing_id = _live_download_id(filename)
+    if existing_id:
+        return existing_id, None
 
     # The catalog's downloads go to NOMAD's library through NOMAD, when asked to.
     if nomadapi.managed() and not (extra or {}).get("_source"):
@@ -4353,23 +4390,11 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     )
 
     with _download_lock:
-        # One download per filename. A second request while the first is still
-        # active or queued (a double click, an Update click from two tabs, a
-        # client retry) used to start a second worker for the same file. Both
-        # raced for the same staging file and destination: the loser found its
-        # staged file already moved and fell back to a full HTTP download of
-        # the same ZIM. Hand the caller the existing download instead.
-        for existing in list(_active_downloads.values()) + list(_download_queue):
-            if (
-                existing.get("filename") == filename
-                and not existing.get("done")
-                and not existing.get("cancelled")
-            ):
-                log.info(
-                    "Download already in progress, not starting another: %s",
-                    loggable(filename),
-                )
-                return existing["id"], None
+        # Re-check under the lock: another request may have registered the
+        # same file since the early check above.
+        existing_id = _live_download_id_locked(filename)
+        if existing_id:
+            return existing_id, None
         _download_counter += 1
         dl_id = str(_download_counter)
         dl = {

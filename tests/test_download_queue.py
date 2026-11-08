@@ -541,3 +541,39 @@ def test_start_allowed_again_after_done_or_cancelled(
     library._active_downloads[second]["done"] = True
     third, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
     assert third not in (first, second)
+
+
+def test_duplicate_start_on_a_full_disk_returns_existing_not_an_error(
+    _no_real_threads, _no_mirrors, _data_dir, monkeypatch
+):
+    """A repeat request is answered with the running download's id even if
+    free space has since dropped; the disk gate must not turn it into an error."""
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "3")
+    first, err = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert err is None
+    monkeypatch.setattr(
+        library.shutil, "disk_usage", lambda p: _FakeUsage(free=1 * 1024**3)
+    )
+    again, err = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert err is None
+    assert again == first
+
+
+def test_duplicate_start_is_caught_before_the_nomad_hand_off(
+    _no_real_threads, _no_mirrors, monkeypatch
+):
+    """With NOMAD managing downloads, a repeat of a live download must not
+    be handed to NOMAD a second time."""
+    from zimi import nomadapi
+
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "3")
+    first, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    monkeypatch.setattr(nomadapi, "managed", lambda: True)
+    handed = []
+    monkeypatch.setattr(
+        library, "_hand_to_nomad", lambda *a, **k: handed.append(a) or ("x", None)
+    )
+    again, err = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert err is None
+    assert again == first
+    assert handed == []
