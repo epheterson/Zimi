@@ -15,6 +15,7 @@ import threading
 
 import pytest
 
+pytest.importorskip("playwright")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from games_wait import (
     frames,
