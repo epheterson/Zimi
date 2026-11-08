@@ -865,6 +865,8 @@ def _detect_qid_flags(zims):
     hours."""
     flags = {}
     sampled = 0
+    # One budget for the whole pass: a server that is never quiet costs it 30 s once, not 30 s a ZIM.
+    deadline = time.monotonic() + QID_IDLE_WAIT_MAX_S
     for name, path in zims.items():
         if _qid_has_index(name):
             flags[name] = True
@@ -872,7 +874,7 @@ def _detect_qid_flags(zims):
             # A read per ZIM, after a restart, while someone may be opening an app: they go first, for a while. The
             # read opens an archive of its own, so a request in flight is not held up by it; only the wait is bounded,
             # so a library that is never quiet still gets its flags.
-            _srv._wait_until_idle(QID_IDLE_WAIT_MAX_S)
+            _srv._wait_until_idle(max(0.0, deadline - time.monotonic()))
             flags[name] = _check_one_article_for_qid(path)
             sampled += 1
     log.info(
