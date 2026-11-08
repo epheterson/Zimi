@@ -160,6 +160,12 @@ def test_a_paused_clock_leaves_the_station_view_still(served):
         br = _browser(pw)
         try:
             ctx, pg, errors = _open(br, served, "iss")
+            # Paused, the clock at the foot opens (its slider shows) and the picture glides up by half of it, once:
+            # let that settle, then count.
+            pg.evaluate("() => { _almFocus = new Date(); _almClockSetRate(0); }")
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.infoShift === _aeInfoShiftTarget(); }", timeout=60_000, polling=200)
+            # and for the loop to go idle on its own (tiles and the model arriving late each draw a frame).
+            pg.wait_for_function("() => !_ae.raf && !_ae.dirty", timeout=60_000, polling=500)
             rows = pg.evaluate(DRIVE, ["paused"])
             assert not pg.evaluate("() => _aeStationMoves()")
             assert rows[-1][3] <= FRAMES // 6, rows[-1]  # only the idle interval draws

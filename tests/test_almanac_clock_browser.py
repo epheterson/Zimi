@@ -141,7 +141,9 @@ def test_each_part_is_typed_where_it_stands(browser, served):
         assert (
             head["d"] == "Saturday, November 15, 2031" and head["t"] == "9:05 PM"
         ), head
-        # AM/PM flips on a tap, running back through the twelve hours (PM to AM) rather than jumping.
+        # AM/PM flips on a tap, running back through the twelve hours (PM to AM) rather than jumping. The run is
+        # stretched here so a slow software-GL frame rate still lands frames in between.
+        pg.evaluate("() => { ALM_CLOCK_FLIP_MS = 6000; }")
         before = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.evaluate(
             "() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }"
@@ -455,7 +457,9 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
             got["clockBottom"] <= got["barTop"] + 1
             and abs(got["h"] - got["line"] + 4) <= 2
         ), got
-        # The pinned clock is the same clock: tapping its day edits it.
+        # The pinned clock is the same clock: a tap opens it (at rest it is plain), and its day then edits it.
+        pg.click("#alm-pin .ep[data-p=day]")
+        pg.wait_for_function("() => !document.querySelector('#alm-pin .alm-clock').classList.contains('alm-ck-rest')", timeout=5000, polling=POLL_MS)
         pg.click("#alm-pin .ep[data-p=day]")
         pg.wait_for_function(
             "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'pin'",

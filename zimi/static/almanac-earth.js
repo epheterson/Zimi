@@ -2792,8 +2792,8 @@ function _aeSpinDuration(sec) {
   return _orrNum(y, 'year', y < AE_SPIN_DECIMALS_BELOW ? 1 : 0);
 }
 // The words (for a screen reader) and the one short line under the planet: the turn, the year, the tilt, as
-// "↻ 23.9h · 365d · 23.4°"; a planet that turns backwards turns its arrow (↺, amber) instead of saying so.
-var AE_SPIN_TURN = '↻', AE_SPIN_TURN_BACK = '↺';
+// "23.9h · 365d · 23.4°"; a planet that turns backwards ends it with ↺ in amber instead of saying so.
+var AE_SPIN_TURN_BACK = '↺';
 function _aeSpinNarrow(sec) {
   var h = sec / SECONDS_PER_HOUR, d = sec / SECONDS_PER_DAY, y = d / 365.25;
   var v = h < AE_SPIN_HOURS_BELOW ? [h, 'hour', 1] : d < AE_SPIN_YEARS_ABOVE_DAYS ? [d, 'day', 0] : [y, 'year', y < AE_SPIN_DECIMALS_BELOW ? 1 : 0];
@@ -2808,8 +2808,8 @@ function _aeSpinLines(b, jd) {
   words.push(_aeT('alm_spin_tilt', { v: tilt }));
   if (back) words.push(_aeT('alm_spin_retro'));
   var parts = [_almEsc(_aeSpinNarrow(Math.abs(f.periodS)))].concat(orbits ? [_almEsc(_aeSpinNarrow(f.yearDays * SECONDS_PER_DAY))] : [], [_almEsc(tilt)]);
-  var arrow = back ? '<i class="ae-sp-back">' + AE_SPIN_TURN_BACK + '</i>' : '<i>' + AE_SPIN_TURN + '</i>';
-  return { words: words, html: arrow + '\u2009' + parts.join('\u2009·\u2009') };   // thin spaces: one line under a phone's cell
+  var html = parts.join('\u2009·\u2009') + (back ? '\u2009<i class="ae-sp-back">' + AE_SPIN_TURN_BACK + '</i>' : '');
+  return { words: words, html: html };   // thin spaces: one line under a phone's cell
 }
 // The orbits shown by the gear's setting, here as the planets' orbital planes and years (While flying has no flight to
 // show them in, so only Off hides them).

@@ -254,9 +254,10 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                 timeout=60_000,
                 polling=200,
             )
-            card = pg.inner_text("#ae-card")
+            pg.evaluate("_aeOpenInfo('voyager1')")   # a clean view on arrival: its sheet behind the i
+            card = pg.inner_text("#ae-info")
             assert (
-                "Voyager 1" in card and "AU from the Sun" in card and "2012" in card
+                "Voyager 1" in card and "AU" in card and "2012" in card
             ), card
             assert not errors, errors
             ctx.close()
@@ -328,7 +329,7 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
                 polling=200,
             )
             row = pg.evaluate(
-                "Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.dataset.aeView || b.id)"
+                "Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => b.dataset.aeView || b.id)"
             )
             # At Jupiter the row is Jupiter's: its moons and the way back, Go to at the end.
             assert row[:3] == ["sun", "jupiter", "io"] and row[-2:] == [
@@ -679,7 +680,7 @@ def test_the_row_is_one_line(served, width, lang):
             pg = ctx.new_page()
             _open(pg, served)
             tops = pg.evaluate(
-                "Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })"
+                "Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })"
             )
             assert len(tops) == 6 and len({t[0] for t in tops}) == 1, tops
             assert (
@@ -764,9 +765,8 @@ def test_every_destination_flies(served, start):
 
 
 def test_every_destination_arrives_with_its_card(served):
-    """Every place Go to flies to arrives with the same card: its name, a line of what it is, and where it is from here
-    (a probe: from the Sun, and what it last did). Saturn used to arrive with nothing. The ISS says when it is in the
-    Earth's shadow and when the Sun comes back."""
+    """Every place Go to flies to arrives clean, with its sheet behind the i: its name, its line, and its rows.
+    Saturn used to arrive with nothing."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -796,21 +796,20 @@ def test_every_destination_arrives_with_its_card(served):
                     timeout=30_000,
                     polling=100,
                 )
-                if k not in (
-                    "earth",
-                    "sats",
-                ):  # the card is put up by the frame after the arrival
+                if k not in ("earth", "sats"):
                     try:
                         pg.wait_for_function(
-                            "() => { _ae.dirty = true; _aeKick(); var c = document.getElementById('ae-card'); return c && !c.hidden; }",
+                            "() => { _ae.dirty = true; _aeKick(); return !document.getElementById('ae-info-btn').hidden; }",
                             timeout=5_000,
                             polling=100,
                         )
                     except Exception:
                         pass
                 card = pg.evaluate(
-                    """() => { var c = document.getElementById('ae-card');
-                    return { shown: !c.hidden, name: (c.querySelector('h3') || {}).textContent || '', lines: c.querySelectorAll('p').length }; }"""
+                    """() => { var b = document.getElementById('ae-info-btn'), shown = !b.hidden && document.getElementById('ae-card').hidden;
+                    if (shown) _aeOpenInfo(_ae.arrived);
+                    var c = document.getElementById('ae-info'), out = { shown: shown, name: (c.querySelector('h2') || {}).textContent || '', lines: c.querySelectorAll('.ae-info-row').length };
+                    _aeCloseInfo(false); return out; }"""
                 )
                 want = 2
                 if k not in ("earth", "sats") and (
@@ -910,7 +909,7 @@ def test_the_row_follows_where_the_view_is(served):
                 pg, row, jup + ["moon", "planets"]
             )  # a long family leaves room for one shortcut
             line = pg.evaluate(
-                """() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).map(b => b.getBoundingClientRect());
+                """() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => b.getBoundingClientRect());
                 var go = document.getElementById('ae-go-btn').getBoundingClientRect();
                 return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }"""
             )
@@ -950,9 +949,8 @@ def test_the_row_follows_where_the_view_is(served):
                 == "true"
             )
             pg.click("#ae-views [data-ae-view='spin']")
-            _wide_row(
-                pg, row, ["sun", "earth", "mars"]
-            )  # the same row while they stand side by side
+            pg.wait_for_function("() => !!_ae.spin", timeout=30_000, polling=100)
+            assert pg.evaluate(row) == ["sun", "spin"]  # side by side: the Sun and itself (its tools beside them)
             assert (
                 pg.evaluate(
                     "document.querySelector('#ae-views [data-ae-view=\"spin\"]').getAttribute('aria-pressed')"
@@ -1064,16 +1062,10 @@ def test_a_tap_on_the_craft_in_view_opens_its_card(served):
                 timeout=60_000,
                 polling=200,
             )
-            pg.click("#ae-card-x")
-            assert pg.evaluate("document.getElementById('ae-card').hidden")
-            at = pg.evaluate(
-                "() => { var s = _aeProject(_aeTargetPos()), r = document.getElementById('ae-canvas').getBoundingClientRect(); return { x: r.left + s.x, y: r.top + s.y }; }"
-            )
-            pg.mouse.click(at["x"], at["y"])
-            pg.wait_for_function(
-                "() => !document.getElementById('ae-card').hidden", timeout=10_000
-            )
-            assert "Voyager 1" in pg.inner_text("#ae-card h3")
+            assert pg.evaluate("document.getElementById('ae-card').hidden")   # a clean view
+            pg.click("#ae-info-btn")
+            pg.wait_for_function("() => !!_ae.info", timeout=10_000)
+            assert "Voyager 1" in pg.inner_text("#ae-info h2")
             keys = pg.evaluate(
                 "() => [_aeArrivalKey('voyager1'), AE_ARRIVAL_EXTRA.voyager1.key].map(k => !!AlmanacLinks.MAP[k])"
             )
@@ -1083,7 +1075,7 @@ def test_a_tap_on_the_craft_in_view_opens_its_card(served):
                 """() => { window._grOpened = 0; window._grStacks = []; window._scrollToGoldenRecord = function () { window._grOpened++; window._grStacks.push(new Error().stack); }; }"""
             )
             got = pg.evaluate(
-                "() => { try { document.querySelector('#ae-card [data-ae-open]').click(); return window._grOpened; } catch (e) { return String(e); } }"
+                "() => { try { document.querySelector('#ae-info [data-ae-open]').click(); return window._grOpened; } catch (e) { return String(e); } }"
             )
             assert got == 1, (got, pg.evaluate("window._grStacks"))
             pg.wait_for_function("() => !_aeIsOpen", timeout=30_000)
@@ -1507,9 +1499,7 @@ def test_the_moon_s_landings_on_the_first_tap(served):
                 if (!h) return null; var a = s.getBoundingClientRect(), b = h.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; }"""
             )
             assert seen is True, seen
-            pg.click(
-                "#ae-go-btn"
-            )  # put away: the Moon now names all its landings in view
+            pg.evaluate("_aeShowGo(false)")  # put away (the open sheet covers its button): the Moon now names all its landings in view
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return ("
                 + labels
@@ -1551,7 +1541,7 @@ def test_a_landing_s_card_and_the_go_to_sheet_stay_small(served):
                 "() => document.getElementById('ae-go').getBoundingClientRect().height / innerHeight"
             )
             assert sheet <= 0.51, sheet
-            pg.click("#ae-go-btn")
+            pg.evaluate("_aeShowGo(false)")
             pg.evaluate(
                 "() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0])"
             )

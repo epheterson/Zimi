@@ -190,11 +190,11 @@ def test_every_planet_is_drawn_and_named(page):
         "Uranus",
         "Neptune",
     ]
-    # Under each planet one short line: the turn, the year, the tilt; the words are for a screen reader.
+    # Under each planet one short line: the day, the year, the tilt; the words are for a screen reader.
     jup = page.inner_text("[data-ae-spin=jupiter] span")
-    assert jup.startswith("↻") and "9.9h" in jup and "3.1°" in jup and jup.count("·") >= 1, jup
+    assert "↻" not in jup and "↺" not in jup and "9.9h" in jup and "3.1°" in jup and jup.count("·") >= 1, jup
     assert "Day 9.9 hr" in page.get_attribute("[data-ae-spin=jupiter]", "aria-label")
-    # Backwards is the arrow turned the other way, in amber; said in words only to a screen reader.
+    # Backwards ends the line with ↺ in amber; said in words only to a screen reader.
     assert page.evaluate("document.querySelector('[data-ae-spin=venus] .ae-sp-back').textContent") == "↺"
     assert "Spins backwards" in page.get_attribute("[data-ae-spin=venus]", "aria-label")
     assert page.evaluate("document.querySelectorAll('[data-ae-spin=venus] span').length") == 1
