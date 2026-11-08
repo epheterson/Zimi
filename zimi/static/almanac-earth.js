@@ -520,6 +520,7 @@ var AE_CSS = [
   '.ae-btn[disabled]{opacity:.45;cursor:default;pointer-events:none}',
   '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
   '.ae-btn[hidden]{display:none}',
+  '#ae-map{display:inline-flex;align-items:center;gap:6px}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
@@ -551,8 +552,8 @@ var AE_CSS = [
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:' + AE_AMBER_HEX + ';pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
-  // Go to: a compact sheet over the controls, its places in groups, each with its small disc.
-  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(100% - 20px);max-height:min(50vh,440px);overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
+  // Go to: a compact sheet over the controls (the field at its foot, under the thumb; above the keyboard when it is up), its places in groups, each with its small disc.
+  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));max-height:min(50vh,440px,var(--sheet-room,100vh));overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '#ae-views{flex-wrap:nowrap;align-items:center;max-width:calc(100vw - 24px);margin-inline:auto}',
@@ -564,7 +565,7 @@ var AE_CSS = [
   '.ae-chips .ae-btn{flex:none}',
   '@media (max-width:400px){#ae-views,.ae-chips{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px}}',
-  '.ae-go-find{position:sticky;top:-6px;z-index:1;display:flex;align-items:center;gap:8px;margin:-6px -6px 4px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-bottom:1px solid var(--border);color:var(--text3)}',
+  '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
   '.ae-go-find:focus-within{color:var(--amber)}',
@@ -811,7 +812,7 @@ function _aeGoRender() {
   }).join('');
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
-  if (h) { sheet.scrollTop = h.offsetTop - _aeById('ae-go-q').parentNode.offsetHeight; _ae.goGroup = null; }
+  if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
 }
 // `group`: open scrolled to that group's heading (the Moon's Landings chip), now or as soon as it is there.
 function _aeShowGo(on, group) {
@@ -914,13 +915,13 @@ function _aePlaceShow(list) {
   // The groups give way while something is typed.
   if (groups) groups.hidden = !!list.length || !!(q && q.value.trim());
 }
-// The sheet's search field and the two places under it (what was found; the groups): made once, the groups drawn
+// The sheet's two places (what was found; the groups) and the search field under them: made once, the groups drawn
 // afresh by _aeGoRender without taking the field's focus.
 function _aeGoShell(sheet) {
   if (_aeById('ae-go-q')) return;
-  sheet.innerHTML = '<div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
-    'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"></div>' +
-    '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div><div id="ae-go-groups"></div>';
+  sheet.innerHTML = '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div><div id="ae-go-groups"></div>' +
+    '<div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
+    'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"></div>';
   var q = _aeById('ae-go-q'), timer = 0;
   q.oninput = function () {
     clearTimeout(timer);
@@ -4130,31 +4131,37 @@ var AE_MAP_M_PER_PX_Z0 = 156543.034;       // a web map's metres per pixel at zo
 var AE_MAP_ZOOM_RANGE = [2, 17];
 var AE_MAP_PLACE_ZOOM = 12;                // a place picked in Go to opens the map here: a town and its streets on screen
 function _aeMapZims() { return typeof _installedMaps === 'function' ? _installedMaps() : []; }
+// Where Map here would open and how close: a place picked in Go to, else the point under the middle of the screen at
+// the scale the view shows.
+function _aeMapHereAim() {
+  if (_ae.place) return { g: { lat: _ae.place.lat, lon: _ae.place.lon }, zoom: AE_MAP_PLACE_ZOOM };
+  var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
+  var g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, _ae.scene.gast));   // the camera looks at the centre: the point below it
+  var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
+  var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
+  return { g: g, zoom: _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]) };
+}
+// The installed map to open there: one whose ground includes the point (the last one used first), none when every
+// map's bounds rule it out. A map whose bounds are not known is not ruled out.
+function _aeMapHereZim(g) {
+  var here = _aeMapZims().filter(function (z) { return _mapCovers(z, { lat: g.lat, lng: g.lon }) !== false; });
+  var last = typeof _lastMapVisit === 'function' ? _lastMapVisit() : null;
+  return here.filter(function (z) { return last && last.zim && z.name === last.zim.name; })[0] || here[0] || null;
+}
 function _aeShowMapHere() {
   var row = _aeById('ae-maprow');
   if (!row) return;
   // Close enough that the globe is a blur, or a place picked (its flight stops higher, where the Earth's map ends).
   var near = _ae.dist <= AE_MAP_HANDOFF_DIST || !!_ae.place;
-  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && near && _aeMapZims().length > 0;
+  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && near && _aeMapZims().length > 0 && !!_aeMapHereZim(_aeMapHereAim().g);
   if (row.hidden === on) row.hidden = !on;
 }
 function _aeOpenMapHere() {
-  var sc = _ae.scene, maps = _aeMapZims();
-  if (!sc || !maps.length || !window.AlmanacLinks || typeof mapPositionHash !== 'function') return;
-  var g, zoom;
-  if (_ae.place) {
-    g = { lat: _ae.place.lat, lon: _ae.place.lon }; zoom = AE_MAP_PLACE_ZOOM;
-  } else {
-    var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
-    g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, sc.gast));   // the camera looks at the centre: the point below it
-    var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
-    var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
-    zoom = _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]);
-  }
-  var last = typeof _lastMapVisit === 'function' ? _lastMapVisit() : null;
-  var z = (last && last.zim) || maps[0];
+  if (!_ae.scene || !window.AlmanacLinks || typeof mapPositionHash !== 'function') return;
+  var aim = _aeMapHereAim(), z = _aeMapHereZim(aim.g);
+  if (!z) return;
   AlmanacLinks.openHit({ zim: z.name, path: z.main_path, title: typeof _mapName === 'function' ? _mapName(z) : z.title },
-    { pos: mapPositionHash(zoom, g.lat, g.lon) });
+    { pos: mapPositionHash(aim.zoom, aim.g.lat, aim.g.lon) });
 }
 
 // ── Landmarks: named places on a body, at their true coordinates ──

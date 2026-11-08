@@ -1918,11 +1918,12 @@ function _sheetAboveKeyboard(el) {
     var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
     el.style.bottom = covered ? covered + 'px' : '';
     el.style.maxHeight = covered ? (vv.height - SHEET_KEYBOARD_GAP_PX) + 'px' : '';
+    el.style.setProperty('--sheet-room', (vv.height - SHEET_KEYBOARD_GAP_PX) + 'px');   // what a sheet inside may fill
   }
   vv.addEventListener('resize', fit);
   vv.addEventListener('scroll', fit);
   fit();
-  return function() { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
+  return function() { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); el.style.removeProperty('--sheet-room'); };
 }
 
 // Preferred download flavor: "full" (with images), "nopic", or "mini".
