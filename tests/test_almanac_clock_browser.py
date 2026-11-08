@@ -631,8 +631,27 @@ def test_the_rate_does_not_persist(browser, served):
             )
             == []
         )
+        # A run through the hours under way (a day picked) as it closes: it stops with the page.
+        pg.evaluate("() => { _almReduceMotion = function () { return false; }; _almSelectDay(_almTodayJDN + 1); }")
         pg.evaluate("() => closeAlmanac()")
-        pg.wait_for_function("() => _almRate === 1 && !_almClockRunning", timeout=5000)
+        pg.wait_for_function("() => _almRate === 1 && !_almClockRunning && !_almRunToRAF && _almFocus === null", timeout=5000)
+        pg.wait_for_timeout(2500)   # past the run's length: nothing came back to life
+        assert pg.evaluate("() => !_almRunToRAF && !_almClockRunning && _almFocus === null")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_a_day_picked_keeps_the_place_s_time_of_day(browser, served):
+    """The device in Los Angeles, the place Tokyo: a day picked on the calendar is that day at the hour Tokyo's clock shows
+    (the device's calendar put 08:00 Nov 8 Tokyo, picked to the 20th, on the 21st)."""
+    ctx, pg, errors = _page(browser, served, place=TOKYO)
+    try:
+        _land(pg, "2026-11-07T23:00:00Z")   # 08:00 Nov 8 in Tokyo, 15:00 Nov 7 in Los Angeles
+        assert _wall(pg)[:4] == [2026, 11, 8, 8]
+        pg.evaluate("() => _almSelectDay(_gregorianToJDN(2026, 11, 20))")
+        pg.wait_for_function("() => !_almRunToRAF", timeout=5000, polling=POLL_MS)
+        assert _wall(pg)[:4] == [2026, 11, 20, 8]
         assert not errors, errors
     finally:
         ctx.close()

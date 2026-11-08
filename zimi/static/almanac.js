@@ -389,6 +389,7 @@ function _almanacTeardown() {
   _almSelectedTz = null;
   // The clock stops, and the next open starts at real time; the orrery's state goes with it.
   _almEdEnd();
+  _almRunToStop();
   _almClockHaltRaf();
   _almRate = 1;
   _almClockStale = false;
@@ -406,6 +407,8 @@ function closeAlmanac() {
   if (!_almanacOpen) return;
   _almReturnScroll = null; // an explicit close cancels any pending return
   _almanacTeardown();
+  _almFocus = null;   // the next open is at real time, now
+  _almSelectedJDN = _almTodayJDN;
   // Remove #almanac hash without adding history entry
   if (_almIsLinkHash(location.hash)) {
     history.replaceState(history.state, '', location.pathname + location.search);
@@ -927,6 +930,7 @@ function _almRepaintFocus() {
 
 function _almBackToToday() {
   // Real time at now: the loop stops, the pins go, and every panel lands on the present. Reachable mid-run.
+  _almRunToStop();
   _almClockHaltRaf();
   _almTravelUnfreeze();
   _almRate = 1;
@@ -1475,6 +1479,12 @@ function _almClockFlip(kind) {
 // `land(at)`. The sky, the Moon, the orrery and the 3D view pass through the hours between; reduced motion lands at once.
 // A running clock keeps its pace meanwhile: `to` moves on with it, so the moment landed on is in step.
 var _almRunToRAF = 0;
+function _almRunToStop() {
+  if (!_almRunToRAF) return;
+  cancelAnimationFrame(_almRunToRAF);
+  _almRunToRAF = 0;
+  _almClockHeld = false;
+}
 function _almClockRunTo(to, land, ms) {
   var from = _almFocusInstant().getTime(), pace = _almClockHeld ? 0 : _almRate, start = Date.now();
   ms = ms || ALM_CLOCK_FLIP_MS;
@@ -7431,9 +7441,9 @@ function _almSelectDay(jdn) {
   _almSelectedJDN = jdn;
   // The picked day at the time of day the clock shows, and the clock keeps its pace, so "this time, that day" stays in
   // step. setFullYear, so a day in an ancient year (the year is typable) lands on that year, not the 1900s.
-  var g = _jdnToGregorian(jdn), from = _almFocusInstant(), to = new Date(from.getTime());
-  to.setFullYear(g.year, g.month - 1, g.day);
-  to = _almClampInstant(to);
+  // In the zone the clock shows (the place's, not the device's), or a far place lands a day off.
+  var g = _jdnToGregorian(jdn), from = _almFocusInstant(), tz = _almClockTz(), P = _almTzParts(from, tz);
+  var to = _almClampInstant(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date);
   var cal = _jdnToCalendar(_almSystem, jdn);
   _almYear = cal.year;
   _almMonth = cal.month;
