@@ -247,7 +247,7 @@ _PORTABLE_WAYS = {
     "rendered": Way(ABSENT, "needs a browser engine the portable build does not carry; use pip or Docker"),
     "import": Way(ABSENT, "needs Python 3.14 beside the build; use pip or Docker"),
     "alive": Way(ABSENT, "needs the browser engine and warc2zim; use pip or Docker"),
-    "singlefile": Way(EXTERNAL, "npm install -g single-file-cli (Node 24+)"),
+    "singlefile": Way(EXTERNAL, "npm install -g single-file-cli (Node 24+), and a Chromium or Chrome for it to drive"),
     "video": Way(ABSENT, "yt-dlp is not in the portable build; use pip or Docker"),
     "reddot": Way(ABSENT, "needs a Python beside the build; use pip or Docker"),
     "zimit": Way(EXTERNAL, "Docker; Zimi runs the zimit image"),
