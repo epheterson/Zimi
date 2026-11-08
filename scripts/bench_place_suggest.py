@@ -18,6 +18,7 @@ as the benchmark is worth).
 
 import os
 import random
+import shutil
 import sqlite3
 import statistics
 import sys
@@ -98,39 +99,39 @@ def main():
     tmp = tempfile.mkdtemp(prefix="bench-places-")
     srv.ZIMI_DATA_DIR = tmp
     os.makedirs(os.path.join(tmp, "mapplaces"))
-    names = build(mapplaces._builder.path(NAME), count, rng)
-    mapplaces.ready = lambda _name: True
+    try:
+        names = build(mapplaces._builder.path(NAME), count, rng)
+        mapplaces.ready = lambda _name: True
 
-    by_len, every = {}, []
-    for _ in range(typed):
-        target = rng.choice(names)
-        text = target
-        if rng.random() < 0.25:  # "Springfield, IL" typed out
-            region = rng.choice(REGIONS)
-            text = f"{target}, {rng.choice((region[0], region[1] or region[0], region[2]))}"
-        for n in sorted({1, 2, 3, 4, 5, 6, len(text)}):
-            if n > len(text):
-                continue
-            prefix = text[:n]
-            t0 = time.perf_counter()
-            mapplaces.suggest(NAME, prefix)
-            ms = (time.perf_counter() - t0) * 1000
-            by_len.setdefault(min(n, 6), []).append(ms)
-            every.append(ms)
+        by_len, every = {}, []
+        for _ in range(typed):
+            target = rng.choice(names)
+            text = target
+            if rng.random() < 0.25:  # "Springfield, IL" typed out
+                region = rng.choice(REGIONS)
+                text = f"{target}, {rng.choice((region[0], region[1] or region[0], region[2]))}"
+            for n in sorted({1, 2, 3, 4, 5, 6, len(text)}):
+                if n > len(text):
+                    continue
+                prefix = text[:n]
+                t0 = time.perf_counter()
+                mapplaces.suggest(NAME, prefix)
+                ms = (time.perf_counter() - t0) * 1000
+                by_len.setdefault(min(n, 6), []).append(ms)
+                every.append(ms)
 
-    def row(label, ms):
-        ms = sorted(ms)
-        q = lambda p: ms[min(int(len(ms) * p), len(ms) - 1)]  # noqa: E731
-        print(
-            f"{label:>10} n={len(ms):>6}  p50 {statistics.median(ms):6.2f}  p95 {q(0.95):6.2f}  p99 {q(0.99):6.2f}  max {ms[-1]:7.2f} ms"
-        )
+        def row(label, ms):
+            ms = sorted(ms)
+            q = lambda p: ms[min(int(len(ms) * p), len(ms) - 1)]  # noqa: E731
+            print(
+                f"{label:>10} n={len(ms):>6}  p50 {statistics.median(ms):6.2f}  p95 {q(0.95):6.2f}  p99 {q(0.99):6.2f}  max {ms[-1]:7.2f} ms"
+            )
 
-    for n in sorted(by_len):
-        row(f"{n}{'+' if n == 6 else ''} letters", by_len[n])
-    row("all", every)
-    import shutil
-
-    shutil.rmtree(tmp)
+        for n in sorted(by_len):
+            row(f"{n}{'+' if n == 6 else ''} letters", by_len[n])
+        row("all", every)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":
