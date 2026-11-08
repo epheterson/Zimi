@@ -1389,7 +1389,7 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             )
             assert got["aim"] > 0.999, got
             assert 1.5 < got["spans"] < 6, got
-            assert got["dot"] < 0.01 and not got["trail"], got
+            assert got["dot"] < 0.01, got   # its tail stays beside it (test_almanac_iss_browser.py)
             assert not errors, errors
             ctx.close()
         finally:

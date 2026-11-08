@@ -3525,8 +3525,8 @@ function _aeUpdateProbes(jd, place, near) {
     _aeProbeHeading[k] = ahead ? _aeSub(place(ahead), pos) : null;
     _aeSetPoint(out.cloud, n++, pos, AE_PROBE_COLOR, _aeProbeCraftDot(k), AE_PROBE_PX);
     // Only the path of the probe gone to: others' paths crossed the Planets view as stray lines, and near a body they
-    // run past the camera. Not its own either once its model fills the view (the path runs through it).
-    var line = _aeOrbitShow(k), shown = _ae.target === k && _aeProbeCraftDot(k) > 0.5 && line > 0;
+    // run past the camera. Its own stays beside its model, fading out as every orbit does (_aeOrbitShow).
+    var line = _aeOrbitShow(k), shown = _ae.target === k && line > 0;
     var alpha = (_ae.target === k ? AE_TRAIL_ALPHA : AE_TRAIL_FAINT) * _aeFadeU.value * line;
     trail.material.opacity = ring.material.opacity = alpha;
     // Which orbit it is on is worked out as it moves (a probe in a tight orbit, Juno's is a month, every fiftieth of it);
@@ -4539,8 +4539,14 @@ function _aeNewState(el) {
 // One clock: the Almanac's (almanac.js _almFocus and _almRate, null for now). The hero Moon, the header, the pinned strip
 // and this view all read it, and this view's foot carries the same date and speed slider (_almClockHtml): there is no
 // speed of its own. The page's loop advances it (_almClockFrame), and draws this view in the same frame (_aeFollowClock).
+// Between two ticks of the page's slow clock (ALM_CLOCK_SLOW_MS, four a second at real time) the instant carries on at
+// the clock's rate, so a view drawn every frame moves smoothly instead of in quarter-second steps.
 function _aeDisplayMs() {
-  return (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
+  var ms = (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
+  if (typeof _almClockRunning !== 'undefined' && _almClockRunning && _almClockLast && !_almClockFast()) {
+    ms += _almRate * _aeClamp(performance.now() - _almClockLast, 0, ALM_CLOCK_SLOW_MS);
+  }
+  return ms;
 }
 function _aeFocusSet() { return typeof _almFocus !== 'undefined' && !!_almFocus; }
 // Whether the clock is running faster or slower than a second a second, or backwards: what a still view does not assume.
@@ -4668,7 +4674,9 @@ function _aeFlyTo(target, dist, azel, overview) {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
     var ms = overview ? AE_FLY_OVERVIEW_MS : _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
-    var hold = !overview && !!_ae.scene && target !== from.target;
+    // The station's pull back to the Earth it circles is a zoom out, not a trip between two bodies (the shoulder swing round
+    // a station 1e-4 Earth radii across crammed half a turn into 200 ms, and the turn limit stretched it to 13 s).
+    var hold = !overview && !!_ae.scene && target !== from.target && !(from.target === 'iss' && target === 'earth');
     _ae.fly = { start: performance.now(), ms: ms, hold: hold, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_, lead: AE_FLY_APPROACH_MS };
     if (hold) {
       var sh = _aeShoulder(from, AE_TARGETS[from.target].surface, _aeTargetPos());
@@ -6648,7 +6656,12 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading);
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves());
+}
+// The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
+// not at the idle interval. A paused clock leaves it as still as any other view.
+function _aeStationMoves() {
+  return _ae.target === 'iss' && !!_ae.issPos && (typeof _almRate === 'undefined' || _almRate !== 0);
 }
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
