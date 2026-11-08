@@ -21,6 +21,7 @@ GL_ARGS = [
     "--ignore-gpu-blocklist",
 ]
 LA = "America/Los_Angeles"
+ALM_LINGER_WAIT_MS = 15_000  # ALM_SPD_LINGER_MS, with room for a slow machine
 
 
 @pytest.fixture(scope="module")
@@ -86,8 +87,8 @@ def _page(browser, served, width=390, place=SF, tz=LA):
 
 
 def _land(pg, iso):
-    """Park the clock on an instant, the way a typed date does."""
-    pg.evaluate("(iso) => { _almClockGoTo(new Date(iso)); }", iso)
+    """Park the clock, paused, on an instant (a typed moment keeps the pace, so a test of typing stands it still first)."""
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almClockGoTo(new Date(iso)); }", iso)
     pg.wait_for_function("() => !_almEd", timeout=5000, polling=POLL_MS)
 
 
@@ -411,8 +412,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         # Backwards runs back.
         pg.evaluate("() => _almClockSetRate(-3600)")
         a = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.wait_for_timeout(600)
-        assert pg.evaluate("() => _almFocusInstant().getTime()") < a
+        pg.wait_for_function("(a) => _almFocusInstant().getTime() < a", arg=a, timeout=30_000, polling=POLL_MS)
         # Now is the way home.
         pg.click("#almanac-head .alm-ck-now")
         pg.wait_for_function("() => _almRate === 1 && !_almFocus", timeout=5000)
@@ -513,7 +513,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         pg.wait_for_function("() => _almRate !== 0", timeout=5000)
         a = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.evaluate("() => _almClockSetRate(3600)")
-        pg.wait_for_timeout(1000)
+        pg.wait_for_function("(a) => _almFocusInstant().getTime() > a + 60000", arg=a, timeout=30_000, polling=POLL_MS)
         b = pg.evaluate(
             "() => ({ page: _almFocusInstant().getTime(), view: _ae.scene.ms, orrery: _orrerySimTime() })"
         )
@@ -525,8 +525,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         # Backwards in the view runs back, and paused in the view holds.
         pg.evaluate("() => _almClockSetRate(-3600)")
         c = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.wait_for_timeout(700)
-        assert pg.evaluate("() => _almFocusInstant().getTime()") < c
+        pg.wait_for_function("(c) => _almFocusInstant().getTime() < c", arg=c, timeout=30_000, polling=POLL_MS)
         pg.click("#ae-clock .alm-spd-play", force=True)
         held = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(700)
@@ -534,6 +533,13 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
             pg.evaluate("() => _almFocusInstant().getTime()") == held
             and pg.evaluate("() => _almRate") == 0
         )
+        # The view's time stands in a pill beside the date, and its parts show no underline until one is touched.
+        assert pg.evaluate(
+            "() => !!document.querySelector('#ae-clock .alm-ck-pill > .alm-ck-t .ep[data-p=hour]')"
+        )
+        assert pg.evaluate(
+            "() => getComputedStyle(document.querySelector('#ae-clock .ep[data-p=day]')).textDecorationColor"
+        ) in ("rgba(0, 0, 0, 0)", "transparent")
         # Typed in the view: the part is the same part.
         pg.click("#ae-clock .ep[data-p=day]")
         pg.wait_for_function(
@@ -551,6 +557,56 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         pg.evaluate("() => _aeClose()")
         pg.wait_for_function("() => !_aeIsOpen", timeout=10_000, polling=POLL_MS)
         assert pg.evaluate("() => _almFocusInstant().getTime()") == held
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        rests = "() => document.querySelector('#almanac-head .alm-spd').classList.contains('alm-spd-rest')"
+        # At now and 1x the slider rests: its knob only, no rail, no marks.
+        assert pg.evaluate(rests)
+        assert (
+            pg.evaluate(
+                "() => getComputedStyle(document.querySelector('#almanac-head .alm-spd-marks')).visibility"
+            )
+            == "hidden"
+        )
+        # A day picked on the calendar: the next day at the same time of day, and the clock runs on at 1x, in step.
+        pg.evaluate(
+            "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 1); }"
+        )
+        assert pg.evaluate("() => _almRate") == 1
+        pg.wait_for_function("() => !_almRunToRAF && !_almClockHeld", timeout=60_000, polling=POLL_MS)
+        a = pg.evaluate("() => [_almFocusInstant().getTime() - Date.now(), _almRate]")
+        assert a[1] == 1 and abs(a[0] - 86_400_000) < 120_000, a
+        assert not pg.evaluate(rests)  # away: the slider is back
+        pg.wait_for_function(
+            "(t) => _almFocusInstant().getTime() > t", arg=pg.evaluate("() => _almFocusInstant().getTime()") + 500,
+            timeout=30_000, polling=POLL_MS,
+        )  # it runs on
+        # Further than a couple of days lands at once, still at 1x.
+        pg.evaluate(
+            "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 5); }"
+        )
+        assert pg.evaluate("() => [!!_almRunToRAF, _almRate]") == [False, 1]
+        # Today again: back at now, and the slider rests a moment later.
+        back = pg.evaluate(
+            "() => { var f = new Date(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()));"
+            " return [_almFocus, document.querySelector('#almanac-head .alm-spd').classList.contains('alm-spd-rest')]; }"
+        )
+        assert back == [None, False], back
+        pg.wait_for_function(rests, timeout=ALM_LINGER_WAIT_MS, polling=POLL_MS)
+        # A hand on the knob brings it back.
+        pg.dispatch_event("#almanac-head .alm-spd-range", "pointerdown")
+        assert (
+            pg.evaluate(
+                "() => getComputedStyle(document.querySelector('#almanac-head .alm-spd-marks')).visibility"
+            )
+            == "visible"
+        )
         assert not errors, errors
     finally:
         ctx.close()

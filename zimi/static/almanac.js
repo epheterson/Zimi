@@ -873,6 +873,9 @@ var ALM_CLOCK_SLOW_MAX_DT = 1000;
 var ALM_CLOCK_NOTE_MS = 5000;          // how long a line like "that time does not exist" stays
 var ALM_CLOCK_TAP_SMALL = 0.05;          // how much a part's width counts against it when two are equally near the finger
 var ALM_CLOCK_FLIP_MS = 900;          // AM/PM: the twelve hours run through, forward or back, in this long
+var ALM_DAY_RUN_MAX = 2;              // a calendar jump of up to this many days runs there, ALM_CLOCK_FLIP_MS a day; further
+                                      // lands at once (a faster run flashes day and night more than once a second)
+var ALM_SPD_LINGER_MS = 4000;         // the slider stays this long after the clock is back at now, at 1x, then rests
 var ALM_CLOCK_TAP_SLOP = 14;           // px: how far from a date part a tap still means it (the nearest part wins)
 var ALM_CLOCK_MONTH_LEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -1074,14 +1077,16 @@ function _almSpdHtml(ticks) {
 }
 
 // One clock. `v` is where it stands: 'head' (the page's header, two lines), 'pin' (the strip pinned to the top) or 'foot'
-// (the 3D view's), the last two on one line. Slots only: _almClockPaint writes them, and again at every tick.
+// (the 3D view's, its time in a pill beside the date), the last two on one line. Slots only: _almClockPaint writes them,
+// and again at every tick.
 function _almClockHtml(v) {
   var head = v === 'head';
   var now = '<button type="button" class="alm-ck-now" hidden title="' + _almEsc(t('alm_back_to_now')) + '">' + _almEsc(t('alm_now')) + '</button>';
+  var time = '<span class="alm-ck-t"' + (head ? ' id="almanac-head-time"' : '') + '></span><span class="alm-ck-z"></span>';
   return '<div class="alm-clock" data-v="' + v + '">' +
     (head ? '<div class="alm-ck-d" id="almanac-head-date"></div>' : '') +
-    '<div class="alm-ck-l">' + (head ? '' : '<span class="alm-ck-d"></span>') + '<span class="alm-ck-t"' + (head ? ' id="almanac-head-time"' : '') + '></span>' +
-    '<span class="alm-ck-z"></span><span class="alm-ck-r" dir="ltr"></span>' + now + '</div>' +
+    '<div class="alm-ck-l">' + (head ? '' : '<span class="alm-ck-d"></span>') + (v === 'foot' ? '<span class="alm-ck-pill">' + time + '</span>' : time) +
+    '<span class="alm-ck-r" dir="ltr"></span>' + now + '</div>' +
     '<div class="alm-ck-note" role="status"></div>' + _almSpdHtml(v === 'pin') + '</div>';
 }
 
@@ -1111,7 +1116,7 @@ function _almClockPaint(focus) {
   if (!roots.length) return;
   focus = focus || _almFocusInstant();
   var cp = _almClockParts(focus), rate = _almRate, real = _almRateIsReal(rate), away = _almClockAway(), hot = !real || away;
-  var text = rate === 0 || real ? '' : _almRateText(rate);
+  var text = rate === 0 || real ? '' : _almRateText(rate), rest = _almSpdRests(hot);
   for (var i = 0; i < roots.length; i++) {
     var root = roots[i], head = root.getAttribute('data-v') === 'head', st = root._ck || (root._ck = {});
     var set = function (sel, html, key) {
@@ -1123,7 +1128,7 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? ' &middot; ' + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
+    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -1134,8 +1139,17 @@ function _almClockPaint(focus) {
     root.classList.toggle('alm-ck-hot', hot);
     root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
-    if (spd) _almSpdPaint(spd, rate, hot);
+    if (spd) { _almSpdPaint(spd, rate, hot); spd.classList.toggle('alm-spd-rest', rest); }
   }
+}
+// At now and 1x the slider rests (its knob only), and comes back while the clock is away and a little after it returns.
+var _almSpdHotAt = 0, _almSpdRestTimer = 0;
+function _almSpdRests(hot) {
+  var now = Date.now();
+  if (hot) _almSpdHotAt = now;
+  var left = _almSpdHotAt + ALM_SPD_LINGER_MS - now;
+  if (left > 0 && !_almSpdRestTimer) _almSpdRestTimer = setTimeout(function () { _almSpdRestTimer = 0; _almClockPaint(); }, left);
+  return left <= 0;
 }
 function _almSpdPaint(spd, rate, hot) {
   var last = ALM_RATE_STOPS.length - 1, pos = _almPosOfRate(rate), real = ALM_RATE_REAL;
@@ -1344,23 +1358,25 @@ function _almClockFlip(kind) {
   P.y = Math.max(_ALM_YEAR_MIN, Math.min(_ALM_YEAR_MAX, P.y));
   P.d = Math.min(P.d, _almDaysInMonth(P.y, P.mo));
   var r = _almInstantFromTz(P.y, P.mo, P.d, P.h, P.mi, tz);
-  if (kind === 'ap') _almClockRunTo(r.date, function () { _almClockLand(r, P, tz); });
+  if (kind === 'ap') _almClockRunTo(r.date, function (at) { _almClockLand({ date: at, snapped: r.snapped }, P, tz); });
   else _almClockLand(r, P, tz);
 }
-// Run the page through every moment from here to `to` (forward or back) in ALM_CLOCK_FLIP_MS, eased, then `land`.
-// The sky, the Moon, the orrery and the 3D view pass through the hours between; reduced motion lands at once.
+// Run the page through every moment from here to `to` (forward or back) in `ms` (ALM_CLOCK_FLIP_MS), eased, then
+// `land(at)`. The sky, the Moon, the orrery and the 3D view pass through the hours between; reduced motion lands at once.
+// A running clock keeps its pace meanwhile: `to` moves on with it, so the moment landed on is in step.
 var _almRunToRAF = 0;
-function _almClockRunTo(to, land) {
-  var from = _almFocusInstant().getTime(), span = to.getTime() - from, t0 = 0;
-  if (_almReduceMotion() || !span) { land(); return; }
+function _almClockRunTo(to, land, ms) {
+  var from = _almFocusInstant().getTime(), pace = _almClockHeld ? 0 : _almRate, start = Date.now();
+  ms = ms || ALM_CLOCK_FLIP_MS;
+  if (_almReduceMotion() || to.getTime() === from) { land(to); return; }
   _almClockHeld = true;
   _almClockSync();
   _almTravelFreeze();
-  var step = function (ts) {
-    if (!t0) t0 = ts;
-    var k = Math.min(1, (ts - t0) / ALM_CLOCK_FLIP_MS), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-    if (k >= 1) { _almRunToRAF = 0; land(); return; }
-    _almFocus = new Date(from + span * e);
+  var step = function () {
+    var gone = Date.now() - start, k = Math.min(1, gone / ms), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    var at = to.getTime() + pace * gone;
+    if (k >= 1) { _almRunToRAF = 0; land(new Date(at)); return; }
+    _almFocus = new Date(from + (at - from) * e);
     _almTravelLive(_almFocus);
     if (typeof _skySetInstant === 'function') _skySetInstant(_almFocus);
     _almClockPaint(_almFocus);
@@ -1735,15 +1751,10 @@ function _almScrubSettle(target) {
     _almBackToToday();
   } else {
     _almFocus = _almClampInstant(target);
-    _almClockStandStill();
+    _almClockSync();   // a jump keeps the pace: at 1x the clock runs on from the moment landed on
     _almSyncSelectedToFocus();
     _almRepaintFocus();
   }
-}
-// A moment that was chosen (typed, picked, jumped to) stands still: the clock waits there, paused, and play lets it run on
-// from it. Only a clock that is not already running is parked, so a run that settles is not.
-function _almClockStandStill() {
-  if (_almRate === 1 && !_almClockRunning) { _almRate = 0; _almPausedRate = 1; }
 }
 
 // -- Dismissal, shared by the almanac's two pop-over grids -------------------
@@ -7287,25 +7298,22 @@ function _almSwitchSystem(sys) {
 }
 
 function _almSelectDay(jdn) {
+  if (_almRunToRAF) return;   // still running to the last day picked
   _almSelectedJDN = jdn;
-  // Carry the current time-of-day onto the picked date, so the moon and the
-  // instantaneous numbers describe "this time, that day".
-  var g = _jdnToGregorian(jdn);
-  var nowT = new Date();
-  // _almMakeInstant (setFullYear) so a day picked in an arbitrary/ancient year
-  // — reachable via the typable year — lands on the real year, not the 1900s.
-  var picked = _almMakeInstant(g.year, g.month, g.day, nowT.getHours(), nowT.getMinutes());
-  _almFocus = _almIsToday(picked) ? null : _almClampInstant(picked);
-  if (_almFocus) _almClockStandStill();
-  if (typeof _orreryClockTouched === 'function') _orreryClockTouched();
-  _almRepaintFocus();
-  // If clicked day is outside current month view, navigate to it
+  // The picked day at the time of day the clock shows, and the clock keeps its pace, so "this time, that day" stays in
+  // step. setFullYear, so a day in an ancient year (the year is typable) lands on that year, not the 1900s.
+  var g = _jdnToGregorian(jdn), from = _almFocusInstant(), to = new Date(from.getTime());
+  to.setFullYear(g.year, g.month - 1, g.day);
+  to = _almClampInstant(to);
   var cal = _jdnToCalendar(_almSystem, jdn);
-  if (cal.year !== _almYear || cal.month !== _almMonth) {
-    _almYear = cal.year;
-    _almMonth = cal.month;
-  }
+  _almYear = cal.year;
+  _almMonth = cal.month;
   _drawAlmanacGrid();
+  if (_almClockFast()) { _almFocus = to; return; }   // the fast clock runs on from there
+  var days = Math.abs(to - from) / 86400000;
+  var land = function (at) { _almClockHeld = false; _almClockGoTo(at); };
+  if (days <= ALM_DAY_RUN_MAX) _almClockRunTo(to, land, ALM_CLOCK_FLIP_MS * Math.max(1, days));
+  else land(to);
 }
 
 // Is a _jdnToCalendar result a date a human could actually read? Non-finite is

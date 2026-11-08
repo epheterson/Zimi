@@ -709,6 +709,9 @@
 @media (hover: hover) { .alm-ck-pop button:hover { background: var(--hover); } }
 .alm-ck-pop button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 .alm-clock[data-v="foot"] .alm-ck-pop { top: auto; bottom: 100%; margin: 0 0 8px; }
+/* The 3D view's foot: the time in a pill beside the date, and no underlines until a part is touched. */
+.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
+.alm-clock[data-v="foot"]:not(.alm-ck-editing) .ep:not(:hover) { text-decoration-color: transparent; }
 
 /* The slider, in the look of Read aloud's speed slider (app.css .tts-speed-range): a 3px track, amber fill, a round thumb,
    marks under it, a tap each. Differences, all forced by the job: the fill grows from the middle (real time), the thumb is
@@ -736,6 +739,10 @@
 .alm-spd-drag .alm-spd-play.alm-spd-on { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 0 7px var(--amber-glow), 0 1px 4px rgba(0, 0, 0, .55); }
 @media (hover: hover) { .alm-spd-play:not(.alm-spd-on):hover { color: var(--amber); border-color: var(--amber-border); } }
 .alm-spd-marks { position: relative; height: 18px; }
+/* Resting (now, 1x): the knob alone, until a hand takes it. The marks keep their room, so nothing below moves. */
+.alm-spd-marks, .alm-spd-ticks { transition: opacity .3s, visibility 0s; }
+.alm-spd-rest:not(.alm-spd-drag):not(:focus-within) { --spd-rail: transparent; }
+.alm-spd-rest:not(.alm-spd-drag):not(:focus-within) :is(.alm-spd-marks, .alm-spd-ticks) { opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
 .alm-spd-mark { position: absolute; top: 0; inset-inline-start: calc(var(--spd-thumb) / 2 + var(--at) * (100% - var(--spd-thumb))); transform: translateX(-50%); min-width: 28px; height: 18px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 11px; line-height: 18px; white-space: nowrap; cursor: pointer; }
 [dir="rtl"] .alm-spd-mark { transform: translateX(50%); }
 .alm-spd-mark[aria-current] { color: var(--amber); font-weight: 600; }
