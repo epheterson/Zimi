@@ -1545,15 +1545,11 @@ def test_a_landing_s_card_and_the_go_to_sheet_stay_small(served):
             pg.evaluate(
                 "() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0])"
             )
-            box = pg.evaluate(
-                """() => { var c = document.getElementById('ae-card').getBoundingClientRect(), f = document.getElementById('ae-lm-fly').getBoundingClientRect(),
-                l = document.querySelector('#ae-card .ae-lm-line span').getBoundingClientRect();
-                return { card: c.height, fly: f.height, sameLine: Math.abs((f.top + f.bottom) / 2 - (l.top + l.bottom) / 2) < 6 }; }"""
-            )
-            assert box["sameLine"] and box["fly"] <= 32 and box["card"] <= 150, box
-            pg.click("#ae-lm-fly")
+            box = pg.evaluate("() => document.getElementById('ae-card').getBoundingClientRect().height")
+            assert box <= 150, box
+            pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")
             pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !document.getElementById('ae-lm-fly'); }",
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
                 timeout=60_000,
                 polling=100,
             )

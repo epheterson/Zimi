@@ -114,7 +114,7 @@ def test_fly_to_the_apollo_11_site(served):
             )
             card = pg.inner_text("#ae-card")
             assert "Apollo 11" in card and "Landing site" in card, card
-            pg.click("#ae-lm-fly")
+            pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")   # as Go to flies to a site (the card has no button for it)
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
                 timeout=30_000,

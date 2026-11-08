@@ -635,7 +635,6 @@ var AE_CSS = [
   '.ae-lm-landing{color:' + AE_AMBER_HEX + '}',
   '.night-red .ae-lm,.night-red .ae-lm-landing{color:var(--text)}',
   '.ae-card .ae-lm-line{display:flex;align-items:center;justify-content:space-between;gap:10px}',
-  '.ae-card .ae-lm-fly{flex:none;min-height:28px;padding:5px 12px;font-size:12px}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
   // A small body's mark: a ring on it and its name beside (the ring is centred on the point, the name hangs off it).
@@ -4380,19 +4379,14 @@ function _aeRenderLmCard(card) {
   var name = _almEsc(row[0]);
   var now = _aeDisplayMs();
   if (lm.morning === undefined) lm.morning = lm.body === 'moon' && _aeLmSunAt(row, now) < 0 ? _aeLmMorning(row, now) : null;
-  // One way there; in the lunar night a quiet second way, at sunrise, under it (not a second button beside it). Once
-  // there, no way there: the card says what the place is, and the night (with sunrise as the link) if it is dark.
-  var here = !!lm.flown;
+  // The card says what the place is, and the night (with sunrise as the link, which goes there then) if it is dark.
   var night = lm.morning ? '<p class="ae-lm-dark"><a href="#" id="ae-lm-morning">' +
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
-    '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span>' +
-    (here ? '' : '<button type="button" class="ae-btn ae-lm-fly" id="ae-lm-fly">' + _almEsc(_aeT('alm_lm_fly')) + '</button>') + '</p>' + night;
+    '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span></p>' + night;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.lm = null; _aeRenderCard(); };
-  var fly = _aeById('ae-lm-fly');
-  if (fly) fly.onclick = function () { _aeLmFly(lm.body, row); };
   var morning = _aeById('ae-lm-morning');
   if (morning) morning.onclick = function (e) { e.preventDefault(); var at = lm.morning; lm.morning = null; _aeGoTo(at); _aeLmFly(lm.body, row); _aeRenderCard(); };
   var read = _aeById('ae-lm-read');
@@ -4403,7 +4397,6 @@ function _aeLmFly(body, row) {
   var b = _aeLmBodies().filter(function (x) { return x.key === body; })[0];
   if (!b) return;
   if (!_ae.lm || _ae.lm.row !== row) _ae.lm = { body: body, row: row, hit: null };   // its name shows there, layer on or off
-  _ae.lm.flown = true;
   _aeRenderCard();
   // Over an Apollo site with Almanac HD, all the way down to the inserts' half-metre tiles.
   var hdb = _ae.gl.hd && _ae.gl.hd.bodies.filter(function (x) { return x.key === body; })[0];

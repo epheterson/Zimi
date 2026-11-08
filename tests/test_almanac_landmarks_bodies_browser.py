@@ -261,9 +261,9 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
                 "Olympus Mons" in card
                 and "Mountains" in card
                 and "km across" in card
-                and "Fly there" in card
             ), card
-            pg.click("#ae-lm-fly")
+            assert not pg.query_selector("#ae-lm-fly")  # a site's card has no way there of its own
+            pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
                 timeout=30_000,
