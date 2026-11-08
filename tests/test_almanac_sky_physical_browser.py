@@ -667,8 +667,8 @@ def test_a_lost_gpu_context_is_given_back_and_taken_again_and_dispose_frees_it(b
         pg.wait_for_function("() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady && !_skyState.baseDirty", polling=POLL_MS)
         assert pg.evaluate("window.__gl.includes(true)")
         # Dispose gives it all back, and nothing is left to draw with.
-        pg.evaluate("_sgDispose()")
-        assert pg.evaluate("_sg") is None and pg.evaluate("_sgReady()") is False
+        # (One turn of the page: the open sky's next paint takes the GPU again, so two round trips can see two states.)
+        assert pg.evaluate("() => { _sgDispose(); return [_sg === null, _sgReady()]; }") == [True, False]
         assert not errors, errors
     finally:
         ctx.close()
