@@ -204,7 +204,8 @@ def parse_sidecar(text, keys, as_json=False):
             if key not in keys or v is None:
                 continue
             if isinstance(v, list):
-                v = ", ".join(str(x).strip() for x in v if str(x).strip())
+                # Tags are a comma list; article patterns are the space-separated ones article_rule reads.
+                v = (" " if key == "articles" else ", ").join(str(x).strip() for x in v if str(x).strip())
             v = str(v).strip()
             if v:
                 out[key] = v
@@ -235,7 +236,8 @@ def article_rule(articles):
 
     keep = [p for p in pats if not p.startswith("!")]
     drop = [p[1:] for p in pats if p.startswith("!")]
-    return lambda path: any(hit(p, path) for p in keep) and not any(hit(p, path) for p in drop)
+    # Only exclusions ("!private/*"): everything else is an article.
+    return lambda path: (not keep or any(hit(p, path) for p in keep)) and not any(hit(p, path) for p in drop)
 
 
 def read_sidecar(fs_path, keys):

@@ -44,3 +44,12 @@ def test_a_page_about_no_place_or_one_out_of_range_has_none():
     assert article_position("<p>Energy is the ability to do work.</p>") is None
     assert article_position('<span class="geo">95; 10</span>') is None
     assert article_position("") is None
+
+
+def test_single_quotes_class_lists_and_an_out_of_range_pair_first():
+    from zimi.previews import article_position
+
+    assert article_position("<span class='geo'>48.8; 2.3</span>") == (48.8, 2.3)
+    assert article_position('<span class="plainlinks geo">48.8; 2.3</span>') == (48.8, 2.3)
+    lead = '<a data-lat="95" data-lon="2"></a><span class="geo">48.8; 2.3</span>'
+    assert article_position(lead) == (48.8, 2.3)

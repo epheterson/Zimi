@@ -240,6 +240,15 @@ def test_articles_line_decides_what_random_and_search_can_land_on():
     assert article_rule(None)("anything/at/all.html")
 
 
+def test_exclusions_alone_leave_every_other_page_an_article():
+    from zimi.folderfiles import article_rule, parse_sidecar
+
+    rule = article_rule("!private/*")
+    assert rule("page.html") and not rule("private/a")
+    listed = parse_sidecar('{"articles": ["*.html", "!about.html"], "tags": ["a", "b"]}', ("articles", "tags"), as_json=True)
+    assert listed == {"articles": "*.html !about.html", "tags": "a, b"}
+
+
 def test_the_built_own_zims_offer_only_real_pages_as_articles():
     for own in ownzims.OWN:
         a = Archive(ownzims.zim_path(own))

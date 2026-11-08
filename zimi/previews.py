@@ -149,40 +149,39 @@ def lead_text(item):
 # Where a page says it is: the map link a Wikipedia page carries (data-lat and
 # data-lon), or its coordinates as written ("48.8567; 2.3508" in span.geo,
 # "48.8567°N 2.3508°E" in span.geo-dec).
+_NUM = r"(-?\d+(?:\.\d+)?)"
 _POSITION_DATA_RES = (
-    re.compile(r'data-lat="(-?\d+(?:\.\d+)?)"[^>]*?data-lon="(-?\d+(?:\.\d+)?)"'),
-    re.compile(r'data-lon="(-?\d+(?:\.\d+)?)"[^>]*?data-lat="(-?\d+(?:\.\d+)?)"'),
+    re.compile(r"data-lat\s*=\s*[\"']?" + _NUM + r"[\"']?[^>]*?data-lon\s*=\s*[\"']?" + _NUM),
+    re.compile(r"data-lon\s*=\s*[\"']?" + _NUM + r"[\"']?[^>]*?data-lat\s*=\s*[\"']?" + _NUM),
 )
-_POSITION_GEO_RE = re.compile(
-    r'class="geo"[^>]*>\s*(-?\d+(?:\.\d+)?)\s*;\s*(-?\d+(?:\.\d+)?)\s*<'
-)
+# A class among others, in either kind of quote.
+_GEO_CLASS = r"class\s*=\s*[\"'](?:[^\"']*\s)?{}(?:\s[^\"']*)?[\"'][^>]*>\s*"
+_POSITION_GEO_RE = re.compile(_GEO_CLASS.format("geo") + _NUM + r"\s*;\s*" + _NUM + r"\s*<")
 _POSITION_DEC_RE = re.compile(
-    r'class="geo-dec"[^>]*>\s*(\d+(?:\.\d+)?)\s*°\s*([NS])\s*(\d+(?:\.\d+)?)\s*°\s*([EW])'
+    _GEO_CLASS.format("geo-dec") + r"(\d+(?:\.\d+)?)\s*°\s*([NS])\s*(\d+(?:\.\d+)?)\s*°\s*([EW])"
 )
+
+
+def _position_candidates(text):
+    """Every coordinate pair a page's lead gives, the map link's first."""
+    for m in _POSITION_DATA_RES[0].finditer(text):
+        yield float(m.group(1)), float(m.group(2))
+    for m in _POSITION_DATA_RES[1].finditer(text):
+        yield float(m.group(2)), float(m.group(1))
+    for m in _POSITION_GEO_RE.finditer(text):
+        yield float(m.group(1)), float(m.group(2))
+    for m in _POSITION_DEC_RE.finditer(text):
+        lat, lng = float(m.group(1)), float(m.group(3))
+        yield (-lat if m.group(2) == "S" else lat, -lng if m.group(4) == "W" else lng)
 
 
 def article_position(text):
     """``(lat, lng)`` a page's lead gives for the place it is about, or None
-    (a page about no place, or about one that does not say where)."""
-    found = None
-    m = _POSITION_DATA_RES[0].search(text)
-    if m:
-        found = (float(m.group(1)), float(m.group(2)))
-    else:
-        m = _POSITION_DATA_RES[1].search(text)
-        if m:
-            found = (float(m.group(2)), float(m.group(1)))
-    if found is None:
-        m = _POSITION_GEO_RE.search(text)
-        if m:
-            found = (float(m.group(1)), float(m.group(2)))
-    if found is None:
-        m = _POSITION_DEC_RE.search(text)
-        if m:
-            lat, lng = float(m.group(1)), float(m.group(3))
-            found = (-lat if m.group(2) == "S" else lat, -lng if m.group(4) == "W" else lng)
-    if found and -90 <= found[0] <= 90 and -180 <= found[1] <= 180:
-        return found
+    (a page about no place, or about one that does not say where). A pair out
+    of range is passed over for the next one."""
+    for lat, lng in _position_candidates(text):
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
     return None
 
 
