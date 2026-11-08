@@ -218,11 +218,13 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                         and o["body"] == o["lead"]
                     ):
                         assert not meet(m["box"], o["box"]), (m, o)
-            # Nothing under the controls at the foot.
-            foot = pg.evaluate(
-                "document.querySelector('.ae-bottom').getBoundingClientRect().top - _ae.el.getBoundingClientRect().top"
+            # Nothing under the controls at the foot: the controls are the foot's visible, tappable rows (the hint and the notes are
+            # text on a gradient, and the foot's own box also holds whatever a slow machine has not yet folded away).
+            foot, under = pg.evaluate(
+                """() => { var o = _ae.el.getBoundingClientRect().top, rows = Array.from(document.querySelectorAll('.ae-bottom > *')).filter(c => !c.hidden && c.getBoundingClientRect().height > 0 && getComputedStyle(c).pointerEvents !== 'none');
+                return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), Array.from(document.querySelector('.ae-bottom').children).map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().height), c.hidden])]; }"""
             )
-            assert all(m["box"][1] < foot for m in marks), (foot, marks)
+            assert all(m["box"][1] < foot for m in marks), (foot, under, marks)
             # The planets only are named out here: no probe, moon or dwarf planet name, no crowd counts.
             planets = {
                 "mercury",
