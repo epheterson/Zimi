@@ -220,7 +220,7 @@ def test_a_planet_is_named_and_found_in_the_solar_system(browser, served):
 SECBAR_STATE = """() => { const b = document.getElementById('alm-secbar'), c = b.querySelector('.pill.active');
   return { hidden: b.hidden, active: c && c.dataset.sec, cur: _almSecBar.cur }; }"""
 # A scroll position past the first section where no section crosses the line under the bar: between two sections.
-GAP_SCROLL = """() => { const root = document.getElementById('almanac-content'), line = ALM_SECBAR_LINE;
+GAP_SCROLL = """() => { const root = document.getElementById('almanac-content'), line = _almSecBarLine();
   for (let y = 900; y < root.scrollHeight - root.clientHeight; y += 20) {
     root.scrollTop = y;
     const top = root.getBoundingClientRect().top + line;
@@ -244,6 +244,8 @@ def test_the_section_bar_is_there_when_a_jump_lands(browser, served):
         assert pg.evaluate(SECBAR_STATE)["hidden"] is True
         y = pg.evaluate(GAP_SCROLL)
         assert y > 0, "the page has a place between two sections"
+        # The scroll event goes out with a frame; a headless page can sit without one for a while.
+        pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
         pg.wait_for_timeout(400)
         got = pg.evaluate(SECBAR_STATE)
         assert got["hidden"] is False and got["active"] and got["active"] != "today", (y, got)
