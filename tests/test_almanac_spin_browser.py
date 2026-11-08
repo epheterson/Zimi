@@ -3,7 +3,8 @@
 In headless Chromium at a phone's size: the rates and tilts the view uses against NASA's planetary fact sheet, every planet
 drawn (its disc has pixels), each one turning with the shown clock (a rotation angle that changes), Venus' turn the opposite
 sense to the Earth's (and Uranus', on its side, too), the same-size toggle, the Orbits setting hiding the orbital planes and
-years, and a tap on a planet leaving for it with the date put back.
+years, full screen (chrome gone, faces on, a way out by tool, Escape and back) and the faces tile, and a tap on a planet leaving for it
+with the date put back.
 
 Run: pytest tests/test_almanac_spin_browser.py -v
 """
@@ -316,6 +317,68 @@ def test_orbits_setting_hides_the_planes_and_years(page):
         "localStorage.removeItem(AE_ORBITS_KEY); _ae.dirty = true; _aeSpinDraw()"
     )
     assert page.evaluate("_ae.gl.spin.cells.every(c => c.orbit.visible)")
+
+
+def full_state(pg):
+    return pg.evaluate(
+        """() => { var v = _ae.el.getBoundingClientRect(), shown = id => { var e = document.querySelector(id); return !!e && e.getClientRects().length > 0; };
+            return { full: _aeFullOn(), cls: _ae.el.classList.contains('ae-spin-full'), top: shown('.ae-top'), bottom: shown('.ae-bottom'), gear: shown('#ae-gear'),
+              bar: shown('#ae-fullbar'), topbar: shown('.topbar'), w: v.width, h: v.height, left: v.left, topEdge: v.top, faces: _aeSpinFacesOn(),
+              pressed: document.querySelector('#ae-fullbar [data-ae-faces]').getAttribute('aria-pressed'),
+              shownFaces: _ae.gl.spin.cells.every(c => c.face.visible),
+              cells: Array.from(document.querySelectorAll('#ae-spin .ae-sp')).map(b => { var r = b.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom, b.querySelectorAll('span').length]; }),
+              discs: _ae.gl.spin.cells.map(c => [c.G.position.x - c.r, _ae.h - c.G.position.y - c.r, c.G.position.x + c.r, _ae.h - c.G.position.y + c.r]) }; }"""
+    )
+
+
+def test_full_screen_hides_the_chrome_and_faces_follow_the_person(page):
+    page.evaluate("localStorage.removeItem('zimi_alm_spin_faces'); _aeSpinMarkFaces(); _aeSpinDraw()")
+    before = full_state(page)
+    # The normal view: the numbers, no faces unless chosen, the chrome there, the tools in the row (icons: they carry a label, not a word).
+    assert not before["full"] and before["bottom"] and before["top"] and not before["faces"] and not before["shownFaces"]
+    assert page.get_attribute("#ae-spinrow [data-ae-full]", "aria-label") == "Full screen"
+    page.click("#ae-spinrow [data-ae-full]")
+    page.wait_for_function("() => _aeFullOn()", timeout=10_000)
+    page.evaluate("_aeSpinDraw()")
+    on = full_state(page)
+    assert on["cls"] and on["bar"] and not on["top"] and not on["bottom"] and not on["gear"] and not on["topbar"]
+    # Faces on by default here, the names alone (no Day / Year / Tilt lines), the whole screen used.
+    assert on["faces"] and on["shownFaces"] and on["pressed"] == "true"
+    assert all(c[4] == 0 for c in on["cells"])
+    assert on["left"] == 0 and on["topEdge"] == 0 and on["w"] >= VIEW["width"] - 1 and on["h"] >= VIEW["height"] - 1
+    # No planet's disc (or name) is clipped by the screen.
+    for d in on["discs"]:
+        assert d[0] >= 0 and d[1] >= 0 and d[2] <= on["w"] and d[3] <= on["h"], d
+    for c in on["cells"]:
+        assert c[0] >= -0.5 and c[2] <= on["w"] + 0.5 and c[3] <= on["h"] + 0.5, c
+    assert max(d[2] - d[0] for d in on["discs"]) > 0.15 * on["w"]
+    # The faces tile: a choice kept with the person (the synced preference), for both views, and read back after a reload of state.
+    page.click("#ae-fullbar [data-ae-faces]")
+    assert page.evaluate("localStorage.getItem('zimi_alm_spin_faces')") == "0"
+    page.evaluate("_aeSpinDraw()")
+    off = full_state(page)
+    assert not off["faces"] and not off["shownFaces"] and off["pressed"] == "false"
+    page.click("#ae-fullbar [data-ae-faces]")
+    assert page.evaluate("localStorage.getItem('zimi_alm_spin_faces')") == "1"
+    assert page.evaluate("_isPrefKey('zimi_alm_spin_faces')")
+    # Escape leaves full screen, not the view; so does the system back; and the way out the corner tool is.
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => !_aeFullOn()", timeout=10_000)
+    assert page.evaluate("!!_ae.spin && _aeIsOpen")
+    page.evaluate("_aeSpinDraw()")
+    after = full_state(page)
+    assert not after["cls"] and after["bottom"] and after["top"] and after["faces"] and after["shownFaces"]
+    page.click("#ae-spinrow [data-ae-full]")
+    page.wait_for_function("() => _aeFullOn()", timeout=10_000)
+    page.go_back()
+    page.wait_for_function("() => !_aeFullOn()", timeout=10_000)
+    assert page.evaluate("!!_ae.spin && _aeIsOpen")
+    page.click("#ae-spinrow [data-ae-full]")
+    page.wait_for_function("() => _aeFullOn()", timeout=10_000)
+    page.click("#ae-fullbar [data-ae-full]")
+    page.wait_for_function("() => !_aeFullOn()", timeout=10_000)
+    assert page.evaluate("!document.documentElement.classList.contains('ae-full-on')")
+    page.evaluate("localStorage.removeItem('zimi_alm_spin_faces'); _aeSpinMarkFaces(); _aeSpinDraw()")
 
 
 def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
