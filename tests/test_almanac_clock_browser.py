@@ -602,8 +602,7 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
         pg.evaluate(
             "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 1); }"
         )
-        assert pg.evaluate("() => _almRate") == 1
-        pg.wait_for_function("() => !_almRunToRAF && !_almClockHeld", timeout=60_000, polling=POLL_MS)
+        assert pg.evaluate("() => [!!_almRunToRAF, _almRate]") == [False, 1]   # straight there, never through the night
         a = pg.evaluate("() => [_almFocusInstant().getTime() - Date.now(), _almRate]")
         assert a[1] == 1 and abs(a[0] - 86_400_000) < 120_000, a
         assert not pg.evaluate(rests)  # away: the slider is back
@@ -611,7 +610,7 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
             "(t) => _almFocusInstant().getTime() > t", arg=pg.evaluate("() => _almFocusInstant().getTime()") + 500,
             timeout=30_000, polling=POLL_MS,
         )  # it runs on
-        # Further than a couple of days lands at once, still at 1x.
+        # Any day lands at once, still at 1x.
         pg.evaluate(
             "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 5); }"
         )
@@ -639,8 +638,8 @@ def test_the_rate_does_not_persist(browser, served):
             )
             == []
         )
-        # A run through the hours under way (a day picked) as it closes: it stops with the page.
-        pg.evaluate("() => { _almReduceMotion = function () { return false; }; _almSelectDay(_almTodayJDN + 1); }")
+        # A run through the hours under way (AM/PM flipped) as it closes: it stops with the page.
+        pg.evaluate("() => { _almReduceMotion = function () { return false; }; _almClockRunTo(new Date(Date.now() + 12 * 3600e3), function (at) { _almClockHeld = false; _almClockGoTo(at); }); }")
         pg.evaluate("() => closeAlmanac()")
         pg.wait_for_function("() => _almRate === 1 && !_almClockRunning && !_almRunToRAF && _almFocus === null", timeout=5000)
         pg.wait_for_timeout(2500)   # past the run's length: nothing came back to life

@@ -982,8 +982,6 @@ var ALM_CLOCK_SLOW_MAX_DT = 1000;
 var ALM_CLOCK_NOTE_MS = 5000;          // how long a line like "that time does not exist" stays
 var ALM_CLOCK_TAP_SMALL = 0.05;          // how much a part's width counts against it when two are equally near the finger
 var ALM_CLOCK_FLIP_MS = 900;          // AM/PM: the twelve hours run through, forward or back, in this long
-var ALM_DAY_RUN_MAX = 2;              // a calendar jump of up to this many days runs there, ALM_CLOCK_FLIP_MS a day; further
-                                      // lands at once (a faster run flashes day and night more than once a second)
 var ALM_SPD_LINGER_MS = 4000;         // the slider stays this long after the clock is back at now, at 1x, then rests
 var ALM_CLOCK_TAP_SLOP = 14;           // px: how far from a date part a tap still means it (the nearest part wins)
 var ALM_CLOCK_MONTH_LEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -1200,7 +1198,8 @@ function _almClockHtml(v) {
 }
 
 // Each field Intl names is a part the person can tap; the words and punctuation between stay as the language writes them.
-var ALM_CK_PART = { month: 'month', day: 'day', year: 'year', hour: 'hour', minute: 'min', dayPeriod: 'ap', era: 'era' };
+// The weekday is a part too: a tap on it opens the day (Eric 2026-11-08: "tapping the day name doesn't seem to take you in").
+var ALM_CK_PART = { weekday: 'wd', month: 'month', day: 'day', year: 'year', hour: 'hour', minute: 'min', dayPeriod: 'ap', era: 'era' };
 var ALM_CK_PART_LBL = { month: 'alm_tm_month', day: 'alm_tm_day', year: 'alm_tm_year', hour: 'alm_tm_hour', min: 'alm_tm_min' };
 function _almClockSegs(tz, focus, opts) {
   var html = '';
@@ -1386,6 +1385,9 @@ function _almClockGoTo(date) {
 // While a part is typed the clock stands still. The nearest part to the finger wins, so a one-digit day is as easy as the year.
 var _almEd = null;          // { root, part, tz, P, input, pop }
 var _almSpdTap = null;      // a press on the slider's thumb, to tell a tap on it from a drag
+// A tap this near the middle button counts as the button, wherever the thumb is: running fast, a tap a little off it
+// landed on the track and kept the clock going (Eric 2026-11-08: "it needs a forgiving tap area around").
+var ALM_SPD_MID_HIT_PX = 24;
 var _almCkTap = null;       // the part a pointer went down on, decided on the layout it went down on
 var _almCkNoteTimer = 0;
 
@@ -1515,6 +1517,7 @@ function _almClockOpenUp(open) {
   _almClockPaint();
 }
 function _almClockEdit(root, part) {
+  if (part === 'wd') part = 'day';
   if (root.classList.contains('alm-ck-run')) return;
   if (root.classList.contains('alm-ck-rest')) { _almClockOpenUp(true); return; }   // the first tap opens it
   if (part === 'ap' || part === 'era') { _almEdCommit(); _almClockFlip(part); return; }
@@ -1621,7 +1624,9 @@ function _almClockPointerDown(e) {
   var rng = tgt.closest('.alm-spd-range');
   if (rng) {
     rng.closest('.alm-spd').classList.add('alm-spd-drag');
-    _almSpdTap = { x: e.clientX, atReal: Math.abs(parseFloat(rng.value) - ALM_RATE_REAL) < 0.05 };   // a tap on the thumb where it stands on the button
+    var play = rng.closest('.alm-spd').querySelector('.alm-spd-play'), pr = play && play.getBoundingClientRect();
+    _almSpdTap = { x: e.clientX, atReal: Math.abs(parseFloat(rng.value) - ALM_RATE_REAL) < 0.05,   // a tap on the thumb where it stands on the button
+      nearMid: !!pr && Math.abs(e.clientX - (pr.left + pr.width / 2)) <= ALM_SPD_MID_HIT_PX };
     return;
   }
   var hit = _almClockNearest(root, e.clientX, e.clientY);
@@ -1636,7 +1641,10 @@ function _almClockPointerUp(e) {
     _almCkTap = null;
     _almClockEdit(gone.root, gone.part);
   }
-  if (tap && tap.atReal && e.type === 'pointerup' && Math.abs(e.clientX - tap.x) < ALM_CLOCK_TAP_SLOP / 2) _almClockTogglePause();
+  if (tap && e.type === 'pointerup' && Math.abs(e.clientX - tap.x) < ALM_CLOCK_TAP_SLOP / 2) {
+    if (tap.atReal) _almClockTogglePause();
+    else if (tap.nearMid) _almClockSetRate(1);   // the track jumped the thumb near the middle: the button's 1x
+  }
   document.querySelectorAll('.alm-spd-drag').forEach(function (s) { s.classList.remove('alm-spd-drag'); });
 }
 function _almClockClick(e) {
@@ -7443,8 +7451,9 @@ function _almSelectDay(jdn) {
   if (_almRunToRAF) return;   // still running to the last day picked
   _almSelectedJDN = jdn;
   // The picked day at the time of day the clock shows, and the clock keeps its pace, so "this time, that day" stays in
-  // step. setFullYear, so a day in an ancient year (the year is typable) lands on that year, not the 1900s.
-  // In the zone the clock shows (the place's, not the device's), or a far place lands a day off.
+  // step. In the zone the clock shows (the place's, not the device's), or a far place lands a day off. Always straight
+  // there, never running through the hours between: a near day ran through the night and a far one did not (Eric
+  // 2026-11-08: "be consistent").
   var g = _jdnToGregorian(jdn), from = _almFocusInstant(), tz = _almClockTz(), P = _almTzParts(from, tz);
   var to = _almClampInstant(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date);
   var cal = _jdnToCalendar(_almSystem, jdn);
@@ -7452,10 +7461,7 @@ function _almSelectDay(jdn) {
   _almMonth = cal.month;
   _drawAlmanacGrid();
   if (_almClockFast()) { _almFocus = to; return; }   // the fast clock runs on from there
-  var days = Math.abs(to - from) / 86400000;
-  var land = function (at) { _almClockHeld = false; _almClockGoTo(at); };
-  if (days <= ALM_DAY_RUN_MAX) _almClockRunTo(to, land, ALM_CLOCK_FLIP_MS * Math.max(1, days));
-  else land(to);
+  _almClockGoTo(to);
 }
 
 // Is a _jdnToCalendar result a date a human could actually read? Non-finite is

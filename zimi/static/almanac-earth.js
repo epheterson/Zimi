@@ -432,10 +432,13 @@ var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun,
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
-var AE_INFO_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 10.5v7"/><circle cx="12" cy="6.6" r="1.5" fill="currentColor" stroke="none"/></svg>';
+// The info i as a type designer draws it: a dot, a flag to the left at the top of the stem, and a foot (a bare stroke
+// read as a tick, Eric 2026-11-08: "the I button still doesn't feel right").
+var AE_INFO_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12.4" cy="5.6" r="1.6" fill="currentColor" stroke="none"/><path d="M9.6 10h3v8.6M9.4 18.6h6"/></svg>';
 // The view's two switches, as round buttons: a pin for the names of places, a ringed circle for the orbits.
 var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0c0 5.1-6.5 11.3-6.5 11.3z"/><circle cx="12" cy="10.2" r="2.3"/></svg>';
-var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M2.5 16.5 21.5 7.5"/></svg>';
+// Orbits as a gyroscope: the body, its ring, and the axis straight up through them (Eric 2026-11-08).
+var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.2"/><path d="M12 1.5v21"/></svg>';
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
@@ -1121,8 +1124,9 @@ function _aeRenderRow() {
   });
 }
 // Side by side is a grid of dots, round like the other tools (Eric 2026-11-08); its name is its label.
+// Eight dots in two rows of four: the eight planets.
 var AE_SPIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">' +
-  [6, 12, 18].map(function (y) { return [6, 12, 18].map(function (x) { return '<circle cx="' + x + '" cy="' + y + '" r="2"/>'; }).join(''); }).join('') + '</svg>';
+  [9, 15].map(function (y) { return [4.5, 9.5, 14.5, 19.5].map(function (x) { return '<circle cx="' + x + '" cy="' + y + '" r="1.9"/>'; }).join(''); }).join('') + '</svg>';
 function _aeChipHtml(key, name, on) {
   if (key === AE_SPIN_KEY) {
     return '<button type="button" class="ae-btn ae-round" data-ae-view="' + key + '" aria-pressed="' + !!on + '" aria-label="' + _almEsc(name) +
@@ -1173,9 +1177,9 @@ function _aeBuildDom() {
           '<button type="button" class="ae-btn ae-round ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
             ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
-          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
+          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) +
           // Where the view has flown to, everything about it waits behind this: the picture stays clear.
           '<button type="button" class="ae-btn ae-round" id="ae-info-btn" hidden aria-haspopup="dialog" aria-expanded="false"' +
             ' aria-label="' + _almEsc(_aeT('alm_bi_more')) + '" title="' + _almEsc(_aeT('alm_bi_more')) + '">' + AE_INFO_SVG + '</button>' +
@@ -5381,12 +5385,15 @@ function _aeToggleHtml(id, key, svg) {
   return '<button type="button" class="ae-btn ae-round" id="' + id + '" aria-pressed="false" aria-label="' + _almEsc(_aeT(key)) +
     '" title="' + _almEsc(_aeT(key)) + '">' + svg + '</button>';
 }
+// The bodies landmarks-v1.json names places on (tests/test_almanac_lm_bodies.py holds the two to the same list): the
+// pin shows only where it would name something.
+var AE_LM_HAS = { moon: 1, mars: 1, venus: 1, titan: 1, mercury: 1, earth: 1, io: 1, europa: 1, ganymede: 1, callisto: 1, pluto: 1, ceres: 1 };
 function _aeMarkToggles() {
   var wide = _aeWideView() || !!_ae.spin;
-  [['ae-lm-btn', _aeLmLayerOn()], ['ae-orbits-btn', _aeOrbitsOn()]].forEach(function (t) {
-    var b = _aeById(t[0]);
+  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false]].forEach(function (t) {
+    var b = _aeById(t[0]), hide = wide || t[2];
     if (!b) return;
-    if (b.hidden !== wide) b.hidden = wide;
+    if (b.hidden !== hide) b.hidden = hide;
     if (b.getAttribute('aria-pressed') !== String(t[1])) b.setAttribute('aria-pressed', String(t[1]));
   });
 }

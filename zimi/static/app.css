@@ -4420,7 +4420,9 @@
 :root.night-red .app-theme-btn.active { background: var(--amber-glow); color: var(--text); border-color: var(--amber); }
 :root.night-red #article-theme-seg { opacity: .45; pointer-events: none; }
 .night-btn { display: none; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 28px; padding: 0; color: var(--text2); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
-.night-btn:hover, .night-btn:focus-visible { color: var(--amber); outline: none; }
+/* Hover only where there is one: on a phone a tap left the button lit after it was turned off. */
+@media (hover: hover) { .night-btn:hover { color: var(--amber); } }
+.night-btn:focus-visible { color: var(--amber); outline: none; }
 .night-btn[aria-pressed="true"] { color: var(--amber); border-color: var(--amber-border); }
 :root.night-red .topbar .logo, :root.night-red .pw-brand span, :root.night-red .cat-heading, :root.night-red .footer .footer-brand, :root.night-red .desktop-card h2 {
   background: none; -webkit-text-fill-color: var(--amber); color: var(--amber); }
