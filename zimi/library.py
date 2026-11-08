@@ -4353,6 +4353,23 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     )
 
     with _download_lock:
+        # One download per filename. A second request while the first is still
+        # active or queued (a double click, an Update click from two tabs, a
+        # client retry) used to start a second worker for the same file. Both
+        # raced for the same staging file and destination: the loser found its
+        # staged file already moved and fell back to a full HTTP download of
+        # the same ZIM. Hand the caller the existing download instead.
+        for existing in list(_active_downloads.values()) + list(_download_queue):
+            if (
+                existing.get("filename") == filename
+                and not existing.get("done")
+                and not existing.get("cancelled")
+            ):
+                log.info(
+                    "Download already in progress, not starting another: %s",
+                    loggable(filename),
+                )
+                return existing["id"], None
         _download_counter += 1
         dl_id = str(_download_counter)
         dl = {

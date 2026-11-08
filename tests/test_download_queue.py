@@ -493,3 +493,51 @@ def test_peer_resume_deferred_entry_survives_on_disk(
     with open(path) as f:
         pending = json.load(f)["pending"]
     assert [p["filename"] for p in pending] == ["y.zim"], "deferred entry lost"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# One download per filename
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_duplicate_start_returns_existing_active_download(
+    _no_real_threads, _no_mirrors, monkeypatch
+):
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "3")
+    from zimi import library
+
+    first, err1 = library._start_download(_kiwix_url("a"), size_bytes=100)
+    second, err2 = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert err1 is None and err2 is None
+    assert second == first
+    assert len(library._active_downloads) == 1
+    assert len(_no_real_threads) == 1  # one worker thread, not two
+
+
+def test_duplicate_start_returns_existing_queued_download(
+    _no_real_threads, _no_mirrors, monkeypatch
+):
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "1")
+    from zimi import library
+
+    library._start_download(_kiwix_url("a"), size_bytes=100)
+    queued, _ = library._start_download(_kiwix_url("b"), size_bytes=200)
+    again, err = library._start_download(_kiwix_url("b"), size_bytes=200)
+    assert err is None
+    assert again == queued
+    assert len(library._download_queue) == 1
+
+
+def test_start_allowed_again_after_done_or_cancelled(
+    _no_real_threads, _no_mirrors, monkeypatch
+):
+    monkeypatch.setenv("ZIMI_MAX_CONCURRENT_DOWNLOADS", "3")
+    from zimi import library
+
+    first, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    library._active_downloads[first]["cancelled"] = True
+    second, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert second != first
+    library._active_downloads[second]["done"] = True
+    third, _ = library._start_download(_kiwix_url("a"), size_bytes=100)
+    assert third not in (first, second)
