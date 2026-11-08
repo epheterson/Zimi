@@ -3306,8 +3306,8 @@ function _skyAct(b) {
   if (b.type === 'star' && b.con) { _skyRevealFigure(b.con); if (!_skyConst) { _skyLoadConstellations(_skyKickDirty); } }
   if ((b.type === 'sun' || b.type === 'moon') && (_sky3DAvailable() || _sky3DComing())) {
     _skyHideTip();
-    var open = function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: b.type, from: 'sky' }); };
-    if (_sky3DAvailable()) open(); else _almLoadEarth().then(open, function () {});   // the view's file comes at the first tap on a body
+    var open = function () { if (_almanacOpen && typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: b.type, from: 'sky' }); };
+    if (_sky3DAvailable()) open(); else _almLoadEarth().then(open, function () { if (_almanacOpen) _skyShowTip(b); });   // the view's file comes at the first tap on a body
     return 'view';
   }
   _skyShowTip(b);
