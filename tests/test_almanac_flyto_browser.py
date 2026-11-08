@@ -49,12 +49,15 @@ RECORD = """(k) => {
 
 @pytest.fixture(scope="module")
 def served(tmp_path_factory):
-    os.environ.setdefault("ZIMI_TORRENT", "0")
-    os.environ.setdefault("ZIMI_OFFLINE", "1")
     import zimi.renderer as renderer
 
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
+    # Offline and no torrents for this module's server only: set for the session, they turned later modules' download
+    # and catalog tests offline on the same worker.
+    env = pytest.MonkeyPatch()
+    env.setenv("ZIMI_TORRENT", "0")
+    env.setenv("ZIMI_OFFLINE", "1")
     from http.server import ThreadingHTTPServer
 
     import zimi.server as srv
@@ -71,6 +74,7 @@ def served(tmp_path_factory):
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+    env.undo()
 
 
 def _open(browser, base, slow=True, reduced=False):

@@ -126,6 +126,7 @@ GUARDED = frozenset(
         "_gearSvg",
         "_installedMaps",
         "_lastMapVisit",
+        "_mapCovers",
         "_mapName",
         "_nightSet",
         "_pdfViewerUrl",

@@ -71,12 +71,15 @@ def _serve(root, with_map):
 
 @pytest.fixture(scope="module")
 def library(tmp_path_factory):
-    os.environ.setdefault("ZIMI_TORRENT", "0")
-    os.environ.setdefault("ZIMI_OFFLINE", "1")
     import zimi.renderer as renderer
 
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
+    # Offline and no torrents for this module's server only: set for the session, they turned later modules' download
+    # and catalog tests offline on the same worker.
+    env = pytest.MonkeyPatch()
+    env.setenv("ZIMI_TORRENT", "0")
+    env.setenv("ZIMI_OFFLINE", "1")
     import zimi.server as srv
     from zimi import mapplaces
 
@@ -85,16 +88,20 @@ def library(tmp_path_factory):
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
     mapplaces._reset_for_tests()
+    env.undo()
 
 
 @pytest.fixture(scope="module")
 def no_map(tmp_path_factory):
-    os.environ.setdefault("ZIMI_TORRENT", "0")
-    os.environ.setdefault("ZIMI_OFFLINE", "1")
     import zimi.renderer as renderer
 
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
+    # Offline and no torrents for this module's server only: set for the session, they turned later modules' download
+    # and catalog tests offline on the same worker.
+    env = pytest.MonkeyPatch()
+    env.setenv("ZIMI_TORRENT", "0")
+    env.setenv("ZIMI_OFFLINE", "1")
     import zimi.server as srv
     from zimi import mapplaces
 
@@ -103,6 +110,7 @@ def no_map(tmp_path_factory):
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
     mapplaces._reset_for_tests()
+    env.undo()
 
 
 def _open(browser, base, view=VIEW):

@@ -14,14 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
 - **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
-- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together. At rest it is the plain date and time; tap it to change it.
+- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, and at rest it is the plain date and time, changed with a tap.
 - **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
-- **Landmarks on every world:** with the pin on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card, and Go to lists every landing site.
-- **Facts for every body:** the i opens a sheet with a one-line note, size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.
-- **Go to by name:** the 3D view's Go to searches the towns on your maps and the Earth's landmarks, flies down over the one you pick and previews its article from your library.
-- **Flights to spacecraft:** the model loads as the flight starts and the camera ends on it, so Voyager and the station no longer pop in on arrival.
 - **A link back to exactly where you were:** the Almanac's address keeps the moment, the speed, the scroll and the 3D view, so a reload or a shared link comes back to the same place.
-- **A clean 3D view:** arriving somewhere shows just the body, its facts behind an i; Landmarks, Orbits and Side by side are round icons, the back arrow sits in Zimi's header, and a phone on its side keeps the controls down the left edge.
+- **A clean 3D view:** arriving somewhere shows just the body, with its facts behind an i (size, mass, gravity, day, year, tilt, distances now, moons, temperature and air, each with its source in the Almanac's Constants); Landmarks, Orbits and Side by side are round icons, and a phone on its side keeps the controls down the left edge.
+- **Landmarks and Go to:** with the pin on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card; Go to searches the towns on your maps and the Earth's landmarks, lists every landing site, and a flight to a spacecraft ends on its model.
 
 ### Fixed
 

@@ -19,5 +19,11 @@
    "Daily games and leaderboards: today's edition of 63 games, the same for everyone on a Zimi server, with streaks, a spoiler-free share line and a board for the people on your server.",
    "Games follow you: signed in, your games, stats and ZimCity cities follow you to every browser; rooms on the shelf, one card size across card games, and Hint in Xiangqi and Shogi."
   ]
+ },
+ "1.15.4": {
+  "zimi_almanac": [
+   "Almanac HD in Kiwix: the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.",
+   "One clock in the Almanac: type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, and at rest it is the plain date and time, changed with a tap."
+  ]
  }
 }
