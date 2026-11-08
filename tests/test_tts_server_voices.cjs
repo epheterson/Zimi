@@ -569,9 +569,9 @@ const tick = () => new Promise(r => setImmediate(r));
     vm.createContext(ax);
     vm.runInContext(extract(/var _TTS_BLOCK = [^\n]*\n/, '_TTS_BLOCK') + extract(/var _TTS_ABBREVS[\s\S]*?\nfunction _ttsSentenceSpans[\s\S]*?\n}\n/, 'the sentence splitter') +
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
-    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant'), ax);
+    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant') + '\n' + extract(/var _TTS_WORD_CHAR = [^\n]*/, 'the word character'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
-      '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
+      '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsWholeWords', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
       '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle', '_ttsIdleBusy', '_ttsIdleArm'].map(fn).join('\n'), ax);
 
     // A DOM of just what the reading looks at: elements with a display, text nodes, document order.
@@ -729,6 +729,9 @@ const tick = () => new Promise(r => setImmediate(r));
     ok('without one it reads the whole article', !allPlan.sel && allPlan.chunks.map(c => c.text).join(' ') === said);
     doc.__zbHere = () => ({ startContainer: textNode(doc.main, 'One'), startOffset: 0 });
     ok('in a book it begins at the page that is open', ax._ttsMakePlan(doc).chunks.map(c => c.text).join(' ') === 'One. Two. A. B. Later page.');
+    // a page that opens on the tail of a hyphenated word starts at the next whole word, not at a syllable
+    doc.__zbHere = () => ({ startContainer: textNode(doc.main, 'One'), startOffset: 1 });
+    ok('in a book a page opening inside a word begins at the next word', ax._ttsMakePlan(doc).chunks.map(c => c.text).join(' ') === 'Two. A. B. Later page.', JSON.stringify(ax._ttsMakePlan(doc).chunks));
     delete doc.__zbHere;
     // what a reading skips is read when it is chosen, or when it is all there is
     const facts = mkDoc(['main', {}, ['table', { cls: ['infobox'] }, ['tr', {}, ['td', {}, 'Born in Antioch.']]], ['p', {}, 'Prose here.']]);
