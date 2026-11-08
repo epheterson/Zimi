@@ -23,7 +23,7 @@ def test_the_moon_fit_prints_the_orbit_the_3d_view_stores():
             "worst_deg": 0.34,
         }
     )
-    assert row.startswith("  io: orbit: [421769, 40.361, 203.488958],")
+    assert row.startswith("  orbit: [421769, 40.361, 203.488958],") and "io:" in row
 
 
 def test_every_probe_has_reference_dates_and_only_names_a_real_track():

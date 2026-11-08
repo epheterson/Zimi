@@ -100,8 +100,8 @@ def fit(name, cmd, center, planet, seed):
 
 def orbit_row(f):
     """One moon's fit as the line to paste over its ``orbit`` in AE_PLANETS: [a km, L0 deg, rate deg/day]."""
-    return "  %s: orbit: [%.0f, %.3f, %.6f],   // worst miss %.1f deg" % (
-        f["name"].lower(), f["a_km"], f["lam0"], f["deg_per_day"], f["worst_deg"])
+    return "  orbit: [%.0f, %.3f, %.6f],   // %s: worst miss %.1f deg" % (
+        f["a_km"], f["lam0"], f["deg_per_day"], f["name"].lower(), f["worst_deg"])
 
 
 def main():

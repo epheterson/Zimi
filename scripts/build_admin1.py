@@ -140,6 +140,8 @@ def build(features):
         iso = p.get("iso_a2") or ""
         if iso in ("-1", "-99", ""):
             iso = (p.get("iso_3166_2") or "")[:2]
+            if not (len(iso) == 2 and iso.isalpha()):
+                iso = ""  # a sentinel ("-99") is no code
         admin = COUNTRY_NAMES.get(p["admin"], p["admin"])
         key = (admin, iso)
         if key not in index:
