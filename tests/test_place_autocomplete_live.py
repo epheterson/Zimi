@@ -85,6 +85,11 @@ def _shot(pg, name):
 
 
 def _type(pg, text):
+    # Keys typed before the page has its sources are lost to it: a cold, slow runner types too early.
+    pg.wait_for_function(
+        "() => typeof zimsCache !== 'undefined' && (zimsCache || []).length > 0",
+        timeout=30000,
+    )
     pg.locator("#q").click()
     pg.keyboard.type(text, delay=15)
 
