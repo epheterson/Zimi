@@ -544,14 +544,18 @@ function _ttsOnText(rects, x, y) {
   return false;
 }
 
-// A page can open on the tail of a hyphenated word ("ing" of "read-ing", the
-// word's start on the page before): reading begins at the next whole word,
-// not at a syllable a voice would spell out.
-var _TTS_WORD_CHAR = /[\p{L}\p{N}\p{M}]/u;
-function _ttsWholeWords(text, at) {
-  if (!at || !_TTS_WORD_CHAR.test(text[at - 1] || '')) return at;
-  while (at < text.length && _TTS_WORD_CHAR.test(text[at])) at++;
-  return at;
+// A page opens mid-sentence more often than not (or on the tail of a
+// hyphenated word), its head on the page before. The book is one text, so the
+// head is in hand: reading begins at that sentence's start and the voice says
+// it whole. A head further back than this is a run-on the listener would not
+// thank us for: reading then begins at the next sentence, a whole word.
+var _TTS_HEAD_MAX = 600; // characters
+function _ttsSentenceHead(model, at) {
+  var sp = at > 0 && _ttsSentenceAt(model, at);
+  if (!sp || sp.s >= at) return at;
+  if (at - sp.s <= _TTS_HEAD_MAX) return sp.s;
+  var next = _ttsSentenceSpans(model.text, sp.e, model.text.length, _ttsLang(model.doc))[0];
+  return next ? next[0] : sp.e;
 }
 // What to read: the selection if there is one, else (in a book) from the
 // page that is open, else all of the article.
@@ -568,7 +572,7 @@ function _ttsMakePlan(doc) {
   if (sel) { a = sel[0]; b = sel[1]; }
   else if (doc.__zbHere) {
     var at = doc.__zbHere();
-    if (at) a = _ttsWholeWords(model.text, Math.max(0, _ttsOffsetOf(model, at.startContainer, at.startOffset)));
+    if (at) a = _ttsSentenceHead(model, Math.max(0, _ttsOffsetOf(model, at.startContainer, at.startOffset)));
   }
   return _ttsPlanFrom(model, a, b, !!sel);
 }

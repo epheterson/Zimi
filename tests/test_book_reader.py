@@ -302,11 +302,12 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             br.close()
 
 
-def test_reading_begins_at_a_whole_word_when_a_page_opens_on_a_hyphenated_one(served):
-    """Eric, 2026-10-21: "I just tried reading and it started on second sentence ...
-    it's weird still". A page that opens on the tail of a hyphenated word ("ing" of
-    "read-ing") began Read aloud on "ng reading reading": the voice spelled out a
-    syllable. Reading begins at the next whole word."""
+def test_a_sentence_over_a_page_break_is_read_whole(served):
+    """Eric, 2026-11-07: "can we detect a sentence crossing a page and feed the whole
+    thing to the reader so it plays through uninterrupted?". A page opens mid-sentence
+    (here inside a hyphenated word, "ing" of "read-ing"; 2026-10-21: the voice spelled
+    out a syllable): reading on, the sentence is one chunk said once; a page opened
+    directly begins at that sentence's head, taken from the page before."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -321,9 +322,23 @@ def test_reading_begins_at_a_whole_word_when_a_page_opens_on_a_hyphenated_one(se
             got = pg.evaluate(
                 """() => { const d = document.getElementById('reader-frame').contentDocument;
                 const r = d.__zbHere(), at = r.startContainer.data.slice(Math.max(0, r.startOffset - 1), r.startOffset + 1);
-                return { split: /\\w\\w/.test(at), first: _ttsMakePlan(d).chunks[0].text }; }"""
+                const m = _ttsReadModel(d, _readerMainContent(d)), here = _ttsOffsetOf(m, r.startContainer, r.startOffset);
+                const all = _ttsPlanFrom(m, 0, m.text.length, false).chunks, direct = _ttsMakePlan(d).chunks[0];
+                const spans = all.flatMap(c => c.spans), over = all.filter(c => c.spans.some(sp => sp.s < here && sp.e > here));
+                return { split: /\\w\\w/.test(at), here: here, first: direct.spans[0], text: direct.text,
+                  atHead: direct.spans[0].s === 0 || m.text[direct.spans[0].s - 1] === _TTS_BLOCK,
+                  over: over.map(c => c.spans.map(sp => [sp.s, sp.e])),
+                  ordered: spans.every((sp, i) => !i || spans[i - 1].e <= sp.s) }; }"""
             )
             assert got["split"], "the page opens inside a word (the fixture hyphenates)"
-            assert got["first"].startswith("reading"), got
+            assert (
+                got["first"]["s"] < got["here"] < got["first"]["e"]
+            ), got  # the crossing sentence, whole
+            assert got["text"].startswith("reading ") and got["atHead"], got
+            assert len(got["over"]) == 1 and got["over"][0][0] == [
+                got["first"]["s"],
+                got["first"]["e"],
+            ], got  # one chunk
+            assert got["ordered"], "no sentence is said twice"
         finally:
             br.close()
