@@ -220,13 +220,13 @@ jobs:
 
   test:
     if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
-    needs: [test-quick, test-browser]
+    needs: [test-quick, test-browser, portable]
     runs-on: ubuntu-latest
     steps:
       - name: Every test job passed
         run: |
-          echo "quick: ${{ needs.test-quick.result }}, browser: ${{ needs.test-browser.result }}"
-          [ "${{ needs.test-quick.result }}" = success ] && [ "${{ needs.test-browser.result }}" = success ]
+          echo "quick: ${{ needs.test-quick.result }}, browser: ${{ needs.test-browser.result }}, portable: ${{ needs.portable.result }}"
+          [ "${{ needs.test-quick.result }}" = success ] && [ "${{ needs.test-browser.result }}" = success ] && [ "${{ needs.portable.result }}" = success ]
 
   # The portable headless Linux build (#137), built and run from a copied folder on both architectures: the
   # same script the release runs, so the tag never meets it for the first time. 22.04 for the glibc floor.
