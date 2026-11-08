@@ -414,7 +414,10 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
             timeout=5000,
             polling=POLL_MS,
         )
-        pg.click("#almanac-head-time .ep[data-p=hour]", force=True)
+        # The part is redrawn every tick at this pace and can be momentarily empty, so the tap is dispatched, not aimed.
+        pg.evaluate(
+            "() => { var e = document.querySelector('#almanac-head-time .ep[data-p=hour]'); ['pointerdown', 'pointerup', 'click'].forEach(function (t) { e.dispatchEvent(new PointerEvent(t, { bubbles: true, pointerId: 1, pointerType: 'mouse', isPrimary: true })); }); }"
+        )
         assert pg.evaluate("() => !_almEd")
         # The middle at another pace is 1x; at 1x it pauses; paused it plays at 1x.
         pg.click("#almanac-head .alm-spd-play", force=True)
