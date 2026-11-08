@@ -178,6 +178,34 @@ var SK = {
   // articles that have none. It used to decide darkness outright.
   DARKEN_ARTICLES: 'zimi_darken_articles',
   ARTICLE_THEME: 'zimi_article_theme',
+  // The language welcome card's x: {lang: 1} for each language it was dismissed in.
+  WELCOME_DISMISSED: 'zimi_welcome_dismissed',
+  // Which source Catalog > Maps lists: 'kiwix' (absent) | 'streetzim'.
+  MAPS_SOURCE: 'zimi_maps_source',
+  // The Almanac's choices (almanac*.js read and write them under these names; the
+  // ZIM build shares SK). Place: {lat, lon, name}; clocks: [IANA zone]; clocks view:
+  // 'all'|'saved'; units: 'ft'|'m'; sky: {skin, lines, size, dial}; orbits:
+  // 'always' (on) or absent (off); landmarks and HD-later: '1'; spin faces: '1'|'0' (absent: on in full screen only); tried: {hint: 1}.
+  ALM_CLOCKS: 'zimi_almanac_clocks',
+  ALM_CLOCKS_VIEW: 'zimi_almanac_clocks_view',
+  ALM_UNITS: 'zimi_almanac_units',
+  ALM_SKY: 'zimi_sky_settings',
+  ALM_ORBITS: 'zimi_ae_orbits',
+  ALM_LANDMARKS: 'zimi_alm_landmarks',
+  ALM_SPIN_FACES: 'zimi_alm_spin_faces',
+  ALM_HD_LATER: 'zimi_alm_hd_later',
+  ALM_ORRERY_TRIED: 'zimi_orrery_tried',
+  // The app pages' choices (apps.js prefWrite, pdfreader.js): they cannot read SK
+  // from inside their frames, so they spell these names themselves.
+  WIKI_VIEW: 'zimi_wiki_view',
+  WIKI_LANG: 'zimi_wiki_lang',
+  PDF_DARK: 'zimi_pdf_dark',
+  PDF_SPREAD: 'zimi_pdf_spread',
+  PDF_VIEW: 'zimi_pdf_view',
+  TUBE_SORT: 'zimitube_sort',
+  TUBE_AUTOPLAY: 'zimitube_autoplay',
+  TUBE_THEATER: 'zimitube_theater',
+  REDDOT_FOLLOW: 'reddot_follow',
   // Settings sync's state in this browser: {owner: the account it follows, or
   // null; pending: {key: 1} changed here while signed in to it and not yet
   // taken by it; seeded: this browser has followed an account before, so its
@@ -196,8 +224,8 @@ var SK = {
 // What a person sets for themselves: carried by My data, and while signed in
 // kept by the account and followed in every browser (Eric, 2026-10-21:
 // "Things a user changes while signed in should sync to all sessions all
-// browsers"). Not here: what belongs to this device or this server (the
-// Almanac's place, timed voices, a highlight's colour), or to this tab.
+// browsers"). Not here: what belongs to this device or this server (timed
+// voices, a highlight's colour, window sizes, caches), or to this tab.
 var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.VOICE_PREFS, SK.PREF_FLAVOR,
@@ -205,6 +233,11 @@ var _PREF_KEYS = [
   SK.EXT_LINKS, SK.OPEN_IN_APPS,
   SK.APP_THEME, SK.APP_THEME_BEFORE_RED, SK.ARTICLE_THEME, SK.DARKEN_ARTICLES,
   SK.LIBRARY_SORT, SK.TTS_RATE, SK.BOOK_PREFS, SK.WIKI_PREFS,
+  SK.READER_COACH, SK.TTS_SUGGESTED, SK.WELCOME_DISMISSED, SK.MAPS_SOURCE,
+  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
+  SK.ALM_HD_LATER, SK.ALM_ORRERY_TRIED,
+  SK.WIKI_VIEW, SK.WIKI_LANG, SK.PDF_DARK, SK.PDF_SPREAD, SK.PDF_VIEW,
+  SK.TUBE_SORT, SK.TUBE_AUTOPLAY, SK.TUBE_THEATER, SK.REDDOT_FOLLOW,
 ];
 function _isPrefKey(k) { return _PREF_KEYS.indexOf(k) >= 0; }
 function _rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -1885,11 +1918,12 @@ function _sheetAboveKeyboard(el) {
     var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
     el.style.bottom = covered ? covered + 'px' : '';
     el.style.maxHeight = covered ? (vv.height - SHEET_KEYBOARD_GAP_PX) + 'px' : '';
+    el.style.setProperty('--sheet-room', (vv.height - SHEET_KEYBOARD_GAP_PX) + 'px');   // what a sheet inside may fill
   }
   vv.addEventListener('resize', fit);
   vv.addEventListener('scroll', fit);
   fit();
-  return function() { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
+  return function() { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); el.style.removeProperty('--sheet-room'); };
 }
 
 // Preferred download flavor: "full" (with images), "nopic", or "mini".
@@ -3058,6 +3092,7 @@ function _keepFrom(st) {
 // source of the page before it when that was another ZIM. null for a step
 // back through the reader's own pages.
 function _backLabel() {
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) return _aeBackLabel();   // the Almanac's 3D view
   if (!readerOpen) return null;
   var prev = articleHistory[articleHistory.length - 1];
   if (prev && !prev.app) {
@@ -3083,7 +3118,7 @@ function updateTopbar() {
   const backTo = _backLabel();
   // Offline an app's page may not be here at all (the worker answers with its own "You're offline" page, which never
   // tells the topbar it is at the app's top or not): the arrow stays so there is always a way back to where you were.
-  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK)) || _gameHasShelfBehind();
+  const showBack = !!backTo || (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK)) || _gameHasShelfBehind();
   backBtn.style.display = showBack ? 'flex' : 'none';
   var nightBtn = document.getElementById('night-btn');
   // The red night light where it is used in the dark: the Field Guide and the Almanac's sky.
@@ -3890,14 +3925,15 @@ function route(push) {
   // Restore Almanac on reload if #almanac hash is present. The head bootstrap
   // already stamped html.almanac-boot, so the home render below stays invisible
   // and the dark almanac shell is what the first paint shows.
-  if (location.hash === '#almanac') {
+  // #almanac, or #almanac?... (the address almanac.js keeps up to date as the person moves; it is read there).
+  if (/^#almanac(\?|$)/.test(location.hash)) {
     enterHome(false);
     openAlmanac(true);
     // Backstop: if the almanac never comes up (a module error mid-parse slips
     // past the loader's onerror), drop the boot gate so the library isn't left
     // permanently hidden behind an empty shell.
     setTimeout(function () {
-      if (!_almanacOpen) document.documentElement.classList.remove('almanac-boot');
+      if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almVeilDown(true); }
     }, 8000);
     return;
   }
@@ -3976,8 +4012,11 @@ function route(push) {
     var aZim = aSlash === -1 ? aParam : aParam.slice(0, aSlash);
     var aPath = aSlash === -1 ? '' : aParam.slice(aSlash + 1);
     if (aZim && aPath) {
+      // One of Zimi's own apps keeps its round in the address (a game's ?daily=): split off, it reaches the page again.
+      var aQ = _OWN_ZIM_APP[aZim] ? /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(aPath) : null;
+      if (aQ && aQ[2]) aPath = aQ[1] + (aQ[3] || '');
       if (aZim === _GAMES_ZIM) _gameHeadBoot(aPath);
-      _bootDeepLinkArticle(aZim, aPath);
+      _bootDeepLinkArticle(aZim, aPath, aQ && aQ[2]);
       return;
     }
     if (aZim) { enterSource(aZim, push); return; }
@@ -4058,7 +4097,7 @@ function route(push) {
 //     then pushes into articleHistory — lighting up the Back arrow and giving
 //     browser Back a bogus destination.
 //  2. REPLACE the boot entry instead of pushing, so no extra entry is created.
-async function _bootDeepLinkArticle(zim, path) {
+async function _bootDeepLinkArticle(zim, path, query) {
   _popstateNoAutoReader = true;
   try {
     await enterSource(zim, false);
@@ -4069,7 +4108,7 @@ async function _bootDeepLinkArticle(zim, path) {
   // the URL, so the place has to travel through it or it is gone before the
   // map loads and asks for it.
   var pos = parseMapHash(location.hash);
-  openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
+  openArticle(zim, path, null, { replace: true, query: query || undefined, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
 // `undo`: a toast for something just taken away carries its way back, and
@@ -4332,6 +4371,7 @@ function goBack() {
   // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
   if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeClose(); return; }   // the 3D view over the Almanac first
   if (_almanacOpen) { closeAlmanac(); return; }
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask
@@ -5223,9 +5263,9 @@ function renderHome(filter) {
   if (!homeScope && !filter && _currentLang !== 'en') {
     var _welcomeLang = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
     var _hasLangZims = (zimsCache || []).some(function(z) { return z.language === _currentLang; });
-    var _welcomeDismissed = localStorage.getItem('zimi_welcome_' + _currentLang) === '0';
+    var _welcomeDismissed = _welcomeIsDismissed();
     // The card's ×, named for a screen reader ("✕" read as a letter).
-    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
+    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="_welcomeDismiss();var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
     if (!_welcomeDismissed) {
       if (!_hasLangZims && manageEnabled) {
         h += '<div class="lang-welcome-card" id="lang-welcome">' +
@@ -5234,7 +5274,7 @@ function renderHome(filter) {
             '<p>' + tH('welcome_lang_body', {lang: _welcomeLang}) + '</p>' +
           '</div>' +
           '<div class="lang-welcome-actions">' +
-            '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
+            '<button class="lang-banner-btn" onclick="_welcomeDismiss();_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
             _welcomeX +
           '</div>' +
         '</div>';
@@ -7293,6 +7333,14 @@ _MOON_TEX.onload = function() {
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
 _MOON_TEX.src = _MOON_MAP_URL;
+// Run fn once the 1024 map is in (or has failed: a plain disc then), so a disc drawn for the first time already has its
+// maria and is not drawn a second time when the map lands. Now, when it is in.
+function _moonTexThen(fn) {
+  if (_moonTexReady || (_MOON_TEX.complete && !_MOON_TEX.naturalWidth)) { fn(); return; }
+  var once = function () { _MOON_TEX.removeEventListener('load', once); _MOON_TEX.removeEventListener('error', once); fn(); };
+  _MOON_TEX.addEventListener('load', once);
+  _MOON_TEX.addEventListener('error', once);
+}
 
 // The map is LRO albedo, harsher than the eye sees the Moon (its darkest
 // maria sit near a third of its brightest highlands); this lift and gain put
@@ -8204,6 +8252,32 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
+// The veil: what stands over the Almanac while its first screen is drawn behind it (almanac.js _almVeilBegin), so the
+// person sees one thing, the finished page, and never the page being built. It is up from the tap, before the files
+// arrive, and comes down in one fade when the first screen is on the canvas.
+var ALM_VEIL_FADE_MS = 240;
+function _almVeilUp() {
+  var v = document.getElementById('alm-veil');
+  if (!v) return null;
+  clearTimeout(v._gone);
+  v.classList.remove('alm-veil-out');
+  v.hidden = false;
+  v.setAttribute('aria-label', t('loading'));
+  return v;
+}
+function _almVeilIsUp() {
+  var v = document.getElementById('alm-veil');
+  return !!v && !v.hidden && !v.classList.contains('alm-veil-out');
+}
+// Down: faded out, then hidden; at once (now) when the Almanac is closed or the fade would be seen by no one.
+function _almVeilDown(now) {
+  var v = document.getElementById('alm-veil');
+  if (!v) return;
+  clearTimeout(v._gone);
+  if (now) { v.classList.remove('alm-veil-out'); v.hidden = true; return; }
+  v.classList.add('alm-veil-out');
+  v._gone = setTimeout(function () { v.hidden = true; v.classList.remove('alm-veil-out'); }, ALM_VEIL_FADE_MS + 60);
+}
 // The Almanac's tide section, loaded by almanac.js when it scrolls
 // near; written here so the server stamps their content version on them.
 var _ALM_TIDES_JS = '/static/almanac-tides.js?v=1';
@@ -8217,6 +8291,10 @@ var _ALMANAC_REF_ASSETS = [
   '/static/almanac-reference.js?v=1',
   '/static/almanac-tables.js?v=1'
 ];
+
+// The 3D Earth's files, after the page: the ephemeris (the Sun, the Moon, the planets: no GL), then the view; loaded in
+// that order by almanac.js _almLoadEarth, when the first screen is up and the person is quiet, or at the first need.
+var _ALM_EARTH_SRCS = ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'];
 
 // The Almanac's modules. They share a global scope, so they must run in
 // order, and the Almanac opens (or the Field Guide's sky strip reads them)
@@ -8303,6 +8381,7 @@ function openAlmanac(replaceState) {
   var root = document.documentElement;
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
+  if (!_almanacOpen) _almVeilUp();
   if (_almanacLoaded && !answered) {
     _almanacOpenPending = true;
     requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
@@ -8315,15 +8394,8 @@ function openAlmanac(replaceState) {
       _almanacLoaded = true;
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
-      // The 3D Earth's module follows the open instead of delaying it; the
-      // orrery draws the Earth's glow (the way in) once it has landed.
-      // The ephemeris first (the Sun, the Moon, the planets: no GL), then the Earth view; in order.
-      ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'].forEach(function(src) {
-        var el = document.createElement('script');
-        el.src = src;
-        el.async = false;
-        document.head.appendChild(el);
-      });
+      // The 3D Earth's files do not follow the open: almanac.js (_almLoadEarth) brings them once the first screen is
+      // up and the person is quiet, or at the first thing that needs them.
     }, function() {
       // A console line and a button that appears to do nothing is the same
       // "silent absence" the connection banner exists to eliminate. Drop the
@@ -8331,6 +8403,7 @@ function openAlmanac(replaceState) {
       // instead of an empty dark shell.
       _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
+      _almVeilDown(true);
       _showToast(t('almanac_unavailable_offline'));
     });
     return;
@@ -9986,6 +10059,11 @@ q.addEventListener('input', () => {
     // Tube: the box filters the feed inside the page, every keystroke.
     hideSuggest();
     suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
+  } else if (mode !== 'manage' && _nearTyping(q.value, q.selectionStart)) {
+    // near:Spri, being typed: the places that start so, with where they are.
+    // Not the article search, nor a search of the half-typed place.
+    suggestTimer = setTimeout(fetchNearPlaces, NEAR_PLACES_DELAY_MS);
+    return;
   } else if (val && val.length >= 1 && _isMapPage()) {
     // Zimi Maps: the box finds places, on every installed map, nothing else.
     // Nothing else means returning here: falling through ran the article
@@ -10603,7 +10681,9 @@ function renderSearchResults(data, scope) {
     // Under the Field Guide's answer, "No results found" would be the louder
     // line on a page that has just helped: the answer stands alone.
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
-    output.innerHTML = chipsHtml + (guided ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
+    // A near: whose place no installed map names says so (near_not_found), not "No results found".
+    const nearOnly = data.near && !data.near.found;
+    output.innerHTML = chipsHtml + _nearHtml(data.near) + (guided || nearOnly ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
     _gamesRowMount();
     return;
@@ -11135,6 +11215,59 @@ async function fetchPlaces(query) {
   }
 }
 
+// ── near: place autocomplete ──
+// Eric, 2026-11-05: "do we have like places autocomplete or whatnot? So if they
+// know part of their city or they want to match the right state or country,
+// that's possible." Typing near:Spri offers the towns that start so, each as
+// "Springfield, Illinois, United States" (biggest first); picking one puts
+// near:"Springfield, Illinois" in the box, a place the search reads back as that
+// one. The server's half is /places/suggest (search.suggest_places).
+const NEAR_PLACES_DELAY_MS = 120;
+// A near: at the end of what is before the caret: the place so far, quoted
+// ("New Haven, Con) or one word, with a comma and the next word (Paris, Fra).
+const NEAR_TYPING = /(^|\s)near:(?:["\u201c]([^"\u201c\u201d]*)|([^\s"\u201c\u201d,]+(?:,\s*[^\s",\u201c\u201d]*)*))$/i;
+// A position or "here" is not a name to complete.
+const NEAR_NOT_A_NAME = /^(-?\d|here$)/i;
+function _nearTyping(value, caret) {
+  const head = value.slice(0, caret == null ? value.length : caret);
+  const m = NEAR_TYPING.exec(head);
+  if (!m) return null;
+  const typed = (m[2] != null ? m[2] : m[3]).replace(/\s+/g, ' ').trim();
+  if (!typed || NEAR_NOT_A_NAME.test(typed)) return null;
+  return { typed: typed, start: m.index + m[1].length, end: head.length };
+}
+
+async function fetchNearPlaces() {
+  const info = _nearTyping(q.value, q.selectionStart);
+  if (!info) return;
+  if (suggestController) suggestController.abort();
+  suggestController = new AbortController();
+  const seq = ++_suggestSeq;
+  try {
+    const res = await fetch('/places/suggest?q=' + encodeURIComponent(info.typed) + '&limit=8', { signal: suggestController.signal });
+    const data = await res.json();
+    if (seq !== _suggestSeq || document.activeElement !== q) return;
+    suggestItems = (data.places || []).map(p => ({ _nearPick: true, title: p.label, token: p.token, at: info,
+      // The name the tiles carry in the place's own language, when it differs.
+      sub: p.local && p.local !== p.name ? p.local : '' }));
+    if (suggestItems.length) showSuggest();
+    else hideSuggest();
+  } catch (e) {
+    if (e.name !== 'AbortError') hideSuggest();
+  }
+}
+
+// A picked place in the box: near:"Springfield, Illinois" where the typed
+// part was, a space after it for the distance, the caret there.
+function _pickNearPlace(s) {
+  const token = /[\s,"]/.test(s.token) ? '"' + s.token + '"' : s.token;
+  const after = q.value.slice(s.at.end);
+  const put = q.value.slice(0, s.at.start) + 'near:' + token + (after.startsWith(' ') ? '' : ' ');
+  q.value = put + after;
+  q.focus();
+  q.setSelectionRange(put.length + (after.startsWith(' ') ? 1 : 0), put.length + (after.startsWith(' ') ? 1 : 0));
+}
+
 // Close suggestions when clicking anywhere outside the search box/dropdown
 document.addEventListener('mousedown', (e) => {
   if (!suggestDropdown.contains(e.target) && e.target !== q) {
@@ -11252,9 +11385,9 @@ function _recentClearSearches() {
 function showSuggest() {
   suggestIndex = -1;
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
-    '<div class="suggest-item' + (s._place ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
-    '<div class="sg-title">' + esc(s.title) + '</div>' +
-    (s._place ? '<div class="sg-source">' + esc(s.sub) + '</div>'
+    '<div class="suggest-item' + (s._place || s._nearPick ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+    '<div class="sg-title"><bdi>' + esc(s.title) + '</bdi></div>' +
+    (s._place || s._nearPick ? (s.sub ? '<div class="sg-source"><bdi>' + esc(s.sub) + '</bdi></div>' : '')
       : (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '')) +
     '</div>'
   ).join('');
@@ -11279,6 +11412,7 @@ function selectSuggest(i) {
   if (!s) return;
   hideSuggest();
   if (s._example) { _searchAgain(s.query); return; }
+  if (s._nearPick) { _pickNearPlace(s); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
     _runRecentSearch(s.query, s.zim);
@@ -11660,6 +11794,23 @@ function _searchNearRadius(tokens, at, skip) {
   return { radius_km: Math.min(unit === 'mi' ? n * SEARCH_KM_PER_MILE : n, SEARCH_NEAR_MAX_KM), unit: unit, radiusAt: at };
 }
 
+// The last token near:'s place uses (query._near_extent): a place whose token
+// ends in a comma has the next one too ("near:Paris, France"), and so on while
+// a comma ends them.
+function _searchNearExtent(tokens, at, filters) {
+  let last = at;
+  while (last + 1 < tokens.length && !tokens[last][1] && tokens[last][0].endsWith(',')) {
+    const [nxt, phrase] = tokens[last + 1];
+    if (!phrase && (nxt === 'OR' || nxt.startsWith('-') || SEARCH_NEAR_RADIUS.test(nxt) || _searchFilterKey(nxt, filters))) break;
+    last++;
+  }
+  return last;
+}
+function _searchFilterKey(text, filters) {
+  const c = text.indexOf(':'), key = c > 0 ? text.slice(0, c).toLowerCase() : '';
+  return c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key) ? filters[key] : null;
+}
+
 // The query as the server is asked it: q=, and for a near: search the place
 // it is from. near:here becomes the browser's position (asked for, so the
 // browser's own prompt decides), else the Almanac's place; and near_at= is
@@ -11703,11 +11854,15 @@ function parseSearchQuery(q, filters) {
         text = text.replace(/^-+/, ''); neg = true;
         if (!text) { joinNext = false; continue; }
       }
-      const c = text.indexOf(':');
-      const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
-      if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
-        const f = { key: filters[key], value: _searchUnquote(text.slice(c + 1)).toLowerCase(), negate: neg, at: at };
-        if (f.key === 'near') Object.assign(f, _searchNearRadius(tokens, at + 1, skip));
+      const fkey = _searchFilterKey(text, filters);
+      if (fkey) {
+        let shown = _searchUnquote(text.slice(text.indexOf(':') + 1)), last = at;
+        if (fkey === 'near') {
+          last = _searchNearExtent(tokens, at, filters);
+          for (let k = at + 1; k <= last; k++) { skip.add(k); shown += ' ' + _searchUnquote(tokens[k][0]); }
+        }
+        const f = { key: fkey, value: shown.toLowerCase(), negate: neg, at: at };
+        if (fkey === 'near') { f.shown = shown; f.lastAt = last; Object.assign(f, _searchNearRadius(tokens, last + 1, skip)); }
         found.push(f);
         joinNext = false;
         continue;
@@ -11857,9 +12012,13 @@ function searchQueryChips(q) {
   }
   for (const f of p.filters) {
     // near:'s distance goes with it.
-    const q2 = f.radiusAt != null ? _searchRebuild(q, toks, new Set([f.at, f.radiusAt])) : without(f.at);
+    // and the words after its comma that say where the place is.
+    const gone = new Set([f.at]);
+    for (let k = f.at + 1; k <= (f.lastAt || f.at); k++) gone.add(k);
+    if (f.radiusAt != null) gone.add(f.radiusAt);
+    const q2 = f.key === 'near' && gone.size > 1 ? _searchRebuild(q, toks, gone) : without(f.at);
     // near: shows its place as typed ("San Francisco"), not folded.
-    const value = f.key === 'near' ? _searchUnquote(toks[f.at][0].slice(toks[f.at][0].indexOf(':') + 1)) : f.value;
+    const value = f.key === 'near' ? f.shown : f.value;
     chips.push({ kind: f.key, at: f.at, value: value, negate: f.negate, radius_km: f.radius_km, unit: f.unit, query: q2 });
   }
   p.groups.forEach((g, i) => {
@@ -11953,7 +12112,7 @@ function _searchAgain(query) {
 // The "?" beside the box: examples written for each language, one operator
 // each, shown with the chip it makes. The library's are about articles, the
 // catalog's about finding ZIMs.
-const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near'];
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source', 'search_example_near', 'search_example_near_where'];
 const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
 
 // Where the grammar applies: the library's own search and the catalog. Not
@@ -13540,6 +13699,17 @@ function _syncReaderViewBtn() {
   _syncTopbarMore();
 }
 
+// The language welcome card, dismissed per language. Before this setting followed the
+// person it was one key per language ('zimi_welcome_<lang>' = '0'), still honoured.
+function _welcomeIsDismissed() {
+  return !!_getStorageJSON(SK.WELCOME_DISMISSED, {})[_currentLang] || _rawGet('zimi_welcome_' + _currentLang) === '0';
+}
+function _welcomeDismiss() {
+  var d = _getStorageJSON(SK.WELCOME_DISMISSED, {});
+  d[_currentLang] = 1;
+  _setStorageJSON(SK.WELCOME_DISMISSED, d);
+}
+
 // First time a device lands in Reader View, float a one-shot coachmark by the
 // book button — "tap again for reading settings" — so the hidden palette gets
 // discovered. Fires at most once (localStorage flag), auto-dismisses after 4s,
@@ -13553,7 +13723,7 @@ function _maybeShowReaderCoach() {
   // top-level inside the ⋯ menu, so the "tap again" hint is redundant — skip it
   // (offsetParent is null / zero-size when hidden by the max-width media query).
   if (!btn.offsetParent && !(btn.offsetWidth || btn.offsetHeight)) return;
-  try { localStorage.setItem(SK.READER_COACH, '1'); } catch (e) {}
+  _setStorageFlag(SK.READER_COACH, true);
   var tip = document.createElement('div');
   tip.className = 'reader-coach';
   tip.setAttribute('role', 'status');
@@ -14149,11 +14319,13 @@ function _nearHtml(near) {
   if (!near) return '';
   if (!near.found) return '<div class="near-from">' + tHtml('near_not_found', { place: '<bdi>' + esc(near.place) + '</bdi>' }) + '</div>';
   const where = fmtNum(near.lat) + ', ' + fmtNum(near.lng);
+  // The place with where it is, when the map says: Springfield, Illinois, United States.
+  const place = '<bdi>' + esc(near.place + (near.where ? ', ' + near.where : '')) + '</bdi>';
   let h = '<div class="near-from">' + tHtml('near_from', { distance: esc(_nearDistanceText(near.radius_km, near.unit)),
-    place: '<bdi>' + esc(near.place) + '</bdi>' });
+    place: place });
   if (near.others > 0) {
     h += '<div class="near-which">' + tHtml(near.by === 'nearest' ? 'near_pick_nearest' : 'near_pick_largest',
-      { place: '<bdi>' + esc(near.place) + '</bdi>', where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
+      { place: place, where: esc(where), n: fmtNum(near.others + 1) }) + '</div>';
   }
   return h + '</div>';
 }
@@ -16834,13 +17006,20 @@ function _unzoomPage() {
   setTimeout(function () { meta.content = kept; }, 50);
 }
 // A long game name ("Dictionary Bluff") beside the header's buttons on a phone steps down a pixel at a time to
-// _GAME_TITLE_MIN_PX; one still too long ("Snakes and Ladders") takes two lines there before an ellipsis would cut it.
-var _GAME_TITLE_MIN_PX = 13;
+// _GAME_TITLE_MIN_PX, always on one line (the games' own bar does the same, shell.js fitTitle); one still too long ends in
+// the stylesheet's ellipsis, never cut dead and never wrapped.
+var _GAME_TITLE_MIN_PX = 11;
+// Does the text run past the room inside the box's padding? (scrollWidth counts the padding, so a name half a pixel too wide
+// for the room still read as fitting, and the stylesheet's ellipsis cut it: "Hnefat...".)
+function _titleOverflows(el) {
+  var cs = getComputedStyle(el), r = document.createRange();
+  r.selectNodeContents(el);
+  return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.01;
+}
 function _fitGameTitle(el) {
-  el.style.fontSize = ''; el.classList.remove('two-lines');
+  el.style.fontSize = '';
   var px = parseFloat(getComputedStyle(el).fontSize);
-  while (el.scrollWidth > el.clientWidth + 0.5 && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
-  if (el.scrollWidth > el.clientWidth + 0.5) el.classList.add('two-lines');
+  while (_titleOverflows(el) && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
@@ -17324,6 +17503,23 @@ function _restoreMapPosition(pos, tries) {
   });
 }
 
+// A path with a query put before its #fragment: how a game's ?daily= rides in a ?a= address.
+function _withQuery(path, query) {
+  var p = _splitPathFragment(path);
+  return p.base + (query || '') + p.frag;
+}
+// The page in the reader frame changed its own address (a daily left for an ordinary game): the bar follows, so a reload
+// opens what is on screen and not the round it replaced.
+function _syncGameAddress(frame) {
+  try {
+    if (!currentArticle || !_OWN_ZIM_APP[currentArticle.zim]) return;
+    var loc = frame.contentWindow.location, m = /^\/w\/([^/]+)\/(.*)$/.exec(loc.pathname);
+    var base = _splitPathFragment(currentArticle.path).base;
+    if (!m || _decodeSafe(m[1]) !== currentArticle.zim || _decodeSafe(m[2]) !== base) return;
+    var want = _articleDeepLinkPath(currentArticle.zim, _withQuery(currentArticle.path, loc.search));
+    if (location.pathname + location.search !== want) history.replaceState(history.state, '', want + location.hash);
+  } catch (e) { /* a frame that is not ours to read */ }
+}
 function _articleDeepLinkPath(zim, path) {
   return '/?a=' + encodeURIComponent(zim + '/' + path);
 }
@@ -17577,6 +17773,7 @@ function openReader(url) {
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
     _watchGameSheets(frame);
+    _syncGameAddress(frame);
     // Links out of the library, marked (or made plain text) before anything
     // is shown or copied: Reader View and the book reader clone the marks.
     _extHide();
@@ -20588,11 +20785,14 @@ function _prefApplied(keys) {
     if (ext) ext.innerHTML = _extLinksSegInner();
     try { _extRemarkOpen(); } catch (e) {}
   }
+  // The Almanac, if it is loaded, draws what changed (almanac.js _almPrefsApplied; in the ZIM it hears the
+  // same change as a storage event instead).
+  if (typeof _almPrefsApplied === 'function') try { _almPrefsApplied(keys); } catch (e) {}
   if (has(SK.PREF_FLAVOR)) {
     var fl = document.getElementById('ms-flavor-seg');
     if (fl) fl.innerHTML = _flavorSegInner();
   }
-  var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS];
+  var home = [SK.PREF_LANGUAGES, SK.HIDE_LANG_CHOOSER, SK.HIDE_DISCOVER, SK.LIBRARY_VIEW, SK.LIBRARY_SORT, SK.OPEN_IN_APPS, SK.WELCOME_DISMISSED];
   if (mode === 'home' && !readerOpen && home.some(has)) { try { renderHome(); } catch (e) {} }
 }
 // ── Games: what a person plays, theirs on every browser they sign in on ──
@@ -20880,7 +21080,7 @@ function _savedStart() {
   window.addEventListener('pagehide', function () { _savedFlush(true); _prefPush(true); _gamesPush(true); });
   // A setting written in another page of this browser (another tab, an app
   // page in the reader): shown here too. Whoever wrote it marked it pending
-  // (_prefChanged, apps.js's prefTouched); one this page did not send yet goes.
+  // (_prefChanged, via apps.js's prefWrite); one this page did not send yet goes.
   window.addEventListener('storage', function (e) {
     if (e.key && _isPrefKey(e.key)) { _prefApplied([e.key]); return; }
     if (e.key !== SK.PREF_SYNC) return;
@@ -21097,7 +21297,7 @@ function _buildReload() {
 // (Eric, 2026-11-02: "I still had to relaunch the PWA to see the new tiles":
 // he came back to the Almanac, the build was heard, and it waited for a hide).
 var _buildTouched = false;
-// The reload opens the Almanac at its top (only the place is kept), so a page scrolled away from it holds the reload.
+// A page scrolled away from the top holds the reload: the address keeps the scroll, but a reload under a reader is a jump.
 function _almanacScrolled() {
   var box = document.getElementById('almanac-content');
   return !!box && box.scrollTop > 0;
@@ -21862,7 +22062,7 @@ function openArticle(zim, path, title, opts) {
   // headerless page on reload. The ?a= form always reboots full SPA chrome (route()),
   // and being a query on '/', not a '.pdf' path, it also sidesteps the PDF
   // raw-binary-on-reload hazard the old ?view=1 kludge guarded against.
-  var canonUrl = _articleDeepLinkPath(zim, path);
+  var canonUrl = _articleDeepLinkPath(zim, _withQuery(path, opts && opts.query));
   // A place on a map travels WITH the article, in the one URL write openArticle
   // already does. Setting the hash separately either loses it (this function
   // rewrites the URL straight after) or races the frame load, depending on
@@ -22073,6 +22273,7 @@ function _openAlmanacFor(key) {
   var wait = setInterval(function() {
     if (_almanacOpen && typeof window.openAlmanacEarth === 'function') { clearInterval(wait); window.openAlmanacEarth({ target: target }); }
     else if (Date.now() > until) clearInterval(wait);
+    else if (_almanacOpen && typeof _almLoadEarth === 'function') _almLoadEarth();
   }, 100);
 }
 function _appViewFor(data, qid) {

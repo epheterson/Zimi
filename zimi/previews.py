@@ -146,6 +146,46 @@ def lead_text(item):
     return bytes(item.content)[:SNIPPET_READ_BYTES].decode("UTF-8", errors="replace")
 
 
+# Where a page says it is: the map link a Wikipedia page carries (data-lat and
+# data-lon), or its coordinates as written ("48.8567; 2.3508" in span.geo,
+# "48.8567°N 2.3508°E" in span.geo-dec).
+_POSITION_DATA_RES = (
+    re.compile(r'data-lat="(-?\d+(?:\.\d+)?)"[^>]*?data-lon="(-?\d+(?:\.\d+)?)"'),
+    re.compile(r'data-lon="(-?\d+(?:\.\d+)?)"[^>]*?data-lat="(-?\d+(?:\.\d+)?)"'),
+)
+_POSITION_GEO_RE = re.compile(
+    r'class="geo"[^>]*>\s*(-?\d+(?:\.\d+)?)\s*;\s*(-?\d+(?:\.\d+)?)\s*<'
+)
+_POSITION_DEC_RE = re.compile(
+    r'class="geo-dec"[^>]*>\s*(\d+(?:\.\d+)?)\s*°\s*([NS])\s*(\d+(?:\.\d+)?)\s*°\s*([EW])'
+)
+
+
+def article_position(text):
+    """``(lat, lng)`` a page's lead gives for the place it is about, or None
+    (a page about no place, or about one that does not say where)."""
+    found = None
+    m = _POSITION_DATA_RES[0].search(text)
+    if m:
+        found = (float(m.group(1)), float(m.group(2)))
+    else:
+        m = _POSITION_DATA_RES[1].search(text)
+        if m:
+            found = (float(m.group(2)), float(m.group(1)))
+    if found is None:
+        m = _POSITION_GEO_RE.search(text)
+        if m:
+            found = (float(m.group(1)), float(m.group(2)))
+    if found is None:
+        m = _POSITION_DEC_RE.search(text)
+        if m:
+            lat, lng = float(m.group(1)), float(m.group(3))
+            found = (-lat if m.group(2) == "S" else lat, -lng if m.group(4) == "W" else lng)
+    if found and -90 <= found[0] <= 90 and -180 <= found[1] <= 180:
+        return found
+    return None
+
+
 def extract_snippet(text, zim_name=""):
     """Best short text snippet for the /snippet endpoint.
 

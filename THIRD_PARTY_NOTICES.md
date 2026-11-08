@@ -58,6 +58,13 @@ Capture engines that drive a browser inject Webrecorder's browsertrix-behaviors 
 
 # Data shipped with Zimi
 
+## Natural Earth first-level regions (`zimi/assets/admin1-snapshot.json.gz`)
+
+The outline of every first-level region of every country (states, provinces, prefectures), simplified to about 3 km, and each region's name and country, so a town on a map is given its region and country offline ("Springfield, Illinois"). Built by `scripts/build_admin1.py` from Natural Earth's 1:10m Admin 1 States, Provinces file; 425 KB.
+
+- Source: Natural Earth, https://www.naturalearthdata.com/
+- Terms: public domain. Natural Earth asks for no credit; Zimi gives it anyway.
+
 ## NOAA CO-OPS tide stations (`zimi/assets/tides-snapshot.json.gz`)
 
 Harmonic constants, tidal datums and subordinate-station offsets for every NOAA tide prediction station (the United States and its territories), from the CO-OPS metadata API. The Almanac predicts tides from them; it does not reproduce NOAA's published predictions. Built by `scripts/build_tide_snapshot.py`.

@@ -181,7 +181,10 @@ function openQ(zim, page) {
   savedBar(null);
   window.scrollTo(0, 0);
   tell({ zimi: 'exchange-q', q: zim + '/' + page });
+  // A deep link has no home page showing first: the question waits in the shape of a question.
+  var wait = appWait(v.querySelector('.post.first'), 'lines');
   fetch('/exchange/q?zim=' + encodeURIComponent(zim) + '&q=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    wait.done();
     if (!d) { document.getElementById('q-title').textContent = STR.none; return; }
     document.getElementById('q-title').textContent = d.title;
     tell({ zimi: 'exchange-q', q: zim + '/' + page, title: d.title });
@@ -199,7 +202,7 @@ function openQ(zim, page) {
     markLinks(v);
     savedBar(qRef(zim, page, d), { thread: true });
     threadRestore();
-  }).catch(function() { document.getElementById('q-title').textContent = STR.none; });
+  }).catch(function() { wait.fail(function() { openQ(zim, page); }); });
 }
 function closeQ(silent) {
   var v = document.getElementById('qview'); if (v.hidden) return;

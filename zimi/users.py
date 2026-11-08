@@ -1238,9 +1238,10 @@ class _RevStore:
             log.warning("Could not delete %s for %s: %s", self.folder, loggable(repr(name)), loggable(e))
 
 
-# Settings: app.js's _PREF_KEYS.
-_SETTINGS_KEY_RE = re.compile(r"^zimi_[a-z0-9_]{1,59}$")
-_SETTINGS_MAX_KEYS = 64
+# Settings: app.js's _PREF_KEYS (the shell's, the Almanac's and the app pages'
+# choices; ZimiTube and Reddot keep theirs under their own names).
+_SETTINGS_KEY_RE = re.compile(r"^(zimi|zimitube|reddot)_[a-z0-9_]{1,59}$")
+_SETTINGS_MAX_KEYS = 128
 _SETTINGS_VALUE_MAX = 16 * 1024
 SETTINGS = _RevStore("usersettings", _SETTINGS_KEY_RE, _SETTINGS_MAX_KEYS, _SETTINGS_VALUE_MAX, "settings")
 # ZimiGames: what a person plays (saves, stats, dailies, best scores, the games'

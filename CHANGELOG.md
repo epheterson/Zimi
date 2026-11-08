@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [1.15.4]
+
+### Highlights
+
+- **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
+- **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
+- **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
+- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, and at rest it is the plain date and time, changed with a tap.
+- **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
+- **A link back to exactly where you were:** the Almanac's address keeps the moment, the speed, the scroll and the 3D view, so a reload or a shared link comes back to the same place.
+- **A clean 3D view:** arriving somewhere shows just the body, with its facts behind an i (size, mass, gravity, day, year, tilt, distances now, moons, temperature and air, each with its source in the Almanac's Constants); Landmarks, Orbits and Side by side are round icons, and a phone on its side keeps the controls down the left edge.
+- **Landmarks and Go to:** with the pin on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card; Go to searches the towns on your maps and the Earth's landmarks, lists every landing site, and a flight to a spacecraft ends on its model.
+
+### Fixed
+
+- ZimCity: kept cities open with their people and can be renamed, Undo says what it took back, and Hamburg and Tokyo can no longer be won by doing nothing.
+- About 40 game fixes: daily games come back as the day's, end sheets name the winner and why, Ludo no longer stops after a capture, Mahjong fits an upright phone, and German uses du.
+- Almanac planets stay on their orbit lines at every speed, and probe paths with them.
+- Almanac clock: a jump to another day keeps it running, the middle of the slider goes back to 1x, and AM/PM runs through the hours.
+- The Earth turns smoothly under the space station, and flying from it back home is quick.
+- Go to sits above the keyboard, and Map here appears only where one of your maps covers the place.
+- Read aloud in a book starts at the first sentence that begins on the page.
+
 ## [1.15.3]
 
 ### Highlights

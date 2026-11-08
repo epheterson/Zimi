@@ -38,6 +38,14 @@ Use as much as you need:
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
+| Almanac | Solar system |
+|---------|--------------|
+| ![Almanac](screenshots/almanac.png) | ![Solar system](screenshots/solar-system.png) |
+
+| Games | ZimCity |
+|-------|---------|
+| ![Games](screenshots/games.png) | ![ZimCity](screenshots/zimcity.png) |
+
 | Zimipedia | Bookshelf |
 |-----------|-----------|
 | ![Zimipedia](screenshots/zimipedia.png) | ![Bookshelf](screenshots/bookshelf.png) |
@@ -66,6 +74,8 @@ brew install --cask zimi
 
 **Linux:** `sudo snap install zimi`, or the [AppImage](https://github.com/epheterson/Zimi/releases) (it updates itself; the window needs WebKitGTK 4.1 from your distro, otherwise Zimi opens in your browser).
 
+**Linux, no Python (a Pi, a USB disk):** `zimi-<version>-linux-x64.tar.gz` or `-arm64.tar.gz` from [Releases](https://github.com/epheterson/Zimi/releases), then `./zimi serve -d`; settings stay in `zimi-data` beside it ([details](docs/features/operations.md#portable-linux-build)).
+
 **Windows:** the installer or portable zip from [Releases](https://github.com/epheterson/Zimi/releases).
 
 **Docker**
@@ -83,9 +93,9 @@ pip install zimi
 ZIM_DIR=./zims zimi serve --port 8899
 ```
 
-**Run at boot on Linux (systemd):** `zimi service print` shows the unit and `sudo zimi service install` writes it to /etc/systemd/system; the steps for a `zimi` user and its venv are at the top of the unit. ZIM files go in /var/lib/zimi/zims.
+**Run at boot on Linux (systemd):** `zimi service print` shows the unit and `sudo /var/lib/zimi/venv/bin/zimi service install` writes it to /etc/systemd/system (the unit runs the Python of the command that installs it); the steps for a `zimi` user and its venv are at the top of the unit. ZIM files go in /var/lib/zimi/zims.
 
-**In the background without systemd** (a Pi, a USB disk): `zimi serve -d --zim-dir /path/to/zims` detaches and writes `zimi.pid` and `zimi.log` in the data directory; stop it with `kill $(cat <data-dir>/zimi.pid)`.
+**In the background without systemd** (a Pi, a USB disk): `zimi serve -d --zim-dir /path/to/zims` detaches and writes `zimi.pid` and `zimi.log` in the data directory; stop it with the `kill $(cat ...)` line it prints.
 
 Two packages: `pip install zimi` is the complete experience; `pip install zimi-mcp` is only the [MCP server](#mcp-server) and search, for AI agents (280 KB, no web app).
 

@@ -855,6 +855,7 @@ def _persist_qid_flags(qid_flags):
 
 
 _build_all_qid_lock = threading.Lock()
+QID_IDLE_WAIT_MAX_S = 30.0  # the longest the has_qids sample waits for a quiet server
 
 
 def _detect_qid_flags(zims):
@@ -868,8 +869,10 @@ def _detect_qid_flags(zims):
         if _qid_has_index(name):
             flags[name] = True
         else:
-            # A read per ZIM, after a restart, while someone may be opening an app: they go first.
-            _srv._wait_until_idle()
+            # A read per ZIM, after a restart, while someone may be opening an app: they go first, for a while. The
+            # read opens an archive of its own, so a request in flight is not held up by it; only the wait is bounded,
+            # so a library that is never quiet still gets its flags.
+            _srv._wait_until_idle(QID_IDLE_WAIT_MAX_S)
             flags[name] = _check_one_article_for_qid(path)
             sampled += 1
     log.info(

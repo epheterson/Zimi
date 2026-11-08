@@ -340,6 +340,7 @@ _RATE_LIMITED_API_PATHS = (
     "/games/board",
     "/zim-updates",
     "/places",
+    "/places/suggest",
     "/tube",
     "/tube/play",
     "/exchange",
@@ -3539,6 +3540,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _record_metric("/places", time.time() - t0)
                 return self._json(
                     200, {"groups": groups, "elapsed": round(time.time() - t0, 3)}
+                )
+            elif parsed.path == "/places/suggest":
+                # A place being typed (near:Spri): the towns that start so.
+                q = param("q")
+                if not q:
+                    return self._json(400, {"error": "missing ?q= parameter"})
+                try:
+                    limit = min(max(int(param("limit", "8")), 1), 12)
+                except (TypeError, ValueError):
+                    limit = 8
+                t0 = time.time()
+                places = _srv.suggest_places(q, limit=limit)
+                _record_metric("/places/suggest", time.time() - t0)
+                return self._json(
+                    200, {"places": places, "elapsed": round(time.time() - t0, 4)}
                 )
             elif parsed.path == "/map-home":
                 # Where a map opens when nobody has been on it yet.

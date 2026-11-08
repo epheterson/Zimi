@@ -1227,12 +1227,11 @@ function renderBrowseGallery() {
 // picks one; nothing else in the catalog has a second source, so this is a
 // toggle and not a sources feature. Eric, 2026-09-18: "since it's only maps
 // sources how about a toggle in maps category?"
-var _MAPS_SOURCE_KEY = 'zimi_maps_source';
 function _mapsSource() {
-  try { return localStorage.getItem(_MAPS_SOURCE_KEY) === 'streetzim' ? 'streetzim' : 'kiwix'; } catch (e) { return 'kiwix'; }
+  return _rawGet(SK.MAPS_SOURCE) === 'streetzim' ? 'streetzim' : 'kiwix';
 }
 function setMapsSource(source) {
-  try { localStorage.setItem(_MAPS_SOURCE_KEY, source); } catch (e) {}
+  _prefWrite(SK.MAPS_SOURCE, source === 'streetzim' ? source : null);
   drillCategory('maps');
 }
 function _mapsSourceToggleHtml() {

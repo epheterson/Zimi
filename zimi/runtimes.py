@@ -12,8 +12,8 @@ import importlib.util
 import shutil
 from collections import namedtuple
 
-DOCKER, DESKTOP, PIP = "docker", "desktop", "pip"
-KINDS = (DOCKER, DESKTOP, PIP)
+DOCKER, DESKTOP, PORTABLE, PIP = "docker", "desktop", "portable", "pip"
+KINDS = (DOCKER, DESKTOP, PORTABLE, PIP)
 
 # How a feature arrives on a kind of install.
 BUNDLED = "bundled"  # there from the start
@@ -93,7 +93,7 @@ Feature = namedtuple("Feature", "key name ready ways")
 
 # Every Way.note is what a person on that install reads: how to get it, or why
 # it is not there.
-FEATURES = (
+_FEATURES = (
     Feature(
         "bittorrent",
         "BitTorrent downloads and seeding",
@@ -234,14 +234,36 @@ FEATURES = (
     ),
 )
 
+# The portable headless Linux build (desktop/zimi_portable.spec): the server, libzim and PDF pages in one
+# folder, no Python on the machine. What it leaves out is left out for size and because it needs a Python
+# or a browser beside it; every row says where to get that.
+_PORTABLE_WAYS = {
+    "bittorrent": Way(
+        EXTERNAL, "not in the portable build; a qBittorrent or Transmission you run works, or use Docker"
+    ),
+    "voices": Way(ABSENT, "not in the portable build; use Docker or pip"),
+    "pdf": Way(BUNDLED, ""),
+    "mcp": Way(ABSENT, "not in the portable build; use pip or Docker"),
+    "rendered": Way(ABSENT, "needs a browser engine the portable build does not carry; use pip or Docker"),
+    "import": Way(ABSENT, "needs Python 3.14 beside the build; use pip or Docker"),
+    "alive": Way(ABSENT, "needs the browser engine and warc2zim; use pip or Docker"),
+    "singlefile": Way(EXTERNAL, "npm install -g single-file-cli (Node 24+)"),
+    "video": Way(ABSENT, "yt-dlp is not in the portable build; use pip or Docker"),
+    "reddot": Way(ABSENT, "needs a Python beside the build; use pip or Docker"),
+    "zimit": Way(EXTERNAL, "Docker; Zimi runs the zimit image"),
+}
+FEATURES = tuple(f._replace(ways={**f.ways, PORTABLE: _PORTABLE_WAYS[f.key]}) for f in _FEATURES)
+
 
 def install_kind():
-    """docker, desktop or pip, from the same facts the update instructions use."""
+    """docker, desktop, portable or pip, from the same facts the update instructions use."""
     from zimi.manage import detect_install_type
 
     t = detect_install_type()
     if t == "docker":
         return DOCKER
+    if t == "portable":
+        return PORTABLE
     if t in ("snap", "appimage") or t.startswith("desktop"):
         return DESKTOP
     return PIP

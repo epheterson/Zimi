@@ -1,0 +1,7 @@
+# What the portable headless Linux build (desktop/zimi_portable.spec) is frozen from: the server and libzim,
+# PDF pages and LAN discovery. No pywebview, no WebKit, no BitTorrent, no voices.
+libzim>=3.1.0
+PyMuPDF>=1.23.0,<2
+certifi>=2026.10.19
+zeroconf>=0.149.16
+pyinstaller>=6.0.0

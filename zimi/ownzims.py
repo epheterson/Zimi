@@ -320,9 +320,26 @@ def _with_source(own, fn):
     """``fn(folder)`` on ``own``'s source folder, staged first if it is."""
     if not own.stage:
         return fn(os.path.join(SOURCE_ROOT, own.folder))
-    with tempfile.TemporaryDirectory(prefix=own.name + "-") as dest:
+    with tempfile.TemporaryDirectory(prefix="zimi-own-") as tmp:
+        # The folder's name becomes the ZIM's Name and its source: a fixed one, so every edition (and every
+        # flavour, write_zim) carries the same Name instead of one with the temp folder's random suffix.
+        dest = os.path.join(tmp, own.name)
+        os.mkdir(dest)
         own.stage(dest)
         return fn(dest)
+
+
+def write_zim(own, path, flavour=None, extra_items=None):
+    """``own`` built into ``path``, from its source as it is now: another flavour of the same Name
+    (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped."""
+
+    def _write(folder):
+        from zimi import creator
+
+        creator.create_folder_zim(folder, out_path=path, register=False, flavour=flavour, extra_items=extra_items)
+        return path
+
+    return _with_source(own, _write)
 
 
 def fresh(own):

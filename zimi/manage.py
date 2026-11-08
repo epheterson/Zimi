@@ -6106,6 +6106,8 @@ def _handle_users_post(handler, data):
 
     action = data.get("action", "")
     name = data.get("name", "")
+    if not isinstance(action, str) or not isinstance(name, str):
+        return handler._json(400, {"error": "invalid request"})
     kind = admin_kind(handler)  # 'primary' | 'secondary' (auth already passed)
     role = data.get("role")
     # While anyone can manage Zimi, no one may make a way in that outlives it.

@@ -9,15 +9,10 @@ const KEEP_V = '0';
 try {
   importScripts('/static/fzstd.js?v=' + KEEP_V, '/static/zimreader.js?v=' + KEEP_V, '/static/keepstore.js?v=' + KEEP_V);
 } catch (e) { /* no reader: nothing kept can be read, everything else works */ }
-// The almanac's segment readout face is precached rather than left to the
-// /static/ stale-while-revalidate path: it is a font, so a cold offline start
-// that misses it falls back to system mono and the time machine's digits
-// change face under the reader. Small enough (~6KB) to carry on install.
 // Adding an entry here needs no CACHE_VERSION bump: changing these bytes makes
 // the browser install a new SW, and install's addAll() adds into whatever
 // cache CACHE_VERSION names (the server pins it to the asset-bundle hash).
-const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png',
-                       '/static/fonts/DSEG14Classic-Bold.woff2'];
+const PRECACHE_URLS = ['/', '/favicon.png', '/apple-touch-icon.png'];
 
 // What the shell and the Field Guide need to run with no server, at the
 // addresses this deploy's pages ask for (they carry a content hash, so only

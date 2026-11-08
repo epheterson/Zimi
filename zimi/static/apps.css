@@ -159,7 +159,12 @@ button { font: inherit; color: inherit; }
 .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 /* Waiting for the first answer (apps.js appWait): cards the shape of the page's own, breathing gently. */
 .app-wait { margin: 12px 0; }
-.app-wait-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+/* The columns are the host grid's own (tube.html, wiki.html .grid; books.html .grid for covers), so nothing moves when the answer lands. */
+.app-wait-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
+@media (max-width: 480px) { .app-wait-cards { grid-template-columns: 1fr; gap: 12px; } }
+.app-wait-covers .app-wait-cards { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 22px 16px; }
+.app-wait-covers .app-wait-card i { aspect-ratio: 2 / 3; }
+@media (max-width: 480px) { .app-wait-covers .app-wait-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; } }
 .app-wait-card { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); overflow: hidden; animation: app-wait 1.6s ease-in-out infinite; }
 .app-wait-card i { display: block; aspect-ratio: 16 / 9; background: var(--surface2); }
 .app-wait-card b { display: block; height: 10px; margin: 0 12px; border-radius: 5px; background: var(--surface2); }
