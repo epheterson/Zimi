@@ -1237,6 +1237,7 @@ function _almClockPaint(focus) {
     root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
     root.classList.toggle('alm-ck-rest', rest);
+    if (root.getAttribute('data-v') === 'pin' && root._rest !== rest) { root._rest = rest; if (typeof _almPinPaint === 'function') _almPinPaint(); }
     if (spd) _almSpdPaint(spd, rate, hot);
   }
 }
@@ -1946,6 +1947,13 @@ var ALM_SECBAR_H = 44;                       // px; .alm-secbar's height in alma
 var ALM_PIN_SHOW_PX = 8;                     // the header's clock is gone when its foot is this far under the page's top
 var ALM_PIN_CLOCK_H = 60;                    // px; the pinned clock's height (.alm-pin-clock): the strip is both, one under the other
 var ALM_SECBAR_LINE = ALM_PIN_CLOCK_H + ALM_SECBAR_H + 4;   // px from the scroller's top: where a section counts as current
+// The strip pins the clock only while it is in use (open, or away from now): at rest it is the section bar alone, and
+// the line where a section counts as current, and where a jump lands, rise by the clock's height.
+function _almPinClockShown() {
+  var c = document.querySelector('#alm-pin .alm-clock');
+  return !!c && !c.classList.contains('alm-ck-rest');
+}
+function _almSecBarLine() { return ALM_SECBAR_LINE - (_almPinClockShown() ? 0 : ALM_PIN_CLOCK_H); }
 var ALM_SECBAR_HERO = 'today';
 var ALM_SECBAR_LOCK_MS = 3000;               // the longest a tap's scroll holds the bar
 // [key, the selectors of its parts (the first is where a tap lands), heading string]
@@ -2066,8 +2074,11 @@ function _almSecBarInit() {
 function _almPinPaint() {
   var pin = document.getElementById('alm-pin'), root = _almSecBarScroller(), clock = document.querySelector('#almanac-head .alm-clock');
   if (!pin || !root || !clock) return;
-  var on = clock.getBoundingClientRect().bottom < root.getBoundingClientRect().top + ALM_PIN_SHOW_PX || !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
+  var shown = _almPinClockShown();
+  var on = shown && clock.getBoundingClientRect().bottom < root.getBoundingClientRect().top + ALM_PIN_SHOW_PX || !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
   if (pin.hidden === on) pin.hidden = !on;
+  pin.classList.toggle('alm-pin-bare', !shown);
+  root.style.setProperty('--alm-pin-h', (_almSecBarLine() - 2) + 'px');   // where a section's jump lands (almanac.css)
 }
 function _almSecBarSync() {
   var st = _almSecBar, root = _almSecBarScroller();
@@ -2075,7 +2086,7 @@ function _almSecBarSync() {
   if (!st || !root || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
   // The section is the last one that has begun above the line: where it ends is no matter, or a jump that lands
   // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
-  var line = root.getBoundingClientRect().top + ALM_SECBAR_LINE, cur = ALM_SECBAR_HERO;
+  var line = root.getBoundingClientRect().top + _almSecBarLine(), cur = ALM_SECBAR_HERO;
   st.sections.forEach(function (s) {
     // A part not laid out (not drawn yet) reads as top 0: it has not begun.
     if (s.els.some(function (e) { var r = e.getBoundingClientRect(); return r.height > 0 && r.top <= line; })) cur = s.key;

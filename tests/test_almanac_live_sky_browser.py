@@ -109,7 +109,7 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
 
 
 def _settle(pg, iso):
-    pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", iso)
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)   # paused there: a jump keeps the pace
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.bodies.length",
         arg=_ms(iso),

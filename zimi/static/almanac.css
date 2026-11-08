@@ -146,6 +146,7 @@
 .alm-pin { position: absolute; top: 0; inset-inline: -16px; background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.9); animation: fadeIn 0.15s ease; }
 .alm-pin[hidden] { display: none; }
 .alm-pin-clock { height: 60px; box-sizing: border-box; padding: 6px 16px 0; }
+.alm-pin-bare .alm-pin-clock { display: none; }   /* the clock at rest: the strip is the section bar alone */
 .alm-secbar { height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-top: 1px solid var(--border); position: relative; }
 .alm-secbar[hidden] { display: none; }
 .alm-secbar-nav { flex: 1; min-width: 0; }
@@ -168,7 +169,7 @@
 /* A titled section scrolls to the top, under the bar, which is then its
    heading; one without a title stops just below the bar. */
 .alm-group { scroll-margin-top: 48px; }
-#almanac-calendar, #almanac-sunmap, #almanac-onthisday { scroll-margin-top: 106px; }
+#almanac-calendar, #almanac-sunmap, #almanac-onthisday { scroll-margin-top: var(--alm-pin-h, 106px); }
 @media (prefers-reduced-motion: reduce) { .alm-secbar { animation: none; } .alm-secbar-more svg { transition: none; } }
 /* About this data: closed until asked for; a reference, not a panel. */
 .alm-about summary.almanac-section-title { cursor: pointer; margin-bottom: 0; list-style-position: inside; }
@@ -663,7 +664,7 @@
    One date, one speed slider (almanac.js _almClockHtml), standing in the header, the pinned strip and the 3D view's foot.
    The date's parts are quiet until touched: a dotted underline says "this changes", amber says "you are changing it". */
 .alm-clock { position: relative; text-align: center; font-variant-numeric: tabular-nums; }
-.alm-clock[data-v="head"] { margin-bottom: 16px; }
+.alm-clock[data-v="head"] { margin-bottom: 16px; z-index: 2; }   /* above the Moon's sprite, whose clear corners reach up over the time at rest */
 .alm-ck-d { font-size: 22px; font-weight: 600; line-height: 28px; }   /* whole pixels: the Moon below stands on one, and the 3D view's first frame must match it */
 .alm-ck-l { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 4px; font-size: 16px; line-height: 20px; color: var(--text2); }
 .alm-ck-l > .alm-ck-t { white-space: nowrap; }

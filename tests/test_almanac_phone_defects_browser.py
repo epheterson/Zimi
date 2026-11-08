@@ -160,6 +160,7 @@ def test_the_scene_tools_do_not_overlap_and_take_a_44px_tap(browser, served, loc
     ctx, pg, errors = _page(browser, served, locale=locale)
     try:
         pg.wait_for_selector(".alm-sky-gear", state="attached", timeout=60_000)
+        pg.wait_for_function("() => typeof _almRevealing !== 'undefined' && !_almRevealing", timeout=READY_MS, polling=250)   # the veil over the first paint is gone
         boxes = pg.evaluate(
             "(sel) => [...document.querySelectorAll(sel)].map(e => { e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect();"
             " const cx = r.x + r.width / 2, cy = r.y + r.height / 2, hit = (dx, dy) => e.contains(document.elementFromPoint(cx + dx, cy + dy));"
@@ -199,7 +200,7 @@ def test_a_jump_repaints_the_sky_even_when_the_observer_is_stale(browser, served
         for i in range(4):
             target = 1_790_000_000_000 + i * 86_400_000 * 3 + i * 7_000_000
             pg.evaluate("() => { _skyState.inView = false; }")
-            pg.evaluate("(t) => _almScrubSettle(new Date(t), { land: true })", target)
+            pg.evaluate("(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t), { land: true }); }", target)
             pg.wait_for_function(
                 "(t) => _skyState && _skyState.paintedTime === t",
                 arg=target,
@@ -225,6 +226,8 @@ def test_the_ground_light_is_never_read_back_by_waiting(browser, served):
             timeout=READY_MS,
             polling=250,
         )
+        # A read already on its way (the first paint's) is not asked again: wait for it to land first.
+        pg.wait_for_function("() => !!_skyState.ground", timeout=120_000, polling=250)
         got = pg.evaluate("""() => {
               const s = _skyState;
               if (_skySetting('skin') !== 'beach') _skySet('skin', 'beach');
@@ -549,7 +552,7 @@ def test_a_tide_turns_time_keeps_clear_of_a_dot(browser, served):
         pg.wait_for_selector("#almanac-place .at-section", timeout=60_000)
         # The end of the day: the clock's dot stands where the day's last turn is.
         pg.evaluate(
-            "() => _almScrubSettle(new Date(2026, 9, 16, 23, 17), { land: false })"
+            "() => { _almClockSetRate(0); _almScrubSettle(new Date(2026, 9, 16, 23, 17), { land: false }); }"
         )
         # A slow runner repaints later: wait for the dot to stand at 23:17.
         pg.wait_for_function(
@@ -596,7 +599,7 @@ def test_a_turns_time_steps_back_while_the_clock_dot_is_on_it(browser, served):
         pg.wait_for_selector("#almanac-place .at-section", timeout=60_000)
         # A fixed day, drawn: its curve, its turns and their times measured.
         pg.evaluate(
-            "() => _almScrubSettle(new Date(%s), { land: false })" % DOT_DAY_UTC_MS
+            "() => { _almClockSetRate(0); _almScrubSettle(new Date(%s), { land: false }); }" % DOT_DAY_UTC_MS
         )
         pg.wait_for_function(
             """() => {
@@ -627,12 +630,12 @@ def test_a_turns_time_steps_back_while_the_clock_dot_is_on_it(browser, served):
         total = pg.evaluate(
             "() => document.querySelectorAll('#almanac-place .at-turn-l').length"
         )
-        pg.evaluate("(t) => _almScrubSettle(new Date(t), { land: false })", turn)
+        pg.evaluate("(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t), { land: false }); }", turn)
         pg.wait_for_function(
             "(n) => (%s)() < n" % shown, arg=total, timeout=30_000, polling=POLL_MS
         )
         pg.evaluate(
-            "(t) => _almScrubSettle(new Date(t + 3 * 3600e3), { land: false })", turn
+            "(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t + 3 * 3600e3), { land: false }); }", turn
         )
         pg.wait_for_function(
             "(n) => (%s)() === n" % shown, arg=total, timeout=30_000, polling=POLL_MS

@@ -21,6 +21,7 @@ GL_ARGS = [
     "--ignore-gpu-blocklist",
 ]
 LA = "America/Los_Angeles"
+ALM_SECBAR_H_PX = 44  # ALM_SECBAR_H
 ALM_LINGER_WAIT_MS = 15_000  # ALM_SPD_LINGER_MS, with room for a slow machine
 
 
@@ -445,6 +446,11 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
             timeout=5000,
             polling=POLL_MS,
         )
+        # At rest the strip is the section bar alone: the time pins only while the clock is in use.
+        bare = pg.evaluate("() => [getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display, document.getElementById('alm-pin').getBoundingClientRect().height]")
+        assert bare[0] == "none" and bare[1] < ALM_SECBAR_H_PX + 8, bare
+        pg.evaluate("() => _almClockOpenUp(true)")
+        pg.wait_for_function("() => getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display !== 'none'", timeout=5000, polling=POLL_MS)
         got = pg.evaluate(
             """() => { var pin = document.getElementById('alm-pin'), r = pin.getBoundingClientRect(), c = pin.querySelector('.alm-clock').getBoundingClientRect(), b = document.getElementById('alm-secbar').getBoundingClientRect();
           return { top: r.top, h: r.height, clockBottom: c.bottom, barTop: b.top, bars: document.querySelectorAll('.alm-secbar, .alm-pin').length,
@@ -457,9 +463,7 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
             got["clockBottom"] <= got["barTop"] + 1
             and abs(got["h"] - got["line"] + 4) <= 2
         ), got
-        # The pinned clock is the same clock: a tap opens it (at rest it is plain), and its day then edits it.
-        pg.click("#alm-pin .ep[data-p=day]")
-        pg.wait_for_function("() => !document.querySelector('#alm-pin .alm-clock').classList.contains('alm-ck-rest')", timeout=5000, polling=POLL_MS)
+        # The pinned clock is the same clock: tapping its day edits it.
         pg.click("#alm-pin .ep[data-p=day]")
         pg.wait_for_function(
             "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'pin'",
@@ -545,13 +549,10 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
             pg.evaluate("() => _almFocusInstant().getTime()") == held
             and pg.evaluate("() => _almRate") == 0
         )
-        # The view's time stands in a pill beside the date, and its parts show no underline until one is touched.
+        # The view's time stands in a pill beside the date (paused, the clock is in use: its parts are underlined).
         assert pg.evaluate(
             "() => !!document.querySelector('#ae-clock .alm-ck-pill > .alm-ck-t .ep[data-p=hour]')"
         )
-        assert pg.evaluate(
-            "() => getComputedStyle(document.querySelector('#ae-clock .ep[data-p=day]')).textDecorationColor"
-        ) in ("rgba(0, 0, 0, 0)", "transparent")
         # Typed in the view: the part is the same part.
         pg.click("#ae-clock .ep[data-p=day]")
         pg.wait_for_function(

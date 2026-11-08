@@ -1359,7 +1359,7 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             pg.evaluate("_aeTracksLoad()")
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             if CRAFT[key]:
-                pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", CRAFT[key])
+                pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", CRAFT[key])
             pg.evaluate(
                 "(k) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aeUpdate(_aeDisplayMs()); _aePreset(k); }",
                 key,
