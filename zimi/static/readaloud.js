@@ -544,6 +544,21 @@ function _ttsOnText(rects, x, y) {
   return false;
 }
 
+// A page opens mid-sentence more often than not (or on the tail of a
+// hyphenated word), its head on the page before. Reading begins at the first
+// sentence that starts on this page: what is read is what is seen, from a
+// whole sentence. (Reading on from the page before says a sentence over the
+// break whole, as one chunk: the book is one text.)
+// The next sentence is looked for in the stretch after this one (a whole-ZIM book's text is the whole book: segmenting
+// all of it to take one sentence doubled the wait for the first word).
+var _TTS_HEAD_LOOK = 2000;
+function _ttsSentenceHead(model, at) {
+  var sp = at > 0 && _ttsSentenceAt(model, at);
+  if (!sp || sp.s >= at) return at;
+  var lang = _ttsLang(model.doc), end = Math.min(model.text.length, sp.e + _TTS_HEAD_LOOK);
+  var next = _ttsSentenceSpans(model.text, sp.e, end, lang)[0] || (end < model.text.length && _ttsSentenceSpans(model.text, sp.e, model.text.length, lang)[0]);
+  return next ? next[0] : sp.e;
+}
 // What to read: the selection if there is one, else (in a book) from the
 // page that is open, else all of the article.
 function _ttsMakePlan(doc) {
@@ -559,7 +574,7 @@ function _ttsMakePlan(doc) {
   if (sel) { a = sel[0]; b = sel[1]; }
   else if (doc.__zbHere) {
     var at = doc.__zbHere();
-    if (at) a = Math.max(0, _ttsOffsetOf(model, at.startContainer, at.startOffset));
+    if (at) a = _ttsSentenceHead(model, Math.max(0, _ttsOffsetOf(model, at.startContainer, at.startOffset)));
   }
   return _ttsPlanFrom(model, a, b, !!sel);
 }

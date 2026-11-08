@@ -142,7 +142,12 @@
    scroller's top edge (the scroller's padding is where sticky counts from); the bar hangs from it across the scroller's width. 44px is
    ALM_SECBAR_H. The pills are the app's own .pills-row/.pill. */
 .alm-secbar-host { position: sticky; top: calc(-1 * var(--alm-pad-top)); z-index: 40; height: 0; }
-.alm-secbar { position: absolute; top: 0; inset-inline: -16px; height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--border); animation: fadeIn 0.15s ease; }
+/* The pinned strip: the clock over the section bar, one surface with one hairline under it. */
+.alm-pin { position: absolute; top: 0; inset-inline: -16px; background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.9); animation: fadeIn 0.15s ease; }
+.alm-pin[hidden] { display: none; }
+.alm-pin-clock { height: 60px; box-sizing: border-box; padding: 6px 16px 0; }
+.alm-pin-bare .alm-pin-clock { display: none; }   /* the clock at rest: the strip is the section bar alone */
+.alm-secbar { height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-top: 1px solid var(--border); position: relative; }
 .alm-secbar[hidden] { display: none; }
 .alm-secbar-nav { flex: 1; min-width: 0; }
 /* A pill's lit state is a gradient, which does not fade, so its text must not fade either: it would be the unlit
@@ -163,8 +168,8 @@
 .alm-secbar-list button[aria-current] { color: var(--amber); font-weight: 600; }
 /* A titled section scrolls to the top, under the bar, which is then its
    heading; one without a title stops just below the bar. */
-.alm-group { scroll-margin-top: -12px; }
-#almanac-calendar, #almanac-sunmap, #almanac-onthisday { scroll-margin-top: 46px; }
+.alm-group { scroll-margin-top: 48px; }
+#almanac-calendar, #almanac-sunmap, #almanac-onthisday { scroll-margin-top: var(--alm-pin-h, 106px); }
 @media (prefers-reduced-motion: reduce) { .alm-secbar { animation: none; } .alm-secbar-more svg { transition: none; } }
 /* About this data: closed until asked for; a reference, not a panel. */
 .alm-about summary.almanac-section-title { cursor: pointer; margin-bottom: 0; list-style-position: inside; }
@@ -282,10 +287,6 @@
 .almanac-progress-bar { height: 100%; background: var(--amber); border-radius: 2px; }
 .almanac-orrery-wrap { width: 100%; max-width: 500px; aspect-ratio: 1; margin: 0 auto; }
 .almanac-orrery-wrap canvas { width: 100%; height: 100%; display: block; }
-.orrery-controls { display: flex; align-items: center; gap: 6px; max-width: 500px; margin: 8px auto 0; padding: 0 4px; }
-.orrery-speed-word { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
-.orrery-ctrl-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; width: 32px; height: 28px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
-.orrery-ctrl-btn:hover { color: var(--amber); border-color: var(--amber-border); }
 .orrery-slider { flex: 1; min-width: 60px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
 /* While the time machine owns the clock the local controls are inert — say so. */
 .orrery-slider:disabled { opacity: 0.35; cursor: default; }
@@ -293,11 +294,7 @@
 .orrery-slider:disabled::-moz-range-thumb { background: var(--text3); cursor: default; }
 .orrery-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; box-shadow: 0 0 4px rgba(255,180,60,0.3); }
 .orrery-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; }
-.orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }
 /* The slider runs right to left in Arabic and Hebrew: its ends point that way too. */
-[dir="rtl"] .orrery-speed-end { transform: scaleX(-1); }
-.orrery-speed-label { color: var(--amber); font-size: 11px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; flex-shrink: 0; font-family: 'SF Mono', 'Fira Code', monospace; }
-.orrery-date { color: var(--text-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 90px; text-align: right; }
 #almanac-sunmap { position: relative; }
 .sunmap-flash {
   position: absolute; left: 50%; bottom: 10px; transform: translate(-50%, 6px);
@@ -309,7 +306,6 @@
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
 .orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: end; }
-.orrery-now { width: auto; padding: 0 10px; font-size: 11px; color: var(--amber); border-color: var(--amber-border); }
 /* Earlier missions under the ride, in line with the controls above. */
 .orrery-missions { max-width: 500px; margin: 4px auto 0; padding: 0 4px; font-size: 11px; color: var(--text3); }
 .orrery-mission { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
@@ -589,10 +585,6 @@
   body.almanac-mode .topbar-more { display: none !important; }
   body.almanac-mode .lang-selector-btn { display: flex !important; }
   body.almanac-mode .manage-btn { display: flex !important; }
-  .orrery-controls { gap: 3px; padding: 0 2px; flex-wrap: wrap; justify-content: center; }
-  .orrery-speed-label { font-size: 10px; min-width: 44px; }
-  .orrery-speed-end { font-size: 8px; }
-  .orrery-date { font-size: 10px; }
   .alm-cards { grid-template-columns: repeat(2, 1fr); }
   .alm-tz-wrap { gap: 12px; width: 100%; }
   .alm-tz-clock-side { width: 100%; gap: 12px; }
@@ -668,664 +660,96 @@
 .alm-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; color: var(--amber); }
 .alm-crossref-label .alm-link:hover, .alm-crossref-active .alm-crossref-label .alm-link { color: var(--amber); }
 
-/* ── Readout face for the time machine ─────────────────────────────────────
-   The dock's figures are a real fourteen-segment display face, bundled locally
-   under static/fonts/ and loaded from disk — the almanac must render
-   identically with the network unplugged, so nothing here may ever point at a
-   CDN. The license text ships beside the file in the same directory.
+/* ── The clock ─────────────────────────────────────────────────────────────
+   One date, one speed slider (almanac.js _almClockHtml), standing in the header, the pinned strip and the 3D view's foot.
+   The date's parts are quiet until touched: a dotted underline says "this changes", amber says "you are changing it". */
+.alm-clock { position: relative; text-align: center; font-variant-numeric: tabular-nums; }
+.alm-clock[data-v="head"] { margin-bottom: 16px; z-index: 2; }   /* above the Moon's sprite, whose clear corners reach up over the time at rest */
+.alm-ck-d { font-size: 22px; font-weight: 600; line-height: 28px; }   /* whole pixels: the Moon below stands on one, and the 3D view's first frame must match it */
+.alm-ck-l { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 4px; font-size: 16px; line-height: 20px; color: var(--text2); }
+.alm-ck-l > .alm-ck-t { white-space: nowrap; }
+.alm-ck-z { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }   /* pre: the space before the dot is kept; a long place name breaks rather than leaving the screen */
+.alm-clock:not([data-v="head"]) .alm-ck-l { flex-wrap: nowrap; margin-top: 0; height: 24px; font-size: 14px; overflow: hidden; }
+.alm-clock:not([data-v="head"]) .alm-ck-d { font-size: 14px; flex: none; margin-inline-end: 8px; }
+.alm-clock:not([data-v="head"]) .alm-ck-t { flex: none; }
+.alm-clock:not([data-v="head"]) .alm-ck-z { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.alm-ck-d, .alm-ck-t { color: var(--text); }
+.alm-ck-l > .alm-ck-t { color: var(--text2); }
+.alm-ck-r { flex: none; margin: 0 6px;   /* both sides: the rate reads left to right whatever the page's direction */
+   color: var(--amber); font-size: 13px; font-weight: 600; line-height: 1; }
+.alm-ck-r:empty { display: none; }
+.alm-ck-r:not(:empty) + .alm-ck-now { margin-inline-start: 0; }
+.alm-ck-now { flex: none; margin: 0; margin-inline-start: 6px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
+.alm-ck-now[hidden] { display: none; }
+@media (hover: hover) { .alm-ck-now:hover { background: var(--amber-border); } }
+.alm-ck-now:focus-visible, .alm-spd-play:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-ck-note { min-height: 0; font-size: 12.5px; line-height: 1.35; color: var(--amber); }
+.alm-ck-note:empty { display: none; }
+/* A part: dotted underline at rest, a finger's room round it (the nearest part to a tap wins, in the script). */
+.ep { position: relative; cursor: pointer; border-radius: 4px; text-decoration: underline dotted; text-decoration-color: var(--text3); text-decoration-thickness: 1px; text-underline-offset: 5px; transition: color .15s, text-decoration-color .15s; }
+.ep::before { content: ""; position: absolute; inset: -8px -4px; }
+@media (hover: hover) { .ep:hover { color: var(--amber); text-decoration-color: var(--amber); } }
+.alm-ck-run .ep { cursor: default; text-decoration-color: transparent; color: inherit; }
+.alm-ck-run .ep::before { display: none; }
+.ep:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.ep[data-p="ap"], .ep[data-p="era"] { text-decoration-style: solid; text-decoration-color: var(--amber-border); }
+/* The part being changed: the same text, lifted onto a field with an amber rule, and a soft ring that arrives with it. */
+.ep.on, .ef { color: var(--text); background: var(--surface2); border-radius: 6px 6px 2px 2px; text-decoration: none; box-shadow: inset 0 -2px 0 var(--amber), 0 0 0 3px var(--amber-glow); }
+.ep.on { padding: 0 4px; margin: 0 -4px; }
+.ef { font: inherit; font-weight: inherit; font-variant-numeric: tabular-nums; border: 0; padding: 0 4px; margin: 0 -1px; text-align: center; outline: 0; line-height: 1.15; min-width: 2ch; box-sizing: content-box; caret-color: var(--amber); }
+.ef::selection { background: var(--amber-border); }
+.alm-ck-editing .ef, .alm-ck-editing .ep.on { animation: alm-ck-in .16s cubic-bezier(.22, 1, .36, 1); }
+@keyframes alm-ck-in { from { transform: scale(.94); opacity: .6; } to { transform: none; opacity: 1; } }
+.alm-ck-ed-year .ep[data-p="era"] { display: none; }
+.alm-ck-era { margin-inline-start: 8px; padding: 3px 8px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; vertical-align: 3px; }
+.alm-ck-pop { position: absolute; z-index: 80; inset-inline-start: 50%; top: 100%; margin-top: 8px; transform: translateX(-50%); width: min(300px, calc(100vw - 32px)); box-sizing: border-box; padding: 6px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55); animation: alm-ck-pop .16s cubic-bezier(.22, 1, .36, 1); }
+[dir="rtl"] .alm-ck-pop { transform: translateX(50%); }
+@keyframes alm-ck-pop { from { opacity: 0; margin-top: 2px; } }
+.alm-ck-pop button { height: 44px; border: 0; border-radius: 9px; background: none; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+.alm-ck-pop button.cur { color: var(--amber); font-weight: 700; background: var(--amber-glow); }
+@media (hover: hover) { .alm-ck-pop button:hover { background: var(--hover); } }
+.alm-ck-pop button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.alm-clock[data-v="foot"] .alm-ck-pop { top: auto; bottom: 100%; margin: 0 0 8px; }
+/* The 3D view's foot: the time in a pill beside the date, and no underlines until a part is touched. */
+.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
+/* At rest (now, 1x, not opened) the clock is the plain date and time: nothing underlined, no slider. */
+.alm-ck-rest .ep { text-decoration-color: transparent; }
+.alm-ck-rest .alm-spd { display: none; }
 
-     DSEG14 Classic Bold  SIL OFL 1.1  keshikan  DSEG14Classic-OFL.txt
+/* The slider, in the look of Read aloud's speed slider (app.css .tts-speed-range): a 3px track, amber fill, a round thumb,
+   marks under it, a tap each. Differences, all forced by the job: the fill grows from the middle (real time), the thumb is
+   neutral there and amber everywhere else, and the middle stop is a play/pause button, which is also the thumb's face
+   while the thumb stands on it. */
+.alm-spd { --spd-thumb: 20px; --spd-track: 3px; --spd-rail: color-mix(in srgb, var(--text3) 40%, transparent); --spd-h: 32px; --lo: .5; --hi: .5; position: relative; max-width: 560px; margin: 10px auto 0; }
+.alm-spd-tight { --spd-h: 26px; margin-top: 4px; }
+.alm-spd-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: var(--spd-h); margin: 0; padding: 0; cursor: pointer; touch-action: none; border-radius: 2px;
+  background: linear-gradient(to right, transparent calc(var(--spd-thumb) / 2 + var(--lo) * (100% - var(--spd-thumb))), var(--amber) 0, var(--amber) calc(var(--spd-thumb) / 2 + var(--hi) * (100% - var(--spd-thumb))), transparent 0) no-repeat center / 100% var(--spd-track),
+              linear-gradient(var(--spd-rail), var(--spd-rail)) no-repeat center / 100% var(--spd-track); }
+.alm-spd-range::-webkit-slider-runnable-track { background: none; }
+.alm-spd-range::-moz-range-track { background: none; }
+.alm-spd-range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--spd-thumb); height: var(--spd-thumb); border-radius: 50%; border: 0; background: var(--text2); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); transition: transform .14s, box-shadow .14s, background .14s; }
+.alm-spd-range::-moz-range-thumb { width: var(--spd-thumb); height: var(--spd-thumb); border-radius: 50%; border: 0; background: var(--text2); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
+.alm-spd-hot .alm-spd-range::-webkit-slider-thumb { background: var(--amber); }
+.alm-spd-hot .alm-spd-range::-moz-range-thumb { background: var(--amber); }
+.alm-spd-drag .alm-spd-range::-webkit-slider-thumb { transform: scale(1.2); box-shadow: 0 0 0 7px var(--amber-glow), 0 1px 4px rgba(0, 0, 0, .55); }
+.alm-spd-range:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+/* The middle stop's button: a quiet ring on the track with its icon; on the thumb it is the thumb. */
+.alm-spd-play { position: absolute; top: calc(var(--spd-h) / 2); inset-inline-start: 50%; width: var(--spd-thumb); height: var(--spd-thumb); margin: 0; padding: 0; transform: translate(-50%, -50%); border-radius: 50%; border: 1px solid var(--border-strong, var(--border)); background: var(--bg); color: var(--text3); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .14s, background .14s, color .14s; }
+[dir="rtl"] .alm-spd-play { transform: translate(50%, -50%); }
+.alm-spd-play svg { width: 10px; height: 10px; display: block; }
+.alm-spd-play.alm-spd-on { pointer-events: none; border-color: transparent; background: var(--text2); color: var(--bg); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
+.alm-spd-hot .alm-spd-play.alm-spd-on { background: var(--amber); color: var(--on-amber); }
+.alm-spd-drag .alm-spd-play.alm-spd-on { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 0 7px var(--amber-glow), 0 1px 4px rgba(0, 0, 0, .55); }
+@media (hover: hover) { .alm-spd-play:not(.alm-spd-on):hover { color: var(--amber); border-color: var(--amber-border); } }
+.alm-spd-marks { position: relative; height: 18px; }
 
-   It is wired in through the single --tm-digit-font line on .alm-tm below, and
-   applies only to the readout cells — legends and keys keep the UI mono. */
-@font-face {
-  font-family: 'DSEG14 Classic';
-  src: url('fonts/DSEG14Classic-Bold.woff2') format('woff2');
-  font-weight: 700; font-style: normal; font-display: swap;
-}
-
-/* ── The time machine — the almanac's one deliberately skeuomorphic object ──
-   Date control still lives in the calendar; this is TIME control, built in the
-   same material world as the crystal lever and the brass close stud: a
-   blackened-brass case holding a bevelled faceplate, four domed screws, an
-   engraved brass hairline rail, and one recessed glass window with an amber
-   lamp burning behind the digits. Antique chronometer panel, not a movie prop.
-   Every material is a CSS gradient or shadow — no images. The only optional
-   asset is the readout face itself (see --tm-digit-font above), and the
-   default stack ships no font file at all.
-
-   Hierarchy is vertical, not three equal rows: DESTINATION is the lit primary
-   window (and the thing you edit); DISPLAYED and ACTUAL are fine engravings
-   below the rail; the offset from the present rides the plate's top-right as a
-   small lamp. That is what makes the dock short. Monospace, tabular figures;
-   transitions 150–250ms except the travel effects. */
-.alm-tm {
-  /* Hugs the bottom edge: 2px of breathing room plus the iOS home-indicator
-     inset so the dock rides just above the screen's true bottom. */
-  position: sticky; bottom: calc(2px + env(safe-area-inset-bottom, 0px)); z-index: 20;
-  display: none; align-items: stretch; gap: 7px;
-  max-width: 380px; margin: 18px auto 2px; padding: 7px;
-  /* Case: blackened brass — near-black body, warm rather than neutral, with a
-     lit top lip and a dark under-lip so it reads as a formed metal shell. */
-  background:
-    linear-gradient(180deg, rgba(255,240,205,0.07), transparent 28%),
-    linear-gradient(180deg, rgba(28,24,18,0.97), rgba(11,10,8,0.97));
-  border: 1px solid rgba(202,160,80,0.45); border-radius: 13px;
-  box-shadow:
-    0 6px 22px rgba(0,0,0,0.55),
-    inset 0 1px 0 rgba(255,240,205,0.15),
-    inset 0 -1px 0 rgba(0,0,0,0.6);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  /* Two faces on this instrument, named once each. --tm-ui-font is the plate's
-     lettering (legends, column headers, offset lamp, keys); --tm-digit-font is
-     the readout. The column headers need to name the UI face explicitly because
-     they live inside readout cells, which have already switched to the other. */
-  --tm-ui-font: 'SF Mono', 'Fira Code', ui-monospace, monospace;
-  font-family: var(--tm-ui-font);
-  /* Readout size, shared: the column headers reuse it so their `ch`-based
-     widths resolve to the same numbers as the figures they label. */
-  --tm-digit-size: 15px;
-  /* ── READOUT FACE — the one line that picks the dock's figures ──────────
-     The legends, the offset lamp and the keys keep the stack above; only the
-     readout cells (DESTINATION, DISPLAYED, ACTUAL and the edit inputs) follow
-     this custom property, so the face can change without touching anything
-     else on the plate. The fallbacks are the system mono stack, which is what
-     shows for the one frame before the segment face is decoded. */
-  --tm-digit-font: 'DSEG14 Classic', 'SF Mono', ui-monospace, monospace;
-  /* Gutter each readout cell carries around its figures — the visual space
-     between MON, DD, YYYY and HH:MM. One number, used by all three cell-width
-     calcs, because narrow phones tighten it (see the ≤380px block below) and a
-     segment face is wider per character than the system mono it replaced. */
-  --tm-cell-pad: 0.6em;
-}
-/* Hidden until summoned (hero-clock tap, calendar pick, or lever). Because it
-   is the last thing in the layout and sticks to the bottom, showing it only
-   extends the page below what the reader is looking at — never bumps scroll.
-   The rise is pure transform/opacity, so it can't shift layout either. */
-.alm-tm.alm-tm-open { display: flex; animation: alm-tm-rise .22s cubic-bezier(.22,1,.36,1) both; }
-@keyframes alm-tm-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-/* Close — a brass-ringed stud riding the dock's top-right corner, the same
-   material language as the lever shaft. Visually 22px; the transparent ::after
-   pad extends the hit area to 44px for touch. */
-.alm-tm-close {
-  position: absolute; top: -8px; right: -8px; z-index: 3;
-  width: 22px; height: 22px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid rgba(255,224,160,0.4); border-radius: 50%;
-  background:
-    radial-gradient(circle at 36% 30%, rgba(255,236,196,0.28), transparent 60%),
-    linear-gradient(180deg, #2c2c30, #131315);
-  color: rgba(255,224,160,0.75); cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
-  transition: color .15s, border-color .15s, box-shadow .15s;
-}
-.alm-tm-close::after { content: ""; position: absolute; inset: -11px; border-radius: 50%; }
-.alm-tm-close svg { width: 9px; height: 9px; display: block; }
-.alm-tm-close:hover, .alm-tm-close:focus-visible {
-  color: var(--amber); border-color: rgba(255,224,160,0.85); outline: none;
-  box-shadow: 0 0 10px rgba(245,158,11,0.35), 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
-}
-/* Tappable header date/time — both summon the time machine. The resting
-   dotted underline borrows the .alm-link idiom ("this text does something")
-   so the way in is discoverable before the first hover. */
-.alm-head-tap {
-  cursor: pointer; border-radius: 4px; transition: color .15s;
-  text-decoration: underline; text-decoration-style: dotted;
-  text-decoration-color: var(--amber-border); text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-}
-.alm-head-tap:hover { color: var(--amber); text-decoration-color: var(--amber); }
-.alm-head-tap:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow); }
-/* The faceplate — brushed brass, bevelled, screwed into the case. The 97deg
-   ramp is the anisotropic sheen of rolled brass (the same alloy stops as the
-   lever shaft, taken down into the dark so it sits in the app's night theme);
-   the 94deg repeating hairlines are the brush grain; the inset top/bottom
-   shadows are the bevel where the plate meets the case. */
-.alm-tm-panel {
-  position: relative; flex: 1 1 auto; min-width: 0;
-  display: flex; flex-direction: column; justify-content: center;
-  /* --tm-inset is the window's inner gutter; the engraved readings and the keys
-     share it so every column on the plate lines up on one right-hand edge. */
-  --tm-inset: 5px;
-  /* 8px top/bottom, not 6: at 6 the legend sat almost on the screw heads and
-     the whole plate read as packed on a phone. The extra two pixels each way
-     is most of what "give it room" turned out to mean. */
-  padding: 8px 11px; border-radius: 9px;
-  background:
-    linear-gradient(180deg, rgba(255,244,214,0.13), transparent 22%),
-    repeating-linear-gradient(93deg, rgba(255,244,214,0.035) 0 1px, rgba(0,0,0,0.045) 1px 2px),
-    linear-gradient(97deg, #201808 0%, #372a11 14%, #4c3b1a 26%, #2a2010 42%, #3f3113 60%, #503e1b 76%, #241b0b 100%);
-  border: 1px solid rgba(231,207,144,0.3);
-  box-shadow:
-    inset 0 1px 0 rgba(255,244,214,0.3),
-    inset 0 -1px 0 rgba(0,0,0,0.65),
-    0 1px 2px rgba(0,0,0,0.5);
-}
-/* Four domed brass screws holding the plate down — one pseudo-element, four
-   radial gradients, so they cost nothing in layout. Same highlight-then-metal-
-   then-shadow ramp as the close stud, at a quarter the size. The plate's 11px
-   side padding keeps the engraved legends clear of the heads. */
-.alm-tm-panel::before {
-  content: ""; position: absolute; inset: 0; border-radius: 9px; pointer-events: none;
-  background:
-    radial-gradient(circle 3px at 5px 5px, rgba(255,250,232,0.92), rgba(206,168,88,0.95) 42%, rgba(20,14,4,0.95) 88%, transparent 100%),
-    radial-gradient(circle 3px at calc(100% - 5px) 5px, rgba(255,250,232,0.92), rgba(206,168,88,0.95) 42%, rgba(20,14,4,0.95) 88%, transparent 100%),
-    radial-gradient(circle 3px at 5px calc(100% - 5px), rgba(255,250,232,0.92), rgba(206,168,88,0.95) 42%, rgba(20,14,4,0.95) 88%, transparent 100%),
-    radial-gradient(circle 3px at calc(100% - 5px) calc(100% - 5px), rgba(255,250,232,0.92), rgba(206,168,88,0.95) 42%, rgba(20,14,4,0.95) 88%, transparent 100%);
-}
-
-/* Face switching driven by data-mode. The rest face keeps its layout while the
-   motion face overlays it, so the dock is the same size in every state —
-   grabbing the lever can never resize the instrument under a finger. */
-.alm-tm-solo { display: none; }
-.alm-tm-rows { display: flex; flex-direction: column; }
-.alm-tm[data-mode="motion"] .alm-tm-rows { visibility: hidden; }
-.alm-tm[data-mode="motion"] .alm-tm-solo { display: flex; position: absolute; inset: 6px 11px; }
-
-/* Engraved cap line above the window: the plate's stamped legend on the left,
-   the offset-from-now lamp on the right. Occupying the legend's dead right
-   half is what lets the delta cost zero extra height. */
-/* Fixed height, not content height: the lamp's 10px type is taller than the
-   legend's 8px, so an unpinned row would grow by a pixel and a half the moment
-   an offset appeared — a resize on state change, which this dock must never do. */
-/* The right padding is --tm-inset, the same gutter the window and the engraved
-   rows use, so the offset lamp stops one column short of the plate edge and
-   lands on the same right-hand rule as the DISPLAYED/ACTUAL figures below it.
-   Without it the lamp was the only thing on the instrument touching the brass
-   edge, which is what read as crammed into the corner. 14px rather than 12
-   because a 10px lamp in a 12px box has a pixel of air above and below it. */
-.alm-tm-caps {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  height: 14px; padding-right: var(--tm-inset);
-}
-.alm-tm-cap {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 8px; font-weight: 700; line-height: 14px;
-  letter-spacing: 0.18em; text-transform: uppercase;
-  /* Stamped-and-filled lettering: light face, hard black shadow one pixel
-     down, so it reads as cut into the metal rather than printed on it. */
-  color: rgba(255,236,196,0.66); text-shadow: 0 1px 0 rgba(0,0,0,0.85);
-}
-/* Offset from the present — the one thing on the plate that is a lamp rather
-   than an engraving, because it is the live quantity while you travel. */
-.alm-tm-delta {
-  flex: 0 0 auto; white-space: nowrap;
-  font-size: 10px; line-height: 14px; font-weight: 700; letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  color: #ffd489; text-shadow: 0 0 7px rgba(245,158,11,0.7), 0 1px 0 rgba(0,0,0,0.8);
-}
-.alm-tm-delta:empty { display: none; }
-/* Narrow phones: the legend and the longest offset ("-41 years 11 months")
-   together outrun a 320px plate, and an ellipsized DESTINATION is worse than
-   slightly tighter type. Both shrink; nothing moves vertically. */
-@media (max-width: 380px) {
-  .alm-tm-cap { letter-spacing: 0.1em; }
-  .alm-tm-delta { font-size: 9px; }
-  /* The travelling window's narrow-phone sizing lives with the motion face's
-     own rules further down, not here: these two selectors have the same
-     specificity as the base ones, so a copy up here simply lost on source
-     order and never applied at any width. */
-}
-
-/* Column headers — MONTH DAY YEAR HOUR MIN stamped into the plate directly over
-   the digit groups they name, the time-circuits cue. Engraved exactly like the
-   legends above them (light face, hard black shadow a pixel down) but a size
-   smaller and dimmer, because they are a permanent map of the readout rather
-   than anything that changes: they should be there when you look for them and
-   invisible when you are not. Fixed height so they cost the plate the same few
-   pixels whatever the locale's words are. */
-.alm-tm-cols { display: flex; justify-content: center; height: 9px; margin-bottom: 1px; }
-/* Header cells ARE readout cells: same class, same width calc, same digit size
-   (see --tm-digit-size), so the two rows are one grid. They hold no ink of
-   their own; the word is the child below. */
-.alm-tm-cols .alm-tm-cell { font-size: var(--tm-digit-size); height: 9px; overflow: hidden; }
-.alm-tm-colcap {
-  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  font-family: var(--tm-ui-font);        /* the UI mono, not the segment face */
-  font-size: 7px; font-weight: 700; line-height: 9px; letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255,236,196,0.4); text-shadow: 0 1px 0 rgba(0,0,0,0.85);
-}
-/* The header row's stand-in for the readout's colon: same box, same negative
-   margins, no ink — HOUR and MIN stay centred over their own fields. */
-.alm-tm-colon-ghost { visibility: hidden; }
-
-/* The window — a well cut through the faceplate, ringed in brass, glazed. The
-   radial from below is the lamp burning behind the digits; the inset dark is
-   the depth of the cut; the 1px brass ring plus the light lower lip is the
-   bezel catching the room. ::after is the cover glass's diagonal reflection. */
-.alm-tm-glass {
-  position: relative; display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 32px; margin-top: 2px; padding: 0 var(--tm-inset);
-  border: 0; border-radius: 5px; overflow: hidden;
-  background:
-    radial-gradient(125% 150% at 50% 122%, rgba(245,158,11,0.36), rgba(245,158,11,0.09) 46%, transparent 72%),
-    linear-gradient(180deg, #17110a, #090705);
-  box-shadow:
-    inset 0 2px 5px rgba(0,0,0,0.9),
-    0 0 0 1px rgba(202,160,80,0.5),
-    0 1px 0 rgba(255,240,205,0.22);
-  font-family: inherit; color: inherit;
-  transition: box-shadow .15s;
-}
-.alm-tm-glass::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(163deg, rgba(255,255,255,0.10) 0 34%, rgba(255,255,255,0.03) 34.5% 36%, transparent 36.5%);
-}
-
-/* Segment fields — MON DD YYYY HH:MM. The material lives on the window and the
-   plate; a cell is pure geometry, so the primary reads as one lit dial rather
-   than five little boxes. Fixed widths ride --tm-mon-ch / --tm-year-ch (set by
-   _almTmSync from the longest value on the instrument) so the readouts stay one
-   aligned grid, and so swapping a value for its edit input cannot move a single
-   pixel. LTR even in RTL locales: it is an instrument readout, not prose. */
-.alm-tm-cells { display: flex; align-items: center; justify-content: center; gap: 2px; min-width: 0; direction: ltr; }
-.alm-tm-cell, .alm-tm-colon {
-  /* Set here rather than on the dock so the legends and keys keep the UI mono
-     while the figures take the instrument face. .alm-tm-cin inherits it through
-     its font: inherit, so an edited field never changes face mid-typing. The
-     ch-based cell widths above resolve against this font, so the grid retracks
-     itself whenever the face changes. */
-  font-family: var(--tm-digit-font, 'SF Mono', 'Fira Code', ui-monospace, monospace);
-}
-.alm-tm-cell {
-  /* flex: 0 0 auto, because these widths are a grid, not a suggestion. As flex
-     items they defaulted to shrink:1, so on a 320px plate the cells quietly
-     compressed a couple of pixels each to fit — enough that the column headers,
-     which are laid out on the full plate width, no longer sat over the figures
-     they name. A readout that does not fit should overflow visibly, not
-     silently retract its own grid. */
-  flex: 0 0 auto;
-  /* NO overflow: hidden here. The lamp's bloom is a 14px text-shadow; clipping
-     it to the cell box chopped the glow into one hard-edged slab per field, and
-     because the ch-based widths land on fractional pixels those slab edges read
-     as hairline seams — the window looked like five lit boxes butted together
-     instead of one dial. Nothing needs the clip: an <input> scrolls its own
-     value rather than overflowing, and the month/year columns are already sized
-     from the longest possible content by _almTmSync. */
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 3px;
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.alm-tm-cell-mon  { width: calc(var(--tm-mon-ch, 3) * 1ch + var(--tm-cell-pad)); }
-.alm-tm-cell-year { width: calc(var(--tm-year-ch, 4) * 1ch + var(--tm-cell-pad)); }
-.alm-tm-cell-day, .alm-tm-cell-hh, .alm-tm-cell-mi { width: calc(2ch + var(--tm-cell-pad)); }
-/* HH:MM is one reading, so the colon tucks between its two fields rather than
-   sitting in the inter-field rhythm of the date. */
-.alm-tm-cell-group { display: inline-flex; align-items: center; }
-.alm-tm-colon { margin: 0 -2px; font-weight: 700; opacity: 0.6; }
-/* Primary lamp: warm filament core, close halo, wide bloom, and a hard dark
-   edge underneath so the glyph sits behind glass instead of floating on it. */
-.alm-tm-glass .alm-tm-cell {
-  font-size: var(--tm-digit-size); font-weight: 700; letter-spacing: 0.04em;
-  color: #ffd489;
-  text-shadow: 0 0 5px rgba(245,158,11,0.85), 0 0 14px rgba(245,158,11,0.38), 0 1px 0 rgba(0,0,0,0.9);
-}
-.alm-tm-glass .alm-tm-colon { color: #ffd489; }
-
-/* Brass hairline rail — the engraved divider between the lit primary and the
-   fine secondary readings. Same alloy ramp as the lever shaft. */
-.alm-tm-rail {
-  /* The rail's margins are the breathing space between the lit primary and the
-     fine engravings; at 4/3 the two halves of the plate crowded each other. */
-  height: 2px; margin: 8px 0 7px; border-radius: 1px;
-  /* A cut groove, not a printed line: a dark score with a lit brass lip under
-     it, so the light reads as coming from above the plate. */
-  background:
-    linear-gradient(180deg, rgba(0,0,0,0.75) 0 1px, transparent 1px),
-    linear-gradient(90deg, transparent, rgba(214,172,88,0.85) 14%, rgba(255,236,180,0.95) 50%, rgba(214,172,88,0.85) 86%, transparent);
-}
-
-/* Secondary readings — engraved straight into the plate, no window, no boxes:
-   DISPLAYED (what the almanac is rendering) then ACTUAL (the present). Right-
-   aligned so the two columns of figures line up under each other.
-   position: relative because the keypad strip is absolutely positioned over
-   this block during an edit rather than reserving a row of its own. */
-.alm-tm-sec { position: relative; display: flex; flex-direction: column; gap: 4px; }
-.alm-tm-secrow {
-  /* ACTUAL is a <button> (it returns you to the present), DISPLAYED is a div;
-     the button reset here keeps them pixel-identical engravings either way. */
-  display: flex; align-items: center; gap: 6px; width: 100%; height: 14px;
-  padding: 0 var(--tm-inset) 0 0; margin: 0;
-  border: 0; background: none; color: inherit; font: inherit; text-align: left;
-}
-.alm-tm-seccap {
-  flex: 0 0 auto; white-space: nowrap;
-  font-size: 8px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase;
-  color: rgba(255,236,196,0.52); text-shadow: 0 1px 0 rgba(0,0,0,0.85);
-}
-.alm-tm-secrow .alm-tm-cells { flex: 1 1 auto; justify-content: flex-end; }
-.alm-tm-secrow .alm-tm-cell { font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; }
-.alm-tm-displayed .alm-tm-cell, .alm-tm-displayed .alm-tm-colon { color: rgba(247,232,199,0.86); text-shadow: 0 1px 0 rgba(0,0,0,0.9); }
-.alm-tm-now .alm-tm-cell, .alm-tm-now .alm-tm-colon { color: rgba(228,207,161,0.56); text-shadow: 0 1px 0 rgba(0,0,0,0.9); }
-/* The present keeps time: its colon ticks once a second. */
-.alm-tm-now .alm-tm-colon { animation: alm-tm-tick 1s steps(1) infinite; }
-@keyframes alm-tm-tick { 50% { opacity: 0.15; } }
-
-/* ACTUAL is also the way home: click the engraving and the almanac returns to
-   the present. Live only while parked away from now — _almTmSync flips the
-   button's `disabled`, which is what removes the cursor, the hover and the tab
-   stop when there is nothing to return to.
-   The interactive treatment is a lamp coming up behind lettering already cut
-   into the plate: the engraving brightens and gains a small amber halo, plus a
-   soft inset wash on the row. No box, no border, no rule that would look like
-   a control pasted onto the brass. */
-.alm-tm-now:enabled { cursor: pointer; transition: background .15s; }
-/* A radial that dies out well before the row's edges, not a filled rectangle:
-   an inset box-shadow or a flat wash would draw a lit oblong on the brass, and
-   the whole point of an engraving is that it has no box. The lamp sits under
-   the figures, which are right-aligned. */
-.alm-tm-now:enabled:hover, .alm-tm-now:enabled:focus-visible {
-  outline: none;
-  background: radial-gradient(85% 260% at 74% 52%, rgba(245,158,11,0.16), rgba(245,158,11,0.06) 45%, transparent 78%);
-}
-.alm-tm-now:enabled:hover .alm-tm-cell, .alm-tm-now:enabled:hover .alm-tm-colon,
-.alm-tm-now:enabled:focus-visible .alm-tm-cell, .alm-tm-now:enabled:focus-visible .alm-tm-colon {
-  color: #ffd489; text-shadow: 0 0 6px rgba(245,158,11,0.5), 0 1px 0 rgba(0,0,0,0.9);
-}
-.alm-tm-now:enabled:hover .alm-tm-seccap, .alm-tm-now:enabled:focus-visible .alm-tm-seccap {
-  color: rgba(255,236,196,0.9);
-}
-.alm-tm-now:enabled:active { background: radial-gradient(85% 260% at 74% 52%, rgba(245,158,11,0.26), rgba(245,158,11,0.09) 45%, transparent 78%); }
-
-/* DESTINATION is the editable readout — the window itself is the control. */
-.alm-tm-dest { cursor: pointer; }
-.alm-tm-dest:hover {
-  box-shadow:
-    inset 0 2px 5px rgba(0,0,0,0.9), inset 0 0 14px rgba(245,158,11,0.22),
-    0 0 0 1px rgba(231,207,144,0.85), 0 1px 0 rgba(255,240,205,0.3);
-}
-.alm-tm-dest:focus-visible {
-  outline: none;
-  box-shadow:
-    inset 0 2px 5px rgba(0,0,0,0.9),
-    0 0 0 1px var(--amber), 0 0 9px var(--amber-glow), 0 1px 0 rgba(255,240,205,0.3);
-}
-.alm-tm-editing .alm-tm-dest, .alm-tm-editing .alm-tm-dest:hover { cursor: default; }
-
-/* Destination edit — the same fields become inputs: value out, input in, same
-   geometry, same order. No pencil, no format flip. */
-.alm-tm-cin {
-  display: none; width: 100%; min-width: 0; background: none; border: 0;
-  padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit;
-  text-align: center; caret-color: var(--amber);
-}
-.alm-tm-cin:focus { outline: none; }
-.alm-tm-cin::selection { background: rgba(245,158,11,0.35); }
-.alm-tm-editing .alm-tm-dest .alm-tm-cval { display: none; }
-.alm-tm-editing .alm-tm-dest .alm-tm-cin { display: block; }
-/* Which field the caret is in, said with the lamp rather than with a box. The
-   whole readout falls back to a dim filament and the field being typed burns
-   at full brightness with a lit rule under it — the way a field is picked out
-   on a real instrument. The earlier treatment (an amber fill plus a 1px inset
-   ring) drew a hard-edged rounded rectangle inside the glass, which read as a
-   UI chip pasted onto the readout: the one element on the plate that looked
-   like a web page. Nothing here touches the cell's box, so no digit moves. */
-.alm-tm-editing .alm-tm-dest .alm-tm-cell,
-.alm-tm-editing .alm-tm-dest .alm-tm-colon {
-  color: rgba(255,212,137,0.44); text-shadow: 0 1px 0 rgba(0,0,0,0.9);
-}
-.alm-tm-editing .alm-tm-dest .alm-tm-cell:has(.alm-tm-cin:focus),
-.alm-tm-editing .alm-tm-dest .alm-tm-cell-group:has(.alm-tm-cin:focus) .alm-tm-colon {
-  color: #ffe3ab;
-  text-shadow: 0 0 5px rgba(245,158,11,0.9), 0 0 15px rgba(245,158,11,0.45), 0 1px 0 rgba(0,0,0,0.9);
-}
-/* The rule under the live field: an inset shadow rather than a border, so it
-   is drawn inside the existing box and adds no width. */
-.alm-tm-editing .alm-tm-dest .alm-tm-cell:has(.alm-tm-cin:focus) {
-  box-shadow: inset 0 -2px 0 -1px rgba(255,212,137,0.9);
-}
-
-/* Keypad strip — two small brass keys, right-aligned, shown only while a
-   destination is being typed. It is absolutely positioned over the secondary
-   readings (which go visibility:hidden for the duration) instead of occupying
-   a row of its own: out of flow means it cannot add height, so the dock is
-   identical in rest, edit and motion, and the plate is a row shorter than it
-   was when a NOW key had to be parked here permanently. */
-.alm-tm-keys {
-  /* Over the LAST engraved row only (bottom-anchored, one row tall), not over
-     the whole secondary block. Covering both rows left two small keys floating
-     in an otherwise empty half-plate, which is what made an edit look like a
-     different, emptier instrument. Anchoring to the bottom row keeps DISPLAYED
-     on the plate while you type, so the readout you are changing still has the
-     reading it is being changed from sitting under it. The -2px lets the 18px
-     keys centre on a 14px row; the panel's 8px bottom padding absorbs it. */
-  position: absolute; inset: auto 0 -2px 0; height: 18px; z-index: 2;
-  display: none; justify-content: flex-end; align-items: center; gap: 6px;
-  padding-right: var(--tm-inset);
-}
-.alm-tm-editing .alm-tm-keys { display: flex; }
-/* Only ACTUAL steps aside for the keys, and by visibility (not display) so the
-   block keeps its exact height, which is what pins the dock's. Losing the way
-   home for the length of an edit costs nothing: × is right there, and it is
-   the row the keys have to stand on. */
-.alm-tm-editing .alm-tm-now { visibility: hidden; }
-.alm-tm-key {
-  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
-  min-height: 18px; padding: 1px 9px; border-radius: 5px;
-  background: linear-gradient(180deg, #6a5222 0%, #47370f 48%, #2a2010 100%);
-  border: 1px solid rgba(231,207,144,0.42);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,240,205,0.24);
-  color: rgba(255,236,196,0.9); cursor: pointer; font-family: inherit;
-  font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  transition: color .15s, border-color .15s, transform .05s, box-shadow .05s;
-}
-.alm-tm-key:hover { color: #fff3d8; border-color: rgba(255,240,205,0.85); }
-.alm-tm-key:active { transform: translateY(1px); box-shadow: 0 0 0 rgba(0,0,0,0.7), inset 0 1px 2px rgba(0,0,0,0.6); }
-.alm-tm-key:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow), 0 1px 0 rgba(0,0,0,0.7); }
-/* The lit key: GO on the keypad, and the month you are already on over on the
-   month plate. One filament, named once — if the amber ever changes it must
-   change in both places or the instrument stops looking wired together. */
-.alm-tm-key-go, .alm-tm-mon-cur { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: rgba(255,240,205,0.75); color: #241a05; }
-.alm-tm-key-go:hover, .alm-tm-mon-cur:hover { color: #000; }
-
-/* Month plate — the dock's answer to the calendar's month grid, for the one
-   destination field that takes a word instead of digits. Tapping MONTH drops
-   this out of the instrument while the field underneath stays focused and
-   typable; a cell only writes into that field, GO still travels.
-
-   It is built out of the dock's own materials, not the app's card surface: the
-   faceplate's brushed-brass ramp and bevel for the plate, the keypad's key for
-   the cells, the plate legends' hard black shadow for the lettering. A generic
-   dark popover with a soft drop shadow — which is what the calendar's grid is,
-   correctly, since it belongs to a card — would read here as a web widget
-   pasted onto a machined instrument. Same mistake the selected-field highlight
-   was making before it became a lamp.
-
-   Opens UPWARD, and that is not a preference: the dock is sticky to the bottom
-   of the viewport, so the calendar's `top: calc(100% + 6px)` would put every
-   cell off-screen. The 12px clears the case's 7px padding and its lit top lip
-   with a little air. Absolutely positioned inside the faceplate, so it is out
-   of flow — the dock measures the same open, closed, editing or travelling. */
-.alm-tm-monpop {
-  position: absolute; bottom: calc(100% + 12px); left: 0; right: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
-  padding: 6px; border-radius: 8px;
-  /* The faceplate's three layers, one radius smaller: sheen, brush grain, the
-     97deg brass ramp. Opaque, because it hangs over the page. */
-  background:
-    linear-gradient(180deg, rgba(255,244,214,0.13), transparent 22%),
-    repeating-linear-gradient(93deg, rgba(255,244,214,0.035) 0 1px, rgba(0,0,0,0.045) 1px 2px),
-    linear-gradient(97deg, #201808 0%, #372a11 14%, #4c3b1a 26%, #2a2010 42%, #3f3113 60%, #503e1b 76%, #241b0b 100%);
-  border: 1px solid rgba(231,207,144,0.3);
-  /* The plate's own bevel, plus a real cast shadow — this one is off the case
-     and over the page, so it is the only part of the dock that throws one. */
-  box-shadow:
-    inset 0 1px 0 rgba(255,244,214,0.3),
-    inset 0 -1px 0 rgba(0,0,0,0.65),
-    0 8px 22px rgba(0,0,0,0.6);
-  /* Rises the way the dock itself does — same keyframes, so there is one
-     motion on this instrument rather than two that nearly match. */
-  animation: alm-tm-rise .16s cubic-bezier(.22,1,.36,1) both;
-}
-/* A cell IS a keypad key (.alm-tm-key carries the brass, the lit top edge, the
-   press and the focus ring); only the shape differs, so only the shape is
-   restated. 26px tall by ~48px wide on a 320px plate — the largest target the
-   instrument's own scale allows, and comfortably tappable. The tighter
-   tracking is because twelve abbreviations have to sit in four columns at
-   every locale's word length, and Cyrillic and German both run long. */
-.alm-tm-moncell {
-  min-height: 26px; padding: 2px 1px; letter-spacing: 0.06em; font-size: 9.5px;
-  overflow: hidden; white-space: nowrap;
-}
-
-/* Motion face — "only one time matters": the same plate legend and the same
-   glass window, one size up, laid over the (hidden but still measured) rest
-   face so the dock's height cannot change when the lever is grabbed. The
-   offset lamp rides the legend line, exactly where it sits at rest. */
-/* No width here: the absolute left/right insets define the box, and an explicit
-   width would win over the right inset and push the window past the plate. */
-.alm-tm-solo {
-  flex-direction: column; justify-content: center; gap: 2px;
-  padding: 0; border: 0; background: none; cursor: pointer; font-family: inherit;
-  color: inherit; text-align: left;
-  /* The travelling readout sizes itself to this box (see the font-size below).
-     Safe as a query container: the width comes from the left/right insets that
-     position this face over the plate, never from its own contents. */
-  container-type: inline-size;
-}
-/* 10px of glass either side of the figures — the gutter the travelling face
-   never had. */
-.alm-tm-solo .alm-tm-glass { height: 52px; padding: 0 10px; }
-/* The one number on the instrument that cannot be a constant. The readout is
-   thirteen fixed-width segment characters plus its inter-field gutters, so its
-   width is ~13.6× the font size; a fixed 21px was ~290px of figures in a
-   ~250px window on a phone, and the glass's overflow:hidden quietly sliced a
-   character off each end — the travelling face was clipped at EVERY width, not
-   just narrow ones. 6.5cqw is that ratio inverted against the window it has to
-   fit, so the figures grow to fill a wide plate and step down on a narrow one,
-   always landing inside the gutters above. The 21px cap keeps them from
-   outgrowing the glass on a tablet.
-   The gutter between fields is deliberately left at the rest face's --tm-cell-
-   pad rather than tightened to buy a bigger figure: at 0.4em the separation
-   stopped scaling with the glyphs, and a date like JUL 21 2141 ran its day and
-   year together into "212141". Field spacing has to stay proportional to the
-   figures, so the size is what gives.
-   The plain 13px above is for engines without container queries: smaller than
-   ideal on a wide plate, but it fits the narrowest one, and a readout that
-   fits is worth more than one that is the right size on some screens and
-   clipped on others. */
-.alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: 13px; font-size: min(21px, 6.5cqw); }
-.alm-tm-solo .alm-tm-cap { color: rgba(255,212,137,0.9); }
-.alm-tm-solo:focus-visible { outline: none; }
-.alm-tm-solo:focus-visible .alm-tm-glass {
-  box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 0 0 1px var(--amber), 0 0 9px var(--amber-glow);
-}
-/* Narrow phones. The dock does not resize here either way: the motion face is
-   absolutely positioned over the (still measured) rest face, so its height is
-   not the dock's height. These must sit AFTER the base rules above — same
-   specificity, so source order is the whole argument. */
-@media (max-width: 380px) {
-  .alm-tm-solo .alm-tm-glass { height: 44px; padding: 0 8px; }
-  /* A shade more of the window than the base ratio takes, because the narrow
-     breakpoint also tightens --tm-cell-pad below: the readout is proportionally
-     narrower here, so the same 6.5cqw would have left twenty pixels of dark
-     glass at each end on a 360px phone rather than filled it. */
-  .alm-tm-solo .alm-tm-glass .alm-tm-cell { font-size: min(21px, 7cqw); }
-  /* Tighten the gutters rather than shrink the figures: a 320px plate is
-     ~179px of readout, and the segment face's characters are wider than the
-     system mono's, so MON DD YYYY HH:MM at the full 0.6em gutter clipped a
-     couple of pixels off each end of the window. Smaller digits would have
-     been the wrong trade on the one screen where legibility matters most.
-     A point off the figures comes with it: MON DD YYYY HH:MM is thirteen
-     characters, and thirteen characters of a segment face simply do not fit a
-     320px plate at 15px however the gutters are cut. 14px bold segments are
-     still the largest, brightest thing on the instrument.
-     Placed after the width declarations above deliberately: this overrides
-     .alm-tm at equal specificity, so source order is what decides it. */
-  .alm-tm { --tm-cell-pad: 0.36em; --tm-digit-size: 14px; }
-  /* The window's own inner gutter comes in with it — and because every column
-     on the plate is aligned off --tm-inset, the engravings and the keys move
-     with the glass rather than drifting out of register. */
-  .alm-tm-panel { --tm-inset: 3px; }
-  /* The engraved rows take a step down too, and their legends give up some
-     letter-spacing. DISPLAYED is the longest word on the plate and its figures
-     are right-aligned into whatever is left over; at full size the segment face
-     filled that remainder exactly and the digits butted into the word. */
-  .alm-tm-secrow .alm-tm-cell { font-size: 10px; }
-  .alm-tm-seccap { letter-spacing: 0.06em; }
-  /* Column headers give up spacing before they give up letters: the HOUR
-     column is only two figures wide, and the longest translation of it
-     ("Stunde") ellipsized on a 320px plate at the full tracking. */
-  .alm-tm-colcap { font-size: 6.5px; letter-spacing: 0.03em; }
-}
-
-/* Side-mounted lever — the 1960 Time Machine's spinning crystal disc on a
-   brass shaft. A recessed track holds a static rod (the "stick"); the crystal
-   disc (#alm-tm-lever) is the drag target and rides up/down the rod. All
-   gradient/box-shadow — GPU-cheap; the only animation is a slow facet spin. */
-.alm-tm-lever-col { flex: 0 0 52px; display: flex; align-items: stretch; justify-content: center; }
-.alm-tm-track {
-  /* min-height is a floor, not the driver: the track stretches to whatever the
-     faceplate is tall. Keeping it under the plate's height is what lets the
-     dock be short — a 132px floor used to set the dock's height by itself. */
-  position: relative; width: 42px; min-height: 92px; align-self: stretch;
-  display: flex; align-items: center; justify-content: center; border-radius: 20px;
-  background: rgba(0,0,0,0.45);
-  box-shadow: inset 0 2px 5px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.03);
-  touch-action: none; user-select: none; -webkit-user-select: none;
-}
-/* The shaft/stick — a rounded brass rod running the length of the track, with a
-   soft amber sheen up its centre so the crystal looks lit from within. */
-.alm-tm-shaft {
-  content: ""; position: absolute; top: 12px; bottom: 12px; width: 7px; border-radius: 4px;
-  background:
-    linear-gradient(to bottom, rgba(245,158,11,0.28), rgba(245,158,11,0.08) 45%, rgba(245,158,11,0.28)),
-    linear-gradient(90deg, #5a3f11, #caa050 45%, #e7cf90 52%, #caa050 60%, #5a3f11);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 4px rgba(0,0,0,0.4);
-}
-.alm-tm-endstop { position: absolute; width: 0; height: 0; opacity: 0.5; z-index: 3; }
-.alm-tm-endstop-fwd { top: 5px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid var(--amber); }
-.alm-tm-endstop-back { bottom: 5px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--amber); }
-/* The crystal disc — translucent, faceted, glowing amber. */
-.alm-tm-lever {
-  position: relative; z-index: 2; flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background:
-    radial-gradient(circle at 36% 30%, rgba(255,255,255,0.55), rgba(255,236,196,0.16) 38%, transparent 62%),
-    radial-gradient(circle at 50% 50%, rgba(30,22,8,0.35), rgba(20,14,4,0.5));
-  border: 1px solid rgba(255,224,160,0.55);
-  box-shadow:
-    0 0 12px rgba(245,158,11,0.45), 0 3px 9px rgba(0,0,0,0.5),
-    inset 0 0 10px rgba(255,236,196,0.3), inset 0 1px 2px rgba(255,255,255,0.4);
-  cursor: grab; touch-action: none;
-}
-.alm-tm-lever:active { cursor: grabbing; }
-.alm-tm-lever-spring { transition: transform .26s cubic-bezier(.22,1.2,.36,1); }
-/* Faceted core: a cut-glass star of amber wedges, slowly rotating like the
-   film's disc. .alm-tm-crystal frames it; .alm-tm-crystal-facets spins. */
-.alm-tm-crystal {
-  position: absolute; inset: 5px; border-radius: 50%; overflow: hidden;
-  box-shadow: inset 0 0 6px rgba(255,236,196,0.35);
-}
-.alm-tm-crystal-facets {
-  position: absolute; inset: -20%; border-radius: 50%;
-  background:
-    conic-gradient(from 0deg,
-      rgba(255,240,205,0.42), rgba(245,158,11,0.12) 30deg, rgba(255,240,205,0.42) 60deg,
-      rgba(245,158,11,0.12) 90deg, rgba(255,240,205,0.42) 120deg, rgba(245,158,11,0.12) 150deg,
-      rgba(255,240,205,0.42) 180deg, rgba(245,158,11,0.12) 210deg, rgba(255,240,205,0.42) 240deg,
-      rgba(245,158,11,0.12) 270deg, rgba(255,240,205,0.42) 300deg, rgba(245,158,11,0.12) 330deg,
-      rgba(255,240,205,0.42));
-  animation: alm-tm-crystal-spin 16s linear infinite;
-}
-@keyframes alm-tm-crystal-spin { to { transform: rotate(360deg); } }
-.alm-tm-lever:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--amber-glow), 0 0 14px var(--amber-glow), 0 3px 8px rgba(0,0,0,0.5); }
-
-/* Landing "zap" — a short, controlled shake. transform-only, so it never
-   shifts layout or opens a scrollbar. */
-@keyframes alm-tm-shake {
-  0%,100% { transform: translate(0,0) rotate(0); }
-  15% { transform: translate(-2px,1px) rotate(-0.4deg); }
-  30% { transform: translate(3px,-1px) rotate(0.5deg); }
-  45% { transform: translate(-2px,2px) rotate(-0.3deg); }
-  60% { transform: translate(2px,-1px) rotate(0.3deg); }
-  80% { transform: translate(-1px,1px) rotate(-0.15deg); }
-}
-.alm-tm-zap { animation: alm-tm-shake .45s cubic-bezier(.36,.07,.19,.97) both; }
+.alm-spd-mark { position: absolute; top: 0; inset-inline-start: calc(var(--spd-thumb) / 2 + var(--at) * (100% - var(--spd-thumb))); transform: translateX(-50%); min-width: 28px; height: 18px; padding: 0; border: 0; background: none; color: var(--text3); font: inherit; font-size: 11px; line-height: 18px; white-space: nowrap; cursor: pointer; }
+[dir="rtl"] .alm-spd-mark { transform: translateX(50%); }
+.alm-spd-mark[aria-current] { color: var(--amber); font-weight: 600; }
+.alm-spd-ticks { position: absolute; inset: 0; pointer-events: none; }
+.alm-spd-ticks i { position: absolute; top: 50%; inset-inline-start: calc(var(--spd-thumb) / 2 + var(--at) * (100% - var(--spd-thumb))); width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; border-radius: 50%; background: var(--text3); opacity: .75; }
+[dir="rtl"] .alm-spd-ticks i { margin: -1.5px -1.5px 0 0; }
+@media (min-width: 700px) { .alm-spd-mark { font-size: 12px; } }
 
 /* Beyond the precise-astronomy window — a quiet note, never an error. */
 .alm-beyond { font-size: 11px; color: var(--text3); font-style: italic; text-align: center; margin-top: 6px; }
@@ -1361,12 +785,9 @@
 .alm-year-input:focus { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .alm-tm-lever-spring, .alm-tm-glass, .alm-tm-key, .alm-year, .alm-month, .alm-month-cell, .alm-head-tap { transition: none; }
-  .alm-tm-zap, .alm-tm-crystal-facets, .alm-tm-now .alm-tm-colon { animation: none; }
-  /* The month plate still appears, it just does not rise. (Its cells need no
-     line of their own — they are .alm-tm-key, already listed above.) */
-  .alm-tm-monpop { animation: none; }
-  .alm-tm.alm-tm-open { animation: none; }
+  .alm-year, .alm-month, .alm-month-cell { transition: none; }
+  .alm-ck-editing .ef, .alm-ck-pop, .alm-pin { animation: none; }
+  .alm-spd-range::-webkit-slider-thumb, .alm-spd-play { transition: none; }
   /* Month changes repaint in place — no glide (#75). */
   .alm-grid.alm-glide-next, .alm-grid.alm-glide-prev { animation: none; }
 }
@@ -1399,27 +820,19 @@ body.look-open { overflow: hidden; }
    :root.night-red) and nothing else. Hard-coded warm, violet and white tones of the tiles, clocks,
    time machine, buttons and the Look view's own marks become the palette's red. The sky and the
    pictures turn red themselves (canvas[data-red], the canvas filter chain). */
-:root.night-red #almanac-view :is(.alm-card-golden, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], [class*="alm-tm-"], .alm-sky-look, .alm-sky-gear) { color: var(--text2); }
+:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-gear) { color: var(--text2); }
 /* The clocks' day, dawn, dusk and night tints (amber, coral, violet, blue) are one dim red wash in Red;
    the glyph (sun, moon) still says which part of the day it is. */
 :root.night-red #almanac-view :is(.alm-tz-day, .alm-tz-dawn, .alm-tz-dusk, .alm-tz-night) { background: linear-gradient(180deg, var(--amber-glow), var(--surface) 70%); border-color: var(--border); }
 :root.night-red #almanac-view .alm-tz-glyph { color: var(--text2) !important; }
-:root.night-red #almanac-view :is(.alm-tz-city-card, .alm-tm-panel, .alm-tm-key, .alm-tm-close, .alm-tm-lever) { border-color: var(--border); }
+:root.night-red #almanac-view :is(.alm-tz-city-card) { border-color: var(--border); }
 :root.night-red #almanac-view :is(.alm-sky-look, .alm-sky-gear)::before { border-color: var(--border); background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-cell { background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-tz-hand { background-color: var(--amber); }
 :root.night-red #almanac-view input { background-color: var(--surface2); accent-color: var(--amber); }
 :root.night-red #almanac-view :is(svg circle, svg path)[stroke] { stroke: currentColor; }
-/* The time machine's brass, glass and amber lamps: in Red a black plate with red lettering and red
-   lamps, the lever seen through the pictures' red filter (it is drawn, not lettered). */
-:root.night-red #almanac-view :is(.alm-tm, .alm-tm-panel, .alm-tm-glass, .alm-tm-rail, .alm-tm-close) { background: var(--surface); border-color: var(--border); box-shadow: none; }
-:root.night-red #almanac-view :is(.alm-tm-panel, .alm-tm-glass)::before, :root.night-red #almanac-view :is(.alm-tm-panel, .alm-tm-glass)::after { background: none; }
-:root.night-red #almanac-view .alm-tm-glass { background: #000; }
-:root.night-red #almanac-view .alm-tm * { text-shadow: none; }
-:root.night-red #almanac-view .alm-tm-glass :is(.alm-tm-cell, .alm-tm-colon), :root.night-red #almanac-view .alm-tm-delta { color: var(--text); }
-:root.night-red #almanac-view .alm-tm-displayed :is(.alm-tm-cell, .alm-tm-colon) { color: var(--text2); }
-:root.night-red #almanac-view .alm-tm-now :is(.alm-tm-cell, .alm-tm-colon), :root.night-red #almanac-view :is(.alm-tm-cap, .alm-tm-colcap, .alm-tm-seccap) { color: var(--text2); opacity: .75; }
-:root.night-red #almanac-view #alm-tm-track { filter: var(--red-picture) brightness(.6); }
+/* The clock in Red: the palette's own red, the pinned strip and the pop-up on the palette's dark. */
+:root.night-red #almanac-view :is(.alm-pin, .alm-ck-pop) { background: var(--bg); border-color: var(--border); box-shadow: none; }
 :root.night-red .almanac-look { color: var(--text); }
 :root.night-red .look-btn { color: var(--text); border-color: var(--border-strong); background: rgba(0,0,0,.7); }
 :root.night-red .look-main { background: var(--amber2); color: #000; }

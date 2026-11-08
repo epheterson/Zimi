@@ -51,6 +51,7 @@ const S = {
   matchMedia() { return { matches: false, addEventListener() {} }; }
 };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var _currentLang = "en"; function t(k) { return k; } var _almanacOpen = false;', S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
 vm.runInContext(require('./moon_model.cjs')(), S);

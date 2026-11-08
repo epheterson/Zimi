@@ -592,7 +592,7 @@ function _skyGLView(s) {
 // dark site); the true horizon is a choice, and so is whatever else was
 // chosen: only what the viewer set is saved, so a default that changes later
 // reaches everyone who never chose.
-var SKY_SETTINGS_KEY = 'zimi_sky_settings';
+var SKY_SETTINGS_KEY = SK.ALM_SKY;
 var SKY_SETTING_DEFAULTS = { skin: 'beach', lines: 'off', size: 'auto', dial: 0 };   // a real sky has no lines: a figure shows when its star is tapped
 var SKY_SETTING_VALUES = { skin: ['horizon', 'beach'], lines: ['off', 'lines', 'names'], size: ['auto', 'true', 'large'] };
 var _skySettings = null, _skyChosen = {};
@@ -610,7 +610,7 @@ function _skySetting(k) { if (!_skySettings) _skySettings = _skyLoadSettings(); 
 function _skySet(k, v) {
   if (_skySetting(k) === v) return;
   _skySettings[k] = _skyChosen[k] = v;
-  try { localStorage.setItem(SKY_SETTINGS_KEY, JSON.stringify(_skyChosen)); } catch (e) {}
+  _prefWrite(SKY_SETTINGS_KEY, JSON.stringify(_skyChosen));
   var s = _skyState;
   if (s) { if (k === 'dial' && s.eph) _skyBrightness(s); s.baseDirty = true; if (k === 'skin') _skyArm(); _skyKick(); }
 }
@@ -2242,10 +2242,46 @@ function _skyGLParams(s) {
     horizon: M, eclPole: up, sunVec: _skyEnu(e.sun.az, e.sunGeoAlt), dial: _skySetting('dial'),
     seed: s.twinkle, scint: !_skyReduceMotion(), lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, moonDisc: s.moonDisc };
 }
+// The page's first sky is held behind the Almanac's veil (almanac.js) until it is the picture that stays: the GPU's,
+// with its stars (and the Milky Way where the sky is dark enough for it), or the Canvas 2D sky where there is no GPU.
+// Nothing is painted meanwhile that would be painted over: the GPU starts at once, not when the page is quiet.
+function _skyFirstSight(s) { return !s.hosted && !s.settled && typeof _almVeilIsUp === 'function' && _almVeilIsUp(); }
+// Whether the GPU has nothing more to bring to the first picture: it is not to be had, or it is up with its data.
+function _skyGPUComplete(s) {
+  if (_sg === false) return true;
+  if (!_sg || !_sg.ready) return false;
+  return (_sg.starCount > 0 || _sgFailed.stars) && (_sg.mwReady || _sgFailed.mw || !_sgWantsMilkyWay(s.eph.sunGeoAlt)) &&
+    (!!_skyNames || _sgFailed.names || _sgFailed.stars);   // the names come with the stars: they only fill the tap's list, but arriving late they repaint the whole sky
+}
+// The beach's ground takes its light from the sky as drawn, read back a frame later (_skyCaptureLight): the first
+// picture waits for that answer, or the sea changes colour a moment after it is shown.
+function _skyGroundKnown(s, gl) { return !gl || s.lens || _skySetting('skin') !== 'beach' || !!s.ground; }
+// The picture on the canvas is the one that stays: painted through the GPU (or the Canvas 2D sky, where there is no
+// GPU) with everything it will have, the ground's light and, at a coast the page has been to, the sea.
+function _skyIsFinal(s) {
+  return !!s.base && !!s.baseKeeps && !s.baseDirty && _skyGPUComplete(s) && _skyGroundKnown(s, s.baseGl) &&
+    !(typeof _almSeaWaiting === 'function' && _almSeaWaiting());
+}
+// Look again whether the first picture is final (something other than a paint settled: the sea's answer), and say so.
+function _skyMaybeSettle() {
+  var s = _skyState;
+  if (!s || s.settled || !s.eph || !_skyIsFinal(s)) return;
+  s.settled = true;
+  if (typeof _almSkySettled === 'function') _almSkySettled();
+}
+function _skyAwaitingGPU(s) {
+  if (!_skyFirstSight(s)) return false;
+  if (_sg === null) _sgInit();
+  if (_sgReady()) {   // no paint is made meanwhile to ask for these
+    _sgLoadData(_skyKickDirty, _sgWantsMilkyWay(s.eph.sunGeoAlt));
+    _skyEnsureStarData(_skyKickDirty);
+  }
+  return !_skyGPUComplete(s);
+}
 function _skyGLSky(s) {
-  if (!_sgInitSoon() || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
+  if (!_sgInitSoon(_skyFirstSight(s)) || !_sgReady()) return null;   // not started, or still compiling: the Canvas 2D sky this time, the GPU's when it is ready
   try {
-    _sgLoadData(_skyKickDirty);
+    _sgLoadData(_skyKickDirty, s.hosted || _sgWantsMilkyWay(s.eph.sunGeoAlt));
     return _sgDraw(_skyGLParams(s));
   } catch (err) {
     _sgDisable();
@@ -2479,11 +2515,13 @@ function _skyPaintBase(s, ts) {
   s.baseBodies = s.bodies;
   s.baseDirty = !!s.moonAnim;
   s.paintedTime = s.nowTime;
+  s.baseKeeps = _sg === false || !!gl; s.baseGl = !!gl;   // painted through the GPU, or where there is none, the page's own sky
 }
 function _skyPaint(ts) {
   var s = _skyState;
   if (!s || !s.eph || !s.canvas.isConnected) return;
   if (!(s.W > 0 && s.H > 0)) return;   // not laid out (hidden, or 0 tall): a 0-sized canvas cannot be drawn from
+  if (_skyAwaitingGPU(s)) return;      // the GPU's sky is on its way and the page waits for it (_skyFirstSight): its kick paints
   if (s.baseDirty || !s.base || s.moonAnim) _skyPaintBase(s, ts);
   var ctx = s.canvas.getContext('2d'), beach = _skySetting('skin') === 'beach' && !s.lens;
   ctx.clearRect(0, 0, s.W, s.H);
@@ -2504,6 +2542,7 @@ function _skyPaint(ts) {
   }
   if (s.issUp && !_skyTimers.iss) _skyTimers.iss = setTimeout(_skyIssTick, SKY_ISS_MS);
   if (_skyRedOn()) _skyRedWash(ctx, s);
+  _skyMaybeSettle();   // the first picture is on the canvas: the page may be shown
 }
 
 // How far the sky has turned since it was painted, in device px: the Earth
@@ -3132,6 +3171,8 @@ function _skyCaption(s) {
 // named star is named.
 
 function _sky3DAvailable() { return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported; }
+// The 3D view's file is not in yet but can be had (almanac.js _almLoadEarth: it comes once the page is shown and quiet).
+function _sky3DComing() { return typeof window.openAlmanacEarth !== 'function' && typeof _almLoadEarth === 'function'; }
 
 // Distance (CSS px) from a point to a segment.
 function _skySegDist(px, py, x0, y0, x1, y1) {
@@ -3263,9 +3304,10 @@ function _skyHideTip() {
 // What a tap on a body does; returns 'view' (the 3D view opened) or 'tip'.
 function _skyAct(b) {
   if (b.type === 'star' && b.con) { _skyRevealFigure(b.con); if (!_skyConst) { _skyLoadConstellations(_skyKickDirty); } }
-  if ((b.type === 'sun' || b.type === 'moon') && _sky3DAvailable()) {
+  if ((b.type === 'sun' || b.type === 'moon') && (_sky3DAvailable() || _sky3DComing())) {
     _skyHideTip();
-    window.openAlmanacEarth({ target: b.type, from: 'sky' });
+    var open = function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: b.type, from: 'sky' }); };
+    if (_sky3DAvailable()) open(); else _almLoadEarth().then(open, function () {});   // the view's file comes at the first tap on a body
     return 'view';
   }
   _skyShowTip(b);

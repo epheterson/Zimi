@@ -86,16 +86,14 @@ def test_fly_to_the_apollo_11_site(served):
                 polling=200,
             )
             pg.evaluate("_aePreset('moon')")
-            # Landmarks are off until turned on: the Moon names only Apollo's six landings (the ones on the near side).
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return (" + LABELS + ")().length > 0; }", timeout=60_000, polling=250)
-            quiet = pg.evaluate(LABELS)
-            assert set(quiet) <= APOLLO and "Apollo 11" in quiet, quiet
-            # The gear's switch turns them on, remembered on this device.
-            pg.click("#ae-gear")
-            pg.check("#ae-set-body input[name='ae-lm-layer']")
+            # Landmarks are off until turned on: the Moon names nothing, its landing sites included.
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeLm; }", timeout=60_000, polling=200)
+            pg.wait_for_timeout(600)
+            assert pg.evaluate(LABELS) == []
+            # The pin turns them on, pressed and remembered on this device.
+            pg.click("#ae-lm-btn")
             assert pg.evaluate("localStorage.getItem('zimi_alm_landmarks')") == "1"
-            pg.click("#ae-gear")
+            assert pg.get_attribute("#ae-lm-btn", "aria-pressed") == "true"
             # Seen from the Earth's side, the near side faces us: its landings are named.
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return ("
@@ -114,7 +112,7 @@ def test_fly_to_the_apollo_11_site(served):
             )
             card = pg.inner_text("#ae-card")
             assert "Apollo 11" in card and "Landing site" in card, card
-            pg.click("#ae-lm-fly")
+            pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")   # as Go to flies to a site (the card has no button for it)
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
                 timeout=30_000,
@@ -124,7 +122,7 @@ def test_fly_to_the_apollo_11_site(served):
             # with the row under it, the view keeps most of the screen).
             assert not pg.query_selector("#ae-lm-fly")
             box = pg.evaluate("""() => { var c = document.getElementById('ae-card').getBoundingClientRect(), v = document.getElementById('ae-views').getBoundingClientRect(),
-                t = document.getElementById('ae-time'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
+                t = document.getElementById('ae-clock'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
             assert box["card"] <= 0.25 * VIEW["height"] + 1, box
             assert box["top"] >= 0.6 * VIEW["height"], box
             assert not box["time"], box   # the time row steps aside while a card is open

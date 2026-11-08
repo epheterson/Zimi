@@ -102,7 +102,7 @@ test.describe('the orrery', () => {
     await page.touchscreen.tap(mars.x, mars.y);
     const btn = await page.locator('#orrery-tooltip [data-orr-fly]').boundingBox();
     expect(btn.height).toBeGreaterThanOrEqual(32);
-    const slider = await page.locator('#orrery-slider').boundingBox();
+    const slider = await page.locator('#almanac-head .alm-spd-range').boundingBox();
     expect(slider.height).toBeGreaterThanOrEqual(24);
     await ctx.close();
   });
@@ -145,11 +145,10 @@ for (const lang of ['', 'he']) {
     await expect(page.locator('#ae-lbl-you')).toBeVisible();
     await page.waitForTimeout(1500);   // the turn to face it
 
-    // The first-open hint stands clear of the You dot at the middle.
-    const hint = await page.locator('#ae-hint').boundingBox();
+    // No hint on opening: the view is clear.
+    await expect(page.locator('#ae-hint')).not.toHaveClass(/ae-show/);
     const you = await page.locator('#ae-lbl-you').boundingBox();
     expect(you, 'the You label is shown').not.toBeNull();
-    expect(hint.y >= you.y + you.height || hint.y + hint.height <= you.y).toBe(true);
 
     // The dot sits on the place, whichever way the label hangs.
     expect(await markOffset(page, 'ae-lbl-you', SAN_FRANCISCO)).toBeLessThan(2);
@@ -177,13 +176,13 @@ for (const lang of ['', 'he']) {
     expect(card.y).toBeGreaterThan(0);
 
     // A tapped button keeps no hover look (it read as pressed).
-    const idle = await page.locator('[data-ae-speed="60"]').evaluate((b) => getComputedStyle(b).backgroundColor);
+    const idle = await page.locator('#ae-clock .alm-spd-mark[data-stop="5"]').evaluate((b) => getComputedStyle(b).color);
     // (A software-rendered WebGL frame can be slow on a busy machine, and a
     // tap waits for the button to hold still across frames.)
-    await page.locator('[data-ae-speed="60"]').tap({ timeout: 30000 });
-    await page.locator('[data-ae-speed="1"]').tap({ timeout: 30000 });
+    await page.locator('#ae-clock .alm-spd-mark[data-stop="5"]').tap({ timeout: 30000 });
+    await page.evaluate(() => _almClockSetRate(1));
     await page.waitForTimeout(300);
-    const tapped = await page.locator('[data-ae-speed="60"]').evaluate((b) => getComputedStyle(b).backgroundColor);
+    const tapped = await page.locator('#ae-clock .alm-spd-mark[data-stop="5"]').evaluate((b) => getComputedStyle(b).color);
     expect(tapped).toBe(idle);
     await ctx.close();
   });
@@ -309,30 +308,25 @@ test.describe('what a tap on the orrery does', () => {
 
 test.describe('the Earth view', () => {
   for (const size of [PHONE, DESKTOP]) {
-    test(`away from now, Now is lit under the date (${size.width}px)`, async ({ browser }) => {
+    test(`away from now, Now stands in the clock's line, lit (${size.width}px)`, async ({ browser }) => {
       test.setTimeout(120000);
       const ctx = await browser.newContext({ viewport: size, serviceWorkers: 'block' });
       const page = await ctx.newPage();
       await openAlmanac(page);
       await openEarth(page);
-      await expect(page.locator('#ae-now')).toBeHidden();
+      await expect(page.locator('#ae-clock .alm-ck-now')).toBeHidden();
       await page.evaluate(() => _aeGoTo(Date.UTC(2024, 3, 8, 18, 17, 17)));   // away from now, at the 2024 total solar eclipse
-      await expect(page.locator('#ae-now')).toBeVisible();
-      const date = await page.locator('#ae-when b').boundingBox();
-      const now = await page.locator('#ae-now').boundingBox();
-      expect(now.y).toBeGreaterThanOrEqual(date.y + date.height);
-      expect(now.y - (date.y + date.height)).toBeLessThan(16);
-      expect(now.x + now.width).toBeGreaterThan(date.x);
+      await expect(page.locator('#ae-clock .alm-ck-now')).toBeVisible();
+      const date = await page.locator('#ae-clock .alm-ck-d').boundingBox();
+      const now = await page.locator('#ae-clock .alm-ck-now').boundingBox();
+      expect(Math.abs(now.y + now.height / 2 - (date.y + date.height / 2))).toBeLessThan(14);   // the same line
       expect(date.height).toBeLessThan(24);   // the date keeps one line
-      const look = await page.locator('#ae-now').evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
-      expect(look[1]).toBe('rgb(0, 0, 0)');
-      expect(look[0]).not.toMatch(/rgba\(18, 18, 20/);
-      // The eclipse line stands below it, not under it.
+      const look = await page.locator('#ae-clock .alm-ck-now').evaluate((el) => getComputedStyle(el).color);
+      expect(look).not.toBe('rgb(138, 138, 148)');   // lit, not the quiet grey
+      // The eclipse line stands at the top, clear of the foot.
       await expect(page.locator('#ae-status')).not.toBeEmpty();
-      const status = await page.locator('#ae-status').boundingBox();
-      expect(status.y).toBeGreaterThanOrEqual(now.y + now.height);
-      await page.locator('#ae-now').click();
-      await expect(page.locator('#ae-now')).toBeHidden();
+      await page.locator('#ae-clock .alm-ck-now').click();
+      await expect(page.locator('#ae-clock .alm-ck-now')).toBeHidden();
       await ctx.close();
     });
   }

@@ -143,7 +143,7 @@ def test_the_views_own_close_takes_its_step_back(browser, served):
             timeout=READY_MS,
             polling=200,
         )
-        pg.click("#ae-back")
+        pg.click("#back-btn")
         pg.wait_for_function("() => !_aeIsOpen", timeout=10_000)
         pg.wait_for_timeout(400)
         assert not pg.evaluate("!!(history.state && history.state.aeView)")
@@ -160,6 +160,7 @@ def test_the_scene_tools_do_not_overlap_and_take_a_44px_tap(browser, served, loc
     ctx, pg, errors = _page(browser, served, locale=locale)
     try:
         pg.wait_for_selector(".alm-sky-gear", state="attached", timeout=60_000)
+        pg.wait_for_function("() => typeof _almRevealing !== 'undefined' && !_almRevealing", timeout=READY_MS, polling=250)   # the veil over the first paint is gone
         boxes = pg.evaluate(
             "(sel) => [...document.querySelectorAll(sel)].map(e => { e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect();"
             " const cx = r.x + r.width / 2, cy = r.y + r.height / 2, hit = (dx, dy) => e.contains(document.elementFromPoint(cx + dx, cy + dy));"
@@ -199,7 +200,7 @@ def test_a_jump_repaints_the_sky_even_when_the_observer_is_stale(browser, served
         for i in range(4):
             target = 1_790_000_000_000 + i * 86_400_000 * 3 + i * 7_000_000
             pg.evaluate("() => { _skyState.inView = false; }")
-            pg.evaluate("(t) => _almScrubSettle(new Date(t), { land: true })", target)
+            pg.evaluate("(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t), { land: true }); }", target)
             pg.wait_for_function(
                 "(t) => _skyState && _skyState.paintedTime === t",
                 arg=target,
@@ -216,7 +217,8 @@ def test_a_jump_repaints_the_sky_even_when_the_observer_is_stale(browser, served
 def test_the_ground_light_is_never_read_back_by_waiting(browser, served):
     """Reading the ground's colours back from the GPU with getImageData stopped the page until the GPU answered (a 25 s
     task on a software GPU, a real stall on a slow phone). The read is asked for once per light, into a buffer on the
-    GPU, and taken on a later task: no repaint reads anything synchronously, and the colours still arrive."""
+    GPU, and taken on a later task: no repaint reads anything synchronously, and the colours still arrive.
+    """
     ctx, pg, errors = _page(browser, served)
     try:
         pg.wait_for_function(
@@ -224,6 +226,8 @@ def test_the_ground_light_is_never_read_back_by_waiting(browser, served):
             timeout=READY_MS,
             polling=250,
         )
+        # A read already on its way (the first paint's) is not asked again: wait for it to land first.
+        pg.wait_for_function("() => !!_skyState.ground", timeout=120_000, polling=250)
         got = pg.evaluate("""() => {
               const s = _skyState;
               if (_skySetting('skin') !== 'beach') _skySet('skin', 'beach');
@@ -248,11 +252,18 @@ def test_the_ground_light_is_never_read_back_by_waiting(browser, served):
         ctx.close()
 
 
-def test_the_hero_is_the_picture_of_the_moon_and_nothing_stands_in_for_it(browser, served):
+def test_the_hero_is_the_picture_of_the_moon_and_nothing_stands_in_for_it(
+    browser, served
+):
     """Eric, 2026-10-18: the Moon was simpler as a picture that opens the 3D view. No live 3D scene stands in the hero
-    (it once showed only a shadow), and there is no pull-back through the solar system."""
+    (it once showed only a shadow), and there is no pull-back through the solar system.
+    """
     ctx, pg, errors = _page(browser, served, query="?rest=system")
     try:
+        # The 3D view is made ready when the Moon is touched, not behind the page.
+        pg.evaluate(
+            "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
+        )
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=READY_MS,
@@ -264,8 +275,15 @@ def test_the_hero_is_the_picture_of_the_moon_and_nothing_stands_in_for_it(browse
               canvasInHero: !!document.querySelector('.almanac-hero canvas#ae-canvas'),
               sprite: (() => { const i = document.querySelector('.almanac-hero img.almanac-moon-sprite'); return !!i && i.complete && i.naturalWidth > 0 && getComputedStyle(i).visibility !== 'hidden'; })()
             })""")
-        assert got == {"live": False, "landing": False, "canvasInHero": False, "sprite": True}, got
-        assert pg.evaluate("() => typeof _lpRestSystem === 'undefined' && typeof openAlmanacSpace === 'undefined'")
+        assert got == {
+            "live": False,
+            "landing": False,
+            "canvasInHero": False,
+            "sprite": True,
+        }, got
+        assert pg.evaluate(
+            "() => typeof _lpRestSystem === 'undefined' && typeof openAlmanacSpace === 'undefined'"
+        )
         assert not pg.query_selector(".orrery-space-btn")
     finally:
         ctx.close()
@@ -380,7 +398,9 @@ def test_german_almanac_speaks_german(browser, served):
             })""")
         assert got["date"] == "17. Oktober 2026", got
         # A numbered month is written 1 + 月; a named one already ends in it.
-        zh = pg.evaluate("() => { const was = _currentLang; _currentLang = 'zh'; try { return _almDayMonthYear(17, '一月', '2000'); } finally { _currentLang = was; } }")
+        zh = pg.evaluate(
+            "() => { const was = _currentLang; _currentLang = 'zh'; try { return _almDayMonthYear(17, '一月', '2000'); } finally { _currentLang = was; } }"
+        )
         assert zh == "2000年一月17日", zh
         assert got["holiday"] == "Weltwassertag", got
         assert got["num"] == "3,5", got
@@ -407,26 +427,33 @@ def test_german_almanac_speaks_german(browser, served):
 def test_the_orrery_is_still_at_now_under_reduced_motion(browser, served):
     ctx, pg, errors = _page(browser, served, reduced=True)
     try:
-        try:   # the orrery is set up after the page's first paint; a slow runner takes longer than a fixed wait
-            pg.wait_for_function("() => typeof _orreryPlaying !== 'undefined' && document.getElementById('orrery-speed-label') && !_orreryPlaying", timeout=15_000)
+        try:  # the orrery is set up after the page's first paint; a slow runner takes longer than a fixed wait
+            pg.wait_for_function(
+                "() => typeof _orreryPlaying !== 'undefined' && !!document.getElementById('almanac-orrery') && !_orreryPlaying",
+                timeout=15_000,
+            )
         except Exception:
             pass
         got = pg.evaluate(
-            "() => ({ playing: _orreryPlaying, speed: _orrerySpeed, raf: !!_almanacOrreryRAF, offset: _orreryTimeOffset,"
-            " label: document.getElementById('orrery-speed-label').textContent })"
+            "() => ({ playing: _orreryPlaying, scenery: _orreryScenery, raf: !!_almanacOrreryRAF, offset: _orrerySceneryMs, rate: _almRate })"
         )
         assert (
             got["playing"] is False
-            and got["speed"] == 1
+            and got["scenery"] is False
+            and got["rate"] == 1
             and not got["raf"]
             and got["offset"] == 0
         ), got
-        assert "100" not in got["label"], got
     finally:
         ctx.close()
     ctx, pg, errors = _page(browser, served, reduced=False)
     try:
-        assert pg.evaluate("() => _orreryPlaying && _orrerySpeed === 100000")
+        # The orrery is set up after the page's first paint: it opens spinning, as scenery, with the clock at real time.
+        pg.wait_for_function(
+            "() => typeof _orreryScenery !== 'undefined' && _orreryScenery",
+            timeout=30_000,
+        )
+        assert pg.evaluate("() => _orreryPlaying && _orreryScenery && _almRate === 1")
     finally:
         ctx.close()
 
@@ -446,23 +473,24 @@ def test_a_sky_left_alone_stops_asking_for_frames_and_wakes_on_a_touch(browser, 
         )
         # Being looked at, the breeze runs (once the page has seen the sky come into view).
         pg.wait_for_function(
-            "() => !!_skyTimers.sway || !!_almanacSkyRAF", timeout=10_000, polling=POLL_MS
+            "() => !!_skyTimers.sway || !!_almanacSkyRAF",
+            timeout=10_000,
+            polling=POLL_MS,
         )
         # The sky's own frames: the world clock ticks a frame a second by design, and the satellite poll asks for one
         # to paint the positions it brings; neither is the sky running a loop.
-        pg.evaluate(
-            """() => { window.__raf = 0; const r = window.requestAnimationFrame;
+        pg.evaluate("""() => { window.__raf = 0; const r = window.requestAnimationFrame;
               window.requestAnimationFrame = function (f) {
                 const at = new Error().stack || '';
                 if (at.indexOf('almanac-sky.js') >= 0 && at.indexOf('_skyPollSatsTick') < 0) window.__raf++;
-                return r.call(window, f); }; }"""
-        )
+                return r.call(window, f); }; }""")
         # Left alone: backdated attention holds once the page has stopped re-arming the sky (a late redraw, a
         # scene re-made after the place or the tides arrive, counts as opening it again).
         pg.wait_for_function(
             "() => { const t = performance.now(); if (window.__armAt === undefined) { window.__armAt = _skyAttentionAt; window.__armT = t; }"
             " if (_skyAttentionAt !== window.__armAt) { window.__armAt = _skyAttentionAt; window.__armT = t; } return t - window.__armT > 1500; }",
-            timeout=20_000, polling=100,
+            timeout=20_000,
+            polling=100,
         )
         pg.evaluate(
             "() => { _skyAttentionAt = performance.now() - 10 * SKY_BREEZE_IDLE_MS; }"
@@ -524,7 +552,7 @@ def test_a_tide_turns_time_keeps_clear_of_a_dot(browser, served):
         pg.wait_for_selector("#almanac-place .at-section", timeout=60_000)
         # The end of the day: the clock's dot stands where the day's last turn is.
         pg.evaluate(
-            "() => _almScrubSettle(new Date(2026, 9, 16, 23, 17), { land: false })"
+            "() => { _almClockSetRate(0); _almScrubSettle(new Date(2026, 9, 16, 23, 17), { land: false }); }"
         )
         # A slow runner repaints later: wait for the dot to stand at 23:17.
         pg.wait_for_function(
@@ -571,22 +599,20 @@ def test_a_turns_time_steps_back_while_the_clock_dot_is_on_it(browser, served):
         pg.wait_for_selector("#almanac-place .at-section", timeout=60_000)
         # A fixed day, drawn: its curve, its turns and their times measured.
         pg.evaluate(
-            "() => _almScrubSettle(new Date(%s), { land: false })" % DOT_DAY_UTC_MS
+            "() => { _almClockSetRate(0); _almScrubSettle(new Date(%s), { land: false }); }" % DOT_DAY_UTC_MS
         )
         pg.wait_for_function(
             """() => {
               const c = _at.curve, t = %s;
               return !!c && t >= c.start && t <= c.end && _at.labels && _at.labels.length > 0 &&
                 document.querySelectorAll('#almanac-place circle.at-dot').length > 1;
-            }"""
-            % DOT_DAY_UTC_MS,
+            }""" % DOT_DAY_UTC_MS,
             timeout=30_000,
             polling=POLL_MS,
         )
         # The turns the dot can stand on: where it is at the turn, the time written over it (the first turn of a
         # day that begins just after midnight has its time moved clear of the edge, and the dot is not on that).
-        turn = pg.evaluate(
-            """() => {
+        turn = pg.evaluate("""() => {
               const c = _at.curve, labels = _at.labels, g = AT_YIELD_GAP;
               for (const dot of document.querySelectorAll('#almanac-place circle.at-dot')) {
                 const cx = +dot.getAttribute('cx');
@@ -596,17 +622,20 @@ def test_a_turns_time_steps_back_while_the_clock_dot_is_on_it(browser, served):
                 if (labels.some(l => l.x0 < x + g && x - g < l.x1 && l.y0 < y + g && y - g < l.y1)) return a;
               }
               return null;
-            }"""
-        )
-        assert turn is not None, "no turn of the day has its time where the dot can stand"
+            }""")
+        assert (
+            turn is not None
+        ), "no turn of the day has its time where the dot can stand"
         shown = "() => [...document.querySelectorAll('#almanac-place .at-turn-l')].filter(e => !e.classList.contains('at-yield')).length"
-        total = pg.evaluate("() => document.querySelectorAll('#almanac-place .at-turn-l').length")
-        pg.evaluate("(t) => _almScrubSettle(new Date(t), { land: false })", turn)
+        total = pg.evaluate(
+            "() => document.querySelectorAll('#almanac-place .at-turn-l').length"
+        )
+        pg.evaluate("(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t), { land: false }); }", turn)
         pg.wait_for_function(
             "(n) => (%s)() < n" % shown, arg=total, timeout=30_000, polling=POLL_MS
         )
         pg.evaluate(
-            "(t) => _almScrubSettle(new Date(t + 3 * 3600e3), { land: false })", turn
+            "(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t + 3 * 3600e3), { land: false }); }", turn
         )
         pg.wait_for_function(
             "(n) => (%s)() === n" % shown, arg=total, timeout=30_000, polling=POLL_MS
@@ -693,6 +722,10 @@ def test_opening_look_makes_no_second_three_and_no_texture_error(browser, served
     msgs = []
     pg.on("console", lambda m: msgs.append(m.text))
     try:
+        # The 3D view is made ready when the Moon is touched, not behind the page.
+        pg.evaluate(
+            "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
+        )
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=READY_MS,
@@ -712,7 +745,9 @@ def test_opening_look_makes_no_second_three_and_no_texture_error(browser, served
         ]
         assert not bad, bad
         # Look is the sky edge to edge: no globe of its own to load, and no way out to a second view.
-        assert pg.evaluate("() => !document.getElementById('look-globe') && !document.getElementById('look-earth')")
+        assert pg.evaluate(
+            "() => !document.getElementById('look-globe') && !document.getElementById('look-earth')"
+        )
         assert not errors, errors
     finally:
         ctx.close()

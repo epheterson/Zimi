@@ -206,6 +206,8 @@ def test_the_moon_is_its_picture_and_the_solar_system_has_no_flown_view(
 ):
     ctx, pg, errors = _page(browser, served)
     try:
+        # The 3D view is made ready when the Moon is touched, not behind the page (a page only looked at never loads it).
+        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=240_000,

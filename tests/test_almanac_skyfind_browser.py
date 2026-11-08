@@ -99,7 +99,7 @@ def _almanac(browser, served, no_sensors=False):
     pg.evaluate(
         "() => document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' })"
     )
-    pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", NIGHT)
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", NIGHT)
     pg.wait_for_function(
         "(t) => _skyState.nowTime === t && !_skyState.moonAnim",
         arg=_ms(NIGHT),
