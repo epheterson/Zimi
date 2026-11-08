@@ -3306,8 +3306,10 @@ function _skyAct(b) {
   if (b.type === 'star' && b.con) { _skyRevealFigure(b.con); if (!_skyConst) { _skyLoadConstellations(_skyKickDirty); } }
   if ((b.type === 'sun' || b.type === 'moon') && (_sky3DAvailable() || _sky3DComing())) {
     _skyHideTip();
-    var open = function () { if (_almanacOpen && typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: b.type, from: 'sky' }); };
-    if (_sky3DAvailable()) open(); else _almLoadEarth().then(open, function () { if (_almanacOpen) _skyShowTip(b); });   // the view's file comes at the first tap on a body
+    // Not after the Almanac has closed; the sky elsewhere (a game's study) has no Almanac to be open.
+    var stillHere = function () { return typeof _almanacOpen === 'undefined' || _almanacOpen; };
+    var open = function () { if (stillHere() && typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: b.type, from: 'sky' }); };
+    if (_sky3DAvailable()) open(); else _almLoadEarth().then(open, function () { if (stillHere()) _skyShowTip(b); });   // the view's file comes at the first tap on a body
     return 'view';
   }
   _skyShowTip(b);
