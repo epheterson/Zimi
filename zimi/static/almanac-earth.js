@@ -2723,10 +2723,16 @@ var AE_SPIN_FACES_KEY = SK.ALM_SPIN_FACES, AE_FULL_ROOT_CLASS = 'ae-full-on';
 var AE_SPIN_METRICS = { labelW: AE_SPIN_LABEL_W, labelH: AE_SPIN_LABEL_H, gap: AE_SPIN_GAP };
 var AE_SPIN_FULL_METRICS = { labelW: 56, labelH: 30, gap: 6 };   // full screen: the name alone under each planet
 var AE_SPIN_FULL_TOOL_PX = 46;           // the corner tools' strip, taken from the side with room to spare
-var AE_FACE_PX = 512;                     // the face texture's side; the plane it is on spans the planet's disc (2 radii)
-var AE_FACE_Z = 1.02;                     // radii in front of the planet's middle: in front of its whole disc
+var AE_FACE_PX = 512;                     // the face texture's side; it spans the planet's disc (2 radii) seen square on
+var AE_FACE_LIFT = 1.004;                 // the face's shell, in radii: just off the surface it is painted on
 var AE_FACE_ORDER = 1, AE_FACE_RING_ORDER = 2;   // drawn after the planet, before the rings: painted on it, under the ring that crosses it
 var AE_FACE_BLINK_MS = 150, AE_FACE_BLINK_GAP_MS = [2200, 5200];
+// Each planet's own silly face: eyes (round, googly, crossed, wink, spiral) and mouth (smile, tongue, o, teeth).
+var AE_FACE_LOOKS = {
+  mercury: { eyes: 'googly', mouth: 'teeth' }, venus: { eyes: 'round', mouth: 'tongue' }, earth: { eyes: 'round', mouth: 'smile' },
+  mars: { eyes: 'cross', mouth: 'tongue' }, jupiter: { eyes: 'googly', mouth: 'o' }, saturn: { eyes: 'wink', mouth: 'smile' },
+  uranus: { eyes: 'spiral', mouth: 'o' }, neptune: { eyes: 'round', mouth: 'teeth' }
+};
 var AE_FACE_INK = '#2a1620', AE_FACE_MOUTH = '#6a2233', AE_FACE_TONGUE = '#f08aa0', AE_FACE_CHEEK = 'rgba(255,120,150,.55)';
 var AE_TOOL_SVG_OPEN = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true">';
 var AE_FACES_SVG = AE_TOOL_SVG_OPEN + '<circle cx="12" cy="12" r="9"/><circle class="ae-dot" cx="9" cy="10" r="1.2"/><circle class="ae-dot" cx="15" cy="10" r="1.2"/><path d="M8 14.2c1 1.9 2.4 2.8 4 2.8s3-.9 4-2.8"/></svg>';
@@ -2859,40 +2865,69 @@ function _aeSpinLayout(sizes, W, H, m) {
 }
 // The scene (once, with the context): a planet's sphere, its rings, its axis and its orbital plane, in a group tipped to
 // the camera's elevation; its label a button over it. Maps come as the planets' own do.
-// The face, as a square canvas that spans a planet's disc (a radius is half the side): white eyes with dark pupils (they read on
-// pale Venus and deep Neptune alike), cheeks, an open smile. ``blink``: the eyes shut.
-function _aeFaceCanvas(blink) {
+// A face, as a square canvas that spans a planet's disc seen square on (a radius is half the side): `look` from
+// AE_FACE_LOOKS. White eyes with dark pupils read on pale Venus and deep Neptune alike. ``blink``: the eyes shut.
+function _aeFaceCanvas(look, blink) {
   var c = document.createElement('canvas'), n = AE_FACE_PX, k = n / 2;
   c.width = c.height = n;
   var g = c.getContext('2d');
   var X = function (u) { return k + u * k; }, Y = function (v) { return k - v * k; };   // in radii from the middle, up positive
   var ink = function (w) { g.strokeStyle = AE_FACE_INK; g.lineWidth = w * k; g.lineCap = g.lineJoin = 'round'; };
+  var dot = function (x, y, r, fill) { g.fillStyle = fill; g.beginPath(); g.arc(X(x), Y(y), r * k, 0, 2 * Math.PI); g.fill(); };
   g.fillStyle = AE_FACE_CHEEK;
   [-1, 1].forEach(function (sx) { g.beginPath(); g.ellipse(X(sx * 0.5), Y(-0.1), 0.11 * k, 0.075 * k, 0, 0, 2 * Math.PI); g.fill(); });
   [-1, 1].forEach(function (sx) {
-    var ex = sx * 0.3, ey = 0.17;
-    if (blink) { ink(0.06); g.beginPath(); g.arc(X(ex), Y(ey + 0.04), 0.13 * k, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); return; }
+    var ex = sx * 0.3, ey = 0.17, big = look.eyes === 'googly' ? 0.21 : 0.17;
+    var shut = blink || (look.eyes === 'wink' && sx > 0);
+    if (shut) { ink(0.06); g.beginPath(); g.arc(X(ex), Y(ey + 0.04), 0.13 * k, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); return; }
     g.fillStyle = '#fff'; ink(0.03);
-    g.beginPath(); g.arc(X(ex), Y(ey), 0.17 * k, 0, 2 * Math.PI); g.fill(); g.stroke();
-    g.fillStyle = AE_FACE_INK;
-    g.beginPath(); g.arc(X(ex + sx * -0.02), Y(ey - 0.015), 0.095 * k, 0, 2 * Math.PI); g.fill();
-    g.fillStyle = '#fff';
-    g.beginPath(); g.arc(X(ex - 0.045), Y(ey + 0.04), 0.032 * k, 0, 2 * Math.PI); g.fill();
+    g.beginPath(); g.arc(X(ex), Y(ey), big * k, 0, 2 * Math.PI); g.fill(); g.stroke();
+    if (look.eyes === 'spiral') {
+      ink(0.028); g.beginPath();
+      for (var a = 0; a < 5.5 * Math.PI; a += 0.2) { var rr = 0.012 + a * 0.0085; g.lineTo(X(ex + sx * rr * Math.cos(a)), Y(ey + rr * Math.sin(a))); }
+      g.stroke(); return;
+    }
+    // Where each pupil looks: in the middle, crossed toward the nose, or googly (each its own way).
+    var px = look.eyes === 'cross' ? -sx * 0.07 : look.eyes === 'googly' ? (sx < 0 ? -0.07 : 0.05) : sx * -0.02;
+    var py = look.eyes === 'googly' ? (sx < 0 ? 0.06 : -0.08) : -0.015;
+    dot(ex + px, ey + py, 0.095, AE_FACE_INK);
+    dot(ex + px - 0.035, ey + py + 0.04, 0.032, '#fff');
   });
-  // The mouth: flat on top, round below, with a tongue.
   var mouth = function () {
-    g.beginPath(); g.moveTo(X(-0.27), Y(-0.17)); g.quadraticCurveTo(X(0), Y(-0.2), X(0.27), Y(-0.17));
+    g.beginPath();
+    if (look.mouth === 'o') { g.ellipse(X(0), Y(-0.3), 0.12 * k, 0.15 * k, 0, 0, 2 * Math.PI); return; }
+    g.moveTo(X(-0.27), Y(-0.17)); g.quadraticCurveTo(X(0), Y(-0.2), X(0.27), Y(-0.17));
     g.bezierCurveTo(X(0.25), Y(-0.45), X(-0.25), Y(-0.45), X(-0.27), Y(-0.17)); g.closePath();
   };
   mouth(); g.fillStyle = AE_FACE_MOUTH; g.fill();
   g.save(); g.clip();
-  g.fillStyle = AE_FACE_TONGUE; g.beginPath(); g.ellipse(X(0), Y(-0.42), 0.15 * k, 0.1 * k, 0, 0, 2 * Math.PI); g.fill();
+  if (look.mouth === 'teeth') { g.fillStyle = '#fff'; g.fillRect(X(-0.12), Y(-0.17), 0.11 * k, 0.11 * k); g.fillRect(X(0.01), Y(-0.17), 0.11 * k, 0.11 * k); }
+  else if (look.mouth !== 'tongue') { g.fillStyle = AE_FACE_TONGUE; g.beginPath(); g.ellipse(X(0), Y(-0.42), 0.15 * k, 0.1 * k, 0, 0, 2 * Math.PI); g.fill(); }
   g.restore();
   ink(0.04); mouth(); g.stroke();
+  if (look.mouth === 'teeth') { ink(0.025); g.beginPath(); g.moveTo(X(0.005), Y(-0.18)); g.lineTo(X(0.005), Y(-0.28)); g.stroke(); }
+  if (look.mouth === 'tongue') {
+    // Sticking out, past the lip: a raspberry.
+    g.fillStyle = AE_FACE_TONGUE; ink(0.03);
+    g.beginPath(); g.moveTo(X(-0.12), Y(-0.33)); g.lineTo(X(-0.12), Y(-0.48)); g.arc(X(0), Y(-0.48), 0.12 * k, Math.PI, 0, true); g.lineTo(X(0.12), Y(-0.33)); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(X(0), Y(-0.36)); g.lineTo(X(0), Y(-0.5)); g.stroke();
+  }
   return c;
 }
-var AE_FACE_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-var AE_FACE_FRAG = 'uniform sampler2D map; uniform float tint; varying vec2 vUv; void main() { vec4 t = texture2D(map, vUv); gl_FragColor = vec4(t.rgb * tint, t.a); }';
+// The face is painted on the planet: a shell just off its surface, turning with it about its axis, upright to its north.
+// Seen square on at its longitude (lon, from +x in the sphere's own frame, north +z) it is the canvas; it slides round the limb
+// and away as the planet turns. Lit as the surface is, never quite dark, so it can be found on the night side.
+var AE_FACE_VERT = 'varying vec3 vLocal; varying vec3 vNormal; void main() { vLocal = position; vNormal = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+var AE_FACE_FRAG = [
+  'uniform sampler2D map; uniform float tint; uniform vec3 sunDir; uniform float lon; uniform float up; varying vec3 vLocal; varying vec3 vNormal;',
+  'void main() {',
+  '  vec3 n = normalize(vLocal), d = vec3(cos(lon) * n.x + sin(lon) * n.y, (-sin(lon) * n.x + cos(lon) * n.y) * up, n.z * up);',
+  '  if (d.x <= 0.0) discard;',
+  '  vec4 t = texture2D(map, vec2(d.y, d.z) * 0.5 + 0.5);',
+  '  float light = 0.45 + 0.55 * max(dot(normalize(vNormal), sunDir), 0.0);',
+  '  gl_FragColor = vec4(t.rgb * light * tint, t.a * smoothstep(0.0, 0.15, d.x));',
+  '}'
+].join('\n');
 // Faces: the person's own choice (kept with them), else on in full screen only: a kid's view of the planets wants them, the
 // reference for the numbers (Day, Year, Tilt) does not.
 function _aeSpinFacesOn() {
@@ -2934,15 +2969,6 @@ function _aeSpinBuild(S) {
   geo.rotateX(Math.PI / 2);
   var ringMap = { value: null }, sun = new V(AE_SPIN_SUN[0], AE_SPIN_SUN[1], AE_SPIN_SUN[2]).normalize();
   sp.v = [new V(), new V(), new V()];
-  sp.faceTex = [null, null];   // open eyes, shut eyes: as the rings' texture is made, from a drawn canvas
-  [false, true].forEach(function (blink, i) {
-    _aeLoadTexture(THREE, _aeFaceCanvas(blink).toDataURL()).then(function (tx) {
-      if (_ae.gl !== S) { tx.dispose(); return; }
-      tx.anisotropy = S.aniso;
-      sp.faceTex[i] = tx; _ae.dirty = true; _aeKick();
-    });
-  });
-  var faceGeo = _aeQuadGeometry(THREE, 1);
   AE_SPIN_ORDER.forEach(function (key) {
     var b = _aeSpinBody(key);
     var uni = {
@@ -2963,14 +2989,22 @@ function _aeSpinBuild(S) {
       cell.ring.renderOrder = AE_FACE_RING_ORDER;
       G.add(cell.ring);
     }
-    // The face: a plane square to the camera on the planet's disc, so it does not turn with the surface; the planet's rings
-    // cross it (they are drawn after it).
-    cell.faceUni = { map: { value: sp.faceTex[0] }, tint: { value: 1 } };
-    cell.face = new THREE.Mesh(faceGeo, new THREE.ShaderMaterial({ uniforms: cell.faceUni, vertexShader: AE_FACE_VERT, fragmentShader: AE_FACE_FRAG,
-      transparent: true, depthTest: false, depthWrite: false }));
+    // The face: its own silly one (open eyes, shut eyes), on a shell that turns with the planet; the rings cross it.
+    cell.faceTex = [null, null];
+    [false, true].forEach(function (blink, i) {
+      _aeLoadTexture(THREE, _aeFaceCanvas(AE_FACE_LOOKS[key], blink).toDataURL()).then(function (tx) {
+        if (_ae.gl !== S) { tx.dispose(); return; }
+        tx.anisotropy = S.aniso;
+        cell.faceTex[i] = tx; _ae.dirty = true; _aeKick();
+      });
+    });
+    cell.faceUni = { map: { value: null }, tint: { value: 1 }, sunDir: uni.sunDir, lon: { value: 0 }, up: { value: b.pole[3] < 0 ? -1 : 1 } };   // up: toward the drawn north arrow (Venus and Uranus turn backwards)
+    cell.face = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: cell.faceUni, vertexShader: AE_FACE_VERT, fragmentShader: AE_FACE_FRAG,
+      transparent: true, depthWrite: false }));
+    cell.face.matrixAutoUpdate = false;
     cell.face.renderOrder = AE_FACE_ORDER;
     cell.face.visible = false;
-    sp.scene.add(cell.face);
+    G.add(cell.face);
     // The orbital plane, edge on: one line through the planet in it (y is the orbit's normal), hidden where the planet
     // stands in front. A ring here read as rings on Jupiter, Uranus and Neptune (Eric, 2026-11-06).
     cell.orbit = _aeLine(THREE, THREE.Line, 2, AE_PLANET_ORBIT_COLOR, AE_SPIN_PLANE_ALPHA);
@@ -3043,8 +3077,6 @@ function _aeSpinFit(sp, jd) {
     var l = fit.cells[i], b = c.b, name = _aeBodyName(b), lines = _aeSpinLines(b, jd);
     c.r = l.r;
     c.G.position.set(room.x + l.cx, _ae.h - (room.y + l.cy), 0);
-    c.face.position.set(c.G.position.x, c.G.position.y, l.r * AE_FACE_Z);
-    c.face.scale.set(l.r, l.r, 1);
     c.lines.scale.set(l.r, l.r, l.r);
     c.orbit.visible = orbits;
     c.axisDay = null;
@@ -3066,6 +3098,17 @@ function _aeSpinPlace(sp, c, jd) {
   var e = m.elements, squash = b.flat ? 1 - b.flat : 1;
   for (var i = 0; i < 3; i++) { e[i] *= r; e[4 + i] *= r; e[8 + i] *= r * squash; }
   c.mesh.matrixWorldNeedsUpdate = true;
+  c.face.matrix.copy(m);
+  for (var j = 0; j < 12; j++) if (j % 4 !== 3) c.face.matrix.elements[j] *= AE_FACE_LIFT;
+  c.face.matrixWorldNeedsUpdate = true;
+  // Each face starts where the planet faces you when faces come on, then turns away with it (slow Venus keeps hers in view).
+  if (sp.faces && c.faceLon == null) {
+    var ce0 = Math.cos(_aeRad(AE_SPIN_ELEV_DEG)), se0 = Math.sin(_aeRad(AE_SPIN_ELEV_DEG));
+    var toCam = [0, se0, ce0];   // the camera's way (+z on screen) in the planet's tipped group
+    c.faceLon = Math.atan2(toCam[0] * v[1].x + toCam[1] * v[1].y + toCam[2] * v[1].z, toCam[0] * v[0].x + toCam[1] * v[0].y + toCam[2] * v[0].z);
+    c.faceUni.lon.value = c.faceLon;
+  }
+  if (!sp.faces) c.faceLon = null;
   if (c.ring) {
     c.ring.matrix.makeBasis(v[0], v[1], v[2]);
     var re = c.ring.matrix.elements;
@@ -3076,7 +3119,7 @@ function _aeSpinPlace(sp, c, jd) {
   c.uni.ringN.value.set(z[0], z[1] * ce - z[2] * se, z[1] * se + z[2] * ce);
   c.uni.dim.value = _aeRedOn() ? AE_RED_EARTH_LIGHT : 1;
   if (c.axisDay !== g.day) { c.axisDay = g.day; _aeSpinSetAxis(c, g.axis); }
-  var tx = sp.faceTex[c.blinkUntil > performance.now() ? 1 : 0] || sp.faceTex[0];
+  var tx = c.faceTex[c.blinkUntil > performance.now() ? 1 : 0] || c.faceTex[0];
   c.face.visible = sp.faces && !!tx;
   c.faceUni.tint.value = c.uni.dim.value;
   c.faceUni.map.value = tx;
