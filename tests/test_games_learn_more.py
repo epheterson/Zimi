@@ -352,7 +352,7 @@ def test_a_sky_answer_is_seen_again_in_the_same_sky_and_the_round_survives_a_rel
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
     f = game(page, "skydetective.html")
-    page.locator(".gamesky-btn.primary").click()
+    click(f, "#sk-next")   # Start, from the intro
     f.wait_for_function("() => __sky.g.study === false", timeout=WAIT)
     # answer the first question (a name, or a tap on the thing named)
     kind = f.evaluate("__sky.g.qs[0].kind")
@@ -404,7 +404,7 @@ def test_a_study_left_before_starting_comes_back_as_a_study_without_reopening_th
     browser, zimi
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
-    f = game(page, "skydetective.html")
+    f = open_study_sky(page)
     # Close: back to the page's own study (WebKit asks for motion, so Turn on motion sits before it)
     page.locator(".gamesky-btn:not(.primary)").last.click()
     page.locator(".gamesky").wait_for(state="detached", timeout=WAIT)
