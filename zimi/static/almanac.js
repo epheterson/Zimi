@@ -1249,6 +1249,7 @@ function _almClockPaint(focus) {
     root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
     root.classList.toggle('alm-ck-rest', rest);
+    root.classList.toggle('alm-ck-open', !!_almClockOpen);
     if (root.getAttribute('data-v') === 'pin' && root._rest !== rest) { root._rest = rest; if (typeof _almPinPaint === 'function') _almPinPaint(); }
     if (spd) _almSpdPaint(spd, rate, hot);
   }

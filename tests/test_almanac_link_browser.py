@@ -252,3 +252,23 @@ def test_nonsense_in_the_address_changes_nothing_and_breaks_nothing(
             assert d[0] > 0 and abs(d[1]) <= 85.01, d
     finally:
         ctx.close()
+
+
+@pytest.mark.parametrize("view", ["iss", "voyager1"])
+def test_a_link_to_the_station_or_a_probe_comes_back_there(browser, served, view):
+    """The station and the probes are not known at the view's first frame (their data comes after): a link to one opened
+    on the Earth with the link's camera, and was then written back as v=<it> with that Earth camera. It waits for them."""
+    errors = []
+    ctx, pg = _open(browser, served, hash_="#almanac?v=%s&c=0.0021,40,15" % view, errors=errors)
+    try:
+        pg.wait_for_function(
+            "(v) => typeof _aeReady === 'function' && _aeIsOpen && _ae.target === v && !_ae.linkHeld",
+            arg=view,
+            timeout=READY_MS,
+            polling=200,
+        )
+        got = pg.evaluate("() => ({ preset: _ae.preset, az: Math.round(_aeDeg(_ae.az)), fly: !!_ae.fly })")
+        assert got["preset"] == view and got["az"] % 360 == 40 and not got["fly"], got
+        assert not errors, errors
+    finally:
+        ctx.close()

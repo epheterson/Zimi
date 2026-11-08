@@ -527,9 +527,11 @@ var AE_CSS = [
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0;margin-inline-start:auto}',   // alone in the top row: at its end
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
-  '.ae-round{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
+  '.ae-round{flex:0 0 auto;width:34px;height:34px;min-height:0;box-sizing:border-box;padding:0;display:inline-flex;align-items:center;justify-content:center}',
+  '.ae-round>svg{flex:none}',
   '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',
-  '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
+  // Beside the round tools, not over them.
+  '.ae-set{position:absolute;top:12px;inset-inline-end:58px;width:min(300px,calc(100% - 74px));box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
   '.ae-set[hidden]{display:none}',
   '.ae-set h3{margin:0 4px 6px;font-size:13px;font-weight:600;color:var(--text)}',
   '@media (pointer:coarse){.ae-set h3{padding-inline-end:40px}}',
@@ -550,6 +552,17 @@ var AE_CSS = [
   '.ae-set-sep{height:1px;margin:6px 4px;background:var(--border)}',
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:' + AE_AMBER_HEX + ';pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
+  // A phone on its side in Safari has about 250 px under its bars (Eric 2026-11-08: "line interactive things along left
+  // edge instead of bottom keep only time on the bottom"): the row stands down the left edge, the foot is the date and
+  // time alone (the slider with the clock opened by a tap), and the minimap and the satellite note stand aside.
+  '@media (orientation:landscape) and (max-height:460px){' +
+    '.ae-bottom{top:0;justify-content:flex-end;padding:8px 12px calc(8px + env(safe-area-inset-bottom));gap:3px;background:linear-gradient(transparent 75%,rgba(0,0,0,.6))}' +
+    '.ae-bottom>#ae-views{position:absolute;inset-inline-start:calc(12px + env(safe-area-inset-left));top:12px;bottom:12px;flex-direction:column;align-items:flex-start;gap:4px;max-width:none;margin:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}' +
+    '#ae-views .ae-chips{flex-direction:column;align-items:flex-start;overflow:visible;gap:4px}' +
+    '.ae-spintools{flex-direction:column;gap:4px}' +
+    '.ae-mini,.ae-bottom .ae-note{display:none}' +
+    '.ae-clock .alm-clock:not(.alm-ck-open) .alm-spd{display:none}' +
+  '}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls (the field at its foot, under the thumb; above the keyboard when it is up), its places in groups, each with its small disc.
   '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));max-height:min(50vh,440px,var(--sheet-room,100vh));overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
@@ -563,7 +576,7 @@ var AE_CSS = [
   '.ae-chips::-webkit-scrollbar{display:none}',
   '.ae-chips .ae-btn{flex:none}',
   '@media (max-width:400px){#ae-views,.ae-chips{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
-  '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px}}',
+  '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -583,6 +596,8 @@ var AE_CSS = [
   '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
   '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
+  // On a phone the sheet lifts the picture into the minimap's corner: the minimap steps aside while it is up.
+  '@media (max-width:759px){.ae-info-up .ae-mini{opacity:0;pointer-events:none}}',
   '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
   '.ae-mini canvas{width:100%;height:100%;display:block}',
@@ -693,7 +708,8 @@ var AE_CSS = [
   '@media (prefers-reduced-motion:reduce){.ae-info,.ae-info.in{transition:none}}',
   '.ae-info-grab{flex:none;width:36px;height:4px;margin:8px auto 0;border-radius:2px;background:var(--border)}',
   '@media (min-width:760px){.ae-info-grab{display:none}}',
-  '.ae-info-body{overflow-y:auto;overscroll-behavior:contain;padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px))}',
+  // The list fades out under the grab bar as it scrolls, rather than being cut under it.
+  '.ae-info-body{overflow-y:auto;overscroll-behavior:contain;-webkit-mask-image:linear-gradient(transparent,#000 14px);mask-image:linear-gradient(transparent,#000 14px);padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px))}',
   '.ae-info h2{margin:0 36px 10px 0;font-size:17px;font-weight:600;color:var(--text)}',
   '[dir="rtl"] .ae-info h2{margin:0 0 10px 36px}',
   '.ae-info-dl{margin:0;display:block}',
@@ -926,8 +942,11 @@ function _aeGoShell(sheet) {
   q.oninput = function () {
     clearTimeout(timer);
     var typed = q.value.trim();
-    // The landmarks show with the keystroke; the towns after a short pause.
+    // The landmarks show with the keystroke; the towns after a short pause. An answer still coming for what was typed
+    // before is dropped now, not when the next question goes.
     _ae.placeTowns = null;
+    _ae.placeSeq = (_ae.placeSeq || 0) + 1;
+    if (_ae.placeAbort) _ae.placeAbort.abort();
     _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
     timer = setTimeout(function () { _aePlaceSearch(typed); }, AE_PLACE_DELAY_MS);
   };
@@ -1094,9 +1113,8 @@ function _aeRenderRow() {
   if (!chips || _ae.rowKeys === _aeRowKeys().join(',')) return;
   chips.innerHTML = _aeRowHtml();
   chips.scrollLeft = 0;
-  // Where the planets are in view as a whole, Planets and Side by side must not be scrolled out of sight: the
-  // shortcuts (the oldest first) give way until the row fits.
-  if (!_aeWideView() && !_ae.spin) return;
+  // Planets (and Side by side) must never be cut off at the row's end: the shortcuts (the oldest first) give way until
+  // the row fits.
   (_ae.rowShortcuts || []).slice().reverse().forEach(function (k) {
     var b = chips.scrollWidth > chips.clientWidth + 1 ? chips.querySelector('[data-ae-view="' + k + '"]') : null;
     if (b) b.remove();
@@ -2472,14 +2490,6 @@ function _aeRingGeometry(THREE, rin, rout, segs) {
   g.setIndex(idx);
   return g;
 }
-// A square of side 2 * half, in the xy plane, uv 0..1.
-function _aeQuadGeometry(THREE, half) {
-  var g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-half, -half, 0, half, -half, 0, half, half, 0, -half, half, 0]), 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  return g;
-}
 function _aeBuildPlanets(S) {
   _aeKnowPlanets();
   var THREE = S.THREE;
@@ -2531,10 +2541,16 @@ var AE_ORBITS_KEY = SK.ALM_ORBITS, AE_ORBITS_ON = 'always', AE_ORBITS_FADE_MS = 
 function _aePrefsApplied(keys) {
   if (keys.indexOf(AE_SPIN_FACES_KEY) >= 0 && _ae && _ae.spin) _aeSpinMarkFaces();
   if (keys.indexOf(AE_ORBITS_KEY) < 0 && keys.indexOf(AE_LM_LAYER_KEY) < 0) return;
+  _aeOrbitsKept = null;
   if (keys.indexOf(AE_LM_LAYER_KEY) >= 0 && _aeLmLayerOn()) _aeLmLoad();
   if (_ae) { _ae.dirty = true; _aeKick(); _aeMarkToggles(); }
 }
-function _aeOrbitsOn() { try { return localStorage.getItem(AE_ORBITS_KEY) === AE_ORBITS_ON; } catch (e) { return false; } }
+// Read once and kept: every orbit line asks every frame. A change here or from elsewhere (_aePrefsApplied) drops it.
+var _aeOrbitsKept = null;
+function _aeOrbitsOn() {
+  if (_aeOrbitsKept === null) { try { _aeOrbitsKept = localStorage.getItem(AE_ORBITS_KEY) === AE_ORBITS_ON; } catch (e) { _aeOrbitsKept = false; } }
+  return _aeOrbitsKept;
+}
 function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key : k === 'moon' || k === 'iss' ? 'earth' : k; }
 // How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
 // a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
@@ -3062,8 +3078,25 @@ function _aeSpinSetAxis(cell, a) {
   cell.south.geometry.attributes.position.needsUpdate = true;
 }
 // The room the planets have: under the controls at the top, above the foot.
+// The foot's height, and where the row stands at the side (a phone on its side): its right edge, else 0.
+function _aeMeasureFoot() {
+  var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null, views = _aeById('ae-views');
+  _ae.sidePx = 0;
+  if (!foot) { _ae.footPx = 0; return; }
+  if (views && views.offsetParent && getComputedStyle(views).position === 'absolute') {
+    _ae.sidePx = views.offsetLeft + views.offsetWidth;
+    var clock = _aeById('ae-clock');
+    _ae.footPx = clock ? foot.offsetHeight - clock.offsetTop : 0;
+  } else _ae.footPx = foot.offsetHeight;
+}
 function _aeSpinRoom() {
   if (_aeFullOn()) return _aeSpinFullRoom();
+  // On its side the round tools are a strip at the right, not a band over the planets.
+  if (_ae.w > _ae.h) {
+    var right = Math.max.apply(null, [0].concat((_ae.topBoxes || []).filter(function (b) { return b[0] > _ae.w / 2; }).map(function (b) { return _ae.w - b[0]; })));
+    var left = (_ae.sidePx || 0) + AE_SPIN_GAP;
+    return { x: left, y: AE_SPIN_GAP, w: Math.max(1, _ae.w - left - Math.max(AE_SPIN_GAP, right)), h: Math.max(1, _ae.h - _ae.footPx - AE_SPIN_GAP) };
+  }
   var top = Math.max.apply(null, [AE_SPIN_TOP_MIN_PX].concat((_ae.topBoxes || []).filter(function (b) { return b[1] < _ae.h / 3; }).map(function (b) { return b[3]; })));
   return { x: AE_SPIN_GAP, y: top, w: _ae.w - 2 * AE_SPIN_GAP, h: Math.max(1, _ae.h - _ae.footPx - top) };
 }
@@ -3406,6 +3439,7 @@ function _aeTracksLoad() {
     if (_ae) { _ae.dirty = true; _aeKick(); }
     _aeGoRender();
     if (_ae && _ae.pendingPreset) { var go = _ae.pendingPreset; _ae.pendingPreset = null; _aePreset(go); }
+    _aeLinkResume();
   }).catch(function () { _aeTracksLoading = null; _aeGoRender(); });   // no loading row left behind a failed table
 }
 function _aeHermite(a, b, jd) {
@@ -3649,15 +3683,9 @@ function _aeArrivalKey(k) {
 // the article only where that section is not here.
 var AE_GOLDEN_RECORD = { key: 'ev:goldenrecord', label: 'alm_card_golden_record', open: '_scrollToGoldenRecord' };
 var AE_ARRIVAL_EXTRA = { voyager1: AE_GOLDEN_RECORD, voyager2: AE_GOLDEN_RECORD };
-function _aeArrivalName(k) {
-  var b = _aePlanetBody(k);
-  var name = _aeIsProbe(k) ? _aeTracks.tracks[k].name : k === 'iss' ? _aeT('alm_earth_iss_name') : k === 'sun' ? _aeT('alm_sun') :
-    k === 'moon' ? _aeT('alm_moon') : b ? _aeBodyName(b) : k;
-  return _aeLink(_aeArrivalKey(k), _almEsc(name));
-}
 
 // ── A body's facts ──
-// "All facts" on a place's card opens its sheet (a bottom sheet on a phone, a side panel on a wide screen): size, mass,
+// The i opens a place's sheet (a bottom sheet on a phone, a side panel on a wide screen): size, mass,
 // gravity, escape velocity, day, year, tilt, where it is now, moons, temperature, air, who found it, and its article in
 // the library. Nothing is repeated that the view already knows: radii, poles, turning rates, orbits and the year are the
 // view's own constants, where it is now comes from the ephemeris for the shown date, and what only a table can say
@@ -5155,6 +5183,7 @@ function _aePreset(name) {
   // The row says where the view is going at once, also for a destination that flies from a callback (a probe's model
   // loading first): the last chip pressed no longer stays lit over Voyager.
   _ae.preset = name;
+  _ae.linkHeld = null;   // somewhere chosen before a link's place had come: the link gives way
   _aeMarkViews();
   if (name === AE_SPIN_KEY) {
     _aeEnterSpin();
@@ -5354,6 +5383,7 @@ function _aeMarkToggles() {
 }
 function _aeSetOrbits(on) {
   _prefWrite(AE_ORBITS_KEY, on ? AE_ORBITS_ON : null);
+  _aeOrbitsKept = null;
   // Turned off standing still, the lines go at once: no flight is on, so none of them belongs.
   if (_ae && !on && !_ae.fly) _ae.orbitFly = null;
   if (_ae) { _ae.dirty = true; _aeKick(); _aeMarkToggles(); }
@@ -5362,10 +5392,9 @@ function _aeRenderSettings() {
   var panel = _aeById('ae-set-body');
   if (!panel || !_ae.setOpen) return;
   var m = _ae.satMeta || {};
-  var editable = !!m.canChange && !m.locked && !_ae.setBusy;
+  var editable = !!m.canChange && !m.locked && !_ae.setBusy, hd = _aeHdRowHtml();
   var html = (typeof _almDismissX === 'function' ? _almDismissX() : '') +
-    _aeHdRowHtml() +
-    '<div class="ae-set-sep" aria-hidden="true"></div>' +
+    (hd ? hd + '<div class="ae-set-sep" aria-hidden="true"></div>' : '') +
     '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
     '<div role="radiogroup" aria-labelledby="ae-set-title">';
   AE_SAT_MODES.forEach(function (mode) {
@@ -5838,6 +5867,7 @@ function _aeIssAt(st, eqeq, standing) {
   var nadir = _aeNorm(_aeScale(pos, -1)), fwd = _aeNorm(_aeSub(vel, _aeScale(nadir, _aeDot(vel, nadir)))), star = _aeCross(nadir, fwd);
   var prev = _ae.issBasis;
   _ae.issPos = pos; _ae.issBasis = [nadir, fwd, star];
+  if (!prev && _ae.linkHeld) setTimeout(_aeLinkResume, 0);   // a link to the station, waiting for it
   // Close by, the camera rides along with the station (its place in the station's own axes held), so the Earth stays
   // below it as it goes round; a drag turns about it as anywhere else.
   if (prev && _ae.target === 'iss' && !_ae.fly) {
@@ -5897,8 +5927,7 @@ function _aeResize() {
   // Kept for the per-frame projections: reading clientWidth there, after the
   // labels' style writes, forced a layout for every label, every frame.
   _ae.w = w; _ae.h = h;
-  var foot = el.querySelector ? el.querySelector('.ae-bottom') : null;
-  _ae.footPx = foot ? foot.offsetHeight : 0;
+  _aeMeasureFoot();
   _aeMeasureTop();
   if (!_ae.infoShift) _ae.infoShift = _aeInfoShiftTarget();
   S.renderer.setSize(w, h, false);
@@ -6421,6 +6450,7 @@ function _aeMarkInfoBtn() {
   var on = !!k && _aeHasFacts(k) && (!_aeIsProbe(k) || !!_aeTracks);
   if (b.hidden === on) b.hidden = !on;
   b.setAttribute('aria-expanded', String(!!_ae.info));
+  if (_ae.el && _ae.el.classList) _ae.el.classList.toggle('ae-info-up', !!_ae.info);
   _aeMarkToggles();
 }
 function _aeRenderCardBody() {
@@ -6564,8 +6594,7 @@ function _aeRefreshText() { if (_aeIsOpen) _aeUpdateText(_aeDisplayMs()); }
 function _aeUpdateText(ms) {
   var whenText = _aeFmtWhen(ms);   // the view's aria line says the moment in words
   _aeShowMapHere();
-  var foot = _ae.el && _ae.el.querySelector ? _ae.el.querySelector('.ae-bottom') : null;
-  if (foot) _ae.footPx = foot.offsetHeight;   // the controls' height changes with their notes; marks keep above them
+  _aeMeasureFoot();   // the controls' height changes with their notes; marks keep above them
   _aeMarkToggles();
   _aeMeasureTop();
   var sc = _ae.scene;
@@ -6839,9 +6868,10 @@ function _aeBindCanvas(canvas) {
       var span = Math.hypot(a.x - b.x, a.y - b.y);
       if (span > 0 && _ae.pinch.span > 0) _aeZoomBy(_ae.pinch.span / span);
       _ae.pinch.span = span;
-      // The midpoint slides the view, whether or not the fingers also spread or close.
+      // The midpoint slides the view, whether or not the fingers also spread or close; not mid-flight, where a zoom
+      // lets the flight finish (a pan would end it where it stands).
       var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      _aePanBy(mx - _ae.pinch.mx, my - _ae.pinch.my);
+      if (!_ae.fly) _aePanBy(mx - _ae.pinch.mx, my - _ae.pinch.my);
       _ae.pinch.mx = mx; _ae.pinch.my = my;
     } else if (_ae.drag) {
       var dx = e.clientX - _ae.drag.x, dy = e.clientY - _ae.drag.y;
@@ -7225,6 +7255,14 @@ function _aeEnter() {
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
   var link = _aeLinkWant;
   _aeLinkWant = null;
+  if (link && !_aeLinkReady(link.v)) {
+    // The station and the probes are not known at the first frame (their data comes after): the view opens as it
+    // would, and goes to the link's place once that has come (_aeLinkResume).
+    _aePreset(_aeOpenTarget);
+    _ae.linkHeld = link;
+    _aeTracksLoad();
+    return;
+  }
   _aePreset(link ? link.v : _aeOpenTarget);
   if (link) _aeLinkApply(link);
 }
@@ -7322,6 +7360,16 @@ function _aeLinkOpen(link) {
   if (_aeIsOpen || !AE_LINK_VIEW_RE.test(link.v)) return;
   _aeLinkWant = link;
   openAlmanacEarth({ from: 'sky' });
+}
+function _aeLinkReady(v) {
+  return v === 'iss' ? !!_ae.issPos : !!AE_TARGETS[v] || v === 'planets' || v === 'sats' || v === AE_SPIN_KEY;
+}
+function _aeLinkResume() {
+  var link = _ae && _ae.linkHeld;
+  if (!link || !_aeIsOpen || !_aeLinkReady(link.v)) return;
+  _ae.linkHeld = null;
+  _aePreset(link.v);
+  _aeLinkApply(link);
 }
 function _aeLinkApply(link) {
   if (link.f && _ae.spin) _aeFullEnter();

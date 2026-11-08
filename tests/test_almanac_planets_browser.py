@@ -402,7 +402,7 @@ def test_a_probe_in_orbit_is_one_ellipse_and_a_short_trail(served):
             pg = ctx.new_page()
             _open(pg, served)
             pg.evaluate(
-                "window._almReduceMotion = function () { return true; }; _aeTracksLoad(); localStorage.setItem('zimi_ae_orbits', 'always');"
+                "window._almReduceMotion = function () { return true; }; _aeTracksLoad(); _aeSetOrbits(true);"
             )  # paths stay drawn
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             got = {}
@@ -2008,7 +2008,7 @@ def test_a_probe_s_path_ends_on_the_probe_as_the_date_runs(served):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
             pg.evaluate(
-                "window._almReduceMotion = function () { return true; }; _aeTracksLoad(); localStorage.setItem('zimi_ae_orbits', 'always');"
+                "window._almReduceMotion = function () { return true; }; _aeTracksLoad(); _aeSetOrbits(true);"
             )
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             for k, step in (("parker", 1.0), ("juno", 0.3)):

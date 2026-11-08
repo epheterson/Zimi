@@ -185,7 +185,7 @@ var SK = {
   // The Almanac's choices (almanac*.js read and write them under these names; the
   // ZIM build shares SK). Place: {lat, lon, name}; clocks: [IANA zone]; clocks view:
   // 'all'|'saved'; units: 'ft'|'m'; sky: {skin, lines, size, dial}; orbits:
-  // 'flying'(absent)|'always'|'off'; landmarks and HD-later: '1'; spin faces: '1'|'0' (absent: on in full screen only); tried: {hint: 1}.
+  // 'always' (on) or absent (off); landmarks and HD-later: '1'; spin faces: '1'|'0' (absent: on in full screen only); tried: {hint: 1}.
   ALM_CLOCKS: 'zimi_almanac_clocks',
   ALM_CLOCKS_VIEW: 'zimi_almanac_clocks_view',
   ALM_UNITS: 'zimi_almanac_units',
@@ -21297,7 +21297,7 @@ function _buildReload() {
 // (Eric, 2026-11-02: "I still had to relaunch the PWA to see the new tiles":
 // he came back to the Almanac, the build was heard, and it waited for a hide).
 var _buildTouched = false;
-// The reload opens the Almanac at its top (only the place is kept), so a page scrolled away from it holds the reload.
+// A page scrolled away from the top holds the reload: the address keeps the scroll, but a reload under a reader is a jump.
 function _almanacScrolled() {
   var box = document.getElementById('almanac-content');
   return !!box && box.scrollTop > 0;

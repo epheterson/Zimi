@@ -820,7 +820,7 @@ body.look-open { overflow: hidden; }
    :root.night-red) and nothing else. Hard-coded warm, violet and white tones of the tiles, clocks,
    time machine, buttons and the Look view's own marks become the palette's red. The sky and the
    pictures turn red themselves (canvas[data-red], the canvas filter chain). */
-:root.night-red #almanac-view :is(.alm-card-golden, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-gear) { color: var(--text2); }
+:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-gear) { color: var(--text2); }
 /* The clocks' day, dawn, dusk and night tints (amber, coral, violet, blue) are one dim red wash in Red;
    the glyph (sun, moon) still says which part of the day it is. */
 :root.night-red #almanac-view :is(.alm-tz-day, .alm-tz-dawn, .alm-tz-dusk, .alm-tz-night) { background: linear-gradient(180deg, var(--amber-glow), var(--surface) 70%); border-color: var(--border); }

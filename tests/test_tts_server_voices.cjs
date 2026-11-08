@@ -569,7 +569,7 @@ const tick = () => new Promise(r => setImmediate(r));
     vm.createContext(ax);
     vm.runInContext(extract(/var _TTS_BLOCK = [^\n]*\n/, '_TTS_BLOCK') + extract(/var _TTS_ABBREVS[\s\S]*?\nfunction _ttsSentenceSpans[\s\S]*?\n}\n/, 'the sentence splitter') +
       extract(/var _TTS_SKIP_TAGS[\s\S]*?var _ttsRead = null;/, 'the read-along constants'), ax);
-    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant'), ax);
+    vm.runInContext(extract(/var _TTS_IDLE_FOLLOW_MS = [^\n]*/, 'the idle follow constant') + '\n' + extract(/var _TTS_HEAD_LOOK = [^\n]*/, 'the head look'), ax);
     vm.runInContext(['_ttsPlanChunks', '_ttsReadModel', '_ttsPieceAt', '_ttsRange', '_ttsOffsetOf', '_ttsSelectedSpan', '_ttsSpanAtChar',
       '_ttsSentenceAt', '_ttsScrollBy', '_ttsOnText', '_ttsMakePlan', '_ttsSentenceHead', '_ttsPlanFrom', '_ttsHlOk', '_ttsPaint', '_ttsAlongAt', '_ttsAlongAudio', '_ttsAlongChar',
       '_scrollerOf', '_ttsFollow', '_ttsLose', '_ttsFollowResume', '_ttsTap', '_ttsStep', '_ttsBack', '_ttsAlongBegin', '_ttsAlongEnd', '_ttsPauseToggle', '_ttsIdleBusy', '_ttsIdleArm'].map(fn).join('\n'), ax);

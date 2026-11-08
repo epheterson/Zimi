@@ -549,10 +549,14 @@ function _ttsOnText(rects, x, y) {
 // sentence that starts on this page: what is read is what is seen, from a
 // whole sentence. (Reading on from the page before says a sentence over the
 // break whole, as one chunk: the book is one text.)
+// The next sentence is looked for in the stretch after this one (a whole-ZIM book's text is the whole book: segmenting
+// all of it to take one sentence doubled the wait for the first word).
+var _TTS_HEAD_LOOK = 2000;
 function _ttsSentenceHead(model, at) {
   var sp = at > 0 && _ttsSentenceAt(model, at);
   if (!sp || sp.s >= at) return at;
-  var next = _ttsSentenceSpans(model.text, sp.e, model.text.length, _ttsLang(model.doc))[0];
+  var lang = _ttsLang(model.doc), end = Math.min(model.text.length, sp.e + _TTS_HEAD_LOOK);
+  var next = _ttsSentenceSpans(model.text, sp.e, end, lang)[0] || (end < model.text.length && _ttsSentenceSpans(model.text, sp.e, model.text.length, lang)[0]);
   return next ? next[0] : sp.e;
 }
 // What to read: the selection if there is one, else (in a book) from the

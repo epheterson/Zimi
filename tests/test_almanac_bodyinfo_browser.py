@@ -252,7 +252,7 @@ def test_the_library_link_is_the_right_q_id(page):
 
 
 def axis_of(pg, key, mode="always"):
-    pg.evaluate("(m) => localStorage.setItem('zimi_ae_orbits', m)", mode)
+    pg.evaluate("(m) => _aeSetOrbits(m === 'always')", mode)
     pg.evaluate("(k) => _aePreset(k)", key)
     pg.wait_for_function("() => !_ae.fly", timeout=60_000, polling=100)
     return pg.evaluate(
@@ -278,16 +278,16 @@ def test_axes_point_at_the_iau_pole_and_follow_the_orbits(page):
     # Uranus' axis lies near its orbit plane: the arrowhead is not where the right-hand rule puts it, it is at the map's north.
     # The lines are the orbits' companions: with the switch off (the default) they show only in flight.
     assert axis_of(page, "uranus")
-    page.evaluate("localStorage.removeItem('zimi_ae_orbits')")
+    page.evaluate("_aeSetOrbits(false)")
     page.evaluate("() => { _ae.orbitFly = null; _aeUpdate(_aeDisplayMs()); }")
     assert page.evaluate("() => !_ae.gl.axes.uranus.north.visible")
-    page.evaluate("localStorage.setItem('zimi_ae_orbits', 'always')")
+    page.evaluate("_aeSetOrbits(true)")
     page.evaluate("() => { _aeUpdate(_aeDisplayMs()); }")
     assert page.evaluate("() => _ae.gl.axes.uranus.north.visible")
 
 
 def test_the_sheet_opens_and_shuts(page):
-    page.evaluate("localStorage.setItem('zimi_ae_orbits', 'always')")
+    page.evaluate("_aeSetOrbits(true)")
     page.evaluate("_aePreset('mars')")
     page.wait_for_function(
         "() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden",
@@ -455,7 +455,7 @@ def test_the_iss_label_is_only_its_name(page):
 
 def test_the_body_is_framed_above_the_sheet(page):
     """On a phone the view's centre rides up by half the sheet, so the body is not under it; it comes back on close."""
-    page.evaluate("_aeCloseInfo(false); localStorage.setItem('zimi_ae_orbits', 'always'); _aePreset('jupiter')")
+    page.evaluate("_aeCloseInfo(false); _aeSetOrbits(true); _aePreset('jupiter')")
     settled = "Math.abs(_ae.infoShift - _aeInfoShiftTarget()) < 0.6"   # the clock along the foot lifts the centre a little too
     page.wait_for_function("() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden && " + settled, timeout=60_000, polling=100)
     rest = page.evaluate("() => _ae.infoShift")

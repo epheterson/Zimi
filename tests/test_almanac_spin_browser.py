@@ -302,18 +302,15 @@ def test_labels_sit_inside_the_view_and_clear_of_the_controls(page):
     )
 
 
-def test_orbits_setting_hides_the_planes_and_years(page):
+def test_side_by_side_always_has_the_planes_and_years(page):
+    """Side by side is a comparison of the planets: their orbital planes and years show whatever the Orbits switch says
+    (the switch stands aside here)."""
     years = "document.querySelector('[data-ae-spin=jupiter] span').textContent.split('·').length === 3"   # turn · year · tilt
-    assert page.evaluate(years)
-    page.evaluate(
-        "localStorage.setItem(AE_ORBITS_KEY, 'off'); _ae.dirty = true; _aeSpinDraw()"
-    )
-    assert not page.evaluate("_ae.gl.spin.cells.some(c => c.orbit.visible)")
-    assert page.evaluate("document.querySelector('[data-ae-spin=jupiter] span').textContent.split('·').length === 2")
-    page.evaluate(
-        "localStorage.removeItem(AE_ORBITS_KEY); _ae.dirty = true; _aeSpinDraw()"
-    )
-    assert page.evaluate("_ae.gl.spin.cells.every(c => c.orbit.visible)")
+    for on in ("true", "false"):
+        page.evaluate("(on) => { _aeSetOrbits(on); _ae.dirty = true; _aeSpinDraw(); }", on == "true")
+        assert page.evaluate(years)
+        assert page.evaluate("_ae.gl.spin.cells.every(c => c.orbit.visible)")
+        page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return document.getElementById('ae-orbits-btn').hidden; }", timeout=10_000)
 
 
 def full_state(pg):
@@ -401,3 +398,22 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     page.click("#ae-go-btn")
     assert page.evaluate("document.querySelector('#ae-go [data-ae-go=\"spin\"]').textContent") == "Side by side"
     page.evaluate("_aeShowGo(false)")   # the open sheet covers its button (a tap away or Escape shuts it)
+
+
+def test_a_phone_on_its_side_has_the_row_down_the_left_and_room_for_the_planets(page):
+    """In Safari on its side a phone has about 250 px under its bars: the row stands down the left edge, the foot is the date
+    and time, and no planet's caption runs into either."""
+    page.set_viewport_size({"width": 932, "height": 300})
+    try:
+        page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.sidePx > 0; }", timeout=10_000)
+        page.evaluate("_aeSpinDraw()")
+        got = page.evaluate(
+            """() => { var r = e => e.getBoundingClientRect(), v = r(document.getElementById('ae-views')), c = r(document.querySelector('#ae-clock .alm-ck-l') || document.getElementById('ae-clock'));
+            return { col: v.height > v.width, cells: Array.from(document.querySelectorAll('#ae-spin .ae-sp')).map(b => { var q = r(b); return [q.left, q.bottom]; }),
+              viewsRight: v.right, clockTop: c.top, slider: !!document.querySelector('#ae-clock .alm-spd') && document.querySelector('#ae-clock .alm-spd').getClientRects().length > 0 }; }"""
+        )
+        assert got["col"], got
+        assert all(x >= got["viewsRight"] and b <= got["clockTop"] + 1 for x, b in got["cells"]), got
+        assert not got["slider"], got
+    finally:
+        page.set_viewport_size(VIEW)
