@@ -416,10 +416,13 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         )
         pg.click("#almanac-head-time .ep[data-p=hour]", force=True)
         assert pg.evaluate("() => !_almEd")
+        # The middle at another pace is 1x; at 1x it pauses; paused it plays at 1x.
+        pg.click("#almanac-head .alm-spd-play", force=True)
+        assert pg.evaluate("() => _almRate") == 1
         pg.click("#almanac-head .alm-spd-play", force=True)
         assert pg.evaluate("() => _almRate") == 0
         pg.click("#almanac-head .alm-spd-play", force=True)
-        assert pg.evaluate("() => _almRate") == 3600
+        assert pg.evaluate("() => _almRate") == 1
         # Backwards runs back.
         pg.evaluate("() => _almClockSetRate(-3600)")
         a = pg.evaluate("() => _almFocusInstant().getTime()")
@@ -542,7 +545,9 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         pg.evaluate("() => _almClockSetRate(-3600)")
         c = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_function("(c) => _almFocusInstant().getTime() < c", arg=c, timeout=30_000, polling=POLL_MS)
-        pg.click("#ae-clock .alm-spd-play", force=True)
+        pg.click("#ae-clock .alm-spd-play", force=True)   # back to 1x
+        assert pg.evaluate("() => _almRate") == 1
+        pg.click("#ae-clock .alm-spd-play", force=True)   # and paused
         held = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(700)
         assert (

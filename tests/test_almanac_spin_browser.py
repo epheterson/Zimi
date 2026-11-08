@@ -403,6 +403,8 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
 def test_a_phone_on_its_side_has_the_row_down_the_left_and_room_for_the_planets(page):
     """In Safari on its side a phone has about 250 px under its bars: the row stands down the left edge, the foot is the date
     and time, and no planet's caption runs into either."""
+    page.evaluate("() => { if (_aeFullOn()) _aeFullExit(); if (!_ae.spin) { _ae.fly = null; _aePreset(AE_SPIN_KEY); } }")
+    page.wait_for_function("() => !!_ae.spin", timeout=10_000)
     page.set_viewport_size({"width": 932, "height": 300})
     try:
         page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.sidePx > 0; }", timeout=10_000)

@@ -1358,7 +1358,9 @@ function _almClockSetRate(r) {
   _almClockSync();
   _almClockPaint();
 }
-function _almClockTogglePause() { _almClockSetRate(_almRate === 0 ? (_almPausedRate || 1) : 0); }
+// The middle of the slider: running at another pace, back to 1x (Eric 2026-11-08: "tap center reset to 1x instead of
+// pausing"); at 1x, pause; paused, play at the pace it had.
+function _almClockTogglePause() { _almClockSetRate(_almRate === 0 ? (_almPausedRate || 1) : _almRateIsReal(_almRate) ? 0 : 1); }
 // A moment moved to while something drags it (the ride's progress slider): the cheap tiers draw at once, and the page
 // lands exactly a moment after the last nudge.
 var ALM_NUDGE_SETTLE_MS = 220;

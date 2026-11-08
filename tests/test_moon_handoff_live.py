@@ -246,7 +246,8 @@ def test_one_clock_moves_both_views(browser, served):
             state["page"] - before > 2 * 3600 * 1000 and state["scene"] == state["page"]
         ), state
         assert state["head"] == state["want"], state
-        pg.click("#ae-clock .alm-spd-play")
+        pg.click("#ae-clock .alm-spd-play")   # from a fast pace: 1x
+        pg.click("#ae-clock .alm-spd-play")   # then paused
         landed = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(300)
         assert (

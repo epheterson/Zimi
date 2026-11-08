@@ -1120,7 +1120,14 @@ function _aeRenderRow() {
     if (b) b.remove();
   });
 }
+// Side by side is a grid of dots, round like the other tools (Eric 2026-11-08); its name is its label.
+var AE_SPIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">' +
+  [6, 12, 18].map(function (y) { return [6, 12, 18].map(function (x) { return '<circle cx="' + x + '" cy="' + y + '" r="2"/>'; }).join(''); }).join('') + '</svg>';
 function _aeChipHtml(key, name, on) {
+  if (key === AE_SPIN_KEY) {
+    return '<button type="button" class="ae-btn ae-round" data-ae-view="' + key + '" aria-pressed="' + !!on + '" aria-label="' + _almEsc(name) +
+      '" title="' + _almEsc(name) + '">' + AE_SPIN_SVG + '</button>';
+  }
   return '<button type="button" class="ae-btn" data-ae-view="' + key + '" aria-pressed="' + !!on + '">' + _almEsc(name) + '</button>';
 }
 function _aeBodyName(b) { return b.parent ? b.key.charAt(0).toUpperCase() + b.key.slice(1) : _tp(b.eph); }

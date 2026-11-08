@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.15.4]
+
 ### Highlights
 
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
@@ -19,14 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Go to by name:** the 3D view's Go to searches the towns on your maps and the Earth's landmarks, flies down over the one you pick and previews its article from your library.
 - **Flights to spacecraft:** the model loads as the flight starts and the camera ends on it, so Voyager and the station no longer pop in on arrival.
 - **A link back to exactly where you were:** the Almanac's address keeps the moment, the speed, the scroll and the 3D view, so a reload or a shared link comes back to the same place.
-- **A clean 3D view:** arriving somewhere shows just the body, its facts behind an i; Landmarks and Orbits are round switches beside the gear, and the back arrow sits in Zimi's header.
+- **A clean 3D view:** arriving somewhere shows just the body, its facts behind an i; Landmarks, Orbits and Side by side are round icons, the back arrow sits in Zimi's header, and a phone on its side keeps the controls down the left edge.
 
 ### Fixed
 
 - ZimCity: kept cities open with their people and can be renamed, Undo says what it took back, and Hamburg and Tokyo can no longer be won by doing nothing.
 - About 40 game fixes: daily games come back as the day's, end sheets name the winner and why, Ludo no longer stops after a capture, Mahjong fits an upright phone, and German uses du.
 - Almanac planets stay on their orbit lines at every speed, and probe paths with them.
-- Almanac clock: a jump to another day keeps it running, and AM/PM runs through the hours.
+- Almanac clock: a jump to another day keeps it running, the middle of the slider goes back to 1x, and AM/PM runs through the hours.
 - The Earth turns smoothly under the space station, and flying from it back home is quick.
 - Go to sits above the keyboard, and Map here appears only where one of your maps covers the place.
 - Read aloud in a book starts at the first sentence that begins on the page.

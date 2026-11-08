@@ -126,8 +126,10 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             )
             assert any(u.endswith("/static/earth/saturn-v1.webp") for u in asked)
             assert pg.evaluate("_aeBodyAt(_ae.w / 2, _ae.h / 2)") == "saturn"
-            pg.evaluate("_aeUpdateText(_aeDisplayMs())")
-            assert "Solar System Scope" in pg.inner_text(".ae-note")
+            # The maps' credit is at the foot of the i sheet.
+            pg.evaluate("_aeOpenInfo('saturn')")
+            assert "Solar System Scope" in pg.inner_text(".ae-info-credit")
+            pg.evaluate("_aeCloseInfo(false)")
             # Far away, a planet is a mark and no map is fetched for the ones too small to see.
             assert not any(u.endswith("/static/earth/neptune-v1.webp") for u in asked)
             # The Planets chip: the whole system from above, every orbit drawn, the belt placed.
@@ -370,9 +372,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
                 timeout=60_000,
                 polling=200,
             )
-            pg.evaluate("_aeUpdateText(_aeDisplayMs())")
-            assert "Solar System Scope" not in pg.inner_text(
-                ".ae-note"
+            assert "Solar System Scope" not in pg.evaluate(
+                "_aePlanetCredit()"
             ), "Mars is the Viking map: nothing of Solar System Scope's is drawn"
             assert pg.is_visible("#ae-mini")
             pg.click("#ae-mini")
@@ -682,7 +683,7 @@ def test_the_row_is_one_line(served, width, lang):
             tops = pg.evaluate(
                 "Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })"
             )
-            assert len(tops) == 6 and len({t[0] for t in tops}) == 1, tops
+            assert len(tops) == 6 and max(t[0] for t in tops) - min(t[0] for t in tops) <= 1, tops   # one line (a round 34 px tool and a chip centre within a pixel)
             assert (
                 min(t[1] for t in tops) >= 0 and max(t[2] for t in tops) <= width
             ), tops
