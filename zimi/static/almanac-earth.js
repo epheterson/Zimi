@@ -2524,8 +2524,9 @@ function _aeOrbitShow(key) {
   if (!o.endAt) { if (_ae.fly) return 1; o.endAt = performance.now(); }
   return _aeClamp(1 - (performance.now() - o.endAt) / AE_ORBITS_FADE_MS, 0, 1);
 }
-function _aeDrawOrbit(p, jd, place) {
+function _aeDrawOrbit(p, jd, around, sunAt) {
   if (!p || !p.orbit) return;
+  p.orbit.position.set(sunAt[0], sunAt[1], sunAt[2]);   // the line is round the Sun, wherever the Sun is drawn this frame
   // The Planets view always, elsewhere by the setting (near a body an orbit runs past the camera as a line, so it is
   // not there unasked). They are still worked out, for the minimap.
   var held = _aeOrbitShow(p.b.key), wanted = held > 0 || (_ae.target !== 'earth' && _ae.target !== 'moon');
@@ -2535,7 +2536,7 @@ function _aeDrawOrbit(p, jd, place) {
   p.orbitAt = jd;
   var arr = p.orbit.geometry.attributes.position.array;
   for (var k = 0; k < AE_ORBIT_POINTS; k++) {
-    var q = place(_ephBodyJ2000(p.b.eph, jd + p.period * k / AE_ORBIT_POINTS));
+    var q = around(_ephBodyJ2000(p.b.eph, jd + p.period * k / AE_ORBIT_POINTS));
     arr[k * 3] = q[0]; arr[k * 3 + 1] = q[1]; arr[k * 3 + 2] = q[2];
   }
   p.orbit.geometry.attributes.position.needsUpdate = true;
@@ -2578,9 +2579,13 @@ function _aeUpdatePlanets(sc) {
   var toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, jde); };
   var helio = {}, sunAt = _aeSunShown(sc);
   S.ecl = { sun: sunAt, x: _aeNorm(toScene([1, 0, 0])), z: _aeNorm(toScene([0, 0, 1])) };
-  var place = function (h) { return _aeAdd(sunAt, _aeScale(_aeNorm(toScene(h)), _aeShownDist(_aeLen(h)))); };
+  // `around`: where a heliocentric place is drawn from the Sun. Whatever is kept for more than a frame (an orbit line, the
+  // belt) is stored this way and carried to the Sun each frame: the Sun swings round the Earth a degree a day, and a
+  // line stored beside where the Sun was left the planets behind as the date ran.
+  var around = function (h) { return _aeScale(_aeNorm(toScene(h)), _aeShownDist(_aeLen(h))); };
+  var place = function (h) { return _aeAdd(sunAt, around(h)); };
   _aeRedrawsLeft = AE_REDRAWS_PER_FRAME;
-  _aeUpdateAsteroids(jde, place);
+  _aeUpdateAsteroids(jde, around, sunAt);
   // A probe near a planet stands at its true distance from it, as the moons do (the drawn scale squeezes space round
   // a planet tens of times: Juno would orbit inside Jupiter, Webb inside the GPS shell): within a planet's reach it
   // goes from the scale's place to the planet's own frame, all the way in by half that reach.
@@ -2605,7 +2610,7 @@ function _aeUpdatePlanets(sc) {
       if (!h) { p.pos = null; p.mesh.visible = false; return; }   // a dwarf before its table has come, or past its years
       pos = place(h);
       if (AE_PROBE_REACH_AU[b.key]) near.push({ key: b.key, h: h, at: pos, reach: AE_PROBE_REACH_AU[b.key], hAt: _aeHelioOf(b) });
-      _aeDrawOrbit(S.planets[b.key], jd, place);
+      _aeDrawOrbit(S.planets[b.key], jd, around, sunAt);
       sun = _aeNorm(toScene(_aeScale(h, -1)));
       f = _aePlanetFrameEcl(b, jd);
     } else {
@@ -3084,7 +3089,7 @@ function _aeAstHelio(el, i, jde, epoch) {
   var xp = xv * cw - yv * sw, yp = xv * sw + yv * cw;
   return [xp * co - yp * so * ci, xp * so + yp * co * ci, yp * si];
 }
-function _aeUpdateAsteroids(jde, place) {
+function _aeUpdateAsteroids(jde, around, sunAt) {
   var S = _ae.gl, wide = _aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST;
   if (!wide && !(_aeAst && _aeAst.cloud && _aeAst.cloud.visible)) return;
   if (!_aeAst) { _aeAstLoad(); return; }
@@ -3095,6 +3100,7 @@ function _aeUpdateAsteroids(jde, place) {
   }
   _aeAst.cloud.visible = wide;
   if (!wide) return;
+  _aeAst.cloud.position.set(sunAt[0], sunAt[1], sunAt[2]);
   // Placed a share a frame (a Kepler solve each: all at once held one frame for 60 ms on a slow phone), the belt
   // filling in over the first frames of the pull back while it is still small.
   if (_aeAst.fill == null) {
@@ -3103,7 +3109,7 @@ function _aeUpdateAsteroids(jde, place) {
   }
   var total = Math.ceil(_aeAst.n / AE_AST_STRIDE), end = Math.min(total, _aeAst.fill + AE_AST_PER_FRAME);
   for (var k = _aeAst.fill; k < end; k++) {
-    _aeSetPoint(_aeAst.cloud, k, place(_aeAstHelio(_aeAst.el, k * AE_AST_STRIDE, _aeAst.at, _aeAst.epoch)), AE_AST_COLOR, AE_AST_ALPHA, AE_AST_PX);
+    _aeSetPoint(_aeAst.cloud, k, around(_aeAstHelio(_aeAst.el, k * AE_AST_STRIDE, _aeAst.at, _aeAst.epoch)), AE_AST_COLOR, AE_AST_ALPHA, AE_AST_PX);
   }
   _aeAst.drawn = Math.max(_aeAst.drawn || 0, end);
   _aeCommitPoints(_aeAst.cloud, _aeAst.drawn);

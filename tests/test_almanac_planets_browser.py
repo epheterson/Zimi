@@ -148,7 +148,7 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             # within the two planets' (a few of the 18,000 stray inside Mars's: the Hungarias).
             belt = pg.evaluate(
                 """() => { var a = _aeAst.cloud.geometry.attributes.position.array, sun = _aeSunShown(_ae.scene), d = [];
-                for (var i = 0; i < _aeAst.cloud.geometry.drawRange.count; i++) d.push(Math.hypot(a[i*3] - sun[0], a[i*3+1] - sun[1], a[i*3+2] - sun[2]));
+                for (var i = 0; i < _aeAst.cloud.geometry.drawRange.count; i++) d.push(Math.hypot(a[i*3], a[i*3+1], a[i*3+2]));   // the cloud is stored round the Sun
                 d.sort(function (x, y) { return x - y; });
                 var r = function (k) { var p = _ae.gl.planets[k].pos; return Math.hypot(p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]); };
                 return { n: _aeAst.n, drawn: d.length, p1: d[Math.floor(d.length * 0.01)], p99: d[Math.floor(d.length * 0.99)], mars: r('mars'), jupiter: r('jupiter') }; }"""
@@ -1967,6 +1967,56 @@ def test_the_minimap_is_always_there(served, width):
                 timeout=60_000,
                 polling=100,
             )
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_planets_stay_on_their_orbits_and_the_belt_round_the_sun_as_the_date_runs(
+    served,
+):
+    """The Sun swings round the Earth a degree a day, and the Earth is the middle of this view. An orbit line or the belt
+    stored beside where the Sun stood left every planet off its ring as the date ran (up to the 30 days a line is kept):
+    at a month a second a planet stood 20 px from its line at 390 px, at a year a second 90. Each line is round the Sun as
+    drawn this frame, whatever date it was worked out for."""
+    from playwright.sync_api import sync_playwright
+
+    day = 86400000
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = _ctx(br)
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            _open(pg, served)
+            pg.click("[data-ae-view='planets']")
+            pg.wait_for_function(
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeAst && _aeAst.at !== null && _aeAst.fill == null; }",
+                timeout=60_000,
+                polling=200,
+            )
+            probe = """() => { var S = _ae.gl, sun = _aeSunShown(_ae.scene), worst = 0, belt = 0;
+              Object.keys(S.planets).forEach(function (k) { var p = S.planets[k]; if (p.b.parent || !p.orbit || !p.pos || !p.orbit.visible) return;
+                var a = p.orbit.geometry.attributes.position.array, o = p.orbit.position, best = 1e9;
+                // The nearest line vertex to the body, in scene units, over the vertex spacing (the line is polylines).
+                var pts = []; for (var i = 0; i < 180; i++) pts.push([a[i*3] + o.x, a[i*3+1] + o.y, a[i*3+2] + o.z]);
+                for (var i = 0; i < 180; i++) { var A = pts[i], B = pts[(i + 1) % 180], d = _aeSub(B, A), l = _aeDot(d, d),
+                  t = l ? Math.max(0, Math.min(1, _aeDot(_aeSub(p.pos, A), d) / l)) : 0, c = _aeAdd(A, _aeScale(d, t));
+                  best = Math.min(best, _aeLen(_aeSub(p.pos, c)) / _aeShownDist(_aeLen(_aeSub(p.pos, sun))));   // as a share of its drawn radius
+                }
+                worst = Math.max(worst, best); });
+              var c = _aeAst.cloud.position; belt = Math.hypot(c.x - sun[0], c.y - sun[1], c.z - sun[2]);
+              return { worst: worst, belt: belt }; }"""
+            for step in (20, 11, 29, -20, -45):
+                pg.evaluate(
+                    "(ms) => { _almFocus = new Date((_almFocus ? +_almFocus : Date.now()) + ms); _aeFollowClock(); }",
+                    step * day,
+                )
+                got = pg.evaluate(probe)
+                assert got["worst"] < 0.01, (step, got)
+                assert got["belt"] < 1e-6, (step, got)
             assert not errors, errors
             ctx.close()
         finally:
