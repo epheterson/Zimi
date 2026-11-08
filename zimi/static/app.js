@@ -3091,6 +3091,7 @@ function _keepFrom(st) {
 // source of the page before it when that was another ZIM. null for a step
 // back through the reader's own pages.
 function _backLabel() {
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) return _aeBackLabel();   // the Almanac's 3D view
   if (!readerOpen) return null;
   var prev = articleHistory[articleHistory.length - 1];
   if (prev && !prev.app) {
@@ -3116,7 +3117,7 @@ function updateTopbar() {
   const backTo = _backLabel();
   // Offline an app's page may not be here at all (the worker answers with its own "You're offline" page, which never
   // tells the topbar it is at the app's top or not): the arrow stays so there is always a way back to where you were.
-  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK)) || _gameHasShelfBehind();
+  const showBack = !!backTo || (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && (!_appTop || _connState !== CONN_OK)) || _gameHasShelfBehind();
   backBtn.style.display = showBack ? 'flex' : 'none';
   var nightBtn = document.getElementById('night-btn');
   // The red night light where it is used in the dark: the Field Guide and the Almanac's sky.
@@ -4368,6 +4369,7 @@ function goBack() {
   // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
   if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeClose(); return; }   // the 3D view over the Almanac first
   if (_almanacOpen) { closeAlmanac(); return; }
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask

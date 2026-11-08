@@ -169,7 +169,7 @@ def test_the_sun_and_the_moon_open_the_3d_view_on_themselves(browser, served):
         _tap_body(pg, "sun")
         _wait_view(pg, "sun")
         assert pg.evaluate(
-            "document.getElementById('ae-back-text').textContent"
+            "_aeBackLabel()"
         ) == pg.evaluate("t('almanac')")
         # The view keeps the page's clock: it shows the sky's instant.
         assert abs(pg.evaluate("_aeDisplayMs()") - _ms(DAY)) < 60000
@@ -281,7 +281,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         pg.touchscreen.tap(sun["x"], sun["y"])
         _wait_view(pg, "sun")
         assert pg.evaluate(
-            "document.getElementById('ae-back-text').textContent"
+            "_aeBackLabel()"
         ) == pg.evaluate("t('alm_solar_system')")
         assert not errors, errors
     finally:

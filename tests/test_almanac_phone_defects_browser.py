@@ -143,7 +143,7 @@ def test_the_views_own_close_takes_its_step_back(browser, served):
             timeout=READY_MS,
             polling=200,
         )
-        pg.click("#ae-back")
+        pg.click("#back-btn")
         pg.wait_for_function("() => !_aeIsOpen", timeout=10_000)
         pg.wait_for_timeout(400)
         assert not pg.evaluate("!!(history.state && history.state.aeView)")

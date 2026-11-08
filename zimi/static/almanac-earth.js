@@ -520,7 +520,6 @@ var AE_CSS = [
   '.ae-btn[disabled]{opacity:.45;cursor:default;pointer-events:none}',
   '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
   '.ae-btn[hidden]{display:none}',
-  '.ae-back{color:var(--text);flex:0 0 auto}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
@@ -558,6 +557,8 @@ var AE_CSS = [
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '#ae-views{flex-wrap:nowrap;align-items:center;max-width:calc(100vw - 24px);margin-inline:auto}',
   '#ae-views .ae-round{flex:none}',
+  '.ae-spintools{display:flex;flex:none;gap:inherit}',
+  '.ae-spintools[hidden]{display:none}',
   '.ae-chips{display:flex;flex:0 1 auto;gap:inherit;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:none;min-width:0}',
   '.ae-chips::-webkit-scrollbar{display:none}',
   '.ae-chips .ae-btn{flex:none}',
@@ -582,7 +583,7 @@ var AE_CSS = [
   '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
   '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
-  '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 64px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
+  '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
   '.ae-mini canvas{width:100%;height:100%;display:block}',
   '.ae-mini:focus-visible{outline:2px solid var(--amber);outline-offset:2px}',
@@ -1072,6 +1073,7 @@ function _aeRowKeys() {
   var recents = ((_ae && _ae.rowRecents) || []).filter(function (k) { return on.indexOf(k) < 0; }).slice(0, room);
   if (_ae) _ae.rowShortcuts = recents;
   recents.forEach(function (k) { mid.push(k); });
+  if (spin) return ['sun', AE_SPIN_KEY];   // its tools take the room (Side by side again goes back to Planets)
   return ['sun'].concat(mid, ['planets'], wide ? [AE_SPIN_KEY] : []);
 }
 function _aeRowName(k) {
@@ -1140,7 +1142,6 @@ function _aeBuildDom() {
     '<button type="button" class="ae-mini" id="ae-mini" hidden aria-label="' + _almEsc(_aeT('alm_earth_view_planets')) + '"><canvas id="ae-mini-c"></canvas></button>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
     '<div class="ae-top">' +
-      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> <span id="ae-back-text">' + _almEsc(_aeT('alm_solar_system')) + '</span></button>' +
       '<div class="ae-top-end">' +
         // The round tools stand in a column, so the date keeps its one line.
         '<div class="ae-tools">' +
@@ -1173,9 +1174,10 @@ function _aeBuildDom() {
         _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
       // Outward from home: the Earth, its satellites, the Moon, the Sun, the whole system; everywhere else is Go to.
       '<div class="ae-go" id="ae-go" role="dialog" aria-label="' + _almEsc(_aeT('alm_go_to')) + '" hidden></div>' +
-      '<div class="ae-row" id="ae-spinrow" hidden><button type="button" class="ae-btn ae-round ae-same" id="ae-spin-same" aria-pressed="false" aria-label="' + _almEsc(_aeT('alm_spin_same')) + '" title="' + _almEsc(_aeT('alm_spin_same')) + '">=</button>' + _aeSpinToolsHtml(true) + '</div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         '<div class="ae-chips" id="ae-chips">' + _aeRowHtml() + '</div>' +
+        // Side by side's own tools stand in the row, where Earth and Planets were.
+        '<span class="ae-spintools" id="ae-spinrow" hidden><button type="button" class="ae-btn ae-round ae-same" id="ae-spin-same" aria-pressed="false" aria-label="' + _almEsc(_aeT('alm_spin_same')) + '" title="' + _almEsc(_aeT('alm_spin_same')) + '">=</button>' + _aeSpinToolsHtml(true) + '</span>' +
         '<button type="button" class="ae-btn ae-round" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
           _almEsc(_aeT('alm_go_to')) + '" title="' + _almEsc(_aeT('alm_go_to')) + '">' + AE_GO_SVG + '</button>' +
       '</div>' +
@@ -6036,7 +6038,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-back', 'ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-gear', 'ae-locate', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -6915,7 +6917,6 @@ function _aeNow() {
 }
 
 function _aeBindControls() {
-  _aeById('ae-back').onclick = _aeClose;
   // A press outside the settings puts them away (the gear is its own toggle).
   if (typeof _almDismissable === 'function') {
     _almDismissable('ae-set', function () { _aeShowSettings(false); },
@@ -6926,7 +6927,7 @@ function _aeBindControls() {
     var k = b && b.getAttribute('data-ae-view');
     if (!k) return;
     if (k === AE_ROW_LANDINGS) { _aeShowGo(true, 'alm_go_landings'); return; }
-    _aePreset(k);
+    _aePreset(k === AE_SPIN_KEY && _ae.spin ? 'planets' : k);   // Side by side again: back to the planets
   };
   _aeById('ae-go-btn').onclick = function () { _aeShowGo(_aeById('ae-go').hidden); };
   _aeById('ae-go').onclick = function (e) {
@@ -7340,11 +7341,10 @@ function _aeShow(fromHero) {
   _ae.freshFailed = false;
   _almClockPaint();
   _aePauseAlmanac();
-  // Back goes where the view was opened from: the Almanac's page (the hero,
-  // the sky) or its solar system (the orrery).
-  var back = _aeById('ae-back'), backText = _aeById('ae-back-text');
-  if (backText) _aeSetText(backText, _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'));
-  if (back) back.focus({ preventScroll: true });
+  // The way back is Zimi's own arrow in the header (app.js goBack), named for where the view was opened from.
+  if (typeof updateTopbar === 'function') updateTopbar();
+  var cv = _aeById('ae-canvas');
+  if (cv) cv.focus({ preventScroll: true });
   _aeLoadSats();
   if (_aeReady()) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
   _aeCoverAlmanac(true);
@@ -7367,6 +7367,8 @@ function _aeShow(fromHero) {
 // Close: back into the hero when the view came from it and it is there to
 // go back to, else at once. The page has the view's moment first, so the
 // hero it lands in shows it.
+// Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
+function _aeBackLabel() { return _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'); }
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   _aeLeaveSpin();
@@ -7379,6 +7381,7 @@ function _aeFinishClose() {
   if (!_aeIsOpen) return;
   _aeLeaveSpin();
   _aeIsOpen = false;
+  if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();
   if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
