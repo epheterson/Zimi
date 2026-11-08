@@ -235,8 +235,9 @@ var _almReturnScroll = null;
 // then not, cards arriving. So the first open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning
 // crescent, up from the tap) and shown in one piece, once the first screen is genuinely on the canvases: the Moon, the
 // cards, the month and the sky's first real frame (almanac-sky.js settles it). Nothing else waits for it. A page that
-// is slow to settle is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays.
-var ALM_REVEAL_MAX_MS = 12000;
+// is slow to settle is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays (12 s was a long spinner on a
+// phone coming back to its tab, Eric 2026-11-08). A page put back scrolled past the sky does not wait for it.
+var ALM_REVEAL_MAX_MS = 5000;
 var ALM_PANELS_SETTLE_MS = 3200;      // after the page is shown, the panels under the calendar wait this long (or for a hand on the page)
 var ALM_EARTH_IDLE_MS = 6000;         // and the 3D view's files this long, then for a quiet moment
 var _almRevealing = false, _almRevealTimer = 0, _almShownAt = 0;   // _almShownAt: when the page was shown (0: not yet)
@@ -461,7 +462,7 @@ function _almLinkRestoreView(link) {
     (function put() {
       if (stopped || !_almanacOpen) { stop(); done(); return; }
       sc.scrollTop = link.s;
-      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); done(); return; }
+      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); _almRevealIfSkyAway(); done(); return; }
       setTimeout(put, ALM_LINK_SCROLL_MS);
     })();
   }
@@ -472,6 +473,13 @@ function _almLinkRestoreView(link) {
     }).catch(function () {}).then(done);
   }
   done();
+}
+// The sky out of sight once the scroll is put back: the page is shown without its first frame.
+function _almRevealIfSkyAway() {
+  var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas;
+  if (!_almRevealing || !cv) return;
+  var r = cv.getBoundingClientRect();
+  if (r.bottom <= 0 || r.top >= window.innerHeight) _almSkySettled();
 }
 function _almLinkHash() {
   var parts = [], sc = document.getElementById('almanac-content');

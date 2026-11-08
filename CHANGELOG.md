@@ -12,12 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
 - **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
-- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, pinned to the top as you scroll and at the foot of the 3D view.
+- **One clock in the Almanac:** type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together. At rest it is the plain date and time; tap it to change it.
 - **Places autocomplete:** typing `near:Spri` offers Springfield, Illinois and the other Springfields with their region and country, and `near:Paris, Texas` takes the one you mean.
-- **Landmarks on every world:** with Landmarks on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card and Fly there, and Go to lists every landing site.
-- **Facts for every body:** a card's All facts opens a sheet with size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.
+- **Landmarks on every world:** with the pin on, Mars, Venus, Mercury, Titan, Pluto, Ceres, the big moons of Jupiter and the Earth are named like the Moon (Olympus Mons, Gale, Sputnik Planitia, Everest), each with a card, and Go to lists every landing site.
+- **Facts for every body:** the i opens a sheet with a one-line note, size, mass, gravity, day, year, tilt, distances now, moons, temperature and air (miles or km), and each body's axis is drawn with its orbit; every number is listed with its source in the Almanac's Constants.
 - **Go to by name:** the 3D view's Go to searches the towns on your maps and the Earth's landmarks, flies down over the one you pick and previews its article from your library.
 - **Flights to spacecraft:** the model loads as the flight starts and the camera ends on it, so Voyager and the station no longer pop in on arrival.
+- **A link back to exactly where you were:** the Almanac's address keeps the moment, the speed, the scroll and the 3D view, so a reload or a shared link comes back to the same place.
+- **A clean 3D view:** arriving somewhere shows just the body, its facts behind an i; Landmarks and Orbits are round switches beside the gear, and the back arrow sits in Zimi's header.
+
+### Fixed
+
+- ZimCity: kept cities open with their people and can be renamed, Undo says what it took back, and Hamburg and Tokyo can no longer be won by doing nothing.
+- About 40 game fixes: daily games come back as the day's, end sheets name the winner and why, Ludo no longer stops after a capture, Mahjong fits an upright phone, and German uses du.
+- Almanac planets stay on their orbit lines at every speed, and probe paths with them.
+- Almanac clock: a jump to another day keeps it running, and AM/PM runs through the hours.
+- The Earth turns smoothly under the space station, and flying from it back home is quick.
+- Go to sits above the keyboard, and Map here appears only where one of your maps covers the place.
+- Read aloud in a book starts at the first sentence that begins on the page.
 
 ## [1.15.3]
 
