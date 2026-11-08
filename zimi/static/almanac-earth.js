@@ -522,7 +522,7 @@ var AE_CSS = [
   '.ae-btn[hidden]{display:none}',
   '#ae-map{display:inline-flex;align-items:center;gap:6px}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
-  '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
+  '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0;margin-inline-start:auto}',   // alone in the top row: at its end
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
   '.ae-round{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
   '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',

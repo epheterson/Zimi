@@ -1498,7 +1498,6 @@ function _almSpdInput(rng) {
 function _almClockPointerDown(e) {
   var tgt = e.target, root = tgt && tgt.closest ? tgt.closest('.alm-clock') : null;
   _almCkTap = null;
-  if (!root && _almClockOpen && !_almEd && !_almClockAway() && _almRate === 1) _almClockOpenUp(false);   // a tap away shuts an idle clock
   if (_almEd && _almEd.part === 'month' && !(tgt.closest && tgt.closest('.alm-ck-pop')) && !(root && _almClockNearest(root, e.clientX, e.clientY))) _almEdCancel();
   if (!root) return;
   var rng = tgt.closest('.alm-spd-range');
@@ -1526,7 +1525,9 @@ function _almClockClick(e) {
   var tgt = e.target;
   if (!tgt || !tgt.closest) return;
   var root = tgt.closest('.alm-clock'), b;
-  if (!root) return;
+  // A tap away shuts an idle clock: on the click, once the tap has done its own work (on the press, the slider going
+  // would move what the finger is on).
+  if (!root) { if (_almClockOpen && !_almEd && !_almClockAway() && _almRate === 1) _almClockOpenUp(false); return; }
   if ((b = tgt.closest('.alm-ck-now'))) { if (typeof _orreryClockReset === 'function') _orreryClockReset(); _almBackToToday(); return; }
   if ((b = tgt.closest('.alm-spd-play'))) { _almClockTogglePause(); return; }
   if ((b = tgt.closest('.alm-spd-mark'))) { _almClockSetRate(ALM_RATE_STOPS[+b.getAttribute('data-stop')]); return; }
