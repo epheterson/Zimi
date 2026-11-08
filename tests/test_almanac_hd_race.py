@@ -48,4 +48,4 @@ def test_two_asks_at_once_queue_one_download(monkeypatch, tmp_path):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert len(queued) == 1, queued
-    assert all(err is None for _id, err in results)
+    assert len(results) == 2 and all(err is None for _id, err in results)

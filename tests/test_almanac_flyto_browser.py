@@ -177,6 +177,7 @@ def test_flights_to_voyager_and_the_station_wait_for_a_late_model_and_end_on_it(
                     polling=200,
                 )
                 frames, end = _fly(pg, key)
+                assert frames, (key, "no frames recorded for the flight")
                 assert not any(f["wait"] for f in frames), (
                     key,
                     "a model that was here was waited for",

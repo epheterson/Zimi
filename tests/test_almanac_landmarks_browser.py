@@ -88,7 +88,7 @@ def test_fly_to_the_apollo_11_site(served):
             pg.evaluate("_aePreset('moon')")
             # Landmarks are off until turned on: the Moon names nothing, its landing sites included.
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_aeLm; }", timeout=60_000, polling=200)
-            pg.wait_for_timeout(600)
+            pg.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")   # let a frame draw the names
             assert pg.evaluate(LABELS) == []
             # The pin turns them on, pressed and remembered on this device.
             pg.click("#ae-lm-btn")

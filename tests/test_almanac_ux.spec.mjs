@@ -40,7 +40,7 @@ async function openAlmanac(page, { lang } = {}) {
   await page.waitForFunction(() => typeof window.openAlmanacEarth === 'function' && document.getElementById('almanac-orrery'));
   // Hold the orrery at now (1x) so the planets stay put under the pointer.
   await page.evaluate(() => {
-    _orrerySnapToNow();
+    _orreryClockReset(); _almBackToToday();
     document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' });
   });
   // On a phone the header steps aside as the page scrolls: wait for the
@@ -237,7 +237,7 @@ test.describe('what a tap on the orrery does', () => {
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zimi_orrery_tried')))).toEqual({ earth: 1 });
 
     // A flight: nothing left to say, now or on the next visit.
-    await page.evaluate(() => _orrerySnapToNow());
+    await page.evaluate(() => { _orreryClockReset(); _almBackToToday(); });
     const m = await bodyAt(page, 'Mars');
     await page.touchscreen.tap(m.x, m.y);
     await page.locator('#orrery-tooltip [data-orr-fly]').tap();

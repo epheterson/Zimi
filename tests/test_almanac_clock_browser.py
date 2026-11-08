@@ -394,7 +394,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
             pg.evaluate(
                 "() => document.querySelector('#almanac-head .alm-spd-play').getAttribute('aria-label')"
             )
-            != ""
+            not in (None, "")
         )
         assert not pg.evaluate(
             "() => document.querySelector('#almanac-head .alm-ck-now').hidden"
