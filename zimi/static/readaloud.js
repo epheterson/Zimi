@@ -545,15 +545,13 @@ function _ttsOnText(rects, x, y) {
 }
 
 // A page opens mid-sentence more often than not (or on the tail of a
-// hyphenated word), its head on the page before. The book is one text, so the
-// head is in hand: reading begins at that sentence's start and the voice says
-// it whole. A head further back than this is a run-on the listener would not
-// thank us for: reading then begins at the next sentence, a whole word.
-var _TTS_HEAD_MAX = 600; // characters
+// hyphenated word), its head on the page before. Reading begins at the first
+// sentence that starts on this page: what is read is what is seen, from a
+// whole sentence. (Reading on from the page before says a sentence over the
+// break whole, as one chunk: the book is one text.)
 function _ttsSentenceHead(model, at) {
   var sp = at > 0 && _ttsSentenceAt(model, at);
   if (!sp || sp.s >= at) return at;
-  if (at - sp.s <= _TTS_HEAD_MAX) return sp.s;
   var next = _ttsSentenceSpans(model.text, sp.e, model.text.length, _ttsLang(model.doc))[0];
   return next ? next[0] : sp.e;
 }
