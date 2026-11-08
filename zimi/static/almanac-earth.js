@@ -3171,6 +3171,7 @@ function _aeFullEnter() {
   _aeShowSettings(false);
   _aeFullApply(true);
   _aeFullStepIn();
+  if (!_aeFullHeard) { _aeFullHeard = true; document.addEventListener('fullscreenchange', _aeFullChanged); }
   try {
     if (document.fullscreenEnabled && _ae.el.requestFullscreen) {
       var p = _ae.el.requestFullscreen({ navigationUI: 'hide' });
@@ -3193,12 +3194,13 @@ function _aeFullDrop() {
   document.documentElement.classList.remove(AE_FULL_ROOT_CLASS);
   if (document.fullscreenElement === _ae.el && document.exitFullscreen) { var p = document.exitFullscreen(); if (p && p.catch) p.catch(function () {}); }
 }
-document.addEventListener('fullscreenchange', function () {
-  // The browser's own way out (its Escape) ends full screen here too.
+// The browser's own way out (its Escape) ends full screen here too. Listened for from the first entry, not at load.
+var _aeFullHeard = false;
+function _aeFullChanged() {
   if (!_ae || !_ae.spin) return;
   if (document.fullscreenElement === _ae.el) _ae.spin.api = true;
   else if (_ae.spin.api && _ae.spin.full) _aeFullExit();
-});
+}
 function _aeLeaveSpin() {
   var s = _ae && _ae.spin;
   if (!s) return;
