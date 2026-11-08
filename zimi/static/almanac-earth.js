@@ -607,6 +607,18 @@ var AE_CSS = [
   '.ae-sp .ae-sp-back{color:' + AE_AMBER_HEX + '}',
   '.ae-sp:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
   '.night-red .ae-sp,.night-red .ae-sp b,.night-red .ae-sp span{color:var(--text)}',
+  // Full screen: the planets and their short names, nothing else but the two small tools in the corner. The Fullscreen API
+  // where the browser has it; this covering the viewport where it does not (an iPhone), inside its safe areas (_aeSpinRoom).
+  '.ae-spin-full{position:fixed;inset:0;z-index:10000}',
+  '.ae-spin-full>*:not(.ae-canvas):not(.ae-spin):not(.ae-fullbar):not(.ae-safe){display:none!important}',
+  'html.ae-full-on .topbar{display:none!important}',   // the page's own bar stands above any covering view
+  '.ae-spin-full .ae-sp b{font-size:15px}',
+  '.ae-spin-full .ae-sp span{display:none}',
+  '.ae-fullbar{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));display:none;gap:8px;z-index:3;opacity:.8}',
+  '.ae-spin-full .ae-fullbar{display:flex}',
+  '.ae-safe{position:absolute;inset:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}',
+  '.ae-tool-svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
+  '.ae-tool-svg .ae-dot{fill:currentColor;stroke:none}',
   '.ae-bm-quiet b{display:none}',
   // Landmarks: a dot and a name each, tappable (the dot sits on the place, AE_LM_DOT_X from the button's edge).
   '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
@@ -1118,6 +1130,7 @@ function _aeBuildDom() {
     '</div>' +
     '<div class="ae-lms" id="ae-lms"></div>' +
     '<div class="ae-spin" id="ae-spin" role="group" aria-label="' + _almEsc(_aeT('alm_spin_title')) + '"></div>' +
+    '<div class="ae-fullbar" id="ae-fullbar">' + _aeSpinToolsHtml(false) + '</div><div class="ae-safe" id="ae-safe"></div>' +
     '<button type="button" class="ae-mini" id="ae-mini" hidden aria-label="' + _almEsc(_aeT('alm_earth_view_planets')) + '"><canvas id="ae-mini-c"></canvas></button>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
     '<div class="ae-top">' +
@@ -1151,7 +1164,7 @@ function _aeBuildDom() {
         _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
       // Outward from home: the Earth, its satellites, the Moon, the Sun, the whole system; everywhere else is Go to.
       '<div class="ae-go" id="ae-go" role="dialog" aria-label="' + _almEsc(_aeT('alm_go_to')) + '" hidden></div>' +
-      '<div class="ae-row" id="ae-spinrow" hidden><button type="button" class="ae-btn" id="ae-spin-same" aria-pressed="false">' + _almEsc(_aeT('alm_spin_same')) + '</button></div>' +
+      '<div class="ae-row" id="ae-spinrow" hidden><button type="button" class="ae-btn" id="ae-spin-same" aria-pressed="false">' + _almEsc(_aeT('alm_spin_same')) + '</button>' + _aeSpinToolsHtml(true) + '</div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         '<div class="ae-chips" id="ae-chips">' + _aeRowHtml() + '</div>' +
         '<button type="button" class="ae-btn ae-round" id="ae-go-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="' +
@@ -2447,6 +2460,14 @@ function _aeRingGeometry(THREE, rin, rout, segs) {
   g.setIndex(idx);
   return g;
 }
+// A square of side 2 * half, in the xy plane, uv 0..1.
+function _aeQuadGeometry(THREE, half) {
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-half, -half, 0, half, -half, 0, half, half, 0, -half, half, 0]), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  return g;
+}
 function _aeBuildPlanets(S) {
   _aeKnowPlanets();
   var THREE = S.THREE;
@@ -2497,6 +2518,7 @@ var AE_ORBITS_KEY = SK.ALM_ORBITS, AE_ORBITS_MODES = ['flying', 'always', 'off']
 // The orbit lines, the landmarks layer or the settings panel changed underneath the view (almanac.js
 // _almPrefsApplied): drawn again from storage.
 function _aePrefsApplied(keys) {
+  if (keys.indexOf(AE_SPIN_FACES_KEY) >= 0 && _ae && _ae.spin) _aeSpinMarkFaces();
   if (keys.indexOf(AE_ORBITS_KEY) < 0 && keys.indexOf(AE_LM_LAYER_KEY) < 0) return;
   if (keys.indexOf(AE_LM_LAYER_KEY) >= 0 && _aeLmLayerOn()) _aeLmLoad();
   if (_ae) { _ae.dirty = true; _aeKick(); if (_ae.setOpen) _aeRenderSettings(); }
@@ -2697,6 +2719,25 @@ var AE_SPIN_SAME_KEY = 'zimi_ae_spin_same';
 var AE_SPIN_HOURS_BELOW = 100;           // a day shorter than this many hours is told in hours, else in days
 var AE_SPIN_YEARS_ABOVE_DAYS = 730;      // a year longer than this is told in years
 var AE_SPIN_DECIMALS_BELOW = 30;         // years are told with a decimal below this many
+var AE_SPIN_FACES_KEY = SK.ALM_SPIN_FACES, AE_FULL_ROOT_CLASS = 'ae-full-on';
+var AE_SPIN_METRICS = { labelW: AE_SPIN_LABEL_W, labelH: AE_SPIN_LABEL_H, gap: AE_SPIN_GAP };
+var AE_SPIN_FULL_METRICS = { labelW: 56, labelH: 30, gap: 6 };   // full screen: the name alone under each planet
+var AE_SPIN_FULL_TOOL_PX = 46;           // the corner tools' strip, taken from the side with room to spare
+var AE_FACE_PX = 512;                     // the face texture's side; the plane it is on spans the planet's disc (2 radii)
+var AE_FACE_Z = 1.02;                     // radii in front of the planet's middle: in front of its whole disc
+var AE_FACE_ORDER = 1, AE_FACE_RING_ORDER = 2;   // drawn after the planet, before the rings: painted on it, under the ring that crosses it
+var AE_FACE_BLINK_MS = 150, AE_FACE_BLINK_GAP_MS = [2200, 5200];
+var AE_FACE_INK = '#2a1620', AE_FACE_MOUTH = '#6a2233', AE_FACE_TONGUE = '#f08aa0', AE_FACE_CHEEK = 'rgba(255,120,150,.55)';
+var AE_TOOL_SVG_OPEN = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true">';
+var AE_FACES_SVG = AE_TOOL_SVG_OPEN + '<circle cx="12" cy="12" r="9"/><circle class="ae-dot" cx="9" cy="10" r="1.2"/><circle class="ae-dot" cx="15" cy="10" r="1.2"/><path d="M8 14.2c1 1.9 2.4 2.8 4 2.8s3-.9 4-2.8"/></svg>';
+var AE_FULL_SVG = AE_TOOL_SVG_OPEN + '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>';
+var AE_FULL_EXIT_SVG = AE_TOOL_SVG_OPEN + '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>';
+// The two small tools: faces on or off, and full screen (in the full-screen corner, the way out instead). Icons only.
+function _aeSpinToolsHtml(inRow) {
+  var faces = _almEsc(_aeT('alm_spin_faces')), full = _almEsc(_aeT(inRow ? 'alm_spin_full' : 'alm_spin_full_exit'));
+  return '<button type="button" class="ae-btn ae-round" data-ae-faces aria-pressed="false" aria-label="' + faces + '" title="' + faces + '">' + AE_FACES_SVG + '</button>' +
+    '<button type="button" class="ae-btn ae-round" data-ae-full="' + (inRow ? 'enter' : 'exit') + '" aria-label="' + full + '" title="' + full + '">' + (inRow ? AE_FULL_SVG : AE_FULL_EXIT_SVG) + '</button>';
+}
 function _aeSpinBody(key) { return key === 'earth' ? AE_SPIN_EARTH : _aePlanetBody(key); }
 function _aeYearDays(eph) { return 36525 * 360 / _PLANETS[eph].dL; }   // days, from the orrery's mean motion
 function _aeSpinMapUrl(b) { return b.mapUrl || _aePlanetMapUrl(b); }
@@ -2744,7 +2785,7 @@ function _aeSpinLines(b, jd) {
 function _aeSpinOrbits() { return _aeOrbitsMode() !== 'off'; }
 function _aeSpinSame() {
   try { var v = localStorage.getItem(AE_SPIN_SAME_KEY); if (v === '1' || v === '0') return v === '1'; } catch (e) {}
-  return _ae.w < AE_SPIN_NARROW_PX;   // a phone's width cannot hold the true sizes: the small planets would be specks
+  return _ae.w < AE_SPIN_NARROW_PX || _aeFullOn();   // a phone's width cannot hold the true sizes: the small planets would be specks
 }
 function _aeSpinSetSame(on) {
   try { localStorage.setItem(AE_SPIN_SAME_KEY, on ? '1' : '0'); } catch (e) {}
@@ -2764,16 +2805,16 @@ function _aeSpinSize(b, same) {
     hh: Math.max(AE_SPIN_AXIS_R * rad, ring * AE_SPIN_RING_TILT) };
 }
 // Whether rows (lists of sizes) fit the room at s px a unit.
-function _aeSpinFits(rows, s, W, H) {
-  var total = -AE_SPIN_GAP;
+function _aeSpinFits(rows, s, W, H, m) {
+  var total = -m.gap;
   for (var r = 0; r < rows.length; r++) {
-    var w = -AE_SPIN_GAP, tall = 0;
+    var w = -m.gap, tall = 0;
     for (var i = 0; i < rows[r].length; i++) {
-      w += Math.max(2 * rows[r][i].plane * s, AE_SPIN_LABEL_W) + AE_SPIN_GAP;
+      w += Math.max(2 * rows[r][i].plane * s, m.labelW) + m.gap;
       tall = Math.max(tall, 2 * rows[r][i].hh * s);
     }
     if (w > W) return false;
-    total += tall + AE_SPIN_LABEL_H + AE_SPIN_GAP;
+    total += tall + m.labelH + m.gap;
   }
   return total <= H;
 }
@@ -2781,7 +2822,7 @@ function _aeSpinFits(rows, s, W, H) {
 // biggest (within AE_SPIN_ROW_TOLERANCE of the most), then the fewest rows, then the most even. Returns the scale (px a
 // unit) and a cell per planet: { left, top, width, height, cx, cy, r, labelTop } in px from the room's corner (r: the
 // planet's radius). A row's planets stand on one line; each name hangs under its own planet.
-function _aeSpinLayout(sizes, W, H) {
+function _aeSpinLayout(sizes, W, H, m) {
   var n = sizes.length, found = [];
   for (var mask = 0; mask < 1 << (n - 1); mask++) {
     var runs = [[0]];
@@ -2791,7 +2832,7 @@ function _aeSpinLayout(sizes, W, H) {
     var lo = 0, hi = AE_SPIN_FIT_MAX;
     for (var it = 0; it < AE_SPIN_FIT_ITER; it++) {
       var mid = (lo + hi) / 2;
-      if (_aeSpinFits(rows, mid, W, H)) lo = mid; else hi = mid;
+      if (_aeSpinFits(rows, mid, W, H, m)) lo = mid; else hi = mid;
     }
     var lens = runs.map(function (r) { return r.length; });
     found.push({ s: lo, runs: runs, uneven: Math.max.apply(null, lens) - Math.min.apply(null, lens) });
@@ -2802,29 +2843,106 @@ function _aeSpinLayout(sizes, W, H) {
   })[0];
   var s = best.s || 1 / AE_SPIN_FIT_MAX, cells = [];
   var heights = best.runs.map(function (run) { return Math.max.apply(null, run.map(function (k) { return 2 * sizes[k].hh * s; })); });
-  var total = heights.reduce(function (a, h) { return a + h + AE_SPIN_LABEL_H; }, 0) + AE_SPIN_GAP * (best.runs.length - 1);
+  var total = heights.reduce(function (a, h) { return a + h + m.labelH; }, 0) + m.gap * (best.runs.length - 1);
   var y = Math.max(0, (H - total) / 2);
   best.runs.forEach(function (run, r) {
-    var widths = run.map(function (k) { return Math.max(2 * sizes[k].plane * s, AE_SPIN_LABEL_W); });
-    var x = (W - widths.reduce(function (a, w) { return a + w; }, 0) - AE_SPIN_GAP * (run.length - 1)) / 2;
+    var widths = run.map(function (k) { return Math.max(2 * sizes[k].plane * s, m.labelW); });
+    var x = (W - widths.reduce(function (a, w) { return a + w; }, 0) - m.gap * (run.length - 1)) / 2;
     run.forEach(function (k, j) {
       var half = sizes[k].hh * s, cy = y + heights[r] / 2;
-      cells[k] = { left: x, top: cy - half, width: widths[j], height: 2 * half + AE_SPIN_LABEL_H, cx: x + widths[j] / 2, cy: cy, r: sizes[k].rad * s };
-      x += widths[j] + AE_SPIN_GAP;
+      cells[k] = { left: x, top: cy - half, width: widths[j], height: 2 * half + m.labelH, cx: x + widths[j] / 2, cy: cy, r: sizes[k].rad * s };
+      x += widths[j] + m.gap;
     });
-    y += heights[r] + AE_SPIN_LABEL_H + AE_SPIN_GAP;
+    y += heights[r] + m.labelH + m.gap;
   });
   return { s: s, cells: cells };
 }
 // The scene (once, with the context): a planet's sphere, its rings, its axis and its orbital plane, in a group tipped to
 // the camera's elevation; its label a button over it. Maps come as the planets' own do.
+// The face, as a square canvas that spans a planet's disc (a radius is half the side): white eyes with dark pupils (they read on
+// pale Venus and deep Neptune alike), cheeks, an open smile. ``blink``: the eyes shut.
+function _aeFaceCanvas(blink) {
+  var c = document.createElement('canvas'), n = AE_FACE_PX, k = n / 2;
+  c.width = c.height = n;
+  var g = c.getContext('2d');
+  var X = function (u) { return k + u * k; }, Y = function (v) { return k - v * k; };   // in radii from the middle, up positive
+  var ink = function (w) { g.strokeStyle = AE_FACE_INK; g.lineWidth = w * k; g.lineCap = g.lineJoin = 'round'; };
+  g.fillStyle = AE_FACE_CHEEK;
+  [-1, 1].forEach(function (sx) { g.beginPath(); g.ellipse(X(sx * 0.5), Y(-0.1), 0.11 * k, 0.075 * k, 0, 0, 2 * Math.PI); g.fill(); });
+  [-1, 1].forEach(function (sx) {
+    var ex = sx * 0.3, ey = 0.17;
+    if (blink) { ink(0.06); g.beginPath(); g.arc(X(ex), Y(ey + 0.04), 0.13 * k, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); return; }
+    g.fillStyle = '#fff'; ink(0.03);
+    g.beginPath(); g.arc(X(ex), Y(ey), 0.17 * k, 0, 2 * Math.PI); g.fill(); g.stroke();
+    g.fillStyle = AE_FACE_INK;
+    g.beginPath(); g.arc(X(ex + sx * -0.02), Y(ey - 0.015), 0.095 * k, 0, 2 * Math.PI); g.fill();
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(X(ex - 0.045), Y(ey + 0.04), 0.032 * k, 0, 2 * Math.PI); g.fill();
+  });
+  // The mouth: flat on top, round below, with a tongue.
+  var mouth = function () {
+    g.beginPath(); g.moveTo(X(-0.27), Y(-0.17)); g.quadraticCurveTo(X(0), Y(-0.2), X(0.27), Y(-0.17));
+    g.bezierCurveTo(X(0.25), Y(-0.45), X(-0.25), Y(-0.45), X(-0.27), Y(-0.17)); g.closePath();
+  };
+  mouth(); g.fillStyle = AE_FACE_MOUTH; g.fill();
+  g.save(); g.clip();
+  g.fillStyle = AE_FACE_TONGUE; g.beginPath(); g.ellipse(X(0), Y(-0.42), 0.15 * k, 0.1 * k, 0, 0, 2 * Math.PI); g.fill();
+  g.restore();
+  ink(0.04); mouth(); g.stroke();
+  return c;
+}
+var AE_FACE_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+var AE_FACE_FRAG = 'uniform sampler2D map; uniform float tint; varying vec2 vUv; void main() { vec4 t = texture2D(map, vUv); gl_FragColor = vec4(t.rgb * tint, t.a); }';
+// Faces: the person's own choice (kept with them), else on in full screen only: a kid's view of the planets wants them, the
+// reference for the numbers (Day, Year, Tilt) does not.
+function _aeSpinFacesOn() {
+  try { var v = localStorage.getItem(AE_SPIN_FACES_KEY); if (v === '1' || v === '0') return v === '1'; } catch (e) {}
+  return _aeFullOn();
+}
+function _aeSpinSetFaces(on) {
+  _prefWrite(AE_SPIN_FACES_KEY, on ? '1' : '0');
+  _aeSpinMarkFaces();
+}
+function _aeSpinMarkFaces() {
+  var on = String(_aeSpinFacesOn());
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ae-faces]'), function (b) { b.setAttribute('aria-pressed', on); });
+  _aeSpinBlinkStart();
+  if (_ae) { _ae.dirty = true; _aeKick(); }
+}
+// A blink now and then, one planet at a time (not under reduced motion): a timer, not a frame loop, so the view stays idle between.
+function _aeSpinBlinkStop() { var s = _ae && _ae.spin; if (s && s.blinkTimer) { clearTimeout(s.blinkTimer); s.blinkTimer = 0; } }
+function _aeSpinBlink(c) {
+  c.blinkUntil = performance.now() + AE_FACE_BLINK_MS;
+  _ae.dirty = true; _aeKick();
+  setTimeout(function () { if (_ae) { _ae.dirty = true; _aeKick(); } }, AE_FACE_BLINK_MS + 20);
+}
+function _aeSpinBlinkStart() {
+  var s = _ae && _ae.spin, sp = _ae && _ae.gl && _ae.gl.spin;
+  _aeSpinBlinkStop();
+  if (!s || !sp || !_aeSpinFacesOn() || _aeReduceMotion()) return;
+  var gap = AE_FACE_BLINK_GAP_MS;
+  s.blinkTimer = setTimeout(function () {
+    s.blinkTimer = 0;
+    _aeSpinBlink(sp.cells[Math.floor(Math.random() * sp.cells.length)]);
+    _aeSpinBlinkStart();
+  }, gap[0] + Math.random() * (gap[1] - gap[0]));
+}
 function _aeSpinBuild(S) {
   var THREE = S.THREE, V = THREE.Vector3;
-  var sp = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(30, 1, AE_SPIN_CAM_DIST / 2, AE_SPIN_CAM_DIST * 1.5), cells: [], key: '' };
+  var sp = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(30, 1, AE_SPIN_CAM_DIST / 2, AE_SPIN_CAM_DIST * 1.5), cells: [], key: '', faces: false };
   var geo = new THREE.SphereGeometry(1, AE_PLANET_SEGMENTS[0], AE_PLANET_SEGMENTS[1]);
   geo.rotateX(Math.PI / 2);
   var ringMap = { value: null }, sun = new V(AE_SPIN_SUN[0], AE_SPIN_SUN[1], AE_SPIN_SUN[2]).normalize();
   sp.v = [new V(), new V(), new V()];
+  sp.faceTex = [null, null];   // open eyes, shut eyes: as the rings' texture is made, from a drawn canvas
+  [false, true].forEach(function (blink, i) {
+    _aeLoadTexture(THREE, _aeFaceCanvas(blink).toDataURL()).then(function (tx) {
+      if (_ae.gl !== S) { tx.dispose(); return; }
+      tx.anisotropy = S.aniso;
+      sp.faceTex[i] = tx; _ae.dirty = true; _aeKick();
+    });
+  });
+  var faceGeo = _aeQuadGeometry(THREE, 1);
   AE_SPIN_ORDER.forEach(function (key) {
     var b = _aeSpinBody(key);
     var uni = {
@@ -2842,8 +2960,17 @@ function _aeSpinBuild(S) {
       cell.ring = new THREE.Mesh(_aeRingGeometry(THREE, b.rings[0] / b.km, b.rings[1] / b.km, AE_RING_SEGMENTS),
         new THREE.ShaderMaterial({ uniforms: ringUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_RING_FRAG, transparent: true, depthWrite: false, side: AE_THREE_DOUBLE_SIDE }));
       cell.ring.matrixAutoUpdate = false;
+      cell.ring.renderOrder = AE_FACE_RING_ORDER;
       G.add(cell.ring);
     }
+    // The face: a plane square to the camera on the planet's disc, so it does not turn with the surface; the planet's rings
+    // cross it (they are drawn after it).
+    cell.faceUni = { map: { value: sp.faceTex[0] }, tint: { value: 1 } };
+    cell.face = new THREE.Mesh(faceGeo, new THREE.ShaderMaterial({ uniforms: cell.faceUni, vertexShader: AE_FACE_VERT, fragmentShader: AE_FACE_FRAG,
+      transparent: true, depthTest: false, depthWrite: false }));
+    cell.face.renderOrder = AE_FACE_ORDER;
+    cell.face.visible = false;
+    sp.scene.add(cell.face);
     // The orbital plane, edge on: one line through the planet in it (y is the orbit's normal), hidden where the planet
     // stands in front. A ring here read as rings on Jupiter, Uranus and Neptune (Eric, 2026-11-06).
     cell.orbit = _aeLine(THREE, THREE.Line, 2, AE_PLANET_ORBIT_COLOR, AE_SPIN_PLANE_ALPHA);
@@ -2886,16 +3013,26 @@ function _aeSpinSetAxis(cell, a) {
 }
 // The room the planets have: under the controls at the top, above the foot.
 function _aeSpinRoom() {
+  if (_aeFullOn()) return _aeSpinFullRoom();
   var top = Math.max.apply(null, [AE_SPIN_TOP_MIN_PX].concat((_ae.topBoxes || []).filter(function (b) { return b[1] < _ae.h / 3; }).map(function (b) { return b[3]; })));
   return { x: AE_SPIN_GAP, y: top, w: _ae.w - 2 * AE_SPIN_GAP, h: Math.max(1, _ae.h - _ae.footPx - top) };
+}
+// Full screen: the whole view inside its safe areas, less the corner tools' strip on the side with room (the top in
+// portrait, the right in landscape).
+function _aeSpinFullRoom() {
+  var m = AE_SPIN_FULL_METRICS, safe = _aeById('ae-safe'), cs = safe && getComputedStyle(safe), inset = function (side) { return cs ? parseFloat(cs['padding' + side]) || 0 : 0; };
+  var x = inset('Left') + m.gap, y = inset('Top'), w = _ae.w - x - inset('Right') - m.gap, h = _ae.h - y - inset('Bottom');
+  if (_ae.w > _ae.h) w -= AE_SPIN_FULL_TOOL_PX; else { y += AE_SPIN_FULL_TOOL_PX; h -= AE_SPIN_FULL_TOOL_PX; }
+  return { x: x, y: y, w: w, h: Math.max(1, h) };
 }
 // Lay the planets out again when what decides it has changed (size, setting, language), and write the labels.
 function _aeSpinFit(sp, jd) {
   var room = _aeSpinRoom(), same = _aeSpinSame(), orbits = _aeSpinOrbits();
-  var key = [room.x, room.y, room.w, room.h, same, orbits, _orrLang()].join('|');
+  var full = _aeFullOn(), m = full ? AE_SPIN_FULL_METRICS : AE_SPIN_METRICS;
+  var key = [room.x, room.y, room.w, room.h, same, orbits, full, _orrLang()].join('|');
   if (key === sp.key) return;
   sp.key = key;
-  var fit = _aeSpinLayout(sp.cells.map(function (c) { return _aeSpinSize(c.b, same); }), room.w, room.h);
+  var fit = _aeSpinLayout(sp.cells.map(function (c) { return _aeSpinSize(c.b, same); }), room.w, room.h, m);
   var cam = sp.camera;
   cam.fov = _aeDeg(2 * Math.atan(_ae.h / 2 / AE_SPIN_CAM_DIST));
   cam.aspect = _ae.w / _ae.h;
@@ -2906,14 +3043,16 @@ function _aeSpinFit(sp, jd) {
     var l = fit.cells[i], b = c.b, name = _aeBodyName(b), lines = _aeSpinLines(b, jd);
     c.r = l.r;
     c.G.position.set(room.x + l.cx, _ae.h - (room.y + l.cy), 0);
+    c.face.position.set(c.G.position.x, c.G.position.y, l.r * AE_FACE_Z);
+    c.face.scale.set(l.r, l.r, 1);
     c.lines.scale.set(l.r, l.r, l.r);
     c.orbit.visible = orbits;
     c.axisDay = null;
     c.uni.center.value.copy(c.G.position);
     c.uni.ringR.value = b.rings ? [b.rings[0] / b.km * l.r, b.rings[1] / b.km * l.r] : [0, 1];
     html += '<button type="button" class="ae-sp" data-ae-spin="' + b.key + '" style="left:' + Math.round(room.x + l.left) + 'px;top:' + Math.round(room.y + l.top) +
-      'px;width:' + Math.round(l.width) + 'px;height:' + Math.round(l.height) + 'px;padding-top:' + Math.round(l.height - AE_SPIN_LABEL_H) + 'px" aria-label="' + _almEsc([name].concat(lines).join(', ')) + '"><b>' +
-      _almEsc(name) + '</b>' + lines.map(function (t, k) { return '<span' + (b.pole[3] < 0 && k === lines.length - 1 ? ' class="ae-sp-back"' : '') + '>' + _almEsc(t) + '</span>'; }).join('') + '</button>';
+      'px;width:' + Math.round(l.width) + 'px;height:' + Math.round(l.height) + 'px;padding-top:' + Math.round(l.height - m.labelH) + 'px" aria-label="' + _almEsc([name].concat(lines).join(', ')) + '"><b>' +
+      _almEsc(name) + '</b>' + (full ? [] : lines).map(function (t, k) { return '<span' + (b.pole[3] < 0 && k === lines.length - 1 ? ' class="ae-sp-back"' : '') + '>' + _almEsc(t) + '</span>'; }).join('') + '</button>';
   });
   if (host) host.innerHTML = html;
 }
@@ -2937,12 +3076,18 @@ function _aeSpinPlace(sp, c, jd) {
   c.uni.ringN.value.set(z[0], z[1] * ce - z[2] * se, z[1] * se + z[2] * ce);
   c.uni.dim.value = _aeRedOn() ? AE_RED_EARTH_LIGHT : 1;
   if (c.axisDay !== g.day) { c.axisDay = g.day; _aeSpinSetAxis(c, g.axis); }
+  var tx = sp.faceTex[c.blinkUntil > performance.now() ? 1 : 0] || sp.faceTex[0];
+  c.face.visible = sp.faces && !!tx;
+  c.faceUni.tint.value = c.uni.dim.value;
+  c.faceUni.map.value = tx;
 }
 function _aeSpinDraw() {
   var S = _ae.gl, sp = S.spin || (S.spin = _aeSpinBuild(S));
   var jd = _aeDisplayMs() / MS_PER_DAY + JD_UNIX_EPOCH;
   sp.jd = jd;   // the date this was drawn at
   _aeSpinFit(sp, jd);
+  sp.faces = _aeSpinFacesOn();
+  if (sp.faces && !_ae.spin.blinkTimer) _aeSpinBlinkStart();
   sp.cells.forEach(function (c) { _aeSpinPlace(sp, c, jd); });
   S.renderer.render(sp.scene, sp.camera);
 }
@@ -2959,12 +3104,63 @@ function _aeEnterSpin() {
   _ae.el.classList.add('ae-spinning');
   _aeById('ae-spinrow').hidden = false;
   _aeSpinMarkSame();
+  _aeSpinMarkFaces();
   if (_ae.gl.spin) _ae.gl.spin.key = '';
   _aeResize();   // the foot has a row more
 }
+// Full screen: the planets and their names, the chrome gone. The view's own class always (it covers the viewport where the
+// Fullscreen API is missing, as on an iPhone); the API too where there is one. Escape, the corner tool and the system back all leave.
+function _aeFullOn() { return !!(_ae && _ae.spin && _ae.spin.full); }
+function _aeFullApply(on) {
+  var s = _ae.spin;
+  s.full = on;
+  _ae.el.classList.toggle('ae-spin-full', on);
+  document.documentElement.classList.toggle(AE_FULL_ROOT_CLASS, on);
+  if (_ae.gl && _ae.gl.spin) _ae.gl.spin.key = '';
+  _aeSpinMarkFaces();
+  _aeSpinMarkSame();
+  _aeResize();
+  var focusId = on ? 'ae-fullbar' : 'ae-spin-same', target = on ? _ae.el.querySelector('#ae-fullbar [data-ae-full]') : _aeById(focusId);
+  if (target) target.focus({ preventScroll: true });
+}
+function _aeFullEnter() {
+  if (!_ae.spin || _ae.spin.full) return;
+  _aeShowSettings(false);
+  _aeFullApply(true);
+  _aeFullStepIn();
+  try {
+    if (document.fullscreenEnabled && _ae.el.requestFullscreen) {
+      var p = _ae.el.requestFullscreen({ navigationUI: 'hide' });
+      if (p && p.catch) p.catch(function () {});
+    }
+  } catch (e) {}
+}
+// Out of full screen by the person (the tool, Escape, the browser's own way out): ``history`` false when the back step has gone already.
+function _aeFullExit(history) {
+  if (!_aeFullOn()) return;
+  _aeFullApply(false);
+  if (document.fullscreenElement === _ae.el && document.exitFullscreen) { var p = document.exitFullscreen(); if (p && p.catch) p.catch(function () {}); }
+  if (history !== false) _aeFullStepOut();
+}
+// The view leaving Side by side or closing: full screen undone without touching history (the caller does).
+function _aeFullDrop() {
+  if (!_aeFullOn()) return;
+  _ae.spin.full = false;
+  _ae.el.classList.remove('ae-spin-full');
+  document.documentElement.classList.remove(AE_FULL_ROOT_CLASS);
+  if (document.fullscreenElement === _ae.el && document.exitFullscreen) { var p = document.exitFullscreen(); if (p && p.catch) p.catch(function () {}); }
+}
+document.addEventListener('fullscreenchange', function () {
+  // The browser's own way out (its Escape) ends full screen here too.
+  if (!_ae || !_ae.spin) return;
+  if (document.fullscreenElement === _ae.el) _ae.spin.api = true;
+  else if (_ae.spin.api && _ae.spin.full) _aeFullExit();
+});
 function _aeLeaveSpin() {
   var s = _ae && _ae.spin;
   if (!s) return;
+  _aeSpinBlinkStop();
+  _aeFullDrop();
   _ae.spin = null;
   if (_ae.preset === AE_SPIN_KEY) _ae.preset = null;
   _ae.el.classList.remove('ae-spinning');
@@ -4890,7 +5086,7 @@ function _aeRefitCraftFlight(f, name, model) {
 function _aeArrive(name) { _ae.arrived = name; _ae.lm = null; _ae.selected = null; _aeRenderCard(); }
 function _aePreset(name) {
   if (!_ae.gl) return;
-  if (_ae.spin && name !== AE_SPIN_KEY) _aeLeaveSpin();
+  if (_ae.spin && name !== AE_SPIN_KEY) { _aeLeaveSpin(); _aeFullStepOut(); }   // its full-screen step too, if it made one
   if (_ae.arrived && name !== _ae.arrived) { _ae.arrived = null; _aeRenderCard(); }
   if (_ae.lm && name !== _ae.lm.body) { _ae.lm = null; _aeRenderCard(); }   // a site's card stays at its body
   if (_ae.place) { _ae.place = null; _aeRenderCard(); }   // a place picked in Go to is left behind by any other place
@@ -6574,6 +6770,7 @@ function _aeBindKeys() {
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
+      if (_aeFullOn()) { _aeFullExit(); return; }
       if (_ae.info) { _aeCloseInfo(true); return; }
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
       _ae.closedByKey = true;
@@ -6653,8 +6850,19 @@ function _aeBindControls() {
   _aeById('ae-spin-same').onclick = function () { _aeSpinSetSame(!_aeSpinSame()); };
   _aeById('ae-spin').onclick = function (e) {
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-spin]') : null;
-    if (b) _aePreset(b.getAttribute('data-ae-spin'));   // a planet tapped: flown to
+    if (!b) return;
+    // A planet tapped: flown to; in full screen, where there is nothing to read, it blinks.
+    if (!_aeFullOn()) { _aePreset(b.getAttribute('data-ae-spin')); return; }
+    var c = _ae.gl.spin.cells.filter(function (x) { return x.b.key === b.getAttribute('data-ae-spin'); })[0];
+    if (c && _aeSpinFacesOn()) _aeSpinBlink(c);
   };
+  _ae.el.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('[data-ae-faces],[data-ae-full]') : null;
+    if (!t || !_ae.spin) return;
+    if (t.hasAttribute('data-ae-faces')) _aeSpinSetFaces(!_aeSpinFacesOn());
+    else if (t.getAttribute('data-ae-full') === 'enter') _aeFullEnter();
+    else _aeFullExit();
+  });
   _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
@@ -6984,7 +7192,7 @@ function openAlmanacEarth(opts) {
 }
 // The view is a step in history, as Look's overlay is: the phone's back
 // gesture closes it and the Almanac stays; a second one leaves the Almanac.
-var _aeStepped = false, _aeStepSwallow = false;
+var _aeStepped = false, _aeStepSwallow = false, _aeFullStepped = false;
 function _aeStepIn() {
   if (_aeStepped) return;
   history.pushState({ mode: 'almanac', aeView: 1 }, '', location.href);
@@ -6994,13 +7202,26 @@ function _aeStepIn() {
 // and the router is told (_aeStepPop) to let that one go by.
 function _aeStepOut() {
   if (!_aeStepped) return;
-  _aeStepped = false;
-  if (history.state && history.state.aeView) { _aeStepSwallow = true; history.back(); }
+  var full = _aeFullStepped;   // closed from full screen: both steps go, in one move
+  _aeStepped = _aeFullStepped = false;
+  if (history.state && history.state.aeView) { _aeStepSwallow = true; if (full && history.state.aeFull) history.go(-2); else history.back(); }
+}
+// Full screen is a step on top of the view's, so the phone's back leaves it first.
+function _aeFullStepIn() {
+  if (_aeFullStepped || !_aeStepped) return;
+  history.pushState({ mode: 'almanac', aeView: 1, aeFull: 1 }, '', location.href);
+  _aeFullStepped = true;
+}
+function _aeFullStepOut() {
+  if (!_aeFullStepped) return;
+  _aeFullStepped = false;
+  if (history.state && history.state.aeFull) { _aeStepSwallow = true; history.back(); }
 }
 // The router (app.js) asks first of every history step: true when it was this
 // view's, which is then not the router's to act on.
 function _aeStepPop(e) {
   if (_aeStepSwallow) { _aeStepSwallow = false; return true; }
+  if (_aeFullStepped && !(e.state && e.state.aeFull)) { _aeFullStepped = false; _aeFullExit(false); return true; }
   if (_aeStepped && !(e.state && e.state.aeView)) {
     _aeStepped = false;
     if (_aeIsOpen) _aeClose();

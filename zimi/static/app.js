@@ -185,13 +185,14 @@ var SK = {
   // The Almanac's choices (almanac*.js read and write them under these names; the
   // ZIM build shares SK). Place: {lat, lon, name}; clocks: [IANA zone]; clocks view:
   // 'all'|'saved'; units: 'ft'|'m'; sky: {skin, lines, size, dial}; orbits:
-  // 'flying'(absent)|'always'|'off'; landmarks and HD-later: '1'; tried: {hint: 1}.
+  // 'flying'(absent)|'always'|'off'; landmarks and HD-later: '1'; spin faces: '1'|'0' (absent: on in full screen only); tried: {hint: 1}.
   ALM_CLOCKS: 'zimi_almanac_clocks',
   ALM_CLOCKS_VIEW: 'zimi_almanac_clocks_view',
   ALM_UNITS: 'zimi_almanac_units',
   ALM_SKY: 'zimi_sky_settings',
   ALM_ORBITS: 'zimi_ae_orbits',
   ALM_LANDMARKS: 'zimi_alm_landmarks',
+  ALM_SPIN_FACES: 'zimi_alm_spin_faces',
   ALM_HD_LATER: 'zimi_alm_hd_later',
   ALM_ORRERY_TRIED: 'zimi_orrery_tried',
   // The app pages' choices (apps.js prefWrite, pdfreader.js): they cannot read SK
@@ -233,7 +234,7 @@ var _PREF_KEYS = [
   SK.APP_THEME, SK.APP_THEME_BEFORE_RED, SK.ARTICLE_THEME, SK.DARKEN_ARTICLES,
   SK.LIBRARY_SORT, SK.TTS_RATE, SK.BOOK_PREFS, SK.WIKI_PREFS,
   SK.READER_COACH, SK.TTS_SUGGESTED, SK.WELCOME_DISMISSED, SK.MAPS_SOURCE,
-  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_LANDMARKS,
+  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
   SK.ALM_HD_LATER, SK.ALM_ORRERY_TRIED,
   SK.WIKI_VIEW, SK.WIKI_LANG, SK.PDF_DARK, SK.PDF_SPREAD, SK.PDF_VIEW,
   SK.TUBE_SORT, SK.TUBE_AUTOPLAY, SK.TUBE_THEATER, SK.REDDOT_FOLLOW,
