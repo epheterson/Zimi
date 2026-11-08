@@ -557,7 +557,7 @@ function _ttsSentenceHead(model, at) {
   if (!sp || sp.s >= at) return at;
   var lang = _ttsLang(model.doc), end = Math.min(model.text.length, sp.e + _TTS_HEAD_LOOK);
   var next = _ttsSentenceSpans(model.text, sp.e, end, lang)[0] || (end < model.text.length && _ttsSentenceSpans(model.text, sp.e, model.text.length, lang)[0]);
-  return next ? next[0] : sp.e;
+  return next ? next[0] : at;   // no sentence starts after this one: read from where the page opens, never nothing
 }
 // What to read: the selection if there is one, else (in a book) from the
 // page that is open, else all of the article.
