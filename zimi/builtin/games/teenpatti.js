@@ -308,7 +308,7 @@
       var chips = [0, 1, 2, 3].map(function (i) { return (seats.view() + i) % SEATS; }).map(function (seat) {
         return { name: who(seat), text: String(st.chips[seat]), turn: !over && st.phase === 'bet' && st.turn === seat || (st.phase === 'side' && st.side.to === seat) };
       });
-      var out = { chips: chips, fact: TX('tp.fact', { chips: st.chips[seats.view()] }), text: '' };
+      var out = { chips: chips, fact: TX('tp.fact', { n: st.chips[seats.view()] }), text: '' };
       var say = sayLine(st);
       if (st.phase === 'handEnd') { out.text = resultLines(st)[st.result.kind === 'fold' ? 0 : 1]; out.label = TX('cards.nextHand'); out.action = startNextHand; return out; }
       if (st.phase === 'over') { out.text = TX('shell.end.over'); return out; }

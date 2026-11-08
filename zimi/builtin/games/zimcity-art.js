@@ -155,7 +155,7 @@ function lot(ctx, x, y, s, zone, k) {
   if (gx === 0) { ctx.moveTo(x + l, y + t); ctx.lineTo(x + l, y + b); }
   if (gx === 2) { ctx.moveTo(x + r, y + t); ctx.lineTo(x + r, y + b); }
   ctx.stroke();
-  if (k === 4) { ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(GLYPH[zone])); }
+  if (k === 4) { ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.save(); ctx.translate(x, y); ctx.stroke(new Path2D(GLYPH[zone])); ctx.restore(); }   // the glyph's path is the tile's own
 }
 // Scale2x (EPX): each pixel becomes four, and a corner takes its neighbours' colour where two of them agree, so pixel art
 // doubles with clean diagonals instead of staircases. Neighbours are read within the tile, so tiles never bleed.

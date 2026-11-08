@@ -18,6 +18,9 @@ html body #resizable { margin: 0 auto; }
 html body #puzzlecanvas { display: block; width: 100%; background: transparent; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 html body #puzzlecanvas:focus, html body #puzzlecanvas:focus-visible { outline: none; }   /* the puzzle draws its own cursor */
 
+/* The goal, one sentence above the board: quiet, the page's face. */
+html body .pz-rules { max-width: 744px; margin: 0 auto var(--sp-3); font-size: var(--fs-small); line-height: 1.4; color: var(--ink2); text-align: center; }
+
 /* The status line: one sentence in the page's face, the shared status style. */
 html body .pz-status { min-height: var(--sp-5); margin-top: var(--sp-3); font-size: var(--fs-body); line-height: 24px; color: var(--ink); }
 html body .pz-status[hidden] { display: none; }
@@ -25,6 +28,7 @@ html body .pz-status[hidden] { display: none; }
 /* Digits, for the puzzles that take them. Shown on touch, where there is no keyboard. */
 .zf-keys { display: none; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; max-width: 460px; margin: var(--sp-3) auto 0; }
 .zf-touch .zf-keys { display: flex; }
+.zf-pad { display: contents; }
 .zf-keys .ar-btn { min-height: var(--target); min-width: var(--target); padding: 0 var(--sp-3); font-weight: 600; }
 
 /* Menu > New game: the Type and the Game rows. */

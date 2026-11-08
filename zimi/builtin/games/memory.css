@@ -17,7 +17,8 @@
 .mm-face svg { width: 100%; height: 100%; display: block; }
 .mm-card[data-done="true"] .mm-face { border-color: var(--ok); background: var(--card); }
 .mm-card[data-done="true"] { cursor: default; }
-.mm-card:not([data-done="true"]):hover .mm-back { border-color: var(--accent); }
+/* Only where there is a pointer to hover with: a finger leaves no hover, but a touch screen keeps :hover on the last card tapped. */
+@media (hover: hover) { .mm-card:not([data-done="true"]):hover .mm-back { border-color: var(--accent); } }
 @media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .mm-inner { animation: none !important; } }
 :root[data-anim="off"] .mm-inner { animation: none !important; }
 .mm-players { justify-content: center; margin: 0; }

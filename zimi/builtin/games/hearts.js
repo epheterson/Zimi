@@ -197,7 +197,7 @@
 
   // ── Layout ──────────────────────────────────────────────────────────────
   // The table is the shared one (cardtable.js): its geometry, your hand in rows, the opponents' fans and their count chips.
-  var CT = root.ZimiTable, STATUS_H = CT ? CT.STATUS_H : 46, HEIGHT_SHARE = 0.11, HAND_COLS = CT ? CT.HAND13_COLS : 5;   // the hand is one fanned row of 13, not a grid
+  var CT = root.ZimiTable, STATUS_H = CT ? CT.STATUS_H : 46, HEIGHT_SHARE = 0.11, HAND_COLS = CT ? CT.stateCols : 5;   // the hand is one fanned row of 13, not a grid (narrower cards only where 13 would not fit a row)
 
   // Where everything sits on a table of this size (the hand takes two rows from ten cards).
   function geometry(m) { return CT.geometry(m, CT.rowsFor(m, HAND)); }
@@ -361,8 +361,9 @@
     function gameOver() {
       var st = session.state, lines = handLines(st), low = winners(st.scores), won = !seats.hotseat() && humanWon(st);
       if (watch) { watch.finish(lines.join(' ') + ' ' + TX('hearts.wholeGame')); return; }
-      lines.push(won ? TX('hearts.lowest.you') : TX(seats.hotseat() ? 'hearts.lowest.wins' : 'hearts.lowest', { name: nm(low[0]) }));
-      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: nm(low[0]) } : '', lines, seats.hotseat() ? undefined : st.scores[0]);
+      // The result first, then every player's hand and total: the sheet's text is the first line and the rest sit under it.
+      lines.unshift(won ? TX('hearts.lowest.you') : TX(seats.hotseat() ? 'hearts.lowest.wins' : 'hearts.lowest', { name: nm(low[0]) }));
+      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: nm(low[0]) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     // ── The human's choices ──────────────────────────────────────────────
     function passNow() {

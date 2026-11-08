@@ -178,9 +178,9 @@
   function finish() {
     var best = Play.load(BEST_KEY, {}), key = wikiZim || 'mini', mine = best[key] || 0;
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
-    status.say(T('quizzical.verdict.' + verdict(score, round.length)));
+    status.say(Lib.verdictLine(T, 'quizzical.verdict.', verdict(score, round.length)));
     ZimiShell.endSheet({
-      result: 'over', text: T('quizzical.verdict.' + verdict(score, round.length)),
+      result: 'over', text: Lib.verdictLine(T, 'quizzical.verdict.', verdict(score, round.length)),
       stats: [[T('play.score'), T('quizzical.of', { n: score, total: round.length })], [T('play.best'), Play.num(Math.max(score, mine))]]
     });
     done = true;

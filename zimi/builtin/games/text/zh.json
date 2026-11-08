@@ -71,6 +71,9 @@
  "backgammon.tapLit": "点亮起的点即可走到那里",
  "backgammon.toRoll": "轮到 {name} 掷骰",
  "backgammon.watch.intro": "起手掷骰决定谁先走。Zimi 执双方。",
+ "backgammon.why.backgammon": "输家还有棋子在中间的横条上，或在赢家的内盘里。",
+ "backgammon.why.gammon": "输家一枚棋子都没有移出。",
+ "backgammon.why.single": "赢家最先把 15 枚棋子全部移出棋盘。",
  "backgammon.win.backgammon": {
   "other": "三倍胜：{n} 分。"
  },
@@ -141,7 +144,9 @@
  "bigtwo.rules": "四人各 13 张牌。持有方块 3 的人先出，所出牌型必须含方块 3。之后每人须出同样牌型且更大，或过牌；其他人都过牌后，最后出牌者可任意领出。牌型：单张、对子、三条，以及五张牌的顺子、同花、葫芦、四带一、同花顺（按此顺序由小到大；顺子从 3 起，最高到 10 J Q K A）。2 最大，其次是 A；花色大小为方块、梅花、红心、黑桃。最先出完者赢下本手，向其他每位玩家收取每张剩牌 1 分（剩 10 张及以上翻倍，13 张三倍）。先到 30 分者获胜。点牌选中，再点“出牌”。按 P 出牌，S 过牌，H 提示。",
  "bj.basic": "基本策略：{action}。",
  "bj.bet": "下注 {n}",
- "bj.chips": "{n} 筹码",
+ "bj.chips": {
+  "other": "{n} 筹码"
+ },
  "bj.dealBet": "发牌 {n}",
  "bj.dealer": "庄家",
  "bj.dealerBust": "{n} 爆牌",
@@ -151,8 +156,12 @@
  "bj.decksNote": "新牌靴使用此处选择的牌副数。",
  "bj.double": "加倍",
  "bj.empty": "空",
- "bj.fact": "{n} 筹码",
- "bj.fact.name": "{name} {n} 筹码",
+ "bj.fact": {
+  "other": "{n} 筹码"
+ },
+ "bj.fact.name": {
+  "other": "{name} {n} 筹码"
+ },
  "bj.finish": "结束",
  "bj.handN": "第 {n} 手",
  "bj.hard": "{total}（{bet}）",
@@ -233,7 +242,7 @@
  "board.fairyNote": "这里没有“强”级别，将使用最高难度。{thinking}",
  "board.first": "先手",
  "board.flip": "翻转",
- "board.full": "平局：棋盘已满。",
+ "board.full": "棋盘已满。",
  "board.green": "绿",
  "board.hint": "提示",
  "board.level": "难度",
@@ -773,7 +782,7 @@
  "checkers.watch.intro": "红方先走。Zimi 执双方。必须跳吃。",
  "checkers.whiteKing": "白王",
  "checkers.whiteMan": "白兵",
- "checkers.why.quiet": "和棋：双方各走四十步，期间无吃子，也无兵移动。",
+ "checkers.why.quiet": "双方各走四十步，期间无吃子，也无兵移动。",
  "checkers.yourTurnJump": "轮到你，必须吃子",
  "chess.board": "国际象棋棋盘",
  "chess.cantMove": "那枚棋子不能移动",
@@ -877,8 +886,9 @@
  "city.about.trademark": "Micropolis 是 Micropolis Corporation（Micropolis GmbH）的注册商标，经所有者许可，依据 Micropolis Public Name License 在此使用。",
  "city.adv.homes": "划出住宅，让人们搬进来",
  "city.adv.jobs": "住宅需要工作：划出商业和工业区",
+ "city.adv.money": "资金将尽：在预算中提高税率或削减拨款",
  "city.adv.plant": "在路边建一座燃煤电厂（更多）",
- "city.adv.power": "把电线拉到闪烁的区域",
+ "city.adv.power": "把区域接上电",
  "city.adv.road": "修一条路：选择“道路”并拖动",
  "city.adv.roadless": "有些区域旁边没有路",
  "city.adv.zone": "在路边划出住宅、商业和工业区",
@@ -935,19 +945,21 @@
  "city.class.village": "村庄",
  "city.climate": "气候",
  "city.cost.tile": "每格 {money}",
+ "city.cost.tileWater": "每格 {money}，水上 {water}",
  "city.date": "{year} 年 {month}",
  "city.demand": "需求：住宅{homes}，商业{shops}，工业{industry}",
  "city.demand.down": "下降",
  "city.demand.flat": "持平",
  "city.demand.up": "上升",
  "city.end.broke": "破产",
- "city.end.brokeText": "城市的钱用光了。调整预算让收支平衡，或者开始一座新城市。",
+ "city.end.brokeGoal": "目标是{goal}；城市当前为{now}。",
+ "city.end.brokeText": "城市付不起维护费用：银行里有{funds}，今年需支出{costs}，税收{taxes}。调整预算让收支平衡，或者开始一座新城市。",
  "city.end.metropolis": "大都市！",
  "city.end.metropolisText": "这里住着 10 万人。继续建设，或者开始一座新城市。",
  "city.end.scLose": "目标未达成",
- "city.end.scLoseText": "{city}：期限已到，目标未达成。",
+ "city.end.scLoseText": "{city}：时间到了。目标是{goal}；城市达到了{now}。",
  "city.end.scWin": "目标达成",
- "city.end.scWinText": "{city}：目标已达成。继续建设，或试试另一个剧本。",
+ "city.end.scWinText": "{city}：目标达成（{goal}；城市达到了{now}）。继续建设，或试试别的场景。",
  "city.follow": "跟随一个人",
  "city.fw.atHome": "在家",
  "city.fw.atWork": "在上班",
@@ -965,12 +977,30 @@
  "city.fw.toHome": "在回家路上",
  "city.fw.toWork": "在上班路上",
  "city.fw.view": "保持在视野中",
+ "city.goal.class": "达到{name}",
+ "city.goal.crime": "犯罪低于{n}",
+ "city.goal.label": "目标：{goal}",
+ "city.goal.months": {
+  "other": "还剩{n}个月"
+ },
+ "city.goal.score": "得分高于{n}",
+ "city.goal.status": "现在 {now} · {left}",
+ "city.goal.traffic": "交通低于{n}",
+ "city.goal.years": {
+  "other": "还剩{n}年"
+ },
  "city.held": "{tool}：{cost}",
+ "city.how.drag": "拖动：移动",
+ "city.how.pinch": "捏合：缩放",
+ "city.how.press": "长按：查看",
  "city.idle": "选择一个工具。拖动可移动地图。",
  "city.k.delete": "删除",
+ "city.k.dflt": "城市 {n}",
+ "city.k.failed": "未能保存：空间不足",
  "city.k.full": "已保留五座城市。删掉一座才能保留这座。",
  "city.k.keep": "保留这座城市",
  "city.k.line": "{people}，{money}",
+ "city.k.name": "名称",
  "city.k.none": "还没有保留的城市",
  "city.k.open": "打开",
  "city.k.sure": "删除？",
@@ -1144,7 +1174,7 @@
  "city.scl.hamburg": "大火席卷全城。5 年内重建为大都市。",
  "city.scl.rio": "海平面上升。在 10 年洪水中保持得分 500 以上。",
  "city.scl.sanfrancisco": "地震来袭。5 年内重建为大都市。",
- "city.scl.tokyo": "怪兽来袭。5 年内把得分提高到 500 以上。",
+ "city.scl.tokyo": "怪兽来袭。5 年内把得分提高到 610 以上。",
  "city.sct.bern": "伯尔尼，1965",
  "city.sct.boston": "波士顿，2010",
  "city.sct.detroit": "底特律，1972",
@@ -1182,7 +1212,7 @@
  "city.tool.wind": "风力发电场",
  "city.tool.wire": "电线",
  "city.tray": "工具",
- "city.undo.done": "已撤销，钱已退回",
+ "city.undo.done": "已撤销：{what}，退回 {money}",
  "city.undo.grown": "城市此后已改变了它，无法撤销",
  "city.v.activist.bad.0": "空气现在有味道了。这可不是夸奖。",
  "city.v.activist.bad.1": "每个夏天都是我记忆中最热的一个。我的记性好得很。",
@@ -1477,7 +1507,7 @@
  "draughts.sq.piece": "{sq}，{color}{piece}",
  "draughts.tapLands": "点它的落点",
  "draughts.why.noMove": "{side} 无棋可走。",
- "draughts.why.quiet": "和棋：双方各 25 步都只有王在走，且无吃子。",
+ "draughts.why.quiet": "双方各 25 步都只有王在走，且无吃子。",
  "drop.bestMap": "你的地图上的最佳成绩",
  "drop.bestWorld": "世界地图上的最佳成绩",
  "drop.choosing": "正在从你的地图选地点…",
@@ -1502,7 +1532,9 @@
  "durak.beatIt": "用同花色更大的牌或将牌压过它",
  "durak.beatOrTake": "压过 {card}，或收牌",
  "durak.beaten": "已压过。这些牌出局",
- "durak.cap": "本回合最多 {n} 张牌",
+ "durak.cap": {
+  "other": "本回合最多 {n} 张牌"
+ },
  "durak.def": "防守",
  "durak.done": "完成",
  "durak.fact": {
@@ -1791,7 +1823,7 @@
  "fc.play": "开始",
  "fc.random": "随机牌局",
  "fc.restart": "重玩此局",
- "fc.stuck": "撤销几步，换个走法试试。",
+ "cards.stuck": "撤销几步，换个走法试试。",
  "fc.why.cell": "一个空位只能放一张牌。",
  "fc.why.cells": "空位都占满了。",
  "fc.why.limit": "现在只能移动 {cards}。",
@@ -2433,10 +2465,18 @@
  "gin.aria.chosen": "，已选为弃牌",
  "gin.bonus": "{name} 获得局奖励 100 分。",
  "gin.bonus.you": "局奖励 100 分。",
- "gin.deadwood": "{name} 有 {n} 点散牌。",
- "gin.deadwood.you": "{name} 有 {n} 点散牌。",
- "gin.deadwoodLaid": "{name} 有 {before} 点散牌，补牌 {cards} 后为 {after} 点。",
- "gin.deadwoodLaid.you": "{name} 有 {before} 点散牌，补牌 {cards} 后为 {after} 点。",
+ "gin.deadwood": {
+  "other": "{name} 有 {n} 点散牌。"
+ },
+ "gin.deadwood.you": {
+  "other": "{name} 有 {n} 点散牌。"
+ },
+ "gin.deadwoodLaid": {
+  "other": "{name} 有 {n} 点散牌，补牌 {cards} 后为 {after} 点。"
+ },
+ "gin.deadwoodLaid.you": {
+  "other": "{name} 有 {n} 点散牌，补牌 {cards} 后为 {after} 点。"
+ },
  "gin.discard": "弃 {card}",
  "gin.discardEmpty": "弃牌堆，空",
  "gin.discardFirst": "先弃一张牌",
@@ -2453,8 +2493,12 @@
  "gin.handsWon": "赢的手数：{a} {pa}，{b} {pb}（各 25 分）。",
  "gin.justTook": "不能弃掉刚拿的那张牌",
  "gin.knock": "敲牌（{n}）",
- "gin.knockWith": "{name} 以 {dw} 点散牌敲牌。",
- "gin.knockWith.you": "{name} 以 {dw} 点散牌敲牌。",
+ "gin.knockWith": {
+  "other": "{name} 以 {n} 点散牌敲牌。"
+ },
+ "gin.knockWith.you": {
+  "other": "{name} 以 {n} 点散牌敲牌。"
+ },
  "gin.note.discarded": "{name} 弃了 {card}。",
  "gin.note.drew": "{name} 从摸牌堆摸了牌。",
  "gin.note.gin": "{name} 打出 Gin。",
@@ -3149,7 +3193,7 @@
  "help.timeline.tip": "先从你最有把握的开始。",
  "help.timeline.turn": "从最早到最晚依次点按事件，然后点按“检查”。",
  "help.towers.end": "网格填满且每条提示都吻合时获胜。",
- "help.towers.goal": "在每个方格建一座塔，高度从 1 到网格边长，同一行或列中高度不重复。",
+ "help.towers.goal": "在每个方格建一座塔，高度从 1 到网格边长，同一行或列中高度不重复。边缘的数字表示从该侧能看到几座塔。高塔会挡住矮塔。",
  "help.towers.tip": "提示 1 表示最高的塔就在旁边。提示等于网格边长表示高度依次递增。",
  "help.towers.turn": "点按方格，再点按高度。边缘的数字表示从该侧能看到几座塔。高塔会挡住矮塔。",
  "help.tracks.end": "轨道从 A 到 B 连续不断且每个数字都吻合时获胜。",
@@ -3212,7 +3256,7 @@
  "help.zimcity.goal": "把小村庄建成人们想住的城市。",
  "help.zimcity.keys": "方向键移动光标格，Enter 建造，I 查看，加号和减号缩放。",
  "help.zimcity.tip": "让住宅远离工业，税率一次只提高一点。",
- "help.zimcity.turn": "先修一条路，再拉一条电线过去，然后在旁边划出住宅、商业和工业区。",
+ "help.zimcity.turn": "先修一条路，建一座燃煤电厂，拉上电线，然后在路旁划出住宅、商业和工业区。",
  "hex.board.11": "11 × 11",
  "hex.board.7": "7 × 7",
  "hex.board.9": "9 × 9",
@@ -3422,7 +3466,9 @@
  "holdem.check": "过牌",
  "holdem.computers": "电脑玩家：{list}。",
  "holdem.deal": "发牌",
- "holdem.fact": "{chips} 筹码",
+ "holdem.fact": {
+  "other": "{n} 筹码"
+ },
  "holdem.fold": "弃牌",
  "holdem.handsPlayed": "已打 {hands}。{text}。",
  "holdem.hasAll": "{name} 拥有全部筹码",
@@ -3545,8 +3591,8 @@
  "janggi.side.choFirst": "楚（先手）",
  "janggi.side.han": "汉",
  "janggi.why.bikjang": "Bikjang：双方将帅对面。和棋。",
- "janggi.why.passes": "和棋：双方都停了一手。",
- "janggi.why.quiet": "和棋：双方各走五十步未吃子。",
+ "janggi.why.passes": "双方都停了一手。",
+ "janggi.why.quiet": "双方各走五十步未吃子。",
  "janggi.yourTurn": "轮到你（{side}）",
  "jigsaw.bestOf": {
   "other": "最佳，{n} 块"
@@ -3876,6 +3922,7 @@
  "mahjong.hint": "这两张可以配对。",
  "mahjong.layout": "牌阵",
  "mahjong.layout.pyramid": "金字塔",
+ "mahjong.layout.tower": "高塔",
  "mahjong.layout.towers": "双塔",
  "mahjong.layout.turtle": "乌龟",
  "mahjong.left": "剩余牌数",
@@ -4048,7 +4095,7 @@
  "makruk.played": "{name} 走 {move}。",
  "makruk.playedTwo": "{name}：{move}。",
  "makruk.promoted": "（现为 Met）",
- "makruk.why.limit": "和棋：双方各走 64 步，既未吃子，也未走 Bia。",
+ "makruk.why.limit": "双方各走 64 步，既未吃子，也未走 Bia。",
  "makruk.why.stalemate": "逼和：无合法着法且未被将军。和棋。",
  "makruk.yourTurn": "轮到你（{side}）",
  "mancala.again": "{name} 落在了计分仓，再走一次。",
@@ -4195,7 +4242,7 @@
  "morris.took": "{name} 吃了一子。",
  "morris.why.blocked": "{side}无子可走。",
  "morris.why.blocked.you": "你无子可走。",
- "morris.why.sixty": "和棋：六十步内没有吃子。",
+ "morris.why.sixty": "六十步内没有吃子。",
  "morris.why.two": "{side}只剩两子。",
  "morris.why.two.you": "你只剩两子。",
  "muncher.clear": "迷宫已清空",
@@ -4757,7 +4804,6 @@
  "quizzical.seeScore": "查看得分",
  "quizzical.verdict.flawless": "完美。",
  "quizzical.verdict.good": "不错。",
- "quizzical.verdict.keepGoing": "继续玩，多学一点。",
  "quizzical.verdict.veryGood": "很好。",
  "race.another": "换一局",
  "race.arrived": "你到达了 {target}",
@@ -4862,7 +4908,6 @@
  "round.seeScore": "查看得分",
  "round.verdict.flawless": "完美。",
  "round.verdict.good": "不错。",
- "round.verdict.keepGoing": "继续玩，多学一点。",
  "round.verdict.veryGood": "很好。",
  "scopa.cards": "牌",
  "scopa.chooseFirst": "先从手牌里选一张牌",
@@ -5151,8 +5196,8 @@
  "shogi.side.senteFirst": "先手（先走）",
  "shogi.title": "将棋",
  "shogi.title.mini": "迷你将棋",
- "shogi.why.long": "和棋：对局进行得太久了。",
- "shogi.why.repetition": "和棋：同一局面出现了四次。",
+ "shogi.why.long": "对局进行得太久了。",
+ "shogi.why.repetition": "同一局面出现了四次。",
  "skat.aria.putBack": "，可放回",
  "skat.at": "叫 {n}",
  "skat.bid": "叫 {n}",
@@ -5352,7 +5397,9 @@
  "sol.winTime": "用时 {time}，{moves}",
  "spades.bidNil": "叫零墩",
  "spades.chip.bid": "叫 {bid}",
- "spades.estimate": "你的牌大约能拿 {n} 墩。",
+ "spades.estimate": {
+  "other": "你的牌大约能拿 {n} 墩。"
+ },
  "spades.line.bid": "{team}：叫 {bid}，拿 {tricks}",
  "spades.line.none": "{team}：无定约",
  "spades.nil": "零墩",
@@ -5409,9 +5456,15 @@
  "stats.kinds": "不同的游戏",
  "stats.most": "最常玩",
  "stats.notYet": "{name}，尚未达成",
- "stats.playedWon": "玩了 {n} 局 · 赢了 {w} 局",
+ "stats.played": {
+  "other": "玩了 {n} 局"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.title": "统计",
  "stats.wins": "胜局",
+ "stats.wonCount": {
+  "other": "赢了 {n} 局"
+ },
  "sudoku.bestRow": "最佳用时，{level}",
  "sudoku.board": "数独盘面",
  "sudoku.cell": "第 {row} 行，第 {col} 列，{what}",
@@ -5513,9 +5566,13 @@
  "tp.clue.short": "多说一点",
  "tp.clueLabel": "你的提示",
  "tp.cluePlaceholder": "描述它，但别说出它的名字",
- "tp.costAria": "{label}，{n} 筹码",
+ "tp.costAria": {
+  "other": "{label}，{n} 筹码"
+ },
  "tp.counter": "{n} / {max}",
- "tp.fact": "{chips} 筹码",
+ "tp.fact": {
+  "other": "{n} 筹码"
+ },
  "tp.found": "第 {n} 次猜中：+{points}",
  "tp.giveFor": "{name}：为这篇文章写一条提示",
  "tp.guessesLeft": {
@@ -5725,7 +5782,6 @@
  "world.snippet": "：{snippet}",
  "world.tap": "点按地图放置标记",
  "world.verdict.good": "不错。",
- "world.verdict.keepGoing": "继续玩，多学一点。",
  "world.verdict.navigator": "一位领航员。",
  "world.verdict.veryGood": "很好。",
  "world.zoomIn": "放大",
@@ -5743,8 +5799,8 @@
  "xiangqi.pieces.icons": "图案",
  "xiangqi.river": "楚河",
  "xiangqi.side.red": "红方（先手）",
- "xiangqi.why.repetition": "和棋：同一局面出现了三次。",
- "xiangqi.why.sixty": "和棋：双方各走六十步未吃子。",
+ "xiangqi.why.repetition": "同一局面出现了三次。",
+ "xiangqi.why.sixty": "双方各走六十步未吃子。",
  "xiangqi.why.stuck": "无合法着法，按象棋规则判负。",
  "yacht.card.aria": "记分表。点按你那一列的一行来记分。",
  "yacht.dice.aria": "你的骰子。点按骰子即可保留。",
@@ -5814,5 +5870,17 @@
  "stats.noName": "你在排行榜上的名字：",
  "board.youMark": "（你）",
  "city.cl.kept": "如今的电力不再增加热量；已经造成的变暖还在。",
- "game.minicrossword.short": "填字"
+ "game.minicrossword.short": "填字",
+ "babel.missed": "未猜中：这个单词没有得分。",
+ "babel.gotIt": "猜对了。",
+ "shogi.hint.drop": "在 {to} 打入{piece}",
+ "shogi.hint.move": "把{piece}从 {from} 走到 {to}",
+ "shogi.hint.take": "把{piece}从 {from} 走到 {to}，吃子",
+ "shogi.hint.promote": "{move}，并成",
+ "ludo.rollsAgain": "{name}再掷一次。",
+ "hex.rules.you": "赶在 Zimi 连通{other}边之前，连通两条{color}边。",
+ "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。",
+ "race.matchedShortest": "你走出了最短路线：{n}。",
+ "race.matchedRoute": "你走出了已知路线：{n}。",
+ "race.beatRoute": "你胜过了已知的 {n} 步路线。"
 }

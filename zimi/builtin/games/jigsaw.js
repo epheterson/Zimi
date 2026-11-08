@@ -46,11 +46,30 @@
     return Math.hypot(x - h.x, y - h.y) <= tol;
   }
 
-  // Starting places in a tray (a rectangle), scattered by chance so no piece starts home and none starts hidden
-  // off the tray: [{x, y}] top left corners.
+  // Where piece i belongs on the board in whole pixels: each edge is rounded once, so a piece ends exactly where its neighbour
+  // begins (fractional edges left hairline seams in a finished picture, and a notch where the last column met the board's edge).
+  function pixelHome(i, cols, rows, W, H) {
+    var c = i % cols, r = Math.floor(i / cols);
+    var x0 = Math.round(c * W / cols), x1 = Math.round((c + 1) * W / cols), y0 = Math.round(r * H / rows), y1 = Math.round((r + 1) * H / rows);
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  // Starting places in a tray (a rectangle): the pieces are laid on an even lattice over the tray, a little jittered, and dealt
+  // to it in random order, so no piece starts home or off the tray, and none lies wholly under the others: z (stacking) runs
+  // with the lattice, so a piece is only ever covered on its right and below. [{x, y, z}] top left corners.
+  var SCATTER_JITTER = 0.18;
   function scatter(n, tray, pw, ph, rng) {
-    var out = [];
-    for (var i = 0; i < n; i++) out.push({ x: tray.x + rng() * Math.max(0, tray.w - pw), y: tray.y + rng() * Math.max(0, tray.h - ph) });
+    var aw = Math.max(0, tray.w - pw), ah = Math.max(0, tray.h - ph);
+    var cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * (aw + 1) / (ah + 1))))), rows = Math.ceil(n / cols);
+    var sx = cols > 1 ? aw / (cols - 1) : 0, sy = rows > 1 ? ah / (rows - 1) : 0, slots = [], out = [], i;
+    for (i = 0; i < cols * rows; i++) slots.push(i);
+    for (i = slots.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)), t = slots[i]; slots[i] = slots[j]; slots[j] = t; }
+    for (i = 0; i < n; i++) {
+      var c = slots[i] % cols, r = Math.floor(slots[i] / cols);
+      var x = c * sx + (rng() * 2 - 1) * sx * SCATTER_JITTER, y = r * sy + (rng() * 2 - 1) * sy * SCATTER_JITTER;
+      // z follows the lattice order (left to right, top to bottom), so each piece is covered only from its right and below.
+      out.push({ x: tray.x + Math.min(aw, Math.max(0, x)), y: tray.y + Math.min(ah, Math.max(0, y)), z: slots[i] + 1 });
+    }
     return out;
   }
 
@@ -94,7 +113,7 @@
     }
   }
 
-  var Engine = { COUNTS: COUNTS, gridFor: gridFor, clampAspect: clampAspect, cover: cover, home: home, snaps: snaps, scatter: scatter, solved: solved, SCENES: SCENES, drawScene: drawScene, MIN_SIDE: MIN_SIDE };
+  var Engine = { COUNTS: COUNTS, gridFor: gridFor, clampAspect: clampAspect, cover: cover, home: home, snaps: snaps, scatter: scatter, pixelHome: pixelHome, solved: solved, SCENES: SCENES, drawScene: drawScene, MIN_SIDE: MIN_SIDE };
   root.JigsawEngine = Engine;
 
   if (typeof document === 'undefined') return;
@@ -162,7 +181,7 @@
     els.board.style.width = s.W + 'px'; els.board.style.height = s.H + 'px';
     var c = cover(P.pic.w, P.pic.h, s.W, s.H);
     P.pieces.forEach(function (p) {
-      var h = home(p.i, P.cols, P.rows, s.W, s.H);
+      var h = pixelHome(p.i, P.cols, P.rows, s.W, s.H);
       p.home = h;
       p.node.style.width = h.w + 'px'; p.node.style.height = h.h + 'px';
       p.node.style.backgroundSize = c.w + 'px ' + c.h + 'px';
@@ -203,7 +222,7 @@
     var starts = scatter(g.cols * g.rows, tray, s.W / g.cols, s.H / g.rows, rng);
     for (var i = 0; i < g.cols * g.rows; i++) {
       var node = el('div', 'jg-piece'); node.dataset.i = i; node.style.backgroundImage = 'url("' + pic.url + '")';
-      node.style.zIndex = 1 + Math.floor(rng() * 5);
+      node.style.zIndex = starts[i].z;
       els.area.appendChild(node);
       pieces.push({ i: i, node: node, locked: false, fx: starts[i].x / s.W, fy: starts[i].y / s.W });
     }
@@ -276,7 +295,7 @@
     line.say(T('jigsaw.done'));
     ZimiShell.endSheet({
       result: 'win', after: Play.reducedMotion() ? 0 : SNAP_MS * 2,
-      text: T('jigsaw.picture', { credit: puzzle.pic.credit }), extra: more,
+      extra: more,
       stats: [[T('play.time'), Play.fmtClock(ms)], [T('play.best'), Play.fmtClock(newBest ? ms : best[key])]]
     });
   }
@@ -339,5 +358,5 @@
         pieces: puzzle.pieces.map(function (p) { return { fx: p.fx, fy: p.fy, locked: p.locked }; }) };
     }
   });
-  root.__jig = { get puzzle() { return puzzle; } };
+  root.__jig = { get puzzle() { return puzzle; }, lock: lock };
 })(this);

@@ -48,7 +48,7 @@ export function kindOf(value) {
   return 'city.kind.' + KINDS[i][1];
 }
 // A road or a bridge (a zone grows only beside one).
-export function isRoad(v) { return v >= TV.ROADBASE && v <= TV.LASTROAD; }
+export function isRoad(v) { return (v >= TV.ROADBASE && v <= TV.LASTROAD) || v === TV.HRAILROAD || v === TV.VRAILROAD; }   // level crossings carry the road too
 // The query's four-step scales, as upstream reads them from the block maps.
 export function quarter(v) { return (v >> 6) & 3; }
 export function landStep(v) { return v >= 150 ? 3 : v >= 80 ? 2 : v >= 30 ? 1 : 0; }
@@ -75,7 +75,11 @@ export var ICON = {
   nuclear: 'M7 21c1-6 1-11 0-17h10c-1 6-1 11 0 17zM12 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4',
   solar: 'M3 19l3-9h12l3 9zM9 10l-1 9M15 10l1 9M4.5 14.5h15M12 3v3M6 5l1.5 1.5M18 5l-1.5 1.5',
   wind: 'M12 21V10M12 10L7 4M12 10l6.5-1.5M12 10l-1 7M9 21h6',
-  datacenter: 'M5 4h14v6H5zM5 14h14v6H5zM8 7h.01M8 17h.01M12 7h4M12 17h4'
+  datacenter: 'M5 4h14v6H5zM5 14h14v6H5zM8 7h.01M8 17h.01M12 7h4M12 17h4',
+  // What the fingers do (How to play): a cross of arrows to move, two arrows closing to pinch, a finger held down with its ring.
+  drag: 'M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3',
+  pinch: 'M4 4l6 6M10 6v4H6M20 20l-6-6M14 18v-4h4',
+  press: 'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'
 };
 
 // About: where the simulation comes from, its licence and the Micropolis name's attribution, with links into the ZIM.

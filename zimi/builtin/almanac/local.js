@@ -4,6 +4,8 @@
      /almanac-satellites   the GPS and ISS elements, as of the release (satellites.py get(): the snapshot, never
                            the internet, so it says how old it is)
      /almanac-place        the tide stations nearest a place, or named like a query (placedata.py near and search)
+   The satellites answer also says whether Almanac HD is in this ZIM (the maxi flavour holds the tile pyramids under
+   hd/): {hd: {installed, base}}, the same shape Zimi's server gives, with the tiles' base a path from this page.
    Anything else a server would answer is "not here" (a 404), and the page says so in its own words.
    Our own code, GPL-3.0. No network beyond this ZIM's own files. */
 (function (root) {
@@ -13,6 +15,7 @@
   var TIDES_FILE = 'data/tides-snapshot.json';
   var SATELLITES_URL = '/almanac-satellites';
   var PLACE_URL = '/almanac-place';
+  var HD_FILE = 'hd/hd.json', HD_BASE = 'hd/';
   var STALE_AFTER_S = 6 * 3600;           // satellites.py CACHE_TTL_S
   var EARTH_RADIUS_KM = 6371.0;
   var NEAR_TIDES = 6, SEARCH_LIMIT = 8, MAX_QUERY = 80;   // placedata.py
@@ -26,6 +29,16 @@
       files[path].catch(function () { delete files[path]; });
     }
     return files[path];
+  }
+  // Almanac HD's state, asked once: present in the maxi flavour of this ZIM, absent (a 404) in the standard one.
+  var hdState;
+  function hd() {
+    if (!hdState) {
+      hdState = realFetch(HD_FILE).then(function (r) {
+        return r.ok ? { installed: true, base: HD_BASE, mode: 'never', offer: null, downloading: null } : null;
+      }, function () { return null; });
+    }
+    return hdState;
   }
   function json(body, status) {
     return new Response(JSON.stringify(body), { status: status || 200, headers: { 'Content-Type': 'application/json' } });
@@ -101,7 +114,11 @@
     var u;
     try { u = new URL(url, root.location.href); } catch (e) { return null; }
     if (u.pathname === SATELLITES_URL) {
-      return read(SATELLITES_FILE).then(function (s) { return json(Local.satellites(s, Date.now() / 1000)); }, function () { return json({ error: 'not here' }, 404); });
+      return Promise.all([read(SATELLITES_FILE), hd()]).then(function (r) {
+        var out = Local.satellites(r[0], Date.now() / 1000);
+        if (r[1]) out.hd = r[1];
+        return json(out);
+      }, function () { return json({ error: 'not here' }, 404); });
     }
     if (u.pathname === PLACE_URL) {
       var p = u.searchParams, lat = coord(p.get('lat'), -90, 90), lon = coord(p.get('lon'), -180, 180), q = (p.get('q') || '').trim();

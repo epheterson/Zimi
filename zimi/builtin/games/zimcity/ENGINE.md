@@ -1,8 +1,8 @@
 # ZimCity's engine
 
-ZimCity's simulation is micropolisJS by Graeme McCutcheon (https://github.com/graememcc/micropolisJS), a JavaScript port of Micropolis, the open-source release of the 1989 city simulator. It is released under the GNU GPL version 3 with the additional terms in LICENSE.txt; the full licence is COPYING.txt. ZimCity is a modified version and is not the original program.
+ZimCity's simulation is micropolisJS by Graeme McCutcheon (<https://github.com/graememcc/micropolisJS>), a JavaScript port of Micropolis, the open-source release of the 1989 city simulator. It is released under the GNU GPL version 3 with the additional terms in [LICENSE.txt](LICENSE.txt); the full licence is [COPYING.txt](COPYING.txt). ZimCity is a modified version and is not the original program.
 
-Micropolis is a registered trademark of Micropolis Corporation (Micropolis GmbH) and is licensed here as a courtesy of the owner under the Micropolis Public Name License (MicropolisPublicNameLicense.md, https://www.micropolis.com).
+Micropolis is a registered trademark of Micropolis Corporation (Micropolis GmbH) and is licensed here as a courtesy of the owner under the Micropolis Public Name License ([MicropolisPublicNameLicense.md](MicropolisPublicNameLicense.md), <https://www.micropolis.com>).
 
 ## What is here
 

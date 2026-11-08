@@ -443,6 +443,9 @@
     return r === 1 ? 'flawless' : r >= 0.75 ? 'veryGood' : r >= 0.5 ? 'good' : 'keepGoing';
   };
 
+  // The words for how a round went: the id's sentence, or no line at all for the lowest band (a generic "keep playing" says nothing).
+  Lib.verdictLine = function (T, prefix, id) { return id === 'keepGoing' ? '' : T(prefix + id); };
+
   // The player's language: ?lang= (the page's own request), what the page's strings are in (ZimiText), Zimi's own setting (same origin, so readable),
   // then the browser's.
   Lib.uiLang = function () {

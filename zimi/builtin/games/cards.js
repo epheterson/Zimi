@@ -1388,18 +1388,19 @@
     };
     // `after` is how long to wait for the last animation; a game coming back from being left has none.
     function session_showEnd(e, after) {
-      if (root.ZimiShell && root.ZimiShell.endSheet) root.ZimiShell.endSheet({ result: e.result, name: e.name, team: e.team, text: e.text, stats: e.stats, onNew: cfg.newGame, after: after });
+      if (root.ZimiShell && root.ZimiShell.endSheet) root.ZimiShell.endSheet({ result: e.result, name: e.name, team: e.team, text: e.text, stats: e.stats, onNew: cfg.newGame, after: after,
+        extra: (e.more || []).map(function (t) { return h('p', { class: 'zc-note', text: t }); }) });
     }
     // A finished game that was not won (Hearts lost, Golf stuck): the clock
     // stops, the score is kept if it is a best, and the sheet says how it went.
     // How a game that is not won ends: kind is '' (you lose), 'draw', 'over' (Game over) or { name, team } for the
-    // winner of a table of people ("Sam wins", "You and Ana win").
-    s.lose = function (kind, lines, score) {
+    // winner of a table of people ("Sam wins", "You and Ana win"). The sheet says lines[0]; `listAll` puts the rest of the lines under it.
+    s.lose = function (kind, lines, score, listAll) {
       s.won = true; halt(); resume = false; clearLater();
       if (typeof score === 'number') s.stats.scored(score);
       paint();
       var named = kind && typeof kind === 'object', result = named ? 'lose' : kind === 'draw' || kind === 'over' ? kind : 'lose';
-      if (root.ZimiShell && root.ZimiShell.endSheet) { s.ending = { result: result, name: named ? kind.name : undefined, team: named ? !!kind.team : undefined, text: lines[0], stats: s.stats.rows().slice(0, 2) }; session_showEnd(s.ending); return; }
+      if (root.ZimiShell && root.ZimiShell.endSheet) { s.ending = { result: result, name: named ? kind.name : undefined, team: named ? !!kind.team : undefined, text: lines[0], more: listAll ? lines.slice(1) : [], stats: s.stats.rows().slice(0, 2) }; session_showEnd(s.ending); return; }
       var title = named ? T(kind.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: kind.name }) : T(result === 'draw' ? 'shell.end.draw' : result === 'over' ? 'shell.end.over' : 'shell.end.lose');
       var body = lines.map(function (t) { return h('p', { class: 'zc-note', text: t }); });
       body.push(h('p', { class: 'zc-stats', text: s.stats.line() }));
@@ -1522,11 +1523,20 @@
   //   o.refuse     the stock said no; o.afterStock: false when a turn of the stock ends nothing (no win or auto-move check)
   //   o.blocked    true while something else is playing (Watch and learn): no move, no draw
   //   o.settle     first thing after a move; o.score  state -> what a win is told; o.after  a move that ended nothing
-  //   o.stuck      { is, title, note, score } (functions of the state) for a game that can run out of moves: the sheet with Undo and New game
+  //   o.stuck      { is, title, note, score } (functions of the state) for a game that can run out of moves: the sheet with Undo and New game;
+  //                Z.stuckWhen(rules, hasMove) is the one a game with a plain "any move left" asks for (FreeCell, Klondike, Spider)
   //   o.deal       a new state (page.newGame deals it), or o.newGame; o.tap, o.slotTap replace the defaults
   //   o.statText, o.cascadeOrder, o.winLines, o.openMenu     the session's
   // Returns page: { el, session, board, commit, move, draw, afterMove, newGame, menu, start }.
   function winTime(sec, st) { return T('sol.winTime', { time: fmtTime(sec), moves: plural(st.moves, 'move') }); }
+  // A game that can run out of moves says so the same way each time: the sheet with Undo and New game. `hasMove(state)` is the
+  // game's own question, whether any move is left; FreeCell, Klondike and Spider each ask it and share this.
+  function stuckWhen(rules, hasMove) {
+    return {
+      is: function (st) { return !rules.isWon(st) && !hasMove(st); }, score: function () { return undefined; },
+      title: function () { return T('cards.noMoves'); }, note: function () { return T('cards.stuck'); }
+    };
+  }
   function solitairePage(o) {
     var R = o.rules, page = { el: pageEls() }, session, board;
     ensureSprite();
@@ -1604,7 +1614,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }

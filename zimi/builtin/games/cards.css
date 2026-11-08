@@ -49,7 +49,8 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 .zc-card.zc-drag { transition: none; cursor: grabbing; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--card-edge); }
 .zc-card.zc-focus { outline: 2px solid var(--select-ring); outline-offset: 2px; }
 /* A card you cannot play is not greyed: the cards you can play are lifted (their layout puts them higher). */
-.zc-card.zc-glow { box-shadow: 0 0 0 1px var(--select-ring), 0 0 10px 2px var(--legal); }
+/* The ring is three pixels of the accent with a dark line inside it: a pale card on a pale or a dark table still shows which card the hint means. */
+.zc-card.zc-glow { box-shadow: 0 0 0 1px rgba(26, 18, 9, 0.85), 0 0 0 4px var(--select-ring), 0 0 14px 5px var(--legal); }
 .zc-card.zc-sel { box-shadow: var(--select), 0 4px 10px rgba(0, 0, 0, 0.4); }
 .zc-dealing .zc-card { pointer-events: none; }
 .zc-card.zc-flip { animation: zc-flip 0.2s ease-out; }
@@ -148,6 +149,8 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 
 /* FreeCell's hint: an icon button in the bar, and a note over the table that goes by itself. */
 .zc-hintbtn { display: inline-grid; place-items: center; width: 38px; padding: 0; }
+/* In the Menu it is a tile like the others: its icon with its name under it. */
+.gs-moved.zc-hintbtn { display: flex; width: auto; padding: var(--sp-2) 4px; }
 .zc-toast { pointer-events: none; position: fixed; left: 50%; bottom: max(56px, var(--safe-b)); transform: translateX(-50%); z-index: 30; width: max-content; max-width: min(92vw, 420px); padding: 9px 14px; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); font-size: var(--fs-small); text-align: center; }
 .zc-toast[hidden] { display: none; }
 

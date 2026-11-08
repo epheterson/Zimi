@@ -73,7 +73,7 @@
   }
   function button(label, primary, fn, disabled) {
     var b = el('button', 'ar-btn' + (primary ? ' gm-play' : ''), label); b.type = 'button';
-    if (disabled) b.setAttribute('aria-disabled', 'true'); else b.addEventListener('click', fn);
+    if (disabled) { b.setAttribute('aria-disabled', 'true'); b.addEventListener('click', function () { ZimiShell.shake(b); }); } else b.addEventListener('click', fn);   // a tap on a used-up button still answers
     els.actions.appendChild(b); return b;
   }
   function reset() { els.card.innerHTML = ''; els.actions.innerHTML = ''; status.say(''); clearTimeout(timer); }
@@ -164,8 +164,8 @@
     if (isRight(hit, g.secret)) { g.points[g.round] = pointsFor(g.tries.length + 1); g.found = true; return reveal(); }
     g.tries.push(hit.title);
     if (g.tries.length >= GUESSES) { g.points[g.round] = 0; g.found = false; return reveal(); }
-    status.reason(T('tp.notThat', { title: hit.title }));
     renderGuess();
+    status.reason(T('tp.notThat', { title: hit.title }));   // after the redraw, which clears the line
   }
 
   function reveal() {
@@ -191,7 +191,7 @@
     var best = Play.load(BEST_KEY, {}), key = String(g.rounds), mine = best[key] || 0, score = total();
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
     reset(); paint();
-    var line = T('round.verdict.' + Lib.verdict(score, GUESSES * g.rounds));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, GUESSES * g.rounds));
     els.card.appendChild(el('p', 'tp-secret', T('tp.together', { n: score, max: GUESSES * g.rounds })));
     els.card.appendChild(el('p', 'tp-blurb', line));
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('tp.togetherLabel'), T('round.of', { n: score, total: GUESSES * g.rounds })], [T('play.best'), Play.num(Math.max(score, mine))]] });

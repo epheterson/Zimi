@@ -95,7 +95,7 @@
     if (phase === 'move' && !G.over) {
       moves.forEach(function (m) {
         var s = m.from === 0 ? poolPlace(st.turn, 4) : place(st.turn, m.from), t = m.off ? poolPlace(st.turn, 5) : place(st.turn, m.to);
-        ring(s.x, s.y, 'src'); ring(t.x, t.y, '');
+        ring(s.x, s.y, 'src'); ring(t.x, t.y, 'dst');   // a piece you can move is outlined; where it can go is filled
       });
       if (tip) { var tm = tip, tt = tm.off ? poolPlace(st.turn, 5) : place(st.turn, tm.to); ring(tt.x, tt.y, 'tip'); }
     }

@@ -342,7 +342,7 @@
     keep('between');
     var body = lines.map(function (l) { return UI.h('p', { text: l }); });
     body.push(UI.h('p', { class: 'dm-tally', text: tally }));
-    root.ZimiShell.sheet({ title: heading, body: body, actions: [{ label: T('shell.close') }, { label: T('dominoes.nextRound'), primary: true, onclick: startRound }] });
+    root.ZimiShell.sheet({ title: heading, body: body, end: true, actions: [{ label: T('shell.close') }, { label: T('dominoes.nextRound'), primary: true, onclick: startRound }] });
   }
   // Records stay hidden until the first match is played.
   function showStats() {
@@ -425,6 +425,6 @@
   });
 
   if (new URLSearchParams(location.search).has('debug')) {
-    root.__dm = { engine: Engine, state: function () { return st; }, scores: function () { return scores; }, settings: settings, busy: function () { return busy; }, humanTurn: humanTurn, matchOver: function () { return matchOver; } };
+    root.__dm = { endRound: endRound, engine: Engine, state: function () { return st; }, scores: function () { return scores; }, settings: settings, busy: function () { return busy; }, humanTurn: humanTurn, matchOver: function () { return matchOver; } };
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -188,10 +188,10 @@
     if (dict && w.path) els.actions.appendChild(Lib.wordLearn(el('a', 'ar-btn'), T, { word: w.word, zim: dict, path: w.path, readKey: 'bl.read' }));
     button(T(g.round + 1 >= g.rounds ? 'round.seeScore' : 'round.next'), true, nextRound);
   }
-  function scoreboard() {
+  function scoreboard(final) {
     var top = Math.max.apply(null, g.totals), ul = el('ul', 'bl-board');
     g.totals.forEach(function (t, i) {
-      var li = el('li', t === top && t > 0 ? 'lead' : ''), gain = g.round_points && g.round_points[i] ? ' +' + g.round_points[i] : '';
+      var li = el('li', t === top && t > 0 ? 'lead' : ''), gain = !final && g.round_points && g.round_points[i] ? ' +' + g.round_points[i] : '';
       li.appendChild(el('span', null, who(i) + gain)); li.appendChild(el('b', null, Play.num(t))); ul.appendChild(li);
     });
     return ul;
@@ -204,7 +204,7 @@
     done = true; g.phase = 'done';
     var top = winners(g.totals), stats = Play.load(STATS_KEY, { games: 0 });
     stats.games++; Play.save(STATS_KEY, stats);
-    reset(); paint(); els.card.appendChild(el('p', 'bl-label', T('bl.final'))); els.card.appendChild(scoreboard());
+    reset(); paint(); els.card.appendChild(el('p', 'bl-label', T('bl.final'))); els.card.appendChild(scoreboard(true));
     var lead = Math.max.apply(null, g.totals);
     ZimiShell.endSheet(top.length === 1 ? { result: 'win', name: who(top[0]), stats: [[T('play.score'), Play.num(lead)]] } : { result: 'draw', stats: [[T('play.score'), Play.num(lead)]] });
   }

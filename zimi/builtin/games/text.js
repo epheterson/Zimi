@@ -18,10 +18,12 @@
  "babel.choosing": "Choosing words…",
  "babel.clues": "Clues",
  "babel.fieldLabel": "The English word",
+ "babel.gotIt": "You got it.",
  "babel.guess": "Guess",
  "babel.hiddenClue": "Clue {n}",
  "babel.how": "Name this word in English. A wrong guess shows another language.",
  "babel.itWas": "It was {word}",
+ "babel.missed": "Missed: no points for this word.",
  "babel.more": "Another clue",
  "babel.notThat": "Not {word}",
  "babel.placeholder": "The English word",
@@ -89,6 +91,9 @@
  "backgammon.tapLit": "Tap a lit point to move there",
  "backgammon.toRoll": "{name} to roll",
  "backgammon.watch.intro": "The opening roll decides who starts. Zimi plays both sides.",
+ "backgammon.why.backgammon": "The loser still had a checker on the bar or in the winner's home board.",
+ "backgammon.why.gammon": "The loser had not borne off a single checker.",
+ "backgammon.why.single": "The winner bore off all 15 checkers first.",
  "backgammon.win.backgammon": {
   "one": "Backgammon: {n} point.",
   "other": "Backgammon: {n} points."
@@ -164,7 +169,10 @@
  "bigtwo.rules": "Four players, 13 cards each. Whoever holds the 3 of diamonds leads a hand that includes it. Each player must play the same kind of hand, higher, or pass; when all others pass the last player leads anything. Hands: single, pair, three of a kind, and five cards: straight, flush, full house, four of a kind plus a card, straight flush (in that order; straights run 3 up to 10 J Q K A). Twos are highest, then aces; suits rank diamonds, clubs, hearts, spades. First out wins the hand and is paid one point a card from each other player (double at 10 or more, triple at 13). First to 30 wins. Tap cards to pick them, then Play. P plays, S passes, H hints.",
  "bj.basic": "Basic strategy: {action}.",
  "bj.bet": "Bet {n}",
- "bj.chips": "{n} chips",
+ "bj.chips": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "bj.dealBet": "Deal {n}",
  "bj.dealer": "Dealer",
  "bj.dealerBust": "{n} bust",
@@ -174,8 +182,14 @@
  "bj.decksNote": "A new shoe uses the number of decks chosen here.",
  "bj.double": "Double",
  "bj.empty": "Empty",
- "bj.fact": "{n} chips",
- "bj.fact.name": "{name} {n} chips",
+ "bj.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
+ "bj.fact.name": {
+  "one": "{name} {n} chip",
+  "other": "{name} {n} chips"
+ },
  "bj.finish": "Finish",
  "bj.handN": "Hand {n}",
  "bj.hard": "{total} ({bet})",
@@ -257,7 +271,7 @@
  "board.fairyNote": "No Strong here, so the best level plays. {thinking}",
  "board.first": "First",
  "board.flip": "Flip",
- "board.full": "A draw: the board is full.",
+ "board.full": "The board is full.",
  "board.green": "Green",
  "board.hint": "Hint",
  "board.house": "House scores fill the table until people beat them.",
@@ -682,6 +696,7 @@
  "cards.stats.time": "Time",
  "cards.stats.won": "Won",
  "cards.stats.wonOf": "{won} of {played}",
+ "cards.stuck": "Undo a few moves to try another way.",
  "cards.suit.clubs": "clubs",
  "cards.suit.diamonds": "diamonds",
  "cards.suit.hearts": "hearts",
@@ -839,7 +854,7 @@
  "checkers.watch.intro": "Red moves first. Zimi plays both sides. Jumps are compulsory.",
  "checkers.whiteKing": "white king",
  "checkers.whiteMan": "white man",
- "checkers.why.quiet": "A draw: forty moves each with no capture or man move.",
+ "checkers.why.quiet": "Forty moves each with no capture or man move.",
  "checkers.yourTurnJump": "Your turn, you must capture",
  "chess.board": "Chess board",
  "chess.cantMove": "That piece cannot move",
@@ -943,8 +958,9 @@
  "city.about.trademark": "Micropolis is a registered trademark of Micropolis Corporation (Micropolis GmbH) and is licensed here as a courtesy of the owner under the Micropolis Public Name License.",
  "city.adv.homes": "Zone homes so people can move in",
  "city.adv.jobs": "Homes need jobs: zone shops and industry",
+ "city.adv.money": "Money is running out: in Budget, raise taxes or trim funding",
  "city.adv.plant": "Build a coal plant (More) beside the road",
- "city.adv.power": "Run a power line to the zones that flash",
+ "city.adv.power": "Connect the zones to power",
  "city.adv.road": "Lay a road: choose Road and drag",
  "city.adv.roadless": "Some zones have no road beside them",
  "city.adv.zone": "Zone homes, shops and industry beside the road",
@@ -1002,19 +1018,21 @@
  "city.class.village": "Village",
  "city.climate": "Climate",
  "city.cost.tile": "{money} a tile",
+ "city.cost.tileWater": "{money} a tile, {water} over water",
  "city.date": "{month} {year}",
  "city.demand": "Demand: homes {homes}, shops {shops}, industry {industry}",
  "city.demand.down": "falling",
  "city.demand.flat": "steady",
  "city.demand.up": "rising",
  "city.end.broke": "Bankrupt",
- "city.end.brokeText": "The city ran out of money. Set the budget to pay its way, or start a new city.",
+ "city.end.brokeGoal": "The goal was {goal}; the city stood at {now}.",
+ "city.end.brokeText": "The city cannot pay its upkeep: {funds} in the bank, {costs} due this year, {taxes} coming in. Set the budget to pay its way, or start a new city.",
  "city.end.metropolis": "A metropolis!",
  "city.end.metropolisText": "100,000 people live here. Keep building, or start a new city.",
  "city.end.scLose": "Goal missed",
- "city.end.scLoseText": "{city}: time ran out before the goal was met.",
+ "city.end.scLoseText": "{city}: time ran out. The goal was {goal}; the city reached {now}.",
  "city.end.scWin": "Goal met",
- "city.end.scWinText": "{city}: the goal is met. Keep building, or try another scenario.",
+ "city.end.scWinText": "{city}: goal met ({goal}; the city reached {now}). Keep building, or try another scenario.",
  "city.follow": "Follow someone",
  "city.fw.atHome": "At home",
  "city.fw.atWork": "At work",
@@ -1032,12 +1050,32 @@
  "city.fw.toHome": "On the way home",
  "city.fw.toWork": "On the way to work",
  "city.fw.view": "Keep in view",
+ "city.goal.class": "reach {name}",
+ "city.goal.crime": "crime below {n}",
+ "city.goal.label": "Goal: {goal}",
+ "city.goal.months": {
+  "one": "{n} month left",
+  "other": "{n} months left"
+ },
+ "city.goal.score": "score above {n}",
+ "city.goal.status": "Now {now} · {left}",
+ "city.goal.traffic": "traffic below {n}",
+ "city.goal.years": {
+  "one": "{n} year left",
+  "other": "{n} years left"
+ },
  "city.held": "{tool}: {cost}",
+ "city.how.drag": "Drag: move",
+ "city.how.pinch": "Pinch: zoom",
+ "city.how.press": "Hold: inspect",
  "city.idle": "Choose a tool. Drag to move the map.",
  "city.k.delete": "Delete",
+ "city.k.dflt": "City {n}",
+ "city.k.failed": "Could not save: no room",
  "city.k.full": "Five cities kept. Delete one to keep this one.",
  "city.k.keep": "Keep this city",
  "city.k.line": "{people}, {money}",
+ "city.k.name": "Name",
  "city.k.none": "No cities kept yet",
  "city.k.open": "Open",
  "city.k.sure": "Delete?",
@@ -1212,7 +1250,7 @@
  "city.scl.hamburg": "Fires sweep the city. Rebuild to a metropolis within 5 years.",
  "city.scl.rio": "The sea is rising. Keep the score above 500 through 10 years of floods.",
  "city.scl.sanfrancisco": "An earthquake strikes. Rebuild to a metropolis within 5 years.",
- "city.scl.tokyo": "A monster attacks. Get the score above 500 within 5 years.",
+ "city.scl.tokyo": "A monster attacks. Get the score above 610 within 5 years.",
  "city.sct.bern": "Bern, 1965",
  "city.sct.boston": "Boston, 2010",
  "city.sct.detroit": "Detroit, 1972",
@@ -1250,7 +1288,7 @@
  "city.tool.wind": "Wind farm",
  "city.tool.wire": "Power line",
  "city.tray": "Tools",
- "city.undo.done": "Taken back, money returned",
+ "city.undo.done": "Undone: {what}, {money} back",
  "city.undo.grown": "The city has changed it since, so it stays",
  "city.v.activist.bad.0": "The air has a flavor now. That’s not a compliment.",
  "city.v.activist.bad.1": "Every summer is the hottest one I remember. My memory is fine.",
@@ -1558,7 +1596,7 @@
  "draughts.sq.piece": "{sq}, {color} {piece}",
  "draughts.tapLands": "Tap where it lands",
  "draughts.why.noMove": "{side} has no move left.",
- "draughts.why.quiet": "A draw: 25 moves each of kings alone, no capture.",
+ "draughts.why.quiet": "25 moves each of kings alone, no capture.",
  "drop.bestMap": "Best on your map",
  "drop.bestWorld": "Best on the world",
  "drop.choosing": "Choosing places from your map…",
@@ -1583,7 +1621,10 @@
  "durak.beatIt": "Beat it with a higher card of the suit, or a trump",
  "durak.beatOrTake": "Beat the {card} or take",
  "durak.beaten": "Beaten. The cards are out of play",
- "durak.cap": "No more than {n} cards this bout",
+ "durak.cap": {
+  "one": "No more than {n} card this bout",
+  "other": "No more than {n} cards this bout"
+ },
  "durak.def": "defends",
  "durak.done": "Done",
  "durak.fact": {
@@ -1887,7 +1928,6 @@
  "fc.play": "Play",
  "fc.random": "Random deal",
  "fc.restart": "Restart deal",
- "fc.stuck": "Undo a few moves to try another way.",
  "fc.why.cell": "A free cell holds one card.",
  "fc.why.cells": "The free cells are full.",
  "fc.why.limit": "You can move only {cards} right now.",
@@ -2534,10 +2574,22 @@
  "gin.aria.chosen": ", chosen to discard",
  "gin.bonus": "Game bonus 100 to {name}.",
  "gin.bonus.you": "Game bonus 100.",
- "gin.deadwood": "{name} has {n} deadwood.",
- "gin.deadwood.you": "{name} have {n} deadwood.",
- "gin.deadwoodLaid": "{name} has {before} deadwood, {after} after laying off {cards}.",
- "gin.deadwoodLaid.you": "{name} have {before} deadwood, {after} after laying off {cards}.",
+ "gin.deadwood": {
+  "one": "{name} has {n} deadwood.",
+  "other": "{name} has {n} deadwood."
+ },
+ "gin.deadwood.you": {
+  "one": "{name} have {n} deadwood.",
+  "other": "{name} have {n} deadwood."
+ },
+ "gin.deadwoodLaid": {
+  "one": "{name} has {n} deadwood, {after} after laying off {cards}.",
+  "other": "{name} has {n} deadwood, {after} after laying off {cards}."
+ },
+ "gin.deadwoodLaid.you": {
+  "one": "{name} have {n} deadwood, {after} after laying off {cards}.",
+  "other": "{name} have {n} deadwood, {after} after laying off {cards}."
+ },
  "gin.discard": "Discard {card}",
  "gin.discardEmpty": "Discard pile, empty",
  "gin.discardFirst": "Discard a card first",
@@ -2554,8 +2606,14 @@
  "gin.handsWon": "Hands won: {a} {pa}, {b} {pb} (25 each).",
  "gin.justTook": "You cannot discard the card you just took",
  "gin.knock": "Knock ({n})",
- "gin.knockWith": "{name} knocks with {dw} deadwood.",
- "gin.knockWith.you": "{name} knock with {dw} deadwood.",
+ "gin.knockWith": {
+  "one": "{name} knocks with {n} deadwood.",
+  "other": "{name} knocks with {n} deadwood."
+ },
+ "gin.knockWith.you": {
+  "one": "{name} knock with {n} deadwood.",
+  "other": "{name} knock with {n} deadwood."
+ },
  "gin.note.discarded": "{name} discarded the {card}.",
  "gin.note.drew": "{name} drew from the stock.",
  "gin.note.gin": "{name} goes gin.",
@@ -3252,7 +3310,7 @@
  "help.timeline.tip": "Start with the one you are surest of.",
  "help.timeline.turn": "Tap the events from the earliest to the latest, then tap Check.",
  "help.towers.end": "You win when the grid is full and every clue matches.",
- "help.towers.goal": "Build a tower on every square, with heights from 1 to the grid size and no height repeated in a row or column.",
+ "help.towers.goal": "Build a tower on every square, with heights from 1 to the grid size and no height repeated in a row or column. Edge numbers show how many towers you can see from that side. Taller towers hide shorter ones.",
  "help.towers.tip": "A clue of 1 means the tallest tower is right beside it. A clue equal to the grid size means the heights rise in order.",
  "help.towers.turn": "Tap a square, then tap a height. Edge numbers show how many towers you can see from that side. Taller towers hide shorter ones.",
  "help.tracks.end": "You win when the track runs unbroken from A to B and every count matches.",
@@ -3315,7 +3373,7 @@
  "help.zimcity.goal": "Grow a town into a city people want to live in.",
  "help.zimcity.keys": "Arrow keys move the cursor tile, Enter builds there, I inspects it, plus and minus zoom.",
  "help.zimcity.tip": "Keep homes away from industry, and raise taxes a step at a time.",
- "help.zimcity.turn": "Lay a road, run a power line to it, then zone homes, shops and industry beside it.",
+ "help.zimcity.turn": "Lay a road, build a coal plant, run a power line, then zone homes, shops and industry beside the road.",
  "hex.board.11": "11 by 11",
  "hex.board.7": "7 by 7",
  "hex.board.9": "9 by 9",
@@ -3324,6 +3382,8 @@
  "hex.cell.red": "red",
  "hex.chain": "The chain links both sides.",
  "hex.hint": "Hint: try the outlined cell.",
+ "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins.",
+ "hex.rules.you": "Link the two {color} edges before Zimi links the {other} ones.",
  "hex.side.blue": "Blue (second)",
  "hex.side.red": "Red (first)",
  "hex.swap": "Swap rule: the second player may take over the first move",
@@ -3526,7 +3586,10 @@
  "holdem.check": "Check",
  "holdem.computers": "Computer players: {list}.",
  "holdem.deal": "Deal",
- "holdem.fact": "{chips} chips",
+ "holdem.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "holdem.fold": "Fold",
  "holdem.handsPlayed": "{hands} played. {text}.",
  "holdem.hasAll": "{name} has all the chips",
@@ -3649,8 +3712,8 @@
  "janggi.side.choFirst": "Cho (first)",
  "janggi.side.han": "Han",
  "janggi.why.bikjang": "Bikjang: the generals face each other. A draw.",
- "janggi.why.passes": "A draw: both sides passed.",
- "janggi.why.quiet": "A draw: fifty moves each without a capture.",
+ "janggi.why.passes": "Both sides passed.",
+ "janggi.why.quiet": "Fifty moves each without a capture.",
  "janggi.yourTurn": "Your turn ({side})",
  "jigsaw.bestOf": {
   "one": "Best, {n} piece",
@@ -3954,6 +4017,7 @@
  "ludo.rollDie": "Roll the die",
  "ludo.rollTurn": "{name}, roll the die",
  "ludo.rolling": "{name} is rolling",
+ "ludo.rollsAgain": "{name} rolls again.",
  "ludo.seat": "{color} plays",
  "ludo.sent": "{name} sent {list} home",
  "ludo.sent.you": "You sent {list} home",
@@ -3983,6 +4047,7 @@
  "mahjong.hint": "These two match.",
  "mahjong.layout": "Layout",
  "mahjong.layout.pyramid": "Pyramid",
+ "mahjong.layout.tower": "Tower",
  "mahjong.layout.towers": "Twin towers",
  "mahjong.layout.turtle": "Turtle",
  "mahjong.left": "Tiles left",
@@ -4157,7 +4222,7 @@
  "makruk.played": "{name} played {move}.",
  "makruk.playedTwo": "{name}: {move}.",
  "makruk.promoted": " (a Met now)",
- "makruk.why.limit": "A draw: 64 moves each without a capture or a Bia move.",
+ "makruk.why.limit": "64 moves each without a capture or a Bia move.",
  "makruk.why.stalemate": "Stalemate: no legal move and not in check. A draw.",
  "makruk.yourTurn": "Your turn ({side})",
  "mancala.again": "{name} landed in the store and plays again.",
@@ -4309,7 +4374,7 @@
  "morris.took": "{name} took a man.",
  "morris.why.blocked": "{side} has no move left.",
  "morris.why.blocked.you": "You have no move left.",
- "morris.why.sixty": "A draw: no man was taken for sixty moves.",
+ "morris.why.sixty": "No man was taken for sixty moves.",
  "morris.why.two": "{side} is down to two men.",
  "morris.why.two.you": "You are down to two men.",
  "muncher.clear": "Maze clear",
@@ -4877,10 +4942,10 @@
  "quizzical.seeScore": "See your score",
  "quizzical.verdict.flawless": "Flawless.",
  "quizzical.verdict.good": "Good.",
- "quizzical.verdict.keepGoing": "Keep playing to learn more.",
  "quizzical.verdict.veryGood": "Very good.",
  "race.another": "Try another race",
  "race.arrived": "You reached {target}",
+ "race.beatRoute": "You beat the known route of {n}.",
  "race.bestClicks": "Fewest clicks in a daily race",
  "race.builtIn": "the built-in articles",
  "race.clicks": {
@@ -4911,6 +4976,8 @@
  "race.hot.same": "Same race: {start} to {end}. Links only.",
  "race.hot.turn": "Player {n}’s turn",
  "race.looking": "Looking for your Wikipedia…",
+ "race.matchedRoute": "You matched the known route: {n}.",
+ "race.matchedShortest": "You matched the shortest route: {n}.",
  "race.missing": "That page is not in your Wikipedia",
  "race.new": "A new race",
  "race.noLinks": "Your Wikipedia needs links between its articles. Try again, or play the built-in articles.",
@@ -4987,7 +5054,6 @@
  "round.seeScore": "See your score",
  "round.verdict.flawless": "Flawless.",
  "round.verdict.good": "Good.",
- "round.verdict.keepGoing": "Keep playing to learn more.",
  "round.verdict.veryGood": "Very good.",
  "scopa.cards": "Cards",
  "scopa.chooseFirst": "Choose a card from your hand first",
@@ -5260,6 +5326,10 @@
  "shogi.hand.piece": "{side}, in hand: {piece}, {n}",
  "shogi.handBottom": "Pieces in hand, bottom player",
  "shogi.handTop": "Pieces in hand, top player",
+ "shogi.hint.drop": "Drop a {piece} on {to}",
+ "shogi.hint.move": "Move a {piece} from {from} to {to}",
+ "shogi.hint.promote": "{move} and promote",
+ "shogi.hint.take": "Move a {piece} from {from} to {to} and take",
  "shogi.noPromote": "Do not promote",
  "shogi.piece.1": "pawn",
  "shogi.piece.10": "promoted lance",
@@ -5283,8 +5353,8 @@
  "shogi.side.senteFirst": "Sente (first)",
  "shogi.title": "Shogi",
  "shogi.title.mini": "Minishogi",
- "shogi.why.long": "A draw: the game has gone on too long.",
- "shogi.why.repetition": "A draw: the same position came up four times.",
+ "shogi.why.long": "The game has gone on too long.",
+ "shogi.why.repetition": "The same position came up four times.",
  "skat.aria.putBack": ", to put back",
  "skat.at": "at {n}",
  "skat.bid": "Bid {n}",
@@ -5484,7 +5554,10 @@
  "sol.winTime": "Time {time}, {moves}",
  "spades.bidNil": "Bid nil",
  "spades.chip.bid": "bid {bid}",
- "spades.estimate": "Your hand looks like about {n} tricks.",
+ "spades.estimate": {
+  "one": "Your hand looks like about {n} trick.",
+  "other": "Your hand looks like about {n} tricks."
+ },
  "spades.line.bid": "{team}: bid {bid}, took {tricks}",
  "spades.line.none": "{team}: no contract",
  "spades.nil": "Nil",
@@ -5545,11 +5618,19 @@
  "stats.most": "Most played",
  "stats.noName": "Your name on the boards:",
  "stats.notYet": "{name}, not yet",
- "stats.playedWon": "{n} played · {w} won",
+ "stats.played": {
+  "one": "{n} played",
+  "other": "{n} played"
+ },
+ "stats.playedWon": "{played} · {won}",
  "stats.playingAs": "Playing as {name}",
  "stats.setName": "Set",
  "stats.title": "Stats",
  "stats.wins": "Wins",
+ "stats.wonCount": {
+  "one": "{n} won",
+  "other": "{n} won"
+ },
  "sudoku.bestRow": "Best time, {level}",
  "sudoku.board": "Sudoku board",
  "sudoku.cell": "Row {row}, column {col}, {what}",
@@ -5657,9 +5738,15 @@
  "tp.clue.short": "Say a little more",
  "tp.clueLabel": "Your clue",
  "tp.cluePlaceholder": "Describe it without saying its name",
- "tp.costAria": "{label}, {n} chips",
+ "tp.costAria": {
+  "one": "{label}, {n} chip",
+  "other": "{label}, {n} chips"
+ },
  "tp.counter": "{n} of {max}",
- "tp.fact": "{chips} chips",
+ "tp.fact": {
+  "one": "{n} chip",
+  "other": "{n} chips"
+ },
  "tp.found": "Found at guess {n}: +{points}",
  "tp.giveFor": "{name}: write a clue for this article",
  "tp.guessesLeft": {
@@ -5874,7 +5961,6 @@
  "world.snippet": ": {snippet}",
  "world.tap": "Tap the map to place a pin",
  "world.verdict.good": "Good.",
- "world.verdict.keepGoing": "Keep playing to learn more.",
  "world.verdict.navigator": "A navigator.",
  "world.verdict.veryGood": "Very good.",
  "world.zoomIn": "Zoom in",
@@ -5892,8 +5978,8 @@
  "xiangqi.pieces.icons": "Pictures",
  "xiangqi.river": "River",
  "xiangqi.side.red": "Red (first)",
- "xiangqi.why.repetition": "A draw: the same position came up three times.",
- "xiangqi.why.sixty": "A draw: sixty moves each without a capture.",
+ "xiangqi.why.repetition": "The same position came up three times.",
+ "xiangqi.why.sixty": "Sixty moves each without a capture.",
  "xiangqi.why.stuck": "No legal move, which loses in xiangqi.",
  "yacht.card.aria": "Score card. Tap a row in your column to score it.",
  "yacht.dice.aria": "Your dice. Tap a die to keep it.",
@@ -5944,6 +6030,8 @@
 }/* en:end */;
   var RTL = /^(ar|fa|he|iw|ur|ps|sd|yi|dv|ug|ckb)(-|$)/;
   var tables = { en: EN }, listeners = [];
+  // The languages with a text/<lang>.json beside this file (tests/test_games_batch3_browser.py keeps the list true).
+  var SHIPPED = ['ar', 'de', 'en', 'es', 'fr', 'he', 'hi', 'pt', 'ru', 'zh'];
 
   // The hash as { key: value }: "#lang=fr&dir=ltr".
   function hashParams() {
@@ -5963,7 +6051,8 @@
   function detect() {
     var p = hashParams(), l = p.lang ? remembered(p.lang) : remembered() || (root.navigator && (root.navigator.language || '')) || 'en';
     l = String(l).toLowerCase().replace('_', '-');
-    return /^[a-z]{2,3}(-[a-z0-9]+)*$/.test(l) ? l : 'en';
+    // A language with no text file speaks English throughout: strings, country names and the library picked all agree.
+    return /^[a-z]{2,3}(-[a-z0-9]+)*$/.test(l) && SHIPPED.indexOf(l.split('-')[0]) >= 0 ? l : 'en';
   }
   var Text = { lang: detect(), dir: 'ltr', table: tables };
   var hashDir = hashParams().dir;

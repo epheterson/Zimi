@@ -25,7 +25,8 @@ export function Input(view, h) {
   var lifted = false;   // a single building's ghost is riding above the finger
   var el = view.canvas, pts = new Map(), mode = null, start = null, last = null, press = 0, pinch = null, edge = null, raf = 0;
   var cursor = null, vel = { x: 0, y: 0, t: 0 }, glide = 0, downAt = 0, lastTap = null;
-  function stopGlide() { if (glide) { cancelAnimationFrame(glide); glide = 0; } }
+  var zoomRaf = 0;
+  function stopGlide() { if (glide) { cancelAnimationFrame(glide); glide = 0; } if (zoomRaf) { cancelAnimationFrame(zoomRaf); zoomRaf = 0; } }   // new input ends a fling and a double-tap zoom still easing
   // A fling keeps the map moving and slowing, as a page does; with reduced motion it stops where the finger left it.
   function fling() {
     if (still() || Math.hypot(vel.x, vel.y) < GLIDE_MIN * 2) return;
@@ -43,7 +44,7 @@ export function Input(view, h) {
     (function frame(now) {
       var k = Math.min(1, (now - t0) / ZOOM_MS), e = 1 - Math.pow(1 - k, 3);
       view.zoomAt(x, y, from + (target - from) * e); h.moved();
-      if (k < 1) requestAnimationFrame(frame);
+      zoomRaf = k < 1 ? requestAnimationFrame(frame) : 0;
     })(t0);
   }
 
@@ -56,6 +57,7 @@ export function Input(view, h) {
     var dx = edge.x < EDGE_PX ? EDGE_PX - edge.x : edge.x > view.w - EDGE_PX ? view.w - EDGE_PX - edge.x : 0;
     var dy = edge.y < EDGE_PX ? EDGE_PX - edge.y : edge.y > view.h - EDGE_PX ? view.h - EDGE_PX - edge.y : 0;
     if (dx || dy) {
+      if (h.panned) h.panned();   // the edge pan is the player's: a followed citizen's camera lets go
       view.panBy(dx / EDGE_PX * EDGE_SPEED, dy / EDGE_PX * EDGE_SPEED);
       h.stroke(aim(edge), false);
       h.moved();
@@ -133,7 +135,7 @@ export function Input(view, h) {
     if (mode === 'pinch') { if (!pts.size) mode = null; return; }   // the finger left after a pinch starts nothing
     if (mode === 'stroke') {
       stopEdge();
-      if (e.type === 'pointercancel' || (h.lift() && offMap(last))) h.cancel(); else h.stroke(aim(last), true);
+      if (e.type === 'pointercancel' || offMap(last)) h.cancel(); else h.stroke(aim(last), true);   // let go off the map: nothing is built
       lifted = false;
     }
     if (mode === 'pan' && e.type === 'pointerup') {
@@ -154,6 +156,7 @@ export function Input(view, h) {
   el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   el.addEventListener('wheel', function (e) {
     e.preventDefault();
+    stopGlide();
     var p = local(e);
     view.zoomAt(p.x, p.y, view.cam.s * Math.pow(WHEEL_STEP, -e.deltaY));
     h.moved();
@@ -167,8 +170,11 @@ export function Input(view, h) {
       e.preventDefault();
       cursor.x = Math.max(0, Math.min(view.city.map.width - 1, cursor.x + step[0]));
       cursor.y = Math.max(0, Math.min(view.city.map.height - 1, cursor.y + step[1]));
+      view.reveal(cursor.x, cursor.y);
       h.cursor(cursor.x, cursor.y);
       h.moved();
+    } else if (k === 'Escape') {
+      h.cancel(); if (h.release) h.release();   // the stroke, then the tool in hand
     } else if (k === 'Enter' || k === ' ') {
       e.preventDefault();
       if (h.tool()) { h.stroke(cursor, false); h.stroke(cursor, true); } else h.inspect(cursor.x, cursor.y);

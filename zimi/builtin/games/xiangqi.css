@@ -30,6 +30,7 @@
 
 .xq-moves { max-height: 66px; overflow: auto; line-height: 1.7; }
 .xq-n { color: var(--ink3); margin-right: 3px; }
+.xq-m, .xq-n { white-space: nowrap; }   /* a line breaks between moves, never inside one */
 .xq-m { margin-right: 9px; font-variant-numeric: tabular-nums; }
 .xq-m.now { font-weight: 700; color: var(--ink); }
 .bg-dot.r { background: var(--xq-red); } .bg-dot.k { background: var(--xq-black); }

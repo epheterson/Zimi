@@ -102,7 +102,7 @@
     var g = {
       board: emptyBoard(), queue: [], hold: null, canHold: true, over: false, cur: null,
       score: 0, lines: 0, level: 1,
-      rng: mulberry32(seed === undefined ? root.ZimiUtil.newSeed() : seed)
+      rng: root.ZimiUtil.counted(seed === undefined ? root.ZimiUtil.newSeed() : seed)   // counted: a saved game puts it back where it was
     };
     refill(g);
     spawnNext(g);
@@ -471,7 +471,7 @@
   ZimiShell.persist({
     save: function () {
       if (mode === 'over' && lastEnd) return { end: lastEnd };
-      return mode === 'playing' || mode === 'paused' ? { g: g } : null;
+      return mode === 'playing' || mode === 'paused' ? { g: root.ZimiUtil.snapshot(g) } : null;
     },
     load: function (d) {
       if (armed) armed.cancel();
@@ -482,7 +482,8 @@
         return true;
       }
       if (!d.g || !d.g.board) return false;
-      g = d.g; g.rng = mulberry32(Math.floor(Math.random() * 4294967296)); newPiece(); mode = 'paused';
+      try { g = root.ZimiUtil.restore(d.g); } catch (e) { g = d.g; g.rng = mulberry32(Math.floor(Math.random() * 4294967296)); }   // a save from before the seed was kept deals on from chance
+      newPiece(); mode = 'paused';
       els.pause.disabled = false; Play.pauseLabel(els.pause, true); status.say(Tx('play.paused')); hud(); draw();
       return true;
     }
