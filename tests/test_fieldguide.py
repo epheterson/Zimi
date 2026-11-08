@@ -735,6 +735,10 @@ def empty_library(tmp_path, monkeypatch):
     srv.load_cache(force=True)
     fg._reset_for_tests()
     yield
+    # Hand the library back as it was: a worker that runs this and then a test on the module's `library` would
+    # otherwise find the empty folder's list still loaded (xdist deals one module's tests across workers).
+    monkeypatch.undo()
+    srv.load_cache(force=True)
     fg._reset_for_tests()
 
 
