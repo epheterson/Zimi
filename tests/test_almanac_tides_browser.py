@@ -220,11 +220,20 @@ def test_the_tide_section_keeps_the_height_it_will_draw_at(browser, served):
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
         drawn = pg.evaluate("document.getElementById('almanac-place').offsetHeight")
         pg.close()
-        # A second visit: the space kept before drawing is the drawn height.
+        # A second visit: the space kept before drawing is the drawn height. The stations are held
+        # back so the tide is not drawn (and the space let go) before it is read, as a fast runner does.
+        held = []
+        ctx.route("**/almanac-place?*", lambda route: held.append(route))
         pg, errors = _open(ctx, served)
         kept = pg.evaluate(
             "parseFloat(document.getElementById('almanac-place').style.minHeight) || 0"
         )
+        for _ in range(600):
+            if held:
+                break
+            pg.wait_for_timeout(POLL_MS)
+        while held:
+            held.pop().continue_()
         assert abs(kept - drawn) <= STILL_PX, (kept, drawn)
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
         assert (
