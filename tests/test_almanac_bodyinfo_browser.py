@@ -287,6 +287,10 @@ def test_axes_point_at_the_iau_pole_and_follow_the_orbits(page):
 
 
 def test_the_sheet_opens_and_shuts(page):
+    # Whatever an earlier test of this shared page left up (a sheet, a picked satellite or place) is put away first.
+    page.evaluate(
+        "_aeCloseInfo(false); _ae.selected = null; _ae.lm = null; _ae.place = null; _aeRenderCard()"
+    )
     page.evaluate("_aeSetOrbits(true)")
     page.evaluate("_aePreset('mars')")
     page.wait_for_function(
@@ -294,9 +298,14 @@ def test_the_sheet_opens_and_shuts(page):
         timeout=60_000,
         polling=100,
     )
-    assert page.evaluate(
-        "!document.querySelector('#ae-info').classList.contains('in') && document.querySelector('#ae-card').hidden"
-    ), "a clean view: no card, the sheet hidden until asked for"
+    state = page.evaluate(
+        "({ sheet: document.querySelector('#ae-info').classList.contains('in'), card: !document.querySelector('#ae-card').hidden,"
+        " selected: !!_ae.selected, lm: !!_ae.lm, place: !!_ae.place, info: _ae.info })"
+    )
+    assert not state["sheet"] and not state["card"], (
+        "a clean view: no card, the sheet hidden until asked for",
+        state,
+    )
     page.click("#ae-info-btn")
     page.wait_for_function(
         "() => document.querySelector('#ae-info').classList.contains('in')"
