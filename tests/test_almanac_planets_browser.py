@@ -2025,7 +2025,7 @@ def test_planets_stay_on_their_orbits_and_the_belt_round_the_sun_as_the_date_run
 
 def test_a_probe_s_path_ends_on_the_probe_as_the_date_runs(served):
     """A path kept from an earlier date left the probe behind as the date ran (the Sun moves a degree a day under it, and a
-    planet under Juno's): every frame a path is shown it ends on the probe."""
+    planet under Juno's): every frame a path is shown it ends on the probe and its ellipse passes within the fit's own error of it."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -2056,12 +2056,17 @@ def test_a_probe_s_path_ends_on_the_probe_as_the_date_runs(served):
                     )
                     got = pg.evaluate(
                         """(k) => { var t = _ae.gl.probes.trails[k], r = _ae.gl.probes.orbits[k], a = t.geometry.attributes.position.array,
-                        n = a.length / 3 - 1, p = _aeProbePos[k], end = Math.hypot(a[n*3] - p[0], a[n*3+1] - p[1], a[n*3+2] - p[2]);
-                        return { shown: t.visible, ring: r.visible, end: end }; }""",
+                        n = a.length / 3 - 1, p = _aeProbePos[k], end = Math.hypot(a[n*3] - p[0], a[n*3+1] - p[1], a[n*3+2] - p[2]), gap = 1e9;
+                        var b = r.geometry.attributes.position.array;
+                        for (var i = 0; i < 180; i++) gap = Math.min(gap, Math.hypot(b[i*3] - p[0], b[i*3+1] - p[1], b[i*3+2] - p[2]));
+                        return { shown: t.visible, ring: r.visible, end: end, gap: gap, au: AU_KM / AE_EARTH_RADIUS_KM }; }""",
                         k,
                     )
                     assert got["shown"] and got["ring"], (k, got)
                     assert got["end"] < 0.01, (k, got)
+                    # The ellipse is a two-body fit to a table thinned to ~0.002 AU (Juno's, 97% eccentric and 0.04 AU
+                    # across, is off it by 0.001 AU, 25 px of scene here) with a vertex every 2 degrees: within 0.003 AU.
+                    assert got["gap"] < 0.003 * got["au"], (k, got)
             assert not errors, errors
             ctx.close()
         finally:
