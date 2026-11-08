@@ -25,13 +25,18 @@ def _owner(path):
         return "root"
 
 
-def _exec_quote(path):
-    """``path`` as one systemd ExecStart word: a virtualenv in a folder with a space would otherwise split in two,
-    and systemd reads % and $ in a unit itself."""
-    path = path.replace("%", "%%").replace("$", "$$")
+def _unit_word(path):
+    """``path`` as one word of a systemd list directive: a folder with a space would otherwise split in two, and
+    systemd reads % in a unit itself."""
+    path = path.replace("%", "%%")
     if not any(c.isspace() or c in "\"'\\" for c in path):
         return path
     return '"' + path.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _exec_quote(path):
+    """``path`` as one ExecStart word (which also reads $ in a unit)."""
+    return _unit_word(path.replace("$", "$$"))
 
 
 def unit_text(python=None, exe=None):
@@ -49,7 +54,8 @@ def unit_text(python=None, exe=None):
             text = f.read()
         for key, value in (
             ("@EXE@", _exec_quote(exe)),
-            ("@DIR@", folder),
+            ("@DIR@", folder.replace("%", "%%")),  # WorkingDirectory takes one path, spaces and all
+            ("@DIRQ@", _unit_word(folder)),  # RequiresMountsFor takes a list, so a space must be quoted
             ("@USER@", _owner(folder)),
         ):
             text = text.replace(key, value)
@@ -114,7 +120,7 @@ def _wait_ready(pid_path, host, port, log_path):
     gone = 0
     for _ in range(READY_WAIT_TICKS):
         pid = _running(pid_path)
-        if pid and _port_taken(host, port):
+        if pid and (int(port) == 0 or _port_taken(host, port)):  # port 0: the system picks, so the pid is the signal
             return f"Zimi is running in the background (pid {pid}, log {log_path})."
         # The file exists but nothing holds it: the server started and is gone (a few ticks, since it locks the
         # file a moment before it writes its pid).

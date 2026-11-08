@@ -91,7 +91,7 @@ def test_the_portable_unit_runs_the_executable_from_its_folder(stick):
     assert (
         "@" not in text.replace("@", "", 0).replace("<", "").split("[Unit]")[1] or True
     )
-    for placeholder in ("@EXE@", "@DIR@", "@USER@", "@PYTHON@"):
+    for placeholder in ("@EXE@", "@DIR@", "@DIRQ@", "@USER@", "@PYTHON@"):
         assert placeholder not in text
     assert (
         "StateDirectory" not in text

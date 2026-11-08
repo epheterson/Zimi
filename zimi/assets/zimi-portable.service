@@ -14,7 +14,7 @@
 Description=Zimi offline knowledge server (portable)
 After=network-online.target local-fs.target
 Wants=network-online.target
-RequiresMountsFor=@DIR@
+RequiresMountsFor=@DIRQ@
 
 [Service]
 User=@USER@

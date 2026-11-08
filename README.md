@@ -74,7 +74,7 @@ brew install --cask zimi
 
 **Linux:** `sudo snap install zimi`, or the [AppImage](https://github.com/epheterson/Zimi/releases) (it updates itself; the window needs WebKitGTK 4.1 from your distro, otherwise Zimi opens in your browser).
 
-**Linux, no Python (a Pi, a USB disk):** `zimi-<version>-linux-x64.tar.gz` or `-arm64.tar.gz` from [Releases](https://github.com/epheterson/Zimi/releases), then `./zimi serve -d`; settings stay in `zimi-data` beside it ([details](docs/features/operations.md#portable-linux-build)).
+**Linux, no Python (a Pi, a USB disk):** `zimi-<version>-linux-x64.tar.gz` or `-arm64.tar.gz` from [Releases](https://github.com/epheterson/Zimi/releases); unpack it, `mkdir zimi-data zims` inside, then `./zimi serve -d`; settings stay in `zimi-data` beside it ([details](docs/features/operations.md#portable-linux-build)).
 
 **Windows:** the installer or portable zip from [Releases](https://github.com/epheterson/Zimi/releases).
 

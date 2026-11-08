@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build and open the macOS desktop app from this checkout: a release check, not part of a NAS deploy.
-set -e
+set -eo pipefail   # a PyInstaller failure must not hide behind `| tail`
 cd "$(dirname "$0")/.."
 echo "=== Building desktop app ==="
 pkill -9 -f "dist/Zimi" 2>/dev/null || true
@@ -16,7 +16,7 @@ sleep 1
 BUILD_PY=""
 for cand in python3.13 python3.12 python3; do
   if command -v "$cand" >/dev/null 2>&1 && \
-     "$cand" -c 'import sys; sys.exit(0 if sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
+     "$cand" -c 'import sys; sys.exit(0 if (3, 11) <= sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
     BUILD_PY="$cand"
     break
   fi
@@ -29,7 +29,7 @@ echo "  Build interpreter: $($BUILD_PY --version 2>&1) ($BUILD_PY)"
 
 BUILD_VENV=".build-venv"
 if [ ! -x "$BUILD_VENV/bin/python" ] || \
-   ! "$BUILD_VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
+   ! "$BUILD_VENV/bin/python" -c 'import sys; sys.exit(0 if (3, 11) <= sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
   rm -rf "$BUILD_VENV"
   "$BUILD_PY" -m venv "$BUILD_VENV"
 fi
