@@ -907,17 +907,17 @@ def test_the_row_follows_where_the_view_is(served):
             go("jupiter")
             jup = ["sun", "jupiter", "io", "europa", "ganymede", "callisto"]
             _row_settles(
-                pg, row, jup + ["moon", "planets"]
-            )  # a long family leaves room for one shortcut
+                pg, row, jup + ["planets"]
+            )  # a long family leaves no room for a shortcut on a phone: Planets is never cut off
             line = pg.evaluate(
                 """() => { var bs = Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => b.getBoundingClientRect());
                 var go = document.getElementById('ae-go-btn').getBoundingClientRect();
-                return { tops: new Set(bs.map(r => Math.round(r.top))).size, goIn: go.left >= 0 && go.right <= innerWidth }; }"""
+                var t = bs.map(r => r.top); return { tops: Math.max.apply(null, t) - Math.min.apply(null, t) <= 1.5, goIn: go.left >= 0 && go.right <= innerWidth }; }"""
             )
-            assert line == {"tops": 1, "goIn": True}, line
+            assert line == {"tops": True, "goIn": True}, line
             go("io")
             _row_settles(
-                pg, row, jup + ["moon", "planets"]
+                pg, row, jup + ["planets"]
             )  # Jupiter, the place just left, is on it already
             go("voyager1")
             _row_settles(
@@ -927,8 +927,8 @@ def test_the_row_follows_where_the_view_is(served):
             assert pg.evaluate(row)[:3] == ["sun", "juno", "jupiter"], pg.evaluate(row)
             go("earth")
             _row_settles(
-                pg, row, ["sun", "earth", "sats", "moon", "juno", "voyager1", "planets"]
-            )
+                pg, row, ["sun", "earth", "sats", "moon", "juno", "planets"]
+            )  # the older shortcut gives way so Planets fits
             go("sun")
             # Earth is always beside the Sun; then the place just left; Side by side beside the Planets
             _wide_row(pg, row, ["sun", "earth", "juno"])
@@ -1440,18 +1440,10 @@ def test_the_orbits_setting_holds_after_a_reload(served, mode):
 
 def test_the_moon_s_landings_on_the_first_tap(served):
     """At the Moon its landing table is there before Landings is tapped: the first tap opens Go to at the landings with
-    their heading in view. Until then the Moon names only Apollo's six; opened, every landing on the near side.
+    their heading in view. With Landmarks off the Moon names none of them, before or after (Eric 2026-11-08).
     """
     from playwright.sync_api import sync_playwright
 
-    apollo = {
-        "Apollo 11",
-        "Apollo 12",
-        "Apollo 14",
-        "Apollo 15",
-        "Apollo 16",
-        "Apollo 17",
-    }
     labels = "() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => b.textContent)"
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
@@ -1470,30 +1462,17 @@ def test_the_moon_s_landings_on_the_first_tap(served):
                 timeout=60_000,
                 polling=100,
             )
-            pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return ("
-                + labels
-                + ")().length > 0; }",
-                timeout=30_000,
-                polling=200,
-            )
-            quiet = pg.evaluate(labels)
-            assert set(quiet) <= apollo, quiet
+            pg.wait_for_timeout(600)
+            assert pg.evaluate(labels) == []
             pg.click("#ae-views [data-ae-view='landings']")
             seen = pg.evaluate(
                 """() => { var s = document.getElementById('ae-go'), h = s.querySelector('h4[data-g="alm_go_landings"]');
                 if (!h) return null; var a = s.getBoundingClientRect(), b = h.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; }"""
             )
             assert seen is True, seen
-            pg.evaluate("_aeShowGo(false)")  # put away (the open sheet covers its button): the Moon now names all its landings in view
-            pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return ("
-                + labels
-                + ")().some(n => !/^Apollo/.test(n)); }",
-                timeout=30_000,
-                polling=200,
-            )
-            assert len(pg.evaluate(labels)) > len(quiet)
+            pg.evaluate("_aeShowGo(false)")
+            pg.wait_for_timeout(600)
+            assert pg.evaluate(labels) == []
             assert not errors, errors
             ctx.close()
         finally:

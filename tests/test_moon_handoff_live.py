@@ -129,7 +129,8 @@ def _almanac(browser, served, reduced=False, init=None):
 
 
 def _settle(pg, iso):
-    pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", iso)
+    # Paused first: a jump keeps the clock's pace, and a running clock moves the Moon the test reads.
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)
     # The hero's sweep to the new moment has ended and its 4096-map sprite is up.
     pg.wait_for_function("() => !_heroMoonOverlay", timeout=20000, polling=POLL_MS)
     pg.wait_for_function(
@@ -247,7 +248,7 @@ def test_one_clock_moves_both_views(browser, served):
         ), state
         assert state["head"] == state["want"], state
         pg.click("#ae-clock .alm-spd-play")   # from a fast pace: 1x
-        pg.click("#ae-clock .alm-spd-play")   # then paused
+        pg.click("#ae-clock .alm-spd-play", force=True)   # then paused (the thumb stands over it at 1x)
         landed = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(300)
         assert (
