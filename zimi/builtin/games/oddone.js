@@ -128,7 +128,7 @@
   function paintSetup() {
     els.body.textContent = '';
     var names = readNames(MAX_PLAYERS);
-    els.body.appendChild(Play.optionRow(T('seats.players'), range(MIN_PLAYERS, MAX_PLAYERS).map(function (n) { return [n, Play.num(n)]; }), settings.players, function (v) { settings.players = v; Play.save(SETTINGS_KEY, settings); paintNames(); }, 'pl-grid'));
+    els.body.appendChild(Play.optionRow(T('seats.players'), range(MIN_PLAYERS, MAX_PLAYERS).map(function (n) { return [n, Play.num(n)]; }), settings.players, function (v) { settings.players = v; Play.save(SETTINGS_KEY, settings); paintNames(); }));
     var box = el('div', 'oo-names'); box.id = 'oo-names'; els.body.appendChild(box);
     var cats = [[ALL, catName(ALL)]].concat(categories().map(function (k) { return [k, catName(k)]; }));
     els.body.appendChild(Play.optionRow(T('oddone.pictures'), cats, settings.cat, function (v) { settings.cat = v; Play.save(SETTINGS_KEY, settings); }, 'pl-grid'));
