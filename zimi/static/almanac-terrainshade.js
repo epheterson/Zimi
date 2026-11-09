@@ -10,6 +10,7 @@
 
 var AE_SHADE_LEVELS = [{ half: 1500, n: 192 }, { half: 6000, n: 192 }, { half: 150000, n: 192 }];   // metres either side of the viewer, cells a side
 var AE_SHADE_START_M = 8, AE_SHADE_STEP = 0.12, AE_SHADE_STEP_MIN_M = 6, AE_SHADE_STEP_CELLS = 0.8;     // the march along the Sun: where it starts, the share of the distance a step is, its least
+var AE_SHADE_ORIGIN_M = 0.3;   // a place stands this far over the grid's ground when it looks at the Sun
 var AE_SHADE_BIAS_M = 0.5, AE_SHADE_BIAS_PER_M = 0.002;                        // a ray this far under the ground is let through (the grid is not the mesh)
 var AE_SHADE_MIN_SUN_Z = 0.004;                                               // a Sun lower than this (the sine of its height) casts no shadow worth the march
 var AE_SHADE_TAN_SUN = 0.0047;                                                // the tangent of the Sun's angular radius (at the Earth)
@@ -54,6 +55,10 @@ function _aeShadeHeight(levels, x, y) {
 function _aeShadeVisible(grids, x, y, z, sun, tanSun) {
   var sz = sun[2];
   if (sz < AE_SHADE_MIN_SUN_Z) return 1;
+  // The march starts from the grid's own ground at this place: the finer shape of the vertex (a small crater's bowl) is below what
+  // the grid can see, and measuring it against the grid's smoother surface would put every pit in the shadow of its own rim.
+  var own = _aeShadeHeight(grids.levels, x, y);
+  if (own !== null) z = own + AE_SHADE_ORIGIN_M;
   var vis = 1, t = AE_SHADE_START_M, reach = AE_SHADE_LEVELS[AE_SHADE_LEVELS.length - 1].half * 1.4, zmax = grids.zmax(), lv = grids.levels;
   while (t < reach) {
     var qx = x + sun[0] * t, qy = y + sun[1] * t, qz = z + sz * t;
