@@ -687,6 +687,8 @@
  "cards.result.you": "आप जीते, {a}-{b}।",
  "cards.seat.east": "पूर्व",
  "cards.seat.north": "उत्तर",
+ "cards.seat.northeast": "उत्तर-पूर्व",
+ "cards.seat.northwest": "उत्तर-पश्चिम",
  "cards.seat.west": "पश्चिम",
  "cards.seatsAtTable": "मेज़ पर सीटें",
  "cards.selected": "चुना गया",

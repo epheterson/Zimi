@@ -197,7 +197,7 @@
     };
     var heaviest = function (down) { return Math.max.apply(null, TABLEAU.map(function (t) { return weight(P[t], down); })); };
     var down = Z.openDown(heaviest, rows.room, ch, ch * UP_STEP_SHARE, DOWN_RATIO, MAX_DOWN_RATIO, DOWN_RATIO_STEP);
-    var step = Z.fanStep(heaviest(down), rows.room, ch, ch * UP_STEP_SHARE, ch * MIN_STEP_SHARE);
+    var step = Z.growStep(heaviest(down), rows.room, ch, ch * MIN_STEP_SHARE);
     var bottom = y2 + ch;
     var ids = function (pile) { return pile.map(function (c) { return c.id; }); };
     var fan = cw * WASTE_FAN_SHARE, wx = x(1) + cw * WASTE_NUDGE_SHARE;

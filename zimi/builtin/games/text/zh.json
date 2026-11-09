@@ -653,6 +653,8 @@
  "cards.result.you": "你赢了，{a} 比 {b}。",
  "cards.seat.east": "东家",
  "cards.seat.north": "北家",
+ "cards.seat.northeast": "东北",
+ "cards.seat.northwest": "西北",
  "cards.seat.west": "西家",
  "cards.seatsAtTable": "牌桌座位",
  "cards.selected": "已选",

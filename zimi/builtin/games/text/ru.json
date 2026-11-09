@@ -755,6 +755,8 @@
  "cards.result.you": "Вы выигрываете, {a}:{b}.",
  "cards.seat.east": "Восток",
  "cards.seat.north": "Север",
+ "cards.seat.northeast": "Северо-восток",
+ "cards.seat.northwest": "Северо-запад",
  "cards.seat.west": "Запад",
  "cards.seatsAtTable": "Места за столом",
  "cards.selected": "выбрана",

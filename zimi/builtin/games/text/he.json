@@ -721,6 +721,8 @@
  "cards.result.you": "ניצחתם, {a} מול {b}.",
  "cards.seat.east": "מזרח",
  "cards.seat.north": "צפון",
+ "cards.seat.northeast": "צפון-מזרח",
+ "cards.seat.northwest": "צפון-מערב",
  "cards.seat.west": "מערב",
  "cards.seatsAtTable": "מקומות ליד השולחן",
  "cards.selected": "נבחר",

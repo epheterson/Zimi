@@ -205,6 +205,8 @@
   //   'WxH..' a Simon Tatham puzzle: the type its dailies are, written as its game IDs write it
   var DAILY = {
     'solitaire.html': true, 'spider.html': true, 'freecell.html': true, 'pyramid.html': true, 'golf.html': true, 'tripeaks.html': true,
+    'yukon.html': true, 'fortythieves.html': true, 'canfield.html': true, 'scorpion.html': true, 'acesup.html': true, 'accordion.html': true,
+    'calculation.html': true, 'beleaguered.html': true, 'eightoff.html': true, 'montecarlo.html': true,
     'mahjong.html': true, 'sudoku.html': true, 'minesweeper.html': true, 'codebreaker.html': true, 'memory.html': true, '2048.html': true,
     'stacker.html': true, 'snake.html': true, 'blast.html': true, 'echo.html': true, 'rocks.html': true, 'lastline.html': true,
     'muncher.html': true, 'crossing.html': true, 'quest.html': true,

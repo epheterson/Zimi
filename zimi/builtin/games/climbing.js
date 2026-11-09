@@ -344,8 +344,9 @@
           { label: TX('cards.pass'), disabled: !st.top, onclick: passTurn },
           { label: TX('cards.hint'), onclick: hint }
         ];
-        if (sel.length && why) out.lines = [{ text: why }];
-        else if (!sel.length && st.top && !game.legalPlays(st, V).length) out.lines = [{ text: TX('climb.nothingBeats') }];
+        // The reason a selection will not play is the status line's, as in the other games (not a line in the tray).
+        if (sel.length && why) out.text = why;
+        else if (!sel.length && st.top && !game.legalPlays(st, V).length) out.text = TX('climb.nothingBeats');
       } else out.text = played + TX('cards.thinking', { name: nm(st.turn) });
       return out;
     }

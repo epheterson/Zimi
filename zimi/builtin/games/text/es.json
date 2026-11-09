@@ -721,6 +721,8 @@
  "cards.result.you": "Ganas, {a} a {b}.",
  "cards.seat.east": "Este",
  "cards.seat.north": "Norte",
+ "cards.seat.northeast": "Noreste",
+ "cards.seat.northwest": "Noroeste",
  "cards.seat.west": "Oeste",
  "cards.seatsAtTable": "Asientos en la mesa",
  "cards.selected": "seleccionada",

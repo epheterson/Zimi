@@ -198,7 +198,7 @@ if (sandbox.ZimiSnap) {
 if (sandbox.ZimiOhHell) {
   const H = sandbox.ZimiOhHell;
   check(H.LADDERS.short.join() === '5,4,3,2,1,2,3,4,5' && H.LADDERS.full.join() === '7,6,5,4,3,2,1,2,3,4,5,6,7', 'oh hell: the hands go down to one card and back up');
-  for (const players of [3, 4]) {
+  for (const players of [3, 4, 5]) {
     const st = H.newGame(order(70 + players), players, 'short', players - 1);
     check(st.hands.every(h => h.length === 5) && st.hands.length === players, 'oh hell: ' + players + ' players, five cards each in the first hand');
     check(new Set(st.hands.flat().concat([st.trumpCard])).size === players * 5 + 1 && st.trump === Z.suit(st.trumpCard), 'oh hell: ' + players + ' players, no card twice, and the turned card names trump');
@@ -226,7 +226,7 @@ if (sandbox.ZimiOhHell) {
   check(H.handPoints(2, 2) === 12 && H.handPoints(0, 0) === 10 && H.handPoints(2, 3) === 3 && H.handPoints(2, 0) === 0, 'oh hell: a point a trick, and ten more for taking exactly what you bid');
   check(H.winners([3, 9, 9]).join() === '1,2' && H.winners([4, 2, 1]).join() === '0', 'oh hell: the seats with the most points win');
   // Computer players: legal bids and plays, every card played once, tricks add up, the game ends.
-  for (const players of [3, 4]) for (const ladder of ['short', 'full']) {
+  for (const players of [3, 4, 5]) for (const ladder of ['short', 'full']) {
     let games = 0, ok = true, exact = 0, made = 0, total = 0;
     for (let g = 0; g < 8; g++) {
       let s = H.newGame(order(500 + g * 11 + players), players, ladder, g % players), guard = 0;
