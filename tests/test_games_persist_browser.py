@@ -22,6 +22,9 @@ from games_wait import becomes, frames, game_ready, savable, truthy, visible  # 
 pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
+XDIST_SPLIT = 2   # independent cases, cheap module fixtures: dealt over workers (tests/conftest.py)
+XDIST_SPLIT_ALL = True
+
 GAMES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "builtin", "games")
 VIEW = {"width": 390, "height": 844}
 SETTLE_MS = 1000   # kept for the files that import it; nothing here sleeps on it any more
