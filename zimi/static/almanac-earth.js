@@ -506,6 +506,8 @@ var AE_PROBE_HEX = '#6ee7d8', AE_AMBER_HEX = '#f5c16c';
 // show through what is being read.
 var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
 var AE_CSS = [
+  '.ae-stand-btn{display:inline-flex;align-items:center;gap:6px}',
+  '.ae-stand-btn .ae-tool-svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}',
   '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
   '.ae-view.open{display:block}',
   '.almanac-view.ae-covered>.almanac-content{visibility:hidden}',
@@ -977,7 +979,7 @@ function _aePlacePick(p) {
   _aeShowGo(false);
   var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
   _ae.place = { name: p.name, label: p.label, lat: p.lat, lon: p.lon, kind: p.kind, qid: p.qid || null, article: null };
-  _ae.lm = null; _ae.selected = null; _ae.arrived = null;
+  _ae.lm = null; _ae.selected = null; _ae.arrived = null; _ae.pick = null;
   if (_ae.spin) _aeLeaveSpin();
   _ae.preset = 'earth';
   _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(p.lat, p.lon), sc.gast)));
@@ -1031,9 +1033,10 @@ function _aeRenderPlaceCard(card) {
   var named = a && _aePlaceNorm(a.title) !== _aePlaceNorm(p.name);
   var body = a && (a.thumbnail || a.snippet) ? '<a href="#" class="ae-place-open ae-place-preview" data-ae-place-open>' + (a.thumbnail ? '<img src="' + _almEsc(a.thumbnail) + '" alt="" loading="lazy">' : '') +
     '<span>' + (named ? '<b>' + _almEsc(a.title) + '</b>' : '') + (a.snippet ? '<span class="ae-place-snip">' + _almEsc(a.snippet) + '</span>' : '') + '</span></a>' : '';
-  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' + head + body;
+  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' + head + body + '<p>' + _aeStandButtonHtml() + '</p>';
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.place = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); };
+  _aeStandBindButtons(card, function () { return { key: 'earth', lat: p.lat, lon: p.lon }; });
   Array.prototype.forEach.call(card.querySelectorAll('[data-ae-place-open]'), function (open) {
     open.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(a); };
   });
@@ -4094,6 +4097,12 @@ function _aeRefAxesRows() {
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
+  // Stand here: its ground and the air over it.
+  add('stand.eye', _aeT('tb_kn_stand_eye'), AE_STAND_EYE_M, 'm', 'Zimi');
+  add('stand.terrain', _aeT('tb_kn_stand_terrain'), 'LOLA · MOLA · Magellan · MESSENGER · ETOPO 2022', '', 'NASA, USGS, NOAA (public domain)');
+  add('stand.detail', _aeT('tb_kn_stand_detail'), 'seeded by the place', '', 'Zimi');
+  add('stand.dust', _aeT('tb_kn_stand_dust'), AE_STAND_MARS_TAU, '', 'Lemmon et al. 2015');
+  add('stand.haze', _aeT('tb_kn_stand_haze'), AE_STAND_HAZE_VIS_KM.venus + ' · ' + AE_STAND_HAZE_VIS_KM.titan, 'km', 'Zimi, after Venera and Huygens');
   return rows;
 }
 
@@ -4346,6 +4355,7 @@ function _aeLmMorning(row, ms) {
 }
 function _aeLmOpen(body, row) {
   _ae.selected = null;
+  _ae.pick = null;
   _ae.lm = { body: body, row: row, hit: null };
   var lm = _ae.lm;
   if (row[4] && window.AlmanacLinks && AlmanacLinks.resolve) {
@@ -4369,9 +4379,10 @@ function _aeRenderLmCard(card) {
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
-    '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span></p>' + night;
+    '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span></p>' + night + (_aeStandable(lm.body) ? '<p>' + _aeStandButtonHtml() + '</p>' : '');
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.lm = null; _aeRenderCard(); };
+  _aeStandBindButtons(card, function () { return { key: lm.body, lat: row[1], lon: row[2] }; });
   var morning = _aeById('ae-lm-morning');
   if (morning) morning.onclick = function (e) { e.preventDefault(); var at = lm.morning; lm.morning = null; _aeGoTo(at); _aeLmFly(lm.body, row); _aeRenderCard(); };
   var read = _aeById('ae-lm-read');
@@ -4640,6 +4651,54 @@ function _aeAzElOf(v) {
 // `overview`: a pull back to the whole system rather than a flight to a body. No shoulder (there is no one body to
 // arrive at): the camera draws straight back on the same eased profile, AE_FLY_OVERVIEW_MS however far it starts.
 var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_KEEP = [0.3, 5];
+// ── Stand here ──
+// Tap a spot on a body, stand on it: the camera drops to the ground there, at eye height, and looks at the horizon
+// (almanac-stand.js, with its terrain almanac-terrain.js and its sky and ground shaders almanac-standgl.js, loaded
+// the first time a spot is tapped). The two names below are the way in for anything else that wants the ground.
+//   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
+//   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
+var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
+var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-standgl.js', '/static/almanac-stand.js'];
+var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
+var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
+var AE_STAND_MARS_TAU = 0.47;                  // the dust in Mars's air, optical depth straight up (red light); Lemmon et al. 2015 find 0.3 to 1 outside storms
+var AE_STAND_HAZE_VIS_KM = { venus: 28, titan: 18 };   // how far one sees through the haze at the ground
+var _aeStandLoading = null;
+function _aeStandable(key) { return AE_STAND_KEYS.indexOf(key) >= 0; }
+function _aeStandReady() {
+  if (typeof _aeStandStart === 'function') return Promise.resolve();
+  if (_aeStandLoading) return _aeStandLoading;
+  _aeStandLoading = new Promise(function (resolve, reject) {
+    AE_STAND_SRCS.forEach(function (src, i) {
+      var el = document.createElement('script');
+      el.src = src;
+      el.async = false;   // in order, as one scope
+      el.onerror = function () { _aeStandLoading = null; reject(new Error(src)); };
+      if (i === AE_STAND_SRCS.length - 1) el.onload = resolve;
+      document.head.appendChild(el);
+    });
+  });
+  _aeStandLoading.catch(function () {});
+  return _aeStandLoading;
+}
+function _aeStandAt(key, lat, lon) {
+  if (!_aeStandable(key)) return Promise.resolve(false);
+  return _aeStandReady().then(function () { return _aeStandStart(key, lat, lon); }, function () { return false; });
+}
+function _aeGroundHeight(key, lat, lon) {
+  if (typeof _aeStandHeight !== 'function') { _aeStandReady().catch(function () {}); return 0; }
+  return _aeStandHeight(key, lat, lon);
+}
+function _aeStandBusy() { return !!_ae.standPending || !!(_ae.stand && (_ae.stand.mode !== 'ground' || _ae.stand.fading)); }
+function _aeStandButtonHtml() {
+  return '<button type="button" class="ae-btn ae-stand-btn" data-ae-stand>' + AE_STAND_FIGURE_SVG + '<span>' + _almEsc(_aeT('alm_stand_here')) + '</span></button>';
+}
+// The button in a card: `where()` gives { key, lat, lon } (or body for key).
+function _aeStandBindButtons(card, where) {
+  var b = card.querySelector('[data-ae-stand]');
+  if (b) b.onclick = function () { var w = where(); _aeStandAt(w.key || w.body, w.lat, w.lon); };
+}
+
 function _aeFlyTo(target, dist, azel, overview) {
   var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0, target: _ae.target };
   _ae.orbitFly = { from: from.target, to: target, endAt: null };   // whose orbits show while it flies
@@ -5156,6 +5215,8 @@ function _aePreset(name) {
   if (_ae.arrived && name !== _ae.arrived) { _ae.arrived = null; _aeRenderCard(); }
   if (_ae.lm && name !== _ae.lm.body) { _ae.lm = null; _aeRenderCard(); }   // a site's card stays at its body
   if (_ae.place) { _ae.place = null; _aeRenderCard(); }   // a place picked in Go to is left behind by any other place
+  if (_ae.pick && name !== _ae.pick.body) { _ae.pick = null; _aeRenderCard(); }
+  _ae.standPending = null;
   // The row says where the view is going at once, also for a destination that flies from a callback (a probe's model
   // loading first): the last chip pressed no longer stays lit over Voyager.
   _ae.preset = name;
@@ -6370,7 +6431,12 @@ function _aeTap(x, y) {
   var body = _aeBodyAt(x, y);
   if (body && body !== _ae.target) { _aePreset(body); return; }
   if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); return; }
-  // The one in view, its model or its disc, tapped: its card (put away with ×, or by flying elsewhere).
+  // The one in view, its surface tapped: the spot, with the way down to it (almanac-stand.js); else its card (put away
+  // with ×, or by flying elsewhere).
+  if (body && body === _ae.target && _aeStandable(body)) {
+    if (typeof _aeStandPick === 'function') { if (_aeStandPick(body, x, y)) return; }
+    else { _aeStandReady().then(function () { if (!_aeStandPick(body, x, y) && _ae.arrived !== body) _aeArrive(body); }); return; }
+  }
   if (body && _ae.arrived !== body) _aeArrive(body);
 }
 // On a mouse, something to tap shows a hand: the craft's model as much as its little circle.
@@ -6436,6 +6502,7 @@ function _aeRenderCardBody() {
   var card = _aeById('ae-card');
   if (!card) return;
   var s = _aeSelectedSat();
+  if (!s && _ae.pick) { _aeRenderPickCard(card); return; }
   if (!s && _ae.place) { _aeRenderPlaceCard(card); return; }
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
@@ -6641,7 +6708,7 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves());
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _aeStandBusy());
 }
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
@@ -6658,11 +6725,18 @@ function _aeDraw(now, busy) {
     _ae.dirty = false;
     return;
   }
+  if (_ae.stand && _ae.stand.live) {   // Stand here: its own scene on the ground (almanac-stand.js)
+    _aeStandDraw(now);
+    _ae.lastRender = now;
+    _ae.dirty = false;
+    return;
+  }
   _aeUpdate(_aeDisplayMs());
   if (_ae.gl.hd) _aeHdUpdate(_ae.gl);
   _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
   _aeDrawMini();
   _aeUpdateLabels();
+  if (_ae.pick) _aeStandMarkPick();
   _ae.lastRender = now;
   _ae.dirty = false;
 }
@@ -6676,6 +6750,7 @@ function _aeFrame() {
   var handDone = _aeStepHand(now);
   var shifting = _aeStepInfoShift(dt);
   var busy = _aeStepFly(now) || _aeBusy() || !!handDone || shifting;
+  if (_ae.standPending) _aeStandStep();
   _aeDraw(now, busy);
   if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
   // The last frame of a swap is drawn; what follows it (the page covered,
@@ -6844,18 +6919,19 @@ function _aeBindCanvas(canvas) {
     if (_ae.pinch && ids.length >= 2) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
       var span = Math.hypot(a.x - b.x, a.y - b.y);
-      if (span > 0 && _ae.pinch.span > 0) _aeZoomBy(_ae.pinch.span / span);
+      if (span > 0 && _ae.pinch.span > 0) { if (_ae.stand) _aeStandZoom(_ae.pinch.span / span); else _aeZoomBy(_ae.pinch.span / span); }
       _ae.pinch.span = span;
       // The midpoint slides the view, whether or not the fingers also spread or close; not mid-flight, where a zoom
       // lets the flight finish (a pan would end it where it stands).
       var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      if (!_ae.fly) _aePanBy(mx - _ae.pinch.mx, my - _ae.pinch.my);
+      if (!_ae.fly && !_ae.stand) _aePanBy(mx - _ae.pinch.mx, my - _ae.pinch.my);
       _ae.pinch.mx = mx; _ae.pinch.my = my;
     } else if (_ae.drag) {
       var dx = e.clientX - _ae.drag.x, dy = e.clientY - _ae.drag.y;
       _ae.drag.x = e.clientX; _ae.drag.y = e.clientY;
       if (Math.hypot(e.clientX - _ae.drag.x0, e.clientY - _ae.drag.y0) > AE_TAP_SLOP_PX) _ae.drag.moved = true;
-      if (_ae.drag.pan) _aePanBy(dx, dy);
+      if (_ae.stand) _aeStandLook(dx, dy);   // on the ground a drag turns the head
+      else if (_ae.drag.pan) _aePanBy(dx, dy);
       else _aeDragBy(dx, dy);
     }
   });
@@ -6864,7 +6940,7 @@ function _aeBindCanvas(canvas) {
     if (!_ae.pointers[e.pointerId]) return;
     delete _ae.pointers[e.pointerId];
     var left = Object.keys(_ae.pointers).length;
-    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup') {
+    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup' && !_ae.stand) {
       var r = canvas.getBoundingClientRect();
       _aeTap(e.clientX - r.left, e.clientY - r.top);
     }
@@ -6879,7 +6955,8 @@ function _aeBindCanvas(canvas) {
   canvas.addEventListener('pointercancel', end);
   canvas.addEventListener('wheel', function (e) {
     e.preventDefault();
-    if (!_ae.spin) _aeZoomBy(Math.exp(e.deltaY * AE_WHEEL_ZOOM));
+    if (_ae.stand) _aeStandZoom(Math.exp(e.deltaY * AE_WHEEL_ZOOM));
+    else if (!_ae.spin) _aeZoomBy(Math.exp(e.deltaY * AE_WHEEL_ZOOM));
   }, { passive: false });
 }
 function _aeBindKeys() {
@@ -6892,11 +6969,13 @@ function _aeBindKeys() {
       if (_aeFullOn()) { _aeFullExit(); return; }
       if (_ae.info) { _aeCloseInfo(true); return; }
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
+      if (_ae.stand || _ae.standPending) { _aeStandLeave(); return; }
       _ae.closedByKey = true;
       _aeClose();
       return;
     }
     if (e.target !== _aeById('ae-canvas') || _ae.spin) return;   // side by side has no camera to move
+    if (_ae.stand) { if (_aeStandKey(e)) e.preventDefault(); return; }
     var handled = true, arrow = AE_KEY_ARROWS[e.key];
     // An arrow turns the globe as a drag that way on the screen would.
     if (arrow) { var turn = _aeDragTurn(arrow[0], arrow[1], _ae.roll, AE_KEY_TURN); _aeTurnBy(turn.daz, turn.del); }
@@ -7395,7 +7474,7 @@ function _aeFullStepOut() {
 // view's, which is then not the router's to act on.
 function _aeStepPop(e) {
   if (_aeStepSwallow) { _aeStepSwallow = false; return true; }
-  if (_aeFullStepped && !(e.state && e.state.aeFull)) { _aeFullStepped = false; _aeFullExit(false); return true; }
+  if (_aeFullStepped && !(e.state && e.state.aeFull)) { _aeFullStepped = false; if (_ae && _ae.stand) _aeStandLeave(false); else _aeFullExit(false); return true; }
   if (_aeStepped && !(e.state && e.state.aeView)) {
     _aeStepped = false;
     if (_aeIsOpen) _aeClose();
@@ -7456,6 +7535,7 @@ function _aeClose() {
 function _aeFinishClose() {
   if (!_aeIsOpen) return;
   _aeLeaveSpin();
+  if (_ae.stand || _ae.standPending) _aeStandDrop(true);   // the ground goes with the view (its history step with the view's)
   _aeIsOpen = false;
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
