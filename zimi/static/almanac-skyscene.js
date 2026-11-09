@@ -14,12 +14,12 @@
 // the cloud spreads, in puff radii; how flat the puffs are (height over width);
 // how opaque; how many clouds a day of full cover draws.
 var SKY_CLOUD_LAYERS = [
-  { key: 'cumulus', h: [1.2, 2.4], d: [2.5, 60], r: [0.3, 0.8], puffs: [5, 9], span: 2.4, flat: 0.55, alpha: 0.92, n: [4, 9] },
-  { key: 'alto', h: [3.2, 5.6], d: [4, 160], r: [0.8, 1.9], puffs: [6, 11], span: 2.8, flat: 0.38, alpha: 0.7, n: [4, 8] },
-  { key: 'cirrus', h: [8.5, 11], d: [6, 330], r: [2, 4.8], puffs: [4, 7], span: 3.4, flat: 0.14, alpha: 0.6, n: [3, 6] }
+  { key: 'cumulus', h: [1.2, 2.4], d: [2.5, 60], r: [0.3, 0.8], puffs: [5, 9], span: 2.4, flat: 0.55, alpha: 0.92, n: [7, 15] },
+  { key: 'alto', h: [3.2, 5.6], d: [4, 160], r: [0.8, 1.9], puffs: [6, 11], span: 2.8, flat: 0.38, alpha: 0.7, n: [7, 13] },
+  { key: 'cirrus', h: [8.5, 11], d: [6, 330], r: [2, 4.8], puffs: [4, 7], span: 3.4, flat: 0.14, alpha: 0.6, n: [5, 10] }
 ];
-var SKY_CLOUD_COVER_POW = 1.3;        // the day's cover is a random number to this power: more clear days than overcast ones
-var SKY_CLOUD_MIN_SHARE = 0.75;        // a clear day still draws this share of the fewest
+var SKY_CLOUD_COVER_POW = 1;          // the day's cover is a random number to this power (1: evenly from thin to heavy)
+var SKY_CLOUD_MIN_SHARE = 0.8;        // a clear day still draws this share of the fewest
 var SKY_CLOUD_CLEAR_DEG = 4;          // the clouds part this far round the Sun and the Moon: the sky stays the real one
 var SKY_CLOUD_MIN_ALT = -0.5;         // a puff whose centre is lower than this is under the horizon
 var SKY_CLOUD_SEED_PLACE = 10;        // the place enters the day's seed to this many parts of a degree
