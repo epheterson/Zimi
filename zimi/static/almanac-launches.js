@@ -21,7 +21,7 @@ var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: t
 // ── In the 3D view ──
 var AL_FLY_TILT_RAD = 0.1;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
 var AL_FLY_MIDDLE = 0.4;                     // the share of the ascent the view is centred on: the pad and the far end both fit
-var AL_FLY_DIST = 1.8;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
+var AL_FLY_DIST = 2.2;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
 var AL_TRACK_COLOR = 0xffc978, AL_TRACK_ALPHA = 0.8, AL_BOOSTER_COLOR = 0x9be7ff, AL_BOOSTER_ALPHA = 0.6;
 var AL_ROCKET_COLOR = [1, 0.8, 0.5], AL_PLUME_COLOR = [0.7, 0.9, 1], AL_BOOSTER_POINT = [0.8, 0.95, 1];
 var AL_DOT_COLOR = { recon: [1, 0.82, 0.45], exact: [0.62, 0.85, 1] }, AL_DOT_PX = 3, AL_ROCKET_PX = 7, AL_PLUME_PX = 30, AL_PLUME_ALPHA = 0.28;
