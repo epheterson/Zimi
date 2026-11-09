@@ -53,6 +53,7 @@ function makeSky() {
   vm.runInContext(read('almanac-skygl.js'), S);
   vm.runInContext(read('zone-places.js'), S);
   vm.runInContext(read('almanac-skyfacts.js'), S);
+  vm.runInContext(read('almanac-skyscene.js'), S);
   return { S, timers, frames, els, run: (code) => vm.runInContext(code, S) };
 }
 

@@ -84,6 +84,7 @@ vm.runInContext(read('almanac-sky.js'), S);
 vm.runInContext(read('almanac-skygl.js'), S);
 vm.runInContext(read('zone-places.js'), S);
 vm.runInContext(read('almanac-skyfacts.js'), S);
+vm.runInContext(read('almanac-skyscene.js'), S);
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 // Great-circle distance between two alt/az directions, degrees.
@@ -323,7 +324,7 @@ vm.runInContext('var __store = {}; var localStorage = { getItem: function (k) { 
   'function _skySolarMinutes() { return 360; };' +
   '_skyRand = function () { return 0.99; };', S);   // a meteor's wait is drawn at random: here always a short one, so the timer is the meteor's own
 const SATS = '_skyPollSatsTick';   // the wait for the ISS's elements, on any picture of the sky and with motion reduced
-const MOVING = SATS + ',_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners and the palms' breeze, and that wait
+const MOVING = SATS + ',_skySpawnBirds,_skySpawnHeli,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners and the palms' breeze, and that wait
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
 // The true horizon, chosen: nothing but the clock's drift, at night or by day, and no twinkle at all.
 vm.runInContext('_skySettings = { skin: "horizon", lines: "off", size: "auto", dial: 0 }', S);
