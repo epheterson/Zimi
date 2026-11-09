@@ -114,3 +114,24 @@ def test_the_shipped_catalogs_place_a_known_spot():
     assert here and here[0]["name"] == "osm-hawaii"
     assert all(mapchoice.covers(o["bounds"], *HONOLULU) for o in here)
     assert world
+
+
+def test_countries_across_the_antimeridian_hold_their_own_ground_and_not_the_far_side_of_the_planet():
+    catalog = mapchoice.catalog_maps()
+    tokyo = {
+        o["name"] for o in mapchoice.offered_maps(catalog, set(), 35.68, 139.69)[0]
+    }
+    assert not tokyo & {
+        "maps_en_united-states-of-america",
+        "maps_en_russia",
+        "maps_en_fiji",
+    }
+    usa = "maps_en_united-states-of-america"
+    assert usa in {
+        o["name"]
+        for o in mapchoice.offered_maps(catalog, set(), *HONOLULU, limit=20)[0]
+    }
+    assert usa in {
+        o["name"]
+        for o in mapchoice.offered_maps(catalog, set(), 61.2, -149.9, limit=20)[0]
+    }
