@@ -70,7 +70,7 @@ def served(tmp_path_factory):
 
 
 # The sphere's own vertex for (lat, lon), by the uv the shader reads the map at, against where the landmark system
-# puts the same latitude and longitude: they are one point, for every body.
+# puts the same latitude and longitude: they are one point, for every body (the Earth's picture row is the geodetic latitude).
 VERTEX_VS_LANDMARK = """(a) => {
     var S = _ae.gl, out = {};
     a.bodies.forEach(function (key) {
@@ -82,7 +82,9 @@ VERTEX_VS_LANDMARK = """(a) => {
         a.grid.forEach(function (g) {
             var u = (g[1] + 180) / 360, v = (g[0] + 90) / 180, best = -1, bd = 1e9;
             for (var i = 0; i < uv.count; i++) {
-                var d = Math.hypot(uv.getX(i) - u, uv.getY(i) - v);
+                // The Earth's picture is read by the geodetic latitude of the vertex's point (AE_EARTH_VERT), not by its uv.
+                var vv = key === 'earth' ? 0.5 + Math.atan2(pos.getZ(i), (1 - AE_EARTH_FLATTENING) * Math.hypot(pos.getX(i), pos.getY(i))) / Math.PI : uv.getY(i);
+                var d = Math.hypot(uv.getX(i) - u, vv - v);
                 if (d < bd) { bd = d; best = i; }
             }
             var w = new S.THREE.Vector3(pos.getX(best), pos.getY(best), pos.getZ(best)).applyMatrix4(mesh.matrixWorld);
