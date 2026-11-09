@@ -40,7 +40,7 @@ var AM_IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 var AM_CSS_ID = 'am-css';
 
 // Missions in the order of the list. Names are in the interface's languages (alm_ms_<id>).
-var AM_LIST = ['apollo11', 'voyager1', 'voyager2'];
+var AM_LIST = ['apollo11', 'voyager1', 'voyager2'];   // and 'plan', the planner
 
 var _amData = null, _amLoading = null;
 
@@ -151,12 +151,19 @@ function _amMoonShift(M, t, p, sc) {
 }
 // A leg's scene position and axes-turned velocity at table time t, before any seam.
 function _amLegRaw(M, leg, t, sc) {
+  if (leg.frame === 'helio') return _amHelioRaw(leg, t, sc);
   var r = _amTable(leg.s, Math.min(leg.s[leg.s.length - 1][0], Math.max(leg.s[0][0], t)));
   _amLegFrame(leg, sc);
   var fr = leg.frame, pos = _amAxes(leg, r.p, sc), vel = _amAxes(leg, r.v, sc);
   if (fr === 'mcmf' || fr === 'mfix' || fr === 'rel') { if (!leg.centre) return null; pos = _aeAdd(pos, leg.centre); }
   else if (fr === 'eci') { var sh = _amMoonShift(M, t, r.p, sc); if (sh) pos = _aeAdd(pos, sh); }
   return { pos: pos, vel: vel, up: r.up ? _amAxes(leg, r.up, sc) : null, km: r };
+}
+// A heliocentric leg (the planner's transfer arcs): AU and AU/s in the ecliptic, drawn on the view's own squeezed scale round the Sun as shown.
+function _amHelioRaw(leg, t, sc) {
+  var r = _amTable(leg.s, Math.min(leg.s[leg.s.length - 1][0], Math.max(leg.s[0][0], t))), toS = function (h) { return _ephEclJ2000ToEqOfDate(h, sc.jde); };
+  var pos = _aeAdd(_aeSunShown(sc), _aeScale(_aeNorm(toS(r.p)), _aeShownDist(_aeLen(r.p))));
+  return { pos: pos, vel: toS(r.v), up: toS([0, 0, 1]), km: { p: r.p, v: r.v } };
 }
 // A vehicle's state at mission time t: scene position, the direction it points and its up, its speed (km/s) in its leg's frame.
 // null when it is not there.
@@ -226,6 +233,19 @@ function _amTurnX(b, deg) {
   return { x: b.x, y: _aeAdd(_aeScale(b.y, c), _aeScale(b.z, s)), z: _aeSub(_aeScale(b.z, c), _aeScale(b.y, s)) };
 }
 
+// The planner is its own file, fetched when asked for.
+var AM_PLAN_JS = '/static/almanac-missions-plan.js', _amPlanLoading = false;
+function _amPlanLoad(then) {
+  if (typeof _apOpen === 'function') { then(); return; }
+  if (_amPlanLoading) return;
+  _amPlanLoading = true;
+  var sc = document.createElement('script');
+  sc.src = AM_PLAN_JS;
+  sc.onload = function () { _amPlanLoading = false; then(); };
+  sc.onerror = function () { _amPlanLoading = false; sc.remove(); };
+  document.head.appendChild(sc);
+}
+
 // ── Loading ──
 function _amLoad(then) {
   if (_amData) { then(); return; }
@@ -288,6 +308,7 @@ function _amNowS() { var s = _amState(); return s ? (_aeDisplayMs() - s.zeroMs) 
 // Open a mission by id. The view flies there when it is not yet in the mission's space.
 function _aeMissionOpen(id) {
   if (!_ae || !_ae.gl) return;
+  if (id === 'plan') { _amPlanLoad(function () { _apOpen(); }); return; }
   if (_ae.site) _aeSiteLeave(true);
   if (typeof _aeTracksLoad === 'function') _aeTracksLoad();   // a probe's flight is drawn from its table
   _amLoad(function () {
@@ -315,6 +336,7 @@ function _amStop(quiet) {
   Object.keys(s.parts).forEach(function (k) { var I = s.parts[k]; if (I.root.parent) I.root.parent.remove(I.root); });
   Object.keys(s.flames).forEach(function (k) { var f = s.flames[k]; if (f.parent) f.parent.remove(f); f.geometry.dispose(); f.material.dispose(); });
   if (s.dot) { if (s.dot.parent) s.dot.parent.remove(s.dot); }
+  if (s.cleanup) s.cleanup();
   _ae.mission = null;
   _ae.el.classList.remove('ae-mission');
   _amHud(false);
@@ -415,6 +437,7 @@ function _aeMissionDraw() {
     }
   });
   _aeCommitPoints(s.dot, nDots);
+  if (s.onDraw) s.onDraw();
 }
 function _amPhaseChanged(m, pi) {
   var hud = _aeById('am-hud');
@@ -441,6 +464,7 @@ function _amCamera(m, s, st, ph, dt, sc) {
     s.cam.dist *= Math.pow(s.shot.dist / s.cam.dist, k);
   } else if (!s.userCam) { s.cam.az = s.shot.az; s.cam.el = s.shot.el; s.cam.dist = s.shot.dist; }
   var b = _amBasis(st), c = s.cam, ch = Math.cos(c.el);
+  if (shot.overview) { _amOverviewShot(s, st, c); return; }
   if (shot.body) { _amBodyShot(s, st, shot, c); return; }
   // The shot turns about the vehicle's axis (az 0: from its up side, 90: from its right) and leans toward its tail by el.
   var off = [Math.sin(c.az) * ch * c.dist, -Math.sin(c.el) * c.dist, Math.cos(c.az) * ch * c.dist];
@@ -450,6 +474,13 @@ function _amCamera(m, s, st, ph, dt, sc) {
   up = _aeSub(up, _aeScale(look, _aeDot(up, look)));
   up = _aeLen(up) < 1e-9 ? b.z : _aeNorm(up);
   s.pose = { pos: pos, up: up, look: look, tp: focus, fov: AM_FOV_DEG, nearRe: Math.max(0.2 * AM_MRE, c.dist * AM_MRE * AM_NEAR_PER_FOCUS) };
+}
+// The whole inner system from above the ecliptic: the camera over the Sun (c.dist Earth radii), looking down at it.
+function _amOverviewShot(s, st, c) {
+  var sun = _aeSunShown(_ae.scene), north = _aeNorm(_ephEclJ2000ToEqOfDate([0, 0, 1], _ae.scene.jde));
+  var east = _aeNorm(_ephEclJ2000ToEqOfDate([1, 0, 0], _ae.scene.jde)), pos = _aeAdd(sun, _aeAdd(_aeScale(north, c.dist * 0.94), _aeScale(east, -c.dist * 0.34)));
+  var look = _aeNorm(_aeSub(sun, pos));
+  s.pose = { pos: pos, up: north, look: look, tp: sun, fov: AM_FOV_DEG, nearRe: c.dist * 1e-3 };
 }
 // A shot of a probe against a body it is passing (shot.body: a planet's key; shot.d: metres, shot.mix: how far toward the body the
 // camera looks): from beyond the probe, the body behind it, turned about the line between them by az and lifted by el.
@@ -660,6 +691,11 @@ function _amReadings(m, st, t, ph) {
     out.alt = _aeLen(h); out.altAu = true;
     out.speed = h1 && h2 ? _aeLen(_aeSub(h2, h1)) / 0.02 * AM_AU_DAY_KMS : null;
     out.far = _aeLen(_aeSub(h, e)) * AM_AU_KM;
+    return out;
+  }
+  if (st.leg.frame === 'helio') {
+    var hp = st.km.p, he = _ephBodyJ2000('Earth', _ae.scene.jd);
+    out.alt = _aeLen(hp); out.altAu = true; out.speed = _aeLen(st.km.v) * AM_AU_KM; out.far = _aeLen(_aeSub(hp, he)) * AM_AU_KM;
     return out;
   }
   var km = st.km, p = km.p, ref = ph.ref || 'earth', fr = st.leg.frame, moon = _amTable(m.ref.moon, t);

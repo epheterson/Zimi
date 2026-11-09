@@ -10,6 +10,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 G0 = 9.80665
+DT = 0.25  # s, the step of the descent's integration
 
 
 def solve_poly_guidance(r, v, rf, vf, af, T):
@@ -67,17 +68,20 @@ def descend(
             a = gravity_m(r, mu_km3) + fict + d * mag / m
             return np.concatenate([v, a, [-mag / (isp * G0)]])
 
-        grid = np.unique(
-            np.concatenate(
-                [[t], np.arange(math.ceil(t / step) * step, T_end, step), [T_end]]
-            )
-        )
-        sol = solve_ivp(
-            f, (t, T_end), y, method="DOP853", rtol=rtol, atol=1e-4, t_eval=grid
-        )
-        ts.append(sol.t[:-1])
-        ys.append(sol.y.T[:-1])
-        y = sol.y[:, -1]
+        # a fixed step: the throttle's clamps make the right-hand side too rough for an adaptive integrator to be quick
+        n = int(math.ceil((T_end - t) / DT))
+        h = (T_end - t) / n
+        every = max(1, int(round(step / h)))
+        for i in range(n):
+            if i % every == 0:
+                ts.append(np.array([t]))
+                ys.append(y[None, :])
+            k1 = f(t, y)
+            k2 = f(t + h / 2, y + h / 2 * k1)
+            k3 = f(t + h / 2, y + h / 2 * k2)
+            k4 = f(t + h, y + h * k3)
+            y = y + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+            t += h
         t = T_end
     ts.append(np.array([t]))
     ys.append(y[None, :])

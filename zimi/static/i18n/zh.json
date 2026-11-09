@@ -3792,5 +3792,19 @@
   "alm_ms_ev_flyby": "最接近{planet}",
   "alm_ms_ev_pale": "拍下“暗淡蓝点”",
   "alm_ms_ev_interstellar": "进入星际空间",
-  "alm_ms_ph_final": "最终接近"
+  "alm_ms_ph_final": "最终接近",
+  "tb_kn_ms_a11_zero": "阿波罗11号零时",
+  "tb_kn_ms_park": "阿波罗11号停泊轨道（远地点×近地点，倾角）",
+  "tb_kn_ms_tli": "阿波罗11号地月转移点火（飞行时间）",
+  "tb_kn_ms_loi": "阿波罗11号进入月球轨道（开始、时长、轨道）",
+  "tb_kn_ms_pdi": "阿波罗11号动力下降（开始、高门）",
+  "tb_kn_ms_land": "阿波罗11号着陆（时间、地点）",
+  "tb_kn_ms_ei": "阿波罗11号再入界面（时间、位置、速度、航迹角）",
+  "tb_kn_ms_splash": "阿波罗11号溅落（时间、地点）",
+  "tb_kn_ms_fit": "此处所飞的土星五号推力与目录值之比",
+  "tb_kn_ms_voyager": "旅行者1号最接近距离（自行星中心）",
+  "alm_ms_plan": "规划飞行",
+  "alm_ms_plan_plot": "发射与到达日期",
+  "alm_ms_plan_axes": "发射 → · 到达 ↑",
+  "alm_ms_plan_fly": "飞一次"
 }

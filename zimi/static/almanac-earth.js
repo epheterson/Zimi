@@ -4137,6 +4137,18 @@ function _aeRefAxesRows() {
   add('site.saturn_pitch', _aeT('tb_kn_site_saturn_pitch'), AE_SITE_FACTS.saturnTilt.perS + ' · (t − ' + AE_SITE_FACTS.saturnTilt.startS + ' s)^' + AE_SITE_FACTS.saturnTilt.pow + ', ≤ ' + AE_SITE_FACTS.saturnTilt.maxDeg, '°', 'Zimi, fitted to the Apollo 11 flight report');
   add('site.jump', _aeT('tb_kn_site_jump'), AE_SITE_FACTS.jumpMs.moon + ' (' + _tp('Moon') + ') · ' + AE_SITE_FACTS.jumpMs.mars + ' (' + _tp('Mars') + ')', 'm/s', 'Zimi');
   add('site.tower', _aeT('tb_kn_site_tower'), AE_SITE_FACTS.launchTowerM, 'm', 'NASA Launch Complex 39');
+  // The missions' (almanac-missions.js): the report's numbers the Apollo 11 flight is fitted to, and the fit's one allowance.
+  var MR = 'NASA Apollo 11 Mission Report MSC-00171';
+  add('ms.a11_zero', _aeT('tb_kn_ms_a11_zero'), '1969-07-16 13:32:00', 'UT', MR + ', table 3-I');
+  add('ms.a11_park', _aeT('tb_kn_ms_park'), '186.5 × 183.7 · 32.521', 'km · °', MR);
+  add('ms.a11_tli', _aeT('tb_kn_ms_tli'), '2:44:16.2 – 2:50:03.2', 'h:mm:ss', MR + ', table 3-I');
+  add('ms.a11_loi', _aeT('tb_kn_ms_loi'), '75:49:50.4 + 357.6 s · 314.3 × 111.1', 'km', MR + ', table 7-II');
+  add('ms.a11_pdi', _aeT('tb_kn_ms_pdi'), '102:33:05 · 7,129 ft at 125 ft/s (P64, 102:41:32)', '', MR + ', tables 5-I and 5-III');
+  add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
+  add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
+  add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
+  add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py)');
+  add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
   return rows;
 }
 
@@ -4273,7 +4285,7 @@ var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpoch
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 // Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
 // ids are in the order of the Go to list; their names are alm_ms_<id>.
-var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'voyager1', 'voyager2'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
 function _aeMissionStart(id) {
   if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
   if (_aeMissionsLoading) return;

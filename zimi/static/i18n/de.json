@@ -3792,5 +3792,19 @@
   "alm_ms_ev_flyby": "{planet}: größte Annäherung",
   "alm_ms_ev_pale": "Der blassblaue Punkt fotografiert",
   "alm_ms_ev_interstellar": "Tritt in den interstellaren Raum ein",
-  "alm_ms_ph_final": "Endanflug"
+  "alm_ms_ph_final": "Endanflug",
+  "tb_kn_ms_a11_zero": "Apollo 11: Nullpunkt der Zählung",
+  "tb_kn_ms_park": "Apollo 11: Parkbahn (Apogäum × Perigäum, Neigung)",
+  "tb_kn_ms_tli": "Apollo 11: Zündung zur Mondbahn (Flugzeit)",
+  "tb_kn_ms_loi": "Apollo 11: Einschwenken in die Mondbahn (Beginn, Dauer, Bahn)",
+  "tb_kn_ms_pdi": "Apollo 11: gesteuerter Abstieg (Beginn, hohes Tor)",
+  "tb_kn_ms_land": "Apollo 11: Landung (Zeit, Ort)",
+  "tb_kn_ms_ei": "Apollo 11: Eintrittspunkt (Zeit, Ort, Geschwindigkeit, Bahnwinkel)",
+  "tb_kn_ms_splash": "Apollo 11: Wasserung (Zeit, Ort)",
+  "tb_kn_ms_fit": "Saturn-V-Schub, wie hier geflogen, gegen den Katalog",
+  "tb_kn_ms_voyager": "Voyager 1: größte Annäherungen (vom Planetenmittelpunkt)",
+  "alm_ms_plan": "Flug planen",
+  "alm_ms_plan_plot": "Start- und Ankunftsdaten",
+  "alm_ms_plan_axes": "Start → · Ankunft ↑",
+  "alm_ms_plan_fly": "Fliegen"
 }

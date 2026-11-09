@@ -95,6 +95,18 @@ def main():
             polling=200,
         )
         pg.evaluate("(id) => _aeMissionStart(id)", args.mission)
+        if args.mission == "plan":  # the planner: its plot, then a flight of the best transfer
+            pg.wait_for_function("() => !!document.getElementById('ap-plot') && !!_ap && !!_ap.pick", timeout=120000, polling=200)
+            time.sleep(1.0)
+            pg.screenshot(path=os.path.join(args.out, "plan-plot.png"))
+            pg.evaluate("() => document.getElementById('ap-fly').click()")
+            pg.wait_for_function("() => !!(_ae.mission)", timeout=120000, polling=200)
+            time.sleep(args.wait)
+            pg.screenshot(path=os.path.join(args.out, "plan-fly.png"))
+            print("plan ok", pg.evaluate("() => ({ t: _ae.mission.t, phase: _ae.mission.phaseIdx })"))
+            br.close()
+            httpd.shutdown()
+            return
         pg.wait_for_function("() => !!(_ae.mission)", timeout=120000, polling=200)
         times = [float(v) for v in args.times.split(",") if v] or [None]
         for t in times:

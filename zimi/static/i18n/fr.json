@@ -3792,5 +3792,19 @@
   "alm_ms_ev_flyby": "{planet} : plus près",
   "alm_ms_ev_pale": "Le pâle point bleu photographié",
   "alm_ms_ev_interstellar": "Entre dans l'espace interstellaire",
-  "alm_ms_ph_final": "Approche finale"
+  "alm_ms_ph_final": "Approche finale",
+  "tb_kn_ms_a11_zero": "Apollo 11 : instant zéro",
+  "tb_kn_ms_park": "Apollo 11 : orbite d'attente (apogée × périgée, inclinaison)",
+  "tb_kn_ms_tli": "Apollo 11 : allumage d'injection translunaire (temps de vol)",
+  "tb_kn_ms_loi": "Apollo 11 : mise en orbite lunaire (début, durée, orbite)",
+  "tb_kn_ms_pdi": "Apollo 11 : descente motorisée (début, porte haute)",
+  "tb_kn_ms_land": "Apollo 11 : atterrissage (heure, lieu)",
+  "tb_kn_ms_ei": "Apollo 11 : interface d'entrée (heure, lieu, vitesse, angle)",
+  "tb_kn_ms_splash": "Apollo 11 : amerrissage (heure, lieu)",
+  "tb_kn_ms_fit": "Poussée du Saturn V telle que volée ici, par rapport au catalogue",
+  "tb_kn_ms_voyager": "Voyager 1 : plus courtes distances (du centre de la planète)",
+  "alm_ms_plan": "Planifier un vol",
+  "alm_ms_plan_plot": "Dates de lancement et d'arrivée",
+  "alm_ms_plan_axes": "Lancement → · Arrivée ↑",
+  "alm_ms_plan_fly": "La faire voler"
 }

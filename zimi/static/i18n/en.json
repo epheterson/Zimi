@@ -3792,5 +3792,19 @@
   "alm_ms_ev_flyby": "{planet} closest approach",
   "alm_ms_ev_pale": "The Pale Blue Dot photographed",
   "alm_ms_ev_interstellar": "Crosses into interstellar space",
-  "alm_ms_ph_final": "Final approach"
+  "alm_ms_ph_final": "Final approach",
+  "tb_kn_ms_a11_zero": "Apollo 11 range zero",
+  "tb_kn_ms_park": "Apollo 11 parking orbit (apogee × perigee, inclination)",
+  "tb_kn_ms_tli": "Apollo 11 translunar injection burn (GET)",
+  "tb_kn_ms_loi": "Apollo 11 lunar orbit insertion (start, length, orbit)",
+  "tb_kn_ms_pdi": "Apollo 11 powered descent (start, high gate)",
+  "tb_kn_ms_land": "Apollo 11 touchdown (time, place)",
+  "tb_kn_ms_ei": "Apollo 11 entry interface (time, place, speed, flight path angle)",
+  "tb_kn_ms_splash": "Apollo 11 splashdown (time, place)",
+  "tb_kn_ms_fit": "Saturn V thrust as flown here, against the catalogue's",
+  "tb_kn_ms_voyager": "Voyager 1 closest approaches (from the planet's centre)",
+  "alm_ms_plan": "Plan a flight",
+  "alm_ms_plan_plot": "Launch and arrival dates",
+  "alm_ms_plan_axes": "Launch → · Arrival ↑",
+  "alm_ms_plan_fly": "Fly it"
 }
