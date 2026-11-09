@@ -3,35 +3,8 @@
 (function (root) {
   'use strict';
 
-  // ── the pictures: drawn here, 64 x 64, flat colours ──────────────────────
-  var SETS = {
-    animals: { label: 'Animals', pics: [
-      ['Cat', '<path d="M11 30 13 7l16 11zM53 30 51 7 35 18z" fill="#e8923a"/><circle cx="32" cy="37" r="21" fill="#f0a04b"/><circle cx="24" cy="33" r="3.2" fill="#222"/><circle cx="40" cy="33" r="3.2" fill="#222"/><path d="M29.5 39h5L32 42.5z" fill="#d9626f"/><path d="M12 38l12 2M12 45l12-3M52 38l-12 2M52 45l-12-3" stroke="#6b4a2a" stroke-width="1.6" fill="none" stroke-linecap="round"/>'],
-      ['Dog', '<ellipse cx="13" cy="32" rx="7" ry="15" fill="#7a5230" transform="rotate(12 13 32)"/><ellipse cx="51" cy="32" rx="7" ry="15" fill="#7a5230" transform="rotate(-12 51 32)"/><ellipse cx="32" cy="35" rx="18" ry="20" fill="#d2a87a"/><ellipse cx="32" cy="43" rx="10" ry="8" fill="#f1dcc0"/><circle cx="24" cy="30" r="3" fill="#222"/><circle cx="40" cy="30" r="3" fill="#222"/><ellipse cx="32" cy="38" rx="4.5" ry="3.2" fill="#222"/><path d="M32 41v4M27 46q5 4 10 0" stroke="#222" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M29 47q3 8 6 0z" fill="#e5707e"/>'],
-      ['Fish', '<path d="M44 32 60 18v28z" fill="#2f86b5"/><ellipse cx="28" cy="32" rx="22" ry="14" fill="#3fa7d6"/><path d="M24 20q6-8 14-4-4 6-6 8z" fill="#2f86b5"/><circle cx="16" cy="29" r="3.6" fill="#fff"/><circle cx="15.2" cy="29" r="1.8" fill="#222"/><path d="M26 22q4 10 0 20M34 23q4 9 0 18" stroke="#2f86b5" stroke-width="2" fill="none"/>'],
-      ['Bird', '<path d="M10 44 2 52M14 48 8 58" stroke="#2f6fc0" stroke-width="4" stroke-linecap="round"/><ellipse cx="30" cy="38" rx="20" ry="16" fill="#4f8fe0"/><circle cx="43" cy="26" r="11" fill="#4f8fe0"/><path d="M52 24l10 4-10 5z" fill="#f2a516"/><circle cx="45" cy="24" r="2.6" fill="#fff"/><circle cx="45.6" cy="24" r="1.3" fill="#222"/><path d="M14 36q10-10 22 2-8 8-20 4z" fill="#2f6fc0"/><path d="M26 54v6M34 54v6" stroke="#f2a516" stroke-width="2.4" stroke-linecap="round"/>'],
-      ['Frog', '<ellipse cx="32" cy="40" rx="25" ry="17" fill="#58b85f"/><circle cx="20" cy="24" r="10" fill="#58b85f"/><circle cx="44" cy="24" r="10" fill="#58b85f"/><circle cx="20" cy="24" r="6" fill="#fff"/><circle cx="44" cy="24" r="6" fill="#fff"/><circle cx="21" cy="25" r="3" fill="#222"/><circle cx="43" cy="25" r="3" fill="#222"/><path d="M18 44q14 12 28 0" stroke="#2b6b30" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="27" cy="38" r="1.2" fill="#2b6b30"/><circle cx="37" cy="38" r="1.2" fill="#2b6b30"/>'],
-      ['Rabbit', '<ellipse cx="23" cy="17" rx="6.5" ry="16" fill="#ece8e2" stroke="#bbb4ab"/><ellipse cx="41" cy="17" rx="6.5" ry="16" fill="#ece8e2" stroke="#bbb4ab"/><ellipse cx="23" cy="18" rx="3" ry="11" fill="#f4b6c2"/><ellipse cx="41" cy="18" rx="3" ry="11" fill="#f4b6c2"/><circle cx="32" cy="42" r="17" fill="#ece8e2" stroke="#bbb4ab"/><circle cx="25" cy="40" r="2.8" fill="#222"/><circle cx="39" cy="40" r="2.8" fill="#222"/><path d="M29.5 46h5L32 49z" fill="#e5707e"/><path d="M32 49v3M28 53q4 2 4-1 0 3 4 1" stroke="#555" stroke-width="1.4" fill="none"/>'],
-      ['Owl', '<path d="M14 18 20 8 26 16zM50 18 44 8 38 16z" fill="#7a5a3a"/><ellipse cx="32" cy="36" rx="21" ry="24" fill="#8b6b4a"/><ellipse cx="32" cy="44" rx="12" ry="14" fill="#d8bd96"/><circle cx="22" cy="28" r="9" fill="#fff"/><circle cx="42" cy="28" r="9" fill="#fff"/><circle cx="22" cy="28" r="4.2" fill="#222"/><circle cx="42" cy="28" r="4.2" fill="#222"/><path d="M28 33h8l-4 7z" fill="#f2a516"/><path d="M24 46q4 3 8 0M32 46q4 3 8 0M26 52q3 2 6 0M32 52q3 2 6 0" stroke="#a98962" stroke-width="1.6" fill="none"/>'],
-      ['Turtle', '<path d="M8 41q0-25 26-25t26 25z" fill="#3d9a4a"/><path d="M34 16v25M20 22l8 19M48 22l-8 19" stroke="#2b6b30" stroke-width="2" fill="none"/><circle cx="56" cy="38" r="7" fill="#8fcf8a"/><circle cx="58" cy="36" r="1.6" fill="#222"/><rect x="14" y="41" width="9" height="10" rx="4" fill="#8fcf8a"/><rect x="40" y="41" width="9" height="10" rx="4" fill="#8fcf8a"/><path d="M8 41 2 46 9 45z" fill="#8fcf8a"/><path d="M6 41h54v4q-27 5-54 0z" fill="#2b6b30"/>'],
-      ['Bee', '<ellipse cx="22" cy="20" rx="9" ry="13" fill="#bfe3f5" stroke="#7fb4d0" transform="rotate(-25 22 20)"/><ellipse cx="38" cy="18" rx="9" ry="13" fill="#bfe3f5" stroke="#7fb4d0" transform="rotate(25 38 18)"/><ellipse cx="32" cy="40" rx="20" ry="15" fill="#f4c22b"/><path d="M26 27q-4 13 0 26M34 26q-4 14 0 28M42 29q-4 11 0 22" stroke="#222" stroke-width="5" fill="none"/><circle cx="14" cy="38" r="2.4" fill="#222"/><path d="M12 31 8 26M17 29 16 23" stroke="#222" stroke-width="1.6" stroke-linecap="round"/><path d="M52 40l8 2-8 2z" fill="#222"/>'],
-      ['Penguin', '<ellipse cx="32" cy="36" rx="19" ry="24" fill="#2b3340"/><ellipse cx="32" cy="41" rx="12" ry="17" fill="#f4f6f8"/><circle cx="25" cy="25" r="3.6" fill="#fff"/><circle cx="39" cy="25" r="3.6" fill="#fff"/><circle cx="26" cy="25.5" r="1.7" fill="#222"/><circle cx="38" cy="25.5" r="1.7" fill="#222"/><path d="M27 30h10l-5 6z" fill="#f2a516"/><path d="M14 42 6 54l10-4zM50 42l8 12-10-4z" fill="#2b3340"/><ellipse cx="25" cy="59" rx="7" ry="3" fill="#f2a516"/><ellipse cx="39" cy="59" rx="7" ry="3" fill="#f2a516"/>']
-    ] },
-    shapes: { label: 'Shapes', pics: [
-      ['Circle', '<circle cx="32" cy="32" r="22" fill="#e8574a" stroke="#2b3340" stroke-width="2.5"/>'],
-      ['Square', '<rect x="10" y="10" width="44" height="44" rx="4" fill="#3a63c9" stroke="#2b3340" stroke-width="2.5"/>'],
-      ['Triangle', '<path d="M32 8 58 54H6z" fill="#f2c12e" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Star', '<path d="M32 6l7.4 16.2 17.7 2-13.2 12 3.7 17.5L32 44.6 16.4 53.7l3.7-17.5-13.2-12 17.7-2z" fill="#f2a516" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Heart', '<path d="M32 56C10 40 8 22 20 15c6-3 11 0 12 6 1-6 6-9 12-6 12 7 10 25-12 41z" fill="#e0457b" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Moon', '<path d="M40 8a24 24 0 1 0 0 48 19 19 0 1 1 0-48z" fill="#7a6bd6" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Diamond', '<path d="M32 6 54 32 32 58 10 32z" fill="#3fc1e8" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Hexagon', '<path d="M18 10h28l14 22-14 22H18L4 32z" fill="#58b85f" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Plus', '<path d="M24 8h16v16h16v16H40v16H24V40H8V24h16z" fill="#8a55c9" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>'],
-      ['Drop', '<path d="M32 6C44 22 52 32 52 42a20 20 0 0 1-40 0C12 32 20 22 32 6z" fill="#3a8fd6" stroke="#2b3340" stroke-width="2.5" stroke-linejoin="round"/>']
-    ] }
-  };
-  // the tenth shape: a ring, so a set of ten pairs is always there
-  SETS.shapes.pics.push(['Ring', '<circle cx="32" cy="32" r="20" fill="none" stroke="#d1473f" stroke-width="10"/><circle cx="32" cy="32" r="25" fill="none" stroke="#2b3340" stroke-width="2"/><circle cx="32" cy="32" r="15" fill="none" stroke="#2b3340" stroke-width="2"/>']);
+  // ── the pictures: pictures.js draws them; Memory plays with these two sets ──
+  var SETS = { animals: root.ZimiPictures.sets.animals, shapes: root.ZimiPictures.sets.shapes };
 
   // ── the rules ────────────────────────────────────────────────────────────
   var SIZES = { small: 6, medium: 8, large: 10 }; // pairs
