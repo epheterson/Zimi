@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
+### Added
+
+- Games: Go Fish, Old Maid, Snap, Oh Hell and Cheat, five family card games against Zimi.
 
 ### Fixed
 

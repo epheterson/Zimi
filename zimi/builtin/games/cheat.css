@@ -1,0 +1,3 @@
+/* Cheat: the rank to say, under the pile. */
+.ch-claim { position: absolute; z-index: 30; transform: translateX(-50%); padding: 2px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 700 var(--fs-body) var(--font); line-height: 1.5; white-space: nowrap; pointer-events: none; }
+.ch-claim[hidden] { display: none; }
