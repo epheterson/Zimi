@@ -2667,7 +2667,15 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 // How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
 // a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
 // and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
-function _aeOrbitShow(key) {
+function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
+// Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
+// they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
+var AE_SUN_LINES_GONE = 2.6, AE_SUN_LINES_FULL = 6;   // the Sun's radii from it
+function _aeSunLineFade() {
+  if (_ae.target !== 'sun') return 1;
+  return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
+}
+function _aeOrbitShowRaw(key) {
   var b = _aePlanetBody(key);
   // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
   // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
