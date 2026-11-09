@@ -88,7 +88,11 @@ VERTEX_VS_LANDMARK = """(a) => {
                 if (d < bd) { bd = d; best = i; }
             }
             var w = new S.THREE.Vector3(pos.getX(best), pos.getY(best), pos.getZ(best)).applyMatrix4(mesh.matrixWorld);
-            var dd = _aeLmDir(b, g[0], g[1]);
+            // The Earth's grid is not on its vertices (they lie on the flattened sphere's own latitudes): the landmark
+            // system is asked about the vertex's own geodetic point instead.
+            var lat = g[0], lon = g[1];
+            if (key === 'earth') { lat = (0.5 + Math.atan2(pos.getZ(best), (1 - AE_EARTH_FLATTENING) * Math.hypot(pos.getX(best), pos.getY(best))) / Math.PI - 0.5) * 180; lon = uv.getX(best) * 360 - 180; bd = 0; }
+            var dd = _aeLmDir(b, lat, lon);
             var p = [b.center[0] + dd[0] * b.r, b.center[1] + dd[1] * b.r, b.center[2] + dd[2] * b.r];
             worst = Math.max(worst, Math.hypot(w.x - p[0], w.y - p[1], w.z - p[2]) / b.r);
             off = Math.max(off, bd);
