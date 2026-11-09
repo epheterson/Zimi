@@ -521,13 +521,16 @@ def test_higher_or_lower_carries_the_answers_article_and_links_it_only_when_the_
     f = game(page, "higherlower.html")
     f.wait_for_function("() => window.__round && __round.zim && __round.round.length > 0", timeout=WAIT)
     assert f.evaluate("__round.round.some(q => q.path && q.zim)"), "no question carries its answer's article"
-    for _ in range(8):
+    # A round holds as many questions as the small library could make (4 to 8): ask each once, and after the last
+    # there is no next question to click (the old fixed 8 clicked a finished round's disabled choice for 30 s).
+    asked_so_far = f.evaluate("__round.round.length")
+    for n in range(asked_so_far):
         click(f, ".rk-choice")
         asked = f.evaluate("JSON.stringify(__round.round[__round.at])")
         has = f.evaluate("q => q.path && q.zim ? GamesLib.hasPage(q.zim, q.path) : false", __import__("json").loads(asked))
         frames(page, 8)
         assert f.locator("#rk-read").is_visible() == bool(has), asked
-        if has:
+        if has or n == asked_so_far - 1:
             break
         click(f, "#rk-next")
     assert not errors, errors

@@ -30,6 +30,7 @@ import dictionary_fixture as fx  # noqa: E402
 import test_voices as tv  # noqa: E402
 import zimi.renderer as renderer  # noqa: E402
 import zimi.server as srv  # noqa: E402
+from tests.waiting import until  # noqa: E402
 from zimi import dictionary as dic  # noqa: E402
 from zimi import voices  # noqa: E402
 
@@ -182,7 +183,7 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             # A translation is a tap away: French "eau".
             _tap(f, "a[data-w='eau#French']")
             _word(f, "eau")
-            pg.wait_for_url("**/?dictionary=eau", timeout=5000)
+            pg.wait_for_url("**/?dictionary=eau", timeout=STATE_MS)
             trail = f.evaluate(
                 "() => Array.from(document.querySelectorAll('#trail button, #trail .now')).map(e => e.textContent)"
             )
@@ -339,7 +340,7 @@ def test_typing_suggests_and_enter_opens(served):
             pg.fill("#q", "eau")
             pg.press("#q", "Enter")
             _word(f, "eau")
-            pg.wait_for_url("**/?dictionary=eau", timeout=5000)
+            pg.wait_for_url("**/?dictionary=eau", timeout=STATE_MS)
             # Nobody has it: said, with the words that are near.
             pg.fill("#q", "watr")
             pg.press("#q", "Enter")
@@ -919,12 +920,13 @@ def test_the_page_asks_the_server_to_load_its_voices(piper_here, monkeypatch):
     assert not errors, errors
 
 
+#: How long a wait for a state may take before the run is called broken. The polls that
+#: drive the page come once a second, so on a loaded runner 5 s was not enough.
+STATE_MS = 30_000
+
+
 def _until(fn, what):
-    for _ in range(80):
-        if fn():
-            return
-        time.sleep(0.1)
-    raise AssertionError(what)
+    until(fn, what, every_s=0.1)
 
 
 VOICES_WRAP = "#ms-voices-wrap"
@@ -1284,26 +1286,26 @@ def test_a_cell_downloads_in_place_with_progress_and_cancel(
     get = _cell(pg, "es", "Clear")
     pg.click(get)
     bar = GRID + " .vg-dl .voice-progress"
-    pg.wait_for_selector(bar, timeout=5000)
+    pg.wait_for_selector(bar, timeout=STATE_MS)
     first = pg.text_content(bar)
     pg.wait_for_function(
         "([s, t]) => document.querySelector(s).textContent !== t",
         arg=[bar, first],
-        timeout=5000,
+        timeout=STATE_MS,
     )
     assert pg.evaluate(GRID_CELLS)["es"][0] == "busy"
     assert pg.evaluate("() => document.documentElement.scrollWidth") <= 390
     pg.eval_on_selector(GRID + " .vg-dl", "e => e.scrollIntoView({ block: 'center' })")
     _shots(pg, "voices-grid-downloading")
     pg.click(GRID + " .vg-dl button:has-text('Cancel')")
-    pg.wait_for_function("s => !document.querySelector(s)", arg=bar, timeout=5000)
+    pg.wait_for_function("s => !document.querySelector(s)", arg=bar, timeout=STATE_MS)
     assert voices.downloading() == {} and "es-ES" not in voices.installed()
     steps["go"] = False
     pg.click(_cell(pg, "es", "Clear"))
     _until(lambda: "es-ES" in voices.installed(), "the voice never came")
     pg.wait_for_function(
         "() => (window.__vg = [...document.querySelectorAll(\"#ms-voices-wrap .vg-row[data-lang='es'] .vg-cell > *\")].map(c => c.dataset.s))[0] === 'rm'",
-        timeout=5000,
+        timeout=STATE_MS,
     )
     assert not errors, errors
 
@@ -1322,13 +1324,13 @@ def test_x_then_remove_removes_a_clear_voice(piper_here, served):
     assert pg.is_visible(x), "a touch's first tap shows ✕"
     assert "fr" in voices.installed()
     pg.click(rm)
-    pg.wait_for_selector(".pw-box[role='alertdialog'] h3", timeout=5000)
+    pg.wait_for_selector(".pw-box[role='alertdialog'] h3", timeout=STATE_MS)
     assert pg.text_content(".pw-box[role='alertdialog'] h3") == "Remove the Clear voice for French?"
     pg.click("#ac-ok")
     _until(lambda: "fr" not in voices.installed(), "the voice was never removed")
     pg.wait_for_function(
         "() => document.querySelector(\"#ms-voices-wrap .vg-row[data-lang='fr'] .vg-cell > *\").dataset.s === 'get'",
-        timeout=5000,
+        timeout=STATE_MS,
     )
     assert not errors, errors
 
@@ -1488,7 +1490,7 @@ def test_the_dictionarys_voices_opens_settings_voices(piper_here, served):
         pg.wait_for_selector(GRID, timeout=20000)
         pg.wait_for_function(
             "() => { const t = document.getElementById('ms-voices').getBoundingClientRect().top; return t >= -1 && t < 844; }",
-            timeout=5000,
+            timeout=STATE_MS,
         )
         assert "manage=languages" in pg.url, (address, pg.url)
     assert not errors, errors
@@ -1750,7 +1752,7 @@ def test_overlapping_settings_draws_keep_the_section(piper_here, served):
     )
     pg.wait_for_timeout(3000)
     assert "manage=languages" in pg.url, pg.url
-    pg.wait_for_selector(FOLD, state="attached", timeout=5000)
+    pg.wait_for_selector(FOLD, state="attached", timeout=STATE_MS)
     pg.unroute("**/manage/status*")
     assert not errors, errors
 

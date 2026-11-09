@@ -635,8 +635,15 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
         assert got["n"] > 150 and got["named"] > 3, got
         b = got["first"]
         pg.evaluate("document.getElementById('almanac-sky-canvas').scrollIntoView({ block: 'center' })")
-        pg.wait_for_timeout(300)
-        pos = pg.evaluate("([x, y]) => { const r = _skyState.canvas.getBoundingClientRect(); return { x: r.left + x, y: r.top + y }; }", [b["x"], b["y"]])
+        # Scrolling can resize and repaint the sky: wait for it to be still (painted for this moment, the canvas
+        # where it will stay), then read the star and the canvas together, so the click lands where the star is now.
+        _frames(pg)
+        pg.wait_for_function("() => _skyState.paintedTime === _skyState.nowTime && !_skyState.baseDirty", polling=POLL_MS)
+        pos = pg.evaluate(
+            """([desig, con]) => { const s = _skyState.baseBodies.find((q) => q.type === 'star' && q.desig === desig && q.con === con), r = _skyState.canvas.getBoundingClientRect();
+              return { x: r.left + s.x, y: r.top + s.y }; }""",
+            [b["desig"], b["con"]],
+        )
         pg.mouse.click(pos["x"], pos["y"])
         pg.wait_for_function("() => !document.getElementById('almanac-sky-tip').hidden", polling=POLL_MS)
         tip = pg.inner_text("#almanac-sky-tip")
