@@ -71,7 +71,7 @@ button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: 
 .cr-guideitem span:not(.cr-mini) { color: var(--ink2); }
 /* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
 #cr-sheet .ar-sheet-card { padding-bottom: 0; }
-#cr-sheet .ar-sheet-actions { position: sticky; bottom: 0; padding: var(--sp-2) 0 20px; background: var(--surface2); }
+#cr-sheet .ar-sheet-actions { position: sticky; bottom: 0; z-index: 2; padding: var(--sp-2) 0 20px; background: var(--surface2); }   /* above the chosen segments (z-index 1) that scroll under it */
 
 /* A short, wide phone (landscape): the court on the left, the hand and its buttons beside it, so a card can be played without scrolling past the court. */
 @media (orientation: landscape) and (max-height: 520px) {

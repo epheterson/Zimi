@@ -38,4 +38,4 @@
 .oo-names input { min-width: 0; }
 /* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
 #oo-sheet .ar-sheet-card { padding-bottom: 0; }
-#oo-sheet .ar-sheet-actions { position: sticky; bottom: 0; padding: var(--sp-2) 0 20px; background: var(--surface2); }
+#oo-sheet .ar-sheet-actions { position: sticky; bottom: 0; z-index: 2; padding: var(--sp-2) 0 20px; background: var(--surface2); }   /* above the chosen segments (z-index 1) that scroll under it */

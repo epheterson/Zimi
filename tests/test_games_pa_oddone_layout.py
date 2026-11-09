@@ -77,6 +77,21 @@ def test_start_is_always_in_reach_at_the_foot_of_the_setup_card(served, browser)
             assert got["cardBottom"] <= got["vh"] + 0.5, (
                 "the card runs off the bottom of the screen: %s" % got
             )
+            # scrolled through, nothing paints over Start (the chosen segments are raised, z-index 1)
+            covered = page.evaluate(
+                """([sheet, go]) => { const card = document.querySelector(sheet + ' .ar-sheet-card'), out = [];
+                  for (let y = 0; y <= card.scrollHeight; y += 30) { card.scrollTop = y;
+                    const bar = document.querySelector(go).closest('.ar-sheet-actions').getBoundingClientRect();
+                    for (const fx of [0.05, 0.3, 0.5, 0.7, 0.95]) for (const fy of [0.1, 0.5, 0.9]) {
+                      const hit = document.elementFromPoint(bar.left + bar.width * fx, bar.top + bar.height * fy);
+                      if (!(hit && hit.closest('.ar-sheet-actions'))) out.push([y, fx, fy, hit && (hit.id || hit.className || hit.tagName)]); } }
+                  return out; }""",
+                [sheet, go],
+            )
+            assert not covered, (
+                "something paints over Start while the options scroll under it: %s"
+                % covered[:3]
+            )
             ctx.close()
 
 
