@@ -303,8 +303,9 @@
     if (!d.over) { startTurn(); return true; }
     G.over = true; paintRoster(); rollBtn.disabled = true;
     var p = Math.max(0, pos.indexOf(E.LAST)), who = nameOf(p), solo = !seats.hotseat();
-    say(T(seats.isYou(p) ? 'sl.youWin' : 'sl.reaches', { name: who }));
-    root.ZimiShell.endSheet({ result: solo ? (seats.person(p) ? 'win' : 'lose') : 'win', name: solo ? undefined : who, after: 0 });
+    var msg = T(seats.isYou(p) ? 'sl.youWin' : 'sl.reaches', { name: who });
+    say(msg);
+    root.ZimiShell.endSheet({ result: solo ? (seats.person(p) ? 'win' : 'lose') : 'win', name: solo ? undefined : who, text: msg, after: 0 });
     return true;
   }
   root.ZimiShell.persist({ save: kept, load: takeUp });
