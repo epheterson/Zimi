@@ -270,6 +270,7 @@ def test_the_rover_drives_and_its_wheels_stay_on_the_ground(page):
 
 
 def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
+    _visit(page, "moon", "Apollo 15", drive=True)
     page.evaluate(
         "() => { var s = _ae.site; s.input.keys.f = s.input.keys.b = s.input.keys.l = s.input.keys.r = false; s.rover.v = 0; }"
     )

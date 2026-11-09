@@ -146,6 +146,7 @@ def test_a_visit_is_drawn_on_the_ground_of_stand_here(page):
 
 def test_the_models_and_the_rover_stand_on_the_grounds_terrain(page):
     """The site's one height is the ground's: levelled at the lander, the terrain's own beyond, the body's curve in it."""
+    _visit(page, "moon", "Apollo 17")
     h = page.evaluate(
         """() => { var st = _ae.site, h0 = _aeTerrainHeight(st.body, st.lat, st.lon, 0).h, flat = [st.flatFrom || AS_FLAT_FROM_M, st.flatTo || AS_FLAT_TO_M];
           return { at0: _asGroundAt(st, 0, 0, false), near: _asGroundAt(st, 5, 5, false), far: _asGroundAt(st, 600, 200, true),
@@ -163,6 +164,7 @@ def test_the_models_and_the_rover_stand_on_the_grounds_terrain(page):
 
 
 def test_eye_level_is_a_camera_of_the_visit_and_the_phone_turns_it(page):
+    _visit(page, "moon", "Apollo 17")
     page.wait_for_function(
         "() => !document.getElementById('as-eye').hidden", timeout=60_000, polling=250
     )
