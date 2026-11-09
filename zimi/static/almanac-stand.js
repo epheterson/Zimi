@@ -196,76 +196,89 @@ function _aeStandDrop(closing) {
 // ── The scene ──
 // Built once per visit: sky, stars, the Sun and the others, the ground. Everything in the local frame, metres.
 function _aeStandGl(st, pend) {
-  var S = _ae.gl, THREE = S.THREE, b = st.b, a = st.atmo, d = a && a.diffuse;
-  var R = b.km, hG = st.h0 / 1000;
-  var scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1e7);
+  var S = _ae.gl, THREE = S.THREE, scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1e7);
   camera.up.set(0, 0, 1);
-  var air = a && !d ? a : null;
-  var U = st.uni = {
-    uR: { value: R }, uRc: { value: R + hG }, uH0: { value: hG }, uTop: { value: air ? air.top : 1 }, uAtmo: { value: air ? 1 : 0 },
-    uRay: { value: air ? air.ray : [0, 0, 0] }, uHR: { value: air ? air.hR : 8 },
-    uMieExt: { value: air ? air.mie.ext : [0, 0, 0] }, uMieAlb: { value: air ? air.mie.alb : [0, 0, 0] }, uMieG: { value: air ? air.mie.g : [0, 0, 0] }, uHM: { value: air ? air.mie.h : 1.2 },
-    uOzone: { value: air ? air.ozone : [0, 0, 0] }, uMs: { value: air ? air.ms : 0 }, uGainS: { value: air && air.gain ? air.gain : 1 },
-    uSunDir: { value: [0, 0, 1] }, uSunE: { value: [1, 1, 1] }, uK: { value: 1 }
-  };
-  function mat(vert, frag, uni, opts) {
+  var a = st.atmo, air = a && !a.diffuse ? a : null, U = st.uni = _aeStandAirUniforms(st.b.km, st.h0 / 1000, air);
+  var mat = function (vert, frag, uni, opts) {
     var m = new THREE.ShaderMaterial(Object.assign({ uniforms: uni, vertexShader: vert, fragmentShader: frag }, opts || {}));
     st.mats = (st.mats || []).concat([m]);
     return m;
-  }
-  // The sky: one triangle over the screen.
-  var tri = new THREE.BufferGeometry();
-  tri.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
-  var skyUni = Object.assign({
-    uCam: { value: [0, 0, 0] }, uFwd: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uTan: { value: [1, 1] },
-    uDiffuse: { value: d ? 1 : 0 }, uDiffSky: { value: [0, 0, 0] }, uMilky: { value: null }, uMw: { value: 0 }, uToGal: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }
-  }, U);
-  var sky = new THREE.Mesh(tri, mat(AE_ST_SKY_VERT, AE_ST_SKY_FRAG, skyUni, { depthTest: false, depthWrite: false }));
-  sky.frustumCulled = false; sky.renderOrder = -3;
-  scene.add(sky);
-  st.sky = skyUni; st.skyMesh = sky;
+  };
+  st.geo = [];
+  scene.add(_aeStandSkyMesh(st, U, mat));
   // The stars: the Bright Star Catalogue as it arrives (the page's 518 first).
   st.starUni = { uRot: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, uLim: { value: 7 }, uExtinct: { value: 0 }, uDpr: { value: S.renderer.getPixelRatio() }, uStarScale: { value: 1 } };
   st.starMat = mat(AE_ST_STARS_VERT, AE_ST_STARS_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
   _aeStandStars(st, _aeStarList());
   scene.add(st.stars);
   _sgLoadStars().then(function (cat) { if (st.scene) _aeStandStars(st, _sgStarList(cat)); }).catch(function () {});
-  // The Sun and the others: a quad each.
-  var quad = new THREE.BufferGeometry();
+  _aeStandSpriteMeshes(st, mat).forEach(function (m) { scene.add(m); });
+  scene.add(_aeStandGroundMesh(st, pend, U, mat));
+  st.scene = scene; st.camera = camera;
+  // Compile before the first frame (the driver does it off the main thread where it can).
+  if (S.renderer.compileAsync) S.renderer.compileAsync(scene, camera).catch(function () {});
+}
+// The air's numbers as the uniforms every shader shares: the body's radius, the ground's, and its air if it has rays and dust.
+function _aeStandAirUniforms(km, groundKm, air) {
+  return {
+    uR: { value: km }, uRc: { value: km + groundKm }, uH0: { value: groundKm }, uTop: { value: air ? air.top : 1 }, uAtmo: { value: air ? 1 : 0 },
+    uRay: { value: air ? air.ray : [0, 0, 0] }, uHR: { value: air ? air.hR : 8 },
+    uMieExt: { value: air ? air.mie.ext : [0, 0, 0] }, uMieAlb: { value: air ? air.mie.alb : [0, 0, 0] }, uMieG: { value: air ? air.mie.g : [0, 0, 0] }, uHM: { value: air ? air.mie.h : 1.2 },
+    uOzone: { value: air ? air.ozone : [0, 0, 0] }, uMs: { value: air ? air.ms : 0 }, uGainS: { value: air && air.gain ? air.gain : 1 },
+    uSunDir: { value: [0, 0, 1] }, uSunE: { value: [1, 1, 1] }, uK: { value: 1 }
+  };
+}
+// The sky: one triangle over the screen, and the Milky Way's panorama once it is in.
+function _aeStandSkyMesh(st, U, mat) {
+  var THREE = _ae.gl.THREE, tri = new THREE.BufferGeometry();
+  tri.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+  var uni = st.sky = Object.assign({
+    uCam: { value: [0, 0, 0] }, uFwd: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uTan: { value: [1, 1] },
+    uDiffuse: { value: st.atmo && st.atmo.diffuse ? 1 : 0 }, uDiffSky: { value: [0, 0, 0] }, uMilky: { value: null }, uMw: { value: 0 }, uToGal: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }
+  }, U);
+  var sky = st.skyMesh = new THREE.Mesh(tri, mat(AE_ST_SKY_VERT, AE_ST_SKY_FRAG, uni, { depthTest: false, depthWrite: false }));
+  sky.frustumCulled = false; sky.renderOrder = -3;
+  st.geo.push(tri);
+  _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
+  return sky;
+}
+// The Sun and the others: a quad each, shown as the sky needs them.
+function _aeStandSpriteMeshes(st, mat) {
+  var THREE = _ae.gl.THREE, quad = new THREE.BufferGeometry(), out = [];
   quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+  st.geo.push(quad);
   st.sprites = [];
   for (var i = 0; i < AE_STAND_SPRITES; i++) {
     var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uSunFrom: { value: [0, 0, 1] }, uTint: { value: [1, 1, 1] }, uTrans: { value: [1, 1, 1] },
       uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uE: { value: 1 }, uK: { value: 1 }, uEmit: { value: 0 }, uVis: { value: 0 }, uGlow: { value: 0 }, uSkyLit: { value: 1 } };
     var mesh = new THREE.Mesh(quad, mat(AE_ST_BODY_VERT, AE_ST_BODY_FRAG, uni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     mesh.frustumCulled = false; mesh.renderOrder = -1; mesh.visible = false;
-    scene.add(mesh);
     st.sprites.push({ mesh: mesh, uni: uni });
+    out.push(mesh);
   }
-  // The ground.
-  var fin = pend.finished, m = pend.mesh, g = new THREE.BufferGeometry();
+  return out;
+}
+// The ground: the mesh the terrain built, with its colour map and what the shader needs of the body.
+function _aeStandGroundMesh(st, pend, U, mat) {
+  var THREE = _ae.gl.THREE, fin = pend.finished, m = pend.mesh, g = new THREE.BufferGeometry(), a = st.atmo, d = a && a.diffuse;
   g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
   g.setAttribute('aDir', new THREE.BufferAttribute(m.dir, 3));
   g.setAttribute('aNrm', new THREE.BufferAttribute(fin.nrm, 3));
   g.setAttribute('aH', new THREE.BufferAttribute(m.hgt, 1));
   g.setAttribute('aSea', new THREE.BufferAttribute(m.sea, 1));
   g.setIndex(new THREE.BufferAttribute(fin.idx, 1));
-  var gu = Object.assign({
+  st.geo.push(g);
+  var gu = st.ground = Object.assign({
     uCam: { value: [0, 0, 0] }, uPixAng: { value: 0.001 }, uTime: { value: 0 },
-    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 }, uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
+    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
+    uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: air || d ? 0 : 1 }, uRough: { value: b.fbm.amp > 100 ? 1.3 : 1 }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: st.b.fbm.amp > 100 ? 1.3 : 1 }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
-  var ground = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
+  var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
   ground.frustumCulled = false; ground.renderOrder = 0;
-  scene.add(ground);
-  st.ground = gu; st.groundMesh = ground; st.geo = [g, tri, quad];
-  st.scene = scene; st.camera = camera;
-  // The Milky Way's panorama, once it is in.
-  _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { skyUni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
-  // Compile before the first frame (the driver does it off the main thread where it can).
-  if (S.renderer.compileAsync) S.renderer.compileAsync(scene, camera).catch(function () {});
+  return ground;
 }
 // Fallback colour where a body has no map (grey ice, dust), and how rocky its ground is (0..1, the share of ground with rocks).
 var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), read as grey
@@ -443,30 +456,42 @@ function _aeStandFov() {
 function _aeStandDraw(now) {
   var st = _ae.stand;
   if (!st || !st.live || !st.scene) return;
-  var S = _ae.gl, ms = _aeDisplayMs(), moving = st.mode !== 'ground';
+  var ms = _aeDisplayMs();
   _aeStandView(st, now);
   if (!st.scene) return;
   var fast = _aeClockRuns() && typeof _almRate !== 'undefined' && _almRate !== 1;
   var stale = !st.fr || Math.abs(ms - st.fr.at) >= (fast ? 1 : AE_STAND_FRAME_MS);
-  if (!(moving || st.dirty || stale || st.size !== _ae.w + 'x' + _ae.h)) return;
+  if (!(st.mode !== 'ground' || st.dirty || stale || st.size !== _ae.w + 'x' + _ae.h)) return;   // nothing changed: the last picture stands
   st.size = _ae.w + 'x' + _ae.h;
   if (stale) { st.fr = _aeStFrame(st, ms); st.fr.at = ms; st.photo = _aeStPhoto(st, st.fr); }
-  var fr = st.fr, ph = st.photo, cam = st.camera, W = _ae.w, H = _ae.h, pr = S.renderer.getPixelRatio();
-  var vfov = _aeStandFov(), yaw = st.yaw + st.userYaw, pitch = st.pitch, alt = st.altKm * 1000;
+  var view = _aeStandPlaceCamera(st);
+  _aeStandApplyAir(st, st.fr, st.photo, view);
+  _aeStandApplyGround(st, st.fr, st.photo, view, now);
+  _aeStandSprites(st, st.fr, st.photo, view.pixAng, view.alt);
+  _ae.gl.renderer.render(st.scene, st.camera);
+  st.dirty = false;
+  if (now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
+}
+// The camera at its height and heading: returns what the shaders want of it (height in metres, the view's axes, the tangent of
+// half the field, the angle a pixel covers).
+function _aeStandPlaceCamera(st) {
+  var cam = st.camera, W = _ae.w, H = _ae.h, vfov = _aeStandFov(), yaw = st.yaw + st.userYaw, pitch = st.pitch, alt = st.altKm * 1000;
   var f = [Math.cos(pitch) * Math.sin(yaw), Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch)];
   cam.fov = _aeDeg(vfov); cam.aspect = W / H;
   cam.near = Math.max(0.05, alt * 0.01); cam.far = Math.max(1e5, st.b.km * 1000 * 3);
   cam.position.set(0, 0, alt);
   cam.lookAt(f[0], f[1], alt + f[2]);
   cam.updateProjectionMatrix(); cam.updateMatrixWorld();
-  var e = cam.matrixWorld.elements, tanV = Math.tan(vfov / 2), pixAng = 2 * tanV / (H * pr);
-  // The shared air.
-  var U = st.uni;
+  var e = cam.matrixWorld.elements, tanV = Math.tan(vfov / 2);
+  return { alt: alt, e: e, tanV: tanV, aspect: W / H, pixAng: 2 * tanV / (H * _ae.gl.renderer.getPixelRatio()) };
+}
+// The sky, the stars and the air every shader shares.
+function _aeStandApplyAir(st, fr, ph, view) {
+  var U = st.uni, sk = st.sky, e = view.e;
   U.uSunDir.value = fr.sun; U.uSunE.value = ph.sunE; U.uK.value = ph.k;
-  var sk = st.sky;
-  sk.uCam.value = [0, 0, alt / 1000];
+  sk.uCam.value = [0, 0, view.alt / 1000];
   sk.uFwd.value = [-e[8], -e[9], -e[10]]; sk.uRight.value = [e[0], e[1], e[2]]; sk.uUp.value = [e[4], e[5], e[6]];
-  sk.uTan.value = [tanV * W / H, tanV];
+  sk.uTan.value = [view.tanV * view.aspect, view.tanV];
   sk.uDiffSky.value = ph.diffSky;
   var local = [fr.east, fr.north, fr.up], G = typeof SG_EQ_TO_GAL !== 'undefined' ? SG_EQ_TO_GAL : [1, 0, 0, 0, 1, 0, 0, 0, 1];
   // Galactic coordinates of a local vector: G (eq -> gal) times the local axes expressed in the scene.
@@ -475,16 +500,13 @@ function _aeStandDraw(now) {
   sk.uMw.value = sk.uMilky.value ? ph.mwStrength * 0.9 : 0;
   st.starUni.uRot.value = _aeStMat3(local);
   st.starUni.uLim.value = ph.lim; st.starUni.uExtinct.value = ph.extinct;
-  // The ground.
+}
+function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
-  g.uCam.value = [0, 0, alt]; g.uPixAng.value = pixAng; g.uTime.value = now / 1000;
+  g.uCam.value = [0, 0, view.alt]; g.uPixAng.value = view.pixAng; g.uTime.value = now / 1000;
   g.uAmbient.value = ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
-  _aeStandSprites(st, fr, ph, pixAng, alt);
-  S.renderer.render(st.scene, cam);
-  st.dirty = false;
-  if (now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
 }
 function _aeStandSprites(st, fr, ph, pixAng, alt) {
   var a = st.atmo, d = a && a.diffuse, air = a && !d ? a : null, hG = st.h0 / 1000, R = st.b.km;
