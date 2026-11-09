@@ -455,6 +455,24 @@ var AE_SATS_REF = {
   trainGapS: 150, trainRaanDeg: 3,      // Starlinks this close in time and orbital plane (RAAN) are one train
   gpsMinEl: 5                           // a GPS satellite is "overhead" above this elevation
 };
+// Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
+var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
+var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1'];
+// What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
+var AE_LAUNCH_REF = {
+  minElDeg: 1,                          // a rocket is seen above this height over the horizon
+  darkSunAlt: -3,                       // and the sky is dark enough to see an exhaust once the Sun is below this (start of civil twilight)
+  plumeMinKm: 40,                       // a burning engine spreads into a lit cloud above this height
+  coastS: 7,                            // seconds from the end of the first stage's burn to the second stage's light
+  insertionKm: [160, 400],              // the height the burn ends at is the orbit's perigee, held between these
+  typicalBurnS: { typical: 540, shuttle: 510, saturn: 700 },   // seconds from lift-off to the end of the last burn, for a vehicle with no profile of its own
+  falcon: { maxQS: 72, mecoS: 150, fairingS: 205, entryBurnS: [380, 405], landBurnS: 20, landS: 510 },   // Falcon 9 events, seconds from lift-off (SpaceX launch webcasts)
+  checkoutDays: 2, raiseKmPerDay: 4,    // a Starlink batch is checked out for this long, then raised this fast to its shell
+  spreadKm: 2.5,                        // the half-range of the batch's differences in height: the string's length after a few days
+  releaseGapDeg: 0.005,                 // the step between neighbours at release (about half a kilometre)
+  starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's FCC filings)
+  exactAgeDays: 7                       // today's elements propagated back to a date within this many days are drawn as they were; older dates are reconstructed
+};
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
@@ -1198,7 +1216,7 @@ function _aeBuildDom() {
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
-          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) + _aeToggleHtml('ae-sats-btn', 'alm_sats_all', AE_SATS_SVG) +
+          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) + _aeToggleHtml('ae-sats-btn', 'alm_sats_all', AE_SATS_SVG) + _aeToggleHtml('ae-launch-btn', 'alm_launches', AE_LAUNCH_SVG) +
           // Where the view has flown to, everything about it waits behind this: the picture stays clear.
           '<button type="button" class="ae-btn ae-round" id="ae-info-btn" hidden aria-haspopup="dialog" aria-expanded="false"' +
             ' aria-label="' + _almEsc(_aeT('alm_bi_more')) + '" title="' + _almEsc(_aeT('alm_bi_more')) + '">' + AE_INFO_SVG + '</button>' +
@@ -5353,6 +5371,26 @@ function _aeSatsAllLoad() {
   }
   return _aeSatsAllPromise;
 }
+// The launches page (almanac-launches.js and the maths under it), fetched on its button's first press and not before.
+var _aeLaunchesPromise = null;
+function _aeLaunchesLoad() {
+  if (typeof _alToggle === 'function') return Promise.resolve();
+  if (!_aeLaunchesPromise) {
+    _aeLaunchesPromise = AE_LAUNCHES_JS.reduce(function (chain, src) {
+      return chain.then(function () {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = function () { _aeLaunchesPromise = null; reject(new Error('launches')); };
+          document.head.appendChild(s);
+        });
+      });
+    }, Promise.resolve());
+  }
+  return _aeLaunchesPromise;
+}
+function _aeLaunchesToggle() { _aeLaunchesLoad().then(function () { _alToggle(); _aeMarkToggles(); }).catch(function () {}); }
 function _aeSatsAllSet(on) {
   _aeSatsAllLoad().then(function () { _asSet(on); _aeMarkToggles(); }).catch(function () {});
 }
@@ -5406,7 +5444,7 @@ function _aeToggleHtml(id, key, svg) {
 var AE_LM_HAS = { moon: 1, mars: 1, venus: 1, titan: 1, mercury: 1, earth: 1, io: 1, europa: 1, ganymede: 1, callisto: 1, pluto: 1, ceres: 1 };
 function _aeMarkToggles() {
   var wide = _aeWideView() || !!_ae.spin;
-  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false], ['ae-sats-btn', _aeSatsAllOn(), _ae.target !== 'earth']].forEach(function (t) {
+  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false], ['ae-sats-btn', _aeSatsAllOn(), _ae.target !== 'earth'], ['ae-launch-btn', typeof _alOpen === 'function' && _alOpen(), _ae.target !== 'earth']].forEach(function (t) {
     var b = _aeById(t[0]), hide = wide || t[2];
     if (!b) return;
     if (b.hidden !== hide) b.hidden = hide;
@@ -6107,7 +6145,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-sats-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-sats-btn', 'ae-launch-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -7048,6 +7086,7 @@ function _aeBindControls() {
   _aeById('ae-lm-btn').onclick = function () { _aeLmSetLayer(!_aeLmLayerOn()); };
   _aeById('ae-orbits-btn').onclick = function () { _aeSetOrbits(!_aeOrbitsOn()); };
   _aeById('ae-sats-btn').onclick = function () { _aeSatsAllSet(!_aeSatsAllOn()); };
+  _aeById('ae-launch-btn').onclick = _aeLaunchesToggle;
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
