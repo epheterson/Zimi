@@ -1779,8 +1779,15 @@
     x.drawImage(c, Math.round((SNAP_W - w) / 2), Math.round((SNAP_H - hh) / 2), w, hh);
     return pixel ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', SNAP_JPEG_QUALITY);
   }
+  // A game built from page elements (squares, pieces, dice) has no canvas: tablesnap.js paints its table as an svg.
+  // It loads once the page is up, when the game has neither a snapshot() nor a canvas, so a game left at once still has it.
+  function loadTableSnap() {
+    if (game.snapshot || bigCanvas() || root.ZimiTableSnap || !shellSrc || d.querySelector('script[data-tablesnap]')) return;
+    var s = d.createElement('script'); s.src = new root.URL('tablesnap.js', shellSrc).href; s.setAttribute('data-tablesnap', '');
+    d.head.appendChild(s);
+  }
   function takeSnapshot() {
-    var src = game.snapshot ? game.snapshot() : bigCanvas();
+    var src = game.snapshot ? game.snapshot() : bigCanvas() || (root.ZimiTableSnap && root.ZimiTableSnap.picture(d, game.table));
     if (!src) return null;
     if (typeof src === 'string') return /^\s*<svg[\s>]/.test(src) ? { svg: src } : null;
     try { return { img: canvasPicture(src) }; } catch (e) { return null; }   // a tainted or lost canvas: no picture
@@ -1824,7 +1831,7 @@
     if (hosted) hostReady();
     if (!built) return;
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
-    watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
+    watchSnapshots(); loadTableSnap(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
