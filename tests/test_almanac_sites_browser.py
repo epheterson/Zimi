@@ -105,7 +105,7 @@ def _shot(pg, name):
 def _visit(pg, body, name, drive=False, at=None):
     """Leave any site, go to the body (at the instant `at`, else now), press the card's button for `name` and wait until it
     stands on the ground."""
-    pg.evaluate("() => _aeSiteLeave(true)")
+    pg.evaluate("() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }")
     pg.evaluate("(ms) => { if (ms === null) _aeNow(); else _aeGoTo(ms); }", at)
     pg.evaluate("(b) => _aePreset(b)", body)
     pg.wait_for_function("() => !_ae.fly", timeout=120_000, polling=250)
@@ -142,7 +142,7 @@ def _close(a, b):
 
 
 def test_the_card_of_a_landing_offers_a_visit_and_a_drive(page):
-    page.evaluate("() => _aeSiteLeave(true)")
+    page.evaluate("() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }")
     page.evaluate(
         "() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 15')[0])"
     )
@@ -345,7 +345,7 @@ def test_the_routes_rover_is_where_its_route_says(page):
 
 
 def test_a_probes_sheet_replays_its_flight_from_launch(page):
-    page.evaluate("() => _aeSiteLeave(true)")
+    page.evaluate("() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }")
     page.evaluate("() => _aeNow()")
     page.evaluate("() => _aeTracksLoad()")
     page.wait_for_function(

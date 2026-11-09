@@ -7514,6 +7514,7 @@ function _aeShow(fromHero) {
 function _aeBackLabel() { return _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'); }
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
+  if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
   _aeLeaveSpin();
   var frame = _ae.fromHero && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;

@@ -32,7 +32,7 @@ var AS_DUST_FRAG = [
   '  vec2 q = gl_PointCoord - 0.5; float r = dot(q, q) * 4.0;',
   '  if (r > 1.0) discard;',
   '  vec3 col = albedo * (lit + ambient);',
-  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * vLife * (1.0 - r) * 0.55);',
+  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * vLife * (1.0 - r) * 0.4);',
   '}'
 ].join('\n');
 
@@ -135,7 +135,7 @@ function _asDustBurst(st, n, power) {
     var i = D.next++ % AS_DUST_MAX, side = k % 2 ? 1 : -1, wid = 0.9 * side, back = -1.0 + Math.random() * 0.4;
     D.pos[i * 3] = r.x + wid * c - back * s; D.pos[i * 3 + 1] = r.y + wid * s + back * c; D.pos[i * 3 + 2] = r.mean + 0.2;
     D.vel[i * 3] = (Math.random() - 0.5) * power - s * (-r.v) * 0.25; D.vel[i * 3 + 1] = (Math.random() - 0.5) * power + c * (-r.v) * 0.25; D.vel[i * 3 + 2] = (0.4 + Math.random()) * power;
-    D.size[i] = 0.18 + Math.random() * 0.3; D.life[i] = 1;
+    D.size[i] = 0.09 + Math.random() * 0.16; D.life[i] = 1;
   }
 }
 function _asDustStep(st, dt) {
@@ -152,7 +152,7 @@ function _asDustStep(st, dt) {
     var floor = _asGroundAt(st, D.pos[i * 3], D.pos[i * 3 + 1], true);
     if (D.pos[i * 3 + 2] < floor) { D.pos[i * 3 + 2] = floor; D.vel[i * 3] *= 0.3; D.vel[i * 3 + 1] *= 0.3; D.vel[i * 3 + 2] = 0; }
     D.life[i] -= dt * (g < 2 ? 0.45 : 0.9);
-    D.size[i] += dt * 0.25;
+    D.size[i] += dt * 0.12;
   }
   D.geo.attributes.position.needsUpdate = true; D.geo.attributes.size.needsUpdate = true; D.geo.attributes.life.needsUpdate = true;
 }

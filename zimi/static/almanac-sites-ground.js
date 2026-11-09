@@ -63,8 +63,10 @@ var AS_GROUND_NOISE = [
   '  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }',
   // The ground's grain: pebbles near, swell far; each octave fades before it would shimmer.
   'vec3 groundAlbedo(vec2 q, float dist, vec3 base) {',
-  '  float g = 0.5 * vn(q * 0.35) + 0.25 * vn(q * 1.7) * (1.0 - smoothstep(120.0, 600.0, dist))',
-  '    + 0.25 * vn(q * 7.0) * (1.0 - smoothstep(25.0, 140.0, dist)) + 0.18 * vn(q * 31.0) * (1.0 - smoothstep(6.0, 35.0, dist));',
+  '  float g = 0.5 * vn(q * 0.35);',
+  '  if (dist < 600.0) g += 0.25 * vn(q * 1.7) * (1.0 - smoothstep(120.0, 600.0, dist));',
+  '  if (dist < 140.0) g += 0.25 * vn(q * 7.0) * (1.0 - smoothstep(25.0, 140.0, dist));',
+  '  if (dist < 35.0) g += 0.18 * vn(q * 31.0) * (1.0 - smoothstep(6.0, 35.0, dist));',
   '  return base * (0.62 + 0.75 * g);',
   '}'
 ].join('\n');
@@ -268,7 +270,7 @@ function _asRebuildRocks(st, cx, cy) {
   var i0 = Math.floor((cx - reach) / cell), i1 = Math.floor((cx + reach) / cell), j0 = Math.floor((cy - reach) / cell), j1 = Math.floor((cy + reach) / cell);
   for (var j = j0; j <= j1 && count < AS_ROCK_MAX; j++) {
     for (var i = i0; i <= i1 && count < AS_ROCK_MAX; i++) {
-      var n = _asHash(i, j, 21) < 0.5 ? 0 : _asHash(i, j, 22) < 0.7 ? 1 : 2;
+      var n = _asHash(i, j, 21) > 0.5 * st.info.rocks ? 0 : _asHash(i, j, 22) < 0.7 ? 1 : 2;
       for (var k = 0; k < n && count < AS_ROCK_MAX; k++) {
         var x = (i + _asHash(i, j, 30 + k)) * cell, y = (j + _asHash(i, j, 40 + k)) * cell;
         if (Math.hypot(x - cx, y - cy) > reach) continue;

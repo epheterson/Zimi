@@ -15,7 +15,9 @@ var AS_PATCH_R_M = 24000;                                  // the ground patch's
 var AS_PATCH_RINGS = 84, AS_PATCH_SEGS = 72, AS_PATCH_R0_M = 0.4;
 var AS_PATCH_NEAR_RINGS_M = 150;                           // inside this the relief is sampled in full, outside only its swell
 var AS_RECENTRE_M = 14;                                    // the patch follows what is looked at once it is this far off its middle
-var AS_GROUND_ON_ALT_M = 30000;                            // below this altitude the patch stands in for the body's own sphere
+var AS_GROUND_ON_ALT_M = 30000;                            // below this altitude the patch is drawn over the body's own sphere
+var AS_PATCH_LIFT_M = 2;                                   // and stands this far over it, so the two never fight for a pixel
+var AS_HIDE_SHARE = 0.9;                                   // the sphere is left out once the horizon is nearer than this share of the patch's reach
 var AS_NEAR_M = 0.05;                                      // the nearest thing drawn on the ground
 var AS_NEAR_PER_FOCUS = 0.012, AS_NEAR_MAX_M = 25;         // the near plane stands off this share of the way to what is looked at (depth precision), at most this far
 var AS_FOV_DEG = 62;
@@ -29,23 +31,25 @@ var AS_CRATER_CELL_M = 48;
 var AS_ORBIT_EL = [0.03, 1.45];                            // how far down and up a visit's camera goes (radians over the horizon)
 var AS_ORBIT_DIST_M = [2.5, 400];
 var AS_ORBIT_FOCUS_Z_M = 1.3;
+var AS_FOCUS_EASE = 5, AS_TAP_PX = 56, AS_TAP_SLOP_PX = 8;   // a tap on a part brings it to the middle; a finger that moved more than this was a drag
 var AS_STICK_R_PX = 56;
 var AS_CAM_FOLLOW = { pos: 6, az: 2.2, yawBack: 0.7 };    // 1/s
 var AS_CHASE_EL = 0.36;
 var AS_CLOCK_RATES = [1, 300, 3600, 21600];
 var AS_KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
-// Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), craters, and the rover it has.
+// Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), how many craters and rocks, the
+// light its sky adds (ambient, fill) and the haze at the horizon, the sky's colours, and the rover it has.
 var AS_BODY = {
-  moon: { albedo: [0.5, 0.48, 0.45], g: AE_BODY_FACTS.moon.gravity, relief: 0.45, craters: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
+  moon: { albedo: [0.5, 0.48, 0.45], g: AE_BODY_FACTS.moon.gravity, relief: 0.45, craters: 1, rocks: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
     rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: AE_SITE_FACTS.lrvSpeedMs, jump: AE_SITE_FACTS.jumpMs.moon, cam: 11 } },
-  mars: { albedo: [0.5, 0.27, 0.15], g: AE_BODY_FACTS.mars.gravity, relief: 0.3, craters: 0.5, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
+  mars: { albedo: [0.5, 0.27, 0.15], g: AE_BODY_FACTS.mars.gravity, relief: 0.3, craters: 0.5, rocks: 1, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
     sky: { day: [0.78, 0.55, 0.38], high: [0.42, 0.3, 0.24], dusk: [0.25, 0.32, 0.5] },
     rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: AE_SITE_FACTS.marsDriveSpeedMs, jump: AE_SITE_FACTS.jumpMs.mars, cam: 11 } },
-  venus: { albedo: [0.42, 0.33, 0.22], g: AE_BODY_FACTS.venus.gravity, relief: 0.2, craters: 0, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
+  venus: { albedo: [0.42, 0.33, 0.22], g: AE_BODY_FACTS.venus.gravity, relief: 0.2, craters: 0, rocks: 0.7, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
     sky: { day: [0.75, 0.5, 0.2], high: [0.6, 0.38, 0.15], dusk: [0.4, 0.22, 0.08] }, rover: null },
-  titan: { albedo: [0.3, 0.22, 0.13], g: AE_BODY_FACTS.titan.gravity, relief: 0.2, craters: 0, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],
+  titan: { albedo: [0.3, 0.22, 0.13], g: AE_BODY_FACTS.titan.gravity, relief: 0.2, craters: 0, rocks: 0.6, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],
     sky: { day: [0.5, 0.3, 0.1], high: [0.3, 0.18, 0.06], dusk: [0.15, 0.09, 0.03] }, rover: null },
-  earth: { albedo: [0.2, 0.25, 0.12], g: AE_BODY_FACTS.earth.gravity, relief: 0.12, craters: 0, ambient: 0.22, fill: 0.1, haze: [0.62, 0.74, 0.9],
+  earth: { albedo: [0.2, 0.25, 0.12], g: AE_BODY_FACTS.earth.gravity, relief: 0.12, craters: 0, rocks: 0.12, ambient: 0.22, fill: 0.1, haze: [0.62, 0.74, 0.9],
     sky: { day: [0.62, 0.76, 0.95], high: [0.16, 0.38, 0.82], dusk: [0.9, 0.5, 0.3] }, rover: null }
 };
 
@@ -102,7 +106,7 @@ function _asFrame(st, b, sc) {
   var east = _aeCross(pole, up);
   east = _aeLen(east) < 1e-6 ? [1, 0, 0] : _aeNorm(east);
   var north = _aeCross(up, east);
-  var origin = _aeAdd(b.center, _aeScale(up, b.r));
+  var origin = _aeAdd(b.center, _aeScale(up, b.r + AS_PATCH_LIFT_M * AS_MRE));   // a little over the body's own sphere, whose facets are never above the true radius
   var sun = _asSunWorld(b, sc);
   return { origin: origin, e: east, n: north, u: up, sun: sun, sunLocal: [_aeDot(sun, east), _aeDot(sun, north), _aeDot(sun, up)], center: b.center, r: b.r };
 }
@@ -170,7 +174,6 @@ function _asDispose(st) {
   if (st.trail) _asTrailStop(st);
   S.scene.remove(st.group);
   if (st.dome) S.scene.remove(st.dome);
-  st.group.traverse(function (o) { if (o.geometry && o.geometry !== undefined) { /* shared model geometry stays with its model */ } });
   st.groundGeo.dispose(); st.rockGeo.dispose();
   if (st.dome) { st.dome.geometry.dispose(); st.dome.material.dispose(); }
   Object.keys(st.models).forEach(function (m) { st.models[m].root.children.forEach(function (c) { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); });
@@ -193,7 +196,15 @@ function _asCameraLocal(st, dt) {
     c.az += _aeAngleDeltaRad(c.az, back) * (1 - Math.exp(-AS_CAM_FOLLOW.az * dt));
     az = c.az; el = _aeClamp(AS_CHASE_EL + st.look.pitch, AS_ORBIT_EL[0], AS_ORBIT_EL[1]);
     focus = st.focus;
-  } else focus = st.followPos ? [st.followPos[0], st.followPos[1], st.followPos[2] + AS_ORBIT_FOCUS_Z_M] : [st.focusXY[0], st.focusXY[1], st.focusZ || AS_ORBIT_FOCUS_Z_M];
+  } else {
+    // The middle of what is looked at eases to a new one (a tap on a part), the distance with it.
+    var want2 = st.followPos ? [st.followPos[0], st.followPos[1], st.followPos[2] + AS_ORBIT_FOCUS_Z_M] : [st.focusXY[0], st.focusXY[1], st.focusZ || AS_ORBIT_FOCUS_Z_M];
+    st.fcur = st.fcur || want2;
+    var k2 = st.followPos ? 1 : 1 - Math.exp(-AS_FOCUS_EASE * dt);
+    st.fcur = [st.fcur[0] + (want2[0] - st.fcur[0]) * k2, st.fcur[1] + (want2[1] - st.fcur[1]) * k2, st.fcur[2] + (want2[2] - st.fcur[2]) * k2];
+    if (st.distTo) { c.dist += (st.distTo - c.dist) * k2; dist = c.dist; if (Math.abs(st.distTo - c.dist) < 0.01 * c.dist) st.distTo = 0; }
+    focus = st.fcur;
+  }
   // az is measured from north, counterclockwise through west like heading: the offset is behind that bearing.
   var ch = Math.cos(el), pos = [focus[0] - Math.sin(az) * ch * dist, focus[1] + Math.cos(az) * ch * dist, focus[2] + Math.sin(el) * dist];
   // Over the ground there, never under it.
@@ -268,7 +279,7 @@ function _aeSiteLight(sc) {
   var fr = st.fr, cam = S.camera, down = st.pose.altRe < AS_GROUND_ON_ALT_M * AS_MRE;
   st.group.visible = down;
   if (st.dome) st.dome.visible = down;
-  if (down) _asHideBody(st, S);
+  if (down && st.pose.altRe < AS_HIDE_SHARE * AS_PATCH_R_M * AS_PATCH_R_M / (2 * st.radiusM) * AS_MRE) _asHideBody(st, S);
   var e = fr, g = st.group.matrix;
   var s = AS_MRE;
   g.set(e.e[0] * s, e.n[0] * s, e.u[0] * s, e.origin[0], e.e[1] * s, e.n[1] * s, e.u[1] * s, e.origin[1], e.e[2] * s, e.n[2] * s, e.u[2] * s, e.origin[2], 0, 0, 0, 1);
@@ -412,6 +423,21 @@ function _asHudTick(st, sc) {
     if (rate.dataset.t !== txt) { rate.dataset.t = txt; rate.innerHTML = txt || AS_CLOCK_SVG; }
   }
 }
+// A tap on a part of the site: it comes to the middle of the picture and the camera to a few of its widths.
+function _asTapPart(st, x, y) {
+  var best = null, bd = AS_TAP_PX;
+  st.siteParts.forEach(function (sp) {
+    var part = sp.body || sp, h = part.holder.position, w = _asToWorld(st.fr, [h.x, h.y, h.z + part.size * 0.3]), sc = _aeProject(w);
+    if (!sc) return;
+    var d = Math.hypot(sc.x - x, sc.y - y);
+    if (d < bd) { bd = d; best = part; }
+  });
+  if (!best) return;
+  st.focusXY = [best.x, best.y];
+  st.focusZ = best.z + best.size * 0.3;
+  st.distTo = _aeClamp(best.size * 2.6, AS_ORBIT_DIST_M[0], AS_ORBIT_DIST_M[1]);
+  _aeKick();
+}
 function _asBindHud(hud) {
   _aeById('as-exit').onclick = function () { _aeSiteLeave(); _aePreset(_ae.site ? _ae.site.body : _ae.target); };
   _aeById('as-landing').onclick = function () {
@@ -483,6 +509,7 @@ function _asBindHud(hud) {
     if (!p) return;
     delete ptrs[e.pointerId];
     if (p.role === 'stick' && st) { st.input.sx = st.input.sy = 0; stickEl.hidden = true; }
+    else if (st && !st.drive && e.type === 'pointerup' && Math.hypot(p.x - p.x0, p.y - p.y0) < AS_TAP_SLOP_PX) _asTapPart(st, p.x, p.y);
     if (Object.keys(ptrs).length < 2) pinch = null;
   };
   layer.addEventListener('pointerup', end);
@@ -522,7 +549,8 @@ function _aeSiteCardHtml(lm) {
   if (!def && !drive) return '';
   var when = def && def.ms ? '<p class="ae-lm-line"><span>' + _almEsc(_aeT(def.launch ? 'alm_site_launched' : 'alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</span></p>' : '';
   var vis = _almEsc(_aeT('alm_site_visit')), dr = _almEsc(_aeT('alm_site_drive'));
-  return when + '<p class="ae-lm-line as-go" style="justify-content:flex-start;gap:10px"><button type="button" class="ae-btn ae-round" id="as-visit" aria-label="' + vis + '" title="' + vis + '">' + AS_VISIT_SVG + '</button>' +
+  return when + '<p class="ae-lm-line as-go" style="justify-content:flex-start;gap:10px">' +
+    (def ? '<button type="button" class="ae-btn ae-round" id="as-visit" aria-label="' + vis + '" title="' + vis + '">' + AS_VISIT_SVG + '</button>' : '') +
     (drive ? '<button type="button" class="ae-btn ae-round" id="as-drive" aria-label="' + dr + '" title="' + dr + '">' + AS_DRIVE_SVG + '</button>' : '') + '</p>';
 }
 function _aeSiteCardBind(card, lm) {
