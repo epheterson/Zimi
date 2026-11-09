@@ -118,6 +118,7 @@ _CHROMIUM_BINARIES = (
     "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
     "chrome-win/chrome.exe",
     "chrome-headless-shell-linux64/chrome-headless-shell",
+    "chrome-headless-shell-linux-arm64/chrome-headless-shell",
     "chrome-headless-shell-mac-x64/chrome-headless-shell",
     "chrome-headless-shell-mac-arm64/chrome-headless-shell",
     "chrome-headless-shell-win64/chrome-headless-shell.exe",

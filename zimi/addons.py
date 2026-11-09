@@ -63,8 +63,8 @@ MB = 1_000_000
 # ── recipes ──────────────────────────────────────────────────────────────────
 
 #: A pinned archive: ``files`` is {cpu: (url, sha256, bytes)}; ``dest`` is a folder inside the add-on; ``strip``
-#: leading path parts are dropped as it is unpacked.
-Archive = namedtuple("Archive", "dest strip files")
+#: leading path parts are dropped as it is unpacked, and members under a ``skip`` prefix (manuals, headers) are not.
+Archive = namedtuple("Archive", "dest strip files skip", defaults=((),))
 #: pip packages installed with ``--target`` into ``dest``.
 Pip = namedtuple("Pip", "requirements dest size")
 #: An npm package installed under ``dest``, with the Node an earlier Archive put in ``node``.
@@ -115,7 +115,7 @@ _BROWSER_DIR = os.path.join(
 _ARCHIVES = {
     "chromium": Archive(
         _BROWSER_DIR,
-        1,
+        0,  # the zip's own top folder (chrome-headless-shell-linux64) is where Playwright looks
         {
             "x64": (
                 _CFT + "linux64/chrome-headless-shell-linux64.zip",
@@ -144,6 +144,7 @@ _ARCHIVES = {
                 30_553_480,
             ),
         },
+        ("include", "share"),
     ),
     "ffmpeg": Archive(
         "ffmpeg",
@@ -160,6 +161,7 @@ _ARCHIVES = {
                 18_994_172,
             ),
         },
+        ("manpages", "model"),
     ),
     "uv": Archive(
         "uv",
@@ -423,14 +425,18 @@ def _strip(name, strip):
     return "/".join(parts[strip:])
 
 
-def _unpack(archive_path, dest, strip):
+def _skipped(rel, skip):
+    return any(rel == s or rel.startswith(s + "/") for s in skip)
+
+
+def _unpack(archive_path, dest, strip, skip=()):
     """Unpack a zip or tar into ``dest`` without letting a member leave it; modes and links kept."""
     os.makedirs(dest, exist_ok=True)
     if zipfile.is_zipfile(archive_path):
         with zipfile.ZipFile(archive_path) as z:
             for info in z.infolist():
                 rel = _strip(info.filename, strip)
-                if not rel:
+                if not rel or _skipped(rel, skip):
                     continue
                 if not _within(dest, rel):
                     raise ValueError("archive member outside the folder")
@@ -447,7 +453,7 @@ def _unpack(archive_path, dest, strip):
     with tarfile.open(archive_path) as t:
         for m in t:
             rel = _strip(m.name, strip)
-            if not rel or m.isdev() or m.isfifo():
+            if not rel or _skipped(rel, skip) or m.isdev() or m.isfifo():
                 continue
             if not _within(dest, rel):
                 raise ValueError("archive member outside the folder")
@@ -524,7 +530,7 @@ def _do_part(part, work, total, done_before):
         _fetch(url, sha, size, tmp, done_before, total)
         _set(step="unpack")
         try:
-            _unpack(tmp, os.path.join(work, part.dest), part.strip)
+            _unpack(tmp, os.path.join(work, part.dest), part.strip, part.skip)
         finally:
             os.unlink(tmp)
         return size

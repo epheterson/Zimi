@@ -315,3 +315,10 @@ def test_an_absolute_member_lands_inside(tmp_path):
     (tmp_path / "a.tgz").write_bytes(_tar([("/abs/evil", b"x", 0o644)]))
     addons._unpack(str(tmp_path / "a.tgz"), str(tmp_path / "out"), 0)
     assert (tmp_path / "out" / "abs" / "evil").exists()
+
+
+def test_skipped_prefixes_are_not_unpacked(tmp_path):
+    (tmp_path / "a.tgz").write_bytes(_tar([("p/bin/tool", b"x", 0o755), ("p/manpages/m.txt", b"x", 0o644), ("p/manpagesX", b"x", 0o644)]))
+    addons._unpack(str(tmp_path / "a.tgz"), str(tmp_path / "out"), 1, ("manpages",))
+    assert (tmp_path / "out" / "bin" / "tool").exists() and (tmp_path / "out" / "manpagesX").exists()
+    assert not (tmp_path / "out" / "manpages").exists()
