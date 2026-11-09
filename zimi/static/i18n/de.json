@@ -3718,6 +3718,8 @@
   "tb_kn_sat_area_oneweb": "Angenommene Größe eines OneWeb-Satelliten",
   "tb_kn_sat_area_iridium": "Angenommene Größe eines Iridium-Satelliten",
   "tb_kn_sat_min_rcs": "Radarquerschnitt, unter dem ein Satellit nicht angeboten wird",
+  "tb_kn_sat_pass_max": "Höchstens so viele Überflüge in der Liste",
+  "tb_kn_sat_lone_starlinks": "Höchstens so viele einzelne Starlinks in der Liste",
   "tb_kn_sat_train_gap": "Starlinks mit geringerem Zeitabstand sind ein Zug",
   "tb_kn_sat_train_plane": "Starlinks mit geringerem Bahnebenenabstand sind ein Zug",
   "tb_kn_sat_gps_el": "Ein GPS-Satellit gilt als über dem Horizont ab einer Höhe von"

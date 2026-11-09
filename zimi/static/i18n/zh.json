@@ -3718,6 +3718,8 @@
   "tb_kn_sat_area_oneweb": "假定的 OneWeb 卫星尺寸",
   "tb_kn_sat_area_iridium": "假定的铱星尺寸",
   "tb_kn_sat_min_rcs": "雷达截面低于此值的卫星不提供",
+  "tb_kn_sat_pass_max": "列表最多显示的过境次数",
+  "tb_kn_sat_lone_starlinks": "列表最多显示的单颗星链数",
   "tb_kn_sat_train_gap": "时间间隔小于此值的星链算作一列",
   "tb_kn_sat_train_plane": "轨道面间隔小于此值的星链算作一列",
   "tb_kn_sat_gps_el": "GPS 卫星高度角高于此值即在头顶"

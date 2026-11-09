@@ -3718,6 +3718,8 @@
   "tb_kn_sat_area_oneweb": "Tamaño supuesto de un satélite OneWeb",
   "tb_kn_sat_area_iridium": "Tamaño supuesto de un satélite Iridium",
   "tb_kn_sat_min_rcs": "Sección radar por debajo de la cual no se ofrece un satélite",
+  "tb_kn_sat_pass_max": "Máximo de pasos en la lista",
+  "tb_kn_sat_lone_starlinks": "Máximo de Starlink sueltos en la lista",
   "tb_kn_sat_train_gap": "Starlink más cercanos en el tiempo que esto son un tren",
   "tb_kn_sat_train_plane": "Starlink más cercanos en el plano orbital que esto son un tren",
   "tb_kn_sat_gps_el": "Un satélite GPS está sobre el horizonte por encima de una elevación de"

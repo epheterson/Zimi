@@ -45,7 +45,8 @@ var AS_EARTH_RE_KM = 6371;                            // AE_EARTH_RADIUS_KM, whi
 
 // ── The passes ──
 var AS_PASS_HOURS = 30, AS_PASS_STEP_S = 60, AS_PASS_REFINE_S = 10, AS_PASS_MIN_EL = AE_SATS_REF.passMinEl, AS_PASS_SUN_ALT = AE_SATS_REF.passSunAlt;
-var AS_PASS_MAG_LIMIT = AE_SATS_REF.passMag, AS_PASS_MAX = 60, AS_PASS_LONE_STARLINKS = 12;
+var AS_PASS_MAG_LIMIT = AE_SATS_REF.passMag, AS_PASS_MAX = AE_SATS_REF.passMax, AS_PASS_LONE_STARLINKS = AE_SATS_REF.loneStarlinks;
+var AS_PASS_EL_WEIGHT_DEG = 60;                        // a pass is worth one magnitude more for each this many degrees of height
 var AS_PASS_AREA_M2 = AE_SATS_REF.areaM2;             // used where SATCAT has no radar size
 var AS_PASS_MIN_RCS_M2 = AE_SATS_REF.minRcsM2;        // a satellite with a radar size below this is not offered
 var AS_PASS_LEO_MM = 11;                              // revolutions a day: a pass needs an orbit this low
@@ -721,12 +722,17 @@ function _asGroupTrains(list) {
   });
   return out;
 }
-// A dusk sky has hundreds of Starlinks over a place: those that are not trains are cut to the brightest, in time order.
+// A dusk sky has hundreds of Starlinks over a place: single ones are cut to the brightest few, then the list to the passes a
+// person would notice (bright and high), kept in time order.
 function _asTrim(list) {
   var d = _as.data;
   var lone = list.filter(function (p) { return AS_GROUPS[d.group[p.i]] === 'starlink' && p.members.length < AS_TRAIN_MIN; })
     .sort(function (u, v) { return u.mag - v.mag; }).slice(AS_PASS_LONE_STARLINKS);
-  return list.filter(function (p) { return lone.indexOf(p) < 0; }).slice(0, AS_PASS_MAX);
+  var kept = list.filter(function (p) { return lone.indexOf(p) < 0; });
+  if (kept.length <= AS_PASS_MAX) return kept;
+  var worth = function (p) { return p.mag - p.el / AS_PASS_EL_WEIGHT_DEG; };
+  var keep = kept.slice().sort(function (u, v) { return worth(u) - worth(v); }).slice(0, AS_PASS_MAX);
+  return kept.filter(function (p) { return keep.indexOf(p) >= 0; });
 }
 var AS_ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 function _asArrow(az) { return AS_ARROWS[Math.round(az / 45) % 8]; }

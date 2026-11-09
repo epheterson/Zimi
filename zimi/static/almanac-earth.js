@@ -449,7 +449,8 @@ var AE_SATS_REF = {
   passMinEl: 10, passSunAlt: -6,        // a pass counts above this elevation (degrees), with the Sun below this (civil twilight)
   passMag: 4.0,                         // and is listed to this estimated magnitude
   albedo: 0.25, sunMag: -26.74,         // the brightness estimate: a diffuse sphere's reflectance, and the Sun's apparent magnitude
-  areaM2: { iss: 1600, starlink: 3, oneweb: 2, iridium: 4 },   // the size assumed where SATCAT gives no radar cross-section
+  areaM2: { iss: 6400, starlink: 3, oneweb: 2, iridium: 4 },   // the size assumed where SATCAT gives no radar cross-section; the ISS's is fitted: -1.8 at 1,000 km, half lit (McCants), about -3.8 overhead at dusk
+  passMax: 16, loneStarlinks: 3,        // the list is cut to the most noticeable: single Starlinks to the brightest few, the rest by brightness and height
   minRcsM2: 1,                          // a satellite whose radar cross-section is below this is not offered as a pass
   trainGapS: 150, trainRaanDeg: 3,      // Starlinks this close in time and orbital plane (RAAN) are one train
   gpsMinEl: 5                           // a GPS satellite is "overhead" above this elevation
