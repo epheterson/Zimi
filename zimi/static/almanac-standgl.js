@@ -265,7 +265,7 @@ var AE_ST_GROUND_FRAG = [
   'float fine(vec3 p, float foot) {',
   '  float h = 0.0;',
   '  for (int i = 0; i < 7; i++) {',
-  '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.25, 0.9, 2.2 * foot / s);',
+  '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.08, 0.35, 2.2 * foot / s);',
   '    if (w > 0.0) h += vnoise(p / s + float(i) * 7.3) * 0.2 * s * w;',
   '  }',
   '  return h * uRough;',
@@ -276,7 +276,7 @@ var AE_ST_GROUND_FRAG = [
   '  if (uRock < 0.02) return vec2(0.0);',   // ground with next to no stones (the Earth's) skips the search
   '  float h = 0.0, shade = 0.0;',
   '  for (int k = 0; k < 3; k++) {',
-  '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s);',
+  '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s);',
   '    if (w <= 0.0) continue;',
   '    vec3 c = floor(p / s), f = fract(p / s); float best = 9.0, rr = 0.0, tone = 0.0;',
   '    for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) {',
@@ -299,7 +299,7 @@ var AE_ST_GROUND_FRAG = [
   '  if (uMapped > 0.5) { vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5); map = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) map = vec3(map.r); }',
   '  vec3 alb = pow(map, vec3(' + AE_ST_GAMMA + ')) * uGain;',
   '  float mott = 0.0, wm = 1.0;',
-  '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.3, 1.0, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',
+  '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.1, 0.4, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',
   '  alb *= (1.0 + mott);',
   // Living ground (the Earth's): grain at the scales a pixel shows, from blades to tufts to patches, its hue following the land's own class
   // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
