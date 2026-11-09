@@ -203,6 +203,8 @@ def test_tiles_by_view(browser, served):
         listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
         assert not [n for n in listed if n.startswith("zimi_almanac_")], listed
         # Every tile came from where this library keeps them: inside the flavour's hd/, or the tiles-only ZIM's root.
+        # The view is ready before its first tiles are asked for (hd.json is read after the satellites answer).
+        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=60_000, polling=200)
         assert tiles and all(base in u for u in tiles), (base, tiles[:3])
         # Far: level 0 covers the Earth, and its one map steps aside. Far enough that a level-0 tile covers no more
         # device pixels than it has (nearer, at 8 Earth radii and 2x, level 2 is the right choice, and the old check
