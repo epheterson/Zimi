@@ -270,7 +270,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-section + .ar-section { margin-top: 28px; }
 .ar-section h2 { margin: 0 0 12px; font-size: var(--fs-small); font-weight: 650; letter-spacing: 0.04em; color: var(--ink2); }
 .ar-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
-.ar-game { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: var(--r-sheet); overflow: hidden; background: var(--surface2); border: 1px solid var(--line); transition: transform 0.15s, border-color 0.15s; }
+.ar-game { content-visibility: auto; contain-intrinsic-size: auto 150px; display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: var(--r-sheet); overflow: hidden; background: var(--surface2); border: 1px solid var(--line); transition: transform 0.15s, border-color 0.15s; }
 .ar-game[hidden] { display: none; }
 .ar-game:hover { transform: translateY(-2px); border-color: var(--accent); }
 .ar-game-art { aspect-ratio: 16 / 9; display: block; width: 100%; }
