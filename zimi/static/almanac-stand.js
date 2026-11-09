@@ -291,3 +291,347 @@ function _aeStandDispose(st) {
   st.geo = st.mats = null; st.scene = st.camera = null;
 }
 
+// ── The sky and the bodies in it, for an instant ──
+// Positions are heliocentric, in km, in the equator of date the orbit view's scene uses; the viewer's body turns under them.
+function _aeStToScene(frame, v) {   // a body-fixed vector to the scene
+  var f = frame.f;
+  return [f.x[0] * v[0] + f.y[0] * v[1] + f.z[0] * v[2], f.x[1] * v[0] + f.y[1] * v[1] + f.z[1] * v[2], f.x[2] * v[0] + f.y[2] * v[1] + f.z[2] * v[2]];
+}
+// The orbit view's body now: its frame (body-fixed to scene) from what the view has drawn.
+function _aeStBodyNow(key) {
+  var S = _ae.gl, e;
+  if (key === 'moon') e = S.moon.matrix.elements;
+  else if (key === 'earth') {
+    var c = Math.cos(S.earth.rotation.z), sn = Math.sin(S.earth.rotation.z);
+    return { f: { x: [c, sn, 0], y: [-sn, c, 0], z: [0, 0, 1] } };
+  } else if (S.planets[key] && S.planets[key].pos) e = S.planets[key].mesh.matrix.elements;
+  if (!e) return null;
+  return { f: { x: _aeNorm([e[0], e[1], e[2]]), y: _aeNorm([e[4], e[5], e[6]]), z: _aeNorm([e[8], e[9], e[10]]) } };
+}
+function _aeStMoonOffset(b, jd, toScene) {   // a big moon's place round its planet, km, scene frame (almanac-earth.js _aeUpdatePlanets)
+  var pb = _aePlanetBody(b.parent), o = b.orbit, pole = _aePlanetFrameEcl(pb, jd).z;
+  var ax = _aeNorm(_aeCross([0, 0, 1], pole)), ay = _aeCross(pole, ax), lam = _aeRad(o[1] + o[2] * (jd - JD_J2000));
+  var off = _aeAdd(_aeScale(ax, Math.cos(lam)), _aeScale(ay, Math.sin(lam)));
+  return { off: _aeScale(toScene(off), o[0]), pole: toScene(pole), toward: _aeScale(toScene(off), -1) };
+}
+function _aeStBodies(sc) {
+  var jd = sc.jd, jde = sc.jde, toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, jde); }, out = {};
+  var ePos = _aeScale(toScene(_ephBodyJ2000('Earth', jd)), AU_KM), cg = Math.cos(sc.gast), sg = Math.sin(sc.gast);
+  out.earth = { pos: ePos, km: AE_STAND_BODIES.earth.km, f: { x: [cg, sg, 0], y: [-sg, cg, 0], z: [0, 0, 1] }, color: [0.45, 0.58, 0.8] };
+  out.moon = { pos: _aeAdd(ePos, _aeScale(sc.moon, AE_EARTH_RADIUS_KM)), km: AE_MOON_RADIUS_KM, f: _aeMoonBasis(sc), color: [1, 1, 1] };
+  AE_PLANETS.forEach(function (b) {
+    if (b.parent) return;
+    var h = b.track ? _aeTracked(b, jd) : _ephBodyJ2000(b.eph, jd);
+    if (!h) return;
+    var f = _aePlanetFrameEcl(b, jd);
+    out[b.key] = { pos: _aeScale(toScene(h), AU_KM), km: b.km, f: { x: toScene(f.x), y: toScene(f.y), z: toScene(f.z) }, color: b.color };
+  });
+  AE_PLANETS.forEach(function (b) {
+    if (!b.parent || !out[b.parent]) return;
+    var m = _aeStMoonOffset(b, jd, toScene), xx = _aeNorm(m.toward);
+    out[b.key] = { pos: _aeAdd(out[b.parent].pos, m.off), km: b.km, f: { x: xx, y: _aeCross(m.pole, xx), z: m.pole }, color: b.color };
+  });
+  return out;
+}
+function _aeStTrans3(a, b) { return [a[0] * b[0], a[1] * b[1], a[2] * b[2]]; }
+function _aeStFrame(st, ms) {
+  var sc = _aeSceneAt(ms), all = _aeStBodies(sc), B = all[st.key], lat = _aeRad(st.lat), lon = _aeRad(st.lon);
+  var u = _aeUnitVec(st.lat, st.lon), e = [-Math.sin(lon), Math.cos(lon), 0], n = [-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat)];
+  var up = _aeStToScene(B, u), east = _aeStToScene(B, e), north = _aeStToScene(B, n);
+  var O = _aeAdd(B.pos, _aeScale(up, st.b.km + st.h0 / 1000));
+  var local = function (v) { return [_aeDot(v, east), _aeDot(v, north), _aeDot(v, up)]; };
+  var fr = { ms: ms, east: east, north: north, up: up, objs: [] };
+  var sunV = _aeScale(O, -1), sunDist = _aeLen(sunV);
+  fr.sun = _aeNorm(local(sunV));
+  fr.S = Math.pow(AU_KM / sunDist, 2);
+  fr.sunAlt = _aeDeg(Math.asin(_aeClamp(fr.sun[2], -1, 1)));
+  fr.sunAz = Math.atan2(fr.sun[0], fr.sun[1]);
+  fr.sunMu = fr.sun[2];
+  fr.sunRho = Math.asin(AE_STAND_SUN_KM / sunDist);
+  var light2 = null;
+  Object.keys(all).forEach(function (k) {
+    if (k === st.key) return;
+    var P = all[k], d = _aeSub(P.pos, O), dist = _aeLen(d), rho = Math.asin(Math.min(1, P.km / dist));
+    var sunFrom = _aeNorm(_aeScale(P.pos, -1)), toObs = _aeNorm(_aeScale(d, -1)), cosA = _aeClamp(_aeDot(sunFrom, toObs), -1, 1);
+    var alpha = Math.acos(cosA), phase = (Math.sin(alpha) + (Math.PI - alpha) * Math.cos(alpha)) / Math.PI, E = Math.pow(AU_KM / _aeLen(P.pos), 2);
+    var alb = AE_STAND_ALBEDO[k] || 0.3, flux = 2 / 3 * alb * E * rho * rho * phase, mean = (P.color[0] + P.color[1] + P.color[2]) / 3;
+    var tint = k === AE_STAND_MOON_NAME ? [alb, alb, alb] : [P.color[0] / mean * alb, P.color[1] / mean * alb, P.color[2] / mean * alb];
+    var o = { key: k, dir: _aeNorm(local(d)), dist: dist, rho: rho, E: E, sunFrom: _aeNorm(local(sunFrom)), tint: tint, flux: flux, mag: AE_STAND_MAG_SUN - 2.5 * Math.log10(Math.max(flux, 1e-30)), alb: alb };
+    fr.objs.push(o);
+    if (flux > AE_STAND_LIGHT2_MIN && (!light2 || flux > light2.flux)) light2 = { dir: o.dir, flux: flux, rgb: tint.map(function (c) { return flux * c / Math.max(alb, 1e-6); }) };
+  });
+  fr.light2 = light2;
+  return fr;
+}
+// What the air and the light make of that instant: the sky overhead, the exposure, how faint a star shows.
+function _aeStPhoto(st, fr) {
+  var a = st.atmo, d = a && a.diffuse, R = st.b.km, hG = st.h0 / 1000, S = fr.S, mu = fr.sunMu;
+  var p = { zen: [0, 0, 0], hor: [0, 0, 0], amb: [0, 0, 0], sunE: [S, S, S], diffSky: [0, 0, 0], trans: null, lim: AE_ST_LM_MAX, extinct: 0, mw: 1 };
+  var e2 = fr.light2 ? fr.light2.flux : 0;
+  var directG = 0;
+  if (d) {
+    var day = 0.03 + 0.97 * _smoothstep(-0.2, 0.45, mu), lum = d.frac * S / Math.PI * 0.9 * day;
+    p.diffSky = [d.sky[0] * lum, d.sky[1] * lum, d.sky[2] * lum];
+    p.amb = p.diffSky.slice(); p.hor = p.diffSky.slice(); p.zen = p.diffSky.slice();
+    var sd = S * d.frac * d.direct * day;
+    p.sunE = [sd, sd, sd];
+    directG = sd * Math.max(mu, 0);
+    p.lim = AE_ST_LM_MIN; p.mw = 0;
+  } else if (a) {
+    var zen = _aeStZenith(a, R, hG, mu).map(function (x) { return x * S; }), od = _aeStOdUp(a, R, hG, mu);
+    p.zen = zen;
+    p.hor = zen.map(function (x) { return x * AE_STAND_HORIZON_GAIN; });
+    p.amb = zen.map(function (x) { return x * AE_STAND_AMBIENT_GAIN; });
+    directG = od ? S * Math.max(mu, 0) * Math.exp(-Math.min(od[0], od[1], od[2])) : 0;
+    var lcd = Math.max(zen[0], zen[1], zen[2]) * AE_ST_LUX_PER_UNIT;
+    p.lim = _aeClamp(AE_ST_LM_DARK - AE_ST_LM_PER_DECADE * Math.log10((lcd + AE_ST_DARK_LUM) / AE_ST_DARK_LUM), AE_ST_LM_MIN, AE_ST_LM_MAX);
+    p.extinct = 0.2;
+  }
+  // Light of other bodies as a second sun for the ground.
+  var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
+    1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_ST_NIGHT_FLOOR);
+  p.k = AE_ST_EXPOSURE_TARGET / ref;
+  p.e2 = e2;
+  p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
+  return p;
+}
+function _aeStStarVis(mag, lim) {   // almanac-skygl.js _sgStarVisibility
+  var dm = lim - mag;
+  if (dm <= 0) return 0;
+  var f = Math.min(1, dm / 0.6);
+  return f * f * (3 - 2 * f) * Math.min(1, 0.12 * Math.pow(10, 0.2 * dm));
+}
+function _aeStMat3(rows) {   // three rows -> the column-major array a mat3 uniform takes
+  return [rows[0][0], rows[1][0], rows[2][0], rows[0][1], rows[1][1], rows[2][1], rows[0][2], rows[1][2], rows[2][2]];
+}
+
+// ── Drawing ──
+function _aeStandView(st, now) {
+  var u = _aeSmoother(_aeClamp((now - st.t0) / (st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS), 0, 1));
+  var lo = Math.log(AE_STAND_EYE_M / 1000), hi = Math.log(st.alt0), pitchLook = st.userPitch + _aeRad(AE_STAND_PITCH_DEG), down = -_aeRad(AE_STAND_PITCH_MAX_DEG);
+  if (st.mode === 'descend') {
+    st.altKm = Math.exp(hi + (lo - hi) * u);
+    st.pitch = down + (pitchLook - down) * _aeSmoother(_aeClamp((u - 0.1) / 0.9, 0, 1));
+    if (u >= 1) { st.mode = 'ground'; st.pitch = pitchLook; }
+  } else if (st.mode === 'ascend') {
+    st.altKm = Math.exp(lo + (hi - lo) * u);
+    st.pitch = st.fromPitch + (down - st.fromPitch) * _aeSmoother(_aeClamp(u / 0.9, 0, 1));
+    if (u >= 1 && !st.fading) _aeStandFinishLeave(st);
+  } else { st.altKm = AE_STAND_EYE_M / 1000; st.pitch = pitchLook; }
+}
+function _aeStandFov() {
+  var aspect = _ae.w / _ae.h, v = _aeClamp(2 * Math.atan(Math.tan(_aeRad(AE_STAND_HFOV_DEG) / 2) / aspect), _aeRad(AE_STAND_FOV_MIN_DEG), _aeRad(AE_STAND_FOV_MAX_DEG));
+  return v * _ae.stand.zoom;
+}
+function _aeStandDraw(now) {
+  var st = _ae.stand;
+  if (!st || !st.live || !st.scene) return;
+  var S = _ae.gl, ms = _aeDisplayMs(), moving = st.mode !== 'ground';
+  _aeStandView(st, now);
+  if (!st.scene) return;
+  var fast = _aeClockRuns() && typeof _almRate !== 'undefined' && _almRate !== 1;
+  var stale = !st.fr || Math.abs(ms - st.fr.at) >= (fast ? 1 : AE_STAND_FRAME_MS);
+  if (!(moving || st.dirty || stale || st.size !== _ae.w + 'x' + _ae.h)) return;
+  st.size = _ae.w + 'x' + _ae.h;
+  if (stale) { st.fr = _aeStFrame(st, ms); st.fr.at = ms; st.photo = _aeStPhoto(st, st.fr); }
+  var fr = st.fr, ph = st.photo, cam = st.camera, W = _ae.w, H = _ae.h, pr = S.renderer.getPixelRatio();
+  var vfov = _aeStandFov(), yaw = st.yaw + st.userYaw, pitch = st.pitch, alt = st.altKm * 1000;
+  var f = [Math.cos(pitch) * Math.sin(yaw), Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch)];
+  cam.fov = _aeDeg(vfov); cam.aspect = W / H;
+  cam.near = Math.max(0.05, alt * 0.01); cam.far = Math.max(1e5, st.b.km * 1000 * 3);
+  cam.position.set(0, 0, alt);
+  cam.lookAt(f[0], f[1], alt + f[2]);
+  cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+  var e = cam.matrixWorld.elements, tanV = Math.tan(vfov / 2), pixAng = 2 * tanV / (H * pr);
+  // The shared air.
+  var U = st.uni;
+  U.uSunDir.value = fr.sun; U.uSunE.value = ph.sunE; U.uK.value = ph.k;
+  var sk = st.sky;
+  sk.uCam.value = [0, 0, alt / 1000];
+  sk.uFwd.value = [-e[8], -e[9], -e[10]]; sk.uRight.value = [e[0], e[1], e[2]]; sk.uUp.value = [e[4], e[5], e[6]];
+  sk.uTan.value = [tanV * W / H, tanV];
+  sk.uDiffSky.value = ph.diffSky;
+  var local = [fr.east, fr.north, fr.up], G = typeof SG_EQ_TO_GAL !== 'undefined' ? SG_EQ_TO_GAL : [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  // Galactic coordinates of a local vector: G (eq -> gal) times the local axes expressed in the scene.
+  var toGal = [0, 1, 2].map(function (r) { return [0, 1, 2].map(function (c) { return G[3 * r] * local[c][0] + G[3 * r + 1] * local[c][1] + G[3 * r + 2] * local[c][2]; }); });
+  sk.uToGal.value = _aeStMat3(toGal);
+  sk.uMw.value = sk.uMilky.value ? ph.mwStrength * 0.9 : 0;
+  st.starUni.uRot.value = _aeStMat3(local);
+  st.starUni.uLim.value = ph.lim; st.starUni.uExtinct.value = ph.extinct;
+  // The ground.
+  var g = st.ground;
+  g.uCam.value = [0, 0, alt]; g.uPixAng.value = pixAng; g.uTime.value = now / 1000;
+  g.uAmbient.value = ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
+  else g.uE2.value = [0, 0, 0];
+  _aeStandSprites(st, fr, ph, pixAng, alt);
+  S.renderer.render(st.scene, cam);
+  st.dirty = false;
+  if (now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
+}
+function _aeStandSprites(st, fr, ph, pixAng, alt) {
+  var a = st.atmo, d = a && a.diffuse, air = a && !d ? a : null, hG = st.h0 / 1000, R = st.b.km;
+  var list = [{ sun: true, dir: fr.sun, rho: fr.sunRho, E: fr.S, sunFrom: fr.sun, tint: [1, 1, 1], mag: AE_STAND_MAG_SUN }].concat(fr.objs);
+  var Z = [0, 0, 1], Y = [0, 1, 0];
+  list.forEach(function (o, i) {
+    var sp = st.sprites[i];
+    if (!sp) return;
+    var m = sp.mesh, uni = sp.uni, mu = o.dir[2];
+    var trans = [1, 1, 1];
+    if (d) trans = [0, 0, 0];
+    else if (air) {
+      var od = _aeStOdUp(air, R, hG, Math.max(mu, 0.0));
+      trans = od ? od.map(function (x) { return Math.exp(-x); }) : [0, 0, 0];
+      if (mu < 0) trans = [1, 1, 1];   // below the horizon: the ground hides it (from orbit there is only the thin edge of air)
+    }
+    var right = _aeNorm(_aeCross(o.dir, Math.abs(o.dir[2]) > 0.999 ? Y : Z)), up = _aeCross(right, o.dir);
+    var lim = ph.lim, vis = o.sun ? 1 : _aeStStarVis(o.mag + (air ? 0.2 * 1 / (Math.max(mu, 0) + 0.025 * Math.exp(-11 * Math.max(mu, 0))) : 0), lim);
+    if (!o.sun && o.rho <= pixAng * 1.2 && vis <= 0.004) { m.visible = false; return; }
+    m.visible = true;
+    uni.uDir.value = o.dir; uni.uRight.value = right; uni.uUp.value = up; uni.uSunFrom.value = o.sunFrom;
+    uni.uTint.value = o.tint; uni.uTrans.value = trans;
+    uni.uHalf.value = o.sun ? Math.max(o.rho * 16, pixAng * 8) : Math.max(o.rho * 1.2, pixAng * 5);
+    uni.uRho.value = o.rho; uni.uPix.value = pixAng; uni.uE.value = o.E; uni.uK.value = ph.k;
+    uni.uEmit.value = o.sun ? 1 : 0; uni.uVis.value = vis;
+    uni.uGlow.value = o.sun ? (air || d ? 0 : 0.18) : 0;
+    uni.uSkyLit.value = 1;
+  });
+  for (var j = list.length; j < st.sprites.length; j++) st.sprites[j].mesh.visible = false;
+}
+
+// ── Looking around ──
+function _aeStandLook(dx, dy) {
+  var st = _ae.stand;
+  if (!st || !st.live) return;
+  var k = _aeStandFov() / _ae.h;
+  st.userYaw -= dx * k;
+  st.userPitch = _aeClamp(st.userPitch + dy * k, -_aeRad(AE_STAND_PITCH_MAX_DEG) - _aeRad(AE_STAND_PITCH_DEG), _aeRad(AE_STAND_PITCH_MAX_DEG) - _aeRad(AE_STAND_PITCH_DEG));
+  st.dirty = true; _ae.dirty = true; _aeKick();
+}
+function _aeStandZoom(factor) {
+  var st = _ae.stand;
+  if (!st || !st.live) return;
+  st.zoom = _aeClamp(st.zoom * factor, AE_STAND_ZOOM_MIN, AE_STAND_ZOOM_MAX);
+  st.dirty = true; _ae.dirty = true; _aeKick();
+}
+var AE_STAND_KEY_TURN_PX = 40, AE_STAND_KEY_ZOOM = 0.9;
+function _aeStandKey(e) {
+  var turn = { ArrowLeft: [-AE_STAND_KEY_TURN_PX, 0], ArrowRight: [AE_STAND_KEY_TURN_PX, 0], ArrowUp: [0, AE_STAND_KEY_TURN_PX], ArrowDown: [0, -AE_STAND_KEY_TURN_PX] }[e.key];
+  if (turn) { _aeStandLook(-turn[0], -turn[1]); return true; }
+  if (e.key === '+' || e.key === '=') { _aeStandZoom(AE_STAND_KEY_ZOOM); return true; }
+  if (e.key === '-' || e.key === '_') { _aeStandZoom(1 / AE_STAND_KEY_ZOOM); return true; }
+  return false;
+}
+
+// ── What is on the screen besides the picture ──
+var AE_STAND_BACK_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/><path d="M5 4h14" opacity=".55"/></svg>';
+var AE_STAND_CSS = [
+  '.ae-standing .ae-labels,.ae-standing .ae-lms,.ae-standing .ae-mini,.ae-standing .ae-top,.ae-standing .ae-row,.ae-standing .ae-card,.ae-standing .ae-hint,.ae-standing .ae-orient,.ae-standing .ae-status,.ae-standing .ae-note,.ae-standing .ae-go,.ae-standing .ae-info,.ae-standing .ae-set,.ae-standing .ae-spin,.ae-standing .ae-fullbar{display:none!important}',
+  '.ae-standing .ae-canvas{cursor:grab}',
+  '.ae-stand-hud{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;gap:10px;padding:12px 16px 24px;background:linear-gradient(rgba(0,0,0,.5),transparent);pointer-events:none;z-index:2}',
+  '.ae-stand-hud>*{pointer-events:auto}',
+  '.ae-stand-text{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:6px;font-size:13px;line-height:1.3;color:var(--text);text-shadow:0 1px 3px #000;pointer-events:none}',
+  '.ae-stand-text b{font-weight:600}',
+  '.ae-stand-text span{color:var(--text2)}',
+  '.ae-stand-hud .ae-tool-svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
+  '.ae-pick{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid ' + AE_AMBER_HEX + ';border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.6);pointer-events:none;will-change:transform}',
+  '.ae-pick[hidden]{display:none}'
+].join('\n');
+function _aeStandCss() {
+  if (_aeById('ae-stand-style')) return;
+  var s = document.createElement('style');
+  s.id = 'ae-stand-style';
+  s.textContent = AE_STAND_CSS;
+  document.head.appendChild(s);
+}
+_aeStandCss();
+function _aeStandHud(st) {
+  var hud = document.createElement('div');
+  hud.className = 'ae-stand-hud';
+  var back = _aeT('alm_stand_back');
+  hud.innerHTML = '<button type="button" class="ae-btn ae-round" id="ae-stand-back" aria-label="' + _almEsc(back) + '" title="' + _almEsc(back) + '">' + AE_STAND_BACK_SVG + '</button>' +
+    '<div class="ae-stand-text" id="ae-stand-text" aria-live="off"></div>';
+  _ae.el.appendChild(hud);
+  st.hud = hud;
+  _aeById('ae-stand-back').onclick = function () { _aeStandLeave(); };
+  _aeStandHudText(st);
+  var cv = _aeById('ae-canvas');
+  if (cv) cv.setAttribute('aria-label', _aeT('alm_stand_aria', { body: _aeInfoName(st.key) }));
+}
+function _aeStandHudText(st) {
+  var el = _aeById('ae-stand-text'), fr = st.fr;
+  if (!el) return;
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' : '') + ' · ' + Math.round(((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360) + '°';
+  var html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>';
+  if (el._html !== html) { el._html = html; el.innerHTML = html; }
+}
+// A height above the mean radius, short: metres under a kilometre.
+function _aeStHeightText(m) {
+  var mi = _aeImperial();
+  if (Math.abs(m) < 1000) return _orrNum(mi ? m * 3.28084 : m, mi ? 'foot' : 'meter', 0);
+  return _aeLenText(m / 1000, 1);
+}
+
+// ── The card for a tapped spot ──
+// A tap on the body already in view, on its surface: the place, its height, and the way down.
+function _aeStandPick(body, x, y) {
+  if (!_aeStandable(body) || body !== _ae.target || _ae.fly) return false;
+  var hit = _aeStHit(body, x, y);
+  if (!hit) return false;
+  _ae.lm = null; _ae.place = null;
+  _ae.pick = { body: body, lat: hit.lat, lon: hit.lon };
+  _aeTerrainLoad(body).then(function () { if (_ae && _ae.pick && _ae.pick.body === body) _aeRenderCard(); });
+  if (_ae.arrived !== body) _aeArrive(body);
+  else _aeRenderCard();
+  _ae.dirty = true; _aeKick();
+  return true;
+}
+// Where the ray through a point of the screen meets the body: latitude and longitude, or null.
+function _aeStHit(body, x, y) {
+  var S = _ae.gl, cam = S.camera, V = S.THREE.Vector3, frame = _aeStBodyNow(body), centre = _aeBodyPos(body);
+  if (!frame || !centre) return null;
+  var o = [cam.position.x, cam.position.y, cam.position.z];
+  var p = new V((x / _ae.w) * 2 - 1, -(y / _ae.h) * 2 + 1, 0.5).unproject(cam);
+  var d = _aeNorm([p.x - o[0], p.y - o[1], p.z - o[2]]);
+  var toFixed = function (v) { var f = frame.f; return [_aeDot(f.x, v), _aeDot(f.y, v), _aeDot(f.z, v)]; };
+  var oc = _aeSub(o, centre);
+  if (body === 'earth') {
+    var h = _aeRayEllipsoid(toFixed(oc), toFixed(d));
+    return h ? _aeFixedToGeodetic(h) : null;
+  }
+  var r = AE_TARGETS[body].surface, b = _aeDot(oc, d), c = _aeDot(oc, oc) - r * r, D = b * b - c;
+  if (D < 0) return null;
+  var t = -b - Math.sqrt(D);
+  if (t < 0) return null;
+  var q = _aeNorm(toFixed(_aeAdd(oc, _aeScale(d, t))));
+  return { lat: _aeDeg(Math.asin(_aeClamp(q[2], -1, 1))), lon: _aeDeg(Math.atan2(q[1], q[0])) };
+}
+function _aeRenderPickCard(card) {
+  var pk = _ae.pick, h = _aeStandHeight(pk.body, pk.lat, pk.lon);
+  var t = _aeTerr[pk.body], known = t && t.state === 'ready';
+  card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
+    '<h3>' + _almEsc(_aeFmtLatLon(pk)) + '</h3>' +
+    '<p class="ae-lm-line"><span>' + _almEsc(known ? _aeStHeightText(h) : '') + '</span></p>' +
+    '<p>' + _aeStandButtonHtml() + '</p>';
+  card.hidden = false;
+  _aeById('ae-card-x').onclick = function () { _ae.pick = null; _aeRenderCard(); _aeStandMarkPick(); };
+  _aeStandBindButtons(card, function () { return pk; });
+  _aeStandMarkPick();
+}
+// The ring on the surface where the tap landed, kept there as the view moves.
+function _aeStandMarkPick() {
+  var host = _aeById('ae-labels') || (_ae && _ae.el), dot = _aeById('ae-pick');
+  if (!_ae || !_ae.pick || _ae.stand) { if (dot) dot.hidden = true; return; }
+  if (!dot) {
+    dot = document.createElement('i');
+    dot.className = 'ae-pick'; dot.id = 'ae-pick';
+    host.appendChild(dot);
+  }
+  var pk = _ae.pick, frame = _aeStBodyNow(pk.body), centre = _aeBodyPos(pk.body);
+  if (!frame || !centre) { dot.hidden = true; return; }
+  var n = _aeStToScene(frame, _aeUnitVec(pk.lat, pk.lon)), r = AE_TARGETS[pk.body].surface, p = _aeAdd(centre, _aeScale(n, r));
+  var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z], s = _aeProject(p);
+  if (!s || _aeDot(n, _aeSub(eye, p)) <= 0) { dot.hidden = true; return; }
+  dot.hidden = false;
+  dot.style.transform = 'translate(' + s.x.toFixed(1) + 'px,' + s.y.toFixed(1) + 'px)';
+}
