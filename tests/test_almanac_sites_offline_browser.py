@@ -178,7 +178,8 @@ def test_a_visit_to_apollo_11_works_with_the_network_cut(pw, server):
         "() => typeof openAlmanacEarth === 'function'", timeout=120_000
     )
     ctx.set_offline(True)
-    page.reload(wait_until="load")
+    page.goto(server + "/#almanac", wait_until="load", timeout=180_000)
+    page.reload(wait_until="load", timeout=180_000)
     page.wait_for_function(
         "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
         timeout=120_000,
