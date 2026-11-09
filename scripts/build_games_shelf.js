@@ -170,6 +170,13 @@ Object.assign(TILES, {
   canasta: () => tile(FELT, face(cid('7C'), 66, 34, 66, -12) + face(cid('7D'), 112, 30, 66, -4) + face(cid('7H'), 158, 30, 66, 4) + face(cid('2S'), 204, 34, 66, 12)),
   holdem: () => tile(FELT_DEEP, ['QH', 'JH', 'TH', '2C', '7D'].map((c, k) => face(cid(c), 52 + 44 * k, 24, 40)).join('') + face(cid('AS'), 118, 78, 46, -8) + face(cid('KS'), 160, 78, 46, 8)),
   blackjack: () => tile(FELT, face(cid('AS'), 98, 34, 72, -8) + face(cid('KH'), 150, 30, 72, 8) + pill(124, 142, 72, '21')),
+  gofish: () => tile(FELT, face(cid('7H'), 44, 40, 62, -12) + face(cid('7S'), 92, 34, 62) + face(cid('7D'), 140, 40, 62, 12) +
+    '<g transform="translate(232 98)" fill="#f6f1e4"><ellipse cx="0" cy="0" rx="34" ry="19"/><path d="M28 0L58 -18L58 18Z"/><circle cx="-18" cy="-5" r="3.6" fill="#1a4130"/><path d="M-6 -17Q4 -30 14 -17Z"/></g>'),
+  oldmaid: () => tile(FELT_DEEP, face(cid('7H'), 40, 38, 62, -10) + face(cid('7S'), 88, 32, 62, -2) + face(cid('4D'), 136, 36, 62, 8) +
+    face(cid('QS'), 212, 30, 76, 10) + '<circle cx="262" cy="30" r="14" fill="#d97706"/><text x="262" y="36" font-size="18" font-weight="800" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">1</text>'),
+  ohhell: () => tile(FELT_DEEP, face(cid('JH'), 70, 34, 70, -12) + face(cid('9D'), 125, 30, 70) + face(cid('AC'), 180, 34, 70, 12) + pill(136, 142, 48, '2/2')),
+  cheat: () => tile(FELT_DEEP, back(66, 40, 62, -8) + back(80, 46, 62, 4) + face(cid('7H'), 190, 30, 70, 8) +
+    '<g transform="translate(100 148)"><rect x="-46" y="-15" width="92" height="30" rx="15" fill="#d97706"/><text x="0" y="6" font-size="17" font-weight="800" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">2 × 7</text></g>'),
   teenpatti: () => tile(FELT_DEEP, face(cid('AS'), 76, 36, 70, -12) + face(cid('AD'), 126, 30, 70) + face(cid('AH'), 176, 36, 70, 12))
 });
 

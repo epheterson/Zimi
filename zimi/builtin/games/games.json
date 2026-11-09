@@ -2289,5 +2289,90 @@
   "length": "10 min",
   "kind": "puzzle",
   "computer": false
+ },
+ {
+  "qid": "Q928584",
+  "wiki": "Go Fish",
+  "path": "gofish.html",
+  "title": "Go Fish",
+  "blurb": "Ask for cards and make books of four",
+  "why": "A children's classic: ask, remember who wanted what, and collect sets of four.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q476996",
+  "wiki": "Old maid (card game)",
+  "path": "oldmaid.html",
+  "title": "Old Maid",
+  "blurb": "Make pairs and dodge the odd queen",
+  "why": "Pair off your cards and pass the odd queen on; nobody wants to be left with her.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q62001484",
+  "wiki": "Snap (card game)",
+  "path": "snap.html",
+  "title": "Snap",
+  "blurb": "Spot a matching pair and snap first",
+  "why": "A fast children's card game: two matching cards turn up, and whoever snaps first takes the piles.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q973596",
+  "wiki": "Oh hell",
+  "path": "ohhell.html",
+  "title": "Oh Hell",
+  "blurb": "Bid your tricks, then take exactly that many",
+  "why": "A trick-taking game where taking too many tricks is as bad as too few.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "3 to 4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q1004599",
+  "wiki": "Cheat (game)",
+  "path": "cheat.html",
+  "title": "Cheat",
+  "blurb": "Play cards face down, and lie about them",
+  "why": "Say they are all sevens and nobody can look: unless someone calls you.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
  }
 ]
