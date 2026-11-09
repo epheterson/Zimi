@@ -2289,5 +2289,22 @@
   "length": "10 min",
   "kind": "puzzle",
   "computer": false
+ },
+ {
+  "qid": "Q142714",
+  "wiki": "Card game",
+  "path": "courtier.html",
+  "title": "Courtier",
+  "blurb": "Outwit the court with a single card",
+  "why": "Hold one card, draw one, play one. A small game of hidden cards, deduction and a little nerve.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
  }
 ]

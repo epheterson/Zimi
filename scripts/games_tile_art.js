@@ -446,6 +446,23 @@ ART.memory = () => {
     rect(0, 0, 320, 180, 'url(#bg)') + out;
 };
 
+// Courtier: three of the court's cards in a fan, each with its band, number and drawing (numbers and shapes, no words).
+const COURT_ART = {
+  1: ['#5d8a3c', '<path d="M4 20Q20 6 36 20Q20 34 4 20Z"/><circle cx="20" cy="20" r="5"/>'],
+  5: ['#7a4fb0', '<path d="M20 3L24 16L37 20L24 24L20 37L16 24L3 20L16 16Z"/>'],
+  8: ['#b88a0e', '<path d="M6 31L8 12L15 21L20 8L25 21L32 12L34 31Z"/><path d="M6 35H34"/>']
+};
+const courtCard = (rank) => {
+  const [band, shapes] = COURT_ART[rank];
+  return rr(0, 0, 70, 98, 9, '#fdfcf8', 'stroke="#c9c4b8" stroke-width="1.5"') +
+    path_('M0 9Q0 0 9 0H61Q70 0 70 9V19H0Z', band) + text(11, 15, 14, '#fff', String(rank)) +
+    grp('transform="translate(15 34) scale(1.1)" fill="' + band + '" fill-opacity="0.22" stroke="' + band + '" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"', shapes);
+};
+ART.courtier = () => defs(lin('court', [[0, '#3a2c5c'], [1, '#1d1530']], 0, 0, 0, 1)) +
+  rect(0, 0, 320, 180, 'url(#court)') +
+  ell(160, 160, 120, 10, 'rgba(0,0,0,0.3)') +
+  at(76, 40, -12, courtCard(1)) + at(182, 30, 14, courtCard(8)) + at(126, 34, 0, courtCard(5));
+
 // Every tile shares one page, so each tile's ids get its name in front of them.
 const scoped = (name, svg) => {
   const ids = new Set(); svg.replace(/\bid="([\w-]+)"/g, (m, id) => { ids.add(id); return m; });
