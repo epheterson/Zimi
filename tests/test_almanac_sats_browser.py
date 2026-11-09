@@ -161,8 +161,13 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
                 res({ frame: t / n, copy: (performance.now() - a2) / 20, frames: n }); };
               go(); })"""
         )
-        print("frame ms median: off %.1f, on %.1f; layer hook %.3f ms over %d frames, sample copy %.2f ms" % (base, on, cost["frame"], cost["frames"], cost["copy"]))
-        assert cost["frame"] < MAX_LAYER_FRAME_MS and cost["copy"] < MAX_SAMPLE_COPY_MS, cost
+        print(
+            "frame ms median: off %.1f, on %.1f; layer hook %.3f ms over %d frames, sample copy %.2f ms"
+            % (base, on, cost["frame"], cost["frames"], cost["copy"])
+        )
+        assert (
+            cost["frame"] < MAX_LAYER_FRAME_MS and cost["copy"] < MAX_SAMPLE_COPY_MS
+        ), cost
         # A filter: Starlink alone is most of the sky and less than all of it.
         total = pg.evaluate("_as.shown")
         pg.click("#as-bar [data-v=starlink]")
@@ -197,5 +202,75 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
         )
         assert painted and painted["drawn"] > 0 and painted["awake"], painted
         assert not errors, errors
+    finally:
+        ctx.close()
+
+
+LAYOUTS = [
+    ("portrait-dark", {"width": 390, "height": 844}, "dark"),
+    ("portrait-light", {"width": 390, "height": 844}, "light"),
+    ("landscape-dark", {"width": 844, "height": 390}, "dark"),
+    ("landscape-light", {"width": 844, "height": 390}, "light"),
+]
+
+
+@pytest.mark.parametrize("name,view,scheme", LAYOUTS, ids=[x[0] for x in LAYOUTS])
+def test_the_strip_and_the_sheet_fit_a_phone_either_way_up(
+    browser, served, name, view, scheme
+):
+    """The filter strip stays on screen and above the view chips; the passes sheet fits inside the view."""
+    ctx = browser.new_context(
+        viewport=view,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+        color_scheme=scheme,
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=READY_MS,
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        # The layer was left on: it comes back by itself.
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && _as.state === 'ready' && _as.sampleMs > 0 && !!document.getElementById('as-bar')",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_timeout(1000)
+        _shot(pg, "layout-%s-strip.png" % name)
+        box = pg.evaluate(
+            """() => { var r = id => { var e = document.getElementById(id); if (!e || e.hidden) return null; var b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+              return { bar: r('as-bar'), views: r('ae-views'), w: innerWidth, h: innerHeight }; }"""
+        )
+        assert (
+            box["bar"]
+            and box["bar"]["l"] >= 0
+            and box["bar"]["r"] <= box["w"] + 1
+            and box["bar"]["b"] <= box["h"]
+        ), box
+        if name.startswith("portrait") and box["views"]:
+            assert box["bar"]["b"] <= box["views"]["t"] + 1, box
+        pg.click("#as-passes")
+        pg.wait_for_function("() => _as.passes !== null", timeout=READY_MS, polling=500)
+        pg.wait_for_timeout(500)
+        _shot(pg, "layout-%s-sheet.png" % name)
+        sheet = pg.evaluate(
+            "() => { var b = document.querySelector('.as-sheet').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight }; }"
+        )
+        assert (
+            sheet["l"] >= 0
+            and sheet["r"] <= sheet["w"] + 1
+            and sheet["t"] >= 0
+            and sheet["b"] <= sheet["h"]
+        ), sheet
     finally:
         ctx.close()

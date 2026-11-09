@@ -15,7 +15,7 @@
 // ── The catalogue ──
 var AS_URL = '/almanac-satellites?all=1';
 var AS_REFRESH_URL = '/manage/satellites/refresh';
-var AS_COLS = ['norad', 'name', 'id', 'epoch', 'mm', 'ecc', 'inc', 'raan', 'argp', 'ma', 'bstar', 'owner', 'launch', 'rcs'];
+var AS_COLS = ['norad', 'name', 'epoch', 'mm', 'ecc', 'inc', 'raan', 'argp', 'ma', 'bstar', 'owner', 'launch', 'rcs'];
 var AS_EPOCH_ORIGIN_MS = Date.UTC(2000, 0, 1);       // satcatalog.py EPOCH_ORIGIN: the epoch column counts days from here
 var AS_LAUNCH_ORIGIN_MS = Date.UTC(1957, 0, 1);      // satcatalog.py LAUNCH_ORIGIN
 var AS_MU_KM3_S2 = 398600.4418;                      // Earth's GM: the semi-major axis from the mean motion
@@ -46,13 +46,13 @@ var AS_EARTH_RE_KM = 6371;                            // AE_EARTH_RADIUS_KM, whi
 // ── The passes ──
 var AS_PASS_HOURS = 30, AS_PASS_STEP_S = 60, AS_PASS_REFINE_S = 10, AS_PASS_MIN_EL = AE_SATS_REF.passMinEl, AS_PASS_SUN_ALT = AE_SATS_REF.passSunAlt;
 var AS_PASS_MAG_LIMIT = AE_SATS_REF.passMag, AS_PASS_MAX = 60, AS_PASS_LONE_STARLINKS = 12;
-var AS_PASS_AREA_M2 = { iss: 1600, starlink: 3, oneweb: 2, iridium: 4 };   // used where SATCAT has no radar size
-var AS_PASS_MIN_RCS_M2 = 1;                           // a satellite with a radar size below this is not offered
+var AS_PASS_AREA_M2 = AE_SATS_REF.areaM2;             // used where SATCAT has no radar size
+var AS_PASS_MIN_RCS_M2 = AE_SATS_REF.minRcsM2;        // a satellite with a radar size below this is not offered
 var AS_PASS_LEO_MM = 11;                              // revolutions a day: a pass needs an orbit this low
-var AS_TRAIN_GAP_S = 150, AS_TRAIN_MIN = 3, AS_TRAIN_RAAN_DEG = 3;
+var AS_TRAIN_GAP_S = AE_SATS_REF.trainGapS, AS_TRAIN_MIN = 3, AS_TRAIN_RAAN_DEG = AE_SATS_REF.trainRaanDeg;
 var AS_ISS_NORAD = 25544;
 var AS_PASS_SKY_FRAME_MS = 500;
-var AS_GPS_MIN_EL = 5;
+var AS_GPS_MIN_EL = AE_SATS_REF.gpsMinEl;
 
 var _as = {
   on: false, state: 'idle',              // idle | loading | ready | failed
@@ -77,12 +77,12 @@ function _asDecode(payload) {
     inc: new Float64Array(n), raan: new Float64Array(n), argp: new Float64Array(n), ma: new Float64Array(n), bstar: new Float64Array(n),
     launch: new Int32Array(n), rcs: new Float32Array(n), alt: new Float32Array(n),
     group: new Uint8Array(n), orbit: new Uint8Array(n), owner: new Uint8Array(n),
-    name: new Array(n), id: new Array(n), owners: [], ownerCount: {}
+    name: new Array(n), owners: [], ownerCount: {}
   };
   var ownerIx = {};
   for (var i = 0; i < n; i++) {
     var r = rows[i];
-    d.norad[i] = r[ix.norad]; d.name[i] = r[ix.name]; d.id[i] = r[ix.id]; d.epoch[i] = r[ix.epoch];
+    d.norad[i] = r[ix.norad]; d.name[i] = r[ix.name]; d.epoch[i] = r[ix.epoch];
     d.mm[i] = r[ix.mm]; d.ecc[i] = r[ix.ecc]; d.inc[i] = r[ix.inc]; d.raan[i] = r[ix.raan];
     d.argp[i] = r[ix.argp]; d.ma[i] = r[ix.ma]; d.bstar[i] = r[ix.bstar];
     d.launch[i] = r[ix.launch] == null ? -1 : r[ix.launch];
@@ -107,7 +107,7 @@ function _asAltitudeKm(mm, ecc) {
 }
 function _asOmm(d, i) {
   return {
-    OBJECT_NAME: d.name[i], OBJECT_ID: d.id[i], NORAD_CAT_ID: d.norad[i],
+    OBJECT_NAME: d.name[i], NORAD_CAT_ID: d.norad[i],
     EPOCH: new Date(AS_EPOCH_ORIGIN_MS + d.epoch[i] * MS_PER_DAY).toISOString(),
     MEAN_MOTION: d.mm[i], ECCENTRICITY: d.ecc[i], INCLINATION: d.inc[i], RA_OF_ASC_NODE: d.raan[i],
     ARG_OF_PERICENTER: d.argp[i], MEAN_ANOMALY: d.ma[i], BSTAR: d.bstar[i], MEAN_MOTION_DOT: 0, MEAN_MOTION_DDOT: 0
@@ -596,7 +596,7 @@ var AS_BAR_CSS = [
   '.as-sep{flex:none;width:1px;height:18px;background:var(--border)}',
   '.as-flag{font-size:15px;line-height:1}',
   '.as-failed{opacity:.5}',
-  '.as-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));max-height:42vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.94);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
+  '.as-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));max-height:42vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
   '.as-sheet h3{margin:0 24px 6px 0;font-size:14px;font-weight:600;color:var(--text)}',
   '.as-sheet .as-x{position:absolute;top:6px;right:8px;background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer;line-height:1}',
   '.as-pass{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;width:100%;text-align:start;font:inherit;color:inherit;background:none;border:0;border-top:1px solid var(--border);padding:7px 0;cursor:pointer}',
@@ -730,19 +730,20 @@ function _asTrim(list) {
 }
 var AS_ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 function _asArrow(az) { return AS_ARROWS[Math.round(az / 45) % 8]; }
-function _asTimeText(ms) {
-  try { return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(ms)); } catch (e) { return new Date(ms).toTimeString().slice(0, 5); }
-}
-function _asDayText(ms) {
-  var a = new Date(ms), b = new Date();
-  if (a.toDateString() === b.toDateString()) return '';
-  try { return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(a) + ' '; } catch (e) { return ''; }
+// The zone the Almanac's clock shows (almanac.js _almClockParts): the place's when it is not the device's.
+var AS_TIME_OPTS = { hour: 'numeric', minute: '2-digit' }, AS_DAY_OPTS = { year: 'numeric', month: 'numeric', day: 'numeric' }, AS_WEEKDAY_OPTS = { weekday: 'short' };
+function _asZone(ms) { return _almClockParts(new Date(ms)).tzId; }
+function _asTimeText(ms, tz) { return _tzFmt(tz, AS_TIME_OPTS).format(new Date(ms)); }
+function _asDayText(ms, tz) {
+  var a = new Date(ms);
+  if (_tzFmt(tz, AS_DAY_OPTS).format(a) === _tzFmt(tz, AS_DAY_OPTS).format(new Date())) return '';
+  return _tzFmt(tz, AS_WEEKDAY_OPTS).format(a) + ' ';
 }
 function _asRenderSheet() {
   var el = _as.sheetEl;
   if (!el || el.hidden) return;
-  var d = _as.data, now = Date.now();
-  var html = '<button type="button" class="as-x" id="as-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button><h3>' + _almEsc(_aeT('alm_sats_passes')) + '</h3>';
+  var d = _as.data, now = Date.now(), tz = _asZone(now);
+  var html = '<button type="button" class="as-x" id="as-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button><h3>' + _almEsc(_aeT('alm_sats_passes')) + ' · ' + _almEsc(_formatTimezone(null, tz, new Date(now))) + '</h3>';
   var gps = _asGpsNow();
   html += '<div class="as-gps"><span>' + _almEsc(_aeT('alm_sats_gps_overhead')) + ' · <b>' + gps.length + '</b></span>' +
     '<button type="button" class="ae-btn" id="as-gps-btn" aria-pressed="' + _asGpsOn() + '">' + _almEsc(_aeT('alm_sats_in_sky')) + '</button></div>';
@@ -751,12 +752,13 @@ function _asRenderSheet() {
   else if (!list.length) html += '<p>' + _almEsc(_aeT('alm_sats_no_passes')) + '</p>';
   list.forEach(function (p) {
     var name = p.members.length >= AS_TRAIN_MIN ? _aeT('alm_sats_train', { n: p.members.length }) : d.name[p.i];
-    html += '<button type="button" class="as-pass" data-i="' + p.i + '"><b>' + _almEsc(_asDayText(p.start) + _asTimeText(p.start)) + '</b>' +
+    html += '<button type="button" class="as-pass" data-i="' + p.i + '"><b>' + _almEsc(_asDayText(p.start, tz) + _asTimeText(p.start, tz)) + '</b>' +
       '<span>' + _almEsc(name) + '</span><span>' + _almEsc(_orrNum(p.mag, null, 1)) + '</span>' +
-      '<span></span><span>' + _asArrow(p.azS) + ' → ' + _asArrow(p.azE) + '</span><span>' + _almEsc(_orrNum(p.el, null, 0)) + '°</span></button>';
+      '<span></span><span>' + _asArrow(p.azS) + ' — ' + _asArrow(p.azE) + '</span><span>' + _almEsc(_orrNum(p.el, null, 0)) + '°</span></button>';
   });
   html += '<p class="as-note">' + _almEsc(_aeT('alm_sats_mag_note')) + '</p>';
   el.innerHTML = html;
+  _asPlaceSheet();
   _aeById('as-x').onclick = _asCloseSheet;
   _aeById('as-gps-btn').onclick = function () {
     try { localStorage.setItem(AS_GPS_KEY, _asGpsOn() ? '' : AS_ON); } catch (e) {}
@@ -786,6 +788,15 @@ function _asOpenSheet() {
   _asSelect(-1);
   _asNeedPasses();
   _asRenderSheet();
+}
+// The sheet stands on the strip, and reaches no higher than the top controls (their column is 56 px).
+var AS_SHEET_TOP_CLEAR_PX = 56, AS_SHEET_GAP_PX = 6;
+function _asPlaceSheet() {
+  var el = _as.sheetEl, bar = _as.bar;
+  if (!el || !bar || !el.parentNode) return;
+  var hb = el.parentNode.getBoundingClientRect(), bb = bar.getBoundingClientRect();
+  el.style.bottom = Math.max(8, hb.bottom - bb.top + AS_SHEET_GAP_PX) + 'px';
+  el.style.maxHeight = Math.max(120, bb.top - hb.top - AS_SHEET_TOP_CLEAR_PX) + 'px';
 }
 function _asCloseSheet() {
   _as.sheet = false;

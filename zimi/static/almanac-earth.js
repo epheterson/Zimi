@@ -448,7 +448,11 @@ var AE_SATS_REF = {
   leoMaxKm: 2000, geoMinKm: 35000,      // the orbit classes, by mean altitude
   passMinEl: 10, passSunAlt: -6,        // a pass counts above this elevation (degrees), with the Sun below this (civil twilight)
   passMag: 4.0,                         // and is listed to this estimated magnitude
-  albedo: 0.25, sunMag: -26.74          // the brightness estimate: a diffuse sphere's reflectance, and the Sun's apparent magnitude
+  albedo: 0.25, sunMag: -26.74,         // the brightness estimate: a diffuse sphere's reflectance, and the Sun's apparent magnitude
+  areaM2: { iss: 1600, starlink: 3, oneweb: 2, iridium: 4 },   // the size assumed where SATCAT gives no radar cross-section
+  minRcsM2: 1,                          // a satellite whose radar cross-section is below this is not offered as a pass
+  trainGapS: 150, trainRaanDeg: 3,      // Starlinks this close in time and orbital plane (RAAN) are one train
+  gpsMinEl: 5                           // a GPS satellite is "overhead" above this elevation
 };
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];

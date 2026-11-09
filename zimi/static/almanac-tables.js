@@ -1931,7 +1931,16 @@ var TB_CONST_ROWS = {
       ['sat_pass_sun', AE_SATS_REF.passSunAlt, 0, '°', 'USNO'],
       ['sat_pass_mag', AE_SATS_REF.passMag, 1, '', 'Zimi'],
       ['sat_albedo', AE_SATS_REF.albedo, 2, '', 'Zimi'],
-      ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU']
+      ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU'],
+      ['sat_model', 'm = m☉ − 2.5 log₁₀(a · A · p(φ) / (π d²))', 0, '', 'Russell 1916 (Lambert sphere)'],
+      ['sat_area_iss', AE_SATS_REF.areaM2.iss, 0, 'm²', 'Zimi'],
+      ['sat_area_starlink', AE_SATS_REF.areaM2.starlink, 0, 'm²', 'Zimi'],
+      ['sat_area_oneweb', AE_SATS_REF.areaM2.oneweb, 0, 'm²', 'Zimi'],
+      ['sat_area_iridium', AE_SATS_REF.areaM2.iridium, 0, 'm²', 'Zimi'],
+      ['sat_min_rcs', AE_SATS_REF.minRcsM2, 0, 'm²', 'Zimi'],
+      ['sat_train_gap', AE_SATS_REF.trainGapS, 0, 's', 'Zimi'],
+      ['sat_train_plane', AE_SATS_REF.trainRaanDeg, 0, '°', 'Zimi'],
+      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi']
     ];
   },
   k_physics: function () {
