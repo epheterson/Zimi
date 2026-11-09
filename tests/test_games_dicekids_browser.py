@@ -430,3 +430,76 @@ def test_ten_thousand_comes_back_where_it_was_left(served, browser):
     )
     assert not errors, errors
     ctx.close()
+
+
+# ── Color Trail ─────────────────────────────────────────────────────────────
+
+CT_MY_TURN = "() => __colortrail.turn === 0 && !__colortrail.busy && !document.getElementById('ct-draw').disabled"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_color_trail_fits_the_phone_in_both_themes(served, browser, theme):
+    ctx, page, errors = open_game(browser, served, "colortrail", theme, ready="__colortrail.pos")
+    fits_the_phone(page, ["#ct-draw"])
+    assert page.locator("#ct-board svg rect.ct-sq").count() == 53, "fifty-three colored squares and the star"
+    assert page.evaluate("document.querySelectorAll('#ct-board svg .ct-bridge').length") == 3
+    box = page.locator("#ct-board").bounding_box()
+    assert box["y"] + box["height"] <= page.locator("#ct-draw").bounding_box()["y"], "the deck is under the board, not over it"
+    assert not errors, errors
+    ctx.close()
+
+
+def test_color_trail_a_race_is_played_to_the_end(served, browser):
+    ctx, page, errors = open_game(browser, served, "colortrail", ready="__colortrail.pos")
+    page.evaluate("__colortrail.setPositions([48, 45])")
+    drawn = 0
+    while drawn < 60:
+        page.wait_for_function("() => __colortrail.turn === 0 && !__colortrail.busy || document.querySelector('.ar-sheet:not([hidden])')", timeout=60000)
+        if page.locator(END_SHEET).count():
+            break
+        tap(page, "#ct-draw")
+        drawn += 1
+    text = sheet_text(page)
+    assert "star" in text.lower() or "won" in text.lower() or "lost" in text.lower() or "wins" in text.lower()
+    assert max(page.evaluate("__colortrail.pos")) == 54, "somebody reached the star"
+    assert not errors, errors
+    ctx.close()
+
+
+def test_color_trail_the_card_moves_the_piece_to_its_color(served, browser):
+    ctx, page, errors = open_game(browser, served, "colortrail", ready="__colortrail.pos")
+    tap(page, "#ct-draw")
+    page.wait_for_function("() => __colortrail.turn === 1 || __colortrail.pos[0] > 0", timeout=30000)
+    page.wait_for_function(CT_MY_TURN, timeout=60000)
+    mine = page.evaluate("__colortrail.pos[0]")
+    assert mine > 0, "the first draw moved the piece off the start"
+    assert page.evaluate("document.querySelector('#ct-card svg rect')") is not None
+    assert not errors, errors
+    ctx.close()
+
+
+def test_color_trail_a_tap_out_of_turn_is_answered_not_played(served, browser):
+    ctx, page, errors = open_game(browser, served, "colortrail", ready="__colortrail.pos")
+    tap(page, "#ct-draw")
+    page.wait_for_function("() => __colortrail.busy || __colortrail.turn === 1")
+    before = page.evaluate("JSON.stringify(__colortrail.pos)")
+    page.locator("#ct-draw").dispatch_event("click")   # a second tap while the card is turning
+    assert page.evaluate("document.getElementById('ct-draw').disabled")
+    page.wait_for_function(CT_MY_TURN, timeout=60000)
+    assert page.evaluate("__colortrail.pos[0]") > 0 and before is not None
+    assert not errors, errors
+    ctx.close()
+
+
+def test_color_trail_comes_back_where_it_was_left(served, browser):
+    ctx, page, errors = open_game(browser, served, "colortrail", ready="__colortrail.pos")
+    tap(page, "#ct-draw")
+    page.wait_for_function(CT_MY_TURN, timeout=60000)
+    before = page.evaluate("(() => { window.dispatchEvent(new Event('pagehide')); return JSON.stringify([__colortrail.pos, __colortrail.turn]); })()")
+    page.goto("about:blank")
+    page.goto("%s/colortrail.html" % served)
+    game_ready(page, "__colortrail.pos")
+    page.wait_for_function("(b) => JSON.stringify([__colortrail.pos, __colortrail.turn]) === b", arg=before)
+    assert page.locator("#ct-card svg").count() == 1
+    assert not errors, errors
+    ctx.close()

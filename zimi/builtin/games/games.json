@@ -2340,5 +2340,22 @@
   "length": "20 min",
   "kind": "dice",
   "computer": true
+ },
+ {
+  "qid": "Q1099522",
+  "wiki": "Race game",
+  "path": "colortrail.html",
+  "title": "Color Trail",
+  "blurb": "Draw a card, race along the colors",
+  "why": "A race for small children: a card names a color and the piece moves to the next square of it. Pure luck, so anyone can win.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
  }
 ]

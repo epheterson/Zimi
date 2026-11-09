@@ -242,6 +242,55 @@ const check = (ok, label) => {
   check(JSON.stringify(back.dice) === JSON.stringify(saved.dice) && back.rng() === saved.rng(), 'ten thousand: a saved game comes back with its dice and its generator');
 }
 
+// ── Color Trail ─────────────────────────────────────────────────────────────
+{
+  const C = load(['colortrail.js']).ColorTrailEngine;
+  check(C.LAST === 54 && C.COLS === 6 && C.ROWS === 9 && C.COLORS === 6, 'color trail: a road of 54 squares, six colors');
+  let sideBySide = 0, perColor = [0, 0, 0, 0, 0, 0];
+  for (let n = 1; n < C.LAST; n++) { perColor[C.colorOf(n)]++; if (n > 1 && C.colorOf(n) === C.colorOf(n - 1)) sideBySide++; }
+  check(sideBySide === 0, 'color trail: a color never sits beside itself');
+  check(perColor.every(k => k >= 7), 'color trail: every color comes up at least seven times (' + perColor.join(' ') + ')');
+  check(C.colorOf(0) === -1 && C.colorOf(C.LAST) === -1, 'color trail: the start and the star have no color');
+  check(Object.keys(C.BRIDGES).every(k => C.BRIDGES[k] > +k && C.BRIDGES[k] < C.LAST && !C.BRIDGES[C.BRIDGES[k]]), 'color trail: every bridge goes forward and none leads to another');
+
+  // The road: row 0 runs left to right at the bottom, row 1 right to left.
+  const c1 = C.cellOf(1), c6 = C.cellOf(6), c7 = C.cellOf(7), c12 = C.cellOf(12), last = C.cellOf(C.LAST);
+  check(c1.row === 0 && c1.col === 0 && c6.col === 5 && c7.row === 1 && c7.col === 5 && c12.col === 0 && last.row === 8 && last.col === 5, 'color trail: the road winds up the board');
+  const seen = new Set(); let ok = true;
+  for (let n = 1; n <= C.LAST; n++) { const c = C.cellOf(n); seen.add(c.row + ',' + c.col); if (n > 1) { const p = C.cellOf(n - 1); if (Math.abs(p.row - c.row) + Math.abs(p.col - c.col) !== 1) ok = false; } }
+  check(seen.size === C.LAST && ok, 'color trail: every square is its own place and each is next to the one before');
+
+  // Moves.
+  for (let col = 0; col < 6; col++) {
+    const first = (() => { for (let n = 1; n < C.LAST; n++) if (C.colorOf(n) === col) return n; })();
+    const r = C.move(0, { color: col, count: 1 });
+    if (!(r.landed === first)) { check(false, 'color trail: a card goes to the next square of its color (' + col + ')'); break; }
+  }
+  check(true, 'color trail: a card goes to the next square of its color');
+  const one = C.move(0, { color: 2, count: 1 }), two = C.move(0, { color: 2, count: 2 });
+  check(two.landed > one.landed && C.colorOf(two.landed) === 2 && C.colorOf(one.landed) === 2, 'color trail: a double card goes to the second square of the color');
+  check(C.move(50, { color: 0, count: 2 }).to === C.LAST || C.colorOf(C.move(50, { color: 0, count: 2 }).landed) === 0, 'color trail: near the end a double either lands on the color or reaches the star');
+  check(C.move(C.LAST - 1, { color: 3, count: 1 }).won === true, 'color trail: a color with no square left reaches the star');
+  const foot = +Object.keys(C.BRIDGES)[0], before = (() => { for (let n = foot - 1; n >= 0; n--) if (C.colorOf(n) === C.colorOf(foot) || n === 0) return n; })();
+  const viaBridge = C.move(before, { color: C.colorOf(foot), count: 1 });
+  check(viaBridge.landed === foot && viaBridge.bridge === true && viaBridge.to === C.BRIDGES[foot], 'color trail: landing on a bridge foot carries the token ahead');
+  check(C.move(0, { color: 1, count: 1 }).from === 0, 'color trail: the move reports where it started');
+
+  // The deck: 80 percent single, 20 percent double, every color; a game always ends, and not in a flash.
+  const u = load(['util.js']).ZimiUtil, rng = u.mulberry32(5);
+  let doubles = 0; const colors = new Set(), N = 20000;
+  for (let i = 0; i < N; i++) { const c = C.drawCard(rng); if (c.count === 2) doubles++; colors.add(c.color); if (c.count !== 1 && c.count !== 2) { check(false, 'color trail: a card is single or double'); break; } }
+  check(Math.abs(doubles / N - C.DOUBLE_ODDS) < 0.015 && colors.size === 6, 'color trail: one card in five is double and every color is drawn (' + (doubles / N).toFixed(3) + ')');
+  let longest = 0, shortest = 1e9, total = 0, games = 400;
+  for (let g = 0; g < games; g++) {
+    const r2 = u.mulberry32(300 + g * 17); let pos = 0, turns = 0;
+    while (pos < C.LAST && turns < 500) { pos = C.move(pos, C.drawCard(r2)).to; turns++; }
+    if (pos !== C.LAST) { check(false, 'color trail: every race ends'); break; }
+    longest = Math.max(longest, turns); shortest = Math.min(shortest, turns); total += turns;
+  }
+  check(shortest >= 3 && total / games > 8 && total / games < 20, 'color trail: a race takes about ' + (total / games).toFixed(1) + ' draws (' + shortest + ' to ' + longest + ')');
+}
+
 // END
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('all passed');
