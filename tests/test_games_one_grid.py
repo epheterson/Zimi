@@ -36,6 +36,7 @@ CELL_BOARDS = (
     "draughts.html",
     "fiveletters.html",
     "fleet.html",
+    "fourfold.html",
     "go.html",
     "gomoku.html",
     "hex.html",
@@ -46,9 +47,11 @@ CELL_BOARDS = (
     "minesweeper.html",
     "minicrossword.html",
     "noughts.html",
+    "polyominoes.html",
     "reversi.html",
     "shogi.html",
     "sudoku.html",
+    "walls.html",
     "xiangqi.html",
 )
 
