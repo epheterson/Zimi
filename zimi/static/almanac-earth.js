@@ -1608,20 +1608,26 @@ function _aeSunSpots(ms) {
 // The spots as the shader takes them: unit vectors in the scene's equatorial
 // frame and a radius (radians), leaders and followers, the largest first.
 var _aeSpotPole = null;
-function _aeSpotVectors(ms) {
+// The solar frame in the scene's equatorial coordinates: the pole, the equator's ascending node, and the third axis.
+function _aeSolarFrame() {
   if (!_aeSpotPole) {
     var ra = AE_SUN_POLE_RA_DEG * DEG_TO_RAD, dec = AE_SUN_POLE_DEC_DEG * DEG_TO_RAD;
     var P = [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)];
     var Q = _aeNorm(_aeCross([0, 0, 1], P));                 // the solar equator's ascending node
     _aeSpotPole = { P: P, Q: Q, R: _aeCross(P, Q) };
   }
-  var F = _aeSpotPole, groups = _aeSunSpots(ms), spots = [];
-  function vec(latDeg, lonDeg, rDeg) {
-    var la = latDeg * DEG_TO_RAD, lo = lonDeg * DEG_TO_RAD, cl = Math.cos(la);
-    return [cl * Math.cos(lo) * F.Q[0] + cl * Math.sin(lo) * F.R[0] + Math.sin(la) * F.P[0],
-      cl * Math.cos(lo) * F.Q[1] + cl * Math.sin(lo) * F.R[1] + Math.sin(la) * F.P[1],
-      cl * Math.cos(lo) * F.Q[2] + cl * Math.sin(lo) * F.R[2] + Math.sin(la) * F.P[2], rDeg * DEG_TO_RAD];
-  }
+  return _aeSpotPole;
+}
+// A heliographic place (latitude, longitude from the node, degrees) as a unit vector in that frame, with a radius
+// (degrees) turned to radians as the fourth number.
+function _aeSolarVec(latDeg, lonDeg, rDeg) {
+  var F = _aeSolarFrame(), la = latDeg * DEG_TO_RAD, lo = lonDeg * DEG_TO_RAD, cl = Math.cos(la);
+  return [cl * Math.cos(lo) * F.Q[0] + cl * Math.sin(lo) * F.R[0] + Math.sin(la) * F.P[0],
+    cl * Math.cos(lo) * F.Q[1] + cl * Math.sin(lo) * F.R[1] + Math.sin(la) * F.P[1],
+    cl * Math.cos(lo) * F.Q[2] + cl * Math.sin(lo) * F.R[2] + Math.sin(la) * F.P[2], rDeg * DEG_TO_RAD];
+}
+function _aeSpotVectors(ms) {
+  var groups = _aeSunSpots(ms), spots = [], vec = _aeSolarVec;
   groups.sort(function (a, b) { return b.r - a.r; });
   for (var i = 0; i < groups.length && spots.length < AE_SPOT_MAX; i++) {
     var g = groups[i];
@@ -1651,6 +1657,24 @@ function _aeUpdateSpots(S, ms) {
   for (var i = 0; i < v.length; i++) u.set(v[i], i * 4);
 }
 
+// ── The Sun close up: prominences, flares and a finer surface (almanac-sun.js) ──
+// Loaded the first time the Sun is wide on screen (never with the view's first frame: from the Earth it is a small
+// disc the plain shaders draw); it swaps the Sun's two shaders for fuller ones and feeds them each frame.
+var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
+var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
+function _aeSunFxWanted(S, ms) {
+  if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
+  if (S.sunFxAsked || typeof document === 'undefined') return;
+  var d = _aeLen(_aeSub([S.camera.position.x, S.camera.position.y, S.camera.position.z], [S.sun.position.x, S.sun.position.y, S.sun.position.z]));
+  if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
+  S.sunFxAsked = true;
+  var el = document.createElement('script');
+  el.src = AE_SUNFX_JS;
+  el.onload = function () { if (_ae.gl === S) { _ae.dirty = true; _aeKick(); } };
+  el.onerror = function () { el.remove(); };
+  document.head.appendChild(el);
+}
+
 // The photosphere, as a filtered camera sees it: limb darkening in each
 // colour (the same as the sky's Sun), through a soft exposure, so the centre
 // burns yellow-white and the limb falls to deep orange. Over it the
@@ -1662,6 +1686,7 @@ var AE_SUN_FRAG = [
   'precision highp float;',
   'uniform float fade; uniform float uT;',
   'uniform vec4 uSpots[' + AE_SPOT_MAX + '];',
+  '// @sunfx-uniforms',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_NOISE,
   _aeLimbGlsl(),
@@ -1673,6 +1698,7 @@ var AE_SUN_FRAG = [
   '  float lane = smoothstep(0.0, 0.25, c.y - c.x);',
   '  float cell = lane * (1.2 - 0.9 * c.x) * (0.8 + 0.4 * c.z) - 0.6;',
   '  float fine = clamp(1.6 - 0.9 * length(fwidth(q)), 0.0, 1.0);',
+  '  // @sunfx-cells',
   // The spots: a dark umbra in a grey penumbra, its edge frayed by noise;
   // round them the faculae, bright only toward the limb (as they are seen).
   '  float spot = 1.0, fac = 0.0, quiet = 1.0;',
@@ -1691,6 +1717,7 @@ var AE_SUN_FRAG = [
   '  float gran = 1.0 + ' + AE_GRANULE_CONTRAST.toFixed(2) + ' * fine * sqrt(mu) * cell * (0.3 + 0.7 * quiet);',
   '  gran *= spot * (1.0 + 0.9 * fac * pow(1.0 - mu, 1.5));',
   '  vec3 e = vec3(' + AE_SUN_EXPOSURE.map(_aeGlslNum).join(', ') + ') * aeLimb(mu) * gran;',
+  '  // @sunfx-surface',
   '  gl_FragColor = vec4(1.0 - exp(-e), fade);',
   '}'
 ].join('\n');
@@ -1704,6 +1731,7 @@ var AE_SUN_FRAG = [
 var AE_SUN_GLOW_FRAG = [
   'precision highp float;',
   'uniform vec3 center; uniform float radius; uniform float fade; uniform float uT;',
+  '// @sunfx-uniforms',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_NOISE,
   'void main() {',
@@ -1724,6 +1752,7 @@ var AE_SUN_GLOW_FRAG = [
   '  float h = aeNoise2(dir * 9.0 + vec2(floor(uT * 0.05), 1.3));',
   '  float prom = smoothstep(0.78, 0.92, h) * (1.0 - smoothstep(1.0, 1.0 + 0.05 * h + 1e-4, r)) * smoothstep(1.0, 1.006, r);',
   '  vec3 col = vec3(1.0, 0.72, 0.42) * bloom + vec3(1.0, 0.95, 0.9) * corona + vec3(1.0, 0.38, 0.45) * prom * 0.6;',
+  '  // @sunfx-prominences',
   '  vec3 light = col * fall * fade;',
   AE_GLSL_LIGHT_OUT,
   '}'
@@ -1926,16 +1955,14 @@ function _aeBuildGl(THREE, canvas) {
   var sun = new THREE.Group();
   var sunT = { value: 0 };   // the granulation's time (_aeUpdate)
   var sunSpots = { value: new Float32Array(AE_SPOT_MAX * 4) };   // the spots, four floats each (_aeUpdateSpots)
-  sun.add(new THREE.Mesh(
-    new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
-    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT, uSpots: sunSpots }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
+  var sunMat = new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT, uSpots: sunSpots }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true });
+  sun.add(new THREE.Mesh(new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]), sunMat));
   var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R }, fade: _aeFadeU, uT: sunT };
-  sun.add(new THREE.Mesh(
-    new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
-    _aeAddLight(new THREE.ShaderMaterial({
-      uniforms: sunGlowUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_GLOW_FRAG,
-      side: THREE.BackSide, transparent: true, depthWrite: false
-    }))));
+  var sunGlowMat = _aeAddLight(new THREE.ShaderMaterial({
+    uniforms: sunGlowUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_GLOW_FRAG,
+    side: THREE.BackSide, transparent: true, depthWrite: false
+  }));
+  sun.add(new THREE.Mesh(new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]), sunGlowMat));
   scene.add(sun);
 
   var moonPathCount = Math.round(2 * AE_MOON_PATH_HALF_DAYS * 24 / AE_MOON_PATH_STEP_HOURS) + 1;
@@ -1953,7 +1980,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, starCloud: starCloud, starsLoaded: false, starsLoading: false, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, starCloud: starCloud, starsLoaded: false, starsLoading: false, sun: sun, sunGlowUni: sunGlowUni, sunMat: sunMat, sunGlowMat: sunGlowMat, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(), planets: S0.planets, earthOrbit: S0.earthOrbit, pv: S0.pv,
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -2029,7 +2056,11 @@ var AE_HD_BASE_LEGACY = '/w/zimi_almanac_hd/';
 function _aeHdBase() { return (_ae.hdSt && _ae.hdSt.base) || AE_HD_BASE_LEGACY; }
 var AE_HD_TILE_PX = 512;
 var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
-var AE_HD_GPU_TILES = 120;       // textures kept on the GPU (day ~1.4 MB with mipmaps, night and Moon a quarter), least recently used go first
+// What the tiles may hold on the GPU, in bytes (a tile of 512 px: 1.4 MB with mipmaps, a one-channel one a quarter of
+// that): the least recently drawn go first, any level, once it is over. A phone gets less than a desktop.
+var AE_HD_GPU_MB_PHONE = 96, AE_HD_GPU_MB_DESKTOP = 256;
+var AE_HD_MIP_FACTOR = 4 / 3, AE_HD_RGBA_BYTES = 4;
+var AE_HD_UPLOADS = 2;           // decoded tiles handed to the GPU a frame: a burst of them in one frame is a stall
 var AE_HD_LOADS = 6;             // tiles fetched at once
 var AE_HD_KEEP_LEVEL = 1;        // levels 0 and 1 (10 tiles a layer) stay: there is always something to draw
 var AE_HD_MIN_BODY_PX = 40;      // a body smaller than this (radius, CSS px) keeps its one map and asks for no tile
@@ -2073,7 +2104,7 @@ function _aeHdLoad(S) {
       return b.maps.every(function (m) { return man.layers[m.layer]; });
     });
     if (!bodies.length) return;
-    S.hd = { man: man, bodies: bodies, queue: [], loading: 0, gpu: 0, frame: 0 };
+    S.hd = { man: man, bodies: bodies, queue: [], loading: 0, gpu: 0, frame: 0, fresh: [], budget: _aeHdBudget() };   // gpu: bytes held
     bodies.forEach(function (b) {
       b.max = man.layers[b.maps[0].layer].max;
       b.maps.forEach(function (m) {
@@ -2119,6 +2150,13 @@ function _aeReliefFrag(frag) {
     '  float sun = aeLunarLambert(max(dot(N, L), 0.0), mu, aeLunarL(dot(L, V))) * smoothstep(-' + AE_RELIEF_TWILIGHT + ', ' + AE_RELIEF_TWILIGHT + ', dot(N0, L));');
   return out;
 }
+// A phone-sized device (a touch screen, or little memory) keeps fewer tiles.
+function _aeHdBudget() {
+  var phone = false;
+  try { phone = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (navigator.deviceMemory || 8) <= 4; } catch (e) {}
+  return (phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP) * 1048576;
+}
+function _aeHdTexBytes(tx, red) { return Math.round(AE_HD_TILE_PX * AE_HD_TILE_PX * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR); }
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
 function _aeHdSpan(z) { return 180 / Math.pow(2, z); }
 // A tile's box in the whole map's uv (u from longitude -180, v from latitude -90).
@@ -2241,8 +2279,10 @@ function _aeHdPump(S) {
         if (_ae.gl !== S) { tx.dispose(); return; }
         tx.anisotropy = S.aniso;
         if (q.m.red) tx.format = AE_THREE_RED_FORMAT;   // one channel on the GPU: a quarter of the memory
+        tx.userData = { bytes: _aeHdTexBytes(tx, q.m.red) };
         q.n.tex[q.m.layer] = tx;
-        hd.gpu++;
+        hd.gpu += tx.userData.bytes;
+        hd.fresh.push(tx);
       }, function () { q.n.tex[q.m.layer] = 'failed'; }).then(function () {
         hd.loading--;
         if (_ae.gl !== S) return;
@@ -2329,7 +2369,13 @@ function _aeHdUpdate(S) {
     b.parent.updateMatrixWorld(true);
     // Levels 0 and 1 first, wanted always: the stand-ins for everything else.
     for (var z = 0; z <= AE_HD_KEEP_LEVEL; z++) {
-      for (var y = 0; y < Math.pow(2, z); y++) for (var x = 0; x < Math.pow(2, z + 1); x++) _aeHdWant(S, b, _aeHdNode(b, z, x, y), z - 10);
+      for (var y = 0; y < Math.pow(2, z); y++) {
+        for (var x = 0; x < Math.pow(2, z + 1); x++) {
+          var keep = _aeHdNode(b, z, x, y);
+          _aeHdWant(S, b, keep, z - 10);
+          _aeHdTouch(b, keep, hd.frame);
+        }
+      }
     }
     var draw = {};
     _aeHdSelect(S, b).forEach(function (l) {
@@ -2361,7 +2407,18 @@ function _aeHdUpdate(S) {
     if (_ae.target === b.key && !_ae.fly) _aeHdKeepAbove(S, b);
   });
   _aeHdPump(S);
+  _aeHdUpload(S);
   _aeHdEvict(S);
+}
+// Decoded tiles reach the GPU a few a frame, in the order they came (three would upload each at the first frame that
+// draws it, all together): the pictures are already decoded off the main thread (createImageBitmap).
+function _aeHdUpload(S) {
+  var hd = S.hd, left = AE_HD_UPLOADS;
+  while (left-- > 0 && hd.fresh.length) {
+    var tx = hd.fresh.shift();
+    if (S.renderer.initTexture) S.renderer.initTexture(tx);
+  }
+  if (hd.fresh.length) { _ae.dirty = true; _aeKick(); }
 }
 // ── The planets and their big moons ──
 // Each planet stands in its true direction from the Sun, lit by it, at its true size, but nearer to it, as the Sun is
@@ -2389,7 +2446,7 @@ var AE_RING_SEGMENTS = 160;
 var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide, not exported by name by the tree-shaken build
 // IAU WGCCRE 2015 poles and turning (J2000 equatorial; W0 at J2000 and Wd a day, degrees).
 var AE_PLANETS = [
-  { key: 'mercury', eph: 'Mercury', ccHd: true, km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
+  { key: 'mercury', eph: 'Mercury', km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
   { key: 'venus', eph: 'Venus', ccHd: true, km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
   { key: 'mars', eph: 'Mars', km: 3396.2, flat: 0.00589, map: 'mars', color: [0.77, 0.38, 0.25], atmo: [0.9, 0.55, 0.4], pole: [317.269202, 54.432516, 176.049863, 350.891982443297] },
   { key: 'jupiter', eph: 'Jupiter', ccHd: true, km: 71492, flat: 0.06487, map: 'jupiter', color: [0.77, 0.6, 0.41], pole: [268.056595, 64.495303, 284.95, 870.536] },
@@ -4460,24 +4517,30 @@ function _aeHdNotNow() {
   _aeHdShow(null);
 }
 
-// Over budget: the least recently drawn tiles below level 2 give their GPU memory back (and are fetched again if needed).
+// Over budget: the least recently drawn tiles give their GPU memory back (and are fetched again if needed). What was
+// in sight this frame stays; a body left behind loses even its first two levels, which it asks for again on return.
 function _aeHdEvict(S) {
   var hd = S.hd;
-  if (hd.gpu <= AE_HD_GPU_TILES) return;
+  if (hd.gpu <= hd.budget) return;
   var all = [];
   hd.bodies.forEach(function (b) {
     for (var k in b.nodes) {
       var n = b.nodes[k];
-      if (n.z > AE_HD_KEEP_LEVEL && n.used !== hd.frame && Object.keys(n.tex).some(function (l) { return n.tex[l] && n.tex[l].isTexture; })) all.push(n);
+      if (n.used !== hd.frame && Object.keys(n.tex).some(function (l) { return n.tex[l] && n.tex[l].isTexture; })) all.push(n);
     }
   });
-  all.sort(function (a, b) { return a.used - b.used; });
-  for (var i = 0; i < all.length && hd.gpu > AE_HD_GPU_TILES; i++) {
+  all.sort(function (a, b) { return a.used - b.used || b.z - a.z; });
+  for (var i = 0; i < all.length && hd.gpu > hd.budget; i++) {
     var n = all[i];
     _aeHdFreeMesh(n);
     for (var l in n.tex) {
       // Only what is on the GPU: a tile still on its way keeps its place in the queue.
-      if (n.tex[l] && n.tex[l].isTexture) { n.tex[l].dispose(); hd.gpu--; delete n.tex[l]; }
+      if (n.tex[l] && n.tex[l].isTexture) {
+        hd.gpu -= n.tex[l].userData.bytes;
+        hd.fresh = hd.fresh.filter(function (t) { return t !== n.tex[l]; });
+        n.tex[l].dispose();
+        delete n.tex[l];
+      }
     }
     // A deeper tile's mesh may read this one's night or Moon map: it is built again with what is there.
     hd.bodies.forEach(function (b) {
@@ -5887,6 +5950,7 @@ function _aeUpdate(ms) {
   S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
   S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
   _aeUpdateSpots(S, ms);
+  _aeSunFxWanted(S, ms);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
