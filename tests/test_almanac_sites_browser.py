@@ -344,5 +344,30 @@ def test_the_routes_rover_is_where_its_route_says(page):
     _shot(page, "route")
 
 
+def test_a_probes_sheet_replays_its_flight_from_launch(page):
+    page.evaluate("() => _aeSiteLeave(true)")
+    page.evaluate("() => _aeNow()")
+    page.evaluate("() => _aeTracksLoad()")
+    page.wait_for_function(
+        "() => !!_aeBodyPos('voyager1')", timeout=120_000, polling=250
+    )
+    page.evaluate("() => _aePreset('voyager1')")
+    page.wait_for_function("() => !_ae.fly", timeout=120_000, polling=250)
+    page.evaluate("() => document.getElementById('ae-info-btn').click()")
+    page.wait_for_function(
+        "() => !!document.querySelector('[data-ae-replay]')",
+        timeout=60_000,
+        polling=250,
+    )
+    page.evaluate("() => document.querySelector('[data-ae-replay]').click()")
+    assert page.evaluate("() => _ae.preset") == "planets"
+    launch = page.evaluate("() => _aeLaunchMs('voyager1')")
+    assert (
+        abs(page.evaluate("() => _aeDisplayMs()") - launch) < 3 * 86400 * 1000
+    ), "the clock is at the launch"
+    assert page.evaluate("() => _almRate") == pytest.approx(365.25 * 86400 / 12)
+    page.evaluate("() => _aeNow()")
+
+
 def test_no_script_error_came_up(page):
     assert page.errors == []

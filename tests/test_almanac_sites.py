@@ -192,3 +192,20 @@ def test_every_body_a_site_is_on_has_ground_in_the_code(sites):
         src = fh.read()
     for body in {s["body"] for s in sites["sites"]}:
         assert re.search(r"^\s+%s: \{ albedo" % body, src, re.M), body
+
+
+def _jd(y, m, d):
+    return (datetime.date(y, m, d) - datetime.date(1858, 11, 17)).days + 2400000.5
+
+
+def test_the_voyagers_real_paths_start_at_their_launches_and_run_to_today():
+    """The replay from launch (almanac-earth.js _aeReplayFrom) plays JPL Horizons tables that begin on the launch day."""
+    with open(os.path.join(EARTH, "space-tracks-v1.json"), encoding="utf-8") as fh:
+        tracks = json.load(fh)["tracks"]
+    for key, launch in (("voyager1", (1977, 9, 5)), ("voyager2", (1977, 8, 20))):
+        t = tracks[key]
+        ev = [e for e in t["events"] if e[1] == "launch"][0]
+        assert abs(ev[0] - _jd(*launch)) <= 1, key
+        assert abs(t["jd0"] - ev[0]) <= 16, "%s: the table begins at the launch" % key
+        assert t["jd1"] > _jd(2026, 11, 1), "%s: and runs past today" % key
+        assert any(e[1] == "flyby" and e[2] == "Jupiter" for e in t["events"]), key

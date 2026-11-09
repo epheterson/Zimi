@@ -3876,6 +3876,26 @@ function _aeProbeRows(k, jd, earthH, add, esc, line, far, fromEarth) {
   }
 }
 
+// A probe's flight from its launch, played: the clock goes to its launch day and runs a year in AE_REPLAY_YEAR_S seconds, the
+// view stands over the whole system (the planets as they were and the probe on its real path, tables from JPL Horizons).
+var AE_REPLAY_YEAR_S = 12;
+function _aeLaunchMs(k) {
+  var t = _aeTracks && _aeTracks.tracks[k], ev = t && (t.events || []).filter(function (e) { return e[1] === 'launch'; })[0];
+  return ev ? (ev[0] + 0.5 - JD_UNIX_EPOCH) * MS_PER_DAY : null;
+}
+function _aeReplayLink(k) {
+  if (!_aeIsProbe(k) || _aeLaunchMs(k) === null) return '';
+  return '<p class="ae-info-read"><a href="#" data-ae-replay>' + _almEsc(_aeT('alm_probe_replay')) + '</a></p>';
+}
+function _aeReplayFrom(k) {
+  var ms = _aeLaunchMs(k);
+  if (ms === null) return;
+  _aeCloseInfo(true);
+  _aeGoTo(ms);
+  if (typeof _almClockSetRate === 'function') _almClockSetRate(AE_MS_PER_YEAR / 1000 / AE_REPLAY_YEAR_S);
+  _aePreset('planets');
+}
+
 // The sheet itself. It follows the place whose card is up (another body tapped or flown to takes it there; the card's × or
 // leaving for the satellites takes it away) and keeps its "now" rows up with the clock.
 function _aeInfoHtml(k, rows) {
@@ -3887,7 +3907,7 @@ function _aeInfoHtml(k, rows) {
   }).join('');
   return '<button type="button" class="ae-card-x" id="ae-info-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<div class="ae-info-grab" aria-hidden="true"></div><div class="ae-info-body"><h2 id="ae-info-title">' + _aeLink(_aeArrivalKey(k), name) + '</h2>' +
-    p('ae-info-blurb', blurb) + (_aeIsProbe(k) ? p('ae-info-now', a.fact) : '') + p('ae-info-now ae-card-note', a.note) + links + '<dl class="ae-info-dl">' +
+    p('ae-info-blurb', blurb) + (_aeIsProbe(k) ? p('ae-info-now', a.fact) : '') + p('ae-info-now ae-card-note', a.note) + links + _aeReplayLink(k) + '<dl class="ae-info-dl">' +
     rows.map(function (r) {
       return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
     }).join('') + '</dl>' +
@@ -3904,6 +3924,8 @@ function _aeRenderInfo() {
   _ae.infoAt = ms;
   _aeById('ae-info-x').onclick = function () { _aeCloseInfo(true); };
   var a = _aeArrival(k, ms);
+  var replay = el.querySelector('[data-ae-replay]');
+  if (replay) replay.onclick = function (e) { e.preventDefault(); _aeReplayFrom(k); };
   Array.prototype.forEach.call(el.querySelectorAll('[data-ae-open]'), function (x) {
     var l = a.links[+x.getAttribute('data-ae-open')];
     x.onclick = function (e) { e.preventDefault(); _aeClose(); window[l.open](); };
