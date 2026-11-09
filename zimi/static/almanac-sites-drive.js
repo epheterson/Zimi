@@ -7,7 +7,10 @@
 var AS_ROVER_START = { x: 12, y: -11, hdg: 0 };            // beside the lander, the open ground ahead
 var AS_DRIVE_DEAD = 0.08;
 var AS_TURN_RATE = 1.5;                                    // rad/s at the stick's end
-var AS_ACCEL = 3.2;                                        // m/s^2
+var AS_ACCEL = 5;                                          // m/s^2: full speed in under a second, so a touch is answered at once
+var AS_BOUNCE_MIN_MS = 1.2, AS_BOUNCE_KEEP = 0.3;          // a landing harder than this (m/s) rebounds with this share of its speed
+var AS_SPEED_SHOW_MS = 120;                                // the speed readout's refresh
+var AS_KMH_PER_MS = 3.6, AS_MPH_PER_MS = 2.23694;
 var AS_JUMP_COOLDOWN_MS = 250;
 var AS_TRACK_MAX = 1400, AS_TRACK_STEP_M = 0.45;
 var AS_DUST_MAX = 160;
@@ -32,7 +35,7 @@ var AS_DUST_FRAG = [
   '  vec2 q = gl_PointCoord - 0.5; float r = dot(q, q) * 4.0;',
   '  if (r > 1.0) discard;',
   '  vec3 col = albedo * (lit + ambient);',
-  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * vLife * (1.0 - r) * 0.4);',
+  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * vLife * (1.0 - r) * 0.6);',
   '}'
 ].join('\n');
 
@@ -72,13 +75,27 @@ function _asRoverStep(st, dt) {
   st.input.jump = false;
   if (r.airborne) {
     r.vz -= g * dt; r.z += r.vz * dt;
-    if (r.z <= gnd.mean) { r.z = gnd.mean; if (r.vz < -1) _asDustBurst(st, 14, Math.min(1.5, -r.vz * 0.3)); r.vz = 0; r.airborne = false; }
+    if (r.z <= gnd.mean) {
+      var hit = -r.vz;
+      r.z = gnd.mean;
+      if (hit > AS_BOUNCE_MIN_MS) { _asDustBurst(st, 14, Math.min(1.5, hit * 0.3)); r.vz = hit * AS_BOUNCE_KEEP; }   // it bounces, lower each time
+      else { r.vz = 0; r.airborne = false; }
+    }
   } else r.z += (gnd.mean - r.z) * (1 - Math.exp(-14 * dt));
   r.spin += r.v * dt / r.rm.radius;
   r.mean = gnd.mean; r.wheelGround = gnd.hs;
   _asRoverPlace(st, r, r.x, r.y, r.hdg, r.z, r.pitch, r.roll, r.spin, gnd, r.airborne);
   _asTrackStep(st);
   _asDustStep(st, dt);
+  _asSpeedShow(st);
+}
+// The speed, as a number and its unit, in the corner of the picture.
+function _asSpeedShow(st) {
+  var el = _aeById('as-speed'), now = performance.now();
+  if (!el || now - (st.speedAt || 0) < AS_SPEED_SHOW_MS) return;
+  st.speedAt = now;
+  var mi = _aeImperial(), v = Math.abs(st.rover.v);
+  el.textContent = _orrNum(v * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1);
 }
 // Tracks: a dark mark every AS_TRACK_STEP_M under the wheels on each side, the oldest forgotten past AS_TRACK_MAX.
 function _asTrackInit(st) {
@@ -135,7 +152,7 @@ function _asDustBurst(st, n, power) {
     var i = D.next++ % AS_DUST_MAX, side = k % 2 ? 1 : -1, wid = 0.9 * side, back = -1.0 + Math.random() * 0.4;
     D.pos[i * 3] = r.x + wid * c - back * s; D.pos[i * 3 + 1] = r.y + wid * s + back * c; D.pos[i * 3 + 2] = r.mean + 0.2;
     D.vel[i * 3] = (Math.random() - 0.5) * power - s * (-r.v) * 0.25; D.vel[i * 3 + 1] = (Math.random() - 0.5) * power + c * (-r.v) * 0.25; D.vel[i * 3 + 2] = (0.4 + Math.random()) * power;
-    D.size[i] = 0.09 + Math.random() * 0.16; D.life[i] = 1;
+    D.size[i] = 0.14 + Math.random() * 0.24; D.life[i] = 1;
   }
 }
 function _asDustStep(st, dt) {
