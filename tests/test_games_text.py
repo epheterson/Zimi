@@ -15,7 +15,7 @@ GAMES = os.path.join(ROOT, "zimi", "builtin", "games")
 # Files that draw strings through T(): the shared ones.
 SHARED = ["shell.js", "cards.js", "cardtable.js", "shelf.js", "recent.js", "boardkit.js", "gamepad.js"]
 # Games that draw their strings through TX() (add a game here when its sweep is done).
-CONVERTED = ["spades.js", "euchre.js", "belote.js", "durak.js", "scopa.js", "koikoi.js", "cribbage.js", "gin.js", "crazyeights.js", "skat.js", "truco.js", "bridge.js", "canasta.js", "climbing.js", "bigtwo.js", "tienlen.js", "holdem.js", "blackjack.js", "teenpatti.js", "hearts.js", "handoff.js", "solitaire.js", "freecell.js", "spider.js", "pyramid.js", "golf.js", "tripeaks.js"]
+CONVERTED = ["spades.js", "euchre.js", "belote.js", "durak.js", "scopa.js", "koikoi.js", "cribbage.js", "gin.js", "crazyeights.js", "skat.js", "truco.js", "bridge.js", "canasta.js", "climbing.js", "bigtwo.js", "tienlen.js", "holdem.js", "blackjack.js", "teenpatti.js", "hearts.js", "handoff.js", "solitaire.js", "freecell.js", "spider.js", "pyramid.js", "golf.js", "tripeaks.js", "gofish.js", "oldmaid.js", "snap.js", "ohhell.js", "cheat.js"]
 _KEY = re.compile(r"""\bTX?\(\s*['"]([a-z][A-Za-z0-9_.]*)['"]""")
 # The arcade, kids, puzzle and word pages: their .js and .html (data-t, data-t-aria and data-t-title carry ids too).
 PAGES = ["snake", "bricks", "pinball", "rocks", "lastline", "lander", "paddles", "circuit", "roadrush", "hopper", "muncher",
