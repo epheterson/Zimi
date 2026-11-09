@@ -43,6 +43,11 @@ var AlmanacMaps = (function () {
   };
   var PLACE_ORDER = ['country', 'state', 'city', 'town', 'island', 'village', 'suburb', 'hamlet', 'neighbourhood'];
 
+  var MAX_ANISOTROPY = 4;
+  // The canvas as it is, straight onto the globe: the page's colours are the screen's, so no colour-space step.
+  var PATCH_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+  var PATCH_FRAG = 'uniform sampler2D map; uniform float opacity; varying vec2 vUv; void main() { vec4 c = texture2D(map, vUv); gl_FragColor = vec4(c.rgb, c.a * opacity); }';
+
   var CSS =
     '.ae-maps-chip{display:flex;justify-content:center;align-items:center;gap:6px;pointer-events:none;min-height:0}' +
     '.ae-maps-chip[hidden]{display:none}' +
@@ -53,7 +58,7 @@ var AlmanacMaps = (function () {
     '.ae-maps-x{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:14px;background:rgba(10,14,24,.78);color:var(--text3);cursor:pointer;font-size:16px;line-height:1}' +
     '.ae-maps-credit{font-size:10px;color:var(--text3);text-shadow:0 0 3px rgba(0,0,0,.9)}';
 
-  var S = null, THREE = null, group = null;
+  var S = null, THREE = null, group = null, TexClass = null;
   var tiles = {};                     // key -> { key, z, x, y, mesh, mat, tex, state: 'new'|'loading'|'ready'|'empty', used }
   var loads = 0, queue = [], drawQueue = [];
   var worker = null, workerSeq = 0, workerWait = {};
@@ -202,7 +207,7 @@ var AlmanacMaps = (function () {
             if (c === undefined || F.type !== 2 || F.tags.brunnel === 'tunnel') return;
             paths(F.geom, L.extent).forEach(function (p) { if (p.length >= 4) roads.push([c, p]); });
           } else if (F.type === 1) {
-            var name = F.tags['name:' + lang] || F.tags.name_en || F.tags['name:en'] || F.tags.name, pt = paths(F.geom, L.extent)[0];
+            var name = F.tags['name:' + lang] || F.tags.name_en || F.tags['name:en'] || F.tags.name || F.tags['name:latin'] || F.tags.name_int, pt = paths(F.geom, L.extent)[0];
             if (name && pt) places.push([name, F.tags['class'] || '', typeof F.tags.rank === 'number' ? F.tags.rank : 99, pt[0], pt[1]]);
           }
         });
@@ -311,6 +316,7 @@ var AlmanacMaps = (function () {
       ctx.font = labelFont(st);
       var w = ctx.measureText(p[0]).width, h = st.px, x = p[3] * S2, y = p[4] * S2, tx = dot ? x + 8 : x - w / 2;
       tx = clamp(tx, margin, S2 - margin - w);
+      y = clamp(y, h / 2 + margin, S2 - h / 2 - margin);   // a name whole inside its tile: a point sits in one tile only
       var box = [tx - margin, y - h / 2 - margin, tx + w + margin, y + h / 2 + margin];
       if (boxes.some(function (b) { return box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]; })) return;
       boxes.push(box);
@@ -324,12 +330,13 @@ var AlmanacMaps = (function () {
       ctx.fillStyle = LABEL_FILL;
       ctx.fillText(p[0], tx, y);
     });
-    var tex = new THREE.CanvasTexture(cv);
-    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    if (!TexClass) TexClass = _aeTextureClass(THREE);
+    var tex = new TexClass(cv);   // the build exports no CanvasTexture, Texture or MeshBasicMaterial
+    tex.needsUpdate = true;
+    tex.anisotropy = MAX_ANISOTROPY;
     t.tex = tex;
-    t.mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, opacity: Math.max(0, opacity),
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    t.mat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex }, opacity: { value: Math.max(0, opacity) } }, vertexShader: PATCH_VERT, fragmentShader: PATCH_FRAG,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     t.mesh = new THREE.Mesh(geometry(t.z, t.x, t.y), t.mat);
     t.mesh.renderOrder = 5;
     t.mesh.visible = false;
@@ -445,7 +452,7 @@ var AlmanacMaps = (function () {
     if (Math.abs(o - opacity) < 0.004) return;
     opacity = o;
     group.visible = o > 0;
-    for (var k in tiles) if (tiles[k].mat) tiles[k].mat.opacity = o;
+    for (var k in tiles) if (tiles[k].mat) tiles[k].mat.uniforms.opacity.value = o;
   }
   function frame(Sx) {
     S = Sx;

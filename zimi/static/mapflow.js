@@ -137,6 +137,7 @@ var ZimiMapHere = (function () {
 
   // A map button's html (an icon alone), hidden until a spot is known to have something behind it: bind() shows it.
   function buttonHtml(cls) {
+    ensureStyle();
     return '<button type="button" class="mh-btn' + (cls ? ' ' + cls : '') + '" data-mh hidden aria-label="' + esc(tr('map_here')) + '" title="' + esc(tr('map_here')) + '">' + MAP_SVG + '</button>';
   }
   // Wire a button to a spot ({ lat, lng, label } or a function giving it): shown once the spot has a map to open or offer.
