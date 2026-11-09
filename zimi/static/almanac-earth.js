@@ -2749,6 +2749,7 @@ function _aeUpdatePlanets(sc) {
       f = _aePlanetFrameEcl(b, jd);
     } else {
       var par = S.planets[b.parent], pb = par.b, o = b.orbit;
+      if (!par.pos) { p.pos = null; p.mesh.visible = false; return; }   // its planet is a dwarf whose table has not come (Pluto, for Charon)
       var pole = _aePlanetFrameEcl(pb, jd).z, ax = _aeNorm(_aeCross([0, 0, 1], pole)), ay = _aeCross(pole, ax);
       var lam = _aeRad(o[1] + o[2] * (jd - JD_J2000)), r = o[0] / AE_EARTH_RADIUS_KM;
       var off = _aeAdd(_aeScale(ax, Math.cos(lam)), _aeScale(ay, Math.sin(lam)));

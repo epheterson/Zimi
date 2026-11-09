@@ -168,7 +168,7 @@ LAYERS = {
 # (row, column) order; for a file, of the file.
 PINS = {
     "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
-    "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
+    "earth/night": "08afd4244300ef272b5f93b4bc04a41a41d83159f5919df0c2fd762ed4763eb0",
     "moon/albedo": "87159ead1888ae31bb647e957ec60943022b707ec804cb5353a304575936fd55",
     "planets/mercury": "d4c0880c39d062994a6f02c0462ec6c87f60fdcc504546915e076e2cd472b1da",
     "planets/io": "135f88cb645bfdb4e045b380971ab2ba14e230590c96c9c86cfe7310fda881ac",
