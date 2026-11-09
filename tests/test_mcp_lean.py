@@ -50,6 +50,7 @@ FULL_TOOL_NAMES = [
     "search",
     "read",
     "get_chunks",
+    "list_entries",
     "suggest",
     "list_sources",
     "random",

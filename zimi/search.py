@@ -1509,30 +1509,24 @@ def _clean_stale_title_indexes():
 
 def extract_pdf_text(pdf_bytes, max_length=None):
     """Extract text from a PDF byte stream using PyMuPDF."""
+    from zimi import docindex
+
     if max_length is None:
         max_length = _srv.MAX_CONTENT_LENGTH
     if not _srv.HAS_PYMUPDF:
         return "[PDF content — install PyMuPDF to extract text]"
     try:
-        # The current module name; `fitz` warns to stdout on import and is
-        # going away. See the import guard in server.py.
-        try:
-            import pymupdf as fitz
-        except ImportError:
-            import fitz
-
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text = ""
-        for page in doc:
-            text += page.get_text()
-            if len(text) >= max_length:
-                break
-        doc.close()
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:max_length]
+        return docindex.pdf_scan(pdf_bytes, max_chars=max_length)[0]
     except Exception as e:
         log.warning("PDF extraction failed: %s", e)
         return "[PDF content could not be extracted]"
+
+
+def list_entries(*args, **kwargs):
+    """A ZIM's entries by MIME type or path prefix, paged (zimi.docindex)."""
+    from zimi import docindex
+
+    return docindex.list_entries(*args, **kwargs)
 
 
 def parse_catalog(archive):
@@ -3261,6 +3255,19 @@ def near_places(parsed, at=None):
     }
 
 
+def _with_documents(name, text, limit, results, body):
+    """``results`` with the documents of ``name`` that match ``text`` first
+    (docindex.search), when it is a collection with its document index read:
+    for any other ZIM the answer is ``results`` after a dict lookup."""
+    from zimi import docindex
+
+    docs = docindex.search(name, text, limit=limit, body=body)
+    if not docs:
+        return results
+    have = {d["path"] for d in docs}
+    return docs + [r for r in (results or []) if r.get("path") not in have][:limit]
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -3382,14 +3389,15 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
         def _quick(name, text, lim):
             # Try SQLite title index first (instant, <10ms)
             idx_results = _title_index_search(name, text, limit=lim)
-            if idx_results is not None:
-                return idx_results
-            # Fallback: SuggestionSearcher (slow for large ZIMs on spinning disk)
-            archive, lock = _get_suggest_archive(name)
-            if archive is None or lock is None:
-                return None
-            with lock:
-                return suggest_search_zim(archive, text, limit=lim)
+            if idx_results is None:
+                # Fallback: SuggestionSearcher (slow for large ZIMs on spinning disk)
+                archive, lock = _get_suggest_archive(name)
+                if archive is None or lock is None:
+                    return None
+                with lock:
+                    idx_results = suggest_search_zim(archive, text, limit=lim)
+            # A document collection's titles live in its listing (#142).
+            return _with_documents(name, text, lim, idx_results, body=False)
 
         def _search_one_zim(name):
             try:
@@ -3405,7 +3413,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
                 results = _quick(name, query_str, limit)
                 if results is None:
                     return
-                _suggest_cache_put(q_lower, name, results)
+                from zimi import docindex
+
+                if docindex.settled(name):  # not an answer short of its documents
+                    _suggest_cache_put(q_lower, name, results)
                 thread_results[name] = results
             except Exception as e:
                 log.debug(
@@ -3475,7 +3486,8 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
                 results = exact + [
                     r for r in (results or []) if r.get("path") not in have
                 ]
-            return results
+            # A document collection's PDFs, by their titles and their text.
+            return _with_documents(name, text, lim, results, body=True)
 
         def _fts_one_zim(name):
             try:
@@ -4670,6 +4682,10 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         from zimi import books
 
         books.build_sources(zim_name, zim_path)
+    elif kind == "docs":
+        from zimi import docindex
+
+        docindex.build_docs(zim_name, zim_path)
     elif kind == "mapplaces":
         from zimi import mapplaces
 

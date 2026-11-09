@@ -357,6 +357,59 @@ def build_openapi():
                 },
             }
         },
+        "/entries": {
+            "get": {
+                "summary": "A source's entries, by MIME type or path prefix, paged",
+                "description": (
+                    "Lists a ZIM's entries (redirects left out) in path order, "
+                    "independent of how well it is indexed: "
+                    "`mime=application/pdf` finds a document collection's PDFs. "
+                    "`mime` ending in `/` matches a family (`video/`). A call "
+                    "looks at a bounded number of entries; `next` is the "
+                    "`cursor` for the following page and null at the end."
+                ),
+                "operationId": "entries",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("mime", {"type": "string"}),
+                    _param("prefix", {"type": "string"}, description="Path prefix"),
+                    _param(
+                        "limit",
+                        {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+                    ),
+                    _param("cursor", {"type": "string"}, description="`next` of the previous page"),
+                ],
+                "responses": {
+                    **_json_response(
+                        "200",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "zim": {"type": "string"},
+                                "count": {"type": "integer"},
+                                "next": {"type": ["string", "null"]},
+                                "entries": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "path": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "mime": {"type": "string"},
+                                            "size": {"type": "integer"},
+                                        },
+                                        "required": ["path", "title", "mime", "size"],
+                                    },
+                                },
+                            },
+                            "required": ["zim", "count", "next", "entries"],
+                        },
+                    ),
+                    **_json_response("400", error),
+                    **_json_response("404", error),
+                },
+            }
+        },
         "/bestanswer": {
             "get": {
                 "summary": "The sentence in the library that answers a question, quoted",
