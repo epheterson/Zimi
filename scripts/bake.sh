@@ -11,6 +11,7 @@ cd "$(dirname "$0")/.."
 BASE=${BAKE_BASE:-origin/v1.16}
 BAKE=${BAKE_BRANCH:-bake/1.16}
 BUILT='^zimi/builtin/[^/]+\.(zim|source)$'
+export ZIMI_COMMIT_OWN_ZIMS=1  # the bake commits the ZIMs it builds; topic branches may not
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit or stash first" >&2; exit 1; }
 git fetch -q --prune origin
