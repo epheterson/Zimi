@@ -616,5 +616,5 @@
       return true;
     }
   });
-  root.__courtier = { get g() { return g; } };
+  root.__courtier = { get g() { return g; }, refresh: paint };
 })(this);
