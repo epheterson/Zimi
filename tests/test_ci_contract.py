@@ -122,6 +122,21 @@ def test_the_browser_shards_add_up_to_the_whole():
     assert set(placed.values()) == set(range(1, count + 1)), "a shard would run nothing"
 
 
+def test_the_shards_are_dealt_by_measured_seconds_and_unmeasured_modules_by_size():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("zimi_tests_conftest2", ROOT / "tests" / "conftest.py")
+    conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conftest)
+    sizes = {"a.py": 1000, "b.py": 1000, "c.py": 1000, "new.py": 2000}
+    w = conftest.weigh(sizes, {"a.py": 100.0, "b.py": 10.0, "c.py": 10.0})
+    assert w["a.py"] == 100.0 and w["b.py"] == 10.0
+    assert w["new.py"] == 2000 * 0.01, "an unmeasured module weighs its size at the median measured rate"
+    assert conftest.weigh(sizes, {}) == sizes
+    placed = conftest.shard_of(w, 2)
+    assert placed["a.py"] != placed["b.py"] and placed["a.py"] != placed["c.py"], placed   # the 100 s module stands alone
+
+
 def test_deploy_does_not_hide_a_failed_build():
     """`ssh nas "...build" | tail -3` reports tail's exit status. Every
     "deploy=0" for a week meant only that tail ran."""
