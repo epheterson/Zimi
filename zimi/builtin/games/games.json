@@ -2306,5 +2306,22 @@
   "length": "10 min",
   "kind": "cards",
   "computer": true
+ },
+ {
+  "qid": "Q85801811",
+  "wiki": "Social deduction game",
+  "path": "oddone.html",
+  "title": "Odd One Out",
+  "blurb": "Spot who has not seen the picture",
+  "why": "Everyone sees the same picture except one person. Say a word about it, then find the odd one out.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "3 to 8",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": false
  }
 ]

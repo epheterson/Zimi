@@ -463,6 +463,16 @@ ART.courtier = () => defs(lin('court', [[0, '#3a2c5c'], [1, '#1d1530']], 0, 0, 0
   ell(160, 160, 120, 10, 'rgba(0,0,0,0.3)') +
   at(76, 40, -12, courtCard(1)) + at(182, 30, 14, courtCard(8)) + at(126, 34, 0, courtCard(5));
 
+// Odd One Out: five players' discs, four showing the same picture (a star) and one a question mark.
+ART.oddone = () => defs(lin('oddbg', [[0, '#2c3a5a'], [1, '#161c2c']], 0, 0, 0, 1), lin('odddisc', [[0, '#fffdf6'], [1, '#e2dcc8']])) +
+  rect(0, 0, 320, 180, 'url(#oddbg)') +
+  [0, 1, 2, 3, 4].map((i) => {
+    const x = 40 + i * 60, y = 96 + (i === 2 ? -4 : 0), odd = i === 2;
+    return ell(x, y + 34, 24, 5, 'rgba(0,0,0,0.3)') + circ(x, y, 26, 'url(#odddisc)', 'stroke="' + (odd ? AMBER : '#8c826f') + '" stroke-width="' + (odd ? 3.5 : 2) + '"') +
+      (odd ? text(x, y + 15, 42, AMBER, '?') :
+        path_('M' + n1(x) + ' ' + n1(y - 17) + 'L' + n1(x + 5) + ' ' + n1(y - 5) + 'L' + n1(x + 17) + ' ' + n1(y - 4) + 'L' + n1(x + 8) + ' ' + n1(y + 4) + 'L' + n1(x + 11) + ' ' + n1(y + 16) + 'L' + n1(x) + ' ' + n1(y + 9) + 'L' + n1(x - 11) + ' ' + n1(y + 16) + 'L' + n1(x - 8) + ' ' + n1(y + 4) + 'L' + n1(x - 17) + ' ' + n1(y - 4) + 'L' + n1(x - 5) + ' ' + n1(y - 5) + 'Z', '#f2a516', 'stroke="#2b3340" stroke-width="1.6" stroke-linejoin="round"'));
+  }).join('');
+
 // Every tile shares one page, so each tile's ids get its name in front of them.
 const scoped = (name, svg) => {
   const ids = new Set(); svg.replace(/\bid="([\w-]+)"/g, (m, id) => { ids.add(id); return m; });
