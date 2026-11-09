@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "Automaticamente",
   "addon_mode_never": "Nunca",
   "addon_remove": "Remover",
-  "addon_needs": "Precisa de {name}"
+  "addon_needs": "Precisa de {name}",
+  "map_here": "Mapa daqui",
+  "map_none_here": "Nenhum mapa daqui para abrir ou baixar",
+  "tb_kn_maps_fade": "Esmaecimento do mapa, altitude",
+  "tb_kn_maps_min": "Aproximação mínima sobre um mapa",
+  "tb_kn_maps_tile": "Largura de um bloco do mapa na tela",
+  "tb_kn_maps_data": "Ruas e nomes sobre a Terra"
 }

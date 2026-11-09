@@ -241,3 +241,10 @@ almanac-sun.js
   the Sun's own rules (like the sunspots) and labelled illustrative in the view.
   Rotation: IAU WGCCRE 2015 (Carrington rate), differential rotation from
   Snodgrass and Ulrich 1990.
+  - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
+    8k maps, CC BY 4.0, credited on the view while drawn.
+
+Map overlay on the 3D Earth (almanac-maps.js)
+  - Roads and place names read at run time from the installed Kiwix/StreetZim
+    map ZIM's vector tiles (OpenMapTiles schema). Map data (c) OpenStreetMap
+    contributors, ODbL; credited on the view while drawn. Nothing is shipped.

@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "Automatically",
   "addon_mode_never": "Never",
   "addon_remove": "Remove",
-  "addon_needs": "Needs {name}"
+  "addon_needs": "Needs {name}",
+  "map_here": "Map here",
+  "map_none_here": "No map of here to open or download",
+  "tb_kn_maps_fade": "Map fade, altitude",
+  "tb_kn_maps_min": "Nearest approach over a map",
+  "tb_kn_maps_tile": "Map tile width on screen",
+  "tb_kn_maps_data": "Roads and names on the Earth"
 }

@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "تلقائيًا",
   "addon_mode_never": "أبدًا",
   "addon_remove": "إزالة",
-  "addon_needs": "يحتاج {name}"
+  "addon_needs": "يحتاج {name}",
+  "map_here": "خريطة هنا",
+  "map_none_here": "لا توجد خريطة هنا لفتحها أو تنزيلها",
+  "tb_kn_maps_fade": "تلاشي الخريطة، الارتفاع",
+  "tb_kn_maps_min": "أقرب اقتراب فوق خريطة",
+  "tb_kn_maps_tile": "عرض مربع الخريطة على الشاشة",
+  "tb_kn_maps_data": "الطرق والأسماء على الأرض"
 }

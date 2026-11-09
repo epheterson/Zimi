@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "אוטומטית",
   "addon_mode_never": "אף פעם",
   "addon_remove": "הסרה",
-  "addon_needs": "דורש {name}"
+  "addon_needs": "דורש {name}",
+  "map_here": "מפה של כאן",
+  "map_none_here": "אין מפה של המקום לפתיחה או להורדה",
+  "tb_kn_maps_fade": "דהיית המפה, גובה",
+  "tb_kn_maps_min": "התקרבות מינימלית מעל מפה",
+  "tb_kn_maps_tile": "רוחב אריח מפה על המסך",
+  "tb_kn_maps_data": "כבישים ושמות על כדור הארץ"
 }

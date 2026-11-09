@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "自动",
   "addon_mode_never": "从不",
   "addon_remove": "移除",
-  "addon_needs": "需要 {name}"
+  "addon_needs": "需要 {name}",
+  "map_here": "此处地图",
+  "map_none_here": "没有可打开或下载的此处地图",
+  "tb_kn_maps_fade": "地图淡入高度",
+  "tb_kn_maps_min": "地图上方的最近距离",
+  "tb_kn_maps_tile": "地图瓦片在屏幕上的宽度",
+  "tb_kn_maps_data": "地球上的道路与地名"
 }

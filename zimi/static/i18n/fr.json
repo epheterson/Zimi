@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "Automatiquement",
   "addon_mode_never": "Jamais",
   "addon_remove": "Retirer",
-  "addon_needs": "Nécessite {name}"
+  "addon_needs": "Nécessite {name}",
+  "map_here": "Carte d’ici",
+  "map_none_here": "Aucune carte d’ici à ouvrir ou télécharger",
+  "tb_kn_maps_fade": "Fondu de la carte, altitude",
+  "tb_kn_maps_min": "Approche minimale au-dessus d’une carte",
+  "tb_kn_maps_tile": "Largeur d’une tuile de carte à l’écran",
+  "tb_kn_maps_data": "Routes et noms sur la Terre"
 }

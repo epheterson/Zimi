@@ -1236,7 +1236,7 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
+    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -4218,7 +4218,7 @@ function _renderSunMap(now, clockLater) {
   } else {
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += _almHereBtnHtml('alm-here-icon');   // the crosshair alone beside the city, as in the header
+  html += _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(smLoc);   // the crosshair and the map alone beside the city, as in the header
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
   html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
@@ -5372,6 +5372,7 @@ function _almShowCitySearch() {
 
 // Show where I am: a crosshair, the mark every map uses for "locate me"
 // (the 3D view's button too).
+var ALM_MAP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
 // "Where I am": the button back to the device's own place (geolocation, else
@@ -5379,6 +5380,17 @@ var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 
 function _almHereBtnHtml(cls) {
   return '<button type="button" class="alm-invite-btn ' + cls + '" onclick="_shareAlmanacLocation()" title="' + _almEsc(t('alm_use_location')) + '" aria-label="' + _almEsc(t('alm_place_here')) + '">' +
     ALM_LOCATE_SVG + '<span>' + _almEsc(t('alm_place_here')) + '</span></button>';
+}
+
+// The map of the Almanac's place (the shared flow: its installed map, or the one worth downloading), an icon beside
+// the crosshair; absent without a place, and where the app shell is not (the Almanac ZIM on its own).
+function _almMapBtnHtml(loc) {
+  if (typeof _mapHere !== 'function' || !loc || !loc.stored) return '';
+  return '<button type="button" class="alm-invite-btn alm-here-icon" onclick="_almMapHere()" title="' + _almEsc(t('map_here')) + '" aria-label="' + _almEsc(t('map_here')) + '">' + ALM_MAP_SVG + '</button>';
+}
+function _almMapHere() {
+  var loc = _getLocation();
+  if (loc.stored) _mapHere().then(function(m) { if (m) m.go(loc.lat, loc.lon, loc.name ? loc.name.split(',')[0].trim() : ''); });
 }
 
 // No place chosen yet: one line asking for it, with the two ways to give it

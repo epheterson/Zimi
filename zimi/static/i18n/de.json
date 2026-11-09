@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "Automatisch",
   "addon_mode_never": "Nie",
   "addon_remove": "Entfernen",
-  "addon_needs": "Braucht {name}"
+  "addon_needs": "Braucht {name}",
+  "map_here": "Karte von hier",
+  "map_none_here": "Keine Karte von hier zum Öffnen oder Herunterladen",
+  "tb_kn_maps_fade": "Kartenüberblendung, Höhe",
+  "tb_kn_maps_min": "Geringste Annäherung über einer Karte",
+  "tb_kn_maps_tile": "Breite einer Kartenkachel auf dem Bildschirm",
+  "tb_kn_maps_data": "Straßen und Namen auf der Erde"
 }

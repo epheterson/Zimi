@@ -3751,5 +3751,11 @@
   "addon_mode_auto": "अपने आप",
   "addon_mode_never": "कभी नहीं",
   "addon_remove": "हटाएँ",
-  "addon_needs": "{name} चाहिए"
+  "addon_needs": "{name} चाहिए",
+  "map_here": "यहाँ का नक्शा",
+  "map_none_here": "यहाँ का कोई नक्शा खोलने या डाउनलोड करने के लिए नहीं है",
+  "tb_kn_maps_fade": "नक्शे का फीका होना, ऊँचाई",
+  "tb_kn_maps_min": "नक्शे के ऊपर सबसे निकट पहुँच",
+  "tb_kn_maps_tile": "स्क्रीन पर नक्शे की टाइल की चौड़ाई",
+  "tb_kn_maps_data": "पृथ्वी पर सड़कें और नाम"
 }
