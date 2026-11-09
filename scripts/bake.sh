@@ -3,7 +3,7 @@
 # and deploy the result to the NAS: the whole release as it stands, in one command.
 #   scripts/bake.sh            merge, rebuild, deploy
 #   scripts/bake.sh --no-deploy
-#   BAKE_SKIP='stand models' scripts/bake.sh   leave out lanes still mid-build
+#   BAKE_SKIP='stand boardgames*' scripts/bake.sh   leave out lanes still mid-build (globs)
 # The bake branch is rebuilt from its base every run (never pushed, never a PR). rerere
 # replays conflict resolutions made by hand once; CHANGELOG lines merge as a union;
 # the built ZIMs are taken from either side and rebuilt after.
@@ -33,7 +33,8 @@ grep -qs 'merge=jsonkeys' "$GITDIR/info/attributes" || echo 'zimi/static/i18n/*.
 
 git checkout -q -B "$BAKE" "$BASE"
 for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/topic/*'); do
-  case " ${BAKE_SKIP:-} " in *" ${b#origin/topic/} "*) echo "  skipped $b"; continue;; esac
+  skip=; set -f; for s in ${BAKE_SKIP:-}; do [[ ${b#origin/topic/} == $s ]] && skip=1; done; set +f
+  [ -n "$skip" ] && { echo "  skipped $b"; continue; }
   if git merge -q --no-edit "$b" >/dev/null 2>&1; then echo "  merged $b"; continue; fi
   left=$(git diff --name-only --diff-filter=U)
   for f in $left; do
