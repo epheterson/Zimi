@@ -589,6 +589,33 @@ def m_zhurong():
     return m.write("zhurong")
 
 
+def m_pad39a():
+    """Launch Complex 39A as Apollo 11 left it: the pad, the mobile launcher with the Saturn V's place on it at the
+    origin (its top is 5 m up), and the 122 m launch umbilical tower with its swing arms and the crane on top."""
+    m = Mesh([((0.55, 0.55, 0.52), 0.1, 8), ((0.25, 0.25, 0.27), 0.2, 12), ((0.7, 0.7, 0.72), 0.2, 12), ((0.6, 0.12, 0.1), 0.2, 12), ((0.05, 0.05, 0.05), 0.1, 8)])
+    m.box((10, 0, 0.15), (150, 120, 0.3), 0)  # the pad
+    m.box((0, 0, 2.6), (36, 36, 4.8), 1)  # the mobile launcher's deck
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.box((sx * 14, sy * 14, 0.9), (4, 4, 1.4), 1)  # its pedestals
+    m.box((0, 0, 5.05), (20, 20, 0.3), 4)  # the exhaust opening, black
+    tx = 29.0
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.tube((tx + sx * 5.5, sy * 5.5, 4.8), (tx + sx * 5.5, sy * 5.5, 122), 0.45, 2)
+    for k in range(0, 14):
+        z = 5 + k * 9
+        m.box((tx, 0, z), (12.2, 12.2, 0.3), 2)
+        if k < 13:
+            m.tube((tx - 5.5, -5.5, z), (tx + 5.5, -5.5, z + 9), 0.15, 2, n=4)
+            m.tube((tx + 5.5, 5.5, z), (tx - 5.5, 5.5, z + 9), 0.15, 2, n=4)
+    for z in (22, 34, 46, 58, 70, 82, 94, 104, 112):  # the swing arms, out to the rocket
+        m.tube((tx - 5.5, 0, z), (4.5, 0, z), 0.55, 2, n=4)
+    m.box((tx, 0, 125), (16, 3, 3), 3)  # the crane
+    m.tube((tx, 0, 122), (tx, 0, 134), 0.3, 3)
+    return m.write("pad39a")
+
+
 def m_viking():
     m = Mesh([GOLD, ALU, GREY, WHITE, DARK])
     m.cyl((0, 0, 0.95), 0.95, 0.45, 1, n=6)  # the hexagonal body
@@ -737,6 +764,7 @@ PROCEDURAL = {
     "lunokhod-wheel": m_lunokhod_wheel,
     "change-lander": m_change_lander,
     "yutu": m_yutu,
+    "pad39a": m_pad39a,
     "zhurong": m_zhurong,
     "viking": m_viking,
     "pathfinder": m_pathfinder,
