@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A map for any place from every view: the 3D view, its Go to sheet, an article with coordinates and the Almanac's place open the installed map that covers it, or offer the right one to download (smallest region, newest, size shown).
+- Your installed map's roads and place names appear on the 3D Earth as you come down, and a quiet hint offers a map where none covers what you are looking at.
+
 ## [1.15.4]
 
 ### Highlights

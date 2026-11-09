@@ -201,3 +201,8 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
+
+Map overlay on the 3D Earth (almanac-maps.js)
+  - Roads and place names read at run time from the installed Kiwix/StreetZim
+    map ZIM's vector tiles (OpenMapTiles schema). Map data (c) OpenStreetMap
+    contributors, ODbL; credited on the view while drawn. Nothing is shipped.
