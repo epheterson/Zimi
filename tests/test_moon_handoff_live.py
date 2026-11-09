@@ -469,7 +469,7 @@ def test_the_cost(browser, served):
         live = pg.evaluate("""() => {
           var img = document.querySelector('#almanac-head .almanac-moon-sprite');
           var was = { k: img.getAttribute('data-k'), time: document.getElementById('almanac-head-time').textContent };
-          var later = new Date(Date.now() + 9 * 3600000);
+          var later = new Date(Date.now() + (3 * 24 + 9) * 3600000);   // days on as well: at new moon nine hours left k as it was
           _almHeroLiveUpdate(later);
           return { timer: !!_almHeroLiveTimer, was: was, k: img.getAttribute('data-k'),
                    want: _heroMoonView(later, _getLocation()).k.toFixed(4),

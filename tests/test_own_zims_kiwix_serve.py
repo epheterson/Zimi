@@ -197,7 +197,9 @@ def test_the_almanac_starts_in_kiwix_and_its_3d_view_opens(browser, kiwix, kind)
             and "/random" not in u
         ]
         assert not stray, stray[:5]
-        assert errors == [], errors
+        # Kiwix's viewer names its iframe's onload handler before its script defines it; a fast frame load throws
+        # "on_content_load is not defined" in the viewer (kiwix-tools 3.8.2), not in the Almanac.
+        assert [e for e in errors if "on_content_load" not in e] == [], errors
     finally:
         ctx.close()
 
