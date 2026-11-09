@@ -698,6 +698,15 @@
     'term:gps':            { q: 'Q18822',  en: 'Global Positioning System' },
     'term:iss':            { q: 'Q25271',  en: 'International Space Station' },
     'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' },
+    // The all-satellites layer's card (almanac-sats.js); Q-IDs read from enwiki pageprops 2026-11-09
+    'term:starlink':       { q: 'Q19867977', en: 'Starlink' },
+    'term:oneweb':         { q: 'Q24039799', en: 'Eutelsat OneWeb' },
+    'term:iridium':        { q: 'Q2672736', en: 'Iridium satellite constellation' },
+    'term:gnss':           { q: 'Q18822', en: 'Global Positioning System' },
+    'term:satellite_constellation': { q: 'Q967145', en: 'Satellite constellation' },
+    'term:leo':            { q: 'Q663611', en: 'Low Earth orbit' },
+    'term:meo':            { q: 'Q218414', en: 'Medium Earth orbit' },
+    'term:geo':            { q: 'Q192316', en: 'Geostationary orbit' },
     // The tables, calculations and constants (almanac-tables.js, almanac-reference.js)
     'term:sunrise':                { q: 'Q193294', en: 'Sunrise' },
     'term:sunset':                 { q: 'Q166564', en: 'Sunset' },

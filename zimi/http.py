@@ -1266,6 +1266,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-sites-drive.js")
             + _static_hash("almanac-sites-launch.js")
             + _static_hash("almanac-sites-trail.js")
+            + _static_hash("almanac-sats.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
             + _static_hash("fieldguide-card.js")
@@ -2997,7 +2998,13 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 from zimi import almanachd as _hd
 
-                payload = _sats.get()
+                if param("all"):
+                    # Every active satellite (satcatalog.py): the same setting and rules.
+                    from zimi import satcatalog as _cat
+
+                    payload = _cat.get()
+                else:
+                    payload = _sats.get()
                 payload["can_change"] = bool(
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )

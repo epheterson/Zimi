@@ -7456,7 +7456,12 @@ def handle_manage_post(handler, parsed, data):
         # answered with the view's payload so it redraws from the answer.
         from zimi import satellites as _sats
 
-        payload, err = _sats.refresh_now()
+        if data.get("all"):
+            from zimi import satcatalog as _cat
+
+            payload, err = _cat.refresh_now()
+        else:
+            payload, err = _sats.refresh_now()
         if err == "never":
             return handler._json(409, {"error": "Satellite data is set to never be fetched"})
         if err:

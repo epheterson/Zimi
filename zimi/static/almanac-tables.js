@@ -1927,7 +1927,28 @@ var TB_CONST_ROWS = {
       ['sunrise_alt', AR_SUNRISE_ALT * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
       ['moon_hp', AR_MOON_HP_FACTOR, 4, '× HP', 'Meeus 15'],
       ['sun_parallax', AR_SOLAR_PARALLAX_ARCSEC, 3, '″', 'IAU'],
-      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO']
+      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO'],
+      // The all-satellites layer (almanac-sats.js): what it draws, lists and estimates by.
+      ['sat_age_fresh', AE_SATS_REF.ageFreshDays, 0, 'd', 'Zimi'],
+      ['sat_age_gone', AE_SATS_REF.ageGoneDays, 0, 'd', 'Zimi'],
+      ['sat_leo_max', AE_SATS_REF.leoMaxKm, 0, 'km', 'Zimi'],
+      ['sat_geo_min', AE_SATS_REF.geoMinKm, 0, 'km', 'Zimi'],
+      ['sat_pass_el', AE_SATS_REF.passMinEl, 0, '°', 'Zimi'],
+      ['sat_pass_sun', AE_SATS_REF.passSunAlt, 0, '°', 'USNO'],
+      ['sat_pass_mag', AE_SATS_REF.passMag, 1, '', 'Zimi'],
+      ['sat_albedo', AE_SATS_REF.albedo, 2, '', 'Zimi'],
+      ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU'],
+      ['sat_model', 'm = m☉ − 2.5 log₁₀(a · A · p(φ) / (π d²))', 0, '', 'Russell 1916 (Lambert sphere)'],
+      ['sat_area_iss', AE_SATS_REF.areaM2.iss, 0, 'm²', 'Fitted to McCants −1.8 (standard magnitude)'],
+      ['sat_pass_max', AE_SATS_REF.passMax, 0, '', 'Zimi'],
+      ['sat_lone_starlinks', AE_SATS_REF.loneStarlinks, 0, '', 'Zimi'],
+      ['sat_area_starlink', AE_SATS_REF.areaM2.starlink, 0, 'm²', 'Zimi'],
+      ['sat_area_oneweb', AE_SATS_REF.areaM2.oneweb, 0, 'm²', 'Zimi'],
+      ['sat_area_iridium', AE_SATS_REF.areaM2.iridium, 0, 'm²', 'Zimi'],
+      ['sat_min_rcs', AE_SATS_REF.minRcsM2, 0, 'm²', 'Zimi'],
+      ['sat_train_gap', AE_SATS_REF.trainGapS, 0, 's', 'Zimi'],
+      ['sat_train_plane', AE_SATS_REF.trainRaanDeg, 0, '°', 'Zimi'],
+      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi']
     ];
   },
   k_physics: function () {
@@ -1988,6 +2009,7 @@ var TB_CONST_LINKS = {
   draconic: 'term:lunar_month', saros: 'term:saros', sidereal_day: 'term:sidereal_time',
   tropical_year: 'term:tropical_year', julian_year: 'term:julian_year', jd_j2000: 'term:epoch',
   jd_unix: 'term:unix_time', delta_t: 'term:delta_t', delta_t_measured: 'term:delta_t',
+  sat_leo_max: 'term:leo', sat_geo_min: 'term:geo', sat_pass_sun: 'term:twilight', sat_pass_mag: 'term:apparent_magnitude', sat_sun_mag: 'term:apparent_magnitude',
   tai_utc: 'term:leap_second', last_leap: 'term:leap_second', nmi: 'term:nautical_mile', knot: 'term:knot',
   refraction: 'term:atmospheric_refraction', std_air: 'term:isa', dip: 'term:horizon', horizon: 'term:horizon',
   sun_sd: 'term:angular_diameter', sunrise_alt: 'term:sunrise', moon_hp: 'term:parallax',

@@ -122,7 +122,20 @@ const PLAIN_ROWS = {
   sun_prom_height: 'the height this view draws prominences at',
   sun_flare: 'the rise and fade this view draws a flare with',
   cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
-  heli_beacon: 'the flash rate of a light, not a named thing'
+  heli_beacon: 'the flash rate of a light, not a named thing',
+  sat_age_fresh: 'a limit this layer chose, not a named thing',
+  sat_age_gone: 'a limit this layer chose, not a named thing',
+  sat_pass_el: 'a limit this layer chose, not a named thing',
+  sat_albedo: 'a reflectance this estimate assumes, not a named thing',
+  sat_model: 'a formula, not a named thing',
+  sat_area_iss: 'a size this estimate assumes, not a named thing',
+  sat_area_starlink: 'a size this estimate assumes, not a named thing',
+  sat_area_oneweb: 'a size this estimate assumes, not a named thing',
+  sat_area_iridium: 'a size this estimate assumes, not a named thing',
+  sat_min_rcs: 'a limit this layer chose, not a named thing',
+  sat_train_gap: 'a limit this layer chose, not a named thing',
+  sat_train_plane: 'a limit this layer chose, not a named thing',
+  sat_gps_el: 'a limit this layer chose, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

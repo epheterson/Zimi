@@ -12,6 +12,7 @@
   'use strict';
   var Local = {};
   var SATELLITES_FILE = 'data/satellites-snapshot.json';
+  var SATELLITES_ALL_FILE = 'data/satellites-all-snapshot.json';   // satcatalog.py's catalogue of every active satellite, asked for with ?all=1
   var TIDES_FILE = 'data/tides-snapshot.json';
   var SATELLITES_URL = '/almanac-satellites';
   var PLACE_URL = '/almanac-place';
@@ -116,6 +117,12 @@
   Local.answer = function (url) {
     var u;
     try { u = new URL(url, root.location.href); } catch (e) { return null; }
+    if (u.pathname === SATELLITES_URL && u.searchParams.get('all')) {
+      return read(SATELLITES_ALL_FILE).then(function (c) {
+        return json({ source: 'snapshot', fetched: c.fetched, cols: c.cols, sats: c.sats, stale: Date.now() / 1000 - c.fetched_at > STALE_AFTER_S,
+          refreshing: false, mode: 'never', locked: null, can_change: false });
+      }, function () { return json({ error: 'not here' }, 404); });
+    }
     if (u.pathname === SATELLITES_URL) {
       return Promise.all([read(SATELLITES_FILE), hd()]).then(function (r) {
         var out = Local.satellites(r[0], Date.now() / 1000);

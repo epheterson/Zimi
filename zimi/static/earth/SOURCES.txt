@@ -32,6 +32,11 @@ three-r186.min.js (three-LICENSE.txt)
   three.js r186, MIT License. Tree-shaken and minified; the build line is in
   the file's first comment.
 
+satellites-all-snapshot.json.gz (zimi/assets), the satellites' elements
+  CelesTrak (celestrak.org) GP data for the active group and its SATCAT (owner, launch date, radar cross-section),
+  fetched when the release was cut and, where the Satellite data setting allows, again at runtime. Credited in the
+  3D view as CelesTrak.
+
 satellite-7.1.0.min.js (satellite.js-LICENSE.txt)
   satellite.js 7.1.0, MIT License: SGP4/SDP4 only. The build line is in the
   file's first comment.
