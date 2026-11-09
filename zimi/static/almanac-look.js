@@ -445,6 +445,7 @@ function _lookOpen(opts) {
   }
   _lookButtons();
   _lookApply(S.view);
+  if (opts.find && typeof openAlmanacFind === 'function') openAlmanacFind('look', opts.find);   // from the solar system's tip (almanac-orrery.js)
 }
 
 // The stars turn: the sky is worked out for now again, once a minute.
