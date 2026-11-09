@@ -89,11 +89,11 @@ def test_deploy_sends_dockerignore_to_the_nas():
 HOME_MAX_REQUESTS = 36
 HOME_MAX_KB = 900
 # Opening the Almanac from Home: its modules, stylesheet and first picture (11 requests, 405 KB today).
-ALMANAC_MAX_REQUESTS = 16
+ALMANAC_MAX_REQUESTS = 20
 ALMANAC_MAX_KB = 520
-# Then the 3D view, opened as a tap on the Moon opens it (17 requests, 745 KB today).
-EARTH_MAX_REQUESTS = 24
-EARTH_MAX_KB = 950
+# Then the 3D view, opened as a tap on the Moon opens it (10 requests, 602 KB today).
+EARTH_MAX_REQUESTS = 16
+EARTH_MAX_KB = 700
 # Files that must NOT come with Home or with the Almanac: the 3D view loads on its first use.
 LAZY_PREFIXES = (
     "/static/earth/three",
@@ -278,55 +278,80 @@ def test_opening_the_3d_view_stays_under_budget(phone):
 
 
 # ── Frame cost, on a real GPU ───────────────────────────────────────────────────────────────────────────────────
-# vsync is off, so the interval is what a frame costs. Medians over 90 frames at DPR 3, 390x844, on an Apple GPU
-# (Mac mini M-series), unthrottled / with the CPU throttled 4x (a phone's main thread); the budget is the median
-# plus a margin for a loaded machine. The 3D view must stay at one 60 Hz frame (16.7 ms) at 4x on the Earth.
+# Medians over 90 frames at DPR 3, 390x844 with a finger turning the Earth, vsync off so the interval is what a frame
+# costs, on an Apple GPU (Mac mini): 1.1 ms a frame, 0.5 ms of it JS; with the CPU throttled 4x (a phone's main thread)
+# 3.8 ms, 1.7 ms of it JS. The budgets are a 60 Hz frame (16.7 ms) at 4x and a few times the JS cost, for a loaded machine.
 GPU_ONLY = pytest.mark.skipif(
     os.environ.get("ZIMI_PERF_GPU") != "1",
     reason="frame budgets need a real GPU: ZIMI_PERF_GPU=1",
 )
-FRAME_JS_MS_MAX = {
-    "earth": 4.0,
-    "earth+satellites": 6.0,
-}  # time inside _aeDraw per frame, unthrottled
-FRAME_MS_MAX_THROTTLED = {"earth": 16.7}
-FIRST_FRAME_MS_MAX_THROTTLED = 6000  # tap on the Moon to the view's first frame, 4x CPU, files cached by the server
+FRAME_JS_MS_MAX = 4.0  # time inside _aeDraw per frame, unthrottled
+FRAME_MS_MAX_THROTTLED = 16.7  # a whole frame at 4x CPU
+FIRST_FRAME_MS_MAX_THROTTLED = (
+    2500  # tap on the Moon to the view's first frame, 4x CPU (600 ms on the mini)
+)
 
-FRAME_JS = """(n) => new Promise(res => { var js = [], k = 0, t = [], l = performance.now(), orig = window._aeDraw;
+FRAME_JS = """(n) => { window.__fr = null; var js = [], k = 0, t = [], l = performance.now(), orig = window._aeDraw;
   window._aeDraw = function () { var s = performance.now(); var r = orig.apply(this, arguments); js.push(performance.now() - s); return r; };
   function q(a) { a = a.slice(10).sort((x, y) => x - y); return a[a.length >> 1]; }
-  function f(now) { t.push(now - l); l = now; _ae.dirty = true; if (++k < n) requestAnimationFrame(f); else { window._aeDraw = orig; res({ js: q(js), frame: q(t) }); } }
-  requestAnimationFrame(f); })"""
+  function f(now) { t.push(now - l); l = now; _ae.dirty = true; if (++k < n) requestAnimationFrame(f); else { window._aeDraw = orig; window.__fr = { js: q(js), frame: q(t) }; } }
+  requestAnimationFrame(f); }"""
+
+
+def _frames_while_turning(pg, n=90):
+    """Median JS ms in _aeDraw and median frame interval over n frames while a finger drags the view."""
+    pg.evaluate("(n) => (" + FRAME_JS + ")(n)", n)
+    pg.mouse.move(195, 420)
+    pg.mouse.down()
+    for i in range(600):
+        pg.mouse.move(
+            195 + 60 * ((i % 40) / 40.0 - 0.5),
+            420 + 30 * (((i + 10) % 40) / 40.0 - 0.5),
+        )
+        if pg.evaluate("() => !!window.__fr"):
+            break
+        pg.wait_for_timeout(8)
+    pg.mouse.up()
+    return pg.evaluate("() => window.__fr")
+
+
+@pytest.fixture(scope="module")
+def earth(phone):
+    phone.evaluate("() => _almLoadEarth()")
+    phone.wait_for_function(
+        "() => typeof openAlmanacEarth === 'function'", timeout=120_000
+    )
+    phone.evaluate("() => openAlmanacEarth({ target: 'earth' })")
+    phone.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly",
+        timeout=240_000,
+        polling=100,
+    )
+    phone.wait_for_timeout(800)
+    return phone
 
 
 @GPU_ONLY
-def test_the_earth_costs_a_frame_little_main_thread_time(phone):
-    phone.wait_for_timeout(500)
-    r = phone.evaluate(FRAME_JS, 90)
-    assert r["js"] <= FRAME_JS_MS_MAX["earth"], r
+def test_turning_the_earth_costs_a_frame_little_main_thread_time(earth):
+    r = _frames_while_turning(earth)
+    assert r["js"] <= FRAME_JS_MS_MAX, r
 
 
 @GPU_ONLY
-def test_the_earth_holds_60_fps_with_the_cpu_throttled_4x(phone):
-    cdp = phone.context.new_cdp_session(phone)
+def test_turning_the_earth_holds_60_fps_with_the_cpu_throttled_4x(earth):
+    cdp = earth.context.new_cdp_session(earth)
     cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
     try:
-        phone.wait_for_timeout(500)
-        r = phone.evaluate(FRAME_JS, 90)
+        r = _frames_while_turning(earth)
     finally:
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": 1})
-    assert r["frame"] <= FRAME_MS_MAX_THROTTLED["earth"], r
+    assert r["frame"] <= FRAME_MS_MAX_THROTTLED, r
 
 
 @GPU_ONLY
-def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(served):
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(
-            args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"]
-        )
-        ctx = br.new_context(service_workers="block", **PHONE)
+def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(phone, served):
+    ctx = phone.context.browser.new_context(service_workers="block", **PHONE)
+    try:
         pg = ctx.new_page()
         pg.goto(served + "/", wait_until="load")
         pg.wait_for_timeout(2500)
@@ -352,5 +377,6 @@ def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(served):
             "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
         )
         took = pg.evaluate("(t) => performance.now() - t", t0)
-        br.close()
+    finally:
+        ctx.close()
     assert took <= FIRST_FRAME_MS_MAX_THROTTLED, "%.0f ms" % took

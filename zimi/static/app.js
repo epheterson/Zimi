@@ -7499,7 +7499,9 @@ function _moonAfterFirstPaint(fn) {
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go, { once: true });
 }
-_moonAfterFirstPaint(_moonLoadHiMap);
+// Ahead of the tap only for someone who has opened the Almanac before: the 730 KB map sharpens the Almanac's discs and
+// the 3D Moon, and no Home disc is wide enough to use it. A first open asks for it (openAlmanac).
+_moonAfterFirstPaint(function () { return _getZimOpenedMap()[_ALMANAC_ZIM] ? _moonLoadHiMap() : null; });
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -8382,6 +8384,7 @@ function openAlmanac(replaceState) {
   }
   if (_almanacOpenPending) return;
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
+  _moonAfterFirstPaint(_moonLoadHiMap);   // a no-op once asked for
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
   // icon on main page doesn't go right there it hangs back").

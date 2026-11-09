@@ -1,8 +1,9 @@
-"""The Moon's 4096 map waits for the first paint, then comes.
+"""The Moon's 4096 map waits for the first paint, then comes, once the Almanac is wanted.
 
 app.js paints every Moon from the 54 KB map it fetches as it starts; the
 730 KB one is asked for only once the page has painted and gone idle, so it
-never competes with the first paint. Checked in a real browser against the
+never competes with the first paint, and only for the Almanac (a first open, or a
+person who has opened it before): Home's discs are too small to use it. Checked in a real browser against the
 paint timeline: the request starts after first-contentful-paint, and it does
 start, and a disc as wide as the hero is then drawn from it.
 
@@ -69,6 +70,12 @@ def test_the_4096_map_is_asked_for_after_first_paint(served, path):
             asked = []
             pg.on("request", lambda r: asked.append(r.url))
             pg.goto(served + path, wait_until="load")
+            if path == "/":
+                # Home alone never fetches it (nothing there is wide enough to use it); the Almanac's first open does.
+                pg.wait_for_function("() => _moonTexReady", timeout=15000)
+                pg.wait_for_timeout(3000)
+                assert not [u for u in asked if HI in u], asked
+                pg.evaluate("() => openAlmanac()")
             pg.wait_for_function("() => !!_MOON_TEX_HI", timeout=15000)
             tl = pg.evaluate(TIMELINE)
             assert tl["fcp"] is not None, tl
