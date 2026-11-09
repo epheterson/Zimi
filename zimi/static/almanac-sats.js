@@ -584,3 +584,288 @@ function _asUpdateCard(ms) {
   return true;
 }
 
+// ── The strip: filters, the count, the passes ──
+var AS_BAR_CSS = [
+  '.as-bar{box-sizing:border-box;width:100%;display:flex;gap:6px;align-items:center;padding:0 16px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent)}',
+  '.as-bar::-webkit-scrollbar{display:none}',
+  '.as-bar[hidden],.as-sheet[hidden]{display:none}',
+  '.as-bar .ae-btn{flex:none;font-size:12px;padding:6px 10px;min-height:30px;display:inline-flex;align-items:center;gap:6px}',
+  '.as-bar .ae-round{width:30px;height:30px;padding:0}',
+  '.as-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}',
+  '.as-count{flex:none;font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;padding:0 4px}',
+  '.as-sep{flex:none;width:1px;height:18px;background:var(--border)}',
+  '.as-flag{font-size:15px;line-height:1}',
+  '.as-failed{opacity:.5}',
+  '.as-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));max-height:42vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.94);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
+  '.as-sheet h3{margin:0 24px 6px 0;font-size:14px;font-weight:600;color:var(--text)}',
+  '.as-sheet .as-x{position:absolute;top:6px;right:8px;background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer;line-height:1}',
+  '.as-pass{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;width:100%;text-align:start;font:inherit;color:inherit;background:none;border:0;border-top:1px solid var(--border);padding:7px 0;cursor:pointer}',
+  '.as-pass:first-of-type{border-top:0}',
+  '.as-pass b{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}',
+  '.as-pass span{font-variant-numeric:tabular-nums}',
+  '.as-note{margin:6px 0 0;font-size:11.5px;opacity:.8}',
+  '.as-gps{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}',
+  '@media (orientation:landscape) and (max-height:500px){.as-sheet{bottom:calc(56px + env(safe-area-inset-bottom))}}'
+].join('');
+var AS_PASSES_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18c4-9 10-13 18-13"/><circle cx="9" cy="12.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="15" cy="8.6" r="1.7" fill="currentColor" stroke="none"/></svg>';
+
+function _asChip(kind, key, inner, label) {
+  return '<button type="button" class="ae-btn" data-k="' + kind + '" data-v="' + _almEsc(key) + '" aria-pressed="false"' +
+    (label ? ' aria-label="' + _almEsc(label) + '" title="' + _almEsc(label) + '"' : '') + '>' + inner + '</button>';
+}
+function _asBuildBar() {
+  if (_as.bar && _as.bar.isConnected) return;
+  var host = _aeById('ae-view') || (_ae && _ae.el);
+  if (!host) return;
+  if (!document.getElementById('as-style')) {
+    var st = document.createElement('style');
+    st.id = 'as-style';
+    st.textContent = AS_BAR_CSS;
+    document.head.appendChild(st);
+  }
+  var d = _as.data, html = '<span class="as-count" id="as-count" aria-live="polite"></span><span class="as-sep"></span>';
+  AS_GROUPS.forEach(function (g) {
+    var c = AS_GROUP_COLOR[g];
+    html += _asChip('group', g, '<i class="as-dot" style="background:rgb(' + c.map(function (x) { return Math.round(x * 255); }).join(',') + ')"></i>' + _almEsc(_asGroupLabel(g)));
+  });
+  html += '<span class="as-sep"></span>';
+  AS_ORBITS.forEach(function (o) { html += _asChip('orbit', o, o.toUpperCase()); });
+  html += '<span class="as-sep"></span>';
+  d.topOwners.forEach(function (o) {
+    html += _asChip('owner', o, _asFlag(o) ? '<span class="as-flag">' + _asFlag(o) + '</span>' : _almEsc(o), _asOwnerName(o));
+  });
+  html += '<span class="as-sep"></span><button type="button" class="ae-btn ae-round" id="as-passes" aria-label="' + _almEsc(_aeT('alm_sats_passes')) + '" title="' + _almEsc(_aeT('alm_sats_passes')) + '" aria-pressed="false">' + AS_PASSES_SVG + '</button>';
+  var bar = document.createElement('div');
+  bar.className = 'as-bar';
+  bar.id = 'as-bar';
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', _aeT('alm_sats_all'));
+  bar.hidden = true;
+  bar.innerHTML = html;
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'as-passes') { _asToggleSheet(); return; }
+    var set = _as.filter[b.getAttribute('data-k')], v = b.getAttribute('data-v');
+    set[v] = !set[v];
+    b.setAttribute('aria-pressed', String(!!set[v]));
+    _asApplyFilters();
+  });
+  var views = _aeById('ae-views');
+  if (views && views.parentNode) views.parentNode.insertBefore(bar, views); else host.appendChild(bar);   // in the bottom stack, above the view chips
+  _as.bar = bar;
+  _asCount();
+  _asSync();
+}
+// The strip is for the Earth: it goes while the view is elsewhere.
+function _asSyncBar() {
+  if (!_as.bar) return;
+  var hide = !(_as.on && _as.state === 'ready' && _ae && _ae.target === 'earth');
+  if (_as.bar.hidden !== hide) _as.bar.hidden = hide;
+  if (hide && _as.sheet) _asCloseSheet();
+}
+
+// ── Passes ──
+function _asPlace() {
+  var p = typeof _getLocation === 'function' ? _getLocation() : null;
+  return p && p.lat != null ? { lat: p.lat, lon: p.lon, stored: p.stored } : null;
+}
+// The pass list for the place and the next day, asked of the worker when there is none for this place yet.
+function _asNeedPasses(place) {
+  place = place || _asPlace();
+  if (!place || _as.state !== 'ready' || _as.passBusy) return;
+  var t = _as.passPlace;
+  if (t && Math.abs(t.lat - place.lat) < 0.05 && Math.abs(t.lon - place.lon) < 0.05 && Date.now() - t.at < AS_PASS_HOURS * 1800 * 1000) return;
+  var d = _as.data, cand = [], area = [], altKm = [], inc = [];
+  for (var i = 0; i < d.n; i++) {
+    if (d.mm[i] < AS_PASS_LEO_MM || d.alt[i] > AS_LEO_MAX_KM) continue;
+    var a = _asAreaM2(i);
+    if (!a) continue;
+    cand.push(i); area.push(a); altKm.push(d.alt[i]); inc.push(d.inc[i]);
+  }
+  _as.passBusy = true;
+  var t0 = Date.now();
+  _asAsk({
+    cmd: 'passes', lat: place.lat, lon: place.lon, t0: t0, hours: AS_PASS_HOURS, step: AS_PASS_STEP_S, refine: AS_PASS_REFINE_S,
+    minEl: AS_PASS_MIN_EL, sunAlt: AS_PASS_SUN_ALT, magLimit: AS_PASS_MAG_LIMIT,
+    cand: cand, area: area, altKm: altKm, inc: inc
+  }).then(function (r) {
+    _as.passes = _asTrim(_asGroupTrains(r.list.sort(function (u, v) { return u.start - v.start; })));
+    _as.passPlace = { lat: place.lat, lon: place.lon, at: t0 };
+    _asRenderSheet();
+    _skyKickNow();
+  }).catch(function () {
+    _as.passes = [];
+    _as.passPlace = { lat: place.lat, lon: place.lon, at: t0 };   // not asked again at every paint
+  }).then(function () { _as.passBusy = false; });
+}
+// A satellite's size for the brightness estimate: its radar cross-section, or a stated size for the big constellations.
+function _asAreaM2(i) {
+  var d = _as.data, g = AS_GROUPS[d.group[i]];
+  if (d.norad[i] === AS_ISS_NORAD) return AS_PASS_AREA_M2.iss;
+  if (d.rcs[i] >= AS_PASS_MIN_RCS_M2) return d.rcs[i];
+  return AS_PASS_AREA_M2[g] || 0;
+}
+// Starlinks launched together cross the sky in a line: passes close in time and in orbital plane are one train.
+function _asGroupTrains(list) {
+  var d = _as.data, out = [], open = null;
+  list.forEach(function (p) {
+    var star = AS_GROUPS[d.group[p.i]] === 'starlink';
+    if (star && open && p.peak - open.last <= AS_TRAIN_GAP_S * 1000 && Math.abs(d.raan[p.i] - d.raan[open.i]) < AS_TRAIN_RAAN_DEG) {
+      open.members.push(p.i); open.last = p.peak; open.end = Math.max(open.end, p.end); open.mag = Math.min(open.mag, p.mag);
+      return;
+    }
+    var q = Object.assign({ members: [p.i], last: p.peak }, p);
+    out.push(q);
+    open = star ? q : null;
+  });
+  return out;
+}
+// A dusk sky has hundreds of Starlinks over a place: those that are not trains are cut to the brightest, in time order.
+function _asTrim(list) {
+  var d = _as.data;
+  var lone = list.filter(function (p) { return AS_GROUPS[d.group[p.i]] === 'starlink' && p.members.length < AS_TRAIN_MIN; })
+    .sort(function (u, v) { return u.mag - v.mag; }).slice(AS_PASS_LONE_STARLINKS);
+  return list.filter(function (p) { return lone.indexOf(p) < 0; }).slice(0, AS_PASS_MAX);
+}
+var AS_ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+function _asArrow(az) { return AS_ARROWS[Math.round(az / 45) % 8]; }
+function _asTimeText(ms) {
+  try { return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(ms)); } catch (e) { return new Date(ms).toTimeString().slice(0, 5); }
+}
+function _asDayText(ms) {
+  var a = new Date(ms), b = new Date();
+  if (a.toDateString() === b.toDateString()) return '';
+  try { return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(a) + ' '; } catch (e) { return ''; }
+}
+function _asRenderSheet() {
+  var el = _as.sheetEl;
+  if (!el || el.hidden) return;
+  var d = _as.data, now = Date.now();
+  var html = '<button type="button" class="as-x" id="as-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button><h3>' + _almEsc(_aeT('alm_sats_passes')) + '</h3>';
+  var gps = _asGpsNow();
+  html += '<div class="as-gps"><span>' + _almEsc(_aeT('alm_sats_gps_overhead')) + ' · <b>' + gps.length + '</b></span>' +
+    '<button type="button" class="ae-btn" id="as-gps-btn" aria-pressed="' + _asGpsOn() + '">' + _almEsc(_aeT('alm_sats_in_sky')) + '</button></div>';
+  var list = (_as.passes || []).filter(function (p) { return p.end > now; });
+  if (!_as.passes) html += '<p class="as-note" aria-busy="true">…</p>';
+  else if (!list.length) html += '<p>' + _almEsc(_aeT('alm_sats_no_passes')) + '</p>';
+  list.forEach(function (p) {
+    var name = p.members.length >= AS_TRAIN_MIN ? _aeT('alm_sats_train', { n: p.members.length }) : d.name[p.i];
+    html += '<button type="button" class="as-pass" data-i="' + p.i + '"><b>' + _almEsc(_asDayText(p.start) + _asTimeText(p.start)) + '</b>' +
+      '<span>' + _almEsc(name) + '</span><span>' + _almEsc(_orrNum(p.mag, null, 1)) + '</span>' +
+      '<span></span><span>' + _asArrow(p.azS) + ' → ' + _asArrow(p.azE) + '</span><span>' + _almEsc(_orrNum(p.el, null, 0)) + '°</span></button>';
+  });
+  html += '<p class="as-note">' + _almEsc(_aeT('alm_sats_mag_note')) + '</p>';
+  el.innerHTML = html;
+  _aeById('as-x').onclick = _asCloseSheet;
+  _aeById('as-gps-btn').onclick = function () {
+    try { localStorage.setItem(AS_GPS_KEY, _asGpsOn() ? '' : AS_ON); } catch (e) {}
+    if (_asGpsOn() === false) try { localStorage.removeItem(AS_GPS_KEY); } catch (e) {}
+    this.setAttribute('aria-pressed', String(_asGpsOn()));
+    _skyKickNow();
+  };
+  Array.prototype.forEach.call(el.querySelectorAll('.as-pass'), function (b) {
+    b.onclick = function () { _asSelect(Number(b.getAttribute('data-i'))); _asCloseSheet(); };
+  });
+}
+function _asToggleSheet() { if (_as.sheet) _asCloseSheet(); else _asOpenSheet(); }
+function _asOpenSheet() {
+  var host = _aeById('ae-view') || (_ae && _ae.el);
+  if (!host) return;
+  if (!_as.sheetEl) {
+    _as.sheetEl = document.createElement('div');
+    _as.sheetEl.className = 'as-sheet';
+    _as.sheetEl.setAttribute('role', 'dialog');
+    _as.sheetEl.setAttribute('aria-label', _aeT('alm_sats_passes'));
+    host.appendChild(_as.sheetEl);
+  }
+  _as.sheet = true;
+  _as.sheetEl.hidden = false;
+  var b = _aeById('as-passes');
+  if (b) b.setAttribute('aria-pressed', 'true');
+  _asSelect(-1);
+  _asNeedPasses();
+  _asRenderSheet();
+}
+function _asCloseSheet() {
+  _as.sheet = false;
+  if (_as.sheetEl) _as.sheetEl.hidden = true;
+  var b = _aeById('as-passes');
+  if (b) b.setAttribute('aria-pressed', 'false');
+}
+
+// ── Overhead now, and in the live sky ──
+// The GPS satellites above the horizon of the person's place, from the elements the view already holds.
+function _asLook(posKm, ms, place) {
+  var th = _asGmst(ms) + place.lon * Math.PI / 180, lat = place.lat * Math.PI / 180;
+  var sl = Math.sin(lat), cl = Math.cos(lat), st = Math.sin(th), ct = Math.cos(th);
+  var A = 6378.137, f = 1 / 298.257223563, e2 = f * (2 - f), n0 = A / Math.sqrt(1 - e2 * sl * sl);
+  var ox = n0 * cl * ct, oy = n0 * cl * st, oz = n0 * (1 - e2) * sl;
+  var rx = posKm.x - ox, ry = posKm.y - oy, rz = posKm.z - oz, range = Math.hypot(rx, ry, rz);
+  var up = rx * cl * ct + ry * cl * st + rz * sl, east = -rx * st + ry * ct, north = -rx * sl * ct - ry * sl * st + rz * cl;
+  return { el: Math.asin(up / range) * 180 / Math.PI, az: (Math.atan2(east, north) * 180 / Math.PI + 360) % 360, range: range };
+}
+function _asGmst(ms) {
+  var n = ms / MS_PER_DAY + 2440587.5 - 2451545.0;
+  return (((18.697374558 + 24.06570982441908 * n) % 24 + 24) % 24) * 15 * Math.PI / 180;
+}
+function _asGpsNow(ms, place) {
+  place = place || _asPlace();
+  ms = ms || Date.now();
+  if (!place || !_ae || !_ae.sats) return [];
+  var out = [];
+  _ae.sats.list.forEach(function (s) {
+    if (s.iss) return;
+    var st = _aeSatAt(s, ms, 0);
+    if (!st) return;
+    var lk = _asLook(st.posKm, ms, place);
+    if (lk.el >= AS_GPS_MIN_EL) out.push({ name: _aeSatShortName(s), el: lk.el, az: lk.az });
+  });
+  return out;
+}
+function _skyKickNow() { if (typeof _skyKick === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyKick(); }
+// The live sky: called from almanac-sky.js _skyPaintActors after the ISS. Passes under way now are drawn as moving points
+// at the sky's own positions, with the GPS satellites overhead as small rings when asked for. Panorama only, like the ISS.
+function _asSkyPaint(ctx, s) {
+  if (!_as.on || _as.state !== 'ready') return;
+  var place = { lat: s.lat, lon: s.lon };
+  _asNeedPasses(place);
+  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false;
+  if (_as.passes && s.eph && s.eph.sunGeoAlt < AS_PASS_SUN_ALT + 1) {
+    _as.passes.forEach(function (p) {
+      if (ms < p.start || ms > p.end) return;
+      p.members.forEach(function (i, k) {
+        var st = _asStateAt(i, ms);
+        if (!st) return;
+        var lk = _asLook(st.pos, ms, place);
+        if (lk.el < 0) return;
+        var x = _skyX(s, lk.az);
+        if (!_skyInView(s, x, 4)) return;
+        var y = _skyY(s, lk.el), near = _aeClamp(1 - (p.mag - 0) / 6, 0.25, 1);
+        _skyLight(ctx, x, y, (1.4 + 2 * near) * dpr, [255, 250, 235], 0.6 + 0.4 * near);
+        if (p.members.length < AS_TRAIN_MIN || k === 0) {
+          ctx.fillStyle = 'rgba(255,250,235,.8)';
+          ctx.font = (11 * dpr) + 'px sans-serif';
+          ctx.fillText(p.members.length >= AS_TRAIN_MIN ? _aeT('alm_sats_train', { n: p.members.length }) : _as.data.name[i], x + 6 * dpr, y - 6 * dpr);
+        }
+        drawn = true;
+      });
+    });
+  }
+  if (_asGpsOn()) {
+    _asGpsNow(ms, place).forEach(function (g) {
+      var x = _skyX(s, g.az);
+      if (!_skyInView(s, x, 4)) return;
+      var y = _skyY(s, g.el);
+      ctx.strokeStyle = 'rgba(140,215,255,.85)';
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.beginPath(); ctx.arc(x, y, 4 * dpr, 0, 6.2832); ctx.stroke();
+      ctx.fillStyle = 'rgba(140,215,255,.9)';
+      ctx.font = (10 * dpr) + 'px sans-serif';
+      ctx.fillText(String(g.name).replace(/^GPS\s*/, ''), x + 7 * dpr, y + 3 * dpr);
+      drawn = true;
+    });
+  }
+  // The sky repaints twice a second while something of these is up (its ISS timer).
+  if (drawn) s.issUp = true;
+}
