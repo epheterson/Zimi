@@ -1,7 +1,7 @@
 """The landing sites of the 3D view (almanac-sites.js): the data holds together.
 
 Every site is a landing the landmarks file already names, at that file's latitude and longitude; every model it stands is a
-file that parses (the ZCRF format of the other craft); every string the code reads is in all ten languages. The browser
+file that parses (the ZCR2 format of the other craft); every string the code reads is in all ten languages. The browser
 test (test_almanac_sites_browser.py) then checks the same on a rendered page.
 
 Run: pytest tests/test_almanac_sites.py -v
@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH = os.path.join(ROOT, "zimi", "static", "earth")
 STATIC = os.path.join(ROOT, "zimi", "static")
 MAX_PALETTE = (
-    8  # AE_CRAFT_PAL in almanac-earth.js: a model's shader holds this many colours
+    12  # AE_CRAFT_PAL in almanac-earth.js: a model's shader holds this many colours
 )
 
 
@@ -40,17 +40,16 @@ def landmarks():
 
 
 def _parse(name):
-    """A ZCRF file as (palette entries, vertex count, indices, box)."""
+    """A ZCR2 file as (palette entries, vertex count, indices, box)."""
     with open(os.path.join(EARTH, "craft-site-%s-v1.bin" % name), "rb") as fh:
         b = fh.read()
-    assert b[:4] == b"ZCRF"
+    assert b[:4] == b"ZCR2"
     version, metres = struct.unpack_from("<If", b, 4)
-    assert version == 1 and metres > 0
+    assert version == 2 and metres > 0
     box = struct.unpack_from("<6f", b, 12)
-    palette_n = struct.unpack_from("<I", b, 60)[0]
-    o = 64 + 20 * palette_n
-    nv, nt = struct.unpack_from("<II", b, o)
-    o += 8 + nv * 8
+    palette_n, nv, nt, flags = struct.unpack_from("<4I", b, 60)
+    assert flags == 0, "a site's model has no UVs or textures"
+    o = 88 + 24 * palette_n + nv * 9
     width = 4 if nv > 65535 else 2
     assert (
         len(b) == o + nt * 3 * width

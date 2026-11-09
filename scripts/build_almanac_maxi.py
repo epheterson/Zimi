@@ -34,7 +34,9 @@ FILE_FMT = "zimi_almanac_maxi_%s.zim"
 MANIFEST = "zimi_almanac_maxi.json"
 #: Where the tiles sit inside the flavour (beside index.html, so a relative URL from the page reaches them).
 TILE_ROOT = "hd/"
-MIMES = {".webp": "image/webp", ".json": "application/json"}
+MIMES = {".webp": "image/webp", ".json": "application/json", ".zcr2": "application/octet-stream"}
+#: Where the craft models sit inside the flavour (scripts/build_craft_hd.py writes the folder).
+CRAFT_ROOT = TILE_ROOT + "craft/"
 #: What of the tile source is not a tile: its own credits page.
 SKIP = ("index.html",)
 HASH_CHUNK = 1 << 20
@@ -102,8 +104,18 @@ def tile_entries(tiles_zim):
         raise SystemExit("%s holds no tiles" % tiles_zim)
 
 
-def add_tiles(tiles_zim):
-    """The ``extra_items`` hook (creator.create_folder_zim): tiles streamed in, never staged on disk."""
+def craft_entries(craft_dir):
+    """``(path, mimetype, bytes)`` of every file the HD craft builder wrote, under CRAFT_ROOT."""
+    for name in sorted(os.listdir(craft_dir)):
+        ext = os.path.splitext(name)[1]
+        if ext in MIMES:
+            with open(os.path.join(craft_dir, name), "rb") as f:
+                yield CRAFT_ROOT + name, MIMES[ext], f.read()
+
+
+def add_tiles(tiles_zim, craft_dir=None):
+    """The ``extra_items`` hook (creator.create_folder_zim): tiles streamed in, never staged on disk; the HD craft
+    folder, if there is one, beside them."""
     from zimi.zimwriter import make_asset_item
 
     def add(creator):
@@ -113,11 +125,13 @@ def add_tiles(tiles_zim):
             creator.add_item(make_asset_item(path, mime, data))
         if TILE_ROOT + "hd.json" not in names:
             raise SystemExit("%s has no hd.json" % tiles_zim)
+        for path, mime, data in craft_entries(craft_dir) if craft_dir else ():
+            creator.add_item(make_asset_item(path, mime, data))
 
     return add
 
 
-def build(tiles_zim, out_dir, month=None):
+def build(tiles_zim, out_dir, month=None, craft_dir=None):
     """The HD flavour of the Almanac, built from the source as it is now. Returns its path."""
     from zimi import ownzims
 
@@ -126,7 +140,7 @@ def build(tiles_zim, out_dir, month=None):
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, FILE_FMT % month)
     return ownzims.write_zim(
-        own, path, flavour=FLAVOUR, extra_items=add_tiles(tiles_zim)
+        own, path, flavour=FLAVOUR, extra_items=add_tiles(tiles_zim, craft_dir)
     )
 
 
@@ -154,11 +168,15 @@ def main(argv=None):
     ap.add_argument("--cache", default=os.path.join(ROOT, "build", "almanac-tiles"))
     ap.add_argument("--out", default=os.path.join(ROOT, "dist"))
     ap.add_argument(
+        "--craft",
+        help="the HD craft folder (scripts/build_craft_hd.py --out): carried as hd/craft/",
+    )
+    ap.add_argument(
         "--tag", help="the release the file goes on: also writes the manifest for it"
     )
     a = ap.parse_args(argv)
     tiles = a.tiles or fetch_tiles(a.cache)
-    path = build(tiles, a.out)
+    path = build(tiles, a.out, craft_dir=a.craft)
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     if a.tag:
         print("wrote", write_manifest(path, a.tag))
