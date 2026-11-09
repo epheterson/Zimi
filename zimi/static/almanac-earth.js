@@ -4116,6 +4116,9 @@ function _aeRefAxesRows() {
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
+  add('craft.models', _aeT('tb_kn_craft_models'), 'NASA 3D Resources · scripts/build_craft_models.py, build_craft_hd.py', '', 'NASA (public domain)');
+  add('craft.sun', _aeT('tb_kn_craft_sun'), AE_CRAFT_SUN_E, '', 'Zimi (a Lambert albedo of 0.8 head on reads 0.76)');
+  add('craft.shine', _aeT('tb_kn_craft_shine'), AE_CRAFT_SHINE_REFLECT, '', 'Zimi (a world\'s albedo, disc size and phase seen from the craft)');
   // The landing sites: where the models, the sol and the Saturn V's flight come from.
   add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
   add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
