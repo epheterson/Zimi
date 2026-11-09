@@ -255,3 +255,44 @@ def test_a_probe_keeps_its_tail_beside_its_model(served):
             ctx.close()
         finally:
             br.close()
+
+
+# The station's distance from its own ring (km): every drawn instant, the ring is the orbit it is on now.
+ON_RING = """(offMs) => {
+  _almFocus = new Date(Date.now() + offMs); _almClockSetRate(0);
+  _ae.gl.renderer.render = function () {};
+  _aeUpdate(_aeDisplayMs());
+  var g = _ae.gl.issRing.geometry, a = g.attributes.position.array, n = g.drawRange.count, p = _ae.issPos;
+  var pts = [], rs = [];
+  for (var i = 0; i < n; i++) { pts.push([a[i * 3], a[i * 3 + 1], a[i * 3 + 2]]); rs.push(_aeLen(pts[i])); }
+  var best = Infinity;
+  for (var i = 0; i < n; i++) {
+    var u = pts[i], v = pts[(i + 1) % n], ab = _aeSub(v, u), ap = _aeSub(p, u);
+    var t = _aeClamp(_aeDot(ab, ap) / _aeDot(ab, ab), 0, 1);
+    best = Math.min(best, _aeLen(_aeSub(_aeAdd(u, _aeScale(ab, t)), p)));
+  }
+  return { n: n, km: best * AE_EARTH_RADIUS_KM, rMin: Math.min.apply(null, rs) * AE_EARTH_RADIUS_KM, rMax: Math.max.apply(null, rs) * AE_EARTH_RADIUS_KM,
+    rStation: _aeLen(p) * AE_EARTH_RADIUS_KM };
+}"""
+RING_TOLERANCE_KM = 0.05  # 50 m: a pixel is 100 m only with the station filling the screen
+
+
+def test_the_station_is_on_its_own_orbit_ring(served):
+    """The ring is the ellipse through the station's position and velocity, redrawn each frame with the station as one
+    vertex: at any instant, a minute on, hours on or days on, the station lies on it (it stood 3 km off a ring drawn up
+    to a minute earlier, and the ring's own ends 15 km apart), and the ring is round at the station's height."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = _browser(pw)
+        try:
+            ctx, pg, errors = _open(br, served, "iss")
+            for off in (0, 20_000, 45_000, 600_000, 3_600_000, 3 * 3_600_000, 2 * 86_400_000):
+                got = pg.evaluate(ON_RING, off)
+                assert got["n"] >= 90, (off, got)
+                assert got["km"] < RING_TOLERANCE_KM, (off, got)
+                assert got["rMin"] > got["rStation"] - 25 and got["rMax"] < got["rStation"] + 25, (off, got)
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()

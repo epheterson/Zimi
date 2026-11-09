@@ -402,9 +402,9 @@ var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster
 var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
 var AE_SAT_CAPACITY = 80;
 var AE_GPS_RING_POINTS = 72;
-var AE_ISS_RING_POINTS = 96;
+var AE_ISS_RING_POINTS = 180;   // 2 degrees apart: a chord stands 0.4 km off its arc at most (the station is always one of the vertices)
+var AE_ORBIT_E_MIN = 1e-7;   // below this an orbit is round: no perigee to start from
 var AE_RING_REFRESH_MS = 6 * 3600 * 1000;   // GPS orbits barely turn in six hours
-var AE_ISS_RING_REFRESH_MS = 60 * 1000;
 var AE_MOON_PATH_HALF_DAYS = 13.66;   // half a sidereal month either side
 var AE_MOON_PATH_STEP_HOURS = 6;
 var AE_MOON_PATH_REFRESH_MS = MS_PER_DAY;
@@ -4504,7 +4504,7 @@ function _aeNewState(el) {
     freshBusy: false, freshFailed: false, // the admin's "Get fresh data", under way / failed
     setOpen: false, setBusy: false, setError: '',   // the gear's panel
     selected: null,                       // { norad, tapMs }: the tapped satellite
-    ringsAt: null, issRingAt: null, moonPathAt: null,
+    ringsAt: null, moonPathAt: null,
     positions: [],                        // projected satellites for tapping
     lastTs: 0, lastRender: 0, lastText: 0, dirty: true,
     raf: 0, idleTimer: 0,
@@ -5424,7 +5424,7 @@ function _aeSetSats(lib, data) {
   list = list.slice(0, AE_SAT_CAPACITY);
   list.forEach(function (s) { s.epochMs = _aeSatEpochMs(s.rec); });
   _ae.sats = { lib: lib, list: list, source: data.source || '', fetched: data.fetched };
-  _ae.ringsAt = _ae.issRingAt = null;
+  _ae.ringsAt = null;
   // The tapped satellite is kept by its catalogue number, so fresher
   // elements for it keep its card open; one no longer here closes it.
   if (_ae.selected) _aeRenderCard();
@@ -5457,6 +5457,27 @@ function _aeOrbitPoints(s, ms, eqeq, n) {
   return pts;
 }
 
+// The orbit a satellite is on at this instant as an ellipse (the conic of its position and velocity), written into `out` as
+// n scene points (Earth radii) round from the satellite itself. False when it is not a closed orbit.
+function _aeOrbitRing(st, eqeq, out, n) {
+  var r = [st.posKm.x, st.posKm.y, st.posKm.z], v = _aeRotZ([st.velKmS.x, st.velKmS.y, st.velKmS.z], eqeq);
+  r = _aeRotZ(r, eqeq);
+  var rl = _aeLen(r), h = _aeCross(r, v), hl = _aeLen(h);
+  if (!(rl > 0) || !(hl > 0)) return false;
+  var ev = _aeSub(_aeScale(_aeCross(v, h), 1 / AE_GM_EARTH_KM3_S2), _aeScale(r, 1 / rl)), e = _aeLen(ev);
+  if (!(e < 1)) return false;
+  var p = hl * hl / AE_GM_EARTH_KM3_S2, hu = _aeScale(h, 1 / hl);
+  var px = e > AE_ORBIT_E_MIN ? _aeScale(ev, 1 / e) : _aeScale(r, 1 / rl), py = _aeCross(hu, px);
+  var nu0 = Math.atan2(_aeDot(r, py), _aeDot(r, px));
+  for (var i = 0; i < n; i++) {
+    var nu = nu0 + 2 * Math.PI * i / n, rad = p / (1 + e * Math.cos(nu)) / AE_EARTH_RADIUS_KM, c = Math.cos(nu), sn = Math.sin(nu);
+    out[i * 3] = rad * (c * px[0] + sn * py[0]);
+    out[i * 3 + 1] = rad * (c * px[1] + sn * py[1]);
+    out[i * 3 + 2] = rad * (c * px[2] + sn * py[2]);
+  }
+  return true;
+}
+
 function _aeUpdateSats(ms, sc) {
   var S = _ae.gl, sats = _ae.sats;
   _ae.positions = [];
@@ -5465,7 +5486,7 @@ function _aeUpdateSats(ms, sc) {
   var count = 0;
   var refreshRings = _ae.ringsAt === null || Math.abs(ms - _ae.ringsAt) > AE_RING_REFRESH_MS;
   var ringArr = S.gpsRings.geometry.attributes.position.array, ringN = 0;
-  var issShown = false, selShown = false;
+  var issShown = false, selShown = false, issState = null;
   for (var i = 0; i < sats.list.length; i++) {
     var s = sats.list[i];
     var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _aeClockRuns() || _ae.target === 'iss');
@@ -5473,16 +5494,15 @@ function _aeUpdateSats(ms, sc) {
     if (standing === 'none') continue;
     if (s.iss) {
       issShown = true;
-      if (_ae.issRingAt === null || Math.abs(ms - _ae.issRingAt) > AE_ISS_RING_REFRESH_MS) {
-        var ring = _aeOrbitPoints(s, ms, eqeq, AE_ISS_RING_POINTS);
-        if (ring) {
-          var ia = S.issRing.geometry.attributes.position.array;
-          for (var k = 0; k < ring.length; k++) { ia[k * 3] = ring[k][0]; ia[k * 3 + 1] = ring[k][1]; ia[k * 3 + 2] = ring[k][2]; }
-          S.issRing.geometry.attributes.position.needsUpdate = true;
-          S.issRing.geometry.setDrawRange(0, ring.length);
-          _ae.issRingAt = ms;
-        }
-      }
+      // Its orbit as it is now: the ellipse through the station's own position and velocity, the station its first vertex,
+      // drawn again every frame so the station is on it (SGP4's path over one period is a spiral, 15 km from closing, and
+      // a ring drawn a minute ago stood a chord's sag off the station).
+      issState = _aeSatAt(s, ms, eqeq);
+      var ia = S.issRing.geometry.attributes.position.array;
+      if (issState && _aeOrbitRing(issState, eqeq, ia, AE_ISS_RING_POINTS)) {
+        S.issRing.geometry.attributes.position.needsUpdate = true;
+        S.issRing.geometry.setDrawRange(0, AE_ISS_RING_POINTS);
+      } else S.issRing.geometry.setDrawRange(0, 0);
       // Faded beside a faded (approximate) dot. Past that the ring is all
       // that is drawn, and it is right (the orbit's shape and tilt hold), so
       // it is drawn in full: at the faded strength it all but vanished and
@@ -5501,7 +5521,7 @@ function _aeUpdateSats(ms, sc) {
       }
     }
     if (standing === 'orbit') continue;
-    var st = _aeSatAt(s, ms, eqeq);
+    var st = s.iss ? issState : _aeSatAt(s, ms, eqeq);
     if (!st) continue;
     var sel = !!_ae.selected && _ae.selected.norad === s.omm.NORAD_CAT_ID;
     selShown = selShown || sel;
@@ -5518,7 +5538,7 @@ function _aeUpdateSats(ms, sc) {
     S.gpsRings.geometry.setDrawRange(0, ringN);
     _ae.ringsAt = ms;
   }
-  if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
+  if (!issShown) S.issRing.geometry.setDrawRange(0, 0);
   if (!issShown || !_ae.issPos) _aeIssAt(null);
   // A card belongs to a dot: when the tapped satellite's dot goes (its data
   // too far from the shown instant), its card goes with it.
@@ -6913,7 +6933,7 @@ function _aeBindKeys() {
 // After the clock jumps: the cached orbits belong to the old instant, and the Almanac's loops (its repaint restarts
 // them) stay paused under the view. A jump to a place or an event is a jump at real pace: the clock goes back to it.
 function _aeJumped() {
-  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  _ae.ringsAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
   if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
 }
@@ -7527,7 +7547,7 @@ function _aeDisposeGl() {
   _ae.gl = null;
   _ae.ready = false;
   _ae.scene = null;
-  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  _ae.ringsAt = _ae.moonPathAt = null;
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
   ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-place', 'ae-lbl-shadow'].forEach(function (id) {
