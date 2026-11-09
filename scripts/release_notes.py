@@ -19,6 +19,8 @@ import sys
 REPO_URL = "https://github.com/epheterson/zimi"
 HIGHLIGHTS_HEADING = "### Highlights"
 ISSUE_REF = re.compile(r"(?<![\w&])#\d+\b")
+AREA_HEADING = re.compile(r"^\*\*([^*]+)\*\*$")
+FIRST_AREA, LAST_AREA = "Zimi", "Almanac"
 
 
 def _section(changelog, version):
@@ -81,9 +83,43 @@ def release_body(changelog, version, repo_url=REPO_URL):
     return "%s\n\n[Full changelog for v%s](%s)" % (highlights, version, link)
 
 
+def voice_problems(changelog, version):
+    """What breaks the release-notes voice in a version's grouped Highlights (Eric,
+    2026-11-08: "Don't lead with almanac that's still the Easter egg. This is Zimi."):
+    areas as bold headings, Zimi first, Almanac last, a bullet or more under each,
+    no bullet outside an area. A block of plain bullets or sentences is not judged."""
+    _, body = _section(changelog, version)
+    areas, problems = [], []
+    for line in _highlights(body).splitlines():
+        heading = AREA_HEADING.match(line.strip())
+        if heading:
+            areas.append([heading.group(1), 0])
+        elif line.startswith("- "):
+            if areas:
+                areas[-1][1] += 1
+            elif not problems:
+                problems.append("a bullet comes before any area")
+    if not areas:
+        return []
+    names = [a[0] for a in areas]
+    if names[0] != FIRST_AREA:
+        problems.append("%s comes first, not %s" % (FIRST_AREA, names[0]))
+    if LAST_AREA in names and names[-1] != LAST_AREA:
+        problems.append("%s comes last, not %s" % (LAST_AREA, names[-1]))
+    problems += ["%s has no bullets" % n for n, count in areas if not count]
+    problems += ["%s is listed twice" % n for n in sorted({n for n in names if names.count(n) > 1})]
+    return problems
+
+
 def main(argv):
+    if len(argv) == 3 and argv[1] == "--check":
+        with open("CHANGELOG.md", encoding="utf-8") as f:
+            problems = voice_problems(f.read(), argv[2])
+        for p in problems:
+            sys.stderr.write("%s: %s\n" % (argv[2], p))
+        return 1 if problems else 0
     if len(argv) not in (2, 3):
-        sys.stderr.write("usage: release_notes.py VERSION [CHANGELOG.md]\n")
+        sys.stderr.write("usage: release_notes.py VERSION [CHANGELOG.md] | --check VERSION\n")
         return 2
     with open(argv[2] if len(argv) == 3 else "CHANGELOG.md", encoding="utf-8") as f:
         print(release_body(f.read(), argv[1]))

@@ -38,10 +38,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A second background start no longer takes a starting server's pid file.
 - The portable Linux build can make icons for captured pages (Pillow).
 - Almanac: the 3D view's controls can no longer be pushed up over the picture; the gear shows three icons and short labels, not paragraphs.
+### Highlights
+
+**Zimi**
+
+- `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
+
+**Games**
+
+- Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
+**Almanac**
+
+- The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
 
 ## [1.15.4]
 
 ### Highlights
+
+**Zimi**
+
+- Signed in, your settings follow you to every browser.
+- Portable Linux: a headless x64 and arm64 build that runs from a USB stick (#137).
+- A lighter Docker image: 884 MB, down from 1.11 GB.
+- `near:` suggests places as you type.
+- A file already downloading isn't downloaded twice (#143).
+
+**Games**
+
+- ZimCity keeps your cities, plus about 40 fixes across the shelf.
+
+**Almanac**
+
+- One clock, a cleaner 3D view, names on every world, and links that bring you back to the same moment.
+- Almanac HD is its own ZIM that works in Kiwix.
+
+### Added
 
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).

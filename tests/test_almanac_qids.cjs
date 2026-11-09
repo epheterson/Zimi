@@ -120,7 +120,9 @@ const PLAIN_ROWS = {
   sun_diff_rot: 'three coefficients of one fit',
   sun_granules: 'how many cells this view draws, not a named thing',
   sun_prom_height: 'the height this view draws prominences at',
-  sun_flare: 'the rise and fade this view draws a flare with'
+  sun_flare: 'the rise and fade this view draws a flare with',
+  cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
+  heli_beacon: 'the flash rate of a light, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

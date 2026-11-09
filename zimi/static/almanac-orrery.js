@@ -594,6 +594,18 @@ function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLi
 // shown where the planets are drawn, the orrery brought into view and the
 // planet's tip open, its Fly button and its article one tap on.
 var _orreryShowTipFn = null;   // _initOrrery's tip, for that
+// Whether the sky can show a body of the orrery (the Sun, a planet it draws), as the id Find leads to it by
+// (almanac-skyfind.js), or null: the Earth is where we stand, and the dwarf planets are beyond the eye.
+function _orreryFindId(hit) {
+  if (hit.type === 'sun') return 'sun';
+  return hit.type === 'planet' && _VISIBLE_PLANETS.indexOf(hit.data.name) >= 0 ? 'planet:' + hit.data.name : null;
+}
+// Its small round button on the tip: a tap opens the sky from here, aimed at it (almanac-look.js, opts.find).
+var ORR_FIND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/></svg>';
+function _orreryFindHtml(hit) {
+  var id = typeof openAlmanacLook === 'function' ? _orreryFindId(hit) : null;
+  return id ? '<button type="button" class="orrery-tip-find" data-orr-find="' + _almEsc(id) + '" aria-label="' + _almEsc(t('sky_find_btn')) + '">' + ORR_FIND_SVG + '</button>' : '';
+}
 function _orreryShowBody(name) {
   if (!_orreryCanvas) return;
   // At once: a smooth scroll is cut short while the 3D view readies itself behind the page. To the section's top,
@@ -722,7 +734,9 @@ function _initOrrery() {
       if (!el || !el.getAttribute) return;
       var key = el.getAttribute('data-alm-key');
       var fly = el.getAttribute('data-orr-fly');
-      if (key) { e.stopPropagation(); _orreryOpenLink(key); }
+      var find = el.closest && el.closest('[data-orr-find]');
+      if (find) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; openAlmanacLook({ find: find.getAttribute('data-orr-find') }); }
+      else if (key) { e.stopPropagation(); _orreryOpenLink(key); }
       else if (fly) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; _orreryLaunchRocket(fly); }
       else if (el.hasAttribute('data-orr-earth')) {
         // "1" is the Earth; any other value names the body to open on (the Sun, a planet).
@@ -734,7 +748,7 @@ function _initOrrery() {
   var _tipHideTimer = null;
   function _cancelTipHide() { if (_tipHideTimer) { clearTimeout(_tipHideTimer); _tipHideTimer = null; } }
   function _hideTip() { _cancelTipHide(); tooltip.style.display = 'none'; }
-  function _tipHasAction() { return !!tooltip.querySelector('.alm-link, .orrery-tip-btn'); }
+  function _tipHasAction() { return !!tooltip.querySelector('.alm-link, .orrery-tip-btn, .orrery-tip-find'); }
   function _scheduleTipHide(ms) { _cancelTipHide(); _tipHideTimer = setTimeout(function () { tooltip.style.display = 'none'; }, ms); }
   function _releaseTip() { if (_tipHasAction()) _scheduleTipHide(_ORRERY_TIP_GRACE_MS); else _hideTip(); }
   // Put away by the person (a press outside it, Escape, its x): the body's
@@ -811,7 +825,7 @@ function _initOrrery() {
     // acts on data-alm-key / data-orr-* targets, so the rest of the box is inert.
     var nameHtml = _almEsc(info.name);
     if (linkKey) nameHtml = window.AlmanacLinks.wrap(linkKey, nameHtml);
-    var html = '<span class="orrery-tip-info">' + nameHtml + _almEsc(info.rest) + '</span>' + _almDismissX();
+    var html = '<span class="orrery-tip-info">' + nameHtml + _almEsc(info.rest) + _orreryFindHtml(hit) + '</span>' + _almDismissX();
     var lines = _orreryDelayLines(hit, _orrerySimTime());
     for (var i = 0; i < lines.length; i++) html += '<span class="orrery-tip-line">' + _almEsc(lines[i]) + '</span>';
     tooltip.innerHTML = html + _tipButtonHtml(hit);

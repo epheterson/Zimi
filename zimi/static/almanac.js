@@ -2214,7 +2214,7 @@ var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calen
 var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
 // The numbers everything above is worked from ("constants rows", Eric): the
 // Earth, the Sun and Moon, the bodies' facts and axes, time, the navigator's, physics, the units.
-var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_units'];
+var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_scene', 'k_units'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
@@ -2242,6 +2242,7 @@ var ALM_TB_ICONS = {
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
   k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
+  k_scene: '<path d="M7 18a4 4 0 0 1-.5-7.96A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17.5 18z"/>',
   k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
