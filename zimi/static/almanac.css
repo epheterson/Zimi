@@ -737,6 +737,10 @@
 .alm-spd-play { position: absolute; top: calc(var(--spd-h) / 2); inset-inline-start: 50%; width: var(--spd-thumb); height: var(--spd-thumb); margin: 0; padding: 0; transform: translate(-50%, -50%); border-radius: 50%; border: 1px solid var(--border-strong, var(--border)); background: var(--bg); color: var(--text3); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .14s, background .14s, color .14s; }
 [dir="rtl"] .alm-spd-play { transform: translate(50%, -50%); }
 .alm-spd-play svg { width: 10px; height: 10px; display: block; }
+/* Away from it (running at another pace), the button is a 48 px target over the track: a finger a little off the 20 px ring
+   met the track, and on a phone the track does not always hear a tap (Eric 2026-11-08: "tapping play to get back to 1x still is off"). */
+.alm-spd-play:not(.alm-spd-on) { z-index: 1; }
+.alm-spd-play:not(.alm-spd-on)::before { content: ""; position: absolute; inset: -14px; border-radius: 50%; }
 .alm-spd-play.alm-spd-on { pointer-events: none; border-color: transparent; background: var(--text2); color: var(--bg); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
 .alm-spd-hot .alm-spd-play.alm-spd-on { background: var(--amber); color: var(--on-amber); }
 .alm-spd-drag .alm-spd-play.alm-spd-on { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 0 7px var(--amber-glow), 0 1px 4px rgba(0, 0, 0, .55); }

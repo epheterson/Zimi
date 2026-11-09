@@ -1955,7 +1955,7 @@ function _aeBuildGl(THREE, canvas) {
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
     sky: sky, starCloud: starCloud, starsLoaded: false, starsLoading: false, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
-    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(), planets: S0.planets, pv: S0.pv,
+    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(), planets: S0.planets, earthOrbit: S0.earthOrbit, pv: S0.pv,
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
     maps: {}, mapFailed: {}               // by URL: the load under way or done, and what failed
   };
@@ -2540,6 +2540,9 @@ function _aeBuildPlanets(S) {
     }
     S.planets[b.key] = p;
   });
+  // The Earth is not one of AE_PLANETS (it is the scene's own globe), but its year round the Sun is a line like theirs.
+  S.earthOrbit = { b: { key: 'earth', eph: 'Earth' }, orbit: _aeLine(THREE, THREE.LineLoop, AE_ORBIT_POINTS, AE_PLANET_ORBIT_COLOR, AE_PLANET_ORBIT_ALPHA), period: _aeYearDays('Earth') };
+  S.scene.add(S.earthOrbit.orbit);
 }
 // A planet's path round the Sun, as shown: a year of its own, redrawn when the shown date has moved a month.
 function _aeWideView() { return _ae.preset === 'planets' || _ae.target === 'sun'; }
@@ -2570,7 +2573,7 @@ function _aeOrbitShow(key) {
   var b = _aePlanetBody(key);
   // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
   // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
-  if (_aeWideView()) return b && !b.parent ? 1 : 0;
+  if (_aeWideView()) return (b && !b.parent) || key === 'earth' ? 1 : 0;
   var host = _aeHostOf(key);
   var mine = function (k) { return !!k && (k === key || _aeHostOf(k) === host); };
   var o = _ae.orbitFly, flying = !!o && (mine(o.from) || mine(o.to));
@@ -2660,6 +2663,7 @@ function _aeUpdatePlanets(sc) {
 
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  if (S.earthOrbit) _aeDrawOrbit(S.earthOrbit, jd, around, sunAt);
   AE_PLANETS.forEach(function (b) {
     var p = S.planets[b.key], f, pos, sun;
     if (!b.parent) {

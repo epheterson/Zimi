@@ -1026,6 +1026,7 @@ def test_orbits_is_a_round_switch(served):
             assert pg.evaluate(vis, "saturn") and not pg.evaluate(
                 vis, "io"
             )  # the Planets view is a map of the orbits, whatever the switch
+            assert pg.evaluate("() => { _aeUpdate(_aeDisplayMs()); return _ae.gl.earthOrbit.orbit.visible; }")   # the Earth's too
             pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return document.getElementById('ae-orbits-btn').hidden; }", timeout=10_000, polling=100)
             assert not errors, errors
             ctx.close()
