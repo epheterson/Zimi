@@ -178,7 +178,7 @@
       };
       var heaviest = function (down) { return Math.max.apply(null, columns.map(function (it) { return weight(P[it.pile], down); })); };
       var down = Z.openDown(heaviest, room, ch, ch * UP_STEP_SHARE, DOWN_RATIO, MAX_DOWN_RATIO, DOWN_RATIO_STEP);
-      var step = Z.fanStep(heaviest(down), room, ch, ch * Z.FAN_GROW_SHARE, ch * MIN_STEP_SHARE);
+      var step = Z.growStep(heaviest(down), room, ch, ch * MIN_STEP_SHARE);
       var fan = cw * WASTE_FAN_SHARE;
       var frames = [];
 
@@ -252,7 +252,7 @@
       openMenu: function () { pg.menu(o.title, o.options ? o.options() : []); }
     };
     if (S.draw) {
-      cfg.stock = S.draw; cfg.afterStock = false;
+      cfg.stock = S.draw;   // a turn of the stock is checked like any move: it can win, auto-finish or leave no moves
       cfg.refuse = function () { pg.note(TX(o.refuse || 'sol.why.stockEmpty')); };
     }
     pg = Z.solitairePage(cfg);
