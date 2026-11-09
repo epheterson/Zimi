@@ -50,7 +50,7 @@ function _asGroundAt(st, x, y, far) {
 // relative to the site's own height: absent, the ground is the procedural one alone.
 function _asTerrainFn(st) {
   if (typeof _aeGroundHeight !== 'function') return null;
-  var lat0 = st.row[1], lon0 = st.row[2], R = st.radiusM, cosLat = Math.max(0.05, Math.cos(_aeRad(lat0)));
+  var lat0 = st.lat, lon0 = st.lon, R = st.radiusM, cosLat = Math.max(0.05, Math.cos(_aeRad(lat0)));
   var at = function (x, y) { return _aeGroundHeight(st.body, lat0 + _aeDeg(y / R), lon0 + _aeDeg(x / (R * cosLat))) || 0; };
   var base = at(0, 0);
   return function (x, y) { return at(x, y) - base; };
@@ -164,7 +164,7 @@ function _asGroupBuild(st) {
   grp.frustumCulled = false;
   S.scene.add(grp);
   var shared = {
-    sun: { value: new THREE.Vector3(0, 0, 1) }, lit: { value: 1 }, ambient: { value: 0.012 }, fade: { value: 1 },
+    sun: { value: new THREE.Vector3(0, 0, 1) }, lit: { value: 1 }, ambient: { value: info.ambient }, fade: { value: 1 },
     albedo: { value: new THREE.Vector3(info.albedo[0], info.albedo[1], info.albedo[2]) }, metre: { value: AS_MRE }
   };
   st.shared = shared;
@@ -187,7 +187,7 @@ function _asGroupBuild(st) {
   }
   geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
   st.groundGeo = geo;
-  var uni = { sun: shared.sun, lit: shared.lit, albedo: shared.albedo, ambient: shared.ambient, fade: shared.fade, tint: { value: 1 }, haze: { value: new THREE.Vector3(0, 0, 0) }, metre: shared.metre };
+  var uni = { sun: shared.sun, lit: shared.lit, albedo: shared.albedo, ambient: shared.ambient, fade: shared.fade, tint: { value: 1 }, haze: { value: new THREE.Vector3(info.haze ? info.haze[0] : 0, info.haze ? info.haze[1] : 0, info.haze ? info.haze[2] : 0) }, metre: shared.metre };
   st.groundUni = uni;
   var ground = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AS_GROUND_VERT, fragmentShader: AS_GROUND_FRAG }));
   ground.frustumCulled = false;
@@ -406,7 +406,7 @@ function _asPlaceSiteParts(st) {
       st.keepOut.push([x, y, 3.5]);
     } else {
       var z = _asGroundAt(st, x, y, false);
-      _asPartPlace(st, got, x, y, z, got.hdg, 0, 0, 0, z);
+      _asPartPlace(st, got, x, y, z + (pd.z || 0), got.hdg, 0, 0, 0, z);
       st.keepOut.push([x, y, got.size * 0.6 + 1.5]);
     }
   });

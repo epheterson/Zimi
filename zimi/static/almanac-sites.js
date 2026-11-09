@@ -35,14 +35,18 @@ var AS_CLOCK_RATES = [1, 300, 3600, 21600];
 var AS_KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
 // Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), craters, and the rover it has.
 var AS_BODY = {
-  moon: { albedo: [0.5, 0.48, 0.45], g: 1.62, relief: 0.45, craters: 1, sky: null,
+  moon: { albedo: [0.5, 0.48, 0.45], g: 1.62, relief: 0.45, craters: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
     rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: 4.2, jump: 3.0, cam: 11 } },
-  mars: { albedo: [0.5, 0.27, 0.15], g: 3.71, relief: 0.3, craters: 0.5, sky: { day: [0.78, 0.55, 0.38], high: [0.42, 0.3, 0.24], dusk: [0.25, 0.32, 0.5] },
+  mars: { albedo: [0.5, 0.27, 0.15], g: 3.71, relief: 0.3, craters: 0.5, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
+    sky: { day: [0.78, 0.55, 0.38], high: [0.42, 0.3, 0.24], dusk: [0.25, 0.32, 0.5] },
     rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: 3.4, jump: 4.4, cam: 11 } },
-  venus: { albedo: [0.42, 0.33, 0.22], g: 8.87, relief: 0.2, craters: 0, sky: { day: [0.75, 0.5, 0.2], high: [0.6, 0.38, 0.15], dusk: [0.4, 0.22, 0.08] }, rover: null },
-  titan: { albedo: [0.3, 0.22, 0.13], g: 1.35, relief: 0.2, craters: 0, sky: { day: [0.5, 0.3, 0.1], high: [0.3, 0.18, 0.06], dusk: [0.15, 0.09, 0.03] }, rover: null }
+  venus: { albedo: [0.42, 0.33, 0.22], g: 8.87, relief: 0.2, craters: 0, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
+    sky: { day: [0.75, 0.5, 0.2], high: [0.6, 0.38, 0.15], dusk: [0.4, 0.22, 0.08] }, rover: null },
+  titan: { albedo: [0.3, 0.22, 0.13], g: 1.35, relief: 0.2, craters: 0, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],
+    sky: { day: [0.5, 0.3, 0.1], high: [0.3, 0.18, 0.06], dusk: [0.15, 0.09, 0.03] }, rover: null },
+  earth: { albedo: [0.2, 0.25, 0.12], g: 9.81, relief: 0.12, craters: 0, ambient: 0.22, fill: 0.1, haze: [0.62, 0.74, 0.9],
+    sky: { day: [0.62, 0.76, 0.95], high: [0.16, 0.38, 0.82], dusk: [0.9, 0.5, 0.3] }, rover: null }
 };
-var AS_BODY_KEYS_ORDER = ['moon', 'mars', 'venus', 'titan'];
 
 var _asData = null, _asLoading = null;
 function _asLoad() {
@@ -56,16 +60,17 @@ function _asLoad() {
 _asLoad();
 
 // The rover's own file, fetched at the first Drive.
-var AS_DRIVE_JS = '/static/almanac-sites-drive.js', _asDriveLoading = false;
-function _asDriveLoad(then) {
-  if (_asDriveLoading) return;
-  _asDriveLoading = true;
+var AS_DRIVE_JS = '/static/almanac-sites-drive.js', AS_LAUNCH_JS = '/static/almanac-sites-launch.js', _asLoadingScripts = {};
+function _asLoadScript(src, then) {
+  if (_asLoadingScripts[src]) return;
+  _asLoadingScripts[src] = true;
   var s = document.createElement('script');
-  s.src = AS_DRIVE_JS;
+  s.src = src;
   s.onload = then;
-  s.onerror = function () { _asDriveLoading = false; s.remove(); };
+  s.onerror = function () { _asLoadingScripts[src] = false; s.remove(); };
   document.head.appendChild(s);
 }
+function _asDriveLoad(then) { _asLoadScript(AS_DRIVE_JS, then); }
 // The site of a landmark row: by the row's name on its body, or null.
 function _asDefFor(body, row) {
   if (!_asData || !row) return null;
@@ -90,7 +95,7 @@ function _asAxes(b) {
   return [_aeNorm([e[0], e[1], e[2]]), _aeNorm([e[4], e[5], e[6]]), _aeNorm([e[8], e[9], e[10]])];
 }
 function _asFrame(st, b, sc) {
-  var ax = _asAxes(b), v = _aeLatLonVec(st.row[1], st.row[2]);
+  var ax = _asAxes(b), v = _aeLatLonVec(st.lat, st.lon);
   var up = _aeNorm([ax[0][0] * v[0] + ax[1][0] * v[1] + ax[2][0] * v[2], ax[0][1] * v[0] + ax[1][1] * v[1] + ax[2][1] * v[2], ax[0][2] * v[0] + ax[1][2] * v[1] + ax[2][2] * v[2]]);
   var pole = ax[2];
   var east = _aeCross(pole, up);
@@ -119,7 +124,8 @@ function _asLatLon(st, b, local) {
 // ── The visit's state ──
 function _asNewState(def, body, row, drive) {
   var info = _asBodyInfo(body), b = _asBody(body);
-  var st = { def: def, body: body, row: row, drive: !!drive, info: info, phase: 'fly', siteParts: [], keepOut: [], radiusM: b ? b.r * AE_EARTH_RADIUS_KM * 1000 : 1737400,
+  var pad = def && def.pad;
+  var st = { def: def, body: body, row: row, lat: pad ? pad.lat : row[1], lon: pad ? pad.lon : row[2], drive: !!drive, info: info, phase: 'fly', siteParts: [], keepOut: [], radiusM: b ? b.r * AE_EARTH_RADIUS_KM * 1000 : 1737400,
     camera: { az: 3.5, el: 0.32, dist: 16 }, look: { yaw: 0, pitch: 0, touched: 0 }, input: { sx: 0, sy: 0, keys: {}, jump: false }, last: 0, t0: 0, from: null, fr: null, rate: 0 };
   st.terrain = _asTerrainFn(st);
   var span = 0;
@@ -145,13 +151,14 @@ function _aeSiteLeave(quiet) {
   _asDispose(st);
   _asHud(false);
   var S = _ae.gl;
-  if (S) { S.moon.visible = true; if (S.sky) S.sky.visible = true; }
+  if (S) { S.moon.visible = true; S.earth.visible = true; if (st.atmo) st.atmo.visible = true; if (S.sky) S.sky.visible = true; }
   if (_ae.el) _ae.el.classList.remove('ae-site');
   if (!quiet) { _ae.dirty = true; _aeKick(); }
 }
 function _asDispose(st) {
   var S = _ae && _ae.gl;
   if (!S || !st.group) return;
+  if (st.launch) _asLaunchReset(st);
   S.scene.remove(st.group);
   if (st.dome) S.scene.remove(st.dome);
   st.group.traverse(function (o) { if (o.geometry && o.geometry !== undefined) { /* shared model geometry stays with its model */ } });
@@ -164,6 +171,7 @@ function _asDispose(st) {
 // ── The camera ──
 // The visit's camera orbits the lander; a drive's follows the rover from behind. Either is a pose in the site's frame, then in the scene's.
 function _asCameraLocal(st, dt) {
+  if (st.camOverride) return st.camOverride(st, dt);
   var c = st.camera, r = st.rover, focus, az = c.az, el = c.el, dist = c.dist;
   if (st.drive && r) {
     var want = [r.x, r.y, r.z + 0.9];
@@ -202,7 +210,7 @@ function _asPose(st, dt) {
   up = _aeSub(up, _aeScale(look, _aeDot(up, look)));
   up = _aeLen(up) < 1e-6 ? fr.e : _aeNorm(up);
   var alt = _aeLen(_aeSub(world, fr.center)) - fr.r;
-  return { pos: world, up: up, look: look, tp: _aeAdd(world, look), altRe: alt };
+  return { pos: world, up: up, look: look, tp: _aeAdd(world, look), altRe: alt, fov: loc.fov };
 }
 
 // ── The frame hook before the camera: the visit's state of play ──
@@ -236,6 +244,7 @@ function _aeSiteStep(sc) {
   // The ground follows what is looked at.
   var mx = st.rover ? st.rover.x : 0, my = st.rover ? st.rover.y : 0;
   if (Math.hypot(mx - st.cx, my - st.cy) > AS_RECENTRE_M || st.cx === 1e9) _asRebuildGround(st, mx, my);
+  if (st.launch) _asLaunchStep(st, dt);
   st.pose = _asPose(st, dt);
   _asHudTick(st, sc);
 }
@@ -246,8 +255,7 @@ function _aeSiteLight(sc) {
   var fr = st.fr, cam = S.camera, down = st.pose.altRe < AS_GROUND_ON_ALT_M * AS_MRE;
   st.group.visible = down;
   if (st.dome) st.dome.visible = down;
-  var body = _ae.gl.planets && _ae.gl.planets[st.body];
-  if (down) { if (st.body === 'moon') S.moon.visible = false; else if (body) body.mesh.visible = false; }
+  if (down) _asHideBody(st, S);
   var e = fr, g = st.group.matrix;
   var s = AS_MRE;
   g.set(e.e[0] * s, e.n[0] * s, e.u[0] * s, e.origin[0], e.e[1] * s, e.n[1] * s, e.u[1] * s, e.origin[1], e.e[2] * s, e.n[2] * s, e.u[2] * s, e.origin[2], 0, 0, 0, 1);
@@ -255,6 +263,7 @@ function _aeSiteLight(sc) {
   st.group.updateMatrixWorld(true);
   var sunZ = fr.sunLocal[2], lit = _smoothstep(-0.03, 0.03, sunZ);
   var sh = st.shared;
+  sh.ambient.value = st.info.ambient;
   sh.sun.value.set(fr.sunLocal[0], fr.sunLocal[1], fr.sunLocal[2]);
   sh.lit.value = lit;
   sh.fade.value = _aeFadeU.value;
@@ -283,7 +292,7 @@ function _aeSiteLight(sc) {
     var I = st.models[mk];
     toView(sunW, I.uni.sunView.value);
     I.uni.lit.value = lit;
-    I.uni.fill.value = 0.04 + 0.08 * lit;
+    I.uni.fill.value = st.info.fill * (0.5 + 0.5 * lit);
     I.uni.earthLight.value = 0;
     I.uni.fade.value = _aeFadeU.value;
   });
@@ -292,7 +301,16 @@ function _aeSiteLight(sc) {
 // The view's camera in place of the orbit camera: the pose the visit worked out, as the base's own camera description.
 function _aeSiteCam(c) {
   var st = _ae.site;
-  return { tp: st.pose.tp, az: 0, el: 0, dist: 1, tanHalf: Math.tan(_aeRad(AS_FOV_DEG) / 2), roll: 0, frame: null, pose: st.pose };
+  return { tp: st.pose.tp, az: 0, el: 0, dist: 1, tanHalf: Math.tan(_aeRad(st.pose.fov || AS_FOV_DEG) / 2), roll: 0, frame: null, pose: st.pose };
+}
+// The body's own sphere (and an atmosphere's shell round the Earth) give way to the patch of ground.
+function _asHideBody(st, S) {
+  if (st.body === 'moon') S.moon.visible = false;
+  else if (st.body === 'earth') {
+    S.earth.visible = false;
+    if (st.atmo === undefined) st.atmo = S.scene.children.filter(function (o) { return o.material && o.material.fragmentShader === AE_ATMO_FRAG; })[0] || null;
+    if (st.atmo) st.atmo.visible = false;
+  } else if (S.planets && S.planets[st.body]) S.planets[st.body].mesh.visible = false;
 }
 // The camera's near plane close to the ground: the nearest thing is metres off.
 function _aeSiteNear(near) {
@@ -318,8 +336,11 @@ var AS_CSS = [
   '.as-rest{position:absolute;left:calc(14px + env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;border-radius:50%;border:2px dashed rgba(255,255,255,.18);pointer-events:none}',
   '.as-jump{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));width:60px;height:60px;pointer-events:auto}',
   '.as-hud.as-driving .as-cap{bottom:auto;top:calc(env(safe-area-inset-top) + 66px)}',
-  '.as-rate{font-size:12px;min-width:44px}'
+  '.as-rate{font-size:12px;min-width:44px}',
+  '.as-launch{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:64px;height:64px;pointer-events:auto}',
+  '.as-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
 ].join('');
+var AS_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c3 2.5 4 6 4 9l-2 3h-4l-2-3c0-3 1-6.5 4-9z"/><circle cx="12" cy="9" r="1.4"/><path d="M10 15l-2 3.5M14 15l2 3.5M12 17v4"/></svg>';
 var AS_EXIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var AS_LANDING_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v6M9 6l3-3 3 3"/><path d="M7 14h10l2 7H5z"/></svg>';
 var AS_CLOCK_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>';
@@ -341,7 +362,8 @@ function _asHud(on) {
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
       '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
-      '<div class="as-cap" id="as-cap"></div>' +
+      '<div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
+      '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-jump" id="as-jump" aria-label="' + jumpL + '" title="' + jumpL + '" hidden>' + AS_JUMP_SVG + '</button>';
     el.appendChild(hud);
     _asBindHud(hud);
@@ -350,6 +372,7 @@ function _asHud(on) {
   _aeById('as-rest').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
+  _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
   _asKeys(true);
   _asCaption(_ae.site);
 }
@@ -357,7 +380,7 @@ function _asCaption(st) {
   var cap = _aeById('as-cap');
   if (!cap || !st) return;
   var def = st.def, row = st.row, name = _almEsc(def.name || row[0]);
-  var when = def.ms ? '<small>' + _almEsc(_aeT('alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</small>' : '';
+  var when = def.ms ? '<small>' + _almEsc(_aeT(def.launch ? 'alm_site_launched' : 'alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</small>' : '';
   cap.innerHTML = (st.hit ? '<a href="#" id="as-read">' + name + '</a>' : name) + when;
   var read = _aeById('as-read');
   if (read) read.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(st.hit); };
@@ -384,6 +407,12 @@ function _asBindHud(hud) {
     var cur = typeof _almRate === 'number' ? _almRate : 1, i = 0;
     for (var k = 0; k < AS_CLOCK_RATES.length; k++) if (Math.abs(AS_CLOCK_RATES[k] - cur) < 1e-6) i = k + 1;
     if (typeof _almClockSetRate === 'function') _almClockSetRate(AS_CLOCK_RATES[i % AS_CLOCK_RATES.length]);
+  };
+  _aeById('as-launch').onclick = function () {
+    var st = _ae.site;
+    if (!st || !st.def.launch) return;
+    if (typeof _asLaunchStart !== 'function') { _asLoadScript(AS_LAUNCH_JS, function () { _asLaunchStart(st); }); return; }
+    _asLaunchStart(st);
   };
   _aeById('as-jump').onpointerdown = function (e) { e.stopPropagation(); if (_ae.site) _ae.site.input.jump = true; };
   var layer = _aeById('as-layer'), ptrs = {}, pinch = null;
@@ -465,10 +494,10 @@ function _asKeys(on) {
 
 // ── The landmark card's way in: two icon buttons under a landing's line ──
 function _aeSiteCardHtml(lm) {
-  if (!_asData || typeof _asGroupBuild !== 'function' || lm.row[3] !== 'landing') return '';
+  if (!_asData || typeof _asGroupBuild !== 'function' || (lm.row[3] !== 'landing' && lm.row[3] !== 'launch')) return '';
   var def = _asDefFor(lm.body, lm.row), drive = _asCanDrive(lm.body, lm.row);
-  if (!def && !drive && !_asBodyInfo(lm.body)) return '';
-  var when = def && def.ms ? '<p class="ae-lm-line"><span>' + _almEsc(_aeT('alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</span></p>' : '';
+  if (!def && !drive) return '';
+  var when = def && def.ms ? '<p class="ae-lm-line"><span>' + _almEsc(_aeT(def.launch ? 'alm_site_launched' : 'alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</span></p>' : '';
   var vis = _almEsc(_aeT('alm_site_visit')), dr = _almEsc(_aeT('alm_site_drive'));
   return when + '<p class="ae-lm-line as-go"><button type="button" class="ae-btn ae-round" id="as-visit" aria-label="' + vis + '" title="' + vis + '">' + AS_VISIT_SVG + '</button>' +
     (drive ? '<button type="button" class="ae-btn ae-round" id="as-drive" aria-label="' + dr + '" title="' + dr + '">' + AS_DRIVE_SVG + '</button>' : '') + '</p>';
@@ -482,7 +511,7 @@ function _aeSiteCardBind(card, lm) {
 function _aeSiteState() {
   var st = _ae && _ae.site;
   if (!st) return null;
-  var b = _asBody(st.body), out = { body: st.body, name: st.def.name, phase: st.phase, drive: st.drive, lat: st.row[1], lon: st.row[2], parts: [], sunZ: st.fr ? st.fr.sunLocal[2] : null,
+  var b = _asBody(st.body), out = { body: st.body, name: st.def.name, phase: st.phase, drive: st.drive, lat: st.lat, lon: st.lon, parts: [], sunZ: st.fr ? st.fr.sunLocal[2] : null,
     altM: st.pose ? st.pose.altRe / AS_MRE : null, ready: !!st.group && st.placed, visible: !!(st.group && st.group.visible) };
   if (b && st.fr) {
     (st.parts || []).forEach(function (p) {
