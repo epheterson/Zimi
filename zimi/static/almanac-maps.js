@@ -14,14 +14,15 @@
 // it). The map data is OpenStreetMap contributors', as the maps carry it.
 
 var AlmanacMaps = (function () {
-  var TILE_CANVAS_PX = 512;           // a tile's canvas
+  var TILE_CANVAS_PX = 640;           // a tile's canvas: sharp for a tile drawn 320 CSS pixels across on a 2x screen
+  var TILE_UNITS = 512;               // the drawing's own units (widths and type sizes below), scaled to the canvas
   var MAX_LOADS = 4;                  // tiles fetched at once
   var MAX_TILES = 28;                 // tiles kept on the GPU: the ring in view and the one just left
   var RING = 1;                       // tiles round the middle one (3 x 3), 2 on a wide screen
   var WIDE_SCREEN_PX = 1000;
   var Z_MIN = 2, Z_MAX_DEFAULT = 12;
   var MAX_COS_LAT = 0.2;
-  var SURFACE_LIFT = 0.0004;          // the patches stand this far above the Earth's surface (of its radius)
+  var SURFACE_LIFT = 0.0001;          // the patches stand this far above the Earth's surface (of its radius)
   var MAX_SEG_DEG = 3;                // a patch's mesh no coarser than this
   var MAX_SEG = 14;
   var CENTRE_EVERY_MS = 120;          // the point under the camera, worked out this often at most
@@ -284,7 +285,8 @@ var AlmanacMaps = (function () {
   function paint(t) {
     var cv = document.createElement('canvas');
     cv.width = cv.height = TILE_CANVAS_PX;
-    var ctx = cv.getContext('2d'), S2 = TILE_CANVAS_PX, d = t.data;
+    var ctx = cv.getContext('2d'), S2 = TILE_UNITS, d = t.data;
+    ctx.scale(TILE_CANVAS_PX / TILE_UNITS, TILE_CANVAS_PX / TILE_UNITS);
     ctx.lineCap = ctx.lineJoin = 'round';
     var byClass = [[], [], [], [], [], []];
     d.roads.forEach(function (r) { if (t.z >= CLASS_MIN_Z[r[0]]) byClass[r[0]].push(r[1]); });

@@ -299,7 +299,7 @@ def test_low_over_a_map_its_roads_and_names_are_on_the_globe_and_far_out_they_ar
             _go_low(pg, PARIS[0], PARIS[1], 6)
             pg.wait_for_timeout(1500)
             assert pg.evaluate(
-                "Object.values(AlmanacMaps._tiles()).every(t => !t.mesh || !t.mesh.visible || t.mat.opacity === 0)"
+                "Object.values(AlmanacMaps._tiles()).every(t => !t.mesh || !t.mesh.visible || t.mat.uniforms.opacity.value === 0)"
             )
             _shot(pg, "paris-far.png")
             assert not errors, errors

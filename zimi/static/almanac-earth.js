@@ -77,6 +77,13 @@ function _aeGeodeticToFixed(latDeg, lonDeg) {
   var N = 1 / Math.sqrt(1 - AE_EARTH_E2 * Math.sin(la) * Math.sin(la));
   return [N * Math.cos(la) * Math.cos(lo), N * Math.cos(la) * Math.sin(lo), N * (1 - AE_EARTH_E2) * Math.sin(la)];
 }
+// Where a latitude and longitude stand on the drawn globe: the maps are laid on the flattened sphere by latitude, so
+// the point is the map's own (a sphere's, then flattened as the Earth's mesh is). A pin or an aim at a place uses this,
+// not the geodetic point, or it lands up to 11 km off the ground (and the map's roads) it is meant for.
+function _aeGlobePoint(latDeg, lonDeg) {
+  var p = _aeEqVec(_aeRad(lonDeg), _aeRad(latDeg), 1);
+  return [p[0], p[1], p[2] * (1 - AE_EARTH_FLATTENING)];
+}
 // Geodetic latitude/longitude (degrees) of a point on the ellipsoid surface.
 function _aeFixedToGeodetic(p) {
   var lon = _aeDeg(Math.atan2(p[1], p[0]));
@@ -1006,7 +1013,7 @@ function _aePlacePick(p) {
   _ae.lm = null; _ae.selected = null; _ae.arrived = null;
   if (_ae.spin) _aeLeaveSpin();
   _ae.preset = 'earth';
-  _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(p.lat, p.lon), sc.gast)));
+  _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGlobePoint(p.lat, p.lon), sc.gast)));
   _aeMarkViews();
   _aeRenderCard();
   _aePlaceArticle(_ae.place);
@@ -2243,7 +2250,7 @@ var AE_MAPS = {
   fullKm: 1200,         // ... and are fully there
   hintKm: 1500,         // the chip (the map here, or the one to get) is offered below this
   minKm: 50,            // the nearest the camera may come over an installed map
-  tilePx: 384           // CSS pixels a map tile is drawn across
+  tilePx: 320           // CSS pixels a map tile is drawn across
 };
 var _aeMapsAsked = false;
 function _aeMapsFrame(S) {
@@ -5934,11 +5941,21 @@ function _aeIssAt(st, eqeq, standing) {
   return 1 - show;
 }
 
+// Low over the Earth the camera rides the ground: the clock turns the planet at 0.46 km a second, and a place or a map
+// held in view would slide away at that speed (the camera is fixed in space, not to the Earth). Far out the spin shows.
+var _aeRideGast = null;
+function _aeRideGround(gast) {
+  var low = _ae.target === 'earth' && !_ae.fly && (_ae.dist - 1) * AE_EARTH_RADIUS_KM < AE_MAPS.startKm;
+  if (low && _aeRideGast !== null) _ae.az += ((gast - _aeRideGast + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+  _aeRideGast = gast;
+}
+
 function _aeUpdate(ms) {
   var S = _ae.gl;
   var sc = _aeSceneAt(ms);
   _ae.scene = sc;
   S.earth.rotation.z = sc.gast;
+  _aeRideGround(sc.gast);
   S.shared.sunPos.value.set(sc.sun[0], sc.sun[1], sc.sun[2]);
   S.earthUni.moonPos.value.set(sc.moon[0], sc.moon[1], sc.moon[2]);
   S.earthUni.dim.value = _aeRedOn() ? AE_RED_EARTH_LIGHT : 1;
@@ -6096,10 +6113,10 @@ function _aeUpdateLabels() {
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
-  var you = _ae.you ? _aeFixedToScene(_aeGeodeticToFixed(_ae.you.lat, _ae.you.lon), sc.gast) : null;
+  var you = _ae.you ? _aeFixedToScene(_aeGlobePoint(_ae.you.lat, _ae.you.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-you', you, !!you && _aeFacing(you) && _ae.target === 'earth');
   // The place picked in Go to: its name at its spot.
-  var pl = _ae.place ? _aeFixedToScene(_aeGeodeticToFixed(_ae.place.lat, _ae.place.lon), sc.gast) : null;
+  var pl = _ae.place ? _aeFixedToScene(_aeGlobePoint(_ae.place.lat, _ae.place.lon), sc.gast) : null;
   if (pl) _aeSetText(_aeById('ae-lbl-place-text'), _ae.place.name);
   _aePlaceLabel('ae-lbl-place', pl, !!pl && _aeFacing(pl) && _ae.target === 'earth');
   var ecl = _ae.eclipse;
@@ -7295,7 +7312,7 @@ function _aeEnter() {
   var ms = _aeDisplayMs();
   _ae.scene = _aeSceneAt(ms);
   var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
-  var here = _aeFixedToScene(_aeGeodeticToFixed(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
+  var here = _aeFixedToScene(_aeGlobePoint(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
   var azel = _aeAzElOf(here);
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
@@ -7355,7 +7372,7 @@ function _aeLocateMe() {
     btn.setAttribute('aria-pressed', 'true');
     var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
     _ae.preset = 'earth';
-    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(lat, lon), sc.gast)));
+    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(_aeFixedToScene(_aeGlobePoint(lat, lon), sc.gast)));
   }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 
