@@ -1,0 +1,38 @@
+/* Odd One Out: the secret card, the order of speaking, the vote, the guess and the result. The cover between people is passkit.css. */
+.oo-page { width: 100%; max-width: 440px; margin: 0 auto; }
+.oo-main { width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); align-items: stretch; }
+.oo-main section { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); text-align: center; }
+.oo-main h2 { margin: 0; font-size: var(--fs-sheet); line-height: 1.2; text-wrap: balance; }
+.oo-main p { margin: 0; color: var(--ink2); font-size: var(--fs-body); }
+.oo-main .oo-cat { font-size: var(--fs-small); color: var(--ink2); }
+.oo-wide { align-self: stretch; min-height: 52px; justify-content: center; text-align: center; font-size: var(--fs-title); }
+.oo-actions { display: flex; flex-direction: column; gap: var(--sp-2); }
+.oo-actions .ar-btn { min-height: 52px; justify-content: center; font-size: var(--fs-title); }
+
+.oo-pic { width: 64px; height: 64px; }
+.oo-big { width: min(220px, 56vw); height: min(220px, 56vw); }
+.oo-mid { width: 96px; height: 96px; }
+.oo-qmark { font: 800 min(150px, 38vw)/1 var(--font); color: var(--accent); }
+.oo-order { list-style: decimal inside; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: left; }
+.oo-order li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--fs-body); }
+.oo-order .oo-now { border-color: var(--accent); background: var(--accent-glow); font-weight: 650; }
+.oo-order .oo-spoken { color: var(--ink2); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.oo-clock { font: 700 var(--fs-display) var(--mono) !important; color: var(--ink) !important; }
+.oo-clock.oo-low { color: var(--bad) !important; }
+.oo-choices { display: grid; gap: 8px; width: 100%; }
+.oo-choice { min-height: 52px; justify-content: center; font-size: var(--fs-title); }
+.oo-choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-glow); box-shadow: var(--select); }
+.oo-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+.oo-option { aspect-ratio: 1; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; touch-action: manipulation; }
+.oo-option:hover { border-color: var(--accent); }
+.oo-option .oo-pic { width: 100%; height: 100%; }
+.oo-reveal { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 650; }
+.oo-win { color: var(--ink) !important; font-weight: 650; }
+.oo-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: left; }
+.oo-scores li { display: grid; grid-template-columns: 1fr auto auto 2.4em; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--fs-small); }
+.oo-scores b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-scores .oo-oddrow { border-color: var(--accent); background: var(--accent-glow); }
+.oo-scores .oo-pts { color: var(--ink2); }
+.oo-scores .oo-total { text-align: right; font: 700 var(--fs-body) var(--mono); }
+.oo-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: var(--sp-2) 0; }
+.oo-names input { min-width: 0; }
