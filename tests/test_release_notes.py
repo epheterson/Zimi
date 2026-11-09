@@ -156,3 +156,33 @@ def test_a_differently_worded_line_for_a_named_issue_is_not_listed_again():
     log = "## [2.0.0]\n\n### Highlights\n\n- **Linux:** a unit at boot (#137).\n\n### Added\n\n- `zimi service install` writes the systemd unit, as asked in #137.\n"
     body = release_notes.release_body(log, "2.0.0")
     assert "**Fixed**" not in body, body
+
+
+GROUPED = "## [2.0.0]\n\n### Highlights\n\n%s\n\n### Fixed\n\n- A thing.\n"
+
+
+@pytest.mark.parametrize(
+    "block, problem",
+    [
+        ("**Almanac**\n\n- One.\n\n**Zimi**\n\n- Two.", "Zimi comes first"),
+        ("**Zimi**\n\n- One.\n\n**Almanac**\n\n- Two.\n\n**Games**\n\n- Three.", "Almanac comes last"),
+        ("**Zimi**\n\n- One.\n\n**Games**\n\n**Almanac**\n\n- Two.", "Games has no bullets"),
+        ("- One.\n\n**Zimi**\n\n- Two.", "a bullet comes before any area"),
+        ("**Zimi**\n\n- One.\n\n**Zimi**\n\n- Two.", "Zimi is listed twice"),
+    ],
+)
+def test_a_grouped_highlights_block_that_breaks_the_voice_is_named(block, problem):
+    assert problem in "; ".join(release_notes.voice_problems(GROUPED % block, "2.0.0"))
+
+
+def test_plain_bullets_and_sentences_are_not_judged():
+    assert release_notes.voice_problems(GROUPED % "- **Linux:** a unit at boot.", "2.0.0") == []
+    assert release_notes.voice_problems(GROUPED % "One sentence.", "2.0.0") == []
+
+
+def test_the_real_changelog_is_in_the_voice_from_1_15_4_on():
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    for version in ("Unreleased", "1.15.4"):
+        assert release_notes.voice_problems(text, version) == [], version
+        _, section = release_notes._section(text, version)
+        assert "**Zimi**" in release_notes._highlights(section), version
