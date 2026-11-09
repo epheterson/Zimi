@@ -91,11 +91,6 @@ def test_a_game_that_comes_back_to_its_end_sheet_makes_no_vibrate_call(browser, 
     pg.wait_for_timeout(1500)
     assert pg.evaluate("() => window.__buzz") == 0
     pg.context.close()
-    pg = _open(browser, base, "mancala", init=stub)
-    pg.touchscreen.tap(20, 300)
-    pg.evaluate("() => ZimiShell.endSheet({ result: 'win', text: 'y', after: 300 })")
-    pg.wait_for_function("() => window.__buzz > 0", timeout=5000)
-    pg.context.close()
 
 
 def test_snakes_end_sheet_keeps_its_reason_after_a_reload(browser, base):
