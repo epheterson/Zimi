@@ -188,7 +188,7 @@ def build_iss(glb):
     lo, hi = v.min(0), v.max(0)
     arr = v[c == bcm.ARRAY]
     axis = ((arr[:, 0].min() + arr[:, 0].max()) / 2, (arr[:, 1].min() + arr[:, 1].max()) / 2)
-    entries = [(rgb, rough, metal, cm.MAT_DOUBLE_SIDED, -1, -1, -1) for rgb, rough, metal in bcm.ISS_LOOK]
+    entries = [(rgb, rough, metal, bcm.ISS_ARRAY_FLAGS if k in (bcm.ARRAY, bcm.ARRAY_FIXED) else cm.MAT_DOUBLE_SIDED, -1, -1, -1) for k, (rgb, rough, metal) in enumerate(bcm.ISS_LOOK)]
     print("  %d triangles, %d vertices" % (len(f), len(v)))
     data = cm.pack(1.0, lo, hi, (0, 0, 0), (0, 0, 0), entries, v, n, c, f, turn=axis, turn_class=bcm.ARRAY)
     return data, {}, len(f)

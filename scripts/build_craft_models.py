@@ -55,11 +55,11 @@ CRAFT = {
         ("part", "dish_AO"),
     ),
     "juno": (
-        "Juno (A)/Juno (A).glb",
-        "NASA/JPL-Caltech",
+        "Juno (B)/Juno (B).glb",
+        "NASA 3D Resources (no individual credit listed)",
         10000,
-        ("part", "solar_panels", 20.1),  # the arrays' reach across their spin axis
-        ("part", "foil_ant"),  # the high-gain dish, on the spin axis
+        ("span", 20.1),
+        ("part", "JUNO-solar-face"),  # its spin axis: the arrays' normal, toward the dish
     ),
     "parker": (
         "Parker Solar Probe/Parker Solar Probe.glb",
@@ -230,7 +230,28 @@ def simplified(v, f, want, nd):
         )
     if len(f) > want * 1.5:
         v, f = clustered(np.asarray(v, dtype=np.float64), np.asarray(f), want)
-    return np.asarray(v, dtype=np.float64), np.asarray(f, dtype=np.int64)
+    return dropped_specks(np.asarray(v, dtype=np.float64), np.asarray(f, dtype=np.int64))
+
+
+SPECK_TRIS, SPECK_SPAN = 12, 0.004  # a loose piece under this many triangles and this share of the part's span is debris
+
+
+def dropped_specks(v, f):
+    """The part without its loose debris: pieces the decimation or clustering left floating (a few triangles, tiny)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    n = len(v)
+    e = np.r_[f[:, [0, 1]], f[:, [1, 2]]]
+    _, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
+    ftri = np.bincount(lab[f[:, 0]], minlength=lab.max() + 1)
+    span = np.ptp(v, 0).max()
+    keep = np.ones(lab.max() + 1, dtype=bool)
+    for c in np.nonzero(ftri < SPECK_TRIS)[0]:
+        pts = v[lab == c]
+        if len(pts) and np.ptp(pts, 0).max() < SPECK_SPAN * span:
+            keep[c] = False
+    return v, f[keep[lab[f[:, 0]]]]
 
 
 def craft(glb, tris, size, aim, recolour=None, keep=()):
@@ -323,12 +344,13 @@ ISS_CLASS_OF = {
 ISS_SHARE = {STRUCTURE: 0.5, TRUSS: 0.3, ARRAY: 0.08, RADIATOR: 0.06, ARRAY_FIXED: 0.06}
 # (rgb linear, roughness, metalness): module shell, truss, cell side of the arrays, radiator panels, fixed arrays.
 ISS_LOOK = [
-    ((0.62, 0.61, 0.58), 0.5, 0.15),
-    ((0.42, 0.42, 0.41), 0.4, 0.7),
-    (cm.SOLAR_BLUE, 0.2, 0.4),
-    ((0.8, 0.8, 0.82), 0.55, 0.0),
-    (cm.SOLAR_BLUE, 0.2, 0.4),
+    ((0.78, 0.77, 0.74), 0.5, 0.05),
+    ((0.62, 0.62, 0.6), 0.42, 0.3),
+    (cm.SOLAR_BLUE, 0.22, 0.25),
+    ((0.92, 0.92, 0.94), 0.55, 0.0),
+    (cm.SOLAR_BLUE, 0.22, 0.25),
 ]
+ISS_ARRAY_FLAGS = cm.MAT_DOUBLE_SIDED | cm.MAT_AMBER_BACK
 ISS_STRAY_Y = (
     40.0  # seven small cylinders parked far off the station in the source file
 )

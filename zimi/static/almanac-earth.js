@@ -5782,7 +5782,7 @@ var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pio
   parker: 'parker', juno: 'juno', jwst: 'webb', cassini: 'cassini', galileo: 'galileo' };
 // What each points: its high-gain antenna at the Earth, or (Parker, Webb) its shield at the Sun.
 var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun' };
-var AE_CRAFT_SHIELD_VIEW_SUN = -0.35;                       // the shield's profile seen from just behind it: Webb's mirror, Parker's body (the Sun's side, lit, was a grey wall)
+var AE_CRAFT_SHIELD_VIEW_SUN = 0.35;                       // the shield in profile, from the Sun's side so it is lit
 var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
 var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
 var _aeCraft = {};                                          // model -> { data, loading }
@@ -5796,10 +5796,11 @@ var AE_CRAFT_WAIT_MS = 4000;
 // coloured fill from its side (its albedo's colour), a faint sky, the camera's gentle fill; a procedural environment (that
 // world's glow) for foil and mirrors to reflect; one tight shadow map around the craft in view; a soft shoulder, then the
 // same gamma as the planets. A mesh without normals (the landing sites' older models) is shaded flat, as it always was.
-var AE_CRAFT_SUN_E = 3.0;                                   // the Sun's irradiance (so an albedo of 0.8 head on reads 0.76)
-var AE_CRAFT_SKY = 0.012;                                   // the faint ambient and the dark of the environment
+var AE_CRAFT_SUN_E = 3.4;                                   // the Sun's irradiance (so an albedo of 0.8 head on reads 0.76)
+var AE_CRAFT_SKY = 0.03;                                    // the faint ambient and the dark of the environment
 var AE_CRAFT_ENV_FILL = 3.0;                                // the camera's fill, as the light foil and mirrors reflect (they have no diffuse to light)
-var AE_CRAFT_WHITE = 2.5;                                   // the tone shoulder's white point
+var AE_CRAFT_EXPOSURE = 1.5;                                // the tone curve 1 - exp(-k c): a sunlit white reads near white, shade stays readable
+var AE_CRAFT_AMBER = 'vec3(0.5, 0.26, 0.06)';              // a solar array's back: Kapton, amber
 var AE_CRAFT_GAMMA = 2.2;
 var AE_CRAFT_SHADOW_PX = 1024;                              // the shadow map, one for the craft in view
 var AE_CRAFT_SHADOW_MIN_PX = 90;                            // a craft narrower than this on screen casts none
@@ -5879,14 +5880,16 @@ var AE_CRAFT_FRAG = [
   '#else',
   '  vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));',   // flat: panels, dishes and boxes
   '#endif',
-  '  if (dot(n, v) < 0.0) n = -n;',
+  '  float facing = dot(n, v);',
+  '  if (facing < 0.0) n = -n;',
   '  int k = int((sel >= 0.0 ? sel : vCls) + 0.5);',
   '  vec3 a = albedo[0]; vec3 sp = surf[0];',
   '  for (int i = 1; i < ' + AE_CRAFT_PAL + '; i++) { if (i == k) { a = albedo[i]; sp = surf[i]; } }',
   '  float rough = sp.x, metal = sp.y;',
+  '  if (facing < 0.0 && mod(floor(sp.z / 4.0), 2.0) > 0.5) { a = ' + AE_CRAFT_AMBER + '; rough = 0.5; metal = 0.15; }',
   '#ifdef CRAFT_MAP',
   '  vec4 tc = texture2D(map, vUv);',
-  '  if (tc.a < 0.5 && sp.z > 1.5) discard;',
+  '  if (tc.a < 0.5 && mod(floor(sp.z / 2.0), 2.0) > 0.5) discard;',
   '  a *= pow(tc.rgb, vec3(' + AE_CRAFT_GAMMA.toFixed(1) + '));',
   '#endif',
   '#ifdef CRAFT_MR',
@@ -5915,7 +5918,7 @@ var AE_CRAFT_FRAG = [
   '  vec3 fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);',
   '  col += fe * env * (1.0 - 0.5 * rough);',
   '  col += diff * (' + AE_CRAFT_SKY.toFixed(3) + ' + fill * nv);',   // fill: from the camera, gentle
-  '  vec3 c = col * (1.0 + col / ' + (AE_CRAFT_WHITE * AE_CRAFT_WHITE).toFixed(2) + ') / (1.0 + col);',
+  '  vec3 c = 1.0 - exp(-' + AE_CRAFT_EXPOSURE.toFixed(2) + ' * col);',
   '  gl_FragColor = vec4(pow(c, vec3(' + (1 / AE_CRAFT_GAMMA).toFixed(4) + ')), fade);',
   '}'
 ].join('\n');
@@ -6007,7 +6010,7 @@ function _aeCraftUniforms(S, d, model) {
     shadowOn: { value: 0 }, shadowTexel: { value: 1 / AE_CRAFT_SHADOW_PX }, shadowMap: { value: null }, shadowMat: { value: new THREE.Matrix4() },
     shadowOffset: { value: d.radius * AE_CRAFT_SHADOW_NORMAL },
     albedo: { value: pal.map(function (l) { return new THREE.Vector3(l.rgb[0], l.rgb[1], l.rgb[2]); }) },
-    surf: { value: pal.map(function (l) { return new THREE.Vector3(l.rough, l.metal, l.flags & AE_CRAFT_MAT_CUTOUT ? 2 : 0); }) } };
+    surf: { value: pal.map(function (l) { return new THREE.Vector3(l.rough, l.metal, l.flags); }) } };
 }
 // One mesh of a craft: its triangles `list`, its own place relative to the craft (`local`, a Matrix4: a turning array's),
 // `sel` the palette entry it is all of (-1: each vertex says), `maps` its textures ({ map, mr }).

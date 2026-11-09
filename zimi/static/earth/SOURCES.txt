@@ -188,7 +188,7 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   "These assets are free and without copyright"), each page's Source credit:
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (A)", NASA/JPL-Caltech
+  juno: "Juno (B)" (no individual credit listed)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
@@ -207,7 +207,7 @@ hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
   iss: "International Space Station (ISS) (B)", NASA/Michael D. Carbajal
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (A)", NASA/JPL-Caltech
+  juno: "Juno (B)" (no individual credit listed)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator

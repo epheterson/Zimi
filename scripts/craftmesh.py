@@ -25,7 +25,7 @@ import struct
 import numpy as np
 
 FLAG_UV, FLAG_TEXTURES = 1, 2
-MAT_DOUBLE_SIDED, MAT_CUTOUT = 1, 2
+MAT_DOUBLE_SIDED, MAT_CUTOUT, MAT_AMBER_BACK = 1, 2, 4  # the last: the side its normals do not face is the amber of a solar array's back
 NO_TURN = 255
 CREASE_DEG = 38.0
 
@@ -189,7 +189,7 @@ GOLD = (
     0.24,
 )  # linear: gold foil (the sRGB 0.97, 0.80, 0.55 of MLI blankets)
 SILVER = (0.78, 0.79, 0.82)
-SOLAR_BLUE = (0.03, 0.05, 0.16)
+SOLAR_BLUE = (0.07, 0.1, 0.3)  # linear: dark blue cells, bright enough to read in sunlight
 
 
 def look_of(name, rgb, src_rough=None, src_metal=0.0):
@@ -201,13 +201,13 @@ def look_of(name, rgb, src_rough=None, src_metal=0.0):
     if "gold" in n and "edge" not in n:
         return np.array(GOLD), 0.3, 1.0
     if any(s in n for s in ("solar", "sacell", "cells", "shiny_panel")):
-        return np.array(SOLAR_BLUE), 0.2, 0.35
+        return np.array(SOLAR_BLUE), 0.25, 0.2
     if (
         any(s in n for s in ("silver", "alum", "mylar", "omnimirror", "bafl_graphite"))
         and "black" not in n
     ):
         base = rgb if rgb.max() > 0.3 else np.array(SILVER)
-        return np.clip(base * 1.05, 0, 1), 0.34, 0.9
+        return np.clip(base * 1.05, 0, 1), 0.38, 0.55
     if "krinkle" in n or "kapton" in n or n.startswith("blk") or "black" in n:
         return np.clip(rgb, 0.0, 0.22), 0.42, 0.25
     if any(s in n for s in ("mli", "blanket")):
