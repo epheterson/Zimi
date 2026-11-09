@@ -29,6 +29,7 @@ SHOTS = os.environ.get("SATS_SHOTS", "")
 MAX_LAYER_FRAME_MS = 3
 MAX_SAMPLE_COPY_MS = 8
 MIN_CATALOGUE = 5000
+MOON_RE = 60                       # the Moon's distance in Earth radii
 MIN_DRAWN_SHARE = 0.8
 
 
@@ -146,7 +147,7 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
         radii = pg.evaluate(
             "(() => { var p = _as.cloud.geometry.attributes.position.array, lo = 9, hi = 0; for (var i = 0; i < p.length; i += 3) { var r = Math.hypot(p[i], p[i + 1], p[i + 2]); if (r > 0) { lo = Math.min(lo, r); hi = Math.max(hi, r); } } return [lo, hi]; })()"
         )
-        assert radii[0] > 1.0 and radii[1] < 8, radii
+        assert radii[0] > 1.0 and radii[1] < MOON_RE, radii   # high orbits (Chandra, XMM, IBEX) go well past GEO
         pg.wait_for_timeout(1500)
         _shot(pg, "sats-on.png")
         on = _frame_ms(pg, 30)
