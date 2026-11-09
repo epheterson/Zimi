@@ -275,3 +275,60 @@ def test_the_strip_and_the_sheet_fit_a_phone_either_way_up(
         ), sheet
     finally:
         ctx.close()
+
+
+def test_the_catalogue_draws_from_inside_the_almanac_zim_with_no_network(browser, tmp_path):
+    """What Kiwix does: the ZIM's own page (?raw=1) with nothing of Zimi's app around it. The layer's catalogue is the
+    snapshot inside the ZIM (local.js answers /almanac-satellites?all=1 from data/satellites-all-snapshot.json), and
+    nothing is asked of any host but the one serving the file."""
+    from http.server import ThreadingHTTPServer
+
+    import zimi.server as srv
+    from zimi import ownzims
+    from zimi.http import ZimHandler
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    (tmp_path / "zims").mkdir()
+    (tmp_path / "data").mkdir()
+    ownzims.write_zim(
+        next(o for o in ownzims.OWN if o.name == "zimi_almanac"),
+        str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"),
+    )
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp_path / "zims"), str(tmp_path / "data")
+    srv.load_cache(force=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host = "127.0.0.1:%d" % httpd.server_address[1]
+    ctx = browser.new_context(
+        viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block"
+    )
+    ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
+    pg = ctx.new_page()
+    reqs, errors = [], []
+    pg.on("request", lambda r: reqs.append(r.url))
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto("http://%s/w/zimi_almanac/index.html?raw=1" % host, wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=READY_MS)
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=250
+        )
+        pg.click("#ae-sats-btn")
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && (_as.state === 'ready' || _as.state === 'failed')",
+            timeout=READY_MS,
+            polling=250,
+        )
+        assert pg.evaluate("_as.state") == "ready"
+        assert pg.evaluate("_as.data.n") > MIN_CATALOGUE
+        pg.wait_for_function("() => _as.sampleMs > 0", timeout=READY_MS, polling=250)
+        _shot(pg, "sats-in-zim.png")
+        outside = [u for u in reqs if not u.startswith(("http://" + host, "data:", "blob:"))]
+        assert not outside, outside[:5]
+        assert any("almanac-satellites" in u or "satellites-all-snapshot" in u for u in reqs), reqs[-10:]
+        assert errors == []
+    finally:
+        ctx.close()
+        httpd.shutdown()
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
