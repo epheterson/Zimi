@@ -11741,6 +11741,13 @@ function _installedMaps() {
   return _installedOfKind('map', function(z) { return _mapSourceLabel(z) + '|' + _mapName(z).toLowerCase(); });
 }
 
+// A map for any place (/static/mapflow.js, fetched the first time a place asks): the installed map that holds it, or
+// the one worth downloading. Resolves ZimiMapHere, or null when the file cannot be had.
+function _mapHere() {
+  if (window.ZimiMapHere) return Promise.resolve(window.ZimiMapHere);
+  return _loadScript('/static/mapflow.js?v=1').then(function(ok) { return ok ? window.ZimiMapHere : null; });
+}
+
 // ── Search grammar (#94) ──
 // The same parser as zimi/query.py, which the library search uses; the cases
 // both must agree on are tests/fixtures/search_query_cases.json.

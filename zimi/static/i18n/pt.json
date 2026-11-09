@@ -3692,5 +3692,11 @@
   "alm_blurb_jwst": "Um telescópio de espelho dourado que vê as galáxias mais antigas em infravermelho.",
   "alm_blurb_cassini": "Passou anos em Saturno e enviou um módulo de aterragem a Titã.",
   "alm_blurb_galileo": "A primeira nave a orbitar Júpiter, e lançou uma sonda às suas nuvens.",
-  "alm_blurb_europaclipper": "A caminho de Júpiter para estudar o oceano escondido de Europa."
+  "alm_blurb_europaclipper": "A caminho de Júpiter para estudar o oceano escondido de Europa.",
+  "map_here": "Mapa daqui",
+  "map_none_here": "Nenhum mapa daqui para abrir ou baixar",
+  "tb_kn_maps_fade": "Esmaecimento do mapa, altitude",
+  "tb_kn_maps_min": "Aproximação mínima sobre um mapa",
+  "tb_kn_maps_tile": "Largura de um bloco do mapa na tela",
+  "tb_kn_maps_data": "Ruas e nomes sobre a Terra"
 }

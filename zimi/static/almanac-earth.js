@@ -742,6 +742,16 @@ var AE_CSS = [
   '.ae-counter{color:var(--amber);font-variant-numeric:tabular-nums}',
   '.ae-card-x{position:absolute;top:4px;right:4px;width:36px;height:36px;border:0;background:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;border-radius:8px}',
   '.ae-card-x:hover,.ae-card-x:focus-visible{color:var(--amber);outline:none}',
+  '.ae-card-map{position:absolute;top:4px;right:40px;width:36px;height:36px;min-width:0;padding:0;color:var(--text3)}',
+  '.ae-card-map[hidden]{display:none}',
+  '[dir="rtl"] .ae-card-map{right:auto;left:40px}',
+  '.ae-card:has(.ae-card-map:not([hidden])){padding-right:76px}',
+  '[dir="rtl"] .ae-card:has(.ae-card-map:not([hidden])){padding-right:14px;padding-left:76px}',
+  '.ae-go-item{display:flex;align-items:center}',
+  '.ae-go-item .ae-go-row{flex:1;min-width:0}',
+  '.ae-go-map{flex:none;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}',
+  '.ae-go-map:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
+  '@media (hover:hover){.ae-go-map:hover{color:var(--amber)}}',
   '[dir="rtl"] .ae-card{padding:12px 14px 12px 40px}',
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
@@ -843,6 +853,7 @@ function _aeShowGo(on, group) {
   if (!on) _aeFootDown();
   if (on) { _aeGoShell(sheet); _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
+var AE_MAP_SVG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 var AE_SEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/></svg>';
 // ── Go to, by name: any town or landmark on the Earth ──
 // A search field heads the sheet. What is typed asks the installed maps' towns (/places/suggest: "Springfield, Illinois,
@@ -929,10 +940,25 @@ function _aePlaceShow(list) {
   box.hidden = !list.length;
   box.innerHTML = list.map(function (p, i) {
     var dot = '<i class="ae-go-dot ae-go-probe' + (p.kind === 'landmark' ? '' : ' ae-go-town') + '"></i>';
-    return '<button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>';
+    return '<span class="ae-go-item"><button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>' + _aeGoMapBtn(i) + '</span>';
   }).join('');
   // The groups give way while something is typed.
   if (groups) groups.hidden = !!list.length || !!(q && q.value.trim());
+}
+// A place's map (mapflow.js through the app shell: its installed map, or the one worth downloading), as an icon beside
+// the row; absent where the shell is (the Almanac ZIM on its own).
+function _aeGoMapBtn(i) {
+  return typeof _mapHere === 'function' ? '<button type="button" class="ae-go-map" data-ae-map="' + i + '" aria-label="' + _almEsc(_aeT('map_here')) + '">' + AE_MAP_SVG + '</button>' : '';
+}
+function _aePlaceSpot(p) { return { lat: p.lat, lng: p.lon, label: p.name }; }
+// The place card's map button: added once the shared flow is in, shown once the place has a map to open or offer.
+function _aeCardMapBtn(card, p) {
+  if (typeof _mapHere !== 'function') return;
+  _mapHere().then(function (m) {
+    if (!m || _ae.place !== p || card.querySelector('.ae-card-map')) return;
+    card.insertAdjacentHTML('afterbegin', m.buttonHtml('ae-card-map'));
+    m.bind(card.querySelector('.ae-card-map'), _aePlaceSpot(p));
+  });
 }
 // The sheet's two places (what was found; the groups) and the search field under them: made once, the groups drawn
 // afresh by _aeGoRender without taking the field's focus.
@@ -1034,6 +1060,7 @@ function _aeRenderPlaceCard(card) {
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' + head + body;
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.place = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); };
+  _aeCardMapBtn(card, p);
   Array.prototype.forEach.call(card.querySelectorAll('[data-ae-place-open]'), function (open) {
     open.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(a); };
   });
@@ -2201,8 +2228,40 @@ function _aeHdKeepAbove(S, b) {
   var inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
   var c = S.camera.position.clone().applyMatrix4(inv), r = Math.hypot(c.x, c.y, c.z);
   var min = _aeHdMinOver(b, _aeDeg(Math.asin(c.z / r)), _aeDeg(Math.atan2(c.y, c.x)));
+  if (b.key === 'earth') min = Math.min(min, _aeMapsMin());
   AE_TARGETS[b.key].min = min;
   if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
+}
+// ── The installed map on the Earth (almanac-maps.js, fetched the first time the camera is this low) ──
+// An installed map's roads and names fade in over the globe as the camera comes down, and over such a map the camera may
+// come much nearer: the lines stay sharp where the picture of the ground blurs. Needs the app shell (the map is a ZIM
+// of the library); the Almanac ZIM on its own has none, and then nothing here runs.
+var AE_MAPS_SRC = '/static/almanac-maps.js?v=1';
+var AE_MAPS = {
+  loadDist: 1.6,        // Earth radii from the centre: the module is fetched below this
+  startKm: 3000,        // altitude where the roads and names begin to show ...
+  fullKm: 1200,         // ... and are fully there
+  hintKm: 1500,         // the chip (the map here, or the one to get) is offered below this
+  minKm: 50,            // the nearest the camera may come over an installed map
+  tilePx: 384           // CSS pixels a map tile is drawn across
+};
+var _aeMapsAsked = false;
+function _aeMapsFrame(S) {
+  if (window.AlmanacMaps) {
+    AlmanacMaps.frame(S);
+    if (!S.hd) AE_TARGETS.earth.min = _aeMapsMin();
+    return;
+  }
+  if (_aeMapsAsked || _ae.target !== 'earth' || _ae.dist >= AE_MAPS.loadDist || typeof _mapHere !== 'function' || typeof _loadScript !== 'function') return;
+  _aeMapsAsked = true;
+  Promise.all([_mapHere(), _loadScript(AE_MAPS_SRC)]).then(function (got) {
+    if (!got[0] || !got[1]) { _aeMapsAsked = false; return; }
+    _ae.dirty = true; _aeKick();
+  });
+}
+// The Earth's closest approach: the usual, or over an installed map the map's own.
+function _aeMapsMin() {
+  return window.AlmanacMaps && AlmanacMaps.covers() ? Math.min(AE_MIN_DIST_EARTH, 1 + AE_MAPS.minKm / AE_EARTH_RADIUS_KM) : AE_MIN_DIST_EARTH;
 }
 // How near the camera may come over a place: the closest at which the deepest tile there is still two or three device
 // pixels a texel, or the body's own limit where there is no insert.
@@ -4090,6 +4149,10 @@ function _aeRefAxesRows() {
   add('axis.min_px', _aeT('tb_kn_axis_min'), AE_AXIS_MIN_PX, 'px', 'Zimi');
   // Go to by name, and the flights to a spacecraft's model.
   add('place.towns', _aeT('tb_kn_place_towns'), 'Kiwix maps · OpenMapTiles', '', 'OpenStreetMap contributors');
+  add('maps.fade', _aeT('tb_kn_maps_fade'), AE_MAPS.fullKm + '-' + AE_MAPS.startKm, 'km', 'Zimi');
+  add('maps.min_alt', _aeT('tb_kn_maps_min'), AE_MAPS.minKm, 'km', 'Zimi');
+  add('maps.tile_px', _aeT('tb_kn_maps_tile'), AE_MAPS.tilePx, 'px', 'Zimi');
+  add('maps.data', _aeT('tb_kn_maps_data'), 'Kiwix maps · OpenMapTiles', '', 'OpenStreetMap contributors');
   add('place.landmarks', _aeT('tb_kn_place_landmarks'), 'landmarks-v1.json', '', 'Wikidata (CC0)');
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
@@ -6660,6 +6723,7 @@ function _aeDraw(now, busy) {
   }
   _aeUpdate(_aeDisplayMs());
   if (_ae.gl.hd) _aeHdUpdate(_ae.gl);
+  _aeMapsFrame(_ae.gl);
   _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
   _aeDrawMini();
   _aeUpdateLabels();
@@ -6950,6 +7014,12 @@ function _aeBindControls() {
   };
   _aeById('ae-go-btn').onclick = function () { _aeShowGo(_aeById('ae-go').hidden); };
   _aeById('ae-go').onclick = function (e) {
+    var mp = e.target && e.target.closest ? e.target.closest('[data-ae-map]') : null;
+    if (mp) {
+      var found = _ae.placeFound[+mp.getAttribute('data-ae-map')];
+      _mapHere().then(function (m) { if (m && found) m.go(found.lat, found.lon, found.name); });
+      return;
+    }
     var pl = e.target && e.target.closest ? e.target.closest('[data-ae-place]') : null;
     if (pl) { _aePlacePick(_ae.placeFound[+pl.getAttribute('data-ae-place')]); return; }
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-go]') : null;
@@ -7457,6 +7527,7 @@ function _aeFinishClose() {
   if (!_aeIsOpen) return;
   _aeLeaveSpin();
   _aeIsOpen = false;
+  if (window.AlmanacMaps) AlmanacMaps.release();
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();

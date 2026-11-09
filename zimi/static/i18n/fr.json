@@ -3692,5 +3692,11 @@
   "alm_blurb_jwst": "Un télescope à miroir doré qui voit les plus anciennes galaxies en infrarouge.",
   "alm_blurb_cassini": "A passé des années autour de Saturne et envoyé un atterrisseur sur Titan.",
   "alm_blurb_galileo": "Le premier engin en orbite autour de Jupiter, qui a lâché une sonde dans ses nuages.",
-  "alm_blurb_europaclipper": "En route vers Jupiter pour étudier l'océan caché d'Europe."
+  "alm_blurb_europaclipper": "En route vers Jupiter pour étudier l'océan caché d'Europe.",
+  "map_here": "Carte d’ici",
+  "map_none_here": "Aucune carte d’ici à ouvrir ou télécharger",
+  "tb_kn_maps_fade": "Fondu de la carte, altitude",
+  "tb_kn_maps_min": "Approche minimale au-dessus d’une carte",
+  "tb_kn_maps_tile": "Largeur d’une tuile de carte à l’écran",
+  "tb_kn_maps_data": "Routes et noms sur la Terre"
 }
