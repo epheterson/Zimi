@@ -35,6 +35,7 @@ function _asCraters(x, y, density) {
 // ground, level at the lander, and the curve of the body away from the site. The stand lane's terrain, when it is
 // there, adds its own relief over this.
 function _asGroundAt(st, x, y, far) {
+  if (st.terrainHere) return st.terrainHere(x, y, far);   // Stand here's ground, when this body has one (almanac-standhost.js): the one height everything reads
   var r2 = x * x + y * y, info = st.info;
   var h = -r2 / (2 * st.radiusM);
   var fade = _smoothstep(st.flatFrom || AS_FLAT_FROM_M, st.flatTo || AS_FLAT_TO_M, Math.sqrt(r2));
@@ -50,6 +51,12 @@ function _asGroundAt(st, x, y, far) {
 // relative to the site's own height: absent, the ground is the procedural one alone.
 function _asTerrainFn(st) {
   if (typeof _aeGroundHeight !== 'function') return null;
+  if (typeof _aeTerrainLocal === 'function' && typeof _aeStandable === 'function' && _aeStandable(st.body)) {
+    // The ground of Stand here, levelled round the lander as the site's own was: the height at a local place, the body's curve in it.
+    var h0 = _aeTerrainHeight(st.body, st.lat, st.lon, 0).h, lod = function (x, y, far) { return far ? Math.hypot(x, y) * AS_TERRAIN_LOD_PER_M : 0; };
+    st.terrainHere = function (x, y, far) { return _aeTerrainLocal(st.body, st.lat, st.lon, h0, x, y, lod(x, y, far), [st.flatFrom || AS_FLAT_FROM_M, st.flatTo || AS_FLAT_TO_M]); };
+    return null;
+  }
   var lat0 = st.lat, lon0 = st.lon, R = st.radiusM, cosLat = Math.max(0.05, Math.cos(_aeRad(lat0)));
   var at = function (x, y) { return _aeGroundHeight(st.body, lat0 + _aeDeg(y / R), lon0 + _aeDeg(x / (R * cosLat))) || 0; };
   var base = at(0, 0);
