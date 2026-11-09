@@ -25,3 +25,17 @@
 @keyframes wk-think { from { box-shadow: 0 0 0 3px var(--accent-glow); } to { box-shadow: 0 0 0 6px transparent; } }
 html[data-anim="off"] .bg-score .wk-who.thinking { animation: none; }
 @media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .bg-score .wk-who.thinking { animation: none; } }
+
+/* A short, wide phone (landscape): Walls, Fourfold and Polyominoes put the board on the left, as tall as the screen allows, and stack
+   the status, the score, the pieces and the buttons beside it. Stacked under the board it was 140px (Walls) or 90px (Polyominoes) wide. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board)) { --side: calc(100vw - 2 * var(--gutter) - var(--sp-4)); --board: min(100svh - var(--bar-h) - 44px, var(--side) - 300px, 560px);
+    display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 1fr repeat(6, auto) 1fr; column-gap: var(--sp-4); row-gap: var(--sp-2); align-content: center; justify-content: center; justify-items: center; align-items: center; }
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board)) > :is(.wl-wrap, .ff-board, .po-board) { --hs: var(--board); --fs: var(--board); --ps: var(--board); grid-column: 1; grid-row: 1 / span 8; }
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board)) > :not(.wl-wrap, .ff-board, .po-board) { grid-column: 2; max-width: 100%; }
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board))::before, .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board))::after { content: ""; grid-column: 2; }   /* the springs that centre the stack */
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board))::before { grid-row: 1; }
+  .bg-main:has(> :is(.wl-wrap, .ff-board, .po-board))::after { grid-row: 8; }
+  .bg-main:has(> .ff-board) .ff-tray { --ts: min((var(--side) - var(--board) - 7 * 6px) / 8, 40px); }
+  .bg-main:has(> .po-board) .po-tray { --ts: min((var(--side) - var(--board) - 10 * 5px) / 11, 34px); grid-template-columns: repeat(11, var(--ts)); }
+}

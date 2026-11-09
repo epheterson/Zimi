@@ -16,7 +16,7 @@
 .wi-tray { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; max-width: 420px; }
 .wi-q { position: relative; display: grid; place-items: center; min-height: 52px; padding: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; touch-action: manipulation; }
 .wi-q svg { display: block; width: 34px; height: 34px; border-radius: 6px; background: #fbf7ee; }
-.wi-q:not([aria-disabled="true"]):hover { border-color: var(--accent); }
+@media (hover: hover) { .wi-q:not([aria-disabled="true"]):hover { border-color: var(--accent); } }
 .wi-q[aria-disabled="true"] { cursor: default; }
 .wi-q.wi-asked { background: var(--cell); }
 .wi-q.wi-asked svg { opacity: 0.55; }

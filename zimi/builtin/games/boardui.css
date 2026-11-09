@@ -3,6 +3,7 @@
 /* The status line is one slot. Ahead of the text sits a dot's worth of room that is always there, so the opponent's
    turn (the dot pulses amber) never moves the line. */
 .bu-status::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.bu-status::after { content: ""; flex: none; width: 8px; }   /* the dot's room again at the far end, so the line stays centred */
 .bu-status.is-thinking::before { background: var(--accent); animation: bu-pulse 1s ease-in-out infinite; }
 @keyframes bu-pulse { 50% { opacity: 0.25; } }
 html[data-anim="off"] .bu-status.is-thinking::before { animation: none; }

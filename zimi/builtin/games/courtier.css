@@ -41,7 +41,7 @@ html[data-anim="off"] .cr-seat.cr-pick { animation: none; }
 .cr-emblem { width: 58px; height: 58px; fill: color-mix(in srgb, var(--rk) 22%, transparent); stroke: var(--rk); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .cr-name { font-size: var(--fs-small); font-weight: 650; line-height: 1.15; overflow-wrap: anywhere; }
 button.cr-card { cursor: pointer; touch-action: manipulation; padding-top: 22px; transition: transform 0.12s ease-out; }
-button.cr-card:hover { border-color: var(--accent); }
+@media (hover: hover) { button.cr-card:hover { border-color: var(--accent); } }
 button.cr-card[aria-disabled="true"] { cursor: default; }
 button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: var(--select); }
 .cr-backcard { background: var(--felt, #285c43); border-color: var(--felt-deep, #1a4130); }
@@ -69,3 +69,15 @@ button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: 
 .cr-guideitem { display: flex; gap: 10px; align-items: flex-start; }
 .cr-guideitem > div { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-small); }
 .cr-guideitem span:not(.cr-mini) { color: var(--ink2); }
+/* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
+#cr-sheet .ar-sheet-card { padding-bottom: 0; }
+#cr-sheet .ar-sheet-actions { position: sticky; bottom: 0; z-index: 2; padding: var(--sp-2) 0 20px; background: var(--surface2); }   /* above the chosen segments (z-index 1) that scroll under it */
+
+/* A short, wide phone (landscape): the court on the left, the hand and its buttons beside it, so a card can be played without scrolling past the court. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .cr-main { max-width: 860px; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--sp-4); align-content: start; align-items: start; }
+  .cr-main > #cr-msg { grid-column: 1 / -1; }
+  .cr-main > .cr-tablearea { grid-column: 1; grid-row: 2 / span 2; }
+  .cr-main > .cr-hand { grid-column: 2; grid-row: 2; align-self: center; }
+  .cr-main > .cr-actions { grid-column: 2; grid-row: 3; align-self: start; }
+}
