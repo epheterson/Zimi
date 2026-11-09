@@ -10,7 +10,7 @@
 [data-rank="1"] { --rk: var(--cr-1); } [data-rank="2"] { --rk: var(--cr-2); } [data-rank="3"] { --rk: var(--cr-3); } [data-rank="4"] { --rk: var(--cr-4); }
 [data-rank="5"] { --rk: var(--cr-5); } [data-rank="6"] { --rk: var(--cr-6); } [data-rank="7"] { --rk: var(--cr-7); } [data-rank="8"] { --rk: var(--cr-8); }
 
-.cr-main { width: 100%; max-width: 440px; margin: 0 auto; }
+.cr-main { width: 100%; max-width: 440px; margin: 0 auto; min-height: calc(100dvh - var(--bar-h)); }   /* the hand sits at the bottom of the screen, as on every card table */
 .cr-tablearea { width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
 .cr-seats { display: flex; flex-direction: column; gap: 6px; }
 .cr-seat { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
@@ -50,7 +50,7 @@ button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: 
 .cr-z { font: 800 34px var(--font); color: rgba(255, 255, 255, 0.85); }
 .cr-miniback { width: 18px; height: 26px; border-radius: 4px; border-width: 1px; }
 .cr-miniback .cr-z { font-size: 12px; }
-.cr-hand { display: flex; justify-content: center; gap: var(--sp-3); min-height: 160px; align-items: flex-end; padding-top: 14px; }
+.cr-hand { margin-top: auto; display: flex; justify-content: center; gap: var(--sp-3); min-height: 160px; align-items: flex-end; padding-top: 14px; }
 .cr-handnote { color: var(--ink2); margin: 0; align-self: center; }
 .cr-actions { display: flex; gap: var(--sp-2); justify-content: center; }
 .cr-actions .ar-btn { min-height: 44px; min-width: 110px; }

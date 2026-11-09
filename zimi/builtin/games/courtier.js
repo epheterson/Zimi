@@ -373,7 +373,7 @@
       row.appendChild(head);
       var played = el('div', 'cr-played');
       p.played.forEach(function (r) { played.appendChild(miniEl(r)); });
-      if (!p.out) played.appendChild(backEl('cr-miniback'));
+      if (!p.out && i !== seats.view()) played.appendChild(backEl('cr-miniback'));   // an opponent's hidden card; yours is in your hand
       row.appendChild(played);
       row.setAttribute('aria-label', p.out ? T('courtier.seat.out', { name: nm(i) }) : T('courtier.seat.ok', { name: nm(i), n: p.played.length }));
       if (pickable.indexOf(i) >= 0) {
