@@ -38,6 +38,7 @@ MOONS = [
     ("Ganymede", "503", "599", "Jupiter", 50.3176),
     ("Callisto", "504", "599", "Jupiter", 21.5711),
     ("Titan", "606", "699", "Saturn", 22.5770),
+    ("Mimas", "601", "699", "Saturn", 381.9945),
     ("Enceladus", "602", "699", "Saturn", 262.7319),
     ("Tethys", "603", "699", "Saturn", 190.6979),
     ("Dione", "604", "699", "Saturn", 131.5349),

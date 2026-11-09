@@ -94,6 +94,7 @@ GIBS_DIMS = {
 # (Enceladus 1.0, Tethys 0.8, Dione 0.7, Rhea 0.65, Iapetus 0.03 on its leading side to 0.6 trailing, Phobos 0.07), in the
 # grey a lit texture reads at on this view's other worlds. Iapetus's dark material is a red-brown.
 TONES = {
+    "mimas": {"lo": 100, "hi": 140, "dark": (206, 206, 204), "light": (206, 206, 204)},
     "enceladus": {
         "lo": 120,
         "hi": 140,
@@ -113,7 +114,7 @@ LAYERS = {
         "time": "",
         "ext": "jpeg",
         "src_level": 7,
-        "max": 6,
+        "max": 7,
         "mode": "RGB",
     },
     "earth/night": {
@@ -121,7 +122,7 @@ LAYERS = {
         "time": "2016-01-01/",
         "ext": "png",
         "src_level": 7,
-        "max": 6,
+        "max": 7,
         "mode": "L",
     },
     # Jupiter and Saturn at 8192 px: Solar System Scope's 8k maps (CC BY 4.0, credited in the view and the ZIM): a gas
@@ -157,19 +158,19 @@ LAYERS = {
                 "mars",
                 "Mars_Viking_MDIM21_ClrMosaic_global_232m.tif",
                 "RGB",
-                {"max": 5, "prescale": True},
+                {"max": 7, "native": True},
             ),
             (
                 "mercury",
                 "Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif",
                 "L",
-                {"max": 5, "prescale": True, "tint": "mercury-v1.webp"},
+                {"max": 7, "native": True, "tint": "mercury-v1.webp"},
             ),
             (
                 "io",
                 "Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif",
                 "RGB",
-                {"max": 3},
+                {"max": 4},
             ),
             (
                 "europa",
@@ -199,7 +200,7 @@ LAYERS = {
                 "pluto",
                 "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
                 "L",
-                {"max": 4, "roll": True, "tint": "pluto-v1.webp"},
+                {"max": 5, "roll": True, "tint": "pluto-v1.webp"},
             ),
             (
                 "charon",
@@ -214,6 +215,16 @@ LAYERS = {
                 {"max": 4, "fill": True},
             ),
             (
+                "mimas",
+                "Mimas/Cassini_DLR_Mimas.zip",
+                "L",
+                {
+                    "max": 3,
+                    "member": "MI_170630_DLR_basemap_degrees.tif",
+                    "tone": TONES["mimas"],
+                },
+            ),
+            (
                 "enceladus",
                 "Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif",
                 "L",
@@ -223,19 +234,19 @@ LAYERS = {
                 "tethys",
                 "Tethys_Cassini_mosaic_global_293m.tif",
                 "L",
-                {"max": 3, "tone": TONES["tethys"]},
+                {"max": 4, "tone": TONES["tethys"]},
             ),
             (
                 "dione",
                 "Dione_Cassini_Voyager_mosaic_global_154m.tif",
                 "L",
-                {"max": 4, "tone": TONES["dione"]},
+                {"max": 5, "tone": TONES["dione"]},
             ),
             (
                 "rhea",
                 "Rhea_Cassini_Voyager_mosaic_global_417m.tif",
                 "L",
-                {"max": 3, "tone": TONES["rhea"]},
+                {"max": 4, "tone": TONES["rhea"]},
             ),
             (
                 "iapetus",
@@ -243,24 +254,24 @@ LAYERS = {
                 "L",
                 {"max": 3, "tone": TONES["iapetus"]},
             ),
-            ("vesta", "Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif", "L", {"max": 4}),
+            ("vesta", "Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif", "L", {"max": 5}),
             (
                 "phobos",
                 "Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif",
                 "L",
-                {"max": 3, "tone": TONES["phobos"]},
+                {"max": 4, "tone": TONES["phobos"]},
             ),
             (
                 "ceres",
                 "Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif",
                 "L",
-                {"max": 4, "derive": "shade", "radius_m": 470000},
+                {"max": 5, "derive": "shade", "radius_m": 470000},
             ),
         )
     },
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
-        "max": 4,
+        "max": 5,
         "mode": "RGB",
         "derive": "normals",
         # Low sun reads a normal's every error as a slope: the lossy default left 16 px blocks across the maria.
@@ -270,9 +281,9 @@ LAYERS = {
         # The LRO Wide Angle Camera's global mosaic at 100 m a pixel (NASA/GSFC/Arizona State University, through USGS),
         # cut to 166 m: a pixel of the 3D view on a phone at the Moon's closest approach.
         "file": USGS % "Lunar_LRO_LROC-WAC_Mosaic_global_100m_June2013.tif",
-        "max": 6,
+        "max": 7,
         "mode": "L",
-        "prescale": True,
+        "native": True,
     },
 }
 
@@ -296,6 +307,7 @@ PINS = {
     "moon/relief": "0f40bce8b42864deddb6943a38474879e691d5b20647aa5e54c2612b23106499",
     "planets/charon": "4a874809e0a33a851cd026b8e4647f5875ed15807e677d413812367509564b00",
     "planets/triton": "f20ed332e85df469725629b81d3a73ad026897fe561ec59d6245d249a09507db",
+    "planets/mimas": "4d339571ad645b2b7b43b732633574e8dc8fae7ebbed833aa4f90b10588e20f0",
     "planets/enceladus": "a15d944acf7da25e89f8f1ece6694632521980e77af024db7746cb33d05fb04b",
     "planets/tethys": "40723c3ebfaaa52a657827b37309bc84234811db1cf26a21d086e26aba2b3640",
     "planets/dione": "5c5d796c02e3c99fde5dd034e01dd1f25905699a4885843aed445ded955e08b5",
@@ -443,6 +455,20 @@ class FileMosaic:
         from PIL import Image
 
         Image.MAX_IMAGE_PIXELS = None
+        if path.endswith(".npy"):
+            import numpy as np
+
+            self.arr = np.load(
+                path, mmap_mode="r"
+            )  # the native picture, read a window at a time
+            self.mode = mode
+            self.im = None
+            self.res = 360.0 / self.arr.shape[1]
+            self.tint = Image.open(tint).convert("RGB") if tint else None
+            self.finish = finish or {}
+            self._aux_maps = None
+            return
+        self.arr = None
         im = Image.open(path).convert(mode)
         if roll:
             half = im.width // 2
@@ -471,6 +497,31 @@ class FileMosaic:
         ratio = np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0)
         return np.clip(ratio, 0.0, CHROMA_MAX)
 
+    def _crop(self, x0, y0, px):
+        """A square of the memory-mapped picture, ``px`` source pixels a side from (x0, y0), as a tile: the window
+        read out (a pixel of margin for the filter) and reduced or enlarged to a tile.
+        """
+        import numpy as np
+        from PIL import Image
+
+        h, w = self.arr.shape[:2]
+        ix0, iy0 = max(0, int(x0) - 1), max(0, int(y0) - 1)
+        ix1, iy1 = min(w, int(x0 + px) + 2), min(h, int(y0 + px) + 2)
+        piece = Image.fromarray(
+            np.ascontiguousarray(self.arr[iy0:iy1, ix0:ix1]), self.mode
+        )
+        box = (x0 - ix0, y0 - iy0, x0 - ix0 + px, y0 - iy0 + px)
+        return piece.resize((TILE, TILE), Image.LANCZOS, box=box)
+
+    def _small(self, size):
+        """The whole globe as a picture of ``size``: the memory map read in strides, then reduced."""
+        from PIL import Image
+
+        k = max(1, self.arr.shape[1] // (size[0] * 2))
+        return Image.fromarray(self.arr[::k, ::k], self.mode).resize(
+            size, Image.LANCZOS
+        )
+
     def _aux(self):
         """The two helper maps a finished layer reads, both a globe 1024 wide: ``lp`` (the picture's large-scale
         brightness, for "tone") and ``fill`` (the picture's unmapped black replaced by its nearest mapped colour,
@@ -479,7 +530,11 @@ class FileMosaic:
         from PIL import Image, ImageFilter
 
         if self._aux_maps is None:
-            small = self.im.resize((FINISH_MAP_W, FINISH_MAP_W // 2), Image.BOX)
+            small = (
+                self._small((FINISH_MAP_W, FINISH_MAP_W // 2))
+                if self.arr is not None
+                else self.im.resize((FINISH_MAP_W, FINISH_MAP_W // 2), Image.BOX)
+            )
             lp = fill = None
             if "tone" in self.finish:
                 lp = small.convert("L").filter(
@@ -562,7 +617,11 @@ class FileMosaic:
         from PIL import Image
 
         size = (width, width // 2)
-        small = self.im.resize(size, Image.LANCZOS)
+        small = (
+            self._small(size)
+            if self.arr is not None
+            else self.im.resize(size, Image.LANCZOS)
+        )
         if self.finish:
             small = self._finished(small, None, size)
         if self.tint is None:
@@ -585,11 +644,16 @@ class FileMosaic:
             (90.0 - lat_top) / self.res,
             span / self.res,
         )
-        tile = self.im.resize(
-            (TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
-        )
+        if self.arr is not None:
+            tile = self._crop(x0, y0, px)
+        else:
+            tile = self.im.resize(
+                (TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
+            )
         if self.finish:
-            k = FINISH_MAP_W / self.im.width
+            k = FINISH_MAP_W / (
+                self.arr.shape[1] if self.arr is not None else self.im.width
+            )
             tile = self._finished(
                 tile, (x0 * k, y0 * k, (x0 + px) * k, (y0 + px) * k), (TILE, TILE)
             )
@@ -715,6 +779,51 @@ def prescaled(path, mode, width, out_path):
     return out_path
 
 
+def _unzip_member(zip_path, member):
+    """One file of a zip, written beside it (once): ``member`` by its base name, wherever it sits in the archive."""
+    import zipfile
+
+    out = os.path.join(os.path.dirname(zip_path), os.path.basename(member))
+    if not os.path.exists(out):
+        with zipfile.ZipFile(zip_path) as z:
+            name = next(n for n in z.namelist() if os.path.basename(n) == member)
+            with z.open(name) as src, open(out + ".part", "wb") as dst:
+                shutil.copyfileobj(src, dst)
+        os.replace(out + ".part", out)
+    return out
+
+
+def native_map(path, mode, out_path):
+    """A mosaic as a raw array on disk (``.npy``), at its own pixel size, so a tile of any level is cut from a window
+    of it (FileMosaic._crop) without a multi-gigabyte picture held, or decoded again, for every row of tiles.
+    """
+    import numpy as np
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = None
+    if os.path.exists(out_path):
+        return out_path
+    im = Image.open(path)
+    if im.mode != mode:
+        im = im.convert(mode)
+    tmp = out_path + ".part"
+    out = np.lib.format.open_memmap(
+        tmp,
+        mode="w+",
+        dtype=np.uint8,
+        shape=(im.height, im.width) + ((3,) if mode == "RGB" else ()),
+    )
+    step = 1024
+    for y in range(0, im.height, step):
+        out[y : y + step] = np.asarray(
+            im.crop((0, y, im.width, min(im.height, y + step)))
+        )
+    out.flush()
+    del out, im
+    os.replace(tmp, out_path)
+    return out_path
+
+
 SHADE_AZIMUTH_DEG, SHADE_ALTITUDE_DEG = (
     315.0,
     45.0,
@@ -767,6 +876,8 @@ def file_source(layer, spec, cache, top, update):
     )
     source_sha = _sha_files([path])
     _check_pin(layer, source_sha, update)
+    if spec.get("member"):  # a file inside a zip: taken out once, beside it
+        path = _unzip_member(path, spec["member"])
     if spec.get("derive") == "normals":
         # Keyed by the elevation map's digest too: a new DEM (--update-pins) must not meet the last one's normals.
         width = TILE * 2 ** (top + 1)
@@ -791,6 +902,16 @@ def file_source(layer, spec, cache, top, update):
             ),
             width,
             spec["radius_m"],
+        )
+    elif spec.get("native"):
+        path = native_map(
+            path,
+            spec["mode"],
+            os.path.join(
+                cache,
+                "files",
+                "%s-native-%s.npy" % (os.path.basename(layer), source_sha[:12]),
+            ),
         )
     elif spec.get("prescale"):
         width = TILE * 2 ** (top + 1)
@@ -823,7 +944,10 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
     else:
         kind, src = "file", file_source(layer, spec, cache, top, update)
     # One process per row of the deepest level; a FileMosaic holds the whole map, so fewer of those at once.
-    workers = procs or (os.cpu_count() or 4) if kind == "gibs" else 2
+    mapped = kind == "file" and src[0].endswith(
+        ".npy"
+    )  # a memory map is shared between processes: as many as cores
+    workers = procs or (os.cpu_count() or 4) if kind == "gibs" or mapped else 2
     q = spec.get("quality", WEBP_Q)
     with concurrent.futures.ProcessPoolExecutor(workers) as ex:
         if kind == "file":
@@ -1029,7 +1153,23 @@ MIMES = {
 }
 
 
-def pack_zim(stage, path):
+#: Layers too big for one release file (GitHub's limit is 2 GiB) are packed as ZIMs of their own, parts of one set:
+#: ``zimi_almanac_hd_<part>_<month>.zim`` with an ``hd.json`` listing only their layers (zimi/almanachd.py PARTS).
+#: Everything else is the core, the file the Almanac's HD flavour is made from.
+PARTS = {
+    "moon": ("moon/",),
+    "mars": ("planets/mars/",),
+    "mercury": ("planets/mercury/",),
+}
+
+
+def part_of(rel):
+    """The part a staged file belongs to ("" for the core)."""
+    return next((p for p, prefixes in PARTS.items() if rel.startswith(prefixes)), "")
+
+
+def pack_zim(stage, path, part=None):
+    # part: None packs everything (one file); "" the core; a name of PARTS that part alone.
     """The staged folder as one ZIM. Written here rather than by Zimi's folder capture: fifteen thousand tiles
     need no full-text index (the capture's indexing stalled libzim's writer at the end, under load), and the
     metadata is fixed. Every tile is an asset, never a front article: nothing here is read or searched.
@@ -1054,8 +1194,22 @@ def pack_zim(stage, path):
                 rel = os.path.relpath(full, stage).replace(os.sep, "/")
                 if rel in ("zimi.txt", "icon.png"):
                     continue
+                if (
+                    part is not None
+                    and rel not in ("index.html", "hd.json")
+                    and part_of(rel) != part
+                ):
+                    continue
                 with open(full, "rb") as f:
                     data = f.read()
+                if rel == "hd.json" and part is not None:
+                    man = json.loads(data)
+                    man["layers"] = {
+                        k: v
+                        for k, v in man["layers"].items()
+                        if part_of(k + "/") == part
+                    }
+                    data = json.dumps(man, separators=(",", ":")).encode()
                 if rel == "index.html":
                     zc.add_item(page(rel, "Almanac HD", data))
                 else:
@@ -1065,7 +1219,7 @@ def pack_zim(stage, path):
         meta = dict(line.split(": ", 1) for line in ZIMI_TXT.strip().split("\n"))
         for key in ("Title", "Description", "Language", "Creator", "Publisher", "Tags"):
             zc.add_metadata(key, meta[key])
-        zc.add_metadata("Name", NAME)
+        zc.add_metadata("Name", NAME + ("_" + part if part else ""))
         zc.add_metadata("Date", datetime.date.today().isoformat())
         with open(os.path.join(stage, "icon.png"), "rb") as f:
             icon = f.read()
@@ -1126,6 +1280,11 @@ def main(argv=None):
     )
     ap.add_argument("--no-inserts", dest="inserts", action="store_false")
     ap.add_argument(
+        "--split",
+        action="store_true",
+        help="pack the core and each part (PARTS) as ZIMs of their own, the set the app reads as one",
+    )
+    ap.add_argument(
         "--small-maps",
         metavar="DIR",
         help="instead of tiles, write each layer's small map (1024 x 512 WebP) there",
@@ -1176,7 +1335,25 @@ def main(argv=None):
     path = os.path.join(
         a.out, "%s_%s.zim" % (NAME, datetime.date.today().strftime("%Y-%m"))
     )
-    pack_zim(stage, path)
+    month = datetime.date.today().strftime("%Y-%m")
+    if a.split:
+        pack_zim(stage, path, "")
+        parts = []
+        for part in PARTS:
+            ppath = os.path.join(a.out, "%s_%s_%s.zim" % (NAME, part, month))
+            pack_zim(stage, ppath, part)
+            parts.append(
+                {
+                    "part": part,
+                    "file": os.path.basename(ppath),
+                    "size": os.path.getsize(ppath),
+                    "sha256": _sha_files([ppath]),
+                }
+            )
+            print("built %s (%.1f MB)" % (ppath, os.path.getsize(ppath) / 1e6))
+    else:
+        pack_zim(stage, path)
+        parts = []
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     if a.tag:
         # The tile source's pin (scripts/build_almanac_maxi.py reads it): committed with the release that carries the file.
@@ -1186,6 +1363,8 @@ def main(argv=None):
             "sha256": _sha_files([path]),
             "tag": a.tag,
         }
+        if parts:
+            asset["parts"] = parts
         with open(os.path.join(ROOT, "zimi", "assets", "almanac-tiles.json"), "w") as f:
             json.dump(asset, f, indent=2)
             f.write("\n")

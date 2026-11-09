@@ -147,6 +147,7 @@ def test_every_world_has_a_pinned_public_domain_source():
         "pluto",
         "charon",
         "triton",
+        "mimas",
         "enceladus",
         "tethys",
         "dione",
@@ -169,3 +170,58 @@ def test_every_world_has_a_pinned_public_domain_source():
         k for k, v in hd.LAYERS.items() if "solarsystemscope" in v.get("file", "")
     }
     assert elsewhere == {"planets/jupiter", "planets/saturn"}
+def test_every_layer_belongs_to_the_core_or_to_one_part():
+    for layer in hd.LAYERS:
+        assert hd.part_of(layer + "/") in ("", *hd.PARTS), layer
+    assert hd.part_of("moon/albedo/3/1/2.webp") == "moon"
+    assert hd.part_of("planets/mars/5/0/0.webp") == "mars"
+    assert hd.part_of("planets/marsX/0/0/0.webp") == ""
+    assert hd.part_of("earth/day/0/0/0.webp") == ""
+
+
+def test_a_native_map_is_cut_from_windows_of_the_memory_map(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    pic = (np.arange(64 * 128).reshape(64, 128) % 251).astype(np.uint8)
+    src = tmp_path / "w.png"
+    Image.fromarray(pic).save(src)
+    npy = hd.native_map(str(src), "L", str(tmp_path / "w.npy"))
+    mapped = hd.FileMosaic(npy, "L")
+    plain = hd.FileMosaic(str(src), "L")
+    a = np.asarray(mapped.window(-180.0, 90.0, 90.0), dtype=float)
+    b = np.asarray(plain.window(-180.0, 90.0, 90.0), dtype=float)
+    assert a.shape == b.shape == (hd.TILE, hd.TILE)
+    assert np.abs(a - b).mean() < 1.5
+
+
+def test_a_flat_mosaic_gets_its_tone_back_and_keeps_its_detail(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    rng = np.random.default_rng(1)
+    pic = np.clip(128 + rng.normal(0, 12, (64, 128)), 0, 255).astype(np.uint8)
+    src = tmp_path / "flat.png"
+    Image.fromarray(pic).save(src)
+    tone = {"lo": 100, "hi": 140, "dark": (60, 40, 30), "light": (210, 210, 205)}
+    out = np.asarray(
+        hd.FileMosaic(str(src), "L", finish={"tone": tone}).window(-180.0, 90.0, 90.0),
+        dtype=float,
+    )
+    assert out.shape[2] == 3
+    assert 50 < out[..., 0].mean() < 215 and out[..., 0].std() > 2
+
+
+def test_unmapped_black_is_filled_from_the_mapped_colour_beside_it(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    pic = np.zeros((64, 128, 3), np.uint8)
+    pic[32:] = (90, 100, 80)
+    src = tmp_path / "gap.png"
+    Image.fromarray(pic).save(src)
+    out = np.asarray(
+        hd.FileMosaic(str(src), "RGB", finish={"fill": True}).whole(256), dtype=float
+    )
+    assert out[:40].min() > 20  # the unmapped top is no longer black
+    assert abs(out[-1, 5, 1] - 100) < 4  # the mapped part is untouched
