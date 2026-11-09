@@ -15,6 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zimi.renderer as renderer  # noqa: E402
 import zimi.server as srv  # noqa: E402
 
+pytestmark = pytest.mark.fieldguide_on   # the Field Guide is one of the apps under test
+
 I18N = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "zimi",
@@ -60,8 +62,12 @@ def _i18n(lang):
         return json.load(f)
 
 
+APPS = [("tube", "openTube"), ("exchange", "openExchange"), ("reddot", "openReddot"), ("wiki", "openWiki"), ("books", "openBooks"), ("fieldguide", "openFieldguide")]
+
+
 @pytest.mark.parametrize("lang", ["es", "ar"])
-def test_an_open_app_takes_the_new_language(served, lang):
+@pytest.mark.parametrize("app,opener", APPS, ids=[a[0] for a in APPS])
+def test_an_open_app_takes_the_new_language(served, app, opener, lang):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -77,10 +83,10 @@ def test_an_open_app_takes_the_new_language(served, lang):
         try:
             pg.goto(served + "/", wait_until="load")
             pg.wait_for_function(
-                "() => typeof openTube === 'function' && typeof setLanguage === 'function'",
+                "(o) => typeof window[o] === 'function' && typeof setLanguage === 'function'", arg=opener,
                 timeout=60000,
             )
-            pg.evaluate("openTube()")
+            pg.evaluate("(o) => window[o]()", opener)
             pg.wait_for_function("(" + FRAME_HASH + ")()", timeout=30000)
             before = pg.evaluate("(" + FRAME_HASH + ")()")
             assert before["lang"] == "en" and before["docLang"] == "en", before
@@ -93,7 +99,7 @@ def test_an_open_app_takes_the_new_language(served, lang):
                 timeout=30000,
             )
             after = pg.evaluate("(" + FRAME_HASH + ")()")
-            assert after["title"] == _i18n(lang)["tube"], after
+            assert after["title"] == _i18n(lang)[app], after
             assert after["docDir"] == (
                 "rtl" if lang == "ar" else after["docDir"]
             ), after
