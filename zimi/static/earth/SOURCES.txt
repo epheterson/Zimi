@@ -199,5 +199,25 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
-  - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
-    8k maps, CC BY 4.0, credited on the view while drawn.
+  - Venus, Jupiter and Saturn at 8192 px: Solar System Scope's 8k maps, CC BY
+    4.0, credited on the view while drawn. Mars at 8192 px: the Viking colour
+    mosaic (public domain).
+  - Mercury, Io, Europa, Ganymede, Callisto, Titan and Pluto at the mosaics' own
+    pixel size (planetarymaps.usgs.gov/mosaic/, all NASA/USGS, public domain):
+      Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m.tif
+        (brightness only: the mosaic is false colour; colour from mercury-v1)
+      Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif
+      Europa_Voyager_GalileoSSI_global_mosaic_500m.tif
+      Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif (colour from ganymede-v1)
+      Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+      Titan_ISS_P19658_Mosaic_Global_4km.tif
+      Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif (colour from pluto-v1)
+    Greyscale mosaics take their colour from the small map shipped here
+    (scripts/build_almanac_hd.py FileMosaic): the colour ratios, never the
+    brightness. Sources are pinned by SHA-256 in that script.
+
+almanac-sun.js
+  Code, not data: the Sun's prominences, flares and finer surface, made up by
+  the Sun's own rules (like the sunspots) and labelled illustrative in the view.
+  Rotation: IAU WGCCRE 2015 (Carrington rate), differential rotation from
+  Snodgrass and Ulrich 1990.

@@ -93,9 +93,9 @@ for (let i = 0; i < slots; i++) {
 }
 check(used > 0 && used <= slots, 'prominence slots filled with unit vectors: ' + used);
 const plain = get('AE_SUN_FRAG'), glowPlain = get('AE_SUN_GLOW_FRAG');
-for (const m of ['uniforms', 'cells', 'surface']) check(plain.indexOf('// @sunfx-' + m) >= 0, 'the Sun shader has its ' + m + ' marker');
+for (const m of ['uniforms', 'functions', 'cells', 'surface']) check(plain.indexOf('// @sunfx-' + m) >= 0, 'the Sun shader has its ' + m + ' marker');
 for (const m of ['uniforms', 'prominences']) check(glowPlain.indexOf('// @sunfx-' + m) >= 0, 'the glow shader has its ' + m + ' marker');
-const full = get('_aeSunFxPatch(AE_SUN_FRAG, { uniforms: AE_SUNFX_GLSL.surfaceUniforms, cells: AE_SUNFX_GLSL.cells, surface: AE_SUNFX_GLSL.surface })');
+const full = get('_aeSunFxPatch(AE_SUN_FRAG, { uniforms: AE_SUNFX_GLSL.surfaceUniforms, functions: AE_SUNFX_GLSL.functions, cells: AE_SUNFX_GLSL.cells, surface: AE_SUNFX_GLSL.surface })');
 check(full.indexOf('@sunfx') < 0 && full.indexOf('uFlare') > 0 && full.indexOf('fine2') > 0, 'the patched Sun shader has everything in');
 check(get('_aeSunFxPatch("void main() {}", { uniforms: "x" })') === 'void main() {}', 'a shader without the markers is left alone');
 

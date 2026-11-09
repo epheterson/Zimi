@@ -22,7 +22,6 @@ var AE_PROM_LIFE_DAYS = [4, 14];
 var AE_PROM_GROW_DAYS = 1.5;
 var AE_PROM_LAT_MAX_DEG = 65;                  // none near the poles
 var AE_PROM_LEN_DEG = [8, 28];                 // a filament's length along the surface
-var AE_PROM_HEIGHT = [0.05, 0.2];              // solar radii off the limb
 var AE_PROM_TILT_DEG = 6;                      // the filament's slope against the parallels
 var AE_PROM_SALT = 104729;
 var AE_LOOP_MIN_R_DEG = 3.5;                   // a group needs a leader this large (radius, degrees) to be given a loop
@@ -30,7 +29,6 @@ var AE_LOOP_MAX = 3;
 var AE_LOOP_BASE_HEIGHT = 0.03, AE_LOOP_HEIGHT_PER_DEG = 0.01, AE_LOOP_GLOW = 0.3;
 var AE_FLARE_SALT = 17;
 var AE_FLARE_MAX_PER_GROUP = 4;
-var AE_FLARE_RISE_MIN = 6, AE_FLARE_DECAY_MIN = 40;
 var AE_FLARE_ACTIVE_MIN = 0.02;                // under this a flare is gone
 var AE_FLARE_STRENGTH = [0.35, 1];
 var AE_FLARE_LOOP_GAIN = 2.5;                  // how much a flare brightens its group's loop
@@ -111,11 +109,24 @@ function _aeSunFxPack(ev, promA, promB, flares) {
 // The GLSL that goes in at each marker (almanac-earth.js AE_SUN_FRAG, AE_SUN_GLOW_FRAG).
 var AE_SUNFX_GLSL = {
   surfaceUniforms: 'uniform vec4 uFlare[' + AE_SUNFX_FLARES + '];',
+  // The nearest and second-nearest feature point as aeCells finds them, but over the 8 cells nearest the point, not 27:
+  // for the second, finer octave, which every pixel of a close view pays for.
+  functions: [
+    'vec3 aeCells8(vec3 p) {',
+    '  vec3 i = floor(p), f = p - i; float d1 = 8.0, d2 = 8.0, id = 0.0;',
+    '  for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {',
+    '    vec3 o = vec3(f.x < 0.5 ? float(x) - 1.0 : float(x), f.y < 0.5 ? float(y) - 1.0 : float(y), f.z < 0.5 ? float(z) - 1.0 : float(z));',
+    '    vec3 h = aeHash3(i + o), q = o + h - f; float d = dot(q, q);',
+    '    if (d < d1) { d2 = d1; d1 = d; id = h.x; } else if (d < d2) { d2 = d; }',
+    '  }',
+    '  return vec3(sqrt(d1), sqrt(d2), id);',
+    '}'
+  ].join('\n'),
   // A second octave where the cells are wider than a few pixels: nothing at a distance (no cost, no shimmer).
   cells: [
     '  float fine2 = clamp(1.6 - 0.9 * length(fwidth(q * ' + AE_SUNFX_FINE_SCALE.toFixed(1) + ')), 0.0, 1.0);',
     '  if (fine2 > 0.02) {',
-    '    vec3 c2 = aeCells(q * ' + AE_SUNFX_FINE_SCALE.toFixed(1) + ' + 13.0);',
+    '    vec3 c2 = aeCells8(q * ' + AE_SUNFX_FINE_SCALE.toFixed(1) + ' + 13.0);',
     '    float cell2 = smoothstep(0.0, 0.25, c2.y - c2.x) * (1.2 - 0.9 * c2.x) * (0.8 + 0.4 * c2.z) - 0.6;',
     '    cell = mix(cell, 0.7 * cell + 0.6 * cell2, fine2);',
     '  }'
@@ -168,7 +179,7 @@ function _aeSunFxPatch(frag, pieces) {
 function _aeSunFxInstall(S) {
   S.sunFx = { promA: new Float32Array(AE_SUNFX_PROMS * 4), promB: new Float32Array(AE_SUNFX_PROMS * 4), flares: new Float32Array(AE_SUNFX_FLARES * 4) };
   var G = AE_SUNFX_GLSL;
-  var surface = _aeSunFxPatch(AE_SUN_FRAG, { uniforms: G.surfaceUniforms, cells: G.cells, surface: G.surface });
+  var surface = _aeSunFxPatch(AE_SUN_FRAG, { uniforms: G.surfaceUniforms, functions: G.functions, cells: G.cells, surface: G.surface });
   var glow = _aeSunFxPatch(AE_SUN_GLOW_FRAG, { uniforms: G.glowUniforms, prominences: G.prominences });
   if (surface === AE_SUN_FRAG || glow === AE_SUN_GLOW_FRAG) return;   // the shaders changed under it: keep the plain Sun
   S.sunMat.uniforms.uFlare = { value: S.sunFx.flares };

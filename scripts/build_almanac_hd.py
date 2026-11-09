@@ -57,6 +57,7 @@ TILE = 512
 WEBP_Q = 80
 NAME = "zimi_almanac_hd"
 
+USGS = "https://planetarymaps.usgs.gov/mosaic/%s"
 GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/{layer}/default/{time}500m/{z}/{row}/{col}.{ext}"
 # GIBS's 500 m matrix set: at level n, 512 px tiles from (-180, 90) in these counts,
 # each pixel 288 / (2^n * 512) degrees (the set's last column and row run past the globe).
@@ -92,10 +93,74 @@ LAYERS = {
     # The planets to 8192 px: Solar System Scope's 8k maps (CC BY 4.0, credited in the view and the ZIM), but Mars
     # from the Viking colour mosaic (NASA/JPL/USGS, public domain), its true butterscotch, as the small map is.
     **{
-        "planets/%s" % k: {"file": "https://www.solarsystemscope.com/textures/download/8k_%s.jpg" % f, "max": 3, "mode": "RGB"}
-        for k, f in (("mercury", "mercury"), ("venus", "venus_surface"), ("jupiter", "jupiter"), ("saturn", "saturn"))
+        "planets/%s"
+        % k: {
+            "file": "https://www.solarsystemscope.com/textures/download/8k_%s.jpg" % f,
+            "max": 3,
+            "mode": "RGB",
+        }
+        for k, f in (
+            ("venus", "venus_surface"),
+            ("jupiter", "jupiter"),
+            ("saturn", "saturn"),
+        )
     },
-    "planets/mars": {"file": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Mars_Viking_MDIM21_ClrMosaic_1km.jpg", "max": 3, "mode": "RGB"},
+    # The worlds with public-domain mosaics, at the mosaic's own pixel size (a level past it would invent pixels).
+    # "roll": the file runs 0-360 east, the pyramid -180..180. "tint": a greyscale mosaic's colour from the small
+    # colour map shipped with the view (zimi/static/earth/), so the sharp tiles keep the world's colour. (Mercury's mosaic is
+    # the false-colour one: its brightness is the surface's, its colours are not Mercury's.)
+    **{
+        "planets/%s" % k: dict(spec, file=USGS % f, mode="L" if grey else "RGB")
+        for k, f, grey, spec in (
+            (
+                "mercury",
+                "Mercury_MESSENGER_MDIS_Basemap_EnhancedColor_Mosaic_Global_665m.tif",
+                True,
+                {"max": 4, "tint": "mercury-v1.webp"},
+            ),
+            (
+                "io",
+                "Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif",
+                False,
+                {"max": 3},
+            ),
+            (
+                "europa",
+                "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif",
+                True,
+                {"max": 4, "roll": True},
+            ),
+            (
+                "ganymede",
+                "Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif",
+                True,
+                {"max": 4, "roll": True, "tint": "ganymede-v1.webp"},
+            ),
+            (
+                "callisto",
+                "Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif",
+                True,
+                {"max": 4, "roll": True},
+            ),
+            (
+                "titan",
+                "Titan_ISS_P19658_Mosaic_Global_4km.tif",
+                True,
+                {"max": 2, "roll": True},
+            ),
+            (
+                "pluto",
+                "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
+                True,
+                {"max": 4, "roll": True, "tint": "pluto-v1.webp"},
+            ),
+        )
+    },
+    "planets/mars": {
+        "file": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Mars_Viking_MDIM21_ClrMosaic_1km.jpg",
+        "max": 3,
+        "mode": "RGB",
+    },
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 4,
@@ -117,7 +182,13 @@ PINS = {
     "earth/day": "4c740966cc6fb41998af93fc6fa04d844ee2bcdf5e1d3e71c19c2db379d6288e",
     "earth/night": "584a4e5466a36ce443d622e353b2a7c53d39d3ee1f49e826ce6c058803abb394",
     "moon/albedo": "dbff4356479764d89f9fd7722140043eddbc2cafbad4dec5950858e2df77ac54",
-    "planets/mercury": "5c8bd885ae3571c6ba2cd34b3446b9c6d767e314bf0ee8c1d5c147cadd388fc3",
+    "planets/mercury": "1dc6cf382b739f5a3c5700c4df84177e3f590f6a33b24a02ac7e1760c5242c79",
+    "planets/io": "135f88cb645bfdb4e045b380971ab2ba14e230590c96c9c86cfe7310fda881ac",
+    "planets/europa": "a323f0c9ccb47d5af9902ea8297fe81f9a9708795645b80801f103c3f7c9a624",
+    "planets/ganymede": "c2c8d9506b8cf8f7a0a90d823d9052e91c8d9885cf7267fdce8de8216f4df888",
+    "planets/callisto": "e1f0bd2e0e05de605d067d6b5f5ededddaf31ca6c064562a1ca770f15a7dbaa3",
+    "planets/titan": "ca0fe5f6f9bdba1b6d03245969a42336a010ddc17d636e5e06fffa939d10ca83",
+    "planets/pluto": "592b7fb0f88cafa0bedf9f33bb71e983952a250ee8577edf2abfe814b473356b",
     "planets/venus": "9bc21a50577ed8ac734cda91058724c7a741c19427aa276224ce349351432c5b",
     "planets/mars": "fdfcd335559c3dc67052b7e8a9565d850e336ac0d1f3ea7f5eb7826ffb44ecb2",
     "planets/jupiter": "0bd844bf20822c4e3e80882b077859833c0dac44c7e4e1e0cd63d1b1b6d43085",
@@ -132,7 +203,12 @@ def _fetch(url, path, tries=4):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     for i in range(tries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Zimi-build/1.0 (https://github.com/epheterson/Zimi)"})   # Wikimedia refuses none
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Zimi-build/1.0 (https://github.com/epheterson/Zimi)"
+                },
+            )  # Wikimedia refuses none
             with urllib.request.urlopen(req, timeout=120) as r:
                 data = r.read()
             tmp = path + ".part"
@@ -231,27 +307,57 @@ class GibsMosaic:
         )
 
 
-class FileMosaic:
-    """A whole-globe picture in plate carree (the Moon's map), windows cut from it."""
+CHROMA_FLOOR = 8.0  # a base-map pixel darker than this has no colour to lend (an unmapped pole)
+CHROMA_MAX = 2.0
+LUMA = (0.299, 0.587, 0.114)
+EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 
-    def __init__(self, path, mode):
+
+class FileMosaic:
+    """A whole-globe picture in plate carree (the Moon's map), windows cut from it. ``roll``: the picture runs 0-360
+    degrees east, rolled here to -180..180. ``tint``: a small colour map (-180..180) whose colours, not brightness,
+    are laid on a greyscale picture's windows."""
+
+    def __init__(self, path, mode, roll=False, tint=None):
         from PIL import Image
 
         Image.MAX_IMAGE_PIXELS = None
-        self.im = Image.open(path).convert(mode)
+        im = Image.open(path).convert(mode)
+        if roll:
+            half = im.width // 2
+            rolled = Image.new(im.mode, im.size)
+            rolled.paste(im.crop((half, 0, im.width, im.height)), (0, 0))
+            rolled.paste(im.crop((0, 0, half, im.height)), (im.width - half, 0))
+            im = rolled
+        self.im = im
         self.res = 360.0 / self.im.width
+        self.tint = Image.open(tint).convert("RGB") if tint else None
+
+    def _chroma(self, lon0, lat_top, span):
+        """The tint map's colour over a window as ratios to its own brightness (1 where it has none), a tile wide."""
+        import numpy as np
+        from PIL import Image
+
+        res = 360.0 / self.tint.width
+        x0, y0, px = (lon0 + 180.0) / res, (90.0 - lat_top) / res, span / res
+        box = (x0, y0, x0 + px, y0 + px)
+        rgb = np.asarray(self.tint.resize((TILE, TILE), Image.BICUBIC, box=box), dtype=np.float32)
+        lum = (rgb @ np.array(LUMA, dtype=np.float32))[..., None]
+        ratio = np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0)
+        return np.clip(ratio, 0.0, CHROMA_MAX)
 
     def window(self, lon0, lat_top, span):
         from PIL import Image
 
-        x0, y0, px = (
-            (lon0 + 180.0) / self.res,
-            (90.0 - lat_top) / self.res,
-            span / self.res,
-        )
-        return self.im.resize(
-            (TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
-        )
+        x0, y0, px = (lon0 + 180.0) / self.res, (90.0 - lat_top) / self.res, span / self.res
+        tile = self.im.resize((TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px))
+        if self.tint is None:
+            return tile
+        import numpy as np
+
+        grey = np.asarray(tile, dtype=np.float32)[..., None]
+        out = np.clip(grey * self._chroma(lon0, lat_top, span), 0, 255).astype(np.uint8)
+        return Image.fromarray(out, "RGB")
 
 
 def tile_path(out, layer, z, x, y):
@@ -265,7 +371,9 @@ def _save(im, path, quality=WEBP_Q):
 
 def _cut_row(args):
     kind, src, mode, layer, out, z, y, quality = args
-    mos = GibsMosaic(*src, mode) if kind == "gibs" else FileMosaic(src, mode)
+    mos = (
+        GibsMosaic(*src, mode) if kind == "gibs" else FileMosaic(src[0], mode, *src[1:])
+    )
     span = 180.0 / 2**z
     for x in range(2 ** (z + 1)):
         _save(
@@ -288,7 +396,11 @@ def _shrink_row(args):
                     tile_path(out, layer, z + 1, 2 * x + dx, 2 * y + dy)
                 ) as child:
                     quad.paste(child.convert(mode), (dx * TILE, dy * TILE))
-        _save(quad.resize((TILE, TILE), Image.LANCZOS), tile_path(out, layer, z, x, y), quality)
+        _save(
+            quad.resize((TILE, TILE), Image.LANCZOS),
+            tile_path(out, layer, z, x, y),
+            quality,
+        )
     return y
 
 
@@ -303,7 +415,8 @@ RELIEF_SMOOTH_PX = 1.0  # LOLA's gridding leaves faint stripes along the tracks;
 def normals_map(dem_path, out_path, width):
     """An elevation map (plate carree) as a normal map ``width`` wide: per pixel, the unit normal's east and north
     components t as red and green, stored as 0.5 + 0.5 * sign(t) * sqrt(|t|) (0.5 is level; the shader squares it
-    back), from centred differences over the sphere's true pixel sizes. Blue is unused (level)."""
+    back), from centred differences over the sphere's true pixel sizes. Blue is unused (level).
+    """
     import numpy as np
     from PIL import Image
 
@@ -315,7 +428,11 @@ def normals_map(dem_path, out_path, width):
     from scipy.ndimage import gaussian_filter
 
     # Longitude wraps round the globe; latitude ends at the poles and must not blend one into the other.
-    z = gaussian_filter(np.asarray(dem, dtype=np.float32) * HALF_METRE, RELIEF_SMOOTH_PX, mode=RELIEF_SMOOTH_MODE)
+    z = gaussian_filter(
+        np.asarray(dem, dtype=np.float32) * HALF_METRE,
+        RELIEF_SMOOTH_PX,
+        mode=RELIEF_SMOOTH_MODE,
+    )
     h, w = z.shape
     step = np.deg2rad(360.0 / w)
     lat = np.deg2rad(90.0 - (np.arange(h) + 0.5) * 180.0 / h)
@@ -328,7 +445,9 @@ def normals_map(dem_path, out_path, width):
     rgb = np.empty((h, w, 3), dtype=np.uint8)
     for ch, g in ((0, gx), (1, gy)):
         t = -g * inv
-        rgb[..., ch] = np.clip(np.rint((0.5 + 0.5 * np.sign(t) * np.sqrt(np.abs(t))) * 255), 0, 255)
+        rgb[..., ch] = np.clip(
+            np.rint((0.5 + 0.5 * np.sign(t) * np.sqrt(np.abs(t))) * 255), 0, 255
+        )
     rgb[..., 2] = 128
     Image.fromarray(rgb, "RGB").save(out_path)
     return out_path
@@ -349,8 +468,17 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
         if spec.get("derive") == "normals":
             # Keyed by the elevation map's digest too: a new DEM (--update-pins) must not meet the last one's normals.
             width = TILE * 2 ** (top + 1)
-            path = normals_map(path, os.path.join(cache, "files", "moon-normals-v2-%d-%s.png" % (width, source_sha[:12])), width)
-        kind, src = "file", path
+            path = normals_map(
+                path,
+                os.path.join(
+                    cache,
+                    "files",
+                    "moon-normals-v2-%d-%s.png" % (width, source_sha[:12]),
+                ),
+                width,
+            )
+        tint = spec.get("tint")
+        kind, src = "file", (path, spec.get("roll", False), os.path.join(EARTH_DIR, tint) if tint else None)
     # One process per row of the deepest level; a FileMosaic holds the whole map, so fewer of those at once.
     workers = procs or (os.cpu_count() or 4) if kind == "gibs" else 2
     q = spec.get("quality", WEBP_Q)
@@ -358,11 +486,32 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
         if kind == "file":
             # The whole map is at hand: every level is cut from it, never from a level already compressed once.
             for z in range(top, -1, -1):
-                list(ex.map(_cut_row, [(kind, src, spec["mode"], layer, out, z, y, q) for y in range(2**z)]))
+                list(
+                    ex.map(
+                        _cut_row,
+                        [
+                            (kind, src, spec["mode"], layer, out, z, y, q)
+                            for y in range(2**z)
+                        ],
+                    )
+                )
         else:
-            list(ex.map(_cut_row, [(kind, src, spec["mode"], layer, out, top, y, q) for y in range(2**top)]))
+            list(
+                ex.map(
+                    _cut_row,
+                    [
+                        (kind, src, spec["mode"], layer, out, top, y, q)
+                        for y in range(2**top)
+                    ],
+                )
+            )
             for z in range(top - 1, -1, -1):
-                list(ex.map(_shrink_row, [(layer, out, z, y, spec["mode"], q) for y in range(2**z)]))
+                list(
+                    ex.map(
+                        _shrink_row,
+                        [(layer, out, z, y, spec["mode"], q) for y in range(2**z)],
+                    )
+                )
     print("%s: levels 0-%d" % (layer, top))
     return top
 
@@ -370,7 +519,7 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
 INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Almanac HD</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
 <h1>Almanac HD</h1>
-<p>The Earth and the Moon as tile pyramids for Zimi's Almanac: the 3D view asks for the tiles in sight, at the detail the screen can show.</p>
+<p>The Earth, the Moon and the planets and moons as tile pyramids for Zimi's Almanac: the 3D view asks for the tiles in sight, at the detail the screen can show.</p>
 <h2>Sources</h2>
 <ul>
 <li>Earth by day: NASA Blue Marble: Next Generation (Reto St&ouml;ckli, NASA Earth Observatory), served by NASA GIBS. Public domain.</li>
@@ -378,7 +527,11 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 <li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera, and its elevation from the Lunar Orbiter Laser Altimeter. Public domain.</li>
 <li>The Apollo landing sites: LRO Narrow Angle Camera mosaics (NASA/GSFC/Arizona State University), through NASA Moon Trek. Public domain.</li>
 <li>Mars: Viking MDIM 2.1 colour mosaic, NASA/JPL/USGS. Public domain.</li>
-<li>Mercury, Venus, Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
+<li>Mercury: MESSENGER MDIS global basemap (NASA/JHUAPL/Carnegie Institution, through USGS Astrogeology), its brightness; the colour is the small map's. Public domain.</li>
+<li>Io, Europa, Ganymede, Callisto: Galileo and Voyager global mosaics (NASA/JPL/USGS Astrogeology). Public domain.</li>
+<li>Titan: Cassini ISS mosaic (NASA/JPL/Space Science Institute, through USGS Astrogeology). Public domain.</li>
+<li>Pluto: New Horizons global mosaic (NASA/JHUAPL/SwRI, through USGS Astrogeology), its brightness; the colour is the small map's. Public domain.</li>
+<li>Venus, Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
 </ul></body></html>
 """
 
@@ -404,8 +557,8 @@ INSERTS = [
     ("apollo16", "LRO_NAC_Apollo16_Mosaic_p", -8.97301, 15.50019, 13),
     ("apollo17", "M129086118.nd.gcs", 20.19080, 30.77168, 14),
 ]
-INSERT_FROM = 5          # the first level past the global map's
-INSERT_HALF = 2          # tiles either side of the site at each level: a 5 x 5 patch, about 2.5 km across at the deepest
+INSERT_FROM = 5  # the first level past the global map's
+INSERT_HALF = 2  # tiles either side of the site at each level: a 5 x 5 patch, about 2.5 km across at the deepest
 
 
 def _trek_path(cache, layer, z, row, col):
@@ -446,15 +599,20 @@ def _insert_extents():
 
 def _insert_tile(cache, stage, layer, z, x, y, base_level):
     """One of this pyramid's tiles (z, x, y) at a site: the NAC mosaic's four Trek tiles over it, brought to the
-    global map's brightness, laid on the global map's tile upsampled from base_level where the mosaic has no data."""
+    global map's brightness, laid on the global map's tile upsampled from base_level where the mosaic has no data.
+    """
     from PIL import Image
 
     up = z - base_level
-    with Image.open(tile_path(stage, "moon/albedo", base_level, x >> up, y >> up)) as parent:
-        n = 2 ** up
+    with Image.open(
+        tile_path(stage, "moon/albedo", base_level, x >> up, y >> up)
+    ) as parent:
+        n = 2**up
         cell = TILE / n
         ox, oy = (x % n) * cell, (y % n) * cell
-        base = parent.convert("L").resize((TILE, TILE), Image.BICUBIC, box=(ox, oy, ox + cell, oy + cell))
+        base = parent.convert("L").resize(
+            (TILE, TILE), Image.BICUBIC, box=(ox, oy, ox + cell, oy + cell)
+        )
     nac = Image.new("LA", (TILE, TILE))
     for dy in (0, 1):
         for dx in (0, 1):
@@ -468,9 +626,14 @@ def build_inserts(cache, stage, base_level):
     """Every site's tiles from INSERT_FROM to its deepest level; returns the manifest's list of what exists."""
     from PIL import Image, ImageStat
 
-    jobs = [(cache, layer, z + 1, 2 * y + dy, 2 * x + dx)
-            for _n, layer, _la, _lo, z, x0, x1, y0, y1 in _insert_extents()
-            for y in range(y0, y1 + 1) for x in range(x0, x1 + 1) for dy in (0, 1) for dx in (0, 1)]
+    jobs = [
+        (cache, layer, z + 1, 2 * y + dy, 2 * x + dx)
+        for _n, layer, _la, _lo, z, x0, x1, y0, y1 in _insert_extents()
+        for y in range(y0, y1 + 1)
+        for x in range(x0, x1 + 1)
+        for dy in (0, 1)
+        for dx in (0, 1)
+    ]
     with concurrent.futures.ThreadPoolExecutor(12) as ex:
         list(ex.map(_trek_get, jobs))
     out, gains = [], {}
@@ -482,23 +645,47 @@ def build_inserts(cache, stage, base_level):
                 lum, alpha = nac.split()
                 if gain is None and ImageStat.Stat(alpha).mean[0] > 128:
                     # The mosaic's brightness against the global map's, once, where both are whole.
-                    m_nac, m_base = ImageStat.Stat(lum, alpha).median[0], ImageStat.Stat(base, alpha).median[0]
+                    m_nac, m_base = (
+                        ImageStat.Stat(lum, alpha).median[0],
+                        ImageStat.Stat(base, alpha).median[0],
+                    )
                     gain = gains[name] = m_base / max(1.0, m_nac)
                 lum = lum.point(lambda v, g=(gain or 1.0): min(255, int(v * g + 0.5)))
-                _save(Image.composite(lum, base, alpha), tile_path(stage, "moon/albedo", z, x, y), INSERT_Q)
-        out.append({"site": name, "lat": lat, "lon": lon, "z": z, "x0": x0, "x1": x1, "y0": y0, "y1": y1})
+                _save(
+                    Image.composite(lum, base, alpha),
+                    tile_path(stage, "moon/albedo", z, x, y),
+                    INSERT_Q,
+                )
+        out.append(
+            {
+                "site": name,
+                "lat": lat,
+                "lon": lon,
+                "z": z,
+                "x0": x0,
+                "x1": x1,
+                "y0": y0,
+                "y1": y1,
+            }
+        )
     print("inserts: %d patches" % len(out))
     return out
 
 
 INSERT_Q = 85
-MIMES = {".webp": "image/webp", ".json": "application/json", ".html": "text/html", ".png": "image/png"}
+MIMES = {
+    ".webp": "image/webp",
+    ".json": "application/json",
+    ".html": "text/html",
+    ".png": "image/png",
+}
 
 
 def pack_zim(stage, path):
     """The staged folder as one ZIM. Written here rather than by Zimi's folder capture: fifteen thousand tiles
     need no full-text index (the capture's indexing stalled libzim's writer at the end, under load), and the
-    metadata is fixed. Every tile is an asset, never a front article: nothing here is read or searched."""
+    metadata is fixed. Every tile is an asset, never a front article: nothing here is read or searched.
+    """
     import pathlib
 
     from libzim.writer import Creator
@@ -524,7 +711,9 @@ def pack_zim(stage, path):
                 if rel == "index.html":
                     zc.add_item(page(rel, "Almanac HD", data))
                 else:
-                    zc.add_item(make_asset_item(rel, MIMES[os.path.splitext(fn)[1]], data))
+                    zc.add_item(
+                        make_asset_item(rel, MIMES[os.path.splitext(fn)[1]], data)
+                    )
         meta = dict(line.split(": ", 1) for line in ZIMI_TXT.strip().split("\n"))
         for key in ("Title", "Description", "Language", "Creator", "Publisher", "Tags"):
             zc.add_metadata(key, meta[key])
@@ -555,10 +744,22 @@ def main(argv=None):
     ap.add_argument("--layers", default=",".join(LAYERS))
     ap.add_argument("--update-pins", action="store_true")
     ap.add_argument("--no-zim", action="store_true", help="stop at the staged folder")
-    ap.add_argument("--keep-stage", action="store_true", help="add to the staged folder instead of starting it over")
-    ap.add_argument("--inserts", action="store_true", default=True, help="the Apollo sites' NAC inserts (on unless --no-inserts)")
+    ap.add_argument(
+        "--keep-stage",
+        action="store_true",
+        help="add to the staged folder instead of starting it over",
+    )
+    ap.add_argument(
+        "--inserts",
+        action="store_true",
+        default=True,
+        help="the Apollo sites' NAC inserts (on unless --no-inserts)",
+    )
     ap.add_argument("--no-inserts", dest="inserts", action="store_false")
-    ap.add_argument("--tag", help="the release the file is attached to: writes zimi/assets/almanac-tiles.json for it")
+    ap.add_argument(
+        "--tag",
+        help="the release the file is attached to: writes zimi/assets/almanac-tiles.json for it",
+    )
     a = ap.parse_args(argv)
     stage = os.path.join(a.cache, "stage")
     if os.path.isdir(stage) and not a.keep_stage:
@@ -576,7 +777,9 @@ def main(argv=None):
             "max": build_layer(layer, a.cache, stage, a.update_pins, cap)
         }
     albedo = manifest["layers"].get("moon/albedo")
-    if a.inserts and albedo:  # the inserts are cut deeper than the Moon's map: a build without it has none
+    if (
+        a.inserts and albedo
+    ):  # the inserts are cut deeper than the Moon's map: a build without it has none
         albedo["inserts"] = build_inserts(a.cache, stage, albedo["max"])
     with open(os.path.join(stage, "hd.json"), "w") as f:
         json.dump(manifest, f, separators=(",", ":"))
@@ -599,7 +802,12 @@ def main(argv=None):
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     if a.tag:
         # The tile source's pin (scripts/build_almanac_maxi.py reads it): committed with the release that carries the file.
-        asset = {"file": os.path.basename(path), "size": os.path.getsize(path), "sha256": _sha_files([path]), "tag": a.tag}
+        asset = {
+            "file": os.path.basename(path),
+            "size": os.path.getsize(path),
+            "sha256": _sha_files([path]),
+            "tag": a.tag,
+        }
         with open(os.path.join(ROOT, "zimi", "assets", "almanac-tiles.json"), "w") as f:
             json.dump(asset, f, indent=2)
             f.write("\n")

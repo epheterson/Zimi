@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Almanac
+
+- **Sharper worlds:** Mercury, Io, Europa, Ganymede, Callisto, Titan and Pluto draw from NASA mosaics in Almanac HD, tile by tile as you near them, within a memory cap that is smaller on a phone.
+- **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
+
 ## [1.15.4]
 
 ### Highlights

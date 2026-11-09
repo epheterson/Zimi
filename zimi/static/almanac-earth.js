@@ -1513,6 +1513,9 @@ var AE_SPOT_MAX = 40;                // spots drawn at once (the shader's array)
 var AE_SUN_POLE_RA_DEG = 286.13, AE_SUN_POLE_DEC_DEG = 63.87;   // IAU
 var AE_SUN_W0_DEG = 84.176, AE_SUN_CARRINGTON_DEG_DAY = 14.1844;
 var AE_SNODGRASS = [14.713, -2.396, -1.787];   // deg/day: A + B sin^2 + C sin^4 of latitude
+// The close-up Sun's made-up features (almanac-sun.js), here so the reference (almanac-tables.js) can show them too.
+var AE_PROM_HEIGHT = [0.05, 0.2];              // solar radii off the limb (real prominences reach about 0.15)
+var AE_FLARE_RISE_MIN = 6, AE_FLARE_DECAY_MIN = 40;
 
 // Cycle j (0 is Cycle 1): its minimum and peak, the record's, else the mean's.
 function _aeCycle(j) {
@@ -1689,6 +1692,7 @@ var AE_SUN_FRAG = [
   '// @sunfx-uniforms',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_NOISE,
+  '// @sunfx-functions',
   _aeLimbGlsl(),
   'void main() {',
   '  vec3 n = normalize(vNormal);',
