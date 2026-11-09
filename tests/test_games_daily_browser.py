@@ -128,10 +128,11 @@ VARIANT_DAILIES = (
     "montecarlo",
 )
 SUDOKU = "() => document.getElementById('su-board').innerText"
+# Cards stacked in one place (Calculation's face-down deck) keep their pile order: the deal shows in that order, not in the ids.
 CARDS = """() => Array.from(document.querySelectorAll('.zc-card[data-id]')).map(e => {
   const r = e.getBoundingClientRect();
   return { id: +e.dataset.id, col: Math.round(r.left / 20), top: r.top, down: e.classList.contains('zc-down') };
-}).sort((a, b) => a.col - b.col || a.top - b.top || a.id - b.id).map(c => [c.id, c.col, c.down])"""
+}).sort((a, b) => a.col - b.col || a.top - b.top).map(c => [c.id, c.col, c.down])"""
 TATHAM = """() => { const cw = Module.cwrap; const p = cw('get_save_file','number',[])(); const t = UTF8ToString(p);
   cw('free_save_file','void',['number'])(p); return (/^DESC\\s*:\\d+:(.*)$/m.exec(t) || [])[1]; }"""
 
