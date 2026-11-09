@@ -1034,3 +1034,28 @@ def test_a_kept_city_row_acts_on_its_own_city_when_the_list_changed(browser, sit
     pg.click(OURS + " .cy-kept >> nth=0 >> .ar-btn >> nth=1")
     left = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).map(k => k.id)")
     assert left and shown_first not in left and len(left) == 1, (shown_first, left)
+
+
+def test_a_paused_still_city_is_not_redrawn_but_a_change_is(browser, site):
+    """A paused city on a still screen draws nothing frame after frame; a pan, a built tile or a ghost draws at once."""
+    pg = phone(browser, site)   # phone() pauses the city
+    pg.wait_for_function("() => window.__zimcity.view._cache && window.__zimcity.view._cache.painted.every(v => v !== -2)", timeout=20000)
+    pg.evaluate("""() => {
+      const ctx = window.__zimcity.view.ctx, v = window.__zimcity.view;
+      window.__draws = 0;
+      const clear = ctx.clearRect.bind(ctx);
+      ctx.clearRect = (...a) => { window.__draws++; return clear(...a); };
+    }""")
+    pg.wait_for_timeout(600)
+    pg.evaluate("() => { window.__draws = 0; }")
+    pg.wait_for_timeout(600)
+    assert pg.evaluate("() => window.__draws") == 0, "a paused still city was redrawn"
+    pg.evaluate("() => { const v = window.__zimcity.view; v.cam.x += 8; }")
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("() => window.__draws") > 0, "a pan did not draw"
+    pg.evaluate("() => { window.__draws = 0; const z = window.__zimcity; z.city.map.setTile(60, 50, 44, 0); }")
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("() => window.__draws") > 0, "a tile changed while paused did not draw"
+    pg.evaluate("() => { window.__draws = 0; window.__zimcity.view.ghost = { tiles: [[60, 50, 44]], ok: true, boxes: [] }; }")
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("() => window.__draws") > 0, "a ghost did not draw"

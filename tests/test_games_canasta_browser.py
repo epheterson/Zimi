@@ -96,7 +96,7 @@ def _overlap(a, b):
 
 
 def test_eleven_melds_a_side_overlap_nothing(served, browser):
-    for w, h in ((390, 844), (375, 667), (1280, 800)):
+    for w, h in ((390, 844), (375, 667), (560, 800), (600, 900), (640, 1000), (640, 700), (560, 375), (600, 400), (640, 360), (1280, 800)):
         ctx = browser.new_context(viewport={"width": w, "height": h}, has_touch=True)
         page = ctx.new_page()
         errors = []
