@@ -218,12 +218,25 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                         assert not meet(m["box"], o["box"]), (m, o)
             # Nothing under the controls at the foot: the controls are the foot's visible, tappable rows (the hint and the notes are
             # text on a gradient, and the foot's own box also holds whatever a slow machine has not yet folded away).
+            # The foot itself: the view is not scrolled and the foot stands on its bottom edge (a scrolled view lifted it over
+            # the planets on a slow runner; tests/test_almanac_view_scroll_browser.py holds the cause).
+            seat = pg.evaluate(
+                """() => { var r = _ae.el.getBoundingClientRect(), f = document.querySelector('.ae-bottom').getBoundingClientRect();
+                return { scroll: [_ae.el.scrollTop, _ae.el.scrollLeft], fromBottom: Math.round(r.bottom - f.bottom) }; }"""
+            )
+            assert seat == {"scroll": [0, 0], "fromBottom": 0}, seat
             foot, under = pg.evaluate(
                 """() => { var o = _ae.el.getBoundingClientRect().top, rows = Array.from(document.querySelectorAll('.ae-bottom > *')).filter(c => !c.hidden && c.getBoundingClientRect().height > 0 && getComputedStyle(c).pointerEvents !== 'none');
                 return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), rows.map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().top - o), Math.round(c.getBoundingClientRect().height)]).concat([['view', Math.round(_ae.h), innerHeight]])]; }"""
             )
-            low = [(m["body"], round(m["box"][1])) for m in marks if m["box"][1] >= foot]
-            assert not low, "foot top %s, rows %s, under it %s" % (round(foot), under, low)
+            low = [
+                (m["body"], round(m["box"][1])) for m in marks if m["box"][1] >= foot
+            ]
+            assert not low, "foot top %s, rows %s, under it %s" % (
+                round(foot),
+                under,
+                low,
+            )
             # The planets only are named out here: no probe, moon or dwarf planet name, no crowd counts.
             planets = {
                 "mercury",
@@ -257,11 +270,11 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                 timeout=60_000,
                 polling=200,
             )
-            pg.evaluate("_aeOpenInfo('voyager1')")   # a clean view on arrival: its sheet behind the i
+            pg.evaluate(
+                "_aeOpenInfo('voyager1')"
+            )  # a clean view on arrival: its sheet behind the i
             card = pg.inner_text("#ae-info")
-            assert (
-                "Voyager 1" in card and "AU" in card and "2012" in card
-            ), card
+            assert "Voyager 1" in card and "AU" in card and "2012" in card, card
             assert not errors, errors
             ctx.close()
         finally:
@@ -684,7 +697,10 @@ def test_the_row_is_one_line(served, width, lang):
             tops = pg.evaluate(
                 "Array.from(document.querySelectorAll('#ae-views .ae-btn')).filter(b => b.offsetParent).map(b => { var r = b.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), Math.round(r.right)]; })"
             )
-            assert len(tops) == 6 and max(t[0] for t in tops) - min(t[0] for t in tops) <= 1, tops   # one line (a round 34 px tool and a chip centre within a pixel)
+            assert (
+                len(tops) == 6
+                and max(t[0] for t in tops) - min(t[0] for t in tops) <= 1
+            ), tops  # one line (a round 34 px tool and a chip centre within a pixel)
             assert (
                 min(t[1] for t in tops) >= 0 and max(t[2] for t in tops) <= width
             ), tops
@@ -952,7 +968,10 @@ def test_the_row_follows_where_the_view_is(served):
             )
             pg.click("#ae-views [data-ae-view='spin']")
             pg.wait_for_function("() => !!_ae.spin", timeout=30_000, polling=100)
-            assert pg.evaluate(row) == ["sun", "spin"]  # side by side: the Sun and itself (its tools beside them)
+            assert pg.evaluate(row) == [
+                "sun",
+                "spin",
+            ]  # side by side: the Sun and itself (its tools beside them)
             assert (
                 pg.evaluate(
                     "document.querySelector('#ae-views [data-ae-view=\"spin\"]').getAttribute('aria-pressed')"
@@ -982,7 +1001,9 @@ def test_orbits_is_a_round_switch(served):
             _open(pg, served)
             vis = "(k) => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); return _ae.gl.planets[k].orbit.visible; }"
             assert not pg.evaluate("_aeOrbitsOn()")
-            assert not pg.evaluate("!!document.querySelector('#ae-set-body input[name=ae-orbits]')")
+            assert not pg.evaluate(
+                "!!document.querySelector('#ae-set-body input[name=ae-orbits]')"
+            )
             pg.evaluate("_aePreset('jupiter')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !!_ae.fly; }",
@@ -1026,8 +1047,14 @@ def test_orbits_is_a_round_switch(served):
             assert pg.evaluate(vis, "saturn") and not pg.evaluate(
                 vis, "io"
             )  # the Planets view is a map of the orbits, whatever the switch
-            assert pg.evaluate("() => { _aeUpdate(_aeDisplayMs()); return _ae.gl.earthOrbit.orbit.visible; }")   # the Earth's too
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return document.getElementById('ae-orbits-btn').hidden; }", timeout=10_000, polling=100)
+            assert pg.evaluate(
+                "() => { _aeUpdate(_aeDisplayMs()); return _ae.gl.earthOrbit.orbit.visible; }"
+            )  # the Earth's too
+            pg.wait_for_function(
+                "() => { _ae.dirty = true; _aeKick(); return document.getElementById('ae-orbits-btn').hidden; }",
+                timeout=10_000,
+                polling=100,
+            )
             assert not errors, errors
             ctx.close()
         finally:
@@ -1058,7 +1085,9 @@ def test_a_tap_on_the_craft_in_view_opens_its_card(served):
                 timeout=60_000,
                 polling=200,
             )
-            assert pg.evaluate("document.getElementById('ae-card').hidden")   # a clean view
+            assert pg.evaluate(
+                "document.getElementById('ae-card').hidden"
+            )  # a clean view
             pg.click("#ae-info-btn")
             pg.wait_for_function("() => !!_ae.info", timeout=10_000)
             assert "Voyager 1" in pg.inner_text("#ae-info h2")
@@ -1355,7 +1384,10 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             pg.evaluate("_aeTracksLoad()")
             pg.wait_for_function("() => !!_aeTracks", timeout=60_000)
             if CRAFT[key]:
-                pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", CRAFT[key])
+                pg.evaluate(
+                    "(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }",
+                    CRAFT[key],
+                )
             pg.evaluate(
                 "(k) => { window._almReduceMotion = function () { return true; }; _ae.fly = null; _aeUpdate(_aeDisplayMs()); _aePreset(k); }",
                 key,
@@ -1377,7 +1409,9 @@ def test_a_flight_to_a_probe_ends_on_its_model(served, key):
             )
             assert got["aim"] > 0.999, got
             assert 1.5 < got["spans"] < 6, got
-            assert got["dot"] < 0.01, got   # its tail stays beside it (test_almanac_iss_browser.py)
+            assert (
+                got["dot"] < 0.01
+            ), got  # its tail stays beside it (test_almanac_iss_browser.py)
             assert not errors, errors
             ctx.close()
         finally:
@@ -1395,7 +1429,8 @@ LINES = """() => { _ae.dirty = true; _aeKick(); _aeUpdate(_aeDisplayMs()); var S
 def test_the_orbits_setting_holds_after_a_reload(served, mode):
     """The remembered Orbits switch applies from the moment the view opens, for every line the scene draws (planets',
     moons', a probe's path and ellipse, the Moon's path, the GPS and station rings): on draws those of the place in view;
-    off draws them in flight and none once landed (the Planets view keeps the planets')."""
+    off draws them in flight and none once landed (the Planets view keeps the planets').
+    """
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -1403,7 +1438,10 @@ def test_the_orbits_setting_holds_after_a_reload(served, mode):
         try:
             ctx = _ctx(br)
             if mode:
-                ctx.add_init_script("try { localStorage.setItem('zimi_ae_orbits', %r); } catch (e) {}" % mode)
+                ctx.add_init_script(
+                    "try { localStorage.setItem('zimi_ae_orbits', %r); } catch (e) {}"
+                    % mode
+                )
             pg = ctx.new_page()
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -1512,7 +1550,9 @@ def test_a_landing_s_card_and_the_go_to_sheet_stay_small(served):
             pg.evaluate(
                 "() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 11')[0])"
             )
-            box = pg.evaluate("() => document.getElementById('ae-card').getBoundingClientRect().height")
+            box = pg.evaluate(
+                "() => document.getElementById('ae-card').getBoundingClientRect().height"
+            )
             assert box <= 150, box
             pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")
             pg.wait_for_function(
@@ -1574,14 +1614,26 @@ def test_in_the_planets_view_a_tap_on_jupiter_is_jupiter(served):
             br.close()
 
 
-@pytest.mark.parametrize("when", ["now", "2026-11-04", "2027-03-15", "2030-07-01", "2034-12-24"])
+@pytest.mark.parametrize(
+    "when", ["now", "2026-11-04", "2027-03-15", "2030-07-01", "2034-12-24"]
+)
 def test_all_eight_planets_are_named_in_the_planets_view(served, when):
     """At Planets scale the eight planets, and only they, are named, whatever the date (today Mercury and Venus are
     close): no two names overlap, none is across a planet's disc or the Sun, and each name's nearest dot is its own,
-    or it stands on a short leader line back to its own dot, which no other body lies on."""
+    or it stands on a short leader line back to its own dot, which no other body lies on.
+    """
     from playwright.sync_api import sync_playwright
 
-    eight = {"mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"}
+    eight = {
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune",
+    }
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
         try:
@@ -1590,13 +1642,22 @@ def test_all_eight_planets_are_named_in_the_planets_view(served, when):
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
             _open(pg, served)
-            pg.evaluate("window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');")
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && (_ae.marksDrawn || []).length > 5; }", timeout=60_000, polling=100)
+            pg.evaluate(
+                "window._almReduceMotion = function () { return true; }; _ae.fly = null; _aePreset('planets');"
+            )
+            pg.wait_for_function(
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && (_ae.marksDrawn || []).length > 5; }",
+                timeout=60_000,
+                polling=100,
+            )
             if when != "now":
                 import calendar
                 import datetime
 
-                ms = calendar.timegm(datetime.date.fromisoformat(when).timetuple()) * 1000
+                ms = (
+                    calendar.timegm(datetime.date.fromisoformat(when).timetuple())
+                    * 1000
+                )
                 pg.evaluate("(ms) => _aeGoTo(ms)", ms)
             pg.wait_for_function(
                 "(n) => { _ae.dirty = true; _aeKick(); var d = (_ae.marksDrawn || []).map(m => m.body); return n.every(k => d.indexOf(k) >= 0); }",
@@ -1978,7 +2039,8 @@ def test_planets_stay_on_their_orbits_and_the_belt_round_the_sun_as_the_date_run
 
 def test_a_probe_s_path_ends_on_the_probe_as_the_date_runs(served):
     """A path kept from an earlier date left the probe behind as the date ran (the Sun moves a degree a day under it, and a
-    planet under Juno's): every frame a path is shown it ends on the probe and its ellipse passes within the fit's own error of it."""
+    planet under Juno's): every frame a path is shown it ends on the probe and its ellipse passes within the fit's own error of it.
+    """
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:

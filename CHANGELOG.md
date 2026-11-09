@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Open Reddot, Zimipedia, ZimiTube, PDF and Manage Maps windows show a setting changed in another window or browser at once, not at the next reload.
+- Place autocomplete no longer drops towns for a long word whose first ten letters are common.
+- A second background start no longer takes a starting server's pid file.
+- The portable Linux build can make icons for captured pages (Pillow).
+- Almanac: the 3D view's controls can no longer be pushed up over the picture; the gear shows three icons and short labels, not paragraphs.
+
 ## [1.15.4]
 
 ### Highlights
