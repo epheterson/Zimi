@@ -26,7 +26,7 @@ var AE_ST_ATMO = {
   // Pluto's faint blue haze, in layers high up; the sky is black but for a glow round the Sun near the horizon.
   pluto: { ray: [0.0000004, 0.0000009, 0.0000022], hR: 50, mie: { ext: [0.00002, 0.00003, 0.000045], alb: [0.9, 0.95, 1], g: [0.7, 0.7, 0.7], h: 30 }, ozone: [0, 0, 0], top: 200, ms: 0.5 },
   venus: { diffuse: { sky: [0.86, 0.55, 0.26], frac: 0.04, direct: 0.05, vis: AE_STAND_HAZE_VIS_KM.venus } },
-  titan: { diffuse: { sky: [0.78, 0.42, 0.12], frac: 0.1, direct: 0.04, vis: AE_STAND_HAZE_VIS_KM.titan } }
+  titan: { diffuse: { sky: [0.78, 0.42, 0.12], frac: 0.1, direct: 0.04, vis: AE_STAND_HAZE_VIS_KM.titan, ghost: 0.04 } }
 };
 var AE_ST_NIGHT_FLOOR = 1.5e-6;     // the faintest light the eye is set to (relative to the Sun at the Earth being 1)
 var AE_ST_GROUND_ALBEDO_REF = 0.3;  // the ground the exposure is set by
@@ -163,16 +163,27 @@ var AE_ST_BODY_VERT = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
+  // The colour of the disc at a point of it (n: the unit normal toward the sky).
+  'vec3 discAlbedo(vec3 n) {',
+  '  if (uMapped < 0.5) return uTint;',
+  '  vec3 nb = uBody * n; vec2 uv = vec2(atan(nb.y, nb.x) / (2.0 * PI) + 0.5, asin(clamp(nb.z, -1.0, 1.0)) / PI + 0.5);',
+  '  vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);',
+  '  vec3 m = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) m = vec3(m.r);',
+  '  return pow(m, vec3(' + AE_ST_GAMMA + ')) * uMapGain;',
+  '}',
   'void main() {',
   '  vec2 o = vUv * uHalf; float a = length(o);',                    // radians from the body's centre
   '  vec3 col = vec3(0.0); float alpha = 0.0;',
   '  float edge = max(uPix * 0.75, 1e-7);',
   '  bool disc = uEmit > 0.5 || uRho > uPix * 1.2;',
   '  float R = uEmit > 0.5 ? max(uRho, uPix * 0.8) : uRho;',               // the Sun is at least a pixel, its light kept
+  '  float cov = 0.0;',
   '  if (disc) {',
-  '    float cov = 1.0 - smoothstep(R - edge, R + edge, a);',
+  '    cov = 1.0 - smoothstep(R - edge, R + edge, a);',
   '    if (cov > 0.0) {',
   '      vec2 q = o / R; float r2 = min(dot(q, q), 1.0);',
   '      vec3 n = uRight * q.x + uUp * q.y - uDir * sqrt(1.0 - r2);',
@@ -180,14 +191,37 @@ var AE_ST_BODY_FRAG = [
   '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
   '        col = tone(uTrans * (' + (1.4e4).toExponential(2) + ' * uE * limb * kept), uK);',
   '      } else {',
-  '        float lam = max(dot(n, uSunFrom), 0.0);',
-  '        col = tone(uTint * uE * lam / PI * uTrans, uK);',
+  '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
+  '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
   '      }',
   '      alpha = cov;',
   '    }',
   '  } else {',
   '    float s = max(uPix * 1.4, uRho * 1.2); float g = exp(-pow(a / s, 2.0) * 1.6);',
   '    col = uTint * mix(vec3(1.0), uTrans / max(max(uTrans.r, uTrans.g), max(uTrans.b, 1e-6)), 0.7); alpha = g * uVis;',
+  '  }',
+  // Rings: the plane through the planet's centre, its profile by radius, lit by the Sun and dark in the planet's shadow,
+  // behind the planet's disc where the planet is nearer along the ray.
+  '  if (uRings > 0.5) {',
+  '    vec3 d = normalize(uDir + (uRight * vUv.x + uUp * vUv.y) * uHalf); float dn = dot(d, uRingN);',
+  '    if (abs(dn) > 1e-5) {',
+  '      float t = dot(uCen, uRingN) / dn;',
+  '      if (t > 0.0) {',
+  '        vec3 P = d * t; float rr = length(P - uCen), u = (rr - uRing.x) / (uRing.y - uRing.x);',
+  '        if (u > 0.0 && u < 1.0) {',
+  '          vec4 rm = texture2D(uRingMap, vec2(u, 0.5));',
+  '          float tb = dot(uCen, d), disc2 = tb * tb - dot(uCen, uCen) + uRp * uRp;',
+  '          bool front = disc2 <= 0.0 || t < tb - sqrt(disc2);',
+  '          if (front && rm.a > 0.0) {',
+  '            vec3 L = uSunFrom; float b = dot(uCen - P, L), miss = length(uCen - P - L * b);',
+  '            float shade = (b > 0.0 && miss < uRp) ? 0.08 : 1.0, side = step(0.0, dot(uRingN, L) * dot(uRingN, -d));',
+  '            float lit = mix(0.35, 1.0, side) * max(abs(dot(uRingN, L)), 0.12);',
+  '            vec3 rc = tone(rm.rgb * uE * lit * shade * 0.5 * uTrans, uK);',
+  '            col = mix(col, rc, rm.a); alpha = max(alpha, rm.a);',
+  '          }',
+  '        }',
+  '      }',
+  '    }',
   '  }',
   '  if (uGlow > 0.0) {',
   '    float h = uRho * 1.0, s = a / max(h, 1e-6);',
@@ -201,10 +235,10 @@ var AE_ST_BODY_FRAG = [
 
 // ── The ground ──
 var AE_ST_GROUND_VERT = [
-  'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea;',
-  'varying vec3 vP, vN, vDir; varying float vH, vSea;',
+  'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea; attribute float aShade;',
+  'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   'void main() {',
-  '  vP = position; vN = aNrm; vDir = aDir; vH = aH; vSea = aSea;',
+  '  vP = position; vN = aNrm; vDir = aDir; vH = aH; vSea = aSea; vShade = aShade;',
   '  gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);',
   '}'
 ].join('\n');
@@ -216,7 +250,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform float uLommel, uRough, uRock, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
-  'varying vec3 vP, vN, vDir; varying float vH, vSea;',
+  'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
   '  float h = 0.0;',
@@ -266,11 +300,11 @@ var AE_ST_GROUND_FRAG = [
   '    vec3 Nw = normalize(N + 0.035 * vec3(vnoise(vec3(vP.xy * 0.9, uTime * 0.7)), vnoise(vec3(vP.xy * 0.9 + 17.0, uTime * 0.6)), 0.0));',
   '    vec3 R = reflect(-V, Nw); float F = 0.02 + 0.98 * pow(1.0 - max(dot(V, Nw), 0.0), 5.0);',
   '    vec3 sky = mix(uSkyHor, uSkyZen, pow(clamp(R.z, 0.0, 1.0), 0.5));',
-  '    vec3 sT = sunTrans(pk) * uSunE;',
+  '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
   '    vec3 deep = vec3(0.02, 0.06, 0.09) * (sT * max(dot(upF, uSunDir), 0.0) / PI * 0.4 + uAmbient);',
   '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 700.0) * 18.0;',
   '  } else {',
-  '    vec3 sT = sunTrans(pk) * uSunE;',
+  '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
   '    float surge = uLommel > 0.5 ? 1.0 + 0.55 * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / 0.1) : 1.0;',
