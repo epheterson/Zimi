@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Highlights
 
+**Zimi**
+
+- Signed in, your settings follow you to every browser.
+- Portable Linux: a headless x64 and arm64 build that runs from a USB stick (#137).
+- A lighter Docker image: 884 MB, down from 1.11 GB.
+- `near:` suggests places as you type.
+- A file already downloading isn't downloaded twice (#143).
+
+**Games**
+
+- ZimCity keeps your cities, plus about 40 fixes across the shelf.
+
+**Almanac**
+
+- One clock, a cleaner 3D view, names on every world, and links that bring you back to the same moment.
+- Almanac HD is its own ZIM that works in Kiwix.
+
+### Added
+
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).
 - **Almanac HD in Kiwix:** the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.
