@@ -91,7 +91,7 @@
     var html = '';
     for (var i = 0; i < sans.length; i++) {
       if (i % 2 === 0) html += '<span class="xq-n">' + (i / 2 + 1) + '.</span>';
-      html += '<span class="xq-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span>';
+      html += '<span class="xq-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span> ';   // the space is where a line may break: between moves, never inside one
     }
     els.moves.innerHTML = html;
     els.moves.scrollTop = els.moves.scrollHeight;

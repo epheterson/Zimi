@@ -841,13 +841,14 @@
   }
   // The solving clock: counts while a game is under way, the page is showing and the Menu is shut. A new game, or taking every move
   // back, starts it over.
-  var held = false;
+  var held = false, wasUnder = false;
   function tickClock() {
     var now = Date.now(), under = canMove("undo") || canMove("redo");
     if (under && !solved && !held && d.visibilityState !== "hidden") elapsed += Math.min(now - ticked, 2 * CLOCK_TICK_MS);
     if (!under) { if (solved) newGameStarted(); elapsed = 0; }
     ticked = now;
-    syncKeypad();
+    if (wasUnder && !under) syncKeypad();   // a game of another size begins with no moves; the save is read only then (and when the Menu shuts), not every tick
+    wasUnder = under;
   }
   function newGameStarted() { solved = false; elapsed = 0; }
   // The frontend calls timer_callback each frame with the seconds since the last one; a burst of calls is one animation or flash.
@@ -982,17 +983,19 @@
   var keypad = null;   // { name, canvas, row, labels }: the keys on the page now
   function fillKeys(labels) {
     keypad.row.textContent = "";
+    var gone = labelled.indexOf(keypad.back);
+    if (gone >= 0) labelled.splice(gone, 1);   // the old Clear key is gone with its row
     labels.concat(["Backspace"]).forEach(function (k) {
       var b = el("button", "ar-btn", k === "Backspace" ? String.fromCharCode(0x232b) : k);
       b.type = "button";
-      if (k === "Backspace") word(b, "pz.clear", "Clear", "aria-label"); else b.setAttribute("aria-label", k);
+      if (k === "Backspace") { word(b, "pz.clear", "Clear", "aria-label"); keypad.back = labelled[labelled.length - 1]; } else b.setAttribute("aria-label", k);
       b.onpointerdown = function (e) { e.preventDefault(); };
       b.onclick = function () { sendKey(keypad.canvas, k); };
       keypad.row.appendChild(b);
     });
     keypad.labels = labels.join("");
   }
-  // A new game of another size has other keys: checked with the clock's tick, which is off the touch path.
+  // A new game of another size has other keys: checked when the clock sees a game's moves all taken back or gone, and when the Menu shuts.
   function syncKeypad() {
     if (!keypad) return;
     var labels = keypadLabels(keypad.name);
@@ -1101,7 +1104,7 @@
         inProgress: function () { var u = $("undo"); return !!u && !u.disabled && !solved; },
         menu: newGameOptions, settings: prefsSettings, stats: puzzleStats
       });
-      if (root.ZimiShell.onHold) root.ZimiShell.onHold(function (on) { held = on; });
+      if (root.ZimiShell.onHold) root.ZimiShell.onHold(function (on) { held = on; if (!on) syncKeypad(); });
       whenRunning(function () { watchFlash(); persistGame(); syncKeypad(); d.documentElement.classList.add("zf-running"); });   // zf-running: the saved game, if any, is back
     }
   }

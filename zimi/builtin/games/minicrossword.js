@@ -277,7 +277,7 @@
   });
   // The time spent: a second at a time while the page is showing, a puzzle under way and a letter in the grid (kept with the save).
   var CLOCK_MS = 1000;
-  setInterval(function () { if (g && !done && !building && !document.hidden && g.cells.some(Boolean)) g.ms = (g.ms || 0) + CLOCK_MS; }, CLOCK_MS);
+  setInterval(function () { if (g && !done && !building && !document.hidden && !document.querySelector('.ar-sheet:not([hidden])') && g.cells.some(Boolean)) g.ms = (g.ms || 0) + CLOCK_MS; }, CLOCK_MS);
   ZimiShell.persist({ save: function () { return g && g.cells.some(Boolean) ? { g: g } : null; } });
   root.__cw = { get g() { return g; }, get dict() { return dict; }, get sol() { return sol; } };
 })(this);

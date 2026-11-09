@@ -114,7 +114,7 @@
     var html = '';
     for (var i = 0; i < sans.length; i++) {
       if (i % 2 === 0) html += '<span class="sg-n">' + (i / 2 + 1) + '.</span>';
-      html += '<span class="sg-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span>';
+      html += '<span class="sg-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span> ';   // the space is where a line may break: between moves, never inside one
     }
     els.moves.innerHTML = html;
     els.moves.scrollTop = els.moves.scrollHeight;
@@ -185,8 +185,6 @@
     }, COMPUTER_DELAY_MS);
   }
 
-  // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board;
-  // a drop shows the square it lands on.
   // A move in plain words (the piece's name and the squares), not the engine's notation: "Drop a knight on 3d".
   function plainMove(m) {
     var to = E.squareName(E.to(m)), text;
@@ -194,6 +192,8 @@
     else text = T(pos.sq[E.to(m)] ? 'shogi.hint.take' : 'shogi.hint.move', { piece: T('shogi.piece.' + Math.abs(pos.sq[E.from(m)])), from: E.squareName(E.from(m)), to: to });
     return E.isPromo(m) ? T('shogi.hint.promote', { move: text }) : text;
   }
+  // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board;
+  // a drop shows the square it lands on.
   function hint() {
     var token = G.begin(); paint(); G.say(T('board.thinkingHint'), true);
     brain.ask({ sfen: E.toSfen(pos), level: 'strong', seen: seenCounts() }, function (r) {

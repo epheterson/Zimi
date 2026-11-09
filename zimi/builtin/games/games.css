@@ -120,7 +120,7 @@ body.zc-game { padding-bottom: var(--safe-b); }
 /* The veil covers the game, never the bar: Back, the stat and Menu stay at full strength (Menu is how the sheet closes). */
 body:has(> .ar-bar) .ar-sheet { top: var(--bar-h); }
 .ar-sheet-card { width: min(420px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: var(--sp-5) 20px 20px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); }
-body:has(> .ar-bar) .ar-sheet-card { max-height: calc(100vh - var(--bar-h) - 2 * var(--gutter)); max-height: calc(100dvh - var(--bar-h) - 2 * var(--gutter)); }   /* the sheet sits under the bar: its card ends above the screen's foot */
+html:not(.gs-hosted) body:has(> .ar-bar) .ar-sheet-card { max-height: calc(100vh - var(--bar-h) - 2 * var(--gutter)); max-height: calc(100dvh - var(--bar-h) - 2 * var(--gutter)); }   /* the sheet sits under the bar: its card ends above the screen's foot (inside Zimi's reader it covers the page from the top) */
 .ar-sheet-card:focus { outline: none; }
 .ar-sheet-card h2 { margin: 0 0 var(--sp-3); font-size: var(--fs-sheet); font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
 /* No pebble on a sheet: the bar above it already carries it, and two on one screen is wallpaper. A sheet on a page with no bar (the shelf's) keeps it, 20px. */

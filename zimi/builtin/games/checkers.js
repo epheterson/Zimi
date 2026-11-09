@@ -401,6 +401,6 @@
   });
 
   if (new URLSearchParams(location.search).has('debug')) {
-    root.__ck = { G: G, game: function () { return game; }, set: function (b, t) { game = { board: b, turn: t, quiet: 0 }; nextPly(); }, engine: Engine, settings: G.settings };
+    root.__ck = { G: G, game: function () { return game; }, set: function (b, t) { G.cancel(); history = []; seen = {}; lastSquares = []; game = { board: b, turn: t, quiet: 0 }; nextPly(); }, engine: Engine, settings: G.settings };
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

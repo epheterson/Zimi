@@ -99,6 +99,9 @@ const Lib = load(['librarykit.js']).GamesLib;
     check(R.isTarget({ path: 'Republic_of_France', title: 'France' }, { path: 'France', title: 'France' }), 'race: a redirect that lands on the same title is arriving');
     check(R.isTarget({ path: 'Cafe', title: 'Café' }, { path: 'Cafe_x', title: 'Cafe' }), 'race: accents do not stop a title matching');
     check(!R.isTarget({ path: 'Paris', title: 'Paris' }, { path: 'France', title: 'France' }), 'race: another article is not the target');
+    const route = { parKind: 'route', par: 4 }, shortest = { parKind: 'shortest', par: 4 };
+    check(R.parNote(route, 3).key === 'race.beatRoute' && R.parNote(route, 4).key === 'race.matchedRoute' && R.parNote(route, 5).key === 'race.parRoute', 'race: a route par is beaten, matched or only stated');
+    check(R.parNote(shortest, 4).key === 'race.matchedShortest' && R.parNote(shortest, 6).key === 'race.parShortest' && R.parNote(shortest, 6).n === 4, 'race: a shortest par is matched or stated, with its number');
 
     // The walk: every page it returns is a link of the one before, never repeated, never a dead end.
     const pages = {};

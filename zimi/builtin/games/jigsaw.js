@@ -222,7 +222,7 @@
     var starts = scatter(g.cols * g.rows, tray, s.W / g.cols, s.H / g.rows, rng);
     for (var i = 0; i < g.cols * g.rows; i++) {
       var node = el('div', 'jg-piece'); node.dataset.i = i; node.style.backgroundImage = 'url("' + pic.url + '")';
-      node.style.zIndex = starts[i].z;
+      node.style.zIndex = starts[i].z; z = Math.max(z, starts[i].z);   // a lifted piece goes above every piece at the start
       els.area.appendChild(node);
       pieces.push({ i: i, node: node, locked: false, fx: starts[i].x / s.W, fy: starts[i].y / s.W });
     }

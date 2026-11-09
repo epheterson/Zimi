@@ -1,6 +1,6 @@
 /* ZimiGames: Bricks (a paddle, a ball, a wall to knock down). Our own code, GPL-3.0.
    No network, no fonts, no modules. The rules (pure functions, no DOM, so node can test them)
-   and the page (only when there is a document). The play field is 320 by 440 units; the page scales it. */
+   and the page (only when there is a document). The play field is 320 by 480 units; the page scales it. */
 (function (root) {
   'use strict';
 

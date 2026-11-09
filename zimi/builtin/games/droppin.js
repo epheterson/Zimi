@@ -90,22 +90,24 @@
   function fitHeight() { view.h = view.w * ratio(); }
   // The widest view there is: the whole width, or less when the box is taller than the map is wide (so no empty sea shows above and below).
   function maxWidth() { return Math.min(MAP_W, MAP_H / ratio()); }
+  // Left and right, the map stays in its box; a view wider than the map (a short, wide box showing both far-apart pins) is centred, sea on both sides.
+  function clampX(x, w) { return w >= MAP_W ? (MAP_W - w) / 2 : Math.max(0, Math.min(MAP_W - w, x)); }
   // The view that holds the answer and the pin with room round them (neither is ever at an edge), as tight as the zoom allows; for
   // two pins far apart it is the whole map, with some sea above and below.
   function fitAnswer() {
     var t = project(q().lat, q().lon), a = project(g.ans.lat, g.ans.lon), r = ratio();
-    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(MAP_W, Math.max(Math.abs(t.x - a.x) * FIT_PAD, Math.abs(t.y - a.y) * FIT_PAD / r)));
+    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(Math.max(MAP_W, MAP_H / r), Math.max(Math.abs(t.x - a.x) * FIT_PAD, Math.abs(t.y - a.y) * FIT_PAD / r)));
     var h = w * r, cx = (t.x + a.x) / 2, cy = (t.y + a.y) / 2;
     var m = w * FIT_MARGIN;   // a pin on the very edge of the map still has its whole disc in view
-    view.w = w; view.h = h; view.x = Math.max(-m, Math.min(MAP_W - w + m, cx - w / 2)); view.y = Math.max(Math.min(0, MAP_H - h) - m, Math.min(Math.max(0, MAP_H - h) + m, cy - h / 2)); applyView();
+    view.w = w; view.h = h; view.x = w >= MAP_W ? clampX(0, w) : Math.max(-m, Math.min(MAP_W - w + m, cx - w / 2)); view.y = Math.max(Math.min(0, MAP_H - h) - m, Math.min(Math.max(0, MAP_H - h) + m, cy - h / 2)); applyView();
   }
   // Up and down, the map may sit anywhere its box still shows some of it, centred when the box is taller than the map.
   function clampY(y, h) { var lo = Math.min(0, MAP_H - h), hi = Math.max(0, MAP_H - h); return Math.max(lo, Math.min(hi, y)); }
   function applyView() { els.world.setAttribute('viewBox', view.x + ' ' + view.y + ' ' + view.w + ' ' + view.h); }
   function unit() { return view.w / Math.max(1, els.world.clientWidth); }
   function zoomBy(f, at) {
-    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(maxWidth(), view.w / f)), h = w * ratio(), fx = at ? at.fx : 0.5, fy = at ? at.fy : 0.5;
-    view.x = Math.max(0, Math.min(MAP_W - w, view.x + (view.w - w) * fx)); view.y = clampY(view.y + (view.h - h) * fy, h); view.w = w; view.h = h; applyView(); paintPins();
+    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(Math.max(maxWidth(), f < 1 ? view.w : 0), view.w / f)), h = w * ratio(), fx = at ? at.fx : 0.5, fy = at ? at.fy : 0.5;
+    view.x = clampX(view.x + (view.w - w) * fx, w); view.y = clampY(view.y + (view.h - h) * fy, h); view.w = w; view.h = h; applyView(); paintPins();
   }
   function frac(e) { var r = els.world.getBoundingClientRect(); return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height }; }
   function paintPins() {
@@ -124,7 +126,7 @@
     if (!drag) return;
     var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > TAP_PX) drag.moved = true;
-    if (drag.moved) { var u = unit(); view.x = Math.max(0, Math.min(MAP_W - view.w, drag.vx - dx * u)); view.y = clampY(drag.vy - dy * u, view.h); applyView(); paintPins(); }
+    if (drag.moved) { var u = unit(); view.x = clampX(drag.vx - dx * u, view.w); view.y = clampY(drag.vy - dy * u, view.h); applyView(); paintPins(); }
   });
   els.world.addEventListener('pointerup', function (e) {
     var was = drag; drag = null;
@@ -133,7 +135,7 @@
     pin = { lat: Math.max(-90, Math.min(90, pt.lat)), lon: Math.max(-180, Math.min(180, pt.lon)) }; paintPins(); els.drop.removeAttribute('aria-disabled');
   });
   // Zooming in goes to the pin when there is one (the player tapped where they mean), else to the middle.
-  function centreOn(p) { view.x = Math.max(0, Math.min(MAP_W - view.w, p.x - view.w / 2)); view.y = clampY(p.y - view.h / 2, view.h); applyView(); paintPins(); }
+  function centreOn(p) { view.x = clampX(p.x - view.w / 2, view.w); view.y = clampY(p.y - view.h / 2, view.h); applyView(); paintPins(); }
   els.zin.addEventListener('click', function () { zoomBy(ZOOM_STEP); if (pin) centreOn(project(pin.lat, pin.lon)); });
   els.zout.addEventListener('click', function () { zoomBy(1 / ZOOM_STEP); });
 

@@ -15,3 +15,7 @@
 .cr-sliders input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink3); }
 .cr-sliders input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ink3); }
 .cr-sliders .ar-btn { margin-top: 6px; }
+@media (forced-colors: active) {   /* the page's own track colour is replaced there: a line in the system's text colour */
+  .cr-sliders input[type="range"]::-webkit-slider-runnable-track { background: CanvasText; }
+  .cr-sliders input[type="range"]::-moz-range-track { background: CanvasText; }
+}

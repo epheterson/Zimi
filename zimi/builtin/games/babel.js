@@ -121,7 +121,7 @@
   }
 
   function guess(text) {
-    if (g.phase !== 'play' || !text.trim()) return;
+    if (!g || g.phase !== 'play' || !text.trim()) return;
     var w = g.words[g.round];
     if (isRight(text, w.answer)) { g.points[g.round] = pointsFor(g.shown); return solve(true); }
     if (g.shown >= w.clues.length) { g.points[g.round] = 0; return solve(false); }
@@ -158,6 +158,7 @@
   function newGame() {
     if (building) return; building = true; done = false;
     status.say(T('babel.choosing')); els.how.textContent = ''; els.clues.innerHTML = ''; els.more.hidden = els.next.hidden = els.read.hidden = true;
+    els.field.disabled = els.guess.disabled = true;   // until the words are chosen (show() opens them)
     var rows = Lib.sample(root.BABEL_WORDS, ROUNDS, Math.random);
     var work = dict ? Promise.all(rows.map(libraryWord)) : Promise.resolve([]);
     work.then(function (found) {

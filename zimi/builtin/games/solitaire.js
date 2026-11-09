@@ -104,7 +104,10 @@
     var P = state.piles, from = ['waste'].concat(TABLEAU), to = FOUNDATION.concat(TABLEAU), i, j, k, n;
     for (i = 0; i < from.length; i++) {
       n = P[from[i]].length;
-      for (j = 0; j < n; j++) for (k = 0; k < to.length; k++) if (legalMove(state, from[i], j, to[k])) return true;
+      for (j = 0; j < n; j++) for (k = 0; k < to.length; k++) {
+        if (j === 0 && isTableau(from[i]) && isTableau(to[k]) && !P[to[k]].length) continue;   // a column's own bottom card to an empty column only shuffles (bestMove skips it too)
+        if (legalMove(state, from[i], j, to[k])) return true;
+      }
     }
     return false;
   }

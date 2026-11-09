@@ -61,7 +61,6 @@
   }
 
   // A small seedable generator, so a test can replay a game.
-  var mulberry32 = root.ZimiUtil.mulberry32;
 
   // The bag: all seven pieces in a shuffled order, then another bag. Never a long drought.
   function refill(g) {
@@ -482,7 +481,7 @@
         return true;
       }
       if (!d.g || !d.g.board) return false;
-      try { g = root.ZimiUtil.restore(d.g); } catch (e) { g = d.g; g.rng = mulberry32(Math.floor(Math.random() * 4294967296)); }   // a save from before the seed was kept deals on from chance
+      try { g = root.ZimiUtil.restore(d.g); } catch (e) { g = d.g; g.rng = root.ZimiUtil.counted(Math.floor(Math.random() * 4294967296)); }   // a save from before the seed was kept deals on from chance
       newPiece(); mode = 'paused';
       els.pause.disabled = false; Play.pauseLabel(els.pause, true); status.say(Tx('play.paused')); hud(); draw();
       return true;

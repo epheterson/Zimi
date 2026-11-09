@@ -768,7 +768,7 @@
   // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
   var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
   function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }
-  // Where the stamp lands: in the free space under what the page shows, never on it; with no such space, in the bar's height.
+  // Where the stamp lands: in the free space under what the page shows, never on it; with no such space, where the overlay puts it.
   var STAMP_PX = 84, STAMP_ROOM_PX = 132;
   function stampSpot(overlay) {
     var at = overlay.querySelector('.gs-m-at'), H = root.innerHeight || 0, base = overlay.getBoundingClientRect().top, bottom = 0, y;
@@ -777,9 +777,10 @@
       var r = e.getBoundingClientRect(), cs = root.getComputedStyle(e);
       if (!r.width || !r.height || cs.position === 'fixed' || cs.visibility === 'hidden') return;
       if (r.bottom <= H - STAMP_PX / 2) bottom = Math.max(bottom, r.bottom);
+      else if (r.top < H && r.height >= STAMP_ROOM_PX) bottom = H;   // a board that runs to the bottom leaves no room (a thin footer line down there does not count)
     });
-    y = H - bottom >= STAMP_ROOM_PX ? bottom + (H - bottom) / 2 : base / 2;
-    if (at) at.style.top = Math.round(y - base) + 'px';
+    // Room: the middle of it. None: the stamp keeps its place in the overlay (a spot above the overlay would be clipped away).
+    if (at && H - bottom >= STAMP_ROOM_PX) at.style.top = Math.round(bottom + (H - bottom) / 2 - base) + 'px';
   }
   function momentNode() {
     var kids = [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })], i, a, r;
@@ -1667,7 +1668,7 @@
   function hostMarkCss(url) {
     var at = 'content:"";position:absolute;pointer-events:none;width:' + MARK_PX + 'px;height:' + MARK_PX + 'px;background:url(' + url + ') center/contain no-repeat;';
     // While a sheet is up the mark is not shown: it sits 12px in from the corner, where the sheet's rounded corner lets it peek out.
-    return 'html.gs-hosted body:has(.ar-sheet)::before, html.gs-hosted body:has(.ar-sheet) .zc-table::before{opacity:0}' +
+    return 'html.gs-hosted body:has(.ar-sheet:not([hidden]))::before, html.gs-hosted body:has(.ar-sheet:not([hidden])) .zc-table::before{opacity:0}' +
       'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
       'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + var(--safe-b, 0px))}' +
       ':root[data-theme="dark"].gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}' +
