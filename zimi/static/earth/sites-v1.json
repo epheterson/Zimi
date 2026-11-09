@@ -27,7 +27,14 @@
   "pad39a": {"size":[55.0,36.0,133.8]},
   "pad-slab": {"size":[150.0,120.0,0.3]},
   "curiosity-body": {"size":[2.346,3.947,2.226]},
-  "curiosity-wheel": {"size":[0.395,0.485,0.485],"radius":0.243,"at":[[1.119,0.785,0.257],[-1.12,0.782,0.254],[1.25,-0.399,0.257],[-1.25,-0.4,0.257],[-1.12,-1.474,0.257],[1.12,-1.476,0.257]]}
+  "curiosity-wheel": {"size":[0.395,0.485,0.485],"radius":0.243,"at":[[1.119,0.785,0.257],[-1.12,0.782,0.254],[1.25,-0.399,0.257],[-1.25,-0.4,0.257],[-1.12,-1.474,0.257],[1.12,-1.476,0.257]]},
+  "luna9": {"size":[0.998,0.998,0.665]},
+  "luna13": {"size":[1.715,1.308,0.767]},
+  "luna-sampler": {"size":[3.693,3.393,3.5]},
+  "vikram": {"size":[3.84,4.52,2.384]},
+  "pragyan": {"size":[0.84,0.9,0.905]},
+  "slim": {"size":[2.669,2.4,2.868]},
+  "blue-ghost": {"size":[4.733,4.76,2.726]}
  },
 "sites": [
   {"name":"Apollo 11","body":"moon","ms":-14182980000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":14,"y":6,"h":20}]},
@@ -62,7 +69,19 @@
   {"name":"Venera 13","body":"venus","ms":383824620000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
   {"name":"Venera 14","body":"venus","ms":384159600000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
   {"name":"Huygens","body":"titan","ms":1105706580000,"parts":[{"m":"huygens","x":0,"y":0,"h":0}]},
-  {"name":"Cape Canaveral","body":"earth","ms":-14552880000,"pad":{"lat":28.6082,"lon":-80.6041},"launch":{"model":"saturn5","name":"Apollo 11","azimuth":72,"z":5},"view":{"dist":520,"el":0.1,"focus":70},"flat":[95,170],"parts":[{"m":"pad-slab","x":0,"y":0,"h":0,"noShadow":1},{"m":"pad39a","x":0,"y":0,"h":0},{"m":"saturn5","x":0,"y":0,"h":0,"z":5}]}
+  {"name":"Cape Canaveral","body":"earth","ms":-14552880000,"pad":{"lat":28.6082,"lon":-80.6041},"launch":{"model":"saturn5","name":"Apollo 11","azimuth":72,"z":5},"view":{"dist":520,"el":0.1,"focus":70},"flat":[95,170],"parts":[{"m":"pad-slab","x":0,"y":0,"h":0,"noShadow":1},{"m":"pad39a","x":0,"y":0,"h":0},{"m":"saturn5","x":0,"y":0,"h":0,"z":5}]},
+  {"name":"Luna 9","body":"moon","ms":-123311700000,"parts":[{"m":"luna9","x":0,"y":0,"h":0}]},
+  {"name":"Luna 13","body":"moon","ms":-95320740000,"parts":[{"m":"luna13","x":0,"y":0,"h":0}]},
+  {"name":"Luna 16","body":"moon","ms":22655880000,"parts":[{"m":"luna-sampler","x":0,"y":0,"h":0}]},
+  {"name":"Luna 20","body":"moon","ms":67547940000,"parts":[{"m":"luna-sampler","x":0,"y":0,"h":90}]},
+  {"name":"Luna 24","body":"moon","ms":209198160000,"parts":[{"m":"luna-sampler","x":0,"y":0,"h":200}]},
+  {"name":"Chandrayaan-3","body":"moon","ms":1692793980000,"parts":[{"m":"vikram","x":0,"y":0,"h":0},{"m":"pragyan","x":8,"y":6,"h":30}]},
+  {"name":"Smart Lander for Investigating Moon","body":"moon","ms":1705677600000,"parts":[{"m":"slim","x":0,"y":0,"h":0}]},
+  {"name":"Blue Ghost Mission 1","body":"moon","ms":1740904440000,"parts":[{"m":"blue-ghost","x":0,"y":0,"h":0}]},
+  {"name":"Venera 7","body":"venus","ms":30098040000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
+  {"name":"Venera 8","body":"venus","ms":80641920000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
+  {"name":"Vega 1","body":"venus","ms":487306920000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
+  {"name":"Vega 2","body":"venus","ms":487652400000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]}
  ],
 "rovers": {
   "lrv": {"body":"lrv-body","wheel":"lrv-wheel"},

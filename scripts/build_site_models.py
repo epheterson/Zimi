@@ -659,6 +659,111 @@ def m_pad39a():
     return m.write("pad39a")
 
 
+def _capsule(boom):
+    """Luna 9 and 13: a 0.58 m sphere that opened four petals on the ground, springy antennas, and (Luna 13) two booms."""
+    m = Mesh([ALU, GOLD, WHITE, DARK])
+    m.sphere((0, 0, 0.29), 0.29, 0, nlat=8, nlon=12, zmin=-0.3)
+    m.cyl((0, 0, 0.62), 0.12, 0.08, 1, n=8)
+    for k in range(4):
+        a = math.radians(45 + 90 * k)
+        ca, sa = math.cos(a), math.sin(a)
+        m.quad([(0.12 * ca - 0.08 * sa, 0.12 * sa + 0.08 * ca, 0.5), (0.12 * ca + 0.08 * sa, 0.12 * sa - 0.08 * ca, 0.5),
+                (0.55 * ca + 0.08 * sa, 0.55 * sa - 0.08 * ca, 0.3), (0.55 * ca - 0.08 * sa, 0.55 * sa + 0.08 * ca, 0.3)], 2)
+        m.tube((0.1 * ca, 0.1 * sa, 0.58), (0.7 * ca, 0.7 * sa, 0.95), 0.006, 0, n=4)
+    if boom:
+        m.tube((0.2, 0.2, 0.45), (0.9, 0.7, 0.2), 0.012, 0, n=4)
+        m.tube((-0.2, 0.2, 0.45), (-0.8, 0.8, 0.25), 0.012, 0, n=4)
+    return m
+
+
+def m_luna9():
+    return _capsule(False).write("luna9")
+
+
+def m_luna13():
+    return _capsule(True).write("luna13")
+
+
+def m_luna_sampler():
+    """The descent stage of Luna 16, 20 and 24 (the ascent stage with the soil left on its own): four legs, the body, two
+    tanks, the drill arm out to one side and a camera on a mast."""
+    m = Mesh([ALU, GOLD, WHITE, DARK, GREY])
+    m.cyl((0, 0, 1.15), 0.72, 1.3, 1, n=12)
+    for k in range(4):
+        a = math.radians(45 + 90 * k)
+        ca, sa = math.cos(a), math.sin(a)
+        m.tube((0.55 * ca, 0.55 * sa, 0.9), (2.0 * ca, 2.0 * sa, 0.12), 0.05, 0)
+        m.tube((0.4 * ca, 0.4 * sa, 1.6), (1.5 * ca, 1.5 * sa, 0.55), 0.03, 0)
+        m.cyl((2.0 * ca, 2.0 * sa, 0.05), 0.25, 0.1, 4, n=8)
+    for sx in (-1, 1):
+        m.sphere((sx * 0.95, 0, 1.2), 0.42, 2, nlat=6, nlon=10)
+    m.cyl((0, 0, 1.95), 0.5, 0.12, 0, n=12)
+    m.tube((0.3, 0.3, 1.8), (1.9, 1.6, 0.9), 0.04, 4)  # the drill arm
+    m.tube((1.9, 1.6, 0.9), (2.0, 1.7, 0.1), 0.03, 4)
+    m.tube((-0.3, -0.3, 2.0), (-0.3, -0.3, 2.9), 0.02, 0)
+    m.box((-0.3, -0.3, 2.95), (0.25, 0.1, 0.1), 3)
+    m.tube((0, 0, 2.0), (0, 0, 3.5), 0.04, 0)  # the stub of the return stage's cradle
+    return m.write("luna-sampler")
+
+
+def m_vikram():
+    """Chandrayaan-3's Vikram: a 2 m box with four splayed legs, the top panel, the ramp Pragyan came down, a dish."""
+    m = Mesh([GOLD, ALU, PANEL, WHITE, DARK])
+    m.box((0, 0, 1.25), (2.0, 2.0, 1.1), 0)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.tube((sx * 0.9, sy * 0.9, 0.9), (sx * 1.7, sy * 1.7, 0.1), 0.06, 1)
+            m.tube((sx * 0.9, sy * 0.9, 1.7), (sx * 1.4, sy * 1.4, 0.6), 0.035, 1)
+            m.cyl((sx * 1.7, sy * 1.7, 0.05), 0.22, 0.1, 1, n=8)
+    m.box((0, 0, 1.85), (2.0, 1.0, 0.06), 2)
+    m.quad([(-0.4, 1.0, 1.0), (0.4, 1.0, 1.0), (0.4, 2.6, 0.0), (-0.4, 2.6, 0.0)], 3)
+    m.tube((0.6, -0.6, 1.8), (0.6, -0.6, 2.3), 0.025, 1)
+    m.dish((0.6, -0.6, 2.3), 0.3, (0, -0.3, 1), 3)
+    m.box((-0.8, -1.02, 1.4), (0.4, 0.05, 0.3), 4)
+    return m.write("vikram")
+
+
+def m_pragyan():
+    m = Mesh([GOLD, PANEL, GREY, DARK, ALU])
+    m.box((0, 0, 0.32), (0.6, 0.9, 0.3), 0)
+    m.quad([(-0.3, -0.45, 0.5), (0.3, -0.45, 0.5), (0.3, 0.45, 0.5), (-0.3, 0.45, 0.5)], 1)
+    m.tube((0, 0.3, 0.45), (0, 0.3, 0.85), 0.012, 4)
+    m.box((0, 0.3, 0.88), (0.12, 0.06, 0.06), 3)
+    for sx in (-1, 1):
+        for sy in (-0.3, 0, 0.3):
+            m.tube((sx * 0.3, sy, 0.3), (sx * 0.38, sy, 0.1), 0.012, 4)
+            m.cyl((sx * 0.38, sy, 0.1), 0.1, 0.08, 2, n=10, axis="x")
+    return m.write("pragyan")
+
+
+def m_slim():
+    """SLIM as it lay: a 1.7 x 2.4 m box on its side, the engine bell pointing up and west, one panel facing the Sun."""
+    m = Mesh([ALU, GOLD, PANEL, DARK, WHITE])
+    m.box((0, 0, 0.85), (1.7, 2.4, 1.6), 1)
+    m.frustum((-0.5, 0, 1.5), (-1.4, 0, 2.5), 0.2, 0.55, 3, n=12)
+    m.cyl((-0.2, 0.4, 0.05), 0.2, 0.1, 4, n=8)
+    m.quad([(0.86, -1.1, 0.2), (0.86, 1.1, 0.2), (0.86, 1.1, 1.5), (0.86, -1.1, 1.5)], 2)
+    m.tube((0.2, -1.0, 1.65), (0.2, -1.0, 2.2), 0.02, 0)
+    return m.write("slim")
+
+
+def m_blue_ghost():
+    """Firefly's Blue Ghost: a 3.5 m deck on four legs, the antenna dish, the solar panel and instruments."""
+    m = Mesh([ALU, GOLD, PANEL, WHITE, DARK])
+    m.box((0, 0, 1.45), (2.6, 2.6, 0.9), 1)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.tube((sx * 1.0, sy * 1.0, 1.1), (sx * 2.1, sy * 2.1, 0.1), 0.07, 0)
+            m.tube((sx * 1.0, sy * 1.0, 1.8), (sx * 1.8, sy * 1.8, 0.7), 0.04, 0)
+            m.cyl((sx * 2.1, sy * 2.1, 0.05), 0.28, 0.1, 0, n=10)
+    m.box((0, 0, 1.95), (3.4, 1.4, 0.06), 2)
+    m.tube((0.8, -0.8, 1.95), (0.8, -0.8, 2.6), 0.03, 0)
+    m.dish((0.8, -0.8, 2.6), 0.45, (0, -0.3, 1), 3)
+    m.box((-0.9, 0.9, 2.1), (0.5, 0.5, 0.3), 4)
+    m.box((0, 1.32, 1.4), (0.8, 0.06, 0.5), 3)
+    return m.write("blue-ghost")
+
+
 def m_viking():
     m = Mesh([GOLD, ALU, GREY, WHITE, DARK])
     m.cyl((0, 0, 0.95), 0.95, 0.45, 1, n=6)  # the hexagonal body
@@ -807,6 +912,13 @@ PROCEDURAL = {
     "lunokhod-wheel": m_lunokhod_wheel,
     "change-lander": m_change_lander,
     "yutu": m_yutu,
+    "luna9": m_luna9,
+    "luna13": m_luna13,
+    "luna-sampler": m_luna_sampler,
+    "vikram": m_vikram,
+    "pragyan": m_pragyan,
+    "slim": m_slim,
+    "blue-ghost": m_blue_ghost,
     "pad39a": m_pad39a,
     "pad-slab": m_pad_slab,
     "zhurong": m_zhurong,
