@@ -25,6 +25,7 @@ import struct
 import numpy as np
 
 FLAG_UV, FLAG_TEXTURES = 1, 2
+KIND_NONE, KIND_CELLS, KIND_FOIL, KIND_QUILT, KIND_RADIATOR, KIND_METAL, KIND_MIRROR = range(7)  # a palette entry's surface, drawn procedurally by the viewer
 MAT_DOUBLE_SIDED, MAT_CUTOUT, MAT_AMBER_BACK = 1, 2, 4  # the last: the side its normals do not face is the amber of a solar array's back
 NO_TURN = 255
 CREASE_DEG = 38.0
@@ -189,7 +190,25 @@ GOLD = (
     0.24,
 )  # linear: gold foil (the sRGB 0.97, 0.80, 0.55 of MLI blankets)
 SILVER = (0.78, 0.79, 0.82)
-SOLAR_BLUE = (0.07, 0.1, 0.3)  # linear: dark blue cells, bright enough to read in sunlight
+SOLAR_BLUE = (0.05, 0.075, 0.22)  # linear: dark blue cells, bright enough to read in sunlight
+
+
+def kind_of(name):
+    """The procedural surface a material's name asks for (cells, foil, quilted blanket, radiator, bare metal)."""
+    n = name.lower()
+    if any(s in n for s in ("solar", "sacell", "cells", "shiny_panel")):
+        return KIND_CELLS
+    if "mirror" in n and "omni" not in n:
+        return KIND_MIRROR
+    if any(s in n for s in ("rad_", "radiator")):
+        return KIND_RADIATOR
+    if any(s in n for s in ("gold", "foil", "krinkle", "kapton", "mylar", "mli", "shld")):
+        return KIND_FOIL
+    if any(s in n for s in ("white", "blanket", "beta")):
+        return KIND_QUILT
+    if any(s in n for s in ("alum", "metal", "silver")):
+        return KIND_METAL
+    return KIND_NONE
 
 
 def look_of(name, rgb, src_rough=None, src_metal=0.0):
@@ -333,14 +352,14 @@ def pack(
         turn[1],
         turn_class,
     )
-    for rgb, rough, metal, fl, t0, t1, t2 in entries:
+    for rgb, rough, metal, fl, t0, t1, t2, *kind in entries:
         head += struct.pack(
             "<3f4B4h",
             *np.clip(rgb, 0, 1),
             int(round(np.clip(rough, 0, 1) * 255)),
             int(round(np.clip(metal, 0, 1) * 255)),
             fl,
-            0,
+            kind[0] if kind else 0,
             t0,
             t1,
             t2,

@@ -115,11 +115,8 @@ def material_looks(j, blob, recolour=None):
         for sub, real in (recolour or {}).items():
             if sub.lower() in name.lower():
                 rgb = np.array(real, dtype=np.float64)
-        out.append(
-            cm.look_of(
-                name, rgb, pbr.get("roughnessFactor"), pbr.get("metallicFactor", 0.0)
-            )
-        )
+        look = cm.look_of(name, rgb, pbr.get("roughnessFactor"), pbr.get("metallicFactor", 0.0))
+        out.append(look + (cm.kind_of(name),))
     return out
 
 
@@ -162,7 +159,7 @@ def palette(looks, weights):
         for i in g:
             entry_of[i] = k
         heavy = max(g, key=lambda i: weights[i])
-        entries.append((mean(g), looks[heavy][1], looks[heavy][2], 0, -1, -1, -1))
+        entries.append((mean(g), looks[heavy][1], looks[heavy][2], 0, -1, -1, -1, looks[heavy][3]))
     return entry_of, entries
 
 
@@ -351,6 +348,7 @@ ISS_LOOK = [
     (cm.SOLAR_BLUE, 0.22, 0.25),
 ]
 ISS_ARRAY_FLAGS = cm.MAT_DOUBLE_SIDED | cm.MAT_AMBER_BACK
+ISS_KIND = [cm.KIND_QUILT, cm.KIND_METAL, cm.KIND_CELLS, cm.KIND_RADIATOR, cm.KIND_CELLS]  # a procedural surface per class
 ISS_STRAY_Y = (
     40.0  # seven small cylinders parked far off the station in the source file
 )
