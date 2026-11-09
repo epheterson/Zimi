@@ -129,6 +129,9 @@ def page(served):
             "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
             % (PLACE, PLACE)
         )
+        # These tests are about Zimi's own full screen; a headless Linux Chromium answers the browser's Fullscreen API with an
+        # enter and an exit, which (as the browser's own way out) ends Zimi's too.
+        ctx.add_init_script("Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: function () { return false; } });")
         pg = ctx.new_page()
         pg.errors = []
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))

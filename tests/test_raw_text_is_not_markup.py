@@ -238,5 +238,6 @@ class TestTheMaskIsNotAWhitespaceDesert(unittest.TestCase):
         self.assertEqual(len(masked), len(page))
         t = time.monotonic()
         hits = [m.group("val") for m in attr_re("style").finditer(masked)]
-        self.assertLess(time.monotonic() - t, 1.0)
+        # The quadratic walk never returned; a shared macOS runner took 1.02 s for the linear one.
+        self.assertLess(time.monotonic() - t, 3.0)
         self.assertEqual(hits, ["color:red", "x:url(a.png)"])
