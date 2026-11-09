@@ -3718,5 +3718,7 @@
   "tb_kn_site_saturn_drag": "Saturn V air drag (coefficient × area)",
   "tb_kn_site_saturn_pitch": "Saturn V pitch-over from vertical",
   "tb_kn_site_jump": "Rover jump speed",
-  "alm_probe_replay": "Replay its flight from launch"
+  "alm_probe_replay": "Replay its flight from launch",
+  "tb_kn_site_msd": "Mars Sol Date (the Mars clock)",
+  "tb_kn_site_drive_hour": "Hour the rovers drive (local mean solar time)"
 }

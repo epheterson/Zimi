@@ -3718,5 +3718,7 @@
   "tb_kn_site_saturn_drag": "Arrasto do Saturno V (coeficiente × área)",
   "tb_kn_site_saturn_pitch": "Inclinação do Saturno V a partir da vertical",
   "tb_kn_site_jump": "Velocidade de salto do rover",
-  "alm_probe_replay": "Reproduzir o voo desde o lançamento"
+  "alm_probe_replay": "Reproduzir o voo desde o lançamento",
+  "tb_kn_site_msd": "Data solar marciana (o relógio de Marte)",
+  "tb_kn_site_drive_hour": "Hora em que os rovers conduzem (hora solar média local)"
 }

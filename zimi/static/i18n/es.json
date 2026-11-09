@@ -3718,5 +3718,7 @@
   "tb_kn_site_saturn_drag": "Resistencia del aire del Saturno V (coeficiente × área)",
   "tb_kn_site_saturn_pitch": "Inclinación del Saturno V desde la vertical",
   "tb_kn_site_jump": "Velocidad de salto del róver",
-  "alm_probe_replay": "Reproducir su vuelo desde el lanzamiento"
+  "alm_probe_replay": "Reproducir su vuelo desde el lanzamiento",
+  "tb_kn_site_msd": "Fecha solar marciana (el reloj de Marte)",
+  "tb_kn_site_drive_hour": "Hora en que conducen los róveres (hora solar media local)"
 }

@@ -3718,5 +3718,7 @@
   "tb_kn_site_saturn_drag": "Traînée de Saturn V (coefficient × surface)",
   "tb_kn_site_saturn_pitch": "Inclinaison de Saturn V depuis la verticale",
   "tb_kn_site_jump": "Vitesse de saut du rover",
-  "alm_probe_replay": "Rejouer son vol depuis le lancement"
+  "alm_probe_replay": "Rejouer son vol depuis le lancement",
+  "tb_kn_site_msd": "Date solaire martienne (l'horloge de Mars)",
+  "tb_kn_site_drive_hour": "Heure de conduite des rovers (heure solaire moyenne locale)"
 }

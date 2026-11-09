@@ -3718,5 +3718,7 @@
   "tb_kn_site_saturn_drag": "土星五号空气阻力（系数 × 面积）",
   "tb_kn_site_saturn_pitch": "土星五号偏离垂直的俯仰",
   "tb_kn_site_jump": "漫游车起跳速度",
-  "alm_probe_replay": "从发射起回放它的飞行"
+  "alm_probe_replay": "从发射起回放它的飞行",
+  "tb_kn_site_msd": "火星太阳日期（火星时钟）",
+  "tb_kn_site_drive_hour": "漫游车行驶时刻（当地平太阳时）"
 }
