@@ -158,7 +158,8 @@ def test_the_models_and_the_rover_stand_on_the_grounds_terrain(page):
     parts = page.evaluate(
         "() => _aeSiteState().parts.map(function (p) { return [p.model, p.z, p.ground]; })"
     )
-    assert parts and all(abs(p[1] - p[2]) < 0.2 or p[0] == "saturn5" for p in parts)
+    # A wheel's centre is a wheel radius over the ground it touches, the lander's rest are on it.
+    assert parts and all(abs(p[1] - p[2]) < (0.5 if p[0].endswith("wheel") else 0.2) or p[0] == "saturn5" for p in parts), [p for p in parts if abs(p[1] - p[2]) >= 0.2]
 
 
 def test_eye_level_is_a_camera_of_the_visit_and_the_phone_turns_it(page):
