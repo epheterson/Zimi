@@ -279,3 +279,14 @@ def test_the_almanac_zim_carries_the_sites(tmp_path):
     for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
         assert f in names, f
     assert "earth" in stage.DATA, "the whole earth folder: the table, the routes and every model"
+
+
+def test_every_landing_the_landmarks_name_has_a_model_to_stand_at(sites, landmarks):
+    """Eric 2026-11-09: every corner complete. A landing in landmarks-v1.json that is not a site is a hole."""
+    have = {(s["body"], s["name"]) for s in sites["sites"]}
+    for body, rows in landmarks.items():
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], list):
+            continue
+        for r in rows:
+            if r[3] == "landing":
+                assert (body, r[0]) in have, "%s %s has no site" % (body, r[0])

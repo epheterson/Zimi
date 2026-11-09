@@ -44,10 +44,7 @@ def _free_port():
 
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
-    import zimi.renderer as renderer
-
-    if not renderer.browser_available():
-        pytest.skip("playwright + chromium are not usable here")
+    pytest.importorskip("playwright.sync_api")  # a runner without a browser skips
     tmp = tmp_path_factory.mktemp("sitesoffline")
     (tmp / "zims").mkdir()
     (tmp / "data").mkdir()

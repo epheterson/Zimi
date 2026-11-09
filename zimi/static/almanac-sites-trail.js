@@ -22,6 +22,23 @@ function _asTraversesLoad(then) {
   _asTraversesLoading = fetch(AS_TRAVERSES_URL).then(function (r) { if (!r.ok) throw new Error('traverses'); return r.json(); }).then(function (d) { _asTraverses = d; then(); }).catch(function () { _asTraversesLoading = null; });
 }
 
+// Mars's clock (Allison and McEwen's Mars24): the Mars Sol Date counts sols from an epoch and its fraction is the mean
+// solar time on the prime meridian; add the longitude and it is the local mean solar time.
+function _asMsdAt(ms) {
+  var jdTT = ms / 86400000 + 2440587.5 + AE_SITE_FACTS.ttMinusUtcS / 86400;
+  return (jdTT - AE_SITE_FACTS.msdEpochJd) / AE_SITE_FACTS.marsSolDays + AE_SITE_FACTS.msdOffset;
+}
+function _asMsAtMsd(msd) {
+  var jdTT = (msd - AE_SITE_FACTS.msdOffset) * AE_SITE_FACTS.marsSolDays + AE_SITE_FACTS.msdEpochJd;
+  return (jdTT - 2440587.5 - AE_SITE_FACTS.ttMinusUtcS / 86400) * 86400000;
+}
+function _asLmstHours(ms, lonDeg) { var h = ((_asMsdAt(ms) % 1) * 24 + lonDeg / 15) % 24; return h < 0 ? h + 24 : h; }
+// The instant of sol `sol`'s drive hour at the rover's longitude: sol 0 began at local midnight before the landing.
+function _asSolMs(st, data, sol) {
+  var msdLand = _asMsdAt(data.landingMs), sol0 = msdLand - _asLmstHours(data.landingMs, st.lon) / 24;
+  return _asMsAtMsd(sol0 + sol + AE_SITE_FACTS.driveLmstH[st.def.trail] / 24);
+}
+
 // The track in the site's own frame: [sol, x, y] with x east and y north of the landing, metres.
 function _asTrailLocal(st, pts) {
   var lat0 = st.lat, lon0 = st.lon, R = st.radiusM, k = Math.PI / 180, cosLat = Math.cos(lat0 * k);
@@ -96,7 +113,7 @@ function _asTrailStep(st, dt) {
   var now = performance.now(), whole = Math.round(t.sol);
   if (whole !== t.clockSol && now - t.clockAt > AS_TRAIL_CLOCK_MS) {
     t.clockSol = whole; t.clockAt = now;
-    _aeGoTo(t.data.landingMs + whole * _asTraverses.solSeconds * 1000);   // the hour it landed, that sol: the afternoon light
+    _aeGoTo(_asSolMs(st, t.data, whole));   // that sol's drive hour, the Sun and the shadows the rover had
   }
   _asTrailUi(st);
 }

@@ -120,5 +120,19 @@ const moon = { info: { relief: 0.45, craters: 1 }, radiusM: 1737400, terrain: nu
   check(a.dy > 0 && Math.abs(a.dx) < 1e-9, 'and faces the way that leg goes');
 }
 
+// ── 6. Mars's clock: each sol at the hour the rover drove ──
+{
+  const lmst = S('_asLmstHours'), solMs = S('_asSolMs');
+  const mslLanding = 1344230278000, m20Landing = 1613681700000;   // 2012-08-06 05:17:58 UTC, 2021-02-18 20:55 UTC
+  check(near(lmst(mslLanding, 137.4417), 14.9, 0.7), 'Curiosity touched down in the afternoon at Gale: about 15:00 local mean solar time (' + lmst(mslLanding, 137.4417).toFixed(2) + ' h)');
+  check(near(lmst(m20Landing, 77.4509), 15.9, 0.7), 'Perseverance at Jezero about 15:53 (' + lmst(m20Landing, 77.4509).toFixed(2) + ' h)');
+  const st = { lon: 137.4417, def: { trail: 'msl' } }, data = { landingMs: mslLanding };
+  const h100 = lmst(solMs(st, data, 100), st.lon), h2000 = lmst(solMs(st, data, 2000), st.lon);
+  check(near(h100, 13, 0.01) && near(h2000, 13, 0.01), 'every sol is at the drive hour, 13:00, however far from the landing (' + h100.toFixed(3) + ', ' + h2000.toFixed(3) + ')');
+  const a = solMs(st, data, 100), b = solMs(st, data, 101);
+  check(near((b - a) / 1000, 88775.244, 1), 'a sol is 88775.244 s apart (' + ((b - a) / 1000).toFixed(2) + ')');
+  check(solMs(st, data, 0) < mslLanding + 86400000 && solMs(st, data, 0) > mslLanding - 86400000 * 2, 'sol 0 is the landing day');
+}
+
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('all passed');

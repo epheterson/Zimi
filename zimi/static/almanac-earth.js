@@ -4119,6 +4119,8 @@ function _aeRefAxesRows() {
   // The landing sites: where the models, the sol and the Saturn V's flight come from.
   add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
   add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
+  add('site.msd', _aeT('tb_kn_site_msd'), 'MSD = (JD(TT) − ' + AE_SITE_FACTS.msdEpochJd + ') / ' + AE_SITE_FACTS.marsSolDays + ' + 44796 − 0.0009626', '', 'Allison & McEwen 2000, NASA GISS Mars24');
+  add('site.drive_hour', _aeT('tb_kn_site_drive_hour'), AE_SITE_FACTS.driveLmstH.msl + ' (Curiosity) · ' + AE_SITE_FACTS.driveLmstH.m20 + ' (Perseverance)', 'h', 'Zimi: the waypoints carry no times; the mission\'s usual hour, local mean solar time');
   add('site.traverse', _aeT('tb_kn_site_traverse'), 'MMGIS waypoints · traverses-v1.json', '', 'NASA/JPL-Caltech/MSL and Mars 2020 teams');
   add('site.lrv_speed', _aeT('tb_kn_site_lrv_speed'), AE_SITE_FACTS.lrvSpeedMs, 'm/s', 'NASA (13 km/h)');
   add('site.mars_speed', _aeT('tb_kn_site_mars_speed'), AE_SITE_FACTS.marsDriveSpeedMs, 'm/s', 'Zimi (a real rover does 0.04)');
@@ -4262,7 +4264,8 @@ function _aeLmLoad() {
 // ways down once they are in.
 // The numbers the sites' scenes (almanac-sites*.js) run on that a person is shown or can feel, kept here so the reference
 // lists them (_aeRefAxesRows) and the code reads the same ones: a sol, how fast the rovers go, the Saturn V's.
-var AE_SITE_FACTS = { solSeconds: 88775.244, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
+var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpochJd: 2451549.5, msdOffset: 44796.0 - 0.0009626, ttMinusUtcS: 69.184,
+  driveLmstH: { msl: 13, m20: 14 }, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
   saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 var _aeSitesLoading = false;
