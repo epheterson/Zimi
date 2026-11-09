@@ -3711,5 +3711,14 @@
   "tb_kn_sat_pass_sun": "过境时太阳须低于",
   "tb_kn_sat_pass_mag": "过境列出的估计星等上限",
   "tb_kn_sat_albedo": "假定的卫星反射率（漫反射球体）",
-  "tb_kn_sat_sun_mag": "太阳的视星等"
+  "tb_kn_sat_sun_mag": "太阳的视星等",
+  "tb_kn_sat_model": "过境亮度模型（m 星等，a 反射率，A 面积，p 相位函数，d 距离）",
+  "tb_kn_sat_area_iss": "假定的国际空间站尺寸",
+  "tb_kn_sat_area_starlink": "假定的星链卫星尺寸",
+  "tb_kn_sat_area_oneweb": "假定的 OneWeb 卫星尺寸",
+  "tb_kn_sat_area_iridium": "假定的铱星尺寸",
+  "tb_kn_sat_min_rcs": "雷达截面低于此值的卫星不提供",
+  "tb_kn_sat_train_gap": "时间间隔小于此值的星链算作一列",
+  "tb_kn_sat_train_plane": "轨道面间隔小于此值的星链算作一列",
+  "tb_kn_sat_gps_el": "GPS 卫星高度角高于此值即在头顶"
 }

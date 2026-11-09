@@ -3711,5 +3711,14 @@
   "tb_kn_sat_pass_sun": "Un pase cuenta con el Sol por debajo de",
   "tb_kn_sat_pass_mag": "Un pase se lista hasta la magnitud estimada",
   "tb_kn_sat_albedo": "Reflectancia supuesta del satélite (esfera difusa)",
-  "tb_kn_sat_sun_mag": "Magnitud aparente del Sol"
+  "tb_kn_sat_sun_mag": "Magnitud aparente del Sol",
+  "tb_kn_sat_model": "Modelo de brillo de los pases (m magnitud, a reflectancia, A área, p función de fase, d distancia)",
+  "tb_kn_sat_area_iss": "Tamaño supuesto de la ISS",
+  "tb_kn_sat_area_starlink": "Tamaño supuesto de un satélite Starlink",
+  "tb_kn_sat_area_oneweb": "Tamaño supuesto de un satélite OneWeb",
+  "tb_kn_sat_area_iridium": "Tamaño supuesto de un satélite Iridium",
+  "tb_kn_sat_min_rcs": "Sección radar por debajo de la cual no se ofrece un satélite",
+  "tb_kn_sat_train_gap": "Starlink más cercanos en el tiempo que esto son un tren",
+  "tb_kn_sat_train_plane": "Starlink más cercanos en el plano orbital que esto son un tren",
+  "tb_kn_sat_gps_el": "Un satélite GPS está sobre el horizonte por encima de una elevación de"
 }

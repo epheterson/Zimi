@@ -3711,5 +3711,14 @@
   "tb_kn_sat_pass_sun": "A pass counts with the Sun below",
   "tb_kn_sat_pass_mag": "A pass is listed to estimated magnitude",
   "tb_kn_sat_albedo": "Satellite reflectance assumed (diffuse sphere)",
-  "tb_kn_sat_sun_mag": "Sun’s apparent magnitude"
+  "tb_kn_sat_sun_mag": "Sun’s apparent magnitude",
+  "tb_kn_sat_model": "Pass brightness model (m = magnitude, a reflectance, A area, p phase function, d range)",
+  "tb_kn_sat_area_iss": "Assumed size of the ISS",
+  "tb_kn_sat_area_starlink": "Assumed size of a Starlink satellite",
+  "tb_kn_sat_area_oneweb": "Assumed size of a OneWeb satellite",
+  "tb_kn_sat_area_iridium": "Assumed size of an Iridium satellite",
+  "tb_kn_sat_min_rcs": "Radar cross-section below which a satellite is not offered",
+  "tb_kn_sat_train_gap": "Starlinks closer in time than this are one train",
+  "tb_kn_sat_train_plane": "Starlinks closer in orbital plane than this are one train",
+  "tb_kn_sat_gps_el": "A GPS satellite is overhead above elevation"
 }

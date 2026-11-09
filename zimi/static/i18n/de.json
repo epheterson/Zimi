@@ -3711,5 +3711,14 @@
   "tb_kn_sat_pass_sun": "Ein Überflug zählt mit der Sonne unter",
   "tb_kn_sat_pass_mag": "Ein Überflug wird gelistet bis zur geschätzten Helligkeit",
   "tb_kn_sat_albedo": "Angenommene Reflexion des Satelliten (diffuse Kugel)",
-  "tb_kn_sat_sun_mag": "Scheinbare Helligkeit der Sonne"
+  "tb_kn_sat_sun_mag": "Scheinbare Helligkeit der Sonne",
+  "tb_kn_sat_model": "Helligkeitsmodell für Überflüge (m Helligkeit, a Reflexion, A Fläche, p Phasenfunktion, d Entfernung)",
+  "tb_kn_sat_area_iss": "Angenommene Größe der ISS",
+  "tb_kn_sat_area_starlink": "Angenommene Größe eines Starlink-Satelliten",
+  "tb_kn_sat_area_oneweb": "Angenommene Größe eines OneWeb-Satelliten",
+  "tb_kn_sat_area_iridium": "Angenommene Größe eines Iridium-Satelliten",
+  "tb_kn_sat_min_rcs": "Radarquerschnitt, unter dem ein Satellit nicht angeboten wird",
+  "tb_kn_sat_train_gap": "Starlinks mit geringerem Zeitabstand sind ein Zug",
+  "tb_kn_sat_train_plane": "Starlinks mit geringerem Bahnebenenabstand sind ein Zug",
+  "tb_kn_sat_gps_el": "Ein GPS-Satellit gilt als über dem Horizont ab einer Höhe von"
 }
