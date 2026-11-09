@@ -39,6 +39,7 @@ var AS_RESAMPLE_MS = 1000;                            // a fresh sample of every
 var AS_EXTRAP_MAX_S = 30;                             // the shader's carry past a sample never exceeds this
 var AS_FAST_RATE = 600;                               // a clock running faster than this (x real time) hides the dots
 var AS_ALPHA_REFRESH_MS = 5000;
+var AS_GEO_RE = 6.6107, AS_GEO_RING_POINTS = 180, AS_GEO_RING_COLOR = 0xb8c4d6, AS_GEO_RING_ALPHA = 0.16;   // the geostationary radius (42,164 km) in Earth radii
 var AS_ORBIT_POINTS = 144, AS_ORBIT_COLOR = 0xffd27a, AS_ORBIT_ALPHA = 0.55, AS_ORBIT_REFRESH_MS = 10 * 60 * 1000;
 var AS_TAP_RADIUS_PX = 22;
 var AS_EARTH_RE_KM = 6371;                            // AE_EARTH_RADIUS_KM, which the worker is given
@@ -51,14 +52,14 @@ var AS_PASS_AREA_M2 = AE_SATS_REF.areaM2;             // used where SATCAT has n
 var AS_PASS_MIN_RCS_M2 = AE_SATS_REF.minRcsM2;        // a satellite with a radar size below this is not offered
 var AS_PASS_LEO_MM = 11;                              // revolutions a day: a pass needs an orbit this low
 var AS_TRAIN_GAP_S = AE_SATS_REF.trainGapS, AS_TRAIN_MIN = 3, AS_TRAIN_RAAN_DEG = AE_SATS_REF.trainRaanDeg;
-var AS_ISS_NORAD = 25544;
+var AS_ISS_NORAD = 25544, AS_ISS_MODULE = /^ISS \(/;
 var AS_PASS_SKY_FRAME_MS = 500;
 var AS_GPS_MIN_EL = AE_SATS_REF.gpsMinEl;
 
 var _as = {
   on: false, state: 'idle',              // idle | loading | ready | failed
   data: null, lib: null, worker: null, workerReady: false,
-  cloud: null, scene: null, sel: -1, selLine: null, selAt: 0,
+  cloud: null, scene: null, sel: -1, selLine: null, geoRing: null, selAt: 0,
   filter: { group: {}, orbit: {}, owner: {} },
   sampleMs: 0, posting: false, alphaAt: -Infinity, shown: 0,
   passes: null, passPlace: null, passBusy: false, sheet: false, gps: false, bar: null
@@ -342,24 +343,37 @@ function _asSync() {
 function _asRelease() {
   if (_as.worker) { _as.worker.terminate(); _as.worker = null; }
   _asCalls = {};
-  _as.state = 'idle'; _as.data = null; _as.cloud = null; _as.scene = null; _as.selLine = null; _as.sel = -1;
+  _as.state = 'idle'; _as.data = null; _as.cloud = null; _as.scene = null; _as.selLine = null; _as.geoRing = null; _as.sel = -1;
   _as.passes = null; _as.passPlace = null; _as.passBusy = false; _as.sampleMs = 0; _as.posting = false; _as.alphaAt = -Infinity;
   if (_as.bar && _as.bar.parentNode) _as.bar.parentNode.removeChild(_as.bar);
   if (_as.sheetEl && _as.sheetEl.parentNode) _as.sheetEl.parentNode.removeChild(_as.sheetEl);
   _as.bar = _as.sheetEl = null; _as.sheet = false;
 }
 // The GPU scene was freed and will be made again: what hung on it is gone.
-function _asGlGone() { _as.cloud = null; _as.scene = null; _as.selLine = null; }
+function _asGlGone() { _as.cloud = null; _as.scene = null; _as.selLine = null; _as.geoRing = null; }
 
 // ── The points ──
+// Each point is sized by its distance (near ones larger), dimmed in the Earth's shadow (it is not sunlit there) and
+// faded on the far side of the planet, so the shells read as a depth, not a flat sheet. The selected one is never dimmed.
+var AS_NEAR_SIZE_MIN = 0.7, AS_NEAR_SIZE_MAX = 1.7;   // the size scale across the view's depth
+var AS_SHADOW_ALPHA = 0.3;                            // what a point in the Earth's shadow keeps
+var AS_FAR_FADE_RE = 1.2, AS_FAR_ALPHA = 0.55;        // the fade past the Earth's centre, over this many Earth radii
 var AS_VERT = [
   'attribute vec3 aVel; attribute vec3 aColor; attribute float aAlpha; attribute float aSize;',
-  'uniform float dpr; uniform float dt;',
+  'uniform float dpr; uniform float dt; uniform vec3 sunDir;',
   'varying vec3 vColor; varying float vAlpha;',
   'void main() {',
-  '  vColor = aColor; vAlpha = aAlpha;',
-  '  gl_PointSize = aSize * dpr;',
-  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position + aVel * dt, 1.0);',
+  '  vec3 p = position + aVel * dt;',
+  '  vec3 w = (modelMatrix * vec4(p, 1.0)).xyz;',
+  '  float dist = length(cameraPosition - w), mid = length(cameraPosition);',
+  '  float along = dot(w, sunDir), perp = length(w - sunDir * along);',
+  '  float dark = step(along, 0.0) * (1.0 - smoothstep(0.97, 1.03, perp));',
+  '  float far = smoothstep(0.0, ' + AS_FAR_FADE_RE.toFixed(2) + ', dist - mid);',
+  '  float plain = step(' + (AS_POINT_SELECTED_PX - 0.5).toFixed(1) + ', aSize);',
+  '  float shade = mix(1.0 - dark * (1.0 - ' + AS_SHADOW_ALPHA.toFixed(2) + '), 1.0, plain) * mix(1.0, ' + AS_FAR_ALPHA.toFixed(2) + ', far * (1.0 - plain));',
+  '  vColor = aColor; vAlpha = aAlpha * shade;',
+  '  gl_PointSize = aSize * dpr * clamp(mid / max(dist, 0.1), ' + AS_NEAR_SIZE_MIN.toFixed(2) + ', ' + AS_NEAR_SIZE_MAX.toFixed(2) + ');',
+  '  gl_Position = aSize > 0.0 && aAlpha > 0.0 ? projectionMatrix * modelViewMatrix * vec4(p, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);',   // a hidden point is clipped, not drawn as a 1 px speck
   '}'
 ].join('\n');
 function _asMakeCloud() {
@@ -367,7 +381,7 @@ function _asMakeCloud() {
   var g = new THREE.BufferGeometry();
   ['position', 'aVel', 'aColor'].forEach(function (k) { g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n * 3), 3)); });
   ['aAlpha', 'aSize'].forEach(function (k) { g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n), 1)); });
-  var u = { dpr: { value: S.dpr }, dt: { value: 0 }, glow: { value: 0 }, fade: _aeFadeU };
+  var u = { dpr: { value: S.dpr }, dt: { value: 0 }, sunDir: { value: new THREE.Vector3(1, 0, 0) }, glow: { value: 0 }, fade: _aeFadeU };
   var m = new THREE.ShaderMaterial({ uniforms: u, vertexShader: AS_VERT, fragmentShader: AE_POINTS_FRAG, transparent: true, depthWrite: false, depthTest: true });
   var p = new THREE.Points(g, m);
   p.frustumCulled = false;
@@ -378,6 +392,15 @@ function _asMakeCloud() {
   // The selected satellite's orbit.
   _as.selLine = _aeLine(THREE, THREE.LineLoop, AS_ORBIT_POINTS, AS_ORBIT_COLOR, AS_ORBIT_ALPHA);
   S.scene.add(_as.selLine);
+  // The geostationary belt as a faint ring, so the high shell reads as one at a glance.
+  _as.geoRing = _aeLine(THREE, THREE.LineLoop, AS_GEO_RING_POINTS, AS_GEO_RING_COLOR, AS_GEO_RING_ALPHA);
+  var ring = _as.geoRing.geometry.attributes.position.array;
+  for (var k = 0; k < AS_GEO_RING_POINTS; k++) {
+    var th = 2 * Math.PI * k / AS_GEO_RING_POINTS;
+    ring[k * 3] = AS_GEO_RE * Math.cos(th); ring[k * 3 + 1] = AS_GEO_RE * Math.sin(th); ring[k * 3 + 2] = 0;
+  }
+  _as.geoRing.geometry.setDrawRange(0, AS_GEO_RING_POINTS);
+  S.scene.add(_as.geoRing);
   _as.cloud = p; _as.scene = S.scene;
   _as.sampleMs = 0; _as.alphaAt = -Infinity; _as.hold = null;
   _asApplyFilters();
@@ -426,12 +449,15 @@ function _asFrame(ms, sc) {
   if (!_as.cloud || _as.scene !== _ae.gl.scene) _asMakeCloud();
   var cloud = _as.cloud, fast = typeof _almRate !== 'undefined' && Math.abs(_almRate) > AS_FAST_RATE;
   cloud.visible = _ae.target === 'earth' && !fast;
+  if (_as.geoRing) _as.geoRing.visible = cloud.visible;
   if ((_ae.selected || _ae.place || _ae.lm) && _as.sel >= 0) _asSelect(-1);   // the view's own cards win
   _asSyncBar();
   if (!cloud.visible) return;
   cloud.rotation.z = _aeEqEq(sc);
   var dt = _as.sampleMs ? _aeClamp((ms - _as.sampleMs) / 1000, -AS_EXTRAP_MAX_S, AS_EXTRAP_MAX_S) : 0;
   cloud.material.uniforms.dt.value = dt;
+  var sl = _aeLen(sc.sun);
+  cloud.material.uniforms.sunDir.value.set(sc.sun[0] / sl, sc.sun[1] / sl, sc.sun[2] / sl);
   if (!_as.posting && (!_as.sampleMs || Math.abs(ms - _as.sampleMs) >= AS_RESAMPLE_MS)) _asSample(ms);
   if (_as.sel >= 0) _asUpdateSelOrbit(ms, sc);
 }
@@ -680,6 +706,7 @@ function _asNeedPasses(place) {
   var d = _as.data, cand = [], area = [], altKm = [], inc = [];
   for (var i = 0; i < d.n; i++) {
     if (d.mm[i] < AS_PASS_LEO_MM || d.alt[i] > AS_LEO_MAX_KM) continue;
+    if (AS_ISS_MODULE.test(d.name[i]) && d.norad[i] !== AS_ISS_NORAD) continue;   // the station's other catalogue entries are the same pass
     var a = _asAreaM2(i);
     if (!a) continue;
     cand.push(i); area.push(a); altKm.push(d.alt[i]); inc.push(d.inc[i]);
