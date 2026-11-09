@@ -452,6 +452,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .gs-about .gs-text + .gs-text { margin-top: var(--sp-2); }
 .gs-about dl.gs-meta + .gs-text { margin-top: var(--sp-2); }
 .gs-about .gs-text a { color: var(--accent); text-underline-offset: 2px; }
+.gs-about .gs-text a { display: inline-block; padding-block: 14px; margin-block: -14px; }   /* a 44px touch target; the negative margin keeps the line where it was */
 .gm-about-page { max-width: 62ch; margin: 0 auto; padding: 24px 16px; }
 .gm-play { display: inline-flex; align-items: center; text-decoration: none; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
