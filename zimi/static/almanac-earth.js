@@ -439,6 +439,17 @@ var AE_INFO_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" s
 var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0c0 5.1-6.5 11.3-6.5 11.3z"/><circle cx="12" cy="10.2" r="2.3"/></svg>';
 // Orbits as a gyroscope: the body, its ring, and the axis straight up through them (Eric 2026-11-08).
 var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.2"/><path d="M12 1.5v21"/></svg>';
+// Every active satellite (almanac-sats.js, loaded on the button's first press): a ring with dots on it.
+var AE_SATS_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".55"/><circle cx="6.5" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="5.8" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.2" cy="14.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="9.5" cy="17.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="11.8" cy="11.2" r="1.5" fill="currentColor" stroke="none"/></svg>';
+var AE_SATS_JS = '/static/almanac-sats.js?v=1';
+// What the all-satellites layer decides by (almanac-sats.js), kept here so the Almanac's constants pages can show it.
+var AE_SATS_REF = {
+  ageFreshDays: 3, ageGoneDays: 45,     // elements this young are drawn in full; past the second the satellite is not drawn
+  leoMaxKm: 2000, geoMinKm: 35000,      // the orbit classes, by mean altitude
+  passMinEl: 10, passSunAlt: -6,        // a pass counts above this elevation (degrees), with the Sun below this (civil twilight)
+  passMag: 4.0,                         // and is listed to this estimated magnitude
+  albedo: 0.25, sunMag: -26.74          // the brightness estimate: a diffuse sphere's reflectance, and the Sun's apparent magnitude
+};
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
@@ -1182,7 +1193,7 @@ function _aeBuildDom() {
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
-          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) +
+          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) + _aeToggleHtml('ae-sats-btn', 'alm_sats_all', AE_SATS_SVG) +
           // Where the view has flown to, everything about it waits behind this: the picture stays clear.
           '<button type="button" class="ae-btn ae-round" id="ae-info-btn" hidden aria-haspopup="dialog" aria-expanded="false"' +
             ' aria-label="' + _almEsc(_aeT('alm_bi_more')) + '" title="' + _almEsc(_aeT('alm_bi_more')) + '">' + AE_INFO_SVG + '</button>' +
@@ -5277,6 +5288,7 @@ function _aeLoadSats(again) {
     _ae.satsLoading = false;
     _ae.dirty = true;
     _aeKick();
+    _aeSatsAllBoot();
   });
 }
 // An answer from the server, a GET's or Get fresh data's: the elements
@@ -5317,6 +5329,42 @@ function _aeGetFresh() {
   });
 }
 
+// ── Every active satellite ──
+// A layer of its own (almanac-sats.js), fetched and started on the button's first press, or at the view's open when it was
+// left on; the choice is kept (SK.ALM_SATS_ALL). Nothing of it is on the page's first load, nor in the view's first frame.
+var _aeSatsAllPromise = null;
+function _aeSatsAllOn() { return typeof _asSet === 'function' ? _as.on : _aeSatsAllKept(); }
+function _aeSatsAllKept() { try { return localStorage.getItem(SK.ALM_SATS_ALL) === '1'; } catch (e) { return false; } }
+function _aeSatsAllLoad() {
+  if (typeof _asSet === 'function') return Promise.resolve();
+  if (!_aeSatsAllPromise) {
+    _aeSatsAllPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = AE_SATS_JS;
+      s.onload = resolve;
+      s.onerror = function () { _aeSatsAllPromise = null; reject(new Error('sats')); };
+      document.head.appendChild(s);
+    });
+  }
+  return _aeSatsAllPromise;
+}
+function _aeSatsAllSet(on) {
+  _aeSatsAllLoad().then(function () { _asSet(on); _aeMarkToggles(); }).catch(function () {});
+}
+// At the view's open, once its satellites are in: the layer comes back if it was left on.
+function _aeSatsAllBoot() {
+  if (_aeSatsAllKept()) {
+    _aeSatsAllLoad().then(function () { _asSet(true); _aeMarkToggles(); }).catch(function () {});
+  }
+}
+// The live sky (almanac-sky.js _skyPaintActors): the passes over the place, once the layer is on; it is brought up from
+// here when the sky is shown and the choice was kept.
+function _aeSatsAllSky(ctx, s) {
+  if (typeof _asSkyPaint === 'function') { _asSkyPaint(ctx, s); return; }
+  if (!_aeSatsAllKept() || _aeSatsAllPromise) return;
+  _aeSatsAllLoad().then(function () { _asSet(true); _skyKickNow(); }).catch(function () {});
+}
+
 // ── The gear: "Satellite data from the internet" ──
 // Everyone sees the choice in force; an admin may change it, unless the
 // environment has (ZIMI_SATELLITE_UPDATES, or ZIMI_OFFLINE forcing Never),
@@ -5353,7 +5401,7 @@ function _aeToggleHtml(id, key, svg) {
 var AE_LM_HAS = { moon: 1, mars: 1, venus: 1, titan: 1, mercury: 1, earth: 1, io: 1, europa: 1, ganymede: 1, callisto: 1, pluto: 1, ceres: 1 };
 function _aeMarkToggles() {
   var wide = _aeWideView() || !!_ae.spin;
-  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false]].forEach(function (t) {
+  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false], ['ae-sats-btn', _aeSatsAllOn(), _ae.target !== 'earth']].forEach(function (t) {
     var b = _aeById(t[0]), hide = wide || t[2];
     if (!b) return;
     if (b.hidden !== hide) b.hidden = hide;
@@ -5889,6 +5937,7 @@ function _aeUpdate(ms) {
   _aeUpdateSpots(S, ms);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
+  if (typeof _asFrame === 'function') _asFrame(ms, sc);   // every active satellite (almanac-sats.js)
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
   // 17 km/s), so the camera is placed on where it is now, not where it was (their sizes on screen use the last frame's
   // camera, which is near enough).
@@ -6053,7 +6102,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-sats-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -6357,6 +6406,7 @@ function _aeTap(x, y) {
     if (d < bestD) { bestD = d; best = p; }
   }
   // The ISS: go to it, as Go to does (close up, following it round).
+  if (!best && typeof _asTap === 'function' && _asTap(x, y)) return;   // a satellite of the all-satellites layer
   if (best && _ae.sats.list[best.idx].iss && _ae.issBasis) { _aePreset('iss'); return; }
   if (best) {
     _ae.selected = { norad: _ae.sats.list[best.idx].omm.NORAD_CAT_ID, tapMs: _aeDisplayMs() };
@@ -6369,7 +6419,12 @@ function _aeTap(x, y) {
   // the one already in view falls through (it puts a satellite's card away).
   var body = _aeBodyAt(x, y);
   if (body && body !== _ae.target) { _aePreset(body); return; }
-  if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); return; }
+  if (_ae.selected || (typeof _asHasSel === 'function' && _asHasSel())) {
+    _ae.selected = null;
+    if (typeof _asSelect === 'function') _asSelect(-1);
+    _aeRenderCard(); _ae.dirty = true; _aeKick();
+    return;
+  }
   // The one in view, its model or its disc, tapped: its card (put away with ×, or by flying elsewhere).
   if (body && _ae.arrived !== body) _aeArrive(body);
 }
@@ -6438,6 +6493,7 @@ function _aeRenderCardBody() {
   var s = _aeSelectedSat();
   if (!s && _ae.place) { _aeRenderPlaceCard(card); return; }
   if (!s && _ae.lm) { _aeRenderLmCard(card); return; }
+  if (!s && typeof _asRenderCard === 'function' && _asRenderCard(card)) return;   // a satellite of the all-satellites layer
   if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
   _ae.lm = null;
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
@@ -6457,7 +6513,7 @@ function _aeRenderCardBody() {
 
 function _aeUpdateCard(ms) {
   var s = _aeSelectedSat();
-  if (!s) return;
+  if (!s) { if (typeof _asUpdateCard === 'function') _asUpdateCard(ms); return; }
   var body = _aeById('ae-card-body');
   if (!body) return;
   var eqeq = _ae.scene ? _aeEqEq(_ae.scene) : 0;
@@ -6986,6 +7042,7 @@ function _aeBindControls() {
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-lm-btn').onclick = function () { _aeLmSetLayer(!_aeLmLayerOn()); };
   _aeById('ae-orbits-btn').onclick = function () { _aeSetOrbits(!_aeOrbitsOn()); };
+  _aeById('ae-sats-btn').onclick = function () { _aeSatsAllSet(!_aeSatsAllOn()); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
@@ -7525,6 +7582,7 @@ function _aeDisposeGl() {
   _ae.ready = false;
   _ae.scene = null;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  if (typeof _asGlGone === 'function') _asGlGone();
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
   ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-place', 'ae-lbl-shadow'].forEach(function (id) {
@@ -7568,6 +7626,7 @@ function _aeRelease() {
   _aeStepped = false;
   _aeFinishClose();
   _aeDisposeGl();
+  if (typeof _asRelease === 'function') _asRelease();
 }
 
 window.openAlmanacEarth = openAlmanacEarth;

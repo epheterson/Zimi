@@ -115,7 +115,11 @@ const PLAIN_ROWS = {
   light_au: 'a sum of two things (light, the AU), not one article',
   zero_c: 'a conversion of one scale into another',
   clock_stops: 'the clock slider\'s own stops, not a named thing',
-  clock_span: 'how far the clock travels, a limit of this page'
+  clock_span: 'how far the clock travels, a limit of this page',
+  sat_age_fresh: 'a limit this layer chose, not a named thing',
+  sat_age_gone: 'a limit this layer chose, not a named thing',
+  sat_pass_el: 'a limit this layer chose, not a named thing',
+  sat_albedo: 'a reflectance this estimate assumes, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

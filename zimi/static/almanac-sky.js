@@ -2173,6 +2173,7 @@ function _skyPaintActors(ctx, s, ts) {
       s.bodies.push({ type: 'iss', x: x / s.dpr, y: y / s.dpr, r: 3, alt: iss.alt, az: iss.az, km: iss.km });
     }
   }
+  if (typeof _aeSatsAllSky === 'function') _aeSatsAllSky(ctx, s);   // the all-satellites layer's passes and the GPS overhead (almanac-sats.js)
 }
 // Spawning: each timer adds one and sets the next; nothing while unseen.
 function _skySpawnPlane() { _skySpawn('plane'); }

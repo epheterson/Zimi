@@ -2,7 +2,8 @@
 """Refresh the orbital elements that ship with Zimi, before a release.
 
     pip install sgp4          # Vallado's SGP4, the reference implementation
-    python3 scripts/build_satellite_snapshot.py
+    python3 scripts/build_satellite_snapshot.py          # GPS + ISS, and their SGP4 reference
+    python3 scripts/build_satellite_snapshot.py --all    # every active satellite (satcatalog.py)
 
 Writes two committed files:
 
@@ -71,7 +72,21 @@ def reference_positions(payload):
     return out
 
 
+def build_all():
+    """The catalogue of every active satellite (zimi/satcatalog.py), written beside the GPS one: one GP download and
+    SATCAT's CSV, so run it once a release and not again within CelesTrak's two-hour update."""
+    from zimi import satcatalog
+
+    payload = satcatalog.fetch_live()
+    satcatalog.write_snapshot(satcatalog.SNAPSHOT_PATH, payload)
+    size = os.path.getsize(satcatalog.SNAPSHOT_PATH)
+    print(f"{satcatalog.SNAPSHOT_PATH}: {len(payload['sats'])} satellites, {size // 1024} KB, fetched {payload['fetched']}")
+
+
 def main():
+    if "--all" in sys.argv[1:]:
+        build_all()
+        return
     # --reference-only: recompute the reference for the snapshot already in
     # the tree, without asking CelesTrak again.
     if "--reference-only" in sys.argv[1:]:
