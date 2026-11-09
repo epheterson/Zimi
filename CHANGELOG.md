@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Home no longer downloads the Moon's 730 KB map until the Almanac is opened (a cold Home is 770 KB instead of 1.5 MB); the NAS deploy no longer carries old built ZIMs and the games' source into the image.
+- Home no longer downloads the Moon's 730 KB map until the Almanac is opened (a cold Home is 770 KB instead of 1.5 MB).
 - Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
 ### Added
 
