@@ -18,7 +18,10 @@ var AE_STAND_FRAME_MS = 1500;              // the sky is worked out again when t
 var AE_STAND_HUD_MS = 400;
 var AE_STAND_SUN_FACE_DEG = -6;            // the view faces the Sun when it is above this
 var AE_STAND_GROUND_AMBIENT_SHARE = 0.8;   // the ground takes this much of the sky's light at its brightest
-var AE_STAND_AMBIENT_GAIN = 3;             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
+var AE_STAND_NEAR_SUN_SHARE = 0.5;        // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
+var AE_STAND_NEAR_SUN_ABOVE_DEG = 8, AE_STAND_NEAR_SUN_MIN_DEG = 6;
+var AE_STAND_AMBIENT_GAIN = 1.6;
+var AE_STAND_BOUNCE = 0.03;                // an airless ground in shadow, over the Sun-lit ground's radiance (alb x this): light from the terrain round it             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
 var AE_STAND_HORIZON_GAIN = 1.8;           // the horizon's sky over the zenith's
 var AE_STAND_MOON_NAME = 'moon';
 var AE_STAND_SUN_KM = AE_SUN_RADIUS_KM;
@@ -38,7 +41,10 @@ function _aeStandStart(key, lat, lon) {
   if (_ae && _ae.stand) _aeStandDrop();
   return _aeStandViewUp().then(function (up) {
     if (!up) return false;
-    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, token: {} };
+    // A body with no place for this date (a dwarf planet whose table does not reach it) has no sky to stand under.
+    var frame = _aeStBodyNow(key);
+    if (!frame) return false;
+    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null };
     _ae.pick = null; _ae.lm = null; _ae.place = null; _ae.selected = null;
     _aeRenderCard();
     var body = AE_STAND_BODIES[key];
@@ -47,8 +53,7 @@ function _aeStandStart(key, lat, lon) {
     var minDist = AE_TARGETS[key].min, surface = AE_TARGETS[key].surface;
     pend.alt0 = Math.max(30, (minDist - surface) * AE_EARTH_RADIUS_KM);
     _aeStandBuild(pend, body);
-    var frame = _aeStBodyNow(key);
-    if (frame) _aeFlyTo(key, minDist, _aeAzElOf(_aeStToScene(frame, _aeUnitVec(lat, lon))));
+    _aeFlyTo(key, minDist, _aeAzElOf(_aeStToScene(frame, _aeUnitVec(lat, lon))));
     _ae.preset = null;
     _aeMarkViews();
     _aeKick();
@@ -200,7 +205,7 @@ function _aeStandGl(st, pend) {
     uR: { value: R }, uRc: { value: R + hG }, uH0: { value: hG }, uTop: { value: air ? air.top : 1 }, uAtmo: { value: air ? 1 : 0 },
     uRay: { value: air ? air.ray : [0, 0, 0] }, uHR: { value: air ? air.hR : 8 },
     uMieExt: { value: air ? air.mie.ext : [0, 0, 0] }, uMieAlb: { value: air ? air.mie.alb : [0, 0, 0] }, uMieG: { value: air ? air.mie.g : [0, 0, 0] }, uHM: { value: air ? air.mie.h : 1.2 },
-    uOzone: { value: air ? air.ozone : [0, 0, 0] }, uMs: { value: air ? air.ms : 0 },
+    uOzone: { value: air ? air.ozone : [0, 0, 0] }, uMs: { value: air ? air.ms : 0 }, uGainS: { value: air && air.gain ? air.gain : 1 },
     uSunDir: { value: [0, 0, 1] }, uSunE: { value: [1, 1, 1] }, uK: { value: 1 }
   };
   function mat(vert, frag, uni, opts) {
@@ -218,7 +223,7 @@ function _aeStandGl(st, pend) {
   var sky = new THREE.Mesh(tri, mat(AE_ST_SKY_VERT, AE_ST_SKY_FRAG, skyUni, { depthTest: false, depthWrite: false }));
   sky.frustumCulled = false; sky.renderOrder = -3;
   scene.add(sky);
-  st.sky = skyUni;
+  st.sky = skyUni; st.skyMesh = sky;
   // The stars: the Bright Star Catalogue as it arrives (the page's 518 first).
   st.starUni = { uRot: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, uLim: { value: 7 }, uExtinct: { value: 0 }, uDpr: { value: S.renderer.getPixelRatio() }, uStarScale: { value: 1 } };
   st.starMat = mat(AE_ST_STARS_VERT, AE_ST_STARS_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -247,7 +252,7 @@ function _aeStandGl(st, pend) {
   g.setIndex(new THREE.BufferAttribute(fin.idx, 1));
   var gu = Object.assign({
     uCam: { value: [0, 0, 0] }, uPixAng: { value: 0.001 }, uTime: { value: 0 },
-    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: 1 },
+    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 }, uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
     uLommel: { value: air || d ? 0 : 1 }, uRough: { value: b.fbm.amp > 100 ? 1.3 : 1 }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
@@ -263,6 +268,10 @@ function _aeStandGl(st, pend) {
   if (S.renderer.compileAsync) S.renderer.compileAsync(scene, camera).catch(function () {});
 }
 // Fallback colour where a body has no map (grey ice, dust), and how rocky its ground is (0..1, the share of ground with rocks).
+var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), read as grey
+// What the ground's colour map is multiplied by (linear): the Mars map is a salmon grey where the ground is rust, Titan's is grey
+// under orange light and a darker ground than it.
+var AE_STAND_TINT = { mars: [1.55, 0.92, 0.55], titan: [4.2, 3.0, 1.6] };
 var AE_STAND_BASE = { ceres: [0.5, 0.48, 0.45] };
 var AE_STAND_ROCK = { earth: 0.12, moon: 0.28, mercury: 0.28, venus: 0.4, mars: 0.4, io: 0.2, europa: 0.08, ganymede: 0.22, callisto: 0.3, titan: 0.3, pluto: 0.15 };
 function _aeStandStars(st, list) {
@@ -363,12 +372,18 @@ function _aeStFrame(st, ms) {
   fr.light2 = light2;
   return fr;
 }
+// The sky in the Sun's own bearing, a little above it (the exposure is not set by the dark zenith when the Sun is low).
+function _aeStNearSun(a, R, hG, fr) {
+  var e = Math.max(_aeRad(fr.sunAlt + AE_STAND_NEAR_SUN_ABOVE_DEG), _aeRad(AE_STAND_NEAR_SUN_MIN_DEG)), c = Math.cos(e), az = fr.sunAz;
+  return _aeStInscatter(a, R, hG, 0, [c * Math.sin(az), c * Math.cos(az), Math.sin(e)], fr.sun, null);
+}
 // What the air and the light make of that instant: the sky overhead, the exposure, how faint a star shows.
 function _aeStPhoto(st, fr) {
   var a = st.atmo, d = a && a.diffuse, R = st.b.km, hG = st.h0 / 1000, S = fr.S, mu = fr.sunMu;
   var p = { zen: [0, 0, 0], hor: [0, 0, 0], amb: [0, 0, 0], sunE: [S, S, S], diffSky: [0, 0, 0], trans: null, lim: AE_ST_LM_MAX, extinct: 0, mw: 1 };
   var e2 = fr.light2 ? fr.light2.flux : 0;
-  var directG = 0;
+  var directG = S * Math.max(mu, 0);   // airless: all of the Sun
+  if (!a) p.amb = [S * AE_STAND_BOUNCE, S * AE_STAND_BOUNCE, S * AE_STAND_BOUNCE];   // and what the ground's own surroundings send back
   if (d) {
     var day = 0.03 + 0.97 * _smoothstep(-0.2, 0.45, mu), lum = d.frac * S / Math.PI * 0.9 * day;
     p.diffSky = [d.sky[0] * lum, d.sky[1] * lum, d.sky[2] * lum];
@@ -380,6 +395,7 @@ function _aeStPhoto(st, fr) {
   } else if (a) {
     var zen = _aeStZenith(a, R, hG, mu).map(function (x) { return x * S; }), od = _aeStOdUp(a, R, hG, mu);
     p.zen = zen;
+    p.near = _aeStNearSun(a, R, hG, fr).map(function (x) { return x * S; });
     p.hor = zen.map(function (x) { return x * AE_STAND_HORIZON_GAIN; });
     p.amb = zen.map(function (x) { return x * AE_STAND_AMBIENT_GAIN; });
     directG = od ? S * Math.max(mu, 0) * Math.exp(-Math.min(od[0], od[1], od[2])) : 0;
@@ -389,7 +405,7 @@ function _aeStPhoto(st, fr) {
   }
   // Light of other bodies as a second sun for the ground.
   var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
-    1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_ST_NIGHT_FLOOR);
+    1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_STAND_NEAR_SUN_SHARE * Math.max(p.near ? p.near[0] : 0, p.near ? p.near[1] : 0, p.near ? p.near[2] : 0), AE_ST_NIGHT_FLOOR);
   p.k = AE_ST_EXPOSURE_TARGET / ref;
   p.e2 = e2;
   p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
@@ -407,7 +423,8 @@ function _aeStMat3(rows) {   // three rows -> the column-major array a mat3 unif
 
 // ── Drawing ──
 function _aeStandView(st, now) {
-  var u = _aeSmoother(_aeClamp((now - st.t0) / (st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS), 0, 1));
+  var span = st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS;
+  var u = _aeReduceMotion() ? 1 : _aeSmoother(_aeClamp((now - st.t0) / span, 0, 1));   // reduced motion: there at once
   var lo = Math.log(AE_STAND_EYE_M / 1000), hi = Math.log(st.alt0), pitchLook = st.userPitch + _aeRad(AE_STAND_PITCH_DEG), down = -_aeRad(AE_STAND_PITCH_MAX_DEG);
   if (st.mode === 'descend') {
     st.altKm = Math.exp(hi + (lo - hi) * u);
@@ -530,9 +547,9 @@ var AE_STAND_CSS = [
   '.ae-standing .ae-canvas{cursor:grab}',
   '.ae-stand-hud{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;gap:10px;padding:12px 16px 24px;background:linear-gradient(rgba(0,0,0,.5),transparent);pointer-events:none;z-index:2}',
   '.ae-stand-hud>*{pointer-events:auto}',
-  '.ae-stand-text{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:6px;font-size:13px;line-height:1.3;color:var(--text);text-shadow:0 1px 3px #000;pointer-events:none}',
+  '.ae-stand-text{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:6px;font-size:13px;line-height:1.3;color:#fff;text-shadow:0 0 4px #000,0 1px 3px #000;pointer-events:none}',
   '.ae-stand-text b{font-weight:600}',
-  '.ae-stand-text span{color:var(--text2)}',
+  '.ae-stand-text span{color:rgba(255,255,255,.88)}',
   '.ae-stand-hud .ae-tool-svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
   '.ae-pick{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid ' + AE_AMBER_HEX + ';border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.6);pointer-events:none;will-change:transform}',
   '.ae-pick[hidden]{display:none}'

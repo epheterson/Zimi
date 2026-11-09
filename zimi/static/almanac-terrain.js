@@ -61,9 +61,43 @@ function _aeTerrainLoad(key) {
   if (!AE_STAND_BODIES[key] || !AE_STAND_BODIES[key].terrain || typeof fetch !== 'function') { _aeTerrainSet(key, null); return (t.promise = Promise.resolve(t)); }
   t.state = 'loading';
   t.promise = fetch(AE_TERRAIN_URL + key + '-v1.bin').then(function (r) { if (!r.ok) throw new Error('terrain'); return r.arrayBuffer(); })
-    .then(function (buf) { _aeTerrainSet(key, _aeTerrainParse(buf)); return t; })
+    .then(function (buf) { _aeTerrainSet(key, _aeTerrainParse(buf)); return key === 'earth' ? _aeTerrainLoadWater(t) : t; })
     .catch(function () { t.promise = null; _aeTerrainSet(key, null); return t; });   // asked for again next time
   return t.promise;
+}
+
+// ── Land and sea on the Earth ──
+// The shipped map is 156 km a pixel: a coastal cell averages land with the sea and reads below zero. Where the water is
+// comes from the Earth's own picture instead (the day map: the sea is blue there), 1024 x 512, so a coast stands where the
+// coast is.
+var AE_TERRAIN_WATER_W = 1024, AE_TERRAIN_WATER_H = 512, AE_TERRAIN_WATER_BLUE = 12, AE_TERRAIN_COAST_M = 3;
+function _aeTerrainIsWater(r, g, b) { return b > r + AE_TERRAIN_WATER_BLUE && b >= g - 4; }
+// rgba: the picture's pixels, rows from the north.
+function _aeTerrainWaterMask(rgba, w, h) {
+  var data = new Uint8Array(w * h);
+  for (var i = 0; i < data.length; i++) data[i] = _aeTerrainIsWater(rgba[4 * i], rgba[4 * i + 1], rgba[4 * i + 2]) ? 1 : 0;
+  return { w: w, h: h, data: data };
+}
+// How wet a place is, 0 (land) to 1 (sea): bilinear between the pixels' centres.
+function _aeTerrainWaterAt(m, lat, lon) {
+  var x = (lon + 180) / 360 * m.w - 0.5, y = (90 - lat) / 180 * m.h - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  var ya = Math.min(m.h - 1, Math.max(0, y0)), yb = Math.min(m.h - 1, Math.max(0, y0 + 1)), xa = ((x0 % m.w) + m.w) % m.w, xb = (xa + 1) % m.w, d = m.data;
+  return (d[ya * m.w + xa] * (1 - fx) + d[ya * m.w + xb] * fx) * (1 - fy) + (d[yb * m.w + xa] * (1 - fx) + d[yb * m.w + xb] * fx) * fy;
+}
+function _aeTerrainLoadWater(t) {
+  var url = typeof AE_TEX_DAY !== 'undefined' ? AE_TEX_DAY : '/static/earth/earth-day-v1.webp';
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return Promise.resolve(t);
+  return fetch(url).then(function (r) { if (!r.ok) throw new Error('map'); return r.blob(); })
+    .then(function (blob) { return createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }); })
+    .then(function (bmp) {
+      var cv = document.createElement('canvas');
+      cv.width = AE_TERRAIN_WATER_W; cv.height = AE_TERRAIN_WATER_H;
+      var g = cv.getContext('2d', { willReadFrequently: true });
+      g.drawImage(bmp, 0, 0, cv.width, cv.height);
+      if (bmp.close) bmp.close();
+      t.water = _aeTerrainWaterMask(g.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height);
+      return t;
+    }).catch(function () { return t; });   // without it the shipped map's sign decides
 }
 
 // Metres at a place from the shipped map: bilinear, longitude wrapping, the rows clamped at the poles.
@@ -154,7 +188,7 @@ function _aeFbmHeight(u, km, f, lodKm, amp) {
 // Craters, one octave of sizes at a time: the octave's radius r gets a grid of cells 7 r on a side, each holding a crater
 // with the body's probability, its centre in the middle of the cell, so only the point's own cell can reach it (a
 // crater's rim ends 1.3 radii out, which is under a fifth of the cell). A bowl, a raised rim, a soft apron.
-var AE_CRATER_CELL = 7, AE_CRATER_REACH = 1.3, AE_CRATER_RIM = 0.35, AE_CRATER_RIM_W = 0.22, AE_CRATER_MIN_KM = 0.004;
+var AE_CRATER_CELL = 7, AE_CRATER_REACH = 1.5, AE_CRATER_RIM = 0.3, AE_CRATER_RIM_W = 0.3, AE_CRATER_MIN_KM = 0.004;
 function _aeCraterHeight(u, km, c, lodKm) {
   var px = u[0] * km, py = u[1] * km, pz = u[2] * km, sum = 0;
   for (var k = 0, r = c.rMax; r >= AE_CRATER_MIN_KM && r * 2 >= lodKm; k++, r *= 0.5) {
@@ -189,7 +223,11 @@ function _aeTerrainHeight(key, lat, lon, lodKm) {
     var hd = t.hd ? _aeTerrainHdCell(t, lat, lon) : null;
     base = hd === null ? _aeTerrainCoarse(t, lat, lon) : hd;
   }
-  if (b.sea && ready && base < 0) return { h: 0, sea: true };
+  if (b.sea && ready) {
+    var wet = t.water ? _aeTerrainWaterAt(t.water, lat, lon) > 0.5 : base < 0;
+    if (wet) return { h: 0, sea: true };
+    if (t.water && base < AE_TERRAIN_COAST_M) base = AE_TERRAIN_COAST_M;
+  }
   var u = _aeUnitVec(lat, lon), amp = b.fbm.amp * (b.relief && ready ? _aeTerrainRelief(t, lat, lon) : 1);
   var h = base + _aeFbmHeight(u, b.km, b.fbm, lodKm || 0, amp) + (b.craters ? _aeCraterHeight(u, b.km, b.craters, lodKm || 0) : 0);
   if (b.sea && h < 0) h = 0;
