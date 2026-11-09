@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
+
 ### Fixed
 
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.

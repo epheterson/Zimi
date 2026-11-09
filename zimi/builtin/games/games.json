@@ -2337,7 +2337,7 @@
   },
   "region": "Worldwide/Modern",
   "players": "2",
-  "length": "20 min",
+  "length": "30 min",
   "kind": "dice",
   "computer": true
  },
@@ -2354,6 +2354,23 @@
   },
   "region": "Worldwide/Modern",
   "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q302368",
+  "wiki": "Twenty questions",
+  "path": "whoisit.html",
+  "title": "Who Is It",
+  "blurb": "Ask questions to find Zimi’s face",
+  "why": "A guessing game of yes-or-no questions, like Twenty Questions with pictures. A good question rules out about half the faces.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
   "length": "10 min",
   "kind": "kids",
   "computer": true

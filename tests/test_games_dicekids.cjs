@@ -291,6 +291,88 @@ const check = (ok, label) => {
   check(shortest >= 3 && total / games > 8 && total / games < 20, 'color trail: a race takes about ' + (total / games).toFixed(1) + ' draws (' + shortest + ' to ' + longest + ')');
 }
 
+// ── Who Is It ───────────────────────────────────────────────────────────────
+{
+  const W = load(['whoisit-art.js', 'whoisit.js']);
+  const E = W.WhoIsItEngine, A = W.WhoIsItArt, u = W.ZimiUtil;
+  const ids = E.FEATURES.map(f => f.id);
+  check(E.FACES === 24 && ids.length === 15 && new Set(ids).size === 15, 'who is it: twenty-four faces and fifteen questions');
+
+  let allDifferent = true, allUseful = true, pairsApart = true;
+  for (let s = 1; s <= 40; s++) {
+    const faces = E.makeFaces(u.mulberry32(s * 101));
+    if (faces.length !== 24 || new Set(faces.map(E.signature)).size !== 24) allDifferent = false;
+    ids.forEach(id => { const n = faces.filter(f => E.has(f, id)).length; if (n < 3 || 24 - n < 3) allUseful = false; });
+    for (let i = 0; i < 24 && pairsApart; i++) for (let j = i + 1; j < 24; j++) if (!ids.some(id => E.has(faces[i], id) !== E.has(faces[j], id))) { pairsApart = false; break; }
+  }
+  check(allDifferent, 'who is it: no two faces in a set are alike (40 sets)');
+  check(allUseful, 'who is it: every question tells at least three faces from the rest in every set');
+  check(pairsApart, 'who is it: some question tells any two faces apart');
+  check(JSON.stringify(E.makeFaces(u.mulberry32(9))) === JSON.stringify(E.makeFaces(u.mulberry32(9))), 'who is it: a seed gives the same faces');
+
+  // The drawings: every face and icon is well-formed svg with the parts it should have.
+  const g0 = E.createGame(5, 'hard');
+  const svgs = g0.faces.map(f => A.faceSvg(f, 40)).concat(ids.map(id => A.iconSvg(id, 34)));
+  const balanced = svgs.every(s => (s.match(/<svg/g) || []).length === 1 && (s.match(/<\/svg>/g) || []).length === 1 && !/undefined|NaN/.test(s));
+  check(balanced, 'who is it: the faces and the question icons draw cleanly (' + svgs.length + ' drawings)');
+  const glassesFace = A.faceSvg({ skin: 0, eyes: 0, hair: 'brown', style: 'short', hat: false, glasses: true }), plain = A.faceSvg({ skin: 0, eyes: 0, hair: 'brown', style: 'short', hat: false });
+  check(glassesFace.length > plain.length && A.faceSvg({ skin: 0, eyes: 0, hair: 'red', style: 'bald', hat: 2 }).indexOf('#3d9a4a') > 0, 'who is it: a feature adds its drawing');
+
+  // A turn: an answer flips down the faces it rules out, once per question; turns alternate.
+  const g = E.createGame(77, 'hard');
+  check(g.turn === 0 && g.cands[0].length === 24 && g.cands[1].length === 24 && g.secret.length === 2, 'who is it: a new game starts with every face in play');
+  check(E.ask(g, 1, 'hat') === null, 'who is it: Zimi cannot ask on your turn');
+  const target = g.faces[g.secret[0]], ans = E.ask(g, 0, 'glasses');
+  check(ans === E.has(target, 'glasses') && g.cands[0].every(i => E.has(g.faces[i], 'glasses') === ans) && g.cands[0].indexOf(g.secret[0]) >= 0, 'who is it: the answer keeps the faces that agree, and the secret is one of them');
+  check(g.cands[0].length === g.faces.filter(f => E.has(f, 'glasses') === ans).length && g.turn === 1 && g.cands[1].length === 24, 'who is it: it flips down every face that does not agree and passes the turn');
+  check(E.ask(g, 1, 'hat') !== null && g.turn === 0, 'who is it: Zimi asks on its turn');
+  check(E.ask(g, 0, 'glasses') === null, 'who is it: the same question is not asked twice');
+  const wrong = g.cands[0].filter(i => i !== g.secret[0])[0];
+  check(E.guess(g, 1, 0) === null && E.guess(g, 0, g.faces.length + 3) === null, 'who is it: a guess out of turn or off the table is refused');
+  check(E.guess(g, 0, wrong) === false && g.cands[0].indexOf(wrong) < 0 && g.turn === 1 && !g.over, 'who is it: a wrong guess flips that face down and ends the turn');
+  E.ask(g, 1, 'long');
+  check(E.guess(g, 0, wrong) === null, 'who is it: a face that is flipped down cannot be guessed');
+  check(E.guess(g, 0, g.secret[0]) === true && g.over && g.winner === 0, 'who is it: the right guess wins');
+
+  // Zimi: it never asks a question that cannot tell the faces left apart, and it finds a face.
+  function solo(level, seed) {
+    const q = E.createGame(seed, level); q.turn = 1; let asks = 0, n = 0;
+    while (!q.over && n++ < 60) {
+      const m = E.zimiMove(q, 1);
+      if (m.kind === 'ask') {
+        const d = E.divide(q, q.cands[1], m.id);
+        if (!(d.yes > 0 && d.no > 0) || q.asked[1].indexOf(m.id) >= 0) return { bad: true };
+        E.ask(q, 1, m.id); asks++; q.turn = 1;
+      } else { if (E.guess(q, 1, m.index) === false) asks += 1; q.turn = 1; }
+    }
+    return { over: q.over, asks: asks };
+  }
+  let hardAsks = 0, easyAsks = 0, runs = 300, fine = true;
+  for (let i = 0; i < runs; i++) {
+    const h = solo('hard', 500 + i), e = solo('easy', 500 + i);
+    if (h.bad || e.bad || !h.over || !e.over) fine = false;
+    hardAsks += h.asks; easyAsks += e.asks;
+  }
+  check(fine, 'who is it: Zimi only asks questions that divide the faces left, and always finds the face');
+  check(hardAsks / runs < easyAsks / runs - 0.4 && hardAsks / runs < 7.5, 'who is it: hard needs fewer questions than easy (' + (hardAsks / runs).toFixed(2) + ' against ' + (easyAsks / runs).toFixed(2) + ')');
+
+  // A whole game between two sides that play like Zimi at its best: the one that moves first has the edge, neither is ever stuck.
+  let firstWins = 0, matches = 400;
+  for (let i = 0; i < matches; i++) {
+    const q = E.createGame(900 + i, 'hard'); let n = 0;
+    while (!q.over && n++ < 120) {
+      const m = E.zimiMove(q, q.turn);
+      if (m.kind === 'ask') E.ask(q, q.turn, m.id); else E.guess(q, q.turn, m.index);
+    }
+    if (!q.over) { check(false, 'who is it: every match ends'); break; }
+    if (q.winner === 0) firstWins++;
+  }
+  check(firstWins > matches * 0.4 && firstWins < matches * 0.7, 'who is it: two sides playing well each win often, the first a little more (' + firstWins + ' of ' + matches + ')');
+  const kept = E.createGame(31, 'hard'); E.ask(kept, 0, 'beard');
+  const back = E.restore(E.snapshot(kept));
+  check(JSON.stringify(back.cands) === JSON.stringify(kept.cands) && back.turn === 1 && back.rng() === kept.rng() && back.faces.length === 24, 'who is it: a saved game comes back with its faces, its turn and its dice');
+}
+
 // END
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('all passed');
