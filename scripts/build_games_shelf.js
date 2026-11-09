@@ -125,6 +125,39 @@ const TILES = {
     out += back(120, 128, 30) + face(cid('7H'), 158, 128, 30) +
       '<circle cx="270" cy="150" r="16" fill="#d97706"/><text x="270" y="156" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">x5</text>';
     return tile(FELT, out);
+  },
+  // The solitaire variants (solkit.js): each tile shows what is particular to the game.
+  yukon: () => tile(FELT, [130, 172, 214, 256].map((x) => slot(x, 14, 36)).join('') +
+    [[30, ['7S', '6H', '5C']], [100, ['QD', 'JC', 'TD']], [170, ['4H', '3S']], [240, ['9C']]].map(([x, col]) =>
+      back(x, 66, 40) + col.map((c, i) => face(cid(c), x, 80 + i * 20, 40)).join('')).join('')),
+  fortythieves: () => tile(FELT_DEEP, back(10, 12, 26) + face(cid('7D'), 44, 12, 26) + [0, 1, 2, 3, 4, 5, 6, 7].map((i) => slot(86 + 29 * i, 12, 26)).join('') +
+    [['9S', '8S', '7S'], ['KD', 'QD'], ['5C', '4C', '3C'], ['JH', 'TH'], ['8D'], ['2S', 'AS'], ['6H', '5H', '4H'], ['QC'], ['9D', '8D'], ['3H']].map((col, k) =>
+      col.map((c, i) => face(cid(c), 10 + 30.5 * k, 68 + i * 17, 26)).join('')).join('')),
+  canfield: () => tile(FELT, back(14, 14, 34) + face(cid('9S'), 56, 14, 34) + face(cid('7H'), 170, 14, 34) + [208, 246, 284].map((x) => slot(x, 14, 34)).join('') +
+    [0, 1, 2, 3].map((i) => back(14, 76 + 6 * i, 40)).join('') + face(cid('4D'), 14, 100, 40) +
+    [[170, ['JS', 'TH']], [208, ['6C']], [246, ['KD', 'QC', 'JD']], [284, ['2H']]].map(([x, col]) => col.map((c, i) => face(cid(c), x, 74 + i * 20, 34)).join('')).join('')),
+  scorpion: () => tile(FELT_DEEP, [0, 1, 2].map((i) => back(14 + 7 * i, 30 + 6 * i, 40)).join('') +
+    ['KS', 'QS', 'JS', 'TS', '9S'].map((c, i) => face(cid(c), 108, 18 + 20 * i, 52)).join('') +
+    [[190, ['6H', '5H']], [240, ['8D', '7C']], [280, ['3S']]].map(([x, col]) => back(x, 22, 34) + col.map((c, i) => face(cid(c), x, 44 + i * 20, 34)).join('')).join('')),
+  acesup: () => tile(FELT_DEEP, ['KC', 'QD', '7H', '5S'].map((c, i) => face(cid(c), 22 + 76 * i, 24, 54)).join('') +
+    ['AC', 'AD', 'AH', 'AS'].map((c, i) => face(cid(c), 22 + 76 * i, 56, 54)).join('')),
+  accordion: () => tile(FELT, ['5H', '5S', 'KS', '9S', '9D', '2D', '2C', 'JC', 'QC'].map((c, k) => face(cid(c), 14 + 30 * k, 40, 44)).join('') +
+    ['3D', '3H', '8H', '8C'].map((c, k) => face(cid(c), 62 + 46 * k, 110, 40)).join('') +
+    '<path d="M64 102Q90 92 118 102" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="3"/>'),
+  calculation: () => tile(FELT_DEEP, ['AS', '2H', '3C', '4D'].map((c, k) => face(cid(c), 22 + 72 * k, 18, 50)).join('') +
+    [1, 2, 3, 4].map((n, k) => pill(22 + 72 * k, 96, 50, '+' + n)).join('') +
+    ['7S', '9D', 'KH'].map((c, k) => face(cid(c), 30 + 72 * k, 128, 36)).join('') + back(246, 128, 36)),
+  beleaguered: () => tile(FELT_DEEP, ['AS', 'AH', 'AD', 'AC'].map((c, k) => face(cid(c), 96 + 32 * k, 10, 28)).join('') +
+    [['KS', 'QH', 'JC'], ['9D', '8S'], ['6H', '5C', '4D'], ['TS', '9H'], ['3C', '2S'], ['KD', 'QC', 'JH'], ['7S', '6D'], ['8C', '7H', '6S']].map((col, k) =>
+      col.map((c, i) => face(cid(c), 12 + 37 * k, 66 + i * 20, 32)).join('')).join('')),
+  eightoff: () => tile(FELT, [0, 1, 2, 3, 4, 5, 6, 7].map((k) => (k < 3 ? face(cid(['5D', 'KC', '2H'][k]), 12 + 38 * k, 12, 32) : slot(12 + 38 * k, 12, 32))).join('') +
+    [['9S', '8S', '7S'], ['QH', 'JH'], ['4C', '3C', '2C'], ['TD', '9D'], ['6H', '5H'], ['KS', 'QS', 'JS'], ['8C', '7C'], ['3D']].map((col, k) =>
+      col.map((c, i) => face(cid(c), 12 + 38 * k, 78 + i * 20, 32)).join('')).join('')),
+  montecarlo: () => {
+    const grid = [['7S', '2D', 'JC', '9H', 'AC'], ['4H', '7H', 'QD', '3S', '6D'], ['KC', '5S', '8D', 'TH', '2C']];
+    let out = '';
+    grid.forEach((row, r) => row.forEach((c, k) => { out += face(cid(c), 22 + 56 * k, 14 + 50 * r, 40); }));
+    return tile(FELT, out + '<rect x="19" y="11" width="46" height="62" rx="7" fill="none" stroke="#f59e0b" stroke-width="3"/><rect x="75" y="61" width="46" height="62" rx="7" fill="none" stroke="#f59e0b" stroke-width="3"/>');
   }
 };
 // The non-card tiles that were redrawn (scripts/games_tile_art.js): each one's art is scoped so its gradient ids stay its own on the shared page.

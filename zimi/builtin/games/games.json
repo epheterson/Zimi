@@ -127,6 +127,176 @@
   "computer": false
  },
  {
+  "qid": "Q8060807",
+  "wiki": "Yukon (solitaire)",
+  "path": "yukon.html",
+  "title": "Yukon",
+  "blurb": "Move any face-up card, with all on it",
+  "why": "Like Klondike with no stock: every card is on the table, and any run can move, in order or not.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5472990",
+  "wiki": "Napoleon at St Helena",
+  "path": "fortythieves.html",
+  "title": "Forty Thieves",
+  "blurb": "Two decks, build down in one suit",
+  "why": "A long, hard game: two decks, one pass through the stock, one card at a time.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5032311",
+  "wiki": "Canfield (solitaire)",
+  "path": "canfield.html",
+  "title": "Canfield",
+  "blurb": "A reserve of thirteen, any starting rank",
+  "why": "Get all 52 cards to the foundations. One card sets the rank they all start on, and a reserve feeds the columns.",
+  "origin": {
+   "year": null,
+   "era": "1890s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q7435391",
+  "wiki": "Scorpion (solitaire)",
+  "path": "scorpion.html",
+  "title": "Scorpion",
+  "blurb": "Build suits down; move any card with what is on it",
+  "why": "Make four suits, king to ace, in the columns. Three spare cards give you one more chance.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q2816947",
+  "wiki": "Aces Up",
+  "path": "acesup.html",
+  "title": "Aces Up",
+  "blurb": "Discard lower cards; keep only the aces",
+  "why": "Four columns, one rule: a card leaves when a higher card of its suit shows. The aces never leave.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q4672725",
+  "wiki": "Accordion (card game)",
+  "path": "accordion.html",
+  "title": "Accordion",
+  "blurb": "Fold a row of 52 into one pile",
+  "why": "All 52 cards lie in a row and fold into one pile. A pile jumps one or three places left onto a match.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5018882",
+  "wiki": "Calculation (card game)",
+  "path": "calculation.html",
+  "title": "Calculation",
+  "blurb": "Count by ones, twos, threes and fours",
+  "why": "A patience game with a little arithmetic: each foundation counts by a different step, all the way to the king.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q4882140",
+  "wiki": "Beleaguered Castle",
+  "path": "beleaguered.html",
+  "title": "Beleaguered Castle",
+  "blurb": "Every card in sight, build down in any suit",
+  "why": "No luck after the deal: every card is face up. Plan, then play.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5349005",
+  "wiki": "Eight Off",
+  "path": "eightoff.html",
+  "title": "Eight Off",
+  "blurb": "Eight free cells, build down in suit",
+  "why": "FreeCell’s cousin: eight cells and one-suit columns. Most deals can be won.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q6904680",
+  "wiki": "Monte Carlo (card game)",
+  "path": "montecarlo.html",
+  "title": "Monte Carlo",
+  "blurb": "Pair equal ranks that touch",
+  "why": "Twenty-five cards, pairs that touch, and a stock that slides in new cards. Simple to learn, hard to clear.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
   "qid": "Q2121032",
   "wiki": "Spades (card game)",
   "path": "spades.html",

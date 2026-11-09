@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Games: Go Fish, Old Maid, Snap, Oh Hell and Cheat, five family card games against Zimi.
+### Added
+
+- Games: ten more solitaires on the shelf: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
 
 ### Fixed
 
