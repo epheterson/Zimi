@@ -222,16 +222,6 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
             pg.click("#ae-card .ae-place-preview")
             opened = pg.evaluate("window.__opened")
             assert opened["path"] == "Paris" and opened["zim"] == "wikipedia", opened
-            # The flight stops where the Earth's picture ends; Map here goes on, to the town itself in the map.
-            pg.wait_for_selector("#ae-maprow:not([hidden])", timeout=30_000)
-            pg.evaluate(
-                "window.__opened = null; AlmanacLinks.openHit = function (h, o) { window.__opened = { hit: h, opts: o }; }"
-            )
-            pg.click("#ae-map")
-            opened = pg.evaluate("window.__opened")
-            assert opened["opts"]["pos"] == pg.evaluate(
-                "mapPositionHash(AE_MAP_PLACE_ZOOM, _ae.place.lat, _ae.place.lon)"
-            ) and opened["hit"]["zim"] == "maps_en_places", opened
             # Paris, Texas: flown to, and Paris, France's page is not its article.
             _type(pg, "Paris")
             pg.wait_for_function(
@@ -306,8 +296,6 @@ def test_with_no_map_installed_the_landmarks_answer_and_nothing_else_is_said(no_
             pg.click("#ae-go-found .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, 45.8326, 6.8652) < MAX_OFF_DEG
-            # No map to open: no Map here.
-            assert pg.evaluate("document.getElementById('ae-maprow').hidden")
             assert not errors, errors
             ctx.close()
         finally:

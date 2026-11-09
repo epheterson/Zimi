@@ -526,7 +526,6 @@ var AE_CSS = [
   '.ae-btn[disabled]{opacity:.45;cursor:default;pointer-events:none}',
   '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
   '.ae-btn[hidden]{display:none}',
-  '#ae-map{display:inline-flex;align-items:center;gap:6px}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0;margin-inline-start:auto}',   // alone in the top row: at its end
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',
@@ -621,7 +620,7 @@ var AE_CSS = [
   '.ae-spin{position:absolute;inset:0;pointer-events:none;display:none}',
   '.ae-spinning .ae-spin{display:block}',
   '.ae-spinning .ae-canvas{cursor:default}',
-  '.ae-spinning .ae-labels,.ae-spinning .ae-lms,.ae-spinning .ae-mini,.ae-spinning .ae-hint,.ae-spinning .ae-card,.ae-spinning .ae-orient,.ae-spinning .ae-status,.ae-spinning #ae-maprow{display:none!important}',
+  '.ae-spinning .ae-labels,.ae-spinning .ae-lms,.ae-spinning .ae-mini,.ae-spinning .ae-hint,.ae-spinning .ae-card,.ae-spinning .ae-orient,.ae-spinning .ae-status{display:none!important}',
   '.ae-sp{position:absolute;box-sizing:border-box;pointer-events:auto;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:1px;padding:0 2px;margin:0;border:0;background:none;font:inherit;color:#dfe6f0;text-align:center;cursor:pointer;border-radius:10px;overflow:hidden}',
   '.ae-sp b{font-size:13px;font-weight:600;color:#f1f4f9;line-height:1.3}',
   '.ae-sp span{font-size:10.5px;line-height:1.25;color:rgba(223,230,240,.72)}',
@@ -1199,9 +1198,6 @@ function _aeBuildDom() {
       '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
       '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
       '<div class="ae-orient" id="ae-scale" hidden>' + _almEsc(_aeT('alm_earth_not_to_scale')) + '</div>' +
-      '<div class="ae-row" id="ae-maprow" hidden><button type="button" class="ae-btn" id="ae-map">' +
-        (typeof _MAPS_SVG === 'string' ? _MAPS_SVG.replace('width="26" height="26"', 'width="16" height="16"') + ' ' : '') +
-        _almEsc(_aeT('alm_earth_map_here')) + '</button></div>' +
       // Outward from home: the Earth, its satellites, the Moon, the Sun, the whole system; everywhere else is Go to.
       '<div class="ae-go" id="ae-go" role="dialog" aria-label="' + _almEsc(_aeT('alm_go_to')) + '" hidden></div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
@@ -4089,7 +4085,6 @@ function _aeRefAxesRows() {
   add('place.landmarks', _aeT('tb_kn_place_landmarks'), 'landmarks-v1.json', '', 'Wikidata (CC0)');
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
-  add('place.map', _aeT('tb_kn_place_map'), AE_MAP_PLACE_ZOOM, '', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
   return rows;
 }
@@ -4164,47 +4159,6 @@ function _aeDrawMini() {
   g.fillStyle = AE_PROBE_HEX;
   g.beginPath(); g.moveTo(L, 0); g.lineTo(-L * 0.7, L * 0.6); g.lineTo(-L * 0.35, 0); g.lineTo(-L * 0.7, -L * 0.6); g.closePath(); g.fill();
   g.restore();
-}
-
-// ── Past the pictures: the map ──
-// Come down close over the Earth and an installed map takes over from the globe: Map here opens it at the place under
-// the middle of the screen, at the scale the view was showing (a StreetZim or Kiwix map, the last one used first).
-var AE_MAP_HANDOFF_DIST = 1.25;            // Earth radii from the centre: ~1,600 km up, a region on screen
-var AE_MAP_M_PER_PX_Z0 = 156543.034;       // a web map's metres per pixel at zoom 0, at the equator
-var AE_MAP_ZOOM_RANGE = [2, 17];
-var AE_MAP_PLACE_ZOOM = 12;                // a place picked in Go to opens the map here: a town and its streets on screen
-function _aeMapZims() { return typeof _installedMaps === 'function' ? _installedMaps() : []; }
-// Where Map here would open and how close: a place picked in Go to, else the point under the middle of the screen at
-// the scale the view shows.
-function _aeMapHereAim() {
-  if (_ae.place) return { g: { lat: _ae.place.lat, lon: _ae.place.lon }, zoom: AE_MAP_PLACE_ZOOM };
-  var cam = _ae.gl.camera, pos = [cam.position.x, cam.position.y, cam.position.z];
-  var g = _aeFixedToGeodeticDirection(_aeSceneToFixed(pos, _ae.scene.gast));   // the camera looks at the centre: the point below it
-  var altKm = (_aeLen(pos) - 1) * AE_EARTH_RADIUS_KM;
-  var mPerPx = 2 * altKm * 1000 * Math.tan(_aeRad(cam.fov) / 2) / _ae.h;
-  return { g: g, zoom: _aeClamp(Math.log2(AE_MAP_M_PER_PX_Z0 * Math.cos(_aeRad(g.lat)) / mPerPx), AE_MAP_ZOOM_RANGE[0], AE_MAP_ZOOM_RANGE[1]) };
-}
-// The installed map to open there: one whose ground includes the point (the last one used first), none when every
-// map's bounds rule it out. A map whose bounds are not known is not ruled out.
-function _aeMapHereZim(g) {
-  var here = _aeMapZims().filter(function (z) { return _mapCovers(z, { lat: g.lat, lng: g.lon }) !== false; });
-  var last = typeof _lastMapVisit === 'function' ? _lastMapVisit() : null;
-  return here.filter(function (z) { return last && last.zim && z.name === last.zim.name; })[0] || here[0] || null;
-}
-function _aeShowMapHere() {
-  var row = _aeById('ae-maprow');
-  if (!row) return;
-  // Close enough that the globe is a blur, or a place picked (its flight stops higher, where the Earth's map ends).
-  var near = _ae.dist <= AE_MAP_HANDOFF_DIST || !!_ae.place;
-  var on = _ae.target === 'earth' && !_ae.fly && !_ae.hand && near && _aeMapZims().length > 0 && !!_aeMapHereZim(_aeMapHereAim().g);
-  if (row.hidden === on) row.hidden = !on;
-}
-function _aeOpenMapHere() {
-  if (!_ae.scene || !window.AlmanacLinks || typeof mapPositionHash !== 'function') return;
-  var aim = _aeMapHereAim(), z = _aeMapHereZim(aim.g);
-  if (!z) return;
-  AlmanacLinks.openHit({ zim: z.name, path: z.main_path, title: typeof _mapName === 'function' ? _mapName(z) : z.title },
-    { pos: mapPositionHash(aim.zoom, aim.g.lat, aim.g.lon) });
 }
 
 // ── Landmarks: named places on a body, at their true coordinates ──
@@ -6610,7 +6564,6 @@ function _aeRenderNoteFresh(stale) {
 function _aeRefreshText() { if (_aeIsOpen) _aeUpdateText(_aeDisplayMs()); }
 function _aeUpdateText(ms) {
   var whenText = _aeFmtWhen(ms);   // the view's aria line says the moment in words
-  _aeShowMapHere();
   _aeMeasureFoot();   // the controls' height changes with their notes; marks keep above them
   _aeMarkToggles();
   _aeMeasureTop();
@@ -7028,7 +6981,6 @@ function _aeBindControls() {
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
-  _aeById('ae-map').onclick = _aeOpenMapHere;
   _aeById('ae-mini').onclick = function () { _aePreset('planets'); };
   _aeById('ae-hd-later').onclick = _aeHdNotNow;
   // The panel's radios are drawn afresh with each answer: one listener.
