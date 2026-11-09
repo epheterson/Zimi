@@ -69,3 +69,6 @@ button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: 
 .cr-guideitem { display: flex; gap: 10px; align-items: flex-start; }
 .cr-guideitem > div { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-small); }
 .cr-guideitem span:not(.cr-mini) { color: var(--ink2); }
+/* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
+#cr-sheet .ar-sheet-card { padding-bottom: 0; }
+#cr-sheet .ar-sheet-actions { position: sticky; bottom: 0; padding: var(--sp-2) 0 20px; background: var(--surface2); }

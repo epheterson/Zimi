@@ -36,3 +36,6 @@
 .oo-scores .oo-total { text-align: end; font: 700 var(--fs-body) var(--mono); }
 .oo-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: var(--sp-2) 0; }
 .oo-names input { min-width: 0; }
+/* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
+#oo-sheet .ar-sheet-card { padding-bottom: 0; }
+#oo-sheet .ar-sheet-actions { position: sticky; bottom: 0; padding: var(--sp-2) 0 20px; background: var(--surface2); }

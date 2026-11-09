@@ -52,6 +52,34 @@ def open_setup(browser, served, view, lang=None):
     return ctx, page
 
 
+def test_start_is_always_in_reach_at_the_foot_of_the_setup_card(served, browser):
+    for view in (PORTRAIT, LANDSCAPE):
+        for name, ready, sheet, go in (
+            ("oddone", "window.__oddone", "#oo-sheet", "#oo-go"),
+            ("courtier", "window.__courtier", "#cr-sheet", "#cr-go"),
+        ):
+            ctx = browser.new_context(
+                viewport=view, has_touch=True, is_mobile=True, device_scale_factor=2
+            )
+            page = ctx.new_page()
+            page.goto("%s/%s.html" % (served, name))
+            game_ready(page, ready)
+            page.wait_for_selector("%s:not([hidden]) .ar-sheet-card" % sheet)
+            frames(page, 4)
+            got = page.evaluate(
+                """([sheet, go]) => { const card = document.querySelector(sheet + ' .ar-sheet-card').getBoundingClientRect(), b = document.querySelector(go).getBoundingClientRect();
+                  return { top: b.top - card.top, bottom: card.bottom - b.bottom, vh: innerHeight, cardBottom: card.bottom }; }""",
+                [sheet, go],
+            )
+            assert (
+                got["top"] >= 0 and got["bottom"] >= 0
+            ), "Start is cut off by the card on %s at %s: %s" % (name, view, got)
+            assert got["cardBottom"] <= got["vh"] + 0.5, (
+                "the card runs off the bottom of the screen: %s" % got
+            )
+            ctx.close()
+
+
 def test_the_setup_sheet_opens_at_its_top_not_scrolled_to_start(served, browser):
     for view in (PORTRAIT, LANDSCAPE):
         ctx, page = open_setup(browser, served, view)
