@@ -73,10 +73,13 @@ button { font: inherit; color: inherit; }
 .ar-back:hover { color: var(--accent); }
 /* In dark the pebble gets a 1px ring so it never vanishes into the bar: the one allowed change to it. The ground is no lighter than
    the bar, so the ring is the ink at 28 percent. */
+/* Shown only without scripts (shell.js marks the root gs-js): Kiwix JS's restricted mode strips them. */
+html.gs-js .gs-needjs { display: none; }
+.gs-needjs { margin: 12px auto; max-width: 30em; padding: 0 var(--gutter); font-size: 14px; text-align: center; opacity: .8; }
 /* The screen's safe edges (the home indicator, a notch in landscape). In a page of its own they are the browser's; inside
    Zimi's reader the frame hears 0 from WebKit, so the shell measures how far the frame reaches into Zimi's own and sets
    these on the root (shell.js, hostInsets). Use these, never env(safe-area-inset-*), in a game. */
-:root { --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
+:root { --host-bottom: 0px; --safe-b: calc(env(safe-area-inset-bottom, 0px) + var(--host-bottom)); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
 :root { --mark-ring: color-mix(in srgb, var(--ink) 28%, transparent); }
 :root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }

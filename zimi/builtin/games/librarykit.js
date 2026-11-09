@@ -109,11 +109,11 @@
   };
 
   // Is this page being served by Zimi? One request to /health, which only Zimi answers with {status: "ok"}.
-  // From a folder (file:) there is nothing to ask. Asked once per page.
+  // From a folder (file:) or Kiwix JS (ZimiShell.kiwixJs) there is nothing to ask. Asked once per page.
   var zimiAnswer = null;
   Lib.isZimi = function () {
     if (!zimiAnswer) {
-      zimiAnswer = typeof location === 'undefined' || !/^https?:$/.test(location.protocol)
+      zimiAnswer = typeof location === 'undefined' || !/^https?:$/.test(location.protocol) || (root.ZimiShell && root.ZimiShell.kiwixJs)
         ? Promise.resolve(false)
         : Lib.json('/health', PROBE_MS).then(function (j) { return !!(j && j.status === 'ok'); }, function () { return false; });
     }
@@ -163,7 +163,7 @@
     if (!modeAnswer) {
       modeAnswer = Lib.isZimi().then(function (yes) {
         if (yes) { modeNow = 'zimi'; pathRoot = '/w/'; return modeNow; }
-        if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) return 'builtin';
+        if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol) || (root.ZimiShell && root.ZimiShell.kiwixJs)) return 'builtin';
         var prefix = Lib.kiwixPrefix(location.pathname);
         return Lib.text(prefix + '/catalog/v2/entries?count=1', PROBE_MS).then(function (x) {
           if (!/<feed[\s>]/.test(x)) return 'builtin';

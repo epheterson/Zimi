@@ -191,6 +191,15 @@
   var ID = (root.location.pathname.split('/').pop() || '').replace(/\.html?$/, '') || 'index';
   var Shell = { id: ID };
   root.ZimiShell = Shell;
+  // Scripts ran: the shelf's "needs scripts" line (games.css) goes.
+  if (d && d.documentElement) d.documentElement.classList.add('gs-js');
+  // Kiwix JS: this page in a frame that is not Zimi's reader (kiwix-serve's viewer has /content/ in its path and no toolbar over the page).
+  // No Zimi server answers there, so nothing asks for one (/games-day, librarykit's probes), and its toolbar of KIWIX_JS_TOOLBAR_PX over the
+  // frame's bottom is kept clear through --host-bottom, which games.css folds into --safe-b.
+  var KIWIX_JS_TOOLBAR_PX = 48;
+  var kiwixJs = !!d && root.parent !== root && !inZimi() && String(root.location && root.location.pathname).indexOf('/content/') < 0;
+  if (kiwixJs) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
+  Shell.kiwixJs = kiwixJs;
 
   // ── the daily edition ──
   // A page opened with ?daily=YYYY-MM-DD plays that day's edition: the same deal, board or puzzle for everyone on that date,
@@ -264,7 +273,7 @@
   var serverDay = null;
   Shell.serverDay = function () {
     if (!serverDay) {
-      serverDay = (root.fetch ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
+      serverDay = (root.fetch && !kiwixJs ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
         .then(function (j) {
           if (!j || !isDay(j.day)) return deviceDay();
           if (typeof j.utcOffsetMin === 'number') { try { root.localStorage.setItem(OFFSET_KEY, String(j.utcOffsetMin)); } catch (e) { /* blocked */ } }
@@ -1708,7 +1717,7 @@
       probe.remove();
       var r = hosted ? root.frameElement.getBoundingClientRect() : { left: 0, right: w.innerWidth, bottom: w.innerHeight };
       var reach = function (inset, gap) { return Math.max(0, inset - gap) + 'px'; };
-      st.setProperty('--safe-b', reach(bottom, w.innerHeight - r.bottom));
+      st.setProperty('--safe-b', 'calc(' + reach(bottom, w.innerHeight - r.bottom) + ' + var(--host-bottom, 0px))');
       st.setProperty('--safe-l', reach(left, r.left));
       st.setProperty('--safe-r', reach(right, w.innerWidth - r.right));
     } catch (e) { /* not reachable: the page's own env() stands */ }

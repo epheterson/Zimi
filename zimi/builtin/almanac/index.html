@@ -8,6 +8,7 @@
 <title>Zimi Almanac</title>
 <link rel="stylesheet" href="shell.css">
 <link rel="stylesheet" href="almanac.css">
+<script>document.documentElement.classList.add('js');</script>
 <script src="local.js"></script>
 <style>
   /* The Almanac keeps its dark night-sky look in every reader. These are the
@@ -34,6 +35,13 @@
   /* the veil's rules come from Zimi's app.css (shell.css); its turn and the reduced-motion rule are written here */
   @keyframes almVeilTurn { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .alm-veil { transition: none; } .alm-veil-moon { animation: none; } }
+  /* Without scripts (Kiwix JS in its restricted mode strips them) the veil stays: this line says why. */
+  html.js .alm-nojs { display: none; }
+  .alm-nojs { display: block; margin-top: 8px; max-width: 28em; font-size: 13px; color: var(--text2); text-align: center; }
+  /* Kiwix JS lays a toolbar over the bottom of the page's frame (--host-bottom, set below; 0 anywhere else). */
+  :root { --host-bottom: 0px; }
+  .almanac-view { bottom: var(--host-bottom); }
+  html .ae-spin-full, html .almanac-look, html .tk-pop.tk-sheet, html .tk-scrim, html .gr-lightbox { bottom: var(--host-bottom); }
   .zimi-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; color: var(--text2); z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 </style>
 </head>
@@ -43,7 +51,7 @@
 <div id="almanac-view" class="almanac-view zimi-almanac open">
   <div class="almanac-content" id="almanac-content"></div>
   <!-- The veil (app.css, as shell.css) stands over the page until its first screen is drawn, and goes in one fade (almanac.js). -->
-  <div id="alm-veil" class="alm-veil" role="status"><span class="alm-veil-moon" aria-hidden="true"></span><span class="alm-veil-txt">Loading the Almanac&hellip;</span></div>
+  <div id="alm-veil" class="alm-veil" role="status"><span class="alm-veil-moon" aria-hidden="true"></span><span class="alm-veil-txt">Loading the Almanac&hellip;</span><span class="alm-nojs">The Almanac needs scripts. In Kiwix JS, turn on ServiceWorker mode in Configuration.</span></div>
 </div>
 <div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
 <script>
@@ -113,6 +121,11 @@ var HOSTED_IN_ZIMI = (function() {
     return !!f && f.contentWindow === window && typeof window.parent.openReader === 'function';
   } catch (e) { return false; }
 })();
+// Kiwix JS draws a toolbar of this height over the bottom of the page's frame; kiwix-serve's viewer (/content/) does not.
+var KIWIX_JS_TOOLBAR_PX = 48;
+if (!HOSTED_IN_ZIMI && window.parent !== window && location.pathname.indexOf('/content/') < 0) {
+  document.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
+}
 var PDF_URL = '/almanac/pdf';
 if (HOSTED_IN_ZIMI) {
   window.openReader = function(url) { window.parent.openReader(url); };
