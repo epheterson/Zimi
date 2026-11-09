@@ -4159,6 +4159,7 @@ function _aeRefAxesRows() {
   add('maps.fade', _aeT('tb_kn_maps_fade'), AE_MAPS.fullKm + '-' + AE_MAPS.startKm, 'km', 'Zimi');
   add('maps.min_alt', _aeT('tb_kn_maps_min'), AE_MAPS.minKm, 'km', 'Zimi');
   add('maps.tile_px', _aeT('tb_kn_maps_tile'), AE_MAPS.tilePx, 'px', 'Zimi');
+  add('maps.ride', _aeT('tb_kn_maps_ride'), AE_MAPS.startKm, 'km', 'Zimi');
   add('maps.data', _aeT('tb_kn_maps_data'), 'Kiwix maps · OpenMapTiles', '', 'OpenStreetMap contributors');
   add('place.landmarks', _aeT('tb_kn_place_landmarks'), 'landmarks-v1.json', '', 'Wikidata (CC0)');
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');

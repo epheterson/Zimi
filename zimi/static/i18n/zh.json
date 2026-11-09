@@ -3699,5 +3699,6 @@
   "tb_kn_maps_fade": "地图淡入高度",
   "tb_kn_maps_min": "地图上方的最近距离",
   "tb_kn_maps_tile": "地图瓦片在屏幕上的宽度",
+  "tb_kn_maps_ride": "摄像机随地面移动，高度低于",
   "tb_kn_maps_data": "地球上的道路与地名"
 }

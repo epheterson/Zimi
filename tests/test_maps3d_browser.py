@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from test_almanac_places_browser import GL_ARGS, PARIS, _open  # noqa: E402
+from test_almanac_places_browser import GL_ARGS, PARIS, _open, _type  # noqa: E402
 from test_mapplaces import (
     EXTENT,
     _field,
@@ -117,6 +117,7 @@ def _serve(root):
     from http.server import ThreadingHTTPServer
 
     import zimi.server as srv
+    from zimi import mapplaces
     from zimi.http import ZimHandler
 
     zdir = root / "zims"
@@ -134,7 +135,9 @@ def _serve(root):
     )
     saved = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(zdir), str(root / "data")
+    mapplaces._reset_for_tests()
     srv.load_cache(force=True)
+    mapplaces.build_all()  # the towns of the map, so Go to finds them
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, saved
@@ -256,10 +259,11 @@ def test_go_to_rows_carry_the_map_button(maplib):
         try:
             ctx, pg, errors = _open(br, maplib)
             pg.evaluate(STAND_IN)
-            pg.click("#ae-go-btn")
-            pg.wait_for_selector("#ae-go-q", state="visible")
-            pg.fill("#ae-go-q", "Versailles")
-            pg.wait_for_selector("#ae-go-found .ae-go-map", timeout=60_000)
+            _type(pg, "Paris")
+            pg.wait_for_selector("#ae-go-found .ae-go-row", timeout=90_000)
+            html = pg.evaluate("document.getElementById('ae-go-found').innerHTML")
+            assert "ae-go-map" in html, html
+            pg.wait_for_selector("#ae-go-found .ae-go-map", timeout=10_000)
             pg.click("#ae-go-found .ae-go-map")
             pg.wait_for_function("() => !!window.__opened", timeout=30_000)
             assert pg.evaluate("window.__opened.hit.zim") == MAP
@@ -331,6 +335,50 @@ def test_low_over_ground_no_installed_map_holds_a_quiet_chip_offers_the_map_to_g
             # Put away with its cross: it stays away from there.
             pg.click("#ae-maps-chip .ae-maps-x")
             assert pg.evaluate("document.getElementById('ae-maps-chip').hidden")
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_the_almanacs_place_line_opens_the_map_of_its_place(maplib):
+    from playwright.sync_api import sync_playwright
+
+    place = json.dumps({"lat": PARIS[0], "lon": PARIS[1], "name": "Paris"})
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(
+                viewport={"width": 390, "height": 844},
+                device_scale_factor=2,
+                has_touch=True,
+                is_mobile=True,
+                service_workers="block",
+            )
+            ctx.add_init_script(
+                "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+                % (place, place)
+            )
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            pg.goto(maplib + "/#almanac", wait_until="load")
+            pg.wait_for_selector(
+                "[onclick='_almMapHere()']", state="attached", timeout=120_000
+            )
+            pg.evaluate(STAND_IN)
+            _shot(pg, "almanac-place-line.png")
+            pg.evaluate("_almMapHere()")
+            try:
+                pg.wait_for_function("() => !!window.__opened", timeout=30_000)
+            except Exception:
+                raise AssertionError(
+                    pg.evaluate(
+                        "() => JSON.stringify({ mh: !!window.ZimiMapHere, links: !!window.AlmanacLinks, open: typeof openArticle, loc: _getLocation() })"
+                    )
+                    + str(errors)
+                )
+            assert pg.evaluate("window.__opened.hit.zim") == MAP
             assert not errors, errors
             ctx.close()
         finally:

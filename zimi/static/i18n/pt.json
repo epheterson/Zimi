@@ -3699,5 +3699,6 @@
   "tb_kn_maps_fade": "Esmaecimento do mapa, altitude",
   "tb_kn_maps_min": "Aproximação mínima sobre um mapa",
   "tb_kn_maps_tile": "Largura de um bloco do mapa na tela",
+  "tb_kn_maps_ride": "A câmara acompanha o solo abaixo de",
   "tb_kn_maps_data": "Ruas e nomes sobre a Terra"
 }

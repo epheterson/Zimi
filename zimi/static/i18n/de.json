@@ -3699,5 +3699,6 @@
   "tb_kn_maps_fade": "Kartenüberblendung, Höhe",
   "tb_kn_maps_min": "Geringste Annäherung über einer Karte",
   "tb_kn_maps_tile": "Breite einer Kartenkachel auf dem Bildschirm",
+  "tb_kn_maps_ride": "Die Kamera folgt dem Boden unterhalb von",
   "tb_kn_maps_data": "Straßen und Namen auf der Erde"
 }

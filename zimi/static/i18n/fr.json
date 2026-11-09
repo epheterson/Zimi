@@ -3699,5 +3699,6 @@
   "tb_kn_maps_fade": "Fondu de la carte, altitude",
   "tb_kn_maps_min": "Approche minimale au-dessus d’une carte",
   "tb_kn_maps_tile": "Largeur d’une tuile de carte à l’écran",
+  "tb_kn_maps_ride": "La caméra suit le sol en dessous de",
   "tb_kn_maps_data": "Routes et noms sur la Terre"
 }
