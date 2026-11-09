@@ -5910,6 +5910,15 @@ def warm_indexes():
         except Exception as e:
             log.warning("Map places phase failed: %s", e)
 
+        # Phase 1e: the documents of each PDF collection (titles from its
+        # listing, the PDFs' text), so a search finds a factsheet by its words.
+        try:
+            from zimi import docindex as _docindex
+
+            _docindex.build_all()
+        except Exception as e:
+            log.warning("Document index phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()
@@ -6112,6 +6121,7 @@ from zimi.search import (  # noqa: E402, F401
     extract_pdf_text,
     get_catalog,
     parse_catalog,
+    list_entries,
     # Content serving & discover
     random_entry,
     _get_dated_entry,

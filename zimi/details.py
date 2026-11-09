@@ -45,7 +45,8 @@ class DetailsBuilder:
     as current and read with the wrong columns. ``indexes`` names columns to
     index in the file, for a kind that is asked by key rather than read whole;
     ``load`` None keeps no rows in memory (the file is asked instead), only
-    that it is there."""
+    that it is there. ``isolate_min`` is where a build moves to a child
+    process (ISOLATE_MIN_ENTRIES; 0 for a build that is heavy per entry)."""
 
     def __init__(
         self,
@@ -63,6 +64,7 @@ class DetailsBuilder:
         on_keep,
         gone=None,
         indexes=(),
+        isolate_min=ISOLATE_MIN_ENTRIES,
     ):
         self.kind = kind
         self.zims = zims
@@ -77,6 +79,7 @@ class DetailsBuilder:
         self.on_keep = on_keep
         self.gone = gone
         self.indexes = tuple(indexes)
+        self.isolate_min = isolate_min
         self._kept = {}  # name -> (real path of the ZIM it was read from, details)
         # One build at a time, as _build_all_title_lock serializes the title
         # index; _queued keeps a ZIM from being asked for twice while it waits.
@@ -98,11 +101,13 @@ class DetailsBuilder:
 
         return _index_is_current(self.path(name), zim_path, self.version)
 
-    def write(self, zim_name, zim_path, archive, rows, extra=None):
+    def write(self, zim_name, zim_path, archive, rows, extra=None, setup=None):
         """``rows`` into ``zim_name``'s file with the meta current() reads
         back, whole or not at all: written beside it, then renamed over it.
         ``extra`` is more tables beside the main one, {name: (columns, rows,
-        indexed columns)}. Returns how many rows."""
+        indexed columns)}. ``setup(conn)`` runs last, before the meta: more
+        of the file's own (a full-text table), whole with the rest. Returns
+        how many rows."""
         from zimi.search import _write_index_meta
 
         db_path = self.path(zim_name)
@@ -128,6 +133,8 @@ class DetailsBuilder:
                 )
                 for col in indexed:
                     conn.execute(f"CREATE INDEX {table}_{col} ON {table} ({col})")
+            if setup:
+                setup(conn)
             _write_index_meta(conn, archive, zim_path, self.version, len(rows))
             conn.commit()
         except Exception:
@@ -200,7 +207,7 @@ class DetailsBuilder:
                             path,
                             self.build,
                             lambda _name: None,
-                            min_entries=ISOLATE_MIN_ENTRIES,
+                            min_entries=self.isolate_min,
                         )
                     finally:
                         _background_end(self.kind)
