@@ -275,6 +275,8 @@ def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
     )
     page.evaluate("() => { _ae.site.input.jump = true; _aeSiteAdvance(1 / 60); }")
     peak, airborne_s = 0.0, 0.0
+    # One arc: the rebound is its own check below.
+    page.evaluate("() => { window.__keep = AS_BOUNCE_KEEP; AS_BOUNCE_KEEP = 0; }")
     for _ in range(200):
         r = page.evaluate(
             "() => { _aeSiteAdvance(1 / 20); return _aeSiteState().rover; }"
@@ -288,6 +290,14 @@ def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
     assert 2.4 < peak < 3.2, "peak %.2f m" % peak
     assert 3.2 < airborne_s < 4.2, "%.1f s in the air" % airborne_s
     assert page.evaluate("() => _aeSiteState().rover.airborne") is False
+    # With its rebound a landing at jump speed lifts the rover again, lower.
+    page.evaluate("() => { AS_BOUNCE_KEEP = window.__keep; _ae.site.input.jump = true; _aeSiteAdvance(1 / 60); }")
+    for _ in range(200):
+        page.evaluate("() => _aeSiteAdvance(1 / 20)")
+        if page.evaluate("() => _ae.site.rover.vz") > 0.3 and page.evaluate("() => _ae.site.rover.z - _ae.site.rover.mean") < 0.5:
+            break
+    else:
+        pytest.fail("the rover did not rebound")
 
 
 def test_a_mars_rover_has_six_wheels_and_the_ground_there_is_not_the_moons(page):

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 - **Spacecraft that look real:** the station and the probes are shaded as foil, cells and aluminium, lit by the Sun and the nearest world, and shadow themselves; with Almanac HD they are NASA's full models with their textures.
+- **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 
 ## [1.15.4]
 
