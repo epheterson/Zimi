@@ -9,6 +9,7 @@
 
 var AE_ST_PI = '3.14159265';
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
+var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
 var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
 var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
 var AE_ST_STEPS_SKY = 9, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 4;   // the air's march: nine steps cost half of fourteen on a phone and look the same
@@ -327,7 +328,8 @@ var AE_ST_GROUND_FRAG = [
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
   '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',
-  '    L = alb * (sT * lam * surge / PI + uAmbient * (0.55 + 0.45 * dot(N, upF)) + uE2 * max(dot(N, uDir2), 0.0) / PI);',
+  '    float fill = uLommel > 0.5 ? ' + AE_ST_FILL.toFixed(2) + ' * max(dot(upF, uSunDir), 0.0) * (1.0 - mu0) : 0.0;',
+  '    L = alb * (sT * (lam + fill) * surge / PI + uAmbient * (0.55 + 0.45 * dot(N, upF)) + uE2 * max(dot(N, uDir2), 0.0) / PI);',
   '  }',
   '  if (uDiffuse > 0.5) { float T = exp(-dist * 0.001 / uVis); L = L * T + uDiffSky * (1.0 - T); }',
   '  else if (uAtmo > 0.5) {',
