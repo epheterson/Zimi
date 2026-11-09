@@ -19,8 +19,9 @@ var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the d
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
 var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: this far back, a point this often
 // ── In the 3D view ──
-var AL_FLY_TILT_RAD = 0.22;                  // the view looks this far south of the pad, so the pad sits above the sheet
-var AL_FLY_DIST = 1.28;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
+var AL_FLY_TILT_RAD = 0.1;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
+var AL_FLY_MIDDLE = 0.4;                     // the share of the ascent the view is centred on: the pad and the far end both fit
+var AL_FLY_DIST = 1.8;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
 var AL_TRACK_COLOR = 0xffc978, AL_TRACK_ALPHA = 0.8, AL_BOOSTER_COLOR = 0x9be7ff, AL_BOOSTER_ALPHA = 0.6;
 var AL_ROCKET_COLOR = [1, 0.8, 0.5], AL_PLUME_COLOR = [0.7, 0.9, 1], AL_BOOSTER_POINT = [0.8, 0.95, 1];
 var AL_DOT_COLOR = { recon: [1, 0.82, 0.45], exact: [0.62, 0.85, 1] }, AL_DOT_PX = 3, AL_ROCKET_PX = 7, AL_PLUME_PX = 30, AL_PLUME_ALPHA = 0.28;
@@ -359,7 +360,8 @@ function _alGoPad() {
   _aeGoTo(L.ms);
   var sc = _aeSceneAt(L.ms);
   _ae.place = null; _ae.lm = null; _ae.selected = null; _ae.arrived = null;
-  var azel = _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(L.lat, L.lon), sc.gast));
+  var pts = _al.flight.points, mid = pts[Math.floor(pts.length * AL_FLY_MIDDLE)];
+  var azel = _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(mid.lat, mid.lon), sc.gast));
   azel.el = Math.max(-AE_MAX_ELEVATION, azel.el - AL_FLY_TILT_RAD);
   _aeFlyTo('earth', AL_FLY_DIST, azel);
   _alKick();
