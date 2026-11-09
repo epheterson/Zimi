@@ -301,12 +301,12 @@ function _asStartWorker(d) {
 function _asSet(on) {
   _as.on = !!on;
   _asPref(_as.on);
-  if (_as.on) _asLoad();
+  if (_as.on) _asSatLoad();
   if (_as.state === 'ready') _asBuildBar();
   if (!_as.on) { _asCloseSheet(); _asSelect(-1); }
   _asSync();
 }
-function _asLoad() {
+function _asSatLoad() {
   if (_as.state === 'loading' || _as.state === 'ready') return Promise.resolve();
   _as.state = 'loading';
   _asSync();
@@ -445,7 +445,7 @@ function _asCount() {
 
 // ── Each frame ──
 // Called by almanac-earth.js after its own satellites.
-function _asFrame(ms, sc) {
+function _asSatFrame(ms, sc) {
   if (!_as.on || _as.state !== 'ready') return;
   if (!_as.cloud || _as.scene !== _ae.gl.scene) _asMakeCloud();
   var cloud = _as.cloud, fast = typeof _almRate !== 'undefined' && Math.abs(_almRate) > AS_FAST_RATE;
