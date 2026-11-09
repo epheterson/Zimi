@@ -34,7 +34,6 @@ var AE_STAND_BODIES = {
   titan: { km: 2574.7, fbm: { amp: 35, lam: [24, 0.002], H: 0.8, ridge: 0.2 } },
   pluto: { km: 1188.3, fbm: { amp: 170, lam: [24, 0.002], H: 0.85, ridge: 0.3 }, craters: { density: 0.25, rMax: 12, depth: 0.1 } }
 };
-function _aeStandable(key) { return !!AE_STAND_BODIES[key]; }
 
 // ── The shipped map ──
 var _aeTerr = {};   // body -> { state: 'loading' | 'ready' | 'none', w, h, data (Int16Array, rows from the north), hd, promise }
