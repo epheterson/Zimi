@@ -151,6 +151,7 @@ def test_enter_and_leave(page, body):
 
 def test_terrain_heights(page):
     """The loaded maps: Olympus Mons is high, Hellas is low, the sea is at zero."""
+    page.evaluate("() => _aeStandReady()")   # the terrain module comes with Stand here's, on first use
     page.evaluate(
         "() => Promise.all(['mars', 'earth', 'moon'].map(function (k) { return _aeTerrainLoad(k); }))"
     )
@@ -215,6 +216,7 @@ def test_hd_terrain_tiles_sharpen_the_heights(page):
     Image.fromarray(rgb, "RGB").save(buf, "WEBP", lossless=True)
     body = buf.getvalue()
     page.route("**/hdtest/terrain/moon/3/*/*.webp", lambda route: route.fulfill(status=200, content_type="image/webp", body=body))
+    page.evaluate("() => _aeStandReady()")
     page.evaluate("() => _aeTerrainLoad('moon')")
     before = page.evaluate("() => _aeTerrainHeight('moon', 20.19, 30.77, 1e9).h")
     loaded = page.evaluate("() => _aeTerrainHdLoad('moon', 20.19, 30.77, '/hdtest/', 3)")
@@ -277,6 +279,7 @@ def test_a_low_sun_throws_the_reliefs_shadows(page):
 
 
 def test_the_earths_coast_is_where_natural_earth_puts_it(page):
+    page.evaluate("() => _aeStandReady()")
     page.evaluate("() => _aeTerrainLoad('earth')")
     sea = page.evaluate("() => ({ sf: _aeTerrainHeight('earth', 37.77, -122.42, 0), off: _aeTerrainHeight('earth', 37.77, -123.3, 0) })")
     assert sea["sf"]["sea"] is False and sea["sf"]["h"] >= 3, "San Francisco is on land (the shipped map alone says sea)"
