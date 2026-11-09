@@ -1285,7 +1285,9 @@ def test_equations_open_and_draw_as_mathml(page):
     page.wait_for_function(
         "() => document.querySelector('#tb-how details.tb-eqs').open && document.querySelectorAll('#tb-how .tb-eq math').length > 0"
     )
-    # The tide's: its station's constituents in a table.
+    # The tide's: its station's constituents in a table. Its stations arrive after the Almanac's first paint (a fetch of
+    # their own); opened before they have, the table says there is no station and has no equations to open.
+    page.wait_for_function("() => typeof _at !== 'undefined' && _at.data && !_at.data.failed", timeout=60000)
     _open(page, "tides")
     page.evaluate(
         "() => { document.querySelector('#tb-how details').open = true; document.querySelector('#tb-how details.tb-eqs').open = true; }"
