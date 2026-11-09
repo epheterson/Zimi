@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install -r requirements.txt "Pillow>=13.0.0" numpy scipy
+      - run: pip install -r requirements.txt "Pillow>=13.0.0" numpy scipy tifffile
 
       - name: Build the tiles and the tile source ZIM
         env:

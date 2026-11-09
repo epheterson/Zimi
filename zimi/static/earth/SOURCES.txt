@@ -199,5 +199,45 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
-  - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
-    8k maps, CC BY 4.0, credited on the view while drawn.
+  - Jupiter and Saturn at 8192 px: Solar System Scope's 8k maps, CC BY 4.0,
+    credited on the view while drawn (a gas giant has no public-domain surface
+    mosaic).
+  - Every other world, from NASA/USGS global mosaics (public domain,
+    planetarymaps.usgs.gov/mosaic/), at the mosaic's own pixel size or, where it
+    is far finer, reduced to what a phone can use:
+      Mercury  Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif
+               (to 32768 px; colour ratios from mercury-v1)
+      Venus    Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
+      Mars     Mars_Viking_MDIM21_ClrMosaic_global_232m.tif (to 32768 px)
+      Moon     Lunar_LRO_LROC-WAC_Mosaic_global_100m_June2013.tif (to 65536 px)
+      Io       Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif
+      Europa   Europa_Voyager_GalileoSSI_global_mosaic_500m.tif
+      Ganymede Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif (colour from ganymede-v1)
+      Callisto Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+      Titan    Titan_ISS_P19658_Mosaic_Global_4km.tif
+      Enceladus Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif
+      Tethys   Tethys_Cassini_mosaic_global_293m.tif
+      Dione    Dione_Cassini_Voyager_mosaic_global_154m.tif
+      Rhea     Rhea_Cassini_Voyager_mosaic_global_417m.tif
+      Iapetus  Iapetus_Cassini_Voyager_mosaic_global_783m.tif
+      Triton   Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif
+      Pluto    Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif (colour from pluto-v1)
+      Charon   Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+      Vesta    Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+      Ceres    Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif (elevation, drawn
+               as shaded relief: no albedo mosaic is in the public domain)
+      Phobos   Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif
+    The Cassini mosaics of Enceladus, Tethys, Dione and Rhea are high-pass
+    filtered by their makers: relief without the large-scale tone. Greyscale
+    mosaics take their colour from the small map shipped here
+    (scripts/build_almanac_hd.py FileMosaic): the colour ratios, never the
+    brightness. Sources are pinned by SHA-256 in that script. The small maps of
+    Enceladus, Tethys, Dione, Rhea, Iapetus, Triton, Charon, Phobos, Vesta and
+    Ceres (<name>-v1.webp, 1024 x 512) are the same mosaics reduced
+    (build_almanac_hd.py --small-maps).
+
+almanac-sun.js
+  Code, not data: the Sun's prominences, flares and finer surface, made up by
+  the Sun's own rules (like the sunspots) and labelled illustrative in the view.
+  Rotation: IAU WGCCRE 2015 (Carrington rate), differential rotation from
+  Snodgrass and Ulrich 1990.

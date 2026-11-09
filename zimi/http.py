@@ -1254,6 +1254,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("books.html")
             + _static_hash("dictionary.html")
             + _static_hash("almanac-look.js")
+            + _static_hash("almanac-sun.js")
             + _static_hash("almanac-skyfind.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
