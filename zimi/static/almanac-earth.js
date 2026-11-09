@@ -406,7 +406,7 @@ var AE_ISS_RING_POINTS = 180;   // 2 degrees apart: a chord stands 0.4 km off it
 // Riding the station: the Earth turns under the camera as fast as the clock runs. Past AE_ISS_FAR_DEG_S of the station's orbit a
 // second the close ride is too quick to follow, and the view eases out to the whole orbit (the ring in view, the station
 // moving along it, the camera still) in AE_ISS_FAR_MS; it comes back under AE_ISS_NEAR_DEG_S.
-var AE_ISS_FAR_DEG_S = 6, AE_ISS_NEAR_DEG_S = 4, AE_ISS_FAR_MS = 1500, AE_ISS_FAR_MAX_DT_MS = 1000, AE_ISS_FAR_STEP_MAX_MS = 100, AE_ISS_FAR_FIT = 1.15, AE_ISS_FAR_SLIDE_FROM = 0.8;
+var AE_ISS_FAR_DEG_S = 5, AE_ISS_NEAR_DEG_S = 3.5, AE_ISS_FAR_MS = 1500, AE_ISS_FAR_STEP_MAX_MS = 100, AE_ISS_FAR_FIT = 1.15, AE_ISS_FAR_SLIDE_FROM = 0.8;
 var AE_ORBIT_E_MIN = 1e-7;   // below this an orbit is round: no perigee to start from
 var AE_RING_REFRESH_MS = 6 * 3600 * 1000;   // GPS orbits barely turn in six hours
 var AE_MOON_PATH_HALF_DAYS = 13.66;   // half a sidereal month either side
@@ -5865,18 +5865,17 @@ function _aeProbeCraftAt(key, pos) {
   return 1 - show;
 }
 // The station's place and attitude now, from its SGP4 state; null hides it. Returns how much of its dot to draw.
-// How fast the station goes round, in degrees of its orbit a real second, decides whether the close ride can be followed;
-// _ae.issFar eases toward 1 (the whole orbit) while it cannot and back to 0 while it can. `prevPos` is last frame's place.
-function _aeStepIssFar(prevPos, pos) {
+// How fast the clock takes the station round its orbit, in degrees of it a real second, decides whether the close ride can
+// be followed; _ae.issFar ramps toward 1 (the whole orbit) while it cannot and back to 0 while it can. From the clock's
+// own rate, not from the frames' gaps: a slow device's uneven frames would tip it back and forth.
+function _aeStepIssFar(pos) {
   var now = performance.now(), dt = _ae.issFarAt ? Math.max(0, now - _ae.issFarAt) : 0;
   _ae.issFarAt = now;
   if (_ae.target !== 'iss' || _ae.fly) { _ae.issFar = 0; _ae.issFast = false; return; }
-  if (prevPos && dt > 1 && dt < AE_ISS_FAR_MAX_DT_MS) {   // a hidden tab's long gap is not a fast clock
-    var turn = _aeDeg(Math.acos(_aeClamp(_aeDot(_aeNorm(prevPos), _aeNorm(pos)), -1, 1)));
-    _ae.issFast = turn / (dt / 1000) > (_ae.issFast ? AE_ISS_NEAR_DEG_S : AE_ISS_FAR_DEG_S);
-  }
-  var to = _ae.issFast ? 1 : 0;
-  var step = Math.min(dt, AE_ISS_FAR_STEP_MAX_MS) / AE_ISS_FAR_MS;   // a steady ramp (a stalled frame is not a leap); the camera's own easing (_aeSmoother) shapes it
+  var r = _aeLen(pos) * AE_EARTH_RADIUS_KM, degPerS = 360 / (2 * Math.PI * Math.sqrt(r * r * r / AE_GM_EARTH_KM3_S2));
+  var rate = typeof _almRate === 'number' ? Math.abs(_almRate) : 1;
+  _ae.issFast = rate * degPerS > (_ae.issFast ? AE_ISS_NEAR_DEG_S : AE_ISS_FAR_DEG_S);
+  var to = _ae.issFast ? 1 : 0, step = Math.min(dt, AE_ISS_FAR_STEP_MAX_MS) / AE_ISS_FAR_MS;   // a steady ramp (a stalled frame is not a leap)
   _ae.issFar = _aeReduceMotion() ? to : _ae.issFar < to ? Math.min(to, _ae.issFar + step) : Math.max(to, _ae.issFar - step);
 }
 // The station view's camera, pulled out toward the whole orbit: first straight out from the station (one steady zoom, on a
@@ -5899,7 +5898,7 @@ function _aeIssAt(st, eqeq, standing) {
   var pos = st.pos, vel = _aeRotZ([st.velKmS.x, st.velKmS.y, st.velKmS.z], eqeq);
   var nadir = _aeNorm(_aeScale(pos, -1)), fwd = _aeNorm(_aeSub(vel, _aeScale(nadir, _aeDot(vel, nadir)))), star = _aeCross(nadir, fwd);
   var prev = _ae.issBasis;
-  _aeStepIssFar(_ae.issPos, pos);
+  _aeStepIssFar(pos);
   _ae.issPos = pos; _ae.issBasis = [nadir, fwd, star];
   if (!prev && _ae.linkHeld) setTimeout(_aeLinkResume, 0);   // a link to the station, waiting for it
   // Close by, the camera rides along with the station (its place in the station's own axes held), so the Earth stays
