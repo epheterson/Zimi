@@ -1,0 +1,37 @@
+/* Fourfold: a wooden four by four board, sixteen turned pieces (tall or short, dark or light, round or square, hollow or solid)
+   and a tray of the pieces still to hand over. The same four traits are drawn, never colour alone: a dark piece also has a
+   darker side, a hollow piece a dark hole. */
+:root { --ff-wood: #c9a46a; --ff-sq: #ecd9b0; --ff-sq-hi: #f6ead0; --ff-groove: #6b4a24; --ff-dark: #4a2e16; --ff-dark-top: #7a5230; --ff-dark-edge: #35200d; --ff-light: #e0c48e; --ff-light-top: #f6e8c6; --ff-light-edge: #bfa16a; --ff-hole: #1d1307; --ff-line: rgba(30, 20, 8, 0.55); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ff-wood: #7b6038; --ff-sq: #8e7d5e; --ff-sq-hi: #a29270; --ff-groove: #2a1c0c; --ff-dark: #2b190a; --ff-dark-top: #6b4a2a; --ff-dark-edge: #150b03; --ff-light: #cdb27a; --ff-light-top: #eadcb8; --ff-light-edge: #a58a55; --ff-line: rgba(0, 0, 0, 0.7); } }
+:root[data-theme="dark"] { --ff-wood: #7b6038; --ff-sq: #8e7d5e; --ff-sq-hi: #a29270; --ff-groove: #2a1c0c; --ff-dark: #2b190a; --ff-dark-top: #6b4a2a; --ff-dark-edge: #150b03; --ff-light: #cdb27a; --ff-light-top: #eadcb8; --ff-light-edge: #a58a55; --ff-line: rgba(0, 0, 0, 0.7); }
+
+.ff-pc { display: block; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.ff-pc .ff-side, .ff-pc .ff-edge, .ff-pc .ff-face { stroke: var(--ff-line); stroke-width: 1; stroke-linejoin: round; }
+.ff-pc.d .ff-side { fill: var(--ff-dark); } .ff-pc.d .ff-face { fill: var(--ff-dark-top); } .ff-pc.d .ff-edge { fill: var(--ff-dark-edge); }
+.ff-pc.l .ff-side { fill: var(--ff-light); } .ff-pc.l .ff-face { fill: var(--ff-light-top); } .ff-pc.l .ff-edge { fill: var(--ff-light-edge); }
+.ff-pc .ff-hole { fill: var(--ff-hole); stroke: none; }
+
+.ff-board { --fs: min(100vw - 24px, 100svh - 470px, 400px); width: var(--fs); height: var(--fs); box-sizing: border-box; padding: calc(var(--fs) * 0.02); display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: calc(var(--fs) * 0.02); background: var(--ff-groove); border-radius: 8px; box-shadow: 0 0 0 3px var(--sq-edge), 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+@media (max-height: 640px) { .ff-board { --fs: min(100vw - 24px, 100svh - 400px, 400px); } }
+.ff-board button { position: relative; min-width: 0; min-height: 0; padding: 12%; border: 0; border-radius: 6px; background: radial-gradient(circle at 50% 50%, var(--ff-sq-hi), var(--ff-sq) 70%); cursor: pointer; display: block; }
+.ff-board button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 2; }
+.ff-board button.open::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22%; height: 22%; margin: -11% 0 0 -11%; border-radius: 50%; background: var(--hint); pointer-events: none; }
+.ff-board button.last { box-shadow: inset 0 0 0 3px var(--last); }
+.ff-board button.tip { box-shadow: inset 0 0 0 3px var(--accent); }
+.ff-board button.pending { box-shadow: inset 0 0 0 3px var(--accent); }
+.ff-board button.pending .ff-pc { opacity: 0.8; }
+.ff-board button.win { background: var(--accent-glow, rgba(245, 158, 11, 0.2)); box-shadow: inset 0 0 0 3px var(--accent); }
+
+/* The piece in hand: it is placed next, so it sits between the board and the tray. */
+.ff-hand { display: flex; align-items: center; gap: var(--sp-3); min-height: 52px; padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font: 600 var(--fs-small) var(--font); color: var(--ink); }
+.ff-hand.is-empty { visibility: hidden; }
+.ff-hand-pc { width: 44px; height: 48px; flex: none; }
+
+.ff-tray { --ts: min((100vw - 24px - 7 * 6px) / 8, 48px); display: grid; grid-template-columns: repeat(8, var(--ts)); gap: 6px; justify-content: center; }
+.ff-slot { position: relative; width: var(--ts); height: calc(var(--ts) * 1.1); padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.ff-slot.gone { opacity: 0.22; cursor: default; }
+.ff-slot[aria-disabled="true"]:not(.gone) { cursor: default; }
+.ff-slot.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow, rgba(245, 158, 11, 0.2)), inset 0 0 0 1px var(--accent); background: var(--accent-glow, rgba(245, 158, 11, 0.12)); }
+.ff-slot.tip { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.ff-slot.danger::after { content: ""; position: absolute; right: 3px; top: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 1.5px var(--surface); }
+.ff-slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
