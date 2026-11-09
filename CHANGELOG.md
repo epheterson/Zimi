@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Earth turns smoothly under the space station, and flying from it back home is quick.
 - Go to sits above the keyboard, and Map here appears only where one of your maps covers the place.
 - Read aloud in a book starts at the first sentence that begins on the page.
+- A second request for a file already downloading follows that download instead of starting another (#143).
 
 ## [1.15.3]
 
