@@ -15,7 +15,7 @@
   // rows), a tapped card lifts 14 px
   // (a card you can play stands 6 px proud when others cannot be played). An opponent's face-down hand of more than
   // five cards is one back and a count chip.
-  var NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
+  var MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
   // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
@@ -206,6 +206,7 @@
       if (sig === last) return;
       last = sig;
       paintChips(scoreRow, hd.chips, chipMemo, cfg.seats);
+      scoreRow.classList.toggle('ct-many', (hd.chips || []).length >= MANY_CHIPS);
       // Trump is a suit chip: the suit's glyph (red for the red suits), then the word.
       if (hd.trump !== undefined && hd.trump !== null) {
         var red = Z.isRed(Z.make(1, hd.trump));

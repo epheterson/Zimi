@@ -210,6 +210,11 @@ def test_oh_hell_five_played_by_touch_to_the_hand_sheet(browser, site):
     st = page.evaluate("() => window.ZimiOhHell.session.state")
     assert st["phase"] == "handEnd" and sum(st["tricks"]) == 5 and seen_trick == 5
     assert len(st["scores"]) == 5
+    # With bids and tricks in them the six chips (five players and the trump) still fit the phone's width.
+    chips = page.evaluate(
+        "() => [...document.querySelectorAll('.ct-chip')].map(e => { const b = e.getBoundingClientRect(); return [b.left, b.right]; })"
+    )
+    assert len(chips) == 6 and all(l >= 0 and r <= PHONE["width"] for l, r in chips), chips
     assert not page.errors
     ctx.close()
 

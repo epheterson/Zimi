@@ -36,6 +36,8 @@
 /* On a phone four players and a trump chip share one row: no dot, tight padding, the trump chip is its suit alone. */
 @media (max-width: 440px) { .ct-chip { padding: 0 8px; gap: 4px; } .ct-chip::before { display: none; } .ct-scores { flex-wrap: nowrap; gap: 4px; padding: 0 4px; } .ct-chip.ct-trump span { display: none; } }
 @media (max-width: 400px) { .ct-chip { padding: 0 6px; } }
+/* Five at the table (and the trump chip): the row has to fit a phone, so the chips take less air. */
+@media (max-width: 440px) { .ct-many { gap: 3px; padding: 0 2px; } .ct-many .ct-chip { padding: 0 5px; gap: 3px; } }
 .ct-status-text:empty { display: none; }
 
 /* Chip stacks: tokens in the casino colours (materials: they keep their hues), a column to a denomination. */
