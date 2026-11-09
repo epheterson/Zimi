@@ -322,3 +322,17 @@ def test_skipped_prefixes_are_not_unpacked(tmp_path):
     addons._unpack(str(tmp_path / "a.tgz"), str(tmp_path / "out"), 1, ("manpages",))
     assert (tmp_path / "out" / "bin" / "tool").exists() and (tmp_path / "out" / "manpagesX").exists()
     assert not (tmp_path / "out" / "manpages").exists()
+
+
+def test_a_refused_capture_mode_says_where_the_add_on_is(home, monkeypatch):
+    from zimi import manage
+
+    _register(monkeypatch, _fake("http://127.0.0.1:9/x", b"x"))
+    started = []
+    monkeypatch.setattr(addons, "install", lambda key, actor=None: started.append(key) or (True, None))
+    addons.POLICY.set("ask")
+    assert "Add-ons" in manage._addon_refusal("needs it", "fake") and not started
+    addons.POLICY.set("auto")
+    assert "adding it now" in manage._addon_refusal("needs it", "fake") and started == ["fake"]
+    addons.POLICY.set("never")
+    assert manage._addon_refusal("needs it", "fake") == "needs it"
