@@ -141,7 +141,7 @@ def write_zcrf(name, v, f, cls, entries, origin=None):
     v, f, n, src = cm.creased(v, f, SITE_CREASE_DEG, return_index=True)
     cls = np.asarray(cls)[src]
     lo, hi = v.min(0), v.max(0)
-    looks = [e if len(e) == 7 else _flat_look(*e) for e in entries]
+    looks = [e if len(e) >= 7 else _flat_look(*e) for e in entries]
     data = cm.pack(1.0, lo, hi, (0, 0, 1), (1, 0, 0), looks, v, n, cls, f)
     path = os.path.join(EARTH, "craft-site-%s-v1.bin" % name)
     with open(path, "wb") as fh:
