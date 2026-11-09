@@ -24,7 +24,7 @@ var AE_STAND_AMBIENT_GAIN = 1.6;
 var AE_STAND_BOUNCE = 0.03;                // an airless ground in shadow, over the Sun-lit ground's radiance (alb x this): light from the terrain round it             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
 var AE_STAND_HORIZON_GAIN = 1.8;           // the horizon's sky over the zenith's
 var AE_STAND_MOON_NAME = 'moon';
-var AE_STAND_CHARON_KM = 19591, AE_STAND_CHARON_R_KM = 606;   // its orbit about Pluto, circular; its radius (NASA New Horizons)
+var AE_STAND_CHARON_R_KM = 606;   // Charon's radius (NASA New Horizons); its orbit's is in almanac-earth.js
 var AE_STAND_MAP_GAIN_ALBEDO = 0.25;   // the albedo a map's linear mean stands for; a body's own albedo scales it
 var AE_STAND_RING_PX = 6;              // a ringed planet's rings are read from this many pixels across
 var AE_STAND_CRAFT_RANGE = 5e4;        // metres out at which a spacecraft's mark is projected

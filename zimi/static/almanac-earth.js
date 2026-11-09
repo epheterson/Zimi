@@ -4125,6 +4125,9 @@ function _aeRefAxesRows() {
   add('stand.detail', _aeT('tb_kn_stand_detail'), 'seeded by the place', '', 'Zimi');
   add('stand.dust', _aeT('tb_kn_stand_dust'), AE_STAND_MARS_TAU, '', 'Lemmon et al. 2015');
   add('stand.haze', _aeT('tb_kn_stand_haze'), AE_STAND_HAZE_VIS_KM.venus + ' · ' + AE_STAND_HAZE_VIS_KM.titan, 'km', 'Zimi, after Venera and Huygens');
+  add('stand.charon', _aeT('tb_kn_stand_charon'), AE_STAND_CHARON_KM, 'km', 'NASA/JPL (New Horizons)');
+  add('stand.coast', _aeT('tb_kn_stand_coast'), 'Natural Earth 1:10m land · 8192 × 4096', '', 'Natural Earth (public domain)');
+  add('stand.shadow', _aeT('tb_kn_stand_shadow'), AE_STAND_SHADE_GRIDS, 'm', 'Zimi');
   // The landing sites: where the models, the sol and the Saturn V's flight come from.
   add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
   add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
@@ -4727,7 +4730,9 @@ var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_MARS_TAU = 0.47;                  // the dust in Mars's air, optical depth straight up (red light); Lemmon et al. 2015 find 0.3 to 1 outside storms
-var AE_STAND_HAZE_VIS_KM = { venus: 28, titan: 18 };   // how far one sees through the haze at the ground
+var AE_STAND_HAZE_VIS_KM = { venus: 28, titan: 18 };
+var AE_STAND_CHARON_KM = 19591;                  // Charon's circular orbit about Pluto (and its radius is in almanac-stand.js)
+var AE_STAND_SHADE_GRIDS = '±6000 · ±150000';    // the relief's shadow grids, half-widths in metres (almanac-terrainshade.js)   // how far one sees through the haze at the ground
 var _aeStandLoading = null;
 function _aeStandable(key) { return AE_STAND_KEYS.indexOf(key) >= 0; }
 function _aeStandReady() {

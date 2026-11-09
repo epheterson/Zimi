@@ -222,3 +222,77 @@ def test_hd_terrain_tiles_sharpen_the_heights(page):
     assert loaded and abs(after - 1234) < 1 and abs(before - 1234) > 5, (before, after)
     assert far != 1234, "a place whose tiles are not in keeps the shipped map"
     assert not page.errors, page.errors
+
+
+# ── The sky and the ground, the later pieces ──
+def _stand_anywhere(pg, body, lat, lon):
+    pg.evaluate("([b, la, lo]) => _aeStandAt(b, la, lo)", [body, lat, lon])
+    pg.wait_for_function("() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr", timeout=GROUND_MS, polling=200)
+
+
+def test_charon_hangs_over_pluto_and_saturn_shows_its_rings(page):
+    _stand_anywhere(page, "pluto", 10, 10)
+    charon = page.evaluate("() => { var o = _ae.stand.fr.objs.filter(function (x) { return x.key === 'charon'; })[0]; return o && { rho: o.rho, z: o.dir[2], dist: o.dist }; }")
+    assert charon, "Charon is among the bodies in Pluto's sky"
+    assert 0.029 < charon["rho"] < 0.033, "its disc is about 1.8 degrees in radius (606 km at 19,591 km)"
+    assert charon["z"] > 0.9 and abs(charon["dist"] - 19591) < 700, "from a place near the sub-Charon point it is almost overhead"
+    _leave(page)
+    _stand_anywhere(page, "titan", -10.6, 192.3)
+    page.wait_for_function("() => !!_ae.stand.ringTex", timeout=60_000, polling=200)
+    sat = page.evaluate(
+        """() => { var st = _ae.stand, i = st.fr.objs.findIndex(function (x) { return x.key === 'saturn'; });
+          st.dirty = true; _aeStandDraw(performance.now()); var sp = st.sprites[i + 1];
+          return { rho: st.fr.objs[i].rho, rings: sp.uni.uRings.value, ringMap: !!sp.uni.uRingMap.value, half: sp.uni.uHalf.value, ring: sp.uni.uRing.value }; }"""
+    )
+    assert sat["rings"] == 1 and sat["ringMap"] and sat["half"] > sat["rho"] * 1.8, "Saturn's quad is wide enough for its rings, which are drawn"
+    _leave(page)
+    assert not page.errors, page.errors
+
+
+def test_spacecraft_are_marked_where_they_are(page):
+    _stand_anywhere(page, "moon", 20.19, 30.77)
+    page.evaluate("() => { _aeTracksLoad(); }")
+    page.wait_for_function("() => !!_aeTracks && !!_aeTracks.probes && _aeTracks.probes.length > 0", timeout=60_000, polling=200)
+    page.evaluate("() => { _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }")
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.crafts && _ae.stand.fr.crafts.length > 0", timeout=60_000, polling=200)
+    crafts = page.evaluate("() => _ae.stand.fr.crafts.map(function (c) { return [c.key, c.dist > 1, Math.abs(Math.hypot(c.dir[0], c.dir[1], c.dir[2]) - 1) < 1e-6]; })")
+    assert any(c[0] == "voyager1" for c in crafts) and all(c[1] and c[2] for c in crafts)
+    _leave(page)
+
+
+def test_a_low_sun_throws_the_reliefs_shadows(page):
+    _stand_anywhere(page, "moon", 20.19, 30.77)
+    ms = page.evaluate(
+        """() => { var st = _ae.stand, base = _aeDisplayMs(), prev = _aeStFrame(st, base).sunAlt;
+          for (var t = base + 3600000; t < base + 800 * 3600000; t += 3600000) { var a = _aeStFrame(st, t).sunAlt; if (prev < 4 && a >= 4) return t; prev = a; } return null; }"""
+    )
+    assert ms, "the Sun rises there within a lunar month"
+    page.evaluate("(ms) => _aeGoTo(ms)", ms)
+    page.wait_for_function("() => { var sh = _ae.stand.shade; return !!sh && !sh.job && _ae.stand.fr && _ae.stand.fr.sunAlt < 7 && Math.abs(_ae.stand.fr.sunAlt - 4) < 3; }", timeout=GROUND_MS, polling=500)
+    stats = page.evaluate("() => { var a = _ae.stand.shade.arr, lo = 0, n = a.length, s = 0; for (var i = 0; i < n; i++) { s += a[i]; if (a[i] < 0.5) lo++; } return { shadowed: lo / n, mean: s / n }; }")
+    assert 0.002 < stats["shadowed"] < 0.6, "some of the ground is in shadow at a Sun 4 degrees up, most is not (%s)" % stats
+    _leave(page)
+
+
+def test_the_earths_coast_is_where_natural_earth_puts_it(page):
+    page.evaluate("() => _aeTerrainLoad('earth')")
+    sea = page.evaluate("() => ({ sf: _aeTerrainHeight('earth', 37.77, -122.42, 0), off: _aeTerrainHeight('earth', 37.77, -123.3, 0) })")
+    assert sea["sf"]["sea"] is False and sea["sf"]["h"] >= 3, "San Francisco is on land (the shipped map alone says sea)"
+    assert sea["off"]["sea"] is True, "the ocean off the Golden Gate is sea"
+
+
+def test_the_phone_turns_the_view(page):
+    _stand_anywhere(page, "moon", 20.19, 30.77)
+    ok = page.evaluate("() => _aeMotionStart(_ae.stand)")
+    assert ok
+    page.evaluate("() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 90, beta: 90, gamma: 0, absolute: true }))")
+    page.wait_for_function(
+        "() => { var st = _ae.stand; st.dirty = true; _aeStandDraw(performance.now()); var h = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360; return Math.abs(h - 270) < 6; }",
+        timeout=30_000,
+        polling=400,
+    )
+    pitch = page.evaluate("() => (_ae.stand.pitch * 180 / Math.PI)")
+    assert abs(pitch) < 6, "held upright it looks at the horizon"
+    page.evaluate("() => _aeMotionStop(_ae.stand)")
+    _leave(page)
+    assert not page.errors, page.errors

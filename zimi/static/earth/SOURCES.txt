@@ -242,3 +242,8 @@ terrain-<body>-v1.bin (scripts/build_terrain.py)
   body (seeded by the place, so the same spot is always the same ground) and the
   view says so in the Almanac's Constants. The Almanac HD release adds the
   same heights to 11 pixels a degree (terrain/<body>/ tiles).
+
+land-v1.bin (scripts/build_landmask.py)
+  Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land
+  polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
+  8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.
