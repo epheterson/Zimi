@@ -54,7 +54,7 @@ def browser():
 def phone(browser, site, width=390):
     ctx = browser.new_context(
         viewport={"width": width, "height": 844},
-        device_scale_factor=2,
+        device_scale_factor=1,
         is_mobile=True,
         has_touch=True,
     )
