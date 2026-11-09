@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Zimi**
 
 - `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- An app that is open when you change the language is drawn again in the new one.
 - Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
 
 **Games**
