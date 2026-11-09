@@ -265,3 +265,11 @@ land-v1.bin (scripts/build_landmask.py)
   Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land
   polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
   8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.
+
+missions-v1.json, craft-ms-*-v1.bin (scripts/build_missions.py, scripts/build_mission_models.py)
+  Apollo 11: NASA Apollo 11 Mission Report MSC-00171 (events, states, masses), public
+  domain; the Moon's and Sun's places from JPL Horizons (NASA/JPL, public domain). The
+  spacecraft's paths are integrated and fitted to the report: JPL has no ephemeris of
+  Columbia or Eagle. Voyager 1 and 2, flyby dates and distances: JPL Horizons. The
+  vehicles are written from published dimensions (Saturn V Flight Manual, Apollo
+  Operations Handbook, Grumman LM press kit).

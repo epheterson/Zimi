@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Almanac
 
+- **Missions:** Go to > Missions replays Apollo 11 from the pad, through staging, orbit and the translunar coast, and Voyager 1 and 2 past every planet they met, on the 3D view's own clock: a timeline of named phases to scrub or jump between, the vehicle with its stages and burns, a camera that tells each phase until you drag it. Plan a flight draws a porkchop plot to any planet and flies the transfer you pick.
 - **Stand here:** tap a spot on the Earth, Moon, Mars, Venus, Mercury, Titan, Pluto or a big moon and choose Stand here: the camera flies down to the ground at eye height with the real terrain, that body's own sky (Mars's butterscotch day and blue sunset, Venus and Titan's haze, black skies with stars on the airless ones) and the Sun and planets where they truly are; drag or turn the phone to look around, Back returns to orbit. Craters and mountains cast shadows at a low Sun, Charon hangs over Pluto, Saturn shows its rings, spacecraft are marked where they are, and the Earth's coasts follow Natural Earth. The landing sites stand on the same ground, with eye level as a camera of the site.
 ### Highlights
 
