@@ -53,8 +53,10 @@ var AS_LAMP_FRAG = [
   '}'
 ].join('\n');
 function _asLampBuild(st) {
-  var THREE = _ae.gl.THREE, geo = new THREE.PlaneGeometry(AS_LAMP_WIDE_M, AS_LAMP_LEN_M);
-  geo.translate(0, AS_LAMP_LEN_M / 2, 0);
+  var THREE = _ae.gl.THREE, geo = new THREE.BufferGeometry(), hw = AS_LAMP_WIDE_M / 2;   // one quad, near edge on the origin (the build has no PlaneGeometry)
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-hw, 0, 0, hw, 0, 0, hw, AS_LAMP_LEN_M, 0, -hw, AS_LAMP_LEN_M, 0]), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  geo.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
   var mat = new THREE.ShaderMaterial({ uniforms: { k: { value: 0 } }, vertexShader: AS_LAMP_VERT, fragmentShader: AS_LAMP_FRAG, transparent: true, depthWrite: false, blending: AE_THREE_ADDITIVE_BLENDING });
   var mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false; mesh.visible = false;
