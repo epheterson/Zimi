@@ -55,6 +55,12 @@ Before tagging, verify these on the feature branch:
 
 Desktop Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block of one to three short one-line bullets, before `### Added` and the rest. When it does, the release body is those bullets, a **Fixed** list of every line in the section beginning with `- ` that cites an issue (#N), and a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no headings or stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
 
+The Highlights are grouped by area under bold headings, **Zimi** first and **Almanac** last (it is the Easter egg), with **Games** and any other area between, and a bullet or more under each. Each bullet is one short line saying what a person can do now; a fix is listed only when it fixes something an earlier release shipped, and what was built and corrected inside the release is not a fix. `python3 scripts/release_notes.py --check X.Y.Z` (or `Unreleased`) names a block that breaks the order. Add your line to the Unreleased block in the right area as you make the change.
+
+### Patch releases
+
+Patch releases (`X.Y.Z`) are cut on demand only: when a real bug hits people on a released version, branch from `main`, fix just that, and release it as the next patch. The release in progress (`X.Y+1.0`) is never held for it and never carries a patch's version number. A merged version is spent: a fix after a merge ships as the next patch, never a re-cut of the same number.
+
 ### Phase 1: Tag and build
 
 1. Squash merge the release branch to `main` with the version bumped in `pyproject.toml`
