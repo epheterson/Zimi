@@ -46,8 +46,9 @@ SOURCE = (
 UNIT = 0.01
 # Douglas-Peucker tolerance, degrees (about 3 km).
 TOLERANCE = 0.03
-# A ring whose box is smaller than this in both directions (about 3 km) is a
-# rock: left out unless it is all a region has.
+# An outer ring whose box is smaller than this in both directions (about 3 km)
+# is a rock: left out unless it is all a region has. A hole is kept down to a
+# unit (the rounding): the even-odd rule needs it to leave an enclave out.
 MIN_RING_SPAN = 0.03
 
 # Natural Earth's own spellings, as people write the country.
@@ -123,14 +124,23 @@ def encode_ring(points):
 
 
 def rings_of(geometry):
+    """(ring, is_hole) for every ring of a Polygon or MultiPolygon: a polygon's
+    first ring is its outline, the others are holes in it."""
     polys = (
         [geometry["coordinates"]]
         if geometry["type"] == "Polygon"
         else geometry["coordinates"]
     )
     for poly in polys:
-        for ring in poly:
-            yield ring
+        for i, ring in enumerate(poly):
+            yield ring, i > 0
+
+
+def keeps_ring(span, is_hole, largest):
+    """Whether a ring of box ``span`` stays in a region's outline."""
+    if largest:
+        return True
+    return span >= (UNIT if is_hole else MIN_RING_SPAN)
 
 
 def build(features):
@@ -149,16 +159,17 @@ def build(features):
             countries.append([admin, iso])
         rings = []
         candidates = []
-        for ring in rings_of(f["geometry"]):
+        for ring, is_hole in rings_of(f["geometry"]):
             xs = [c[0] for c in ring]
             ys = [c[1] for c in ring]
             span = max(max(xs) - min(xs), max(ys) - min(ys))
-            candidates.append((span, ring))
+            candidates.append((span, ring, is_hole))
         candidates.sort(key=lambda c: -c[0])
-        for i, (span, ring) in enumerate(candidates):
-            if span < MIN_RING_SPAN and i:
+        for i, (span, ring, is_hole) in enumerate(candidates):
+            if not keeps_ring(span, is_hole, i == 0):
                 continue
-            enc = encode_ring(simplify([tuple(c[:2]) for c in ring], TOLERANCE))
+            # A small hole is kept as it is: simplifying to 3 km would take it away.
+            enc = encode_ring(simplify([tuple(c[:2]) for c in ring], TOLERANCE if span >= MIN_RING_SPAN else 0))
             if enc:
                 rings.append(enc)
         if not rings:
