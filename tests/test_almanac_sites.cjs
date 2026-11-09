@@ -20,6 +20,8 @@ const ctx = {
   console, Math, window: {}, performance: { now: () => 0 },
   AE_EARTH_RADIUS_KM: 6378.137,
   _ae: { gl: { planets: {} } },
+  AE_SITE_FACTS: eval('(' + read('almanac-earth.js').match(/var AE_SITE_FACTS = (\{[^;]*\});/)[1] + ')'),   // the view's own table, so the reference and the code are one set of numbers
+  AE_BODY_FACTS: { moon: { gravity: 1.62 }, mars: { gravity: 3.7 }, venus: { gravity: 8.9 }, titan: { gravity: 1.35 }, earth: { gravity: 9.8 } },
   _aeSunShown: () => [100, 0, 0],
   _aeRad: (d) => d * Math.PI / 180,
   _aeDeg: (r) => r * 180 / Math.PI,
@@ -35,7 +37,7 @@ const ctx = {
   _aeLatLonVec: (lat, lon) => { const la = lat * Math.PI / 180, lo = lon * Math.PI / 180; return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)]; }
 };
 vm.createContext(ctx);
-for (const f of ['almanac-sites.js', 'almanac-sites-ground.js', 'almanac-sites-drive.js', 'almanac-sites-launch.js']) vm.runInContext(read(f), ctx, { filename: f });
+for (const f of ['almanac-sites.js', 'almanac-sites-ground.js', 'almanac-sites-drive.js', 'almanac-sites-launch.js', 'almanac-sites-trail.js']) vm.runInContext(read(f), ctx, { filename: f });
 const S = (name) => vm.runInContext(name, ctx);
 
 let failures = 0;
@@ -105,6 +107,17 @@ const moon = { info: { relief: 0.45, craters: 1 }, radiusM: 1737400, terrain: nu
   check(near(back.lat, 20, 1e-6) && near(back.lon, 30, 1e-6), 'the origin of the frame is the site\'s latitude and longitude');
   const R = 0.27 * 6378.137 * 1000, north = S('_asLatLon')(st, body, [0, 1000, 0]);
   check(near(north.lat - 20, (1000 / R) * 180 / Math.PI, 5e-4) && near(north.lon, 30, 1e-3), '1 km north is a kilometre\'s worth of latitude');
+}
+
+// ── 5. The route ──
+{
+  const route = S('_asTrailLocal')({ lat: 0, lon: 0, radiusM: 1000 / (Math.PI / 180) }, [[3, 0, 0], [10, 0.001, 0], [20, 0.001, 0.002]]);
+  check(near(route[1][2], 1, 1e-6) && near(route[1][1], 0, 1e-9), 'a thousandth of a degree north, at a radius of 1000 m a degree, is a metre: north is y in the frame');
+  const at = S('_asTrailAt');
+  const a = at(route, 6.5);
+  check(near(a.i, 0, 0) && near(a.y, route[0][2] + (route[1][2] - route[0][2]) * 0.5, 1e-9), 'half way through a leg the rover is half way along it');
+  check(at(route, 0).i === 0 && at(route, 999).i === 2, 'before the first sol and after the last it stays at the ends');
+  check(a.dy > 0 && Math.abs(a.dx) < 1e-9, 'and faces the way that leg goes');
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }

@@ -589,11 +589,17 @@ def m_zhurong():
     return m.write("zhurong")
 
 
+def m_pad_slab():
+    """The concrete of the pad, flat on the ground (it throws no shadow of its own)."""
+    m = Mesh([((0.62, 0.62, 0.6), 0.1, 8)])
+    m.box((10, 0, 0.15), (150, 120, 0.3), 0)
+    return m.write("pad-slab")
+
+
 def m_pad39a():
     """Launch Complex 39A as Apollo 11 left it: the pad, the mobile launcher with the Saturn V's place on it at the
     origin (its top is 5 m up), and the 122 m launch umbilical tower with its swing arms and the crane on top."""
     m = Mesh([((0.55, 0.55, 0.52), 0.1, 8), ((0.25, 0.25, 0.27), 0.2, 12), ((0.7, 0.7, 0.72), 0.2, 12), ((0.6, 0.12, 0.1), 0.2, 12), ((0.05, 0.05, 0.05), 0.1, 8)])
-    m.box((10, 0, 0.15), (150, 120, 0.3), 0)  # the pad
     m.box((0, 0, 2.6), (36, 36, 4.8), 1)  # the mobile launcher's deck
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -765,6 +771,7 @@ PROCEDURAL = {
     "change-lander": m_change_lander,
     "yutu": m_yutu,
     "pad39a": m_pad39a,
+    "pad-slab": m_pad_slab,
     "zhurong": m_zhurong,
     "viking": m_viking,
     "pathfinder": m_pathfinder,

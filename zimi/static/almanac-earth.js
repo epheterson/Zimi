@@ -4094,6 +4094,18 @@ function _aeRefAxesRows() {
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
+  // The landing sites: where the models, the sol and the Saturn V's flight come from.
+  add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
+  add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
+  add('site.traverse', _aeT('tb_kn_site_traverse'), 'MMGIS waypoints · traverses-v1.json', '', 'NASA/JPL-Caltech/MSL and Mars 2020 teams');
+  add('site.lrv_speed', _aeT('tb_kn_site_lrv_speed'), AE_SITE_FACTS.lrvSpeedMs, 'm/s', 'NASA (13 km/h)');
+  add('site.mars_speed', _aeT('tb_kn_site_mars_speed'), AE_SITE_FACTS.marsDriveSpeedMs, 'm/s', 'Zimi (a real rover does 0.04)');
+  add('site.saturn_mass', _aeT('tb_kn_site_saturn_mass'), AE_SITE_FACTS.saturnMassKg, 'kg', 'NASA Saturn V flight manual');
+  add('site.saturn_thrust', _aeT('tb_kn_site_saturn_thrust'), AE_SITE_FACTS.saturnThrustN, 'N', 'NASA Saturn V flight manual');
+  add('site.saturn_burn', _aeT('tb_kn_site_saturn_burn'), AE_SITE_FACTS.saturnBurnKgS, 'kg/s', 'NASA Saturn V flight manual');
+  add('site.saturn_cutoff', _aeT('tb_kn_site_saturn_cutoff'), AE_SITE_FACTS.saturnCutoffS, 's', 'NASA Apollo 11 flight report');
+  add('site.launch_azimuth', _aeT('tb_kn_site_azimuth'), AE_SITE_FACTS.launchAzimuthDeg, '°', 'NASA Apollo 11 flight report');
+  add('site.tower', _aeT('tb_kn_site_tower'), AE_SITE_FACTS.launchTowerM, 'm', 'NASA Launch Complex 39');
   return rows;
 }
 
@@ -4222,6 +4234,9 @@ function _aeLmLoad() {
 // The landing sites' models, ground and rover (almanac-sites.js, -ground.js; the rover's own file loads at the first
 // Drive): fetched the first time a landing's card opens, never with the view. The card shows its date and its two
 // ways down once they are in.
+// The numbers the sites' scenes (almanac-sites*.js) run on that a person is shown or can feel, kept here so the reference
+// lists them (_aeRefAxesRows) and the code reads the same ones: a sol, how fast the rovers go, the Saturn V's.
+var AE_SITE_FACTS = { solSeconds: 88775.244, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122 };
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 var _aeSitesLoading = false;
 function _aeSitesLoad() {

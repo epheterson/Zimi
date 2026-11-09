@@ -24,7 +24,8 @@
   "venera": {"size":[2.1,2.1,1.43]},
   "surveyor": {"size":[3.125,2.765,2.98]},
   "zhurong": {"size":[2.5,1.9,1.943]},
-  "pad39a": {"size":[150.0,120.0,134.0]}
+  "pad39a": {"size":[55.0,36.0,133.8]},
+  "pad-slab": {"size":[150.0,120.0,0.3]}
  },
 "sites": [
   {"name":"Apollo 11","body":"moon","ms":-14182980000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":14,"y":6,"h":20}]},
@@ -59,7 +60,7 @@
   {"name":"Venera 13","body":"venus","ms":383824620000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
   {"name":"Venera 14","body":"venus","ms":384159600000,"parts":[{"m":"venera","x":0,"y":0,"h":0}]},
   {"name":"Huygens","body":"titan","ms":1105706580000,"parts":[{"m":"huygens","x":0,"y":0,"h":0}]},
-  {"name":"Cape Canaveral","body":"earth","ms":-14552880000,"pad":{"lat":28.6082,"lon":-80.6041},"launch":{"model":"saturn5","name":"Apollo 11","azimuth":72,"z":5},"parts":[{"m":"pad39a","x":0,"y":0,"h":0},{"m":"saturn5","x":0,"y":0,"h":0,"z":5}]}
+  {"name":"Cape Canaveral","body":"earth","ms":-14552880000,"pad":{"lat":28.6082,"lon":-80.6041},"launch":{"model":"saturn5","name":"Apollo 11","azimuth":72,"z":5},"view":{"dist":520,"el":0.1,"focus":70},"flat":[95,170],"parts":[{"m":"pad-slab","x":0,"y":0,"h":0,"noShadow":1},{"m":"pad39a","x":0,"y":0,"h":0},{"m":"saturn5","x":0,"y":0,"h":0,"z":5}]}
  ],
 "rovers": {
   "lrv": {"body":"lrv-body","wheel":"lrv-wheel"},

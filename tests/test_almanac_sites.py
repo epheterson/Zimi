@@ -64,7 +64,10 @@ def test_every_site_is_a_landing_in_the_landmarks_at_its_coordinates(sites, land
     for s in sites["sites"]:
         rows = [r for r in landmarks[s["body"]] if r[0] == s["name"]]
         assert len(rows) == 1, "%s is one landing of %s" % (s["name"], s["body"])
-        assert rows[0][3] == "landing"
+        assert rows[0][3] in ("landing", "launch")
+        pad = s.get("pad")
+        if pad:  # a launch pad is within a few kilometres of the place the landmarks name
+            assert abs(pad["lat"] - rows[0][1]) < 0.3 and abs(pad["lon"] - rows[0][2]) < 0.3
 
 
 def test_the_sites_the_brief_names_are_all_there(sites):
@@ -160,17 +163,17 @@ def test_the_stage_carries_the_files_and_the_server_versions_them():
         stage = fh.read()
     with open(os.path.join(ROOT, "zimi", "http.py"), encoding="utf-8") as fh:
         http = fh.read()
-    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js"):
+    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
         assert '"%s"' % f in stage, f
         assert '_static_hash("%s")' % f in http, f
 
 
 def test_the_strings_the_code_reads_are_in_every_language():
     src = ""
-    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js"):
+    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
         with open(os.path.join(STATIC, f), encoding="utf-8") as fh:
             src += fh.read()
-    keys = set(re.findall(r"_aeT\('(alm_site_[a-z_]+)'", src))
+    keys = set(re.findall(r"'(alm_site_[a-z_]+)'", src))
     assert {
         "alm_site_visit",
         "alm_site_drive",
