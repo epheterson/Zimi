@@ -680,9 +680,14 @@ def test_follow_someone_to_work_along_the_roads(browser, site):
     assert "Dale Pemberton" in card and "On the way to work" in card, card
     path = pg.evaluate("() => window.__zimcity.following.walk.trip.path")
     pg.click("#cy-pause")   # the city runs, and the figure with it
-    seen = pg.evaluate("""() => new Promise((done) => { const out = [], t0 = performance.now();
-      (function look() { const f = window.__zimcity.following, v = window.__zimcity.view, c = v.tileAt(v.w / 2, v.h / 2);
-        out.push({ at: f.walk.at, centre: c }); if (performance.now() - t0 < 2500) requestAnimationFrame(look); else done(out); })(); })""")
+    # Look every frame until the figure has walked a while and the camera has caught up with it (a state, not a
+    # number of seconds: a loaded runner draws few frames, and the figure waits at home before it sets off).
+    seen = pg.evaluate("""() => new Promise((done) => { const out = [], t0 = performance.now(); let moved = 0;
+      (function look() { const f = window.__zimcity.following, v = window.__zimcity.view, c = v.tileAt(v.w / 2, v.h / 2), a = f.walk.at;
+        out.push({ at: { x: a.x, y: a.y }, centre: c });
+        if (a.x !== out[0].at.x || a.y !== out[0].at.y) moved++;
+        const caught = Math.abs(c.x - a.x) <= 2 && Math.abs(c.y - a.y) <= 2;
+        if ((moved >= 60 && caught) || performance.now() - t0 > 60000) done(out); else requestAnimationFrame(look); })(); })""")
     on_road = {(p[0], p[1]) for p in path}
     assert all((round(s["at"]["x"]), round(s["at"]["y"])) in on_road for s in seen), seen[:3]
     assert seen[-1]["at"] != seen[0]["at"]
