@@ -1062,11 +1062,8 @@ function _aeRenderPlaceCard(card) {
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' + head + body + '<p>' + _aeStandButtonHtml() + '</p>';
   card.hidden = false;
   _aeById('ae-card-x').onclick = function () { _ae.place = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); };
-<<<<<<< HEAD
   _aeCardMapBtn(card, p);
-=======
   _aeStandBindButtons(card, function () { return { key: 'earth', lat: p.lat, lon: p.lon }; });
->>>>>>> origin/topic/stand
   Array.prototype.forEach.call(card.querySelectorAll('[data-ae-place-open]'), function (open) {
     open.onclick = function (e) { e.preventDefault(); AlmanacLinks.openHit(a); };
   });
@@ -6914,14 +6911,9 @@ function _aeDraw(now, busy) {
     return;
   }
   _aeUpdate(_aeDisplayMs());
-<<<<<<< HEAD
-  if (_ae.gl.hd) _aeHdUpdate(_ae.gl);
-  _aeMapsFrame(_ae.gl);
-  _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
-=======
   if (_ae.gl.hd && !(_ae.site && _ae.site.pose)) _aeHdUpdate(_ae.gl);
+  _aeMapsFrame(_ae.gl);
   if (!(_ae.site && typeof _aeHostRender === 'function' && _aeHostRender())) _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);   // a landing site is drawn on Stand here's ground once that is ready
->>>>>>> origin/topic/stand
   _aeDrawMini();
   _aeUpdateLabels();
   if (_ae.pick) _aeStandMarkPick();
@@ -7733,11 +7725,8 @@ function _aeFinishClose() {
   _aeLeaveSpin();
   if (_ae.stand || _ae.standPending) _aeStandDrop(true);   // the ground goes with the view (its history step with the view's)
   _aeIsOpen = false;
-<<<<<<< HEAD
   if (window.AlmanacMaps) AlmanacMaps.release();
-=======
   if (_ae.site) _aeSiteLeave(true);
->>>>>>> origin/topic/stand
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();
