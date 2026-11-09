@@ -48,6 +48,7 @@ CELL_BOARDS = (
     "noughts.html",
     "reversi.html",
     "shogi.html",
+    "shutthebox.html",
     "sudoku.html",
     "xiangqi.html",
 )

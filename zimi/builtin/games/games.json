@@ -2289,5 +2289,56 @@
   "length": "10 min",
   "kind": "puzzle",
   "computer": false
+ },
+ {
+  "qid": "Q7193201",
+  "wiki": "Pig (dice game)",
+  "path": "pig.html",
+  "title": "Pig",
+  "blurb": "Roll your luck, hold to keep it",
+  "why": "A folk game with one die and one rule: a 1 loses everything you rolled this turn.",
+  "origin": {
+   "year": 1945,
+   "era": "1940s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q2280396",
+  "wiki": "Shut the box",
+  "path": "shutthebox.html",
+  "title": "Shut the Box",
+  "blurb": "Roll, then shut tiles that add up",
+  "why": "An old dice game for a box of hinged, numbered flaps. A pair of dice, a pen and paper will do.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1 to 2",
+  "length": "10 min",
+  "kind": "dice",
+  "computer": true
+ },
+ {
+  "qid": "Q5435387",
+  "wiki": "Farkle",
+  "path": "tenthousand.html",
+  "title": "Ten Thousand",
+  "blurb": "Roll six dice, bank before you bust",
+  "why": "A folk dice game with many names, Farkle among them. It is believed to have reached North America on French ships in the 1600s.",
+  "origin": {
+   "year": null,
+   "era": "1600s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "20 min",
+  "kind": "dice",
+  "computer": true
  }
 ]
