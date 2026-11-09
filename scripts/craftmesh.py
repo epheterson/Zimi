@@ -231,10 +231,11 @@ def face_normals(v, f):
     return n  # length 2x area: the weight
 
 
-def creased(v, f, crease_deg=CREASE_DEG, chunk=40000):
+def creased(v, f, crease_deg=CREASE_DEG, chunk=40000, return_index=False):
     """Split vertices at creases and give each corner the smooth normal of the faces within crease_deg of its own.
 
-    Returns (v2, f2, n2): vertices repeated per distinct normal, faces onto them, unit normals.
+    Returns (v2, f2, n2): vertices repeated per distinct normal, faces onto them, unit normals; with return_index, also
+    the source vertex of each new one (to carry a per-vertex class along).
     """
     nf = face_normals(v, f)
     area = np.linalg.norm(nf, axis=1)
@@ -272,7 +273,8 @@ def creased(v, f, crease_deg=CREASE_DEG, chunk=40000):
     code = oct_encode(cn).astype(np.int64)
     key = corner_v * 65536 + (code[:, 0] + 128) * 256 + (code[:, 1] + 128)
     uniq, first, inv = np.unique(key, return_index=True, return_inverse=True)
-    return v[corner_v[first]], inv.reshape(-1, 3), oct_decode(code[first])
+    out = v[corner_v[first]], inv.reshape(-1, 3), oct_decode(code[first])
+    return out + (corner_v[first],) if return_index else out
 
 
 def oct_encode(n):

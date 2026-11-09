@@ -208,3 +208,15 @@ def test_pack_round_trips_vertices_normals_uvs_and_textures():
         o += 1 + n
     assert names == ["a.webp", "b.webp"]
     assert len(data) == o + nv * 17 + nt * 6
+
+
+MAX_ALL_MODELS_BYTES = 2_800_000  # probes, the station and the landing sites' models together (they were 2.1 MB)
+
+
+def test_every_model_in_the_app_is_zcr2_and_the_total_is_bounded():
+    paths = [os.path.join(EARTH, n) for n in os.listdir(EARTH) if (n.startswith("craft-") or n == "iss-v1.bin") and n.endswith(".bin")]
+    assert len(paths) >= 40
+    for p in paths:
+        with open(p, "rb") as f:
+            assert f.read(4) == b"ZCR2", os.path.basename(p)
+    assert sum(os.path.getsize(p) for p in paths) <= MAX_ALL_MODELS_BYTES
