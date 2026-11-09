@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Almanac
+
+- **Every satellite:** a button in the 3D Earth draws all 17,000 active satellites from CelesTrak's data (a snapshot ships; fresher data follows the Satellite data setting), filtered by Starlink, OneWeb, Iridium, GNSS, orbit and owner, with a card for each (owner, launch, altitude, speed) and the visible passes over your place, in the live sky too.
+
 ## [1.15.4]
 
 ### Highlights
