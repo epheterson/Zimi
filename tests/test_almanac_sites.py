@@ -256,3 +256,26 @@ def test_a_rovers_route_begins_at_its_landing_and_reaches_where_it_is_now(sites)
         assert (
             0.1 < far < 3
         ), "a route of tens of kilometres, not a point and not a planet"
+
+
+def test_the_almanac_pack_keeps_every_file_a_site_needs_for_the_offline_worker(sites):
+    """sw.js keeps http._almanac_pack_urls() when the Almanac is opened: the sites' code, table, routes and models."""
+    from zimi import http as zhttp
+
+    urls = {u.split("?")[0] for u in zhttp._almanac_pack_urls()}
+    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
+        assert "/static/" + f in urls, f
+    for f in ("sites-v1.json", "traverses-v1.json", "landmarks-v1.json"):
+        assert "/static/earth/" + f in urls, f
+    for name in sites["models"]:
+        assert "/static/earth/craft-site-%s-v1.bin" % name in urls, name
+
+
+def test_the_almanac_zim_carries_the_sites(tmp_path):
+    """The stage copies the files the sites ask for by relative address (almanacstage SCRIPTS, LAZY and the earth folder)."""
+    from zimi import almanacstage as stage
+
+    names = set(stage.SCRIPTS) | set(stage.LAZY)
+    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
+        assert f in names, f
+    assert "earth" in stage.DATA, "the whole earth folder: the table, the routes and every model"
