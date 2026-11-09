@@ -296,3 +296,68 @@ def test_the_station_is_on_its_own_orbit_ring(served):
             ctx.close()
         finally:
             br.close()
+
+
+# Drive the page's own loop on a virtual 60 fps clock at a clock rate; the view's pull-out, where the camera is, where the
+# station is on the screen and whether its ring shows, at every frame.
+RIDE = """([rate, frames]) => {
+  var NOW = Date.now(), PERF = performance.now() + 1e6, RealDate = Date;
+  window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(NOW); } static now() { return NOW; } };
+  performance.now = function () { return PERF; };
+  var cbs = [];
+  window.requestAnimationFrame = function (cb) { cbs.push(cb); return cbs.length; };
+  window.cancelAnimationFrame = function () {};
+  _ae.gl.renderer.render = function () {};
+  _almFocus = new RealDate(_aeDisplayMs()); _almClockLast = 0; _almClockRAF = 0; _almClockRunning = false;
+  _almClockSetRate(rate);
+  _ae.dirty = true; _ae.raf = 0; if (_ae.idleTimer) clearTimeout(_ae.idleTimer); _ae.idleTimer = 0;
+  var out = [];
+  for (var i = 0; i < frames; i++) {
+    NOW += 1000 / 60; PERF += 1000 / 60;
+    if (!_ae.raf) _aeKick();   // the view's own loop (the page's clock, below a fast rate, ticks only four times a second)
+    var pend = cbs; cbs = [];
+    pend.forEach(function (cb) { _ae.raf = 0; cb(PERF); });
+    var c = _ae.gl.camera.position, p = _ae.issPos, s = _aeProject(p), tp = _aeViewCam().tp;
+    out.push({ far: _ae.issFar, dist: _aeLen(_aeSub([c.x, c.y, c.z], tp)), fromEarth: _aeLen([c.x, c.y, c.z]), sx: s && s.x, sy: s && s.y, w: _ae.w, h: _ae.h,
+      ring: _ae.gl.issRing.visible && _ae.gl.issRing.material.opacity > 0 });
+  }
+  window.Date = RealDate;
+  return out;
+}"""
+RIDE_SMOOTH = 0.35  # the most a frame may change the log of the camera's distance (a pull-out takes about a second)
+
+
+def test_following_the_station_faster_than_it_can_be_followed_pulls_out_to_its_orbit(served):
+    """At a minute a second the camera rides the station close; past that (a frame moves the Earth under it too far to
+    follow) the view eases out to the whole orbit with the station moving along its ring, and eases back when slow
+    again: every frame inside the view, no frame a snap."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = _browser(pw)
+        try:
+            ctx, pg, errors = _open(br, served, "iss")
+            close = pg.evaluate("_ae.dist")
+            slow = pg.evaluate(RIDE, [60, 60])
+            assert max(r["far"] for r in slow) == 0, slow[-1]
+            assert abs(slow[-1]["dist"] - close) < close * 0.01, (slow[-1], close)
+            fast = pg.evaluate(RIDE, [3600, 150])
+            assert fast[-1]["far"] > 0.99, fast[-1]
+            assert fast[-1]["ring"], "the orbit is drawn while the view is out at it"
+            assert 2 < fast[-1]["fromEarth"] < 12, fast[-1]  # the whole orbit (1.07 Earth radii) across a phone's width
+            for r in fast:
+                assert r["sx"] is not None and 0 <= r["sx"] <= r["w"] and 0 <= r["sy"] <= r["h"], r  # never lost
+                assert r["fromEarth"] > 1.0, r  # and the camera never goes through the Earth on the way
+            for a, b in zip(fast, fast[1:]):
+                assert abs(math.log(b["dist"] / a["dist"])) < RIDE_SMOOTH, (a, b)
+            back = pg.evaluate(RIDE, [1, 180])
+            assert back[-1]["far"] < 0.01, back[-1]
+            assert abs(back[-1]["dist"] - close) < close * 0.02, (back[-1], close)
+            for a, b in zip(back, back[1:]):
+                assert abs(math.log(b["dist"] / a["dist"])) < RIDE_SMOOTH, (a, b)
+            for r in back:
+                assert r["sx"] is not None and r["fromEarth"] > 1.0, r
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
