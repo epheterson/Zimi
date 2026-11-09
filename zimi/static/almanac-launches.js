@@ -274,6 +274,7 @@ function _alOpenLaunch(i) {
   _alSelect(i);
   _al.view = 'launch';
   _alRender();
+  _al.sheetEl.scrollTop = 0;
   _alGoPad();
 }
 function _alBack() { _al.view = 'list'; _alClear(); _alRender(); }
