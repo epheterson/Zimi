@@ -188,11 +188,11 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   "These assets are free and without copyright"), each page's Source credit:
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (B)" (no individual credit listed)
+  juno: "Juno (A)", NASA/JPL-Caltech
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
-  webb: "James Webb Space Telescope (B)", NASA/Christopher R. Meaney
+  webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (B)", NASA/JPL/Solar System Simulator
+  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
   Each material as a palette entry of up to twelve (colour, roughness,
   metalness: gold foil, silver blanket, solar cell, aluminium, paint; a
   texture's mean colour, so no printed logo carries over), simplified to
@@ -200,10 +200,12 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   (ZCR2). New Horizons and Europa Clipper have no model there and stay a point.
 
 hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
-  The same craft from NASA's own fuller models, triangles untouched, with their
-  textures (WebP, at most 2048 px) and one mesh to a material; registered onto
-  the stock model's frame so the pointing and size hold:
-  voyager: "Voyager Probe (B)", NASA/Christopher R. Meaney
+  The same craft from the same NASA files with no triangle taken out (up to
+  260,000; Webb's 494,000 become 443,000), their textures (WebP, at most 2048
+  px) and one mesh to a material, and the station at all 172,000 triangles.
+  Stock and HD come from one file each, so the pointing and the size are shared:
+  iss: "International Space Station (ISS) (B)", NASA/Michael D. Carbajal
+  voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
   juno: "Juno (A)", NASA/JPL-Caltech
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
