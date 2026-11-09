@@ -377,11 +377,12 @@ var AS_CSS = [
   '.as-stick{position:absolute;width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;margin:-' + AS_STICK_R_PX + 'px 0 0 -' + AS_STICK_R_PX + 'px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.07);pointer-events:none}',
   '.as-stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(245,158,11,.55);border:2px solid rgba(255,255,255,.6)}',
   '.as-rest{position:absolute;left:calc(14px + env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;border-radius:50%;border:2px dashed rgba(255,255,255,.18);pointer-events:none}',
+  '.as-speed{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:22px;font-weight:600;color:rgba(255,255,255,.9);text-shadow:0 1px 8px rgba(0,0,0,.7);pointer-events:none;font-variant-numeric:tabular-nums;white-space:nowrap}',
   '.as-jump{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));width:60px;height:60px;pointer-events:auto}',
   '.as-hud.as-driving .as-cap{bottom:auto;top:calc(env(safe-area-inset-top) + 66px)}',
   '.as-rate{font-size:12px;min-width:44px}',
   '.as-launch{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:64px;height:64px;pointer-events:auto}',
-  '.as-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
+  '.as-count{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:26%;box-sizing:border-box;font-size:84px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
 ].join('');
 var AS_EYE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AS_PHONE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg>';
@@ -408,7 +409,7 @@ function _asHud(on) {
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
       '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
-      '<div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
+      '<div class="as-speed" id="as-speed" hidden></div><div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-jump" id="as-jump" aria-label="' + jumpL + '" title="' + jumpL + '" hidden>' + AS_JUMP_SVG + '</button>';
     el.appendChild(hud);
@@ -417,6 +418,7 @@ function _asHud(on) {
   hud.classList.toggle('as-driving', !!(_ae.site && _ae.site.drive));
   _aeById('as-rest').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
+  _aeById('as-speed').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
   _asEyeSync(_ae.site);

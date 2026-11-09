@@ -304,7 +304,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
 var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), read as grey
 // What the ground's colour map is multiplied by (linear): the Mars map is a salmon grey where the ground is rust, Titan's is grey
 // under orange light and a darker ground than it.
-var AE_STAND_TINT = { mars: [1.55, 0.92, 0.55], titan: [4.2, 3.0, 1.6] };
+var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -430,7 +430,7 @@ function _aeStCrafts(sc, all, O, local, ms) {
   }
   var iss = _ae.sats && _ae.sats.lib && _ae.sats.list.filter(function (s) { return s.iss; })[0];
   var r = iss ? _aeSatAt(iss, ms, _aeEqEq(sc)) : null;
-  if (r) {
+  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM) {
     var di = _aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O);
     out.push({ key: 'iss', name: _aeT('alm_earth_iss_short'), dir: _aeNorm(local(di)), dist: _aeLen(di) });
   }
@@ -644,19 +644,31 @@ function _aeStandDiscMap(st, key) {
   }
   return st.discMaps[key] && st.discMaps[key] !== true ? st.discMaps[key] : null;
 }
+var AE_STAND_CRAFT_TOP_PX = 110, AE_STAND_CRAFT_BOTTOM_PX = 120;   // the bar and the clock keep their own bands
+var AE_STAND_CRAFT_CHAR_PX = 7, AE_STAND_CRAFT_LINE_PX = 16;       // a name's width per letter, and a line's height
+var AE_STAND_STATION_REACH_KM = 2e4;                                  // the station is a mark only from the Earth's neighbourhood
 // Where the spacecraft are: a ring and the name, over the picture where they stand in the sky.
 function _aeStandCraftMarks(st, fr, view) {
   var host = st.craftHost || (st.craftHost = (function () { var h = document.createElement('div'); h.className = 'ae-stand-crafts'; _ae.el.appendChild(h); return h; })());
-  var cam = st.camera, V = _ae.gl.THREE.Vector3, shown = 0, W = _ae.w, H = _ae.h;
+  var cam = st.camera, V = _ae.gl.THREE.Vector3, shown = 0, W = _ae.w, H = _ae.h, placed = [];
   (fr.crafts || []).forEach(function (c) {
     var p = new V(view.pos[0] + c.dir[0] * AE_STAND_CRAFT_RANGE, view.pos[1] + c.dir[1] * AE_STAND_CRAFT_RANGE, view.pos[2] + c.dir[2] * AE_STAND_CRAFT_RANGE).project(cam);
-    var on = p.z > -1 && p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1 && (c.dir[2] > -0.02 || st.altKm > 1);
+    var x = (p.x + 1) / 2 * W, y = (1 - p.y) / 2 * H;
+    var on = p.z > -1 && p.z < 1 && Math.abs(p.x) < 1 && y > AE_STAND_CRAFT_TOP_PX && y < H - AE_STAND_CRAFT_BOTTOM_PX && (c.dir[2] > -0.02 || st.altKm > 1);
     var el = host.children[shown];
     if (!on) return;
     if (!el) { el = document.createElement('span'); el.className = 'ae-stand-craft'; host.appendChild(el); }
     if (el._name !== c.name) { el._name = c.name; el.innerHTML = '<i></i>' + _almEsc(c.name); }
     el.hidden = false;
-    el.style.transform = 'translate(' + ((p.x + 1) / 2 * W).toFixed(1) + 'px,' + ((1 - p.y) / 2 * H).toFixed(1) + 'px)';
+    // Names that would sit on one another step down, so each can be read.
+    var w = c.name.length * AE_STAND_CRAFT_CHAR_PX + 14;
+    for (var again = 0; again < placed.length * 2; again++) {
+      var hit = placed.filter(function (q) { return Math.abs(q.y - y) < AE_STAND_CRAFT_LINE_PX && x < q.x + q.w && q.x < x + w; })[0];
+      if (!hit) break;
+      y = hit.y + AE_STAND_CRAFT_LINE_PX;
+    }
+    placed.push({ x: x, y: y, w: w });
+    el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
     shown++;
   });
   for (var i = shown; i < host.children.length; i++) host.children[i].hidden = true;

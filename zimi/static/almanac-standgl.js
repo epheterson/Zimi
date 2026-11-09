@@ -302,7 +302,7 @@ var AE_ST_GROUND_FRAG = [
   '    vec3 sky = mix(uSkyHor, uSkyZen, pow(clamp(R.z, 0.0, 1.0), 0.5));',
   '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
   '    vec3 deep = vec3(0.02, 0.06, 0.09) * (sT * max(dot(upF, uSunDir), 0.0) / PI * 0.4 + uAmbient);',
-  '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 700.0) * 18.0;',
+  '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
   '  } else {',
   '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',

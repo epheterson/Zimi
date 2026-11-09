@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Stand here:** tap a spot on the Earth, Moon, Mars, Venus, Mercury, Titan, Pluto or a big moon and choose Stand here: the camera flies down to the ground at eye height with the real terrain, that body's own sky (Mars's butterscotch day and blue sunset, Venus and Titan's haze, black skies with stars on the airless ones) and the Sun and planets where they truly are; drag or turn the phone to look around, Back returns to orbit. Craters and mountains cast shadows at a low Sun, Charon hangs over Pluto, Saturn shows its rings, spacecraft are marked where they are, and the Earth's coasts follow Natural Earth. The landing sites stand on the same ground, with eye level as a camera of the site.
 ### Highlights
 
-- **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
+- **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 
 ## [1.15.4]
 
