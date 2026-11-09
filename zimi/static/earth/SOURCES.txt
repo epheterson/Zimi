@@ -202,6 +202,32 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
 
+craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
+  The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
+  the planets (almanac-sites.js), in the ZCRF format of the probes above.
+  From NASA 3D Resources ("These assets are free and without copyright"):
+  lm: "Apollo Lunar Module" (descent stage only: it is what stayed), no credit listed
+  perseverance-body, perseverance-wheel: "Mars 2020 Perseverance Rover", NASA/JPL-Caltech;
+    also the Curiosity site's rover (the same family; the wheels split off to turn)
+  ingenuity: "Ingenuity Mars Helicopter", NASA/JPL-Caltech
+  mer: "Mars Exploration Rover - Opportunity (MER-B)" for Spirit and Opportunity, NASA/JPL-Caltech
+  insight: "InSight Cruise Lander (arm deployed)", NASA/JPL-Caltech
+  saturn5: "Saturn V", no credit listed
+  Written for Zimi from the craft's published dimensions (boxes, cylinders, spheres;
+  no third-party geometry): the Lunar Roving Vehicle, Lunokhod, the Chang'e lander,
+  Yutu, Zhurong, Viking, Pathfinder, Sojourner, Phoenix, Huygens, Venera,
+  Surveyor, the US and Chinese flags, Launch Complex 39A and its tower.
+  sites-v1.json: where each model stands at a landing the landmarks file names,
+  the landing's instant (NASA mission pages, NSSDC, CNSA) and the rovers' wheels.
+  The Saturn V's flight (almanac-sites-launch.js) is computed from thrust, mass and
+  burn rate (NASA Saturn V flight manual, SA-506); the pitch program is fitted to
+  the Apollo 11 flight report's altitude, range and speed at first-stage cut-off.
+
+traverses-v1.json (scripts/build_traverses.py)
+  Curiosity's and Perseverance's drives, a point per sol where the route turns:
+  NASA/JPL's MMGIS waypoint files (mars.nasa.gov/mmgis-maps/MSL, /M20), public
+  domain, credit "NASA/JPL-Caltech/MSL and Mars 2020 teams". 45 KB.
+
 terrain-<body>-v1.bin (scripts/build_terrain.py)
   The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
   body's mean radius, int16, about 64 KB each. Public domain:
