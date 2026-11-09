@@ -1230,6 +1230,10 @@ function renderBrowseGallery() {
 function _mapsSource() {
   return _rawGet(SK.MAPS_SOURCE) === 'streetzim' ? 'streetzim' : 'kiwix';
 }
+// The source was changed in another window: an open Maps pane lists the other source's maps.
+document.addEventListener(PREF_APPLIED_EVENT, function(e) {
+  if (e.detail.indexOf(SK.MAPS_SOURCE) >= 0 && _browseView === 'drilldown' && manageCategoryFilter === 'maps' && document.getElementById('catalog-results')) drillCategory('maps');
+});
 function setMapsSource(source) {
   _prefWrite(SK.MAPS_SOURCE, source === 'streetzim' ? source : null);
   drillCategory('maps');

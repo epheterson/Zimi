@@ -450,6 +450,12 @@
     var m = spreadWanted() ? SPREAD_ODD : 0;
     if (app.pdfViewer.spreadMode !== m) app.pdfViewer.spreadMode = m;
   }
+  // Another window changed one of the three choices: this one shows it.
+  window.addEventListener('storage', function (e) {
+    if (e.key === DARK_KEY) paintDark();
+    else if (e.key === SPREAD_KEY) applySpread();
+    else if (e.key === VIEW_KEY) applyView();
+  });
   function setSpread(two) { choose(SPREAD_KEY, two ? '2' : '1'); applySpread(); }
   // ── turned: a sideways scan, a quarter turn at a time, kept per document ──
   function rotation() { return app && app.pdfViewer ? app.pdfViewer.pagesRotation || 0 : 0; }
