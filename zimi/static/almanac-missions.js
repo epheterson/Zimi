@@ -495,7 +495,6 @@ function _amBodyShot(s, st, shot, c) {
   var look = _aeNorm(_aeSub(focus, pos));
   s.pose = { pos: pos, up: upv, look: look, tp: focus, fov: AM_FOV_DEG, nearRe: Math.max(1e-9, d * AM_NEAR_PER_FOCUS) };
 }
-function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI)) - Math.PI; }
 // The view's camera description in place of the orbit camera's (almanac-earth.js _aePlaceCamera).
 function _aeMissionCam(c) {
   var s = _ae.mission;
