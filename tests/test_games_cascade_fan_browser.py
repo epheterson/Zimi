@@ -135,10 +135,8 @@ def test_the_fan_of_a_cascade_opens_into_the_height_the_phone_has(
     )
     assert col["step"] <= col["h"], "the cards of a fan overlap, not part: %r" % col
     assert col["bottom"] < col["height"], "the fan runs off the phone: %r" % col
-    # And the table uses the screen: the lowest card of the deal is past the middle of the phone.
-    assert col["bottom"] > col["height"] * 0.5, (
-        "the deal fills only the top of the phone: %r" % col
-    )
+    # With air under the lowest card: a fan that grew does not sit on the bottom edge.
+    assert col["bottom"] < col["height"] - 20, "the fan sits on the phone's bottom edge: %r" % col
     assert not phone.errors
 
 

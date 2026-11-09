@@ -1513,9 +1513,16 @@
   var FAN_UP_SHARE = 0.34;
   // A fan with height to spare opens up to this share of a card's height per step, instead of huddling at FAN_UP_SHARE at the top
   // of a tall phone; a long column still shrinks to fit (fanStep takes the smaller of room and this).
-  var FAN_GROW_SHARE = 0.7;
+  var FAN_GROW_SHARE = 0.8, FAN_GROW_AIR = 0.6;   // ... and keeps this many card heights of air under the lowest card
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
+  }
+
+  // The step of a cascade's fan: as open as the free height allows (up to FAN_GROW_SHARE of a card), the longest column (weight, in
+  // steps) still inside room, and air left under it unless the column needs the room.
+  function growStep(weight, room, ch, minStep) {
+    var fit = fanStep(weight, room, ch, ch * FAN_GROW_SHARE, minStep);
+    return weight > 0 ? Math.max(minStep, Math.min(fit, Math.max(ch * FAN_UP_SHARE, (room - ch - ch * FAN_GROW_AIR) / weight))) : fit;
   }
 
   // ── The solitaire page ───────────────────────────────────────────────────
@@ -1623,7 +1630,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, FAN_GROW_SHARE: FAN_GROW_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, growStep: growStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
