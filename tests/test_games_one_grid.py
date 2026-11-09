@@ -17,6 +17,8 @@ GAMES_DIR = os.path.join(HERE, "..", "zimi", "builtin", "games")
 ROLE_SET = re.compile(
     r"""setAttribute\(\s*['"]role['"]\s*,\s*['"](?:grid|gridcell|row)['"]|role=["'](?:grid|gridcell|row)["']"""
 )
+# util.js sets the roles; tablesnap.js only finds a page's table by its role="grid" in a selector, it sets nothing.
+GRID_READERS = {"util.js", "tablesnap.js"}
 # Files that answer the arrow keys with their own focus moves, and why that is not a board of cells.
 OWN_ARROWS = {
     "util.js": "the one grid pattern itself",
@@ -67,7 +69,9 @@ def _sources():
 
 def test_only_util_sets_grid_roles():
     found = [
-        name for name, src in _sources() if name != "util.js" and ROLE_SET.search(src)
+        name
+        for name, src in _sources()
+        if name not in GRID_READERS and ROLE_SET.search(src)
     ]
     assert not found, (
         "these set grid, row or gridcell themselves instead of ZimiUtil.gridAria: %s"
@@ -126,7 +130,9 @@ def test_a_cell_board_opens_as_a_grid(browser, served, path):
         ), "%s: rows and columns cover the cells: %s" % (path, g)
 
 
-def test_the_tab_stop_and_the_arrows_pass_over_cells_that_cannot_be_pressed(browser, served):
+def test_the_tab_stop_and_the_arrows_pass_over_cells_that_cannot_be_pressed(
+    browser, served
+):
     """Fleet disables a square once it is fired at. The grid's one tab stop must
     move off it, or Tab can no longer reach the board, and the arrows step over it."""
     ctx = browser.new_context(viewport={"width": 390, "height": 844})
