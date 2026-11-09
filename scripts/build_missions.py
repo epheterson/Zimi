@@ -130,7 +130,10 @@ def main():
     args = ap.parse_args()
     if args.cache:
         mp.CACHE = args.cache
+    # One mission at a time must never drop the others: start from what is there.
     out = {"version": 1, "missions": {}}
+    if os.path.exists(OUT):
+        out = json.load(open(OUT))
     wanted = [m for m in args.only.split(",") if m] or ["apollo11", "voyager1", "voyager2"]
     if "apollo11" in wanted:
         out["missions"]["apollo11"] = build_apollo11()
