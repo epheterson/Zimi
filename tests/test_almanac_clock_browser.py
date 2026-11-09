@@ -59,7 +59,7 @@ def browser(served):
         br.close()
 
 
-def _page(browser, served, width=390, place=SF, tz=LA):
+def _page(browser, served, width=390, place=SF, tz=LA, init=""):
     phone = width < 600
     ctx = browser.new_context(
         viewport={"width": width, "height": 844},
@@ -74,6 +74,8 @@ def _page(browser, served, width=390, place=SF, tz=LA):
         "try { localStorage.setItem('zimi_app_theme', 'dark'); localStorage.setItem('zimi_almanac_place', %r); }"
         " catch (e) {}" % place
     )
+    if init:
+        ctx.add_init_script(init)
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -622,6 +624,35 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
         )
         assert back == [None, False], back
         pg.wait_for_function(rests, timeout=ALM_LINGER_WAIT_MS, polling=POLL_MS)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+# The page's wall clock moved to a chosen instant that goes on running (timers stay real): window.__wallTo(iso) sets it, so a
+# moment of the minute does not depend on when, or how slowly, the suite runs.
+WALL_CLOCK_SHIFT = (
+    "(function () { var D = Date, off = 0;"
+    " function F() { return arguments.length ? new (Function.prototype.bind.apply(D, [null].concat([].slice.call(arguments))))() : new D(D.now() + off); }"
+    " F.prototype = D.prototype; F.now = function () { return D.now() + off; }; F.UTC = D.UTC; F.parse = D.parse; window.Date = F;"
+    " window.__wallTo = function (iso) { off = D.parse(iso) - D.now(); }; })();"
+)
+
+
+def test_today_picked_again_comes_back_to_live_across_a_minute_turn(browser, served):
+    """A day picked away from now keeps the time of day, seconds too. Dropping them lost up to a minute a pick, and today picked
+    again after the minute turned was more than a minute from now: the clock stayed away. Starts at 50 s past the minute."""
+    ctx, pg, errors = _page(browser, served, init=WALL_CLOCK_SHIFT)
+    try:
+        pg.evaluate("() => __wallTo('2026-11-09T20:00:50Z')")
+        today = "() => { var f = new Date(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + %d); return _almFocus; }"
+        pick = pg.evaluate(
+            "() => { var t = Date.now(), f = new Date(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 2);"
+            " return _almFocus.getTime() - t - 2 * 86400000; }"
+        )
+        assert 0 <= pick < 500, pick   # the same time of day, seconds and all
+        pg.wait_for_function("() => new Date().getSeconds() < 40", timeout=30_000, polling=POLL_MS)   # the minute has turned
+        assert pg.evaluate(today % 0) is None
         assert not errors, errors
     finally:
         ctx.close()
