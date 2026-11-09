@@ -3067,6 +3067,7 @@
   "tb_kn_place_alt": "Altitude flown to over a place",
   "tb_kn_place_match": "An article counts as a place's within",
   "tb_kn_craft_view": "Spacecraft framed at (× their width)",
+  "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit.",
   "tb_kn_craft_models": "Spacecraft models",
   "tb_kn_craft_sun": "Sun's light on a spacecraft (irradiance)",
   "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)",

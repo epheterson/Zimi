@@ -3067,6 +3067,7 @@
   "tb_kn_place_alt": "飞到某地上空的高度",
   "tb_kn_place_match": "文章位于该地多远范围内算作该地的文章",
   "tb_kn_craft_view": "航天器取景距离（× 其宽度）",
+  "alm_earth_webb_lit": "镜面一侧始终处于遮阳罩的阴影中：此处以被照亮的样子呈现。",
   "tb_kn_craft_models": "航天器模型",
   "tb_kn_craft_sun": "太阳照在航天器上的光（辐照度）",
   "tb_kn_craft_shine": "行星反照光（正对表面所受光的比例）",

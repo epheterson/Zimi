@@ -192,7 +192,7 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  cassini: "Cassini Assembly" (454,000 triangles), no individual credit listed
   Each material as a palette entry of up to twelve (colour, roughness,
   metalness: gold foil, silver blanket, solar cell, aluminium, paint; a
   texture's mean colour, so no printed logo carries over), simplified to
@@ -211,7 +211,7 @@ hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  cassini: "Cassini Assembly" (453,987 triangles, 259,000 kept), no individual credit listed
   All NASA 3D Resources: "free and without copyright".
 
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
@@ -224,7 +224,8 @@ craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
   The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
   the planets (almanac-sites.js), in the ZCRF format of the probes above.
   From NASA 3D Resources ("These assets are free and without copyright"):
-  lm: "Apollo Lunar Module" (descent stage only: it is what stayed), no credit listed
+  lm, lm-ascent: "Apollo Lunar Module", no credit listed: the descent stage (what stayed) and the ascent stage as two
+    models in one frame, so a site can show the ascent stage until the liftoff
   perseverance-body, perseverance-wheel: "Mars 2020 Perseverance Rover", NASA/JPL-Caltech;
     also the Curiosity site's rover (the same family; the wheels split off to turn)
   ingenuity: "Ingenuity Mars Helicopter", NASA/JPL-Caltech
